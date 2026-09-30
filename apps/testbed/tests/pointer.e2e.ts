@@ -5,7 +5,7 @@ import { boxOf, centerOf, failure } from './helpers.ts';
 test('screen.tapAt taps a viewport point with no node behind it', async ({ app, screen }) => {
   await app.open('/pointer');
 
-  const box = await boxOf(screen.getByRole('image', { name: 'Pointer pad' }));
+  const box = await boxOf(screen.getByRole('image', 'Pointer pad'));
   await screen.tapAt({ x: box.x + 40, y: box.y + 30 });
 
   await expect(screen.getByLabel('Pad state')).toHaveText('tapped at 40,30');
@@ -13,7 +13,7 @@ test('screen.tapAt taps a viewport point with no node behind it', async ({ app, 
 
 test('locator.tap({ position }) taps at an offset of the node', async ({ app, screen }) => {
   await app.open('/pointer');
-  const pad = screen.getByRole('image', { name: 'Pointer pad' });
+  const pad = screen.getByRole('image', 'Pointer pad');
 
   await pad.tap({ position: { x: 300, y: 10 } });
   await expect(screen.getByLabel('Pad state')).toHaveText('tapped at 300,10');
@@ -33,7 +33,7 @@ test('a position tap on a node the engine cannot bring into view fails as the en
 test('screen.swipe({ from, to }) moves the pointer along the path', async ({ app, screen }) => {
   await app.open('/pointer');
 
-  const box = await boxOf(screen.getByRole('image', { name: 'Pointer pad' }));
+  const box = await boxOf(screen.getByRole('image', 'Pointer pad'));
   await screen.swipe({ from: { x: box.x + 10, y: box.y + 20 }, to: { x: box.x + 250, y: box.y + 20 } });
 
   await expect(screen.getByLabel('Pad state')).toHaveText('swiped from 10,20 to 250,20');
@@ -49,15 +49,15 @@ test('a path swipe drags and drops on the board', async ({ app, screen }) => {
   await expect(screen.getByLabel('Board state')).toHaveText('Design review is done');
 });
 
-test.describe('raw pointer input', { requires: ['web'] }, () => {
-  test('raw mouse input drags along the pad', async ({ app, screen, web }) => {
+test.describe('raw pointer input', { requires: ['browser'] }, () => {
+  test('raw mouse input drags along the pad', async ({ app, screen, browser }) => {
     await app.open('/pointer');
-    const box = await boxOf(screen.getByRole('image', { name: 'Pointer pad' }));
+    const box = await boxOf(screen.getByRole('image', 'Pointer pad'));
 
-    await web.mouse.move(box.x + 10, box.y + 20);
-    await web.mouse.down();
-    await web.mouse.move(box.x + 150, box.y + 20);
-    await web.mouse.up();
+    await browser.mouse.move(box.x + 10, box.y + 20);
+    await browser.mouse.down();
+    await browser.mouse.move(box.x + 150, box.y + 20);
+    await browser.mouse.up();
     await expect(screen.getByLabel('Pad state')).toHaveText('swiped from 10,20 to 150,20');
   });
 });

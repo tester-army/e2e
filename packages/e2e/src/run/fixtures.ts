@@ -228,10 +228,10 @@ const PROBED_KEYS = new Set(['then', 'constructor', 'toJSON', 'toString', 'value
 
 /** Fixtures other runners hand out, each pointed at the e2e way of doing the same thing. */
 const FOREIGN_FIXTURE_HINTS: Readonly<Record<string, string>> = {
-  page: 'there is no Playwright page: open the app with app.open() and find elements through screen; browser-only APIs are on the web fixture of a Playwright target',
-  browser: 'the browser is owned by the engine: drive it through app, screen, and (on a Playwright target) web',
-  context: 'the browser context is owned by the engine: cookies, routes, and storage are on the web fixture of a Playwright target',
-  request: 'there is no request fixture: call fetch() directly, or reach the browser through the web fixture of a Playwright target',
+  page: 'there is no Playwright page: open the app with app.open() and find elements through screen; browser-only APIs are on the browser fixture of a Playwright target',
+  web: 'the web fixture is now called browser: destructure { browser } instead',
+  context: 'the browser context is owned by the engine: cookies, routes, and storage are on the browser fixture of a Playwright target',
+  request: 'there is no request fixture: call fetch() directly, or reach the browser through the browser fixture of a Playwright target',
   driver: 'there is no WebDriver session: drive the device through app, screen, and (on an agent-device target) device',
 };
 

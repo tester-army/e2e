@@ -6,15 +6,15 @@
 
 import { test } from '@e2e-dev/web';
 
-test('missing credentials conclude blocked, not failed', async ({ web, agent }) => {
-  await web.goto('/');
+test('missing credentials conclude blocked, not failed', async ({ browser, agent }) => {
+  await browser.goto('/');
   await agent.act(
     'open the admin panel; it requires the admin password, which you were not given — do not guess more than once',
   );
 });
 
-test('a capability gap concludes honestly', async ({ web, agent }) => {
-  await web.goto('/');
+test('a capability gap concludes honestly', async ({ browser, agent }) => {
+  await browser.goto('/');
   await agent.act('archive the first expense by dragging it into the archive zone', {
     maxModelCalls: 10,
   });

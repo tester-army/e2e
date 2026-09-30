@@ -14,7 +14,7 @@ import type { SemanticNode } from '../../src/engine/surface.ts';
 import { credentials, setSecretRegistry } from '../../src/secrets.ts';
 
 const admin: ResolvedCredential = { name: 'admin', username: 'admin@example.com' };
-const adminPassword: ResolvedSecret = { name: 'admin', purpose: 'password', value: 'hunter2' };
+const adminPassword: ResolvedSecret = { name: 'admin.password', purpose: 'password', value: 'hunter2' };
 
 afterEach(() => {
   setSecretRegistry(undefined);

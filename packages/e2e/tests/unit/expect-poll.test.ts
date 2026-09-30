@@ -1,4 +1,5 @@
 import { describe, expect as vexpect, it } from 'vitest';
+import { z } from 'zod';
 import { currentAttempt, publishAttempt } from '../../src/expect/attempt.ts';
 import { expect as e2eExpect } from '../../src/expect/index.ts';
 import { SoftFailures } from '../../src/expect/soft.ts';
@@ -302,5 +303,13 @@ describe('expect.poll', () => {
       next.end();
       vexpect(currentAttempt()).toBeUndefined();
     });
+  });
+});
+
+describe('expect.poll toMatchSchema', () => {
+  it('resolves to the schema output of the first read that passes', async () => {
+    const { read } = settling<unknown>({ status: 'pending' }, { status: 'done', items: [1] }, 2);
+    const done = z.object({ status: z.literal('done'), items: z.array(z.number()) });
+    vexpect(await e2eExpect.poll(read, { interval: 1 }).toMatchSchema(done)).toEqual({ status: 'done', items: [1] });
   });
 });

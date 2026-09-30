@@ -11,22 +11,22 @@
           "name": "Email",
           "testId": "email-input",
           "selector": "id=email-input",
-          "within": "Use tester@tester.army / <secret:benchmark>"
+          "within": "Use tester@tester.army / <secret:benchmark.password>"
         },
         "value": "tester@tester.army"
       },
       {
         "name": "typeSecret",
-        "summary": "fill secret \"benchmark\" into textbox \"Password\" in \"Use tester@tester.army / <secret:benchm…\"",
+        "summary": "fill secret \"benchmark.password\" into textbox \"Password\" in \"Use tester@tester.army / <secret:benchm…\"",
         "target": {
           "role": "textbox",
           "name": "Password",
           "testId": "password-input",
           "selector": "id=password-input",
           "inputPurpose": "password",
-          "within": "Use tester@tester.army / <secret:benchmark>"
+          "within": "Use tester@tester.army / <secret:benchmark.password>"
         },
-        "secret": "benchmark"
+        "secret": "benchmark.password"
       },
       {
         "name": "tap",
@@ -36,7 +36,7 @@
           "name": "Log in",
           "testId": "login-button",
           "selector": "id=login-button",
-          "within": "Use tester@tester.army / <secret:benchmark>"
+          "within": "Use tester@tester.army / <secret:benchmark.password>"
         }
       }
     ],

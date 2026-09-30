@@ -1,11 +1,11 @@
 ---
 title: Web
-description: The browser engine, its options, and the web fixture it contributes.
+description: The browser engine, its options, and the browser fixture it contributes.
 ---
 
 `@e2e-dev/web` drives Chromium, Firefox, and WebKit through Playwright.
-A web target names it as its engine, and it contributes the `web` fixture for
-browser-only work. Import `test` from the package to have `web` typed.
+A web target names it as its engine, and it contributes the `browser` fixture for
+browser-only work. Import `test` from the package to have `browser` typed.
 
 The package declares `playwright` as a peer dependency (`>=1.63.0 <2`) and
 does not install it. An app that already depends on Playwright keeps its
@@ -40,7 +40,7 @@ export interface WebOptions {
    * Initial viewport of every attempt's page; default 1280 by 720. `null`
    * emulates no size: the page fills the browser window, whatever size the
    * window has (a hosted browser's live view, a headed run), and
-   * `web.setViewport` still fixes one for the rest of the attempt.
+   * `browser.setViewport` still fixes one for the rest of the attempt.
    */
   readonly viewport?: ViewportSize | null;
   /**
@@ -169,9 +169,9 @@ engine observation before they resume.
 An observation or locator read started before recovery cannot publish references
 after the connection changes. Each attempt owns its binding and recordings, so
 late cleanup cannot change a later attempt.
-The deterministic `web.mouse` and `web.keyboard` fixtures remain available
+The deterministic `browser.mouse` and `browser.keyboard` fixtures remain available
 without an agent observation. Test code owns its input and can read current
-geometry and focus with `web.evaluate` before acting.
+geometry and focus with `browser.evaluate` before acting.
 
 Recovery preserves the page's unsaved state, storage, the attempt's secret
 taint, and the agent ledger. Operations already dispatched
@@ -198,7 +198,7 @@ such as the one `app.restart` opens, is a new tab.
 ## Web
 
 ```ts
-export interface Web extends Expectable<WebExpectation> {
+export interface Browser extends Expectable<BrowserExpectation> {
   /** Navigates to an allowed URL. */
   goto(
     url: string,
@@ -287,10 +287,10 @@ export interface Web extends Expectable<WebExpectation> {
 | `waitForURL` | `config.assertionTimeout`, 5000 ms |
 | `url`, `title`, `evaluate`, `route`, `unroute`, `cookies`, `setCookies`, `setViewport`, `onDialog`, `keyboard.*`, `mouse.*` | `config.actionTimeout`, 30000 ms, not overridable |
 
-Every `web` call is a recorded `web.<method>` step, except `locator` and
+Every `browser` call is a recorded `browser.<method>` step, except `locator` and
 `frameLocator`: they build a locator without touching the page, and the
 action or assertion on it is the step. A relative URL resolves against the
-target's `app.url`, else `APP_URL_REQUIRED`. Declare `requires: ['web']`
+target's `app.url`, else `APP_URL_REQUIRED`. Declare `requires: ['browser']`
 in a suite that also runs on other platforms.
 
 ### Navigation
@@ -302,8 +302,8 @@ normalization, a `RegExp` tests the full URL, anything else (a predicate
 function, say) is `INVALID_ARGUMENT`, and a timeout is `ASSERTION_FAILED`. The other navigations throw `ACTION_FAILED`.
 
 ```ts
-await web.goto('/dashboard', { waitUntil: 'networkidle' });
-await web.waitForURL(/\/orders\/\d+$/, { timeout: 15_000 });
+await browser.goto('/dashboard', { waitUntil: 'networkidle' });
+await browser.waitForURL(/\/orders\/\d+$/, { timeout: 15_000 });
 ```
 
 ### Locators and frames
@@ -313,11 +313,11 @@ await web.waitForURL(/\/orders\/\d+$/, { timeout: 15_000 });
 `LOCATOR_NOT_FOUND` for a missing frame and `LOCATOR_AMBIGUOUS` for several.
 The selector is a Playwright selector: CSS by default, XPath with `xpath=` or
 a leading `//`, and `>>` chains, so
-`web.locator('[data-testid="row"] >> nth=2 >> [data-testid="conditions"] > div')`
+`browser.locator('[data-testid="row"] >> nth=2 >> [data-testid="conditions"] > div')`
 scopes CSS to one row.
 
 ```ts
-const payment = web.frameLocator('#payment-frame');
+const payment = browser.frameLocator('#payment-frame');
 await payment.getByLabel('Card number').fill('4242424242424242');
 ```
 
@@ -357,8 +357,8 @@ Playwright timeout is `ACTION_FAILED`; a closed page or lost context is
 `ENGINE_FAILURE`.
 
 ```ts
-const count = await web.evaluate(() => document.querySelectorAll('li').length);
-const flag = await web.evaluate(
+const count = await browser.evaluate(() => document.querySelectorAll('li').length);
+const flag = await browser.evaluate(
   (name: string) => window.localStorage.getItem(name),
   'featureFlags',
 );
@@ -385,11 +385,11 @@ fails the attempt with `CLEANUP_TIMEOUT`, and whatever it throws afterwards is
 dropped.
 
 ```ts
-await web.route('**/api/quote', async (route) => {
+await browser.route('**/api/quote', async (route) => {
   await route.fulfill({ json: { cents: 4200 } });
 });
 
-const response = await web.waitForResponse('**/api/orders');
+const response = await browser.waitForResponse('**/api/orders');
 expect(response.status).toBe(201);
 ```
 
@@ -470,7 +470,7 @@ export type Cookie = CookieFields &
 ```
 
 ```ts
-await web.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }]);
+await browser.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }]);
 ```
 
 ### Dialogs and downloads
@@ -502,12 +502,12 @@ export interface Dialog {
 ```
 
 ```ts
-const off = await web.onDialog('accept');
-await screen.getByRole('button', { name: 'Delete' }).tap();
+const off = await browser.onDialog('accept');
+await screen.getByRole('button', 'Delete').tap();
 await off();
 
-const file = await web.waitForDownload(() =>
-  screen.getByRole('link', { name: 'Export CSV' }).tap(),
+const file = await browser.waitForDownload(() =>
+  screen.getByRole('link', 'Export CSV').tap(),
 );
 ```
 
@@ -558,16 +558,16 @@ cannot reuse node IDs or publish handles over a newer observation.
 `WebOptions`, `WebScreencastOptions`, `WebConnectOptions`, `WebBasicAuth`, `BrowserName`,
 `BrowserProvider`, `BrowserProviderScope`, `BrowserRequest`, `BrowserLease`,
 `BrowserReleaseContext`, `BrowserProviderDownloads`, `BrowserDownloadContext`,
-`PlaywrightLiveSurface`, `Web`, `FrameScreen`,
-`WebExpectation`, `WebRoute`, `RouteFulfillResponse`, `WebResponse`,
+`PlaywrightLiveSurface`, `Browser`, `FrameScreen`,
+`BrowserExpectation`, `WebRoute`, `RouteFulfillResponse`, `WebResponse`,
 `Cookie`, `CookieFields`, `Dialog`, and `DialogHandler` are exported from the
 package for typing config helpers and fixtures. The runtime exports are
-`web`, [`surfaceOf`](#surfaceof), and `test`, typed with the `web` fixture.
+`web`, [`surfaceOf`](#surfaceof), and `test`, typed with the `browser` fixture, with its `beforeEach` and `afterEach`.
 
-## expect(web)
+## expect(browser)
 
-`expect(web)` returns the `WebExpectation` the engine attaches: `toHaveURL`,
-`toHaveTitle`, and `toHaveClass`. See [web matchers](/reference/expect#web-matchers).
+`expect(browser)` returns the `BrowserExpectation` the engine attaches: `toHaveURL`,
+`toHaveTitle`, and `toHaveClass`. See [browser matchers](/reference/expect#browser-matchers).
 
 ## surfaceOf
 

@@ -5,15 +5,15 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { Page } from 'playwright';
 import type { EngineFixtureContext } from 'e2e/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
-import { createWebFixture, type Web } from '../../src/web.ts';
+import { createBrowserFixture, type Browser } from '../../src/browser.ts';
 import { noSecrets } from '../helpers/secrets.ts';
 
-describe('web.evaluate error boundaries', () => {
+describe('browser.evaluate error boundaries', () => {
   const surface = new PlaywrightSurface({});
   const artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-evaluate-'));
   const signal = new AbortController().signal;
   let page: Page;
-  let web: Web;
+  let browser: Browser;
 
   beforeAll(async () => {
     await surface.init({ runId: 'evaluate', targetName: 'web', projectRoot: process.cwd(),
@@ -23,7 +23,7 @@ describe('web.evaluate error boundaries', () => {
   beforeEach(async () => {
     await surface.startAttempt({ attemptId: 'evaluate', artifactsDir, signal, resolveSecret: noSecrets });
     page = await surface.ensurePage();
-    web = createWebFixture(surface, {
+    browser = createBrowserFixture(surface, {
       operation: () => ({ signal, timeoutMs: 1_000, runId: 'evaluate', attemptId: 'evaluate', origin: 'test' }),
       expectable: (target: object) => target,
       // The recorder is the harness's concern; these tests exercise evaluate's error boundaries only.
@@ -54,7 +54,7 @@ describe('web.evaluate error boundaries', () => {
     ['() => { throw new Error("Execution context was destroyed"); }', 'Execution context was destroyed'],
     ['() => { throw new Error("page.evaluate: Target closed"); }', 'page.evaluate: Target closed'],
   ])('preserves the message of a page exception: %s', async (source, message) => {
-    await expect(web.evaluate(source)).rejects.toMatchObject({ code: 'EVALUATE_FAILED', message });
+    await expect(browser.evaluate(source)).rejects.toMatchObject({ code: 'EVALUATE_FAILED', message });
   });
 
   it.each([
@@ -66,21 +66,21 @@ describe('web.evaluate error boundaries', () => {
     'page.evaluate: Execution context was destroyed, most likely because of a navigation.',
   ])('keeps a Playwright rejection as infrastructure: %s', async (message) => {
     vi.spyOn(page, 'evaluate').mockRejectedValueOnce(new Error(message));
-    await expect(web.evaluate('() => 1')).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+    await expect(browser.evaluate('() => 1')).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
   });
 
   it('keeps a Playwright timeout as OPERATION_TIMEOUT', async () => {
     const error = new Error('page.evaluate: Timeout 1000ms exceeded.');
     error.name = 'TimeoutError';
     vi.spyOn(page, 'evaluate').mockRejectedValueOnce(error);
-    await expect(web.evaluate('() => 1')).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+    await expect(browser.evaluate('() => 1')).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
   });
 
   it.each(['page', 'context'] as const)('keeps a real %s closure during evaluation as infrastructure', async (target) => {
     let ready!: () => void;
     const started = new Promise<void>((resolve) => { ready = resolve; });
     await page.exposeFunction('__e2eReady', ready);
-    const pending = web.evaluate('async () => { await globalThis.__e2eReady(); await new Promise(() => {}); }');
+    const pending = browser.evaluate('async () => { await globalThis.__e2eReady(); await new Promise(() => {}); }');
     const rejected = pending.catch((cause: unknown) => cause);
     await started;
     if (target === 'page') await page.close();
@@ -89,17 +89,17 @@ describe('web.evaluate error boundaries', () => {
   });
 
   it('preserves JSON results, explicit arguments, and zero-argument invocation', async () => {
-    await expect(web.evaluate((value: { count: number }) => ({ count: value.count + 1 }), { count: 4 }))
+    await expect(browser.evaluate((value: { count: number }) => ({ count: value.count + 1 }), { count: 4 }))
       .resolves.toEqual({ count: 5 });
-    await expect(web.evaluate('async () => ({ success: false, message: "ordinary data" })'))
+    await expect(browser.evaluate('async () => ({ success: false, message: "ordinary data" })'))
       .resolves.toEqual({ success: false, message: 'ordinary data' });
-    await expect(web.evaluate('function () { return arguments.length; }')).resolves.toBe(0);
-    await expect(web.evaluate('function () { return arguments.length; }', null)).resolves.toBe(1);
+    await expect(browser.evaluate('function () { return arguments.length; }')).resolves.toBe(0);
+    await expect(browser.evaluate('function () { return arguments.length; }', null)).resolves.toBe(1);
   });
 
   it('rejects invalid JSON results and syntax as test errors', async () => {
-    await expect(web.evaluate('() => Infinity')).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
-    await expect(web.evaluate('() => {')).rejects.toMatchObject({ code: 'EVALUATE_FAILED' });
-    await expect(web.evaluate('() => {', null)).rejects.toMatchObject({ code: 'EVALUATE_FAILED' });
+    await expect(browser.evaluate('() => Infinity')).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    await expect(browser.evaluate('() => {')).rejects.toMatchObject({ code: 'EVALUATE_FAILED' });
+    await expect(browser.evaluate('() => {', null)).rejects.toMatchObject({ code: 'EVALUATE_FAILED' });
   });
 });

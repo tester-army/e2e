@@ -2,10 +2,10 @@ import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test.describe('filter deep link', () => {
-  test('filtering writes the query to the URL', async ({ app, screen, web }) => {
+  test('filtering writes the query to the URL', async ({ app, screen, browser }) => {
     await app.open('/e/filter-deep-link');
     await screen.getByPlaceholder('Filter products').fill('mug');
-    await expect(web).toHaveURL('/e/filter-deep-link?q=mug');
+    await expect(browser).toHaveURL('/e/filter-deep-link?q=mug');
     await expect(screen.getByTestId('product-list')).toHaveText('Titanium Mug');
   });
 

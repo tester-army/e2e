@@ -1,4 +1,5 @@
 import { describe, expect as vexpect, it } from 'vitest';
+import { z } from 'zod';
 import { publishAttempt } from '../../src/expect/attempt.ts';
 import { expect as e2eExpect } from '../../src/expect/index.ts';
 import { SoftFailures, soften } from '../../src/expect/soft.ts';
@@ -164,6 +165,19 @@ describe('expect.soft', () => {
       vexpect(thrownBy(() => soft.boom())).toMatchObject({ message: 'not an assertion' });
       vexpect(calls).toEqual(['not', 'toBeVisible', 'toHaveCount 3']);
       vexpect(live.soft.close()?.message).toBe('1 soft assertion failed\n1. expect.toBeVisible failed');
+    } finally {
+      live.end();
+    }
+  });
+});
+
+describe('expect.soft toMatchSchema', () => {
+  it('returns the output on a pass and undefined after a kept failure', () => {
+    const live = attempt();
+    try {
+      vexpect(e2eExpect.soft<unknown>(1).toMatchSchema(z.number())).toBe(1);
+      vexpect(e2eExpect.soft<unknown>('1').toMatchSchema(z.number())).toBeUndefined();
+      vexpect(live.soft.close()?.message).toMatch(/^1 soft assertion failed\n1\. expected "1" to match the schema:/);
     } finally {
       live.end();
     }

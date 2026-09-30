@@ -15,13 +15,13 @@ test('todos survive a filter round-trip', async ({ app, agent, screen }) => {
   await agent.act('add todos "Buy milk" and "Walk the dog", complete the first');
   await agent.assert('only one todo remains open');
 
-  await screen.getByRole('tab', { name: 'Done' }).tap();
+  await screen.getByRole('tab', 'Done').tap();
   await expect(screen.getByTestId('todo')).toHaveCount(1);
 });
 ```
 
 Import `expect` from `e2e`. Import `test` from `e2e`, or from `@e2e-dev/web`
-or `@e2e-dev/mobile` to get the `web` or `device` fixture typed. It is the
+or `@e2e-dev/mobile` to get the `browser` or `device` fixture typed. It is the
 same `test` either way.
 
 ## Goals: `agent.act`
@@ -151,22 +151,22 @@ An `expect` after `act` checks the exact result. It is also what lets the
 
 ```ts
 // Semantic queries: role and name first, label second, test ID last.
-await screen.getByRole('button', { name: 'Sign in' }).tap();
+await screen.getByRole('button', 'Sign in').tap();
 await screen.getByLabel('Email').fill('ada@example.test');
 await screen.getByTestId('todo').first().tap();
 
 // Scope into a row, gesture like a user:
 const row = screen.getByRole('listitem').filter({ hasText: 'Design review' });
-await row.getByRole('button', { name: 'Archive' }).tap();
+await row.getByRole('button', 'Archive').tap();
 await screen.swipe({ direction: 'up', momentum: 'fast' });
 
 // Coordinates, for what the tree does not list:
-await screen.getByRole('image', { name: 'Seat map' }).tap({ position: { x: 120, y: 48 } });
+await screen.getByRole('image', 'Seat map').tap({ position: { x: 120, y: 48 } });
 await screen.swipe({ from: { x: 300, y: 400 }, to: { x: 40, y: 400 } });
 
 // Polling assertions:
 await expect(screen.getByRole('status')).toHaveText('2 remaining');
-await expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+await expect(screen.getByRole('heading', 'Dashboard')).toBeVisible();
 ```
 
 Actions and single-node reads or assertions fail when a query matches more
@@ -174,7 +174,7 @@ than one node. Narrow it with `.filter()`, `.first()`, or `.nth()`.
 Locator assertions retry until they pass or time out. Direct reads such as
 `textContent()` do not retry a mismatched value.
 
-Use the `web` fixture for browser features such as routes, cookies, dialogs,
+Use the `browser` fixture for browser features such as routes, cookies, dialogs,
 frames, and downloads; see [Working with the browser](/browser). The
 [screen reference](/reference/screen) lists every query and action.
 
@@ -190,16 +190,23 @@ response with the value matchers.
 
 ```ts title="tests/users-api.e2e.ts"
 import { test, expect } from 'e2e';
+import { z } from 'zod';
+
+const User = z.object({ id: z.number(), name: z.string() });
 
 test('GET /api/users returns the seeded users', async ({ app }) => {
   const response = await fetch(new URL('/api/users', app.baseUrl));
   expect(response.status).toBe(200);
   expect(response.headers.get('content-type')).toContain('application/json');
-  const users: unknown = await response.json();
+  const users = expect(await response.json()).toMatchSchema(z.array(User));
   expect(users).toHaveLength(3);
-  expect(users).toMatchObject([{ name: 'Ada' }, { name: 'Grace' }, { name: expect.any(String) }]);
+  expect(users.map((user) => user.name)).toEqual(['Ada', 'Grace', expect.any(String)]);
 });
 ```
+
+`toMatchSchema` takes any [Standard Schema](/reference/expect#matching-a-schema)
+(Zod, Valibot, ArkType), so the schema your app parses the API with checks
+that the API still matches it, and it returns the value typed.
 
 `app.baseUrl` is the target's `app.url`, with the port the run allocated when
 it declared port 0, so the same file runs against the `app.command` the config
@@ -208,17 +215,17 @@ answers, [`expect.poll`](/reference/expect#polling-a-value) re-reads until a
 matcher passes.
 
 To call the API as a signed-in user, write [a fixture](/reference/test#your-own-fixtures)
-that sends `web.cookies()` with each request. Every test registered through
-this `test` acquires `web`, so it needs a web target:
+that sends `browser.cookies()` with each request. Every test registered through
+this `test` acquires `browser`, so it needs a web target:
 
 ```ts title="tests/api.ts"
 import { test as base } from '@e2e-dev/web';
 
 export const test = base.extend<{ api: (path: string, init?: RequestInit) => Promise<Response> }>({
-  api: async ({ app, web }, use) => {
+  api: async ({ app, browser }, use) => {
     await use(async (path, init) => {
       const headers = new Headers(init?.headers);
-      headers.set('cookie', (await web.cookies()).map((c) => `${c.name}=${c.value}`).join('; '));
+      headers.set('cookie', (await browser.cookies()).map((c) => `${c.name}=${c.value}`).join('; '));
       return fetch(new URL(path, app.baseUrl), { ...init, headers });
     });
   },
@@ -233,8 +240,10 @@ choose **None** at the engine prompt.
 ## Structure
 
 ```ts
-test.describe('billing', { tags: ['billing'] }, () => {
-  test.beforeEach(async ({ app }) => { await app.open('/billing'); });
+import { beforeEach, describe, test } from 'e2e';
+
+describe('billing', { tags: ['billing'] }, () => {
+  beforeEach(async ({ app }) => { await app.open('/billing'); });
 
   test('upgrades', { retries: 2, timeout: 60_000 }, async ({ agent }) => {
     await agent.act('upgrade to Pro');
@@ -249,6 +258,15 @@ test('needs two organizations', async ({ app }) => {
   await app.open('/organizations');
 });
 ```
+
+`test.skip(condition, reason)` inside a body throws when the condition holds:
+the test stops at that line and is reported `skipped`, as in Playwright. Call
+it before the first step when it guards a precondition.
+
+`describe` and the hooks are also `test.describe`, `test.beforeEach`, and so
+on. A `beforeEach` imported from `e2e` sees the core fixtures; import it from
+`@e2e-dev/web` (or `@e2e-dev/mobile`) to have `browser` (or `device`) typed,
+and use `test.beforeEach` on a `test` you extended with your own fixtures.
 
 Common options include `timeout`, `retries`, and `tags`. Use `session` for
 state from a setup test, `agentContext` for extra instructions, and `agent`

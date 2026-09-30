@@ -186,7 +186,7 @@ class Collector {
   }
 
   registerDescribe(title: string, options: DescribeOptions, body: () => unknown): void {
-    this.assertOpen('test.describe()');
+    this.assertOpen('describe()');
     const titleError = validateTitle(title);
     if (titleError !== null) throw new CollectionError(titleError);
     if (typeof body !== 'function') throw new CollectionError('describe body must be a function');
@@ -212,7 +212,7 @@ class Collector {
   }
 
   registerHook(hook: HookDeclaration): void {
-    this.assertOpen(`test.${hook.kind}()`);
+    this.assertOpen(`${hook.kind}()`);
     if (typeof hook.fn !== 'function') {
       throw new CollectionError(`${hook.kind} hook must be a function`);
     }
@@ -621,19 +621,19 @@ function createTestAPI(chain: readonly FixtureDefinition[]): TestAPI {
       const options = typeof optionsOrBody === 'function' ? {} : optionsOrBody;
       const body = typeof optionsOrBody === 'function' ? optionsOrBody : maybeBody;
       if (body === undefined) throw new CollectionError('describe body function is required');
-      requireCollector('test.describe()').registerDescribe(title, options, body);
+      requireCollector('describe()').registerDescribe(title, options, body);
     },
     beforeEach(fn: TestHookFn): void {
-      requireCollector('test.beforeEach()').registerHook({ kind: 'beforeEach', fn, fixtures: chain });
+      requireCollector('beforeEach()').registerHook({ kind: 'beforeEach', fn, fixtures: chain });
     },
     afterEach(fn: TestHookFn): void {
-      requireCollector('test.afterEach()').registerHook({ kind: 'afterEach', fn, fixtures: chain });
+      requireCollector('afterEach()').registerHook({ kind: 'afterEach', fn, fixtures: chain });
     },
     beforeAll(fn: SuiteHookFn): void {
-      requireCollector('test.beforeAll()').registerHook({ kind: 'beforeAll', fn });
+      requireCollector('beforeAll()').registerHook({ kind: 'beforeAll', fn });
     },
     afterAll(fn: SuiteHookFn): void {
-      requireCollector('test.afterAll()').registerHook({ kind: 'afterAll', fn });
+      requireCollector('afterAll()').registerHook({ kind: 'afterAll', fn });
     },
     // Without definitions this is a type-only refinement: contributed
     // fixtures resolve from the engine at runtime, so the same object serves.
@@ -647,3 +647,10 @@ function createTestAPI(chain: readonly FixtureDefinition[]): TestAPI {
 }
 
 export const test: TestAPI = createTestAPI([]);
+
+/**
+ * `test.describe` and the hooks as top-level imports. The per-test hooks
+ * carry the core fixtures; a hook that needs a `test.extend()` fixture
+ * registers through that `test`, or an engine's re-export of these.
+ */
+export const { describe, beforeEach, afterEach, beforeAll, afterAll } = test;

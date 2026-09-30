@@ -15,14 +15,14 @@ test.describe('login form', () => {
   test('rejects a malformed email', async ({ screen }) => {
     await screen.getByPlaceholder('Email').fill('not-an-email');
     await screen.getByPlaceholder('Password').fill(account.password);
-    await screen.getByRole('button', { name: 'Log in' }).tap();
+    await screen.getByRole('button', 'Log in').tap();
     await expect(screen.getByTestId('error-message')).toHaveText('Enter a valid email address');
   });
 
   test('rejects a short password', async ({ screen }) => {
     await screen.getByPlaceholder('Email').fill(account.username);
     await screen.getByPlaceholder('Password').fill('short');
-    await screen.getByRole('button', { name: 'Log in' }).tap();
+    await screen.getByRole('button', 'Log in').tap();
     await expect(screen.getByTestId('error-message')).toHaveText(
       'Password must be at least 8 characters',
     );
@@ -31,18 +31,18 @@ test.describe('login form', () => {
   test('rejects an unknown account', async ({ screen }) => {
     await screen.getByPlaceholder('Email').fill('someone@example.com');
     await screen.getByPlaceholder('Password').fill(account.password);
-    await screen.getByRole('button', { name: 'Log in' }).tap();
+    await screen.getByRole('button', 'Log in').tap();
     await expect(screen.getByTestId('error-message')).toHaveText('Invalid credentials');
   });
 
   test('signs in and logs out', async ({ screen }) => {
     await screen.getByPlaceholder('Email').fill(account.username);
     await screen.getByPlaceholder('Password').fill(account.password);
-    await screen.getByRole('button', { name: 'Log in' }).tap();
+    await screen.getByRole('button', 'Log in').tap();
     await expect(screen.getByTestId('success-message')).toHaveText('Logged in successfully');
 
-    await screen.getByRole('button', { name: 'Log out' }).tap();
+    await screen.getByRole('button', 'Log out').tap();
     await expect(screen.getByPlaceholder('Email')).toHaveValue('');
-    await expect(screen.getByRole('button', { name: 'Log in' })).toBeVisible();
+    await expect(screen.getByRole('button', 'Log in')).toBeVisible();
   });
 });

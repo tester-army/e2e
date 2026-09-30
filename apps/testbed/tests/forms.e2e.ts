@@ -14,15 +14,15 @@ test.describe('forms', { tags: ['forms'] }, () => {
     await screen.getByLabel('Team').selectOption({ index: 2 });
     await expect(screen.getByLabel('Team')).toHaveValue('mobile');
 
-    const notifications = screen.getByRole('group', { name: 'Notifications' });
+    const notifications = screen.getByRole('group', 'Notifications');
     await expect(notifications.getByRole('checkbox')).toHaveCount(2);
     await screen.getByLabel('Email notifications').check();
     await screen.getByLabel('Weekly digest').uncheck();
     await expect(screen.getByLabel('Email notifications')).toBeChecked();
     await expect(screen.getByLabel('Weekly digest')).not.toBeChecked();
 
-    await screen.getByRole('button', { name: 'Save profile' }).tap();
-    await expect(screen.getByRole('status', { name: 'Save result' })).toHaveText(
+    await screen.getByRole('button', 'Save profile').tap();
+    await expect(screen.getByRole('status', 'Save result')).toHaveText(
       'Saved profile for Ada Lovelace',
     );
   });
@@ -30,8 +30,8 @@ test.describe('forms', { tags: ['forms'] }, () => {
   test('validates required fields', async ({ screen }) => {
     await screen.getByLabel('Full name').fill('temp');
     await screen.getByLabel('Full name').clear();
-    await screen.getByRole('button', { name: 'Save profile' }).tap();
-    await expect(screen.getByRole('status', { name: 'Save result' })).toHaveText(
+    await screen.getByRole('button', 'Save profile').tap();
+    await expect(screen.getByRole('status', 'Save result')).toHaveText(
       'Name is required',
     );
   });
@@ -49,7 +49,7 @@ test.describe('forms', { tags: ['forms'] }, () => {
 
   test('types with key events where fill leaves the app cold', async ({ screen }) => {
     const city = screen.getByLabel('City');
-    const suggestions = screen.getByRole('list', { name: 'City suggestions' }).getByRole('listitem');
+    const suggestions = screen.getByRole('list', 'City suggestions').getByRole('listitem');
 
     await city.fill('W');
     await expect(city).toHaveValue('W');
@@ -62,10 +62,10 @@ test.describe('forms', { tags: ['forms'] }, () => {
     await expect(suggestions.first()).toHaveText('Warsaw');
   });
 
-  test('drives the page with raw keyboard input', async ({ screen, web }) => {
+  test('drives the page with raw keyboard input', async ({ screen, browser }) => {
     await screen.getByLabel('Full name').focus();
-    await web.keyboard.type('Margaret');
-    await web.keyboard.press('Backspace');
+    await browser.keyboard.type('Margaret');
+    await browser.keyboard.press('Backspace');
     await expect(screen.getByLabel('Full name')).toHaveValue('Margare');
   });
 });

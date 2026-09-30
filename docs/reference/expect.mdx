@@ -23,7 +23,7 @@ export interface Expect extends ExpectCall {
   /** Re-reads a value until the chosen matcher holds or `timeout` passes. */
   poll<T>(read: () => T | Promise<T>, options?: PollOptions): PollExpectation<T>;
   /** The same matchers, a failure kept on the attempt instead of thrown; the attempt fails once the body has settled. */
-  readonly soft: ExpectCall;
+  readonly soft: SoftExpectCall;
   any(sample: Class | typeof BigInt | typeof Symbol): AsymmetricMatcher;
   anything(): AsymmetricMatcher;
   objectContaining(sample: object): AsymmetricMatcher;
@@ -33,7 +33,7 @@ export interface Expect extends ExpectCall {
 }
 ```
 
-Engine fixtures can provide matchers too, such as `expect(web).toHaveURL()`.
+Engine fixtures can provide matchers too, such as `expect(browser).toHaveURL()`.
 Such a fixture is an `Expectable<E>`: its engine attached the matcher set `E`
 through [`expectable`](/reference/engine#contributed-fixtures), and
 `expect(fixture)` returns it.
@@ -43,7 +43,7 @@ before passing its result to `expect`.
 | Property | Value |
 | --- | --- |
 | Default timeout | `config.assertionTimeout`, 5000 ms |
-| Override | `{ timeout }` in milliseconds, on every locator and `web` matcher |
+| Override | `{ timeout }` in milliseconds, on every locator and `browser` matcher |
 | Negation grace window | A negated matcher passes after 1000 ms of continuous truth, or after the whole budget when `{ timeout }` is shorter than that |
 | Failure code | `ASSERTION_FAILED`, exit code 1 |
 
@@ -154,15 +154,15 @@ await expect(screen.getByText('Loaded')).toBeAttached();
 await expect(screen.getByRole('dialog')).not.toBeVisible({ timeout: 10_000 });
 ```
 
-## web matchers
+## browser matchers
 
 Contributed by `@e2e-dev/web`; the type is exported from that package.
 Every matcher call is a recorded `expect.<matcher>` assertion step.
 
 ```ts
-export interface WebExpectation {
+export interface BrowserExpectation {
   /** Inverts the matcher. */
-  readonly not: WebExpectation;
+  readonly not: BrowserExpectation;
   /** Waits for the current URL to match. */
   toHaveURL(expected: string | RegExp, options?: { timeout?: number }): Promise<void>;
   /** Waits for the current title to match. */
@@ -183,9 +183,9 @@ attribute, so `''` matches `class=""` and not an element with no `class`
 attribute at all; Playwright's `toHaveClass('')` accepts both.
 
 ```ts
-await expect(web).toHaveURL('/dashboard');
-await expect(web).toHaveTitle(/Dashboard/);
-await expect(web).toHaveClass(web.locator('.card'), 'card active');
+await expect(browser).toHaveURL('/dashboard');
+await expect(browser).toHaveTitle(/Dashboard/);
+await expect(browser).toHaveClass(browser.locator('.card'), 'card active');
 ```
 
 ## Value matchers
@@ -193,7 +193,7 @@ await expect(web).toHaveClass(web.locator('.card'), 'card active');
 ```ts
 export interface ValueExpectation<T> {
   /** Inverts the matcher. */
-  readonly not: ValueExpectation<T>;
+  readonly not: NegatedValueExpectation<T>;
   /** Compares with Object.is. */
   toBe(expected: T): void;
   /** Performs recursive structural equality; `undefined` properties are ignored and class types are not compared. */
@@ -228,7 +228,21 @@ export interface ValueExpectation<T> {
   toBeLessThanOrEqual(expected: number): void;
   /** Requires a number within `10 ** -digits / 2` of `expected`; `digits` defaults to 2. */
   toBeCloseTo(expected: number, digits?: number): void;
+  /**
+   * Requires the value to pass a synchronous Standard Schema (Zod, Valibot,
+   * ArkType, ...) and returns the schema's output, typed:
+   * `const users = expect(await response.json()).toMatchSchema(Users)`.
+   * A schema that validates asynchronously is `INVALID_ARGUMENT`.
+   */
+  toMatchSchema<Schema extends StandardSchemaV1>(schema: Schema): StandardSchemaV1.InferOutput<Schema>;
 }
+
+/** `expect(value).not`: every value matcher inverted, none returning a value. */
+export type NegatedValueExpectation<T> = {
+  readonly not: ValueExpectation<T>;
+} & {
+  readonly [K in Exclude<keyof ValueExpectation<T>, 'not'>]: (...args: Parameters<ValueExpectation<T>[K]>) => void;
+};
 
 /** A class, abstract or not: what `expect.any` takes. */
 export type Class = abstract new (...args: never[]) => unknown;
@@ -269,6 +283,30 @@ when a key contains a dot, or to index an array by number
 `undefined` exists. With a second argument the value at the path must equal it
 by `toEqual` rules.
 
+### Matching a schema
+
+`toMatchSchema` validates a value against a
+[Standard Schema](https://standardschema.dev): a Zod, Valibot, or ArkType
+schema, or any library that implements the spec. Pass the schema your app
+already parses its API with, and the test fails when the API drifts from it.
+It returns the schema's output, typed, so the rest of the test reads
+properties without casting:
+
+```ts
+import { z } from 'zod';
+
+const User = z.object({ id: z.number(), name: z.string(), email: z.email() });
+
+const users = expect(await response.json()).toMatchSchema(z.array(User));
+expect(users.map((user) => user.name)).toContain('Ada');
+```
+
+A failure lists every issue by its path (`1.email: Invalid email address`).
+The output is the schema's, so defaults and transforms apply. A matcher
+returns before anything could await it, so a schema that validates
+asynchronously (an async refinement) is `INVALID_ARGUMENT`. Negated, it
+passes when the value does not match and returns nothing.
+
 A matcher that cannot evaluate its value (`toContain` on a number,
 `toHaveLength` on an object without one) fails as `ASSERTION_FAILED` like a
 mismatch would, so under `expect.poll` a value that has not taken its final
@@ -289,7 +327,7 @@ expect(created, 'the company exists through the API').toBeTruthy();
 // ASSERTION_FAILED: the company exists through the API: expected undefined to be truthy
 ```
 
-Only value expectations take a message; a locator or `web` expectation
+Only value expectations take a message; a locator or `browser` expectation
 already names its locator and matcher in the failure.
 
 ## Asymmetric matchers
@@ -354,7 +392,7 @@ test('checkout summary', async ({ agent, screen }) => {
   await agent.act('add the "Pro" plan to the cart and open the summary');
   expect.soft(await screen.getByTestId('subtotal').textContent()).toBe('$40.00');
   expect.soft(await screen.getByTestId('tax').textContent()).toBe('$8.00');
-  await expect.soft(screen.getByRole('button', { name: 'Pay' })).toBeEnabled();
+  await expect.soft(screen.getByRole('button', 'Pay')).toBeEnabled();
   await expect(screen.getByTestId('total')).toHaveText('$48.00');
 });
 ```
@@ -363,12 +401,12 @@ test('checkout summary', async ({ agent, screen }) => {
 ASSERTION_FAILED: 2 soft assertions failed
 1. expected "$40.00" to be "$41.00"
 2. expect.toBeEnabled failed
-   locator: getByRole('button', { name: 'Pay' })
+   locator: getByRole('button', 'Pay')
    expected: enabled
    observed: states: disabled (match count 1)
 ```
 
-A soft locator or `web` matcher is still a recorded `expect.<matcher>` step,
+A soft locator or `browser` matcher is still a recorded `expect.<matcher>` step,
 marked failed, so the report shows where in the flow it landed. A soft value
 matcher is not a step, the same as a hard one; its failure appears in the
 final error only.
@@ -376,6 +414,9 @@ final error only.
 When the body throws on its own, or times out, that error stays the
 attempt's verdict and the soft failures are recorded beside it under
 `secondaryErrors`. A body that skips itself with `test.skip(...)` drops them.
+
+A soft `toMatchSchema` returns the schema's output when the value matches
+and `undefined` after a kept failure, and its type says so.
 
 Outside a test body there is nothing to keep a failure for, so `expect.soft`
 throws at once like `expect`: in a standalone script, and in an `afterEach`
@@ -399,15 +440,18 @@ export interface PollOptions {
 
 /**
  * The asynchronous form of every `ValueExpectation<T>` matcher: the same
- * names and parameters, each resolving once the re-read value passes.
+ * names and parameters, each resolving once the re-read value passes;
+ * `toMatchSchema` resolves to the schema's output for the passing read.
  * Derived from `ValueExpectation<T>` so the two cannot drift.
  */
 export type PollExpectation<T> = {
-  readonly not: PollExpectation<T>;
+  readonly not: NegatedPollExpectation<T>;
 } & {
-  readonly [K in Exclude<keyof ValueExpectation<T>, 'not'>]: (
+  readonly [K in Exclude<keyof ValueExpectation<T>, 'not' | 'toMatchSchema'>]: (
     ...args: Parameters<ValueExpectation<T>[K]>
   ) => Promise<void>;
+} & {
+  toMatchSchema<Schema extends StandardSchemaV1>(schema: Schema): Promise<StandardSchemaV1.InferOutput<Schema>>;
 };
 ```
 

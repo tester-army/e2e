@@ -487,10 +487,10 @@ test.setup('seed storage', { sessions: ['seeded'] }, async ({ app, screen, sessi
       const consumerFile = `import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('starts with the seeded state', { session: 'seeded' }, async ({ app, screen, web }) => {
+test('starts with the seeded state', { session: 'seeded' }, async ({ app, screen, browser }) => {
   await app.open('/storage');
   await expect(screen.getByRole('status', { name: 'Marker' })).toHaveText('saved');
-  const cookies = await web.cookies();
+  const cookies = await browser.cookies();
   if (!cookies.some((cookie) => cookie.name === 'fixture')) {
     throw new Error('expected the fixture cookie from the session');
   }

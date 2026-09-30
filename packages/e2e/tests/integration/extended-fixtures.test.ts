@@ -77,13 +77,13 @@ silent('never calls use', async ({ silent }) => {
   log('unreachable:' + silent);
 });
 
-const clash = base.extend<{ web: string }>({
-  web: async (_fixtures, use) => {
+const clash = base.extend<{ browser: string }>({
+  browser: async (_fixtures, use) => {
     await use('not the browser');
   },
 });
-clash('redefines an engine fixture', async ({ web }) => {
-  log('unreachable:' + String(web));
+clash('redefines an engine fixture', async ({ browser }) => {
+  log('unreachable:' + String(browser));
 });
 `;
       const logPath = path.join('/tmp', `e2e-extend-${Date.now()}.log`);
@@ -115,7 +115,7 @@ clash('redefines an engine fixture', async ({ web }) => {
       expect(clash.status).toBe('failed');
       expect(clash.attempts[0]!.error?.phase).toBe('beforeEach');
       expect(clash.attempts[0]!.error?.code).toBe('TEST_SETUP_FAILED');
-      expect(clash.attempts[0]!.error?.message).toContain('fixture "web" is contributed by engine web');
+      expect(clash.attempts[0]!.error?.message).toContain('fixture "browser" is contributed by engine web');
 
       expect(readFileSync(logPath, 'utf8').trim().split('\n')).toEqual([
         'setup:first:web',

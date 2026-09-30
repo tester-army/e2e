@@ -7,7 +7,7 @@ import { secrets } from 'e2e';
 import type { EngineFixtureContext, OperationContext } from 'e2e/engine';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { PlaywrightSurface } from '../../src/surface.ts';
-import { createWebFixture } from '../../src/web.ts';
+import { createBrowserFixture } from '../../src/browser.ts';
 import { noSecrets } from '../helpers/secrets.ts';
 
 const acquire = vi.hoisted(() => vi.fn());
@@ -79,13 +79,13 @@ it.each(['dialog', 'route'] as const)('keeps a late %s failure on the attempt th
     surface.dialogs.add(async () => { await waiting; throw new Error('old handler failed'); });
     pending = surface.dialogs.dispatch({ type: () => 'confirm', message: () => 'old', dismiss: async () => undefined } as unknown as Dialog);
   } else {
-    const web = createWebFixture(surface, {
+    const fixture = createBrowserFixture(surface, {
       operation,
       fixture: (_name: string, value: unknown) => value,
       expectable: (value: unknown) => value,
       app: { resolveUrl: (url: string) => url },
     } as unknown as EngineFixtureContext);
-    await web.route('**/*', async () => { await waiting; throw new Error('old handler failed'); });
+    await fixture.route('**/*', async () => { await waiting; throw new Error('old handler failed'); });
     pending = registered!({
       request: () => ({ postData: () => null, url: () => 'https://example.test/', method: () => 'GET', headers: () => ({}) }),
       abort: async () => undefined,

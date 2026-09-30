@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import type { Page } from 'playwright';
 import type { EngineFixtureContext } from 'e2e/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
-import { createWebFixture, type Web } from '../../src/web.ts';
+import { createBrowserFixture, type Browser } from '../../src/browser.ts';
 import { noSecrets } from '../helpers/secrets.ts';
 
 /**
@@ -60,14 +60,14 @@ function startBodyServer(): Promise<{ server: Server; url: string }> {
   });
 }
 
-describe('web.waitForResponse bodies', () => {
+describe('browser.waitForResponse bodies', () => {
   const surface = new PlaywrightSurface({});
   const artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-wait-for-response-'));
   const signal = new AbortController().signal;
   let server: Server;
   let origin: string;
   let page: Page;
-  let web: Web;
+  let browser: Browser;
 
   beforeAll(async () => {
     ({ server, url: origin } = await startBodyServer());
@@ -79,7 +79,7 @@ describe('web.waitForResponse bodies', () => {
     await surface.startAttempt({ attemptId: 'responses', artifactsDir, signal, resolveSecret: noSecrets });
     page = await surface.ensurePage();
     await page.goto(`${origin}/`);
-    web = createWebFixture(surface, {
+    browser = createBrowserFixture(surface, {
       operation: () => ({ signal, timeoutMs: 5_000, runId: 'responses', attemptId: 'responses', origin: 'test' }),
       expectable: (target: object) => target,
       fixture: (_name: string, target: object) => target,
@@ -102,7 +102,7 @@ describe('web.waitForResponse bodies', () => {
    */
   async function observe(pathname: string) {
     const [response] = await Promise.all([
-      web.waitForResponse(`**${pathname}`),
+      browser.waitForResponse(`**${pathname}`),
       page.evaluate(
         (url) => fetch(url).then((reply) => reply.text()).catch(() => undefined),
         `${origin}${pathname}`,

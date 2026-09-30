@@ -5,11 +5,12 @@ import type { ResolvedCredential, ResolvedSecret } from '../../src/config/resolv
 
 const admin: ResolvedCredential = { name: 'admin', username: 'admin@example.com' };
 const adminPassword: ResolvedSecret = {
-  name: 'admin',
+  name: 'admin.password',
   purpose: 'password',
   value: 'super-secret-password',
 };
 const apiKey: ResolvedSecret = { name: 'api-key', purpose: 'generic-secret', value: 'sk_live_1' };
+const adminToken: ResolvedSecret = { name: 'admin-token', purpose: 'generic-secret', value: 'tok_admin_1' };
 
 function registry(credentialList: ResolvedCredential[], secretList: ResolvedSecret[]): SecretRegistry {
   return {
@@ -48,7 +49,7 @@ describe('credentials.user', () => {
   it('models the password as an opaque secret handle', () => {
     setSecretRegistry(registry([admin], [adminPassword]));
     const handle = credentials.user('admin');
-    expect(handle.password.name).toBe('admin');
+    expect(handle.password.name).toBe('admin.password');
     expect(handle.password.purpose).toBe('password');
   });
 
@@ -82,9 +83,22 @@ describe('secrets.get', () => {
     expect(JSON.stringify(handle)).not.toContain('sk_live_1');
   });
 
-  it('hands out a credential password by its name with the password purpose', () => {
+  it('never hands out a credential password: that is credentials.user(name).password', () => {
     setSecretRegistry(registry([admin], [adminPassword]));
-    expect(secrets.get('admin').purpose).toBe('password');
+    expect(() => secrets.get('admin')).toThrow(expect.objectContaining({
+      code: 'SECRET_UNAVAILABLE',
+      message: expect.stringContaining('"admin" is a credential, whose password is credentials.user("admin").password'),
+    }));
+    expect(() => secrets.get('admin.password')).toThrow(expect.objectContaining({
+      code: 'SECRET_UNAVAILABLE',
+      message: expect.stringContaining('use credentials.user("admin").password'),
+    }));
+  });
+
+  it('keeps a secret and a credential of one name apart', () => {
+    setSecretRegistry(registry([admin], [adminPassword, { name: 'admin', purpose: 'generic-secret', value: 'admin-api-key' }]));
+    expect(secrets.get('admin')).toMatchObject({ name: 'admin', purpose: 'generic-secret' });
+    expect(credentials.user('admin').password).toMatchObject({ name: 'admin.password', purpose: 'password' });
   });
 
   it('returns a reference by name before any run exists, for the config to hand an engine', () => {
@@ -95,9 +109,6 @@ describe('secrets.get', () => {
     expect(deferred.name).toBe('admin');
     expect(deferred.purpose).toBe('generic-secret');
     expect(unknown.name).toBe('not-declared-yet');
-    // Only the resolved config knows the name is a credential's password.
-    setSecretRegistry(registry([admin], [adminPassword]));
-    expect(deferred.purpose).toBe('password');
   });
 
   it('refuses to become a string before any run exists, so a config cannot pass the reference off as the value', () => {
@@ -118,7 +129,7 @@ describe('secrets.get', () => {
 
 describe('holdSecretRegistry', () => {
   const withKey = registry([], [apiKey]);
-  const withAdmin = registry([admin], [adminPassword]);
+  const withAdmin = registry([admin], [adminPassword, adminToken]);
   const throws = (name: string): boolean => {
     try {
       secrets.get(name);
@@ -133,10 +144,10 @@ describe('holdSecretRegistry', () => {
   it('installs the newest registry still held when a hold is released', () => {
     const releaseKey = holdSecretRegistry(withKey);
     const releaseAdmin = holdSecretRegistry(withAdmin);
-    expect(resolves('admin')).toBe(true);
+    expect(resolves('admin-token')).toBe(true);
     releaseAdmin();
     expect(resolves('api-key')).toBe(true);
-    expect(resolves('admin')).toBe(false);
+    expect(resolves('admin-token')).toBe(false);
     releaseAdmin();
     expect(resolves('api-key')).toBe(true);
     releaseKey();
@@ -147,15 +158,15 @@ describe('holdSecretRegistry', () => {
     const releaseKey = holdSecretRegistry(withKey);
     const releaseAdmin = holdSecretRegistry(withAdmin);
     releaseKey();
-    expect(resolves('admin')).toBe(true);
+    expect(resolves('admin-token')).toBe(true);
     releaseAdmin();
-    expect(resolves('admin')).toBe(false);
+    expect(resolves('admin-token')).toBe(false);
   });
 
   it('leaves a registry a run installed since in place', () => {
     const release = holdSecretRegistry(withKey);
     setSecretRegistry(withAdmin);
     release();
-    expect(resolves('admin')).toBe(true);
+    expect(resolves('admin-token')).toBe(true);
   });
 });

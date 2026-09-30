@@ -28,9 +28,9 @@ const TITLE = 'reads the allocated base URL';
 const TEST = `import { appendFileSync } from 'node:fs';
 import { test } from 'e2e';
 
-test('${TITLE}', async ({ app, web }) => {
+test('${TITLE}', async ({ app, browser }) => {
   await app.open('/');
-  appendFileSync(process.env.PORT_URLS!, JSON.stringify({ baseUrl: app.baseUrl, current: await web.url() }) + '\\n');
+  appendFileSync(process.env.PORT_URLS!, JSON.stringify({ baseUrl: app.baseUrl, current: await browser.url() }) + '\\n');
 });
 `;
 

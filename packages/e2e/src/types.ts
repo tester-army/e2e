@@ -423,6 +423,8 @@ export interface SwipePathOptions {
 export interface Screen {
   /** Creates a lazy role query. An alias such as `img` is rewritten to its role. */
   getByRole(role: Role | RoleAlias, options?: RoleOptions): Locator;
+  /** Creates a lazy role query narrowed to an accessible name: `getByRole('button', 'Sign in')`. */
+  getByRole(role: Role | RoleAlias, name: TextMatch, options?: Omit<RoleOptions, 'name'>): Locator;
   /** Creates a lazy accessible-label query. */
   getByLabel(text: TextMatch, options?: TextMatchOptions): Locator;
   /** Creates a lazy placeholder query. */
@@ -683,9 +685,10 @@ export interface TestAPI<Fixtures = TestFixtures> {
   skip(title: string, fn: TestFn<Fixtures>): TestCase;
   /**
    * Inside a running test: skips it when `condition` is true (or always,
-   * with no condition), ending the body there. The attempt is reported
-   * `skipped` with `reason`; steps that already ran stay in the report, and
-   * teardown still runs. A setup test cannot skip: its sessions are owed.
+   * with no condition) by throwing, so nothing after the call runs. The
+   * attempt is reported `skipped` with `reason`; steps that already ran stay
+   * in the report without deciding the status, and teardown still runs. A
+   * setup test cannot skip: its sessions are owed.
    * Outside a test body this form is `COLLECTION_ERROR`; use the `skip`
    * option to skip at collection.
    */
@@ -711,7 +714,7 @@ export interface TestAPI<Fixtures = TestFixtures> {
    * body with them, and tears them down in reverse order after `afterEach`:
    *
    *   export const test = base.extend<{ workspace: Workspace }>({
-   *     workspace: async ({ web }, use) => {
+   *     workspace: async ({ browser }, use) => {
    *       const workspace = await createWorkspace();
    *       await use(workspace);
    *       await workspace.cleanup();
@@ -806,7 +809,7 @@ export interface AsymmetricMatcher {
 
 export interface ValueExpectation<T> {
   /** Inverts the matcher. */
-  readonly not: ValueExpectation<T>;
+  readonly not: NegatedValueExpectation<T>;
   /** Compares with Object.is. */
   toBe(expected: T): void;
   /** Performs recursive structural equality; `undefined` properties are ignored and class types are not compared. */
@@ -841,7 +844,35 @@ export interface ValueExpectation<T> {
   toBeLessThanOrEqual(expected: number): void;
   /** Requires a number within `10 ** -digits / 2` of `expected`; `digits` defaults to 2. */
   toBeCloseTo(expected: number, digits?: number): void;
+  /**
+   * Requires the value to pass a synchronous Standard Schema (Zod, Valibot,
+   * ArkType, ...) and returns the schema's output, typed:
+   * `const users = expect(await response.json()).toMatchSchema(Users)`.
+   * A schema that validates asynchronously is `INVALID_ARGUMENT`.
+   */
+  toMatchSchema<Schema extends StandardSchemaV1>(schema: Schema): StandardSchemaV1.InferOutput<Schema>;
 }
+
+/** The value matchers a negation leaves: the same names and parameters, none returning a value. */
+type ValueMatcherName = Exclude<keyof ValueExpectation<unknown>, 'not'>;
+
+/** `expect(value).not`: every value matcher inverted, none returning a value. */
+export type NegatedValueExpectation<T> = {
+  /** Inverts the matcher back. */
+  readonly not: ValueExpectation<T>;
+} & {
+  readonly [K in ValueMatcherName]: (...args: Parameters<ValueExpectation<T>[K]>) => void;
+};
+
+/**
+ * `expect.soft(value)`: the value matchers, with `toMatchSchema` returning
+ * `undefined` when the value failed and the failure was kept for the end of
+ * the body.
+ */
+export type SoftValueExpectation<T> = Omit<ValueExpectation<T>, 'toMatchSchema'> & {
+  /** Requires the value to pass the schema; returns its output, or `undefined` after a kept failure. */
+  toMatchSchema<Schema extends StandardSchemaV1>(schema: Schema): StandardSchemaV1.InferOutput<Schema> | undefined;
+};
 
 export interface PollOptions {
   /** Deadline in milliseconds. Default 5000. */
@@ -854,15 +885,27 @@ export interface PollOptions {
 
 /**
  * The asynchronous form of every `ValueExpectation<T>` matcher: the same
- * names and parameters, each resolving once the re-read value passes.
+ * names and parameters, each resolving once the re-read value passes;
+ * `toMatchSchema` resolves to the schema's output for the passing read.
  * Derived from `ValueExpectation<T>` so the two cannot drift.
  */
 export type PollExpectation<T> = {
-  readonly not: PollExpectation<T>;
+  readonly not: NegatedPollExpectation<T>;
 } & {
-  readonly [K in Exclude<keyof ValueExpectation<T>, 'not'>]: (
+  readonly [K in Exclude<ValueMatcherName, 'toMatchSchema'>]: (
     ...args: Parameters<ValueExpectation<T>[K]>
   ) => Promise<void>;
+} & {
+  /** Resolves to the schema's output once a read passes it. */
+  toMatchSchema<Schema extends StandardSchemaV1>(schema: Schema): Promise<StandardSchemaV1.InferOutput<Schema>>;
+};
+
+/** `expect.poll(read).not`: every poll matcher inverted, none resolving to a value. */
+export type NegatedPollExpectation<T> = {
+  /** Inverts the matcher back. */
+  readonly not: PollExpectation<T>;
+} & {
+  readonly [K in ValueMatcherName]: (...args: Parameters<ValueExpectation<T>[K]>) => Promise<void>;
 };
 
 /** The `expect(actual)` call: a locator, an engine fixture, or a value, told apart by the argument. */
@@ -871,6 +914,14 @@ export interface ExpectCall {
   <E extends object>(actual: Expectable<E>): E;
   /** `message` opens the failure text, so a bare `expected false to be true` says which check it was. */
   <T>(actual: T, message?: string): ValueExpectation<T>;
+}
+
+/** The `expect.soft(actual)` call: `expect(actual)` whose failures are kept instead of thrown. */
+export interface SoftExpectCall {
+  (actual: Locator): AsyncExpectation;
+  <E extends object>(actual: Expectable<E>): E;
+  /** `message` opens the failure text, so a bare `expected false to be true` says which check it was. */
+  <T>(actual: T, message?: string): SoftValueExpectation<T>;
 }
 
 /** The `expect` entry: the call, `expect.poll`, `expect.soft`, and the asymmetric matchers. */
@@ -883,7 +934,7 @@ export interface Expect extends ExpectCall {
    * fails with `ASSERTION_FAILED` listing every kept failure. Outside a test
    * body (a standalone script, an `afterEach` hook) a failure throws at once.
    */
-  readonly soft: ExpectCall;
+  readonly soft: SoftExpectCall;
   /** Matches an instance of the class; for `String`, `Number`, `Boolean`, `BigInt`, `Symbol`, and `Function`, the primitive too; for `Object`, anything `typeof` calls an object, `null` included. */
   any(sample: Class | typeof BigInt | typeof Symbol): AsymmetricMatcher;
   /** Matches anything but `null` and `undefined`. */
@@ -1397,8 +1448,9 @@ export interface E2EConfig {
    */
   cache?: CacheMode | CacheConfig;
   /**
-   * Named accounts. A credential's password is registered as a secret under
-   * the credential's name, so the name may not also appear under `secrets`.
+   * Named accounts. `credentials.user(name).password` is the handle of a
+   * credential's password, a secret named `<name>.password`; `secrets.get()`
+   * never returns it, so a credential and a secret may share a name.
    */
   credentials?: Readonly<Record<string, CredentialConfig>>;
   /**

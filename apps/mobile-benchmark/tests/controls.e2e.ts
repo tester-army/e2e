@@ -35,7 +35,7 @@ test.describe('control inventory', () => {
   });
 
   test('a labeled field answers name, display value, value reads, fill, and clear', async ({ screen }) => {
-    const name = screen.getByRole('textbox', { name: 'Name field' });
+    const name = screen.getByRole('textbox', 'Name field');
     await expect(name).toHaveValue('Ada Lovelace');
     await expect(screen.getByDisplayValue('Ada Lovelace')).toHaveAccessibleName('Name field');
     expect(await name.inputValue()).toBe('Ada Lovelace');
@@ -79,25 +79,25 @@ test.describe('control inventory', () => {
   });
 
   test('a field autofocuses on mount and focus() moves the focus', async ({ screen }) => {
-    await screen.getByRole('button', { name: 'Show focus fields' }).tap();
+    await screen.getByRole('button', 'Show focus fields').tap();
     const status = screen.getByTestId('focus-status');
     await expect(status).toHaveText('focus: Autofocus field');
 
-    const second = screen.getByRole('textbox', { name: 'Second field' });
+    const second = screen.getByRole('textbox', 'Second field');
     await second.focus();
     await expect(status).toHaveText('focus: Second field');
 
-    await screen.getByRole('textbox', { name: 'Autofocus field' }).focus();
+    await screen.getByRole('textbox', 'Autofocus field').focus();
     await expect(status).toHaveText('focus: Autofocus field');
 
-    await screen.getByRole('textbox', { name: 'Autofocus field' }).press('Enter');
+    await screen.getByRole('textbox', 'Autofocus field').press('Enter');
     await expect(status).toHaveText('focus: none');
   });
 
   test('toBeFocused follows the focus', async ({ screen }) => {
-    await screen.getByRole('button', { name: 'Show focus fields' }).tap();
-    const first = screen.getByRole('textbox', { name: 'Autofocus field' });
-    const second = screen.getByRole('textbox', { name: 'Second field' });
+    await screen.getByRole('button', 'Show focus fields').tap();
+    const first = screen.getByRole('textbox', 'Autofocus field');
+    const second = screen.getByRole('textbox', 'Second field');
     await expect(first).toBeFocused();
     await second.focus();
     await expect(second).toBeFocused();
@@ -130,8 +130,8 @@ test.describe('control inventory', () => {
   test('checkbox and radio roles answer getByRole, and a checkbox toggles by tap', async ({ screen }) => {
     await showSection(screen, 'Toggles');
     await expect(screen.getByRole('radio')).toHaveCount(3);
-    await expect(screen.getByRole('radio', { name: 'Medium' })).toBeVisible();
-    const newsletter = screen.getByRole('checkbox', { name: 'Newsletter' });
+    await expect(screen.getByRole('radio', 'Medium')).toBeVisible();
+    const newsletter = screen.getByRole('checkbox', 'Newsletter');
     await expect(newsletter).toBeVisible();
     await expect(screen.getByRole('checkbox')).toHaveCount(1);
     await expect(screen.getByLabel('Newsletter')).toHaveAccessibleName('Newsletter');
@@ -146,7 +146,7 @@ test.describe('control inventory', () => {
   // state on iOS.
   test('checkbox and radio roles check, uncheck, and report their state', async ({ screen }) => {
     await showSection(screen, 'Toggles');
-    const newsletter = screen.getByRole('checkbox', { name: 'Newsletter' });
+    const newsletter = screen.getByRole('checkbox', 'Newsletter');
     await expect(newsletter).not.toBeChecked();
     expect(await newsletter.isChecked()).toBe(false);
 
@@ -162,8 +162,8 @@ test.describe('control inventory', () => {
     await expect(newsletter).not.toBeChecked();
     await expect(screen.getByTestId('newsletter-status')).toHaveText('newsletter: off');
 
-    const small = screen.getByRole('radio', { name: 'Small' });
-    const medium = screen.getByRole('radio', { name: 'Medium' });
+    const small = screen.getByRole('radio', 'Small');
+    const medium = screen.getByRole('radio', 'Medium');
     await expect(small).toBeChecked();
     await expect(medium).not.toBeChecked();
     await medium.check();
@@ -200,12 +200,12 @@ test.describe('control inventory', () => {
 
   test('buttons report disabled, enabled, and a state that arrives later', async ({ screen }) => {
     await showSection(screen, 'Toggles');
-    const locked = screen.getByRole('button', { name: 'Locked' });
+    const locked = screen.getByRole('button', 'Locked');
     await expect(locked).toBeDisabled();
     expect(await locked.isDisabled()).toBe(true);
     expect(await locked.isEnabled()).toBe(false);
 
-    const delayed = screen.getByRole('button', { name: 'Delayed' });
+    const delayed = screen.getByRole('button', 'Delayed');
     await expect(delayed).toBeEnabled();
     expect(await delayed.isEnabled()).toBe(true);
     await expect(screen.getByTestId('delayed-status')).toHaveText('delayed: ready');
@@ -311,7 +311,7 @@ test.describe('control inventory', () => {
 
   test('a long press lands as one', async ({ screen }) => {
     await showSection(screen, 'Gestures');
-    await screen.getByRole('button', { name: 'Hold me' }).longPress({ duration: 800 });
+    await screen.getByRole('button', 'Hold me').longPress({ duration: 800 });
     await expect(screen.getByTestId('gesture-status')).toHaveText('gesture: long press');
   });
 
@@ -326,7 +326,7 @@ test.describe('control inventory', () => {
   // single taps on a loaded machine. Android lands the pair inside it.
   test('a double tap lands inside the 300 ms window', { platforms: ['android'] }, async ({ screen }) => {
     await showSection(screen, 'Gestures');
-    await screen.getByRole('button', { name: 'Double-tap me' }).doubleTap();
+    await screen.getByRole('button', 'Double-tap me').doubleTap();
     await expect(screen.getByTestId('tap-count')).toContainText('2 taps');
     await expect(screen.getByTestId('gesture-status')).toHaveText('gesture: double tap');
   });

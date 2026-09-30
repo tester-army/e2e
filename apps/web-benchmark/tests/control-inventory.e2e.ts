@@ -11,19 +11,19 @@ test.describe('control inventory', () => {
     await terms.check();
     await terms.check();
     await expect(terms).toBeChecked();
-    await screen.getByRole('radio', { name: 'Medium' }).check();
+    await screen.getByRole('radio', 'Medium').check();
     await expect(screen.getByLabel('Toggles state')).toHaveText('terms agreed, size Medium');
     await terms.uncheck();
     await expect(screen.getByLabel('Toggles state')).toHaveText('terms not agreed, size Medium');
   });
 
   test('a long press and a double click are told apart from a tap', async ({ screen }) => {
-    const hold = screen.getByRole('button', { name: 'Hold me' });
+    const hold = screen.getByRole('button', 'Hold me');
     await hold.tap();
     await expect(screen.getByLabel('Hold state')).toHaveText('tapped');
     await hold.longPress({ duration: 700 });
     await expect(screen.getByLabel('Hold state')).toHaveText('long-pressed');
-    const twice = screen.getByRole('button', { name: 'Double-click me' });
+    const twice = screen.getByRole('button', 'Double-click me');
     await twice.tap();
     await expect(screen.getByLabel('Double-click state')).toHaveText('clicked once');
     await twice.doubleTap();
@@ -36,7 +36,7 @@ test.describe('control inventory', () => {
     await expect(screen.getByLabel('File state')).toHaveText('a click selects nothing; the menu opens on right-click');
     await row.secondaryTap();
     await expect(screen.getByLabel('File state')).toHaveText('menu open for report.pdf');
-    await screen.getByRole('menuitem', { name: 'Rename' }).tap();
+    await screen.getByRole('menuitem', 'Rename').tap();
     await expect(screen.getByLabel('File state')).toHaveText('report.pdf renamed to summary.pdf');
     await expect(screen.getByText('summary.pdf', { exact: true })).toBeVisible();
   });
@@ -46,12 +46,12 @@ test.describe('control inventory', () => {
     await expect(screen.getByLabel('Attachments state')).toHaveText('attachment.txt, second.txt');
   });
 
-  test('the details view is left through the browser history', async ({ app, screen, web }) => {
-    await screen.getByRole('button', { name: 'Open details' }).tap();
-    await expect(web).toHaveURL('/e/control-inventory?view=details');
+  test('the details view is left through the browser history', async ({ app, screen, browser }) => {
+    await screen.getByRole('button', 'Open details').tap();
+    await expect(browser).toHaveURL('/e/control-inventory?view=details');
     await expect(screen.getByLabel('Navigation state')).toHaveText('on details');
     await app.back();
-    await expect(web).toHaveURL('/e/control-inventory');
+    await expect(browser).toHaveURL('/e/control-inventory');
     await expect(screen.getByLabel('Navigation state')).toHaveText('back on the inventory');
   });
 
@@ -63,13 +63,13 @@ test.describe('control inventory', () => {
 
   test('every exercise done shows the success message', async ({ app, screen }) => {
     await screen.getByLabel('Agree to terms').check();
-    await screen.getByRole('radio', { name: 'Medium' }).check();
-    await screen.getByRole('button', { name: 'Hold me' }).longPress({ duration: 700 });
-    await screen.getByRole('button', { name: 'Double-click me' }).doubleTap();
+    await screen.getByRole('radio', 'Medium').check();
+    await screen.getByRole('button', 'Hold me').longPress({ duration: 700 });
+    await screen.getByRole('button', 'Double-click me').doubleTap();
     await screen.getByText('report.pdf', { exact: true }).secondaryTap();
-    await screen.getByRole('menuitem', { name: 'Rename' }).tap();
+    await screen.getByRole('menuitem', 'Rename').tap();
     await screen.getByLabel('Attachments').setInputFiles('fixtures/attachment.txt');
-    await screen.getByRole('button', { name: 'Open details' }).tap();
+    await screen.getByRole('button', 'Open details').tap();
     await expect(screen.getByLabel('Navigation state')).toHaveText('on details');
     await app.back();
     await expect(screen.getByLabel('Navigation state')).toHaveText('back on the inventory');

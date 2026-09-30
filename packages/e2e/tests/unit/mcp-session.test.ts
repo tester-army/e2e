@@ -13,7 +13,7 @@ const keep = (text: string): string => text;
 describe('locateQuery', () => {
   it('builds the role query and the matching screen call', () => {
     const query = locateQuery({ role: 'button', name: 'Save' });
-    expect(query.code).toBe('screen.getByRole("button", { name: "Save" })');
+    expect(query.code).toBe('screen.getByRole("button", "Save")');
     expect(query.expression).toMatchObject({ kind: 'query', query: { kind: 'role', name: { kind: 'string', value: 'Save', exact: true } } });
   });
 
@@ -37,7 +37,7 @@ describe('describeLocate', () => {
   it('tells the agent which test outcome the locator would have', () => {
     const query = locateQuery({ role: 'button', name: 'Save' });
     expect(describeLocate(query, 1, [node('button', 'Save')], keep)).toBe(
-      '1 node matches getByRole("button", name: "Save").\nUse: screen.getByRole("button", { name: "Save" })\n- button "Save"',
+      '1 node matches getByRole("button", name: "Save").\nUse: screen.getByRole("button", "Save")\n- button "Save"',
     );
     expect(describeLocate(query, 0, [], keep)).toContain('LOCATOR_NOT_FOUND');
     const ambiguous = describeLocate(query, 12, [node('button', 'Save', { states: { disabled: true } })], keep);

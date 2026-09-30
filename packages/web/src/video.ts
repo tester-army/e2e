@@ -8,7 +8,7 @@
  * screencast whose page closed under it, and the next page the attempt opens
  * starts the next segment. Each segment is captured at `web({ screencast: { size } })`
  * when set, else at its page's viewport size when it starts (the window's
- * under `viewport: null`, so a page `web.setViewport` sized is recorded at
+ * under `viewport: null`, so a page `browser.setViewport` sized is recorded at
  * that size), and carries the instant it began, so a consumer can place step
  * timestamps on it. The first segment is `video/video.webm`; later ones are
  * `video/video-part<n>.webm`. Without a recording, every hook here is a no-op.

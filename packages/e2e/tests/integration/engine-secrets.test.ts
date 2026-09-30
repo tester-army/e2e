@@ -65,9 +65,9 @@ test('fails on the echoed Authorization header', async ({ app, screen }) => {
   await expect(screen.getByTestId('header')).toHaveText('something else', { timeout: 500 });
 });
 
-test('downloads the echoed headers', async ({ app, web }) => {
+test('downloads the echoed headers', async ({ app, browser }) => {
   await app.open('/basic-auth');
-  await web.waitForDownload(() => web.locator('a[download]').tap());
+  await browser.waitForDownload(() => browser.locator('a[download]').tap());
 });
 
 test('takes a screenshot of the page, an engine-held secret tainting no pixels', async ({ app }) => {

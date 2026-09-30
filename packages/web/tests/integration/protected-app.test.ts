@@ -99,7 +99,7 @@ describe('web({ headers, basicAuth })', () => {
     try {
       await boot(engine, app, artifactsDir, 'h2');
       let routed = 0;
-      // Registered after the header route, so it runs first, as a `web.route` handler does.
+      // Registered after the header route, so it runs first, as a `browser.route` handler does.
       await surfaceOf(engine)!.context().route('**/headers', async (route) => {
         routed += 1;
         await route.fallback();

@@ -42,6 +42,12 @@ import {
   type CacheStore,
   type ExecutorObservation,
   type ValueExpectation,
+  type StandardSchemaV1,
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
 } from '../../src/index.ts';
 import type { Engine, EngineAttemptContext, EngineHandle, EngineObserveOptions, EngineSnapshot } from '../../src/engine/index.ts';
 import { createToolLoopExecutor, defineTool } from '../../src/agent/public.ts';
@@ -506,3 +512,33 @@ grok('grok-4', {});
 ({ targets: [{ engine }], agents: { default: { model, judgmentTimeout: '30s' } } }) satisfies E2EConfig;
 // @ts-expect-error timeout is now judgmentTimeout, and maxTurns is maxModelCalls
 ({ targets: [{ engine }], agents: { default: { model, timeout: 30_000 } } }) satisfies E2EConfig;
+
+// getByRole takes the accessible name as its second argument, with the other options after it.
+void (screen.getByRole('button', 'Sign in') satisfies Locator);
+void (screen.getByRole('button', /sign in/i, { exact: false, disabled: false }) satisfies Locator);
+// @ts-expect-error a name given positionally cannot be given again in the options
+screen.getByRole('button', 'Sign in', { name: 'Sign out' });
+
+// toMatchSchema returns the schema's output, typed; negated, soft, and polled forms follow suit.
+declare const userSchema: StandardSchemaV1<unknown, { id: number }>;
+void (expect(JSON.parse('{}') as unknown).toMatchSchema(userSchema).id satisfies number);
+void (expect(1).not.toMatchSchema(userSchema) satisfies void);
+void (expect.soft(1).toMatchSchema(userSchema) satisfies { id: number } | undefined);
+// @ts-expect-error a kept soft failure returns undefined, so the output may be missing
+void (expect.soft(1).toMatchSchema(userSchema) satisfies { id: number });
+void (expect.poll(() => 1).toMatchSchema(userSchema) satisfies Promise<{ id: number }>);
+void (expect.poll(() => 1).not.toMatchSchema(userSchema) satisfies Promise<void>);
+// @ts-expect-error a schema is a Standard Schema, not a plain object
+expect(1).toMatchSchema({ id: 'number' });
+
+// describe and the hooks are top-level imports too, typed as their test.* forms.
+describe('group', { tags: ['smoke'] }, () => {
+  beforeEach(async (fixtures) => void fixtures.screen);
+  afterEach(async ({ app }) => void app);
+  beforeAll(({ platform }) => void platform);
+  afterAll(({ platform }) => void platform);
+});
+// @ts-expect-error a describe body is synchronous
+describe('async group', async () => {});
+// @ts-expect-error a suite hook sees suite fixtures only
+beforeAll((fixtures) => void fixtures.screen);

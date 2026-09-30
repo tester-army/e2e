@@ -15,52 +15,52 @@ import { expect } from 'e2e';
 
 const toOther: any = (url: URL) => url.pathname === '/other';
 
-test('toHaveURL with a predicate', async ({ app, web }) => {
+test('toHaveURL with a predicate', async ({ app, browser }) => {
   await app.open('/about');
-  await expect(web).toHaveURL(toOther, { timeout: 500 });
+  await expect(browser).toHaveURL(toOther, { timeout: 500 });
 });
 
-test('waitForURL with a predicate', async ({ app, web }) => {
+test('waitForURL with a predicate', async ({ app, browser }) => {
   await app.open('/about');
-  await web.waitForURL(toOther, { timeout: 500 });
+  await browser.waitForURL(toOther, { timeout: 500 });
 });
 
-test('waitForResponse with a predicate', async ({ app, web }) => {
+test('waitForResponse with a predicate', async ({ app, browser }) => {
   await app.open();
-  await Promise.all([web.waitForResponse(toOther, { timeout: 2_000 }), web.goto('/flags')]);
+  await Promise.all([browser.waitForResponse(toOther, { timeout: 2_000 }), browser.goto('/flags')]);
 });
 
-test('route with a predicate', async ({ app, web, screen }) => {
-  await web.route(toOther, (route) => route.abort());
+test('route with a predicate', async ({ app, browser, screen }) => {
+  await browser.route(toOther, (route) => route.abort());
   await app.open('/flags');
   await expect(screen.getByRole('status', { name: 'Flags' })).toHaveText('beta off');
 });
 
-test('unroute with a predicate', async ({ app, web }) => {
+test('unroute with a predicate', async ({ app, browser }) => {
   await app.open();
-  await web.unroute(toOther);
+  await browser.unroute(toOther);
 });
 
-test('toHaveTitle with a predicate', async ({ app, web }) => {
+test('toHaveTitle with a predicate', async ({ app, browser }) => {
   await app.open();
-  await expect(web).toHaveTitle(toOther, { timeout: 500 });
+  await expect(browser).toHaveTitle(toOther, { timeout: 500 });
 });
 
-test('string and RegExp URL patterns match what they name', async ({ app, web, screen }) => {
+test('string and RegExp URL patterns match what they name', async ({ app, browser, screen }) => {
   await app.open('/about');
-  await expect(web).toHaveURL('/about');
-  await expect(web).toHaveURL(/\\/about$/);
-  await expect(web).not.toHaveURL('/other');
-  await expect(web).not.toHaveURL(/\\/other$/);
-  await web.waitForURL(/\\/about$/);
-  await web.route(/\\/other$/, (route) => route.abort());
-  await web.route(/\\/api\\/flags$/, (route) => route.fulfill({ json: { betaBoard: true } }));
-  const [response] = await Promise.all([web.waitForResponse(/\\/api\\/flags$/), web.goto('/flags')]);
+  await expect(browser).toHaveURL('/about');
+  await expect(browser).toHaveURL(/\\/about$/);
+  await expect(browser).not.toHaveURL('/other');
+  await expect(browser).not.toHaveURL(/\\/other$/);
+  await browser.waitForURL(/\\/about$/);
+  await browser.route(/\\/other$/, (route) => route.abort());
+  await browser.route(/\\/api\\/flags$/, (route) => route.fulfill({ json: { betaBoard: true } }));
+  const [response] = await Promise.all([browser.waitForResponse(/\\/api\\/flags$/), browser.goto('/flags')]);
   expect(response.url).toMatch(/\\/api\\/flags$/);
   expect(await response.json()).toEqual({ betaBoard: true });
   await expect(screen.getByRole('status', { name: 'Flags' })).toHaveText('beta on');
-  await web.unroute(/\\/api\\/flags$/);
-  const [real] = await Promise.all([web.waitForResponse('**/api/flags'), web.reload()]);
+  await browser.unroute(/\\/api\\/flags$/);
+  const [real] = await Promise.all([browser.waitForResponse('**/api/flags'), browser.reload()]);
   expect(await real.json()).toEqual({ betaBoard: false });
   await expect(screen.getByRole('status', { name: 'Flags' })).toHaveText('beta off');
 });
@@ -86,10 +86,10 @@ describe('web URL patterns in a browser', () => {
 
   it.each([
     ['toHaveURL with a predicate', 'expect.toHaveURL'],
-    ['waitForURL with a predicate', 'web.waitForURL'],
-    ['waitForResponse with a predicate', 'web.waitForResponse'],
-    ['route with a predicate', 'web.route'],
-    ['unroute with a predicate', 'web.unroute'],
+    ['waitForURL with a predicate', 'browser.waitForURL'],
+    ['waitForResponse with a predicate', 'browser.waitForResponse'],
+    ['route with a predicate', 'browser.route'],
+    ['unroute with a predicate', 'browser.unroute'],
     ['toHaveTitle with a predicate', 'expect.toHaveTitle'],
   ])('%s fails with INVALID_ARGUMENT at %s', (title, api) => {
     const result = resultByTitle(outcome, title);

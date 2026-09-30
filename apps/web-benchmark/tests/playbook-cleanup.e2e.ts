@@ -19,12 +19,12 @@ test.describe('playbook cleanup', () => {
     await expect(more).toBeExpanded();
     await screen
       .getByRole('menu', { name: `Actions for ${TARGET}` })
-      .getByRole('menuitem', { name: 'Delete' })
+      .getByRole('menuitem', 'Delete')
       .tap();
 
-    const dialog = screen.getByRole('dialog', { name: 'Remove Playbook' });
+    const dialog = screen.getByRole('dialog', 'Remove Playbook');
     await expect(dialog).toContainText(`Are you sure you want to remove "${TARGET}"?`);
-    await dialog.getByRole('button', { name: 'Remove' }).tap();
+    await dialog.getByRole('button', 'Remove').tap();
     await expect(dialog).toBeHidden();
     await expect(screen.getByRole('heading', { level: 3 })).toHaveText(['NDA Review', 'Vendor Onboarding']);
 
@@ -34,9 +34,9 @@ test.describe('playbook cleanup', () => {
 
   test('cancelling the dialog keeps the draft searchable', async ({ screen }) => {
     await screen.getByRole('button', { name: `More actions for ${TARGET}` }).tap();
-    await screen.getByRole('menuitem', { name: 'Delete' }).tap();
-    const dialog = screen.getByRole('dialog', { name: 'Remove Playbook' });
-    await dialog.getByRole('button', { name: 'Cancel' }).tap();
+    await screen.getByRole('menuitem', 'Delete').tap();
+    const dialog = screen.getByRole('dialog', 'Remove Playbook');
+    await dialog.getByRole('button', 'Cancel').tap();
     await expect(dialog).toBeHidden();
 
     await screen.getByLabel('Search playbooks').fill(TARGET);

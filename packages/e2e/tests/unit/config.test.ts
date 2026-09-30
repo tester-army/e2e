@@ -378,14 +378,14 @@ describe('resolveConfig', () => {
     const withProvider = resolve({
       credentials: { admin: { username: 'admin', password: provider } },
     });
-    expect(withProvider.secrets.get('admin')).toMatchObject({ purpose: 'password', value: provider });
+    expect(withProvider.secrets.get('admin.password')).toMatchObject({ purpose: 'password', value: provider });
     const overridden = resolve(
       {
         credentials: { admin: { username: 'admin', password: provider } },
       },
       { E2E_USER_ADMIN_PASSWORD: 'rotated' },
     );
-    expect(overridden.secrets.get('admin')?.value).toBe('rotated');
+    expect(overridden.secrets.get('admin.password')?.value).toBe('rotated');
     expect(() =>
       resolve({
         credentials: { admin: { username: 'admin', password: 42 as never } },
@@ -548,17 +548,21 @@ describe('resolveConfig', () => {
     expect(() => resolve({ workers: 0 })).toThrow(/workers/);
   });
 
-  it('checks every secret an engine option holds against the configured secrets and credentials', () => {
+  it('checks every secret an engine option holds against the configured secrets, never a credential', () => {
     const engine = (name: string) =>
       defineEngine({ name: 'fake', version: '1.0.0', spiVersion: 1, observe: async () => snapshot([]), secrets: [secrets.get(name)] });
     const declared = { secrets: { stagingPassword: 'staging-pass' }, credentials: { admin: { username: 'admin', password: 'admin-pass' } } };
     expect(() => resolve({ ...declared, targets: [{ ...WEB, engine: engine('stagingPassword') }] })).not.toThrow();
-    expect(() => resolve({ ...declared, targets: [{ ...WEB, engine: engine('admin') }] })).not.toThrow();
+    for (const name of ['admin', 'admin.password']) {
+      expect(() => resolve({ ...declared, targets: [{ ...WEB, engine: engine(name) }] })).toThrow(
+        expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringContaining(`uses secrets.get("${name}"), which is not configured; add it to config.secrets`) }),
+      );
+    }
     expect(() => resolve({ ...declared, targets: [{ ...WEB, engine: engine('stagingPasword') }] })).toThrow(
       expect.objectContaining({
         code: 'INVALID_CONFIG',
         message:
-          'target "web" engine fake uses secrets.get("stagingPasword"), which is not configured; add it to config.secrets or config.credentials; did you mean "stagingPassword"?',
+          'target "web" engine fake uses secrets.get("stagingPasword"), which is not configured; add it to config.secrets; did you mean "stagingPassword"?',
       }),
     );
   });
@@ -579,7 +583,7 @@ describe('resolveConfig', () => {
       } as NodeJS.ProcessEnv,
     );
     expect(config.credentials.get('member')).toMatchObject({ username: 'env-user' });
-    expect(config.secrets.get('member')?.value).toBe('env-pass');
+    expect(config.secrets.get('member.password')?.value).toBe('env-pass');
   });
 
   it('resolves config.secrets as generic secrets: values, providers, origin narrowing, and E2E_SECRET_* overrides', () => {
@@ -599,14 +603,17 @@ describe('resolveConfig', () => {
     expect(config.secrets.get('rotated')?.value).toBe('fresh-from-env');
   });
 
-  it('rejects an empty or non-string secret and a secret sharing a credential name', () => {
+  it('rejects an empty or non-string secret and a secret named like a password handle, but lets a secret share a credential name', () => {
     expect(() => resolve({ secrets: { key: '' } })).toThrow(/secret "key" must be a non-empty string/);
     expect(() => resolve({ secrets: { key: 42 as never } })).toThrow(/secret "key" must be a non-empty string/);
     expect(() => resolve({ secrets: { key: { value: 'v' } as never } })).toThrow(/secret "key" must be a non-empty string/);
     expect(() => resolve({ secrets: { key: 'v' } }, { ...BASE_ENV, E2E_SECRET_KEY: '' } as NodeJS.ProcessEnv)).toThrow(/secret "key" must be/);
+    const shared = resolve({ credentials: { admin: { username: 'u', password: 'password-1' } }, secrets: { admin: 'value-1' } });
+    expect(shared.secrets.get('admin')).toMatchObject({ purpose: 'generic-secret', value: 'value-1' });
+    expect(shared.secrets.get('admin.password')).toMatchObject({ purpose: 'password', value: 'password-1' });
     expect(() =>
-      resolve({ credentials: { admin: { username: 'u', password: 'password-1' } }, secrets: { admin: 'value-1' } }),
-    ).toThrow(/secret "admin" is also a credential/);
+      resolve({ credentials: { admin: { username: 'u', password: 'password-1' } }, secrets: { 'admin.password': 'value-1' } }),
+    ).toThrow(/secret "admin.password" has the name of credential "admin"'s password handle; rename the secret/);
   });
 
   it('refuses a static secret or password under 6 code points, from config or the environment, naming the minimum', () => {

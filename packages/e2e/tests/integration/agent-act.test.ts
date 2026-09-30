@@ -360,12 +360,12 @@ describe('agent.act verdict mapping', () => {
         if (params.includes('admin-pass')) {
           return { status: 'failed' as const, summary: 'plaintext leaked into params' };
         }
-        if (context.step.secrets[0]?.name !== 'admin') {
+        if (context.step.secrets[0]?.name !== 'admin.password') {
           return { status: 'failed' as const, summary: 'secret was not declared' };
         }
         const observation = await context.observe();
         const password = nodeIdFor(observation.text, /textbox "Password"/);
-        await context.actions.typeSecret({ id: password }, 'admin');
+        await context.actions.typeSecret({ id: password }, 'admin.password');
         // Undeclared names are refused before any policy check runs.
         try {
           await context.actions.typeSecret({ id: password }, 'other');
@@ -403,14 +403,14 @@ describe('agent.act verdict mapping', () => {
           return { status: 'failed' as const, summary: 'plaintext leaked into params' };
         }
         const declared = context.step.secrets.map((secret) => `${secret.name}:${secret.purpose}`).toSorted();
-        if (declared.join(',') !== 'admin:password,stripe-key:generic-secret') {
+        if (declared.join(',') !== 'admin.password:password,stripe-key:generic-secret') {
           return { status: 'failed' as const, summary: `unexpected secrets ${declared.join(',')}` };
         }
         const observation = await context.observe();
         const focusTarget = nodeIdFor(observation.text, /textbox "Focus target"/);
         // A password belongs in a password field only.
         try {
-          await context.actions.typeSecret({ id: focusTarget }, 'admin');
+          await context.actions.typeSecret({ id: focusTarget }, 'admin.password');
           return { status: 'failed' as const, summary: 'a password was accepted by a plain textbox' };
         } catch (cause) {
           if (!(cause instanceof Error) || !cause.message.includes('incompatible')) {
@@ -464,7 +464,7 @@ describe('agent.act verdict mapping', () => {
         }
         const observation = await context.observe();
         const password = nodeIdFor(observation.text, /textbox "Password"/);
-        await context.actions.typeSecret({ id: password }, 'admin');
+        await context.actions.typeSecret({ id: password }, 'admin.password');
         return callsSoFar() === 1
           ? { status: 'passed' as const, summary: 'provider resolved exactly once, at fill time' }
           : { status: 'failed' as const, summary: `provider resolved ${callsSoFar()} times` };

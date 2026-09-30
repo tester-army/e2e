@@ -61,7 +61,7 @@ describe('selections inside a field that holds a secret', () => {
   it('shows the selection over a plain value and withholds it over the secret in the model input', () => {
     const [plain, secret] = fakeCalls.map((call) => call.observation);
     expect(plain).toContain(`selection=${JSON.stringify(PLAIN.slice(5, 45))}`);
-    expect(secret).toContain('value="<secret:member>"');
+    expect(secret).toContain('value="<secret:member.password>"');
     expect(secret).not.toContain('selection=');
     expect(secret).not.toContain(FRAGMENT);
   });
@@ -71,7 +71,7 @@ describe('selections inside a field that holds a secret', () => {
     expect(attempt.error?.code).toBe('LOCATOR_NOT_FOUND');
     const screen = attempt.artifacts.find((artifact) => artifact.id === attempt.failure?.screen)!;
     const screenText = readFileSync(path.join(project.dir, '.e2e', 'artifacts', screen.path!), 'utf8');
-    expect(screenText).toContain('value="<secret:member>"');
+    expect(screenText).toContain('value="<secret:member.password>"');
     expect(screenText).not.toContain(FRAGMENT);
     expect(JSON.stringify(outcome.report)).not.toContain(FRAGMENT);
     const contents = contentsUnder(path.join(project.dir, '.e2e'));

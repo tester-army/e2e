@@ -8,8 +8,8 @@
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('act enters a ten-digit code on a keypad painted on a canvas', async ({ web, agent, screen }) => {
-  await web.goto('/canvas-flow');
+test('act enters a ten-digit code on a keypad painted on a canvas', async ({ browser, agent, screen }) => {
+  await browser.goto('/canvas-flow');
   await agent.act('on the drawn keypad enter the code 3141592653 digit by digit, check the display shows it, then press OK');
   await expect(screen.getByRole('status')).toHaveText('code accepted: 3141592653');
 });

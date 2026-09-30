@@ -7,18 +7,18 @@ test.describe('todos', { tags: ['todos'] }, () => {
 
   test('adds todos with the button and the keyboard', async ({ screen }) => {
     await screen.getByLabel('New todo').fill('Write spec');
-    await screen.getByRole('button', { name: 'Add' }).tap();
+    await screen.getByRole('button', 'Add').tap();
     await screen.getByLabel('New todo').fill('Ship runner');
     await screen.getByLabel('New todo').press('Enter');
 
     await expect(screen.getByTestId('todo')).toHaveCount(2);
     await expect(screen.getByTestId('todo').first()).toContainText('Write spec');
     await expect(screen.getByTestId('todo').last()).toContainText('Ship runner');
-    await expect(screen.getByRole('status', { name: 'Remaining' })).toHaveText('2 remaining');
+    await expect(screen.getByRole('status', 'Remaining')).toHaveText('2 remaining');
   });
 
   test('ignores empty submissions', async ({ screen }) => {
-    await screen.getByRole('button', { name: 'Add' }).tap();
+    await screen.getByRole('button', 'Add').tap();
     await expect(screen.getByTestId('todo')).toHaveCount(0);
   });
 
@@ -29,20 +29,20 @@ test.describe('todos', { tags: ['todos'] }, () => {
     }
     await screen.getByLabel('Two').check();
     await expect(screen.getByLabel('Two')).toBeChecked();
-    await expect(screen.getByRole('status', { name: 'Remaining' })).toHaveText('2 remaining');
+    await expect(screen.getByRole('status', 'Remaining')).toHaveText('2 remaining');
 
-    const filter = screen.getByRole('tablist', { name: 'Filter' });
+    const filter = screen.getByRole('tablist', 'Filter');
     await expect(filter.getByRole('tab')).toHaveCount(3);
-    await filter.getByRole('tab', { name: 'Open' }).tap();
-    await expect(screen.getByRole('tab', { name: 'Open' })).toBeSelected();
+    await filter.getByRole('tab', 'Open').tap();
+    await expect(screen.getByRole('tab', 'Open')).toBeSelected();
     await expect(screen.getByTestId('todo')).toHaveCount(2);
     await expect(screen.getByText('Two')).toBeHidden();
 
-    await screen.getByRole('tab', { name: 'Done' }).tap();
+    await screen.getByRole('tab', 'Done').tap();
     await expect(screen.getByTestId('todo')).toHaveCount(1);
     await expect(screen.getByTestId('todo').first()).toContainText('Two');
 
-    await screen.getByRole('tab', { name: 'All' }).tap();
+    await screen.getByRole('tab', 'All').tap();
     await expect(screen.getByTestId('todo')).toHaveCount(3);
   });
 
@@ -52,12 +52,12 @@ test.describe('todos', { tags: ['todos'] }, () => {
       await screen.getByLabel('New todo').press('Enter');
     }
     await expect(screen.getByTestId('todo')).toContainText(['Alpha', 'Beta', 'Gamma']);
-    await expect(screen.getByRole('button', { name: /^Delete/ })).toHaveText([
+    await expect(screen.getByRole('button', /^Delete/)).toHaveText([
       'Delete Alpha',
       /Beta$/,
       'Delete Gamma',
     ]);
-    expect(await screen.getByRole('button', { name: /^Delete/ }).allTextContents()).toEqual([
+    expect(await screen.getByRole('button', /^Delete/).allTextContents()).toEqual([
       'Delete Alpha',
       'Delete Beta',
       'Delete Gamma',
@@ -66,10 +66,10 @@ test.describe('todos', { tags: ['todos'] }, () => {
     for (const todo of await screen.getByTestId('todo').all()) {
       await todo.getByRole('checkbox').check();
     }
-    await expect(screen.getByRole('status', { name: 'Remaining' })).toHaveText('0 remaining');
-    expect(await screen.getByRole('button', { name: 'Add' }).isDisabled()).toBe(false);
+    await expect(screen.getByRole('status', 'Remaining')).toHaveText('0 remaining');
+    expect(await screen.getByRole('button', 'Add').isDisabled()).toBe(false);
 
-    await screen.getByRole('tab', { name: 'Open' }).tap();
+    await screen.getByRole('tab', 'Open').tap();
     await expect(screen.getByTestId('todo')).not.toBeAttached();
     expect(await screen.getByTestId('todo').isHidden()).toBe(true);
     expect(await screen.getByTestId('todo').all()).toEqual([]);
@@ -78,9 +78,9 @@ test.describe('todos', { tags: ['todos'] }, () => {
   test('deletes todos', async ({ screen }) => {
     await screen.getByLabel('New todo').fill('Disposable');
     await screen.getByLabel('New todo').press('Enter');
-    await screen.getByRole('button', { name: 'Delete Disposable' }).tap();
+    await screen.getByRole('button', 'Delete Disposable').tap();
     await expect(screen.getByTestId('todo')).toHaveCount(0);
-    await expect(screen.getByRole('status', { name: 'Remaining' })).toHaveText('0 remaining');
+    await expect(screen.getByRole('status', 'Remaining')).toHaveText('0 remaining');
   });
 
   test('persists across restart and clears with clearState', async ({ app, screen }) => {

@@ -41,7 +41,7 @@ test.describe('login form', () => {
     // screen is up. It is not an alert to the engine, but its buttons are in
     // the tree, and while it is up the app's are not. Android offers nothing,
     // so the wait for the sheet is bounded.
-    const notNow = screen.getByRole('button', { name: 'Not Now' });
+    const notNow = screen.getByRole('button', 'Not Now');
     const offered = await notNow.waitFor({ timeout: 5_000 }).then(
       () => true,
       () => false,

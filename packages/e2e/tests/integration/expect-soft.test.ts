@@ -6,11 +6,11 @@ import { resultByTitle, runProject, type FixtureProject, type RunOutcome } from 
 const SOFT_SUITE = `import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('soft failures let the body run on', async ({ app, screen, web }) => {
+test('soft failures let the body run on', async ({ app, screen, browser }) => {
   await app.open();
   expect.soft(1, 'the count').toBe(2);
   await expect.soft(screen.getByRole('heading', { name: 'Nowhere' })).toBeVisible({ timeout: 300 });
-  await expect.soft(web).toHaveURL('/nowhere', { timeout: 300 });
+  await expect.soft(browser).toHaveURL('/nowhere', { timeout: 300 });
   expect.soft('ok').toBe('ok');
   await expect(screen.getByRole('heading', { name: 'Home' })).toBeVisible();
 });

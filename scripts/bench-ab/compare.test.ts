@@ -76,9 +76,9 @@ describe('compareSamples', () => {
   });
 
   it('reads a doubled millisecond step as the same under the floor', () => {
-    const base = Array.from({ length: 6 }, () => sampleFromReport(report({ one: [{ api: 'web.keyboard.press', durationMs: 1 }] }), 100));
-    const head = Array.from({ length: 6 }, () => sampleFromReport(report({ one: [{ api: 'web.keyboard.press', durationMs: 2 }] }), 100));
-    const step = compareSamples(base, head, limits).timings.find((row) => row.name === 'step web.keyboard.press')!;
+    const base = Array.from({ length: 6 }, () => sampleFromReport(report({ one: [{ api: 'browser.keyboard.press', durationMs: 1 }] }), 100));
+    const head = Array.from({ length: 6 }, () => sampleFromReport(report({ one: [{ api: 'browser.keyboard.press', durationMs: 2 }] }), 100));
+    const step = compareSamples(base, head, limits).timings.find((row) => row.name === 'step browser.keyboard.press')!;
     assert.equal(step.delta.estimate, 1);
     assert.equal(step.delta.verdict, 'same');
     assert.equal(step.belowFloor, true);

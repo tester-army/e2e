@@ -3,7 +3,7 @@
 import { credentialBrand, secretBrand } from './internal/brands.ts';
 import { ConfigurationError } from './internal/errors.ts';
 import { realmSlot } from './internal/realm-slot.ts';
-import { envName } from './config/secrets.ts';
+import { credentialOfSecretName, credentialSecretName, envName } from './config/secrets.ts';
 import type { Credential, Credentials, Secret, SecretPurpose, Secrets } from './types.ts';
 
 /**
@@ -75,9 +75,9 @@ function makeSecret(name: string, purpose: SecretPurpose): Secret {
 /**
  * The handle `secrets.get()` returns before any run installed a registry: at
  * config evaluation, where an engine option holds it until the engine
- * resolves it during an attempt. Only the resolved config knows whether the
- * name is a credential's password, so the purpose is read from the run's
- * registry when asked; the config load checks the name. Turned into a string
+ * resolves it during an attempt. `secrets.get()` names a `config.secrets`
+ * entry, never a credential's password, so the purpose is known up front;
+ * the config load checks the name. Turned into a string
  * (a template literal, `String()`, `+`, `JSON.stringify`) it throws: the
  * config holds a name, not the value, and a string would pass the name off
  * as the value where only a string fits, a command's env or an agent's context.
@@ -89,13 +89,7 @@ function deferredSecret(name: string): Secret {
       `secrets.get(${JSON.stringify(name)}) is a reference to a secret, not its value: only an engine option that declares secrets accepts it, such as web({ basicAuth: { password } }); where a string is needed, such as a command's env or an agent's context, read the value yourself (process.env)`,
     );
   };
-  const handle = {
-    name,
-    get purpose(): SecretPurpose {
-      return registrySlot.get(globalThis)?.secrets.get(name)?.purpose ?? 'generic-secret';
-    },
-    [secretBrand]: true as const,
-  };
+  const handle = { name, purpose: 'generic-secret' as const, [secretBrand]: true as const };
   Object.defineProperties(handle, {
     toString: { value: notAValue },
     toJSON: { value: notAValue },
@@ -126,7 +120,7 @@ export const credentials: Credentials = {
     return Object.freeze({
       name,
       username: resolved.username,
-      password: makeSecret(name, 'password'),
+      password: makeSecret(credentialSecretName(name), 'password'),
       [credentialBrand]: true as const,
     });
   },
@@ -137,10 +131,17 @@ export const secrets: Secrets = {
     const registry = registrySlot.get(globalThis);
     if (registry === undefined) return deferredSecret(name);
     const resolved = registry.secrets.get(name);
-    if (resolved === undefined) {
+    if (resolved?.purpose === 'password') {
       throw new ConfigurationError(
         'SECRET_UNAVAILABLE',
-        `secret "${name}" is not configured; add it to config.secrets or set ${envName('E2E_SECRET', name)}`,
+        `secret "${name}" is a credential's password, not a config.secrets entry; use credentials.user(${JSON.stringify(credentialOfSecretName(name) ?? name)}).password`,
+      );
+    }
+    if (resolved === undefined) {
+      const credential = registry.credentials.has(name) ? `; "${name}" is a credential, whose password is credentials.user(${JSON.stringify(name)}).password` : '';
+      throw new ConfigurationError(
+        'SECRET_UNAVAILABLE',
+        `secret "${name}" is not configured; add it to config.secrets or set ${envName('E2E_SECRET', name)}${credential}`,
       );
     }
     return makeSecret(name, resolved.purpose);

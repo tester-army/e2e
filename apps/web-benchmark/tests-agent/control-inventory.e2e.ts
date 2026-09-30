@@ -39,9 +39,9 @@ test.describe('control inventory', () => {
     await expect(screen.getByLabel('Attachments state')).toHaveText('attachment.txt, second.txt');
   });
 
-  test('back returns from the details view to the inventory', TAGS, async ({ agent, screen, web }) => {
+  test('back returns from the details view to the inventory', TAGS, async ({ agent, screen, browser }) => {
     await agent.act('open the details, then return to the inventory through the browser history');
-    await expect(web).toHaveURL('/e/control-inventory');
+    await expect(browser).toHaveURL('/e/control-inventory');
     await expect(screen.getByLabel('Navigation state')).toHaveText('back on the inventory');
   });
 

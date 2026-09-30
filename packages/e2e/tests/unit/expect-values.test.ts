@@ -1,4 +1,5 @@
 import { describe, expect as vexpect, it } from 'vitest';
+import { z } from 'zod';
 import { expect as e2eExpect } from '../../src/expect/index.ts';
 import { TestError } from '../../src/internal/errors.ts';
 
@@ -310,5 +311,38 @@ describe('asymmetric matchers', () => {
 
   it('a matcher on a string toContain is refused like any non-string', () => {
     failsWith(() => e2eExpect('abc').toContain(e2eExpect.stringContaining('a')), /requires a string/);
+  });
+});
+
+describe('toMatchSchema', () => {
+  const User = z.object({ id: z.number(), email: z.email(), role: z.enum(['admin', 'member']).default('member') });
+
+  it('returns the schema output for a matching value, defaults applied', () => {
+    const user = e2eExpect<unknown>({ id: 1, email: 'ada@example.com' }).toMatchSchema(User);
+    vexpect(user).toEqual({ id: 1, email: 'ada@example.com', role: 'member' });
+    vexpect(e2eExpect<unknown>([{ id: 2, email: 'bo@example.com', role: 'admin' }]).toMatchSchema(z.array(User))).toHaveLength(1);
+  });
+
+  it('fails listing every issue by its path', () => {
+    failsWith(
+      () => e2eExpect<unknown>([{ id: 1, email: 'ada@example.com' }, { id: '2', email: 'nope' }]).toMatchSchema(z.array(User)),
+      /to match the schema:\n- 1\.id: .+\n- 1\.email: /,
+    );
+    failsWith(() => e2eExpect<unknown>(null, 'GET /users').toMatchSchema(User), /^GET \/users: expected null to match the schema:\n- /);
+  });
+
+  it('negates', () => {
+    e2eExpect<unknown>({ id: 'x' }).not.toMatchSchema(User);
+    failsWith(() => e2eExpect<unknown>({ id: 1, email: 'ada@example.com' }).not.toMatchSchema(User), /not to match the schema/);
+  });
+
+  it('refuses a value that is no Standard Schema, and a schema that validates asynchronously', () => {
+    vexpect(() => e2eExpect<unknown>({}).toMatchSchema({} as never)).toThrow(
+      vexpect.objectContaining({ code: 'INVALID_ARGUMENT', message: 'toMatchSchema schema must implement Standard Schema v1' }),
+    );
+    const Async = z.string().refine(async () => true);
+    vexpect(() => e2eExpect<unknown>('x').toMatchSchema(Async)).toThrow(
+      vexpect.objectContaining({ code: 'INVALID_ARGUMENT', message: vexpect.stringContaining('validates asynchronously') }),
+    );
   });
 });

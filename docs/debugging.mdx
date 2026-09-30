@@ -101,7 +101,7 @@ Each run empties it first, so it holds the latest run's evidence:
   mode records: every attempt locally, the first retry in CI. Open one with
   `npx playwright show-trace <file>`; `--trace off` skips the cost for one
   run, `--trace` records every attempt of a CI run.
-- **Downloads** saved through `web.waitForDownload`, recorded with kind
+- **Downloads** saved through `browser.waitForDownload`, recorded with kind
   `download`. They are the app's bytes: `redaction: "incomplete"` unless a
   secret reached the session (filled, or held by the engine for basic auth)
   and the file is text, which the runner rewrites and marks `complete`.
@@ -269,7 +269,7 @@ when you need to inspect the whole flow or rule out a stale recording. See
 | --- | --- | --- |
 | `APP_UNREACHABLE` | Nothing answers at `app.url`, or `app.command` never became ready; on a device, the message may name the iOS automation runner instead (busy, wedged, or a snapshot it could not present) | Set `app.command.log` and read it; check the port; raise `app.command.startupTimeout`. For the runner, follow the recovery in the message: `npx agent-device daemon stop`, reboot the simulator (see [Testing iOS and Android](/mobile#troubleshooting)) |
 | `APP_ALREADY_RUNNING` | Something already serves `app.url` when the runner wanted to start `app.command` | Stop it, or set `reuseExisting: true` for local runs |
-| `LOCATOR_NOT_FOUND` | Wrong role or name, text not exact, element inside an iframe, page not open | Read the markup for the accessible name; try `exact: false`; `web.frameLocator` for iframes; `--headed` to look |
+| `LOCATOR_NOT_FOUND` | Wrong role or name, text not exact, element inside an iframe, page not open | Read the markup for the accessible name; try `exact: false`; `browser.frameLocator` for iframes; `--headed` to look |
 | `LOCATOR_AMBIGUOUS` | Two matches: a hidden duplicate, a repeated label | Add `{ name }`, scope under a container, `filter`, `first()`, or `{ visible: true }` |
 | `ASSERTION_FAILED` | The expectation is wrong, or the state settles after 5 s; for `agent.assert`, the judgment was false | Compare with the screenshot; `{ timeout }` on the matcher; rewrite the question |
 | `ASSERTION_INCONCLUSIVE` | `agent.assert` asked about, or `agent.extract` asked for, something the screen does not show: the value is on another page, still loading, or only in pixels | Open or wait for the right screen first; ask about what is visible; add `vision: true` when the answer is in pixels (the message says so when the judge read the tree alone) |

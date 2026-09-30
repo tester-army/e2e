@@ -1,6 +1,7 @@
 /**
  * `@e2e-dev/mobile` public surface: the `mobile()` engine factory,
- * the `device` fixture types, and a `test` typed with that fixture. `expect`
+ * the `device` fixture types, and a `test` (with its per-test hooks) typed
+ * with that fixture. `expect`
  * and `credentials` still come from `e2e`; the agent-side tool pack lives on
  * the `@e2e-dev/mobile/tools` subpath so this entry never loads the AI SDK.
  */
@@ -20,3 +21,6 @@ export type { BiometricSensor, Device, DeviceOrientation, ForegroundApp } from '
  * runtime `test` as `e2e`'s; only the fixture types differ.
  */
 export const test = base.extend<{ device: Device }>();
+
+/** `beforeEach` and `afterEach` typed with the `device` fixture, as `test.beforeEach` is. */
+export const { beforeEach, afterEach } = test;

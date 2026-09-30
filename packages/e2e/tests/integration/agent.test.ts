@@ -484,7 +484,7 @@ test('the judge is not pointed at vision once a secret was filled', async ({ app
     // attempt is pixel-tainted, and no screenshot could reach a judge.
     const model = installFakeLoopModel((call) => {
       if (call.toolNames.includes('type_secret') && call.lastToolResult === '') {
-        return [{ toolName: 'type_secret', input: { target: nodeIdFor(call.prompt, /textbox "Password"/), name: 'member' } }];
+        return [{ toolName: 'type_secret', input: { target: nodeIdFor(call.prompt, /textbox "Password"/), name: 'member.password' } }];
       }
       return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'filled the password' } }];
     });

@@ -42,15 +42,15 @@ test('fills nothing', async ({ app, screen }) => {
   await screen.getByLabel('Focus target').fill('plain text');
 });
 
-test('downloads after a fill', async ({ app, screen, web }) => {
+test('downloads after a fill', async ({ app, screen, browser }) => {
   await app.open('/exports');
   await screen.getByLabel('Export key').fill(credentials.user('member').password);
-  await web.waitForDownload(() => screen.getByRole('link', { name: 'Download export' }).tap());
+  await browser.waitForDownload(() => screen.getByRole('link', { name: 'Download export' }).tap());
 });
 
-test('downloads without a fill', async ({ app, screen, web }) => {
+test('downloads without a fill', async ({ app, screen, browser }) => {
   await app.open('/downloads');
-  await web.waitForDownload(() => screen.getByRole('link', { name: 'Download report' }).tap());
+  await browser.waitForDownload(() => screen.getByRole('link', { name: 'Download report' }).tap());
 });
 
 test('fills a visible field', async ({ app, screen }) => {
@@ -128,7 +128,7 @@ describe('trace secrecy', () => {
                   return undefined;
                 })(observation.tree!);
                 // Declared secrets are keyed by the credential's name, not the param's.
-                await context.actions.typeSecret({ id: secure!.id }, 'member');
+                await context.actions.typeSecret({ id: secure!.id }, 'member.password');
                 return { status: 'passed', summary: 'filled' };
               },
             },
@@ -164,7 +164,7 @@ describe('trace secrecy', () => {
       // A real trace: the actions and the network are there, and the fill is recorded, redacted.
       expect([...entries.keys()]).toEqual(expect.arrayContaining(['trace.trace', 'trace.network']));
       expect(entries.get('trace.trace')).toContain('"fill"');
-      expect(entries.get('trace.trace')).toContain('<secret:member>');
+      expect(entries.get('trace.trace')).toContain('<secret:member.password>');
       for (const [name, text] of entries) expect(text, name).not.toContain(SECRET);
 
       const put = store.puts.find((stored) => stored.path === trace.path)!;
@@ -191,7 +191,7 @@ describe('trace secrecy', () => {
     expect(trace).toMatchObject({ redaction: 'complete' });
     const onDisk = readFileSync(path.join(project.dir, '.e2e', 'artifacts', trace.path!));
     const entries = textEntries(onDisk);
-    expect(entries.get('trace.trace')).toContain('<secret:member>');
+    expect(entries.get('trace.trace')).toContain('<secret:member.password>');
     expect(entries.get('trace.trace')).toContain('"frame-snapshot"');
     expect(entries.get('trace.trace')).not.toContain('"screencast-frame"');
     expect(imageEntries(onDisk)).toEqual([]);
@@ -204,7 +204,7 @@ describe('trace secrecy', () => {
     const download = attempt.artifacts.find((artifact) => artifact.kind === 'download')!;
     expect(download).toMatchObject({ redaction: 'complete', mediaType: 'text/csv' });
     const onDisk = readFileSync(path.join(project.dir, '.e2e', 'artifacts', download.path!), 'utf8');
-    expect(onDisk).toBe('id,key\n1,<secret:member>\n');
+    expect(onDisk).toBe('id,key\n1,<secret:member.password>\n');
     const put = store.puts.find((stored) => stored.path === download.path)!;
     expect(put).toMatchObject({ kind: 'download', redaction: 'complete', sha256: download.sha256 });
     expect(Buffer.from(put.bytes).toString('utf8')).toBe(onDisk);
@@ -224,9 +224,9 @@ describe('trace secrecy', () => {
     expect(entry!.payload.actions).toEqual([
       {
         name: 'typeSecret',
-        summary: expect.stringContaining('member'),
+        summary: expect.stringContaining('member.password'),
         target: expect.objectContaining({ role: 'textbox', name: 'Password' }),
-        secret: 'member',
+        secret: 'member.password',
       },
     ]);
   });

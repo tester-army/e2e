@@ -81,7 +81,7 @@ The runner checks forbidden schemes on explicit navigation: `app.open`, the
 agent's `navigate` verb, and `device.openLink`. `device.openApp` and the
 `open_app` tool take an app id and refuse a link, since the device would
 open one as a URL. The runner does not re-check redirects or attach to popup
-pages. Register `web.onDialog` to handle browser dialogs.
+pages. Register `browser.onDialog` to handle browser dialogs.
 
 ## Secrets
 
@@ -108,7 +108,7 @@ beyond the field's masked rectangle.
 
 A test that restores a [session](#sessions) whose setup filled a secret keeps
 this protection. A setup that signs in without filling a secret, for example
-by setting a session cookie with `web.setCookies`, leaves screenshots
+by setting a session cookie with `browser.setCookies`, leaves screenshots
 available to the tests that restore it. A value it uses that is not a
 configured secret is not redacted.
 

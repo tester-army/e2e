@@ -16,7 +16,7 @@ export type SecretPurpose = 'password' | 'generic-secret';
 
 /** Opaque host-side value accepted only by sensitive input sinks. */
 export interface Secret {
-  /** The entry's name in `credentials` or `secrets`. */
+  /** The entry's name in `secrets`, or `<credential>.password` for a credential's password. */
   readonly name: string;
   /** Where the value may be filled. */
   readonly purpose: SecretPurpose;
@@ -41,8 +41,9 @@ export interface Credentials {
 
 export interface Secrets {
   /**
-   * The opaque handle of a secret declared under `config.secrets` (or a
-   * credential's password, by the credential's name). Test code cannot read
+   * The opaque handle of a secret declared under `config.secrets`. A
+   * credential's password is not one of them: it is
+   * `credentials.user(name).password`. Test code cannot read
    * the value; `locator.fill` and `agent.act` params accept the handle and
    * the runner fills the field itself. Called while `e2e.config.ts`
    * evaluates, it returns a reference by name for an engine option such as
@@ -62,7 +63,24 @@ export interface Secrets {
  */
 export type SecretProvider = () => string | Promise<string>;
 
-/** One `config.credentials` entry: an account whose password is the secret of the entry's name. */
+const PASSWORD_SUFFIX = '.password';
+
+/**
+ * The name of a credential's password handle: `admin.password`. Credentials
+ * and secrets are separate namespaces, but the agent, the replay cache, and
+ * the reports know a secret by its name alone, so a password is named for its
+ * credential and field.
+ */
+export function credentialSecretName(credential: string): string {
+  return `${credential}${PASSWORD_SUFFIX}`;
+}
+
+/** The credential whose password handle `name` is, the inverse of `credentialSecretName`; undefined for any other name. */
+export function credentialOfSecretName(name: string): string | undefined {
+  return name.endsWith(PASSWORD_SUFFIX) ? name.slice(0, -PASSWORD_SUFFIX.length) : undefined;
+}
+
+/** One `config.credentials` entry: an account whose password is a secret named `<entry>.password`. */
 export interface CredentialConfig {
   username: string;
   password: string | SecretProvider;

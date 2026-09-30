@@ -24,5 +24,5 @@ test.describe('nested suite', () => {
 async function assertMissing(screen: {
   getByRole(role: 'heading', options: { name: string }): unknown;
 }) {
-  await expect(screen.getByRole('heading', { name: 'Nowhere' }) as never).toBeVisible({ timeout: 200 });
+  await expect(screen.getByRole('heading', 'Nowhere') as never).toBeVisible({ timeout: 200 });
 }

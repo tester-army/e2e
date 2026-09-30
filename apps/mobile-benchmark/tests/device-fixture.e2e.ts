@@ -139,7 +139,7 @@ test.describe('device fixture', () => {
     // Switching device location off can make Play services put its "No
     // location access" warning (Find My Device) over the app, now and then;
     // it hides the read button until it is closed.
-    const noAccess = screen.getByRole('button', { name: 'Close' });
+    const noAccess = screen.getByRole('button', 'Close');
     // A read in flight is left to finish: the poll only looks, and asks for
     // another read once the last one has answered. An assertion inside the
     // poll would hold it for the assertion's own budget instead.

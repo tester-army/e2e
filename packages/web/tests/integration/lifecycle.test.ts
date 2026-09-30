@@ -157,17 +157,17 @@ describe('web engine lifecycle', () => {
     rmSync(artifactsDir, { recursive: true, force: true });
   });
 
-  it('declares the full deterministic tier plus the web fixture', () => {
+  it('declares the full deterministic tier plus the browser fixture', () => {
     const engine = web();
     expect([...engine.capabilities].toSorted()).toEqual([
       'actions',
       'artifacts',
+      'browser',
       'keyboard',
       'location',
       'observation',
       'pointer',
       'state',
-      'web',
     ]);
     expect(engine.name).toBe('web');
   });

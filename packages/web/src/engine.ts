@@ -2,7 +2,7 @@
  * The Playwright engine for e2e: a browser body built with the
  * public `defineEngine`, validated by the same rules and graded by the same
  * capabilities as any other engine. Core imports nothing from here; this
- * package imports the contract from `e2e/engine` and contributes the `web`
+ * package imports the contract from `e2e/engine` and contributes the `browser`
  * fixture the way a device engine contributes `device`.
  */
 
@@ -21,7 +21,7 @@ import {
 import { createRequire } from 'node:module';
 import { asBrowserProvider } from './provider.ts';
 import { PlaywrightSurface, type WebOptions } from './surface.ts';
-import { createWebFixture } from './web.ts';
+import { createBrowserFixture } from './browser.ts';
 
 /** App fields only a device target reads. */
 const NATIVE_APP_KEYS = ['bundleId', 'appPath', 'launchArguments', 'permissions'] as const;
@@ -34,7 +34,7 @@ const surfaces = new WeakMap<EngineHandle, PlaywrightSurface>();
  * that replaces the toolset wholesale (spec chapter 16) and drives the page with
  * its own Playwright tooling. Both accessors read the current attempt: the
  * context exists from `startAttempt`, the page from the first `app.open()` or
- * `web.goto()`, and either throws `INVALID_STATE` before that. The harness
+ * `browser.goto()`, and either throws `INVALID_STATE` before that. The harness
  * remains the notary for what it witnesses; a caller here acts out of band.
  */
 export interface PlaywrightLiveSurface {
@@ -146,7 +146,7 @@ export function web(options: WebOptions = {}): EngineHandle {
           },
         }),
     fixtures: {
-      web: (context) => createWebFixture(surface, context),
+      browser: (context) => createBrowserFixture(surface, context),
     },
   });
   surfaces.set(handle, surface);

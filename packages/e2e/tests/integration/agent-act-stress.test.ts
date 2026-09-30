@@ -60,7 +60,7 @@ describe('secret fill policy under a hostile executor', () => {
       async runStep(context: StepExecutorContext) {
         const observation = await context.observe();
         const email = nodeIdFor(observation.text, /textbox "Email"/);
-        await context.actions.typeSecret({ id: email }, 'admin');
+        await context.actions.typeSecret({ id: email }, 'admin.password');
         return { status: 'passed' as const, summary: 'should never get here' };
       },
     };
@@ -79,7 +79,7 @@ describe('secret fill policy under a hostile executor', () => {
   it('fills a generic secret into a contenteditable host and refuses a password there', async () => {
     const model = installFakeLoopModel((call) => {
       const notes = () => nodeIdFor(call.prompt, /textbox "Notes"/);
-      if (call.turn === 1) return [{ toolName: 'type_secret', input: { target: notes(), name: 'admin' } }];
+      if (call.turn === 1) return [{ toolName: 'type_secret', input: { target: notes(), name: 'admin.password' } }];
       if (call.turn === 2) return [{ toolName: 'type_secret', input: { target: notes(), name: 'stripe-key' } }];
       return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'filled the API key' } }];
     });
@@ -119,7 +119,7 @@ describe('secret fill policy under a hostile executor', () => {
     const model = installFakeLoopModel((call) => {
       if (call.toolNames.includes('type_secret') && call.lastToolResult === '') {
         const id = nodeIdFor(call.prompt, /textbox "Password"/);
-        return [{ toolName: 'type_secret', input: { target: id, name: 'admin' } }];
+        return [{ toolName: 'type_secret', input: { target: id, name: 'admin.password' } }];
       }
       return [
         {

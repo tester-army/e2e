@@ -237,3 +237,26 @@ describe('the list form of toHaveText and toContainText', () => {
     ).rejects.toMatchObject({ code: 'LOCATOR_AMBIGUOUS' });
   });
 });
+
+describe('getByRole with a name', () => {
+  const button = (id: string, name: string): SemanticNode => ({ ref: { id, revision: '' }, role: 'button', name });
+  const screen = createScreenFixture([button('save', 'Save draft'), button('cancel', 'Cancel')]);
+
+  it('takes the accessible name as its second argument, the same query as { name }', async () => {
+    expect(await screen.getByRole('button', 'Cancel').count()).toBe(1);
+    expect(await screen.getByRole('button', /^save/i).count()).toBe(1);
+    expect(await screen.getByRole('button', 'Save').count()).toBe(0);
+    expect(await screen.getByRole('button', 'save', { exact: false }).count()).toBe(1);
+    expect(await screen.getByRole('button', { name: 'Cancel' }).textContent()).toBe(await screen.getByRole('button', 'Cancel').textContent());
+  });
+
+  it('refuses a name in both places and options with no name before them', () => {
+    expect(() => screen.getByRole('button', 'Save', { name: 'Cancel' } as never)).toThrow(
+      expect.objectContaining({ code: 'INVALID_LOCATOR', message: expect.stringContaining('"name"') }),
+    );
+    const untyped = screen.getByRole.bind(screen) as (...args: unknown[]) => unknown;
+    expect(() => untyped('button', { exact: false }, { exact: false })).toThrow(
+      expect.objectContaining({ code: 'INVALID_LOCATOR', message: expect.stringContaining('getByRole(role, name, options)') }),
+    );
+  });
+});

@@ -4,12 +4,12 @@ import { expect } from 'e2e';
 test('buys a deal once the promo chrome is out of the way', async ({ app, screen }) => {
   await app.open('/e/promo-storefront');
 
-  await screen.getByRole('button', { name: 'Accept' }).tap();
+  await screen.getByRole('button', 'Accept').tap();
   await expect(screen.getByTestId('cookie-banner')).toBeHidden();
 
-  await screen.getByRole('button', { name: 'Open support chat' }).tap();
+  await screen.getByRole('button', 'Open support chat').tap();
   await expect(screen.getByTestId('chat-panel')).toContainText('Hi! How can we help?');
-  await screen.getByRole('button', { name: 'Close' }).tap();
+  await screen.getByRole('button', 'Close').tap();
   await expect(screen.getByTestId('chat-panel')).toBeHidden();
 
   // The review skeletons resolve 1.2 s after load; the assertion waits them out.
@@ -21,8 +21,8 @@ test('buys a deal once the promo chrome is out of the way', async ({ app, screen
   await expect(headphones).toContainText('50% OFF');
   await expect(screen.getByTestId('deal-speaker')).toContainText('30% OFF');
 
-  await headphones.getByRole('button', { name: 'Buy now' }).tap();
+  await headphones.getByRole('button', 'Buy now').tap();
   await expect(screen.getByTestId('success-message')).toHaveText('Order confirmed');
-  await expect(headphones.getByRole('button', { name: 'Buy now' })).toBeHidden();
-  await expect(screen.getByTestId('deal-speaker').getByRole('button', { name: 'Buy now' })).toBeVisible();
+  await expect(headphones.getByRole('button', 'Buy now')).toBeHidden();
+  await expect(screen.getByTestId('deal-speaker').getByRole('button', 'Buy now')).toBeVisible();
 });

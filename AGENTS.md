@@ -59,7 +59,7 @@ suites that consume the built packages the way a user would.
     checks that need a stored login and are never part of `pnpm test`.
 - `packages/web` — the published `@e2e-dev/web` package: the
   browser engine, built with the public `defineEngine`, contributing the
-  `web` fixture and `expect(web)`. It depends on `e2e` (peer), never the
+  `browser` fixture and `expect(browser)`. It depends on `e2e` (peer), never the
   reverse; a target names it explicitly as `engine: web()`. There is
   no default engine and no well-known id registry in core. It imports from
   `e2e/engine` only: the semantics every engine must reproduce

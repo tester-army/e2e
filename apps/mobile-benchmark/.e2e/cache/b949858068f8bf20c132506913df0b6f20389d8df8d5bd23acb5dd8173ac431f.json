@@ -19,7 +19,7 @@
         "target": {
           "role": "group",
           "name": "SIGN IN",
-          "within": "Use tester@tester.army / <secret:benchmark>"
+          "within": "Use tester@tester.army / <secret:benchmark.password>"
         }
       }
     ],
@@ -32,7 +32,7 @@
       "targetId": "android-emulator",
       "instructionDigest": "2ac57f8c28a31069613ffb9bbf8151a42ea8ceb4bb65d0ad6dcd9eea0b8a2755"
     },
-    "summary": "Used the hinted credentials tester@tester.army and <secret:benchmark>. The screen now shows “Logged in successfully.”.",
+    "summary": "Used the hinted credentials tester@tester.army and <secret:benchmark.password>. The screen now shows “Logged in successfully.”.",
     "startPath": "dev.e2e.benchmark",
     "endPath": "dev.e2e.benchmark",
     "endAnchors": [

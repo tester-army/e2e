@@ -8,8 +8,8 @@
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('act walks an eight-screen wizard painted on a canvas', async ({ web, agent, screen }) => {
-  await web.goto('/canvas-wizard');
+test('act walks an eight-screen wizard painted on a canvas', async ({ browser, agent, screen }) => {
+  await browser.goto('/canvas-wizard');
   await agent.act('complete all eight steps of the drawn wizard: on each screen tap the shape its instruction names, then tap Next');
   await expect(screen.getByRole('status')).toHaveText('wizard done: ok,ok,ok,ok,ok,ok,ok,ok');
 });

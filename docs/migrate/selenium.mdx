@@ -39,13 +39,13 @@ assertEquals("Welcome back, admin!",
 import { test } from '@e2e-dev/web';
 import { expect, credentials } from 'e2e';
 
-test('signs in', async ({ app, screen, web }) => {
+test('signs in', async ({ app, screen, browser }) => {
   const admin = credentials.user('admin');
   await app.open('/login');
   await screen.getByLabel('Username').fill(admin.username);
   await screen.getByLabel('Password').fill(admin.password);
-  await screen.getByRole('button', { name: 'Sign in' }).tap();
-  await expect(web).toHaveURL('/dashboard');
+  await screen.getByRole('button', 'Sign in').tap();
+  await expect(browser).toHaveURL('/dashboard');
   await expect(screen.getByRole('status')).toHaveText('Welcome back, admin!');
 });
 ```
@@ -59,11 +59,11 @@ use `agent.act` to perform sign-in from a goal.
 | Selenium | e2e |
 | --- | --- |
 | `driver.get(url)` | `app.open(path)` |
-| `driver.navigate().back()`, `.refresh()` | `app.back()`, `web.reload()` |
-| `By.id('x')` | `web.locator('#x')`; or `web({ testIdAttribute: 'id' })` and `screen.getByTestId('x')` |
-| `By.name('x')` | `web.locator('[name="x"]')`, not portable; prefer a role or label |
+| `driver.navigate().back()`, `.refresh()` | `app.back()`, `browser.reload()` |
+| `By.id('x')` | `browser.locator('#x')`; or `web({ testIdAttribute: 'id' })` and `screen.getByTestId('x')` |
+| `By.name('x')` | `browser.locator('[name="x"]')`, not portable; prefer a role or label |
 | `By.linkText`, `By.partialLinkText` | `screen.getByRole('link', { name })`, `name: /part/` |
-| `By.cssSelector`, `By.xpath` | `web.locator('css or xpath')`, not portable |
+| `By.cssSelector`, `By.xpath` | `browser.locator('css or xpath')`, not portable |
 | `findElements(...).size()` | `await locator.count()` |
 | `findElements(...).get(n)` | `locator.nth(n)` |
 | `.click()` | `.tap()` |
@@ -74,15 +74,15 @@ use `agent.act` to perform sign-in from a goal.
 | `.getText()`, `.getAttribute()`, `.isDisplayed()` | `.textContent()`, `.getAttribute()`, `.isVisible()`, no retry |
 | `wait.until(visibilityOf(...))` | `await expect(locator).toBeVisible()` |
 | `wait.until(textToBe(...))` | `await expect(locator).toHaveText(...)` |
-| `wait.until(urlContains(...))` | `await expect(web).toHaveURL(/.../)` |
+| `wait.until(urlContains(...))` | `await expect(browser).toHaveURL(/.../)` |
 | `Actions.moveToElement` | `.hover()` |
 | `Actions.dragAndDrop` | `.dragTo(target)` |
 | `Actions.keyDown(CONTROL).sendKeys('a')` | `.press('ControlOrMeta+a')` |
-| `switchTo().frame()` | `web.frameLocator('#frame')` |
-| `switchTo().alert().accept()` | `web.onDialog('accept')` before the action |
+| `switchTo().frame()` | `browser.frameLocator('#frame')` |
+| `switchTo().alert().accept()` | `browser.onDialog('accept')` before the action |
 | `switchTo().window()` | No equivalent. Popups are unsupported |
-| `executeScript` | `web.evaluate` |
-| `manage().addCookie` | `web.setCookies` |
+| `executeScript` | `browser.evaluate` |
+| `manage().addCookie` | `browser.setCookies` |
 | `getScreenshotAs` | `app.screenshot('label')`, redacted |
 | `Thread.sleep` | Use a locator assertion for the condition you need |
 | Page objects | A fixture from `test.extend`, or a goal for `agent.act` |

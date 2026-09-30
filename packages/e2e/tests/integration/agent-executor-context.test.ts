@@ -267,7 +267,7 @@ describe('assert evidence under a custom executor', () => {
       seen.push(context.step.instruction);
       if (context.step.instruction.includes('sign in')) {
         const observation = await context.observe();
-        await context.actions.typeSecret({ id: nodeIdFor(observation.text, /textbox "Password"/) }, 'admin');
+        await context.actions.typeSecret({ id: nodeIdFor(observation.text, /textbox "Password"/) }, 'admin.password');
         return { status: 'passed', summary: 'filled the password' };
       }
       return context.step.instruction.includes('checkout')

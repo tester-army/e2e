@@ -1,8 +1,8 @@
 /**
  * The Playwright surface: one browser per worker, one browser context per
  * attempt, and the page every engine member delegates to. This is the closure
- * state behind `web()`; the engine hooks in `engine.ts` and the `web`
- * fixture in `web.ts` are thin delegates onto it. Action dispatch lives in
+ * state behind `web()`; the engine hooks in `engine.ts` and the `browser`
+ * fixture in `browser.ts` are thin delegates onto it. Action dispatch lives in
  * `actions.ts` and tree capture in `observation.ts`. `AttemptSession` owns
  * the attempt's live binding, recovery, references, and recordings.
  */
@@ -160,7 +160,7 @@ export interface WebOptions {
    * Initial viewport of every attempt's page; default 1280 by 720. `null`
    * emulates no size: the page fills the browser window, whatever size the
    * window has (a hosted browser's live view, a headed run), and
-   * `web.setViewport` still fixes one for the rest of the attempt.
+   * `browser.setViewport` still fixes one for the rest of the attempt.
    */
   readonly viewport?: ViewportSize | null;
   /**
@@ -484,7 +484,7 @@ export class PlaywrightSurface {
     return this.session;
   }
 
-  // --- network routes shared with the web fixture ---
+  // --- network routes shared with the browser fixture ---
 
   /** Registers one attempt-scoped route on the current context. */
   async route(predicate: RoutePredicate, handler: RouteHandler): Promise<void> {
@@ -503,12 +503,12 @@ export class PlaywrightSurface {
     await context.unroute(predicate, handler);
   }
 
-  // --- page access shared with the web fixture ---
+  // --- page access shared with the browser fixture ---
 
   requirePage(): Page {
     this.latch.throwPending();
     const page = this.requireSession().current().page;
-    if (page === null || page.isClosed()) throw invalidState('no app page is open; call app.open() or web.goto() first');
+    if (page === null || page.isClosed()) throw invalidState('no app page is open; call app.open() or browser.goto() first');
     return page;
   }
 

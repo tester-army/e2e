@@ -19,7 +19,7 @@ test.describe('kanban board', () => {
     await expect(inProgress.getByText('Refactor onboarding')).toBeVisible();
     await expect(screen.getByTestId('column-todo').getByText('Update pricing page')).toBeVisible();
 
-    await screen.getByRole('button', { name: 'Submit board' }).tap();
+    await screen.getByRole('button', 'Submit board').tap();
     await expect(screen.getByTestId('success-message')).toHaveText('Board matches the goal');
   });
 
@@ -34,7 +34,7 @@ test.describe('kanban board', () => {
   test('a plain tap moves nothing and the untouched board is rejected', async ({ screen }) => {
     await screen.getByTestId('card-fix-payment-bug').tap();
     await expect(screen.getByTestId('column-todo').getByText('Fix payment bug')).toBeVisible();
-    await screen.getByRole('button', { name: 'Submit board' }).tap();
+    await screen.getByRole('button', 'Submit board').tap();
     await expect(screen.getByTestId('error-message')).toHaveText('Board does not match the goal yet');
   });
 });

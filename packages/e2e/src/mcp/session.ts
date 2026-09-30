@@ -17,7 +17,8 @@ import { loadAiSdk } from '../agent/ai-sdk.ts';
 import { openInteractiveStep, type InteractiveStep } from '../agent/interactive-step.ts';
 import { ScreenPresenter } from '../agent/screen-update.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import { secrets } from '../secrets.ts';
+import { credentialSecretName } from '../config/secrets.ts';
+import { credentials, secrets } from '../secrets.ts';
 import { ConfigurationError, errorMessage, InfrastructureError, type SerializedError } from '../internal/errors.ts';
 import { LocatorEngine } from '../locator/engine.ts';
 import { allocateAppPorts } from '../run/app-ports.ts';
@@ -352,9 +353,9 @@ export class SessionHost {
     }
     if (config.credentials.size > 0) {
       const described = [...config.credentials.values()].map(
-        (credential) => `"${credential.name}" (username ${JSON.stringify(credential.username)})`,
+        (credential) => `"${credential.name}" (username ${JSON.stringify(credential.username)}, password secret "${credentialSecretName(credential.name)}")`,
       );
-      lines.push(`Credentials: ${described.join(', ')}. Type the username with type; fill the password with type_secret and the credential name.`);
+      lines.push(`Credentials: ${described.join(', ')}. Type the username with type; fill the password with type_secret and its password secret's name.`);
     }
     const generic = [...config.secrets.values()].filter((secret) => secret.purpose === 'generic-secret');
     if (generic.length > 0) {
@@ -396,9 +397,9 @@ export class SessionHost {
   /** Every configured secret, passwords included, as a step secret, so `type_secret` can fill it. */
   private secretParams(config: ResolvedConfig): AgentParams | undefined {
     if (config.secrets.size === 0) return undefined;
-    return Object.fromEntries(
-      [...config.secrets.keys()].map((name) => [name, secrets.get(name)]),
-    );
+    const passwords = [...config.credentials.keys()].map((name) => credentials.user(name).password);
+    const generic = [...config.secrets.values()].filter((secret) => secret.purpose === 'generic-secret').map((secret) => secrets.get(secret.name));
+    return Object.fromEntries([...passwords, ...generic].map((secret) => [secret.name, secret]));
   }
 
   private unknownTool(live: LiveSession, name: string): ConfigurationError {

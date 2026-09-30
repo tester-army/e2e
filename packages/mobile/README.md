@@ -129,7 +129,7 @@ test('shows the version offline in dark mode', async ({ agent, device, screen })
   await device.setAppearance('dark');
   await device.setNetwork('offline');
   await agent.act('go to General, then About');
-  await expect(screen.getByRole('button', { name: /^iOS Version/ })).toBeVisible();
+  await expect(screen.getByRole('button', /^iOS Version/)).toBeVisible();
   await expect(device.locator('role=NavigationBar id=About')).toBeVisible();
 });
 ```

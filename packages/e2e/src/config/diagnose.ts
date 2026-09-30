@@ -14,6 +14,11 @@ import { didYouMean, suggest } from '../internal/suggest.ts';
 /** The runtime exports of `e2e`; a unit test keeps this list equal to the real module. */
 export const RUNTIME_EXPORTS: readonly string[] = [
   'test',
+  'describe',
+  'beforeEach',
+  'afterEach',
+  'beforeAll',
+  'afterAll',
   'expect',
   'credentials',
   'secrets',

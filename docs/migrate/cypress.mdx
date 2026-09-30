@@ -53,9 +53,9 @@ describe('todos', () => {
 
 ```ts title="e2e"
 import { test } from '@e2e-dev/web';
-import { expect } from 'e2e';
+import { describe, expect } from 'e2e';
 
-test.describe('todos', () => {
+describe('todos', () => {
   test('completes one', async ({ app, agent, screen }) => {
     await app.open('/todos');
     await agent.act('add todos "Buy milk" and "Walk the dog", then complete "Buy milk"');
@@ -71,7 +71,7 @@ test.describe('todos', () => {
 | --- | --- |
 | `cy.visit(path)` | `app.open(path)` |
 | `cy.get('[data-cy=x]')` | `screen.getByTestId('x')` |
-| `cy.get('css')` | `web.locator('css')`, not portable; prefer a role or label |
+| `cy.get('css')` | `browser.locator('css')`, not portable; prefer a role or label |
 | `cy.contains('text')` | `screen.getByText('text', { exact: false })` |
 | `cy.contains('li', 'text')` | `screen.getByRole('listitem').filter({ hasText: 'text' })` |
 | `.find()`, `.within()` | Chain a query off the locator: `row.getByRole(...)` |
@@ -86,14 +86,14 @@ test.describe('todos', () => {
 | `.should('have.length', n)` | `.toHaveCount(n)` |
 | `.should('have.value', v)` | `.toHaveValue(v)` |
 | `.should('not.exist')` | `.toHaveCount(0)`; `toBeHidden()` also accepts a node that is still in the DOM |
-| `cy.url().should('include', p)` | `expect(web).toHaveURL(/p/)` |
-| `cy.title()` | `expect(web).toHaveTitle()` |
-| `cy.intercept(url, body)` | `web.route(url, route => route.fulfill({ json: body }))` |
-| `cy.wait('@alias')` | `web.waitForResponse(url)` |
-| `cy.on('window:confirm')` | `web.onDialog('accept')` |
-| `cy.window()`, `cy.document()` | `web.evaluate(() => ...)` |
-| `cy.setCookie` | `web.setCookies` |
-| `cy.viewport` | `web.setViewport` |
+| `cy.url().should('include', p)` | `expect(browser).toHaveURL(/p/)` |
+| `cy.title()` | `expect(browser).toHaveTitle()` |
+| `cy.intercept(url, body)` | `browser.route(url, route => route.fulfill({ json: body }))` |
+| `cy.wait('@alias')` | `browser.waitForResponse(url)` |
+| `cy.on('window:confirm')` | `browser.onDialog('accept')` |
+| `cy.window()`, `cy.document()` | `browser.evaluate(() => ...)` |
+| `cy.setCookie` | `browser.setCookies` |
+| `cy.viewport` | `browser.setViewport` |
 | `cy.session` | `test.setup` and `{ session }` |
 | `cy.task`, `cy.exec`, `cy.request` | Node code: `fetch`, `fs`, your database client |
 | `cy.fixture` | `import data from './fixture.json'` |

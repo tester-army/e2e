@@ -17,7 +17,7 @@
         "within": {
           "target": {
             "role": "other",
-            "name": "Use tester@tester.army / <secret:benchmark>, Email, Password, SIGN IN"
+            "name": "Use tester@tester.army / <secret:benchmark.password>, Email, Password, SIGN IN"
           },
           "fx": 0.4652,
           "fy": 0.4433
@@ -37,7 +37,7 @@
         "within": {
           "target": {
             "role": "other",
-            "name": "Use tester@tester.army / <secret:benchmark>, Email, Password, SIGN IN"
+            "name": "Use tester@tester.army / <secret:benchmark.password>, Email, Password, SIGN IN"
           },
           "fx": 0.3259,
           "fy": 0.4446
@@ -62,7 +62,7 @@
         "within": {
           "target": {
             "role": "other",
-            "name": "Use tester@tester.army / <secret:benchmark>, Email, Password, SIGN IN"
+            "name": "Use tester@tester.army / <secret:benchmark.password>, Email, Password, SIGN IN"
           },
           "fx": 0.3308,
           "fy": 0.5462
@@ -97,7 +97,7 @@
         "within": {
           "target": {
             "role": "other",
-            "name": "Use tester@tester.army / <secret:benchmark>, Email, Password, SIGN IN"
+            "name": "Use tester@tester.army / <secret:benchmark.password>, Email, Password, SIGN IN"
           },
           "fx": 0.5025,
           "fy": 0.6332

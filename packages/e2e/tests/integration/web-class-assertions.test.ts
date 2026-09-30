@@ -1,5 +1,5 @@
 /**
- * `expect(web).toHaveClass` against the web engine loaded the way a project
+ * `expect(browser).toHaveClass` against the web engine loaded the way a project
  * loads it: from a config file, so the engine's `e2e/engine` and the runner's
  * core are two module copies and `instanceof` cannot tell a runner error apart.
  * A node that is not there yet must keep the matcher polling; an ambiguous
@@ -19,24 +19,24 @@ import {
 const SUITE = `import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('class assertions poll for a node that arrives late', async ({ app, web }) => {
+test('class assertions poll for a node that arrives late', async ({ app, browser }) => {
   await app.open('/classes');
-  await expect(web).toHaveClass(web.locator('#late-card'), 'card late', { timeout: 1800 });
+  await expect(browser).toHaveClass(browser.locator('#late-card'), 'card late', { timeout: 1800 });
 });
 
-test('class assertions on an ambiguous locator fail at once', async ({ app, web }) => {
+test('class assertions on an ambiguous locator fail at once', async ({ app, browser }) => {
   await app.open('/classes');
-  await expect(web).toHaveClass(web.locator('.dup'), 'dup', { timeout: 1800 });
+  await expect(browser).toHaveClass(browser.locator('.dup'), 'dup', { timeout: 1800 });
 });
 
-test('an empty class attribute is an empty class list', async ({ app, web }) => {
+test('an empty class attribute is an empty class list', async ({ app, browser }) => {
   await app.open('/classes');
-  await expect(web).toHaveClass(web.locator('#blank-card'), '');
+  await expect(browser).toHaveClass(browser.locator('#blank-card'), '');
 });
 
-test('a missing class attribute is not an empty class list', async ({ app, web, screen }) => {
+test('a missing class attribute is not an empty class list', async ({ app, browser, screen }) => {
   await app.open('/classes');
-  await expect(web).toHaveClass(screen.getByTestId('items'), '', { timeout: 300 });
+  await expect(browser).toHaveClass(screen.getByTestId('items'), '', { timeout: 300 });
 });
 `;
 

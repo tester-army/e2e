@@ -3,7 +3,7 @@
  * public `defineEngine`, validated by the same rules and graded by the same
  * capabilities as any other engine. Core imports nothing from here; this
  * package imports the contract from `e2e/engine` and contributes the
- * `device` fixture the way the browser engine contributes `web`.
+ * `device` fixture the way the browser engine contributes `browser`.
  */
 
 import { createRequire } from 'node:module';

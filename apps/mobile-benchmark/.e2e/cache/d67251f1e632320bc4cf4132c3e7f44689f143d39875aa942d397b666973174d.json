@@ -15,14 +15,14 @@
       },
       {
         "name": "typeSecret",
-        "summary": "fill secret \"benchmark\" into textbox \"password-input\"",
+        "summary": "fill secret \"benchmark.password\" into textbox \"password-input\"",
         "target": {
           "role": "textbox",
           "testId": "password-input",
           "selector": "id=password-input",
           "inputPurpose": "password"
         },
-        "secret": "benchmark"
+        "secret": "benchmark.password"
       },
       {
         "name": "tap",

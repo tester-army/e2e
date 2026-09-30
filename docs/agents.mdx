@@ -85,7 +85,9 @@ appended after the agent's `context` for that test: the ids of seeded data,
 a feature flag that changes a label, anything only that test knows.
 
 ```ts title="tests/billing.e2e.ts"
-test.describe('billing', { agentContext: 'The seeded workspace is called "Acme Trial".' }, () => {
+import { describe, test } from 'e2e';
+
+describe('billing', { agentContext: 'The seeded workspace is called "Acme Trial".' }, () => {
   test('upgrades the tier', async ({ agent }) => { /* ... */ });
 });
 ```
@@ -153,12 +155,12 @@ setting wins, in this order: call, test, enclosing groups, run.
 The abbreviated tests below show how to select an agent at each level.
 
 ```ts title="tests/checkout.e2e.ts"
-import { test } from 'e2e';
+import { describe, test } from 'e2e';
 
-test.describe('checkout as a first-time buyer', { agent: 'buyer' }, () => {
+describe('checkout as a first-time buyer', { agent: 'buyer' }, () => {
   test('pays for one item', async ({ app, agent }) => { /* ... */ });
 
-  test.describe('refunds', { agent: 'admin' }, () => {
+  describe('refunds', { agent: 'admin' }, () => {
     test('refunds the order', async ({ agent }) => { /* ... */ });
   });
 
@@ -181,9 +183,9 @@ on a test or group fails during collection. An unknown agent on a call raises
 Select several agents to run the same test once with each:
 
 ```ts title="tests/checkout.e2e.ts"
-import { test } from 'e2e';
+import { describe, test } from 'e2e';
 
-test.describe('checkout', { agent: ['buyer', 'admin'] }, () => {
+describe('checkout', { agent: ['buyer', 'admin'] }, () => {
   test('pays for one item', async ({ app, agent }) => { /* runs once per persona */ });
   test('applies a promo code', async ({ app, agent }) => { /* ... */ });
 });

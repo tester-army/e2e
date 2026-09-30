@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeAll, afterAll, describe, expect, it } from 'vitest';
 import type { EngineFixtureContext, EngineHandle, OperationContext } from 'e2e/engine';
-import { web as webEngine, surfaceOf, type BrowserProvider, type BrowserProviderScope, type Web } from '../../src/index.ts';
+import { web as webEngine, surfaceOf, type BrowserProvider, type BrowserProviderScope, type Browser } from '../../src/index.ts';
 import { closeRemoteChrome, launchRemoteChrome, type RemoteChrome } from '../helpers/cdp-host.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { noSecrets } from '../helpers/secrets.ts';
@@ -89,15 +89,15 @@ describe.each<BrowserProviderScope>(['worker', 'attempt'])('downloads through a 
       document.body.append(link);
     });
     const attached: string[] = [];
-    const web = engine.fixtures!['web']!({
+    const browser = engine.fixtures!['browser']!({
       operation: () => operation(),
       app: { resolveUrl: (url: string) => new URL(url, app.url).href },
       expectable: (target: object) => target,
       fixture: (_name: string, target: object) => target,
       attachArtifact: (_kind: string, relative: string) => attached.push(relative),
-    } as unknown as EngineFixtureContext) as Web;
+    } as unknown as EngineFixtureContext) as Browser;
 
-    const file = await web.waitForDownload(() => page.locator('#download').click());
+    const file = await browser.waitForDownload(() => page.locator('#download').click());
 
     expect(file.suggestedFilename).toBe('report.txt');
     expect(readFileSync(path.join(artifactsDir, file.path), 'utf8')).toBe('report body');

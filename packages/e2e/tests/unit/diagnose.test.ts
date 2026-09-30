@@ -87,7 +87,7 @@ describe('explainModuleError', () => {
     expect(explainModuleError(missing('E2EConfig'), importer)).toContain(
       "import type { E2EConfig } from 'e2e'",
     );
-    expect(explainModuleError(missing('somethingElse'), importer)).toContain('e2e exports test, expect');
+    expect(explainModuleError(missing('somethingElse'), importer)).toContain('e2e exports test, describe, beforeEach, afterEach, beforeAll, afterAll, expect');
     const other = new SyntaxError("The requested module 'lodash' does not provide an export named 'nope'");
     expect(explainModuleError(other, importer)).toBe(other.message);
   });

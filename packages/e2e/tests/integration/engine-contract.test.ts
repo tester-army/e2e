@@ -433,20 +433,27 @@ test('flaky against engine', { retries: 1 }, async ({ app }) => {
       const fake = createFakeEngine();
       const file = `import { test } from 'e2e';
 
-test('needs web', async ({ app, web }) => {
+test('needs browser', async ({ app, browser }) => {
   await app.open('/');
-  await web.goto('/somewhere');
+  await browser.goto('/somewhere');
+});
+
+test('reaches for the old name', async ({ web }) => {
+  void web;
 });
 `;
       const { outcome, project } = await runProject(
-        { 'tests/no-web.e2e.ts': file },
+        { 'tests/no-browser.e2e.ts': file },
         { appUrl: APP_URL, config: engineConfig(fake.engine) },
       );
-      const result = resultByTitle(outcome, 'needs web');
+      const result = resultByTitle(outcome, 'needs browser');
       expect(result.status).toBe('failed');
       expect(result.attempts[0]!.error?.code).toBe('UNSUPPORTED_CAPABILITY');
       expect(result.attempts[0]!.error?.category).toBe('configuration');
-      expect(result.attempts[0]!.error?.message).toContain('web');
+      expect(result.attempts[0]!.error?.message).toContain('has no "browser" fixture');
+      expect(resultByTitle(outcome, 'reaches for the old name').attempts[0]!.error?.message).toContain(
+        'the web fixture is now called browser: destructure { browser } instead',
+      );
       project.cleanup();
     },
     60_000,

@@ -12,6 +12,8 @@ point.
 export interface Screen {
   /** Creates a lazy role query. An alias such as `img` is rewritten to its role. */
   getByRole(role: Role | RoleAlias, options?: RoleOptions): Locator;
+  /** Creates a lazy role query narrowed to an accessible name: `getByRole('button', 'Sign in')`. */
+  getByRole(role: Role | RoleAlias, name: TextMatch, options?: Omit<RoleOptions, 'name'>): Locator;
   /** Creates a lazy accessible-label query. */
   getByLabel(text: TextMatch, options?: TextMatchOptions): Locator;
   /** Creates a lazy placeholder query. */
@@ -56,9 +58,14 @@ Every query returns a `Locator` synchronously and performs no work. An
 option key the query does not take (`{ nam: 'Save' }`) throws
 `INVALID_LOCATOR` naming the keys it does.
 
-A string passed to `getByRole` as `name`, `getByLabel`, `getByPlaceholder`,
+`getByRole` takes the accessible name as its second argument, a string or a
+`RegExp`, with the other options after it:
+`getByRole('button', 'Save', { exact: false })`. The object form,
+`getByRole('button', { name: 'Save', disabled: true })`, is the same query.
+
+A string passed to `getByRole` as the name, `getByLabel`, `getByPlaceholder`,
 `getByText`, or `getByDisplayValue` matches the whole text, case-sensitive,
-after whitespace normalization: `getByRole('button', { name: 'Save' })` does
+after whitespace normalization: `getByRole('button', 'Save')` does
 not match `Save changes`. `{ exact: false }` makes it a case-insensitive
 substring match, and a `RegExp` matches as written.
 
@@ -69,7 +76,8 @@ string matches the whole id, case-sensitive; a `RegExp` such as
 `/total-budgeted$/` matches as written.
 
 ```ts
-screen.getByRole('button', { name: 'Save' });
+screen.getByRole('button', 'Save');
+screen.getByRole('heading', /welcome/i, { level: 1 });
 screen.getByLabel('Email');
 screen.getByText('Welcome back', { exact: false });
 screen.getByTestId('todo-3');
@@ -91,7 +99,7 @@ copy of content in the document, such as a closed drawer or an inactive tab
 panel, and without `visible` both copies match.
 
 ```ts
-await web.reload();
+await browser.reload();
 // Two "No memories yet" nodes exist for a moment; one is display:none.
 await expect(screen.getByText('No memories yet', { visible: true })).toBeVisible();
 await screen.getByPlaceholder('Search memory...', { visible: true }).fill('launch');
@@ -101,7 +109,7 @@ await screen.getByTestId('memory-list', { visible: true }).getByRole('listitem')
 `visible` uses the same visibility check as `toBeVisible()`, `isVisible()`,
 and `waitFor()`. It works with scopes, `filter`, `first`, `last`, and `nth`:
 `getByText('Save', { visible: true }).first()` is the first visible match.
-Prefer it over `web.locator('p:visible')`, which ties the test to CSS.
+Prefer it over `browser.locator('p:visible')`, which ties the test to CSS.
 
 ## Refinement
 
@@ -119,7 +127,7 @@ non-integer index.
 
 ```ts
 const row = screen.getByRole('listitem').filter({ hasText: 'Invoice 42' });
-await row.getByRole('button', { name: 'Void' }).tap();
+await row.getByRole('button', 'Void').tap();
 ```
 
 <Note>
@@ -143,7 +151,7 @@ negative or non-finite coordinate and `UNSUPPORTED_CAPABILITY` when the
 engine does not list `tap` in its pointer actions.
 
 ```ts
-const map = await screen.getByRole('image', { name: 'Map' }).boundingBox();
+const map = await screen.getByRole('image', 'Map').boundingBox();
 await screen.tapAt({ x: map.x + 360, y: map.y + 70 });
 ```
 
@@ -209,7 +217,7 @@ target's screen, `INVALID_ARGUMENT` for an option it does not take,
 included.
 
 ```ts
-await screen.scrollUntilVisible(screen.getByRole('button', { name: 'Accept' }));
+await screen.scrollUntilVisible(screen.getByRole('button', 'Accept'));
 ```
 
 ## Locator actions
@@ -361,13 +369,13 @@ export interface Locator extends Screen {
 
 ```ts
 await screen.getByLabel('Email').fill('ada@example.test');
-await screen.getByRole('checkbox', { name: 'Remember me' }).check();
+await screen.getByRole('checkbox', 'Remember me').check();
 await screen.getByLabel('Plan').selectOption({ label: 'Pro' });
 await screen.getByLabel('Plan').selectOption({ value: 'pro' });
-await screen.getByRole('button', { name: 'Save' }).tap({ timeout: 10_000 });
-await screen.getByRole('image', { name: 'Seat map' }).tap({ position: { x: 120, y: 48 } });
-await screen.getByRole('textbox', { name: 'Search' }).press('Enter');
-await screen.getByRole('textbox', { name: 'Notes' }).press('ControlOrMeta+a');
+await screen.getByRole('button', 'Save').tap({ timeout: 10_000 });
+await screen.getByRole('image', 'Seat map').tap({ position: { x: 120, y: 48 } });
+await screen.getByRole('textbox', 'Search').press('Enter');
+await screen.getByRole('textbox', 'Notes').press('ControlOrMeta+a');
 await screen.getByLabel('City').pressSequentially('War', { delay: 50 });
 ```
 

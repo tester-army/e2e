@@ -9,7 +9,7 @@ test('scrolls the feed until the Golden Ticket loads, then claims it', async ({ 
   // The Golden Ticket is item 138: 137 rows of 61 px at a 360 px slow stride
   // and seven lazy loads of 400 ms, about 4 s measured, so the default 30 s
   // scroll budget holds seven of those.
-  const claim = screen.getByRole('button', { name: 'Claim' });
+  const claim = screen.getByRole('button', 'Claim');
   await feed.scrollUntilVisible(claim);
   await expect(feed.getByText('Golden Ticket')).toBeVisible();
   await claim.tap();

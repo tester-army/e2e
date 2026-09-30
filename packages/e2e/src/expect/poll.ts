@@ -30,9 +30,10 @@ const MATCHERS = {
   toBeLessThan: true,
   toBeLessThanOrEqual: true,
   toBeCloseTo: true,
+  toMatchSchema: true,
 } satisfies Record<MatcherName, true>;
 
-type Matcher = (this: ValueExpectation<unknown>, ...args: unknown[]) => void;
+type Matcher = (this: ValueExpectation<unknown>, ...args: unknown[]) => unknown;
 
 /** A read that outlived the deadline, as opposed to one that failed. */
 class ReadHung extends Error {}
@@ -68,7 +69,7 @@ async function pollMatcher(
   negated: boolean,
   name: MatcherName,
   args: unknown[],
-): Promise<void> {
+): Promise<unknown> {
   const attempt = currentAttempt();
   const timeout = options.timeout ?? attempt?.assertionTimeout ?? DEFAULT_TIMEOUT_MS;
   const interval = options.interval ?? POLL_INTERVAL_MS;
@@ -95,8 +96,7 @@ async function pollMatcher(
     const expectation = createValueExpectation(value);
     const target = negated ? expectation.not : expectation;
     try {
-      (target[name] as Matcher).apply(target, args);
-      return;
+      return (target[name] as Matcher).apply(target, args);
     } catch (error) {
       if (!isNotYet(error)) throw error;
       last = describeError(error);

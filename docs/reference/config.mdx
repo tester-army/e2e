@@ -138,8 +138,9 @@ export interface E2EConfig {
    */
   cache?: CacheMode | CacheConfig;
   /**
-   * Named accounts. A credential's password is registered as a secret under
-   * the credential's name, so the name may not also appear under `secrets`.
+   * Named accounts. `credentials.user(name).password` is the handle of a
+   * credential's password, a secret named `<name>.password`; `secrets.get()`
+   * never returns it, so a credential and a secret may share a name.
    */
   credentials?: Readonly<Record<string, CredentialConfig>>;
   /**
@@ -791,8 +792,13 @@ The username is a plain string; the password is an opaque `Secret` that test
 code cannot read, accepted only by `locator.fill` and `agent.act` params. An
 unconfigured name throws `AUTH_CREDENTIAL_UNAVAILABLE`.
 
-A credential's password is registered as the secret of the credential's name,
-so a name declared under both `credentials` and `secrets` is `INVALID_CONFIG`.
+Credentials and secrets are separate namespaces: `secrets.get(name)` returns a
+`secrets` entry only, and a credential's password is reachable only as
+`credentials.user(name).password`. The agent, the replay cache, and the
+reports know that handle as `<name>.password` (`<secret:admin.password>`), so
+`credentials.admin` and `secrets.admin` can both exist; a `secrets` entry
+named exactly `admin.password` beside an `admin` credential is
+`INVALID_CONFIG`.
 
 ```ts
 /** Named test identity. The password remains an opaque Secret. */

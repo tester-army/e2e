@@ -61,9 +61,9 @@ export default {
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('app opens', async ({ app, web }) => {
+test('app opens', async ({ app, browser }) => {
   await app.open('/');
-  await expect(web.locator('body')).toBeVisible();
+  await expect(browser.locator('body')).toBeVisible();
 });
 ```
     </Accordion>
@@ -95,7 +95,7 @@ import { expect } from 'e2e';
 
 test('Settings opens', async ({ app, screen }) => {
   await app.open();
-  await expect(screen.getByRole('button', { name: 'General' })).toBeVisible();
+  await expect(screen.getByRole('button', 'General')).toBeVisible();
 });
 ```
     </Accordion>

@@ -16,7 +16,7 @@ test('shows a raw greeting token and an undefined delivery date (planted bug), y
   ]);
   await expect(screen.getByText('Ship to: 221B Baker Street, London')).toBeVisible();
 
-  await screen.getByRole('button', { name: 'Place order - $123.00' }).tap();
+  await screen.getByRole('button', 'Place order - $123.00').tap();
   await expect(screen.getByTestId('success-message')).toHaveText('Order placed successfully');
   await expect(screen.getByText(/Order #10482/)).toBeVisible();
 });

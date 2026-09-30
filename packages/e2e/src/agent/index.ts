@@ -12,6 +12,7 @@
 import { isVisionMode } from '../config/agent.ts';
 import { TestError, withHint } from '../internal/errors.ts';
 import { rejectUnknownOptions } from '../internal/options.ts';
+import { describeIssue, requireStandardSchema } from '../internal/standard-schema.ts';
 import { sleep } from '../internal/time.ts';
 import type { StepRunOptions } from '../run/steps.ts';
 import type { Agent, StandardSchemaV1, VisionMode } from '../types.ts';
@@ -182,7 +183,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
 
     extract(instruction, options) {
       rejectUnknownOptions('agent.extract', options, EXTRACT_KEYS);
-      requireStandardSchema(options?.schema);
+      requireStandardSchema(options?.schema, 'schema');
       const schema = options.schema;
       const { config } = runtime.select(options.agent);
       const vision = resolveVision(options.vision);
@@ -399,13 +400,6 @@ function validateInterval(intervalMs: number | undefined): number {
   return value;
 }
 
-function requireStandardSchema(schema: unknown): void {
-  const props = (schema as StandardSchemaV1 | undefined)?.['~standard'];
-  if (props === undefined || props.version !== 1 || typeof props.validate !== 'function') {
-    throw new TestError('INVALID_ARGUMENT', 'schema must implement Standard Schema v1');
-  }
-}
-
 /**
  * Top-level fields the caller's schema requires, derived from issue paths. This
  * is the only shape signal Standard Schema exposes, and it is what lets one
@@ -429,11 +423,4 @@ function safeJson(value: unknown): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function describeIssue(issue: StandardSchemaV1.Issue): string {
-  const fieldPath = (issue.path ?? [])
-    .map((segment) => (typeof segment === 'object' ? String(segment.key) : String(segment)))
-    .join('.');
-  return fieldPath === '' ? issue.message : `${fieldPath}: ${issue.message}`;
 }

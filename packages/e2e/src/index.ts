@@ -1,6 +1,6 @@
 /** Public sdk-0.1 entrypoint. */
 
-export { test } from './collect/registry.ts';
+export { afterAll, afterEach, beforeAll, beforeEach, describe, test } from './collect/registry.ts';
 export { expect } from './expect/index.ts';
 export { credentials, secrets } from './secrets.ts';
 export { unique } from './params.ts';

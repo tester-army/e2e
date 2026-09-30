@@ -28,13 +28,13 @@ import type {
 } from '../types.ts';
 import { isModelInstance, resolveAgentConfig, runLimits, type ResolvedAgentConfig, type ResolvedLimits } from './agent.ts';
 import { bindTargets, digestTargets, resolveTargets, TARGET_NAME_PATTERN, type PortAssignments, type ResolvedTarget } from './targets.ts';
-import { envName, isSecretValue, secretValueProblem } from './secrets.ts';
+import { credentialOfSecretName, credentialSecretName, envName, isSecretValue, secretValueProblem } from './secrets.ts';
 
 export type { ResolvedAgentConfig, ResolvedLimits } from './agent.ts';
 export type { ResolvedApp } from './app.ts';
 export type { PortAssignments, ResolvedTarget } from './targets.ts';
 
-/** A named account; its password is the `ResolvedSecret` of the same name. */
+/** A named account; its password is the `ResolvedSecret` named `<name>.password`. */
 export interface ResolvedCredential {
   readonly name: string;
   readonly username: string;
@@ -84,7 +84,7 @@ export interface ResolvedConfig {
   readonly cache: ResolvedCacheConfig;
   readonly limits: ResolvedLimits;
   readonly credentials: ReadonlyMap<string, ResolvedCredential>;
-  /** Every secret by name: `config.secrets` entries and every credential's password. */
+  /** Every secret by name: `config.secrets` entries and every credential's password, as `<credential>.password`. */
   readonly secrets: ReadonlyMap<string, ResolvedSecret>;
   readonly configDigest: string;
 }
@@ -740,9 +740,11 @@ function resolveProjectId(explicit: string | undefined, projectRoot: string): st
 }
 
 /**
- * Credentials and secrets resolve together because they share one namespace:
- * a credential's password is the secret of the credential's name, so
- * `typeSecret`, the ledger, and the trace all key on one map.
+ * Credentials and secrets resolve into one map of secrets by name, so
+ * `typeSecret`, the ledger, and the trace all key on it: a credential's
+ * password joins as `<credential>.password`, beside the `config.secrets`
+ * entries. A credential and a secret may share a name; only a secret named
+ * exactly like a password handle collides.
  */
 function resolveSecrets(
   raw: E2EConfig,
@@ -760,13 +762,14 @@ function resolveSecrets(
       throw new ConfigurationError('INVALID_CONFIG', `credential "${name}" password ${secretValueProblem(password)}`);
     }
     credentials.set(name, { name, username });
-    secrets.set(name, { name, purpose: 'password', value: password });
+    const secretName = credentialSecretName(name);
+    secrets.set(secretName, { name: secretName, purpose: 'password', value: password });
   }
   for (const [name, entry] of Object.entries(raw.secrets ?? {})) {
     if (secrets.has(name)) {
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `secret "${name}" is also a credential; a credential's password is the secret of its name, so declare one or the other`,
+        `secret "${name}" has the name of credential "${credentialOfSecretName(name) ?? name}"'s password handle; rename the secret`,
       );
     }
     const value = env[envName('E2E_SECRET', name)] ?? entry;
@@ -786,10 +789,11 @@ function resolveSecrets(
 function checkEngineSecrets(targets: readonly ResolvedTarget[], secrets: ReadonlyMap<string, ResolvedSecret>): void {
   for (const target of targets) {
     for (const secret of target.engine?.secrets ?? []) {
-      if (secrets.has(secret.name)) continue;
+      if (secrets.get(secret.name)?.purpose === 'generic-secret') continue;
+      const names = [...secrets.values()].filter((entry) => entry.purpose === 'generic-secret').map((entry) => entry.name);
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `target "${target.name}" engine ${target.engine!.name} uses secrets.get(${JSON.stringify(secret.name)}), which is not configured; add it to config.secrets or config.credentials${didYouMean(secret.name, [...secrets.keys()])}`,
+        `target "${target.name}" engine ${target.engine!.name} uses secrets.get(${JSON.stringify(secret.name)}), which is not configured; add it to config.secrets${didYouMean(secret.name, names)}`,
       );
     }
   }

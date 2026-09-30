@@ -4,7 +4,7 @@ test('hover reveals the card menu action', async ({ app, screen }) => {
   await app.open('/board');
 
   await screen.getByText('Card actions', { exact: true }).hover();
-  await screen.getByRole('button', { name: 'Archive card' }).tap();
+  await screen.getByRole('button', 'Archive card').tap();
 
   await expect(screen.getByLabel('Board state')).toHaveText('Design review is archived');
 });

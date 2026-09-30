@@ -12,7 +12,7 @@ test.describe('saved addresses', () => {
 
     await screen.getByPlaceholder('Label (e.g. Cabin)').fill('Cabin');
     await screen.getByPlaceholder('Street address').fill('7 Lakeview Trail, Bend');
-    await screen.getByRole('button', { name: 'Add address' }).tap();
+    await screen.getByRole('button', 'Add address').tap();
 
     await expect(screen.getByTestId('toast')).toHaveText('Address saved');
     await expect(rows).toHaveCount(3);
@@ -23,7 +23,7 @@ test.describe('saved addresses', () => {
 
   test('ignores an add with an empty field', async ({ screen }) => {
     await screen.getByPlaceholder('Label (e.g. Cabin)').fill('Cabin');
-    await screen.getByRole('button', { name: 'Add address' }).tap();
+    await screen.getByRole('button', 'Add address').tap();
     await expect(screen.getByTestId('toast')).toBeHidden();
     await expect(screen.getByTestId('address-list').getByRole('listitem')).toHaveCount(2);
     await expect(screen.getByPlaceholder('Label (e.g. Cabin)')).toHaveValue('Cabin');
@@ -32,7 +32,7 @@ test.describe('saved addresses', () => {
   test('delete shows its toast but keeps the address, on retry too (planted bug)', async ({ screen }) => {
     const rows = screen.getByTestId('address-list').getByRole('listitem');
     const home = screen.getByTestId('address-home');
-    const remove = home.getByRole('button', { name: 'Delete' });
+    const remove = home.getByRole('button', 'Delete');
 
     await remove.tap();
     await expect(screen.getByTestId('toast')).toHaveText('Address deleted');

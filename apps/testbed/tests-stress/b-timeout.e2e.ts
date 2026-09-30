@@ -18,7 +18,7 @@ test('flakes once then passes', { retries: 1 }, async ({ app, screen }) => {
     throw new Error('first attempt fails on purpose');
   }
   rmSync(MARKER, { force: true });
-  await expect(screen.getByRole('heading', { name: 'Playground' })).toBeVisible();
+  await expect(screen.getByRole('heading', 'Playground')).toBeVisible();
 });
 
 test('fails on every attempt', { retries: 1 }, async ({ app }) => {

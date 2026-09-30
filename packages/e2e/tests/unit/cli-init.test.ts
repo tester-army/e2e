@@ -110,7 +110,7 @@ describe('e2e init', () => {
     expect(read('e2e.config.ts')).toContain('// command: {');
     expect(read('tests/example.e2e.ts')).toContain("test('app opens'");
     expect(read('tests/example.e2e.ts')).toContain("await app.open('/');");
-    expect(read('tests/example.e2e.ts')).toContain("await expect(web.locator('body')).toBeVisible();");
+    expect(read('tests/example.e2e.ts')).toContain("await expect(browser.locator('body')).toBeVisible();");
     expect(read('tests/example.e2e.ts')).toContain('// test(');
     expect(read('tests/example.e2e.ts')).not.toContain('fetch(');
     expect(JSON.parse(read('.mcp.json'))).toEqual({ mcpServers: { e2e: { command: 'npx', args: ['e2e', 'mcp'] } } });

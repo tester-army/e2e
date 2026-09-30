@@ -43,14 +43,14 @@ function verdict(action: string, perActionMs: number, readMs: number): string {
 test.describe('deterministic speed floor', { tags: ['speed'] }, () => {
   test('forty taps each cost no more than a few locator reads', async ({ app, screen }) => {
     await app.open('/speed');
-    const increment = screen.getByRole('button', { name: 'Increment' });
+    const increment = screen.getByRole('button', 'Increment');
     const readMs = await readCost(increment);
 
     const started = Date.now();
     for (let i = 0; i < TAPS; i += 1) await increment.tap();
     const perTap = (Date.now() - started) / TAPS;
 
-    await expect(screen.getByRole('status', { name: 'Count' })).toHaveText(String(TAPS));
+    await expect(screen.getByRole('status', 'Count')).toHaveText(String(TAPS));
     expect(perTap, verdict('tap', perTap, readMs)).toBeLessThanOrEqual(budget(readMs));
   });
 
@@ -63,7 +63,7 @@ test.describe('deterministic speed floor', { tags: ['speed'] }, () => {
     for (let i = 0; i < FILLS; i += 1) await echo.fill(`value ${i}`);
     const perFill = (Date.now() - started) / FILLS;
 
-    await expect(screen.getByRole('status', { name: 'Echoed' })).toHaveText(`value ${FILLS - 1}`);
+    await expect(screen.getByRole('status', 'Echoed')).toHaveText(`value ${FILLS - 1}`);
     expect(perFill, verdict('fill', perFill, readMs)).toBeLessThanOrEqual(budget(readMs));
   });
 });

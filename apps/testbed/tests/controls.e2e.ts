@@ -2,14 +2,14 @@ import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 import { boxOf, failure } from './helpers.ts';
 
-test.describe('controls', { requires: ['web'], tags: ['controls'] }, () => {
+test.describe('controls', { requires: ['browser'], tags: ['controls'] }, () => {
   test.beforeEach(async ({ app }) => {
     await app.open('/controls');
   });
 
   test('a secondary tap opens the context menu', async ({ screen }) => {
-    const menu = screen.getByRole('menu', { name: 'File actions' });
-    const state = screen.getByRole('status', { name: 'File state' });
+    const menu = screen.getByRole('menu', 'File actions');
+    const state = screen.getByRole('status', 'File state');
     await expect(menu).toBeHidden();
 
     await screen.getByText('report.pdf', { exact: true }).secondaryTap();
@@ -17,25 +17,25 @@ test.describe('controls', { requires: ['web'], tags: ['controls'] }, () => {
     await expect(state).toHaveText('menu open');
     await expect(menu.getByRole('menuitem')).toHaveCount(2);
 
-    await menu.getByRole('menuitem', { name: 'Rename' }).tap();
+    await menu.getByRole('menuitem', 'Rename').tap();
     await expect(state).toHaveText('renamed');
     await expect(menu).toBeHidden();
   });
 
   test('a long press and a double tap are told apart from a tap', async ({ screen }) => {
-    const gesture = screen.getByRole('status', { name: 'Gesture state' });
-    const hold = screen.getByRole('button', { name: 'Hold me' });
+    const gesture = screen.getByRole('status', 'Gesture state');
+    const hold = screen.getByRole('button', 'Hold me');
 
     await hold.tap();
     await expect(gesture).toHaveText('tapped');
     await hold.longPress({ duration: 700 });
     await expect(gesture).toHaveText('long-pressed');
-    await screen.getByRole('button', { name: 'Tap me twice' }).doubleTap();
+    await screen.getByRole('button', 'Tap me twice').doubleTap();
     await expect(gesture).toHaveText('double-tapped');
   });
 
   test('expanded state follows the disclosure toggle', async ({ screen }) => {
-    const toggle = screen.getByRole('button', { name: 'Details' });
+    const toggle = screen.getByRole('button', 'Details');
     await expect(toggle).not.toBeExpanded();
     await expect(screen.getByText('The fine print.')).toBeHidden();
     await expect(screen.getByRole('button', { name: 'Details', expanded: false })).toHaveCount(1);
@@ -47,13 +47,13 @@ test.describe('controls', { requires: ['web'], tags: ['controls'] }, () => {
   });
 
   test('enabled state arrives late and every read agrees', async ({ screen }) => {
-    const publish = screen.getByRole('button', { name: 'Publish' });
+    const publish = screen.getByRole('button', 'Publish');
     await expect(publish).toBeDisabled();
     expect(await publish.isDisabled()).toBe(true);
     expect(await publish.isEnabled()).toBe(false);
     await expect(screen.getByRole('button', { name: 'Publish', disabled: true })).toHaveCount(1);
 
-    await screen.getByRole('button', { name: 'Prepare' }).tap();
+    await screen.getByRole('button', 'Prepare').tap();
     await expect(publish).toBeEnabled();
     await expect.poll(() => publish.isEnabled()).toBe(true);
     expect(await publish.isDisabled()).toBe(false);
@@ -70,22 +70,22 @@ test.describe('controls', { requires: ['web'], tags: ['controls'] }, () => {
     await expect(agree).not.toBeChecked();
 
     await expect(screen.getByRole('radio', { checked: true })).toHaveCount(0);
-    await screen.getByRole('radio', { name: 'Medium' }).check();
-    await expect(screen.getByRole('radio', { name: 'Medium' })).toBeChecked();
-    await expect(screen.getByRole('radio', { name: 'Small' })).not.toBeChecked();
+    await screen.getByRole('radio', 'Medium').check();
+    await expect(screen.getByRole('radio', 'Medium')).toBeChecked();
+    await expect(screen.getByRole('radio', 'Small')).not.toBeChecked();
     await expect(screen.getByRole('radio', { checked: true })).toHaveCount(1);
-    expect(await screen.getByRole('radio', { name: 'Large' }).isChecked()).toBe(false);
+    expect(await screen.getByRole('radio', 'Large').isChecked()).toBe(false);
   });
 
   test('selecting an option moves selected state onto it', async ({ screen }) => {
     const color = screen.getByLabel('Color');
-    await expect(screen.getByRole('option', { name: 'Green' })).toBeSelected();
-    await expect(screen.getByRole('option', { name: 'Blue' })).not.toBeSelected();
+    await expect(screen.getByRole('option', 'Green')).toBeSelected();
+    await expect(screen.getByRole('option', 'Blue')).not.toBeSelected();
 
     await color.selectOption('Blue');
     await expect(color).toHaveValue('blue');
-    await expect(screen.getByRole('option', { name: 'Blue' })).toBeSelected();
-    await expect(screen.getByRole('option', { name: 'Green' })).not.toBeSelected();
+    await expect(screen.getByRole('option', 'Blue')).toBeSelected();
+    await expect(screen.getByRole('option', 'Green')).not.toBeSelected();
     await expect(screen.getByRole('option', { selected: true })).toHaveText('Blue');
   });
 
@@ -122,17 +122,17 @@ test.describe('controls', { requires: ['web'], tags: ['controls'] }, () => {
     await expect(log).toHaveText('Escape');
   });
 
-  test('a link reads back its attributes, accessible name, classes, and text', async ({ screen, web }) => {
-    const docs = screen.getByRole('link', { name: 'Documentation' });
+  test('a link reads back its attributes, accessible name, classes, and text', async ({ screen, browser }) => {
+    const docs = screen.getByRole('link', 'Documentation');
     await expect(docs).toHaveAttribute('data-kind', 'external');
     await expect(docs).toHaveAttribute('href');
     await expect(docs).toHaveAttribute('href', /about$/);
     await expect(docs).not.toHaveAttribute('hidden');
     await expect(docs).toHaveAccessibleName('Documentation');
     await expect(docs).toHaveText('Docs');
-    await expect(web).toHaveClass(docs, 'link primary');
-    await expect(web).toHaveClass(docs, /primary/);
-    await expect(web).not.toHaveClass(docs, /secondary/);
+    await expect(browser).toHaveClass(docs, 'link primary');
+    await expect(browser).toHaveClass(docs, /primary/);
+    await expect(browser).not.toHaveClass(docs, /secondary/);
 
     expect(await docs.getAttribute('data-kind')).toBe('external');
     expect(await docs.getAttribute('data-missing')).toBeNull();
@@ -156,7 +156,7 @@ test.describe('controls', { requires: ['web'], tags: ['controls'] }, () => {
   });
 
   test('filters narrow a list by text or a nested match, and nth picks one row', async ({ screen }) => {
-    const tickets = screen.getByRole('list', { name: 'Tickets' }).getByRole('listitem');
+    const tickets = screen.getByRole('list', 'Tickets').getByRole('listitem');
     await expect(tickets).toHaveCount(3);
     await expect(tickets.filter({ has: screen.getByText('urgent') })).toHaveCount(2);
     await expect(tickets.filter({ has: screen.getByRole('button') })).toHaveCount(2);
@@ -198,11 +198,11 @@ test.describe('controls', { requires: ['web'], tags: ['controls'] }, () => {
   });
 
   test('a missing locator fails as LOCATOR_NOT_FOUND after its timeout', async ({ screen }) => {
-    expect(await failure(() => screen.getByRole('button', { name: 'Nope' }).tap({ timeout: 500 }))).toHaveProperty(
+    expect(await failure(() => screen.getByRole('button', 'Nope').tap({ timeout: 500 }))).toHaveProperty(
       'code',
       'LOCATOR_NOT_FOUND',
     );
-    await expect(screen.getByRole('button', { name: 'Nope' })).toHaveCount(0);
-    expect(await screen.getByRole('button', { name: 'Nope' }).count()).toBe(0);
+    await expect(screen.getByRole('button', 'Nope')).toHaveCount(0);
+    expect(await screen.getByRole('button', 'Nope').count()).toBe(0);
   });
 });

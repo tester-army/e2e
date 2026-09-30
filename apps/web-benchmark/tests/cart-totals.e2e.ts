@@ -19,8 +19,8 @@ test.describe('cart totals', () => {
     await expect(screen.getByTestId('summary-total')).toHaveText('$54.00');
 
     const tee = lineFor(screen, 'Organic Cotton Tee');
-    await tee.getByRole('button', { name: '+' }).tap();
-    await tee.getByRole('button', { name: '+' }).tap();
+    await tee.getByRole('button', '+').tap();
+    await tee.getByRole('button', '+').tap();
     await expect(screen.getByTestId('quantity-tee')).toHaveText('3');
     await expect(screen.getByTestId('line-total-tee')).toHaveText('$60.00');
 
@@ -32,7 +32,7 @@ test.describe('cart totals', () => {
 
   test('a quantity never drops below one', async ({ screen }) => {
     const cap = lineFor(screen, 'Corduroy Cap');
-    await cap.getByRole('button', { name: '-' }).tap();
+    await cap.getByRole('button', '-').tap();
     await expect(screen.getByTestId('quantity-cap')).toHaveText('1');
     await expect(screen.getByTestId('line-total-cap')).toHaveText('$29.00');
   });

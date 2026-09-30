@@ -1,8 +1,8 @@
 /**
- * The `web` fixture: the browser-shaped deterministic surface this engine
+ * The `browser` fixture: the browser-shaped deterministic surface this engine
  * contributes. It lives here, not in core, because the harness knows the
  * engine contract and never a platform's fixture shape. Every async method
- * runs as a harness-recorded `web.<method>` step; `expect(web)` reaches the
+ * runs as a harness-recorded `browser.<method>` step; `expect(browser)` reaches the
  * matchers attached through `context.expectable`.
  *
  * Layering rule: validation (`resolveUrl`, JSON checks, cookie URLs, the
@@ -124,9 +124,9 @@ export type Cookie = CookieFields &
     | { url?: never; domain: string; path?: string }
   );
 
-export interface WebExpectation {
+export interface BrowserExpectation {
   /** Inverts the matcher. */
-  readonly not: WebExpectation;
+  readonly not: BrowserExpectation;
   /** Waits for the current URL to match. */
   toHaveURL(expected: string | RegExp, options?: { timeout?: number }): Promise<void>;
   /** Waits for the current title to match. */
@@ -136,7 +136,7 @@ export interface WebExpectation {
 }
 
 /**
- * The screen scope `web.frameLocator` returns. Every `Screen` query answers
+ * The screen scope `browser.frameLocator` returns. Every `Screen` query answers
  * from inside the frame, and because the frame's document is Playwright's,
  * the web-only escape hatches follow it in: `locator` for a CSS or XPath
  * selector on a control with no accessible name, `frameLocator` for a frame
@@ -149,7 +149,7 @@ export interface FrameScreen extends Screen {
   frameLocator(selector: string): FrameScreen;
 }
 
-export interface Web extends Expectable<WebExpectation> {
+export interface Browser extends Expectable<BrowserExpectation> {
   /** Navigates to an allowed URL. */
   goto(
     url: string,
@@ -236,8 +236,8 @@ interface StoredRoute {
   readonly predicate: (url: URL) => boolean;
 }
 
-/** Builds the `web` fixture for one attempt over the shared surface. */
-export function createWebFixture(surface: PlaywrightSurface, context: EngineFixtureContext): Web {
+/** Builds the `browser` fixture for one attempt over the shared surface. */
+export function createBrowserFixture(surface: PlaywrightSurface, context: EngineFixtureContext): Browser {
   const latch = surface.latch;
   const routes: StoredRoute[] = [];
 
@@ -268,9 +268,9 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
   const currentUrl = () => surface.guard(context.operation(), 'url', async () => surface.requirePage().url());
   const currentTitle = () =>
     surface.guard(context.operation(), 'title', () => surface.requirePage().title());
-  const expectation = createWebExpectation({ currentUrl, currentTitle, baseHref, deadlineFor, context });
+  const expectation = createBrowserExpectation({ currentUrl, currentTitle, baseHref, deadlineFor, context });
 
-  const web: Omit<Web, keyof Expectable<WebExpectation>> = {
+  const browser: Omit<Browser, keyof Expectable<BrowserExpectation>> = {
     goto(url, options) {
       const resolved = context.app.resolveUrl(url);
       return navigation(options, async (operation) => {
@@ -295,10 +295,10 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
       }),
     url: currentUrl,
     title: currentTitle,
-    // The same poll as `expect(web).toHaveURL`, exposed as a wait.
+    // The same poll as `expect(browser).toHaveURL`, exposed as a wait.
     waitForURL: (url, options) => expectation.toHaveURL(url, options),
-    locator: (selector) => context.locator({ kind: 'selector', selector: requireSelector('web.locator', selector) }),
-    frameLocator: (selector) => frameScreen(context, [requireSelector('web.frameLocator', selector)]),
+    locator: (selector) => context.locator({ kind: 'selector', selector: requireSelector('browser.locator', selector) }),
+    frameLocator: (selector) => frameScreen(context, [requireSelector('browser.frameLocator', selector)]),
     async evaluate<T extends JsonValue>(
       fn: string | ((arg?: never) => T | Promise<T>),
       arg?: JsonValue,
@@ -463,7 +463,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
         await surface.setViewport(size);
         context.attachViewport({ width: size.width, height: size.height, scale: 1 });
       }),
-    // Async so the harness records the registration as a `web.onDialog` step.
+    // Async so the harness records the registration as a `browser.onDialog` step.
     async onDialog(handler: DialogHandler) {
       const unsubscribe = surface.dialogs.add(handler);
       return async () => unsubscribe();
@@ -530,13 +530,13 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
 
   const action: FixtureOperation = { kind: 'resource' };
   const navigationCall = { kind: 'resource', timeout: false } as const;
-  const matchers: FixtureOperations<WebExpectation> = {
+  const matchers: FixtureOperations<BrowserExpectation> = {
     toHaveURL: { kind: 'assertion', timeout: false, label: (expected) => String(expected) },
     toHaveTitle: { kind: 'assertion', timeout: false, label: (expected) => String(expected) },
     toHaveClass: { kind: 'assertion', timeout: false, label: (_target, expected) => String(expected) },
     get not() { return matchers; },
   };
-  return context.fixture('web', context.expectable(web, () => context.fixture('expect', expectation, matchers)), {
+  return context.fixture('browser', context.expectable(browser, () => context.fixture('expect', expectation, matchers)), {
     goto: { ...navigationCall, label: (url) => url },
     reload: navigationCall,
     back: navigationCall,
@@ -566,8 +566,8 @@ interface ExpectationDeps {
   readonly context: EngineFixtureContext;
 }
 
-/** `expect(web)` matchers: URL, title, and class polling against the assertion budget. */
-function createWebExpectation(deps: ExpectationDeps, negated = false): WebExpectation {
+/** `expect(browser)` matchers: URL, title, and class polling against the assertion budget. */
+function createBrowserExpectation(deps: ExpectationDeps, negated = false): BrowserExpectation {
   const poll = async (
     api: string,
     label: string,
@@ -589,7 +589,7 @@ function createWebExpectation(deps: ExpectationDeps, negated = false): WebExpect
   };
   return {
     get not() {
-      return createWebExpectation(deps, !negated);
+      return createBrowserExpectation(deps, !negated);
     },
     toHaveURL(expected, options) {
       const label = typeof expected === 'string' ? expected : String(expected);

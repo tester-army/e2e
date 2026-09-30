@@ -1,7 +1,7 @@
 /** Public expect() dispatcher (spec api/e2e.d.ts). */
 
 import { Any, Anything, ArrayContaining, ObjectContaining, StringContaining, StringMatching } from '@vitest/expect';
-import type { AsymmetricMatcher, AsyncExpectation, Class, Expect, Expectable, Locator, ValueExpectation } from '../types.ts';
+import type { AsymmetricMatcher, AsyncExpectation, Class, Expect, Expectable, Locator, SoftValueExpectation, ValueExpectation } from '../types.ts';
 import { expectationBrand } from '../internal/brands.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
 import { locatorInternals } from '../locator/screen.ts';
@@ -31,8 +31,8 @@ function dispatch(actual: unknown, message?: string): AsyncExpectation | object 
 
 function soft(actual: Locator): AsyncExpectation;
 function soft<E extends object>(actual: Expectable<E>): E;
-function soft<T>(actual: T, message?: string): ValueExpectation<T>;
-function soft(actual: unknown, message?: string): AsyncExpectation | object | ValueExpectation<unknown> {
+function soft<T>(actual: T, message?: string): SoftValueExpectation<T>;
+function soft(actual: unknown, message?: string): AsyncExpectation | object | SoftValueExpectation<unknown> {
   return soften(dispatch(actual, message));
 }
 

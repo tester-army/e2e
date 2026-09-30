@@ -6,7 +6,7 @@ test('accepts the terms once the button clears the sticky footer', async ({ app,
   await expect(screen.getByTestId('sticky-header')).toHaveText('Terms of Service');
   await expect(screen.getByTestId('success-message')).toBeHidden();
 
-  const accept = screen.getByRole('button', { name: 'Accept terms' });
+  const accept = screen.getByRole('button', 'Accept terms');
   await accept.scrollIntoView();
   await accept.tap();
   await expect(screen.getByTestId('success-message')).toHaveText('Terms accepted');

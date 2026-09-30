@@ -8,30 +8,30 @@ description: Mock an API, handle a dialog, download a file, reach into an iframe
 
 Use `screen`, `app`, and `expect` for navigation, interactions, and checks.
 For browser-specific operations such as request mocking, dialogs, and
-downloads, use `web`. Import `test` from `@e2e-dev/web` to access it:
+downloads, use `browser`. Import `test` from `@e2e-dev/web` to access it:
 
 ```ts
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('the dashboard loads', async ({ app, screen, web }) => {
+test('the dashboard loads', async ({ app, screen, browser }) => {
   await app.open('/dashboard');
-  await expect(web).toHaveURL('/dashboard');
-  await expect(web).toHaveTitle(/Dashboard/);
-  await expect(screen.getByRole('heading', { name: 'Overview' })).toBeVisible();
+  await expect(browser).toHaveURL('/dashboard');
+  await expect(browser).toHaveTitle(/Dashboard/);
+  await expect(screen.getByRole('heading', 'Overview')).toBeVisible();
 });
 ```
 
-In a suite with device targets, add `{ requires: ['web'] }` to tests that
-use `web` so the runner skips them on devices.
+In a suite with device targets, add `{ requires: ['browser'] }` to tests that
+use `browser` so the runner skips them on devices.
 
 ## Mock an API
 
-`web.route` intercepts requests for the attempt. Register it before the page
+`browser.route` intercepts requests for the attempt. Register it before the page
 opens; it stays in force across `app.restart()` and a session restore.
 
 ```ts
-await web.route('**/api/quote', async (route) => {
+await browser.route('**/api/quote', async (route) => {
   await route.fulfill({ json: { cents: 4200 } });
 });
 
@@ -46,8 +46,8 @@ waiting before the action that sends it:
 
 ```ts
 const [response] = await Promise.all([
-  web.waitForResponse('**/api/orders'),
-  screen.getByRole('button', { name: 'Place order' }).tap(),
+  browser.waitForResponse('**/api/orders'),
+  screen.getByRole('button', 'Place order').tap(),
 ]);
 expect(response.status).toBe(201);
 ```
@@ -58,8 +58,8 @@ An unhandled `alert`, `confirm`, or `prompt` fails the next step. Register a
 handler first:
 
 ```ts
-const off = await web.onDialog('accept');
-await screen.getByRole('button', { name: 'Delete' }).tap();
+const off = await browser.onDialog('accept');
+await screen.getByRole('button', 'Delete').tap();
 await off();
 ```
 
@@ -69,8 +69,8 @@ A function handler gets the dialog and must call `accept(text?)` or
 ## Download a file
 
 ```ts
-const file = await web.waitForDownload(() =>
-  screen.getByRole('link', { name: 'Export CSV' }).tap(),
+const file = await browser.waitForDownload(() =>
+  screen.getByRole('link', 'Export CSV').tap(),
 );
 ```
 
@@ -80,10 +80,10 @@ path.
 
 ## Reach into an iframe
 
-`web.frameLocator` scopes queries to a frame:
+`browser.frameLocator` scopes queries to a frame:
 
 ```ts
-const payment = web.frameLocator('#payment-frame');
+const payment = browser.frameLocator('#payment-frame');
 await payment.getByLabel('Card number').fill('4242424242424242');
 ```
 
@@ -91,24 +91,24 @@ Use role and label queries when possible. Within a frame, `locator` accepts
 CSS or XPath selectors and `frameLocator` enters a nested frame:
 
 ```ts
-const editor = web.frameLocator('#result');
+const editor = browser.frameLocator('#result');
 await editor.locator('#upload').setInputFiles('fixtures/photo.png');
-await expect(editor.frameLocator('#preview').getByRole('heading', { name: 'Uploaded' })).toBeVisible();
+await expect(editor.frameLocator('#preview').getByRole('heading', 'Uploaded')).toBeVisible();
 ```
 
-`web.locator('css or xpath')` does the same on the page itself. Use it only
+`browser.locator('css or xpath')` does the same on the page itself. Use it only
 when role, label, and test-id queries cannot identify an element. If a hidden
 duplicate causes an ambiguous match, try `{ visible: true }` on the query
 first.
 
 ## Read from the page
 
-`web.evaluate` runs a function in the page. It is serialized, so it cannot
+`browser.evaluate` runs a function in the page. It is serialized, so it cannot
 close over test variables; pass data as the second argument.
 
 ```ts
-const count = await web.evaluate(() => document.querySelectorAll('li').length);
-const flag = await web.evaluate((name: string) => window.localStorage.getItem(name), 'featureFlags');
+const count = await browser.evaluate(() => document.querySelectorAll('li').length);
+const flag = await browser.evaluate((name: string) => window.localStorage.getItem(name), 'featureFlags');
 ```
 
 Use `evaluate` for state that `screen` cannot read. Prefer locators and
@@ -117,7 +117,7 @@ assertions for visible UI so tests depend less on the DOM structure.
 ## Cookies
 
 ```ts
-await web.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }]);
+await browser.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }]);
 ```
 
 A cookie URL that does not parse, or uses `file:`, `data:`, or
@@ -174,7 +174,7 @@ export interface BrowserProvider {
   release(lease: BrowserLease, context: BrowserReleaseContext): Promise<void>;
   /** Optional: the service's own recording of the browser, in the worker, for an attempt that records video. */
   record?(lease: BrowserLease, context: ProviderRecordContext): Promise<ProviderRecording>;
-  /** Optional: serves `web.waitForDownload` for a browser on another machine. */
+  /** Optional: serves `browser.waitForDownload` for a browser on another machine. */
   readonly downloads?: BrowserProviderDownloads;
   /** Optional: releases the run's leases a dead worker left open, once the run ends; resolves to their ids. */
   sweep?(context: BrowserReleaseContext): Promise<readonly string[]>;
@@ -328,7 +328,7 @@ earlier test has touched.
 ### Downloads on the provider
 
 A hosted browser saves a download to its own disk, where the runner cannot
-open it. Implement `downloads` and `web.waitForDownload` works as it does
+open it. Implement `downloads` and `browser.waitForDownload` works as it does
 locally: the engine has the browser save the file under `dir` on its machine
 and hands the finished file's path to `read`, which fetches the bytes through
 the service's file API, in the worker, bounded by the call's timeout. The
@@ -397,11 +397,11 @@ name, as browsers and screen readers read it: a button whose icon is
 each icon from a private-use character (`\f090`) that means nothing as text,
 so the engine drops those characters from every name: the-internet's
 `<button><i class="fa fa-sign-in"> Login</i></button>` is `button "Login"`,
-and `getByRole('button', { name: 'Login' })` finds it; a glyph between two
+and `getByRole('button', 'Login')` finds it; a glyph between two
 words reads as a space. A control whose only content is such an icon reads
 as its `title` when it has one, but the browser names it by the glyph, so
 `getByRole` by that title finds nothing: give it an `aria-label`, or reach
-it with `web.locator('[title="Sign out"]')`. A `RegExp` name is matched against the
+it with `browser.locator('[title="Sign out"]')`. A `RegExp` name is matched against the
 name as the browser computes it, glyph included, so leave it unanchored
 (`/Login/`) on such a control. Label text never includes generated content,
 as `getByLabel` reads it.
@@ -422,17 +422,17 @@ root first, then each root's matches in order.
 ```ts
 // The input and the button live in a closed shadow root a widget attached.
 await screen.getByPlaceholder('Access code').fill('SHADOW-42');
-await screen.getByRole('button', { name: 'Submit' }).tap();
+await screen.getByRole('button', 'Submit').tap();
 await expect(screen.getByText('Access granted')).toBeVisible();
 ```
 
-`web.locator`, `frameLocator`, and `filter({ hasText })` stop at a closed
+`browser.locator`, `frameLocator`, and `filter({ hasText })` stop at a closed
 root: query the text inside the root instead, or filter with `has`. A closed
 root declared in HTML (`<template shadowrootmode="closed">`) is out of reach.
 
 <CardGroup cols={2}>
   <Card title="Web engine reference" icon="masks-theater" href="/reference/web">
-    Every `web` method, its timeout, and what it throws.
+    Every `browser` method, its timeout, and what it throws.
   </Card>
   <Card title="Starting your app" icon="play" href="/starting-your-app">
     Let the runner start the dev server and reach protected previews.

@@ -15,10 +15,10 @@ async function waitForRebuild(target: Locator): Promise<void> {
 
 test('taps the moving target three times across rebuilds of the list', async ({ app, screen }) => {
   await app.open('/e/stale-dom');
-  const target = screen.getByRole('button', { name: 'Tap me' });
+  const target = screen.getByRole('button', 'Tap me');
   const progress = screen.getByTestId('progress');
   await expect(progress).toHaveText('Progress: 0 / 3');
-  await expect(screen.getByRole('button', { name: 'Decoy' })).toHaveCount(5);
+  await expect(screen.getByRole('button', 'Decoy')).toHaveCount(5);
 
   await target.tap();
   await expect(progress).toHaveText('Progress: 1 / 3');

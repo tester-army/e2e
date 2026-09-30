@@ -37,9 +37,9 @@ export function getEnginePresets() {
       example: `import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('app opens', async ({ app, web }) => {
+test('app opens', async ({ app, browser }) => {
   await app.open('/');
-  await expect(web.locator('body')).toBeVisible();
+  await expect(browser.locator('body')).toBeVisible();
 });
 `,
       aiExample: `
@@ -70,7 +70,7 @@ import { expect } from 'e2e';
 
 test('Settings opens', async ({ app, screen }) => {
   await app.open();
-  await expect(${ios ? "screen.getByRole('button', { name: 'General' })" : "screen.getByText('Network & internet')"}).toBeVisible();
+  await expect(${ios ? "screen.getByRole('button', 'General')" : "screen.getByText('Network & internet')"}).toBeVisible();
 });
 `,
       aiExample: ios

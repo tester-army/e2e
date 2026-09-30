@@ -19,26 +19,26 @@ test.describe('canvas only', () => {
     await app.open('/e/canvas-only');
   });
 
-  test('taps square, circle, then diamond at their pixel coordinates', async ({ screen, web }) => {
-    await expect.poll(() => pixelAt(web, FIRST_DOT)).toEqual(GREY);
-    expect(await pixelAt(web, SECOND_DOT)).toEqual(GREY);
-    expect(await pixelAt(web, THIRD_DOT)).toEqual(GREY);
+  test('taps square, circle, then diamond at their pixel coordinates', async ({ screen, browser }) => {
+    await expect.poll(() => pixelAt(browser, FIRST_DOT)).toEqual(GREY);
+    expect(await pixelAt(browser, SECOND_DOT)).toEqual(GREY);
+    expect(await pixelAt(browser, THIRD_DOT)).toEqual(GREY);
 
-    await screen.tapAt(await onCanvas(web, CANVAS, SQUARE));
-    await expect.poll(() => pixelAt(web, FIRST_DOT)).toEqual(GREEN);
-    await screen.tapAt(await onCanvas(web, CANVAS, CIRCLE));
-    await expect.poll(() => pixelAt(web, SECOND_DOT)).toEqual(GREEN);
-    await screen.tapAt(await onCanvas(web, CANVAS, DIAMOND));
-    await expect.poll(() => pixelAt(web, THIRD_DOT)).toEqual(GREEN);
-    await expect.poll(() => countColor(web, STATUS_BAND, GREEN)).toBeGreaterThan(0);
+    await screen.tapAt(await onCanvas(browser, CANVAS, SQUARE));
+    await expect.poll(() => pixelAt(browser, FIRST_DOT)).toEqual(GREEN);
+    await screen.tapAt(await onCanvas(browser, CANVAS, CIRCLE));
+    await expect.poll(() => pixelAt(browser, SECOND_DOT)).toEqual(GREEN);
+    await screen.tapAt(await onCanvas(browser, CANVAS, DIAMOND));
+    await expect.poll(() => pixelAt(browser, THIRD_DOT)).toEqual(GREEN);
+    await expect.poll(() => countColor(browser, STATUS_BAND, GREEN)).toBeGreaterThan(0);
   });
 
-  test('a shape out of order paints the error and resets progress', async ({ screen, web }) => {
-    await screen.tapAt(await onCanvas(web, CANVAS, SQUARE));
-    await expect.poll(() => pixelAt(web, FIRST_DOT)).toEqual(GREEN);
+  test('a shape out of order paints the error and resets progress', async ({ screen, browser }) => {
+    await screen.tapAt(await onCanvas(browser, CANVAS, SQUARE));
+    await expect.poll(() => pixelAt(browser, FIRST_DOT)).toEqual(GREEN);
 
-    await screen.tapAt(await onCanvas(web, CANVAS, DIAMOND));
-    await expect.poll(() => countColor(web, STATUS_BAND, RED)).toBeGreaterThan(0);
-    await expect.poll(() => pixelAt(web, FIRST_DOT)).toEqual(GREY);
+    await screen.tapAt(await onCanvas(browser, CANVAS, DIAMOND));
+    await expect.poll(() => countColor(browser, STATUS_BAND, RED)).toBeGreaterThan(0);
+    await expect.poll(() => pixelAt(browser, FIRST_DOT)).toEqual(GREY);
   });
 });

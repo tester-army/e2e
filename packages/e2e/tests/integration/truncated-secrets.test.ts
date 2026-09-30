@@ -66,7 +66,7 @@ describe('secrets cut short by observation limits', () => {
     expect(observation).not.toContain(FRAGMENT);
     expect(observation).not.toContain(UPPER_FRAGMENT);
     // The echoed texts and the button's name each end in the marker where the cut value stood.
-    expect(observation.match(/<secret:member>"/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(observation.match(/<secret:member.password>"/g)?.length).toBeGreaterThanOrEqual(3);
   });
 
   it('keeps the cut fragment out of the failure screen, the report, the trace, and every file under .e2e', () => {

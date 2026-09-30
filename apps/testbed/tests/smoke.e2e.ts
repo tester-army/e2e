@@ -1,18 +1,18 @@
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('playground renders and navigates', { tags: ['smoke'] }, async ({ app, screen, web }) => {
+test('playground renders and navigates', { tags: ['smoke'] }, async ({ app, screen, browser }) => {
   await app.open();
-  await expect(web).toHaveTitle('Playground');
+  await expect(browser).toHaveTitle('Playground');
   await expect(screen.getByRole('heading', { name: 'Playground', level: 1 })).toBeVisible();
   await expect(screen.getByRole('heading', { level: 2 })).toHaveCount(0);
 
-  await screen.getByRole('link', { name: 'Todos' }).tap();
-  await expect(web).toHaveURL('/todos');
-  await expect(screen.getByRole('heading', { name: 'Todos' })).toBeVisible();
+  await screen.getByRole('link', 'Todos').tap();
+  await expect(browser).toHaveURL('/todos');
+  await expect(screen.getByRole('heading', 'Todos')).toBeVisible();
 
   await app.back();
-  await expect(web).toHaveURL('/');
+  await expect(browser).toHaveURL('/');
 });
 
 test('screenshots capture evidence', { tags: ['smoke'] }, async ({ app }) => {
@@ -30,7 +30,7 @@ test('value matchers name their check and compare numbers loosely', { tags: ['sm
 // A fact only the running app can tell decides the skip; the step before it stays in the report.
 test('skips itself when the playground has no marketplace', { tags: ['smoke'] }, async ({ app, screen }) => {
   await app.open();
-  const marketplace = await screen.getByRole('link', { name: 'Marketplace' }).count();
+  const marketplace = await screen.getByRole('link', 'Marketplace').count();
   test.skip(marketplace === 0, 'the playground has no marketplace');
-  await screen.getByRole('link', { name: 'Marketplace' }).tap();
+  await screen.getByRole('link', 'Marketplace').tap();
 });

@@ -5,13 +5,13 @@ test.beforeEach(async ({ app }) => {
 });
 
 test('deterministic: a locator that is not there', async ({ screen }) => {
-  await screen.getByRole('button', { name: 'Add todo item' }).tap();
+  await screen.getByRole('button', 'Add todo item').tap();
 });
 
 test('deterministic: a wrong expectation', async ({ screen }) => {
   await screen.getByLabel('New todo').fill('Write spec');
-  await screen.getByRole('button', { name: 'Add' }).tap();
-  await expect(screen.getByRole('status', { name: 'Remaining' })).toHaveText('2 remaining', { timeout: 1500 });
+  await screen.getByRole('button', 'Add').tap();
+  await expect(screen.getByRole('status', 'Remaining')).toHaveText('2 remaining', { timeout: 1500 });
 });
 
 test('agentic: the control does not exist', async ({ agent }) => {

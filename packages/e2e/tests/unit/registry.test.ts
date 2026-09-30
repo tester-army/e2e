@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { collectFromRegistration } from '../../src/collect/collect.ts';
+import * as registry from '../../src/collect/registry.ts';
 import { collectModule, test } from '../../src/collect/registry.ts';
 import { CollectionError } from '../../src/internal/errors.ts';
 
@@ -97,6 +98,26 @@ describe('registration', () => {
       });
     });
     expect(registration.tests[0]!.titlePath).toEqual(['outer', 'inner', 'leaf']);
+  });
+
+  it('registers through the top-level describe and hooks as through test.*', async () => {
+    const registration = await collectModule(async () => {
+      registry.beforeAll(noop);
+      registry.describe('outer', { tags: ['smoke'] }, () => {
+        registry.beforeEach(noop);
+        test('leaf', noop);
+        registry.afterEach(noop);
+      });
+      registry.afterAll(noop);
+    });
+    expect(registration.tests[0]).toMatchObject({ titlePath: ['outer', 'leaf'], tags: ['smoke'] });
+    expect(registration.hooks.map((hook) => [hook.kind, hook.group?.title])).toEqual([
+      ['beforeAll', undefined],
+      ['beforeEach', 'outer'],
+      ['afterEach', 'outer'],
+      ['afterAll', undefined],
+    ]);
+    expect(() => registry.describe('late', () => {})).toThrow(/describe\(\) can only be called while a test module is being collected/);
   });
 
   it('rejects async describe bodies', async () => {

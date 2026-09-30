@@ -9,7 +9,7 @@ import type { RunOutcome } from '../helpers/run-project.ts';
 const KITCHEN_SINK = `import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('deterministic queries and reads', async ({ app, screen, web }) => {
+test('deterministic queries and reads', async ({ app, screen, browser }) => {
   await app.open();
 
   await expect(screen.getByRole('heading', { name: 'Home' })).toBeVisible();
@@ -68,10 +68,10 @@ test('deterministic queries and reads', async ({ app, screen, web }) => {
   await expect(screen.getByRole('button', { name: 'Legend action' })).toBeEnabled();
 
   expect(await screen.getByTestId('items').getAttribute('class')).toBeNull();
-  expect(await web.locator('#class-card').getAttribute('class')).toBe('card active');
+  expect(await browser.locator('#class-card').getAttribute('class')).toBe('card active');
   expect(await screen.getByLabel('Readonly').getAttribute('readonly')).toBe('');
-  expect(await web.locator('#fixture-image').getAttribute('src')).toBe('/fixture.png');
-  expect(await web.locator('#class-card').getAttribute('constructor')).toBe('own');
+  expect(await browser.locator('#fixture-image').getAttribute('src')).toBe('/fixture.png');
+  expect(await browser.locator('#class-card').getAttribute('constructor')).toBe('own');
   expect(await screen.getByTestId('items').getAttribute('constructor')).toBeNull();
   expect(await screen.getByTestId('items').getAttribute('toString')).toBeNull();
   expect(await screen.getByTestId('items').getAttribute('__proto__')).toBeNull();
@@ -125,7 +125,7 @@ test('role vocabulary: tabs, menus, progress, toolbars, images', async ({ app, s
   }
 });
 
-test('actions and state', async ({ app, screen, web }) => {
+test('actions and state', async ({ app, screen, browser }) => {
   await app.open();
 
   await screen.getByRole('button', { name: 'Increment' }).tap();
@@ -157,9 +157,9 @@ test('actions and state', async ({ app, screen, web }) => {
   await expect(screen.getByLabel('Email')).toHaveValue('draf');
 
   await expect(screen.getByLabel('Readonly')).toHaveAttribute('readonly');
-  await expect(web.locator('#class-card')).toHaveAttribute('class', /active/);
+  await expect(browser.locator('#class-card')).toHaveAttribute('class', /active/);
   await expect(screen.getByLabel('Readonly')).not.toHaveAttribute('hidden');
-  await expect(web.locator('#class-card')).toHaveAttribute('constructor', 'own');
+  await expect(browser.locator('#class-card')).toHaveAttribute('constructor', 'own');
   await expect(screen.getByLabel('Readonly')).not.toHaveAttribute('constructor');
   await expect(screen.getByLabel('Readonly')).not.toHaveAttribute('toString');
   await expect(screen.getByLabel('Readonly')).not.toHaveAttribute('__proto__');
@@ -168,14 +168,14 @@ test('actions and state', async ({ app, screen, web }) => {
   await expect(screen.getByLabel('Focus target')).toBeFocused();
   await expect(screen.getByLabel('Email')).not.toBeFocused();
 
-  await expect(web).toHaveClass(web.locator('#class-card'), 'card active');
-  await expect(web).toHaveClass(web.locator('#class-card'), /active/);
-  await expect(web).not.toHaveClass(web.locator('#class-card'), 'card inactive');
+  await expect(browser).toHaveClass(browser.locator('#class-card'), 'card active');
+  await expect(browser).toHaveClass(browser.locator('#class-card'), /active/);
+  await expect(browser).not.toHaveClass(browser.locator('#class-card'), 'card inactive');
 });
 
-test('check and uncheck refuse an unknown option and leave the box untouched', async ({ app, screen, web }) => {
+test('check and uncheck refuse an unknown option and leave the box untouched', async ({ app, screen, browser }) => {
   await app.open();
-  await web.evaluate(() => {
+  await browser.evaluate(() => {
     const box = document.querySelector<HTMLInputElement>('#notifications')!;
     box.dataset.events = '0';
     for (const type of ['input', 'change', 'click']) {
@@ -207,7 +207,7 @@ test('check and uncheck refuse an unknown option and leave the box untouched', a
   await expect(box).toHaveAttribute('data-events', '6');
 });
 
-test('unsupported filter and selectOption shapes fail before acting', async ({ app, screen, web }) => {
+test('unsupported filter and selectOption shapes fail before acting', async ({ app, screen, browser }) => {
   await app.open();
   const code = async (call: () => unknown) => {
     try {
@@ -218,7 +218,7 @@ test('unsupported filter and selectOption shapes fail before acting', async ({ a
     return 'no error';
   };
   const digest = () =>
-    web.evaluate(() => [...document.querySelector<HTMLSelectElement>('#digest')!.selectedOptions].map((option) => option.value));
+    browser.evaluate(() => [...document.querySelector<HTMLSelectElement>('#digest')!.selectedOptions].map((option) => option.value));
 
   const mixed = { hasText: 'Item', hasNotText: 'Alpha' } as never;
   expect(await code(() => screen.getByTestId('item').filter(mixed).first().textContent())).toBe('INVALID_LOCATOR');
@@ -232,10 +232,10 @@ test('unsupported filter and selectOption shapes fail before acting', async ({ a
   expect(await digest()).toEqual(['weekly']);
 });
 
-test('class assertions report the observed class on failure', async ({ app, web }) => {
+test('class assertions report the observed class on failure', async ({ app, browser }) => {
   await app.open();
   try {
-    await expect(web).toHaveClass(web.locator('#class-card'), 'card inactive', { timeout: 300 });
+    await expect(browser).toHaveClass(browser.locator('#class-card'), 'card inactive', { timeout: 300 });
     throw new Error('toHaveClass unexpectedly passed');
   } catch (error) {
     if (!(error instanceof Error) || !error.message.includes('class "card active"')) throw error;
@@ -315,97 +315,97 @@ test('acting before open fails with APP_NOT_OPEN', async ({ screen }) => {
   await screen.getByRole('button', { name: 'Increment' }).tap({ timeout: 500 });
 });
 
-test('web navigation, urls, and titles', async ({ app, web }) => {
+test('web navigation, urls, and titles', async ({ app, browser }) => {
   await app.open();
-  await web.goto('/about');
-  await expect(web).toHaveURL('/about');
-  await expect(web).toHaveTitle('About page');
-  await web.back();
-  await expect(web).toHaveURL('/');
-  await web.forward();
-  await expect(web).toHaveURL(/about/);
-  const title = await web.title();
+  await browser.goto('/about');
+  await expect(browser).toHaveURL('/about');
+  await expect(browser).toHaveTitle('About page');
+  await browser.back();
+  await expect(browser).toHaveURL('/');
+  await browser.forward();
+  await expect(browser).toHaveURL(/about/);
+  const title = await browser.title();
   expect(title).toBe('About page');
 });
 
-test('routes intercept and fulfill', async ({ app, web, screen }) => {
+test('routes intercept and fulfill', async ({ app, browser, screen }) => {
   await app.open();
-  await web.route('**/api/flags', (route) => route.fulfill({ json: { betaBoard: true } }));
-  await web.goto('/flags');
+  await browser.route('**/api/flags', (route) => route.fulfill({ json: { betaBoard: true } }));
+  await browser.goto('/flags');
   await expect(screen.getByRole('status', { name: 'Flags' })).toHaveText('beta on');
-  await web.unroute('**/api/flags');
-  await web.reload();
+  await browser.unroute('**/api/flags');
+  await browser.reload();
   await expect(screen.getByRole('status', { name: 'Flags' })).toHaveText('beta off');
 });
 
 test('routes are attempt-scoped: registered before the first page, kept across restart and clearState', async ({
   app,
-  web,
+  browser,
   screen,
 }) => {
-  await web.route('**/api/flags', (route) => route.fulfill({ json: { betaBoard: true } }));
+  await browser.route('**/api/flags', (route) => route.fulfill({ json: { betaBoard: true } }));
   await app.open('/flags');
   await expect(screen.getByRole('status', { name: 'Flags' })).toHaveText('beta on');
   await app.restart();
-  await web.goto('/flags');
+  await browser.goto('/flags');
   await expect(screen.getByRole('status', { name: 'Flags' })).toHaveText('beta on');
   await app.clearState();
-  await web.goto('/flags');
+  await browser.goto('/flags');
   await expect(screen.getByRole('status', { name: 'Flags' })).toHaveText('beta on');
 });
 
-test('waitForResponse observes network traffic', async ({ app, web }) => {
+test('waitForResponse observes network traffic', async ({ app, browser }) => {
   await app.open();
   const [response] = await Promise.all([
-    web.waitForResponse('**/api/flags'),
-    web.goto('/flags'),
+    browser.waitForResponse('**/api/flags'),
+    browser.goto('/flags'),
   ]);
   expect(response.status).toBe(200);
   const body = await response.json();
   expect(body).toEqual({ betaBoard: false });
 });
 
-test('evaluate runs trusted code with JSON arguments', async ({ app, web }) => {
+test('evaluate runs trusted code with JSON arguments', async ({ app, browser }) => {
   await app.open();
-  const result = await web.evaluate((input: { a: number; b: number }) => input.a + input.b, {
+  const result = await browser.evaluate((input: { a: number; b: number }) => input.a + input.b, {
     a: 2,
     b: 40,
   });
   expect(result).toBe(42);
-  const href = await web.evaluate(() => document.location.pathname);
+  const href = await browser.evaluate(() => document.location.pathname);
   expect(href).toBe('/');
   // tsx compiles this file with esbuild keepNames, which wraps the nested
   // const in a \`__name\` helper the serialized source must find in the page.
-  const total = await web.evaluate((input: { a: number; b: number }) => {
+  const total = await browser.evaluate((input: { a: number; b: number }) => {
     const pick = (key: 'a' | 'b') => input[key];
     return pick('a') + pick('b');
   }, { a: 2, b: 40 });
   expect(total).toBe(42);
 });
 
-test('cookies round-trip through policy checks', async ({ app, web }) => {
+test('cookies round-trip through policy checks', async ({ app, browser }) => {
   await app.open();
-  await web.setCookies([{ name: 'flavor', value: 'oatmeal', url: (await web.url()) }]);
-  const cookies = await web.cookies();
+  await browser.setCookies([{ name: 'flavor', value: 'oatmeal', url: (await browser.url()) }]);
+  const cookies = await browser.cookies();
   const flavor = cookies.find((cookie) => cookie.name === 'flavor');
   expect(flavor?.value).toBe('oatmeal');
 });
 
-test('dialogs are handled by registered handlers', async ({ app, web, screen }) => {
+test('dialogs are handled by registered handlers', async ({ app, browser, screen }) => {
   await app.open('/dialog');
-  const dispose = await web.onDialog('accept');
+  const dispose = await browser.onDialog('accept');
   await screen.getByRole('button', { name: 'Ask' }).tap();
   await expect(screen.getByRole('status', { name: 'Answer' })).toHaveText('accepted');
   await dispose();
 });
 
-test('frame locators scope queries into iframes', async ({ app, web }) => {
+test('frame locators scope queries into iframes', async ({ app, browser }) => {
   await app.open('/frame');
-  const frame = web.frameLocator('#child');
+  const frame = browser.frameLocator('#child');
   await frame.getByRole('button', { name: 'Frame button' }).tap();
   await new Promise((resolve) => setTimeout(resolve, 100));
 
-  const absent = web.frameLocator('#absent').getByRole('button');
+  const absent = browser.frameLocator('#absent').getByRole('button');
   const started = Date.now();
   expect(await absent.count()).toBe(0);
   expect(await absent.all()).toEqual([]);
@@ -415,16 +415,16 @@ test('frame locators scope queries into iframes', async ({ app, web }) => {
   expect(Date.now() - started).toBeLessThan(2_000);
 });
 
-test('a nested absent frame counts as zero matches at once', async ({ app, web }) => {
+test('a nested absent frame counts as zero matches at once', async ({ app, browser }) => {
   await app.open('/frame-nested');
   const started = Date.now();
-  expect(await web.frameLocator('#outer').frameLocator('#absent').getByRole('button').count()).toBe(0);
+  expect(await browser.frameLocator('#outer').frameLocator('#absent').getByRole('button').count()).toBe(0);
   expect(Date.now() - started).toBeLessThan(2_000);
 });
 
-test('an action under an absent frame polls for the frame until its timeout', async ({ app, web }) => {
+test('an action under an absent frame polls for the frame until its timeout', async ({ app, browser }) => {
   await app.open('/frame');
-  await web.frameLocator('#absent').getByRole('button').tap({ timeout: 800 });
+  await browser.frameLocator('#absent').getByRole('button').tap({ timeout: 800 });
 });
 
 test('contenteditable hosts are textboxes: reached by label, filled, and read as a value', async ({ app, screen }) => {
@@ -455,23 +455,23 @@ test('an editor value keeps the whitespace it renders, and an empty editor reads
   expect(await notes.inputValue()).toBe('');
 });
 
-test('nested frame locators resolve each frame inside the one before it', async ({ app, web }) => {
+test('nested frame locators resolve each frame inside the one before it', async ({ app, browser }) => {
   await app.open('/frame-nested');
-  const inner = web.frameLocator('#outer').frameLocator('#child');
+  const inner = browser.frameLocator('#outer').frameLocator('#child');
   await inner.getByRole('button', { name: 'Frame button' }).tap();
   await expect(inner.getByRole('button', { name: 'Frame clicked' })).toBeVisible();
 });
 
-test('downloads are captured as artifacts', async ({ app, web }) => {
+test('downloads are captured as artifacts', async ({ app, browser }) => {
   await app.open('/downloads');
-  const download = await web.waitForDownload(() => web.locator('a[download]').tap());
+  const download = await browser.waitForDownload(() => browser.locator('a[download]').tap());
   if (download.suggestedFilename !== 'report.csv') throw new Error(download.suggestedFilename);
   if (!download.path.startsWith('downloads/')) throw new Error(download.path);
 });
 
-test('clicks hold the modifiers they name', async ({ app, screen, web }) => {
+test('clicks hold the modifiers they name', async ({ app, screen, browser }) => {
   await app.open();
-  await web.evaluate(() => {
+  await browser.evaluate(() => {
     document.body.innerHTML = '<button>Pick</button><p role="status"></p>';
     const button = document.querySelector('button')!;
     const status = document.querySelector('p')!;
@@ -496,35 +496,35 @@ test('clicks hold the modifiers they name', async ({ app, screen, web }) => {
   await expect(status).toHaveText('click');
 });
 
-test('a trigger that starts no download times out saying so', async ({ app, web }) => {
+test('a trigger that starts no download times out saying so', async ({ app, browser }) => {
   await app.open('/downloads');
-  await web.waitForDownload(() => new Promise((resolve) => setTimeout(resolve, 200)), { timeout: 500 });
+  await browser.waitForDownload(() => new Promise((resolve) => setTimeout(resolve, 200)), { timeout: 500 });
 });
 
-test('a viewport set before the first navigation holds through app.open', async ({ app, web }) => {
+test('a viewport set before the first navigation holds through app.open', async ({ app, browser }) => {
   const size = { width: 390, height: 600 };
-  await web.setViewport(size);
+  await browser.setViewport(size);
   size.width = 1000;
   await app.open();
-  const width = await web.evaluate(() => window.innerWidth);
+  const width = await browser.evaluate(() => window.innerWidth);
   if (width !== 390) throw new Error('innerWidth ' + width);
   await app.restart();
-  const restarted = await web.evaluate(() => window.innerWidth);
+  const restarted = await browser.evaluate(() => window.innerWidth);
   if (restarted !== 390) throw new Error('innerWidth after restart ' + restarted);
   await app.clearState();
   await app.open();
-  const cleared = await web.evaluate(() => window.innerWidth);
+  const cleared = await browser.evaluate(() => window.innerWidth);
   if (cleared !== 390) throw new Error('innerWidth after clearState ' + cleared);
 });
 
-test('a viewport set before the first navigation opens no page', async ({ screen, web }) => {
-  await web.setViewport({ width: 390, height: 600 });
+test('a viewport set before the first navigation opens no page', async ({ screen, browser }) => {
+  await browser.setViewport({ width: 390, height: 600 });
   await screen.getByTestId('items').tap({ timeout: 200 });
 });
 
-test('css selectors via web.locator', async ({ app, web }) => {
+test('css selectors via browser.locator', async ({ app, browser }) => {
   await app.open();
-  await expect(web.locator('ul[data-testid="items"] li').first()).toHaveText('Item Alpha');
+  await expect(browser.locator('ul[data-testid="items"] li').first()).toHaveText('Item Alpha');
 });
 
 test('app lifecycle: restart preserves storage, clearState clears it', async ({ app, screen }) => {
@@ -552,17 +552,17 @@ test('forbidden URL schemes are refused', async ({ app }) => {
   await app.open('javascript:alert(1)');
 });
 
-test('a route handler assertion that no step follows', async ({ app, web }) => {
-  await web.route('**/api/flags', async (route) => {
+test('a route handler assertion that no step follows', async ({ app, browser }) => {
+  await browser.route('**/api/flags', async (route) => {
     await route.fulfill({ json: { betaBoard: true } });
     expect(route.request.method).toBe('POST');
   });
   await app.open('/flags');
 });
 
-test('a dialog handler assertion that no step follows', async ({ app, web, screen }) => {
+test('a dialog handler assertion that no step follows', async ({ app, browser, screen }) => {
   await app.open('/dialog');
-  await web.onDialog(async (dialog) => {
+  await browser.onDialog(async (dialog) => {
     await dialog.accept();
     expect(dialog.message).toBe('Are you sure?');
   });
@@ -586,8 +586,8 @@ test.afterEach(async ({ app }) => {
   await app.open('/');
 });
 
-test('a route handler assertion that no step follows, then a teardown that navigates', async ({ app, web }) => {
-  await web.route('**/api/flags', async (route) => {
+test('a route handler assertion that no step follows, then a teardown that navigates', async ({ app, browser }) => {
+  await browser.route('**/api/flags', async (route) => {
     await route.fulfill({ json: { betaBoard: true } });
     expect(route.request.method).toBe('POST');
   });
@@ -636,7 +636,7 @@ describe('web platform integration', () => {
       'frame locators scope queries into iframes',
       'a nested absent frame counts as zero matches at once',
       'nested frame locators resolve each frame inside the one before it',
-      'css selectors via web.locator',
+      'css selectors via browser.locator',
       'contenteditable hosts are textboxes: reached by label, filled, and read as a value',
       'downloads are captured as artifacts',
       'app lifecycle: restart preserves storage, clearState clears it',
@@ -675,7 +675,7 @@ describe('web platform integration', () => {
     expect(resultByTitle(outcome, 'a viewport set before the first navigation holds through app.open').status).toBe('passed');
     const result = resultByTitle(outcome, 'a viewport set before the first navigation opens no page');
     expect(result.attempts[0]!.steps.map((step) => [step.api, step.status])).toEqual([
-      ['web.setViewport', 'passed'],
+      ['browser.setViewport', 'passed'],
       ['locator.tap', 'failed'],
     ]);
     expect(result.attempts[0]!.error?.code).toBe('APP_NOT_OPEN');
@@ -778,7 +778,7 @@ describe('web platform integration', () => {
     expect(result.status).toBe('failed');
     const attempt = result.attempts[0]!;
     expect(attempt.error).toMatchObject({ code: 'ASSERTION_FAILED', phase: 'body' });
-    expect(attempt.steps.map((step) => step.api)).toEqual(['web.route', 'app.open', 'app.open']);
+    expect(attempt.steps.map((step) => step.api)).toEqual(['browser.route', 'app.open', 'app.open']);
     const failure = attempt.failure!;
     expect(failure.url).toMatch(/\/flags$/);
     const screen = attempt.artifacts.find((artifact) => artifact.id === failure.screen)!;
@@ -825,7 +825,7 @@ describe('web platform integration', () => {
   it('attributes a download to the fixture step that produced it, not the nested tap', () => {
     const result = resultByTitle(outcome, 'downloads are captured as artifacts');
     const attempt = result.attempts[0]!;
-    const waitStep = attempt.steps.find((step) => step.api === 'web.waitForDownload');
+    const waitStep = attempt.steps.find((step) => step.api === 'browser.waitForDownload');
     expect(waitStep?.artifacts).toHaveLength(1);
     const tapStep = attempt.steps.find((step) => step.api === 'locator.tap');
     expect(tapStep?.artifacts ?? []).toHaveLength(0);

@@ -101,8 +101,8 @@ records nothing.
 | Counts as verification | Does not count |
 | --- | --- |
 | `expect(locator).toHaveText(...)` and other locator matchers | `expect(value).toBe(...)` on a plain value |
-| `expect(web).toHaveURL(...)` and other engine assertions | `expect.poll(...)` |
-| `locator.waitFor()`, `web.waitForURL()` | `locator.textContent()` and other reads |
+| `expect(browser).toHaveURL(...)` and other engine assertions | `expect.poll(...)` |
+| `locator.waitFor()`, `browser.waitForURL()` | `locator.textContent()` and other reads |
 | `agent.assert(...)`, `agent.waitFor(...)` | `agent.extract(...)`, another `act`, the attempt passing |
 
 Follow each `act` with a check of its outcome:

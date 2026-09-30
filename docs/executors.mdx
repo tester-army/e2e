@@ -190,7 +190,7 @@ const own: StepExecutor = {
   async runStep(ctx) {
     const page = surfaceOf(engine)!.page();   // the page app.open() navigated
     await ctx.budgets.runTool({ name: 'click', mutates: true }, () =>
-      page.getByRole('button', { name: 'Save' }).click(),
+      page.getByRole('button', 'Save').click(),
     );
     return { status: 'passed', summary: 'saved' };
   },

@@ -9,20 +9,20 @@
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('enters a code on the drawn keypad through points', async ({ web, agent, screen }) => {
-  await web.goto('/canvas-flow');
+test('enters a code on the drawn keypad through points', async ({ browser, agent, screen }) => {
+  await browser.goto('/canvas-flow');
   await agent.act('on the drawn keypad enter the code 31415 digit by digit, check the display shows it, then press OK');
   await expect(screen.getByRole('status')).toHaveText('code accepted: 31415');
 });
 
-test('walks the drawn wizard through points', async ({ web, agent, screen }) => {
-  await web.goto('/canvas-wizard');
+test('walks the drawn wizard through points', async ({ browser, agent, screen }) => {
+  await browser.goto('/canvas-wizard');
   await agent.act('complete all eight steps of the drawn wizard: on each screen tap the shape its instruction names, then tap Next');
   await expect(screen.getByRole('status')).toHaveText('wizard done: ok,ok,ok,ok,ok,ok,ok,ok');
 });
 
-test('drives a marked-up todo page from the tree', async ({ web, agent, screen }) => {
-  await web.goto('/todos');
+test('drives a marked-up todo page from the tree', async ({ browser, agent, screen }) => {
+  await browser.goto('/todos');
   const { summary } = await agent.act('add two todos named "Buy milk" and "Walk the dog", then mark "Buy milk" as done');
   await expect(screen.getByRole('status')).toHaveText('1 remaining');
   await expect(screen.getByText('Buy milk')).toBeVisible();
@@ -30,14 +30,14 @@ test('drives a marked-up todo page from the tree', async ({ web, agent, screen }
   expect(summary).not.toContain('screenshot');
 });
 
-test('picks a canvas pin; the bare canvas opens with a screenshot', async ({ web, agent, screen }) => {
-  await web.goto('/canvas');
+test('picks a canvas pin; the bare canvas opens with a screenshot', async ({ browser, agent, screen }) => {
+  await browser.goto('/canvas');
   await agent.act('pick the red pin on the map');
   await expect(screen.getByRole('status')).toHaveText('picked the red pin');
 });
 
-test('fills a form drawn on a canvas through type_at and the keyboard', async ({ web, agent, screen }) => {
-  await web.goto('/canvas-form');
+test('fills a form drawn on a canvas through type_at and the keyboard', async ({ browser, agent, screen }) => {
+  await browser.goto('/canvas-form');
   await agent.act('fill the drawn form: Name is Ada, City is Oslo, then press Submit');
   await expect(screen.getByRole('status')).toHaveText('submitted: name=Ada city=Oslo');
 });

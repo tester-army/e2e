@@ -84,11 +84,11 @@ test('a signed-in user reaches checkout', async ({ screen, app, agent }) => {
   await app.open('/login');
   await screen.getByLabel('Email').fill(user.username);
   await screen.getByLabel('Password').fill(user.password);
-  await screen.getByRole('button', { name: 'Sign in' }).click();
-  await expect(screen.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
+  await screen.getByRole('button', 'Sign in').click();
+  await expect(screen.getByRole('heading', 'Welcome back')).toBeVisible();
 
   await agent.act('Add the cheapest item on the page to the cart and open the cart');
-  await expect(screen.getByRole('heading', { name: 'Your cart' })).toBeVisible();
+  await expect(screen.getByRole('heading', 'Your cart')).toBeVisible();
 });
 ```
 

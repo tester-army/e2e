@@ -25,34 +25,34 @@ test.describe('canvas whiteboard', () => {
     await app.open('/e/canvas-whiteboard');
   });
 
-  test('drags both shapes into their slots and saves', async ({ screen, web }) => {
-    await expect.poll(() => pixelAt(web, RECT_HOME)).toEqual(BLUE);
-    expect(await pixelAt(web, RECT_SLOT)).toEqual(WHITE);
-    expect(await pixelAt(web, CIRCLE_SLOT)).toEqual(WHITE);
+  test('drags both shapes into their slots and saves', async ({ screen, browser }) => {
+    await expect.poll(() => pixelAt(browser, RECT_HOME)).toEqual(BLUE);
+    expect(await pixelAt(browser, RECT_SLOT)).toEqual(WHITE);
+    expect(await pixelAt(browser, CIRCLE_SLOT)).toEqual(WHITE);
 
-    await screen.swipe({ from: await onCanvas(web, CANVAS, RECT_HOME), to: await onCanvas(web, CANVAS, RECT_SLOT) });
-    await expect.poll(() => pixelAt(web, RECT_SLOT)).toEqual(BLUE);
+    await screen.swipe({ from: await onCanvas(browser, CANVAS, RECT_HOME), to: await onCanvas(browser, CANVAS, RECT_SLOT) });
+    await expect.poll(() => pixelAt(browser, RECT_SLOT)).toEqual(BLUE);
 
     await screen.swipe({
-      from: await onCanvas(web, CANVAS, CIRCLE_HOME),
-      to: await onCanvas(web, CANVAS, CIRCLE_SLOT),
+      from: await onCanvas(browser, CANVAS, CIRCLE_HOME),
+      to: await onCanvas(browser, CANVAS, CIRCLE_SLOT),
     });
-    await expect.poll(() => pixelAt(web, CIRCLE_SLOT)).toEqual(ORANGE);
-    await expect.poll(() => pixelAt(web, SAVE_BUTTON_EDGE)).toEqual(BLUE);
+    await expect.poll(() => pixelAt(browser, CIRCLE_SLOT)).toEqual(ORANGE);
+    await expect.poll(() => pixelAt(browser, SAVE_BUTTON_EDGE)).toEqual(BLUE);
 
-    await screen.tapAt(await onCanvas(web, CANVAS, SAVE_BUTTON));
-    await expect.poll(() => countColor(web, BANNER_BAND, GREEN)).toBeGreaterThan(0);
-    await expect.poll(() => pixelAt(web, SAVE_BUTTON_EDGE)).toEqual(INACTIVE);
+    await screen.tapAt(await onCanvas(browser, CANVAS, SAVE_BUTTON));
+    await expect.poll(() => countColor(browser, BANNER_BAND, GREEN)).toBeGreaterThan(0);
+    await expect.poll(() => pixelAt(browser, SAVE_BUTTON_EDGE)).toEqual(INACTIVE);
   });
 
-  test('bounces a shape off the wrong slot and refuses to save early', async ({ screen, web }) => {
-    await screen.swipe({ from: await onCanvas(web, CANVAS, RECT_HOME), to: await onCanvas(web, CANVAS, CIRCLE_SLOT) });
-    await expect.poll(() => countColor(web, BANNER_BAND, RED)).toBeGreaterThan(0);
-    expect(await pixelAt(web, RECT_HOME)).toEqual(BLUE);
-    expect(await pixelAt(web, CIRCLE_SLOT)).toEqual(WHITE);
+  test('bounces a shape off the wrong slot and refuses to save early', async ({ screen, browser }) => {
+    await screen.swipe({ from: await onCanvas(browser, CANVAS, RECT_HOME), to: await onCanvas(browser, CANVAS, CIRCLE_SLOT) });
+    await expect.poll(() => countColor(browser, BANNER_BAND, RED)).toBeGreaterThan(0);
+    expect(await pixelAt(browser, RECT_HOME)).toEqual(BLUE);
+    expect(await pixelAt(browser, CIRCLE_SLOT)).toEqual(WHITE);
 
-    await screen.tapAt(await onCanvas(web, CANVAS, SAVE_BUTTON));
-    await expect.poll(() => pixelAt(web, SAVE_BUTTON_EDGE)).toEqual(INACTIVE);
-    await expect.poll(() => countColor(web, BANNER_BAND, RED)).toBeGreaterThan(0);
+    await screen.tapAt(await onCanvas(browser, CANVAS, SAVE_BUTTON));
+    await expect.poll(() => pixelAt(browser, SAVE_BUTTON_EDGE)).toEqual(INACTIVE);
+    await expect.poll(() => countColor(browser, BANNER_BAND, RED)).toBeGreaterThan(0);
   });
 });

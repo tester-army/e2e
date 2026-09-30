@@ -100,7 +100,7 @@ function fullObserveTool(context: StepExecutorContext, screen: ScreenPresenter):
 function locateTool(locator: LocatorEngine, session: TargetSession, redact: (text: string) => string): ToolSet[string] {
   return {
     description:
-      'Try a semantic locator against the live screen before writing it into a test: screen.getByRole(role, { name }), getByText, getByLabel, getByPlaceholder, or getByTestId. Returns how many nodes match and which, plus the test code to use. Exactly one of role, text, label, placeholder, or testId; name narrows a role query. Matching is exact unless exact is false.',
+      'Try a semantic locator against the live screen before writing it into a test: screen.getByRole(role, name), getByText, getByLabel, getByPlaceholder, or getByTestId. Returns how many nodes match and which, plus the test code to use. Exactly one of role, text, label, placeholder, or testId; name narrows a role query. Matching is exact unless exact is false.',
     inputSchema: z.object({
       role: z.string().min(1).optional().describe('ARIA role, e.g. "button", "textbox", "link"'),
       name: z.string().min(1).optional().describe('Accessible name, with role'),
@@ -140,14 +140,13 @@ export interface LocateQuery {
 /** Builds the expression and the matching `screen.*` call from the tool arguments. */
 export function locateQuery(args: LocateArgs): LocateQuery {
   const exact = args.exact !== false;
-  const exactOption = exact ? '' : ', exact: false';
   const { role, name, text, label, placeholder, testId } = args;
   const given = [role, text, label, placeholder, testId].filter((value) => value !== undefined).length;
   if (given !== 1) {
     throw new ConfigurationError('INVALID_ARGUMENT', 'locate needs exactly one of role, text, label, placeholder, or testId');
   }
   if (role !== undefined) {
-    const options = name === undefined ? '' : `, { name: ${JSON.stringify(name)}${exactOption} }`;
+    const options = name === undefined ? '' : `, ${JSON.stringify(name)}${exact ? '' : ', { exact: false }'}`;
     return {
       expression: roleQuery(role as Role, name === undefined ? undefined : { name, exact }, undefined),
       code: `screen.getByRole(${JSON.stringify(role)}${options})`,
@@ -166,7 +165,7 @@ export function describeLocate(query: LocateQuery, count: number, nodes: readonl
   const lines = [`${count === 1 ? '1 node matches' : `${count} nodes match`} ${describeExpression(query.expression)}.`];
   if (count === 1) lines.push(`Use: ${query.code}`);
   else if (count === 0) lines.push('A test using this locator would fail with LOCATOR_NOT_FOUND. Check the accessible name in the observation (observe), or loosen the match with exact: false.');
-  else lines.push(`A test action on ${query.code} would fail with LOCATOR_AMBIGUOUS. Narrow it with { name }, .filter({ hasText }), .first(), or .nth(i), or scope it under a container.`);
+  else lines.push(`A test action on ${query.code} would fail with LOCATOR_AMBIGUOUS. Narrow it with a name, getByRole(role, name), .filter({ hasText }), .first(), or .nth(i), or scope it under a container.`);
   for (const node of nodes) lines.push(`- ${describeNode(projectTree(node, redact))}`);
   if (count > nodes.length) lines.push(`- and ${count - nodes.length} more`);
   return lines.join('\n');

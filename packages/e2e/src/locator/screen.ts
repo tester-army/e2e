@@ -1,6 +1,7 @@
 /** Public Screen and Locator surfaces bound to one attempt. */
 
 import nodePath from 'node:path';
+import { types } from 'node:util';
 import { describeValue } from '../config/validate.ts';
 import { isKeyModifier, KEY_MODIFIERS, type KeyModifier } from '../engine/contract.ts';
 import type { LocatorAction, LocatorExpression, SemanticNode } from '../engine/surface.ts';
@@ -128,9 +129,16 @@ class ScreenImpl implements Screen {
     return this.wrap === undefined ? expression : this.wrap(expression);
   }
 
-  getByRole(role: Role | RoleAlias, options?: RoleOptions): Locator {
-    rejectUnknownOptions('getByRole', options, ROLE_OPTION_KEYS, 'INVALID_LOCATOR');
-    return new LocatorImpl(this.context, this.build(roleQuery(role, options, this.scope)));
+  getByRole(role: Role | RoleAlias, nameOrOptions?: TextMatch | RoleOptions, maybeOptions?: Omit<RoleOptions, 'name'>): Locator {
+    if (typeof nameOrOptions === 'string' || types.isRegExp(nameOrOptions)) {
+      rejectUnknownOptions('getByRole', maybeOptions, ROLE_OPTION_KEYS.filter((key) => key !== 'name'), 'INVALID_LOCATOR');
+      return new LocatorImpl(this.context, this.build(roleQuery(role, { ...maybeOptions, name: nameOrOptions }, this.scope)));
+    }
+    if (maybeOptions !== undefined) {
+      throw new TestError('INVALID_LOCATOR', 'getByRole takes options as its third argument only after a name: getByRole(role, name, options)');
+    }
+    rejectUnknownOptions('getByRole', nameOrOptions, ROLE_OPTION_KEYS, 'INVALID_LOCATOR');
+    return new LocatorImpl(this.context, this.build(roleQuery(role, nameOrOptions, this.scope)));
   }
 
   getByLabel(text: TextMatch, options?: TextMatchOptions): Locator {

@@ -19,7 +19,7 @@ test(
     await app.open('/e/virtualized-table');
     const viewport = screen.getByTestId('table-viewport');
     const rows = viewport.getByTestId('table-row');
-    const claim = screen.getByRole('button', { name: 'Claim' });
+    const claim = screen.getByRole('button', 'Claim');
     await expect(rows.first()).toHaveText('Row 1');
     await expect(claim).toBeHidden();
 

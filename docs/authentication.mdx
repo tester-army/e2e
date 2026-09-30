@@ -13,16 +13,16 @@ that session to start signed in.
 import { test } from '@e2e-dev/web';
 import { expect, credentials } from 'e2e';
 
-test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, screen, session, web }) => {
+test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, screen, session, browser }) => {
   const admin = credentials.user('admin');
 
   await app.open('/login');
   await screen.getByLabel('Username').fill(admin.username);
   await screen.getByLabel('Password').fill(admin.password);
-  await screen.getByRole('button', { name: 'Sign in' }).tap();
+  await screen.getByRole('button', 'Sign in').tap();
 
-  await expect(web).toHaveURL('/dashboard');
-  await expect(screen.getByRole('status', { name: 'Greeting' })).toContainText('admin');
+  await expect(browser).toHaveURL('/dashboard');
+  await expect(screen.getByRole('status', 'Greeting')).toContainText('admin');
 
   await session.save('admin');
 });
@@ -35,11 +35,11 @@ test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, scree
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen, web }) => {
+test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen, browser }) => {
   await app.open('/dashboard');
 
-  await expect(web).toHaveURL('/dashboard');
-  await expect(screen.getByRole('status', { name: 'Greeting' })).toHaveText(
+  await expect(browser).toHaveURL('/dashboard');
+  await expect(screen.getByRole('status', 'Greeting')).toHaveText(
     'Welcome back, admin!',
   );
 });
@@ -112,11 +112,35 @@ E2E_USER_ADMIN_USERNAME=admin E2E_USER_ADMIN_PASSWORD=... bunx e2e run
 </CodeGroup>
 
 A string is checked when the config loads: while `ADMIN_PASSWORD` is unset,
-every command, `e2e list` included, fails with `INVALID_CONFIG`. `password`
-also accepts a function, called on every authorized fill, for a vault lookup
-or a freshly computed one-time code. A function's value is redacted only
-from its first fill on, so prefer a string for a value the app can show
-before a test types it.
+every command, `e2e list` included, fails with `INVALID_CONFIG`.
+
+### Keep the value out of the environment
+
+A string from `process.env` sits in the environment of the runner and of
+every process it starts, where any code in the run can read it. `password`
+also accepts a function, called on every authorized fill and nowhere else,
+so the value can come straight from a vault, or be a freshly computed
+one-time code, and never be an environment variable (only the vault client's
+own access is configured in the environment):
+
+```ts title="e2e.config.ts"
+import { vault } from './support/vault.ts';
+
+export default {
+  targets: [{ engine: web({ url: 'http://127.0.0.1:3000' }) }],
+  credentials: {
+    admin: {
+      username: 'admin@example.test',
+      password: () => vault.read('e2e/admin-password'),
+    },
+  },
+} satisfies E2EConfig;
+```
+
+The function runs in the runner, after the fill is authorized, and its value
+goes to the field and the redaction ledger only. A function's value is
+redacted only from its first fill on, so prefer a string for a value the app
+can show before a test types it. The same applies to a `secrets` entry.
 
 ## The password is a handle
 
@@ -127,8 +151,14 @@ const admin = credentials.user('admin');
 
 admin.name;     // 'admin'
 admin.username; // a plain string
-admin.password; // Secret: opaque, with no plaintext accessor
+admin.password; // Secret: opaque, named 'admin.password', with no plaintext accessor
 ```
+
+The two fields are declared alike, but only the password is a secret. A
+username is an identifier the app shows on screen, in the account menu and
+the audit log, so the agent reads it and tests assert on it; redacting it
+would hide exactly what a test checks. The password is never shown, so the
+runner keeps it away from test code and the model altogether.
 
 A `Secret` has no `.value`. Three sinks accept one: the two below in a
 test, and an engine option that declares it, as
@@ -238,8 +268,11 @@ entry in setup tests and assert the result of submitting it. See
 [where redaction stops](/security#where-redaction-stops).
 </Warning>
 
-`secrets.get('admin')` also returns the password handle for the `admin`
-credential. A name cannot appear under both `credentials` and `secrets`.
+Credentials and secrets are separate namespaces. `secrets.get()` returns
+`secrets` entries only; a credential's password is `credentials.user(name).password`,
+which the agent and the report know as `<name>.password`. A credential is an
+account, a username with the secrets that sign it in, while a secret is one
+value, so `credentials.admin` and `secrets.admin` can both exist.
 
 In `e2e.config.ts`, `secrets.get()` hands an engine option a secret it needs
 before any test runs, such as a [basic-auth password](/starting-your-app#protected-previews).
@@ -262,14 +295,14 @@ import { expect, credentials } from 'e2e';
 
 const PERSONAS = ['buyer', 'admin'] as const;
 
-test.setup('sign in each persona', { sessions: [...PERSONAS] }, async ({ app, screen, session, web }) => {
+test.setup('sign in each persona', { sessions: [...PERSONAS] }, async ({ app, screen, session, browser }) => {
   for (const name of PERSONAS) {
     const user = credentials.user(name);
     await app.open('/login');
     await screen.getByLabel('Username').fill(user.username);
     await screen.getByLabel('Password').fill(user.password);
-    await screen.getByRole('button', { name: 'Sign in' }).tap();
-    await expect(web).toHaveURL('/dashboard');
+    await screen.getByRole('button', 'Sign in').tap();
+    await expect(browser).toHaveURL('/dashboard');
     await session.save(name);
     await app.open('/logout');
   }
@@ -281,9 +314,10 @@ test.setup('sign in each persona', { sessions: [...PERSONAS] }, async ({ app, sc
 
 ```ts
 import { test } from '@e2e-dev/web';
+import { describe } from 'e2e';
 
 for (const persona of ['buyer', 'admin'] as const) {
-  test.describe(`checkout as ${persona}`, { agent: persona, session: persona, tags: [persona] }, () => {
+  describe(`checkout as ${persona}`, { agent: persona, session: persona, tags: [persona] }, () => {
     test('pays for one item', async ({ app, agent }) => {
       await app.open('/cart');
       await agent.act('pay for the item in the cart');

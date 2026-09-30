@@ -18,7 +18,7 @@ function attribute(html: string): string {
   return html.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
 
-/** Wraps `source` in `frame` scopes, outermost first, as a `web.frameLocator` chain does. */
+/** Wraps `source` in `frame` scopes, outermost first, as a `browser.frameLocator` chain does. */
 function withinFrames(selectors: readonly string[], source: LocatorExpression): LocatorExpression {
   return selectors.reduceRight<LocatorExpression>(
     (inner, selector) => ({ kind: 'frame', selector, source: inner }),

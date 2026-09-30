@@ -96,7 +96,7 @@ export interface BrowserDownloadContext {
   readonly targetName: string;
   /** The run's environment, the same `acquire` saw. */
   readonly env: Readonly<Record<string, string | undefined>>;
-  /** Aborts when the `web.waitForDownload` call is cancelled or exceeds its timeout. */
+  /** Aborts when the `browser.waitForDownload` call is cancelled or exceeds its timeout. */
   readonly signal: AbortSignal;
 }
 
@@ -157,7 +157,7 @@ export interface BrowserProvider {
    */
   record?(lease: BrowserLease, context: ProviderRecordContext): Promise<ProviderRecording>;
   /**
-   * Serves `web.waitForDownload` for a browser that runs on another machine.
+   * Serves `browser.waitForDownload` for a browser that runs on another machine.
    * Without it a download on such a browser fails, since the file lands on
    * the browser's disk; a provider whose browsers run on the runner's own
    * machine leaves it out.

@@ -25,7 +25,7 @@ here.
   groups, routes, dialogs, frames, downloads, uploads, keyboard input,
   credentials and secrets, plus one file per surface added since: control
   states and the failure codes (`controls`), pointer coordinates and path
-  swipes (`pointer`), viewport and node scrolling (`scroll`), the `web`
+  swipes (`pointer`), viewport and node scrolling (`scroll`), the `browser`
   fixture's own verbs (`browser`), and the per-action speed floor (`speed`).
   `tests/helpers.ts` holds the shared `failure`, `boxOf`, and `centerOf`.
 - `e2e.agent.config.ts` + `tests-agent/` — opt-in agentic suite against the
@@ -109,7 +109,7 @@ want to keep or compare.
   catches.
 - `instanceof` across a frame boundary is always false: an element inside an
   iframe belongs to that frame's realm, so `field instanceof HTMLInputElement`
-  in a `web.evaluate` silently takes the else branch.
+  in a `browser.evaluate` silently takes the else branch.
 - Agentic assertions must be answerable from one observation. A screenshot
   cannot show recurrence, so assert state, not history.
 - String text matching is **exact by default**, inverting the Playwright and

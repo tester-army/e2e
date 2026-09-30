@@ -4,7 +4,7 @@
  * visible label.
  */
 
-import type { Web } from '@e2e-dev/web';
+import type { Browser } from '@e2e-dev/web';
 import { expect } from 'e2e';
 import type { Locator, Point } from 'e2e';
 
@@ -42,8 +42,8 @@ export async function failure(act: () => unknown): Promise<unknown> {
  * step to a neighbour, so a control whose only truthful name is the label
  * text beside it has no semantic handle.
  */
-export function siblingOf(web: Web, label: string, sibling: string): Locator {
-  return web.locator(
+export function siblingOf(browser: Browser, label: string, sibling: string): Locator {
+  return browser.locator(
     `xpath=//*[normalize-space(text())=${xpathLiteral(label)}]/following-sibling::${sibling}[1]`,
   );
 }

@@ -4,7 +4,7 @@ description: Run a suite at several sizes, resize inside a test, and know what t
 ---
 
 Set a viewport on the target to run a suite at that size. Use
-`web.setViewport()` to resize during a test. The agent uses the current size
+`browser.setViewport()` to resize during a test. The agent uses the current size
 and cannot resize it.
 
 ## One size per target
@@ -49,23 +49,23 @@ in one corner:
 
 The page takes the window's size, minus the toolbar in a headed browser. A
 local headed launch opens a small window; a hosted browser uses the window
-size you requested from the service. `web.setViewport` still works.
+size you requested from the service. `browser.setViewport` still works.
 
 ## Resize inside a test
 
-`web.setViewport` resizes the page for the rest of the attempt, through
+`browser.setViewport` resizes the page for the rest of the attempt, through
 `app.restart()` and `app.clearState()`:
 
 ```ts
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('the menu collapses on a narrow screen', async ({ app, screen, web }) => {
+test('the menu collapses on a narrow screen', async ({ app, screen, browser }) => {
   await app.open('/');
   await expect(screen.getByRole('navigation')).toBeVisible();
 
-  await web.setViewport({ width: 390, height: 844 });
-  await expect(screen.getByRole('button', { name: 'Menu' })).toBeVisible();
+  await browser.setViewport({ width: 390, height: 844 });
+  await expect(screen.getByRole('button', 'Menu')).toBeVisible();
   await expect(screen.getByRole('navigation')).toBeHidden();
 });
 ```
@@ -77,7 +77,7 @@ Call it before `app.open` to load the first page at that size, so the app
 never renders its desktop layout first:
 
 ```ts
-await web.setViewport({ width: 390, height: 844 });
+await browser.setViewport({ width: 390, height: 844 });
 await app.open('/');
 ```
 
@@ -85,7 +85,7 @@ The resize appears as a step in the report. To check the exact width, read
 it from the page:
 
 ```ts
-const width = await web.evaluate(() => window.innerWidth);
+const width = await browser.evaluate(() => window.innerWidth);
 expect(width).toBe(390);
 ```
 
@@ -99,11 +99,11 @@ reveal lazy-loaded content.
 Resize before calling `agent.act`:
 
 ```ts
-test('the mobile menu reaches pricing', async ({ app, agent, web }) => {
-  await web.setViewport({ width: 390, height: 844 });
+test('the mobile menu reaches pricing', async ({ app, agent, browser }) => {
+  await browser.setViewport({ width: 390, height: 844 });
   await app.open('/');
   await agent.act('open the navigation menu and go to Pricing');
-  await expect(web).toHaveURL('/pricing');
+  await expect(browser).toHaveURL('/pricing');
 });
 ```
 
@@ -114,9 +114,9 @@ use platform `web`. To skip a test at some sizes, check the width in the
 test:
 
 ```ts
-test('the sidebar stays open', async ({ app, screen, web }) => {
+test('the sidebar stays open', async ({ app, screen, browser }) => {
   await app.open('/');
-  test.skip((await web.evaluate(() => window.innerWidth)) < 768, 'desktop layout only');
+  test.skip((await browser.evaluate(() => window.innerWidth)) < 768, 'desktop layout only');
   await expect(screen.getByRole('complementary')).toBeVisible();
 });
 ```
@@ -138,9 +138,9 @@ screen instead.
 
 <CardGroup cols={2}>
   <Card title="Working with the browser" icon="globe" href="/browser">
-    Routes, cookies, dialogs, downloads, and the rest of the `web` fixture.
+    Routes, cookies, dialogs, downloads, and the rest of the `browser` fixture.
   </Card>
   <Card title="Web engine reference" icon="masks-theater" href="/reference/web">
-    Every engine option and `web` method, with timeouts and errors.
+    Every engine option and `browser` method, with timeouts and errors.
   </Card>
 </CardGroup>

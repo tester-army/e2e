@@ -167,7 +167,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(opened.isError, opened.text).toBe(false);
     expect(opened.text).toMatch(/^Session \S+ open on target "web" \(platform web, engine web [^)]+\), headless; config .*e2e\.config\.ts\./);
     expect(opened.text).toContain(`App: ${app.url}/`);
-    expect(opened.text).toContain('Credentials: "admin" (username "admin")');
+    expect(opened.text).toContain('Credentials: "admin" (username "admin", password secret "admin.password")');
     expect(opened.text).toContain('Tools (run one with call {tool, args}; tools {tool} shows a tool\'s arguments):');
     expect(catalogLines(opened.text)).toEqual([
       expect.stringMatching(/^- observe: Look at the whole current screen.* \[read-only\]$/),
@@ -206,7 +206,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(listed.text).toContain(`Session ${sessionId} on target "web": 26 tools.`);
     expect(catalogLines(listed.text)).toEqual(catalogLines(opened.text));
     const detail = await invoke('tools', { tool: 'type_secret' });
-    expect(detail.text).toContain('"admin" (password)');
+    expect(detail.text).toContain('"admin.password" (password)');
     expect(detail.text).toContain('Arguments (JSON Schema):');
     expect(detail.text).toContain('"required"');
     const unknown = await invoke('tools', { tool: 'teleport' });
@@ -217,7 +217,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     const unique = await call('locate', { role: 'button', name: 'Increment' });
     expect(unique.isError, unique.text).toBe(false);
     expect(unique.text).toContain('1 node matches');
-    expect(unique.text).toContain('Use: screen.getByRole("button", { name: "Increment" })');
+    expect(unique.text).toContain('Use: screen.getByRole("button", "Increment")');
     const ambiguous = await call('locate', { text: 'Duplicated' });
     expect(ambiguous.text).toContain('2 nodes match');
     expect(ambiguous.text).toContain('LOCATOR_AMBIGUOUS');
@@ -263,9 +263,9 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(before.images).toBe(1);
     expect(before.text).toContain('Screenshot attached: 768 by 432 pixels (0.6 per CSS pixel).');
 
-    const filled = await call('type_secret', { target: nodeId(after.text, /textbox "Password"/), name: 'admin' });
+    const filled = await call('type_secret', { target: nodeId(after.text, /textbox "Password"/), name: 'admin.password' });
     expect(filled.isError, filled.text).toBe(false);
-    expect(filled.text).toContain('Filled secret "admin"');
+    expect(filled.text).toContain('Filled secret "admin.password"');
     expect(filled.text).not.toContain('admin-pass');
 
     const tainted = await call('screenshot');

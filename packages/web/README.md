@@ -102,10 +102,10 @@ engine: web({
 });
 ```
 
-## The `web` fixture
+## The `browser` fixture
 
-The engine contributes `web`: navigation, routes, cookies, dialogs, frames,
-downloads, keyboard and mouse, plus `expect(web).toHaveURL()` and
+The engine contributes `browser`: navigation, routes, cookies, dialogs, frames,
+downloads, keyboard and mouse, plus `expect(browser).toHaveURL()` and
 `toHaveTitle()` and `toHaveClass()`. Import `test` from this package to have it
 typed; it is the same runtime `test` as `e2e`'s.
 
@@ -113,10 +113,10 @@ typed; it is the same runtime `test` as `e2e`'s.
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('signs in', async ({ app, screen, web }) => {
+test('signs in', async ({ app, screen, browser }) => {
   await app.open('/login');
   await screen.getByLabel('Email').fill('user@example.test');
-  await expect(web).toHaveURL('/dashboard');
+  await expect(browser).toHaveURL('/dashboard');
 });
 ```
 

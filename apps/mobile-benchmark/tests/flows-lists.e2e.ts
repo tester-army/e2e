@@ -122,8 +122,8 @@ test('web view coupon form applies the code shown on the page', { platforms: ['i
   // The page renders after the native screen; its semantics reach the tree
   // a few seconds later on a loaded machine.
   await expect(screen.getByText('TA-BENCH-50')).toBeVisible({ timeout: 20_000 });
-  await screen.getByRole('textbox', { name: 'Coupon code' }).fill('TA-BENCH-50');
-  await screen.getByRole('switch', { name: 'I accept the terms' }).tap();
-  await screen.getByRole('button', { name: 'Apply coupon' }).tap();
+  await screen.getByRole('textbox', 'Coupon code').fill('TA-BENCH-50');
+  await screen.getByRole('switch', 'I accept the terms').tap();
+  await screen.getByRole('button', 'Apply coupon').tap();
   await expect(screen.getByTestId('success-message')).toHaveText('Coupon applied');
 });

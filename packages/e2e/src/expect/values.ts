@@ -1,10 +1,12 @@
 /** Synchronous plain-value matchers. */
 
+import { types } from 'node:util';
 import { equals, isAsymmetric, iterableEquality, subsetEquality } from '@vitest/expect';
 import { TestError } from '../internal/errors.ts';
 import { testPattern } from '../internal/regexp.ts';
+import { describeIssue, requireStandardSchema } from '../internal/standard-schema.ts';
 import { toTextPattern } from '../internal/text.ts';
-import type { AsymmetricMatcher, PropertyPath, ValueExpectation } from '../types.ts';
+import type { AsymmetricMatcher, NegatedValueExpectation, PropertyPath, StandardSchemaV1, ValueExpectation } from '../types.ts';
 
 function fail(message: string): never {
   throw new TestError('ASSERTION_FAILED', message);
@@ -46,7 +48,7 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
     private readonly message: string | undefined,
   ) {}
 
-  get not(): ValueExpectation<T> {
+  get not(): NegatedValueExpectation<T> {
     return new ValueExpectationImpl(this.actual, !this.negated, this.message);
   }
 
@@ -247,6 +249,30 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
       () => `expected ${actual} to be close to ${expected} (${digits} digits)`,
       () => `expected ${actual} not to be close to ${expected} (${digits} digits)`,
     );
+  }
+
+  /**
+   * Validates synchronously: a matcher returns before anything could await
+   * it. The output is the schema's (defaults applied, transforms run); a
+   * negated check that passes returns the value as given.
+   */
+  toMatchSchema<Schema extends StandardSchemaV1>(schema: Schema): StandardSchemaV1.InferOutput<Schema> {
+    requireStandardSchema(schema, 'toMatchSchema schema');
+    const result = schema['~standard'].validate(this.actual);
+    if (types.isPromise(result)) {
+      result.catch(() => undefined);
+      throw new TestError(
+        'INVALID_ARGUMENT',
+        'toMatchSchema takes a synchronous schema, and this one validates asynchronously (an async refinement or transform); await schema["~standard"].validate(value) yourself instead',
+      );
+    }
+    const { issues } = result;
+    this.check(
+      issues === undefined,
+      () => `expected ${format(this.actual)} to match the schema:\n${(issues ?? []).map((issue) => `- ${describeIssue(issue)}`).join('\n')}`,
+      () => `expected ${format(this.actual)} not to match the schema`,
+    );
+    return (result.issues === undefined ? result.value : this.actual) as StandardSchemaV1.InferOutput<Schema>;
   }
 
   /** The one body of the four ordering matchers: a number on the left, a phrase for the message. */

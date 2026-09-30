@@ -12,13 +12,13 @@ test.describe('debounced search', () => {
   });
 
   test('a decoy one character off is refused', async ({ screen }) => {
-    await screen.getByRole('option', { name: 'Trail Mix 500 mg' }).tap();
+    await screen.getByRole('option', 'Trail Mix 500 mg').tap();
     await expect(screen.getByTestId('error-message')).toHaveText('Wrong item, look closer');
     await expect(screen.getByRole('listbox')).toBeVisible();
   });
 
   test('picking the exact item adds it to the cart', async ({ screen }) => {
-    await screen.getByRole('option', { name: 'Trail Mix 500 g' }).tap();
+    await screen.getByRole('option', 'Trail Mix 500 g').tap();
     await expect(screen.getByTestId('success-message')).toHaveText(
       'Added Trail Mix 500 g to the cart',
     );

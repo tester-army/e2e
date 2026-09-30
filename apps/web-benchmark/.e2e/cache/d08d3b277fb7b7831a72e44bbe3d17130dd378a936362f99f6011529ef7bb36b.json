@@ -16,7 +16,7 @@
       },
       {
         "name": "typeSecret",
-        "summary": "fill secret \"benchmark\" into textbox \"Password\"",
+        "summary": "fill secret \"benchmark.password\" into textbox \"Password\"",
         "target": {
           "role": "textbox",
           "name": "Password",
@@ -24,7 +24,7 @@
           "placeholder": "Password",
           "inputPurpose": "password"
         },
-        "secret": "benchmark"
+        "secret": "benchmark.password"
       },
       {
         "name": "tap",

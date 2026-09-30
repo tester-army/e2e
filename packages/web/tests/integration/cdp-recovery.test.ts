@@ -6,7 +6,7 @@ import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { chromium } from 'playwright';
 import type { EngineFixtureContext, EngineHandle, OperationContext } from 'e2e/engine';
-import { web as webEngine, surfaceOf, type WebConnectOptions, type Web } from '../../src/index.ts';
+import { web as webEngine, surfaceOf, type WebConnectOptions, type Browser } from '../../src/index.ts';
 import { closeRemoteChrome, launchRemoteChrome, type RemoteChrome } from '../helpers/cdp-host.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { decodePng } from '../helpers/png.ts';
@@ -55,14 +55,14 @@ describe('CDP session recovery', () => {
   }
 
   /** Supplies the engine fixture with the same operation budget as its caller. */
-  function webOf(engine: EngineHandle, timeoutMs = 10_000): Web {
-    return engine.fixtures!['web']!({
+  function fixtureOf(engine: EngineHandle, timeoutMs = 10_000): Browser {
+    return engine.fixtures!['browser']!({
       operation: () => operation(timeoutMs),
       app: { resolveUrl: (url: string) => new URL(url, app.url).href },
       expectable: (target: object) => target,
       fixture: (_name: string, target: object) => target,
       attachArtifact: () => undefined,
-    } as unknown as EngineFixtureContext) as Web;
+    } as unknown as EngineFixtureContext) as Browser;
   }
 
   /** Starts the engine's attempt against a host-provisioned browser. */
@@ -104,9 +104,9 @@ describe('CDP session recovery', () => {
       await other.goto(original.url());
       await other.locator('h1').evaluate((node) => { node.textContent = 'Wrong tab'; });
 
-      const web = webOf(engine);
-      await web.route('**/kept-route', (route) => route.fulfill({ body: 'route kept' }));
-      await web.onDialog('accept');
+      const fixture = fixtureOf(engine);
+      await fixture.route('**/kept-route', (route) => route.fulfill({ body: 'route kept' }));
+      await fixture.onDialog('accept');
       await original.context().browser()!.close();
 
       expect((await engine.locate!(heading, operation()))[0]?.name).toBe('Login');
@@ -293,7 +293,7 @@ describe('CDP session recovery', () => {
       },
     });
     await surfaceOf(engine)!.context().browser()!.close();
-    await expect(webOf(engine, 500).evaluate(async () => {
+    await expect(fixtureOf(engine, 500).evaluate(async () => {
       document.body.dataset['started'] = 'true';
       await new Promise((resolve) => setTimeout(resolve, 350));
       return 'too late';
@@ -336,14 +336,14 @@ describe('CDP session recovery', () => {
     });
     await surfaceOf(engine)!.context().browser()!.close();
     let triggered = 0;
-    const download = await webOf(engine).waitForDownload(async () => {
+    const download = await fixtureOf(engine).waitForDownload(async () => {
       triggered += 1;
       await surfaceOf(engine)!.page().locator('#download').click();
     });
     expect(triggered).toBe(1);
     expect(readFileSync(path.join(artifactsDir, download.path), 'utf8')).toBe('download kept');
     const failure = new Error('test trigger failed');
-    await expect(webOf(engine).waitForDownload(async () => { throw failure; })).rejects.toBe(failure);
+    await expect(fixtureOf(engine).waitForDownload(async () => { throw failure; })).rejects.toBe(failure);
   });
 
   it('allows direct test-code mouse input using current geometry while observation-derived taps stay stale', async () => {
@@ -372,24 +372,24 @@ describe('CDP session recovery', () => {
     await original.locator('#pointer-target').evaluate((button) => { (button as HTMLElement).style.left = '260px'; });
     await original.context().browser()!.close();
 
-    const web = webOf(engine);
-    const point = await web.evaluate(() => {
+    const fixture = fixtureOf(engine);
+    const point = await fixture.evaluate(() => {
       const bounds = document.querySelector('#pointer-target')!.getBoundingClientRect();
       return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
     });
     expect(point.x).toBe(320);
     expect(reconnected).toBe(1);
-    await web.mouse.move(point.x, point.y);
-    await web.mouse.down();
-    await web.mouse.up();
-    await web.mouse.wheel(0, 25);
-    await expect.poll(() => web.evaluate(() => document.body.dataset['wheel'] ?? null)).toBe('25');
-    expect(await web.evaluate(() => document.body.dataset['clicks'] ?? null)).toBe('1');
+    await fixture.mouse.move(point.x, point.y);
+    await fixture.mouse.down();
+    await fixture.mouse.up();
+    await fixture.mouse.wheel(0, 25);
+    await expect.poll(() => fixture.evaluate(() => document.body.dataset['wheel'] ?? null)).toBe('25');
+    expect(await fixture.evaluate(() => document.body.dataset['clicks'] ?? null)).toBe('1');
 
     await expect(engine.performAt!(point, { kind: 'tap' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
     await engine.observe!(operation());
     await engine.performAt!(point, { kind: 'tap' }, operation());
-    expect(await web.evaluate(() => document.body.dataset['clicks'] ?? null)).toBe('2');
+    expect(await fixture.evaluate(() => document.body.dataset['clicks'] ?? null)).toBe('2');
   });
 
   it('requires new evidence for focused engine keyboard input after recovery while direct test input remains available', async () => {
@@ -411,20 +411,20 @@ describe('CDP session recovery', () => {
     await page.context().browser()!.close();
     await expect(engine.keyboard!.type('replacement', { replace: true }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
     await expect(engine.keyboard!.press('Enter', operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
-    const web = webOf(engine);
-    const value = () => web.evaluate(() => (document.querySelector('#keyboard-target') as HTMLInputElement).value);
+    const fixture = fixtureOf(engine);
+    const value = () => fixture.evaluate(() => (document.querySelector('#keyboard-target') as HTMLInputElement).value);
     expect(await value()).toBe('original');
-    expect(await web.evaluate(() => document.body.dataset['enters'] ?? '0')).toBe('0');
-    await web.keyboard.type(' direct');
-    await web.keyboard.press('Enter');
+    expect(await fixture.evaluate(() => document.body.dataset['enters'] ?? '0')).toBe('0');
+    await fixture.keyboard.type(' direct');
+    await fixture.keyboard.press('Enter');
     expect(await value()).toBe('original direct');
-    expect(await web.evaluate(() => document.body.dataset['enters'] ?? '0')).toBe('1');
+    expect(await fixture.evaluate(() => document.body.dataset['enters'] ?? '0')).toBe('1');
     await expect(engine.keyboard!.press('Enter', operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
     await engine.observe!(operation());
     await engine.keyboard!.type('replacement', { replace: true }, operation());
     await engine.keyboard!.press('Enter', operation());
     expect(await value()).toBe('replacement');
-    expect(await web.evaluate(() => document.body.dataset['enters'] ?? '0')).toBe('2');
+    expect(await fixture.evaluate(() => document.body.dataset['enters'] ?? '0')).toBe('2');
   });
 
   it('rejects an observation that finishes during recovery and still requires new evidence', async () => {

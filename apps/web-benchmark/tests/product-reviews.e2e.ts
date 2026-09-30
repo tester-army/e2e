@@ -3,9 +3,9 @@ import { expect } from 'e2e';
 
 test('the running-shoe page lists coffee-grinder reviews (planted bug)', async ({ app, screen }) => {
   await app.open('/e/product-reviews');
-  await expect(screen.getByRole('heading', { name: 'Peak Trail Running Shoes' })).toBeVisible();
+  await expect(screen.getByRole('heading', 'Peak Trail Running Shoes')).toBeVisible();
   await expect(screen.getByText('$139.00 - Sizes 6 to 13 - Ships in 2 days')).toBeVisible();
-  await expect(screen.getByRole('heading', { name: /Customer reviews/ })).toContainText('4.7 out of 5');
+  await expect(screen.getByRole('heading', /Customer reviews/)).toContainText('4.7 out of 5');
 
   const reviews = screen.getByTestId('review-list').getByRole('listitem');
   await expect(reviews).toHaveCount(3);

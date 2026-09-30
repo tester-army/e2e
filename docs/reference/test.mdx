@@ -45,7 +45,7 @@ export interface TestAPI<Fixtures = TestFixtures> {
    * body with them, and tears them down in reverse order after `afterEach`:
    *
    *   export const test = base.extend<{ workspace: Workspace }>({
-   *     workspace: async ({ web }, use) => {
+   *     workspace: async ({ browser }, use) => {
    *       const workspace = await createWorkspace();
    *       await use(workspace);
    *       await workspace.cleanup();
@@ -72,7 +72,20 @@ export interface TestAPI<Fixtures = TestFixtures> {
 }
 
 export const test: TestAPI;
+export const describe: TestAPI['describe'];
+export const beforeEach: TestAPI['beforeEach'];
+export const afterEach: TestAPI['afterEach'];
+export const beforeAll: TestAPI['beforeAll'];
+export const afterAll: TestAPI['afterAll'];
 ```
+
+`describe` and the four hooks are also top-level exports, the same functions
+as `test.describe` and `test.beforeEach` and the rest:
+`import { describe, beforeEach, test } from 'e2e'`. A per-test hook imported
+from `e2e` is typed with the core fixtures. `@e2e-dev/web` and
+`@e2e-dev/mobile` export `beforeEach` and `afterEach` typed with their
+`browser` or `device` fixture, and a `test` you extended with your own
+fixtures registers hooks that see them through `test.beforeEach`.
 
 Registering a test, group, or hook outside module evaluation throws
 `COLLECTION_ERROR`.
@@ -87,9 +100,12 @@ A skipped test never affects the exit code. With `test.only`, other tests
 are reported as `filtered`, and a CI run fails with `ONLY_IN_CI`.
 
 Call `test.skip(condition, reason)` inside a test for conditions you learn at
-runtime, such as a disabled feature flag. When the condition is true, the
-body ends with status `skipped` and no retry. Earlier steps remain in the
-report, and hooks and fixtures still run their teardown.
+runtime, such as a disabled feature flag. When the condition is true, the call
+throws: the body stops at that line, as Playwright's does, and the test is
+reported `skipped` with `reason`, with no retry. Nothing after the call runs.
+Steps before it stay in the report as they ran, but they do not decide the
+status: a failed `expect.soft` before the call is dropped. Hooks and fixtures still run their teardown. When the condition is
+a precondition, call it first, before any step.
 
 A setup test cannot skip because other tests depend on its sessions; the
 call fails with `INVALID_ARGUMENT`. Outside a test body, the conditional
@@ -103,23 +119,23 @@ test('switches organizations', { session: 'admin' }, async ({ app, agent }) => {
   await agent.act(`switch to the organization "${organizations[1].name}"`);
 });
 ```
-`test.setup` must be top-level, not inside `test.describe`. An `async`
+`test.setup` must be top-level, not inside `describe`. An `async`
 `describe` body is a type error and a `COLLECTION_ERROR`.
 
 ```ts
 import { test } from '@e2e-dev/web';
-import { expect } from 'e2e';
+import { describe, expect } from 'e2e';
 
-test('app opens', async ({ app, web }) => {
+test('app opens', async ({ app, browser }) => {
   await app.open();
-  await expect(web).toHaveURL('/');
+  await expect(browser).toHaveURL('/');
 });
 
 test('checks out', { tags: ['billing'], retries: 2, timeout: 60_000 }, async ({ app }) => {
   await app.open('/checkout');
 });
 
-test.describe('checkout', { tags: ['smoke'], serial: true }, () => {
+describe('checkout', { tags: ['smoke'], serial: true }, () => {
   test('adds an item', async ({ screen }) => {});
   test('pays', async ({ screen }) => {});
 });
@@ -134,7 +150,7 @@ test.setup('authenticate', { sessions: ['member'] }, async ({ app, screen, sessi
   await app.open('/login');
   await screen.getByLabel('Email').fill(credentials.user('member').username);
   await screen.getByLabel('Password').fill(credentials.user('member').password);
-  await screen.getByRole('button', { name: 'Sign in' }).tap();
+  await screen.getByRole('button', 'Sign in').tap();
   await session.save('member');
 });
 ```
@@ -241,7 +257,7 @@ Resolution order: test, nearest group, outer groups, config, built-in default.
 
 `requires` names capabilities of the target's engine, the harness ones
 (`observation`, `actions`, `location`, `pointer`, `keyboard`, `state`,
-`artifacts`) and one per contributed fixture (`web`, `device`; see
+`artifacts`) and one per contributed fixture (`browser`, `device`; see
 [the engine contract](/reference/engine#engine)), or the kind of app the
 target declares: `browser` for an `app.url`, `native-app` for an
 `app.bundleId` or `app.appPath`. A target that lacks one skips the test at
@@ -307,9 +323,9 @@ export interface SuiteFixtures {
 
 Everything else is a fixture the target's engine contributes, or one of
 [your own](#your-own-fixtures). `@e2e-dev/web` contributes
-[`web`](/reference/web) and exports a `test` typed with it; a device
+[`browser`](/reference/web) and exports a `test` typed with it; a device
 engine contributes `device`. Reaching for a fixture the engine does not
-contribute fails with `UNSUPPORTED_CAPABILITY`; declare `requires: ['web']`
+contribute fails with `UNSUPPORTED_CAPABILITY`; declare `requires: ['browser']`
 to skip such tests at selection instead.
 
 The fixtures above are lazy. Destructuring in the parameter list acquires
@@ -328,9 +344,9 @@ after `use` tears it down.
 import { test as base } from '@e2e-dev/web';
 
 export const test = base.extend<{ workspace: Workspace }>({
-  workspace: async ({ web }, use) => {
+  workspace: async ({ browser }, use) => {
     const workspace = await createWorkspace();
-    await signIn(web, workspace);
+    await signIn(browser, workspace);
     await use(workspace); // the hooks and the body run here
     await workspace.cleanup(); // teardown, after the body even when it failed
   },
@@ -392,7 +408,7 @@ What fails, and where:
 | Mistake | Fails |
 | --- | --- |
 | A value that is not a plain object of functions, an empty name, a core name (`agent`, `app`, `screen`, `platform`, `session`), or a name an earlier `extend` in the chain defined | At import, `COLLECTION_ERROR` naming the fixture |
-| A name the target's engine contributes (`web` on a Playwright target) | The attempt, in `beforeEach`, `TEST_SETUP_FAILED` |
+| A name the target's engine contributes (`browser` on a Playwright target) | The attempt, in `beforeEach`, `TEST_SETUP_FAILED` |
 | A definition that returns without calling `use` | The attempt, in `beforeEach`, `TEST_SETUP_FAILED` |
 | A definition that calls `use` twice | The attempt, at teardown, `TEST_SETUP_FAILED` |
 | A definition that throws before `use` | The attempt, in `beforeEach`, with that error |

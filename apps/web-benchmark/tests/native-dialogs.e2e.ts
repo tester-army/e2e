@@ -6,9 +6,9 @@ test.describe('native dialogs', () => {
     await app.open('/e/native-dialogs');
   });
 
-  test('answers the confirm, prompt, and alert chain', async ({ screen, web }) => {
+  test('answers the confirm, prompt, and alert chain', async ({ screen, browser }) => {
     const seen: string[] = [];
-    const dispose = await web.onDialog(async (dialog) => {
+    const dispose = await browser.onDialog(async (dialog) => {
       seen.push(dialog.message);
       if (dialog.message === 'Enter your gift code') {
         await dialog.accept('GIFT-7');
@@ -16,24 +16,24 @@ test.describe('native dialogs', () => {
       }
       await dialog.accept();
     });
-    await screen.getByRole('button', { name: 'Place order' }).tap();
+    await screen.getByRole('button', 'Place order').tap();
     await expect(screen.getByTestId('success-message')).toHaveText('Order placed with code GIFT-7');
     expect(seen).toEqual(['Place this order?', 'Enter your gift code', 'Order placed. Thank you!']);
     await dispose();
   });
 
-  test('dismissing the confirm cancels the order', async ({ screen, web }) => {
-    const dispose = await web.onDialog('dismiss');
-    await screen.getByRole('button', { name: 'Place order' }).tap();
+  test('dismissing the confirm cancels the order', async ({ screen, browser }) => {
+    const dispose = await browser.onDialog('dismiss');
+    await screen.getByRole('button', 'Place order').tap();
     await expect(screen.getByTestId('error-message')).toHaveText('Order was cancelled');
     await dispose();
   });
 
-  test('a wrong gift code is rejected', async ({ screen, web }) => {
-    const dispose = await web.onDialog(async (dialog) => {
+  test('a wrong gift code is rejected', async ({ screen, browser }) => {
+    const dispose = await browser.onDialog(async (dialog) => {
       await dialog.accept(dialog.message === 'Enter your gift code' ? 'GIFT-9' : undefined);
     });
-    await screen.getByRole('button', { name: 'Place order' }).tap();
+    await screen.getByRole('button', 'Place order').tap();
     await expect(screen.getByTestId('error-message')).toHaveText('Invalid gift code');
     await dispose();
   });

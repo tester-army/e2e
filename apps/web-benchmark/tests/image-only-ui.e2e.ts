@@ -6,26 +6,26 @@ import { failure } from './support.ts';
 // web-only CSS locator is the one handle the DOM offers: bolt, star, heart in
 // document order.
 test.describe('image only ui', () => {
-  test.beforeEach(async ({ app, web }) => {
+  test.beforeEach(async ({ app, browser }) => {
     await app.open('/e/image-only-ui');
-    await expect(web.locator('svg')).toHaveCount(3);
+    await expect(browser.locator('svg')).toHaveCount(3);
   });
 
-  test('the icons have no names, so the bare svg locator is ambiguous', async ({ web }) => {
-    expect(await failure(() => web.locator('svg').tap())).toHaveProperty('code', 'LOCATOR_AMBIGUOUS');
+  test('the icons have no names, so the bare svg locator is ambiguous', async ({ browser }) => {
+    expect(await failure(() => browser.locator('svg').tap())).toHaveProperty('code', 'LOCATOR_AMBIGUOUS');
   });
 
-  test('a wrong icon shows the error image and keeps the icons', async ({ web }) => {
-    await web.locator('svg').nth(0).tap();
-    await expect(web.locator('img')).toHaveCount(2);
-    await expect(web.locator('svg')).toHaveCount(3);
+  test('a wrong icon shows the error image and keeps the icons', async ({ browser }) => {
+    await browser.locator('svg').nth(0).tap();
+    await expect(browser.locator('img')).toHaveCount(2);
+    await expect(browser.locator('svg')).toHaveCount(3);
   });
 
-  test('tapping the star, then the heart, verifies the icons', async ({ web }) => {
-    const icons = web.locator('svg');
+  test('tapping the star, then the heart, verifies the icons', async ({ browser }) => {
+    const icons = browser.locator('svg');
     await icons.nth(1).tap();
     await icons.nth(2).tap();
     await expect(icons).toHaveCount(0);
-    await expect(web.locator('img')).toHaveCount(1);
+    await expect(browser.locator('img')).toHaveCount(1);
   });
 });
