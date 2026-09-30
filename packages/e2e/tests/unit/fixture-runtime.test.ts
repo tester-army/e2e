@@ -601,8 +601,8 @@ describe('app steering hooks', () => {
   });
 
   it('reopen nothing on a surface without an address', async () => {
-    const { engine, calls } = steerable({});
-    const { fixtures } = runtime(engine);
+    const { engine, calls, app } = steerable({});
+    const { fixtures } = runtime(engine, {}, app);
     await fixtures.app.restart();
     await fixtures.app.clearState();
     expect(calls).toEqual(['restart', 'reset']);

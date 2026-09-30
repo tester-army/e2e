@@ -9,6 +9,8 @@ import { ConfigurationError } from '../internal/errors.ts';
 import type { ResolvedRecording } from '../internal/recording-modes.ts';
 import type { Target } from '../types.ts';
 import { checkTargetApp, digestTargetApp, resolveTargetApp, TARGET_KEYS, unknownTargetKey, type ResolvedApp, type TargetAppDeclaration } from './app.ts';
+import { isRecord } from './command.ts';
+import { describeValue } from './validate.ts';
 
 /** The free port the run assigned to each target whose URL asked for one, by target name. */
 export type PortAssignments = Readonly<Record<string, number>>;
@@ -49,7 +51,9 @@ export function resolveTargets(
   }
   const seen = new Set<string>();
   const defaulted = new Set<string>();
-  return (declared as readonly Target[]).map((target, index): ResolvedTarget => {
+  return (declared as readonly unknown[]).map((entry, index): ResolvedTarget => {
+    if (!isRecord(entry)) throw new ConfigurationError('INVALID_CONFIG', `targets[${index}] must be an object, got ${describeValue(entry)}`);
+    const target = entry as Target;
     // Errors raised before the name settles point at the entry itself.
     const where = typeof target.name === 'string' ? `target "${target.name}"` : `targets[${index}]`;
     for (const key of Object.keys(target)) {
@@ -99,7 +103,7 @@ export function resolveTargets(
  * without them.
  */
 export function bindTargets(targets: readonly ResolvedTarget[], projectRoot: string, ports: PortAssignments): readonly ResolvedTarget[] {
-  return targets.map((target) => ({ ...target, app: resolveTargetApp(target.name, target.declaredApp, projectRoot, ports[target.name]) }));
+  return targets.map((target) => ({ ...target, app: resolveTargetApp(target.name, target.declaredApp, projectRoot, Object.hasOwn(ports, target.name) ? ports[target.name] : undefined) }));
 }
 
 /**

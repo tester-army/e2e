@@ -52,7 +52,7 @@ itself: `npx e2e guide bug-bash`.
   when `CI` is set; use port `0` there. See
   [Starting your app](/starting-your-app).
 - When the target's `app.command` brings up a stack of its own, such as a
-  database from `docker compose` it removes on exit, start the stack once
+  database from `docker compose` that it removes on exit, start the stack once
   and explore with a config that points at the running app and declares no
   command, so one explorer's exit never removes the database under the
   others.

@@ -7,6 +7,7 @@
  * process is started or reused.
  */
 
+import { InfrastructureError } from '../internal/errors.ts';
 import type { AppProcesses } from './managed-process.ts';
 
 export interface ProcessPool {
@@ -77,13 +78,21 @@ export class SharedAppProcesses implements ProcessPool {
       if (shared.waiting > 0 || shared.settled) return;
       shared.abandon.abort();
       this.forget(key, shared);
-      this.draining.set(key, shared.started.catch(() => undefined));
+      // A start that completes despite the abort has nobody left to stop it: it stops here.
+      this.draining.set(
+        key,
+        shared.started.then(
+          (started) => started.stop(() => undefined),
+          () => undefined,
+        ),
+      );
     };
     if (signal.aborted) giveUp();
     else signal.addEventListener('abort', giveUp, { once: true });
     let processes: AppProcesses;
     try {
-      processes = await shared.started;
+      // An attempt that gives up stops waiting at once, whether or not others still wait on the start.
+      processes = await Promise.race([shared.started, cancelled(signal, shared.started)]);
     } catch (cause) {
       shared.users -= 1;
       throw cause;
@@ -111,4 +120,18 @@ export class SharedAppProcesses implements ProcessPool {
   private forget(key: string, entry: SharedEntry): void {
     if (this.entries.get(key) === entry) this.entries.delete(key);
   }
+}
+
+/** Rejects with `CANCELLED` once `signal` aborts; settles nothing otherwise, and stops listening once `started` settles. */
+function cancelled(signal: AbortSignal, started: Promise<unknown>): Promise<never> {
+  return new Promise((_resolve, reject) => {
+    const abort = (): void => reject(new InfrastructureError('CANCELLED', 'gave up waiting on a shared process start'));
+    if (signal.aborted) {
+      abort();
+      return;
+    }
+    signal.addEventListener('abort', abort, { once: true });
+    const forget = (): void => signal.removeEventListener('abort', abort);
+    started.then(forget, forget);
+  });
 }

@@ -110,9 +110,9 @@ describe('SharedAppProcesses', { timeout: 30_000 }, () => {
     const first = start(pool, config, 't0', aborted.signal);
     const second = start(pool, config);
     aborted.abort();
+    // The attempt that gave up stops waiting at once; the start goes on for the other.
+    await expect(first).rejects.toMatchObject({ code: 'CANCELLED' });
     await second;
-    expect(await serving()).toBe(true);
-    await (await first).stop(() => undefined);
     expect(await serving()).toBe(true);
     await (await second).stop(() => undefined);
     expect(await serving()).toBe(false);
@@ -126,14 +126,16 @@ describe('SharedAppProcesses', { timeout: 30_000 }, () => {
     const opening = start(pool, config, 't0', cancel.signal);
     await expect.poll(serving).toBe(true);
     cancel.abort();
-    await (await opening).stop(() => undefined);
-    expect(await serving()).toBe(false);
+    await expect(opening).rejects.toMatchObject({ code: 'CANCELLED' });
+    // Nobody holds the abandoned start, so the pool stops what it spawned.
+    await expect.poll(serving).toBe(false);
     // The next attempt starts it afresh rather than waiting on the abandoned start.
     const retry = new AbortController();
     const again = start(pool, config, 't0', retry.signal);
     await expect.poll(serving).toBe(true);
     retry.abort();
-    await (await again).stop(() => undefined);
+    await expect(again).rejects.toMatchObject({ code: 'CANCELLED' });
+    await expect.poll(serving).toBe(false);
     expect(startupLog(dir)).toBe('app\napp\n');
   });
 });

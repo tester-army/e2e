@@ -66,7 +66,7 @@ export function normalizeCommand(command: CommandConfig, label: string): Command
   if (!isRecord(command)) throw new ConfigurationError('INVALID_CONFIG', `${label} must be an object`);
   rejectUnknownKeys(label, command, COMMAND_KEYS);
   const { executable, args, cwd, env, startupTimeout, shutdownTimeout, log, reuseExisting } = command;
-  if (typeof executable !== 'string' || executable.length === 0) {
+  if (typeof executable !== 'string' || executable.trim().length === 0) {
     throw new ConfigurationError('INVALID_CONFIG', `${label}.executable is required`);
   }
   if (args !== undefined && !Array.isArray(args)) {

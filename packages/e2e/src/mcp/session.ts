@@ -18,7 +18,7 @@ import { openInteractiveStep, type InteractiveStep } from '../agent/interactive-
 import { ScreenPresenter } from '../agent/screen-update.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import { secrets } from '../secrets.ts';
-import { ConfigurationError, errorMessage, type SerializedError } from '../internal/errors.ts';
+import { ConfigurationError, errorMessage, InfrastructureError, type SerializedError } from '../internal/errors.ts';
 import { LocatorEngine } from '../locator/engine.ts';
 import { allocateAppPorts } from '../run/app-ports.ts';
 import { SharedAppProcesses } from '../run/process-pool.ts';
@@ -267,6 +267,8 @@ export class SessionHost {
         actions: 0,
       };
       const text = this.openingText(live, config, await this.firstScreen(live));
+      // A first screen that came back despite the cancel must not become a live session nobody asked for.
+      if (abort.signal.aborted) throw new InfrastructureError('CANCELLED', `opening session ${id} was cancelled`);
       opening.removeEventListener('abort', cancel);
       this.sessions.activate(live);
       // A step that ends on its own (the TTL, a hard stop) ends the session.

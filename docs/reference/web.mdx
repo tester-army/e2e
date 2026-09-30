@@ -98,7 +98,7 @@ The app a web target opens is the target's `app`, not an engine option:
 [the app under test](/reference/config#the-app-under-test). A `web()` target
 needs `app.url` and refuses the device keys (`bundleId`, `appPath`,
 `launchArguments`, `permissions`); `web({ url })` or any other app key on
-`web()` is `INVALID_CONFIG` naming its place on the target. The engine's
+`web()` is `INVALID_CONFIG` naming its place on the target.
 A target with `app.url` is a `browser` target, so `requires: ['browser']`
 selects web targets.
 

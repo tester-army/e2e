@@ -929,10 +929,11 @@ export type AppPermissionState = 'grant' | 'deny' | 'reset';
 /**
  * The app one target tests, declared on the target and nowhere else: engines
  * only drive it. Every field also accepts `undefined`, so values read straight
- * from `process.env` need no conditional spread. A browser target names the `url` it opens; a device target
- * the installed app (`bundleId`) or the build (`appPath`) it launches. Each
- * engine checks the fields its platform needs at config load. `command` and
- * `readyUrl` start the app for this target alone.
+ * from `process.env` need no conditional spread. A browser target names the
+ * `url` it opens; a device target names the installed app (`bundleId`) or
+ * the build (`appPath`) it launches. Each engine checks the fields its
+ * platform needs at config load. `command` and `readyUrl` start the app for
+ * this target alone.
  */
 export interface TargetApp {
   /**

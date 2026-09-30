@@ -17,7 +17,7 @@ import { ConfigurationError, errorMessage } from '../internal/errors.ts';
  * anything starts.
  */
 export async function allocateAppPorts(config: ResolvedConfig): Promise<ResolvedConfig> {
-  const pending = config.targets.filter((target) => target.app.portRequest !== undefined && config.ports[target.name] === undefined);
+  const pending = config.targets.filter((target) => target.app.portRequest !== undefined && !Object.hasOwn(config.ports, target.name));
   if (pending.length === 0) return config;
 
   const reserved: net.Server[] = [];

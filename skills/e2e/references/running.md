@@ -201,7 +201,7 @@ jobs:
   launch timeout.
 - Upload artifacts unless cancelled, so a test that failed then passed on
   retry keeps its evidence.
-- Start the app through the engine's `command`; the runner tears it down
+- Start the app through the target's `app.command`; the runner tears it down
   on every exit path.
 - Agent steps run in the same job: pass the key the config's model reads
   (`AI_GATEWAY_API_KEY` for `gateway()` from `ai`) as a secret in the run

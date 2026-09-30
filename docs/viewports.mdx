@@ -31,10 +31,10 @@ Each test runs once per target, with a separate result labeled `desktop`,
 `tablet`, or `phone`. Run one size with `npx e2e run --target phone`, or list
 the selected test-target pairs with `npx e2e list`.
 
-To have the runner start one dev server for every size, declare it as a
-service and list it on each target; see
-[share a dev server](/starting-your-app#share-a-dev-server). Every retry
-starts at the target's configured size.
+To have the runner start one dev server for every size, give every target
+the same `app.command`: targets declaring one command share one process; see
+[several targets](/starting-your-app#several-targets). Every retry starts at
+the target's configured size.
 
 ## Fill the window
 

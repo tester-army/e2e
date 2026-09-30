@@ -333,8 +333,8 @@ output, so keep it in an ignored directory. A startup failure quotes the last
 20 lines appended since the command started, with `command.env` values
 replaced by `<secret:NAME>` markers. Without `reuseExisting`, a `readyUrl`
 that already answers is `APP_ALREADY_RUNNING`. `reuseExisting` on an app
-whose `app.url` or `readyUrl` asks for port 0 is `INVALID_CONFIG`: a process
-already running cannot serve the port the run assigns.
+whose `app.url` asks for port 0 is `INVALID_CONFIG`: a process already
+running cannot serve the port the run assigns.
 
 The child inherits only `PATH`, `HOME`, the temp-directory variables, and
 `command.env`, so pass what the app needs explicitly. Every `args` entry and

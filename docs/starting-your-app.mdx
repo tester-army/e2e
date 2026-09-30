@@ -101,10 +101,11 @@ the command binds; `localhost:0` is rejected. See
 ## Dependencies
 
 <Note>
-This version starts only `app.command`. Databases, mocks, and a dev server
-several targets share are not started by the runner yet: bring them up
-before the run, or have `app.command` start a script that brings them up
-and serves the app. A services API returns in a later release.
+This version starts only `app.command` (one process for every target that
+declares the same command). Databases, mocks, and other processes the app
+needs are not started by the runner yet: bring them up before the run, or
+have `app.command` start a script that brings them up and serves the app. A
+services API returns in a later release.
 </Note>
 
 ## Several targets
