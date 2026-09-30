@@ -28,7 +28,6 @@ import type {
 } from '../types.ts';
 import { isModelInstance, resolveAgentConfig, runLimits, type ResolvedAgentConfig, type ResolvedLimits } from './agent.ts';
 import { bindTargets, digestTargets, resolveTargets, TARGET_NAME_PATTERN, type PortAssignments, type ResolvedTarget } from './targets.ts';
-import { SERVICES_GONE } from './app.ts';
 import { envName, isSecretValue, secretValueProblem } from './secrets.ts';
 
 export type { ResolvedAgentConfig, ResolvedLimits } from './agent.ts';
@@ -183,7 +182,6 @@ const FOREIGN_TOP_LEVEL_KEYS: Readonly<Record<string, string>> = {
   url: APP_BELONGS_TO_TARGET,
   baseURL: APP_BELONGS_TO_TARGET,
   baseUrl: APP_BELONGS_TO_TARGET,
-  services: SERVICES_GONE,
   webServer: 'the runner starts the app from the target: targets: [{ engine: web(), app: { url, command: { executable, args } } }]',
   use: "browser options are engine options (engine: web({ ... })), and the app under test is the target's app: { url }",
   projects: 'one target per browser or device: targets: [{ engine }]',

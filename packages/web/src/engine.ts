@@ -13,7 +13,6 @@ import {
   isSecret,
   LOCATOR_ACTION_KINDS,
   POINTER_ACTION_KINDS,
-  rejectMovedOptions,
   rejectUnknownKeys,
   type EngineAppCheckInfo,
   type EngineAppDeclaration,
@@ -23,15 +22,6 @@ import { createRequire } from 'node:module';
 import { asBrowserProvider } from './provider.ts';
 import { PlaywrightSurface, type WebOptions } from './surface.ts';
 import { createWebFixture } from './web.ts';
-
-/** Options `web()` used to take that describe the app under test, each with where the target declares it now. */
-const MOVED_TO_TARGET: Readonly<Record<string, string>> = {
-  url: 'app.url',
-  environment: 'app.environment',
-  identity: 'app.identity',
-  command: 'app.command',
-  readyUrl: 'app.readyUrl',
-};
 
 /** App fields only a device target reads. */
 const NATIVE_APP_KEYS = ['bundleId', 'appPath', 'launchArguments', 'permissions'] as const;
@@ -72,13 +62,6 @@ export function web(options: WebOptions = {}): EngineHandle {
       "web({ video }) was renamed web({ screencast }): it takes { size?, quality? } for the page screencast; which attempts record is the video mode on the config or a target",
     );
   }
-  if ('services' in options) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      "web({ services }) is gone: the runner starts only the target's app.command, so start dependency processes before the run; a services API returns in a later release",
-    );
-  }
-  rejectMovedOptions('web()', options, MOVED_TO_TARGET);
   rejectUnknownKeys('web()', options, WEB_OPTION_KEYS);
   const provider = typeof options.browser === 'object' && options.browser !== null ? asBrowserProvider(options.browser) : undefined;
   if (provider !== undefined && options.connect !== undefined) {

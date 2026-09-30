@@ -154,12 +154,6 @@ describe('web() option keys', () => {
     );
   });
 
-  it('names the target for a moved app option, even beside an unknown one', () => {
-    expect(() => web({ comand: { executable: 'node' }, url: 'http://127.0.0.1:4321' } as unknown as Parameters<typeof web>[0])).toThrow(
-      expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringMatching(/^web\(\{ url \}\) moved to the target/) }),
-    );
-  });
-
   it('rejects an unknown key inside connect and basicAuth', () => {
     const cdpEndpoint = () => 'ws://127.0.0.1:9222';
     expect(() => web({ connect: { cdpEndpoint, reconectEndpoint: cdpEndpoint } } as unknown as Parameters<typeof web>[0])).toThrow(

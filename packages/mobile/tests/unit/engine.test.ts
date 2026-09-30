@@ -95,16 +95,9 @@ describe('manifest', () => {
     );
   });
 
-  it('refuses every app option it used to take at once, naming their place on the target', () => {
-    expect(() => mobile({ platform: 'ios', app: 'x', appPath: 'x', launchArguments: [] } as never)).toThrowError(
-      expect.objectContaining({
-        code: 'INVALID_CONFIG',
-        message:
-          'mobile({ app, appPath, launchArguments }) moved to the target: the app under test is declared there, as targets: [{ engine: mobile({ platform }), app: { bundleId, appPath, launchArguments } }]; mobile() only drives it',
-      }),
-    );
-    expect(() => mobile({ platform: 'ios', sesion: 'x', permissions: {} } as never)).toThrowError(
-      expect.objectContaining({ message: expect.stringMatching(/^mobile\(\{ permissions \}\) moved to the target/) }),
+  it('refuses the app options it used to take as unknown keys', () => {
+    expect(() => mobile({ platform: 'ios', app: 'x' } as never)).toThrowError(
+      expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringMatching(/^mobile\(\) has unknown key "app"/) }),
     );
   });
 

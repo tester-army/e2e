@@ -1,29 +1,17 @@
 /**
  * The app under test is the target's: `web()` refuses the options that used
- * to describe it, and checks the target's `app` for what a browser needs.
+ * to describe it as unknown keys, and checks the target's `app` for what a browser needs.
  */
 
 import { describe, expect, it } from 'vitest';
 import { web } from '../../src/index.ts';
 
 describe('web() and the target app', () => {
-  it('refuses every option that moved to the target at once, with the target block they make', () => {
-    expect(() => web({ url: 'http://localhost:3000', command: { executable: 'pnpm' }, viewport: { width: 1, height: 1 } } as never)).toThrowError(
-      expect.objectContaining({
-        code: 'INVALID_CONFIG',
-        message:
-          'web({ url, command }) moved to the target: the app under test is declared there, as targets: [{ engine: web(), app: { url, command } }]; web() only drives it',
-      }),
+  it('refuses the app options it used to take as unknown keys', () => {
+    expect(() => web({ url: 'http://localhost:3000' } as never)).toThrowError(
+      expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringMatching(/^web\(\) has unknown key "url"/) }),
     );
-  });
-
-  it('refuses services, which this version does not start', () => {
-    expect(() => web({ services: [] } as never)).toThrowError(
-      expect.objectContaining({
-        code: 'INVALID_CONFIG',
-        message: "web({ services }) is gone: the runner starts only the target's app.command, so start dependency processes before the run; a services API returns in a later release",
-      }),
-    );
+    expect(() => web({ services: [] } as never)).toThrowError(expect.objectContaining({ message: expect.stringMatching(/^web\(\) has unknown key "services"/) }));
   });
 
   it('needs app.url on the target, and refuses the fields of an installed device app', () => {

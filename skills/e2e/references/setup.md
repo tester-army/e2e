@@ -132,8 +132,8 @@ or `E2E_USER_ADMIN_PASSWORD` first, or defer to fill time with
 ## The app under test
 
 The target declares the app; the engine only drives it. `web({ url })`,
-`mobile({ app })`, and the other old app options fail at load with the new
-place. The target's `app`:
+`mobile({ app })`, and the other old app options are unknown keys. The
+target's `app`:
 
 | Key | Meaning |
 | --- | --- |
@@ -146,10 +146,9 @@ place. The target's `app`:
 | `environment` | `'test'`, `'staging'`, `'production'`; inferred from the host, labels the report and cache key. |
 | `identity` | Stable identity for cache and session keys when the origin changes per deploy (preview URLs). Defaults to the URL's origin and path, else `bundleId`, else `appPath`. |
 
-There is no `services` key in this version: `services` on a target, under
-`app`, at the top level, or as `web({ services })` is `INVALID_CONFIG`. Start
-dependency processes before the run, or have `app.command` start a script
-that brings them up and serves the app.
+There is no `services` key in this version: it is an unknown key wherever it
+appears. Start dependency processes before the run, or have `app.command`
+start a script that brings them up and serves the app.
 
 `web()` options:
 

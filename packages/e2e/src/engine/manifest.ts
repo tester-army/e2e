@@ -66,10 +66,6 @@ const FUNCTION_MEMBERS = [
   'validateApp',
 ] as const;
 
-/** Said to an engine that still declares its app: the target declares it now. */
-const APP_MOVED =
-  'app is gone from the engine: the app under test is declared on its target (targets: [{ engine, app: { url } }]), and an engine checks what it needs in validateApp(app, info)';
-
 /** Universal fixture names a contribution may never shadow. */
 const RESERVED_FIXTURES = new Set(['agent', 'app', 'screen', 'platform', 'session']);
 
@@ -176,7 +172,6 @@ export function defineEngine(spec: Engine): EngineHandle {
   if (spec.platform !== undefined && (typeof spec.platform !== 'string' || spec.platform.trim() === '')) {
     throw invalid(name, 'platform must be a non-empty string when declared');
   }
-  if ((spec as { app?: unknown }).app !== undefined) throw invalid(name, APP_MOVED);
   // A literal's unknown key is a misspelling or a misplaced tool; a class
   // instance's own fields are its state, so only literals are checked.
   if (Object.getPrototypeOf(spec) === Object.prototype) {

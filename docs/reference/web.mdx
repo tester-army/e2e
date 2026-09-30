@@ -98,7 +98,7 @@ The app a web target opens is the target's `app`, not an engine option:
 [the app under test](/reference/config#the-app-under-test). A `web()` target
 needs `app.url` and refuses the device keys (`bundleId`, `appPath`,
 `launchArguments`, `permissions`); `web({ url })` or any other app key on
-`web()` is `INVALID_CONFIG` naming its place on the target.
+`web()` is an unknown key, `INVALID_CONFIG`.
 A target with `app.url` is a `browser` target, so `requires: ['browser']`
 selects web targets.
 
@@ -109,8 +109,7 @@ browsers and releases them when the run or the attempt ends; see
 contract and an example provider. `browser: provider` together with
 `connect` is `INVALID_CONFIG`, and so is an option `web()` does not take, or
 an unknown key inside `connect` or `basicAuth`, naming the nearest known key
-when it is a likely typo (`viewprt` is `viewport`) and every key otherwise; a
-moved app key gets its place on the target instead. `:` is not allowed in the `basicAuth` user name.
+when it is a likely typo (`viewprt` is `viewport`) and every key otherwise. `:` is not allowed in the `basicAuth` user name.
 The `basicAuth` password is a string or `secrets.get(name)`: a secret the
 engine resolves when each attempt starts, redacted like any configured one,
 and so is the base64 credential of the `Authorization` header it becomes.

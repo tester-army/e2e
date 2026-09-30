@@ -253,11 +253,11 @@ supported yet. An unknown key in `app` or `app.command` fails with a
 did-you-mean. A target with `app` and no engine is
 `INVALID_CONFIG`.
 
-The old spellings fail at config load with `INVALID_CONFIG` naming the new
-place: `web({ url })` and the other app options of `web()` and `mobile()`,
-`mobile({ app })` (now `app.bundleId`), an app key directly on the target, and
-a top-level `app` or `url`. `services`, on the target, under `app`, at the
-top level, or as `web({ services })`, fails the same way: this version starts no dependency process beside `app.command`: start them before the run. A services API returns in a later release.
+The old spellings are unknown keys and fail at config load with
+`INVALID_CONFIG`: `web({ url })` and the other app options of `web()` and
+`mobile()`, `mobile({ app })` (now `app.bundleId`), an app key directly on the
+target, a top-level `app` or `url`, and `services` anywhere, which this
+version does not have.
 
 Port `0` on any host other than `127.0.0.1` or `[::1]`, `localhost`
 included, is `INVALID_APP_URL`, and a port-0 `url` with nothing to start on
@@ -346,10 +346,10 @@ dropped. The runner never terminates a process it did not start.
 
 <Note>
 Dependency processes (a database, an API mock, a dev server several targets
-share) are not started by this version: `services` on a target, under `app`,
-at the top level, or as `web({ services })` is `INVALID_CONFIG`. Start them
-before the run, or have `app.command` start a script that brings them up and
-serves the app. A services API returns in a later release.
+share) are not started by this version, and `services` is an unknown key
+wherever it appears. Start them before the run, or have `app.command` start
+a script that brings them up and serves the app. A services API returns in a
+later release.
 </Note>
 
 ## output

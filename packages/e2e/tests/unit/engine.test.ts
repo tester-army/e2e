@@ -83,7 +83,7 @@ describe('defineEngine', () => {
 
   it('refuses an app declaration, which the target makes now, and closes the session manifest', () => {
     expect(() => defineEngine(observingEngine({ app: { url: 'https://example.test' } } as never))).toThrow(
-      'engine "toy": app is gone from the engine: the app under test is declared on its target (targets: [{ engine, app: { url } }])',
+      /engine "toy": unknown key "app"/,
     );
     expect(() =>
       defineEngine(observingEngine({ session: { navigate: async () => undefined } as never })),

@@ -94,41 +94,11 @@ const TARGET_APP_KEYS: readonly string[] = Object.keys({
 /** Keys a target itself takes; anything else is refused, naming where it belongs. */
 export const TARGET_KEYS: ReadonlySet<string> = new Set(['name', 'platform', 'engine', 'app', 'trace', 'video']);
 
-/** Said wherever a config still declares dependency services, which this version does not start. */
-export const SERVICES_GONE =
-  'services are gone from this version: the runner starts only the target\'s app.command, so start dependency processes before the run; a services API returns in a later release';
-
-/** Keys authors put on a target that belong under its `app`, each with where it goes. */
-const APP_TARGET_KEYS: Readonly<Record<string, string>> = {
-  url: 'app.url',
-  bundleId: 'app.bundleId',
-  appPath: 'app.appPath',
-  identity: 'app.identity',
-  environment: 'app.environment',
-  launchArguments: 'app.launchArguments',
-  permissions: 'app.permissions',
-  command: 'app.command',
-  readyUrl: 'app.readyUrl',
-  webServer: 'app.command and app.readyUrl',
-};
-
-/** Keys authors put on a target that belong to its engine. */
-const ENGINE_TARGET_KEYS: ReadonlySet<string> = new Set(['browser', 'device']);
-
-/** Why a key is not a target's, and where the fact it holds lives. */
+/** Why a key is not a target's, with the nearest one when it reads like a typo. */
 export function unknownTargetKey(where: string, key: string): ConfigurationError {
-  const under = APP_TARGET_KEYS[key];
-  const hint =
-    under !== undefined
-      ? `; the app under test is declared under the target's app: ${under}`
-      : key === 'services'
-        ? `; ${SERVICES_GONE}`
-        : ENGINE_TARGET_KEYS.has(key)
-          ? '; browser and device options are engine options: engine: web({ ... }) or mobile({ ... })'
-          : didYouMean(key, [...TARGET_KEYS]);
   return new ConfigurationError(
     'INVALID_CONFIG',
-    `${where} has unknown key "${key}"; a target is { name?, platform?, engine?, app?, trace?, video? }${hint}`,
+    `${where} has unknown key "${key}"; a target is { name?, platform?, engine?, app?, trace?, video? }${didYouMean(key, [...TARGET_KEYS])}`,
   );
 }
 
@@ -153,9 +123,6 @@ export function checkTargetApp(targetName: string, engine: EngineHandle | undefi
   if (declared !== undefined && !isRecord(declared)) throw new ConfigurationError('INVALID_CONFIG', `${where} must be an object`);
   // The shape is checked field by field below; until then the declaration is what the types say it is.
   const app = (declared ?? {}) as TargetApp;
-  if (Object.hasOwn(app, 'services')) {
-    throw new ConfigurationError('INVALID_CONFIG', `${where} has unknown key "services"; ${SERVICES_GONE}`);
-  }
   rejectUnknownKeys(where, app, TARGET_APP_KEYS);
   if (declared !== undefined && engine === undefined) {
     throw new ConfigurationError(

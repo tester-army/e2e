@@ -8,7 +8,7 @@
 
 import { createRequire } from 'node:module';
 import { createAgentDeviceClient } from 'agent-device';
-import { ConfigurationError, defineEngine, obj, rejectMovedOptions, type EngineAppCheckInfo, type EngineAppDeclaration, type EngineHandle } from 'e2e/engine';
+import { ConfigurationError, defineEngine, obj, type EngineAppCheckInfo, type EngineAppDeclaration, type EngineHandle } from 'e2e/engine';
 import { createDeviceFixture } from './device.ts';
 import type { ClientFactory, MobileOptions, MobilePlatform } from './options.ts';
 import { isLink } from './links.ts';
@@ -66,7 +66,6 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
 
 /** Creates one agent-device engine: one device session per worker; a test launches the pinned app with `app.open()`. */
 export function mobile(options: MobileOptions): EngineHandle {
-  rejectMovedOptions('mobile({ platform })', options, MOVED_TO_TARGET);
   const factory: ClientFactory = (session, connection) =>
     createAgentDeviceClient(
       obj({
@@ -78,16 +77,6 @@ export function mobile(options: MobileOptions): EngineHandle {
     );
   return buildEngine(new AgentDeviceSurface(options, factory));
 }
-
-/** Options `mobile()` used to take that describe the app under test, each with its key under the target's `app`. */
-const MOVED_TO_TARGET: Readonly<Record<string, string>> = {
-  app: 'app.bundleId',
-  appPath: 'app.appPath',
-  identity: 'app.identity',
-  environment: 'app.environment',
-  launchArguments: 'app.launchArguments',
-  permissions: 'app.permissions',
-};
 
 /** What reaching this machine from the device will take once a device target can open a URL. */
 const LOOPBACK_NOTES: Readonly<Record<MobilePlatform, string>> = {

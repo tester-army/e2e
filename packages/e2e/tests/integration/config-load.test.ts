@@ -29,7 +29,7 @@ describe('loadConfigModule', () => {
     );
     await expect(loadConfigModule(path.join(dir, 'e2e.config.ts'))).rejects.toMatchObject({
       code: 'INVALID_CONFIG',
-      message: expect.stringContaining('app is gone from the engine: the app under test is declared on its target'),
+      message: expect.stringContaining('unknown key "app"'),
     });
   });
 

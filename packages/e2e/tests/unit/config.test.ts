@@ -182,17 +182,14 @@ describe('resolveConfig', () => {
     expect(() => resolve({ app: {} } as never)).toThrow(
       'the app under test is declared on its target: targets: [{ engine: web(), app: { url } }]',
     );
-    expect(() => resolve({ services: [] } as never)).toThrow('services are gone from this version');
+    expect(() => resolve({ services: [] } as never)).toThrow('unknown config key "services"');
     expect(() => resolve({ webServer: {} } as never)).toThrow('app: { url, command: { executable, args } }');
     expect(() => resolve({ screen: { testIdAttribute: 'data-qa' } } as never)).toThrow(
       'unknown config key "screen"; the test-id attribute is an engine option: engine: web({ testIdAttribute })',
     );
     expect(() => resolve({ targets: [{ ...WEB, url: 'http://localhost:3000' }] } as never)).toThrow(
-      'target "web" has unknown key "url"; a target is { name?, platform?, engine?, app?, trace?, video? }; the app under test is declared under the target\'s app: app.url',
+      'target "web" has unknown key "url"; a target is { name?, platform?, engine?, app?, trace?, video? }',
     );
-    for (const [key, under] of [['bundleId', 'app.bundleId'], ['appPath', 'app.appPath'], ['command', 'app.command'], ['readyUrl', 'app.readyUrl']]) {
-      expect(() => resolve({ targets: [{ ...WEB, [key!]: 'x' }] } as never)).toThrow(`declared under the target's app: ${under}`);
-    }
     expect(() => resolve({ targets: [{ ...WEB, platfrom: 'web' }] } as never)).toThrow('did you mean "platform"?');
     expect(() => resolve({ reporters: ['lst'] } as never)).toThrow(
       'unknown reporter "lst"; reporters are list, json, junit, and markdown; did you mean "list"?',
@@ -424,10 +421,10 @@ describe('resolveConfig', () => {
     );
   });
 
-  it('rejects unknown app keys on the target, naming where a moved one lives', () => {
+  it('rejects unknown app keys on the target, naming the nearest', () => {
     expect(() => resolveApp({ allowProduction: true } as never)).toThrow(/target "web" app has unknown key "allowProduction"/);
     expect(() => resolveApp({ bundleID: 'x' } as never)).toThrow('did you mean "bundleId"?');
-    expect(() => resolve({ targets: [{ ...WEB, app: { services: [] } }] } as never)).toThrow('target "web" app has unknown key "services"; services are gone from this version');
+    expect(() => resolve({ targets: [{ ...WEB, app: { services: [] } }] } as never)).toThrow('target "web" app has unknown key "services"');
   });
 
   it('checks the shape of every app field', () => {
@@ -795,12 +792,6 @@ describe('resolveConfig', () => {
       expect(commandOf({ url: APP_URL, command: { executable: 'x', startupTimeout: 5_000, shutdownTimeout: 500 } }).command).toMatchObject({ startupTimeout: 5_000, shutdownTimeout: 500 });
     });
 
-    it('refuses services on the target or under app, saying they are gone', () => {
-      expect(() => resolve({ targets: [{ ...declaredTarget({ url: APP_URL }), services: [] } as never] })).toThrow(
-        'target "web" has unknown key "services"; a target is { name?, platform?, engine?, app?, trace?, video? }; services are gone from this version',
-      );
-      expect(() => resolveApp({ url: APP_URL, services: [] } as never)).toThrow('target "web" app has unknown key "services"; services are gone from this version');
-    });
   });
 
   describe('artifacts config', () => {

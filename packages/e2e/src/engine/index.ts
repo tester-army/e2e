@@ -788,4 +788,3 @@ export interface EngineHandle extends Engine {
 }
 
 export { defineEngine, isEngineHandle } from './manifest.ts';
-export { rejectMovedOptions } from './moved-options.ts';

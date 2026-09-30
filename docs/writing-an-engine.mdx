@@ -100,9 +100,7 @@ supported action kinds. `locate` answers `screen` queries; the exported
 `resolveExpression` applies the standard query rules to a semantic tree.
 The app under test is the target's `app`, not an engine option:
 `validateApp` checks it at config load, and `prepare` and `init` receive it
-as `info.app`. An option your factory used to take and the target now
-declares fails with `rejectMovedOptions` from `e2e/engine`, which names every
-one at once. `session` provides methods to open or
+as `info.app`. `session` provides methods to open or
 restart it.
 
 ## What an engine is not
