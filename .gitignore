@@ -16,6 +16,8 @@ dist/
 packages/e2e/tests/tmp-projects/
 # The e2e package ships the repository skill (skills/e2e); the build copies it here.
 packages/e2e/skills/
+# npm shows the repository README on the e2e package page; the build copies it here.
+packages/e2e/README.md
 .vercel
 .env*
 # `pnpm run canary` writes this changeset and consumes it in the same run.

@@ -4,13 +4,15 @@
   "description": "EAS Simulators for e2e: run mobile targets on Expo's hosted iOS simulators and Android emulators",
   "keywords": [
     "e2e",
-    "testing",
-    "agentic",
     "end-to-end",
+    "testing",
+    "mobile-testing",
     "eas",
     "expo",
-    "simulators",
-    "hosted-devices"
+    "cloud-simulators",
+    "ios-simulator",
+    "android-emulator",
+    "ci"
   ],
   "license": "Apache-2.0",
   "contributors": [

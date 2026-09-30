@@ -1,9 +1,9 @@
-<a href="https://tester.army/e2e?utm_source=e2e&utm_medium=github&utm_campaign=readme_banner"><img src="./.github/assets/readme-banner.png" alt="e2e by TesterArmy" width="100%" /></a>
+<a href="https://tester.army/e2e?utm_source=e2e&utm_medium=github&utm_campaign=readme_banner"><img src="https://raw.githubusercontent.com/tester-army/e2e/main/.github/assets/readme-banner.png" alt="e2e by TesterArmy" width="100%" /></a>
 
 <p align="center">
-  <a href="https://tester.army?utm_source=e2e&utm_medium=github&utm_campaign=readme_badge"><img alt="Made by TesterArmy" src="./.github/assets/made-by-testerarmy.svg" /></a>
+  <a href="https://tester.army?utm_source=e2e&utm_medium=github&utm_campaign=readme_badge"><img alt="Made by TesterArmy" src="https://raw.githubusercontent.com/tester-army/e2e/main/.github/assets/made-by-testerarmy.svg" /></a>
   <a href="https://www.npmjs.com/package/e2e"><img alt="npm version" src="https://img.shields.io/npm/v/e2e.svg?style=for-the-badge&labelColor=000000" /></a>
-  <a href="./LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green.svg?style=for-the-badge&labelColor=000000" /></a>
+  <a href="https://github.com/tester-army/e2e/blob/main/LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green.svg?style=for-the-badge&labelColor=000000" /></a>
   <a href="https://tester.army/discord"><img alt="Join the community on Discord" src="https://img.shields.io/badge/Join%20the%20community-5865F2.svg?style=for-the-badge&logo=discord&logoColor=white&labelColor=000000" /></a>
 </p>
 
@@ -43,18 +43,18 @@ Maestro, and the full reference.
 
 ## Packages
 
-- [`e2e`](./packages/e2e): SDK, runner, and CLI.
-- [`@e2e-dev/web`](./packages/web): the browser engine.
-- [`@e2e-dev/mobile`](./packages/mobile): the iOS and Android engine.
-- [`@e2e-dev/github`](./packages/github): the pull request comment reporter.
-- [`@e2e-dev/kernel`](./packages/kernel): Kernel hosted browsers for the web
+- [`e2e`](https://github.com/tester-army/e2e/tree/main/packages/e2e): SDK, runner, and CLI.
+- [`@e2e-dev/web`](https://github.com/tester-army/e2e/tree/main/packages/web): the browser engine.
+- [`@e2e-dev/mobile`](https://github.com/tester-army/e2e/tree/main/packages/mobile): the iOS and Android engine.
+- [`@e2e-dev/github`](https://github.com/tester-army/e2e/tree/main/packages/github): the pull request comment reporter.
+- [`@e2e-dev/kernel`](https://github.com/tester-army/e2e/tree/main/packages/kernel): Kernel hosted browsers for the web
   engine.
-- [`@e2e-dev/eas`](./packages/eas): EAS Simulators hosted iOS simulators and
+- [`@e2e-dev/eas`](https://github.com/tester-army/e2e/tree/main/packages/eas): EAS Simulators hosted iOS simulators and
   Android emulators for the mobile engine.
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) and [SECURITY.md](./SECURITY.md).
+See [CONTRIBUTING.md](https://github.com/tester-army/e2e/blob/main/CONTRIBUTING.md) and [SECURITY.md](https://github.com/tester-army/e2e/blob/main/SECURITY.md).
 Apache-2.0.
 
 Built by [TesterArmy](https://tester.army/?utm_source=e2e&utm_medium=github&utm_campaign=readme_footer),

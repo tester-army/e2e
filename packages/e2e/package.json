@@ -4,13 +4,19 @@
   "description": "SDK, runner, and CLI for agentic end-to-end testing",
   "keywords": [
     "e2e",
-    "testing",
-    "agentic",
     "end-to-end",
-    "chatgpt",
-    "github-copilot",
-    "grok",
-    "subscription"
+    "testing",
+    "test-runner",
+    "test-automation",
+    "ai",
+    "ai-testing",
+    "ai-agent",
+    "llm",
+    "agentic",
+    "natural-language",
+    "web-testing",
+    "mobile-testing",
+    "qa"
   ],
   "license": "Apache-2.0",
   "contributors": [
@@ -69,7 +75,7 @@
     "NOTICE"
   ],
   "scripts": {
-    "build": "node -e \"const fs=require('node:fs');for(const dir of ['dist','skills'])fs.rmSync(dir,{recursive:true,force:true});fs.cpSync('../../skills/e2e','skills/e2e',{recursive:true})\" && tsc --project tsconfig.build.json && node -e \"const fs=require('node:fs');const read=(dir)=>JSON.parse(fs.readFileSync('../'+dir+'/package.json','utf8'));const versions=Object.fromEntries(['web','mobile'].map((dir)=>['@e2e-dev/'+dir,read(dir).version]));versions.playwright=read('web').devDependencies.playwright;fs.writeFileSync('dist/cli/init/sibling-versions.json',JSON.stringify(versions)+'\\n')\" && node ../../scripts/stamp-dist.ts",
+    "build": "node scripts/prepare-build.ts && tsc --project tsconfig.build.json && node scripts/write-sibling-versions.ts && node ../../scripts/stamp-dist.ts",
     "prepublishOnly": "node ../../scripts/check-dist.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

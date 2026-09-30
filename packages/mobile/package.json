@@ -4,13 +4,17 @@
   "description": "Mobile engine (iOS and Android) for e2e agentic end-to-end testing, built on agent-device",
   "keywords": [
     "e2e",
-    "testing",
-    "agentic",
     "end-to-end",
-    "agent-device",
+    "testing",
+    "ai-testing",
+    "mobile-testing",
     "ios",
     "android",
-    "engine"
+    "react-native",
+    "expo",
+    "simulator",
+    "emulator",
+    "agent-device"
   ],
   "license": "Apache-2.0",
   "contributors": [

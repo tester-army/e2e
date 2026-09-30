@@ -4,11 +4,14 @@
   "description": "Web engine for e2e agentic end-to-end testing, built on Playwright",
   "keywords": [
     "e2e",
-    "testing",
-    "agentic",
     "end-to-end",
+    "testing",
+    "ai-testing",
+    "web-testing",
+    "browser-testing",
+    "browser-automation",
     "playwright",
-    "engine"
+    "chromium"
   ],
   "license": "Apache-2.0",
   "contributors": [

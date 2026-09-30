@@ -4,11 +4,14 @@
   "description": "Kernel hosted browsers for e2e: run web targets in Kernel's hosted Chromium",
   "keywords": [
     "e2e",
-    "testing",
-    "agentic",
     "end-to-end",
+    "testing",
+    "ai-testing",
     "kernel",
-    "hosted-browsers"
+    "cloud-browsers",
+    "hosted-browsers",
+    "browser-automation",
+    "chromium"
   ],
   "license": "Apache-2.0",
   "contributors": [

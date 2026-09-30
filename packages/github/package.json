@@ -4,13 +4,13 @@
   "description": "GitHub reporter for e2e: one pull request comment per run, from GitHub Actions",
   "keywords": [
     "e2e",
-    "testing",
-    "agentic",
     "end-to-end",
-    "reporter",
+    "testing",
+    "test-reporter",
     "github",
     "github-actions",
-    "pull-request"
+    "pull-request",
+    "ci"
   ],
   "license": "Apache-2.0",
   "contributors": [
