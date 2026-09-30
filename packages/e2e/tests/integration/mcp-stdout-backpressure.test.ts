@@ -20,7 +20,7 @@ const CONFIG = `import type { E2EConfig } from 'e2e';
 import { web } from '@e2e-dev/web';
 
 export default {
-  targets: [{ name: 'web', platform: 'web', engine: web({ url: 'http://127.0.0.1:1' }) }],
+  targets: [{ name: 'web', platform: 'web', engine: web(), app: { url: 'http://127.0.0.1:1' } }],
 } satisfies E2EConfig;
 `;
 

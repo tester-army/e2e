@@ -53,7 +53,7 @@ import { gateway } from 'ai';
 
 export default {
   agents: { default: { model: gateway('openai/gpt-6-luna-fast') } },
-  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
 } satisfies E2EConfig;
 ```
 
@@ -75,7 +75,7 @@ test('app opens', async ({ app, web }) => {
 
     <Accordion title="Example iOS config and test">
     This config uses Vercel AI Gateway. For Android, the wizard sets
-    `platform: 'android'` and `app: 'com.android.settings'`.
+    `platform: 'android'` and `app: { bundleId: 'com.android.settings' }`.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -84,7 +84,7 @@ import { gateway } from 'ai';
 
 export default {
   agents: { default: { model: gateway('openai/gpt-6-luna-fast') } },
-  targets: [{ name: 'ios', engine: mobile({ platform: 'ios', app: 'Settings' }) }],
+  targets: [{ name: 'ios', engine: mobile({ platform: 'ios' }), app: { bundleId: 'Settings' } }],
   workers: 1,
 } satisfies E2EConfig;
 ```

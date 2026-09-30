@@ -1,47 +1,49 @@
 import { describe, expect, it } from 'vitest';
 import { assignPorts, resolveConfig, type PortAssignments } from '../../src/config/resolve.ts';
-import { defineEngine, type EngineAppDeclaration } from '../../src/engine/index.ts';
-import { allocateAppPorts, assignedPorts } from '../../src/run/app-ports.ts';
+import { defineEngine } from '../../src/engine/index.ts';
+import type { TargetApp } from '../../src/types.ts';
+import { allocateAppPorts } from '../../src/run/app-ports.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 
 const ROOT = '/tmp/e2e-app-ports';
 
-/** Resolves one web target per declaration, named after its key, with the given port assignments. */
-function configOf(apps: Readonly<Record<string, EngineAppDeclaration>>, ports?: PortAssignments) {
-  return resolveConfig(
+/** Resolves one web target per declaration, named after its key, then assigns `ports`. */
+function configOf(apps: Readonly<Record<string, TargetApp>>, ports: PortAssignments = {}) {
+  const config = resolveConfig(
     {
       targets: Object.entries(apps).map(([name, app]) => ({
         name,
         platform: 'web',
-        engine: defineEngine({ name: 'fake', version: '1.0.0', spiVersion: 1, observe: async () => snapshot([]), app }),
+        engine: defineEngine({ name: 'fake', version: '1.0.0', spiVersion: 1, observe: async () => snapshot([]) }),
+        app,
       })),
     },
-    { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv, ...(ports === undefined ? {} : { ports }) },
+    { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv },
   );
+  return assignPorts(config, ports);
 }
 
-function appOf(app: EngineAppDeclaration, port?: number) {
-  return configOf({ web: app }, port === undefined ? undefined : { web: port }).targets[0]!.app;
+/** One target named web, with its free port assigned `port`. */
+function webOf(app: TargetApp, port?: number) {
+  return configOf({ web: app }, port === undefined ? {} : { web: port });
 }
 
-describe('port requests', () => {
-  it('keeps the declared :0 URL and records the request until a port is assigned', () => {
-    const app = appOf({ url: 'http://127.0.0.1:0', command: { executable: 'pnpm', args: ['dev'] } });
+describe('an app URL on a free port', () => {
+  it('keeps the declared :0 URL and asks for a port until one is assigned', () => {
+    const config = webOf({ url: 'http://127.0.0.1:0', command: { executable: 'pnpm', args: ['dev'] } });
+    const app = config.targets[0]!.app;
     expect(app.base?.href).toBe('http://127.0.0.1:0/');
     expect(app.portRequest).toEqual({ host: '127.0.0.1', port: undefined });
     expect(app.site).toBe('127.0.0.1');
     expect(app.readyUrl).toBe('http://127.0.0.1:0/');
     expect(app.identity).toBe('http://127.0.0.1:0/');
-    expect(appOf({ url: 'http://localhost:3000' }).portRequest).toBeUndefined();
-    expect(appOf({}).portRequest).toBeUndefined();
+    expect(webOf({ url: 'http://localhost:3000' }).targets[0]!.app.portRequest).toBeUndefined();
+    expect(webOf({}).targets[0]!.app.portRequest).toBeUndefined();
   });
 
   it('substitutes the assigned port in the base URL and the default readyUrl, keeping the identity', () => {
-    const declaration: EngineAppDeclaration = {
-      url: 'http://127.0.0.1:0/shop/',
-      command: { executable: 'pnpm', args: ['dev'] },
-    };
-    const pending = configOf({ web: declaration });
+    const declaration: TargetApp = { url: 'http://127.0.0.1:0/shop/', command: { executable: 'pnpm', args: ['dev'] } };
+    const pending = webOf(declaration);
     const assigned = assignPorts(pending, { web: 4321 });
     const app = assigned.targets[0]!.app;
     expect(app.base).toEqual({ href: 'http://127.0.0.1:4321/shop/', origin: 'http://127.0.0.1:4321', basePath: '/shop/' });
@@ -50,16 +52,13 @@ describe('port requests', () => {
     expect(app.identity).toBe(pending.targets[0]!.app.identity);
     expect(app.identity).toBe('http://127.0.0.1:0/shop/');
     expect(assigned.configDigest).toBe(pending.configDigest);
-    // Resolving with the ports up front lands on the same app as assigning them afterwards.
-    expect(configOf({ web: declaration }, { web: 4321 }).targets[0]!.app).toEqual(app);
+    expect(assigned.ports).toEqual({ web: 4321 });
     // A target that named its port ignores an assignment.
-    expect(assignPorts(configOf({ web: { url: 'http://localhost:3000' } }), { web: 4321 }).targets[0]!.app.base?.origin).toBe(
-      'http://localhost:3000',
-    );
+    expect(webOf({ url: 'http://localhost:3000' }, 4321).targets[0]!.app.base?.origin).toBe('http://localhost:3000');
   });
 
-  it('expands {port} in the command, the readiness URLs, the services, and their teardowns', () => {
-    const app = appOf(
+  it('expands {port} in the command and its readiness URL to the app port', () => {
+    const app = webOf(
       {
         url: 'http://127.0.0.1:0',
         readyUrl: 'http://127.0.0.1:{port}/health',
@@ -68,77 +67,65 @@ describe('port requests', () => {
           args: ['dev', '--port', '{port}'],
           env: { PORT: '{port}', ORIGIN: 'http://127.0.0.1:{port}', NODE_ENV: 'test' },
         },
-        services: [
-          {
-            name: 'emulator',
-            executable: 'node',
-            args: ['emulator.js', '--app-port', '{port}'],
-            env: { APP_PORT: '{port}' },
-            readyUrl: 'http://127.0.0.1:{port}/emulator/ready',
-            teardown: { executable: 'docker', args: ['compose', '-p', 'app-{port}', 'down'] },
-          },
-        ],
       },
       4321,
-    );
+    ).targets[0]!.app;
     expect(app.command).toEqual({
       executable: 'pnpm',
       args: ['dev', '--port', '4321'],
       env: { PORT: '4321', ORIGIN: 'http://127.0.0.1:4321', NODE_ENV: 'test' },
     });
     expect(app.readyUrl).toBe('http://127.0.0.1:4321/health');
-    expect(app.services[0]).toMatchObject({
-      command: { executable: 'node', args: ['emulator.js', '--app-port', '4321'], env: { APP_PORT: '4321' } },
-      readiness: { readyUrl: 'http://127.0.0.1:4321/emulator/ready' },
-      teardown: { command: { executable: 'docker', args: ['compose', '-p', 'app-4321', 'down'] } },
-    });
   });
 
-  it('expands {port} to a fixed or default port too', () => {
-    const fixed = appOf({ url: 'http://localhost:3000', command: { executable: 'pnpm', env: { PORT: '{port}' } } });
-    expect(fixed.command?.env).toEqual({ PORT: '3000' });
-    const implied = appOf({ url: 'https://app.test', command: { executable: 'pnpm', args: ['{port}'] } });
-    expect(implied.command?.args).toEqual(['443']);
-  });
-
-  it('rejects {port} on a target without a URL, naming the field', () => {
-    expect(() =>
-      appOf({ command: { executable: 'node', args: ['server.js', '{port}'] }, readyUrl: 'http://127.0.0.1:9/' }),
-    ).toThrow(/target "web" engine fake app\.command\.args uses \{port\}, but the target declares no url/);
-    expect(() => appOf({ services: [{ executable: 'node', env: { PORT: '{port}' }, waitForExit: true }] })).toThrow(
-      /app\.services\[0\]\.env\.PORT uses \{port\}/,
+  it('expands {port} to the fixed or default port of app.url, and refuses it without one', () => {
+    expect(webOf({ url: 'http://localhost:3000', command: { executable: 'pnpm', env: { PORT: '{port}' } } }).targets[0]!.app.command?.env).toEqual({ PORT: '3000' });
+    expect(webOf({ url: 'https://app.test', command: { executable: 'pnpm', args: ['{port}'] } }).targets[0]!.app.command?.args).toEqual(['443']);
+    expect(() => webOf({ command: { executable: 'npx', args: ['expo', 'start', '--port', '{port}'] }, readyUrl: 'http://127.0.0.1:8081/status' })).toThrow(
+      'target "web" app.command.args uses {port}, but the target declares no url to take the port from',
     );
-    expect(() => appOf({ services: [{ executable: 'node', readyUrl: 'http://127.0.0.1:{port}/' }] })).toThrow(
-      /app\.services\[0\]\.readyUrl uses \{port\}/,
+    expect(() => webOf({ command: { executable: 'node' }, readyUrl: 'http://127.0.0.1:{port}/' })).toThrow(
+      'target "web" app.readyUrl uses {port}, but the target declares no url to take the port from',
+    );
+  });
+
+  it('refuses a free port nothing starts on, and reuseExisting on one', () => {
+    expect(() => webOf({ url: 'http://127.0.0.1:0' })).toThrow(
+      'target "web" app.url asks for a free port (port 0), but nothing starts on it: add app.command to start the app there on {port}',
+    );
+    expect(() => webOf({ url: 'http://127.0.0.1:0', command: { executable: 'pnpm', reuseExisting: true } })).toThrow(
+      'target "web" app.command.reuseExisting cannot find an app already running on a free port: port 0 is a new port every run; give the app a fixed port, or drop reuseExisting',
     );
   });
 });
 
 describe('allocateAppPorts', () => {
-  it('reserves a distinct free port per requesting target and leaves the rest alone', async () => {
-    const config = configOf({
+  it('reserves a distinct free port per target and leaves the rest alone', async () => {
+    const declared: Record<string, TargetApp> = {
       a: { url: 'http://127.0.0.1:0', command: { executable: 'pnpm', env: { PORT: '{port}' } } },
       // Only IPv4 loopback is bound here: a CI host without ::1 must not fail this.
-      b: { url: 'http://127.0.0.1:0' },
+      b: { url: 'http://127.0.0.1:0', command: { executable: 'pnpm', args: ['b'] } },
       fixed: { url: 'http://127.0.0.1:3000' },
       none: {},
-    });
+    };
+    const config = configOf(declared);
     const allocated = await allocateAppPorts(config);
     const [a, b, fixed, none] = allocated.targets.map((target) => target.app);
-    const portA = a!.portRequest!.port!;
-    const portB = b!.portRequest!.port!;
+    const portA = allocated.ports['a']!;
+    const portB = allocated.ports['b']!;
     expect(portA).toBeGreaterThan(0);
     expect(portB).toBeGreaterThan(0);
     expect(portA).not.toBe(portB);
+    expect(Object.keys(allocated.ports).toSorted()).toEqual(['a', 'b']);
     expect(a!.base?.origin).toBe(`http://127.0.0.1:${portA}`);
     expect(a!.command?.env).toEqual({ PORT: String(portA) });
     expect(b!.base?.origin).toBe(`http://127.0.0.1:${portB}`);
     expect(fixed!.base?.origin).toBe('http://127.0.0.1:3000');
     expect(none!.base).toBeUndefined();
-    expect(assignedPorts(allocated)).toEqual({ a: portA, b: portB });
     expect(allocated.configDigest).toBe(config.configDigest);
     // Nothing left to assign: the config passes through untouched.
     expect(await allocateAppPorts(allocated)).toBe(allocated);
-    expect(await allocateAppPorts(configOf({ fixed: { url: 'http://127.0.0.1:3000' } }))).toMatchObject({ targets: [{ name: 'fixed' }] });
+    // A worker handed the same ports resolves the same URLs.
+    expect(configOf(declared, allocated.ports).targets.map((target) => target.app)).toEqual(allocated.targets.map((target) => target.app));
   });
 });

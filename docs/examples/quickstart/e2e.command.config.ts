@@ -10,7 +10,8 @@ export default {
     },
   },
   targets: [{
-    engine: web({
+    engine: web(),
+    app: {
       url: process.env.APP_URL ?? 'http://localhost:3000',
       command: {
         executable: 'npm',
@@ -18,6 +19,6 @@ export default {
         reuseExisting: true,
         log: '.e2e/logs/app.log',
       },
-    }),
+    },
   }],
 } satisfies E2EConfig;

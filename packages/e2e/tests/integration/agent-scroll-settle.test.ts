@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { StepExecutor } from '../../src/agent/executor.ts';
-import { createFakeEngine, FAKE_APP_URL } from '../helpers/fake-engine.ts';
+import { createFakeEngine, FAKE_APP, FAKE_APP_URL } from '../helpers/fake-engine.ts';
 import { nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { createProject, resultByTitle, runExisting } from '../helpers/run-project.ts';
 import type { ScriptedNode } from '../helpers/scripted-scene.ts';
@@ -53,7 +53,7 @@ describe('the look after scrolling to text', () => {
     const project = createProject({ 'tests/scroll.e2e.ts': SUITE });
     const options = {
       appUrl: FAKE_APP_URL,
-      config: { tests: 'tests/**/*.e2e.ts', targets: [{ name: 'device', platform: 'ios' as const, engine: fake.engine }], agents: { default: { executor } }, cache: 'read-write' as const },
+      config: { tests: 'tests/**/*.e2e.ts', targets: [{ name: 'device', platform: 'ios' as const, engine: fake.engine, app: FAKE_APP }], agents: { default: { executor } }, cache: 'read-write' as const },
     };
     try {
       const recorded = await runExisting(project, options);
@@ -102,7 +102,7 @@ describe('the look after scrolling to text', () => {
     try {
       const outcome = await runExisting(project, {
         appUrl: FAKE_APP_URL,
-        config: { tests: 'tests/**/*.e2e.ts', targets: [{ name: 'surface', platform: 'web', engine: fake.engine }], agents: { default: { executor } } },
+        config: { tests: 'tests/**/*.e2e.ts', targets: [{ name: 'surface', platform: 'web', engine: fake.engine, app: FAKE_APP }], agents: { default: { executor } } },
       });
       expect(outcome.exitCode, JSON.stringify(outcome.report.run.errors)).toBe(0);
       expect(afterScroll).toContain('in view');

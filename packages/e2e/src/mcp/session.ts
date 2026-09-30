@@ -86,6 +86,8 @@ export class SessionHost {
   private readonly sessions: SessionRegistry<LiveSession>;
   /** Sessions on one app command share its process: the last one to close stops it. */
   private readonly apps = new SharedAppProcesses();
+  /** Aborts every open still running once the server shuts down, so none leaves a process behind. */
+  private readonly shutdown = new AbortController();
 
   constructor(private readonly options: SessionHostOptions) {
     this.sessions = new SessionRegistry(this.maxSessions);
@@ -104,9 +106,13 @@ export class SessionHost {
     return [this.openSpec(), this.catalogSpec(), this.callSpec(), this.closeSpec()];
   }
 
-  /** Opens a session and returns its opening text: the summary, the catalog, and the first screen. */
-  open(options: OpenSessionOptions): Promise<string> {
-    return this.sessions.admit((id) => this.openSession(id, options));
+  /**
+   * Opens a session and returns its opening text: the summary, the catalog,
+   * and the first screen. `signal` is the request's: a client that cancels
+   * it, or disconnects, aborts the open and what it started.
+   */
+  open(options: OpenSessionOptions, signal?: AbortSignal): Promise<string> {
+    return this.sessions.admit((id) => this.openSession(id, options, signal));
   }
 
   /** Closes one session, the only one when `session` is omitted, and returns what happened; a session already closing returns that close. */
@@ -117,6 +123,7 @@ export class SessionHost {
 
   /** Closes every session, for a server that is shutting down; undefined when none was open. */
   async closeAll(reason: string): Promise<string | undefined> {
+    this.shutdown.abort();
     const summaries = await this.sessions.closeAll(reason, (live) => this.teardown(live, reason));
     return summaries.length === 0 ? undefined : summaries.join('\n');
   }
@@ -179,7 +186,7 @@ export class SessionHost {
     );
   }
 
-  private async openSession(id: string, options: OpenSessionOptions): Promise<string> {
+  private async openSession(id: string, options: OpenSessionOptions, request: AbortSignal | undefined): Promise<string> {
     // The catalog reads the tools' schemas through the AI SDK, synchronously
     // and on every render, so the optional SDK is loaded once here: a project
     // without it learns so before an attempt opens a browser.
@@ -196,6 +203,11 @@ export class SessionHost {
     this.sessions.claimEngine(id, target.name, target.engine);
     const ttlMs = this.options.ttlMs ?? SESSION_TTL_MS;
     const abort = new AbortController();
+    // Until the session is live, the request and the server's shutdown can abort the open.
+    const opening = AbortSignal.any([this.shutdown.signal, ...(request === undefined ? [] : [request])]);
+    const cancel = (): void => abort.abort();
+    if (opening.aborted) cancel();
+    else opening.addEventListener('abort', cancel, { once: true });
     let attempt: StandaloneAttempt | undefined;
     let step: InteractiveStep | undefined;
     try {
@@ -255,12 +267,14 @@ export class SessionHost {
         actions: 0,
       };
       const text = this.openingText(live, config, await this.firstScreen(live));
+      opening.removeEventListener('abort', cancel);
       this.sessions.activate(live);
       // A step that ends on its own (the TTL, a hard stop) ends the session.
       void step.done.then((outcome) => this.endOnItsOwn(live, outcome.error === undefined ? 'the session step concluded' : errorMessage(outcome.error)));
       this.touch(live);
       return text;
     } catch (cause) {
+      opening.removeEventListener('abort', cancel);
       await this.closeAttempt(attempt, abort, async () => {
         await step?.end({ status: 'failed', summary: 'opening the session failed' });
       }).catch(() => undefined);
@@ -415,13 +429,13 @@ export class SessionHost {
     return defineMcpTool({
       name: 'open_session',
       description:
-        'Open a live session on one target of an e2e project: loads the config, starts the app command the engine declares (if any), boots the engine (a browser, a simulator), opens the app URL, and returns the session id, the catalog of tools it can run, and the first observation. Several sessions can be open at once, one per agent, each with its own engine: pass the returned session id to every later call. Then act with call and look with call {tool: "observe"}.',
+        'Open a live session on one target of an e2e project: loads the config, starts the app command the target declares (if any), boots the engine (a browser, a simulator), opens the app URL, and returns the session id, the catalog of tools it can run, and the first observation. Several sessions can be open at once, one per agent, each with its own engine: pass the returned session id to every later call. Then act with call and look with call {tool: "observe"}.',
       inputSchema: z.object({
         target: z.string().min(1).optional().describe('Target name from the config; required when the config declares several'),
         config: z.string().min(1).optional().describe("Path to an e2e config file, relative to the server's directory; default: the nearest e2e.config.ts"),
       }).strict(),
       readOnly: false,
-      call: async (args) => textResult(await this.open(args)),
+      call: async (args, extra) => textResult(await this.open(args, extra.signal)),
     });
   }
 

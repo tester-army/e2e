@@ -686,11 +686,13 @@ function classifyPair(
     };
   }
 
-  // Targets are graded from the engine's declared capability set: harness
-  // tiers plus one name per contributed fixture. Selection runs at config
-  // load, before any engine boots, which is why the manifest is synchronous.
+  // Targets are graded from the engine's declared capability set (harness
+  // tiers plus one name per contributed fixture) and the kind of app the
+  // target declares. Selection runs at config load, before any engine boots,
+  // which is why the manifest is synchronous.
   const capabilities = target.engine?.capabilities;
-  const missing = options.requires.filter((capability) => capabilities?.has(capability) !== true);
+  const kinds = appKinds(target);
+  const missing = options.requires.filter((capability) => capabilities?.has(capability) !== true && !kinds.includes(capability));
   if (missing.length > 0) {
     return {
       ...base,
@@ -837,4 +839,14 @@ function applySessionSelection(
     }
     return { ...pair, disposition: 'run' as const, skip: undefined };
   });
+}
+
+/**
+ * The kinds of app a target declares, which `requires` filters on beside
+ * the engine's capabilities: `browser` for an app at a URL, `native-app` for
+ * an installed app or a build a device launches.
+ */
+function appKinds(target: ResolvedTarget): readonly string[] {
+  const { base, bundleId, appPath } = target.app;
+  return [...(base === undefined ? [] : ['browser']), ...(bundleId === undefined && appPath === undefined ? [] : ['native-app'])];
 }

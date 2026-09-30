@@ -42,8 +42,8 @@ function requireSurface(engine: EngineHandle): AgentDeviceSurface {
  * whose attempt is running.
  *
  * Mutating tools are recorded as replay gaps by the trace cache; a step that
- * stays within the grammar verbs replays zero-turn, so prefer the engine's
- * `app` option over `open_app` when a test always starts in the same app.
+ * stays within the grammar verbs replays zero-turn, so prefer the target's
+ * `app.bundleId` over `open_app` when a test always starts in the same app.
  */
 export function mobileTools(
   ...engines: readonly [EngineHandle, ...EngineHandle[]]

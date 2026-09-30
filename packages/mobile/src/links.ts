@@ -70,20 +70,6 @@ export function assertAppId(app: string): void {
 }
 
 /**
- * Refuses a link in the engine's `app` option, which the pool opens on every
- * device in `prepare`, before any attempt's `openApp` would. Config is the
- * project's own code, so a link there is a mistake, not a policy breach:
- * `INVALID_CONFIG` whatever the scheme, pointing at `device.openLink`.
- */
-export function assertConfiguredApp(app: string | undefined): void {
-  if (app === undefined || !isLink(app)) return;
-  throw new ConfigurationError(
-    'INVALID_CONFIG',
-    'mobile: `app` names an app by bundle id, package, or display name, not a link; a test opens a deep link or web link with device.openLink',
-  );
-}
-
-/**
  * The link as the report shows it, cut before its query and fragment. A
  * magic link carries its one-time token there, and a step label is kept for
  * as long as the report is.

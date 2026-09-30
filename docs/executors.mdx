@@ -32,7 +32,7 @@ import { gateway, tool } from 'ai';
 import { z } from 'zod';
 
 export default {
-  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
   agents: {
     default: {
       model: gateway('openai/gpt-6-luna-fast'),
@@ -119,7 +119,7 @@ const scripted: StepExecutor = {
 };
 
 export default {
-  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
   agents: { default: { executor: scripted } },
 } satisfies E2EConfig;
 ```
@@ -182,7 +182,7 @@ outside an active attempt.
 import type { E2EConfig, StepExecutor } from 'e2e';
 import { web, surfaceOf } from '@e2e-dev/web';
 
-const engine = web({ url: 'http://localhost:3000' });
+const engine = web();
 const own: StepExecutor = {
   name: 'own-tools',
   version: '1',
@@ -197,7 +197,7 @@ const own: StepExecutor = {
 };
 
 export default {
-  targets: [{ engine }],
+  targets: [{ engine, app: { url: 'http://localhost:3000' } }],
   agents: { default: { executor: own } },
 } satisfies E2EConfig;
 ```

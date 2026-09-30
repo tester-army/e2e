@@ -36,7 +36,7 @@ import { kiosk } from './kiosk.ts';
 
 export default {
   targets: [
-    { name: 'web', platform: 'web', engine: web({ url: process.env.APP_URL! }) },
+    { name: 'web', platform: 'web', engine: web(), app: { url: process.env.APP_URL! } },
     { name: 'kiosk', platform: 'kiosk', engine: kiosk.engine },
   ],
   agents: { default: {

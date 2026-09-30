@@ -25,13 +25,13 @@ import { mobile } from '@e2e-dev/mobile';
 import { mobileTools } from '@e2e-dev/mobile/tools';
 import { gateway } from 'ai';
 
-const iphone = mobile({ platform: 'ios', app: 'Settings' });
-const pixel = mobile({ platform: 'android', app: 'com.android.settings' });
+const iphone = mobile({ platform: 'ios' });
+const pixel = mobile({ platform: 'android' });
 
 export default {
   targets: [
-    { name: 'iphone', engine: iphone },
-    { name: 'pixel', engine: pixel },
+    { name: 'iphone', engine: iphone, app: { bundleId: 'Settings' } },
+    { name: 'pixel', engine: pixel, app: { bundleId: 'com.android.settings' } },
   ],
   workers: 1,
   agents: {
@@ -45,46 +45,39 @@ export default {
 
 Create an engine for each platform you test. Use `platforms: ['ios']` or
 `platforms: ['android']` on tests with platform-specific labels or operations.
-`app.open()` launches the configured app fresh; an attempt launches nothing
+`app.open()` launches the target's app fresh; an attempt launches nothing
 on its own, so a test starts where the previous one left the app. `app.open`
 takes no path on a device: a link goes through `device.openLink`.
 
+The app under test is the target's `app`, not an engine option: `bundleId`,
+`appPath`, `launchArguments`, `permissions`, `identity`, and `environment`
+are documented under [the app under test](/reference/config#the-app-under-test).
+A device target needs `app.bundleId` or `app.appPath`. An `app.url` (not
+supported yet), a link in `bundleId` (a test opens one with
+`device.openLink`), and an unknown permission name are `INVALID_CONFIG` at
+config load. `mobile({ app })` and the other old app options fail naming
+their key under `app`.
+
+`app.appPath` is the build the suite runs against. The engine installs
+nothing on its own: `device.installApp()` with no path installs it, once per
+device, where the suite says so, and a device provider installs it on the
+device it leases. Without `bundleId`, the installed bundle id or package
+becomes the app `app.open()` launches. Declare an `identity` when the build
+path changes per run (a version in it) so recordings survive the rename.
+
+`mobile()` takes only how the device is driven:
+
 ```ts
 /**
- * Options of the device engine. Every optional value also accepts `undefined`,
- * so values read straight from `process.env` need no conditional spread.
+ * Options of the device engine: which devices it drives and how. The app
+ * under test is the target's `app` (`bundleId`, `appPath`,
+ * `launchArguments`, `permissions`). Every optional value also accepts
+ * `undefined`, so values read straight from `process.env` need no
+ * conditional spread.
  */
 export interface MobileOptions {
   /** Platform the target's device runs. */
   readonly platform: MobilePlatform;
-  /**
-   * App the worker brings up once in `prepare` and `app.open()` launches
-   * fresh: a bundle id, a package name, or a display name agent-device
-   * resolves (`Settings`). An attempt launches nothing on its own, so a test
-   * starts where the last one ended and calls `app.open()` when it wants
-   * the app fresh, as a Maestro flow calls `launchApp`. Without it the
-   * surface observes whatever is in the foreground, and `app.open()`,
-   * `app.restart()`, and `app.clearState()` are not available. A link is
-   * `INVALID_CONFIG`: a test opens one with `device.openLink`.
-   */
-  readonly app?: string | undefined;
-  /**
-   * The build the suite runs against: an iOS `.app` bundle or an Android
-   * `.apk`, resolved against the project root (the config's directory). The
-   * engine installs nothing on its own: `device.installApp()` with no path
-   * installs it, once per device, where the suite says so, and a device
-   * provider installs it on the device it leases. Without `app`, the
-   * installed bundle id or package becomes the app `app.open()` launches.
-   */
-  readonly appPath?: string | undefined;
-  /**
-   * Stable identity keying replay cache and session entries; defaults to `app`,
-   * else `appPath`. Declare one when the pinned app differs per run (a build
-   * path with a version in it) so entries survive the rename.
-   */
-  readonly identity?: string | undefined;
-  /** Report label joining the cache identity; a simulator or emulator defaults to `test`. */
-  readonly environment?: 'test' | 'staging' | 'production' | undefined;
   /**
    * Simulator or emulator to use, by name, simulator UDID, or emulator
    * serial (`emulator-5554`). A list is a pool: the
@@ -132,33 +125,6 @@ export interface MobileOptions {
    * such as EAS Simulators' can outlast `cleanupTimeout`.
    */
   readonly videoTouches?: boolean | undefined;
-  /**
-   * Arguments the pinned app is launched with on every fresh launch this
-   * engine performs: `app.open()`, `app.restart()`, and `app.clearState()`.
-   * iOS hands them to the app process (`ProcessInfo.processInfo.arguments`);
-   * Android appends them to `am start`, so `['--ez', 'e2e', 'true']` is a
-   * boolean intent extra. The warm-up in `prepare` and a foreground-only
-   * `device.openApp` pass none: an app already running keeps its process
-   * arguments, and `app.open()` relaunches it with them. Arguments that
-   * select a build mode change what the app is: give each mode its own
-   * `identity` so their recordings stay apart.
-   * `device.openApp(app, { launchArguments })` launches any app with its
-   * own.
-   */
-  readonly launchArguments?: readonly string[] | undefined;
-  /**
-   * Permissions the pinned app holds on every fresh launch this engine
-   * performs: `app.open()`, `app.restart()`, and `app.clearState()`, which
-   * resets them along with the app's data. Each is granted, denied, or reset
-   * (the OS asks again) before the app starts, since iOS terminates a running
-   * app whose permission changed and Android one whose permission was
-   * revoked. `deny` is a recorded refusal on iOS, where the app is told no
-   * without a prompt, and a revocation on Android, where the OS asks again
-   * when the app requests the permission. A foreground-only `device.openApp`
-   * leaves them alone; `device.openApp(app, { permissions })` presets any
-   * app's.
-   */
-  readonly permissions?: LaunchPermissions | undefined;
 }
 
 /** A permission's state: held, refused, or not asked for yet, so the OS asks again. */
@@ -179,16 +145,20 @@ a cold boot on CI is never charged against `launchTimeout`. agent-device
 commands take no abort signal, so a timed-out command keeps running on the
 device; the next attempt waits for it to settle. On iOS, `prepare` starts the
 automation runner on every device with agent-device's `prepare ios-runner`,
-so its first launch is paid before the first test, then brings the pinned
-`app` up once per device when it is installed; a build the suite installs
-itself comes up with the first `app.open()`, which relaunches it fresh
-whenever a test asks; without a pinned app the model opens apps with the
-`open_app` tool. A runner that does not start in `prepare` is logged and left
+so its first launch is paid before the first test, then brings the target's
+`app.bundleId` up once per device when it is installed; a build the suite
+installs itself comes up with the first `app.open()`, which relaunches it
+fresh whenever a test asks. A runner that does not start in `prepare` is logged and left
 to the first attempt, and that device's app is not opened there.
 
-`launchArguments` and `permissions` ride every fresh launch of the pinned
-app: `app.open()`, `app.restart()`, and `app.clearState()`, which resets the
-permissions with the data. The permissions are set before the app starts,
+`app.launchArguments` and `app.permissions` ride every fresh launch of the
+pinned app: `app.open()`, `app.restart()`, and `app.clearState()`, which
+resets the permissions with the data. iOS hands the arguments to the app
+process (`ProcessInfo.processInfo.arguments`); Android appends them to
+`am start`, so `['--ez', 'e2e', 'true']` is a boolean intent extra. `deny` is
+a recorded refusal on iOS, where the app is told no without a prompt, and a
+revocation on Android, where the OS asks again when the app requests the
+permission. The permissions are set before the app starts,
 since iOS terminates a running app whose permission changed and Android one
 whose permission was revoked. agent-device sets them on the app its session
 is on, and only an open puts a session on an app: the warm-up's open in
@@ -202,7 +172,7 @@ argument and touches no permission.
 the same for one launch of any app. A permission name outside
 `DevicePermission` (naming the nearest one when it is a likely typo) or a
 state other than `grant`, `deny`, or `reset` fails before any device command:
-`INVALID_CONFIG` in `mobile({ permissions })`, `INVALID_ARGUMENT` in
+`INVALID_CONFIG` in `app.permissions`, `INVALID_ARGUMENT` in
 `device.openApp`.
 
 The engine declares one worker per configured device. With no `device`,
@@ -217,12 +187,11 @@ import { mobile } from '@e2e-dev/mobile';
 
 const iphones = mobile({
   platform: 'ios',
-  app: 'com.example.app',
   device: ['iPhone 17', 'iPhone 17 Pro'],
 });
 
 export default {
-  targets: [{ name: 'ios', engine: iphones }],
+  targets: [{ name: 'ios', engine: iphones, app: { bundleId: 'com.example.app' } }],
   workers: 2,
 } satisfies E2EConfig;
 ```
@@ -236,8 +205,8 @@ export default {
 | `performAt` | `tap`, `doubleTap`, `longPress`, and `swipeTo` at a bare screen point, so `screen.tapAt`, `tap({ position })`, `screen.swipe({ from, to })`, and the agent's `tap_at` reach a control the tree does not list. No `hover`, `secondaryTap`, or `dragTo` at a point: touch has none without a node, so `hover_at` needs a listed control. |
 | `keyboard` | `type` and `press` into the focused field, the agent's `type` and `press` without a target and the fallback of `type_at` and `press_at`, and `dismiss`, the agent's `dismiss_keyboard`. |
 | `locate` | Every `screen` query. Text and label queries answer with the innermost match, since a device echoes both up the tree (a React Native input is a host view and the field inside it, both labelled). |
-| `app` | `identity` from the pinned `app`, else `appPath`; no `url`. |
-| `session` | `back`; `restart` and `reset` when `app` or `appPath` is pinned. No `open`: `app.open()` takes no path and the runner serves it with `restart`, the fresh launch of the pinned app; the agent's `navigate` verb is unavailable, and `device.openLink(url)` opens a deep link or web link. |
+| `validateApp` | Requires `app.bundleId` or `app.appPath` and refuses `app.url` for now, with a note on reaching this machine from the platform's device. A target with either is a `native-app` target, so `requires: ['native-app']` selects device targets. |
+| `session` | `back`, `restart`, and `reset`. No `open`: `app.open()` takes no path and the runner serves it with `restart`, the fresh launch of the pinned app; the agent's `navigate` verb is unavailable, and `device.openLink(url)` opens a deep link or web link. |
 | `artifacts` | Redacted screenshots under `screenshots/NNN-<label>.png`; a screenshot that cannot be redacted fails instead of being written. Video, when the attempt's [video mode](/reference/config#video) records, as `video/video.mp4`, or a device provider's own recording. No traces. |
 | `location` | `<bundle id> / <screen title>`, the replay cache's anchor. The title is the navigation bar's on iOS and the toolbar's on Android. |
 | `state` | Not declared. `test.setup` and `session:` are unavailable. |
@@ -246,7 +215,7 @@ export default {
 
 A step recorded on `com.apple.Preferences / General` replays only when
 Settings is on General again. A mutating project-tool call such as
-`open_app` ends a replay. Pin `app` and call `app.open()` first, so steps
+`open_app` ends a replay. Declare `app.bundleId` and call `app.open()` first, so steps
 start on the same screen, and switch apps through the `device` fixture
 between steps rather than inside one.
 
@@ -286,19 +255,19 @@ export interface Device {
   enrollBiometrics(sensor: 'faceid' | 'touchid', enrolled: boolean): Promise<void>;
   /**
    * Installs a build (an iOS `.app` bundle or an Android `.apk`, resolved
-   * against the project root) on the device; without a path, the engine's
-   * `appPath`. The engine installs nothing on its own, so a suite that runs
+   * against the project root) on the device; without a path, the target's
+   * `app.appPath`. The engine installs nothing on its own, so a suite that runs
    * against a build calls this once per device, in a fixture or a test.
    * `reinstall: true` removes the app first so it starts with no data; a
    * plain install replaces the binary and keeps its data. Resolves to the
    * identity to `openApp` it by, which becomes the app `app.open()` launches
-   * when the engine's build is installed and no `app` is pinned.
+   * when the target's build is installed and no `app.bundleId` is pinned.
    */
   installApp(appPath?: string, options?: InstallAppOptions): Promise<InstalledApp>;
   /**
    * Brings an app to the foreground by bundle id, package, or display name;
    * `relaunch` restarts it fresh. `launchArguments` and `permissions` apply
-   * to this launch alone; the engine's configured ones apply to a `relaunch`
+   * to this launch alone; the target's configured ones apply to a `relaunch`
    * of the pinned app, and to no foreground-only open. A link is
    * `INVALID_ARGUMENT` (`file:`, `data:`, and `javascript:` are
    * `POLICY_DENIED`): `openLink` opens one.
@@ -364,14 +333,14 @@ export interface OpenAppOptions {
   readonly relaunch?: boolean;
   /**
    * Arguments this launch hands the app: its process arguments on iOS,
-   * `am start` arguments on Android. Replaces the engine's `launchArguments`
+   * `am start` arguments on Android. Replaces the target's `app.launchArguments`
    * for a relaunch of the pinned app.
    */
   readonly launchArguments?: readonly string[];
   /**
    * Permissions the app holds before this launch, each granted, denied, or
-   * reset. Replaces the engine's `permissions` for a relaunch of the pinned
-   * app.
+   * reset. Replaces the target's `app.permissions` for a relaunch of the
+   * pinned app.
    */
   readonly permissions?: LaunchPermissions;
 }
@@ -442,7 +411,7 @@ iOS reads the session, not the device: agent-device's `appstate` has no
 device-level answer there, so after `home()` it still names the app the
 session opened. Android reads the device's foreground activity.
 
-`installApp` installs a build from inside a test or a fixture: the run's build once per device (no path installs `appPath`), or another build for an upgrade path. A plain
+`installApp` installs a build from inside a test or a fixture: the run's build once per device (no path installs `app.appPath`), or another build for an upgrade path. A plain
 install keeps the app's data; `reinstall: true` removes the app named by
 `app` (default: the pinned app) first. It resolves to the id to `openApp`
 the build by.
@@ -460,7 +429,7 @@ to see it signed out.
 
 `openApp` brings an app to the foreground by bundle id, package, or display
 name (`Settings`); `relaunch: true` restarts it fresh, and `launchArguments`
-and `permissions` apply to that launch alone (the engine's own apply to a
+and `permissions` apply to that launch alone (the target's own apply to a
 `relaunch` of the pinned app). It takes no link:
 agent-device opens any `scheme:rest` string as a URL, so a link is refused
 before the device sees it. A `file:`, `data:`, or `javascript:` link is

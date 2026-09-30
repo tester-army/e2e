@@ -201,8 +201,8 @@ test('GET /api/users returns the seeded users', async ({ app }) => {
 });
 ```
 
-`app.baseUrl` is the engine's `url`, with the port the run allocated when it
-declared port 0, so the same file runs against the `command` the config
+`app.baseUrl` is the target's `app.url`, with the port the run allocated when
+it declared port 0, so the same file runs against the `app.command` the config
 starts and against a deployed preview. For state the API writes after it
 answers, [`expect.poll`](/reference/expect#polling-a-value) re-reads until a
 matcher passes.

@@ -25,16 +25,18 @@ import type { E2EConfig } from 'e2e';
 import { web } from '@e2e-dev/web';
 
 export default {
-  targets: [{ name: 'web', engine: web({ url: 'http://localhost:3000' }) }],
+  targets: [{ name: 'web', engine: web(), app: { url: 'http://localhost:3000' } }],
 } satisfies E2EConfig;
 ```
 
-The engine declares the app it drives. App options: `url` (the base URL
-`app.open()` opens; required once a test navigates), `command` (a process the
-runner starts before the run and stops after it, with `readyUrl` to poll,
-default `url`), `environment`
-(`test`, `staging`, `production`; inferred from the host), and `identity` (a
-stable cache and session key when the origin is ephemeral). Browser options:
+The target declares the app; the engine only drives it. The target's `app`
+takes `url` (the base URL `app.open()` opens; required on a `web()` target),
+`command` (a process the runner starts before the run and stops after it,
+with `readyUrl` to poll, default `url`), `environment` (`test`, `staging`,
+`production`; inferred from the host), and `identity` (a stable cache and
+session key when the origin is ephemeral). `web({ url })` and the other old
+app options are `INVALID_CONFIG`. A target with `app.url` is a `browser`
+target, so a test can `requires: ['browser']`. Browser options:
 `browser` (`chromium`, `firefox`, `webkit`; default `chromium`; or a
 `BrowserProvider` that leases hosted browsers, see below), `viewport`
 (`{ width, height }`; default 1280x720), `testIdAttribute` (the attribute

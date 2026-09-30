@@ -19,19 +19,23 @@ export type ClientFactory = (session: string, connection?: DeviceConnection) => 
 
 export type MobilePlatform = 'ios' | 'android';
 
+/** Every permission agent-device can grant, deny, or reset on an app: what a target's `app.permissions` and `device.openApp` may name. */
+export const DEVICE_PERMISSIONS = [
+  'camera',
+  'microphone',
+  'photos',
+  'contacts',
+  'notifications',
+  'calendar',
+  'location',
+  'reminders',
+  'motion',
+  'siri',
+  'media-library',
+] as const;
+
 /** Permissions agent-device can grant, deny, or reset on an app. */
-export type DevicePermission =
-  | 'camera'
-  | 'microphone'
-  | 'photos'
-  | 'contacts'
-  | 'notifications'
-  | 'calendar'
-  | 'location'
-  | 'reminders'
-  | 'motion'
-  | 'siri'
-  | 'media-library';
+export type DevicePermission = (typeof DEVICE_PERMISSIONS)[number];
 
 /** A permission's state: held, refused, or not asked for yet, so the OS asks again. */
 export type PermissionState = 'grant' | 'deny' | 'reset';
@@ -40,40 +44,15 @@ export type PermissionState = 'grant' | 'deny' | 'reset';
 export type LaunchPermissions = Readonly<Partial<Record<DevicePermission, PermissionState>>>;
 
 /**
- * Options of the device engine. Every optional value also accepts `undefined`,
- * so values read straight from `process.env` need no conditional spread.
+ * Options of the device engine: which devices it drives and how. The app
+ * under test is the target's `app` (`bundleId`, `appPath`,
+ * `launchArguments`, `permissions`). Every optional value also accepts
+ * `undefined`, so values read straight from `process.env` need no
+ * conditional spread.
  */
 export interface MobileOptions {
   /** Platform the target's device runs. */
   readonly platform: MobilePlatform;
-  /**
-   * App the worker brings up once in `prepare` and `app.open()` launches
-   * fresh: a bundle id, a package name, or a display name agent-device
-   * resolves (`Settings`). An attempt launches nothing on its own, so a test
-   * starts where the last one ended and calls `app.open()` when it wants
-   * the app fresh, as a Maestro flow calls `launchApp`. Without it the
-   * surface observes whatever is in the foreground, and `app.open()`,
-   * `app.restart()`, and `app.clearState()` are not available. A link is
-   * `INVALID_CONFIG`: a test opens one with `device.openLink`.
-   */
-  readonly app?: string | undefined;
-  /**
-   * The build the suite runs against: an iOS `.app` bundle or an Android
-   * `.apk`, resolved against the project root (the config's directory). The
-   * engine installs nothing on its own: `device.installApp()` with no path
-   * installs it, once per device, where the suite says so, and a device
-   * provider installs it on the device it leases. Without `app`, the
-   * installed bundle id or package becomes the app `app.open()` launches.
-   */
-  readonly appPath?: string | undefined;
-  /**
-   * Stable identity keying replay cache and session entries; defaults to `app`,
-   * else `appPath`. Declare one when the pinned app differs per run (a build
-   * path with a version in it) so entries survive the rename.
-   */
-  readonly identity?: string | undefined;
-  /** Report label joining the cache identity; a simulator or emulator defaults to `test`. */
-  readonly environment?: 'test' | 'staging' | 'production' | undefined;
   /**
    * Simulator or emulator to use, by name, simulator UDID, or emulator
    * serial (`emulator-5554`). A list is a pool: the
@@ -129,31 +108,4 @@ export interface MobileOptions {
    * daemon that pass can outlast the attempt's `cleanupTimeout`.
    */
   readonly videoTouches?: boolean | undefined;
-  /**
-   * Arguments the pinned app is launched with on every fresh launch this
-   * engine performs: `app.open()`, `app.restart()`, and `app.clearState()`.
-   * iOS hands them to the app process (`ProcessInfo.processInfo.arguments`);
-   * Android appends them to `am start`, so `['--ez', 'e2e', 'true']` is a
-   * boolean intent extra. The warm-up in `prepare` and a foreground-only
-   * `device.openApp` pass none: an app already running keeps its process
-   * arguments, and `app.open()` relaunches it with them. Arguments that
-   * select a build mode change what the app is: give each mode its own
-   * `identity` so their recordings stay apart.
-   * `device.openApp(app, { launchArguments })` launches any app with its
-   * own.
-   */
-  readonly launchArguments?: readonly string[] | undefined;
-  /**
-   * Permissions the pinned app holds on every fresh launch this engine
-   * performs: `app.open()`, `app.restart()`, and `app.clearState()`, which
-   * resets them along with the app's data. Each is granted, denied, or reset
-   * (the OS asks again) before the app starts, since iOS terminates a running
-   * app whose permission changed and Android one whose permission was
-   * revoked. `deny` is a recorded refusal on iOS, where the app is told no
-   * without a prompt, and a revocation on Android, where the OS asks again
-   * when the app requests the permission. A foreground-only `device.openApp`
-   * leaves them alone; `device.openApp(app, { permissions })` presets any
-   * app's.
-   */
-  readonly permissions?: LaunchPermissions | undefined;
 }

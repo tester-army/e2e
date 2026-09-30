@@ -43,7 +43,7 @@ it('offers no pixel verbs after a secret fill and captures no pixels', async () 
   };
   try {
     const outcome = await run({ cwd: project, quiet: true, env: {}, rawConfig: {
-      tests: '*.e2e.ts', targets: [{ name: 'ios', platform: 'ios', engine }], cache: 'off',
+      tests: '*.e2e.ts', targets: [{ name: 'ios', platform: 'ios', engine, app: { bundleId: 'Settings' } }], cache: 'off',
       credentials: { audit: { username: 'audit', password: () => 'synthetic-device-secret' } },
       agents: { default: { tools: mobileTools(engine), model } },
     } });

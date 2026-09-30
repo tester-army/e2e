@@ -16,7 +16,7 @@ import type { E2EConfig } from 'e2e';
 import { web } from '@e2e-dev/web';
 
 export default {
-  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
 } satisfies E2EConfig;
 ```
 
@@ -24,11 +24,11 @@ export default {
 
 ```ts
 /**
- * Options of the browser engine: the app it drives (`url`, `command`,
- * `services`, `environment`, `identity`, `readyUrl` - the
- * engine contract's app declaration) plus the browser itself.
+ * Options of the browser engine: how it drives the app. The app itself
+ * (its `url`, `environment`, `identity`, and the command that starts it) is
+ * the target's `app`.
  */
-export interface WebOptions extends EngineAppDeclaration {
+export interface WebOptions {
   /**
    * Browser to launch, `chromium` by default. A `BrowserProvider` leases
    * hosted browsers instead: one per worker slot at `prepare`, or one per
@@ -93,17 +93,24 @@ export interface WebScreencastOptions {
 }
 ```
 
-The app declaration fields (`url`, `command`, `readyUrl`, `services`,
-`environment`, `identity`) are documented under
-[the app under test](/reference/config#the-app-under-test). `connect` needs
-chromium; `cdpEndpoint(signal)` is called once per worker and again at an
-attempt start after a disconnect. A `browser` provider object leases hosted
+The app a web target opens is the target's `app`, not an engine option:
+`targets: [{ engine: web(), app: { url } }]`, documented under
+[the app under test](/reference/config#the-app-under-test). A `web()` target
+needs `app.url` and refuses the device keys (`bundleId`, `appPath`,
+`launchArguments`, `permissions`); `web({ url })` or any other app key on
+`web()` is `INVALID_CONFIG` naming its place on the target. The engine's
+A target with `app.url` is a `browser` target, so `requires: ['browser']`
+selects web targets.
+
+`connect` needs chromium; `cdpEndpoint(signal)` is called once per worker and
+again at an attempt start after a disconnect. A `browser` provider object leases hosted
 browsers and releases them when the run or the attempt ends; see
 [Hosted browsers](/browser#hosted-browsers) for the `BrowserProvider`
 contract and an example provider. `browser: provider` together with
 `connect` is `INVALID_CONFIG`, and so is an option `web()` does not take, or
 an unknown key inside `connect` or `basicAuth`, naming the nearest known key
-when it is a likely typo (`comand` is `command`) and every key otherwise. `:` is not allowed in the `basicAuth` user name.
+when it is a likely typo (`viewprt` is `viewport`) and every key otherwise; a
+moved app key gets its place on the target instead. `:` is not allowed in the `basicAuth` user name.
 The `basicAuth` password is a string or `secrets.get(name)`: a secret the
 engine resolves when each attempt starts, redacted like any configured one,
 and so is the base64 credential of the `Authorization` header it becomes.
@@ -283,8 +290,8 @@ export interface Web extends Expectable<WebExpectation> {
 
 Every `web` call is a recorded `web.<method>` step, except `locator` and
 `frameLocator`: they build a locator without touching the page, and the
-action or assertion on it is the step. A relative URL needs the
-engine's declared `url`, else `APP_URL_REQUIRED`. Declare `requires: ['web']`
+action or assertion on it is the step. A relative URL resolves against the
+target's `app.url`, else `APP_URL_REQUIRED`. Declare `requires: ['web']`
 in a suite that also runs on other platforms.
 
 ### Navigation
@@ -568,7 +575,7 @@ package for typing config helpers and fixtures. The runtime exports are
 ```ts
 import { web, surfaceOf } from '@e2e-dev/web';
 
-const engine = web({ url: 'http://localhost:3000' });
+const engine = web();
 const live = surfaceOf(engine);   // PlaywrightLiveSurface | undefined
 live!.page();                     // the Page of the current attempt
 live!.context();                  // its BrowserContext

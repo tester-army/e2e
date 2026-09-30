@@ -22,10 +22,10 @@ export default {
     {
       engine: mobile({
         platform: 'ios',
-        app: 'com.example.app',
         device: easSimulators({ projectId: '<expo project id>', buildId: process.env.EAS_BUILD_ID }),
         videoTouches: false,
       }),
+      app: { bundleId: 'com.example.app' },
     },
   ],
   workers: 2,
@@ -38,7 +38,8 @@ and the engine drives it through the agent-device daemon EAS runs beside it.
 Tests start once every slot has a simulator.
 
 - `buildId` (or `applicationArchiveUrl`) has EAS install the app; without
-  it, `device.installApp()` uploads a local build through the daemon.
+  it, `device.installApp()` uploads the target's `app.appPath` through the
+  daemon.
 - `device` picks the simulator.
 - `maxIdleTimeMinutes` (default 10) is how long EAS keeps a session no
   command reached, the backstop for a run that died.

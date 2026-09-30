@@ -24,7 +24,7 @@ const upload: Reporter = {
 };
 
 export default {
-  targets: [{ engine: web({ url: 'localhost:3000' }) }],
+  targets: [{ engine: web(), app: { url: 'localhost:3000' } }],
   reporters: ['list', upload],
 } satisfies E2EConfig;
 ```

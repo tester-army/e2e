@@ -10,7 +10,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type {
-  EngineAppDeclaration,
   EngineAttemptContext,
   EngineHandle,
   EngineInitInfo,
@@ -145,14 +144,15 @@ export interface FakeEngineBehavior {
   onRestore?(state: EngineState): void | Promise<void>;
   /** Contributes a `gadget` fixture exercising every fixture-context facility. */
   fixtures?: boolean;
-  /** What the engine declares about its app; defaults to `FAKE_APP_URL`, which every observation reports as its location. */
-  app?: EngineAppDeclaration;
   /** The secrets the engine declares, which `onStartAttempt` may resolve through its context. */
   secrets?: readonly Secret[];
 }
 
-/** The app URL the fake serves and declares by default. */
+/** The app URL the fake serves: every observation reports it as its location. */
 export const FAKE_APP_URL = 'http://127.0.0.1:4599';
+
+/** The target app a fake engine's target declares, so `app.open()` has somewhere to go. */
+export const FAKE_APP = { url: FAKE_APP_URL } as const;
 
 export interface FakeEngineHandle {
   readonly engine: EngineHandle;
@@ -287,7 +287,6 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
       };
     },
     actions: behavior.actions ?? LOCATOR_ACTION_KINDS.filter((kind) => kind !== 'swipe'),
-    app: behavior.app ?? { url: FAKE_APP_URL },
     ...(behavior.secrets === undefined ? {} : { secrets: behavior.secrets }),
     session: {
       async open(url, operation) {

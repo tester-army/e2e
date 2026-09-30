@@ -14,8 +14,8 @@ import { AppError } from 'agent-device';
 import { decodePng, encodePng } from '../helpers/png.ts';
 import type { EngineFixtureContext, FixtureOperations, OperationContext, SemanticNode } from 'e2e/engine';
 import type { Device } from '../../src/device.ts';
-import { AgentDeviceSurface } from '../../src/surface.ts';
-import { createFakeClient, SETTINGS_NODES, SETTINGS_SNAPSHOT } from '../helpers/fake-client.ts';
+import { mobile } from '../../src/engine.ts';
+import { SETTINGS_NODES, SETTINGS_SNAPSHOT } from '../helpers/fake-client.ts';
 import { boot, harness, poolVariableIn, PROJECT_ROOT, type Harness } from '../helpers/harness.ts';
 import { noSecrets } from '../helpers/secrets.ts';
 
@@ -42,9 +42,10 @@ afterEach(() => {
 
 /** Boots, starts an attempt, and launches the pinned app the way a test's `app.open()` does. */
 async function openAttempt(h: Harness, attemptId = 'a1'): Promise<void> {
-  await boot(h.engine);
+  await boot(h);
   await h.engine.startAttempt!({ attemptId, artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
-  if (h.engine.session?.restart !== undefined) await h.engine.session.restart(operation());
+  const { app } = h;
+  if (app.bundleId !== undefined || app.appPath !== undefined) await h.engine.session!.restart!(operation());
 }
 
 /** The observed node with this name, from a fresh observation. */
@@ -73,54 +74,74 @@ async function screenRootOf(h: Harness): Promise<SemanticNode> {
 }
 
 describe('manifest', () => {
-  it('declares observation, actions, location, artifacts, the device fixture, and session hooks by option', () => {
+  it('declares observation, actions, location, artifacts, the device fixture, and session hooks', () => {
     const pinned = harness().engine;
     expect([...pinned.capabilities].toSorted()).toEqual(['actions', 'artifacts', 'device', 'keyboard', 'location', 'observation', 'pointer']);
     expect(pinned.name).toBe('mobile');
     expect(pinned.version).not.toBe('unknown');
-    expect(Object.keys(pinned.app!)).toEqual(['identity']);
-    expect(pinned.app!.identity).toBe('Settings');
     expect(Object.keys(pinned.session!).toSorted()).toEqual(['back', 'reset', 'restart']);
     // No `open`: a device app has no URL. No select verb either: the touch surface has no option lists to pick from.
     expect(pinned.session!.open).toBeUndefined();
     expect(pinned.actions).toEqual(['tap', 'doubleTap', 'longPress', 'fill', 'clear', 'press', 'check', 'uncheck', 'focus', 'hover', 'dragTo', 'swipe']);
     expect(pinned.state).toBeUndefined();
-
-    const free = harness({}, false).engine;
-    expect(free.app).toEqual({});
-    expect(Object.keys(free.session!)).toEqual(['back']);
   });
 
   it('rejects an option it does not know, naming the nearest', () => {
     expect(() => harness({ sesion: 'e2e-ios' } as never)).toThrow(
       expect.objectContaining({ code: 'INVALID_CONFIG', message: 'mobile() has unknown key "sesion"; did you mean "session"?' }),
     );
-    expect(() => harness({ bundleId: 'com.example' } as never)).toThrow(
-      /^mobile\(\) has unknown key "bundleId"; expected one of platform, app, appPath, identity/,
+    expect(() => harness({ bundle: 'com.example' } as never)).toThrow(
+      /^mobile\(\) has unknown key "bundle"; expected one of platform, device, session, snapshot, settle, transition, videoTouches$/,
     );
   });
 
-  it('rejects a permission name or state it does not know, naming the nearest name', () => {
-    expect(() => harness({ permissions: { camerra: 'grant' } } as never)).toThrow(
-      expect.objectContaining({ code: 'INVALID_CONFIG', message: 'mobile({ permissions }) has unknown key "camerra"; did you mean "camera"?' }),
+  it('refuses every app option it used to take at once, naming their place on the target', () => {
+    expect(() => mobile({ platform: 'ios', app: 'x', appPath: 'x', launchArguments: [] } as never)).toThrowError(
+      expect.objectContaining({
+        code: 'INVALID_CONFIG',
+        message:
+          'mobile({ app, appPath, launchArguments }) moved to the target: the app under test is declared there, as targets: [{ engine: mobile({ platform }), app: { bundleId, appPath, launchArguments } }]; mobile() only drives it',
+      }),
     );
-    expect(() => harness({ permissions: { camera: 'granted' } } as never)).toThrow(
-      expect.objectContaining({ code: 'INVALID_CONFIG', message: 'mobile({ permissions }).camera must be one of grant, deny, reset, got "granted"' }),
+    expect(() => mobile({ platform: 'ios', sesion: 'x', permissions: {} } as never)).toThrowError(
+      expect.objectContaining({ message: expect.stringMatching(/^mobile\(\{ permissions \}\) moved to the target/) }),
     );
-    for (const permissions of ['camera', null, ['camera'], new Map([['camera', 'grant']])]) {
-      expect(() => harness({ permissions } as never)).toThrow(
-        expect.objectContaining({ code: 'INVALID_CONFIG', message: 'mobile({ permissions }) must be a plain object of permission names to grant, deny, reset' }),
-      );
-    }
-    expect(() => harness({ permissions: { camera: 'grant', 'media-library': 'deny', photos: undefined } } as never)).not.toThrow();
   });
 
-  it('declares the app identity from the option, the build path, or an explicit identity', () => {
-    expect(harness({ appPath: './build/App.app' }, false).engine.app).toMatchObject({ identity: './build/App.app' });
-    expect(harness({ identity: 'com.example.app', environment: 'staging' }).engine.app).toMatchObject({
-      identity: 'com.example.app',
-      environment: 'staging',
-    });
+  it('requires a bundle id or a build on the target, and refuses a URL for now', () => {
+    const { validateApp } = harness().engine;
+    const info = { targetName: 'ios' };
+    expect(() => validateApp!({ bundleId: 'com.example.app' }, info)).not.toThrow();
+    expect(() => validateApp!({ appPath: './build/App.app' }, info)).not.toThrow();
+    expect(() => validateApp!({}, info)).toThrowError(
+      expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringContaining('target "ios" needs app.bundleId or app.appPath') }),
+    );
+    expect(() => validateApp!({ url: 'http://127.0.0.1:3000', bundleId: 'com.example.app' }, info)).toThrowError(
+      expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringMatching(/cannot open a website in the device's browser yet.*a simulator shares this machine's loopback/) }),
+    );
+    expect(() => harness({ platform: 'android' }).engine.validateApp!({ url: 'http://127.0.0.1:3000' }, info)).toThrowError(
+      expect.objectContaining({ message: expect.stringContaining('127.0.0.1 on an Android emulator is the emulator itself (this machine is 10.0.2.2)') }),
+    );
+    expect(() => validateApp!({ url: 'http://127.0.0.1:3000' }, info)).toThrowError(expect.objectContaining({ message: expect.not.stringContaining('10.0.2.2') }));
+  });
+
+  it('rejects a permission name or state it does not know on the target, naming the nearest name', () => {
+    const { validateApp } = harness().engine;
+    const info = { targetName: 'ios' };
+    const app = (permissions: unknown) => ({ bundleId: 'com.example.app', permissions }) as never;
+    expect(() => validateApp!(app({ camerra: 'grant' }), info)).toThrowError(
+      expect.objectContaining({ code: 'INVALID_CONFIG', message: 'target "ios" app.permissions has unknown key "camerra"; did you mean "camera"?' }),
+    );
+    expect(() => validateApp!(app({ bluetooth: 'grant' }), info)).toThrowError(
+      expect.objectContaining({ message: expect.stringMatching(/^target "ios" app\.permissions has unknown key "bluetooth"; expected one of camera, microphone/) }),
+    );
+    expect(() => validateApp!(app({ camera: 'granted' }), info)).toThrowError(
+      expect.objectContaining({ code: 'INVALID_CONFIG', message: 'target "ios" app.permissions.camera must be one of grant, deny, reset, got "granted"' }),
+    );
+    expect(() => validateApp!(app(new Map([['camera', 'grant']])), info)).toThrowError(
+      expect.objectContaining({ code: 'INVALID_CONFIG', message: 'target "ios" app.permissions must be a plain object of permission names to grant, deny, reset' }),
+    );
+    expect(() => validateApp!(app({ camera: 'grant', 'media-library': 'deny', photos: undefined }), info)).not.toThrow();
   });
 });
 
@@ -145,7 +166,7 @@ describe('lifecycle', () => {
     expect(h.fake.methods().filter((m) => m === 'sessions.close')).toHaveLength(1);
 
     // A disposed handle boots again: the config-held handle outlives a worker.
-    await boot(h.engine, 'second');
+    await boot(h, 'second');
     expect(h.sessions).toEqual(['e2e-ios-simulator-0', 'e2e-second-0']);
   });
 
@@ -160,7 +181,7 @@ describe('lifecycle', () => {
   it('hands each worker slot its own device from a pool, under a slot-suffixed session', async () => {
     const pool = ['iPhone 17', 'iPhone 17 Pro'] as const;
     const first = harness({ device: pool });
-    await boot(first.engine, 'ios', 0);
+    await boot(first, 'ios', 0);
     expect(first.sessions).toEqual(['e2e-ios-0']);
     expect(first.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', device: 'iPhone 17' });
     await first.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
@@ -168,12 +189,12 @@ describe('lifecycle', () => {
     expect(first.fake.lastArgs('apps.open')).toEqual({ app: 'Settings', platform: 'ios', device: 'iPhone 17', relaunch: true });
 
     const second = harness({ device: pool, session: 'qa' });
-    await boot(second.engine, 'ios', 1);
+    await boot(second, 'ios', 1);
     expect(second.sessions).toEqual(['qa-1']);
     expect(second.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', device: 'iPhone 17 Pro' });
 
     const third = harness({ device: pool });
-    await expect(boot(third.engine, 'ios', 2)).rejects.toMatchObject({
+    await expect(boot(third, 'ios', 2)).rejects.toMatchObject({
       code: 'ENGINE_FAILURE',
       message: expect.stringContaining('worker slot 2 is outside a device pool of 2'),
     });
@@ -185,7 +206,7 @@ describe('lifecycle', () => {
     const h = harness({ device: pool });
     expect(h.engine.workers).toBe(3);
     const lines: string[] = [];
-    await h.engine.prepare!({
+    await h.prepare({ 
       runId: 'run-1',
       targetName: 'ios',
       projectRoot: PROJECT_ROOT,
@@ -208,20 +229,20 @@ describe('lifecycle', () => {
     // `device.installApp()` comes later. A pinned `app` whose build is not on
     // yet is not opened either, and the log says why.
     const bare = harness({ device: 'iPhone 16e' }, false);
-    await bare.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
+    await bare.prepare({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
     expect(bare.fake.methods()).toEqual(['devices.boot', 'command.prepare']);
     const build = harness({ device: 'iPhone 16e', appPath: 'build/App.app' }, false);
-    await build.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
+    await build.prepare({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
     expect(build.fake.methods()).toEqual(['devices.boot', 'command.prepare']);
     const pinnedBuild = harness({ device: 'iPhone 16e', appPath: 'build/App.app' });
     const pinnedLines: string[] = [];
-    await pinnedBuild.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: (line) => pinnedLines.push(line) });
+    await pinnedBuild.prepare({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: (line) => pinnedLines.push(line) });
     expect(pinnedBuild.fake.methods()).toEqual(['devices.boot', 'command.prepare']);
     expect(pinnedLines[1]).toMatch(/Settings awaits the suite's device.installApp\(\)/);
 
     const single = harness({ device: 'iPhone 16e', session: 'qa' });
     expect(single.engine.workers).toBe(1);
-    await single.engine.prepare!({
+    await single.prepare({ 
       runId: 'run-1',
       targetName: 'ios',
       projectRoot: PROJECT_ROOT,
@@ -236,7 +257,7 @@ describe('lifecycle', () => {
 
   it('warms each device with a plain open, no launch arguments, and hands the worker the app its session is on', async () => {
     const h = harness({ device: 'iPhone 16e', launchArguments: ['-e2e', 'YES'], permissions: { camera: 'grant' } });
-    const result = await h.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
+    const result = await h.prepare({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
     expect(h.fake.methods()).toEqual(['devices.boot', 'command.prepare', 'apps.open']);
     expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'Settings', platform: 'ios', device: 'iPhone 16e' });
     const handed = result?.env ?? {};
@@ -244,7 +265,7 @@ describe('lifecycle', () => {
 
     // The worker resumes a session that is on the app: its first fresh launch presets the permissions without an open to bind it.
     h.fake.respond('sessions.list', () => [{ name: 'e2e-ios-0', address: 'e2e-ios-0' }]);
-    await boot(h.engine, 'ios', 0);
+    await boot(h, 'ios', 0);
     await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
     const before = h.fake.calls.length;
     await h.engine.session!.restart!(operation());
@@ -261,7 +282,7 @@ describe('lifecycle', () => {
     });
     const lines: string[] = [];
     const info = { runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: (line: string) => lines.push(line) };
-    const result = await h.engine.prepare!(info);
+    const result = await h.prepare(info);
     expect(lines[1]).toMatch(/Settings did not open.*runner still installing/);
     // Nothing put the session on the app, and the binding says so: the worker's first launch binds it itself.
     const handed = result?.env ?? {};
@@ -270,7 +291,7 @@ describe('lifecycle', () => {
     h.fake.respond('devices.boot', () => {
       throw new Error('no such device');
     });
-    await expect(h.engine.prepare!(info)).rejects.toMatchObject({ message: expect.stringContaining('no such device') });
+    await expect(h.prepare(info)).rejects.toMatchObject({ message: expect.stringContaining('no such device') });
   });
 
   it('starts the iOS runner in prepare, leaves one that does not start to the first attempt, and ends the run on a wedged one', async () => {
@@ -280,7 +301,7 @@ describe('lifecycle', () => {
     });
     const lines: string[] = [];
     const info = { runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: (line: string) => lines.push(line) };
-    await h.engine.prepare!(info);
+    await h.prepare(info);
     expect(lines[1]).toMatch(/runner not prepared.*runner still building/);
     // The warm-up open would start the runner again under open's shorter budget, so the slot is left unopened.
     expect(h.fake.methods()).toEqual(['devices.boot', 'command.prepare']);
@@ -288,11 +309,11 @@ describe('lifecycle', () => {
     h.fake.respond('command.prepare', () => {
       throw new AppError('RUNNER_BUSY', 'the runner is still finishing a command');
     });
-    await expect(h.engine.prepare!(info)).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+    await expect(h.prepare(info)).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
 
     // Android has no XCTest runner to start.
     const android = harness({ device: 'emulator-5556', platform: 'android' });
-    await android.engine.prepare!({ ...info, targetName: 'android' });
+    await android.prepare({ ...info, targetName: 'android' });
     expect(android.fake.methods()).not.toContain('command.prepare');
   });
 
@@ -308,7 +329,7 @@ describe('lifecycle', () => {
     expect(h.engine.workers).toBeUndefined();
     const env: NodeJS.ProcessEnv = {};
     const lines: string[] = [];
-    const result = await h.engine.prepare!({
+    const result = await h.prepare({ 
       runId: 'run-1',
       targetName: 'ios',
       projectRoot: PROJECT_ROOT,
@@ -338,7 +359,7 @@ describe('lifecycle', () => {
     expect(env).toEqual({});
     // A worker reads the pool from the environment it was started with, never process.env.
     const worker = harness({ device: undefined });
-    await boot(worker.engine, 'ios', 1, { [variable]: handed[variable] });
+    await boot(worker, 'ios', 1, { [variable]: handed[variable] });
     expect(worker.fake.methods()).toEqual(['devices.boot', 'sessions.list']);
     expect(worker.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', udid: '8A2DC8D6-7B20-44FA-ADBB-47D3EAE6E8F3' });
     expect(worker.sessions).toEqual(['e2e-ios-1']);
@@ -352,26 +373,26 @@ describe('lifecycle', () => {
     ]);
     const env: NodeJS.ProcessEnv = {};
     const info = { runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env, signal: new AbortController().signal, log: () => undefined };
-    const first = await h.engine.prepare!(info);
+    const first = await h.prepare(info);
     expect(first?.workers).toBe(1);
     const firstEnv = first?.env ?? {};
     expect(h.fake.calls.filter((call) => call.method === 'devices.boot').map((call) => call.args)).toEqual([{ platform: 'ios', udid: 'A' }]);
     expect(firstEnv[poolVariableIn(firstEnv, 'IOS')]).toBe(JSON.stringify([{ deviceId: 'A', sessionApp: 'Settings' }]));
     // The same handle prepared again, for another target, discovers afresh and hands back that target's own variable.
     h.fake.respond('devices.list', () => [{ platform: 'ios', id: 'C', name: 'C', booted: true }]);
-    const second = await h.engine.prepare!({ ...info, targetName: 'ios.a', env });
+    const second = await h.prepare({ ...info, targetName: 'ios.a', env });
     const secondEnv = second?.env ?? {};
     expect(h.fake.methods().filter((method) => method === 'devices.list')).toHaveLength(2);
     expect(secondEnv[poolVariableIn(secondEnv, 'IOS_A')]).toBe(JSON.stringify([{ deviceId: 'C', sessionApp: 'Settings' }]));
     // Names that sanitize alike keep distinct variables.
-    const third = await h.engine.prepare!({ ...info, targetName: 'ios-a', env });
+    const third = await h.prepare({ ...info, targetName: 'ios-a', env });
     expect(Object.keys(third?.env ?? {})[0]).not.toBe(Object.keys(secondEnv)[0]);
     expect(Object.keys(third?.env ?? {})[0]).toMatch(/^E2E_AGENT_DEVICE_POOL_IOS_A_/);
 
     const cold = harness({ device: undefined });
     cold.fake.respond('devices.list', () => []);
     const coldEnv: NodeJS.ProcessEnv = {};
-    const coldResult = await cold.engine.prepare!({ ...info, env: coldEnv });
+    const coldResult = await cold.prepare({ ...info, env: coldEnv });
     expect(coldResult).toMatchObject({ workers: 1 });
     expect(cold.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios' });
     const coldHanded = coldResult?.env ?? {};
@@ -382,7 +403,7 @@ describe('lifecycle', () => {
 
   it('selects a named device by name and a UDID by udid', async () => {
     const byName = harness({ device: 'iPhone 16e' });
-    await boot(byName.engine);
+    await boot(byName);
     expect(byName.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', device: 'iPhone 16e' });
     const byId = harness({ device: '2BBF3F07-AF66-4F95-82AB-BF442506FC89' });
     await openAttempt(byId);
@@ -394,7 +415,7 @@ describe('lifecycle', () => {
     const h = harness({ device: undefined, platform: 'android' });
     h.fake.respond('devices.list', () => [{ platform: 'android', id: 'emulator-5554', name: 'test', booted: true }]);
     const lines: string[] = [];
-    const result = await h.engine.prepare!({
+    const result = await h.prepare({ 
       runId: 'run-1',
       targetName: 'android',
       projectRoot: PROJECT_ROOT,
@@ -410,14 +431,14 @@ describe('lifecycle', () => {
     const variable = poolVariableIn(handed, 'ANDROID');
     expect(handed[variable]).toBe(JSON.stringify([{ deviceId: 'emulator-5554', sessionApp: 'Settings' }]));
     const worker = harness({ device: undefined, platform: 'android' });
-    await boot(worker.engine, 'android', 0, { [variable]: handed[variable] });
+    await boot(worker, 'android', 0, { [variable]: handed[variable] });
     expect(worker.fake.lastArgs('devices.boot')).toEqual({ platform: 'android', serial: 'emulator-5554' });
 
     const bySerial = harness({ device: 'emulator-5556', platform: 'android' });
-    await boot(bySerial.engine, 'android');
+    await boot(bySerial, 'android');
     expect(bySerial.fake.lastArgs('devices.boot')).toEqual({ platform: 'android', serial: 'emulator-5556' });
     const byName = harness({ device: 'Pixel_9', platform: 'android' });
-    await boot(byName.engine, 'android');
+    await boot(byName, 'android');
     expect(byName.fake.lastArgs('devices.boot')).toEqual({ platform: 'android', device: 'Pixel_9' });
   });
 
@@ -453,30 +474,27 @@ describe('lifecycle', () => {
     expect(() => harness({ device: [] })).toThrow(/empty pool/);
   });
 
-  it('rejects a link as the app option at config time, before prepare could open it on a device', () => {
-    expect(() => harness({ app: 'file:///etc/passwd' })).toThrowError(expect.objectContaining({ code: 'INVALID_CONFIG' }));
+  it('rejects a link as the bundle id at config time, before prepare could open it on a device', () => {
+    const { validateApp } = harness().engine;
     for (const link of ['file:///etc/passwd', 'https://example.com/verify?token=s3cret', 'myapp://orders/42']) {
-      const fake = createFakeClient();
-      expect(() => new AgentDeviceSurface({ platform: 'ios', app: link }, () => fake.client)).toThrowError(
+      expect(() => validateApp!({ bundleId: link }, { targetName: 'ios' })).toThrowError(
         expect.objectContaining({
           code: 'INVALID_CONFIG',
           message: expect.stringContaining('device.openLink'),
         }),
       );
-      expect(fake.methods()).toEqual([]);
     }
-    expect(() => new AgentDeviceSurface({ platform: 'ios', app: 'https://example.com/verify?token=s3cret' }, () => createFakeClient().client)).toThrowError(
+    expect(() => validateApp!({ bundleId: 'https://example.com/verify?token=s3cret' }, { targetName: 'ios' })).toThrowError(
       expect.objectContaining({ message: expect.not.stringContaining('s3cret') }),
     );
-    expect(() => harness({ app: 'Notes: Pro' })).not.toThrow();
+    expect(() => validateApp!({ bundleId: 'Notes: Pro' }, { targetName: 'ios' })).not.toThrow();
   });
 
   it('takes undefined for every optional option, so env-driven configs need no conditional spreads', async () => {
     const h = harness(
-      { app: undefined, appPath: undefined, identity: undefined, environment: undefined, device: undefined, session: undefined, snapshot: undefined },
+      { device: undefined, session: undefined, snapshot: undefined, settle: undefined, transition: undefined },
       false,
     );
-    expect(Object.keys(h.engine.session!)).toEqual(['back']);
     await openAttempt(h);
     expect(h.sessions).toEqual(['e2e-ios-simulator-0']);
     expect(h.fake.methods()).toEqual(['devices.boot']);
@@ -493,7 +511,7 @@ describe('lifecycle', () => {
       identifiers: {},
     }));
     expect(Object.keys(h.engine.session!).toSorted()).toEqual(['back', 'reset', 'restart']);
-    await boot(h.engine);
+    await boot(h);
     await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
     expect(h.fake.methods()).toEqual(['devices.boot']);
 
@@ -516,7 +534,7 @@ describe('lifecycle', () => {
   });
 
   it('installs the engine build under the pinned app and device, and keeps opening the pinned app', async () => {
-    const h = harness({ app: 'com.example.app', appPath: '/builds/app.apk', device: 'Pixel 8', platform: 'android' });
+    const h = harness({ bundleId: 'com.example.app', appPath: '/builds/app.apk', device: 'Pixel 8', platform: 'android' });
     h.fake.respond('apps.install', () => ({ app: 'com.example.app', appPath: '/builds/app.apk', platform: 'android', identifiers: {} }));
     await openAttempt(h);
     expect(h.fake.methods()).toEqual(['devices.boot', 'apps.open']);
@@ -538,7 +556,7 @@ describe('lifecycle', () => {
     h.fake.respond('apps.install', () => {
       throw new Error('no such file: missing.app');
     });
-    await boot(h.engine);
+    await boot(h);
     await expect(h.surface.installApp(undefined, {}, new AbortController().signal)).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
     expect(h.fake.methods()).toEqual(['devices.boot', 'apps.install']);
   });
@@ -567,7 +585,7 @@ describe('lifecycle', () => {
     h.fake.respond('devices.boot', () => {
       throw new AppError('DEVICE_NOT_FOUND', 'no booted iOS simulator');
     });
-    await expect(boot(h.engine)).rejects.toMatchObject({
+    await expect(boot(h)).rejects.toMatchObject({
       code: 'ENGINE_FAILURE',
       message: 'boot failed: no booted iOS simulator',
     });
@@ -1390,10 +1408,10 @@ describe('device fixture', () => {
 
   it('opens the app before a permission change when the warmed session is gone, as after a worker retired on a failing test', async () => {
     const h = harness({ device: 'iPhone 16e' });
-    await h.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
+    await h.prepare({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
     // The retired worker's dispose closed the slot's session, so agent-device no longer lists it.
     h.fake.respond('sessions.list', () => [{ name: 'e2e-ios-1', address: 'e2e-ios-1' }]);
-    await boot(h.engine, 'ios', 0);
+    await boot(h, 'ios', 0);
     await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
     const before = h.fake.calls.length;
     await fixture(h).setPermission('microphone', 'reset');
@@ -1406,7 +1424,7 @@ describe('device fixture', () => {
   it('brings the pinned app to the foreground before a permission change when the session is on no app', async () => {
     // Nothing opened in this worker yet: the open goes first, as a foreground open, then the change.
     const h = harness();
-    await boot(h.engine);
+    await boot(h);
     await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
     const before = h.fake.calls.length;
     await fixture(h).setPermission('microphone', 'reset');
@@ -1439,7 +1457,7 @@ describe('device fixture', () => {
   });
 
   it('switches Android location services on before a fix, since clearLocation leaves them off', async () => {
-    const h = harness({ platform: 'android', app: 'com.android.settings' });
+    const h = harness({ platform: 'android', bundleId: 'com.android.settings' });
     await openAttempt(h);
     const before = h.fake.calls.length;
     const device = fixture(h);
@@ -1453,7 +1471,7 @@ describe('device fixture', () => {
   });
 
   it('reads an Android foreground package', async () => {
-    const h = harness({ platform: 'android', app: 'com.android.settings' });
+    const h = harness({ platform: 'android', bundleId: 'com.android.settings' });
     await openAttempt(h);
     h.fake.respond('command.appState', () => ({ platform: 'android', package: 'com.android.settings', activity: '.Main' }));
     expect(await fixture(h).foregroundApp()).toEqual({ name: 'com.android.settings', bundleId: 'com.android.settings' });
@@ -1528,9 +1546,9 @@ describe('device fixture', () => {
   });
 
   it('presets the configured permissions and passes the launch arguments on every fresh launch of the pinned app, and on no other open', async () => {
-    const h = harness({ app: 'com.example.app', launchArguments: ['-e2e', 'YES'], permissions: { camera: 'grant', location: 'deny' } });
+    const h = harness({ bundleId: 'com.example.app', launchArguments: ['-e2e', 'YES'], permissions: { camera: 'grant', location: 'deny' } });
     h.fake.respond('apps.open', () => ({ session: 's', appName: 'Example', appBundleId: 'com.example.app', identifiers: {} }));
-    await boot(h.engine);
+    await boot(h);
     await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
     const device = fixture(h);
     const before = h.fake.calls.length;
@@ -1615,7 +1633,7 @@ describe('device fixture', () => {
       ['settings.update', { setting: 'reset-keychain', state: 'clear' }],
     ]);
 
-    const android = harness({ platform: 'android', app: 'com.example.app' });
+    const android = harness({ platform: 'android', bundleId: 'com.example.app' });
     await openAttempt(android);
     const count = android.fake.calls.length;
     await expect(fixture(android).clearKeychain()).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
@@ -1721,7 +1739,7 @@ describe('video', () => {
   });
 
   it('forgets the session app when stopping ends the session the recording made for itself', async () => {
-    const h = harness({ app: 'com.example.app', permissions: { camera: 'grant' } });
+    const h = harness({ bundleId: 'com.example.app', permissions: { camera: 'grant' } });
     h.fake.respond('apps.open', () => ({ session: 's', appName: 'Example', appBundleId: 'com.example.app', identifiers: {} }));
     h.fake.respond('recording.record', (args) => {
       const options = args as { action: 'start' | 'stop'; path?: string };
@@ -1743,7 +1761,7 @@ describe('video', () => {
   });
 
   it('forgets the session app when the attempt-end retry of a failed stop ends the recording\'s own session', async () => {
-    const h = harness({ app: 'com.example.app', permissions: { camera: 'grant' } });
+    const h = harness({ bundleId: 'com.example.app', permissions: { camera: 'grant' } });
     h.fake.respond('apps.open', () => ({ session: 's', appName: 'Example', appBundleId: 'com.example.app', identifiers: {} }));
     let stops = 0;
     h.fake.respond('recording.record', (args) => {

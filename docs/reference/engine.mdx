@@ -24,8 +24,8 @@ Validation fails with `INVALID_CONFIG` for:
 - a missing or empty `version`, or a `spiVersion` other than `1`;
 - an empty `platform`, or a `workers` that is not a positive safe integer;
 - a hook (`observe`, `locate`, `perform`, `performAt`, `prepare`, `finish`,
-  `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`) that is
-  not a function;
+  `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`,
+  `validateApp`) that is not a function;
 - an unknown top-level key on an object literal (a class instance's own
   fields are not checked);
 - `perform`, `locate`, `performAt`, or `keyboard` without `observe`;
@@ -40,7 +40,8 @@ Validation fails with `INVALID_CONFIG` for:
   needs both `capture` and `restore`; `artifacts` needs `screenshot`;
   `startTrace`/`stopTrace` and `startVideo`/`stopVideo` come in pairs;
 - a `secrets` that is not an array of `secrets.get()` handles;
-- an `app` declaration with an unknown key or a function;
+- an `app` member: the app under test is declared on the target, and an
+  engine checks what it needs in `validateApp`;
 - a `fixtures` that is not an object, a fixture that is not a factory
   function, or a fixture name that is not a lower-camel identifier or shadows
   `agent`, `app`, `screen`, `platform`, or `session`.
@@ -150,8 +151,14 @@ export interface Engine {
   readonly state?: EngineStateCapability;
   /** capability: artifacts - screenshots and traces under the attempt directory. */
   readonly artifacts?: EngineArtifacts;
-  /** The app under test, as data: url, identity, environment, command, services. */
-  readonly app?: EngineAppDeclaration;
+  /**
+   * Checks the app a target declares against what this engine can drive, at
+   * config load, synchronously: throw `INVALID_CONFIG` naming
+   * `info.targetName` for a field the platform needs and the target left out
+   * (a URL, a bundle id) or one it cannot drive. The harness has already
+   * checked every field's shape.
+   */
+  validateApp?(app: EngineAppDeclaration, info: EngineAppCheckInfo): void;
   /**
    * The `secrets.get()` handles the engine's options hold, such as a
    * basic-auth password. The config load checks each names a configured
@@ -245,7 +252,7 @@ export interface OperationContext {
 | `fixtures.<name>` | `<name>` | - | a contributed fixture; `requires: ['<name>']` gates at selection |
 | `state` | `state` | - | `test.setup` sessions and the `session:` option |
 | `artifacts` | `artifacts` | - | `app.screenshot()`, assertion evidence, the failure screenshot, and every [`trace` and `video` mode](/reference/config#recording) but `off`, from the config, a target, a test, `--trace`, or `--video` |
-| `app` | - | - | data only: the app under test, its origin policy, identity, and process |
+| `validateApp` | - | - | a config-load check of the target's `app` |
 | `session` | - | - | `app.open()` and the agent's `navigate` verb (`open`), `app.back()` and the agent's `back` verb (`back`), `app.restart()` (`restart`), `app.clearState()` (`reset`) |
 
 The agent offers the model only what `actions` declares: `tap` needs the
@@ -261,8 +268,11 @@ no verb. An undeclared verb is absent from the toolset, and a
 `screen`/`Locator` method for an undeclared kind fails with
 `UNSUPPORTED_CAPABILITY` before reaching the engine.
 
-`engine.capabilities` is the computed `ReadonlySet` of capability names and is
-what selection, the report, and `UNSUPPORTED_CAPABILITY` messages read.
+`engine.capabilities` is the computed `ReadonlySet` of capability names, and
+is what selection, the report, and `UNSUPPORTED_CAPABILITY` messages read.
+Selection also grades a target by the kind of app it declares, not by its
+engine: `browser` for a target with `app.url`, `native-app` for one with
+`app.bundleId` or `app.appPath`, so a test can `requires: ['native-app']`.
 
 ```ts
 /**
@@ -359,6 +369,8 @@ export interface EnginePrepareInfo {
   readonly targetName: string;
   /** Directory relative paths in the config resolve against; see `EngineInitInfo.projectRoot`. */
   readonly projectRoot: string;
+  /** The app the target declares, as `init` receives it: what a device installs or warms up here. */
+  readonly app: EngineAppInfo;
   /**
    * The worker slots the run will start for this target, `0` to `slots - 1`:
    * the run's worker cap, the engine's declared `workers`, and the work units
@@ -414,7 +426,7 @@ export interface EngineInitInfo {
    * `process.cwd()`, which an in-process run does not change.
    */
   readonly projectRoot: string;
-  /** The site policy resolved from the engine's `app` declaration. */
+  /** The app the target declares: the site policy of its URL, and what a device launches. */
   readonly app: EngineAppInfo;
   /**
    * This worker's environment: the run's, plus what this target's `prepare`
@@ -450,9 +462,10 @@ export interface EngineInitInfo {
 }
 
 /**
- * The site policy the harness resolved from the engine's declaration, handed
- * back at init, for the decisions only a surface can make: which nested
- * documents enter an observation, which requests carry injected credentials.
+ * The app the harness resolved from the target's declaration, handed to
+ * `prepare` and `init`: the site policy for the decisions only a surface can
+ * make (which nested documents enter an observation, which requests carry
+ * injected credentials), and what a device launches.
  */
 export interface EngineAppInfo {
   /**
@@ -462,6 +475,14 @@ export interface EngineAppInfo {
    * separately through `session.open`.
    */
   readonly site?: string;
+  /** The installed app to launch, as the target declared it. */
+  readonly bundleId?: string;
+  /** The build to install, as the target declared it; relative to `projectRoot`. */
+  readonly appPath?: string;
+  /** Arguments every fresh launch passes the app. */
+  readonly launchArguments?: readonly string[];
+  /** Permissions the app holds on every fresh launch, by name. */
+  readonly permissions?: Readonly<Record<string, AppPermissionState>>;
 }
 
 /**
@@ -771,71 +792,57 @@ export function parseKey(key: string): ParsedKey | undefined;
 
 ## App
 
-`app` declares what the engine knows about the app under test. Every member
-is data; a function here is `INVALID_CONFIG`.
+The app under test is declared on the target (`targets: [{ engine, app }]`,
+see [the app under test](/reference/config#the-app-under-test)); an engine
+only drives it. The harness checks the shape of every field, then hands the
+declaration to `validateApp` at config load, so an engine can require what
+its platform needs and refuse what it cannot drive. `@e2e-dev/web` requires
+`url`; `@e2e-dev/mobile` requires `bundleId` or `appPath` and refuses `url`.
 
 ```ts
 /**
- * App details declared by an engine and resolved once per target.
+ * The app a target declares, as its engine reads it at config load: what it
+ * is and where it is served. `EngineAppInfo` (below) is what `prepare` and
+ * `init` receive; the declaration adds the URL, which a surface never gets.
  */
-export interface EngineAppDeclaration {
-  /**
-   * Base URL of an addressable app: `app.open()` opens it and relative
-   * navigation resolves against it. WHATWG-normalized; no userinfo, query, or
-   * fragment; a missing scheme becomes `https://`, or `http://` for a
-   * loopback host. Plain HTTP is accepted for loopback hosts only. A URL on
-   * `127.0.0.1` or `[::1]` with port 0 asks the run for a free port,
-   * substituted wherever the declaration used it and handed to `command` and
-   * `services` as `{port}`.
-   */
+export type EngineAppDeclaration = EngineAppInfo & {
+  /** Base URL the target opens, as declared; see `TargetApp.url`. */
   readonly url?: string;
-  /**
-   * Labels the target in the report and joins the cache and session identity
-   * digest; never gates a run. Defaults to `test` for loopback, `.localhost`,
-   * and `.test` hosts and for a surface without a URL, `production` otherwise.
-   */
-  readonly environment?: 'test' | 'staging' | 'production';
-  /**
-   * App identity for replay cache and session entries. Defaults to the URL's
-   * origin and base path. Set a stable value to reuse entries across preview
-   * URLs. Without a URL or identity, entries use the target alone. Different
-   * apps must have different identities to prevent replay across them.
-   */
-  readonly identity?: string;
-  /**
-   * Process the runner starts before the first test and stops on every exit
-   * path (a dev server). Structured, never shell-interpreted; the child
-   * inherits only `PATH`, `HOME`, the temp-directory variables, and
-   * `command.env`. Targets declaring the same command share one process,
-   * probed at the first declaring target's `readyUrl`.
-   */
-  readonly command?: CommandConfig;
-  /** URL polled until `command` is ready (a 200-499 status); defaults to `url`. */
-  readonly readyUrl?: string;
-  /**
-   * Dependency processes the app needs before it can boot (a database
-   * container, a migration step), started in declaration order before any
-   * app command and torn down in reverse after it. Valid without `command`:
-   * the app may already be running, or be one of the services itself.
-   * Services declared identically by several targets start once; shared
-   * services must be declared in one order, and an explicit `name` must mean
-   * one process across the run.
-   */
-  readonly services?: readonly ServiceConfig[];
+};
+
+/** Handed to `Engine.validateApp` beside the declaration. */
+export interface EngineAppCheckInfo {
+  /** The target declaring the app, for the message of a refusal. */
+  readonly targetName: string;
 }
+
+/** A permission's state when the app launches: held, refused, or not asked for yet, so the OS asks again. */
+export type AppPermissionState = 'grant' | 'deny' | 'reset';
 ```
 
-Every field is documented under
-[the app under test](/reference/config#the-app-under-test). The site comes
-back to the engine as `EngineInitInfo.app.site`; `sameSite` from
-`e2e/engine` applies it to a URL.
+```ts
+validateApp(app, { targetName }) {
+  if (app.url === undefined) {
+    throw new ConfigurationError('INVALID_CONFIG', `target "${targetName}" needs app.url`);
+  }
+},
+```
+
+`validateApp` runs for every target the engine serves, with `{}` for a
+target that declares no `app`. The resolved app comes back to the engine as
+`EnginePrepareInfo.app` and `EngineInitInfo.app`: the site of the URL, which
+`sameSite` from `e2e/engine` applies to a URL, and the device fields as the
+target declared them. The URL itself stays with the harness, which opens it
+through `session.open`. The target's `command` and `readyUrl` never reach
+the engine: the runner starts it. `CommandConfig` is exported from `e2e`, not
+`e2e/engine`.
 
 ## Session
 
 ```ts
 /**
  * Steering hooks behind the universal `app` fixture and the agent's
- * `navigate` verb. The app itself is described in `Engine.app`, as data;
+ * `navigate` verb. The app itself is the target's `app`, handed over as data;
  * node actions never live here, they are `perform`.
  *
  * `restart` and `reset` open nothing on an addressable surface: they end at
@@ -956,7 +963,8 @@ Use these helpers to keep behavior consistent across engines:
 | `urlMatches(current, expected, baseHref)` | `toHaveURL`-style comparison; an `expected` that is neither a string nor a `RegExp` throws `INVALID_ARGUMENT`, as in `toTextPattern` |
 | `pollCondition({ deadline, signal, negated, evaluate, onTimeout })`, `Deadline` | Assertion polling and the negation grace window |
 | `validateJsonValue(value, label, rules?)` | Checks a value is plain JSON: a top-level `undefined` passes; a non-finite number, a cycle, an object that is not a plain object or array, or a function, symbol, bigint, or `undefined` inside is `INVALID_ARGUMENT` naming `label`. A `Secret` is `POLICY_DENIED` unless `rules.onSecret` throws its own; `rules.maxDepth` caps the nesting |
-| `rejectUnknownKeys(label, value, keys, code?)` | Throws `INVALID_CONFIG` for the first own key of `value` outside `keys`, naming the nearest known key when one is a plausible typo (`web() has unknown key "comand"; did you mean "command"?`) and the known keys otherwise: the check the runner runs on its own config objects, for an engine factory's options. Pass `'INVALID_ARGUMENT'` as `code` for an object a test passes to a fixture method |
+| `rejectUnknownKeys(label, value, keys, code?)` | Throws `INVALID_CONFIG` for the first own key of `value` outside `keys`, naming the nearest known key when one is a plausible typo (`web() has unknown key "viewprt"; did you mean "viewport"?`) and the known keys otherwise: the check the runner runs on its own config objects, for an engine factory's options. Pass `'INVALID_ARGUMENT'` as `code` for an object a test passes to a fixture method |
+| `rejectMovedOptions(factory, options, moved)` | Refuses, in one `INVALID_CONFIG`, every factory option that now lives on the target, with the target block they make: `rejectMovedOptions('web()', options, { url: 'app.url', command: 'app.command' })` turns `web({ url, command })` into `targets: [{ engine: web(), app: { url, command } }]`. Call it before `rejectUnknownKeys`, so a moved option gets the move and not a generic unknown key |
 | `obj`, `raceAbort`, `withTimeout`, `withinCleanupBudget` | See [Contributed fixtures](#contributed-fixtures) |
 | `isProviderRecording(value)` | Whether what a provider's `record` resolved to is a recording: a parseable `startedAt` and a `stop`. Check it before keeping one, so a malformed recording fails the start, named, instead of the stop |
 | `stopProviderRecording(recording, { artifactsDir, provider, leaseId, signal })` | Ends a hosted service's recording and checks it into a `VideoSegment`; see [Provider recordings](#provider-recordings) |
@@ -1176,7 +1184,7 @@ export interface EngineFixtureContext {
   readonly app: EngineAppInfo & {
     /**
      * Resolves a navigation target against the base URL. Throws
-     * `APP_URL_REQUIRED` when the engine declared no URL and `POLICY_DENIED`
+     * `APP_URL_REQUIRED` when the target declares no URL and `POLICY_DENIED`
      * for a `file:`, `data:`, or `javascript:` scheme, so a fixture never
      * re-implements the rule the harness owns.
      */

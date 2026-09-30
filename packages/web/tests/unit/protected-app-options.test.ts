@@ -143,15 +143,20 @@ describe('web({ screencast })', () => {
 });
 
 describe('web() option keys', () => {
-  const url = 'http://127.0.0.1:4321';
   const refused = (message: string) => expect.objectContaining({ code: 'INVALID_CONFIG', message });
 
-  it('rejects an option it does not know, naming the nearest', () => {
-    expect(() => web({ url, comand: { executable: 'node' } } as unknown as Parameters<typeof web>[0])).toThrow(
-      refused('web() has unknown key "comand"; did you mean "command"?'),
+  it('rejects an option it does not know, naming the nearest driving option', () => {
+    expect(() => web({ viewprt: { width: 1, height: 1 } } as unknown as Parameters<typeof web>[0])).toThrow(
+      refused('web() has unknown key "viewprt"; did you mean "viewport"?'),
     );
-    expect(() => web({ url, launchOptions: {} } as unknown as Parameters<typeof web>[0])).toThrow(
-      /^web\(\) has unknown key "launchOptions"; expected one of url, environment, identity, command, readyUrl, services, browser, viewport/,
+    expect(() => web({ launchOptions: {} } as unknown as Parameters<typeof web>[0])).toThrow(
+      refused('web() has unknown key "launchOptions"; expected one of browser, viewport, screencast, connect, headers, basicAuth, testIdAttribute, userAgent'),
+    );
+  });
+
+  it('names the target for a moved app option, even beside an unknown one', () => {
+    expect(() => web({ comand: { executable: 'node' }, url: 'http://127.0.0.1:4321' } as unknown as Parameters<typeof web>[0])).toThrow(
+      expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringMatching(/^web\(\{ url \}\) moved to the target/) }),
     );
   });
 

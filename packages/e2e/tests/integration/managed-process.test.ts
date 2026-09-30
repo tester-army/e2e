@@ -1,9 +1,8 @@
 import os from 'node:os';
 import process from 'node:process';
 import { describe, expect, it } from 'vitest';
-import { resolveServices } from '../../src/config/app.ts';
 import { InfrastructureError } from '../../src/internal/errors.ts';
-import { ManagedProcess, ServiceStack } from '../../src/run/managed-process.ts';
+import { ManagedProcess } from '../../src/run/managed-process.ts';
 import { freePort } from '../helpers/free-port.ts';
 
 const SERVER_SCRIPT = `
@@ -122,7 +121,7 @@ describe('ManagedProcess', () => {
     const port = await freePort();
     const app = nodeApp(port, { reuseExisting: true });
     await app.start();
-    expect(app.reused).toBe(false);
+    expect(app.spawned).toBe(true);
     expect(await isReachable(`http://127.0.0.1:${port}/`)).toBe(true);
     await app.stop();
     expect(await isReachable(`http://127.0.0.1:${port}/`)).toBe(false);
@@ -153,7 +152,7 @@ describe('ManagedProcess', () => {
       // Without reuse this spawn would lose the port; with it, the command is never started.
       const app = nodeApp(port, { reuseExisting: true });
       await app.start();
-      expect(app.reused).toBe(true);
+      expect(app.spawned).toBe(false);
       await app.stop();
       expect(await isReachable(`http://127.0.0.1:${port}/`)).toBe(true);
     } finally {
@@ -161,68 +160,4 @@ describe('ManagedProcess', () => {
     }
     expect(await isReachable(`http://127.0.0.1:${port}/`)).toBe(false);
   });
-});
-
-/** Stops the stack and collects what its teardowns reported. */
-async function stopAll(stack: ServiceStack): Promise<unknown[]> {
-  const failures: unknown[] = [];
-  await stack.stop((cause) => failures.push(cause));
-  return failures;
-}
-
-describe('ServiceStack', () => {
-  it('waits for a readyUrl service, then a waitForExit step, and stops the service process group', async () => {
-    const port = await freePort();
-    const stack = new ServiceStack(
-      resolveServices([
-        {
-          executable: process.execPath,
-          args: ['-e', SERVER_SCRIPT, String(port)],
-          readyUrl: `http://127.0.0.1:${port}/`,
-          startupTimeout: 15_000,
-          shutdownTimeout: 2_000,
-        },
-        {
-          // The "migration" only succeeds if the service before it is already serving.
-          executable: process.execPath,
-          args: [
-            '-e',
-            `fetch(process.argv[1]).then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1));`,
-            `http://127.0.0.1:${port}/`,
-          ],
-          waitForExit: true,
-          startupTimeout: 15_000,
-        },
-      ], os.tmpdir()),
-      os.tmpdir(),
-    );
-    await stack.start();
-    expect(await isReachable(`http://127.0.0.1:${port}/`)).toBe(true);
-    expect(await stopAll(stack)).toEqual([]);
-    expect(await isReachable(`http://127.0.0.1:${port}/`)).toBe(false);
-  });
-
-  it('fails with APP_UNREACHABLE naming the service when its readyUrl never answers', async () => {
-    const port = await freePort();
-    const stack = new ServiceStack(
-      resolveServices([
-        {
-          name: 'auth-emulator',
-          executable: process.execPath,
-          args: ['-e', 'setInterval(() => {}, 1000)'],
-          readyUrl: `http://127.0.0.1:${port}/`,
-          startupTimeout: 1_500,
-          shutdownTimeout: 2_000,
-        },
-      ], os.tmpdir()),
-      os.tmpdir(),
-    );
-    const failure = await stack.start().catch((error: unknown) => error);
-    expect(failure).toBeInstanceOf(InfrastructureError);
-    expect((failure as InfrastructureError).code).toBe('APP_UNREACHABLE');
-    expect((failure as InfrastructureError).message).toBe(
-      `service "auth-emulator" was not reachable at http://127.0.0.1:${port}/ within 1500 ms\nset log on this command to keep its output`,
-    );
-    expect(await stopAll(stack)).toEqual([]);
-  }, 20_000);
 });

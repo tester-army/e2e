@@ -16,10 +16,11 @@ export default {
   targets: [
     {
       name: 'web',
-      engine: web({
+      engine: web(),
+      app: {
         url: 'http://127.0.0.1:4311',
         command: { executable: 'node', args: ['dogfood/server.mjs'], env: { PORT: '4311' } },
-      }),
+      },
     },
   ],
   timeout: 300_000,

@@ -14,8 +14,8 @@ for the agent calls shown below.
 
 | Cypress | e2e |
 | --- | --- |
-| `baseUrl` | `web({ url })` |
-| `start-server-and-test` | `web({ url, command })`, see [Starting your app](/starting-your-app) |
+| `baseUrl` | `app: { url }` on the target |
+| `start-server-and-test` | `app: { url, command }`, see [Starting your app](/starting-your-app) |
 | `viewportWidth`, `viewportHeight` | `web({ viewport })` |
 | `data-cy` selectors | `web({ testIdAttribute: 'data-cy' })`, then `screen.getByTestId` |
 | `retries` | `retries` |
@@ -30,10 +30,8 @@ import { web } from '@e2e-dev/web';
 
 export default {
   targets: [{
-    engine: web({
-      url: 'http://localhost:3000',
-      testIdAttribute: 'data-cy',
-    }),
+    engine: web({ testIdAttribute: 'data-cy' }),
+    app: { url: 'http://localhost:3000' },
   }],
 } satisfies E2EConfig;
 ```

@@ -101,8 +101,8 @@ label. `web` (`Web`): browser targets, import `test` from `@e2e-dev/web`.
 ### app
 
 - `baseUrl` (`string | undefined`): the target's app URL with the run's
-  port; `undefined` when the engine declares no `url`.
-- `open(path?)`: opens the engine's `url`, a relative path, or an absolute
+  port; `undefined` when the target declares no `app.url`.
+- `open(path?)`: opens the target's `app.url`, a relative path, or an absolute
   http(s) URL. On a device it takes no path and relaunches the pinned app.
 - `back()`: one history step back.
 - `restart()`: recreates the context keeping persisted state (a restored

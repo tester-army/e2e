@@ -20,9 +20,9 @@ const app = { url: 'http://localhost:3000' };
 
 export default {
   targets: [
-    { name: 'desktop', engine: web(app) },
-    { name: 'tablet', engine: web({ ...app, viewport: { width: 820, height: 1180 } }) },
-    { name: 'phone', engine: web({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
+    { name: 'desktop', engine: web(), app },
+    { name: 'tablet', engine: web({ viewport: { width: 820, height: 1180 } }), app },
+    { name: 'phone', engine: web({ browser: 'webkit', viewport: { width: 390, height: 844 } }), app },
   ],
 } satisfies E2EConfig;
 ```
@@ -31,8 +31,10 @@ Each test runs once per target, with a separate result labeled `desktop`,
 `tablet`, or `phone`. Run one size with `npx e2e run --target phone`, or list
 the selected test-target pairs with `npx e2e list`.
 
-Targets with the same `command` share one app process. Every retry starts
-at the target's configured size.
+To have the runner start one dev server for every size, declare it as a
+service and list it on each target; see
+[share a dev server](/starting-your-app#share-a-dev-server). Every retry
+starts at the target's configured size.
 
 ## Fill the window
 
@@ -42,7 +44,7 @@ with a hosted browser whose live view would show a fixed 1280 by 720 page
 in one corner:
 
 ```ts title="e2e.config.ts"
-{ name: 'window', engine: web({ ...app, viewport: null }) }
+{ name: 'window', engine: web({ viewport: null }), app }
 ```
 
 The page takes the window's size, minus the toolbar in a headed browser. A

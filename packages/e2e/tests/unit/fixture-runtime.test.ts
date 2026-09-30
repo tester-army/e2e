@@ -12,14 +12,14 @@ import { StepRecorder } from '../../src/run/steps.ts';
 import { WorkerModels } from '../../src/run/worker-models.ts';
 import type { StepExecutor } from '../../src/agent/executor.ts';
 import { defineTool, getToolContext } from '../../src/agent/tool.ts';
-import type { E2EConfig } from '../../src/types.ts';
+import type { E2EConfig, TargetApp } from '../../src/types.ts';
 import { installFakeLoopModel } from '../helpers/fake-loop-model.ts';
 import { extracted, fakeCalls, installFakeModel, judgment, notFound } from '../helpers/fake-model.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 
 /** A real fixture graph with an in-memory engine and no runner process or model provider. */
-function runtime(engine: EngineHandle, overrides: Partial<E2EConfig> = {}) {
-  const config = resolveConfig({ targets: [{ name: 'fake', platform: 'custom', engine }], cache: 'off', ...overrides }, {
+function runtime(engine: EngineHandle, overrides: Partial<E2EConfig> = {}, app?: TargetApp) {
+  const config = resolveConfig({ targets: [{ name: 'fake', platform: 'custom', engine, ...(app === undefined ? {} : { app }) }], cache: 'off', ...overrides }, {
     projectRoot: process.cwd(), env: {},
   });
   const signal = new AbortController().signal;
@@ -153,7 +153,6 @@ describe('generic secrets', () => {
     let filled: string | undefined;
     const engine = defineEngine({
       name: 'fake', version: '1', spiVersion: 1,
-      app: {},
       observe: async () => snapshot([], { location: 'app://device/com.example.app/Sign%20In' }),
       locate: async () => [{ ref: { id: 'key', revision: '' }, role: 'textbox', name: 'API key' }],
       actions: LOCATOR_ACTION_KINDS,
@@ -177,13 +176,12 @@ describe('generic secrets', () => {
     let filled: string | undefined;
     const engine = defineEngine({
       name: 'fake', version: '1', spiVersion: 1,
-      app: { url: 'https://app.test' },
       observe: async () => snapshot([], { location: currentUrl }),
       locate: async () => [{ ref: { id: 'key', revision: '' }, role: 'textbox', name: 'API key' }],
       actions: LOCATOR_ACTION_KINDS,
       perform: async (_ref, action) => { if (action.kind === 'fill') filled = action.value; },
     });
-    const { fixtures, config } = runtime(engine, { secrets: { key: 'sk_live_1' } });
+    const { fixtures, config } = runtime(engine, { secrets: { key: 'sk_live_1' } }, { url: 'https://app.test' });
     setSecretRegistry(config);
     try {
       await fixtures.screen.getByLabel('API key').fill(secrets.get('key'));
@@ -579,11 +577,10 @@ describe('press key grammar', () => {
 });
 
 describe('app steering hooks', () => {
-  function steerable(app: { url?: string }) {
+  function steerable(app: TargetApp) {
     const calls: string[] = [];
     const engine = defineEngine({
       name: 'fake', version: '1', spiVersion: 1,
-      app,
       observe: async () => snapshot([]),
       session: {
         open: async (url) => { calls.push(`open ${url}`); },
@@ -591,12 +588,12 @@ describe('app steering hooks', () => {
         reset: async () => { calls.push('reset'); },
       },
     });
-    return { engine, calls };
+    return { engine, calls, app };
   }
 
   it('restart and clearState run the hook, then reopen the app at its base URL', async () => {
-    const { engine, calls } = steerable({ url: 'http://127.0.0.1:4599' });
-    const { fixtures, steps } = runtime(engine);
+    const { engine, calls, app } = steerable({ url: 'http://127.0.0.1:4599' });
+    const { fixtures, steps } = runtime(engine, {}, app);
     await fixtures.app.restart();
     await fixtures.app.clearState();
     expect(calls).toEqual(['restart', 'open http://127.0.0.1:4599/', 'reset', 'open http://127.0.0.1:4599/']);
@@ -640,7 +637,7 @@ describe('app steering hooks', () => {
     expect(calls).toEqual([]);
   });
 
-  it('app.open() on a device without a pinned app is UNSUPPORTED_CAPABILITY and names the app option', async () => {
+  it('app.open() on a device without a pinned app is UNSUPPORTED_CAPABILITY and names the app keys', async () => {
     const { engine } = device(false);
     const { fixtures } = runtime(engine);
     await expect(fixtures.app.open()).rejects.toMatchObject({

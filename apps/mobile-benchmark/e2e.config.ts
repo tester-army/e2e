@@ -8,7 +8,7 @@ import { github } from '@e2e-dev/github';
  * each test taps into its own scenario first. The app must already be on the
  * device (`pnpm ios` / `pnpm android` build and install it), or point
  * `E2E_MOBILE_BENCHMARK_IOS_APP` / `E2E_MOBILE_BENCHMARK_ANDROID_APP` at a
- * simulator `.app` or an `.apk`: the engine takes it as `appPath` and the
+ * simulator `.app` or an `.apk`: the target takes it as `app.appPath` and the
  * `build` fixture in `tests/fixtures.ts` installs it once per device.
  * CI does exactly that in `.github/workflows/mobile.yml`, one target per job,
  * and pins the iOS target to the simulator it booted through
@@ -32,10 +32,7 @@ const iosDevices = process.env.E2E_MOBILE_BENCHMARK_IOS_DEVICE?.split(',')
 
 export const ios = mobile({
   platform: 'ios',
-  app: APP_ID,
-  appPath: process.env.E2E_MOBILE_BENCHMARK_IOS_APP,
   device: iosDevices === undefined || iosDevices.length !== 1 ? iosDevices : iosDevices[0],
-  identity: `${APP_ID}-ios`,
   session: 'e2e-mobile-benchmark-ios',
   // A control that just moved waits this long to come to rest before a tap;
   // an unmoved one is tapped at once, so the budget costs only after a
@@ -47,9 +44,6 @@ export const ios = mobile({
 
 export const android = mobile({
   platform: 'android',
-  app: APP_ID,
-  appPath: process.env.E2E_MOBILE_BENCHMARK_ANDROID_APP,
-  identity: `${APP_ID}-android`,
   session: 'e2e-mobile-benchmark-android',
   // A control that arrived with the last action is found again once this
   // budget has passed, so the budget only has to outlast the transition: the
@@ -62,8 +56,16 @@ export default {
   projectId: 'dev.e2e.mobile-benchmark',
   tests: 'tests/**/*.e2e.ts',
   targets: [
-    { name: 'ios-simulator', engine: ios },
-    { name: 'android-emulator', engine: android },
+    {
+      name: 'ios-simulator',
+      engine: ios,
+      app: { bundleId: APP_ID, appPath: process.env.E2E_MOBILE_BENCHMARK_IOS_APP, identity: `${APP_ID}-ios` },
+    },
+    {
+      name: 'android-emulator',
+      engine: android,
+      app: { bundleId: APP_ID, appPath: process.env.E2E_MOBILE_BENCHMARK_ANDROID_APP, identity: `${APP_ID}-android` },
+    },
   ],
   // One worker per simulator in the pool; an engine with fewer devices
   // narrows its own target. Each worker slot drives its own session.

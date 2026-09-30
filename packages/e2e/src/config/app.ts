@@ -1,45 +1,30 @@
 /**
- * Per-target app resolution: what an engine declares
- * about the app it drives, validated where an error can name the target.
+ * Per-target app resolution: the `app` a target declares, checked field by
+ * field and by the target's engine where an error can name the target, then
+ * resolved on the port the run assigned when `app.url` asked for a free one.
  */
 
-import path from 'node:path';
-import type { EngineAppDeclaration, EngineHandle } from '../engine/index.ts';
+import type { EngineAppDeclaration, EngineAppInfo, EngineHandle } from '../engine/index.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { obj } from '../internal/objects.ts';
-import { insideProjectRoot } from '../internal/paths.ts';
 import { rejectUnknownKeys } from '../internal/options.ts';
-import { isSecret } from '../secrets.ts';
-import {
-  isImplicitTestHost,
-  normalizeBaseUrl,
-  portOf,
-  requestsFreePort,
-  siteOf,
-  withPort,
-  type NormalizedBaseUrl,
-} from '../internal/urls.ts';
-import type { CommandConfig, ServiceConfig } from '../types.ts';
-import { describeValue, httpUrl, positiveInt } from './validate.ts';
+import { didYouMean } from '../internal/suggest.ts';
+import { isImplicitTestHost, normalizeBaseUrl, portOf, requestsFreePort, siteOf, withPort, type NormalizedBaseUrl } from '../internal/urls.ts';
+import type { AppPermissionState, CommandConfig, TargetApp } from '../types.ts';
+import { checkLog, digestCommand, isRecord, normalizeCommand } from './command.ts';
+import { httpUrl } from './validate.ts';
 
-/**
- * How a spawned process counts as ready: a URL that answers, or the process
- * itself exiting with code 0 (a migration, `docker compose up --wait`).
- */
-export type Readiness = { readonly readyUrl: string } | { readonly waitForExit: true };
-
-/** A command the runner spawns, named for error messages. */
-export interface ResolvedCommand {
-  readonly label: string;
-  readonly command: CommandConfig;
-}
-
-/** One declared service with its readiness contract already decided. */
-export interface ResolvedService extends ResolvedCommand {
-  /** The explicit `name`, trimmed; undefined when the label fell back to the executable. */
-  readonly name: string | undefined;
-  readonly readiness: Readiness;
-  readonly teardown: ResolvedCommand | undefined;
+/** A target's `app` as checked: every field's shape, nothing resolved yet. */
+export interface TargetAppDeclaration {
+  readonly url: string | undefined;
+  readonly bundleId: string | undefined;
+  readonly appPath: string | undefined;
+  readonly identity: string | undefined;
+  readonly environment: 'test' | 'staging' | 'production' | undefined;
+  readonly launchArguments: readonly string[] | undefined;
+  readonly permissions: Readonly<Record<string, AppPermissionState>> | undefined;
+  readonly command: CommandConfig | undefined;
+  readonly readyUrl: string | undefined;
 }
 
 /**
@@ -54,13 +39,13 @@ export interface PortRequest {
 }
 
 /**
- * The app one target drives, as the harness resolved the engine's `app`
+ * The app one target drives, as the harness resolved the target's `app`
  * declaration. Navigation policy, cache and session identity, the report's
- * target record, and the app processes all read from here; a target without a
- * engine, or whose engine declares nothing, gets the empty resolution.
+ * target record, the engine's app info, and the app process all read from
+ * here; a target that declares nothing gets the empty resolution.
  */
 export interface ResolvedApp {
-  /** Normalized base URL; undefined for a surface without addressable locations. */
+  /** Normalized base URL on the run's port; undefined for a surface without addressable locations. */
   readonly base: NormalizedBaseUrl | undefined;
   /** The free-port request the declared URL made; undefined when it names a port or there is no URL. */
   readonly portRequest: PortRequest | undefined;
@@ -73,102 +58,144 @@ export interface ResolvedApp {
   readonly environment: 'test' | 'staging' | 'production';
   /**
    * Stable identity keying cache and session entries: the declared identity,
-   * else the base URL's origin and path. Undefined when the engine declares
-   * neither, so entries key on the target and environment alone.
+   * else the base URL's origin and path as declared (a free port still 0),
+   * else the bundle id, else the build path. Undefined when the target
+   * declares none of them, so entries key on the target and environment
+   * alone.
    */
   readonly identity: string | undefined;
+  readonly bundleId: string | undefined;
+  readonly appPath: string | undefined;
+  readonly launchArguments: readonly string[] | undefined;
+  readonly permissions: Readonly<Record<string, AppPermissionState>> | undefined;
+  /** `app.command` with `{port}` expanded to the port the app is served on. */
   readonly command: CommandConfig | undefined;
   /** Readiness probe for `command`; defined whenever `command` is. */
   readonly readyUrl: string | undefined;
-  /** Dependency processes started in order before any app command and torn down in reverse. */
-  readonly services: readonly ResolvedService[];
 }
 
-const ENVIRONMENTS = new Set(['test', 'staging', 'production']);
+const ENVIRONMENTS: ReadonlySet<unknown> = new Set(['test', 'staging', 'production']);
+
+const PERMISSION_STATES: ReadonlySet<unknown> = new Set(['grant', 'deny', 'reset']);
+
+/** Every key a target's `app` takes, kept equal to `TargetApp` by the compiler. */
+const TARGET_APP_KEYS: readonly string[] = Object.keys({
+  url: true,
+  bundleId: true,
+  appPath: true,
+  identity: true,
+  environment: true,
+  launchArguments: true,
+  permissions: true,
+  command: true,
+  readyUrl: true,
+} satisfies Record<keyof TargetApp, true>);
+
+/** Keys a target itself takes; anything else is refused, naming where it belongs. */
+export const TARGET_KEYS: ReadonlySet<string> = new Set(['name', 'platform', 'engine', 'app', 'trace', 'video']);
+
+/** Said wherever a config still declares dependency services, which this version does not start. */
+export const SERVICES_GONE =
+  'services are gone from this version: the runner starts only the target\'s app.command, so start dependency processes before the run; a services API returns in a later release';
+
+/** Keys authors put on a target that belong under its `app`, each with where it goes. */
+const APP_TARGET_KEYS: Readonly<Record<string, string>> = {
+  url: 'app.url',
+  bundleId: 'app.bundleId',
+  appPath: 'app.appPath',
+  identity: 'app.identity',
+  environment: 'app.environment',
+  launchArguments: 'app.launchArguments',
+  permissions: 'app.permissions',
+  command: 'app.command',
+  readyUrl: 'app.readyUrl',
+  webServer: 'app.command and app.readyUrl',
+};
+
+/** Keys authors put on a target that belong to its engine. */
+const ENGINE_TARGET_KEYS: ReadonlySet<string> = new Set(['browser', 'device']);
+
+/** Why a key is not a target's, and where the fact it holds lives. */
+export function unknownTargetKey(where: string, key: string): ConfigurationError {
+  const under = APP_TARGET_KEYS[key];
+  const hint =
+    under !== undefined
+      ? `; the app under test is declared under the target's app: ${under}`
+      : key === 'services'
+        ? `; ${SERVICES_GONE}`
+        : ENGINE_TARGET_KEYS.has(key)
+          ? '; browser and device options are engine options: engine: web({ ... }) or mobile({ ... })'
+          : didYouMean(key, [...TARGET_KEYS]);
+  return new ConfigurationError(
+    'INVALID_CONFIG',
+    `${where} has unknown key "${key}"; a target is { name?, platform?, engine?, app?, trace?, video? }${hint}`,
+  );
+}
+
+/** A present value that is not a non-empty string is a config error naming the field. */
+function nonEmptyString(value: unknown, label: string): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new ConfigurationError('INVALID_CONFIG', `${label} must be a non-empty string`);
+  }
+  return value;
+}
 
 /**
- * Resolves one target's app from its engine's `app` declaration. Every fact
- * is optional: a URL normalizes like any base URL, a command needs something
- * to poll, services need one readiness contract each, and the identity
- * defaults to where the app is served when the engine gives none.
- * `projectRoot` anchors every command's `log` path. `port` is the free port
- * the run assigned to a URL declared with port 0: it replaces the 0 in the
- * base URL and the default readiness probe. The default identity keeps the
- * declared `:0`, so cache and session entries survive the port changing
- * every run. `{port}` in the command, the services, and their
- * readiness URLs expands to the port the app is served on, assigned or fixed.
+ * Checks the shape of a target's `app` and hands what the engine reads of it
+ * to the engine's `validateApp`. A target without an engine has nothing to
+ * drive an app, so any `app` there is a mistake. Every field is checked
+ * here, where the error can name the target; what each platform needs is the
+ * engine's to say.
  */
-export function resolveTargetApp(
-  targetName: string,
-  engine: EngineHandle | undefined,
-  projectRoot: string,
-  port?: number,
-): ResolvedApp {
-  const declared: EngineAppDeclaration = engine?.app ?? {};
-  const where = `target "${targetName}" engine ${engine?.name ?? 'none'}`;
-  const declaredBase = declared.url === undefined ? undefined : normalizeBaseUrl(declared.url);
-  const portRequest = declaredBase === undefined ? undefined : freePortRequest(declaredBase, port);
-  const base =
-    declaredBase !== undefined && portRequest?.port !== undefined ? withPort(declaredBase, portRequest.port) : declaredBase;
-  // What `{port}` expands to. While a requested port is unassigned this is 0,
-  // the port the base URL still carries, so the config resolves and validates
-  // the same way before and after assignment.
-  const appPort = base === undefined ? undefined : portOf(base);
-  const expand = (value: string, label: string): string => expandPort(value, appPort, label);
-
-  const environment =
-    declared.environment ??
-    (base !== undefined && !isImplicitTestHost(new URL(base.href).hostname) ? 'production' : 'test');
-  if (!ENVIRONMENTS.has(environment)) {
+export function checkTargetApp(targetName: string, engine: EngineHandle | undefined, declared: unknown): TargetAppDeclaration {
+  const where = `target "${targetName}" app`;
+  if (declared !== undefined && !isRecord(declared)) throw new ConfigurationError('INVALID_CONFIG', `${where} must be an object`);
+  // The shape is checked field by field below; until then the declaration is what the types say it is.
+  const app = (declared ?? {}) as TargetApp;
+  if (Object.hasOwn(app, 'services')) {
+    throw new ConfigurationError('INVALID_CONFIG', `${where} has unknown key "services"; ${SERVICES_GONE}`);
+  }
+  rejectUnknownKeys(where, app, TARGET_APP_KEYS);
+  if (declared !== undefined && engine === undefined) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      `${where} declares invalid app.environment "${String(environment)}"`,
+      `target "${targetName}" declares app without an engine; only an engine can drive an app, so name one: engine: web() or mobile({ platform })`,
     );
   }
-
-  const identity = declared.identity;
-  if (identity !== undefined && (typeof identity !== 'string' || identity.trim() === '')) {
-    throw new ConfigurationError('INVALID_CONFIG', `${where} app.identity must be a non-empty string`);
+  const { environment, launchArguments, permissions } = app;
+  if (environment !== undefined && !ENVIRONMENTS.has(environment)) {
+    throw new ConfigurationError('INVALID_CONFIG', `${where}.environment must be one of test, staging, production, got ${JSON.stringify(environment)}`);
   }
-
-  const command =
-    declared.command === undefined ? undefined : expandCommandPort(declared.command, `${where} app.command`, expand);
-  if (command !== undefined) validateCommand(command, `${where} app.command`, projectRoot);
-  const readyUrl =
-    httpUrl(
-      declared.readyUrl === undefined ? undefined : expand(declared.readyUrl, `${where} app.readyUrl`),
-      `${where} app.readyUrl`,
-    ) ?? base?.href;
-  if (command !== undefined && readyUrl === undefined) {
-    throw new ConfigurationError(
-      'APP_URL_REQUIRED',
-      `${where} declares app.command without a URL to poll: declare url or readyUrl beside it`,
-    );
+  if (launchArguments !== undefined && (!Array.isArray(launchArguments) || !launchArguments.every((argument) => typeof argument === 'string'))) {
+    throw new ConfigurationError('INVALID_CONFIG', `${where}.launchArguments must be an array of strings`);
   }
-
-  return {
-    base,
-    portRequest,
-    site: base === undefined ? undefined : siteOf(new URL(base.href).hostname),
+  if (permissions !== undefined && !isRecord(permissions)) {
+    throw new ConfigurationError('INVALID_CONFIG', `${where}.permissions must be an object of permission name to grant, deny, or reset`);
+  }
+  for (const [permission, state] of Object.entries(permissions ?? {})) {
+    if (!PERMISSION_STATES.has(state)) {
+      throw new ConfigurationError('INVALID_CONFIG', `${where}.permissions.${permission} must be grant, deny, or reset, got ${JSON.stringify(state)}`);
+    }
+  }
+  const checked: TargetAppDeclaration = {
+    url: nonEmptyString(app.url, `${where}.url`),
+    bundleId: nonEmptyString(app.bundleId, `${where}.bundleId`),
+    appPath: nonEmptyString(app.appPath, `${where}.appPath`),
+    identity: nonEmptyString(app.identity, `${where}.identity`),
     environment,
-    identity: identity ?? (declaredBase === undefined ? undefined : `${declaredBase.origin}${declaredBase.basePath}`),
-    command,
-    readyUrl: command === undefined ? undefined : readyUrl,
-    services: resolveServices(declared.services, projectRoot, `${where} app.services`, expand),
+    launchArguments,
+    permissions,
+    command: app.command === undefined ? undefined : normalizeCommand(app.command, `${where}.command`),
+    readyUrl: nonEmptyString(app.readyUrl, `${where}.readyUrl`),
   };
+  const { url, bundleId, appPath } = checked;
+  engine?.validateApp?.(obj({ url, bundleId, appPath, launchArguments, permissions }) satisfies EngineAppDeclaration, { targetName });
+  return checked;
 }
 
-/** The request a URL declared with port 0 makes, carrying the port the run assigned it so far. */
-function freePortRequest(declaredBase: NormalizedBaseUrl, port: number | undefined): PortRequest | undefined {
-  if (!requestsFreePort(declaredBase)) return undefined;
-  return { host: new URL(declaredBase.href).hostname, port };
-}
-
-/** The token a command, a service, or a readiness URL writes where the app's port goes. */
+/** The token a command or a readiness URL writes where the app's port goes. */
 const PORT_TOKEN = '{port}';
-
-/** Substitutes `{port}` in one configured value, given where the value came from for the error. */
-type PortExpander = (value: string, label: string) => string;
 
 /**
  * Substitutes `{port}` in one configured string. A target without a URL has
@@ -177,251 +204,89 @@ type PortExpander = (value: string, label: string) => string;
 function expandPort(value: string, port: number | undefined, label: string): string {
   if (!value.includes(PORT_TOKEN)) return value;
   if (port === undefined) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `${label} uses ${PORT_TOKEN}, but the target declares no url to take the port from`,
-    );
+    throw new ConfigurationError('INVALID_CONFIG', `${label} uses ${PORT_TOKEN}, but the target declares no url to take the port from`);
   }
   return value.replaceAll(PORT_TOKEN, String(port));
 }
 
-/**
- * The command with `{port}` expanded in every `args` entry and `env` value,
- * and an `env` entry whose value is `undefined` dropped, as `spawn` drops
- * it: `env: { KEY: process.env.KEY }` with the variable unset starts the app
- * without it. Malformed shapes pass through untouched for `validateCommand`
- * to name.
- */
-function expandCommandPort<T extends CommandConfig>(command: T, label: string, expand: PortExpander): T {
-  if (typeof command !== 'object' || command === null) return command;
+/** The command with `{port}` expanded in every `args` entry and `env` value. */
+function expandCommandPort(command: CommandConfig, label: string, port: number | undefined): CommandConfig {
   const { args, env } = command;
-  return {
+  return obj({
     ...command,
-    ...(Array.isArray(args)
-      ? { args: args.map((arg) => (typeof arg === 'string' ? expand(arg, `${label}.args`) : arg)) }
-      : {}),
-    ...(typeof env === 'object' && env !== null && !Array.isArray(env)
-      ? {
-          env: Object.fromEntries(
-            Object.entries(env)
-              .filter(([, value]) => value !== undefined)
-              .map(([key, value]) => [key, typeof value === 'string' ? expand(value, `${label}.env.${key}`) : value]),
-          ),
-        }
-      : {}),
+    args: args?.map((arg) => expandPort(arg, port, `${label}.args`)),
+    env: env === undefined ? undefined : Object.fromEntries(Object.entries(env).map(([key, value]) => [key, expandPort(value, port, `${label}.env.${key}`)])),
+  });
+}
+
+/**
+ * Resolves one target's app from its checked declaration. `port` is the free
+ * port the run assigned to a URL declared with port 0: it replaces the 0 in
+ * the base URL and the default readiness probe. The default identity keeps
+ * the declared `:0`, so cache and session entries survive the port changing
+ * every run. `{port}` in the command and its readiness URL expands to the
+ * port the app is served on, assigned or fixed; while a requested port is
+ * unassigned that is 0, so the config resolves the same way before and
+ * after assignment. A free port nothing starts on, and `reuseExisting` on a
+ * free port, are refused: what already answers cannot serve a port the run
+ * assigns.
+ */
+export function resolveTargetApp(targetName: string, app: TargetAppDeclaration, projectRoot: string, port?: number): ResolvedApp {
+  const where = `target "${targetName}"`;
+  const declaredBase = app.url === undefined ? undefined : normalizeBaseUrl(app.url);
+  const portRequest =
+    declaredBase === undefined || !requestsFreePort(declaredBase) ? undefined : { host: new URL(declaredBase.href).hostname, port };
+  const base = declaredBase !== undefined && portRequest?.port !== undefined ? withPort(declaredBase, portRequest.port) : declaredBase;
+  const appPort = base === undefined ? undefined : portOf(base);
+  const hostname = base === undefined ? undefined : new URL(base.href).hostname;
+
+  if (app.command === undefined && portRequest !== undefined) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${where} app.url asks for a free port (port 0), but nothing starts on it: add app.command to start the app there on {port}`,
+    );
+  }
+  const command = app.command === undefined ? undefined : expandCommandPort(app.command, `${where} app.command`, appPort);
+  if (command !== undefined) checkLog(command, `${where} app.command`, projectRoot);
+  if (command?.reuseExisting === true && portRequest !== undefined) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${where} app.command.reuseExisting cannot find an app already running on a free port: port 0 is a new port every run; give the app a fixed port, or drop reuseExisting`,
+    );
+  }
+  const readyUrl =
+    httpUrl(app.readyUrl === undefined ? undefined : expandPort(app.readyUrl, appPort, `${where} app.readyUrl`), `${where} app.readyUrl`) ?? base?.href;
+  if (command !== undefined && readyUrl === undefined) {
+    throw new ConfigurationError('APP_URL_REQUIRED', `${where} declares app.command without a URL to poll: declare app.url or app.readyUrl beside it`);
+  }
+
+  return {
+    base,
+    portRequest,
+    site: hostname === undefined ? undefined : siteOf(hostname),
+    environment: app.environment ?? (hostname !== undefined && !isImplicitTestHost(hostname) ? 'production' : 'test'),
+    identity: app.identity ?? (declaredBase === undefined ? undefined : `${declaredBase.origin}${declaredBase.basePath}`) ?? app.bundleId ?? app.appPath,
+    bundleId: app.bundleId,
+    appPath: app.appPath,
+    launchArguments: app.launchArguments,
+    permissions: app.permissions,
+    command,
+    readyUrl: command === undefined ? undefined : readyUrl,
   };
 }
 
-/** The keys of a `CommandConfig`: an app command and a service teardown take these only. */
-const COMMAND_KEYS: readonly string[] = Object.keys({
-  executable: true,
-  args: true,
-  cwd: true,
-  env: true,
-  startupTimeout: true,
-  shutdownTimeout: true,
-  log: true,
-  reuseExisting: true,
-} satisfies Record<keyof CommandConfig, true>);
-
-/** The keys of a `ServiceConfig`: a command's, plus what steers the service. */
-const SERVICE_KEYS: readonly string[] = [
-  ...COMMAND_KEYS,
-  ...Object.keys({
-    name: true,
-    readyUrl: true,
-    waitForExit: true,
-    teardown: true,
-  } satisfies Record<Exclude<keyof ServiceConfig, keyof CommandConfig>, true>),
-];
-
-/**
- * The shape every spawned command shares: only the `keys` it takes, a
- * non-empty executable, string `args` and `env` values, when set positive
- * integer timeouts, and when set a `log` path inside the project root. A
- * misspelled key would otherwise be dropped without a word; a NaN or
- * infinite budget would make the readiness loop spin without a deadline; a
- * log outside the root would let config write anywhere.
- */
-function validateCommand(
-  command: CommandConfig,
-  label: string,
-  projectRoot: string,
-  keys: readonly string[] = COMMAND_KEYS,
-): void {
-  if (typeof command !== 'object' || command === null) {
-    throw new ConfigurationError('INVALID_CONFIG', `${label} must be an object`);
-  }
-  rejectUnknownKeys(label, command, keys);
-  if (typeof command.executable !== 'string' || command.executable.length === 0) {
-    throw new ConfigurationError('INVALID_CONFIG', `${label}.executable is required`);
-  }
-  if (command.args !== undefined) {
-    if (!Array.isArray(command.args)) throw new ConfigurationError('INVALID_CONFIG', `${label}.args must be an array of strings`);
-    command.args.forEach((arg: unknown, index) => requireString(arg, `${label}.args[${index}]`));
-  }
-  if (command.env !== undefined) {
-    if (typeof command.env !== 'object' || command.env === null || Array.isArray(command.env)) {
-      throw new ConfigurationError('INVALID_CONFIG', `${label}.env must be an object of variable name to string`);
-    }
-    for (const [key, value] of Object.entries(command.env)) requireString(value, `${label}.env.${key}`);
-  }
-  positiveInt(command.startupTimeout, `${label}.startupTimeout`, 'milliseconds');
-  positiveInt(command.shutdownTimeout, `${label}.shutdownTimeout`, 'milliseconds');
-  if (command.log !== undefined) {
-    if (typeof command.log !== 'string' || command.log.trim() === '') {
-      throw new ConfigurationError('INVALID_CONFIG', `${label}.log must be a non-empty path`);
-    }
-    if (!insideProjectRoot(projectRoot, path.resolve(projectRoot, command.log))) {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `${label}.log must be a file inside the project root, got ${JSON.stringify(command.log)}`,
-      );
-    }
-  }
-  if (command.reuseExisting !== undefined && typeof command.reuseExisting !== 'boolean') {
-    throw new ConfigurationError('INVALID_CONFIG', `${label}.reuseExisting must be a boolean`);
-  }
+/** What `prepare` and `init` receive about the target's app: its site policy and what a device launches. */
+export function engineAppInfo(app: ResolvedApp): EngineAppInfo {
+  const { site, bundleId, appPath, launchArguments, permissions } = app;
+  return obj({ site, bundleId, appPath, launchArguments, permissions });
 }
 
 /**
- * Refuses a command value that is not a string. A `secrets.get()` handle is
- * named as one: the child process would receive `[object Object]`, and only
- * an engine option that declares secrets resolves a handle to its value.
+ * A target's app as it enters the config digest: the declaration, with the
+ * command's env values reduced to their names. The run's port never enters
+ * it, so a worker handed the port reads the same digest.
  */
-function requireString(value: unknown, label: string): void {
-  if (typeof value === 'string') return;
-  if (isSecret(value)) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `${label} must be a string, got secrets.get(${JSON.stringify(value.name)}): only an engine option that declares secrets accepts a handle, such as web({ basicAuth: { password } }); pass the value itself, read from process.env`,
-    );
-  }
-  throw new ConfigurationError('INVALID_CONFIG', `${label} must be a string, got ${describeValue(value)}`);
-}
-
-/** Only a command with a URL to probe can find something already answering there. */
-function rejectReuse(command: CommandConfig, label: string, reason: string): void {
-  if (command.reuseExisting !== undefined) {
-    throw new ConfigurationError('INVALID_CONFIG', `${label}.reuseExisting needs readyUrl: ${reason}`);
-  }
-}
-
-/** The longest `name` a service may carry; a label, not a description. */
-const SERVICE_NAME_MAX_LENGTH = 64;
-
-/**
- * The name a service goes by in errors, reporter output, and the report: the
- * explicit `name`, trimmed, or the executable's base name (`docker`, `pnpm`,
- * and for a shell wrapper just `sh`, which is when an explicit name earns its
- * keep). Explicit names must be unique so two failures never read alike.
- */
-function serviceName(service: ServiceConfig, position: string, taken: Set<string>): string {
-  if (service.name === undefined) return path.basename(service.executable);
-  const name = typeof service.name === 'string' ? service.name.trim() : '';
-  if (name.length === 0 || name.length > SERVICE_NAME_MAX_LENGTH) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `${position}.name must be a non-empty string of at most ${SERVICE_NAME_MAX_LENGTH} characters`,
-    );
-  }
-  if (taken.has(name)) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `${position}.name "${name}" is already used by another service; service names must be unique`,
-    );
-  }
-  taken.add(name);
-  return name;
-}
-
-/**
- * Resolves a declaration's `services`: every service is a command with exactly
- * one readiness contract (`readyUrl` or `waitForExit`), and a `teardown` is a
- * command of its own. The service fields that only steer the runner
- * (`name`, `readyUrl`, `waitForExit`, `teardown`) are lifted out of the
- * command; `reuseExisting` stays on it, and only a `readyUrl` service may set it.
- * `projectRoot` anchors each `log` path; `prefix` names the declaring target
- * in errors, so a failing service is traceable to the engine that declared it.
- * `expand` substitutes `{port}` in each service's args, env, readiness URL,
- * and teardown; the default leaves values as written.
- */
-export function resolveServices(
-  raw: EngineAppDeclaration['services'],
-  projectRoot: string,
-  prefix = 'app.services',
-  expand: PortExpander = (value) => value,
-): readonly ResolvedService[] {
-  if (raw === undefined) return [];
-  if (!Array.isArray(raw)) {
-    throw new ConfigurationError('INVALID_CONFIG', `${prefix} must be an array`);
-  }
-  const names = new Set<string>();
-  return raw.map((declaredService: ServiceConfig, index): ResolvedService => {
-    const position = `${prefix}[${index}]`;
-    const service = expandCommandPort(declaredService, position, expand);
-    validateCommand(service, position, projectRoot, SERVICE_KEYS);
-    const { name: _name, readyUrl: rawReadyUrl, waitForExit, teardown: declaredTeardown, ...command } = service;
-    const readyUrl = httpUrl(
-      rawReadyUrl === undefined ? undefined : expand(rawReadyUrl, `${position}.readyUrl`),
-      `${position}.readyUrl`,
-    );
-    const teardown =
-      declaredTeardown === undefined ? undefined : expandCommandPort(declaredTeardown, `${position}.teardown`, expand);
-    if ((readyUrl !== undefined) === (waitForExit === true)) {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `${position} needs exactly one readiness contract: set readyUrl or waitForExit: true`,
-      );
-    }
-    const readiness: Readiness = readyUrl === undefined ? { waitForExit: true } : { readyUrl };
-    if (readyUrl === undefined) rejectReuse(command, position, 'a waitForExit service has nothing to reuse');
-    const name = serviceName(service, position, names);
-    const label = `service "${name}"`;
-    if (teardown !== undefined) {
-      validateCommand(teardown, `${position}.teardown`, projectRoot);
-      rejectReuse(teardown, `${position}.teardown`, 'a teardown command has nothing to reuse');
-    }
-    return {
-      label,
-      name: service.name === undefined ? undefined : name,
-      command,
-      readiness,
-      teardown: teardown === undefined ? undefined : { label: `${label} teardown`, command: teardown },
-    };
-  });
-}
-
-/** A command's env as it enters the config digest: values reduced to their names. */
-interface DigestedEnv {
-  readonly env?: Readonly<Record<string, { envName: string }>>;
-}
-
-function digestCommand<T extends CommandConfig>(command: T): Omit<T, 'env'> & DigestedEnv {
-  const { env, ...rest } = command;
-  if (env === undefined) return rest;
-  return { ...rest, env: Object.fromEntries(Object.keys(env).map((key) => [key, { envName: key }])) };
-}
-
-/**
- * The declarative part of an engine's `app` manifest as it enters the config
- * digest: hooks stripped, and every `command.env`, service env, and service
- * teardown env value replaced by `{ envName: key }`, so no environment value
- * contributes to the digest.
- */
-export function digestAppDeclaration(app: EngineAppDeclaration) {
-  const { url, environment, identity, command, readyUrl, services } = app;
-  return obj({
-    url,
-    environment,
-    identity,
-    readyUrl,
-    command: command === undefined ? undefined : digestCommand(command),
-    services: services?.map(({ teardown, ...service }) =>
-      obj({
-        ...digestCommand(service),
-        teardown: teardown === undefined ? undefined : digestCommand(teardown),
-      }),
-    ),
-  });
+export function digestTargetApp(app: TargetAppDeclaration) {
+  const { command, ...facts } = app;
+  return obj({ ...facts, command: command === undefined ? undefined : digestCommand(command) });
 }

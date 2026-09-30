@@ -45,11 +45,11 @@ export interface DeviceRequest {
    * answer the same commands differently.
    */
   readonly agentDeviceVersion: string;
-  /** The `app` option: the bundle id or package `app.open()` launches, when the config names one. */
+  /** The target's `app.bundleId`: the bundle id or package `app.open()` launches, when the config names one. */
   readonly app?: string | undefined;
   /**
-   * The build the engine would install, resolved to an absolute path, when
-   * the config names one. A provider that installs it itself (uploading it,
+   * The build the engine would install (the target's `app.appPath`),
+   * resolved to an absolute path, when the config names one. A provider that installs it itself (uploading it,
    * or naming a build it already hosts) reports `installedApp` on the lease
    * and the engine skips its own install.
    */
@@ -96,7 +96,7 @@ export interface DeviceLease extends Omit<SlotBinding, 'leaseId'> {
   /**
    * Bundle id or package of the app the provider installed from the
    * request's `appPath`, and only then: with it the engine installs nothing
-   * and, without an `app` option, `app.open()` launches this app. A lease
+   * and, without an `app.bundleId`, `app.open()` launches this app. A lease
    * reporting one for a request without `appPath` fails the run.
    */
   readonly installedApp?: string | undefined;
@@ -237,15 +237,16 @@ export class LeasedDevices implements DeviceSource {
 
   constructor(
     private readonly provider: DeviceProvider,
-    private readonly options: Pick<MobileOptions, 'platform' | 'app' | 'appPath'>,
+    private readonly options: Pick<MobileOptions, 'platform'>,
   ) {
     this.recorder = provider.record === undefined ? undefined : (provider as RecordingDeviceProvider);
   }
 
   async bind(info: EnginePrepareInfo): Promise<readonly SlotBinding[]> {
     const { provider } = this;
-    const { platform, app } = this.options;
-    const appPath = this.options.appPath === undefined ? undefined : path.resolve(info.projectRoot, this.options.appPath);
+    const { platform } = this.options;
+    const app = info.app.bundleId;
+    const appPath = info.app.appPath === undefined ? undefined : path.resolve(info.projectRoot, info.app.appPath);
     const held: DeviceLease[] = [];
     this.held.set(info.targetName, held);
     info.log(`leasing ${info.slots} ${platform} device(s) from ${provider.name}`);

@@ -238,7 +238,7 @@ describe('automation runner failures through the engine', () => {
 
   async function openAttempt(h: Harness): Promise<void> {
     artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-mobile-errors-'));
-    await boot(h.engine, 'ios');
+    await boot(h, 'ios');
     await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
   }
 
@@ -256,13 +256,13 @@ describe('automation runner failures through the engine', () => {
       throw runnerBusy();
     });
     const lines: string[] = [];
-    await expect(h.engine.prepare!(prepareInfo(lines))).rejects.toMatchObject({
+    await expect(h.prepare(prepareInfo(lines))).rejects.toMatchObject({
       code: 'ENGINE_FAILURE',
       message: expect.stringContaining(
         'open Settings failed: the iOS automation runner is still finishing a command that overran its watchdog (session e2e-ios-0 on iPhone 17 Pro)',
       ),
     });
-    await expect(h.engine.prepare!(prepareInfo(lines))).rejects.toMatchObject({
+    await expect(h.prepare(prepareInfo(lines))).rejects.toMatchObject({
       message: expect.stringContaining('npx agent-device daemon stop'),
     });
     expect(lines).toEqual(['booting iPhone 17 Pro (1 of 1)', 'booting iPhone 17 Pro (1 of 1)']);
@@ -270,7 +270,7 @@ describe('automation runner failures through the engine', () => {
     h.fake.respond('apps.open', () => {
       throw new Error('runner still installing');
     });
-    await h.engine.prepare!(prepareInfo(lines));
+    await h.prepare(prepareInfo(lines));
     expect(lines[3]).toMatch(/Settings did not open.*runner still installing/);
   });
 
@@ -294,7 +294,7 @@ describe('automation runner failures through the engine', () => {
     });
     const closes = () => h.fake.methods().filter((method) => method === 'sessions.close').length;
     const info = { ...prepareInfo([]), slots: 2 };
-    await expect(h.engine.prepare!(info)).rejects.toMatchObject({
+    await expect(h.prepare(info)).rejects.toMatchObject({
       message: expect.stringContaining('(session e2e-ios-1 on sim-1)'),
     });
     expect(h.sessions).toEqual(['e2e-ios-0', 'e2e-ios-1']);
@@ -320,7 +320,7 @@ describe('automation runner failures through the engine', () => {
       return {};
     });
     const info = { ...prepareInfo([]), slots: 2 };
-    await expect(h.engine.prepare!(info)).rejects.toMatchObject({ message: 'boot failed: no such device' });
+    await expect(h.prepare(info)).rejects.toMatchObject({ message: 'boot failed: no such device' });
     await h.engine.finish!({ ...info, timeoutMs: 5_000 });
     expect(h.fake.methods().filter((method) => method === 'sessions.close')).toHaveLength(2);
   });
@@ -330,7 +330,7 @@ describe('automation runner failures through the engine', () => {
     h.fake.respond('apps.open', () => {
       throw new AppError('RUNNER_WEDGED', 'The iOS runner main thread has been stuck in abandoned work for 120 seconds and cannot recover on its own.');
     });
-    await expect(h.engine.prepare!(prepareInfo([]))).rejects.toMatchObject({
+    await expect(h.prepare(prepareInfo([]))).rejects.toMatchObject({
       code: 'ENGINE_FAILURE',
       message: expect.stringContaining('the iOS automation runner is wedged'),
     });

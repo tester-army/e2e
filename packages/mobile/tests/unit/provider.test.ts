@@ -71,7 +71,7 @@ describe('device provider', () => {
     // A provider serves as many workers as the run has slots; the cap is only known once leased.
     expect(h.engine.workers).toBeUndefined();
     const lines: string[] = [];
-    const result = await h.engine.prepare!(prepareInfo({ DEVICE_SERVICE_TOKEN: 't' }, 2, (line) => lines.push(line)));
+    const result = await h.prepare(prepareInfo({ DEVICE_SERVICE_TOKEN: 't' }, 2, (line) => lines.push(line)));
     expect(result?.workers).toBe(2);
     expect(cloud.acquired.map((request) => [request.slot, request.slots, request.platform, request.app, request.appPath])).toEqual([
       [0, 2, 'ios', 'Settings', undefined],
@@ -105,13 +105,13 @@ describe('device provider', () => {
 
     // A child worker reads its binding from the environment and drives that daemon and device.
     const worker = harness({ device: cloud.impl });
-    await boot(worker.engine, 'ios', 1, { [variable]: handed[variable] });
+    await boot(worker, 'ios', 1, { [variable]: handed[variable] });
     expect(worker.connections.map((connection) => connection?.daemon)).toEqual([{ baseUrl: 'https://1.example', authToken: 'token-1' }]);
     expect(worker.sessions).toEqual(['e2e-ios-1']);
     expect(worker.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', device: 'sim-1' });
 
     // The runner-side handle reads its own bindings and releases the leases at finish.
-    await boot(h.engine, 'ios', 0);
+    await boot(h, 'ios', 0);
     expect(h.connections.at(-1)?.daemon).toEqual({ baseUrl: 'https://0.example', authToken: 'token-0' });
     const finished: string[] = [];
     await h.engine.finish!(finishInfo((line) => finished.push(line)));
@@ -125,13 +125,13 @@ describe('device provider', () => {
   it('asks the provider for the resolved build and leaves the install to the suite when the lease did not', async () => {
     const cloud = provider();
     const h = harness({ device: cloud.impl, appPath: 'build/App.app' });
-    const result = await h.engine.prepare!(prepareInfo({}, 1));
+    const result = await h.prepare(prepareInfo({}, 1));
     expect(cloud.acquired[0]!.appPath).toBe(path.join(PROJECT_ROOT, 'build/App.app'));
     // The lease installed nothing: the build is not on the device, so warm-up boots and starts the runner only, and the worker installs nothing.
     expect(h.fake.methods()).toEqual(['devices.boot', 'command.prepare']);
     const handed = result?.env ?? {};
     const worker = harness({ device: cloud.impl, appPath: 'build/App.app' });
-    await boot(worker.engine, 'ios', 0, handed);
+    await boot(worker, 'ios', 0, handed);
     expect(worker.fake.methods()).toEqual(['devices.boot']);
     await worker.surface.installApp(undefined, {}, new AbortController().signal);
     expect(worker.fake.lastArgs('apps.install')).toMatchObject({ device: 'sim-0', app: 'Settings', appPath: path.join(PROJECT_ROOT, 'build/App.app') });
@@ -140,11 +140,11 @@ describe('device provider', () => {
   it('skips the build install when the lease says the provider installed it, and opens that app', async () => {
     const cloud = provider({ installedApp: 'com.example.app' });
     const h = harness({ device: cloud.impl, appPath: 'build/App.app' }, false);
-    await h.engine.prepare!(prepareInfo({}, 1));
+    await h.prepare(prepareInfo({}, 1));
     // Installed by the provider: warm-up opens it right away.
     expect(h.fake.methods()).toEqual(['devices.boot', 'command.prepare', 'apps.open']);
     expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'com.example.app', platform: 'ios', device: 'sim-0' });
-    await boot(h.engine, 'ios', 0);
+    await boot(h, 'ios', 0);
     expect(h.fake.methods().filter((method) => method === 'apps.install')).toEqual([]);
     await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir: '', signal: new AbortController().signal, resolveSecret: noSecrets });
     await h.engine.session!.restart!({ signal: new AbortController().signal, timeoutMs: 30_000, runId: 'run-1', attemptId: 'a1', origin: 'test' });
@@ -154,7 +154,7 @@ describe('device provider', () => {
   it('rejects a lease that reports an installed app for a request without appPath', async () => {
     const cloud = provider({ installedApp: 'com.example.app' });
     const h = harness({ device: cloud.impl });
-    await expect(h.engine.prepare!(prepareInfo({}, 1))).rejects.toMatchObject({
+    await expect(h.prepare(prepareInfo({}, 1))).rejects.toMatchObject({
       message: expect.stringContaining('reported an installed app for a request without `appPath`'),
     });
     // The lease was granted, so it is still released.
@@ -165,7 +165,7 @@ describe('device provider', () => {
   it('rejects a lease whose installed app is a link, before the pool opens it on the device', async () => {
     const cloud = provider({ installedApp: 'file:///etc/passwd' });
     const h = harness({ device: cloud.impl, appPath: 'build/App.app' }, false);
-    await expect(h.engine.prepare!(prepareInfo({}, 1))).rejects.toMatchObject({
+    await expect(h.prepare(prepareInfo({}, 1))).rejects.toMatchObject({
       code: 'ENGINE_FAILURE',
       message: expect.stringContaining('reported an installed app that is a link'),
     });
@@ -177,7 +177,7 @@ describe('device provider', () => {
   it('leases nothing for a target with no slots', async () => {
     const cloud = provider();
     const h = harness({ device: cloud.impl });
-    expect(await h.engine.prepare!(prepareInfo({}, 0))).toEqual({});
+    expect(await h.prepare(prepareInfo({}, 0))).toEqual({});
     expect(cloud.acquired).toEqual([]);
     await h.engine.finish!(finishInfo());
     expect(cloud.released).toEqual([]);
@@ -199,7 +199,7 @@ describe('device provider', () => {
       },
     };
     const h = harness({ device: bookkeeping });
-    const result = await h.engine.prepare!(prepareInfo({}, 1));
+    const result = await h.prepare(prepareInfo({}, 1));
     const handed = result?.env ?? {};
     expect(JSON.parse(handed[poolVariableIn(handed, 'IOS')]!)).toEqual([{ leaseId: 'l-0', daemon: { baseUrl: 'https://d.example' }, sessionApp: 'Settings' }]);
     await h.engine.finish!(finishInfo());
@@ -218,7 +218,7 @@ describe('device provider', () => {
       async release() {},
     };
     const h = harness({ device: scoped });
-    const result = await h.engine.prepare!(prepareInfo({}, 2));
+    const result = await h.prepare(prepareInfo({}, 2));
     // Warm-up already drives each device with its lease's configuration.
     expect(h.connections).toEqual([
       { leaseId: 'l-0', client: scope },
@@ -231,7 +231,7 @@ describe('device provider', () => {
       { leaseId: 'l-1', daemon: { baseUrl: 'https://1.example' }, client: { providerOsVersion: '18.0' }, sessionApp: 'Settings' },
     ]);
     const worker = harness({ device: scoped });
-    await boot(worker.engine, 'ios', 0, { [variable]: handed[variable] });
+    await boot(worker, 'ios', 0, { [variable]: handed[variable] });
     expect(worker.connections.map((connection) => connection?.client)).toEqual([scope]);
   });
 
@@ -255,7 +255,7 @@ describe('device provider', () => {
         },
       };
       const h = harness({ device: odd });
-      await expect(h.engine.prepare!(prepareInfo({}, 1))).rejects.toMatchObject({
+      await expect(h.prepare(prepareInfo({}, 1))).rejects.toMatchObject({
         message: expect.stringContaining('returned a lease without an id and a daemon baseUrl or JSON client configuration'),
       });
       // The provider allocated a device for it, so it is billed until released: finish hands back the very object.
@@ -275,7 +275,7 @@ describe('device provider', () => {
       },
     };
     const h = harness({ device: nameless });
-    await expect(h.engine.prepare!(prepareInfo({}, 1))).rejects.toMatchObject({
+    await expect(h.prepare(prepareInfo({}, 1))).rejects.toMatchObject({
       message: expect.stringContaining('returned a lease without an id and a daemon baseUrl or JSON client configuration'),
     });
     await h.engine.finish!(finishInfo());
@@ -294,7 +294,7 @@ describe('device provider', () => {
       },
     };
     const h = harness({ device: mixed });
-    await expect(h.engine.prepare!(prepareInfo({}, 2))).rejects.toMatchObject({
+    await expect(h.prepare(prepareInfo({}, 2))).rejects.toMatchObject({
       code: 'ENGINE_FAILURE',
       message: expect.stringContaining('returned a lease without an id and a daemon baseUrl or JSON client configuration'),
     });
@@ -316,7 +316,7 @@ describe('device provider', () => {
       async release() {},
     };
     const h = harness({ device: oversized });
-    await expect(h.engine.prepare!(prepareInfo({}, 1))).rejects.toMatchObject({
+    await expect(h.prepare(prepareInfo({}, 1))).rejects.toMatchObject({
       message: expect.stringContaining('the worker environment carries at most 16384'),
     });
   });
@@ -324,7 +324,7 @@ describe('device provider', () => {
   it('holds the slots that leased when another fails, so finish releases them, and fails the run before any test', async () => {
     const cloud = provider({ failSlot: 1 });
     const h = harness({ device: cloud.impl });
-    await expect(h.engine.prepare!(prepareInfo({}, 2))).rejects.toMatchObject({
+    await expect(h.prepare(prepareInfo({}, 2))).rejects.toMatchObject({
       code: 'ENGINE_FAILURE',
       message: expect.stringContaining('device provider "toy-cloud" could not lease a device: no capacity for slot 1'),
     });
@@ -342,7 +342,7 @@ describe('device provider', () => {
       async release() {},
     };
     const h = harness({ device: sync });
-    await expect(h.engine.prepare!(prepareInfo({}, 2))).rejects.toMatchObject({
+    await expect(h.prepare(prepareInfo({}, 2))).rejects.toMatchObject({
       code: 'ENGINE_FAILURE',
       message: expect.stringContaining('could not lease a device: token missing'),
     });
@@ -351,15 +351,15 @@ describe('device provider', () => {
   it('reports a release failure once every lease was tried, and a slot outside the leases as an engine defect', async () => {
     const cloud = provider({ failRelease: true });
     const h = harness({ device: cloud.impl });
-    await h.engine.prepare!(prepareInfo({}, 2));
+    await h.prepare(prepareInfo({}, 2));
     await expect(h.engine.finish!(finishInfo())).rejects.toMatchObject({
       message: expect.stringContaining('could not release a device: stop failed'),
     });
     expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-0', 'lease-1']);
 
     const again = harness({ device: cloud.impl });
-    await again.engine.prepare!(prepareInfo({}, 1));
-    await expect(boot(again.engine, 'ios', 1)).rejects.toMatchObject({
+    await again.prepare(prepareInfo({}, 1));
+    await expect(boot(again, 'ios', 1)).rejects.toMatchObject({
       message: expect.stringContaining('worker slot 1 is outside a device pool of 1'),
     });
   });
@@ -367,7 +367,7 @@ describe('device provider', () => {
   it('without a prepared lease a provider-backed worker falls back to the local daemon, and finish has nothing to release', async () => {
     const cloud = provider();
     const h = harness({ device: cloud.impl });
-    await boot(h.engine, 'ios', 0);
+    await boot(h, 'ios', 0);
     expect(h.connections).toEqual([undefined]);
     expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios' });
     await h.engine.finish!(finishInfo());
@@ -427,9 +427,9 @@ describe('device provider recording', () => {
   /** Prepares one leased slot in the runner, then boots a child worker on it from the environment `prepare` returned. */
   async function leasedWorker(impl: DeviceProvider): Promise<Harness> {
     const runner = harness({ device: impl });
-    const result = await runner.engine.prepare!(prepareInfo({ DEVICE_SERVICE_TOKEN: 't' }, 1));
+    const result = await runner.prepare(prepareInfo({ DEVICE_SERVICE_TOKEN: 't' }, 1));
     const worker = harness({ device: impl });
-    await boot(worker.engine, 'ios', 0, { ...result?.env, DEVICE_SERVICE_TOKEN: 't' });
+    await boot(worker, 'ios', 0, { ...result?.env, DEVICE_SERVICE_TOKEN: 't' });
     await worker.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
     return worker;
   }
@@ -479,7 +479,7 @@ describe('device provider recording', () => {
   it('keeps the agent-device recording for a worker without a lease, when no prepare ran', async () => {
     const cloud = recordingProvider();
     const worker = harness({ device: cloud.impl });
-    await boot(worker.engine, 'ios', 0);
+    await boot(worker, 'ios', 0);
     await worker.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
     await worker.engine.artifacts!.startVideo!(operation());
     expect(cloud.recorded).toEqual([]);

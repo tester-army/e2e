@@ -48,7 +48,7 @@ import { web } from '@e2e-dev/web';
 import { gateway } from 'ai';
 
 export default {
-  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
   agents: { default: { model: gateway('openai/gpt-6-luna-fast') } },
 } satisfies E2EConfig;
 ```
@@ -146,7 +146,7 @@ Give agents different names to use different models:
 
 ```ts title="e2e.config.ts"
 export default {
-  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
   agents: {
     default: { model: gateway('openai/gpt-6-luna-fast') },
     careful: { model: gateway('anthropic/claude-sonnet-5') },

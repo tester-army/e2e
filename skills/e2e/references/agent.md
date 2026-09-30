@@ -15,7 +15,7 @@ import { web } from '@e2e-dev/web';
 import { gateway } from 'ai';
 
 export default {
-  targets: [{ engine: web({ url: 'http://127.0.0.1:3000' }) }],
+  targets: [{ engine: web(), app: { url: 'http://127.0.0.1:3000' } }],
   agents: { default: { model: gateway('openai/gpt-6-luna-fast') } },
 } satisfies E2EConfig;
 ```

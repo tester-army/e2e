@@ -27,13 +27,13 @@ import { mobile } from '@e2e-dev/mobile';
 import { mobileTools } from '@e2e-dev/mobile/tools';
 import { gateway } from 'ai';
 
-const iphone = mobile({ platform: 'ios', app: 'Settings' });
-const pixel = mobile({ platform: 'android', app: 'com.android.settings' });
+const iphone = mobile({ platform: 'ios' });
+const pixel = mobile({ platform: 'android' });
 
 export default {
   targets: [
-    { name: 'iphone', engine: iphone },
-    { name: 'pixel', engine: pixel },
+    { name: 'iphone', engine: iphone, app: { bundleId: 'Settings' } },
+    { name: 'pixel', engine: pixel, app: { bundleId: 'com.android.settings' } },
   ],
   workers: 1,
   agents: {
@@ -50,24 +50,33 @@ targets unchanged. Only a check that names a platform label (`General` on iOS,
 `Network & internet` on Android) needs `platforms: ['ios']` or
 `platforms: ['android']` on the test.
 
-Options:
+The app under test is the target's `app`; the engine only drives it. A
+device target needs `bundleId` or `appPath`:
+
+| Key | Meaning |
+| --- | --- |
+| `bundleId` | Bundle id, package, or display name `app.open()`, `app.restart()`, and `app.clearState()` launch fresh; an attempt launches nothing on its own. |
+| `appPath` | An iOS `.app` bundle or Android `.apk`, resolved against the project root. The engine does not install it: the suite calls `device.installApp()` (with no path, this build) once per device, unless a device provider already installed it. Without `bundleId`, the installed bundle id or package is the app `app.open()` launches. |
+| `launchArguments` | Arguments every fresh launch of the pinned app carries (`app.open()`, `app.restart()`, `app.clearState()`): the process arguments on iOS, `am start` arguments on Android. The warm-up passes none. |
+| `permissions` | Permissions the pinned app holds on every fresh launch, `{ camera: 'grant', location: 'deny', notifications: 'reset' }`, set before the app starts and put back after `app.clearState()` reset them. |
+
+`app.url` is not supported on a device target yet, and `mobile({ app })` and
+the other old app options are `INVALID_CONFIG` naming their key under `app`.
+
+`mobile()` options:
 
 | Option | Meaning |
 | --- | --- |
 | `platform` | `'ios'` or `'android'`. |
-| `app` | Bundle id, package, or display name `app.open()` launches fresh; an attempt launches nothing on its own. Also unlocks `app.restart()` and `app.clearState()`. |
-| `appPath` | An iOS `.app` bundle or Android `.apk` installed once per worker before the first attempt, resolved against the project root. Without `app`, the installed bundle id or package is the app `app.open()` launches. |
 | `device` | Simulator or emulator name or UDID. A list is a pool: one worker per entry, worker slot `n` driving the `n`th. Omitted, every booted device of the platform is the pool, as many as the run has slots. |
 | `session` | agent-device session name, before the worker slot: slot `n` drives its device under `<session>-<n>`, `e2e-<target name>-<n>` by default. One run per session at a time. |
 | `snapshot` | `'full'` (default, includes static text) or `'interactive'` (actionable nodes only). |
 | `settle` | For agent actions: milliseconds the UI must hold still after an action before the agent observes again, default `150`; `false` skips the wait. A test's own steps never settle; `expect` verifies their outcome. |
 | `transition` | For a test's steps: milliseconds a control that appeared or moved with the last action gets to finish arriving before it is acted on, default `500`. Controls already in place before the action are acted on at once. |
-| `launchArguments` | Arguments every fresh launch of the pinned app carries (`app.open()`, `app.restart()`, `app.clearState()`): the process arguments on iOS, `am start` arguments on Android. The warm-up passes none. |
-| `permissions` | Permissions the pinned app holds on every fresh launch, `{ camera: 'grant', location: 'deny', notifications: 'reset' }`, set before the app starts and put back after `app.clearState()` reset them. |
 
-Every optional value also accepts `undefined`, so a config passes
-`device: process.env.E2E_DEVICE` or `appPath: process.env.E2E_APP_PATH`
-straight through, with no conditional spread.
+Every optional `mobile()` value also accepts `undefined`, so a config passes
+`device: process.env.E2E_DEVICE` straight through, with no conditional
+spread.
 
 ## What the engine declares
 
@@ -91,6 +100,7 @@ straight through, with no conditional spread.
   every secure field are painted black before the file is kept, and a
   screenshot that cannot be redacted is not written. No `state` capability: a
   simulator has no portable session snapshot.
+- **App kind**: a target with `app.bundleId` or `app.appPath` is a `native-app` target, so a portable suite can `requires: ['native-app']`.
 
 ## Replay cache
 
@@ -101,7 +111,7 @@ toolbar on Android. The app identity is part of the location, so two apps with
 a "General" screen never share an anchor. A step recorded on
 `com.apple.Preferences / General` replays only when that app is on that
 screen again, and a flow that stays within tap, type, and scroll replays with
-zero model calls. Pin `app` and call `app.open()` first, so steps start on
+zero model calls. Declare `app.bundleId` and call `app.open()` first, so steps start on
 the same screen, and
 prefer the grammar over the `open_app` tool inside a step: a tool call is a
 replay gap.
@@ -131,7 +141,8 @@ Methods: `setNetwork`, `setAirplaneMode`, `setPermission`, `setLocation`,
 `setClipboard`, and the `locator` accessor.
 
 `installApp(appPath, { app, reinstall })` puts a build on the device from a
-test, for upgrade and fresh-install paths the `appPath` option cannot express.
+test, for upgrade and fresh-install paths the target's `app.appPath` cannot
+express.
 A plain install replaces the binary and keeps its data; `reinstall: true`
 removes the app named by `app` (default: the pinned app) first. It resolves to
 the bundle id or package to `openApp` the build by. `openApp` takes an app id,

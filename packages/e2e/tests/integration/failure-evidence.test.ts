@@ -14,13 +14,13 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { SemanticNode } from '../../src/engine/contract.ts';
 import type { E2EConfig } from '../../src/index.ts';
-import { createFakeEngine, FAKE_APP_URL, type FakeEngineHandle } from '../helpers/fake-engine.ts';
+import { createFakeEngine, FAKE_APP, FAKE_APP_URL, type FakeEngineHandle } from '../helpers/fake-engine.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { runProject, type RunOutcome } from '../helpers/run-project.ts';
 
 function fakeConfig(fake: FakeEngineHandle, extra: Partial<E2EConfig> = {}): E2EConfig {
   return {
-    targets: [{ name: 'fake', platform: 'web', engine: fake.engine }],
+    targets: [{ name: 'fake', platform: 'web', engine: fake.engine, app: FAKE_APP }],
     actionTimeout: 300,
     ...extra,
   } as E2EConfig;

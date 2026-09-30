@@ -20,7 +20,7 @@ import { web } from '@e2e-dev/web';
 import type { E2EConfig } from '../../src/index.ts';
 import type { RunOutcome } from '../../src/run/runner.ts';
 import { secrets } from '../../src/secrets.ts';
-import { createFakeEngine, FAKE_APP_URL } from '../helpers/fake-engine.ts';
+import { createFakeEngine, FAKE_APP, FAKE_APP_URL } from '../helpers/fake-engine.ts';
 import { fakeCalls, installFakeModel, judgment } from '../helpers/fake-model.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { contentsUnder, resultByTitle, runProject, runProjectWithConfigFile, type FixtureProject } from '../helpers/run-project.ts';
@@ -37,7 +37,8 @@ export default {
   targets: [
     {
       name: 'web',
-      engine: web({ url: process.env.APP_URL!, basicAuth: { username: 'ada', password: secrets.get('stagingPassword') } }),
+      engine: web({ basicAuth: { username: 'ada', password: secrets.get('stagingPassword') } }),
+      app: { url: process.env.APP_URL! },
     },
   ],
   workers: 2,
@@ -155,7 +156,8 @@ test('judges the echo with vision on', async ({ app, agent }) => {
           targets: [
             {
               name: 'web',
-              engine: web({ url: app.url, basicAuth: { username: 'ada', password: secrets.get('stagingPassword') as never } }) as never,
+              engine: web({ basicAuth: { username: 'ada', password: secrets.get('stagingPassword') as never } }) as never,
+              app: { url: app.url },
             },
           ],
           agents: { default: { model } },
@@ -198,7 +200,7 @@ describe('resolving an engine secret', () => {
       {
         appUrl: FAKE_APP_URL,
         config: {
-          targets: [{ name: 'fake', platform: 'web', engine: fake.engine }],
+          targets: [{ name: 'fake', platform: 'web', engine: fake.engine, app: FAKE_APP }],
           workers: 1,
           secrets: { declared: () => 'declared-value', undeclared: 'undeclared-value' },
         } as Partial<E2EConfig>,

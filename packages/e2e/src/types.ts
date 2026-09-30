@@ -528,8 +528,8 @@ export interface Locator extends Screen {
 export interface App {
   /**
    * The resolved base URL of the target's app, with the port the run
-   * allocated when the engine declared port 0; undefined for a surface whose
-   * engine declares no `url`.
+   * allocated when `app.url` declared port 0; undefined for a target that
+   * declares no `app.url`.
    */
   readonly baseUrl: string | undefined;
   /**
@@ -540,12 +540,12 @@ export interface App {
   open(path?: string): Promise<void>;
   /**
    * Recreates the execution context while preserving persisted state, then
-   * reopens the app at its base URL when the engine declares one.
+   * reopens the app at its base URL when the target declares one.
    */
   restart(): Promise<void>;
   /**
    * Clears persisted client state, recreates the execution context, then
-   * reopens the app at its base URL when the engine declares one.
+   * reopens the app at its base URL when the target declares one.
    */
   clearState(): Promise<void>;
   /** Navigates back once. */
@@ -916,45 +916,96 @@ export interface CommandConfig {
   /**
    * When the readiness URL already answers before the command starts, use that
    * process instead of spawning: nothing is started and nothing is stopped.
-   * Off by default; CI ignores it and always starts the command.
+   * Off by default; CI ignores it and always starts the command. A URL on a
+   * free port (port 0) can never already answer, so the two together are
+   * `INVALID_CONFIG`.
    */
   reuseExisting?: boolean;
 }
 
+/** A permission's state when the app launches: held, refused, or not asked for yet, so the OS asks again. */
+export type AppPermissionState = 'grant' | 'deny' | 'reset';
+
 /**
- * One dependency process of the app under test (a database container, a
- * cache, an auth emulator, a migration step). Services start sequentially in
- * declaration order before `app.command`, and each must be ready before the
- * next starts. Exactly one of `readyUrl` or `waitForExit` declares how a
- * service becomes ready; a service with neither has no readiness contract and
- * is rejected as `INVALID_CONFIG`.
+ * The app one target tests, declared on the target and nowhere else: engines
+ * only drive it. Every field also accepts `undefined`, so values read straight
+ * from `process.env` need no conditional spread. A browser target names the `url` it opens; a device target
+ * the installed app (`bundleId`) or the build (`appPath`) it launches. Each
+ * engine checks the fields its platform needs at config load. `command` and
+ * `readyUrl` start the app for this target alone.
  */
-export interface ServiceConfig extends CommandConfig {
-  /** Label used in errors, reporter output, and the report; defaults to the executable name. */
-  name?: string;
-  /** Optional HTTP readiness probe; a status of 200 through 499 counts as ready. */
-  readyUrl?: string;
+export interface TargetApp {
   /**
-   * Wait for the process to exit with code 0 instead of probing a URL
-   * (migrations, `docker compose up --wait`). A non-zero exit or the
-   * `startupTimeout` expiring is `APP_UNREACHABLE`.
+   * Base URL of an addressable app: `app.open()` opens it and relative
+   * navigation resolves against it. WHATWG-normalized; no userinfo, query, or
+   * fragment; a missing scheme becomes `https://`, or `http://` for a
+   * loopback host. Plain HTTP is accepted for loopback hosts only. A URL on
+   * `127.0.0.1` or `[::1]` with port 0 asks the run for a free port for
+   * `command`, handed to it as `{port}`; without a command nothing would
+   * serve it, so that is `INVALID_CONFIG`.
    */
-  waitForExit?: boolean;
+  url?: string | undefined;
   /**
-   * Optional command run during teardown after the service itself has been
-   * stopped (`docker compose down`). Runs on every exit path, is waited on
-   * until exit within its own `startupTimeout`, and a failure is recorded as a
-   * cleanup-phase run error rather than a crash.
+   * The installed app a device target launches: a bundle id, an Android
+   * package name, or a display name the device resolves (`Settings`).
    */
-  teardown?: CommandConfig;
+  bundleId?: string | undefined;
+  /**
+   * The build a device target runs against, an iOS `.app` bundle or an
+   * Android `.apk`, resolved against the project root. Without `bundleId`,
+   * the app it installs is the one launched.
+   */
+  appPath?: string | undefined;
+  /**
+   * Stable logical identity of the app under test, keying replay cache and
+   * session entries. Defaults to the URL's origin and base path, else
+   * `bundleId`, else `appPath`, so an ephemeral per-deploy origin (a PR
+   * preview) cold-starts every entry; an explicit identity keys them by what
+   * the app *is* instead of where it is served this run. Never share one
+   * identity across genuinely different apps: recorded traces would replay
+   * across them.
+   */
+  identity?: string | undefined;
+  /**
+   * Labels the target in the report and joins the cache and session identity
+   * digest; never gates a run. Defaults to `test` for loopback, `.localhost`,
+   * and `.test` hosts and for an app without a URL, `production` otherwise.
+   */
+  environment?: 'test' | 'staging' | 'production' | undefined;
+  /**
+   * Arguments a device app is launched with on every fresh launch
+   * (`app.open()`, `app.restart()`, `app.clearState()`). Arguments that
+   * select a build mode change what the app is: give each mode its own
+   * `identity` so their recordings stay apart.
+   */
+  launchArguments?: readonly string[] | undefined;
+  /**
+   * Permissions a device app holds on every fresh launch, by name, each
+   * granted, denied, or reset before the app starts.
+   */
+  permissions?: Readonly<Record<string, AppPermissionState>> | undefined;
+  /**
+   * Process the runner starts before the first test and stops at the end of
+   * the run (a dev server, Metro for a debug build). Structured, never
+   * shell-interpreted; the child inherits only `PATH`, `HOME`, the
+   * temp-directory variables, and `command.env`. `{port}` in it is the port
+   * of `url`, fixed or free. Targets declaring the same command share one
+   * process, probed at the first declaring target's `readyUrl`. A release
+   * build has no command.
+   */
+  command?: CommandConfig | undefined;
+  /**
+   * URL polled until `command` is ready (a 200-499 status); defaults to
+   * `url`, and is required without one. `{port}` in it is the port of `url`.
+   */
+  readyUrl?: string | undefined;
 }
 
 /**
  * One target: a named surface on one platform, served by an engine.
  * What the target can do is graded from the engine's declared capabilities;
  * with no `engine` the target is agent-tools-only and everything runs opaque.
- * The app under test is the engine's to declare (its URL, identity, or the
- * command that starts it); a target carries no app config of its own.
+ * The app under test is the target's `app`; the engine only drives it.
  */
 export interface Target {
   /** Label in reports and for `--target`; defaults to the platform. */
@@ -966,6 +1017,8 @@ export interface Target {
   platform?: string;
   /** The engine driving the surface: `web(...)`, `mobile(...)`, or any `defineEngine` handle. */
   engine?: EngineHandle;
+  /** The app under test: what it is, where it is served, and the command that starts it. */
+  app?: TargetApp;
   /**
    * Which attempts on this target record a trace, in place of the config's
    * `trace`; `--trace` and a test's own `trace` win over it. A mode set here

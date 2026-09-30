@@ -1,17 +1,17 @@
 /**
  * `SharedAppProcesses` under `startDeclaredProcesses`, the one flow a run and
- * a live session both start app processes through: attempts share each app
- * command and each service they both declare, whatever URL each probes and
- * whatever else each adds, a process that is stopping is started afresh only
- * once it is gone, and a shared start outlives the attempt that began it.
+ * a live session both start app processes through: attempts on fresh loads
+ * of one config share its app command, whatever else each opens, a process
+ * that is stopping is started afresh only once it is gone, and a shared
+ * start outlives the attempt that began it.
  */
 
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { EngineAppDeclaration } from '../../src/engine/index.ts';
-import type { AppProcesses } from '../../src/run/provision.ts';
+import type { AppProcesses } from '../../src/run/managed-process.ts';
+import type { Target } from '../../src/types.ts';
 import { createFakeEngine } from '../helpers/fake-engine.ts';
 import { freePort } from '../helpers/free-port.ts';
 import { startupLog, writeStartupScripts } from '../helpers/startup-scripts.ts';
@@ -47,44 +47,55 @@ describe('SharedAppProcesses', { timeout: 30_000 }, () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  /** One resolved target per declaration, named t0, t1, and so on. */
-  const targets = (...apps: EngineAppDeclaration[]) =>
+  /** One config load, as a live session loads it: one target per declaration, named t0, t1, and so on. */
+  const load = (...declared: Pick<Target, 'app'>[]) =>
     resolveConfig(
-      { targets: apps.map((app, index) => ({ name: `t${index}`, platform: 'kiosk', engine: createFakeEngine({ app }).engine })) } as never,
+      { targets: declared.map((target, index) => ({ name: `t${index}`, platform: 'kiosk', engine: createFakeEngine().engine, ...target })) } as never,
       { projectRoot: dir, env: {} },
-    ).targets;
+    );
 
   const start = (
     pool: InstanceType<typeof SharedAppProcesses>,
-    target: ReturnType<typeof targets>[number],
+    config: ReturnType<typeof load>,
+    name = 't0',
     signal: AbortSignal = new AbortController().signal,
   ) =>
-    startDeclaredProcesses([target], dir, () => ({ ci: false }), signal, new DebugTrace(false), pool).then((processes) => {
+    startDeclaredProcesses(
+      config.targets.filter((target) => target.name === name),
+      config.projectRoot,
+      () => ({ ci: false }),
+      signal,
+      new DebugTrace(false),
+      pool,
+    ).then((processes) => {
       started.push(processes);
       return processes;
     });
 
   const serving = async (): Promise<boolean> => fetch(url).then((response) => response.ok, () => false);
 
-  it('shares the app command and the services two targets both declare, whatever URL each probes', async () => {
-    const service = (name: string) => ({ name, executable: process.execPath, args: ['service.cjs', name], waitForExit: true });
-    const [desktop, mobile] = targets({ url, command, services: [service('db')] }, { url: `${url}/m`, command, services: [service('db'), service('mail')] });
+  it('shares the app command sessions on fresh loads both declare, whatever page each opens', async () => {
+    /** A fresh load of one config: t0 opens the app's root, t1 a page of it, on one command. */
+    const config = () => load({ app: { url, command } }, { app: { url: `${url}/m`, command } });
     const pool = new SharedAppProcesses();
-    const first = await start(pool, desktop!);
-    const second = await start(pool, mobile!);
-    expect(startupLog(dir)).toBe('db\napp\nmail\n');
+    const first = await start(pool, config());
+    const second = await start(pool, config(), 't1');
+    const third = await start(pool, config());
+    expect(startupLog(dir)).toBe('app\n');
     await first.stop(() => undefined);
+    expect(await serving()).toBe(true);
+    await third.stop(() => undefined);
     expect(await serving()).toBe(true);
     await second.stop(() => undefined);
     expect(await serving()).toBe(false);
   });
 
   it('waits for a process that is stopping before it starts it again', async () => {
-    const [target] = targets({ url, command });
+    const config = load({ app: { url, command } });
     const pool = new SharedAppProcesses();
-    const first = await start(pool, target!);
+    const first = await start(pool, config);
     const stopping = first.stop(() => undefined);
-    const second = await start(pool, target!);
+    const second = await start(pool, config);
     await stopping;
     expect(startupLog(dir)).toBe('app\napp\n');
     expect(await serving()).toBe(true);
@@ -92,17 +103,37 @@ describe('SharedAppProcesses', { timeout: 30_000 }, () => {
     expect(await serving()).toBe(false);
   });
 
-  it('keeps starting a shared process when the attempt that began it is aborted', async () => {
-    const [target] = targets({ url, command });
+  it('keeps starting a shared process when the attempt that began it is aborted while another waits', async () => {
+    const config = load({ app: { url, command } });
     const pool = new SharedAppProcesses();
     const aborted = new AbortController();
-    const first = start(pool, target!, aborted.signal);
+    const first = start(pool, config, 't0', aborted.signal);
+    const second = start(pool, config);
     aborted.abort();
-    const second = await start(pool, target!);
+    await second;
     expect(await serving()).toBe(true);
     await (await first).stop(() => undefined);
     expect(await serving()).toBe(true);
-    await second.stop(() => undefined);
+    await (await second).stop(() => undefined);
     expect(await serving()).toBe(false);
+  });
+
+  it('aborts a hung start once every attempt waiting on it gave up, stopping the process it started', async () => {
+    // The server answers, but the readiness probe never does: the start hangs with the process up.
+    const config = load({ app: { url, readyUrl: 'http://127.0.0.1:1/', command: { ...command, startupTimeout: 600_000 } } });
+    const pool = new SharedAppProcesses();
+    const cancel = new AbortController();
+    const opening = start(pool, config, 't0', cancel.signal);
+    await expect.poll(serving).toBe(true);
+    cancel.abort();
+    await (await opening).stop(() => undefined);
+    expect(await serving()).toBe(false);
+    // The next attempt starts it afresh rather than waiting on the abandoned start.
+    const retry = new AbortController();
+    const again = start(pool, config, 't0', retry.signal);
+    await expect.poll(serving).toBe(true);
+    retry.abort();
+    await (await again).stop(() => undefined);
+    expect(startupLog(dir)).toBe('app\napp\n');
   });
 });

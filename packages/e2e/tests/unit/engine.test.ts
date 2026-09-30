@@ -81,13 +81,10 @@ describe('defineEngine', () => {
     expect(() => withActions([1])).toThrow(/unknown kind 1/);
   });
 
-  it('keeps hooks off the app declaration and closes the session manifest', () => {
-    expect(() =>
-      defineEngine(observingEngine({ app: { open: async () => undefined } as never })),
-    ).toThrow(/app has unknown key "open"; expected one of url, environment.*Steering hooks belong on session/);
-    expect(() =>
-      defineEngine(observingEngine({ app: { navigate: async () => undefined } as never })),
-    ).toThrow(/Steering hooks belong on session/);
+  it('refuses an app declaration, which the target makes now, and closes the session manifest', () => {
+    expect(() => defineEngine(observingEngine({ app: { url: 'https://example.test' } } as never))).toThrow(
+      'engine "toy": app is gone from the engine: the app under test is declared on its target (targets: [{ engine, app: { url } }])',
+    );
     expect(() =>
       defineEngine(observingEngine({ session: { navigate: async () => undefined } as never })),
     ).toThrow(/session has unknown key "navigate"; expected one of open, back, restart, reset/);
@@ -142,9 +139,6 @@ describe('defineEngine', () => {
 
   it('rejects unknown keys inside nested manifests: the grammar is closed', () => {
     expect(() =>
-      defineEngine(observingEngine({ app: { tap: async () => undefined } as never })),
-    ).toThrow(/app has unknown key "tap"/);
-    expect(() =>
       defineEngine(observingEngine({ session: { tap: async () => undefined } as never })),
     ).toThrow(/session has unknown key "tap"/);
     expect(() =>
@@ -156,11 +150,18 @@ describe('defineEngine', () => {
     expect(() =>
       defineEngine(observingEngine({ state: { capture: async () => ({}) } as never })),
     ).toThrow(/state.restore must be a function/);
-    // An array has no unknown keys, so it must be refused by shape, not by key.
-    expect(() => defineEngine(observingEngine({ app: [] as never }))).toThrow(/app must be an object/);
-    expect(() => defineEngine(observingEngine({ app: { url: async () => 'x' } as never }))).toThrow(
-      /app.url is a declaration, not a hook/,
-    );
+  });
+
+  it('binds validateApp', () => {
+    let bound = false;
+    const spec: Engine = observingEngine({
+      validateApp(this: unknown) {
+        bound = this === spec;
+      },
+    });
+    defineEngine(spec).validateApp!({}, { targetName: 'toy' });
+    expect(bound).toBe(true);
+    expect(() => defineEngine(observingEngine({ validateApp: true } as never))).toThrow('validateApp must be a function');
   });
 
   it('copies a declared workers bound and rejects one that is not a positive integer', () => {
@@ -208,6 +209,7 @@ describe('defineEngine', () => {
       runId: 'run',
       targetName: 'toy',
       projectRoot: '/project',
+      app: {},
       slots: 1,
       env: {},
       signal: new AbortController().signal,
@@ -230,7 +232,6 @@ describe('defineEngine', () => {
       /** Own state: a class body may carry fields a literal may not. */
       observed = 0;
       readonly actions = ['tap'] as const;
-      readonly app = { url: 'https://example.test' };
       readonly session = session;
       async observe(): Promise<EngineSnapshot> {
         this.observed += 1;
@@ -246,7 +247,6 @@ describe('defineEngine', () => {
     await handle.observe!(OP);
     await handle.perform!({ id: 'n1', revision: 'b1' }, { kind: 'tap' }, OP);
     await handle.session!.open!('https://example.test/', OP);
-    expect(handle.app).toEqual({ url: 'https://example.test' });
     expect(toy.observed).toBe(11);
     expect(boundToSession).toBe(true);
   });

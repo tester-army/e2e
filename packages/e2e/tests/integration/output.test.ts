@@ -9,7 +9,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createFakeEngine, FAKE_APP_URL } from '../helpers/fake-engine.ts';
+import { createFakeEngine, FAKE_APP, FAKE_APP_URL } from '../helpers/fake-engine.ts';
 import { engineConfig } from '../helpers/fixture-config.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { createProject, resultByTitle, runExisting, runProject } from '../helpers/run-project.ts';
@@ -143,7 +143,7 @@ describe('output', () => {
         }
         const unrecordable = await runExisting(project, {
           appUrl: FAKE_APP_URL,
-          config: { targets: [{ name: 'fake', platform: 'fake', engine: fake.engine, trace: 'on' }] },
+          config: { targets: [{ name: 'fake', platform: 'fake', engine: fake.engine, app: FAKE_APP, trace: 'on' }] },
           runOptions: { files },
         });
         expect(unrecordable.report.run.errors.map((error) => error.code)).toEqual(['UNSUPPORTED_ARTIFACT']);
@@ -151,12 +151,16 @@ describe('output', () => {
         expect(readFileSync(reportFile, 'utf8')).toBe(report);
 
         const withCommand = (args: readonly string[]) =>
-          engineConfig(
-            createFakeEngine({
-              artifacts: true,
-              app: { url: FAKE_APP_URL, readyUrl: 'http://127.0.0.1:1/', command: { executable: process.execPath, args, startupTimeout: 60_000 } },
-            }).engine,
-          );
+          ({
+            targets: [
+              {
+                name: 'fake',
+                platform: 'fake',
+                engine: createFakeEngine({ artifacts: true }).engine,
+                app: { url: FAKE_APP_URL, readyUrl: 'http://127.0.0.1:1/', command: { executable: process.execPath, args, startupTimeout: 60_000 } },
+              },
+            ],
+          });
         const crashed = await runExisting(project, { appUrl: FAKE_APP_URL, config: withCommand(['-e', 'process.exit(3)']), runOptions: { files } });
         expect(crashed.report.run.errors).toHaveLength(1);
         expect(crashed.exitCode).not.toBe(0);

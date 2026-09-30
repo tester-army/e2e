@@ -288,7 +288,7 @@ export interface ReportTarget {
   id: string;
   index: number;
   platform: string;
-  /** Origin of the engine's declared app URL; absent for a surface without one. */
+  /** Origin of the target's declared app URL; absent for a surface without one. */
   baseOrigin?: string;
   environment: string;
   engine: { name: string; version: string; spiVersion: EngineSpiVersion };

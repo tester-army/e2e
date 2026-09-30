@@ -4,10 +4,13 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 import { mkdirSync, rmSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import type { ResolvedTarget } from '../config/resolve.ts';
+import { ENGINE_SPI_VERSION } from '../engine/contract.ts';
 import type { EngineSpiVersion, EngineState } from '../engine/surface.ts';
 import { writeFileAtomic } from '../internal/atomic-write.ts';
 import { ConfigurationError, E2EError } from '../internal/errors.ts';
-import { canonicalJson, timestamp } from '../internal/ids.ts';
+import { canonicalDigest, canonicalJson, timestamp } from '../internal/ids.ts';
+import { obj } from '../internal/objects.ts';
 import type { SavedSecrecy } from './secrecy.ts';
 
 const MAX_SESSION_AGE_MS = 24 * 60 * 60 * 1000;
@@ -19,6 +22,26 @@ export interface SessionIdentity {
   readonly spiVersion: EngineSpiVersion;
   readonly platform: string;
   readonly appIdentity: string;
+}
+
+/**
+ * The identity session and replay cache entries key on for one target.
+ * It comes from the engine's name and version and the target's resolved
+ * app, so an engine swap never restores another engine's state. The app's
+ * declared identity (else its URL, bundle id, or build path) keys entries,
+ * so an ephemeral per-deploy origin (a PR preview) can share them with the
+ * app it is a deployment of. The environment always joins the digest: an
+ * identity must never bleed entries across environments.
+ */
+export function targetIdentity(target: ResolvedTarget): SessionIdentity {
+  return {
+    targetId: target.name,
+    engineName: target.engine?.name ?? 'none',
+    engineVersion: target.engine?.version ?? 'unversioned',
+    spiVersion: target.engine?.spiVersion ?? ENGINE_SPI_VERSION,
+    platform: target.platform,
+    appIdentity: canonicalDigest(obj({ identity: target.app.identity, environment: target.app.environment })),
+  };
 }
 
 interface SessionEnvelope {

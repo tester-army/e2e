@@ -6,10 +6,11 @@ export default {
   targets: [
     {
       name: 'web',
-      engine: web({
+      engine: web(),
+      app: {
         url: 'http://127.0.0.1:4271',
         command: { executable: 'node', args: ['app/server.mjs'], env: { PORT: '4271' } },
-      }),
+      },
     },
   ],
   credentials: {

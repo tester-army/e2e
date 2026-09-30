@@ -8,11 +8,12 @@
 
 import { createRequire } from 'node:module';
 import { createAgentDeviceClient } from 'agent-device';
-import { defineEngine, obj, type EngineAppDeclaration, type EngineHandle } from 'e2e/engine';
+import { ConfigurationError, defineEngine, obj, rejectMovedOptions, type EngineAppCheckInfo, type EngineAppDeclaration, type EngineHandle } from 'e2e/engine';
 import { createDeviceFixture } from './device.ts';
-import type { MobileOptions, ClientFactory } from './options.ts';
+import type { ClientFactory, MobileOptions, MobilePlatform } from './options.ts';
+import { isLink } from './links.ts';
 import { DEVICE_ACTIONS, DEVICE_POINTER_ACTIONS } from './actions.ts';
-import { AgentDeviceSurface } from './surface.ts';
+import { AgentDeviceSurface, assertPermissions } from './surface.ts';
 
 const surfaces = new WeakMap<EngineHandle, AgentDeviceSurface>();
 
@@ -41,18 +42,14 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
       press: (key, operation) => surface.pressFocusedKey(key, operation),
       dismiss: (operation) => surface.dismissKeyboard(operation.signal),
     },
-    app: declaredApp(surface.options),
+    validateApp: (app, info) => validateApp(app, info, surface.options.platform),
     // No `open`: a device app has no URL to open, so the runner serves
     // `app.open()` with `restart`, the fresh launch of the pinned app, which
-    // is also the device's "recreate the context"; restart and reset need one.
+    // is also the device's "recreate the context".
     session: {
       back: (operation) => surface.back(operation),
-      ...(surface.managesApp
-        ? {
-            restart: (operation) => surface.restart(operation),
-            reset: (operation) => surface.reset(operation),
-          }
-        : {}),
+      restart: (operation) => surface.restart(operation),
+      reset: (operation) => surface.reset(operation),
     },
     artifacts: {
       screenshot: (label, operation) => surface.screenshot(label, operation),
@@ -69,6 +66,7 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
 
 /** Creates one agent-device engine: one device session per worker; a test launches the pinned app with `app.open()`. */
 export function mobile(options: MobileOptions): EngineHandle {
+  rejectMovedOptions('mobile({ platform })', options, MOVED_TO_TARGET);
   const factory: ClientFactory = (session, connection) =>
     createAgentDeviceClient(
       obj({
@@ -81,15 +79,49 @@ export function mobile(options: MobileOptions): EngineHandle {
   return buildEngine(new AgentDeviceSurface(options, factory));
 }
 
+/** Options `mobile()` used to take that describe the app under test, each with its key under the target's `app`. */
+const MOVED_TO_TARGET: Readonly<Record<string, string>> = {
+  app: 'app.bundleId',
+  appPath: 'app.appPath',
+  identity: 'app.identity',
+  environment: 'app.environment',
+  launchArguments: 'app.launchArguments',
+  permissions: 'app.permissions',
+};
+
+/** What reaching this machine from the device will take once a device target can open a URL. */
+const LOOPBACK_NOTES: Readonly<Record<MobilePlatform, string>> = {
+  ios: "a simulator shares this machine's loopback, and a hosted device cannot reach it at all",
+  android: "127.0.0.1 on an Android emulator is the emulator itself (this machine is 10.0.2.2), and a hosted device cannot reach this machine's loopback at all",
+};
+
 /**
- * What the device engine declares about its app: the pinned app (else the
- * build it installs) is the identity cache and session entries key on.
+ * A device target launches an installed app or a build: one of `bundleId`
+ * and `appPath` is required. A URL (a website in the device's browser) is
+ * not supported yet, and a link in `bundleId` is a mistake: a test opens one
+ * with `device.openLink`.
  */
-function declaredApp(options: MobileOptions): Pick<EngineAppDeclaration, 'identity' | 'environment'> {
-  return obj({
-    identity: options.identity ?? options.app ?? options.appPath,
-    environment: options.environment,
-  });
+function validateApp(app: EngineAppDeclaration, { targetName }: EngineAppCheckInfo, platform: MobilePlatform): void {
+  const where = `target "${targetName}"`;
+  if (app.url !== undefined) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${where} declares app.url, but a mobile() target cannot open a website in the device's browser yet; test the installed app with app.bundleId or app.appPath. When it lands, note that ${LOOPBACK_NOTES[platform] ?? LOOPBACK_NOTES.android}`,
+    );
+  }
+  if (app.bundleId === undefined && app.appPath === undefined) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${where} needs app.bundleId or app.appPath: a mobile() target launches an installed app, targets: [{ engine: mobile({ platform }), app: { bundleId: 'com.example.app' } }]`,
+    );
+  }
+  if (app.bundleId !== undefined && isLink(app.bundleId)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${where} app.bundleId names an app by bundle id, package, or display name, not a link; a test opens a deep link or web link with device.openLink`,
+    );
+  }
+  if (app.permissions !== undefined) assertPermissions(`${where} app.permissions`, app.permissions, 'INVALID_CONFIG');
 }
 
 /** The surface behind a handle this package created; undefined for any other engine. */

@@ -14,7 +14,7 @@ import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import { holdSecretRegistry } from '../secrets.ts';
 import type { TargetSession } from '../engine/surface.ts';
 import { DebugTrace } from '../internal/debug.ts';
-import { classifyError, serializeError, type SerializedError } from '../internal/errors.ts';
+import { classifyError, InfrastructureError, serializeError, type SerializedError } from '../internal/errors.ts';
 import { uuidv7 } from '../internal/ids.ts';
 import { Deadline } from '../internal/time.ts';
 import type { TestFixtures } from '../types.ts';
@@ -24,7 +24,8 @@ import { TargetExecutor, type ClosingRecord } from './execute.ts';
 import { createFixtures } from './fixtures.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
 import type { ProcessPool } from './process-pool.ts';
-import { PreparedEngines, recordingNotices, startDeclaredProcesses, validateEngine, type AppProcesses } from './provision.ts';
+import type { AppProcesses } from './managed-process.ts';
+import { PreparedEngines, recordingNotices, startDeclaredProcesses, validateEngine } from './provision.ts';
 import { attemptRecording, type AttemptRecording, type ResolvedRecording } from '../internal/recording-modes.ts';
 import { sessionSecrecy } from './secrecy.ts';
 import { SessionStore } from './sessions.ts';
@@ -103,6 +104,11 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     prepared = await engines.prepare(target, 1, { runId, projectRoot: config.projectRoot, env: options.env, signal, notice });
     const hooks = { ci: config.ci, notice: (message: string) => notice('app', message) };
     processes = await startDeclaredProcesses([target], config.projectRoot, () => hooks, signal, debug, options.processes);
+    if (signal.aborted) {
+      // Cancelled before or while the processes started: what did start stops before the open fails.
+      await processes.stop((failure) => notice(target.name, classifyError(failure).message));
+      throw new InfrastructureError('CANCELLED', `opening an attempt on target "${target.name}" was cancelled`);
+    }
   } catch (cause) {
     // No attempt exists yet to carry a cleanup error, and the opening error is
     // the one that surfaces; a release that fails on the way out is narrated.

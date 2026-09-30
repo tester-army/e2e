@@ -38,7 +38,7 @@ import { mobile } from '@e2e-dev/mobile';
 
 export default {
   // Replace Settings with your app's bundle id.
-  targets: [{ name: 'ios', engine: mobile({ platform: 'ios', app: 'Settings' }) }],
+  targets: [{ name: 'ios', engine: mobile({ platform: 'ios' }), app: { bundleId: 'Settings' } }],
   workers: 1,
 } satisfies E2EConfig;
 ```
@@ -48,36 +48,37 @@ count toward `launchTimeout`.
 
 ## Point at your app
 
-Replace `Settings` with your app's bundle id or package name. Setting `app`
-gives `app.open()` an app to launch and enables `app.restart()` and
-`app.clearState()`. Add `appPath` to install a build first:
+The app under test is the target's `app`; `mobile()` only drives it.
+Replace `Settings` with your app's bundle id or package name in
+`app.bundleId`: it is the app `app.open()`, `app.restart()`, and
+`app.clearState()` launch. Add `appPath` to install a build first:
 
 ```ts
-mobile({
-  platform: 'ios',
-  app: 'com.example.app',
-  appPath: process.env.E2E_APP_PATH, // path to the iOS .app bundle
-})
+{
+  name: 'ios',
+  engine: mobile({ platform: 'ios' }),
+  app: {
+    bundleId: 'com.example.app',
+    appPath: './build/MyApp.app', // the iOS .app bundle
+  },
+}
 ```
 
-The engine installs nothing on its own: `appPath` names the build, and the
-suite installs it where it says so, once per device, with `device.installApp()`
-(no path installs `appPath`), for example in a fixture every test takes. Use an `.app` bundle for iOS or an
-`.apk` for Android. Optional values accept `undefined`, so environment
-variables can be passed directly.
-
-Without `app`, the engine observes whichever app is in the foreground and
-`app.open()` has nothing to launch. Set it when possible so tests start
-consistently and cached steps can replay.
+The engine installs nothing on its own: `app.appPath` names the build, and
+the suite installs it where it says so, once per device, with
+`device.installApp()` (no path installs `app.appPath`), for example in a
+fixture every test takes. Use an `.app` bundle for iOS or an `.apk` for
+Android. Without `bundleId`, the app the build installs is the one
+`app.open()` launches. A device target needs one of the two.
 
 To run the suite in CI on GitHub Actions, EAS Workflows, Bitrise, or
 Codemagic, see [Mobile CI](/mobile-ci).
 
 ### Launch arguments and permissions
 
-`launchArguments` reach the app on every fresh launch the engine performs
+`app.launchArguments` reach the app on every fresh launch the engine performs
 (`app.open()`, `app.restart()`, `app.clearState()`): the process arguments on
-iOS, `am start` arguments on Android. `permissions` are set before each of
+iOS, `am start` arguments on Android. `app.permissions` are set before each of
 those launches, so the app starts holding them and no system prompt appears;
 `app.clearState()` puts them back after it reset them with the data. `deny`
 differs by platform: iOS records the refusal and the app is told no without
@@ -88,16 +89,15 @@ simulator, then opens the app once with neither, to put the worker's session
 on the app; the process a test sees comes from `app.open()`. A build the
 suite installs itself gets the runner start only, so the first test's
 `app.open()` does not pay for it. Arguments that select a build mode change
-what the app is: give each mode its own `identity` so their recordings stay
-apart.
+what the app is: give each mode its own `app.identity` so their recordings
+stay apart.
 
 ```ts
-mobile({
-  platform: 'ios',
-  app: 'com.example.app',
+app: {
+  bundleId: 'com.example.app',
   launchArguments: ['-e2e', 'YES'],
   permissions: { camera: 'grant', notifications: 'deny', location: 'reset' },
-})
+},
 ```
 
 One test launches with its own through `device.openApp`:
@@ -114,13 +114,12 @@ Add a target for each platform:
 import type { E2EConfig } from 'e2e';
 import { mobile } from '@e2e-dev/mobile';
 
-const iphone = mobile({ platform: 'ios', app: 'com.example.app' });
-const pixel = mobile({ platform: 'android', app: 'com.example.app' });
+const app = { bundleId: 'com.example.app' };
 
 export default {
   targets: [
-    { name: 'iphone', engine: iphone },
-    { name: 'pixel', engine: pixel },
+    { name: 'iphone', engine: mobile({ platform: 'ios' }), app },
+    { name: 'pixel', engine: mobile({ platform: 'android' }), app },
   ],
   workers: 1,
 } satisfies E2EConfig;
@@ -133,7 +132,7 @@ To run files in parallel, provide a device pool and set `workers` to at
 least the pool's size. Each device gets one worker:
 
 ```ts
-mobile({ platform: 'ios', app: 'com.example.app', device: ['iPhone 17', 'iPhone 17 Pro'] })
+mobile({ platform: 'ios', device: ['iPhone 17', 'iPhone 17 Pro'] })
 ```
 
 Without `device`, the engine uses booted devices up to the worker limit.
@@ -173,16 +172,17 @@ export interface DeviceLease {
   readonly device?: string;
   /** Device to select inside that daemon by the id agent-device lists it under: a simulator UDID or an Android serial. */
   readonly deviceId?: string;
-  /** Bundle id or package the provider installed itself; skips `appPath`. */
+  /** Bundle id or package the provider installed itself; skips the target's `app.appPath`. */
   readonly installedApp?: string;
 }
 ```
 
-`acquire` receives the platform, run id, target, slot, the `app` and resolved
-`appPath` options, the agent-device version the engine's client speaks
-(`agentDeviceVersion`, for a service that starts a daemon of a chosen
-version), the run's environment, an interrupt signal, and a `log` that
-reaches the reporter. Read tokens from `request.env`, not
+`acquire` receives the platform, run id, target, slot, the target's
+`app.bundleId` as `app` and its resolved `app.appPath` as `appPath`, the
+agent-device version the engine's client speaks (`agentDeviceVersion`, for a
+service that starts a daemon of a chosen version), the run's environment, an
+interrupt signal, and a `log` that reaches the reporter. Read tokens from
+`request.env`, not
 `process.env`. A target with nothing to run leases nothing. Every lease
 granted is held by the engine, one it then refuses included: a slot that
 fails to lease ends the run before any test, and the leases that succeeded
@@ -286,9 +286,9 @@ export default {
       name: 'ios',
       engine: mobile({
         platform: 'ios',
-        app: 'com.example.app',
         device: hostedDevices({ serviceUrl: 'https://devices.example.com', image: 'ios-18-iphone-17' }),
       }),
+      app: { bundleId: 'com.example.app' },
     },
   ],
   workers: 2,
@@ -297,7 +297,7 @@ export default {
 
 Two workers lease two sessions in parallel. Hosted sessions are billed while
 they run, so keep `workers` at what the suite can fill. The replay cache keys
-on `app`, so traces recorded locally replay on hosted devices.
+on `app.bundleId`, so traces recorded locally replay on hosted devices.
 
 A device cloud agent-device speaks to itself needs no session API of your
 own: the provider allocates a lease through a daemon it starts for the run and
@@ -384,7 +384,7 @@ await expect(device.locator('role=NavigationBar id=About')).toBeVisible();
 await device.locator('id=SW_VERSION_SPECIFIER role=Button').tap();
 ```
 
-Use `device.installApp` within a test to check upgrades or fresh installs; with no path it installs the engine's `appPath`:
+Use `device.installApp` within a test to check upgrades or fresh installs; with no path it installs the target's `app.appPath`:
 
 ```ts
 const { app } = await device.installApp('./build/MyApp.app', { reinstall: true });
@@ -418,13 +418,14 @@ import { mobile } from '@e2e-dev/mobile';
 import { mobileTools } from '@e2e-dev/mobile/tools';
 import { gateway } from 'ai';
 
-const iphone = mobile({ platform: 'ios', app: 'com.example.app' });
-const pixel = mobile({ platform: 'android', app: 'com.example.app' });
+const iphone = mobile({ platform: 'ios' });
+const pixel = mobile({ platform: 'android' });
+const app = { bundleId: 'com.example.app' };
 
 export default {
   targets: [
-    { name: 'iphone', engine: iphone },
-    { name: 'pixel', engine: pixel },
+    { name: 'iphone', engine: iphone, app },
+    { name: 'pixel', engine: pixel, app },
   ],
   workers: 1,
   agents: {
@@ -446,7 +447,7 @@ tool.
 
 | On the web | On a device |
 | --- | --- |
-| `app.open('/path')` and the agent's `navigate` verb | No app URL. `app.open()` launches the pinned `app` fresh, `device.openLink(url)` opens a deep link or web link into it, and there is no `navigate` |
+| `app.open('/path')` and the agent's `navigate` verb | No app URL. `app.open()` launches the target's `app.bundleId` fresh, `device.openLink(url)` opens a deep link or web link into it, and there is no `navigate` |
 | `test.setup` saves a session, `session:` restores it | Not available. A simulator has no portable session snapshot; sign in per test or seed the app |
 | Secret input | `type_secret` and `screen.getByLabel(...).fill(secret)` fill declared secrets into secure fields |
 | Playwright trace per attempt | No Playwright trace; screenshots mask secure fields |

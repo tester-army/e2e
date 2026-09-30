@@ -178,8 +178,9 @@ export async function loadConfigModule(configPath: string, options: ConfigLoadOp
   try {
     moduleValue = await importFresh(configPath, 'module', options.graph === true);
   } catch (cause) {
-    // An engine factory or `secrets.get()` refusing an option at evaluation is
-    // a config error with its own code; only a failed import is a load failure.
+    // A factory the config calls (web(), mobile()) or
+    // `secrets.get()` refusing its options at evaluation is a config error
+    // with its own code; only a failed import is a load failure.
     if (cause instanceof ConfigurationError) throw cause;
     if (isForeignE2EError(cause) && cause.category === 'configuration') {
       throw new ConfigurationError(cause.code, cause.message, { cause });

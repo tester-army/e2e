@@ -9,7 +9,7 @@ import { collectFromRegistration } from '../../collect/collect.ts';
 import { collectModule } from '../../collect/registry.ts';
 import type { TestTargetPair } from '../../collect/select.ts';
 import { importModule, loadConfigModule } from '../../config/load.ts';
-import { resolveConfig } from '../../config/resolve.ts';
+import { assignPorts, resolveConfig } from '../../config/resolve.ts';
 import { setSecretRegistry } from '../../secrets.ts';
 import { loadAiSdk } from '../../agent/ai-sdk.ts';
 import { AiTraceRecorder, registerAiTraceRecorder } from '../../internal/ai-trace.ts';
@@ -138,13 +138,10 @@ async function bootstrap(
   // process-wide, so calls from either module instance land in one trace.
   if (aiTrace !== undefined) await registerAiTraceRecorder(aiTrace, loadAiSdk);
   const raw = await loadConfigModule(message.configPath);
-  const config = resolveConfig(raw, {
-    projectRoot: message.projectRoot,
-    configPath: message.configPath,
-    env: process.env,
-    cli: message.cli,
-    ports: message.ports,
-  });
+  const config = assignPorts(
+    resolveConfig(raw, { projectRoot: message.projectRoot, configPath: message.configPath, env: process.env, cli: message.cli }),
+    message.ports,
+  );
   if (config.configDigest !== message.configDigest) {
     throw new ConfigurationError(
       'CONFIG_NOT_DETERMINISTIC',

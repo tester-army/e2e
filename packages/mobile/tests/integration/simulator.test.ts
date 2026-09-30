@@ -48,12 +48,12 @@ describe.skipIf(!enabled)('agent-device engine on a booted iOS simulator', () =>
 
   beforeAll(async () => {
     artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-agent-device-sim-'));
-    engine = mobile({ platform: 'ios', app: 'Settings', session: 'e2e-agent-device-integration' });
+    engine = mobile({ platform: 'ios', session: 'e2e-agent-device-integration' });
     await engine.init!({
       runId: 'run-sim',
       targetName: 'ios',
       projectRoot: process.cwd(),
-      app: {},
+      app: { bundleId: 'Settings' },
       headed: true,
       workerSlot: 0,
       log: () => undefined,

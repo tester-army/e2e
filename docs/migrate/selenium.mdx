@@ -14,8 +14,8 @@ agent calls; the locator-based example below works without one.
 
 | Selenium | e2e |
 | --- | --- |
-| The URL in every `driver.get` | `web({ url })`, then relative paths |
-| Starting the app in a script | `web({ url, command })`, see [Starting your app](/starting-your-app) |
+| The URL in every `driver.get` | `app: { url }` on the target, then relative paths |
+| Starting the app in a script | `app: { url, command }`, see [Starting your app](/starting-your-app) |
 | One driver per browser | One target per browser, `web({ browser: 'firefox' })` |
 | Selenium Grid | `workers` for parallelism; `connect` attaches to a remote Chromium over CDP, and a [browser provider](/browser#hosted-browsers) such as [Kernel](/integrations/kernel) leases hosted browsers |
 | `manage().window().setSize` | `web({ viewport })` |

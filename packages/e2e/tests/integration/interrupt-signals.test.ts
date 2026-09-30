@@ -24,8 +24,8 @@ const LOG_HELPER =
   "const log = (line) => appendFileSync(process.env.SIGNAL_LOG, process.pid + ' ' + line + '\\n');";
 
 /**
- * A fixture config around the file-logging fake engine; `app` is the engine's
- * app declaration source, empty by default.
+ * A fixture config around the file-logging fake engine; `app` is the
+ * target's app source, empty by default.
  */
 function config(app = ''): string {
   return `import { appendFileSync } from 'node:fs';
@@ -41,14 +41,13 @@ export default {
     name: 'signal-fake',
     version: '1.0.0',
     spiVersion: 1,
-    ${app}
     async init() { log('init'); },
     async startAttempt() { log('startAttempt'); },
     async endAttempt() { log('endAttempt'); },
     async dispose() { log('dispose'); },
     async observe() { return { location: 'app://fake/Home', root: node, viewport: { width: 1280, height: 720 } }; },
     async locate() { return [node]; },
-  }) }],
+  }), ${app} }],
   timeout: 60_000,
   cleanupTimeout: ${CLEANUP_TIMEOUT_MS},
   workers: 1,
@@ -58,7 +57,7 @@ export default {
 }
 
 /**
- * A service that never becomes ready and never dies on its own: it logs its
+ * An app command that never becomes ready and never dies on its own: it logs its
  * pid, ignores SIGTERM, and spawns a grandchild that does the same, so only a
  * kill of the whole process group can end either. Startup is interrupted
  * while the runner still waits for `readyUrl`, and the graceful stop then
@@ -77,17 +76,13 @@ if (process.argv[2] === 'child') {
 setInterval(() => {}, 1000);
 `;
 
-const STUCK_SERVICE_APP = `app: {
-      services: [{
-        name: 'stuck',
-        executable: process.execPath,
-        args: ['service.cjs'],
-        env: { SIGNAL_LOG: process.env.SIGNAL_LOG },
-        readyUrl: 'http://127.0.0.1:1/',
-        startupTimeout: 600_000,
-        shutdownTimeout: 600_000,
-      }],
-    },`;
+const STUCK_APP_COMMAND = `app: { url: 'http://127.0.0.1:1/', command: {
+    executable: process.execPath,
+    args: ['service.cjs'],
+    env: { SIGNAL_LOG: process.env.SIGNAL_LOG! },
+    startupTimeout: 600_000,
+    shutdownTimeout: 600_000,
+  } },`;
 
 /** A body that never calls the harness: only the interrupt race can end it. */
 const SLEEPING_TEST = `import { appendFileSync } from 'node:fs';
@@ -137,7 +132,7 @@ import { web } from '@e2e-dev/web';
 
 export default {
   tests: 'tests/**/*.e2e.ts',
-  targets: [{ name: 'web', engine: web({ url: ${JSON.stringify(appUrl)} }) }],
+  targets: [{ name: 'web', engine: web(), app: { url: ${JSON.stringify(appUrl)} } }],
   timeout: 60_000,
   cleanupTimeout: ${CLEANUP_TIMEOUT_MS},
   workers: 1,
@@ -348,14 +343,14 @@ describe('interrupt signals against the CLI', () => {
   );
 
   it(
-    'a third Ctrl-C during services startup exits at once and takes the service process group with it',
+    'a third Ctrl-C during app command startup exits at once and takes the command process group with it',
     () =>
       withRunningCli(
         {
           // The run collects before it starts any process, so the project
-          // needs a test for the service to start at all; it never runs.
+          // needs a test for the command to start at all; it never runs.
           files: {
-            'e2e.config.ts': config(STUCK_SERVICE_APP),
+            'e2e.config.ts': config(STUCK_APP_COMMAND),
             'service.cjs': STUCK_SERVICE,
             'tests/sleep.e2e.ts': SLEEPING_TEST,
           },

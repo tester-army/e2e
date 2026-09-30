@@ -16,9 +16,23 @@ const EMPTY_APP: ResolvedTarget['app'] = {
   site: undefined,
   environment: 'test',
   identity: undefined,
+  bundleId: undefined,
+  appPath: undefined,
+  launchArguments: undefined,
+  permissions: undefined,
   command: undefined,
   readyUrl: undefined,
-  services: [],
+};
+const EMPTY_DECLARED: ResolvedTarget['declaredApp'] = {
+  url: undefined,
+  bundleId: undefined,
+  appPath: undefined,
+  identity: undefined,
+  environment: undefined,
+  launchArguments: undefined,
+  permissions: undefined,
+  command: undefined,
+  readyUrl: undefined,
 };
 const target: ResolvedTarget = {
   name: 'web',
@@ -26,6 +40,7 @@ const target: ResolvedTarget = {
   platform: 'web',
   engine: undefined,
   app: EMPTY_APP,
+  declaredApp: EMPTY_DECLARED,
   trace: { mode: 'off', source: 'default' },
   video: { mode: 'off', source: 'default' },
 };

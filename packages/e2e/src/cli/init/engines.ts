@@ -27,11 +27,12 @@ export function getEnginePresets() {
       dependencies: { ...siblingDependency('@e2e-dev/web'), playwright: playwrightRange(SIBLING_VERSIONS?.['playwright']) },
       imports: ["import { web } from '@e2e-dev/web';"],
       config: `  targets: [{
-    engine: web({
+    engine: web(),
+    app: {
       url: process.env.APP_URL ?? 'http://localhost:3000',
       // Or let the runner start the dev server:
       // command: { executable: 'npm', args: ['run', 'dev'] },
-    }),
+    },
   }],`,
       example: `import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
@@ -59,10 +60,10 @@ test('app opens', async ({ app, web }) => {
       imports: ["import { mobile } from '@e2e-dev/mobile';"],
       config: ios
         ? `  // Replace Settings with your app's bundle id.
-  targets: [{ name: 'ios', engine: mobile({ platform: 'ios', app: 'Settings' }) }],
+  targets: [{ name: 'ios', engine: mobile({ platform: 'ios' }), app: { bundleId: 'Settings' } }],
   workers: 1,`
         : `  // Replace com.android.settings with your app's package name.
-  targets: [{ name: 'android', engine: mobile({ platform: 'android', app: 'com.android.settings' }) }],
+  targets: [{ name: 'android', engine: mobile({ platform: 'android' }), app: { bundleId: 'com.android.settings' } }],
   workers: 1,`,
       example: `import { test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';

@@ -102,7 +102,7 @@ or `E2E_USER_ADMIN_PASSWORD` first, or defer to fill time with
 
 | Key | Default | Notes |
 | --- | --- | --- |
-| `targets` | required | Non-empty; `--target` takes `name`. UI targets set `engine` (`platform` and `name` default to its platform); tools-only targets may omit `engine` and must set `platform`. |
+| `targets` | required | Non-empty; `--target` takes `name`. UI targets set `engine` and `app` (`platform` and `name` default to the engine's platform); tools-only targets may omit `engine` and must set `platform`. |
 | `tests` | `'tests/**/*.e2e.ts'` | Globs relative to the project root (optional `./`): `*`, `?`, whole `**` segments, leading `!` excludes (`'!tests/wip/**'`; only exclusions is `INVALID_CONFIG`). Braces, character classes, extglobs, `..`, absolute paths, and a wildcard-free directory entry (`'!tests/wip'`) are `INVALID_GLOB`. |
 | `timeout` | `120000` | Per test attempt, ms; also the default `agent.act` deadline. |
 | `launchTimeout` | `60000` | Engine init and attempt start, ms. |
@@ -131,17 +131,30 @@ or `E2E_USER_ADMIN_PASSWORD` first, or defer to fill time with
 
 ## The app under test
 
-The engine declares the app; the runner starts its processes and keys cache
-and sessions on it. `web()` options:
+The target declares the app; the engine only drives it. `web({ url })`,
+`mobile({ app })`, and the other old app options fail at load with the new
+place. The target's `app`:
+
+| Key | Meaning |
+| --- | --- |
+| `url` | Base URL for `app.open()` and relative navigation; required on a `web()` target, not supported on a mobile target yet. Missing scheme: `https://`, `http://` for loopback; port `0` on `127.0.0.1` or `[::1]` takes a free port. |
+| `bundleId` | Device targets: the bundle id, package name, or display name (`Settings`) `app.open()` launches. |
+| `appPath` | Device targets: the `.app` or `.apk` under test. A device target needs `bundleId` or `appPath`. |
+| `launchArguments`, `permissions` | Device targets: arguments and permission states (`grant`, `deny`, `reset`) every fresh launch gets. |
+| `command` | The process serving `url`: `{ executable, args, cwd, env, startupTimeout, shutdownTimeout, log, reuseExisting }`; `{port}` in `args` and `env` expands to `url`'s port. Targets declaring the same command share one process. |
+| `readyUrl` | Readiness probe when it differs from `url`; `{port}` expands too. |
+| `environment` | `'test'`, `'staging'`, `'production'`; inferred from the host, labels the report and cache key. |
+| `identity` | Stable identity for cache and session keys when the origin changes per deploy (preview URLs). Defaults to the URL's origin and path, else `bundleId`, else `appPath`. |
+
+There is no `services` key in this version: `services` on a target, under
+`app`, at the top level, or as `web({ services })` is `INVALID_CONFIG`. Start
+dependency processes before the run, or have `app.command` start a script
+that brings them up and serves the app.
+
+`web()` options:
 
 | Option | Meaning |
 | --- | --- |
-| `url` | Base URL for `app.open()` and relative navigation, required once a test navigates. Missing scheme: `https://`, `http://` for loopback; port `0` on `127.0.0.1` or `[::1]` takes a free port. |
-| `command` | The process serving `url`: `{ executable, args, cwd, env, startupTimeout, shutdownTimeout, log, reuseExisting }`; `{port}` in `args` and `env` expands to `url`'s port. |
-| `readyUrl` | Readiness probe when it differs from `url`; `{port}` expands too. |
-| `services` | Dependency processes started before `command`, in order. |
-| `environment` | `'test'`, `'staging'`, `'production'`; inferred from the host, labels the report and cache key. |
-| `identity` | Stable identity for cache and session keys when the origin changes per deploy (preview URLs). |
 | `browser` | `'chromium'` (default), `'firefox'`, `'webkit'`, or a `BrowserProvider` leasing hosted browsers over CDP (`kernel()` from `@e2e-dev/kernel`, or your own), which implies chromium and excludes `connect`. Scope `'worker'` (default): one browser per worker slot from `prepare` to `finish`; `'attempt'`: one per attempt, with `reconnectEndpoint`'s limits. |
 | `viewport` | `{ width, height }`, default 1280x720; `null` follows the browser window (hosted live view, headed run). On a headed hosted browser (Kernel) use `null` and size the service's screen; a fixed size gives a smaller, unmaximized window. |
 | `connect` | `{ cdpEndpoint }` attaches to a remote Chromium over CDP; both it and `reconnectEndpoint` are resolvers `(signal) => url`, not strings. With `reconnectEndpoint` it rides one persistent default context and reconnects only to the original browser and page. |
@@ -153,7 +166,7 @@ and sessions on it. `web()` options:
 
 - `basicAuth` via `secrets.get()` masks text, not screenshots or model pixels
   showing the password. An undeclared name is `INVALID_CONFIG` at load, as is
-  the handle (a reference, not the value) in `command.env`, a template
+  the handle (a reference, not the value) in `app.command.env`, a template
   literal, or `context`; read those from `process.env`.
 - `reconnectEndpoint` or an attempt-scoped provider rides one persistent
   context without `headers`, `basicAuth`, `userAgent`, `app.clearState()`, or
@@ -167,30 +180,21 @@ Two browsers, one app declaration:
 const app = { url: 'http://127.0.0.1:3000' };
 export default {
   targets: [
-    { name: 'chromium', engine: web(app) },
-    { name: 'mobile-webkit', engine: web({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
+    { name: 'chromium', engine: web(), app },
+    { name: 'mobile-webkit', engine: web({ browser: 'webkit', viewport: { width: 390, height: 844 } }), app },
   ],
 } satisfies E2EConfig;
 ```
 
 ### Let the runner start the app
 
-Prefer `command` to a hand-started dev server: self-contained locally and in
-CI.
+Prefer `app.command` to a hand-started dev server: self-contained locally
+and in CI.
 
 ```ts
-engine: web({
+engine: web(),
+app: {
   url: 'http://127.0.0.1:3000',
-  services: [
-    {
-      name: 'postgres',
-      executable: 'docker',
-      args: ['compose', 'up', '--wait', 'postgres'],
-      waitForExit: true,
-      teardown: { executable: 'docker', args: ['compose', 'down'] },
-    },
-    { name: 'migrate', executable: 'pnpm', args: ['db:migrate'], waitForExit: true },
-  ],
   command: {
     executable: 'pnpm',
     args: ['dev'],
@@ -198,7 +202,7 @@ engine: web({
     startupTimeout: 120_000,
     log: '.e2e/logs/app.log',
   },
-}),
+},
 ```
 
 - The runner spawns `command`, polls `readyUrl` (default `url`) for a 200 to
@@ -213,21 +217,18 @@ engine: web({
 - A `url` answering before the spawn is `APP_ALREADY_RUNNING`;
   `command.reuseExisting: true` attaches to a running dev server (CI ignores
   it).
-- `services` start one at a time in order, each ready on its polled
-  `readyUrl` or, with `waitForExit: true`, on exit 0. On every exit path:
-  stop the app, stop services in reverse, run their `teardown` commands in
-  reverse.
 - `executable` resolves on `PATH`, never through a shell; name the server
   itself, not a wrapper script.
 - `url: 'http://127.0.0.1:0'` (or `[::1]:0`, never `localhost:0`) takes a
   free port; the command receives it as
   `{port}` in `args` or `env` (`args: ['dev', '--port', '{port}']`), which
-  also expands in `readyUrl` and services. Tests read the URL from
-  `app.baseUrl`; the cache identity keeps `:0`, services keep their own ports.
+  also expands in `readyUrl`. Tests read the URL from `app.baseUrl`; the
+  cache identity keeps `:0`. A port-0 `url` with no `command`, and
+  `reuseExisting` beside one, are `INVALID_CONFIG`.
   A port grabbed between allocation and spawn fails the start with
   `APP_UNREACHABLE`; rerun.
 
-For an app started elsewhere, point `url` at it, literally or via
+For an app started elsewhere, point `app.url` at it, literally or via
 `process.env.APP_URL ?? 'http://localhost:3000'`; the runner reads no
 `APP_URL` and loads no `.env`, so put `process.loadEnvFile('.env')` atop
 `e2e.config.ts` (workers re-import it).
@@ -255,10 +256,10 @@ import { mobile } from '@e2e-dev/mobile';
 import { mobileTools } from '@e2e-dev/mobile/tools';
 import { gateway } from 'ai';
 
-const iphone = mobile({ platform: 'ios', app: 'com.example.app' });
+const iphone = mobile({ platform: 'ios' });
 
 export default {
-  targets: [{ engine: iphone }],
+  targets: [{ engine: iphone, app: { bundleId: 'com.example.app' } }],
   workers: 1,
   agents: {
     default: {
@@ -269,13 +270,14 @@ export default {
 } satisfies E2EConfig;
 ```
 
-- `app`: bundle id, package name, or display name `app.open()` launches
-  fresh (an attempt launches nothing itself; without `app`, the installed
-  bundle). `appPath`: the `.app` or `.apk` under test; the engine installs
-  nothing, so a fixture every test takes calls `device.installApp()` once per
-  device (no path installs `appPath`). `launchArguments` and `permissions`
-  ride every fresh launch: arguments reach the app process (iOS) or `am
-  start` (Android), permissions are set first.
+- `app.bundleId`: bundle id, package name, or display name `app.open()`
+  launches fresh (an attempt launches nothing itself; without it, the
+  installed build). `app.appPath`: the `.app` or `.apk` under test; the
+  engine installs nothing, so a fixture every test takes calls
+  `device.installApp()` once per device (no path installs `app.appPath`).
+  `app.launchArguments` and `app.permissions` ride every fresh launch:
+  arguments reach the app process (iOS) or `am start` (Android), permissions
+  are set first.
 - One worker per device. No `device`: every booted simulator or emulator of
   the platform is the pool, up to `workers` (none booted: agent-device boots
   one); one `device`: one worker whatever `workers` says; a list (`device:
@@ -286,7 +288,7 @@ export default {
 - `device` can be a `DeviceProvider` leasing hosted devices, one per worker
   slot: `easSimulators({ projectId, buildId })` from `@e2e-dev/eas` reads
   `EXPO_TOKEN`, needs no Xcode or Android SDK, and with `buildId` EAS installs
-  the app (omit `appPath`). A run must fit one session: `maxDurationMinutes`,
+  the app (omit `app.appPath`). A run must fit one session: `maxDurationMinutes`,
   absent, is the account's cap (40 on a standard plan). `videoTouches: false`
   on the engine for video there.
 - Only a control that appeared or moved with the previous action waits out

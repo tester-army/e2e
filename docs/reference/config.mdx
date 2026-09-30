@@ -15,14 +15,15 @@ export default {
   targets: [
     {
       name: 'web',
-      engine: web({ browser: 'chromium', url: process.env.APP_URL ?? 'http://localhost:3000' }),
+      engine: web({ browser: 'chromium' }),
+      app: { url: process.env.APP_URL ?? 'http://localhost:3000' },
     },
   ],
 } satisfies E2EConfig;
 ```
 
 Unknown keys are rejected with `INVALID_CONFIG` at every level. There is no
-top-level `app` key: the engine declares the app it drives (see
+top-level `app` key: each target declares the app it tests (see
 [the app under test](#the-app-under-test)).
 
 An optional key takes a value or is left out; `undefined` is not a value, so
@@ -31,7 +32,7 @@ key that depends on the environment in only when it has a value:
 
 ```ts
 export default {
-  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
   ...(process.env.CACHE_URL === undefined ? {} : { cache: { store: createStore(process.env.CACHE_URL) } }),
 } satisfies E2EConfig;
 ```
@@ -160,7 +161,7 @@ targeted agent action is bounded by the smaller of `actionTimeout` and 15 s.
 
 ```ts
 /**
- * One named test target. The engine declares its app and capabilities.
+ * One named test target: the app under test and the engine that drives it.
  * Without an engine, the target supports agent tools only.
  */
 export interface Target {
@@ -173,6 +174,8 @@ export interface Target {
   platform?: string;
   /** The engine driving the surface: `web(...)`, `mobile(...)`, or any `defineEngine` handle. */
   engine?: EngineHandle;
+  /** The app under test: what it is, where it is served, and the command that starts it. */
+  app?: TargetApp;
   /**
    * Which attempts on this target record a trace, in place of the config's
    * `trace`; `--trace` and a test's own `trace` win over it. A mode set here
@@ -194,7 +197,7 @@ export interface Target {
 ASCII letters, digits, `_`, `-`, `.`, not only dots (`.` and `..` are path
 segments), unique across targets.
 
-`{ engine: web({ url }) }` is a complete target. Two targets on one
+`{ engine: web(), app: { url } }` is a complete target. Two targets on one
 platform need names. A target without an engine runs through agent tools
 only. Tests whose `requires` names a capability the target lacks are skipped
 for it; a `test.setup` a selected test depends on must be runnable there or
@@ -202,64 +205,64 @@ selection fails with `COLLECTION_ERROR`.
 
 ## The app under test
 
-The engine declares the app it drives: the browser engine as options of
-`web(...)`, the device engine from the app it pins. The runner
-resolves it at config load.
+A target declares the app it tests in `app`; the engine only drives it. A
+browser target names the URL it opens, a device target the installed app or
+the build it launches. The runner resolves `app` at config load.
 
-```ts
-/**
- * App details declared by an engine and resolved once per target.
- */
-export interface EngineAppDeclaration {
-  /**
-   * Base URL of an addressable app: `app.open()` opens it and relative
-   * navigation resolves against it. WHATWG-normalized; no userinfo, query, or
-   * fragment; a missing scheme becomes `https://`, or `http://` for a
-   * loopback host. Plain HTTP is accepted for loopback hosts only. A URL on
-   * `127.0.0.1` or `[::1]` with port 0 asks the run for a free port,
-   * substituted wherever the declaration used it and handed to `command` and
-   * `services` as `{port}`.
-   */
-  readonly url?: string;
-  /**
-   * Labels the target in the report and joins the cache and session identity
-   * digest; never gates a run. Defaults to `test` for loopback, `.localhost`,
-   * and `.test` hosts and for a surface without a URL, `production` otherwise.
-   */
-  readonly environment?: 'test' | 'staging' | 'production';
-  /**
-   * App identity for replay cache and session entries. Defaults to the URL's
-   * origin and base path. Set a stable value to reuse entries across preview
-   * URLs. Without a URL or identity, entries use the target alone. Different
-   * apps must have different identities to prevent replay across them.
-   */
-  readonly identity?: string;
-  /**
-   * Process the runner starts before the first test and stops on every exit
-   * path (a dev server). Structured, never shell-interpreted; the child
-   * inherits only `PATH`, `HOME`, the temp-directory variables, and
-   * `command.env`. Targets declaring the same command share one process,
-   * probed at the first declaring target's `readyUrl`.
-   */
-  readonly command?: CommandConfig;
-  /** URL polled until `command` is ready (a 200-499 status); defaults to `url`. */
-  readonly readyUrl?: string;
-  /**
-   * Dependency processes the app needs before it can boot (a database
-   * container, a migration step), started in declaration order before any
-   * app command and torn down in reverse after it. Valid without `command`:
-   * the app may already be running, or be one of the services itself.
-   * Services declared identically by several targets start once; shared
-   * services must be declared in one order, and an explicit `name` must mean
-   * one process across the run.
-   */
-  readonly services?: readonly ServiceConfig[];
-}
+```ts title="e2e.config.ts"
+targets: [
+  {
+    name: 'web',
+    engine: web({ viewport: { width: 1440, height: 900 } }),
+    app: {
+      url: 'http://localhost:3000',
+      command: { executable: 'npm', args: ['run', 'dev'] },
+      readyUrl: 'http://localhost:3000/health',
+    },
+  },
+  {
+    name: 'ios',
+    engine: mobile({ platform: 'ios' }),
+    app: {
+      bundleId: 'com.example.app',
+      appPath: './build/App.app',
+      launchArguments: ['-e2e', 'YES'],
+      permissions: { camera: 'grant' },
+    },
+  },
+],
 ```
 
+| Key | Targets | Meaning |
+| --- | --- | --- |
+| `url` | web | Base URL: `app.open()` opens it and relative navigation resolves against it. WHATWG-normalized; no userinfo, query, or fragment; a missing scheme becomes `https://`, or `http://` for a loopback host. Plain HTTP is accepted for loopback hosts only. Port `0` on `127.0.0.1` or `[::1]` asks for a [free port](#free-ports) |
+| `bundleId` | mobile | The installed app a device launches: a bundle id, an Android package name, or a display name the device resolves (`Settings`). A link is `INVALID_CONFIG`: a test opens one with `device.openLink` |
+| `appPath` | mobile | The build the suite runs against, an iOS `.app` bundle or an Android `.apk`, resolved against the project root. Without `bundleId`, the app it installs is the one launched. See [the device engine](/reference/mobile#engine) for when it is installed |
+| `identity` | any | Stable identity keying replay cache and session entries. Defaults to the URL's origin and base path, else `bundleId`, else `appPath`. Set a stable value to reuse entries across preview URLs or versioned build paths. Different apps must have different identities to prevent replay across them |
+| `environment` | any | `test`, `staging`, or `production`. Labels the target in the report and joins the cache and session identity digest; never gates a run. Defaults to `test` for loopback, `.localhost`, and `.test` hosts and for an app without a URL, `production` otherwise |
+| `launchArguments` | mobile | Arguments every fresh launch passes the app: `app.open()`, `app.restart()`, and `app.clearState()`. Arguments that select a build mode change what the app is: give each mode its own `identity` |
+| `permissions` | mobile | Permissions the app holds on every fresh launch, by name, each `grant`, `deny`, or `reset`; see [permissions](/reference/mobile#engine) |
+| `command` | any | Process the runner starts before the first test and stops on every exit path (a dev server, Metro for a debug build); see [command](#command). Targets declaring the same command share one process, probed at the first declaring target's `readyUrl` |
+| `readyUrl` | any | URL polled until `command` is ready (a 200-499 status); defaults to `url`, and is required without one. `{port}` in it is the port of `url` |
+
+Each engine checks the keys at config load, with `INVALID_CONFIG` naming
+the target. A `web()` target needs `app.url` and refuses `bundleId`,
+`appPath`, `launchArguments`, and `permissions`. A `mobile()` target needs
+`app.bundleId` or `app.appPath`; `app.url` on a mobile target is not
+supported yet. An unknown key in `app` or `app.command` fails with a
+did-you-mean. A target with `app` and no engine is
+`INVALID_CONFIG`.
+
+The old spellings fail at config load with `INVALID_CONFIG` naming the new
+place: `web({ url })` and the other app options of `web()` and `mobile()`,
+`mobile({ app })` (now `app.bundleId`), an app key directly on the target, and
+a top-level `app` or `url`. `services`, on the target, under `app`, at the
+top level, or as `web({ services })`, fails the same way: this version starts no dependency process beside `app.command`: start them before the run. A services API returns in a later release.
+
 Port `0` on any host other than `127.0.0.1` or `[::1]`, `localhost`
-included, is `INVALID_APP_URL`. A `command` with neither `url` nor `readyUrl`
-is `APP_URL_REQUIRED` at config load.
+included, is `INVALID_APP_URL`, and a port-0 `url` with nothing to start on
+it (no `app.command`) is `INVALID_CONFIG`. An `app.command` with neither
+`app.url` nor `app.readyUrl` is `APP_URL_REQUIRED` at config load.
 
 ### The app's site
 
@@ -279,18 +282,19 @@ the base URL, the default `readyUrl`, and the report. The command must take
 the port through `{port}` in `args` or `env`.
 
 ```ts title="e2e.config.ts"
-engine: web({
+engine: web(),
+app: {
   url: 'http://127.0.0.1:0',
   command: { executable: 'pnpm', args: ['dev', '--port', '{port}'], env: { PORT: '{port}' } },
-}),
+},
 ```
 
 `localhost:0` is `INVALID_APP_URL`: it may resolve to an address other than
 the one the command binds. Write the address the command will bind.
 
-Each target asking for port `0` gets its own port, so two targets meant to
-share one dev server should share a fixed port. Services keep the ports their
-config gives them and read the app's through `{port}`. The default `identity`
+Each target asking for port `0` gets its own port and its own process; two
+targets that declare the same command on a fixed port share one. `{port}` in
+`app.command` and `app.readyUrl` is the port of `url`. The default `identity`
 derives from the declared `:0`, so cache and session entries do not churn
 with the port. Tests read the allocated URL from
 [`app.baseUrl`](/reference/app).
@@ -316,7 +320,9 @@ export interface CommandConfig {
   /**
    * When the readiness URL already answers before the command starts, use that
    * process instead of spawning: nothing is started and nothing is stopped.
-   * Off by default; CI ignores it and always starts the command.
+   * Off by default; CI ignores it and always starts the command. A URL on a
+   * free port (port 0) can never already answer, so the two together are
+   * `INVALID_CONFIG`.
    */
   reuseExisting?: boolean;
 }
@@ -326,62 +332,25 @@ export interface CommandConfig {
 output, so keep it in an ignored directory. A startup failure quotes the last
 20 lines appended since the command started, with `command.env` values
 replaced by `<secret:NAME>` markers. Without `reuseExisting`, a `readyUrl`
-that already answers is `APP_ALREADY_RUNNING`. `{port}` on a target without a
-`url` is `INVALID_CONFIG`.
+that already answers is `APP_ALREADY_RUNNING`. `reuseExisting` on an app
+whose `app.url` or `readyUrl` asks for port 0 is `INVALID_CONFIG`: a process
+already running cannot serve the port the run assigns.
 
-The child inherits only `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`,
-`SystemRoot`, and `COMSPEC`, plus everything in `command.env`. Every `args`
-entry and `env` value is a string; anything else, a number or a
-`secrets.get()` handle included, is `INVALID_CONFIG`, except an `undefined`
-`env` value, which is dropped. The runner
-never terminates a process it did not start.
+The child inherits only `PATH`, `HOME`, the temp-directory variables, and
+`command.env`, so pass what the app needs explicitly. Every `args` entry and
+`env` value is a string; anything else, a number or a `secrets.get()` handle
+included, is `INVALID_CONFIG`, except an `undefined` `env` value, which is
+dropped. The runner never terminates a process it did not start.
 
 ### services
 
-```ts
-/**
- * One dependency process of the app under test (a database container, a
- * cache, an auth emulator, a migration step). Services start sequentially in
- * declaration order before `app.command`, and each must be ready before the
- * next starts. Exactly one of `readyUrl` or `waitForExit` declares how a
- * service becomes ready; a service with neither has no readiness contract and
- * is rejected as `INVALID_CONFIG`.
- */
-export interface ServiceConfig extends CommandConfig {
-  /** Label used in errors, reporter output, and the report; defaults to the executable name. */
-  name?: string;
-  /** Optional HTTP readiness probe; a status of 200 through 499 counts as ready. */
-  readyUrl?: string;
-  /**
-   * Wait for the process to exit with code 0 instead of probing a URL
-   * (migrations, `docker compose up --wait`). A non-zero exit or the
-   * `startupTimeout` expiring is `APP_UNREACHABLE`.
-   */
-  waitForExit?: boolean;
-  /**
-   * Optional command run during teardown after the service itself has been
-   * stopped (`docker compose down`). Runs on every exit path, is waited on
-   * until exit within its own `startupTimeout`, and a failure is recorded as a
-   * cleanup-phase run error rather than a crash.
-   */
-  teardown?: CommandConfig;
-}
-```
-
-`name` is at most 64 characters and unique across named services. `{port}`
-in a service's `args`, `env`, `readyUrl`, and `teardown` is the app's port.
-
-Exactly one of `readyUrl` or `waitForExit` is required per service.
-`reuseExisting` works on a `readyUrl` service and skips its `teardown`; on a
-`waitForExit` service it is `INVALID_CONFIG`. Services start in declaration
-order before any app command, each ready before the next. Services declared
-identically by several targets start once; two targets that order them
-differently are `INVALID_CONFIG`.
-
-On every exit path the runner stops the app commands, then the services in
-reverse order, then their `teardown` commands. A failing teardown is a
-`cleanup` run error and never skips the ones after it.
-[Starting your app](/starting-your-app) shows a full example.
+<Note>
+Dependency processes (a database, an API mock, a dev server several targets
+share) are not started by this version: `services` on a target, under `app`,
+at the top level, or as `web({ services })` is `INVALID_CONFIG`. Start them
+before the run, or have `app.command` start a script that brings them up and
+serves the app. A services API returns in a later release.
+</Note>
 
 ## output
 
@@ -544,8 +513,8 @@ export interface StoredArtifactLink {
 trace: 'on-first-retry',
 video: 'retain-on-failure',
 targets: [
-  { name: 'chromium', engine: web({ url }) },
-  { name: 'firefox', engine: web({ url, browser: 'firefox' }), video: 'on-first-retry' },
+  { name: 'chromium', engine: web(), app: { url } },
+  { name: 'firefox', engine: web({ browser: 'firefox' }), app: { url }, video: 'on-first-retry' },
 ],
 ```
 
@@ -723,7 +692,7 @@ import { gateway } from 'ai';
 import { houseBrain } from './house-brain.ts';
 
 export default {
-  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
   agents: {
     default: { model: gateway('openai/gpt-6-luna-fast') },
     ux: { model: gateway('openai/gpt-6-luna-fast'), system: 'Check labels, contrast, and keyboard access.' },
@@ -872,8 +841,8 @@ the attempt's redaction then, without the screenshot restrictions a fill
 brings, since it goes to the engine rather than onto the page. The digest
 records the name only. The reference is not the value: turned into a string
 (a template literal, `String()`, `+`, `JSON.stringify`) it throws
-`INVALID_CONFIG`, and so does one placed in a `command.env` or `args` entry,
-which take strings only. Read a value a string needs, such as an app's API
+`INVALID_CONFIG`, and so does one placed in an `args` entry or `env` value of
+`app.command` or a service, which take strings and placeholders only. Read a value a string needs, such as an app's API
 key, from `process.env` yourself.
 
 ```ts
@@ -986,7 +955,7 @@ secret, and `CI` switches the defaults below.
 
 | Setting | Order |
 | --- | --- |
-| Base URL | the engine's declared `url`, else `APP_URL_REQUIRED` at the first navigation. The runner reads no `APP_URL`; the scaffolded config reads it itself |
+| Base URL | the target's `app.url`, else `APP_URL_REQUIRED` at the first navigation. The runner reads no `APP_URL`; the scaffolded config reads it itself |
 | Built-in agent model | `agents.<name>.model`, then `MODEL_UNAVAILABLE` at `agent` acquisition; an agent never falls back to `default`'s model |
 | Custom executor model | `agents.<name>.model`, else the model the executor brought; two different values is `INVALID_CONFIG` |
 | Model credential | the provider package's own variable or the key passed at construction, read by the provider on the first model call |

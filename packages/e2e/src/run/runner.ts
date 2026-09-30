@@ -34,7 +34,7 @@ import { STATELESS_REPORTERS } from '../report/builtin.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport } from '../report/write.ts';
 import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCode, type RunStatus, type RunEventFact, type SetupStep } from './events.ts';
-import { allocateAppPorts, assignedPorts } from './app-ports.ts';
+import { allocateAppPorts } from './app-ports.ts';
 import { inProcessSpawner } from './in-process.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
 import { runUnits } from './scheduler.ts';
@@ -50,7 +50,8 @@ import { modelLabel } from '../config/agent.ts';
 import { positiveInt } from '../config/validate.ts';
 import { detectVcs, type VcsInfo } from '../internal/vcs.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
-import { PreparedEngines, recordingNotices, startDeclaredProcesses, validateEngine, type AppProcesses, type EngineGrade, type PrepareScope } from './provision.ts';
+import type { AppProcesses } from './managed-process.ts';
+import { PreparedEngines, recordingNotices, startDeclaredProcesses, validateEngine, type EngineGrade, type PrepareScope } from './provision.ts';
 
 export interface RunOptions {
   cwd?: string | undefined;
@@ -684,19 +685,18 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     emit({ type: 'plan', total: selection.pairs.length, files: plannedFiles(selection) });
     options.tests?.explore?.subscribe((progress) => emit({ type: 'explore', progress }));
 
-    // Each selected engine declares the app it drives: the dependency
-    // processes it needs and the command that starts it. Every service is
-    // ready before the first app command starts, and nothing spawns once the
-    // run was interrupted. Each process is one setup step; a reused process
-    // or an ignored `reuseExisting` narrates as a run notice.
-    const processHooks = (kind: 'service' | 'app') => ({
+    // Each selected target declares the app it drives and the command that
+    // starts it. Nothing spawns once the run was interrupted. Each command is
+    // one setup step; a reused process or an ignored `reuseExisting` narrates
+    // as a run notice.
+    const processHooks = () => ({
       ci: isCiMode(env),
       notice: (message: string) => emit({ type: 'notice', target: 'app', message }),
-      starting: (label: string) => emit({ type: 'setup', step: { kind, label }, state: 'started' }),
+      starting: (label: string) => emit({ type: 'setup', step: { kind: 'app', label }, state: 'started' }),
       ready: (label: string, durationMs: number, reused: boolean) =>
         emit({
           type: 'setup',
-          step: { kind, label },
+          step: { kind: 'app', label },
           state: 'finished',
           durationMs,
           ...(reused ? { outcome: 'reused' as const } : {}),
@@ -755,7 +755,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             projectRoot: config.projectRoot,
             configDigest: config.configDigest,
             cli,
-            ports: assignedPorts(config),
+            ports: config.ports,
             runId,
             artifactsRoot,
             headed: options.headed ?? false,

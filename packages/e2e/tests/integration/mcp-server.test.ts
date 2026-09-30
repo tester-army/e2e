@@ -25,7 +25,7 @@ const CLI = path.join(PACKAGE_ROOT, 'dist', 'cli', 'bin.js');
 // base config has it: each session must still get an engine of its own.
 const TARGETS = `import { web } from '@e2e-dev/web';
 
-export const targets = [{ name: 'web', platform: 'web', engine: web({ url: process.env.APP_URL! }) }];
+export const targets = [{ name: 'web', platform: 'web', engine: web(), app: { url: process.env.APP_URL! } }];
 `;
 
 const CONFIG = `import type { E2EConfig } from 'e2e';
@@ -50,7 +50,7 @@ import { secrets } from 'e2e';
 import { web } from '@e2e-dev/web';
 
 export default {
-  targets: [{ name: 'protected', engine: web({ url: process.env.APP_URL!, basicAuth: { username: 'ada', password: secrets.get('stagingPassword') } }) }],
+  targets: [{ name: 'protected', engine: web({ basicAuth: { username: 'ada', password: secrets.get('stagingPassword') } }), app: { url: process.env.APP_URL! } }],
   secrets: { stagingPassword: () => ${JSON.stringify(PROTECTED_PASSWORD)} },
 } satisfies E2EConfig;
 `;

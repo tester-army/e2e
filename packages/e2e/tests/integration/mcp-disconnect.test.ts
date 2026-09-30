@@ -31,10 +31,10 @@ const config = (port: number): string => `import type { E2EConfig } from 'e2e';
 import { web } from '@e2e-dev/web';
 
 export default {
-  targets: [{ name: 'web', engine: web({
+  targets: [{ name: 'web', engine: web(), app: {
     url: 'http://127.0.0.1:${port}',
     command: { executable: process.execPath, args: ['app.cjs', '${port}'] },
-  }) }],
+  } }],
 } satisfies E2EConfig;
 `;
 

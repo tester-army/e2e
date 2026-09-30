@@ -47,10 +47,11 @@ export default {
   targets: [
     {
       name: 'web',
-      engine: web({
+      engine: web(),
+      app: {
         url: APP_URL,
         command: { executable: 'node', args: ['dogfood/server.mjs'], env: { PORT: '4310' } },
-      }),
+      },
     },
   ],
   timeout: 300_000,

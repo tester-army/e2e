@@ -72,7 +72,7 @@ async function runExplore(
   const outcome = await explore({
     cwd: project.dir,
     rawConfig: {
-      targets: [{ name: 'web', engine: web({ url: app.url }) }] as never,
+      targets: [{ name: 'web', engine: web(), app: { url: app.url } }] as never,
       agents: { default: projectAgent ?? { model } },
       // The scripted loop answers instantly; the deterministic engine budget is the one that matters.
       actionTimeout: 10_000,
@@ -308,7 +308,7 @@ describe('e2e explore', () => {
     const outcome = await explore({
       cwd: project.dir,
       rawConfig: {
-        targets: [{ engine: web({ url: app.url }) }, { name: 'second', engine: web({ url: app.url }) }] as never,
+        targets: [{ engine: web(), app: { url: app.url } }, { name: 'second', engine: web(), app: { url: app.url } }] as never,
         agents: { default: { model } },
       },
       goal: 'Look around',
@@ -320,7 +320,7 @@ describe('e2e explore', () => {
     expect(outcome.report.run.results.map((result) => result.targetId)).toEqual(['web']);
     expect(outcome.report.run.results[0]!.attempts[0]!.steps[0]!.api).toBe('app.open');
 
-    const config = { targets: [{ name: 'web', engine: web({ url: app.url }) }] as never, agents: { default: { model } } };
+    const config = { targets: [{ name: 'web', engine: web(), app: { url: app.url } }] as never, agents: { default: { model } } };
     await expect(explore({ cwd: project.dir, rawConfig: { ...config, reporters: 'json' as never }, goal: 'Look around' })).rejects.toMatchObject({
       code: 'INVALID_CONFIG',
       message: /reporters must be an array/,
@@ -349,7 +349,7 @@ describe('e2e explore', () => {
     const outcome = await explore({
       cwd: project.dir,
       rawConfig: {
-        targets: [{ name: 'web', engine: web({ url: app.url }) }] as never,
+        targets: [{ name: 'web', engine: web(), app: { url: app.url } }] as never,
         agents: { default: { model }, ux: { model, tools: { ping } } },
       },
       goal: 'Look around',
@@ -369,14 +369,14 @@ describe('e2e explore', () => {
     expect(seen[0]).toContain(FINDING_TOOL_NAME);
 
     await expect(
-      explore({ cwd: project.dir, rawConfig: { targets: [{ name: 'web', engine: web({ url: app.url }) }] as never, agents: { default: { model } } }, agent: 'nope' }),
+      explore({ cwd: project.dir, rawConfig: { targets: [{ name: 'web', engine: web(), app: { url: app.url } }] as never, agents: { default: { model } } }, agent: 'nope' }),
     ).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: 'unknown agent "nope"; configured: default' });
   }, 120_000);
 
   it('rejects an agent with no model before anything starts, naming it, a custom executor that brought none included', async () => {
     const custom: StepExecutor = { name: 'math-brain', runStep: async () => ({ status: 'passed', summary: 'never runs' }) };
     const rawConfig = {
-      targets: [{ name: 'web', engine: web({ url: app.url }) }] as never,
+      targets: [{ name: 'web', engine: web(), app: { url: app.url } }] as never,
       agents: { default: { model: installExploreModel({ plan: () => ({ decision: 'finish', summary: '' }), loop: () => [] }) }, custom: { executor: custom } },
     };
     const notices: string[] = [];
@@ -404,7 +404,7 @@ describe('e2e explore', () => {
     const outcome = await explore({
       cwd: project.dir,
       rawConfig: {
-        targets: [{ name: 'web', engine: web({ url: app.url }) }] as never,
+        targets: [{ name: 'web', engine: web(), app: { url: app.url } }] as never,
         agents: { default: { model } },
         credentials: { ada: { username: 'ada@example.test', password: 'bookworm' } },
       },
@@ -432,7 +432,7 @@ describe('e2e explore', () => {
       Array.from({ length: 400 }, (_, i) => [`account-${String(i)}`, { username: `${'u'.repeat(200)}@example.test`, password: 'password' }]),
     );
     await expect(
-      explore({ cwd: project.dir, rawConfig: { targets: [{ name: 'web', engine: web({ url: app.url }) }] as never, credentials } }),
+      explore({ cwd: project.dir, rawConfig: { targets: [{ name: 'web', engine: web(), app: { url: app.url } }] as never, credentials } }),
     ).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: expect.stringContaining('400 account(s) serialize to') });
   });
 });
@@ -484,7 +484,7 @@ test('never runs under explore', async () => {
     exploreBuilt({
       cwd: project.dir,
       rawConfig: {
-        targets: [{ name: 'web', engine: web({ url: app.url }) }] as never,
+        targets: [{ name: 'web', engine: web(), app: { url: app.url } }] as never,
         agents: { default: { model } },
         credentials: { ada: { username: 'ada@example.test', password: 'bookworm' } },
         actionTimeout: 10_000,

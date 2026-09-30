@@ -29,7 +29,7 @@ type Target = NonNullable<E2EConfig['targets']>[number];
  * the one place that difference is cast away.
  */
 export function webTarget(name: string, url: string): Target {
-  return { name, engine: web({ url }) as unknown as NonNullable<Target['engine']> };
+  return { name, engine: web() as unknown as NonNullable<Target['engine']>, app: { url } };
 }
 
 /** The web target integration suites run against unless their config names its own. */
@@ -140,7 +140,7 @@ export function workerConfigSource(workers: number, extra = ''): string {
 import { web } from '@e2e-dev/web';
 
 export default {
-  targets: [{ name: 'web', engine: web({ url: process.env.APP_URL! }) }],
+  targets: [{ name: 'web', engine: web(), app: { url: process.env.APP_URL! } }],
   workers: ${workers},${extra}
 } satisfies E2EConfig;
 `;

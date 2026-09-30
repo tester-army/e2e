@@ -42,13 +42,13 @@ export default {
       name: 'ios',
       engine: mobile({
         platform: 'ios',
-        app: 'com.example.app',
         device: easSimulators({
           projectId: '<your-expo-project-id>',
           buildId: process.env.EAS_BUILD_ID,
         }),
         videoTouches: false,
       }),
+      app: { bundleId: 'com.example.app' },
     },
   ],
   workers: 2,
@@ -68,21 +68,22 @@ The simulator boots with no apps. Pick one way to put yours on it:
 
 - **An EAS Build**: `buildId` names a simulator build (`"ios": { "simulator": true }`
   in `eas.json`) or an APK, and EAS installs and launches it before the
-  session is ready. Leave the engine's `appPath` out, and keep `app` so
-  `app.open()` knows what to launch. The build never leaves EAS.
+  session is ready. Leave the target's `app.appPath` out, and keep
+  `app.bundleId` so `app.open()` knows what to launch. The build never
+  leaves EAS.
 - **A URL**: `applicationArchiveUrl` names an app archive EAS downloads and
   installs the same way.
-- **A local build**: the engine's `appPath` and a fixture that calls
+- **A local build**: the target's `app.appPath` and a fixture that calls
   `device.installApp()`, as with a [local simulator](/mobile). The build
   uploads through the session's daemon to each simulator. Leave `buildId`
   and `applicationArchiveUrl` out.
 
 ```ts
 // EAS installs the build.
-mobile({ platform: 'ios', app: 'com.example.app', device: easSimulators({ projectId, buildId }) })
+{ engine: mobile({ platform: 'ios', device: easSimulators({ projectId, buildId }) }), app: { bundleId: 'com.example.app' } }
 
 // A fixture uploads the build with device.installApp().
-mobile({ platform: 'ios', app: 'com.example.app', appPath: 'build/App.app', device: easSimulators({ projectId }) })
+{ engine: mobile({ platform: 'ios', device: easSimulators({ projectId }) }), app: { bundleId: 'com.example.app', appPath: 'build/App.app' } }
 ```
 
 ## Options

@@ -21,14 +21,14 @@ export default {
   targets: [
     {
       name: 'web',
-      engine: web(
+      engine: web(),
+      app:
         url === undefined
           ? {
               url: 'http://127.0.0.1:4275',
               command: { executable: 'node', args: ['app/bug-garden.mjs'], env: { PORT: '4275' } },
             }
           : { url },
-      ),
     },
   ],
   timeout: 900_000,

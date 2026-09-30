@@ -1,10 +1,11 @@
 /**
  * The agent-device engine over a scripted client, for unit tests: a harness
- * records the sessions and connections each client was minted for, and
- * `boot` runs `init` for one worker slot.
+ * records the sessions and connections each client was minted for, carries
+ * the target app the runner would hand `prepare` and `init`, and `boot` runs
+ * `init` for one worker slot.
  */
 
-import type { EngineHandle } from 'e2e/engine';
+import { obj, type EngineAppInfo, type EngineHandle, type EnginePrepareInfo, type EnginePrepareResult } from 'e2e/engine';
 import { buildEngine } from '../../src/engine.ts';
 import type { MobileOptions } from '../../src/options.ts';
 import type { DeviceConnection } from '../../src/bindings.ts';
@@ -21,8 +22,9 @@ export function poolVariableIn(env: NodeJS.ProcessEnv, readable: string): string
   return key;
 }
 
+/** Runs `init` for one worker slot of the harness's engine, with its target app. */
 export async function boot(
-  engine: EngineHandle,
+  { engine, app }: Pick<Harness, 'engine' | 'app'>,
   targetName = 'ios-simulator',
   workerSlot = 0,
   env: Readonly<Record<string, string | undefined>> = {},
@@ -31,7 +33,7 @@ export async function boot(
     runId: 'run-1',
     targetName,
     projectRoot: PROJECT_ROOT,
-    app: {},
+    app,
     env,
     headed: false,
     workerSlot,
@@ -47,10 +49,17 @@ export interface Harness {
   /** The connection each client was minted with; `undefined` is the local daemon with defaults. */
   readonly connections: (DeviceConnection | undefined)[];
   readonly surface: AgentDeviceSurface;
+  /** The target's app, as the runner hands it to `prepare` and `init`. */
+  readonly app: EngineAppInfo;
+  /** Runs the engine's `prepare` with the target's app. */
+  prepare(info: Omit<EnginePrepareInfo, 'app'>): Promise<EnginePrepareResult | void>;
 }
 
-/** An engine over the scripted client; `pinned` false leaves the `app` option out. */
-export function harness(options: Partial<MobileOptions> = {}, pinned = true): Harness {
+/** The engine's options and its target's app, in one literal: what a test varies. */
+export type HarnessOptions = Partial<MobileOptions> & Pick<EngineAppInfo, 'bundleId' | 'appPath' | 'launchArguments' | 'permissions'>;
+
+/** An engine over the scripted client; `pinned` false leaves the target's `bundleId` out. */
+export function harness(options: HarnessOptions = {}, pinned = true): Harness {
   const fake = createFakeClient({
     'capture.snapshot': () => SETTINGS_SNAPSHOT,
     'apps.open': () => ({ session: 's', appName: 'Settings', appBundleId: 'com.apple.Preferences', identifiers: {} }),
@@ -59,11 +68,13 @@ export function harness(options: Partial<MobileOptions> = {}, pinned = true): Ha
   });
   const sessions: string[] = [];
   const connections: (DeviceConnection | undefined)[] = [];
-  const base: MobileOptions = pinned ? { platform: 'ios', app: 'Settings' } : { platform: 'ios' };
-  const surface = new AgentDeviceSurface({ ...base, ...options }, (session, connection) => {
+  const { bundleId, appPath, launchArguments, permissions, ...engineOptions } = options;
+  const surface = new AgentDeviceSurface({ platform: 'ios', ...engineOptions }, (session, connection) => {
     sessions.push(session);
     connections.push(connection);
     return fake.client;
   });
-  return { engine: buildEngine(surface), fake, sessions, connections, surface };
+  const engine = buildEngine(surface);
+  const app = obj({ bundleId: bundleId ?? (pinned ? 'Settings' : undefined), appPath, launchArguments, permissions });
+  return { engine, fake, sessions, connections, surface, app, prepare: (info) => engine.prepare!({ ...info, app }) };
 }

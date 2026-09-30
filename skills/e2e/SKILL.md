@@ -96,8 +96,8 @@ one; the installed CLI prints the same text with `npx e2e guide <topic>`
 
 - Run the CLI as `npx e2e ...` (or `pnpm exec e2e ...`).
 - The config is `export default { ... } satisfies E2EConfig` with
-  `import type { E2EConfig } from 'e2e'`. `targets` is required; UI targets
-  name an engine that declares the app, for example `web({ url, command })`.
+  `import type { E2EConfig } from 'e2e'`. `targets` is required; a UI target
+  names an engine and declares the app beside it: `{ engine: web(), app: { url, command } }`.
   A tools-only target can omit the engine and set `platform`.
 - Import `test`, `expect`, `credentials`, and `secrets` from `e2e`. A test
   that uses the `web` fixture imports `test` from `@e2e-dev/web`: the same

@@ -104,6 +104,7 @@ const prepareInfo = (slots: number, log: (line: string) => void = () => undefine
   runId: 'run-1',
   targetName: 'web',
   projectRoot: '/project',
+  app: {},
   slots,
   env,
   signal: new AbortController().signal,

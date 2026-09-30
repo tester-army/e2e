@@ -11,8 +11,8 @@ with `UNSUPPORTED_CAPABILITY`.
 export interface App {
   /**
    * The resolved base URL of the target's app, with the port the run
-   * allocated when the engine declared port 0; undefined for a surface whose
-   * engine declares no `url`.
+   * allocated when `app.url` declared port 0; undefined for a target that
+   * declares no `app.url`.
    */
   readonly baseUrl: string | undefined;
   /**
@@ -23,12 +23,12 @@ export interface App {
   open(path?: string): Promise<void>;
   /**
    * Recreates the execution context while preserving persisted state, then
-   * reopens the app at its base URL when the engine declares one.
+   * reopens the app at its base URL when the target declares one.
    */
   restart(): Promise<void>;
   /**
    * Clears persisted client state, recreates the execution context, then
-   * reopens the app at its base URL when the engine declares one.
+   * reopens the app at its base URL when the target declares one.
    */
   clearState(): Promise<void>;
   /** Navigates back once. */
@@ -43,7 +43,7 @@ timeout. They do not accept per-call timeout options.
 
 | Method | Timeout | Throws |
 | --- | --- | --- |
-| `open(path?)` | `config.timeout`, 120000 ms | `APP_URL_REQUIRED` for a path when the engine declares no `url`, `POLICY_DENIED` for a `file:`, `data:`, or `javascript:` URL, `APP_UNREACHABLE`, `ACTION_FAILED`, `UNSUPPORTED_CAPABILITY` without `session.open` on a target with a URL or without `session.restart` on one without (a device launches its pinned app) |
+| `open(path?)` | `config.timeout`, 120000 ms | `APP_URL_REQUIRED` for a path when the target declares no `app.url`, `POLICY_DENIED` for a `file:`, `data:`, or `javascript:` URL, `APP_UNREACHABLE`, `ACTION_FAILED`, `UNSUPPORTED_CAPABILITY` without `session.open` on a target with a URL or without `session.restart` on one without (a device launches its pinned app) |
 | `restart()` | `config.timeout`, 120000 ms | `ACTION_FAILED`, `ENGINE_FAILURE`, `UNSUPPORTED_CAPABILITY` without `session.restart` |
 | `clearState()` | `config.timeout`, 120000 ms | `ACTION_FAILED`, `ENGINE_FAILURE`, `UNSUPPORTED_CAPABILITY` without `session.reset` |
 | `back()` | `config.actionTimeout`, 30000 ms | `APP_NOT_OPEN`, `ACTION_FAILED`, `UNSUPPORTED_CAPABILITY` without `session.back` |

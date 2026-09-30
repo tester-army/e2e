@@ -3,7 +3,7 @@
 import { setTimeout } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
 import type { StepExecutor } from '../../src/agent/executor.ts';
-import { createFakeEngine, FAKE_APP_URL } from '../helpers/fake-engine.ts';
+import { createFakeEngine, FAKE_APP, FAKE_APP_URL } from '../helpers/fake-engine.ts';
 import { runProject } from '../helpers/run-project.ts';
 
 const SUITE = `import { test } from 'e2e';
@@ -42,7 +42,7 @@ describe('the action change deadline', () => {
     const { outcome, project } = await runProject({ 'tests/observe.e2e.ts': SUITE }, {
       appUrl: FAKE_APP_URL,
       config: {
-        targets: [{ name: 'device', platform: 'ios', engine: fake.engine }],
+        targets: [{ name: 'device', platform: 'ios', engine: fake.engine, app: FAKE_APP }],
         agents: { default: { executor } }, cache: 'off',
       },
     });

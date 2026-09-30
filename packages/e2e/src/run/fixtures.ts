@@ -14,7 +14,6 @@ import { ConfigurationError, errorMessage, InfrastructureError, TestError } from
 import { Deadline } from '../internal/time.ts';
 import { didYouMean } from '../internal/suggest.ts';
 import { resolveSecretValue, sessionSecrecy, type SecretExposure } from './secrecy.ts';
-import { obj } from '../internal/objects.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import { FixtureRecorder } from './fixture-recording.ts';
 import type { AttemptBudget } from './budget.ts';
@@ -26,6 +25,7 @@ import {
   type ScreenContext,
   type SecretResolver,
 } from '../locator/screen.ts';
+import { engineAppInfo } from '../config/app.ts';
 import type { ResolvedAgentConfig, ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type { Agent, App, Expectable, SetupSession, TestFixtures } from '../types.ts';
 import type { ArtifactRecord } from './records.ts';
@@ -301,7 +301,7 @@ function fixtureContext(
     targetName: environment.target.name,
     fixture: (name, surface, operations) => recorder.fixture(name, surface, operations),
     app: {
-      ...obj({ site: app.site }),
+      ...engineAppInfo(app),
       resolveUrl: (url) => {
         requireAppUrl(environment.target);
         return resolveNavigationUrl(url, app.base).url;
@@ -370,14 +370,14 @@ function joinAgentContext(
   return parts.length === 0 ? undefined : parts.join('\n');
 }
 
-/** Navigation needs an app URL, and only the target's engine can declare one. */
+/** Navigation needs an app URL: the target's `app.url`. */
 function requireAppUrl(target: ResolvedTarget): asserts target is ResolvedTarget & {
   app: { base: NonNullable<ResolvedTarget['app']['base']> };
 } {
   if (target.app.base !== undefined) return;
   throw new ConfigurationError(
     'APP_URL_REQUIRED',
-    `navigation needs an app URL: the engine of target "${target.name}" declares none (${target.engine?.name ?? 'no engine'})`,
+    `navigation needs an app URL: target "${target.name}" declares none; set app.url on the target`,
   );
 }
 
@@ -400,7 +400,7 @@ function unreachableApp(cause: unknown, url: string): InfrastructureError | unde
   if (match === null) return undefined;
   return new InfrastructureError(
     'APP_UNREACHABLE',
-    `nothing answered at ${url} (${match[0]}); start the app there, point the engine's url at where it runs, or give the engine a command so the runner starts it`,
+    `nothing answered at ${url} (${match[0]}); start the app there, point the target's app.url at where it runs, or give the target an app.command so the runner starts it`,
     { cause },
   );
 }
@@ -462,7 +462,7 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine, expos
         if ((cause as { code?: unknown }).code !== 'UNSUPPORTED_CAPABILITY') throw cause;
         throw new ConfigurationError(
           'UNSUPPORTED_CAPABILITY',
-          `app.open() has no app to launch on target "${target.name}": pin one with the engine's app or appPath option, or bring one up with device.openApp`,
+          `app.open() has no app to launch on target "${target.name}": pin one with the target's app.bundleId or app.appPath, or bring one up with device.openApp`,
         );
       }
     });

@@ -10,7 +10,7 @@ import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { engineFailure } from '../helpers/engine-runtime.ts';
-import { createFakeEngine, FAKE_APP_URL, type FakeEngineHandle } from '../helpers/fake-engine.ts';
+import { createFakeEngine, FAKE_APP, FAKE_APP_URL, type FakeEngineHandle } from '../helpers/fake-engine.ts';
 import { engineConfig } from '../helpers/fixture-config.ts';
 import { installFakeModel, judgment } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
@@ -296,7 +296,7 @@ test('flaky against engine', { retries: 1 }, async ({ app }) => {
         category: 'infrastructure',
         code: 'APP_UNREACHABLE',
         message: expect.stringMatching(
-          /^nothing answered at http:\/\/\S+ \(ERR_CONNECTION_REFUSED\); start the app there, point the engine's url at where it runs, or give the engine a command so the runner starts it$/,
+          /^nothing answered at http:\/\/\S+ \(ERR_CONNECTION_REFUSED\); start the app there, point the target's app.url at where it runs, or give the target an app.command so the runner starts it$/,
         ),
       });
       expect(outcome.exitCode).toBe(3);
@@ -411,8 +411,8 @@ test('flaky against engine', { retries: 1 }, async ({ app }) => {
           appUrl: APP_URL,
           config: engineConfig(fake.engine, {
             targets: [
-              { name: 'first', platform: 'web', engine: fake.engine },
-              { name: 'second', platform: 'web', engine: fake.engine },
+              { name: 'first', platform: 'web', engine: fake.engine, app: FAKE_APP },
+              { name: 'second', platform: 'web', engine: fake.engine, app: FAKE_APP },
             ],
           }),
         },
@@ -961,7 +961,7 @@ test('fails on purpose', async ({ app }) => {
 
   /** A config that sets no recording, so `--video` is the only one asking. */
   const plainConfig = (fake: FakeEngineHandle): Partial<E2EConfig> => ({
-    targets: [{ name: 'fake', platform: 'fake', engine: fake.engine }],
+    targets: [{ name: 'fake', platform: 'fake', engine: fake.engine, app: FAKE_APP }],
   });
 
   it(

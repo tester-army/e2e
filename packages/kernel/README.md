@@ -17,7 +17,7 @@ import { web } from '@e2e-dev/web';
 import { kernel } from '@e2e-dev/kernel';
 
 export default {
-  targets: [{ engine: web({ url: 'https://staging.example.com', browser: kernel({ stealth: true }), viewport: null }) }],
+  targets: [{ engine: web({ browser: kernel({ stealth: true }), viewport: null }), app: { url: 'https://staging.example.com' } }],
   workers: 4,
 } satisfies E2EConfig;
 ```

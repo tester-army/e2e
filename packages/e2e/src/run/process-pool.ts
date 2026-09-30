@@ -7,14 +7,14 @@
  * process is started or reused.
  */
 
-import { NEVER_ABORTS } from '../internal/time.ts';
-import type { AppProcesses } from './provision.ts';
+import type { AppProcesses } from './managed-process.ts';
 
 export interface ProcessPool {
   /**
    * One hold on the process `key` names, released by the returned `stop`.
    * `start` starts a fresh instance under the signal it is given: the
-   * attempt's `signal`, or the pool's own lifetime for a shared process.
+   * attempt's `signal`, or for a shared process one that aborts once no
+   * attempt waits on the start any more.
    */
   acquire(key: string, start: (signal: AbortSignal) => Promise<AppProcesses>, signal: AbortSignal): Promise<AppProcesses>;
 }
@@ -24,6 +24,12 @@ export const UNSHARED: ProcessPool = { acquire: (_key, start, signal) => start(s
 
 interface SharedEntry {
   users: number;
+  /** Set once the start settled: from then on an attempt giving up abandons nothing. */
+  settled: boolean;
+  /** Attempts still waiting on the start whose own signal has not aborted. */
+  waiting: number;
+  /** Aborts the start once no attempt waits on it any more. */
+  readonly abandon: AbortController;
   readonly started: Promise<AppProcesses>;
 }
 
@@ -31,36 +37,65 @@ interface SharedEntry {
  * One instance per process across attempts: the first attempt that declares
  * one starts it, and it stops when the last attempt holding it releases it,
  * so closing one live session never takes the dev server out from under
- * another. A process starts under the pool's lifetime, never the starting
- * attempt's signal, since it outlives that attempt; its notices and trace
- * spans still go to the attempt that started it. An attempt that arrives
- * while a process stops starts a fresh one once the stop is done.
+ * another. A shared start outlives the attempt that began it while another
+ * still waits on it, and is aborted once every attempt waiting on it gave up
+ * (a cancelled request, a server shutting down), so a hung start never
+ * leaves what it started behind; the next attempt starts it afresh. Its
+ * notices and trace spans still go to the attempt that started it. An
+ * attempt that arrives while a process stops starts a fresh one once the
+ * stop is done.
  */
 export class SharedAppProcesses implements ProcessPool {
   private readonly entries = new Map<string, SharedEntry>();
-  /** Stops still running, by key. */
-  private readonly draining = new Map<string, Promise<void>>();
+  /** Stops still running, and starts abandoned, by key. */
+  private readonly draining = new Map<string, Promise<unknown>>();
 
-  async acquire(key: string, start: (signal: AbortSignal) => Promise<AppProcesses>): Promise<AppProcesses> {
+  async acquire(key: string, start: (signal: AbortSignal) => Promise<AppProcesses>, signal: AbortSignal): Promise<AppProcesses> {
     let entry = this.entries.get(key);
     if (entry === undefined) {
       // A stop that failed has still ended its process: the fresh start goes ahead.
       const drained = (this.draining.get(key) ?? Promise.resolve()).catch(() => undefined);
-      const created: SharedEntry = { users: 0, started: drained.then(() => start(NEVER_ABORTS)) };
-      created.started.catch(() => {
-        if (this.entries.get(key) === created) this.entries.delete(key);
-      });
+      const abandon = new AbortController();
+      const created: SharedEntry = { users: 0, settled: false, waiting: 0, abandon, started: drained.then(() => start(abandon.signal)) };
+      created.started.then(
+        () => {
+          created.settled = true;
+        },
+        () => {
+          created.settled = true;
+          this.forget(key, created);
+        },
+      );
       this.entries.set(key, created);
       entry = created;
     }
     const shared = entry;
     shared.users += 1;
-    const processes = await shared.started;
+    shared.waiting += 1;
+    const giveUp = (): void => {
+      shared.waiting -= 1;
+      if (shared.waiting > 0 || shared.settled) return;
+      shared.abandon.abort();
+      this.forget(key, shared);
+      this.draining.set(key, shared.started.catch(() => undefined));
+    };
+    if (signal.aborted) giveUp();
+    else signal.addEventListener('abort', giveUp, { once: true });
+    let processes: AppProcesses;
+    try {
+      processes = await shared.started;
+    } catch (cause) {
+      shared.users -= 1;
+      throw cause;
+    } finally {
+      signal.removeEventListener('abort', giveUp);
+      if (!signal.aborted) shared.waiting -= 1;
+    }
     return {
       stop: async (onFailure) => {
         shared.users -= 1;
         if (shared.users > 0) return;
-        this.entries.delete(key);
+        this.forget(key, shared);
         const stopping = processes.stop(onFailure);
         this.draining.set(key, stopping);
         try {
@@ -70,5 +105,10 @@ export class SharedAppProcesses implements ProcessPool {
         }
       },
     };
+  }
+
+  /** Drops `entry` from the pool, unless a fresh start already took its key. */
+  private forget(key: string, entry: SharedEntry): void {
+    if (this.entries.get(key) === entry) this.entries.delete(key);
   }
 }

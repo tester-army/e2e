@@ -106,7 +106,7 @@ What is sent and how to read it is on the [Telemetry](/telemetry) page.
 
 ## What app processes inherit
 
-An app `command` or `service` receives `PATH`, `HOME`, `TMPDIR`, `TMP`,
+An app `command` receives `PATH`, `HOME`, `TMPDIR`, `TMP`,
 `TEMP`, `SystemRoot`, and `COMSPEC`, plus whatever `command.env` sets.
 `APP_URL` is read by the scaffolded config module, not the runner; pass it
 through `command.env` if the dev server needs it too.

@@ -127,8 +127,8 @@ the page, see [Testing viewports](/viewports).
 
 ## Pick a browser
 
-The browser and the initial viewport are options of the engine. Two browsers
-on one app are two targets:
+The browser and the initial viewport are options of the engine; the app is
+the target's. Two browsers on one app are two targets:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -138,8 +138,8 @@ const app = { url: 'http://localhost:3000' };
 
 export default {
   targets: [
-    { name: 'chromium', engine: web(app) },
-    { name: 'webkit-mobile', engine: web({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
+    { name: 'chromium', engine: web(), app },
+    { name: 'webkit-mobile', engine: web({ browser: 'webkit', viewport: { width: 390, height: 844 } }), app },
   ],
 } satisfies E2EConfig;
 ```
@@ -311,9 +311,9 @@ export default {
     {
       name: 'hosted',
       engine: web({
-        url: 'https://staging.example.com',
         browser: hostedBrowsers({ serviceUrl: 'https://browsers.example.com' }),
       }),
+      app: { url: 'https://staging.example.com' },
     },
   ],
   workers: 2,

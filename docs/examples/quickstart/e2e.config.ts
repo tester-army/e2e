@@ -4,5 +4,5 @@ import { gateway } from 'ai';
 
 export default {
   agents: { default: { model: gateway('openai/gpt-6-luna-fast') } },
-  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
 } satisfies E2EConfig;

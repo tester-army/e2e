@@ -28,6 +28,7 @@ import {
   type EngineInitInfo,
   type EngineObserveOptions,
   type EngineSnapshot,
+  type EngineAppInfo,
   type LocatorAction,
   type LocatorExpression,
   type NodeRef,
@@ -55,10 +56,10 @@ import {
   type ProjectedSnapshot,
   type RawNode,
 } from './nodes.ts';
-import type { AgentDeviceClient, ClientFactory, DevicePermission, LaunchPermissions, MobileOptions, PermissionState } from './options.ts';
+import { DEVICE_PERMISSIONS, type AgentDeviceClient, type ClientFactory, type DevicePermission, type LaunchPermissions, type MobileOptions, type PermissionState } from './options.ts';
 import { maskPng } from './png.ts';
 import { deviceLabel, pinnedApp, type SlotBinding } from './bindings.ts';
-import { assertAppId, assertConfiguredApp } from './links.ts';
+import { assertAppId } from './links.ts';
 import { DevicePool, deviceSelection, type DeviceSelection } from './pool.ts';
 import { recordLease, travelledLease, type DeviceLease, type RecordingDeviceProvider } from './provider.ts';
 import {
@@ -94,7 +95,7 @@ export interface InstalledApp {
 }
 
 /** Why nothing is pinned with `appPath` alone: the install is the suite's. */
-const UNINSTALLED_BUILD = 'the build `appPath` names installed first with `device.installApp()`';
+const UNINSTALLED_BUILD = "the build the target's `app.appPath` names installed first with `device.installApp()`";
 
 /** The install fields this engine reads off agent-device's response. */
 interface RawInstallResult {
@@ -110,14 +111,14 @@ export interface OpenAppOptions {
   readonly relaunch?: boolean;
   /**
    * Arguments this launch hands the app: its process arguments on iOS,
-   * `am start` arguments on Android. Replaces the engine's `launchArguments`
-   * for a relaunch of the pinned app.
+   * `am start` arguments on Android. Replaces the target's
+   * `app.launchArguments` for a relaunch of the pinned app.
    */
   readonly launchArguments?: readonly string[];
   /**
    * Permissions the app holds before this launch, each granted, denied, or
-   * reset. Replaces the engine's `permissions` for a relaunch of the pinned
-   * app.
+   * reset. Replaces the target's `app.permissions` for a relaunch of the
+   * pinned app.
    */
   readonly permissions?: LaunchPermissions;
 }
@@ -280,34 +281,13 @@ const DEFAULT_SETTLE_QUIET_MS = 150;
 /** Every option `mobile()` takes, kept equal to `MobileOptions` by the compiler. */
 const MOBILE_OPTION_KEYS: readonly string[] = Object.keys({
   platform: true,
-  app: true,
-  appPath: true,
-  identity: true,
-  environment: true,
   device: true,
   session: true,
   snapshot: true,
   settle: true,
   transition: true,
   videoTouches: true,
-  launchArguments: true,
-  permissions: true,
 } satisfies Record<keyof MobileOptions, true>);
-
-/** Every permission agent-device sets, kept equal to `DevicePermission` by the compiler. */
-const PERMISSION_NAMES: readonly string[] = Object.keys({
-  camera: true,
-  microphone: true,
-  photos: true,
-  contacts: true,
-  notifications: true,
-  calendar: true,
-  location: true,
-  reminders: true,
-  motion: true,
-  siri: true,
-  'media-library': true,
-} satisfies Record<DevicePermission, true>);
 
 /** Every state a permission takes, kept equal to `PermissionState` by the compiler. */
 const PERMISSION_STATES: readonly string[] = Object.keys({ grant: true, deny: true, reset: true } satisfies Record<PermissionState, true>);
@@ -316,11 +296,11 @@ const PERMISSION_STATES: readonly string[] = Object.keys({ grant: true, deny: tr
  * Refuses a permissions map before any device command: anything but a plain
  * object, a name agent-device
  * does not set, naming the nearest, or a state other than grant, deny, or
- * reset. `INVALID_CONFIG` for the engine option, `INVALID_ARGUMENT` for a
- * test's `device.openApp`. An `undefined` state is skipped, as the preset
+ * reset. `INVALID_CONFIG` for a target's `app.permissions`, `INVALID_ARGUMENT`
+ * for a test's `device.openApp`. An `undefined` state is skipped, as the preset
  * skips it.
  */
-function assertPermissions(label: string, permissions: unknown, code: 'INVALID_CONFIG' | 'INVALID_ARGUMENT'): void {
+export function assertPermissions(label: string, permissions: unknown, code: 'INVALID_CONFIG' | 'INVALID_ARGUMENT'): void {
   const fail = (message: string): never => {
     throw code === 'INVALID_CONFIG' ? new ConfigurationError(code, message) : new TestError(code, message);
   };
@@ -329,7 +309,7 @@ function assertPermissions(label: string, permissions: unknown, code: 'INVALID_C
   if (prototype !== Object.prototype && prototype !== null) {
     fail(`${label} must be a plain object of permission names to ${PERMISSION_STATES.join(', ')}`);
   }
-  rejectUnknownKeys(label, permissions as object, PERMISSION_NAMES, code);
+  rejectUnknownKeys(label, permissions as object, DEVICE_PERMISSIONS, code);
   for (const [name, state] of Object.entries(permissions as Record<string, unknown>)) {
     if (state !== undefined && !PERMISSION_STATES.includes(state as string)) {
       fail(`${label}.${name} must be one of ${PERMISSION_STATES.join(', ')}, got ${typeof state === 'string' ? `"${state}"` : String(state)}`);
@@ -375,6 +355,8 @@ export class AgentDeviceSurface {
   private sessionApp: string | undefined;
   /** The app the build `appPath` installed, once `init` has, itself or through a lease. */
   private installedApp: string | undefined;
+  /** The target's app, as `init` received it. */
+  private app: EngineAppInfo = {};
   /** Where relative build paths resolve; the run's project root once init has told us. */
   private projectRoot = process.cwd();
   /** The session and device this worker drives, for the error messages whose recovery is per device; set in init. */
@@ -414,21 +396,24 @@ export class AgentDeviceSurface {
     private readonly createClient: ClientFactory,
   ) {
     rejectUnknownKeys('mobile()', options, MOBILE_OPTION_KEYS);
-    if (options.permissions !== undefined) assertPermissions('mobile({ permissions })', options.permissions, 'INVALID_CONFIG');
-    assertConfiguredApp(options.app);
     this.pool = new DevicePool(options, createClient);
     this.settleOptions = settleOptions(options.settle);
     this.transitionMs = transitionMs(options.transition);
   }
 
-  /** Whether the manifest declares app restart and state clearing. */
-  get managesApp(): boolean {
-    return this.options.app !== undefined || this.options.appPath !== undefined;
+  /** Whether the target pins an app for `app.open()`, `app.restart()`, and `app.clearState()` to launch. */
+  private get managesApp(): boolean {
+    return this.app.bundleId !== undefined || this.app.appPath !== undefined;
   }
 
-  /** The app `app.open()` launches: the `app` option, else the build `appPath` installed. */
+  /** The app `app.open()` launches: the target's `bundleId`, else the app its build `appPath` installed. */
   get pinnedApp(): string | undefined {
-    return pinnedApp(this.options, this.installedApp);
+    return pinnedApp(this.app, this.installedApp);
+  }
+
+  /** The build the target's `app.appPath` names, as declared. */
+  get appPath(): string | undefined {
+    return this.app.appPath;
   }
 
   /** Whether an attempt is running on this surface right now. */
@@ -495,6 +480,7 @@ export class AgentDeviceSurface {
 
   async init(info: EngineInitInfo): Promise<void> {
     this.projectRoot = info.projectRoot;
+    this.app = info.app;
     const binding = this.pool.binding(info.targetName, info.workerSlot, info.env);
     this.device = binding;
     const session = this.pool.session(info.targetName, info.workerSlot);
@@ -701,8 +687,8 @@ export class AgentDeviceSurface {
     // app. A foreground-only open of a running app takes no arguments, and a
     // permission change there would terminate the app it means to keep.
     const configured = relaunch && app === this.pinnedApp;
-    const launchArguments = options.launchArguments ?? (configured ? this.options.launchArguments : undefined);
-    const permissions = options.permissions ?? (configured ? this.options.permissions : undefined);
+    const launchArguments = options.launchArguments ?? (configured ? this.app.launchArguments : undefined);
+    const permissions = options.permissions ?? (configured ? this.app.permissions : undefined);
     if (permissions !== undefined) await this.presetPermissions(app, permissions, signal);
     await this.open(app, relaunch, launchArguments, signal);
   }
@@ -789,7 +775,7 @@ export class AgentDeviceSurface {
     if (target === undefined && this.options.platform === 'ios') {
       throw new TestError(
         'INVALID_ARGUMENT',
-        'openLink needs an app on iOS: pass `app`, or pin one with the engine option `app` or `appPath`; the session observes the app a link is opened into',
+        "openLink needs an app on iOS: pass `app`, or pin one with the target's app.bundleId or app.appPath; the session observes the app a link is opened into",
       );
     }
     const result = await this.command(
@@ -848,14 +834,14 @@ export class AgentDeviceSurface {
    * with no data; a plain install replaces the binary and keeps its data.
    */
   async installApp(appPath: string | undefined, options: InstallAppOptions, signal: AbortSignal): Promise<InstalledApp> {
-    const build = appPath ?? this.options.appPath;
-    if (build === undefined) throw invalidState('installApp needs a build: pass a path, or name one with the engine option `appPath`');
+    const build = appPath ?? this.app.appPath;
+    if (build === undefined) throw invalidState("installApp needs a build: pass a path, or name one with the target's app.appPath");
     const resolved = path.resolve(this.projectRoot, build);
     const selection = this.selection();
-    const engineBuild = appPath === undefined || (this.options.appPath !== undefined && resolved === path.resolve(this.projectRoot, this.options.appPath));
-    const app = options.app ?? (engineBuild ? this.options.app : undefined) ?? (options.reinstall === true ? this.pinnedApp : undefined);
+    const engineBuild = appPath === undefined || (this.app.appPath !== undefined && resolved === path.resolve(this.projectRoot, this.app.appPath));
+    const app = options.app ?? (engineBuild ? this.app.bundleId : undefined) ?? (options.reinstall === true ? this.pinnedApp : undefined);
     if (options.reinstall === true && app === undefined) {
-      throw invalidState('reinstall needs an app: pass `app`, or pin one with the engine option `app` or `appPath`');
+      throw invalidState("reinstall needs an app: pass `app`, or pin one with the target's app.bundleId or app.appPath");
     }
     const result = (await this.command(
       `install ${resolved}`,
@@ -1371,14 +1357,14 @@ export class AgentDeviceSurface {
 
   async restart(operation: OperationContext): Promise<void> {
     const app = this.pinnedApp;
-    if (app === undefined) throw unsupported(`app.restart needs the engine option \`app\`, or ${UNINSTALLED_BUILD}`);
+    if (app === undefined) throw unsupported(`app.restart needs the target's \`app.bundleId\`, or ${UNINSTALLED_BUILD}`);
     await this.openApp(app, { relaunch: true }, operation.signal);
   }
 
   /** Clears the pinned app's persisted state and relaunches it: the device equivalent of a fresh context. */
   async reset(operation: OperationContext): Promise<void> {
     const app = this.pinnedApp;
-    if (app === undefined) throw unsupported(`app.clearState needs the engine option \`app\`, or ${UNINSTALLED_BUILD}`);
+    if (app === undefined) throw unsupported(`app.clearState needs the target's \`app.bundleId\`, or ${UNINSTALLED_BUILD}`);
     await this.command(
       'clear app state',
       (client) => client.settings.update({ setting: 'clear-app-state', state: 'clear', app }),

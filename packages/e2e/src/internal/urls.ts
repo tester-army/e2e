@@ -124,11 +124,11 @@ export function resolveNavigationUrl(input: string, base: NormalizedBaseUrl | un
     url = new URL(input, base?.href);
   } catch {
     // A relative reference has nothing to resolve against on a target whose
-    // engine declares no URL; that is a missing URL, not a malformed one.
+    // target declares no URL; that is a missing URL, not a malformed one.
     if (base === undefined && !URL.canParse(input)) {
       throw new ConfigurationError(
         'APP_URL_REQUIRED',
-        `navigation to "${input}" needs an app URL; the target's engine declares none`,
+        `navigation to "${input}" needs an app URL; the target declares no app.url`,
       );
     }
     throw new ConfigurationError('POLICY_DENIED', `malformed URL: ${input}`);

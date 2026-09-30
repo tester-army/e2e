@@ -2,7 +2,7 @@
  * `easSimulators()` against a fake Expo GraphQL API behind a stubbed
  * `fetch`: the create input, polling to ready and the queue line, the lease
  * and its log lines, stopping on release and after a failed or cancelled
- * start, the token, and `appPath`.
+ * start, the token, and the target's `app.appPath`.
  */
 
 import type { DeviceReleaseContext, DeviceRequest } from '@e2e-dev/mobile';
@@ -326,8 +326,8 @@ describe('easSimulators()', () => {
     expect(eas.calls).toEqual([]);
   });
 
-  it('refuses the engine installing an app EAS already installs, and two app sources', async () => {
-    await expect(easSimulators({ projectId: 'p1', buildId: 'b1' }).acquire(request({ appPath: '/builds/App.app' }))).rejects.toThrow("leave the engine's `appPath` out");
+  it("refuses the target's app.appPath for an app EAS already installs, and two app sources", async () => {
+    await expect(easSimulators({ projectId: 'p1', buildId: 'b1' }).acquire(request({ appPath: '/builds/App.app' }))).rejects.toThrow("leave the target's `app.appPath` out");
     expect(eas.calls).toEqual([]);
     await expect(easSimulators({ projectId: 'p1' }).acquire(request({ appPath: '/builds/App.app' }))).resolves.toMatchObject({ id: 's1' });
     expect(() => easSimulators({ projectId: 'p1', buildId: 'b1', applicationArchiveUrl: 'https://example.com/App.tar.gz' })).toThrow(

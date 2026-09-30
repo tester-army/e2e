@@ -41,17 +41,25 @@ This skeleton assumes a `createClient` adapter for your platform. Its nodes
 must follow the semantic tree contract described below.
 
 ```ts title="src/index.ts"
-import { defineEngine, resolveExpression, type EngineHandle } from 'e2e/engine';
+import { ConfigurationError, defineEngine, resolveExpression, type EngineHandle } from 'e2e/engine';
 
-export function hyperdrive(options: { device: string; app: string }): EngineHandle {
+export function hyperdrive(options: { device: string }): EngineHandle {
   const client = createClient(options);
+  let bundleId = '';
   return defineEngine({
     name: 'hyperdrive',
     version: '1.0.0',
     spiVersion: 1,
     platform: 'ios',
-    app: { identity: options.app },
-    async init(info) { await client.boot(); },
+    validateApp(app, { targetName }) {
+      if (app.bundleId === undefined) {
+        throw new ConfigurationError('INVALID_CONFIG', `target "${targetName}" needs app.bundleId`);
+      }
+    },
+    async init(info) {
+      bundleId = info.app.bundleId!;
+      await client.boot();
+    },
     async dispose(context) { await client.shutdown({ signal: context.signal }); },
     async observe() {
       const screen = await client.snapshot();
@@ -76,21 +84,25 @@ export function hyperdrive(options: { device: string; app: string }): EngineHand
     },
     session: {
       async back() { await client.back(); },
-      async restart() { await client.relaunch(options.app); },
+      async restart() { await client.relaunch(bundleId); },
     },
   });
 }
 ```
 
 ```ts title="e2e.config.ts"
-targets: [{ name: 'phone', engine: hyperdrive({ device: 'iPhone 16', app: 'com.example.app' }) }],
+targets: [{ name: 'phone', engine: hyperdrive({ device: 'iPhone 16' }), app: { bundleId: 'com.example.app' } }],
 ```
 
 `version` is required and forms part of the replay cache key. Change it when
 engine behavior changes. With `perform`, also declare `actions` to list the
 supported action kinds. `locate` answers `screen` queries; the exported
 `resolveExpression` applies the standard query rules to a semantic tree.
-`app` describes the app under test; `session` provides methods to open or
+The app under test is the target's `app`, not an engine option:
+`validateApp` checks it at config load, and `prepare` and `init` receive it
+as `info.app`. An option your factory used to take and the target now
+declares fails with `rejectMovedOptions` from `e2e/engine`, which names every
+one at once. `session` provides methods to open or
 restart it.
 
 ## What an engine is not
@@ -117,6 +129,7 @@ fail with `UNSUPPORTED_CAPABILITY`. A useful engine starts with these:
 | `observe(context, options?)` | Agent observations and the replay cache |
 | `perform(ref, action, context)` + `actions` | Node actions of the declared kinds, including viewport scrolling through `swipe` |
 | `locate(expression, context)` | `screen`, `Locator`, and `expect(locator)` |
+| `validateApp(app, info)` | A config-load check of the target's `app`: throw `INVALID_CONFIG` naming `info.targetName` for a field the platform needs or cannot drive. [Reference](/reference/engine#app) |
 | `session.{open?,back?,restart?,reset?}` | `app.open()`, `app.back()`, `app.restart()`, `app.clearState()`, and the agent's `navigate` and `back` verbs |
 
 Pointer actions, the keyboard, saved state, artifacts, and contributed

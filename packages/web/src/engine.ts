@@ -13,8 +13,9 @@ import {
   isSecret,
   LOCATOR_ACTION_KINDS,
   POINTER_ACTION_KINDS,
-  obj,
+  rejectMovedOptions,
   rejectUnknownKeys,
+  type EngineAppCheckInfo,
   type EngineAppDeclaration,
   type EngineHandle,
 } from 'e2e/engine';
@@ -22,6 +23,18 @@ import { createRequire } from 'node:module';
 import { asBrowserProvider } from './provider.ts';
 import { PlaywrightSurface, type WebOptions } from './surface.ts';
 import { createWebFixture } from './web.ts';
+
+/** Options `web()` used to take that describe the app under test, each with where the target declares it now. */
+const MOVED_TO_TARGET: Readonly<Record<string, string>> = {
+  url: 'app.url',
+  environment: 'app.environment',
+  identity: 'app.identity',
+  command: 'app.command',
+  readyUrl: 'app.readyUrl',
+};
+
+/** App fields only a device target reads. */
+const NATIVE_APP_KEYS = ['bundleId', 'appPath', 'launchArguments', 'permissions'] as const;
 
 /** Creates one Playwright engine: one browser per worker, one context per attempt. */
 const surfaces = new WeakMap<EngineHandle, PlaywrightSurface>();
@@ -59,6 +72,13 @@ export function web(options: WebOptions = {}): EngineHandle {
       "web({ video }) was renamed web({ screencast }): it takes { size?, quality? } for the page screencast; which attempts record is the video mode on the config or a target",
     );
   }
+  if ('services' in options) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      "web({ services }) is gone: the runner starts only the target's app.command, so start dependency processes before the run; a services API returns in a later release",
+    );
+  }
+  rejectMovedOptions('web()', options, MOVED_TO_TARGET);
   rejectUnknownKeys('web()', options, WEB_OPTION_KEYS);
   const provider = typeof options.browser === 'object' && options.browser !== null ? asBrowserProvider(options.browser) : undefined;
   if (provider !== undefined && options.connect !== undefined) {
@@ -119,7 +139,7 @@ export function web(options: WebOptions = {}): EngineHandle {
       type: (text, keyboardOptions, operation) => surface.typeText(text, keyboardOptions, operation),
       press: (key, operation) => surface.pressKey(key, operation),
     },
-    app: declaredApp(options),
+    validateApp,
     ...(isSecret(options.basicAuth?.password) ? { secrets: [options.basicAuth.password] } : {}),
     session: {
       open: (url, operation) => surface.open(url, operation),
@@ -152,12 +172,6 @@ export function web(options: WebOptions = {}): EngineHandle {
 
 /** Every option `web()` takes, kept equal to `WebOptions` by the compiler. */
 const WEB_OPTION_KEYS: readonly string[] = Object.keys({
-  url: true,
-  environment: true,
-  identity: true,
-  command: true,
-  readyUrl: true,
-  services: true,
   browser: true,
   viewport: true,
   screencast: true,
@@ -308,10 +322,26 @@ function validateTestIdAttribute(attribute: unknown): void {
   }
 }
 
-/** The app-declaration half of the options, so browser knobs never reach the manifest. */
-function declaredApp(options: WebOptions): EngineAppDeclaration {
-  const { url, environment, identity, command, readyUrl, services } = options;
-  return obj({ url, environment, identity, command, readyUrl, services });
+/**
+ * A browser target opens a URL: without `app.url` there is nothing for
+ * `app.open()` to open, and the fields that describe an installed device app
+ * have nothing to act on here.
+ */
+function validateApp(app: EngineAppDeclaration, { targetName }: EngineAppCheckInfo): void {
+  for (const key of NATIVE_APP_KEYS) {
+    if (app[key] !== undefined) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `target "${targetName}" declares app.${key}, which describes an installed device app; a web() target opens app.url`,
+      );
+    }
+  }
+  if (app.url === undefined) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `target "${targetName}" needs app.url: a web() target opens the app at a URL, targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }]`,
+    );
+  }
 }
 
 /** This package's published version, read through require resolution. */

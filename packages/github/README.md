@@ -14,7 +14,7 @@ import { web } from '@e2e-dev/web';
 import { github } from '@e2e-dev/github';
 
 export default {
-  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
   reporters: ['list', github()],
 } satisfies E2EConfig;
 ```

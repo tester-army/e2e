@@ -14,7 +14,6 @@ import {
   EngineError,
   raceAbort,
   withinCleanupBudget,
-  type EngineAppDeclaration,
   type EngineAppInfo,
   type EngineAttemptContext,
   type EngineCleanupContext,
@@ -145,11 +144,11 @@ export interface WebScreencastOptions {
 }
 
 /**
- * Options of the browser engine: the app it drives (`url`, `command`,
- * `services`, `environment`, `identity`, `readyUrl` - the
- * engine contract's app declaration) plus the browser itself.
+ * Options of the browser engine: how it drives the app. The app itself
+ * (its `url`, `environment`, `identity`, and the command that starts it) is
+ * the target's `app`.
  */
-export interface WebOptions extends EngineAppDeclaration {
+export interface WebOptions {
   /**
    * Browser to launch, `chromium` by default. A `BrowserProvider` leases
    * hosted browsers instead: one per worker slot at `prepare`, or one per

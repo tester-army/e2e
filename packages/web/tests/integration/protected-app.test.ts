@@ -80,7 +80,7 @@ describe('web({ headers, basicAuth })', () => {
   });
 
   it('sends the headers to the app\'s site only, on every context of the attempt', async () => {
-    const engine = web({ url: app.url, headers: { 'X-Fixture-Header': 'let-me-in' } });
+    const engine = web({ headers: { 'X-Fixture-Header': 'let-me-in' } });
     try {
       await boot(engine, app, artifactsDir, 'h1');
       expect(await headingAt(engine, 'h1', `${app.url}/headers`)).toBe('let-me-in');
@@ -95,7 +95,7 @@ describe('web({ headers, basicAuth })', () => {
   });
 
   it('keeps the headers on a request an attempt route lets through', async () => {
-    const engine = web({ url: app.url, headers: { 'x-fixture-header': 'through-the-route' } });
+    const engine = web({ headers: { 'x-fixture-header': 'through-the-route' } });
     try {
       await boot(engine, app, artifactsDir, 'h2');
       let routed = 0;
@@ -118,7 +118,7 @@ describe('web({ headers, basicAuth })', () => {
       await navigator.serviceWorker.register('/sw.js').catch(() => undefined);
       return (await navigator.serviceWorker.getRegistrations()).length;
     };
-    const plain = web({ url: app.url });
+    const plain = web();
     try {
       await boot(plain, app, artifactsDir, 's0');
       await headingAt(plain, 's0', `${app.url}/`);
@@ -127,7 +127,7 @@ describe('web({ headers, basicAuth })', () => {
     } finally {
       await shutdown(plain);
     }
-    const engine = web({ url: app.url, headers: { 'x-fixture-header': 'no-workers' } });
+    const engine = web({ headers: { 'x-fixture-header': 'no-workers' } });
     try {
       await boot(engine, app, artifactsDir, 's1');
       await headingAt(engine, 's1', `${app.url}/`);
@@ -138,14 +138,14 @@ describe('web({ headers, basicAuth })', () => {
   });
 
   it('answers a basic-auth challenge wherever one is issued', async () => {
-    const unauthenticated = web({ url: app.url });
+    const unauthenticated = web();
     try {
       await boot(unauthenticated, app, artifactsDir, 'b0');
       expect(await headingAt(unauthenticated, 'b0', `${app.url}/protected`)).toBe('Unauthorized');
     } finally {
       await shutdown(unauthenticated);
     }
-    const engine = web({ url: app.url, basicAuth: PROTECTED_CREDENTIAL });
+    const engine = web({ basicAuth: PROTECTED_CREDENTIAL });
     try {
       await boot(engine, app, artifactsDir, 'b1');
       expect(await headingAt(engine, 'b1', `${app.url}/protected`)).toBe('Protected');
@@ -157,7 +157,7 @@ describe('web({ headers, basicAuth })', () => {
 
   it('answers the challenge with a secrets.get() password the attempt resolves', async () => {
     const asked: string[] = [];
-    const engine = web({ url: app.url, basicAuth: { username: PROTECTED_CREDENTIAL.username, password: secrets.get('previewPassword') } });
+    const engine = web({ basicAuth: { username: PROTECTED_CREDENTIAL.username, password: secrets.get('previewPassword') } });
     try {
       await boot(engine, app, artifactsDir, 's1', async (secret) => {
         asked.push(secret.name);
@@ -171,7 +171,7 @@ describe('web({ headers, basicAuth })', () => {
   });
 
   it('reports the configured user agent to the page, after a context reset too', async () => {
-    const engine = web({ url: app.url, userAgent: 'Mozilla/5.0 e2e-probe playwright' });
+    const engine = web({ userAgent: 'Mozilla/5.0 e2e-probe playwright' });
     try {
       await boot(engine, app, artifactsDir, 'u0');
       await engine.session!.open!(app.url, operation('u0'));

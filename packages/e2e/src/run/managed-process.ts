@@ -1,10 +1,10 @@
-/** Spawned-process management for the commands and services engines declare, and their teardowns. */
+/** Spawned-process management for the app commands targets declare. */
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
-import type { Readiness, ResolvedService } from '../config/app.ts';
+import type { Readiness } from '../config/command.ts';
 import { InfrastructureError } from '../internal/errors.ts';
 import { createRedactor } from '../internal/redact.ts';
 import { sleep } from '../internal/time.ts';
@@ -102,6 +102,7 @@ export interface ManagedProcessHooks {
 export class ManagedProcess {
   private child: ChildProcess | null = null;
   private reusedExisting = false;
+  private spawnedProcess = false;
 
   constructor(
     private readonly label: string,
@@ -111,9 +112,12 @@ export class ManagedProcess {
     private readonly hooks: ManagedProcessHooks = {},
   ) {}
 
-  /** True once `start` found the readiness URL already answering and attached to it instead of spawning. */
-  get reused(): boolean {
-    return this.reusedExisting;
+  /**
+   * True once `start` spawned a process: not when it attached to one already
+   * serving the URL, found one there it may not reuse, or failed to spawn.
+   */
+  get spawned(): boolean {
+    return this.spawnedProcess;
   }
 
   /**
@@ -198,6 +202,7 @@ export class ManagedProcess {
       if (logFd !== undefined) fs.closeSync(logFd);
     }
     this.child = child;
+    this.spawnedProcess = child.pid !== undefined;
     live.add(child);
     let spawnError: Error | undefined;
     child.on('error', (error) => {
@@ -382,61 +387,12 @@ export class ManagedProcess {
   }
 }
 
-/**
- * The dependency processes the engines declared as `services`: started
- * sequentially in declaration order, each ready before the next starts, and
- * torn down in reverse.
- */
-export class ServiceStack {
-  private readonly started: {
-    readonly service: ManagedProcess;
-    readonly teardown: ManagedProcess | undefined;
-  }[] = [];
-
-  constructor(
-    private readonly services: readonly ResolvedService[],
-    private readonly projectRoot: string,
-    private readonly hooks: ManagedProcessHooks = {},
-  ) {}
-
+/** What one started process, or everything a run or a session started, is released by. */
+export interface AppProcesses {
   /**
-   * Starts every service in order. Stops early once `signal` aborts; the
-   * services already started still get their teardown from `stop`.
+   * Stops what was started, in reverse. Every failure is reported through
+   * `onFailure` and never skips the rest, so one failing stop cannot leave
+   * the others running.
    */
-  async start(signal?: AbortSignal): Promise<void> {
-    for (const { label, command, readiness, teardown } of this.services) {
-      if (signal?.aborted === true) return;
-      const service = new ManagedProcess(label, command, this.projectRoot, readiness, this.hooks);
-      this.started.push({
-        service,
-        teardown:
-          teardown === undefined
-            ? undefined
-            : new ManagedProcess(teardown.label, teardown.command, this.projectRoot, {
-                waitForExit: true,
-              }),
-      });
-      await service.start(signal);
-    }
-  }
-
-  /**
-   * Stops the started services in reverse order, then runs each of their
-   * teardown commands in reverse order and waits for it to exit. A failing
-   * teardown is reported through `onFailure` and never skips the rest, so one
-   * failing `docker compose down` cannot leave the others running. A reused
-   * service was not started by this run, so its teardown does not run either.
-   */
-  async stop(onFailure: (cause: unknown) => void): Promise<void> {
-    const started = this.started.splice(0).toReversed();
-    for (const { service } of started) await service.stop();
-    for (const { service, teardown } of started) {
-      if (teardown === undefined || service.reused) continue;
-      try {
-        await teardown.start();
-      } catch (cause) {
-        onFailure(cause);
-      }
-    }
-  }
+  stop(onFailure: (cause: unknown) => void): Promise<void>;
 }

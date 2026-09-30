@@ -3,7 +3,8 @@
  * engine, an idle session closes itself, the TTL ends a session through the
  * step's own deadline, sessions open side by side up to the limit, hold their
  * engine and config until their attempt is gone, and share one app process,
- * a shutdown waits for sessions still opening, an `open_session` that fails
+ * a shutdown cancels sessions still opening and waits for them, a cancelled
+ * open stops what it started, an `open_session` that fails
  * after the attempt opened tears the attempt down and leaves the host ready
  * for the next one, and a session records video only when the agent asks.
  */
@@ -12,11 +13,11 @@ import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createFakeEngine, type FakeEngineBehavior, type FakeEngineHandle } from '../helpers/fake-engine.ts';
+import { createFakeEngine, FAKE_APP, type FakeEngineBehavior, type FakeEngineHandle } from '../helpers/fake-engine.ts';
 import { freePort } from '../helpers/free-port.ts';
 import { gate } from '../helpers/gate.ts';
 import { startupLog, writeStartupScripts } from '../helpers/startup-scripts.ts';
-import type { RecordingMode } from '../../src/types.ts';
+import type { RecordingMode, TargetApp } from '../../src/types.ts';
 
 const sessionModule = new URL('../../dist/mcp/session.js', import.meta.url).href;
 const { SessionHost } = (await import(sessionModule)) as typeof import('../../src/mcp/session.ts');
@@ -52,6 +53,8 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     readonly maxSessions?: number;
     readonly trace?: RecordingMode;
     readonly video?: RecordingMode;
+    /** The target's app; the fake's own URL by default. */
+    readonly app?: TargetApp;
     /** Holds every config load until it settles. */
     readonly loaded?: Promise<void>;
     /** Runs while a config file evaluates, as its top-level code would. */
@@ -71,7 +74,7 @@ describe('SessionHost', { timeout: 60_000 }, () => {
         options.evaluate?.(configPath);
         const config = resolveConfig(
           {
-            targets: [{ name: 'kiosk', platform: 'kiosk', engine: engine().engine }],
+            targets: [{ name: 'kiosk', platform: 'kiosk', engine: engine().engine, app: options.app ?? FAKE_APP }],
             credentials: { admin: { username: 'admin', password: 'kiosk-pw' } },
             ...(options.trace === undefined ? {} : { trace: options.trace }),
             ...(options.video === undefined ? {} : { video: options.video }),
@@ -299,7 +302,7 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     const port = await freePort();
     const url = `http://127.0.0.1:${port}`;
     writeStartupScripts(dir);
-    const shared = host(engines({ app: { url, command: { executable: process.execPath, args: ['server.cjs', String(port)] } } }).next, { maxSessions: 3 });
+    const shared = host(engines().next, { maxSessions: 3, app: { url, command: { executable: process.execPath, args: ['server.cjs', String(port)] } } });
     const [first, second] = (await Promise.all([shared.open({}), shared.open({})])).map(sessionId) as [string, string];
     expect(startupLog(dir)).toBe('app\n');
     await shared.close('done', first);
@@ -308,7 +311,7 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     await expect(fetch(url)).rejects.toThrow();
   });
 
-  it('waits for a session still opening before it shuts down, and admits none meanwhile', async () => {
+  it('cancels a session still opening when it shuts down, waits for it, and admits none meanwhile', async () => {
     const loading = gate();
     const fakes = engines();
     const shutting = host(fakes.next, { loaded: loading.promise });
@@ -322,10 +325,27 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     await sleep(50);
     expect(shutDown).toBe(false);
     loading.open();
-    const id = sessionId(await opening);
-    expect(await closed).toContain(`Session ${id} closed (server shutdown)`);
+    await expect(opening).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(await closed).toBeUndefined();
     expect(shutting.isOpen).toBe(false);
-    expect(fakes.made.map((fake) => fake.stats())).toEqual([expect.objectContaining({ attemptsStarted: 1, attemptsEnded: 1, disposes: 1 })]);
+    expect(fakes.made.map((fake) => fake.stats())).toEqual([expect.objectContaining({ attemptsStarted: 0 })]);
+  });
+
+  it('stops the app command a hung start left running when the request is cancelled', async () => {
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}`;
+    writeStartupScripts(dir);
+    // The server answers, but the readiness probe never does: the start hangs with the process up.
+    const cancelling = host(engines().next, {
+      app: { url, readyUrl: 'http://127.0.0.1:1/', command: { executable: process.execPath, args: ['server.cjs', String(port)], startupTimeout: 600_000 } },
+    });
+    const request = new AbortController();
+    const opening = cancelling.open({}, request.signal);
+    await expect.poll(() => fetch(url).then((response) => response.ok, () => false)).toBe(true);
+    request.abort();
+    await expect(opening).rejects.toMatchObject({ code: 'CANCELLED' });
+    await expect(fetch(url)).rejects.toThrow();
+    expect(cancelling.isOpen).toBe(false);
   });
 
   it('keeps the credential registry of an open session when another fails to open', async () => {

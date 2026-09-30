@@ -46,7 +46,7 @@ export type {
 export { Deadline, pollCondition, withTimeout, withinCleanupBudget, type PollConditionOptions } from '../internal/time.ts';
 export { sameSite, siteOf, urlMatches } from '../internal/urls.ts';
 export { obj, type WithoutUndefined } from '../internal/objects.ts';
-import type { CommandConfig, Expectable, Locator, Screen, Secret, ServiceConfig } from '../types.ts';
+import type { AppPermissionState, Expectable, Locator, Screen, Secret } from '../types.ts';
 import type {
   EngineSpiVersion,
   LocatorAction,
@@ -76,7 +76,7 @@ export {
   RETRYABLE_ENGINE_ERROR_CODES,
   parseKey,
 } from './contract.ts';
-export type { CommandConfig, ServiceConfig, Expectable, JsonValue, Locator, Screen, Secret } from '../types.ts';
+export type { AppPermissionState, Expectable, JsonValue, Locator, Screen, Secret } from '../types.ts';
 export { isSecret } from '../secrets.ts';
 
 /**
@@ -130,79 +130,50 @@ export interface EngineKeyboard {
   dismiss?(context: OperationContext): Promise<void>;
 }
 
-/**
- * What an engine declares about the app it drives. The app
- * under test is the engine's to describe: a browser engine names a URL, a
- * device engine a bundle id. The harness resolves the declaration once per
- * target and owns everything built on it - navigation and origin policy,
- * cache and session identity, the report's target record, and the app
- * process it starts before the run.
- */
-export interface EngineAppDeclaration {
-  /**
-   * Base URL of an addressable app: `app.open()` opens it and relative
-   * navigation resolves against it. WHATWG-normalized; no userinfo, query, or
-   * fragment; a missing scheme becomes `https://`, or `http://` for a
-   * loopback host. Plain HTTP is accepted for loopback hosts only. A URL on
-   * `127.0.0.1` or `[::1]` with port 0 asks the run for a free port,
-   * substituted wherever the declaration used it and handed to `command` and
-   * `services` as `{port}`.
-   */
-  readonly url?: string;
-  /**
-   * Labels the target in the report and joins the cache and session identity
-   * digest; never gates a run. Defaults to `test` for loopback, `.localhost`,
-   * and `.test` hosts and for a surface without a URL, `production` otherwise.
-   */
-  readonly environment?: 'test' | 'staging' | 'production';
-  /**
-   * Stable logical identity of the app under test, keying replay cache and
-   * session entries. Defaults to the URL's origin and base path, so an
-   * ephemeral per-deploy origin (a PR preview) cold-starts every entry; an
-   * explicit identity keys them by what the app *is* instead of where it is
-   * served this run. A surface without a URL has no default: declare one
-   * (a bundle id, say) or entries key on the target alone. Never share one
-   * identity across genuinely different apps: recorded traces would replay
-   * across them.
-   */
-  readonly identity?: string;
-  /**
-   * Process the runner starts before the first test and stops on every exit
-   * path (a dev server). Structured, never shell-interpreted; the child
-   * inherits only `PATH`, `HOME`, the temp-directory variables, and
-   * `command.env`. Targets declaring the same command share one process,
-   * probed at the first declaring target's `readyUrl`.
-   */
-  readonly command?: CommandConfig;
-  /** URL polled until `command` is ready (a 200-499 status); defaults to `url`. */
-  readonly readyUrl?: string;
-  /**
-   * Dependency processes the app needs before it can boot (a database
-   * container, a migration step), started in declaration order before any
-   * app command and torn down in reverse after it. Valid without `command`:
-   * the app may already be running, or be one of the services itself.
-   * Services declared identically by several targets start once; shared
-   * services must be declared in one order, and an explicit `name` must mean
-   * one process across the run.
-   */
-  readonly services?: readonly ServiceConfig[];
+/** Handed to `Engine.validateApp` beside the declaration. */
+export interface EngineAppCheckInfo {
+  /** The target declaring the app, for the message of a refusal. */
+  readonly targetName: string;
 }
 
 /**
- * The site policy the harness resolved from the engine's declaration, handed
- * back at init, for the decisions only a surface can make: which nested
- * documents enter an observation, which requests carry injected credentials.
+ * The app the harness resolved from the target's declaration, handed to
+ * `prepare` and `init`: the site policy for the decisions only a surface can
+ * make (which nested documents enter an observation, which requests carry
+ * injected credentials), and what a device launches. The URL itself stays
+ * with the harness: a surface never learns where the app is, and opens what
+ * `session.open` is given.
  */
 export interface EngineAppInfo {
   /**
    * The site of the app's `url`, its registrable domain as `siteOf` reads it:
    * where the app's secrets, headers, and basic-auth credentials may go, and
    * whose child frames an observation reads; `sameSite` applies it. Absent
-   * for an app without a URL, which is no policy at all. The URL itself stays
-   * with the harness: a surface never learns where the app is.
+   * for an app without a URL, which is no policy at all.
    */
   readonly site?: string;
+  /** The installed app to launch, as the target declared it. */
+  readonly bundleId?: string;
+  /** The build to install, as the target declared it; relative to `projectRoot`. */
+  readonly appPath?: string;
+  /** Arguments every fresh launch passes the app. */
+  readonly launchArguments?: readonly string[];
+  /** Permissions the app holds on every fresh launch, by name. */
+  readonly permissions?: Readonly<Record<string, AppPermissionState>>;
 }
+
+/**
+ * The app a target declares, as its engine reads it at config load: what it
+ * is and where it is served. The app is the target's alone
+ * (`targets: [{ engine, app }]`); an engine only drives it. The harness has
+ * checked the shape of every field before `Engine.validateApp` sees it, so
+ * an engine can require what its platform needs (a URL, a bundle id) and
+ * refuse what it cannot drive, naming the target.
+ */
+export type EngineAppDeclaration = EngineAppInfo & {
+  /** Base URL the target opens, as declared; see `TargetApp.url`. */
+  readonly url?: string;
+};
 
 /** Explicit recording policy for one async fixture method. Arguments enter reports only through label. */
 export interface FixtureOperation<Args extends unknown[] = unknown[]> {
@@ -230,7 +201,7 @@ export interface EngineFixtureContext {
   readonly app: EngineAppInfo & {
     /**
      * Resolves a navigation target against the base URL. Throws
-     * `APP_URL_REQUIRED` when the engine declared no URL and `POLICY_DENIED`
+     * `APP_URL_REQUIRED` when the target declares no URL and `POLICY_DENIED`
      * for a `file:`, `data:`, or `javascript:` scheme, so a fixture never
      * re-implements the rule the harness owns.
      */
@@ -377,7 +348,7 @@ export interface VideoLink {
 
 /**
  * Steering hooks behind the universal `app` fixture and the agent's
- * `navigate` verb. The app itself is described in `Engine.app`, as data;
+ * `navigate` verb. The app itself is the target's `app`, handed over as data;
  * node actions never live here, they are `perform`.
  *
  * `restart` and `reset` open nothing on an addressable surface: they end at
@@ -431,6 +402,8 @@ export interface EnginePrepareInfo {
   readonly targetName: string;
   /** Directory relative paths in the config resolve against; see `EngineInitInfo.projectRoot`. */
   readonly projectRoot: string;
+  /** The app the target declares, as `init` receives it: what a device installs or warms up here. */
+  readonly app: EngineAppInfo;
   /**
    * The worker slots the run will start for this target, `0` to `slots - 1`:
    * the run's worker cap, the engine's declared `workers`, and the work units
@@ -486,7 +459,7 @@ export interface EngineInitInfo {
    * `process.cwd()`, which an in-process run does not change.
    */
   readonly projectRoot: string;
-  /** The site policy resolved from the engine's `app` declaration. */
+  /** The app the target declares: the site policy of its URL, and what a device launches. */
   readonly app: EngineAppInfo;
   /**
    * This worker's environment: the run's, plus what this target's `prepare`
@@ -742,8 +715,14 @@ export interface Engine {
   readonly state?: EngineStateCapability;
   /** capability: artifacts - screenshots and traces under the attempt directory. */
   readonly artifacts?: EngineArtifacts;
-  /** The app under test, as data: url, identity, environment, command, services. */
-  readonly app?: EngineAppDeclaration;
+  /**
+   * Checks the app a target declares against what this engine can drive, at
+   * config load, synchronously: throw `INVALID_CONFIG` naming
+   * `info.targetName` for a field the platform needs and the target left out
+   * (a URL, a bundle id) or one it cannot drive. The harness has already
+   * checked every field's shape.
+   */
+  validateApp?(app: EngineAppDeclaration, info: EngineAppCheckInfo): void;
   /** Steering hooks: open, back, restart, reset. */
   readonly session?: EngineSession;
   /**
@@ -809,3 +788,4 @@ export interface EngineHandle extends Engine {
 }
 
 export { defineEngine, isEngineHandle } from './manifest.ts';
+export { rejectMovedOptions } from './moved-options.ts';

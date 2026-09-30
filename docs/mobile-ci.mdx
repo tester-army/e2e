@@ -33,8 +33,8 @@ import { mobile } from '@e2e-dev/mobile';
 
 export default {
   targets: [
-    { name: 'ios', engine: mobile({ platform: 'ios', app: 'com.example.app' }) },
-    { name: 'android', engine: mobile({ platform: 'android', app: 'com.example.app' }) },
+    { name: 'ios', engine: mobile({ platform: 'ios' }), app: { bundleId: 'com.example.app' } },
+    { name: 'android', engine: mobile({ platform: 'android' }), app: { bundleId: 'com.example.app' } },
   ],
   workers: 1,
 } satisfies E2EConfig;
@@ -76,7 +76,7 @@ The engine uses the booted device and asks agent-device to boot one when
 none is up. Boot it yourself as a step anyway: a fresh Linux runner has no
 emulator image to boot until you install one, and a boot in its own step
 tells a slow or failed boot apart from a failed test. To have the suite
-install the build instead, set `appPath` and call `device.installApp()`; see
+install the build instead, set `app.appPath` and call `device.installApp()`; see
 [Point at your app](/mobile#point-at-your-app).
 
 A few things hold on every service:

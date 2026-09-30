@@ -51,10 +51,11 @@ itself: `npx e2e guide bug-bash`.
   port `0` so each run starts its own copy. `reuseExisting` does not apply
   when `CI` is set; use port `0` there. See
   [Starting your app](/starting-your-app).
-- When the target also starts services with a teardown, such as a database
-  from `docker compose`, start the stack once and explore with a config
-  that points at the running app and declares no services, so one
-  explorer's teardown never removes the database under the others.
+- When the target's `app.command` brings up a stack of its own, such as a
+  database from `docker compose` it removes on exit, start the stack once
+  and explore with a config that points at the running app and declares no
+  command, so one explorer's exit never removes the database under the
+  others.
 - Prefer a production build. A dev server that compiles a route on its
   first visit looks to an explorer like a link that does nothing.
 - Give each charter its own seeded account, and tell the explorers in the

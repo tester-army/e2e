@@ -36,7 +36,8 @@ export default {
   targets: [
     {
       name: 'kernel',
-      engine: web({ url: 'https://staging.example.com', browser: kernel() }),
+      engine: web({ browser: kernel() }),
+      app: { url: 'https://staging.example.com' },
     },
   ],
 } satisfies E2EConfig;
@@ -53,7 +54,6 @@ Size the screen with Kernel's `viewport` and set the web engine's
 
 ```ts
 web({
-  url,
   browser: kernel({ viewport: { width: 1920, height: 1080 } }),
   viewport: null,
 })
@@ -105,7 +105,8 @@ export default {
   targets: [
     {
       name: 'kernel',
-      engine: web({ url: 'https://staging.example.com', browser: kernel(), viewport: null }),
+      engine: web({ browser: kernel(), viewport: null }),
+      app: { url: 'https://staging.example.com' },
       video: 'retain-on-failure',
     },
   ],

@@ -18,10 +18,11 @@ export default {
     {
       name: 'web',
       platform: 'web',
-      engine: web({
+      engine: web(),
+      app: {
         url: 'http://127.0.0.1:4280',
         command: { executable: 'pnpm', args: ['run', 'start'], reuseExisting: true },
-      }),
+      },
     },
   ],
   // The key names this suite's comment beside the agentic one's.

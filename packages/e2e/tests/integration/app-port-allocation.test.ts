@@ -48,10 +48,11 @@ import { web } from '@e2e-dev/web';
 export default {
   targets: [{
     name: 'web',
-    engine: web({
+    engine: web(),
+    app: {
       url: 'http://127.0.0.1:0',
       command: { executable: process.execPath, args: ['server.cjs'], env: { PORT: '{port}' } },
-    }),
+    },
   }],
   workers: 1,
 } satisfies E2EConfig;
@@ -59,7 +60,7 @@ export default {
 
 /** One target per name, every one asking for its own port with the same declaration. */
 function targets(names: readonly string[]): NonNullable<E2EConfig['targets']> {
-  return names.map((name) => ({ name, engine: web(DECLARATION) })) as unknown as NonNullable<
+  return names.map((name) => ({ name, engine: web(), app: DECLARATION })) as unknown as NonNullable<
     E2EConfig['targets']
   >;
 }

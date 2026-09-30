@@ -14,7 +14,7 @@ import { gateway } from 'ai';
 const vocabulary = 'Plans are called tiers. Billing lives under Settings. "Approve" on an order refunds it.';
 
 export default {
-  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
   agents: {
     default: { model: gateway('openai/gpt-6-luna-fast'), context: vocabulary },
     thorough: {

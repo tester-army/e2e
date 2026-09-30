@@ -53,7 +53,7 @@ export interface EasSimulatorsOptions {
   /**
    * EAS Build EAS installs and launches on every simulator before the session
    * is ready: a simulator build (`ios.simulator: true`) or an APK. Pair it
-   * with the engine's `app` and leave `appPath` out.
+   * with the target's `app.bundleId` and leave `app.appPath` out.
    */
   readonly buildId?: string | undefined;
   /** URL of an app archive EAS downloads and installs in place of an EAS Build; excludes `buildId`. */
@@ -114,7 +114,7 @@ export function easSimulators(options: EasSimulatorsOptions): DeviceProvider {
     name: 'eas-simulators',
     async acquire(request: DeviceRequest): Promise<DeviceLease> {
       if (request.appPath !== undefined && (buildId !== undefined || applicationArchiveUrl !== undefined)) {
-        throw new Error("EAS installs the app from `buildId` or `applicationArchiveUrl`; leave the engine's `appPath` out");
+        throw new Error("EAS installs the app from `buildId` or `applicationArchiveUrl`; leave the target's `app.appPath` out");
       }
       const client = clientFor(request.env);
       // Not the request's signal: an interrupt that lands after EAS created the session would leave it unknown, and billed.

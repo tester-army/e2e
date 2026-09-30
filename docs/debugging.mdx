@@ -158,8 +158,8 @@ export default {
   video: 'on-first-retry',
   retries: 1,
   targets: [
-    { name: 'chromium', engine: web({ url }) },
-    { name: 'firefox', engine: web({ url, browser: 'firefox' }), video: 'retain-on-failure' },
+    { name: 'chromium', engine: web(), app: { url } },
+    { name: 'firefox', engine: web({ browser: 'firefox' }), app: { url }, video: 'retain-on-failure' },
   ],
 } satisfies E2EConfig;
 ```
@@ -267,8 +267,8 @@ when you need to inspect the whole flow or rule out a stale recording. See
 
 | Code | Usual cause | Fix |
 | --- | --- | --- |
-| `APP_UNREACHABLE` | Nothing answers at `url`, or `command` never became ready; on a device, the message may name the iOS automation runner instead (busy, wedged, or a snapshot it could not present) | Set `command.log` and read it; check the port; raise `startupTimeout`. For the runner, follow the recovery in the message: `npx agent-device daemon stop`, reboot the simulator (see [Testing iOS and Android](/mobile#troubleshooting)) |
-| `APP_ALREADY_RUNNING` | Something already serves `url` when the runner wanted to start `command` | Stop it, or set `reuseExisting: true` for local runs |
+| `APP_UNREACHABLE` | Nothing answers at `app.url`, or `app.command` never became ready; on a device, the message may name the iOS automation runner instead (busy, wedged, or a snapshot it could not present) | Set `app.command.log` and read it; check the port; raise `startupTimeout`. For the runner, follow the recovery in the message: `npx agent-device daemon stop`, reboot the simulator (see [Testing iOS and Android](/mobile#troubleshooting)) |
+| `APP_ALREADY_RUNNING` | Something already serves `app.url` when the runner wanted to start `app.command` | Stop it, or set `reuseExisting: true` for local runs |
 | `LOCATOR_NOT_FOUND` | Wrong role or name, text not exact, element inside an iframe, page not open | Read the markup for the accessible name; try `exact: false`; `web.frameLocator` for iframes; `--headed` to look |
 | `LOCATOR_AMBIGUOUS` | Two matches: a hidden duplicate, a repeated label | Add `{ name }`, scope under a container, `filter`, `first()`, or `{ visible: true }` |
 | `ASSERTION_FAILED` | The expectation is wrong, or the state settles after 5 s; for `agent.assert`, the judgment was false | Compare with the screenshot; `{ timeout }` on the matcher; rewrite the question |

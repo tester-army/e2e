@@ -18,7 +18,7 @@ reference pages hold the details: [screen](/reference/screen),
 
 | Maestro | e2e | Status |
 | --- | --- | --- |
-| `appId` at the top of every flow | `mobile({ app: 'com.example.app' })`, the app `app.open()` launches | renamed |
+| `appId` at the top of every flow | `app: { bundleId: 'com.example.app' }` on the target, the app `app.open()` launches | renamed |
 | a different `appId` per flow | `device.openApp(id)` inside the test, or separate app-specific configs and runs; every test runs on every selected target | renamed |
 | `--platform ios` | `mobile({ platform: 'ios' })`, one engine per platform | renamed |
 | `--device` | `mobile({ device: 'iPhone 17' })`; a list is a pool, one worker per device | renamed |
@@ -85,11 +85,11 @@ declares `requires: ['device']` so other targets skip it. `Status` is `same`,
 
 | Maestro | e2e | Status |
 | --- | --- | --- |
-| `launchApp` | `app.open()`, the fresh launch of the pinned `app`; nothing launches on its own | renamed |
+| `launchApp` | `app.open()`, the fresh launch of the target's `app.bundleId`; nothing launches on its own | renamed |
 | `launchApp: { clearState: true }`, `clearState` | `app.clearState()` | renamed |
 | `launchApp: { stopApp: false }` | `device.openApp(id)` without `relaunch` | device only |
-| `launchApp: { arguments }` | `launchArguments` on the engine, or `device.openApp(app, { relaunch: true, launchArguments })` for one launch; a list of strings, not a map | renamed |
-| `launchApp: { permissions }` | `permissions` on the engine, set before every fresh launch, or `device.openApp(app, { relaunch: true, permissions })` for one; `grant`, `deny`, `reset` for `allow`, `deny`, `unset`; no `all`, nothing is granted unless named | renamed |
+| `launchApp: { arguments }` | `app.launchArguments` on the target, or `device.openApp(app, { relaunch: true, launchArguments })` for one launch; a list of strings, not a map | renamed |
+| `launchApp: { permissions }` | `app.permissions` on the target, set before every fresh launch, or `device.openApp(app, { relaunch: true, permissions })` for one; `grant`, `deny`, `reset` for `allow`, `deny`, `unset`; no `all`, nothing is granted unless named | renamed |
 | `stopApp`, `killApp` | `device.closeApp()` | device only |
 | `stopApp`, then `launchApp` | `app.restart()` | renamed |
 | `clearKeychain` | `device.clearKeychain()`, the whole simulator's keychain; iOS only | renamed |

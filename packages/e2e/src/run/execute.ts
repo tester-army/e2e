@@ -20,8 +20,8 @@ import { isRuntimeSkip, type RuntimeSkip } from '../internal/skip.ts';
 import type { ExecutorAttempt } from '../agent/executor.ts';
 import { withAiTraceScope } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
-import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.ts';
-import { obj } from '../internal/objects.ts';
+import { timestamp, uuidv7 } from '../internal/ids.ts';
+import { engineAppInfo } from '../config/app.ts';
 import { Deadline, NEVER_ABORTS, withAbort, withScopedBudget, withTimeout } from '../internal/time.ts';
 import { createAgentCacheContext, flushStagedTraces } from '../cache/context.ts';
 import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
@@ -30,7 +30,6 @@ import type { AttemptRecording, AttemptRecordings, RecordingKind } from '../inte
 import type { ArtifactStore, Secret } from '../types.ts';
 import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
 import { AttemptBudget } from './budget.ts';
-import { ENGINE_SPI_VERSION } from '../engine/contract.ts';
 import { createEngineSession } from '../engine/session.ts';
 import { createExtendedFixtures } from './extended-fixtures.ts';
 import { captureFailureEvidence } from './failure-evidence.ts';
@@ -51,7 +50,7 @@ import { runSerialUnit, type SerialHost, type SharedSerialSession } from './seri
 import { interruptedSkip, pairKey, pairResult, repeatSegment, unstartedResult } from './units.ts';
 import { adoptSecrecy, carriedSecrecy, processSecrets, registerDerivedSecrets, resolveSecretValue, sessionSecrecy } from './secrecy.ts';
 import { isSecret } from '../secrets.ts';
-import { SessionStaging, SessionStore, type SessionIdentity } from './sessions.ts';
+import { SessionStaging, SessionStore, targetIdentity, type SessionIdentity } from './sessions.ts';
 import { redactTraceArchives } from './trace-redaction.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
 import { EngineError } from '../engine/contract.ts';
@@ -186,23 +185,7 @@ export class TargetExecutor implements SerialHost {
       runErrors: this.runErrors,
       debug: this.debug,
     });
-    this.sessionIdentity = {
-      targetId: options.target.name,
-      // Session and cache identity comes from the engine declaration, so a
-      // engine swap never restores another engine's state.
-      engineName: options.target.engine?.name ?? 'none',
-      engineVersion: options.target.engine?.version ?? 'unversioned',
-      spiVersion: options.target.engine?.spiVersion ?? ENGINE_SPI_VERSION,
-      platform: options.target.platform,
-      // The engine's declared identity (else the URL it declared) keys cache
-      // and session entries, so an ephemeral per-deploy origin (a PR preview)
-      // can share them with the app it is a deployment of. The environment
-      // always joins the digest: an identity must never bleed entries across
-      // environments.
-      appIdentity: canonicalDigest(
-        obj({ identity: options.target.app.identity, environment: options.target.app.environment }),
-      ),
-    };
+    this.sessionIdentity = targetIdentity(options.target);
   }
 
   private get config(): ResolvedConfig {
@@ -287,7 +270,7 @@ export class TargetExecutor implements SerialHost {
             runId: this.options.runId,
             targetName: this.target.name,
             projectRoot: this.config.projectRoot,
-            app: obj({ site: this.target.app.site }),
+            app: engineAppInfo(this.target.app),
             env: this.options.env,
             headed: this.options.headed,
             workerSlot: this.options.workerSlot,

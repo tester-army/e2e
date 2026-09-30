@@ -259,14 +259,14 @@ export class DevicePool {
       info.log(`booting ${label} (${slot + 1} of ${bindings.length})`);
       await runCommand('boot', () => client.devices.boot(where), info.signal, at);
       const runnerUp = this.options.platform !== 'ios' || (await prepareRunner(client, where, info, at));
-      const app = pinnedApp(this.options, binding.installedApp);
+      const app = pinnedApp(info.app, binding.installedApp);
       if (app === undefined || !runnerUp) {
         warmed.push(binding);
         continue;
       }
       // A build the suite installs itself is not on the device yet, so there
       // is nothing to open: the first attempt installs it.
-      if (this.options.appPath !== undefined && binding.installedApp === undefined) {
+      if (info.app.appPath !== undefined && binding.installedApp === undefined) {
         info.log(`${label}: ${app} awaits the suite's device.installApp()`);
         warmed.push(binding);
         continue;

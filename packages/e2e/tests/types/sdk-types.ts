@@ -95,6 +95,23 @@ engineSnapshot.treeUnavailable satisfies true | undefined;
 ({ targets, specVersion: '0.1' }) satisfies E2EConfig;
 // A target inherits its platform from the engine; the resolver rejects one with neither.
 ({ targets: [{ engine }] }) satisfies E2EConfig;
+({
+  targets: [{ engine, app: { url: 'http://localhost:3000', command: { executable: 'pnpm', args: ['dev'] }, readyUrl: 'http://localhost:3000/health' } }],
+}) satisfies E2EConfig;
+({
+  targets: [{ engine, app: { bundleId: 'dev.shop.app', appPath: './build/Shop.app', launchArguments: ['-e2e'], permissions: { camera: 'grant' } } }],
+}) satisfies E2EConfig;
+// @ts-expect-error a permission is granted, denied, or reset; there is no `allow`
+({ targets: [{ engine, app: { bundleId: 'dev.shop.app', permissions: { camera: 'allow' } } }] }) satisfies E2EConfig;
+// @ts-expect-error launch arguments are the strings the launch command takes
+({ targets: [{ engine, app: { bundleId: 'dev.shop.app', launchArguments: [1] } }] }) satisfies E2EConfig;
+// @ts-expect-error the app URL is the target's app.url, not a key of the target itself
+({ targets: [{ engine, url: 'http://localhost:3000' }] }) satisfies E2EConfig;
+// @ts-expect-error an engine only drives the app: the target declares it
+({ name: 'toy', version: '1.0.0', spiVersion: 1, app: { url: 'http://localhost:3000' } }) satisfies Engine;
+({ name: 'toy', version: '1.0.0', spiVersion: 1, validateApp: (app, { targetName }) => void [app.bundleId, targetName] }) satisfies Engine;
+// @ts-expect-error a target declares its app; there is no services list in this version
+({ targets: [{ engine, app: { url: 'http://localhost:3000' }, services: [] }] }) satisfies E2EConfig;
 declare const model: ModelInstance;
 // A model is the live AI SDK object: every LanguageModelV2 through V4 assigns, and so does a subscription constructor.
 declare const modelV2: LanguageModelV2;

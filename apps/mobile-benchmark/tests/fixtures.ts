@@ -11,7 +11,7 @@ import { expect } from 'e2e';
 
 export { expect } from 'e2e';
 
-/** The build each platform's target runs against, when the run brings one; the config hands the same path to the engine as `appPath`. */
+/** The build each platform's target runs against, when the run brings one; the config hands the same path to the target as `app.appPath`. */
 const BUILDS: Readonly<Record<string, string | undefined>> = {
   ios: process.env.E2E_MOBILE_BENCHMARK_IOS_APP,
   android: process.env.E2E_MOBILE_BENCHMARK_ANDROID_APP,

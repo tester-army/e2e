@@ -24,30 +24,16 @@ import type {
   SecretProvider,
   SecretPurpose,
   RecordingMode,
-  Target,
   CacheStore,
 } from '../types.ts';
-import { isEngineHandle, type EngineHandle } from '../engine/index.ts';
 import { isModelInstance, resolveAgentConfig, runLimits, type ResolvedAgentConfig, type ResolvedLimits } from './agent.ts';
-import { digestAppDeclaration, resolveTargetApp, type ResolvedApp } from './app.ts';
+import { bindTargets, digestTargets, resolveTargets, TARGET_NAME_PATTERN, type PortAssignments, type ResolvedTarget } from './targets.ts';
+import { SERVICES_GONE } from './app.ts';
 import { envName, isSecretValue, secretValueProblem } from './secrets.ts';
 
 export type { ResolvedAgentConfig, ResolvedLimits } from './agent.ts';
 export type { ResolvedApp } from './app.ts';
-
-export interface ResolvedTarget {
-  readonly name: string;
-  readonly index: number;
-  readonly platform: string;
-  /** Validated engine; undefined for an agent-tools-only target. */
-  readonly engine: EngineHandle | undefined;
-  /** The app under test, resolved from the engine's declaration. */
-  readonly app: ResolvedApp;
-  /** Which attempts on the target record a trace: `--trace`, else the target's `trace`, else the config's, else `on` (`on-first-retry` in CI). A test's own `trace` wins over it. */
-  readonly trace: ResolvedRecording;
-  /** Which attempts on the target record a video: `--video`, else the target's `video`, else the config's, else `off`. A test's own `video` wins over it. */
-  readonly video: ResolvedRecording;
-}
+export type { PortAssignments, ResolvedTarget } from './targets.ts';
 
 /** A named account; its password is the `ResolvedSecret` of the same name. */
 export interface ResolvedCredential {
@@ -69,6 +55,8 @@ export interface ResolvedConfig {
   readonly configPath: string | undefined;
   readonly ci: boolean;
   readonly targets: readonly ResolvedTarget[];
+  /** The free ports the run assigned (`assignPorts`), by target name; empty until it did. */
+  readonly ports: PortAssignments;
   readonly tests: readonly string[];
   readonly timeout: number;
   readonly launchTimeout: number;
@@ -150,11 +138,6 @@ export interface CliOverrides {
   agents?: readonly string[];
 }
 
-/** A safe artifact path segment: the filename alphabet, and never `.` or `..`, which would name a directory's self or parent. */
-const TARGET_NAME_PATTERN = /^(?!\.+$)[A-Za-z0-9_.-]+$/;
-
-const TARGET_KEYS = new Set(['name', 'platform', 'engine', 'trace', 'video']);
-
 const TOP_LEVEL_KEYS = new Set([
   'projectId',
   'targets',
@@ -180,8 +163,8 @@ const TOP_LEVEL_KEYS = new Set([
 const CACHE_KEYS = new Set(['mode', 'store', 'dir', 'strict']);
 const CACHE_MODES = new Set(['off', 'read-only', 'read-write']);
 
-const APP_BELONGS_TO_ENGINE =
-  'the app under test is declared by the engine: engine: web({ url }) for a browser, mobile({ platform, app }) for a device';
+const APP_BELONGS_TO_TARGET =
+  "the app under test is declared on its target: targets: [{ engine: web(), app: { url } }] for a browser, targets: [{ engine: mobile({ platform }), app: { bundleId } }] for a device";
 
 /** Keys this runner used to accept, each mapped to what replaces it. */
 const REMOVED_TOP_LEVEL_KEYS: ReadonlyMap<string, string> = new Map([
@@ -196,29 +179,17 @@ const REMOVED_TOP_LEVEL_KEYS: ReadonlyMap<string, string> = new Map([
 const FOREIGN_TOP_LEVEL_KEYS: Readonly<Record<string, string>> = {
   testDir: 'test files are selected by tests, a glob such as "tests/**/*.e2e.ts"',
   testMatch: 'test files are selected by tests, a glob such as "tests/**/*.e2e.ts"',
-  app: APP_BELONGS_TO_ENGINE,
-  url: APP_BELONGS_TO_ENGINE,
-  baseURL: APP_BELONGS_TO_ENGINE,
-  baseUrl: APP_BELONGS_TO_ENGINE,
-  webServer: 'the runner starts the app from the engine options: web({ url, command: { executable, args } })',
-  use: 'browser and app options are engine options: engine: web({ ... })',
+  app: APP_BELONGS_TO_TARGET,
+  url: APP_BELONGS_TO_TARGET,
+  baseURL: APP_BELONGS_TO_TARGET,
+  baseUrl: APP_BELONGS_TO_TARGET,
+  services: SERVICES_GONE,
+  webServer: 'the runner starts the app from the target: targets: [{ engine: web(), app: { url, command: { executable, args } } }]',
+  use: "browser options are engine options (engine: web({ ... })), and the app under test is the target's app: { url }",
   projects: 'one target per browser or device: targets: [{ engine }]',
   agent: 'agents are named: agents: { default: <what agent held> }; e2e run --agent <name> runs with another',
   screen: 'the test-id attribute is an engine option: engine: web({ testIdAttribute })',
 };
-
-/** Keys authors put on a target that belong to its engine. */
-const FOREIGN_TARGET_KEYS: ReadonlySet<string> = new Set([
-  'app',
-  'url',
-  'baseURL',
-  'baseUrl',
-  'command',
-  'appPath',
-  'bundleId',
-  'browser',
-  'device',
-]);
 
 /** `; did you mean "targets"?` or a pointer to where a foreign key's fact lives. */
 function unknownTopLevelKeyHint(key: string): string {
@@ -231,13 +202,11 @@ export function isCiMode(env: NodeJS.ProcessEnv = process.env): boolean {
   return envFlag(env, 'CI');
 }
 
-/** The free port the run assigned to each target whose URL asked for one, by target name. */
-export type PortAssignments = Readonly<Record<string, number>>;
-
 /**
  * Resolves a raw config object plus environment into an immutable resolved
- * config. `ports` are the free ports the runner already assigned, so a worker
- * re-resolving the same file lands on the same app URLs.
+ * config, without the run's ports: a free port reads 0, as declared, which
+ * is what identities and the digest key on. `assignPorts` puts a run's
+ * ports in.
  */
 export function resolveConfig(
   raw: E2EConfig,
@@ -246,7 +215,6 @@ export function resolveConfig(
     configPath?: string;
     env?: NodeJS.ProcessEnv;
     cli?: CliOverrides;
-    ports?: PortAssignments;
   },
 ): ResolvedConfig {
   const env = options.env ?? process.env;
@@ -269,7 +237,11 @@ export function resolveConfig(
     }
   }
 
-  const targets = resolveTargets(raw, options.projectRoot, options.ports ?? {}, runRecordings(raw, cli, ci));
+  const recordings = runRecordings(raw, cli, ci);
+  const targets = resolveTargets(raw.targets, options.projectRoot, (target, where) => ({
+    trace: targetRecording(recordings.trace, target.trace, `${where} trace`, 'trace'),
+    video: targetRecording(recordings.video, target.video, `${where} video`, 'video'),
+  }));
   const tests = normalizeTests(raw.tests, options.projectRoot);
 
   const timeout = positiveInt(raw.timeout, 'timeout', 'milliseconds') ?? 120_000;
@@ -306,6 +278,7 @@ export function resolveConfig(
     configPath: options.configPath,
     ci,
     targets,
+    ports: {},
     tests,
     timeout,
     launchTimeout,
@@ -325,25 +298,19 @@ export function resolveConfig(
     limits,
     credentials,
     secrets,
-    configDigest: computeConfigDigest(raw, projectId),
+    configDigest: computeConfigDigest(raw, projectId, targets),
   };
   return resolved;
 }
 
 /**
- * The config with every target's app re-resolved against the port the run
- * assigned it. Pure, so the runner and each worker reach the same URLs from
- * the same declaration and ports; the digest stands, because the ports never
- * enter it.
+ * The config on the free ports the run assigned: each target's app resolved
+ * again on its port. Pure, so the runner and each worker reach the same URLs
+ * from the same config and ports; the digest and the identities stand,
+ * because the ports never enter them.
  */
 export function assignPorts(config: ResolvedConfig, ports: PortAssignments): ResolvedConfig {
-  return {
-    ...config,
-    targets: config.targets.map((target) => ({
-      ...target,
-      app: resolveTargetApp(target.name, target.engine, config.projectRoot, ports[target.name]),
-    })),
-  };
+  return { ...config, targets: bindTargets(config.targets, config.projectRoot, ports), ports };
 }
 
 /**
@@ -698,105 +665,6 @@ function isCacheStore(value: unknown): value is CacheStore {
 }
 
 
-function resolveTargets(
-  raw: E2EConfig,
-  projectRoot: string,
-  ports: PortAssignments,
-  recordings: Readonly<Record<RecordingKind, RunRecording>>,
-): readonly ResolvedTarget[] {
-  if (raw.targets === undefined) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      'targets is required: declare at least one target and the engine that drives it, ' +
-        'e.g. targets: [{ engine }]',
-    );
-  }
-  if (!Array.isArray(raw.targets) || raw.targets.length === 0) {
-    throw new ConfigurationError('INVALID_CONFIG', 'targets must be a non-empty array');
-  }
-  const seen = new Set<string>();
-  const defaulted = new Set<string>();
-  return raw.targets.map((target, index) => {
-    // Errors raised before the name settles point at the entry itself.
-    const where = typeof target.name === 'string' ? `target "${target.name}"` : `targets[${index}]`;
-    for (const key of Object.keys(target)) {
-      if (!TARGET_KEYS.has(key)) {
-        const hint = FOREIGN_TARGET_KEYS.has(key)
-          ? `; ${APP_BELONGS_TO_ENGINE}`
-          : didYouMean(key, [...TARGET_KEYS]);
-        throw new ConfigurationError(
-          'INVALID_CONFIG',
-          `${where} has unknown key "${key}"; a target is { name?, platform?, engine?, trace?, video? }${hint}`,
-        );
-      }
-    }
-    if (target.engine !== undefined && !isEngineHandle(target.engine)) {
-      const got = typeof target.engine === 'string' ? `the string ${JSON.stringify(target.engine)}` : `a ${typeof target.engine}`;
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `${where} engine must be an engine handle, got ${got}; call the engine's factory: web({ url }) from @e2e-dev/web, mobile({ platform, app }) from @e2e-dev/mobile, or your own defineEngine(...)`,
-      );
-    }
-    const platform = resolvePlatform(target, where);
-    const name = target.name === undefined ? platform : target.name;
-    if (typeof name !== 'string' || !TARGET_NAME_PATTERN.test(name)) {
-      const source = target.name === undefined ? ' (defaulted from the platform)' : '';
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `invalid target name ${JSON.stringify(name)}${source}; target names are limited to ASCII letters, numbers, "_", "-", and ".", and cannot be only dots`,
-      );
-    }
-    if (seen.has(name)) {
-      const hint =
-        target.name === undefined || defaulted.has(name)
-          ? '; a target without a name is named after its platform, so name one of them'
-          : '';
-      throw new ConfigurationError('INVALID_CONFIG', `duplicate target name "${name}"${hint}`);
-    }
-    seen.add(name);
-    if (target.name === undefined) defaulted.add(name);
-    return {
-      name,
-      index,
-      platform,
-      engine: target.engine,
-      app: resolveTargetApp(name, target.engine, projectRoot, ports[name]),
-      trace: targetRecording(recordings.trace, target.trace, `${where} trace`, 'trace'),
-      video: targetRecording(recordings.video, target.video, `${where} video`, 'video'),
-    };
-  });
-}
-
-/**
- * The target's platform: its own label, else the engine's declaration. Tool
- * packs are offered by the engine's platform while tests filter by the
- * target's, so a target that names one while its engine declares another is a
- * mistake, not an override.
- */
-function resolvePlatform(target: Target, where: string): string {
-  const declared = target.platform;
-  if (declared !== undefined && (typeof declared !== 'string' || declared.trim() === '')) {
-    throw new ConfigurationError('INVALID_CONFIG', `${where} platform must be a non-empty string`);
-  }
-  const inherited = target.engine?.platform;
-  if (declared !== undefined && inherited !== undefined && declared !== inherited) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `${where} declares platform "${declared}" but its engine ${target.engine?.name} drives "${inherited}"; drop the target's platform or make them agree`,
-    );
-  }
-  const platform = declared ?? inherited;
-  if (platform === undefined) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `${where} needs a platform: ${
-        target.engine === undefined ? 'it has no engine to inherit one from' : `engine ${target.engine.name} declares none`
-      }; set platform on the target`,
-    );
-  }
-  return platform;
-}
-
 /**
  * The `tests` globs, checked and compiled when the config resolves. A wrong
  * type used to be a raw TypeError reported as a test failure (at config load
@@ -991,7 +859,11 @@ function resolveAgents(
   return { agents, agentNames, agent: agents.get(agentNames[0]!)! };
 }
 
-function computeConfigDigest(raw: E2EConfig, projectId: string): string {
+function computeConfigDigest(
+  raw: E2EConfig,
+  projectId: string,
+  targets: readonly ResolvedTarget[],
+): string {
   // Only plain data is JSON-cloned. Every live value is reduced to its
   // identity before any clone sees it, since its object graph may not
   // serialize at all (a recursive tool schema, a client inside a store) and
@@ -1044,32 +916,8 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
       Object.keys(raw.secrets).map((name) => [name, { secretName: name }]),
     );
   }
-  if (raw.targets !== undefined) {
-    sanitized['targets'] = raw.targets.map((target) => {
-      // An engine handle holds live functions; its digest identity is the
-      // declaration - name, version, contract version, the platform it
-      // drives (a named target inherits it, so two workers whose engines
-      // declare different platforms must not agree on the digest), capability
-      // set, and what it declares about the app under test.
-      const { trace: _targetTrace, video: _targetVideo, ...digested } = target;
-      if (isEngineHandle(digested.engine)) {
-        const { engine, ...rest } = digested;
-        return {
-          ...rest,
-          engine: {
-            name: engine.name,
-            ...(engine.version === undefined ? {} : { version: engine.version }),
-            spiVersion: engine.spiVersion,
-            ...(engine.platform === undefined ? {} : { platform: engine.platform }),
-            ...(engine.workers === undefined ? {} : { workers: engine.workers }),
-            capabilities: [...engine.capabilities].toSorted(),
-            app: digestAppDeclaration(engine.app ?? {}),
-          },
-        };
-      }
-      return digested;
-    });
-  }
+  // Targets enter as resolved: see `digestTargets`.
+  sanitized['targets'] = digestTargets(targets);
   return canonicalDigest(sanitized);
 }
 

@@ -8,15 +8,13 @@ import {
   sameSite,
   siteOf,
   urlMatches,
-  withPort,
 } from '../../src/internal/urls.ts';
 
 describe('base URL ports', () => {
-  it('tells a free-port request from a fixed or default port, and re-serializes on another port', () => {
+  it('tells a free-port request from a fixed or default port', () => {
     const requested = normalizeBaseUrl('http://[::1]:0/app/');
     expect(requestsFreePort(requested)).toBe(true);
     expect(portOf(requested)).toBe(0);
-    expect(withPort(requested, 4321)).toEqual({ href: 'http://[::1]:4321/app/', origin: 'http://[::1]:4321', basePath: '/app/' });
     expect(requestsFreePort(normalizeBaseUrl('https://app.test'))).toBe(false);
     expect(portOf(normalizeBaseUrl('https://app.test'))).toBe(443);
     expect(portOf(normalizeBaseUrl('http://localhost:3000'))).toBe(3000);

@@ -239,12 +239,23 @@ to be a static, non-empty array of unique names.
 
 Resolution order: test, nearest group, outer groups, config, built-in default.
 
-`requires` names engine capabilities: `observation`, `actions`, `location`,
-`pointer`, `keyboard`, `state`, `artifacts`, or the name of a fixture the
-engine contributes, such as `web` or `device`. See
-[the engine contract](/reference/engine#engine). An `agent` name that
-`agents` does not define is a `COLLECTION_ERROR` at selection, before any
-test runs.
+`requires` names capabilities of the target's engine, the harness ones
+(`observation`, `actions`, `location`, `pointer`, `keyboard`, `state`,
+`artifacts`) and one per contributed fixture (`web`, `device`; see
+[the engine contract](/reference/engine#engine)), or the kind of app the
+target declares: `browser` for an `app.url`, `native-app` for an
+`app.bundleId` or `app.appPath`. A target that lacks one skips the test at
+selection:
+
+```ts
+test('onboarding asks for the camera', { requires: ['native-app'] }, async ({ app, agent }) => {
+  await app.open();
+  await agent.assert('The app asks for camera access');
+});
+```
+
+An `agent` name that `agents` does not define is a `COLLECTION_ERROR` at
+selection, before any test runs.
 
 `trace` and `video` take a [recording mode](/reference/config#recording):
 `off`, `on`, `retain-on-failure`, `on-first-retry`, or `on-all-retries`. A

@@ -8,8 +8,7 @@
 
 import { createHash } from 'node:crypto';
 import type { createAgentDeviceClient } from 'agent-device';
-import { EngineError, obj, type EngineFinishInfo, type EnginePrepareInfo } from 'e2e/engine';
-import type { MobileOptions } from './options.ts';
+import { EngineError, obj, type EngineAppInfo, type EngineFinishInfo, type EnginePrepareInfo } from 'e2e/engine';
 
 type AgentDeviceClientConfig = NonNullable<Parameters<typeof createAgentDeviceClient>[0]>;
 
@@ -83,12 +82,12 @@ export function deviceLabel(binding: Pick<SlotBinding, 'device' | 'deviceId'> | 
 
 /**
  * The app a slot's `app.open()` launches, and its warm-up opens once: the
- * `app` option, else the app the build `appPath` installed, once the suite's
- * `device.installApp()` (or a device provider) has. `undefined` with a build
- * nobody has installed and no `app`.
+ * target's `bundleId`, else the app the build `appPath` installed, once the
+ * suite's `device.installApp()` (or a device provider) has. `undefined` with
+ * a build nobody has installed and no `bundleId`.
  */
-export function pinnedApp(options: Pick<MobileOptions, 'app' | 'appPath'>, installedApp: string | undefined): string | undefined {
-  return options.app ?? installedApp;
+export function pinnedApp(app: Pick<EngineAppInfo, 'bundleId'>, installedApp: string | undefined): string | undefined {
+  return app.bundleId ?? installedApp;
 }
 
 /**
