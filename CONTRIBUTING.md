@@ -141,6 +141,33 @@ versions, and creates the matching GitHub release. `@e2edev/e2e` is the
 runner's retired name, and the `@e2edev` scope is the engines' and reporters'
 retired scope; both are deprecated on npm.
 
+### npm Trusted Publishing
+
+The release workflow carries no npm token. Each package grants `release.yml`
+publish rights through an npm trusted publisher (OIDC). Once the repository
+is public, npm also attaches provenance automatically: the "built and signed
+on GitHub Actions" badge on npmjs (skipped while the repository is private).
+npm has no org-wide setting for this; every package is connected one by one.
+The `release` job must stay on a GitHub-hosted runner: npm rejects OIDC
+tokens from self-hosted runners, Blacksmith included.
+
+When adding a new public package:
+
+1. Publish the first version by hand from a maintainer machine. Trusted
+   publishers live in package settings on npmjs, so the package has to exist
+   before one can be added.
+2. On npmjs.com open the package, then Settings, then Trusted Publisher:
+   - Publisher: GitHub Actions
+   - Organization: `tester-army`, Repository: `e2e`
+   - Workflow filename: `release.yml`
+   - Environment name: leave blank
+   - Allowed actions: check `Allow npm publish`. Changesets publishes
+     directly, not through npm's staged flow, so without it the publish is
+     rejected. Leave `npm dist-tag` unchecked.
+3. From then on the release workflow publishes every version. There is no
+   `NPM_TOKEN` fallback: a package without this connection fails the publish
+   step.
+
 ### Release channels
 
 - `latest`: the current stable release. Install with no tag.

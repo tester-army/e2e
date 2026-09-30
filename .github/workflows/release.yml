@@ -17,11 +17,15 @@ permissions:
 
 jobs:
   release:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 20
+    # GitHub-hosted, not Blacksmith: npm Trusted Publishing rejects OIDC
+    # tokens from self-hosted runners, and Blacksmith registers as one.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
       pull-requests: write
+      # OIDC for npm Trusted Publishing and provenance.
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -31,7 +35,6 @@ jobs:
         with:
           node-version: 26
           cache: pnpm
-          registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
 
       # Publishing an unbuildable or failing tree is worse than not publishing.
@@ -57,7 +60,6 @@ jobs:
           pr-title: 'chore: version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Granular npm access token with read/write on the @e2e-dev scope.
-          # Provenance stays off until the repository is public: npm only
-          # attests builds whose source it can link to.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # No npm token: publishing uses Trusted Publishing (OIDC) configured
+          # on each @e2e-dev package. npm attaches provenance automatically
+          # once the repository is public.

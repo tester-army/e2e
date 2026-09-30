@@ -437,7 +437,9 @@ trees, on both platforms, without a device.
   pins actions by SHA; keep new actions SHA-pinned. Every job runs on
   Blacksmith, like the tester-army repos. Linux jobs use
   `blacksmith-4vcpu-ubuntu-2404` and macOS jobs `blacksmith-6vcpu-macos-26`;
-  keep new jobs on those labels.
+  keep new jobs on those labels. The one exception is the `release` job:
+  npm Trusted Publishing rejects OIDC tokens from self-hosted runners, and
+  Blacksmith counts as one, so it stays on `ubuntu-latest`.
 - Commits follow Conventional Commits; PRs are squash-merged with the number in
   the subject.
 - PR titles and bodies follow the `writing-pr` skill
@@ -501,8 +503,11 @@ trees, on both platforms, without a device.
   2026-09-28), `@e2edev/e2e`, `@e2edev/oauth` (folded into `e2e/oauth` on
   2026-09-21), and `@e2e-dev/integrations` (moved to `@e2e-dev/kernel` on
   2026-09-29, deprecated by hand after the first `@e2e-dev/kernel` publish)
-  are the retired names: deprecated on npm, never referenced here. Provenance stays off until the repository is
-  public, and the release job authenticates with the `NPM_TOKEN` secret.
+  are the retired names: deprecated on npm, never referenced here. The release job authenticates with npm
+  Trusted Publishing (OIDC), no token; each package carries its own trusted
+  publisher connection on npmjs (see "npm Trusted Publishing" in
+  CONTRIBUTING.md). Provenance attaches automatically once the repository
+  is public.
   Document the CLI as `npx e2e`; npx runs the locally installed bin first, and
   the flag `--no-install` adds nothing once the package is a dependency.
 - Private packages are skipped entirely by changesets (`privatePackages: false`),

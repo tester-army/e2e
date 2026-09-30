@@ -27,7 +27,6 @@
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public",
-    "provenance": false,
     "tag": "latest"
   },
   "type": "module",
