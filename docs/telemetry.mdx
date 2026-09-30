@@ -12,11 +12,25 @@ content, or credentials.
 
 Any one of these turns it off:
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e telemetry disable   # saved in ~/.config/e2e/telemetry.json
 export E2E_TELEMETRY_DISABLED=1          # for a shell or a CI job
 export DO_NOT_TRACK=1                    # the cross-tool convention
 ```
+
+```bash pnpm
+pnpm exec e2e telemetry disable   # saved in ~/.config/e2e/telemetry.json
+export E2E_TELEMETRY_DISABLED=1          # for a shell or a CI job
+export DO_NOT_TRACK=1                    # the cross-tool convention
+```
+
+```bash bun
+bunx e2e telemetry disable   # saved in ~/.config/e2e/telemetry.json
+export E2E_TELEMETRY_DISABLED=1          # for a shell or a CI job
+export DO_NOT_TRACK=1                    # the cross-tool convention
+```
+</CodeGroup>
 
 `npx e2e telemetry` prints the status and, when it is off, why.
 `enable` reverses a saved `disable`. Environment variables take precedence.
@@ -25,9 +39,19 @@ telemetry also applies to commands already running in another terminal.
 
 ## See what would be sent
 
-```bash
+<CodeGroup>
+```bash npm
 E2E_TELEMETRY_DEBUG=1 npx e2e run
 ```
+
+```bash pnpm
+E2E_TELEMETRY_DEBUG=1 pnpm exec e2e run
+```
+
+```bash bun
+E2E_TELEMETRY_DEBUG=1 bunx e2e run
+```
+</CodeGroup>
 
 This prints the exact event payloads to stderr as `[telemetry] {...}` and
 sends nothing.

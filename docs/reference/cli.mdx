@@ -3,7 +3,8 @@ title: CLI
 description: Commands, flags, output formats, and exit codes.
 ---
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e init [directory]
 npx e2e login [provider]
 npx e2e logout [provider]
@@ -19,6 +20,41 @@ npx e2e telemetry [status|enable|disable]
 npx e2e --help
 npx e2e --version
 ```
+
+```bash pnpm
+pnpm dlx e2e init [directory]
+pnpm exec e2e login [provider]
+pnpm exec e2e logout [provider]
+pnpm exec e2e models [provider]
+pnpm exec e2e guide [topic]
+pnpm exec e2e mcp [options]
+pnpm exec e2e run [files...] [options]
+pnpm exec e2e explore [goal] [options]
+pnpm exec e2e list [files...] [options]
+pnpm exec e2e cache ls|clear|stats [--config <path>]
+pnpm exec e2e feedback -m <text> [options]
+pnpm exec e2e telemetry [status|enable|disable]
+pnpm exec e2e --help
+pnpm exec e2e --version
+```
+
+```bash bun
+bunx e2e init [directory]
+bunx e2e login [provider]
+bunx e2e logout [provider]
+bunx e2e models [provider]
+bunx e2e guide [topic]
+bunx e2e mcp [options]
+bunx e2e run [files...] [options]
+bunx e2e explore [goal] [options]
+bunx e2e list [files...] [options]
+bunx e2e cache ls|clear|stats [--config <path>]
+bunx e2e feedback -m <text> [options]
+bunx e2e telemetry [status|enable|disable]
+bunx e2e --help
+bunx e2e --version
+```
+</CodeGroup>
 
 The CLI needs Node.js 22.12 or newer.
 
@@ -90,9 +126,19 @@ lockfile, then the invoking package manager, then npm.
 | `.agents/skills/e2e/`, `.claude/skills/e2e/` | `SKILL.md` and one `references/<topic>.md` per `e2e guide` topic. With both chosen, the Claude Code directory is a relative symlink (`../../.agents/skills/e2e`) to the copy |
 | `.mcp.json`, `.cursor/mcp.json` | Registers `e2e mcp` without changing other servers |
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e init --yes
 ```
+
+```bash pnpm
+pnpm dlx e2e init --yes
+```
+
+```bash bun
+bunx e2e init --yes
+```
+</CodeGroup>
 
 Re-running `init` keeps an existing config and adds no packages for it. Once
 a skill directory exists, later runs refresh copies that differ from the
@@ -112,7 +158,8 @@ without `--yes` exits 2 and names the flag.
 
 ## e2e login
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e login openai              # ChatGPT, browser sign-in
 npx e2e login openai --device     # sign in with a device code
 npx e2e login github-copilot --from-gh  # use your GitHub CLI login
@@ -120,6 +167,25 @@ npx e2e login github-copilot --client-id <id> [--enterprise-url <host>]
 npx e2e login spacexai            # SuperGrok, device code
 npx e2e login                     # choose a provider
 ```
+
+```bash pnpm
+pnpm exec e2e login openai              # ChatGPT, browser sign-in
+pnpm exec e2e login openai --device     # sign in with a device code
+pnpm exec e2e login github-copilot --from-gh  # use your GitHub CLI login
+pnpm exec e2e login github-copilot --client-id <id> [--enterprise-url <host>]
+pnpm exec e2e login spacexai            # SuperGrok, device code
+pnpm exec e2e login                     # choose a provider
+```
+
+```bash bun
+bunx e2e login openai              # ChatGPT, browser sign-in
+bunx e2e login openai --device     # sign in with a device code
+bunx e2e login github-copilot --from-gh  # use your GitHub CLI login
+bunx e2e login github-copilot --client-id <id> [--enterprise-url <host>]
+bunx e2e login spacexai            # SuperGrok, device code
+bunx e2e login                     # choose a provider
+```
+</CodeGroup>
 
 Signs in to a subscription and stores credentials in
 `$XDG_CONFIG_HOME/e2e/oauth.json`, by default `~/.config/e2e/oauth.json`. A failed sign-in exits 1, a cancelled one 130; an
@@ -136,17 +202,41 @@ configuration.
 
 ## e2e logout
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e logout           # pick one of the stored logins
 npx e2e logout openai    # forget one
 ```
 
+```bash pnpm
+pnpm exec e2e logout           # pick one of the stored logins
+pnpm exec e2e logout openai    # forget one
+```
+
+```bash bun
+bunx e2e logout           # pick one of the stored logins
+bunx e2e logout openai    # forget one
+```
+</CodeGroup>
+
 ## e2e models
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e models           # every stored login
 npx e2e models openai    # one provider
 ```
+
+```bash pnpm
+pnpm exec e2e models           # every stored login
+pnpm exec e2e models openai    # one provider
+```
+
+```bash bun
+bunx e2e models           # every stored login
+bunx e2e models openai    # one provider
+```
+</CodeGroup>
 
 Asks the vendor which models the stored login serves and prints one line per
 model: the id `chatgpt()`, `copilot()`, or `grok()` takes, the vendor's name
@@ -158,10 +248,22 @@ the command exits 1. An unknown provider exits 2. See
 
 ## e2e guide
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e guide            # the overview
 npx e2e guide setup      # one topic
 ```
+
+```bash pnpm
+pnpm exec e2e guide            # the overview
+pnpm exec e2e guide setup      # one topic
+```
+
+```bash bun
+bunx e2e guide            # the overview
+bunx e2e guide setup      # one topic
+```
+</CodeGroup>
 
 Prints the skill that `init` installs. `guide` alone prints the overview;
 `guide <topic>` prints one of `setup`, `writing-tests`, `agent`, `running`,
@@ -171,9 +273,19 @@ See [Coding agents](/coding-agents).
 
 ## e2e mcp
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e mcp [--config <path>] [--target <name>] [--headless] [--max-sessions <n>]
 ```
+
+```bash pnpm
+pnpm exec e2e mcp [--config <path>] [--target <name>] [--headless] [--max-sessions <n>]
+```
+
+```bash bun
+bunx e2e mcp [--config <path>] [--target <name>] [--headless] [--max-sessions <n>]
+```
+</CodeGroup>
 
 An MCP server on stdio that gives a coding agent a live session on the app.
 Flags, tools, and session rules are on the [MCP server](/reference/mcp) page.
@@ -306,7 +418,8 @@ cache, `-` when it reports no split. The report records the same per step
 (`model.cacheReadTokens`, `model.cacheWriteTokens`) and per run
 (`usage.modelCachedTokens`).
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e run
 npx e2e run tests/signup.e2e.ts --tag smoke
 npx e2e run tests/signup.e2e.ts:12
@@ -322,6 +435,41 @@ npx e2e run --max-failures 3
 npx e2e run --repeat-each 5 --no-cache tests/checkout.e2e.ts
 npx e2e run --reporter list,junit
 ```
+
+```bash pnpm
+pnpm exec e2e run
+pnpm exec e2e run tests/signup.e2e.ts --tag smoke
+pnpm exec e2e run tests/signup.e2e.ts:12
+pnpm exec e2e run tests/agent
+pnpm exec e2e run 'tests/**/*.smoke.e2e.ts'
+pnpm exec e2e run --target web,webkit --tag smoke,billing --tag-mode all
+pnpm exec e2e run --tag smoke --exclude-tag slow
+pnpm exec e2e run --grep checkout --grep-invert '/refund/i'
+pnpm exec e2e run --last-failed
+pnpm exec e2e run --shard 2/3
+pnpm exec e2e run --reporter json --workers 4 --retries 2
+pnpm exec e2e run --max-failures 3
+pnpm exec e2e run --repeat-each 5 --no-cache tests/checkout.e2e.ts
+pnpm exec e2e run --reporter list,junit
+```
+
+```bash bun
+bunx e2e run
+bunx e2e run tests/signup.e2e.ts --tag smoke
+bunx e2e run tests/signup.e2e.ts:12
+bunx e2e run tests/agent
+bunx e2e run 'tests/**/*.smoke.e2e.ts'
+bunx e2e run --target web,webkit --tag smoke,billing --tag-mode all
+bunx e2e run --tag smoke --exclude-tag slow
+bunx e2e run --grep checkout --grep-invert '/refund/i'
+bunx e2e run --last-failed
+bunx e2e run --shard 2/3
+bunx e2e run --reporter json --workers 4 --retries 2
+bunx e2e run --max-failures 3
+bunx e2e run --repeat-each 5 --no-cache tests/checkout.e2e.ts
+bunx e2e run --reporter list,junit
+```
+</CodeGroup>
 
 ### Output
 
@@ -410,12 +558,28 @@ Exit codes: `0` when steps ran and no finding of kind `issue` was reported,
 `1` when one was or when no step ran at all, `2` and `3` as for `run`, `130`
 on Ctrl-C.
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e explore
 npx e2e explore 'Explore the checkout flow like a first-time buyer and report anything off'
 npx e2e explore --target web --max-steps 4 --headed
 npx e2e explore 'Hunt for broken forms and dead links' --agent thorough --video
 ```
+
+```bash pnpm
+pnpm exec e2e explore
+pnpm exec e2e explore 'Explore the checkout flow like a first-time buyer and report anything off'
+pnpm exec e2e explore --target web --max-steps 4 --headed
+pnpm exec e2e explore 'Hunt for broken forms and dead links' --agent thorough --video
+```
+
+```bash bun
+bunx e2e explore
+bunx e2e explore 'Explore the checkout flow like a first-time buyer and report anything off'
+bunx e2e explore --target web --max-steps 4 --headed
+bunx e2e explore 'Hunt for broken forms and dead links' --agent thorough --video
+```
+</CodeGroup>
 
 ## e2e list
 
@@ -439,13 +603,31 @@ Positionals and the selection flags (`--config`, `--target`, `--tag`,
 
 Pairs a filter removed are not listed.
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e list
 npx e2e list tests/signup.e2e.ts
 npx e2e list --tag smoke --target web
 npx e2e list --grep checkout --exclude-tag slow
 npx e2e list --reporter json
 ```
+
+```bash pnpm
+pnpm exec e2e list
+pnpm exec e2e list tests/signup.e2e.ts
+pnpm exec e2e list --tag smoke --target web
+pnpm exec e2e list --grep checkout --exclude-tag slow
+pnpm exec e2e list --reporter json
+```
+
+```bash bun
+bunx e2e list
+bunx e2e list tests/signup.e2e.ts
+bunx e2e list --tag smoke --target web
+bunx e2e list --grep checkout --exclude-tag slow
+bunx e2e list --reporter json
+```
+</CodeGroup>
 
 ## e2e cache
 
@@ -459,12 +641,28 @@ default directory is `.e2e/cache/`.
 | `e2e cache stats` | The store directory, the number of readable entries, their total size, and the number of unreadable files when there are any. |
 | `e2e cache clear` | Deletes every cache file, then the directory when nothing else is left in it, and reports how many files went. |
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e cache ls
 npx e2e cache stats
 npx e2e cache clear
 npx e2e cache ls --config packages/web/e2e.config.ts
 ```
+
+```bash pnpm
+pnpm exec e2e cache ls
+pnpm exec e2e cache stats
+pnpm exec e2e cache clear
+pnpm exec e2e cache ls --config packages/web/e2e.config.ts
+```
+
+```bash bun
+bunx e2e cache ls
+bunx e2e cache stats
+bunx e2e cache clear
+bunx e2e cache ls --config packages/web/e2e.config.ts
+```
+</CodeGroup>
 
 ```text
 TEST                             TARGET  INSTRUCTION   AGE  ACTIONS
@@ -485,9 +683,19 @@ exit 2 and say so.
 
 ## e2e feedback
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e feedback -m <text> [--type bug|docs|feature|other] [options]
 ```
+
+```bash pnpm
+pnpm exec e2e feedback -m <text> [--type bug|docs|feature|other] [options]
+```
+
+```bash bun
+bunx e2e feedback -m <text> [--type bug|docs|feature|other] [options]
+```
+</CodeGroup>
 
 Sends one report about e2e itself to the e2e team: something broke, the docs
 or the skill misled, or a capability is missing. Coding agents are welcome to
@@ -508,11 +716,25 @@ send one when they hit a problem with e2e, not with the app under test.
 `--task`, `--expected`, `--actual`, and `--approach` take up to 4000
 characters each. A blank or longer value exits 2.
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e feedback --type bug -m "list ignores --grep" --command "e2e list --grep checkout"
 npx e2e feedback --type docs -m "The mcp topic never says how to close a session"
 npx e2e feedback --type feature -m "Need a way to set the viewport per test" --dry-run
 ```
+
+```bash pnpm
+pnpm exec e2e feedback --type bug -m "list ignores --grep" --command "e2e list --grep checkout"
+pnpm exec e2e feedback --type docs -m "The mcp topic never says how to close a session"
+pnpm exec e2e feedback --type feature -m "Need a way to set the viewport per test" --dry-run
+```
+
+```bash bun
+bunx e2e feedback --type bug -m "list ignores --grep" --command "e2e list --grep checkout"
+bunx e2e feedback --type docs -m "The mcp topic never says how to close a session"
+bunx e2e feedback --type feature -m "Need a way to set the viewport per test" --dry-run
+```
+</CodeGroup>
 
 The report goes to the same PostHog project as [telemetry](/telemetry#feedback),
 as one `e2e_feedback` event, together with the anonymous machine facts every
@@ -544,11 +766,25 @@ Shows whether anonymous usage telemetry is on, and switches it.
 | `e2e telemetry disable` | Saves the opt-out to `~/.config/e2e/telemetry.json` (`$XDG_CONFIG_HOME/e2e/` when set, `%APPDATA%\e2e\` on Windows) and prints the status. |
 | `e2e telemetry enable` | Saves the opt-in and prints the status. A variable set in the environment still wins, and the status says so. |
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e telemetry
 npx e2e telemetry disable
 E2E_TELEMETRY_DEBUG=1 npx e2e run
 ```
+
+```bash pnpm
+pnpm exec e2e telemetry
+pnpm exec e2e telemetry disable
+E2E_TELEMETRY_DEBUG=1 pnpm exec e2e run
+```
+
+```bash bun
+bunx e2e telemetry
+bunx e2e telemetry disable
+E2E_TELEMETRY_DEBUG=1 bunx e2e run
+```
+</CodeGroup>
 
 `E2E_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1` turn telemetry off without
 touching the file. `E2E_TELEMETRY_DEBUG=1` prints every event to stderr and

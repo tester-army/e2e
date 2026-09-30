@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "mint dev",
-    "check": "node ../scripts/check-docs-examples.ts && mint validate && mint broken-links",
+    "check": "node ../scripts/check-docs-examples.ts && node ../scripts/check-docs-package-managers.ts && mint validate && mint broken-links",
     "typecheck": "tsc --noEmit --project examples/tsconfig.json"
   },
   "devDependencies": {

@@ -7,9 +7,19 @@ Use `e2e explore` to investigate a flow without writing a test. Give the
 agent a goal; it chooses the steps and records findings in
 `.e2e/report.json`.
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e explore 'Explore the checkout flow like a first-time buyer and report anything off'
 ```
+
+```bash pnpm
+pnpm exec e2e explore 'Explore the checkout flow like a first-time buyer and report anything off'
+```
+
+```bash bun
+bunx e2e explore 'Explore the checkout flow like a first-time buyer and report anything off'
+```
+</CodeGroup>
 
 Explore can help you investigate a feature or choose flows to turn into
 regression tests. It uses the same model, tools, and action rules as
@@ -115,9 +125,19 @@ and retries.
 Pass `--session <name>` to explore as a signed-in user. The name is a session
 a [setup test](/authentication) in your test files saves:
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e explore --session admin 'Explore the admin settings and find bugs'
 ```
+
+```bash pnpm
+pnpm exec e2e explore --session admin 'Explore the admin settings and find bugs'
+```
+
+```bash bun
+bunx e2e explore --session admin 'Explore the admin settings and find bugs'
+```
+</CodeGroup>
 
 Explore runs the one setup test that declares the session, restores the
 session, and opens the app when the target declares a URL, as for a test

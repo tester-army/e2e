@@ -13,9 +13,19 @@ target's `browser`.
 
 ## Setup
 
-```bash
+<CodeGroup>
+```bash npm
 npm install --save-dev @e2e-dev/kernel @onkernel/sdk
 ```
+
+```bash pnpm
+pnpm add -D @e2e-dev/kernel @onkernel/sdk
+```
+
+```bash bun
+bun add -d @e2e-dev/kernel @onkernel/sdk
+```
+</CodeGroup>
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';

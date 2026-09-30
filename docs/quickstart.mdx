@@ -105,9 +105,19 @@ test('Settings opens', async ({ app, screen }) => {
   </Tabs>
   </Step>
   <Step title="Run the example">
-  ```bash
+  <CodeGroup>
+  ```bash npm
   npx e2e run
   ```
+
+  ```bash pnpm
+  pnpm exec e2e run
+  ```
+
+  ```bash bun
+  bunx e2e run
+  ```
+  </CodeGroup>
 
   e2e downloads a browser if needed, or boots the configured simulator or
   emulator. The example checks that the app opens and writes the result to
@@ -195,9 +205,19 @@ test('the agent opens General', async ({ agent, app, device }) => {
 Use `params` for values the goal refers to. Use `agent.assert` for a
 judgment about the screen and `expect` for an exact check.
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e run tests/agent.e2e.ts
 ```
+
+```bash pnpm
+pnpm exec e2e run tests/agent.e2e.ts
+```
+
+```bash bun
+bunx e2e run tests/agent.e2e.ts
+```
+</CodeGroup>
 
 If you chose **None** during setup, [add a model to your config](/models)
 first. To watch a web test, add `--headed`. To run the agent without replaying

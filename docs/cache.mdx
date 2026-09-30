@@ -29,9 +29,19 @@ caching is off for the step.
 
 To rule the cache out of a failure, run once without it:
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e run --no-cache
 ```
+
+```bash pnpm
+pnpm exec e2e run --no-cache
+```
+
+```bash bun
+bunx e2e run --no-cache
+```
+</CodeGroup>
 
 ## How a replay works
 
@@ -215,9 +225,19 @@ calls until someone re-records. `--strict-cache` (or `cache: { strict: true }`)
 makes it loud. A step whose recording exists but no longer replays fails
 with `REPLAY_STALE` and makes no model call:
 
-```bash
+<CodeGroup>
+```bash npm
 CI=1 npx e2e run --strict-cache
 ```
+
+```bash pnpm
+CI=1 pnpm exec e2e run --strict-cache
+```
+
+```bash bun
+CI=1 bunx e2e run --strict-cache
+```
+</CodeGroup>
 
 The reasons that fail are the ones that mean the app or the entry changed:
 `invalid-entry`, `wrong-context`, `target-not-found`, `target-ambiguous`,
@@ -231,11 +251,25 @@ entry. A store whose read fails is not a stale recording; the step runs live.
 
 ## Inspect the cache
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e cache ls      # one row per entry: test, target, instruction digest, age, actions
 npx e2e cache stats   # entry count and size
 npx e2e cache clear   # delete every entry
 ```
+
+```bash pnpm
+pnpm exec e2e cache ls      # one row per entry: test, target, instruction digest, age, actions
+pnpm exec e2e cache stats   # entry count and size
+pnpm exec e2e cache clear   # delete every entry
+```
+
+```bash bun
+bunx e2e cache ls      # one row per entry: test, target, instruction digest, age, actions
+bunx e2e cache stats   # entry count and size
+bunx e2e cache clear   # delete every entry
+```
+</CodeGroup>
 
 <Note>
 The `cached` percentage in AI usage is the provider's prompt cache. It

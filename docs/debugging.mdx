@@ -123,11 +123,25 @@ artifact with `TRACE_WITHHELD` and leaves the file untouched. See the
 
 ## Watch it happen
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e run --headed                      # a visible browser
 npx e2e run --video                       # record every attempt
 npx e2e run --video=retain-on-failure     # record every attempt, keep the failures
 ```
+
+```bash pnpm
+pnpm exec e2e run --headed                      # a visible browser
+pnpm exec e2e run --video                       # record every attempt
+pnpm exec e2e run --video=retain-on-failure     # record every attempt, keep the failures
+```
+
+```bash bun
+bunx e2e run --headed                      # a visible browser
+bunx e2e run --video                       # record every attempt
+bunx e2e run --video=retain-on-failure     # record every attempt, keep the failures
+```
+</CodeGroup>
 
 Each recording lands under its attempt's artifact directory. Playwright
 writes WebM, one file per page the attempt opened; agent-device writes MP4.
@@ -187,11 +201,25 @@ report; use `expect` or an artifact for anything a later reader needs.
 
 Use these flags to inspect agent behavior:
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e run --debug     # timings and a step table on stderr
 npx e2e run --ai-trace  # every model call, for a trace viewer
 npx e2e run --no-cache  # run the agent live instead of replaying
 ```
+
+```bash pnpm
+pnpm exec e2e run --debug     # timings and a step table on stderr
+pnpm exec e2e run --ai-trace  # every model call, for a trace viewer
+pnpm exec e2e run --no-cache  # run the agent live instead of replaying
+```
+
+```bash bun
+bunx e2e run --debug     # timings and a step table on stderr
+bunx e2e run --ai-trace  # every model call, for a trace viewer
+bunx e2e run --no-cache  # run the agent live instead of replaying
+```
+</CodeGroup>
 
 `--debug` appends two tables after the reporter's output: phase timings for
 the run, and one row per agent step with its duration, model calls, tokens,
@@ -209,10 +237,22 @@ step also saves its model transcript as an artifact.
 Read it with [unbox-ai](https://github.com/tester-army/unbox-ai) to inspect
 prompts, tool calls, and token usage:
 
-```bash
+<CodeGroup>
+```bash npm
 npx unbox-ai runs .e2e/ai-trace.json
 npx unbox-ai summary .e2e/ai-trace.json --run 1
 ```
+
+```bash pnpm
+pnpm dlx unbox-ai runs .e2e/ai-trace.json
+pnpm dlx unbox-ai summary .e2e/ai-trace.json --run 1
+```
+
+```bash bun
+bunx unbox-ai runs .e2e/ai-trace.json
+bunx unbox-ai summary .e2e/ai-trace.json --run 1
+```
+</CodeGroup>
 
 Each agent step appears as a run in the AI trace, with one entry per model
 call. It contains the redacted input sent to the model; image bytes are

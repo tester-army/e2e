@@ -26,10 +26,22 @@ replace the model in your config. The sign-in flows ship with `e2e` itself:
 
 <Tabs>
   <Tab title="ChatGPT">
-```bash
+<CodeGroup>
+```bash npm
 npm install -D ai @ai-sdk/openai
 npx e2e login openai
 ```
+
+```bash pnpm
+pnpm add -D ai @ai-sdk/openai
+pnpm exec e2e login openai
+```
+
+```bash bun
+bun add -d ai @ai-sdk/openai
+bunx e2e login openai
+```
+</CodeGroup>
 
 ```ts title="Model setup"
 import { chatgpt } from 'e2e/oauth/chatgpt';
@@ -38,10 +50,22 @@ const agent = { model: chatgpt('gpt-6-luna') };
 ```
   </Tab>
   <Tab title="GitHub Copilot">
-```bash
+<CodeGroup>
+```bash npm
 npm install -D ai @ai-sdk/openai-compatible
 npx e2e login github-copilot
 ```
+
+```bash pnpm
+pnpm add -D ai @ai-sdk/openai-compatible
+pnpm exec e2e login github-copilot
+```
+
+```bash bun
+bun add -d ai @ai-sdk/openai-compatible
+bunx e2e login github-copilot
+```
+</CodeGroup>
 
 ```ts title="Model setup"
 import { copilot } from 'e2e/oauth/copilot';
@@ -50,10 +74,22 @@ const agent = { model: copilot('claude-sonnet-5') };
 ```
   </Tab>
   <Tab title="SuperGrok">
-```bash
+<CodeGroup>
+```bash npm
 npm install -D ai @ai-sdk/xai
 npx e2e login spacexai
 ```
+
+```bash pnpm
+pnpm add -D ai @ai-sdk/xai
+pnpm exec e2e login spacexai
+```
+
+```bash bun
+bun add -d ai @ai-sdk/xai
+bunx e2e login spacexai
+```
+</CodeGroup>
 
 ```ts title="Model setup"
 import { grok } from 'e2e/oauth/grok';
@@ -71,10 +107,22 @@ available to your account.
 The constructor takes the id the vendor uses, which is not always the name
 the app shows. Ask the vendor which ids your login serves:
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e models            # every stored login
 npx e2e models openai     # one provider
 ```
+
+```bash pnpm
+pnpm exec e2e models            # every stored login
+pnpm exec e2e models openai     # one provider
+```
+
+```bash bun
+bunx e2e models            # every stored login
+bunx e2e models openai     # one provider
+```
+</CodeGroup>
 
 Each line is the id to pass to `chatgpt()`, `copilot()`, or `grok()`, the
 vendor's display name, and what it says about the model: reasoning levels,

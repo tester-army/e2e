@@ -40,7 +40,8 @@ export default {
 } satisfies E2EConfig;
 ```
 
-```bash
+<CodeGroup>
+```bash npm
 # iOS
 xcrun simctl install booted path/to/MyApp.app
 npx e2e run --target ios --reporter list,junit
@@ -49,6 +50,27 @@ npx e2e run --target ios --reporter list,junit
 adb install -r path/to/app.apk
 npx e2e run --target android --reporter list,junit
 ```
+
+```bash pnpm
+# iOS
+xcrun simctl install booted path/to/MyApp.app
+pnpm exec e2e run --target ios --reporter list,junit
+
+# Android
+adb install -r path/to/app.apk
+pnpm exec e2e run --target android --reporter list,junit
+```
+
+```bash bun
+# iOS
+xcrun simctl install booted path/to/MyApp.app
+bunx e2e run --target ios --reporter list,junit
+
+# Android
+adb install -r path/to/app.apk
+bunx e2e run --target android --reporter list,junit
+```
+</CodeGroup>
 
 The engine uses the booted device and asks agent-device to boot one when
 none is up. Boot it yourself as a step anyway: a fresh Linux runner has no

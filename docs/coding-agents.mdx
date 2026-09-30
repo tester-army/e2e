@@ -9,9 +9,19 @@ tests and the reports to investigate failures.
 
 ## The skill
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e init
 ```
+
+```bash pnpm
+pnpm dlx e2e init
+```
+
+```bash bun
+bunx e2e init
+```
+</CodeGroup>
 
 | Path | Used by |
 | --- | --- |
@@ -43,9 +53,19 @@ the test code when exactly one element matches.
 `init` registers the server in `.mcp.json` for Claude Code and
 `.cursor/mcp.json` for Cursor. To register it with Claude Code by hand:
 
-```bash
+<CodeGroup>
+```bash npm
 claude mcp add e2e -- npx e2e mcp
 ```
+
+```bash pnpm
+claude mcp add e2e -- pnpm exec e2e mcp
+```
+
+```bash bun
+claude mcp add e2e -- bunx e2e mcp
+```
+</CodeGroup>
 
 See the [MCP server reference](/reference/mcp) for its tools, session rules,
 and flags. Run tests and read reports through the CLI.
@@ -84,9 +104,19 @@ The main rules are:
 
 ## How an agent runs it
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e run tests/checkout.e2e.ts
 ```
+
+```bash pnpm
+pnpm exec e2e run tests/checkout.e2e.ts
+```
+
+```bash bun
+bunx e2e run tests/checkout.e2e.ts
+```
+</CodeGroup>
 
 Run one file while iterating. For model configuration and credentials, see
 [Models](/models). Fix CLI, config, and collection errors before
@@ -97,9 +127,19 @@ retrying a run.
 Every run that gets to its tests writes `.e2e/report.json`. For a report that is easier to read,
 run:
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e run tests/checkout.e2e.ts --reporter list,markdown
 ```
+
+```bash pnpm
+pnpm exec e2e run tests/checkout.e2e.ts --reporter list,markdown
+```
+
+```bash bun
+bunx e2e run tests/checkout.e2e.ts --reporter list,markdown
+```
+</CodeGroup>
 
 This writes `.e2e/summary.md` and a page for each failed or flaky test under
 `.e2e/failures/`. Start with the failure page. It includes the failing line,

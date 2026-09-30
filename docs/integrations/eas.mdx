@@ -14,9 +14,19 @@ runs `e2e`. Tests, config, and CI stay the same.
 
 ## Setup
 
-```bash
+<CodeGroup>
+```bash npm
 npm install --save-dev @e2e-dev/eas
 ```
+
+```bash pnpm
+pnpm add -D @e2e-dev/eas
+```
+
+```bash bun
+bun add -d @e2e-dev/eas
+```
+</CodeGroup>
 
 EAS Simulators is in limited access; check yours with
 `npx eas-cli@latest simulator:availability`.

@@ -109,7 +109,10 @@ suites that consume the built packages the way a user would.
 - `docs/` (the Mintlify docs site; pages are the `.mdx` files under `docs/`,
   navigation, theme, and redirects in `docs/docs.json`, extra CSS in
   `docs/style.css`; `docs/examples/` is typechecked and shown verbatim in the
-  quickstart, kept in sync by `scripts/check-docs-examples.ts`).
+  quickstart, kept in sync by `scripts/check-docs-examples.ts`; a shell
+  block that runs `npx` or `npm install`/`ci` sits in a `<CodeGroup>` of
+  `npm`, `pnpm`, and `bun` blocks, which Mintlify syncs site-wide, enforced
+  by `scripts/check-docs-package-managers.ts`).
 - `skills/e2e/` — the agent skill for consumers: `SKILL.md` plus
   `references/<topic>.md`, one per `e2e guide` topic. It lives at the repo
   root because `npx skills add tester-army/e2e` only looks in well-known

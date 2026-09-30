@@ -13,9 +13,19 @@ stays where the last one left it.
 Install Xcode with an iOS simulator runtime, or the Android SDK with an
 emulator. Check your setup with:
 
-```bash
+<CodeGroup>
+```bash npm
 npx agent-device doctor
 ```
+
+```bash pnpm
+pnpm exec agent-device doctor
+```
+
+```bash bun
+bunx agent-device doctor
+```
+</CodeGroup>
 
 Follow the [Quickstart](/quickstart) and choose **Mobile (iOS/Android)**.
 The wizard selects iOS on macOS and Android elsewhere. It starts with the
@@ -491,11 +501,25 @@ launch that times out on the device is `ENGINE_FAILURE` with agent-device's
 message and hint, never one of e2e's own timeout codes (`LAUNCH_TIMEOUT`,
 `ACTION_FAILED`, `STEP_TIMEOUT`).
 
-```bash
+<CodeGroup>
+```bash npm
 npx agent-device doctor          # the toolchain, the daemon, the booted devices
 npx agent-device daemon stop     # after a wedge: drops every session, the next run starts the daemon
 xcrun simctl shutdown <udid> && xcrun simctl boot <udid>
 ```
+
+```bash pnpm
+pnpm exec agent-device doctor          # the toolchain, the daemon, the booted devices
+pnpm exec agent-device daemon stop     # after a wedge: drops every session, the next run starts the daemon
+xcrun simctl shutdown <udid> && xcrun simctl boot <udid>
+```
+
+```bash bun
+bunx agent-device doctor          # the toolchain, the daemon, the booted devices
+bunx agent-device daemon stop     # after a wedge: drops every session, the next run starts the daemon
+xcrun simctl shutdown <udid> && xcrun simctl boot <udid>
+```
+</CodeGroup>
 
 <CardGroup cols={2}>
   <Card title="Mobile engine reference" icon="mobile-screen" href="/reference/mobile">

@@ -96,9 +96,19 @@ export default {
 Either field can also be overridden per run. The variable is the credential
 name uppercased, with every non-alphanumeric character replaced by `_`:
 
-```bash
+<CodeGroup>
+```bash npm
 E2E_USER_ADMIN_USERNAME=admin E2E_USER_ADMIN_PASSWORD=... npx e2e run
 ```
+
+```bash pnpm
+E2E_USER_ADMIN_USERNAME=admin E2E_USER_ADMIN_PASSWORD=... pnpm exec e2e run
+```
+
+```bash bun
+E2E_USER_ADMIN_USERNAME=admin E2E_USER_ADMIN_PASSWORD=... bunx e2e run
+```
+</CodeGroup>
 
 A string is checked when the config loads: while `ADMIN_PASSWORD` is unset,
 every command, `e2e list` included, fails with `INVALID_CONFIG`. `password`
@@ -170,9 +180,19 @@ export default {
 `E2E_SECRET_<NAME>` overrides an entry per run, with the same uppercasing rule
 as credentials, so a CI job can supply the value without touching the config:
 
-```bash
+<CodeGroup>
+```bash npm
 E2E_SECRET_STRIPE_KEY=sk_test_... npx e2e run
 ```
+
+```bash pnpm
+E2E_SECRET_STRIPE_KEY=sk_test_... pnpm exec e2e run
+```
+
+```bash bun
+E2E_SECRET_STRIPE_KEY=sk_test_... bunx e2e run
+```
+</CodeGroup>
 
 Get a handle with `secrets.get()` and use it in `fill` or `agent.act`:
 

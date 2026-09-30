@@ -12,9 +12,19 @@ Tests without agent steps do not need a model. For the built-in agent,
 choose a model that supports tool calls and images. Agent steps need the `ai`
 package installed, whichever provider you use:
 
-```bash
+<CodeGroup>
+```bash npm
 npm install -D ai
 ```
+
+```bash pnpm
+pnpm add -D ai
+```
+
+```bash bun
+bun add -d ai
+```
+</CodeGroup>
 
 There is no default model or shared API-key variable. The config selects the
 model, and the provider reads its own key from the environment, such as
@@ -99,11 +109,25 @@ Without `AI_GATEWAY_API_KEY`, `gateway()` authenticates with a Vercel OIDC
 token. Sign in to the Vercel CLI and link the project once; the gateway then
 mints a short-lived token for that project and refreshes it when it expires:
 
-```bash
+<CodeGroup>
+```bash npm
 npx vercel login
 npx vercel link
 npx e2e run
 ```
+
+```bash pnpm
+pnpm dlx vercel login
+pnpm dlx vercel link
+pnpm exec e2e run
+```
+
+```bash bun
+bunx vercel login
+bunx vercel link
+bunx e2e run
+```
+</CodeGroup>
 
 The token is a valid `VERCEL_OIDC_TOKEN`, otherwise one minted for the
 project in `.vercel/project.json`, found by walking up from the working

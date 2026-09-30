@@ -260,11 +260,25 @@ and retry as a whole.
 
 ## Run one test
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e run tests/signup.e2e.ts:12   # the test declared at line 12
 npx e2e run --grep checkout          # tests whose title matches
 npx e2e run --target web             # one target, by name
 ```
+
+```bash pnpm
+pnpm exec e2e run tests/signup.e2e.ts:12   # the test declared at line 12
+pnpm exec e2e run --grep checkout          # tests whose title matches
+pnpm exec e2e run --target web             # one target, by name
+```
+
+```bash bun
+bunx e2e run tests/signup.e2e.ts:12   # the test declared at line 12
+bunx e2e run --grep checkout          # tests whose title matches
+bunx e2e run --target web             # one target, by name
+```
+</CodeGroup>
 
 The [CLI reference](/reference/cli#e2e-run) lists every flag.
 

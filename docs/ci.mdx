@@ -94,9 +94,19 @@ or `false`. Use `CI=1 npx e2e run` to reproduce these defaults locally:
 
 Override worker and retry defaults with flags:
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e run --workers 4 --retries 0
 ```
+
+```bash pnpm
+pnpm exec e2e run --workers 4 --retries 0
+```
+
+```bash bun
+bunx e2e run --workers 4 --retries 0
+```
+</CodeGroup>
 
 Add `E2E_TELEMETRY_DISABLED: '1'` to the job's `env` to send no
 [telemetry](/telemetry#in-ci) from CI.
@@ -134,10 +144,22 @@ upload the first run's artifacts before rerunning in the same job if you want
 both. The [CLI reference](/reference/cli#flags) lists what counts as not
 passed. Locally it is the loop after a red run:
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e run
 npx e2e run --last-failed
 ```
+
+```bash pnpm
+pnpm exec e2e run
+pnpm exec e2e run --last-failed
+```
+
+```bash bun
+bunx e2e run
+bunx e2e run --last-failed
+```
+</CodeGroup>
 
 In CI the report is a job artifact, not a file on the next runner; download
 it into `.e2e/` before the rerun step, or rerun the failed job whole.

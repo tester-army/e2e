@@ -115,15 +115,35 @@ and [custom executors](/executors#replay-cache).
 
 Use `--agent` to choose the agent for tests that do not specify one:
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e run --agent thorough tests/checkout.e2e.ts
 ```
 
+```bash pnpm
+pnpm exec e2e run --agent thorough tests/checkout.e2e.ts
+```
+
+```bash bun
+bunx e2e run --agent thorough tests/checkout.e2e.ts
+```
+</CodeGroup>
+
 Several names run each unpinned test once per agent:
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e run --agent buyer,admin
 ```
+
+```bash pnpm
+pnpm exec e2e run --agent buyer,admin
+```
+
+```bash bun
+bunx e2e run --agent buyer,admin
+```
+</CodeGroup>
 
 ## Pin an agent in the suite
 

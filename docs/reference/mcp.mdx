@@ -3,9 +3,19 @@ title: MCP server (e2e mcp)
 description: Let a coding agent inspect and interact with your app over MCP.
 ---
 
-```bash
+<CodeGroup>
+```bash npm
 npx e2e mcp [--config <path>] [--target <name>] [--headless] [--max-sessions <n>]
 ```
+
+```bash pnpm
+pnpm exec e2e mcp [--config <path>] [--target <name>] [--headless] [--max-sessions <n>]
+```
+
+```bash bun
+bunx e2e mcp [--config <path>] [--target <name>] [--headless] [--max-sessions <n>]
+```
+</CodeGroup>
 
 `e2e mcp` lets coding agents such as Claude Code and Cursor inspect your app,
 try locators, and take masked screenshots before writing tests. It runs over
@@ -19,9 +29,19 @@ tool catalog reloads from the config whenever a session opens.
 The server ships with `e2e`. `e2e init` offers to register it in
 `.mcp.json` (Claude Code) and `.cursor/mcp.json` (Cursor). By hand:
 
-```bash
+<CodeGroup>
+```bash npm
 claude mcp add e2e -- npx e2e mcp
 ```
+
+```bash pnpm
+claude mcp add e2e -- pnpm exec e2e mcp
+```
+
+```bash bun
+claude mcp add e2e -- bunx e2e mcp
+```
+</CodeGroup>
 
 For clients that use a `mcpServers` config, add:
 
