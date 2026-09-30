@@ -43,8 +43,8 @@ prove each bug. Report confirmed bugs only, each with its failing test.
   is per step, separate from `--max-steps`, which counts a charter's steps.
 - On a mobile target, declare one target per device and give each explorer
   and verifier its own (topic `setup`).
-- Skip `--headed`. `--video` records each run so a confirmed bug comes with
-  a replay.
+- Skip `--headed`. On an engine that records, `--video` gives each run a
+  replay for any confirmed bug.
 
 A bug-bash config, left untracked, spreads the project's config and
 overrides what a bug bash needs. Typing the import as `E2EConfig` keeps

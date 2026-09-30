@@ -112,9 +112,9 @@ label. `web` (`Web`): browser targets, import `test` from `@e2e-dev/web`.
 - `screenshot(label?)`: saves a redacted screenshot artifact and returns its
   path. Denied after a secret fill (see Sign-in sessions).
 
-`restart()` and `clearState()` are `UNSUPPORTED_CAPABILITY` with
-`connect.reconnectEndpoint`, an attempt-scoped browser provider, or a device
-with no pinned `app`.
+`clearState()` is `UNSUPPORTED_CAPABILITY` with `connect.reconnectEndpoint`
+or an attempt-scoped browser provider; on a device with no pinned `app`, both
+methods are.
 
 ## Locators
 

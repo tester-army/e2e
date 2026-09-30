@@ -149,8 +149,8 @@ and service process groups and exits 130 at once.
 
 CI mode is on when `CI` is set (not `0` or `false`): `retries` 1,
 `workers` 1, `trace` `on-first-retry`, `test.only` rejected with
-`ONLY_IN_CI`, the replay cache `read-only` unless `cache.mode` is set
-explicitly, `reuseExisting` ignored.
+`ONLY_IN_CI`, the replay cache `read-only` unless the config sets a mode explicitly
+(`cache: 'read-write'` or `cache.mode`), `reuseExisting` ignored.
 
 ```yaml
 # .github/workflows/e2e.yml

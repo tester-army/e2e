@@ -51,8 +51,8 @@ the declared sessions.
 
 A setup that filled a secret taints the restored session, so every finding
 goes without a screenshot; one that signed in without a fill (a `web.setCookies`
-session cookie, say) keeps them, and only configured secrets are redacted
-(topic `writing-tests`).
+session cookie, say) keeps them where the engine captures pixels, and only
+configured secrets are redacted (topic `writing-tests`).
 
 ## Flags
 
