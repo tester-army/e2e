@@ -19,6 +19,7 @@ import { initCompletedEvent, runCompletedEvent, USAGE_ERROR_CODE } from '../tele
 import { Telemetry } from '../telemetry/telemetry.ts';
 import { cache, type CacheCommand } from './cache.ts';
 import { DOCS_URL } from './docs-url.ts';
+import { feedback, FEEDBACK_LIMITS, FEEDBACK_TYPES, type FeedbackReport } from './feedback.ts';
 import { guide } from './guide.ts';
 import { init } from './init.ts';
 import { mcp } from './mcp.ts';
@@ -108,6 +109,16 @@ function parseBoundedInt(bounds: { readonly min: number; readonly max: number })
       throw new InvalidArgumentError(`must be an integer from ${bounds.min} through ${bounds.max}`);
     }
     return parsed;
+  };
+}
+
+/** Free text for `e2e feedback`: trimmed, never blank, at most `limit` characters. */
+function parseText(limit: number): (value: string) => string {
+  return (value) => {
+    const text = value.trim();
+    if (text === '') throw new InvalidArgumentError('must not be empty');
+    if (text.length > limit) throw new InvalidArgumentError(`must be at most ${limit} characters, got ${text.length}`);
+    return text;
   };
 }
 
@@ -372,6 +383,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e cache ls',
           'e2e guide',
           'e2e mcp',
+          'e2e feedback --type bug -m "e2e list ignores --grep"',
           'e2e telemetry disable',
         ]),
         '',
@@ -796,6 +808,41 @@ function createProgram(version: string, telemetry: Telemetry): Command {
   );
   cacheSubcommand('clear', 'delete every cached trace', 'Delete the cache files and the directory itself; files the runner never wrote are left alone.');
   cacheSubcommand('stats', 'print the entry count and size', 'Print the store directory, how many readable entries it holds, and how many bytes they take.');
+
+  program
+    .command('feedback')
+    .summary('send a bug report, docs problem, or feature request to the e2e team')
+    .description(
+      'Send one report about e2e itself to the e2e team. Coding agents are welcome to send one when e2e breaks, the docs mislead, or a capability is missing. The report and the anonymous machine facts telemetry carries go to PostHog as one event; secret-named environment variable values and well-known token shapes are redacted first. Sent only when asked for, so e2e telemetry disable does not stop it; E2E_TELEMETRY_DISABLED and DO_NOT_TRACK do. --dry-run prints the event and sends nothing.',
+    )
+    .optionsGroup('Report:')
+    .addOption(new Option('--type <type>', 'what kind of report').choices(FEEDBACK_TYPES).default('other'))
+    .requiredOption('-m, --message <text>', 'one or two sentences on the problem', parseText(FEEDBACK_LIMITS.message))
+    .option('--task <text>', 'what you were trying to do', parseText(FEEDBACK_LIMITS.task))
+    .option('--expected <text>', 'what you expected to happen', parseText(FEEDBACK_LIMITS.expected))
+    .option('--actual <text>', 'what happened instead, with the error code and message', parseText(FEEDBACK_LIMITS.actual))
+    .option('--approach <text>', 'what you tried, workarounds included', parseText(FEEDBACK_LIMITS.approach))
+    .option('--command <text>', 'the e2e command or API involved, such as "e2e run --shard 2/3"', parseText(FEEDBACK_LIMITS.command))
+    .option('--agent <text>', 'the coding agent and model sending it, such as "Claude Code / claude-opus-5-5"', parseText(FEEDBACK_LIMITS.agent))
+    .optionsGroup('Output:')
+    .option('--dry-run', 'print the event that would be sent and send nothing')
+    .addHelpText(
+      'after',
+      [
+        '',
+        examples([
+          'e2e feedback --type bug -m "list ignores --grep" --command "e2e list --grep checkout"',
+          'e2e feedback --type docs -m "The mcp topic never says how to close a session"',
+          'e2e feedback --type feature -m "Need a way to set the viewport per test" --dry-run',
+        ]),
+        '',
+        docsLine('/reference/cli#e2e-feedback'),
+      ].join('\n'),
+    )
+    .action(async (options: FeedbackReport & { dryRun?: boolean }) => {
+      const { dryRun, ...report } = options;
+      process.exitCode = await feedback(report, { version, telemetry, ...(dryRun === undefined ? {} : { dryRun }) });
+    });
 
   program
     .command('telemetry')

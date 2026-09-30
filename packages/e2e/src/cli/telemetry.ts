@@ -39,7 +39,7 @@ export function telemetry(action: TelemetryAction, instance: Telemetry): number 
     out('Anonymous usage data is sent: the command, the versions, the OS, and run counts. Never test names, app data, or credentials.');
   } else {
     out(`Status: ${picocolors.red('disabled')} (${REASONS[disabledBy]})`);
-    out('Nothing is sent from this machine.');
+    out('No usage data is sent from this machine.');
   }
   out(`Details: ${DOCS_URL}/telemetry`);
   return 0;

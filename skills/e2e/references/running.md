@@ -10,6 +10,7 @@ npx e2e init [--yes]               # scaffold a project, refresh the agent skill
 npx e2e guide [topic]              # print this skill: setup, writing-tests, agent, running, explore, debugging, mcp
 npx e2e cache ls|clear|stats       # read or empty the replay cache
 npx e2e mcp [--target <name>]      # serve the project to a coding agent over MCP (topic mcp)
+npx e2e feedback -m <text> [opts]  # report a problem with e2e itself to the e2e team
 npx e2e telemetry [disable|enable] # anonymous usage telemetry: status, or the switch
 ```
 

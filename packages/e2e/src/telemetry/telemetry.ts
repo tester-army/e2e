@@ -133,6 +133,12 @@ export class Telemetry {
     return this.disabledBy === undefined;
   }
 
+  /** The id events are attributed to: the fleet or CI vendor, else this machine's; undefined when off. */
+  get distinctId(): string | undefined {
+    if (!this.enabled) return undefined;
+    return this.statedId ?? this.store()?.anonymousId;
+  }
+
   /** `E2E_TELEMETRY_DEBUG`: print every event, send nothing. */
   get debug(): boolean {
     return envFlag(this.env, 'E2E_TELEMETRY_DEBUG');
@@ -237,12 +243,11 @@ export class Telemetry {
     // A choice saved from another process while this command ran wins over the snapshot taken at its start.
     const store: TelemetryStore | undefined = this.statedId === undefined ? this.store() : undefined;
     store?.reload();
-    if (!this.enabled) return;
+    // Undefined when off; nothing is sent that cannot be attributed.
+    const distinctId = this.distinctId;
+    if (distinctId === undefined) return;
     const deadline = AbortSignal.timeout(maxWaitMs);
     const project = await Promise.race([this.project, aborted(deadline)]);
-    // `enabled` has just vouched for one of the two; nothing is sent that cannot be attributed.
-    const distinctId = this.statedId ?? store?.anonymousId;
-    if (distinctId === undefined) return;
     const environment = collectEnvironment({ env: this.env, cwd: this.cwd, version: this.version });
     // The debug output and the request body are the same objects, so what
     // `E2E_TELEMETRY_DEBUG` shows is what would have been sent, key for key.

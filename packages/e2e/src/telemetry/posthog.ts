@@ -19,6 +19,8 @@ export const POSTHOG_PROJECT_KEY = 'phc_rT8hpREuSj5bRGPHP6KLKNuf4kfwhP4FEf6ahHHV
 /** One item of the batch, exactly as PostHog receives it; `distinct_id` is a property. */
 export interface PostHogEvent {
   readonly event: string;
+  /** PostHog's id for the event; it assigns one when absent. */
+  readonly uuid?: string;
   /** RFC 3339. */
   readonly timestamp: string;
   readonly properties: Readonly<Record<string, JsonValue>> & { readonly distinct_id: string };

@@ -137,6 +137,20 @@ The data is read in aggregate. Telemetry falls under the
 [Outbound connections](/security#outbound-connections) lists every other
 connection a run can make.
 
+## Feedback
+
+[`e2e feedback`](/reference/cli#e2e-feedback) is not telemetry. It sends
+nothing until you, or the coding agent in your shell, run it, and then it
+sends the words written into its flags as one `e2e_feedback` event to the
+same PostHog project, with the machine facts above. Because it is an explicit
+request, a saved `e2e telemetry disable` does not stop it, but
+`E2E_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1` do: an environment that set
+either sends nothing, feedback included. `E2E_TELEMETRY_DEBUG=1` and
+`--dry-run` print it instead of sending it. When telemetry is on, the
+event carries the same anonymous id as your telemetry events. Secret-named
+environment variable values and well-known token shapes are redacted before
+it is sent.
+
 ## The notice
 
 The first command prints a notice on stderr explaining how to opt out.

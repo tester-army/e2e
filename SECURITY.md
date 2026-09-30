@@ -90,7 +90,7 @@ SHA-256 of the repository's root commit); in CI the vendor's name stands in for
 the machine, a platform that sets `E2E_TELEMETRY_FLEET` is attributed to that
 name, and without git, or with a shallow checkout, there is no project id. Test titles, file paths,
 URLs, instructions, observations, messages, stack traces, environment
-variables, and credentials are never sent. Engine names, platforms, and model
+variables, and credentials are never sent as telemetry. Engine names, platforms, and model
 ids are sent as your config declares them when they are plain tokens and as
 `other` otherwise; an error code that is not an upper-case token is `OTHER`.
 Every property
@@ -108,6 +108,9 @@ outbound connections a run can make:
 
 - one telemetry request per CLI invocation to `eu.i.posthog.com`, unless
   opted out
+- one request to `eu.i.posthog.com` per `e2e feedback` someone runs, carrying
+  the report written into its flags; `E2E_TELEMETRY_DISABLED` and
+  `DO_NOT_TRACK` stop it
 - the model endpoint owned by the AI SDK instance in your config (agent steps
   only; deterministic suites make no model calls, and cached steps replay
   without one)

@@ -707,6 +707,119 @@ describe('e2e guide', () => {
   });
 });
 
+describe('e2e feedback', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let configHome: string;
+
+  interface SentEvent {
+    event: string;
+    uuid: string;
+    properties: Record<string, unknown>;
+  }
+
+  /** Every feedback event a request carried; the telemetry flush posts its own batch beside them. */
+  function sentFeedback(): SentEvent[] {
+    return fetchMock.mock.calls
+      .flatMap((call: readonly unknown[]) => (JSON.parse((call[1] as { body: string }).body) as { batch: SentEvent[] }).batch)
+      .filter((event) => event.event === 'e2e_feedback');
+  }
+
+  beforeEach(() => {
+    configHome = mkdtempSync(path.join(os.tmpdir(), 'e2e-cli-feedback-'));
+    fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubEnv('E2E_TELEMETRY_DISABLED', undefined);
+    vi.stubEnv('DO_NOT_TRACK', undefined);
+    vi.stubEnv('E2E_TELEMETRY_DEBUG', undefined);
+    vi.stubEnv('CI', undefined);
+    vi.stubEnv('XDG_CONFIG_HOME', configHome);
+    vi.stubEnv('APPDATA', configHome);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    rmSync(configHome, { recursive: true, force: true });
+  });
+
+  it('sends one event with the report, the machine facts, and the telemetry id', async () => {
+    await invoke('feedback', '--type', 'bug', '-m', ' list ignores --grep ', '--command', 'e2e list --grep x');
+    expect(process.exitCode).toBe(0);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe('https://eu.i.posthog.com/batch/');
+    const [event] = sentFeedback();
+    expect(event?.properties).toMatchObject({
+      type: 'bug',
+      message: 'list ignores --grep',
+      command: 'e2e list --grep x',
+      task: null,
+      e2e_version: packageVersion,
+      $process_person_profile: false,
+      $geoip_disable: true,
+    });
+    const { anonymousId } = JSON.parse(readFileSync(path.join(configHome, 'e2e', 'telemetry.json'), 'utf8')) as { anonymousId: string };
+    expect(event?.properties['distinct_id']).toBe(anonymousId);
+    expect(written(stdoutSpy)).toBe(`Feedback sent to the e2e team, thank you. Reference: ${event?.uuid}\n`);
+  });
+
+  it('still sends after e2e telemetry disable, under an id of its own', async () => {
+    await invoke('telemetry', 'disable');
+    stdoutSpy.mockClear();
+    await invoke('feedback', '-m', 'broken');
+    expect(process.exitCode).toBe(0);
+    const [event] = sentFeedback();
+    expect(event?.properties['distinct_id']).toBe(`feedback:${event?.uuid}`);
+  });
+
+  it.each(['E2E_TELEMETRY_DISABLED', 'DO_NOT_TRACK'])('sends nothing and exits 2 when %s is set', async (variable) => {
+    vi.stubEnv(variable, '1');
+    await invoke('feedback', '-m', 'broken');
+    expect(process.exitCode).toBe(2);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(written(stderrSpy)).toContain(`feedback not sent: ${variable} is set`);
+  });
+
+  it('redacts secret-named variables and token shapes, and leaves prose alone', async () => {
+    vi.stubEnv('MY_SERVICE_TOKEN', 'hunter2-hunter2');
+    vi.stubEnv('TEST_USER_PASS', 'hunter22');
+    await invoke(
+      'feedback',
+      '-m', 'login with hunter22 failed with hunter2-hunter2',
+      '--actual', 'Authorization: Bearer abc123defghijklmnop sk-ant-api03-abcdefghijklmnopqrst https://user:pw@example.com/x',
+      '--task', 'following the Basic authentication example',
+    );
+    const [event] = sentFeedback();
+    expect(event?.properties['message']).toBe('login with <secret:TEST_USER_PASS> failed with <secret:MY_SERVICE_TOKEN>');
+    expect(event?.properties['actual']).toBe('Authorization: Bearer <redacted> <redacted> https://<redacted>@example.com/x');
+    expect(event?.properties['task']).toBe('following the Basic authentication example');
+  });
+
+  it('prints the event and sends nothing with --dry-run, even where sending is off', async () => {
+    vi.stubEnv('DO_NOT_TRACK', '1');
+    await invoke('feedback', '--type', 'docs', '-m', 'unclear', '--dry-run');
+    expect(process.exitCode).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    const printed = JSON.parse(written(stdoutSpy)) as SentEvent;
+    expect(printed.event).toBe('e2e_feedback');
+    expect(printed.properties).toMatchObject({ type: 'docs', message: 'unclear' });
+  });
+
+  it('exits 3 and says nothing was sent when PostHog does not accept it', async () => {
+    fetchMock.mockResolvedValue(new Response('', { status: 503 }));
+    await invoke('feedback', '-m', 'broken');
+    expect(process.exitCode).toBe(3);
+    expect(written(stderrSpy)).toContain('feedback could not be delivered; nothing was sent.');
+  });
+
+  it('rejects a missing message, a blank one, one over the limit, and an unknown type with exit 2', async () => {
+    for (const args of [[], ['-m', '  '], ['-m', 'x'.repeat(2001)], ['--type', 'rant', '-m', 'x']]) {
+      process.exitCode = undefined;
+      await invoke('feedback', ...args);
+      expect(process.exitCode).toBe(2);
+    }
+    expect(sentFeedback()).toEqual([]);
+  });
+});
+
 describe('e2e telemetry', () => {
   let configHome: string;
 
@@ -747,7 +860,7 @@ describe('e2e telemetry', () => {
     await invoke('telemetry', 'disable');
     expect(written(stdoutSpy)).toContain(`telemetry disabled; saved to ${file}\n`);
     expect(written(stdoutSpy)).toContain('Status: disabled (switched off with e2e telemetry disable)\n');
-    expect(written(stdoutSpy)).toContain('Nothing is sent from this machine.\n');
+    expect(written(stdoutSpy)).toContain('No usage data is sent from this machine.\n');
     expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({ enabled: false });
     expect(process.exitCode).toBe(0);
 

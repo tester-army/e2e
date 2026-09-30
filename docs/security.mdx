@@ -249,6 +249,8 @@ Built-in features may connect to:
 
 - one telemetry request per CLI invocation to `eu.i.posthog.com`, unless
   opted out; see [Telemetry](/telemetry)
+- one request to `eu.i.posthog.com` per `e2e feedback` you run; see
+  [Feedback](/telemetry#feedback)
 - the provider endpoint used by your configured model. Deterministic tests
   and fully replayed action steps make no model call.
 - readiness probes against the `readyUrl` of the app the runner starts
