@@ -6,10 +6,10 @@ description: Run mobile targets on EAS Simulators' hosted iOS simulators and And
 
 `easSimulators()` from `@e2e-dev/eas` is a
 [device provider](/mobile#hosted-devices) for
-[EAS Simulators](https://expo.dev/services/simulators). Each worker slot gets
-its own hosted iOS simulator or Android emulator, started when the run starts
-and stopped when it ends, and the engine drives it through the agent-device
-daemon EAS runs beside it. No Mac, Xcode, or Android SDK on the machine that
+[EAS Simulators](https://expo.dev/services/simulators). The run gets hosted
+iOS simulators or Android emulators, started when it starts and stopped when
+it ends, and the engine drives them through the agent-device daemon EAS runs
+beside each one. No Mac, Xcode, or Android SDK on the machine that
 runs `e2e`. Tests, config, and CI stay the same.
 
 ## Setup
@@ -34,7 +34,7 @@ export default {
         platform: 'ios',
         app: 'com.example.app',
         device: easSimulators({
-          projectId: '6c3f1f5e-8d0a-4f5e-9b1a-2f4d8e7c9a10',
+          projectId: '<your-expo-project-id>',
           buildId: process.env.EAS_BUILD_ID,
         }),
         videoTouches: false,
@@ -88,12 +88,11 @@ mobile({ platform: 'ios', app: 'com.example.app', appPath: 'build/App.app', devi
 | `agentDeviceVersion`    | the engine's | The agent-device version EAS starts the session's daemon at. Defaults to the one `@e2e-dev/mobile` pins, so the remote daemon answers as the engine's client expects; without it EAS starts the latest. |
 | `tags`                  | `[]`        | Tags on every session, beside the run's own. |
 
-## Workers and sessions
+## Sessions
 
-Every worker slot holds one simulator for the whole run, and tests start once
-every slot has one, so `workers` is the number of sessions each target starts at
-once. A session takes about three minutes from request to ready (queue,
-boot, build install), all slots in parallel, before the run's clock starts.
+Each target starts `workers` sessions, and tests start once all are ready.
+A session takes about three minutes from request to ready (queue, boot,
+build install), all in parallel, before the run's clock starts.
 
 A run must fit in one session's lifetime: EAS stops a session
 `maxDurationMinutes` after it is ready, 40 minutes by default on a
@@ -101,9 +100,8 @@ normal-priority plan and 115 on a high-priority one. Split a longer suite
 across more workers or across CI jobs.
 
 EAS runs as many sessions at once as the Expo account allows, and queues
-the rest until one ends. None ends before the run does, and every target
-holds its own `workers` sessions, so keep `workers` times the number of EAS
-targets within that number. Every session queues for a few seconds;
+the rest until one ends. None ends before the run does, so keep `workers`
+times the number of EAS targets within that number. Every session queues for a few seconds;
 one still queued after two minutes logs `still queued at EAS after two
 minutes`. Targets prepare one after another, so the sessions of a target
 that is ready wait idle while the next target's queue and boot. A session
@@ -143,7 +141,7 @@ Without the indicator, stopping takes about two seconds.
 
 ## What the provider does
 
-- Starts an `agent-device` session per slot and waits until its daemon is
+- Starts each `agent-device` session and waits until its daemon is
   reachable, then hands the engine the daemon's URL and token.
 - Defaults `maxIdleTimeMinutes` to 10. A run that dies before the engine
   stops its sessions leaves them idle, and EAS stops them after that long.
@@ -160,4 +158,4 @@ Without the indicator, stopping takes about two seconds.
 
 A missing `EXPO_TOKEN`, an account without EAS Simulators, or a session that
 fails to start fails the lease with EAS's message. That ends the run before
-any test, and the sessions other slots got are still stopped.
+any test, and the sessions that did start are still stopped.
