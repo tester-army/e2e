@@ -143,7 +143,7 @@ deterministic, never retry it; only exit 3 is worth a job-level retry.
 
 The first SIGINT or SIGTERM interrupts and writes the report if any test
 had started; the second forces engine teardown; the third kills the app
-and service process groups and exits 130 at once.
+process groups and exits 130 at once.
 
 ## Continuous integration
 

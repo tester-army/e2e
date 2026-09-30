@@ -12,8 +12,8 @@ import { killManagedProcessGroups } from '../run/managed-process.ts';
  * one not yet reached, so the state is the signals themselves: the first
  * signal interrupts, the second forces, the third exits on the spot — the
  * last resort for a teardown that is itself stuck. That exit skips the
- * runner's teardown, so the app and service process groups it spawned are
- * killed first; otherwise they outlive the run in their own groups and the
+ * runner's teardown, so the app process groups it spawned are killed
+ * first; otherwise they outlive the run in their own groups and the
  * next run fails with `APP_ALREADY_RUNNING`.
  */
 export class SignalLadder {

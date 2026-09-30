@@ -4,12 +4,16 @@ on:
   pull_request:
     paths:
       - 'docs/**'
+      - 'skills/e2e/**'
+      - 'scripts/check-docs-*.ts'
       - 'pnpm-lock.yaml'
       - '.github/workflows/docs.yml'
   push:
     branches: [main]
     paths:
       - 'docs/**'
+      - 'skills/e2e/**'
+      - 'scripts/check-docs-*.ts'
       - 'pnpm-lock.yaml'
       - '.github/workflows/docs.yml'
 
@@ -34,6 +38,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Mintlify builds and hosts the site from main through its GitHub app.
       # This job is the check: it fails on an invalid page, a broken link, or a
-      # quickstart code block that drifted from docs/examples.
+      # docs or skill code block that drifted from docs/examples.
       - name: Check docs
         run: pnpm run docs:check
