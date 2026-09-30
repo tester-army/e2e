@@ -22,8 +22,8 @@
 ## Scaffold
 
 ```bash
-npx e2e@canary init       # npm
-pnpm dlx e2e@canary init  # pnpm
+npx e2e init       # npm
+pnpm dlx e2e init  # pnpm
 ```
 
 When `e2e` is already installed, run `npx e2e init` instead, so the
@@ -46,7 +46,7 @@ the skill and registered MCP entries. The final message shows the run command.
 Without the wizard:
 
 ```bash
-npm install --save-dev e2e@canary @e2e-dev/web@canary playwright ai@^7
+npm install --save-dev e2e @e2e-dev/web playwright ai@^7
 ```
 
 `ai` (the Vercel AI SDK, v7) is only needed for `agent.*` steps.

@@ -30,7 +30,7 @@
     "registry": "https://registry.npmjs.org/",
     "access": "public",
     "provenance": false,
-    "tag": "beta"
+    "tag": "latest"
   },
   "type": "module",
   "exports": {

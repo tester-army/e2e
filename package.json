@@ -20,7 +20,7 @@
     "lint:fix": "oxlint --fix",
     "changeset": "changeset",
     "version-packages": "changeset version && node scripts/restore-peer-ranges.ts && pnpm install --lockfile-only",
-    "release": "pnpm run build && changeset publish --tag beta",
+    "release": "pnpm run build && changeset publish",
     "canary": "node scripts/canary-changeset.ts && changeset version --snapshot canary && pnpm run build",
     "canary:publish": "changeset publish --tag canary --no-git-tag && node scripts/restore-peer-ranges.ts",
     "typecheck": "pnpm run build && pnpm -r run typecheck && tsc -p scripts",

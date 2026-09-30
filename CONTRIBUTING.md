@@ -147,16 +147,12 @@ retired scope; both are deprecated on npm.
 - `next`: release candidates cut from `main` ahead of a `latest` release.
   This is the build we ask reporters to confirm a fix against. Install with
   `@next`.
-
-While the packages are `0.x`, versioned releases ship to the `beta` dist-tag
-instead and `latest` is not moved. The root `release` script passes
-`--tag beta`, and each publishable package carries `publishConfig.tag: "beta"`
-as a backstop for a hand-run `npm publish`. Switching to `latest` plus `next`
-is a two-line change in that script and those manifests, and happens with `1.0`.
-
 - `canary`: a build of `main` cut by hand ahead of the next versioned release.
-  This is the channel for beta testers before `1.0`, and the one the quickstart
-  installs. Install with `@canary`.
+  Install with `@canary`. The quickstart installs `latest`.
+
+Versioned releases publish to `latest`: the root `release` script passes no
+`--tag`, and each publishable package carries `publishConfig.tag: "latest"` as
+a backstop for a hand-run `npm publish`. `next` is not cut yet.
 
 A canary is a changesets snapshot release, published from a maintainer's
 machine, never from CI:

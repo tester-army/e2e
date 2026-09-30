@@ -460,13 +460,11 @@ trees, on both platforms, without a device.
   runner major is the one legitimate rewrite (`>=1.0.0 <2.0.0`, engines
   patched): `version-packages` runs `scripts/restore-peer-ranges.ts` after
   `changeset version`, which puts that in shape and leaves a wide range alone.
-- The root `release` script publishes with `--tag beta`, so releases land on the
-  `beta` dist-tag and never move an existing `latest`. That flag is what does the
-  work: `changeset publish` always passes `--tag` through to the publish tool, so
-  the matching `publishConfig.tag` on both packages is only a backstop for a
-  hand-run `npm publish` — `pnpm publish` ignores it. One leak is not fixable
-  here: npmjs auto-assigns `latest` on a package's *first* publish in addition to
-  `--tag`, so a brand-new package lands on `latest` once regardless.
+- The root `release` script publishes with no `--tag`, so versioned releases
+  land on `latest`. `changeset publish` passes `--tag` through to the publish
+  tool when given one, so `publishConfig.tag: "latest"` on every package is
+  only a backstop for a hand-run `npm publish` (`pnpm publish` ignores it).
+  Canaries pass `--tag canary` explicitly and never move `latest`.
   Do not switch to changesets pre mode to get a real prerelease version: a
   `0.16.0-beta.0` runner is outside the engine's `e2e` peer range, so
   changesets patch-bumps `@e2e-dev/web` and rewrites the peer to
