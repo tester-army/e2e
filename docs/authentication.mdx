@@ -124,6 +124,8 @@ one-time code, and never be an environment variable (only the vault client's
 own access is configured in the environment):
 
 ```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
 import { vault } from './support/vault.ts';
 
 export default {

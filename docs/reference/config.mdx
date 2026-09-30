@@ -841,7 +841,8 @@ Called while `e2e.config.ts` evaluates, before any run exists, `secrets.get(name
 returns a reference by name that an engine option can hold, such as
 `web({ basicAuth: { username, password: secrets.get('previewPassword') } })`.
 The engine declares it, the config load fails with `INVALID_CONFIG` when no
-`secrets` entry or credential has the name, and the engine resolves the value
+`secrets` entry has the name (a credential's password is not one: declare a
+value an engine option needs under `secrets`), and the engine resolves the value
 when each attempt starts (a provider runs again every time). The value joins
 the attempt's redaction then, without the screenshot restrictions a fill
 brings, since it goes to the engine rather than onto the page. The digest
