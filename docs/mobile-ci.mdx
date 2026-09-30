@@ -65,8 +65,9 @@ A few things hold on every service:
 - **Pin the iOS runtime.** A simulator picked by name (`iPhone 17`) runs
   whichever iOS the image defaults to, and the accessibility tree changes
   between iOS releases: a runner image update can flip a locator assertion
-  with no change in your code. Boot a simulator from a runtime you choose,
-  by UDID, and bump it on purpose.
+  with no change in your code. The examples create a simulator on a named
+  runtime and boot it by UDID; replace `iOS-26-5` with a runtime the image
+  ships (`xcrun simctl list runtimes`) and bump it on purpose.
 - **The iOS runner is compiled on first use.** agent-device builds its
   XCUITest runner into `~/.agent-device` the first time it drives a
   simulator. Cache that directory where the service lets you.
@@ -78,6 +79,11 @@ A few things hold on every service:
   (`agent.assert`, `agent.waitFor`, `agent.extract`) always call the model.
   The cache keys on `app`, so a recording made on your simulator replays on
   the CI one.
+- **Keep the model key from untrusted code.** A job that runs a pull
+  request's code hands the key to that code, its tests and dependencies
+  included. Expose it only to builds of branches you trust; see
+  [Model credentials](/ci#model-credentials) and the
+  [security model](/security).
 
 ## GitHub Actions
 
@@ -125,8 +131,9 @@ jobs:
 
       - name: Boot a simulator and install the app
         run: |
-          xcrun simctl bootstatus "iPhone 17" -b
-          xcrun simctl install booted build/Build/Products/Release-iphonesimulator/MyApp.app
+          UDID=$(xcrun simctl create e2e "iPhone 17" com.apple.CoreSimulator.SimRuntime.iOS-26-5)
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" build/Build/Products/Release-iphonesimulator/MyApp.app
 
       - run: npx e2e run --target ios --reporter list,junit
         env:
@@ -258,11 +265,11 @@ jobs:
         with:
           build_id: ${{ needs.build_ios.outputs.build_id }}
           extensions: [app]
-      - uses: eas/start_ios_simulator
-        with:
-          device_identifier: iPhone 17
-      - name: Install the app
-        run: xcrun simctl install booted "${{ steps.download_build.outputs.artifact_path }}"
+      - name: Boot a simulator and install the app
+        run: |
+          UDID=$(xcrun simctl create e2e "iPhone 17" com.apple.CoreSimulator.SimRuntime.iOS-26-5)
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "${{ steps.download_build.outputs.artifact_path }}"
       - name: Run e2e
         run: npx e2e run --target ios --reporter list,junit
       - uses: eas/upload_artifact
@@ -307,11 +314,12 @@ jobs:
   reads; set it explicitly, since custom jobs default to `production`.
 - **CI mode.** `CI: '1'` turns on the [CI defaults](/ci#what-ci-changes)
   whether or not the runner sets it.
-- **Device functions.** `eas/start_ios_simulator` and
-  `eas/start_android_emulator` are EAS build functions, documented under
+- **Emulator function.** `eas/start_android_emulator` is an EAS build
+  function, documented under
   [custom builds](https://docs.expo.dev/custom-builds/schema/) rather than
-  on the Workflows syntax page. The emulator function downloads the system
-  image you name with `sdkmanager`.
+  on the Workflows syntax page. It downloads the system image you name with
+  `sdkmanager`. The iOS job creates its simulator with `xcrun simctl` to pin
+  the runtime.
 - **Rebuilding less.** A `fingerprint` job with `get-build` and `repack`
   reuses the last native build and only rebundles the JavaScript. The
   [agent-device EAS template](https://github.com/callstackincubator/eas-agent-device/blob/main/.eas/workflows/agent-qa-mobile.yml)
@@ -367,7 +375,7 @@ workflows:
         - configuration: Release
     - xcode-start-simulator@0:
         inputs:
-        - destination: platform=iOS Simulator,name=iPhone 17,OS=latest
+        - destination: platform=iOS Simulator,name=iPhone 17,OS=26.5
     - script@1:
         title: Run e2e
         inputs:
@@ -480,8 +488,9 @@ workflows:
             -derivedDataPath ios/build
       - name: Boot a simulator and install the app
         script: |
-          xcrun simctl bootstatus "iPhone 17" -b
-          xcrun simctl install booted ios/build/Build/Products/Release-iphonesimulator/MyApp.app
+          UDID=$(xcrun simctl create e2e "iPhone 17" com.apple.CoreSimulator.SimRuntime.iOS-26-5)
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" ios/build/Build/Products/Release-iphonesimulator/MyApp.app
       - name: Run e2e
         script: npx e2e run --target ios --reporter list,junit
         test_report: .e2e/junit.xml
