@@ -50,9 +50,9 @@
     "test:unit": "vitest run tests/unit"
   },
   "peerDependencies": {
-    "@e2e-dev/web": "0.11.0-canary-20260929180659",
+    "@e2e-dev/web": ">=0.11.0 <1",
     "@onkernel/sdk": ">=0.113.0 <1",
-    "e2e": "0.15.0-canary-20260929180659"
+    "e2e": ">=0.15.0 <1"
   },
   "devDependencies": {
     "@e2e-dev/web": "workspace:*",

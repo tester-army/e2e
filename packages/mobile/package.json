@@ -63,7 +63,7 @@
   },
   "peerDependencies": {
     "ai": "^7.0.0",
-    "e2e": "0.15.0-canary-20260929180659"
+    "e2e": ">=0.15.0 <1"
   },
   "peerDependenciesMeta": {
     "ai": {
