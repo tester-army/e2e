@@ -117,7 +117,8 @@ function parseText(limit: number): (value: string) => string {
   return (value) => {
     const text = value.trim();
     if (text === '') throw new InvalidArgumentError('must not be empty');
-    if (text.length > limit) throw new InvalidArgumentError(`must be at most ${limit} characters, got ${text.length}`);
+    const length = [...text].length;
+    if (length > limit) throw new InvalidArgumentError(`must be at most ${limit} characters, got ${length}`);
     return text;
   };
 }

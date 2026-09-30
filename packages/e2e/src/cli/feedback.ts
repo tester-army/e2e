@@ -120,7 +120,8 @@ const BLOCKING: ReadonlySet<TelemetryDisabledBy> = new Set(['E2E_TELEMETRY_DISAB
 /**
  * Sends the report, or prints it under `--dry-run` or `E2E_TELEMETRY_DEBUG`.
  * Exit 0 when PostHog accepted it, 2 when an opt-out variable forbids
- * sending, 3 when it could not be delivered.
+ * sending, 3 when PostHog did not confirm it: a timeout can follow delivery,
+ * so the message names the reference and never claims nothing arrived.
  */
 export async function feedback(report: FeedbackReport, options: FeedbackOptions): Promise<number> {
   const env = options.env ?? process.env;
@@ -136,7 +137,9 @@ export async function feedback(report: FeedbackReport, options: FeedbackOptions)
   }
   const sent = await postBatch([event], { signal: AbortSignal.timeout(SEND_TIMEOUT_MS), fetch: options.fetch ?? fetch });
   if (!sent) {
-    process.stderr.write(`feedback could not be delivered; nothing was sent. Try again, or open an issue: ${ISSUES_URL}\n`);
+    process.stderr.write(
+      `feedback not confirmed: PostHog did not acknowledge report ${event.uuid}, so it may not have arrived. Try again, or open an issue: ${ISSUES_URL}\n`,
+    );
     return 3;
   }
   process.stdout.write(`Feedback sent to the e2e team, thank you. Reference: ${event.uuid}\n`);

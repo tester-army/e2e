@@ -803,11 +803,17 @@ describe('e2e feedback', () => {
     expect(printed.properties).toMatchObject({ type: 'docs', message: 'unclear' });
   });
 
-  it('exits 3 and says nothing was sent when PostHog does not accept it', async () => {
+  it('exits 3 and names the unconfirmed report when PostHog does not accept it', async () => {
     fetchMock.mockResolvedValue(new Response('', { status: 503 }));
     await invoke('feedback', '-m', 'broken');
     expect(process.exitCode).toBe(3);
-    expect(written(stderrSpy)).toContain('feedback could not be delivered; nothing was sent.');
+    const [event] = sentFeedback();
+    expect(written(stderrSpy)).toContain(`feedback not confirmed: PostHog did not acknowledge report ${event?.uuid}, so it may not have arrived.`);
+  });
+
+  it('counts the length limit in characters, not UTF-16 units', async () => {
+    await invoke('feedback', '-m', '🐛'.repeat(2000), '--dry-run');
+    expect(process.exitCode).toBe(0);
   });
 
   it('rejects a missing message, a blank one, one over the limit, and an unknown type with exit 2', async () => {

@@ -524,8 +524,9 @@ Feedback is sent only when you run the command, so a saved
 `DO_NOT_TRACK=1` do: with either set the command exits 2 and sends nothing,
 so a CI job or a fleet that opted out sends nothing even when an agent runs
 it. `E2E_TELEMETRY_DEBUG=1` prints it like `--dry-run`. It prints a reference
-id and exits 0 once PostHog accepts the event, or exits 3 when it could not
-be delivered.
+id and exits 0 once PostHog accepts the event, or exits 3 when PostHog did
+not confirm it; the report may still have arrived, so the message names its
+reference id.
 
 ## e2e telemetry
 
