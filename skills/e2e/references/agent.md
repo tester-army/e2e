@@ -1,15 +1,13 @@
 # Agent steps
 
 `agent` is a fixture like `screen` and the main way a test drives the app.
-Each call is one bounded invocation: a fresh redacted observation, a
-deadline, a model-call budget, and no shared transcript between calls. A
-test with no agent step makes no model calls.
+Each call is one bounded invocation: fresh redacted observation, deadline,
+model-call budget, no shared transcript. No agent step, no model calls.
 
 ## Configure a model
 
-Configure an AI SDK model under `agents.default`. This example uses Vercel
-AI Gateway, which reads `AI_GATEWAY_API_KEY` or, without it, a Vercel OIDC
-token:
+Put an AI SDK model under `agents.default`. Vercel AI Gateway reads
+`AI_GATEWAY_API_KEY` or, without it, a Vercel OIDC token:
 
 ```ts
 import type { E2EConfig } from 'e2e';
@@ -17,49 +15,43 @@ import { web } from '@e2e-dev/web';
 import { gateway } from 'ai';
 
 export default {
-  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
+  targets: [{ engine: web({ url: 'http://127.0.0.1:3000' }) }],
   agents: { default: { model: gateway('openai/gpt-6-luna-fast') } },
 } satisfies E2EConfig;
 ```
 
-Agent steps can also use a saved subscription login or a local model. See
-[setup](setup.md#subscriptions-and-api-keys) for the choices and sign-in commands.
-Keep `ai@^7` installed when using agent steps with any provider.
+Subscription logins and local models:
+[setup](setup.md#subscriptions-and-api-keys). Keep `ai@^7` installed with
+any provider.
 
-- Pass a model instance, not a string. A string produces `INVALID_CONFIG`.
-- An agents entry is one plain object: `model`, `judge`, `system`,
+- Pass a model instance, not a string (`INVALID_CONFIG`).
+- An agents entry is one plain object of `model`, `judge`, `system`,
   `context`, `tools`, `maxSteps`, `maxModelCalls`, `judgmentTimeout`,
   `maxObservationBytes`, `maxInputTokens`, `providerOptions`, or `executor`
-  for a custom brain. Agents never inherit from each other: an entry left
-  without `model` or `context` gets none from `default`.
-- The `model` drives `agent.act`. Judgments use `judge` when configured,
-  otherwise `model`.
+  for a custom brain; none inherits `model` or `context` from `default`.
+- `model` drives `agent.act`. Judgments use `judge` when set, else `model`.
 - A missing model for the built-in agent raises one run-level
-  `MODEL_UNAVAILABLE` when the first test acquires `agent`, then stops the
-  run with exit 2. Authentication failures occur on the first model call
-  and raise `MODEL_PROVIDER_FAILED`.
-- `context` is what the app calls things, told to every model call, judges
-  included; `system` is how the acting agent works and only the act loop
-  reads it. Set both on the agents entry, next to `model`; `agentContext` on
-  a test or group adds more for that test.
-- A bare `StepExecutor` as an entry is `INVALID_CONFIG` (write
-  `{ executor }`), as are `timeout` (now `judgmentTimeout`), `maxTurns` (now
-  `maxModelCalls`), and the top-level `limits` (`maxModelTokensPerCall` is
-  now the agent's `maxInputTokens`).
+  `MODEL_UNAVAILABLE` when the first test acquires `agent`, exit 2; auth
+  failures surface on the first model call as `MODEL_PROVIDER_FAILED`.
+- `context` is what the app calls things, sent to every model call, judges
+  included; `system` is how the acting agent works, read only by the act
+  loop. Both live on the agents entry; `agentContext` on a test or group
+  adds more.
 
 ### Choose an agent
 
 Tests use `agents.default` unless selected otherwise:
 
-- `e2e run --agent buyer` chooses another configured agent for the run.
-- `{ agent: 'buyer' }` on a test or group pins that agent. A list such as
+- `e2e run --agent buyer` picks another configured agent.
+- `{ agent: 'buyer' }` on a test or group pins that agent; a list such as
   `{ agent: ['buyer', 'admin'] }` runs each test once per agent.
-- `--agent buyer,admin` runs unpinned tests for both agents. It narrows a
-  pinned list to matching names and never replaces a pin it does not name.
+- `--agent buyer,admin` runs unpinned tests for both, narrows a pinned list
+  to matching names, never replacing a pin it does not name.
 - `{ agent: 'name' }` on an `agent.*` call overrides the test's choice.
 
-To test signed-in personas, pair an agent with a `session` in a describe
-block, then repeat the block for each persona.
+For signed-in personas, pair an agent with a `session` in a describe block
+repeated per persona; the cache records per agent step, so a specialised
+agent replays too.
 
 ## act: one goal
 
@@ -78,62 +70,63 @@ await agent.act('sign in with the given credentials', {
 });
 ```
 
-`act(instruction, options?)` plans and performs a multi-action flow and ends
-in a verdict. Passed resolves with what the step did: `summary`, `modelCalls`,
-`actions`, and `cache` (how the replay cache took part). Failed or blocked
-throws an `AgentError` whose `code` says why: `ACTION_FAILED` for a plain
-failure, `STEP_BUDGET_EXHAUSTED` or `STEP_TIMEOUT` when the budget or the
-clock ran out, and a blocked code (`AUTH_CREDENTIAL_UNAVAILABLE`,
-`ENVIRONMENT_UNAVAILABLE`, `SEED_DATA_MISSING`, `TEST_SETUP_FAILED`,
-`AUTOMATION_UNSUPPORTED`) when something outside the product prevented a
-verdict.
+`act(instruction, options?)` runs a multi-action flow to a verdict. Passed
+resolves with `summary`, `modelCalls`, `actions`, and `cache` (the replay
+cache's part). Failed or blocked throws an `AgentError` whose `code` says
+why: `ACTION_FAILED` (product failure); `STEP_BUDGET_EXHAUSTED`,
+`STEP_TIMEOUT`, `CONTEXT_OVERFLOW` (out of room);
+`AUTH_CREDENTIAL_UNAVAILABLE`, `AUTH_CREDENTIAL_INVALID`,
+`SECRET_UNAVAILABLE`, `ENVIRONMENT_UNAVAILABLE`, `SEED_DATA_MISSING`,
+`TEST_SETUP_FAILED`, `AUTOMATION_UNSUPPORTED`, `POLICY_DENIED` (blocked
+from outside);
+`MODEL_OUTPUT_INVALID` (unusable answer). Full list: topic debugging.
 
-Options: `params` (the values the instruction refers to; a `Secret` is filled
-by the runner; a run-unique value such as `unique(\`E2E ${Date.now()}\`)` keeps
-the replay cache working across runs), `timeout` (default the config `timeout`), `maxSteps` (default 25
-actions), `maxModelCalls` (default 25). Per-call budgets can only lower the
-configured limits. `act` takes no `schema`: structured output is
-`extract({ schema })`. By default pixels reach an `act` step through the
-`screenshot` and `tap_at` tools the agent offers while no secret has been
-filled. `screenshot` attaches the viewport's pixels to the result and turns
-on pixel mode, where every action result carries a fresh screenshot; `tap_at`
-taps a point in the latest screenshot (a canvas shape, a map pin, an image
-region, a control in a system sheet), hit-tested against the tree first so a
-listed control is tapped by id. A screen with nothing to tap by id opens with
-a screenshot already attached. `type_at`, `press_at`, and `select_at` act at
-a point the same way, for a field or control the tree does not list, each
-resolved onto the listed control underneath; `type_at` on a point with
-nothing listed taps it and types through the keyboard. `act` takes no
-`vision` option: the model decides when it needs pixels.
-On an engine with a keyboard (browser and device), `type` and `press` also
-take no target and reach whatever has focus: `tap_at` a field the tree does
-not list, then `type` without a target; a device adds `dismiss_keyboard`.
-`press` takes `times` to repeat a key up to 20 times in one call, and the
-screen lists the focused field's selected text as `selection="..."` (never
-for a field holding a secret), so a repeated `Shift+ArrowLeft` selects
-exactly one word with visible feedback.
-Use the point tools for a canvas, a game, or a native screen without
-accessibility exposure. Once a secret has been filled in the attempt no
-screenshot leaves the runner and the pixel tools leave the vocabulary, so
-act on pixels before signing in, or in a test of its own.
-Beyond tap and type the agent has one tool per engine action: `hover` for
-menus, flyouts, and tooltips that open on the pointer (and `hover_at` for a
-point); `double_tap`, `long_press`, and `right_click` for an item that
-opens on the second click, a long-press menu, or a context menu; `check` to
-set a checkbox or switch to a state instead of flipping it; `drag` from one
-node to another; `scroll_to` to bring a listed node into view, or by `text`
-to page a long or windowed list until a row reading it shows; `upload` to
-attach project files to a file input (paths relative to the project root;
-outside it or hidden such as `.env` is `POLICY_DENIED`); `back` to return.
-A device offers no `right_click`, `scroll_to` by node id, or `upload`. Name the file
-in `params` and the target the way the screen names it; the agent picks the
-verb.
-Scrolling to text settles each page. On a device, the next observation
-checks stability without waiting for another scroll effect, during live
-execution and replay.
-When an action closes an on-screen keyboard, the result says so: on a touch
-screen that tap was often spent on closing it, so act on the control again
-before concluding.
+Options:
+
+- `params`: values the instruction names; the runner fills a `Secret`,
+  and a run-unique `unique(\`E2E ${Date.now()}\`)` keeps the cache working
+  across runs.
+- `timeout`: the config `timeout`.
+- `maxSteps` (default 25 actions), `maxModelCalls` (default 25): may only
+  lower the agent's limits, else `INVALID_ARGUMENT`.
+- No `schema` (use `extract({ schema })`) and no `vision`: the model decides
+  when it needs pixels.
+
+The tools, one per engine action. Name the target as the screen names it
+(files in `params`); the agent picks the verb:
+
+- `observe`: re-read the screen after waiting on work in progress.
+- `tap`: button, link, menu item, tab, checkbox, row, field.
+- `double_tap`/`long_press`/`right_click`: second-click item, long-press
+  menu, context menu only.
+- `hover`: menus, flyouts, tooltips that open on the pointer.
+- `type`: one input; on browser/device no target means focus; `replace` clears.
+- `press`: one key to a node or, on browser/device, to focus; `times` up to 20.
+- `select`: one option by visible label.
+- `check`: set a checkbox, switch, or radio to a state, not flip it.
+- `scroll`: viewport or one scrollable node, a screen or a few.
+- `scroll_to`: a listed node into view, or by `text` page a list to a row.
+- `drag`: one node onto another.
+- `upload`: project-root files to a file input; outside it or hidden (`.env`)
+  is `POLICY_DENIED`.
+- `navigate`: a URL or app-relative path.
+- `back`: browser history or in-app back.
+- `type_secret`: a declared secret by name; plaintext never reaches the model.
+- `screenshot`: attach viewport pixels; every later result then carries one.
+- `tap_at`/`hover_at`/`press_at`/`select_at`/`type_at`: a screenshot point.
+- `dismiss_keyboard` (device): hide the on-screen keyboard.
+
+The focused field's selected text is listed as `selection="..."` (never for
+a secret), so a repeated `Shift+ArrowLeft` selects one word with visible
+feedback. Point tools serve a canvas shape, map pin, image region, or system
+sheet control, hit-testing the tree first so a listed control underneath is
+acted on by id; `type_at` on nothing listed taps, then types. A screen with
+nothing to tap by id opens with a screenshot attached. A device has no
+`right_click`, `select`, `upload`, or `scroll_to` by node id. Pixels are
+masked and withheld after a secret fill (topic writing-tests): act on pixels
+before signing in, or in a test of its own. A result says when an action
+closed an on-screen keyboard; on a touch screen that tap was often spent
+closing it, so act again.
 
 ## assert, waitFor, extract: one question
 
@@ -153,94 +146,61 @@ const data = await agent.extract('every todo title and how many remain', { // st
 expect(data.titles).toContain('Buy milk');
 ```
 
-- `assert` does not poll. A false judgment is `ASSERTION_FAILED` with the
-  model's explanation and a screenshot in the report. A judgment the screen
-  did not show enough to decide is `ASSERTION_INCONCLUSIVE`, also a failure:
-  open or wait for the right screen first, and ask about what is visible.
-  Judged from the tree alone, its message adds `pass vision: true when the
-  answer is in pixels` (none when the engine captures no screenshots, a
-  secret was filled, or a pixel request already degraded); `waitFor`'s
-  timeout carries the same hint after an inconclusive round.
-  Malformed output gets one repair round, then `MODEL_OUTPUT_INVALID`.
-- Judgments see the assertion and the current screen only, never the steps
-  before or the act loop's summaries. `judge` in the agent config names a
-  separate model for them; unset, they use `model`.
-- `waitFor` observes every `interval` (default 3 s) and spends a judgment
-  only when the screen changed; `STEP_TIMEOUT` after `timeout` (default
-  30 s).
-- `extract` accepts any Standard Schema validator (zod works). The model sees
+- `assert` does not poll. False is `ASSERTION_FAILED` with the model's
+  explanation and a screenshot in the report; too little on screen to
+  decide is `ASSERTION_INCONCLUSIVE`, also a failure, so reach the right
+  screen first and ask about what is visible. Judged from the tree alone,
+  it adds `pass vision: true when the answer is in pixels`, as does
+  `waitFor`'s timeout after an inconclusive round.
+- Judgments see the assertion and the current screen only, never prior
+  steps or the act loop's summaries; malformed output gets one repair
+  round, then `MODEL_OUTPUT_INVALID`.
+- `waitFor` observes every `interval` (default 3 s), judges only when the
+  screen changed, and is `STEP_TIMEOUT` after `timeout` (default 30 s).
+- `extract` takes any Standard Schema validator (zod works); the model sees
   the schema's shape, never its value rules (`min`, `max`, lengths,
-  patterns), so those check what it read. Data the screen does not show is
-  `ASSERTION_INCONCLUSIVE` naming what was missing, not `""` or `0`; to accept
-  absence, ask for it (`'the phone, or null when none is shown'` with
-  `.nullable()`). Invalid output gets one repair round, then
-  `MODEL_OUTPUT_INVALID`.
-- Judgments are never cached and always read a fresh observation.
+  patterns), which check what it read. Data the screen does not show is
+  `ASSERTION_INCONCLUSIVE` naming what was missing, never `""` or `0`; to
+  accept absence, ask for it (`'the phone, or null when none is shown'`
+  with `.nullable()`).
 
-`vision` on a judgment controls the evidence: `false` (the default) the
-semantic tree; `true` the tree plus a masked screenshot; `'only'` the
-screenshot alone. Use `'only'` for a question about what the screen presents (an
-overlay, a broken layout, a chart), because the tree would otherwise answer
-first. Pixels show the viewport only and are withheld once a secret was
-filled in the attempt.
-
-When semantic capture fails, an engine with independent screenshot masking
-may return fresh pixels and an explicit unavailable-tree warning. `act`
-receives the image and warning on every such observation; judgments require
-`vision: true` or `'only'`. No fallback is allowed after a secret fill. Do not
-infer that a control is absent from an unavailable tree, or reuse old node ids.
-When the tree recovers, its next presentation includes the whole tree.
-Such a step cannot record or finish from a replay cache entry, even after
-recovery. A completed cache capture may supply the executor's first look
-once, provided no action or later capture intervened. The Playwright
-engine supports timeout recovery; the device engine fails closed because its
-masks depend on the accessibility capture.
+`vision` on a judgment picks the evidence: `false` (default) the tree;
+`true` the tree plus a masked screenshot; `'only'` the screenshot alone, for
+what the screen presents (an overlay, a broken layout, a chart) where the
+tree would answer first. `'only'` never falls back to the tree: unprovably
+masked pixels fail with `POLICY_DENIED`.
 
 ## Write instructions the model can execute
 
-- One goal per `act`. The order of goals is the test's; the path inside a
-  goal is the model's.
-- Use the words on screen: `'open the Billing tab and choose the Pro plan'`,
-  not `'upgrade'` when no control says so.
-- Values go in params, never in the sentence:
-  `agent.act('rename the project to {name}', { params: { name } })`. The runner does not
-  expand `{name}`; the model receives the instruction as written plus the
-  params as a separate block and reads the value from there.
-- Give vocabulary once, in `agents.<name>.context` or `agentContext`, instead of
-  repeating it in every instruction.
-- Do not describe mechanics the runner already handles: waiting, scrolling
-  into view, retries.
-- Pin the outcome of every `act` deterministically, right after it:
+- One goal per `act`; goal order is the test's, the path the model's.
+- Use the words on screen: `'open the Billing tab'`, not `'upgrade'`.
+- Values go in `params`, never expanded: `act('rename to {name}', { params })`.
+- Do not describe mechanics the runner handles: waiting, scrolling, retries.
+- Pin every `act` outcome right after it; that check lets the cache record:
 
 ```ts
 await agent.act('create a workspace named "Atlas" on the Pro plan');
 await expect(screen.getByRole('status')).toHaveText('Created "Atlas" on the Pro plan');
 ```
 
-The check makes the test model-portable (the path may differ between models,
-the end state may not), and it is what lets the replay cache record the step.
-
-State the step writes off screen (a database row, an API read) can land after
-`act` returns; poll the read instead of sleeping:
-
-```ts
-await agent.act('create a test named "AI checkout regression"');
-await expect.poll(() => getTest(workspace).then((row) => row?.title), { timeout: 15_000 }).toBe('AI checkout regression');
-```
+The model gets the instruction verbatim plus the params as a separate
+block; the check also makes the test model-portable. Off-screen state (a
+database row) can land after `act` returns; `expect.poll` the read instead
+of sleeping.
 
 ## What the model sees
 
-A redacted snapshot of the screen (roles, names, text, states), a summary of
-prior steps, and your context. The first screen of a step arrives whole;
-every action result after it reports what changed, keyed by node ids that
-stay stable while an element exists, or the whole screen again when most of
-it changed, and is read after the action's effect landed. Never raw HTML,
-cookies, headers, environment
-values, or a `Secret`'s value; password fields arrive masked. Pixels reach a
-model through `vision` on a judgment or the act loop's observations and
-screenshot tools. They are masked and withheld after a secret has been filled. Nothing the model
-returns runs as code or selectors: the runner validates and authorizes every
-tool call before it executes.
+A redacted snapshot of the screen (roles, names, text, states), prior-step
+summaries, and your context; never raw HTML, cookies, headers, environment
+values, or a `Secret`'s value; password fields masked. The first
+screen of a step arrives whole; later action results report what changed,
+keyed by node ids stable while an element exists, or the whole screen when
+most changed. Pixels arrive through `vision` on a judgment or the act loop's
+`screenshot` and point tools, masked and withheld after a secret fill. When
+the browser engine's tree capture times out, the model gets a screenshot and
+a warning, a judgment needs `vision: true`, and no control may be inferred
+absent nor old node ids reused. Nothing the model returns runs as code or
+selectors: the runner validates and authorizes every tool call first.
 
 ## Budgets and cost
 
@@ -251,118 +211,97 @@ tool call before it executes.
 | `extract` | 2 | 30 s |
 | `waitFor` | up to `agents.<name>.maxModelCalls` (25) | 30 s |
 
-- A verified `act` can replay without model calls. Cache misses and
-  hand-offs use the model, and judgments still run live.
-- For slow model calls, raise the step or test `timeout` for `act` and
-  the agent's `judgmentTimeout` for judgments. Raise `actionTimeout` for
-  slow UI operations. `STEP_TIMEOUT` and
-  `STEP_BUDGET_EXHAUSTED` count as test failures; smaller goals can help.
-- `--debug` prints a per-step table (duration, model calls, tokens, cost)
-  after the run and saves each step's transcript as an artifact.
+- Slow model calls: raise the step or test `timeout` for `act`, the agent's
+  `judgmentTimeout` for judgments, `actionTimeout` for slow UI.
+  `STEP_TIMEOUT` and `STEP_BUDGET_EXHAUSTED` fail the test; smaller goals
+  help.
+- `--debug` prints phase timings and a per-step table (duration, model
+  calls, tokens, cache share, cost) to stderr and saves step transcripts as
+  artifacts.
 
 ## The replay cache
 
-A passing `agent.act` can save its actions after a later check verifies the
-outcome. The next run replays them without model calls. If the app or final
-state no longer matches, the live agent continues from the current screen.
-`agent.assert`, `agent.waitFor`, and `agent.extract` still run live.
+A passing `agent.act` saves its actions once a later check verifies the
+outcome; the next run replays them without model calls, and the live agent
+continues from the current screen when the app or final state no longer
+matches. Misses and hand-offs use the model; `agent.assert`,
+`agent.waitFor`, and `agent.extract` are never cached.
 
-- On by default (`read-write`), `read-only` in CI, `cache: 'off'` in the
-  config or `--no-cache` on a run to disable. Entries live in `.e2e/cache/`;
-  deleting the directory only slows the next run.
-- An entry is written only after a later verification step passes: a
-  locator or engine `expect` matcher, `locator.waitFor`, `web.waitForURL`,
-  `agent.assert`, or `agent.waitFor`. A plain-value `expect`, `expect.poll`,
-  `agent.extract`, another `act`, or the attempt passing confirms nothing.
-  An `act` nothing checks is never replayed.
-- A replay needs the app on the path the step was recorded on, unless the
-  recording opens with a navigation. It re-finds each control by role, name,
-  test id, placeholder, and input purpose, and passes on its own only when
-  the recorded end path and the controls that appeared during the step are
-  back. Otherwise the agent takes over mid-step. The report's
-  `step.cache.reason` says why: `no-entry`, `wrong-context`,
-  `target-not-found`, `target-ambiguous`, `end-mismatch`, and so on.
-- A step that records no actions creates no entry and skips the cache's
-  end-state observation. A step whose `unique()` value equals, is spelled
-  inside, or is the encoded form of another param's value is not recorded
-  either; `step.cache.notRecorded` reads `param-collision`.
-- The wait for a visible change starts when the action finishes, so screen
-  capture time counts toward it. Replay still compares consecutive captures
-  after actions that can move or replace the screen. Empty navigation
-  captures without permitted screenshot evidence keep polling within the
-  stability window.
-- `e2e init` gitignores `.e2e/cache/`; committing entries is opt-in. Remove
-  that line to share replays with CI and teammates (CI stays `read-only`
-  unless `cache: 'read-write'` is set explicitly).
-- A failing run evicts the entries it implicates. To rule the cache out of a
-  failure, run with `--no-cache`.
-- With committed recordings, run CI with `--strict-cache`: a recording that
-  exists but no longer replays fails with `REPLAY_STALE` instead of quietly
-  spending model calls on every run. Re-record it locally and commit the
-  entry. Steps with no recording still run live.
+- On by default (`read-write`), `read-only` in CI, off via `cache: 'off'`
+  or `--no-cache`. Entries live in `.e2e/cache/`; deleting the directory
+  only slows the next run.
+- An entry is written only after a later verification passes (a locator or
+  engine `expect` matcher, `locator.waitFor`, `web.waitForURL`,
+  `agent.assert`, `agent.waitFor`), so an unchecked `act` never replays; a
+  plain-value `expect`, `expect.poll`, `agent.extract`, another `act`, or
+  the attempt passing confirms nothing.
+- A replay needs the app on the recorded path (unless the recording opens
+  with a navigation), re-finds each control by role, name, test id,
+  placeholder, and input purpose, and passes alone only when the recorded
+  end path and the controls seen during the step are back; otherwise the
+  agent takes over mid-step. `step.cache.reason` says why: `no-entry`,
+  `wrong-context`, `target-not-found`, `target-ambiguous`, `end-mismatch`,
+  and so on.
+- A step recording no actions creates no entry; one whose `unique()` value
+  equals, is spelled inside, or is the encoded form of another param's value
+  is not recorded either (`step.cache.notRecorded`: `param-collision`).
+- `e2e init` gitignores `.e2e/cache/`; remove that line to commit entries
+  and share replays with CI and teammates (CI stays `read-only` unless
+  `cache: 'read-write'` is set).
+- A failing run evicts the entries it implicates; `--no-cache` rules the
+  cache out of a failure.
+- With committed recordings, `--strict-cache` in CI fails a recording that
+  no longer replays with `REPLAY_STALE` instead of quietly spending model
+  calls every run; re-record locally and commit. Unrecorded steps still run
+  live.
 
 ## Inspect what the model did
 
 ```bash
 npx e2e run tests/checkout.e2e.ts --debug      # step table, transcripts as artifacts
-npx e2e run tests/checkout.e2e.ts --ai-trace   # writes .e2e/ai-trace.json
+npx e2e run tests/checkout.e2e.ts --ai-trace   # writes <output>/ai-trace.json (.e2e/ai-trace.json by default)
 npx unbox-ai runs .e2e/ai-trace.json                        # one line per agent step
 npx unbox-ai summary .e2e/ai-trace.json --run 0             # turns, tokens, tool calls of one step
 ```
 
-Never read `.e2e/ai-trace.json` directly; it is megabytes of resent context.
-Use `--no-cache` when the whole flow should be traced, since replayed steps
+Never read the trace directly: megabytes of resent context, images replaced
+by byte counts. `--no-cache` traces the whole flow, since replayed steps
 make no model calls.
-
-The trace replaces inline bytes and base64 in SDK image and file message
-parts with decoded byte counts. URLs and text remain; encoded strings in
-arbitrary tool result JSON or other fields are preserved.
 
 ## Make the agent yours
 
-The agent in the config is a starting point. The best agent for an app is
-the one that knows its screens, and that comes from iterating on it:
-
-1. **The goal.** A failed step usually means the goal named something the
-   screen does not. Reword it with the labels on screen. Check the step's
-   transcript with `--debug` to see what the model saw and tried.
-2. **`context`.** Vocabulary every step needs: what the plans are called,
-   what a "workspace" is, which tab holds billing. Set it once on the agent
-   (`agents.<name>.context`)
-   or per test with `agentContext`, not in every instruction.
-3. **`system` on the agent.** How the agent works: how carefully it
-   verifies, what it never does, how it treats a modal. A UX reviewer, a
-   cautious QA persona, and a fast smoke agent are three `system` prompts on
-   the same model.
+1. **The goal.** A failed step usually named something the screen does not;
+   reword it with on-screen labels, and `--debug` shows what the model saw
+   and tried.
+2. **`context`.** Vocabulary every step needs (plan names, what a
+   "workspace" is, which tab holds billing), once on `agents.<name>.context`
+   or per test via `agentContext`.
+3. **`system` on the agent.** How carefully it verifies, what it never
+   does, how it treats a modal; a UX reviewer, a cautious QA persona, and a
+   fast smoke agent are three `system` prompts on one model.
 4. **Tools.** A test API the agent may call mid-flow (seed a cart, mint a
-   coupon) via the agent's `tools`; see below.
+   coupon) via `tools`; see below.
 5. **The model and its options.** `providerOptions` for reasoning effort,
-   or a different model for one persona. `npx e2e run --agent <name>` runs
-   the suite as any configured agent, so two candidates can be compared on
-   the same tests; every result records which agent ran it.
-
-Personas are agents by name under `agents`, pinned with `{ agent }` on a
-test or block, or swept with `--agent buyer,admin`. The replay cache records
-per agent step, so a specialised agent gets the same replay benefit.
+   or another model for one persona. `--agent <name>` runs the suite as any
+   configured agent, comparing candidates on the same tests; every result
+   records which agent ran it.
 
 ## Beyond the built-in agent
 
 - `tools: { seedCart }` on an agents entry adds AI SDK tools wrapped with
-  `defineTool(tool({ ... }), { mutates: true })` from `e2e/agent`, so
-  a flow can call a test API mid-step.
-- `createToolLoopExecutor` keeps the loop and replaces the prompt and the
-  tool vocabulary.
-- Any object implementing `StepExecutor` (`{ name, version, cache, runStep(ctx) }`)
-  goes under `executor` in an agents entry; the runner still owns observations, actions, budgets,
-  and the report.
+  `defineTool(tool({ ... }), { mutates: true })` from `e2e/agent` for a
+  test API a flow calls mid-step.
+- `createToolLoopExecutor` keeps the loop and replaces prompt and tool
+  vocabulary.
+- Any `StepExecutor` (`{ name, version?, cache?, runStep(ctx) }`) goes under
+  `executor`; the runner still owns observations, actions, budgets, and the
+  report, and `system` or `tools` beside `executor` is `INVALID_CONFIG`.
 
-Full reference: https://e2e.tester.army/docs/agents
+Reference: https://e2e.tester.army/docs/agents
 
 ## In CI
 
-One suite, one job, on every pull request, agent steps included. Pass the
-key the config's model reads (`env: { AI_GATEWAY_API_KEY }` for `gateway()`)
+Run the suite, agent steps included, on every pull request, passing the key
+the config's model reads (`env: { AI_GATEWAY_API_KEY }` for `gateway()`)
 from secrets. Sharing `.e2e/cache/` lets CI replay verified action steps
-without model calls. Cache misses, hand-offs, and agent judgments still use
-the model. Follow each `act` with a check of its outcome. CI retries once
-and reports a pass on retry as flaky.
+without model calls; CI defaults (`read-only` cache, retries): topic running.

@@ -273,6 +273,13 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(tainted.text).toContain('No screenshot: a secret was filled in this attempt');
     expect(tainted.text).toContain('PIXEL_TAINTED');
 
+    // The point tools stay in the catalog but refuse too: the screenshot the
+    // model holds predates the fill and may no longer match the screen.
+    const pointed = await call('tap_at', { x: 10, y: 10 });
+    expect(pointed.isError, pointed.text).toBe(false);
+    expect(pointed.text).toContain('PIXEL_TAINTED');
+    expect(pointed.text).not.toContain('Tapped');
+
     for (const url of ['javascript:alert(1)', 'file:///etc/passwd']) {
       const denied = await call('navigate', { url });
       expect(denied.isError, url).toBe(true);

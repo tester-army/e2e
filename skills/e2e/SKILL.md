@@ -1,23 +1,19 @@
 ---
 name: e2e
-description: Set up and write agentic end-to-end tests with e2e, the e2e runner. Covers scaffolding e2e.config.ts, choosing the Playwright browser engine or the agent-device mobile engine, starting the app under test from the config, writing tests that drive flows with agent.act and judge them with agent.assert, agent.waitFor, and agent.extract, pinning exact values and outcomes with screen, app, web, and expect, shaping the agent for the app (context, system prompt, tools, personas), the replay cache that reruns passing steps, running with the e2e CLI, and reading .e2e/report.json when a run fails, and bug bashes (parallel explore runs whose findings are proven with repro tests). Use when a project depends on e2e, when asked to add end-to-end, browser, mobile, or agentic UI tests, when asked to bug bash or hunt for bugs in an app, or when an e2e run fails.
+description: Agentic end-to-end tests with e2e, the e2e runner. Covers scaffolding e2e.config.ts, picking the Playwright browser engine or the agent-device mobile engine, starting the app under test from the config, driving flows with agent.act, judging with agent.assert, agent.waitFor, and agent.extract, pinning values with screen, app, web, and expect, shaping the agent (context, system prompt, tools, personas), the replay cache, the e2e CLI, reading .e2e/report.json, and bug bashes (parallel explore runs proven with repro tests). Use when a project depends on e2e, when asked for end-to-end, browser, mobile, or agentic UI tests, to bug bash or hunt for bugs, or when an e2e run fails.
 ---
 
 # e2e: agentic end-to-end tests in TypeScript
 
 e2e runs UI tests with agent goals and exact assertions. `agent.act` drives
 one goal; `agent.assert`, `agent.waitFor`, and `agent.extract` judge the
-screen. Use `screen`, `app`, `web`, and `expect` for exact interactions and
-checks. The replay cache can rerun verified actions and check their recorded
-end state without a model call. Agent judgments still run live.
-UI targets use `@e2e-dev/web` for browsers or
-`@e2e-dev/mobile` for iOS simulators and Android emulators. A test that
-takes only `app` can check an API with `fetch` and `expect`; see the
-`writing-tests` topic.
-
-Agent steps can use an existing ChatGPT, Copilot, or SuperGrok subscription,
-an API key, or a local model. `e2e init` offers these choices. See
-[setup](references/setup.md#subscriptions-and-api-keys) for sign-in commands.
+screen. `screen`, `app`, `web`, and `expect` make exact interactions and
+checks. The replay cache reruns verified actions and checks their recorded end
+state without a model call; agent judgments still run live. UI targets use
+`@e2e-dev/web` for browsers or `@e2e-dev/mobile` for iOS simulators and
+Android emulators. A test that takes only `app` can check an API with `fetch`
+and `expect` (topic `writing-tests`). Model sign-in commands are in
+[setup](references/setup.md#subscriptions-and-api-keys).
 
 ```ts
 // e2e.config.ts
@@ -60,8 +56,8 @@ test('a member upgrades to Pro', async ({ app, agent, screen, web }) => {
 ## Topics
 
 Read the topic for the job before writing code. The files sit next to this
-one. Without them, the installed CLI prints the same text:
-`npx e2e guide <topic>` (`e2e guide` alone prints this page).
+one; the installed CLI prints the same text with `npx e2e guide <topic>`
+(`e2e guide` alone prints this page).
 
 | Topic | File | Read it when |
 | --- | --- | --- |
@@ -77,63 +73,55 @@ one. Without them, the installed CLI prints the same text:
 ## Workflow
 
 1. Look at what exists: `e2e.config.ts` or `e2e.config.mts`, the `tests` glob
-   (default `tests/**/*.e2e.ts`), `e2e` in `package.json`. Nothing
-   there: follow `setup`.
-2. Learn the screens you will drive before writing a test: routes, labels,
-   roles, button text. Semantic locators need the accessible names the app
-   renders, so read the templates or components, open the page with
-   `--headed`, or drive the live app through the `e2e mcp` server when it is
-   registered (topic `mcp`): `open_session`, `observe`, and `locate` show the
-   exact names and check a locator before you write it.
+   (default `tests/**/*.e2e.ts`), `e2e` in `package.json`. Nothing there:
+   follow `setup`.
+2. Learn the screens before writing a test: routes, labels, roles, button
+   text. Semantic locators need the accessible names the app renders, so read
+   the components, open the page with `--headed`, or drive the live app over
+   the registered `e2e mcp` server (topic `mcp`): `open_session`, `observe`,
+   and `locate` show exact names and check a locator before you write it.
 3. Write `tests/<feature>.e2e.ts`. Drive the flow with `agent.act`, one goal
-   per call, and pin each outcome right after with `expect` or
-   `agent.assert`. Exact values go through `screen` directly: a sign-in form
-   in a setup test, a field that must receive one specific string, a count
-   that must be one specific number.
+   per call, and pin each outcome right after with `expect` or `agent.assert`.
+   Exact values go through `screen`: a sign-in form in a setup test, a field
+   that must receive one specific string, a count that must be one number.
 4. Run one file: `npx e2e run tests/<feature>.e2e.ts`. Agent steps need a
-   model in the config and authentication for its provider, such as a saved
-   subscription login or, for `gateway()`, `AI_GATEWAY_API_KEY` or a linked
-   Vercel project. A local endpoint may need no key. Tests without agent
-   steps need no model.
-5. Read the failure: the reporter prints the error code, the message, and a
-   code frame; `.e2e/report.json` has every step and artifact path. Fix the
+   model in the config and that provider's authentication (a saved
+   subscription login, an API key); a local endpoint may need none. Tests
+   without agent steps need no model.
+5. Read the failure: the reporter prints the error code, message, and a code
+   frame; `.e2e/report.json` has every step and artifact path. Fix the
    locator, the expectation, or the app. Never add a sleep.
 
 ## Rules
 
 - Run the CLI as `npx e2e ...` (or `pnpm exec e2e ...`).
 - The config is `export default { ... } satisfies E2EConfig` with
-  `import type { E2EConfig } from 'e2e'`. `targets` is required and
-  UI targets name an engine. The engine declares the app, for example
-  `web({ url, command })`. A tools-only target can omit the engine
-  and set `platform` explicitly. There is no top-level `app` key or `defineConfig`.
-- Import `test`, `expect`, `credentials`, and `secrets` from `e2e`. A test that
-  uses the `web` fixture imports `test` from `@e2e-dev/web` instead: the
-  same runtime `test`, typed with `web`.
-- Config and tests are ES modules and load as such whatever `package.json` sets as `type`.
-- Locators resolve when used. Actions wait for readiness and `expect`
-  retries assertions. Reads such as `textContent()` and `count()` answer from
-  the current screen: a frame that is not in the document counts as zero
-  matches, a stale node is re-resolved, and nothing waits for a value to
+  `import type { E2EConfig } from 'e2e'`. `targets` is required; UI targets
+  name an engine that declares the app, for example `web({ url, command })`.
+  A tools-only target can omit the engine and set `platform`.
+- Import `test`, `expect`, `credentials`, and `secrets` from `e2e`. A test
+  that uses the `web` fixture imports `test` from `@e2e-dev/web`: the same
+  runtime `test`, typed with `web`.
+- Config and tests are ES modules whatever `package.json` sets as `type`.
+- Locators resolve when used. Actions wait for readiness and `expect` retries
+  assertions. Reads such as `textContent()` fail at once on zero matches and
+  `count()` answers from the current screen; nothing waits for a value to
   change, so use a matcher when a value has to settle.
-- A locator that matches two nodes fails with `LOCATOR_AMBIGUOUS`. Narrow it
-  with `{ name }`, `filter()`, `first()`, `nth()`, or `{ visible: true }`.
-- Secrets never appear in test code. Declare accounts under `credentials`
-  and every other sensitive value (API keys, tokens) under `secrets` in the
-  config; resolve with `credentials.user(name).password` or
-  `secrets.get(name)`, and hand the opaque `Secret` only to `fill()` or to
-  `agent.act` params.
+- A locator that matches two nodes fails with `LOCATOR_AMBIGUOUS`; narrow it
+  (topic `writing-tests`).
+- Secrets never appear in test code. Declare accounts under `credentials` and
+  every other sensitive value under `secrets` in the config; resolve with
+  `credentials.user(name).password` or `secrets.get(name)`, and hand the
+  opaque `Secret` only to `fill()` or `agent.act` params.
 - Agent instructions: one goal per `act`, the wording on screen, real values
   in params. Judge meaning, not phrasing: `toContain('Pro')`, not an exact
   sentence a model produced.
-- Check each agent goal's outcome. A passing `act` with a recorded check
-  can be cached and replayed without model calls. If replay fails, the
-  runner can return to the live agent.
-- Shape the agent for this app and keep iterating on it: `context` for
-  vocabulary the screens use, `system` on the agent for how it works,
-  tools for a test API, and named personas under `agents`. When a step
-  fails, tighten the goal first, then the context, then the agent. Topic
-  `agent` has the loop.
+- Check each agent goal's outcome. A passing `act` with a recorded check can
+  be cached and replayed without model calls (topic `agent`).
+- Shape the agent for this app: `context` for vocabulary the screens use,
+  `system` for how it works, tools for a test API, named personas under
+  `agents`. When a step fails, tighten the goal first, then the context, then
+  the agent.
 - `.e2e/` is output (`report.json`, `artifacts/`, `cache/`, `logs/`; the
   config's `output` moves the report and artifacts, never `cache/` or the
   app's log). Read it, never edit it.
@@ -141,10 +129,9 @@ one. Without them, the installed CLI prints the same text:
 ## Feedback
 
 When e2e itself gets in your way, tell the e2e team: a command or API that
-broke or returned something wrong (`bug`), docs or this skill that misled you
-(`docs`), or a capability you needed and did not find (`feature`). Send it
-once per problem, after you have worked around it or given up, not for
-failures of the app under test.
+broke (`bug`), docs or this skill that misled you (`docs`), or a capability
+you needed and did not find (`feature`). Send it once per problem, after you
+worked around it or gave up, never for failures of the app under test.
 
 ```bash
 npx e2e feedback --type bug -m "<one or two sentences>" \
@@ -152,8 +139,8 @@ npx e2e feedback --type bug -m "<one or two sentences>" \
   --approach "<what you tried>" --command "<e2e command>" --agent "<agent / model>"
 ```
 
-Describe e2e's behavior only: never paste app content, page text, test
-files, URLs of private apps, or credentials. Secret-named environment
-variables and common token shapes are redacted, but do not rely on it.
-`--dry-run` prints exactly what would be sent. Tell the user you sent it
-and give them the reference id it prints.
+Describe e2e's behavior only: never paste app content, page text, test files,
+URLs of private apps, or credentials. Secret-named environment variables and
+common token shapes are redacted, but do not rely on it. `--dry-run` prints
+what would be sent. Tell the user you sent it and give them the reference id
+it prints.

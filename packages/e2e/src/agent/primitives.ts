@@ -653,8 +653,15 @@ function createPointTools(
   const y = z.number().describe('y in the latest screenshot, pixels from the top edge');
   const at = (px: number, py: number) => `(${String(px)}, ${String(py)})`;
 
-  /** A point the model read off the latest screenshot in viewport pixels, or the line to read when it has taken none. */
+  /**
+   * A point the model read off the latest screenshot in viewport pixels, or
+   * the line to read instead: no screenshot taken yet, or a secret filled
+   * since, after which no pixel the model holds may be acted on.
+   */
   const pointOf = (px: number, py: number, verb: string): ViewportPoint | string => {
+    if (context.pixelsTainted) {
+      return `No point actions: a secret was filled in this attempt, so no pixels leave the runner until it ends (PIXEL_TAINTED); ${verb} coordinates would aim at a screenshot that is no longer current. Act on a listed node by id.`;
+    }
     const shot = screen.latestScreenshot;
     if (shot === undefined) {
       return `No screenshot has been taken in this step: ${verb} coordinates are pixels of the latest screenshot. Call screenshot first, or act on a listed node by id.`;

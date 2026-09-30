@@ -95,6 +95,21 @@ describe('the grammar tools have closed schemas', () => {
     expect(schemaOf(tools, 'type').safeParse({ target: 'n1', value: 'ada' }).success).toBe(false);
   });
 
+  it('refuses every point verb once a secret was filled mid-step, without reaching the engine', async () => {
+    // A secret fill after a screenshot leaves the model holding pixels that may no longer match the screen.
+    const fake = fakeExecutorContext();
+    let tainted = false;
+    const context = { ...fake.context, get pixelsTainted() { return tainted; } };
+    const tools = createGrammarTools(context);
+    tainted = true;
+    const options = { toolCallId: 'point', messages: [], context: undefined };
+    for (const name of ['tap_at', 'hover_at', 'type_at', 'press_at', 'select_at']) {
+      const result = await tools[name]!.execute!(ACCEPTED[name]!, options);
+      expect(result, name).toContain('PIXEL_TAINTED');
+    }
+    expect(fake.dispatched).toEqual([]);
+  });
+
   it('closes complete_step', () => {
     expectClosed(schemaOf({ complete_step: createVerdictTool().tool }, 'complete_step'), { status: 'passed', summary: 'done' }, 'complete_step');
   });

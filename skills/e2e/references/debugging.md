@@ -2,107 +2,107 @@
 
 ## Read the failure
 
-1. Run with `--reporter list,markdown`. The `list` reporter ends with a
-   `Failed Tests` section: the error code, the message, the failing line with
-   a code frame, the page's location, the nodes closest to what a failed
-   locator asked for, and the path of the screen text. The summary's
-   `Failures` line names `.e2e/failures/`.
-2. Open the failed test's page under `.e2e/failures/` first. It has the error
-   in full, its facts (`Expected … · Observed …` for an `expect`, `Asked for:
-   button "Add" · waited 3.0s` for a locator), `Look at:` the line the failure
-   unwound through, whether every attempt failed the same way (a bug, not a
-   flake), every step with its own line, the last model turns of a failed
-   agent step, and the screen at failure inline: the accessibility tree as
-   the agent reads it, one node per line. Write the fix from what was there.
-3. `.e2e/report.json` is the record behind the pages:
+1. Run with `--reporter list,markdown`: `list` ends with a `Failed Tests`
+   section, the markdown reporter's `Failures` line names `.e2e/failures/`.
+2. Open the failed test's page under `.e2e/failures/` and grep `Expected:`
+   / `Observed:` (an `expect`), `Asked for:` and `Waited:` (a locator),
+   `Look at:` (the line it unwound through), whether every attempt
+   failed alike (a bug, not a flake), the steps, the last model turns of a
+   failed agent step, and the accessibility tree at failure, one node per
+   line. Fix from what was there.
+3. `.e2e/report.json` backs the pages:
 
 ```bash
-jq '.run | {status, exitCode, errors}' .e2e/report.json                  # run-level failures
-jq '.run.results[] | select(.status != "passed") | {titlePath, file, status}' .e2e/report.json
-jq '.run.results[] | select(.status != "passed") | .attempts[-1]
+jq '.run | {status, exitCode, errors}' .e2e/report.json
+jq '.run.results[] | select(.selected and .status != "passed") | {titlePath, file, status}' .e2e/report.json
+jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
     | {status, error, failure, steps: [.steps[] | select(.status != "passed") | {api, label, source, status, error}], artifacts}' .e2e/report.json
 ```
 
    `error.details` holds the facts, `error.source` the line, `failure` the
-   `url`, the `screen` and `screenshot` artifact ids, and the `candidates`;
-   a failed agent step has `turns`.
-4. Artifacts named there live under `.e2e/artifacts/`: `failure/screen.txt`
-   and the engine's failure screenshot per failed attempt, a Playwright
-   `trace.zip` per traced attempt (every attempt locally, the first retry in
-   CI; `npx playwright show-trace <file>`), downloads,
-   with `--video` the attempt's recording (`video/video.webm` in a local
-   browser, `video/video.mp4` on a device, a provider's own file or link),
-   and with `--debug` the full transcript of every agent step.
+   `url`, `screen` and `screenshot` artifact ids, and `candidates`; a
+   failed agent step has `turns`; `selected` drops filtered-out tests
+   (recorded as `skipped`).
+4. Artifacts, under `.e2e/artifacts/`: `failure/screen.txt`
+   and the engine's screenshot per failed attempt; a Playwright trace per
+   traced attempt (`npx playwright show-trace <file>`); downloads; with
+   `--video` the recording (`video/video.webm` in a local browser, each
+   later page `video/video-part<n>.webm` with its own `startedAt`;
+   `video/video.mp4` on a device; a provider's file or link); with
+   `--debug` every agent step's transcript.
 
-## Error codes and what to do
+## Error codes
 
 | Code | Usual cause | Fix |
 | --- | --- | --- |
-| `CONFIG_LOAD_FAILED` | The config throws an error of its own while loading (an engine option it refuses is `INVALID_CONFIG` instead), or imports a package that is not installed or a subpath that does not exist | The message names the cause: install the dependency, fix the import it quotes, or fix the config line whose error it quotes |
-| `INVALID_CONFIG` | Unknown key or a stale shape: a top-level `app`, `defineConfig`, a `backend` key, `json` combined with `list` reporters | Move app options into `web({ ... })`; use `satisfies E2EConfig`; the message names the key |
-| `CONFIG_NOT_FOUND`, `CONFIG_AMBIGUOUS` | Wrong `--config` path; both `.ts` and `.mts` present | Fix the path; keep one config file |
-| `NO_TESTS` | The glob or a positional matched nothing, or a filter left nothing to run | The message names each positional that matched nothing and, under `--tag`, each tag no test declares with the nearest declared one. Check `tests` in the config, the `.e2e.ts` suffix, and the tag names |
-| `NO_LAST_RUN` | `--last-failed` found no `.e2e/report.json` to read | Run once without the flag; the rerun reads the report that run writes |
-| `COLLECTION_ERROR` | `async` describe body, `test.setup` inside `describe`, an option forbidden in a serial group, registration outside collection | Rework the structure per `writing-tests` |
-| `APP_UNREACHABLE` | `command` never answered `readyUrl` within `startupTimeout`; a service exited non-zero. On a device, a message naming the iOS automation runner (busy, wedged, a snapshot it could not present): the runner, not the app, failed | Read the last log lines quoted under the error; set `command.log` if it says to; check the port and `url`; pass the env the app needs through `command.env`; raise `startupTimeout`. For the runner, do what the message says: wait and rerun, else `npx agent-device daemon stop` and reboot the simulator |
-| `APP_ALREADY_RUNNING` | Something already serves `url` when the runner wanted to start `command` | Stop it, or set `reuseExisting: true` for local runs |
-| `APP_URL_REQUIRED` | A navigation on an engine without `url` | Add `url` to `web({ ... })` |
-| `LOCATOR_NOT_FOUND` | Wrong role or name, text not exact, element off screen or inside an iframe, page not open | Read the markup for the accessible name; try `exact: false` or a RegExp; `web.frameLocator` for iframes; `app.open()` first; `--headed` to look |
-| `LOCATOR_AMBIGUOUS` | Two matches: a hidden duplicate, a repeated label | Add `{ name }`, scope under a container, `filter`, `first()`, or `{ visible: true }` |
-| `ASSERTION_FAILED` | The expectation is wrong, or the state settles later than 5 s; for `agent.assert`, the judgment was false (explanation in the report) | Compare with the actual text in the report or screenshot; `{ timeout }` on the matcher; rewrite the question |
-| `ASSERTION_INCONCLUSIVE` | `agent.assert` asked about, or `agent.extract` asked for, something the screen does not show: another page, still loading, or only in pixels. A failure, never a pass | `app.open()` or `agent.waitFor` the right screen first; ask about what is visible; `vision: true` when the answer is in pixels (the message says so when the judge read the tree alone) |
-| `ACTION_FAILED` | Element not actionable (covered, disabled, detached) or an operation timed out | Wait on the right condition with `expect` first; close overlays; check `actionTimeout` |
-| `TEST_TIMEOUT` | The attempt exceeded `timeout` (120 s) | Split the test, or raise `timeout` for slow flows and agent steps |
-| `STEP_NOT_AWAITED` | The body returned while a step was still running: a step call without `await` | Put `await` in front of the call the code frame names; every `app`, `agent`, `screen`, and `expect` call is awaited |
-| `MODEL_UNAVAILABLE` | No model: the built-in agent's `agents.<name>.model` holds no AI SDK instance. Reported once for the run under `run.errors` when a test first acquires `agent`; the run stops. A custom executor without a model runs `act` and `assert`; its `waitFor` or `extract` fails with this code | Construct one in the config, e.g. `gateway('openai/gpt-6-luna-fast')` from `ai`, and export the key its provider reads (`AI_GATEWAY_API_KEY`) |
-| `MODEL_PROVIDER_FAILED` | Network, 5xx, rate limit, no credits, or requests with no response in 120 s, after the transport retries | Check the credential (the key, or the Vercel CLI login and `.vercel/project.json` for `gateway()` without one) and the quota; retry; exit code 3 |
-| `REPLAY_STALE` | `--strict-cache` or `cache.strict`, and a committed recording no longer replays: the UI changed, the app started on another screen, or the entry is unreadable; `step.cache.reason` says which | Run the test in read-write mode with the knob the message names turned off; commit the changed entry under the cache directory it names, or, with a custom `cache.store`, let that run write it to the store |
-| `STEP_TIMEOUT`, `STEP_BUDGET_EXHAUSTED` | The goal was too big or ambiguous, or the provider slow | Split the goal, use on-screen wording, add `context`; raise the agent entry's `maxSteps` or `maxModelCalls` for the budget, the config `timeout` for `act`, the agent's `judgmentTimeout` for judgments; `--debug` to read the transcript |
-| `CONTEXT_OVERFLOW` | The screen plus the step's history did not fit the model's context window, even after the loop shrank the history and retried once | Lower `agent.maxObservationBytes`, split the step, or pick a model with a larger window |
-| `POLICY_DENIED` | Navigation to a `file:`, `data:`, or `javascript:` URL; a password `Secret` given to a sink that is not a password field; reading a secure field, the `toHaveValue`, `toHaveText`, `toContainText`, and `toHaveAttribute` matchers included; `app.screenshot()` after a secret fill | Open http(s) URLs only; fill passwords only into password inputs; assert the outcome instead of the value; capture screenshots before filling secrets |
-| `UNSUPPORTED_CAPABILITY` | A fixture the engine does not contribute (`web` on a device), `schema` or `vision` on `act`, an action the surface lacks | Declare `requires: ['web']`; drop the option; use a supported action |
-| `SESSION_UNAVAILABLE`, `SESSION_CONTRACT` | `session: 'x'` with no setup saving `x`; a setup that did not save every declared name | Add or fix the `test.setup` |
+| `CONFIG_LOAD_FAILED` | The config throws while loading (a refused engine option is `INVALID_CONFIG` instead) or imports a missing package, subpath, or removed export such as `defineConfig` | Install the dependency, or fix the import or line quoted |
+| `INVALID_CONFIG`, `INVALID_GLOB` | Unknown or foreign key (`app`, `webServer`, `use`, `projects`, `baseURL`), `json` with `list`; a `tests` glob with braces, classes, an absolute path, or no wildcard | The message names the key or glob to write; app options go in `web({ ... })` |
+| `CONFIG_NOT_FOUND`, `CONFIG_AMBIGUOUS` | Wrong `--config` path; both `.ts` and `.mts` present | Fix the path; keep one |
+| `NO_TESTS` | The glob, a positional, or a filter matched nothing; the message names each empty positional and each undeclared `--tag` with the nearest declared one | Check the config `tests`, the `.e2e.ts` suffix, the tag names |
+| `NO_LAST_RUN` | `--last-failed` found no `.e2e/report.json` | Run once without it |
+| `COLLECTION_ERROR` | `async` describe body, `test.setup` inside `describe`, an option forbidden in a serial group, registration outside collection | Restructure per `writing-tests` |
+| `HOOK_FAILED` | `beforeAll` or `afterAll` threw; its scope's tests skip | Fix the hook; the report carries its error |
+| `UNSUPPORTED_ARTIFACT` | A test's or target's `trace` or `video` on an engine that cannot record | Drop it there, or set it at the config root or CLI (such targets skip with a notice) |
+| `BROWSER_INSTALL_FAILED`, `LAUNCH_TIMEOUT` | Browser download failed; engine init or attempt start exceeded `launchTimeout` | Run the quoted `npx playwright install <names>` (`--with-deps` on bare Linux); raise the root `launchTimeout` (60 s default) |
+| `APP_UNREACHABLE` | `command` never answered `readyUrl` within `startupTimeout`, or a service exited non-zero; on a device, a message naming the iOS automation runner: the runner failed, not the app | Read the quoted log lines; check the port, `url`, `command.env`, `startupTimeout`. Runner: rerun, else `npx agent-device daemon stop` and reboot the simulator |
+| `APP_ALREADY_RUNNING` | Something already serves `url` when `command` should start | Stop it, or `reuseExisting: true` locally |
+| `APP_URL_REQUIRED`, `APP_NOT_OPEN` | A navigation on an engine without `url`; a `screen` call before `app.open()` | Add `url` to `web({ ... })`; open the app first |
+| `INVALID_ARGUMENT`, `INVALID_LOCATOR` | A step argument failed validation; a locator got a bad option or filter key | Fix the call the code frame names |
+| `LOCATOR_NOT_FOUND` | Wrong role or name, inexact text, element off screen or in an iframe, page not open | Read the markup for the accessible name; `exact: false` or a RegExp; `web.frameLocator` for iframes; `app.open()` first; `--headed` |
+| `LOCATOR_AMBIGUOUS` | Two matches (hidden duplicate, repeated label) | `{ name }`, a container scope, `filter`, `first()`, or `{ visible: true }` |
+| `ASSERTION_FAILED` | Wrong expectation, or the state settles later than 5 s; for `agent.assert`, a false judgment (explained in the report) | Compare with the report's actual text or the screenshot; `{ timeout }` on the matcher; rewrite the question |
+| `ASSERTION_INCONCLUSIVE` | `agent.assert` or `agent.extract` asked about what the screen does not show (another page, still loading, only in pixels); a failure, never a pass | `app.open()` or `agent.waitFor` the right screen first; ask about what is shown; `vision: true` when the answer is in pixels (the message says so) |
+| `MODEL_OUTPUT_INVALID` | An `extract` or `assert` answer failed the schema after one repair round | Simplify the schema or question; pick a stronger model |
+| `ACTION_FAILED` | Element not actionable (covered, disabled, detached), or an operation timed out | `expect` the condition first; close overlays; check `actionTimeout` |
+| `TEST_TIMEOUT` | The attempt exceeded `timeout` (120 s) | Split the test, or raise `timeout` |
+| `STEP_NOT_AWAITED` | The body returned while a step still ran: a call without `await` | `await` the call the code frame names (every `app`, `agent`, `screen`, `expect` call) |
+| `MODEL_UNAVAILABLE` | `agents.<name>.model` holds no AI SDK instance: reported once under `run.errors` at the first `agent` fixture; the run stops. A model-less custom executor fails only `waitFor` and `extract` this way | Construct one, e.g. `gateway('openai/gpt-6-luna-fast')` from `ai`, and export its key (`AI_GATEWAY_API_KEY`) |
+| `MODEL_PROVIDER_FAILED` | Network, 5xx, rate limit, no credits, or no response in 120 s, after the transport retries | Check the credential (the key; for keyless `gateway()` the Vercel CLI login and `.vercel/project.json`) and quota; retry (exit 3) |
+| `REPLAY_STALE` | `--strict-cache` or `cache.strict`, and a committed recording no longer replays; `step.cache.reason` says why | Rerun read-write with the knob the message names off; commit the changed entry under the directory it names (a custom `cache.store` is written by that run) |
+| `AUTOMATION_UNSUPPORTED` | The step needs an interaction the engine's toolset lacks (drag on a device, say); blocked, exit 1 | Do that step with `screen` actions, or run the test on a target that supports it |
+| `STEP_TIMEOUT`, `STEP_BUDGET_EXHAUSTED` | Goal too big or ambiguous, or a slow provider | Split the goal, use on-screen wording, add vocabulary via `agents.<name>.context` or `agentContext`; raise `maxSteps` or `maxModelCalls` (budget), the config `timeout` (`act`), `judgmentTimeout` (judgments); `--debug` |
+| `CONTEXT_OVERFLOW` | Screen plus step history did not fit the model's context window (`act` after one shrink-and-retry; a judgment on the first overflow) | Lower `agents.<name>.maxObservationBytes`, split the step, or pick a larger-window model |
+| `POLICY_DENIED` | A `file:`, `data:`, or `javascript:` URL; a password `Secret` into a non-password sink; reading a secure field, `toHaveValue`, `toHaveText`, `toContainText`, `toHaveAttribute` included; `app.screenshot()` after a secret fill | http(s) only; passwords into password inputs only; assert the outcome, not the value; screenshot before filling secrets |
+| `UNSUPPORTED_CAPABILITY` | A fixture the engine lacks (`web` on a device), `schema` or `vision` on `act`, an action the surface lacks | Declare `requires: ['web']`; drop the option or action |
+| `SESSION_UNAVAILABLE`, `SESSION_CONTRACT` | `session: 'x'` with no setup saving `x`; a setup that skipped a declared name. `SESSION_MISMATCH`, `SESSION_EXPIRED`, `SESSION_INVALID`: the stored session is another run's or app's, expired, or corrupt | Add or fix the `test.setup`; rerun it |
 | `ONLY_IN_CI` | `test.only` reached CI | Remove it |
-| `BROWSER_INSTALL_FAILED`, `LAUNCH_TIMEOUT` | Browser download or launch failed | `npx playwright install chromium --with-deps`; raise `launchTimeout` on slow machines |
-| `AUTH_CREDENTIAL_UNAVAILABLE` | `credentials.user('x')` for an undeclared name | Add it to `config.credentials` |
-| `SECRET_UNAVAILABLE` | `secrets.get('x')` in a test for an undeclared name | Add it to `config.secrets` (an `E2E_SECRET_X` variable only overrides a declared one) |
+| `AUTH_CREDENTIAL_UNAVAILABLE`, `AUTH_CREDENTIAL_INVALID` | `credentials.user('x')` for an undeclared name; the app rejected a configured credential | Add it to `config.credentials`; fix the stored value |
+| `SECRET_UNAVAILABLE` | `secrets.get('x')` for an undeclared name | Add it to `config.secrets`; `E2E_SECRET_X` only overrides a declared one |
 
 ## Tools
 
 | Do | When |
 | --- | --- |
-| `--headed` | Watch the flow; confirm what the page shows at the failing step |
-| `--workers 1 --retries 0` | Remove parallelism and retries from the picture |
+| `--headed` | Watch the failing step |
+| `--workers 1 --retries 0` | Take parallelism and retries out of the picture |
 | `--no-cache` | Rule out a stale `agent.act` replay |
-| `--debug` | Read each agent step's duration, model calls, cost, and transcript |
-| `--ai-trace`, then `npx unbox-ai runs .e2e/ai-trace.json` | See exactly what the model was shown and called |
-| `--video`, `--video=retain-on-failure` | Watch the failed attempt; `step.startedAt` minus the video artifact's `startedAt` is the step's offset into it. `test('x', { video: 'on' }, ...)` records one test; `video: 'on-first-retry'` in the config records flaky retries in CI |
-| `command.log: '.e2e/logs/app.log'` | Read the app's own output when it never becomes ready or errors mid-test |
-| `await app.screenshot('before-submit')` | Attach evidence before any secret is filled; later calls fail with `POLICY_DENIED` |
-| `CI=1 npx e2e run` | Reproduce CI-only behaviour: `ONLY_IN_CI`, read-only cache, `reuseExisting` ignored |
+| `--debug` | Each agent step's duration, model calls, cost, transcript |
+| `--ai-trace`, then `npx unbox-ai runs .e2e/ai-trace.json` | What the model saw and called |
+| `--video`, `--video=retain-on-failure` | Watch the failed attempt; `step.startedAt` minus the segment's `startedAt` is the step's offset into it |
+| `command.log: '.e2e/logs/app.log'` | The app's output when it never gets ready or errors mid-test |
+| `await app.screenshot('before-submit')` | Evidence before a secret is filled; later calls fail with `POLICY_DENIED` |
+| `CI=1 npx e2e run` | Reproduce CI-only behaviour (defaults: topic running) |
 
 ## Flaky tests
 
-- A read (`textContent()`, `count()`) captured a value mid-update: replace
-  it with a matcher.
-- Shared data between tests: unique names per run, cleanup in `afterEach`,
-  or a `serial` group.
-- The app is not ready: assert on the element you are about to use rather
-  than on the previous page.
-- An agent judgment asserts an exact phrasing: judge the fact, and add a
+- A read (`textContent()`, `count()`) caught a value mid-update: use a
+  matcher.
+- Shared data: unique names per run, `afterEach` cleanup, or a `serial`
+  group.
+- App not ready: assert on the element you are about to use, not the
+  previous page.
+- An agent judgment asserts exact phrasing: judge the fact, add a
   deterministic `expect` beside it.
-- Timing under load: `retries` masks the cause; `--workers 1` and
-  `--headed` usually show it.
-- Measure before and after a fix: `npx e2e run <file> --repeat-each 10
-  --retries 0` (add `--no-cache` for agent steps). The `Repeats` row reads
-  `3/10 passed · repeat 1 ASSERTION_FAILED · ...` before and `10 of 10`
-  after, which is the evidence a flake fix needs.
+- Load timing: `retries` masks it; `--workers 1 --headed` shows it.
+- Measure a fix: `npx e2e run <file> --repeat-each 10 --retries 0`
+  (`--no-cache` for agent steps). `Repeats` reads `0 of 1 tests passed all
+  10 runs` over `3/10 passed · repeat 0 ASSERTION_FAILED · ...` (0-based)
+  before, `1 of 1 tests passed all 10 runs` after.
 
 ## Is it the app?
 
-A deterministic step that fails every run at the same place with the same
-code is a product bug or a changed screen, not flakiness. Reproduce once
-with `--headed`, then fix the app, or update the locator and the expectation
-together. A blocked agent step (`AUTH_CREDENTIAL_UNAVAILABLE`,
-`ENVIRONMENT_UNAVAILABLE`, `SEED_DATA_MISSING`) exits 2 or 3 on purpose: fix
-the environment, not the test.
+A deterministic step failing every run at the same place with the same code
+is a product bug or a changed screen, not a flake: reproduce once with
+`--headed`, then fix the app or update locator and expectation together. A
+blocked agent step (`AUTH_CREDENTIAL_UNAVAILABLE`, `ENVIRONMENT_UNAVAILABLE`,
+`SEED_DATA_MISSING`) exits 2 or 3 on purpose: fix the environment.
