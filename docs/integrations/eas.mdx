@@ -90,7 +90,8 @@ mobile({ platform: 'ios', app: 'com.example.app', appPath: 'build/App.app', devi
 
 ## Sessions
 
-Each target starts `workers` sessions, and tests start once all are ready.
+Each target starts up to `workers` sessions (`--workers` overrides it),
+fewer when it has fewer test files, and tests start once all are ready.
 A session takes about three minutes from request to ready (queue, boot,
 build install), all in parallel, before the run's clock starts.
 
@@ -101,9 +102,9 @@ across more workers or across CI jobs.
 
 EAS runs as many sessions at once as the Expo account allows, and queues
 the rest until one ends. None ends before the run does, so keep `workers`
-times the number of EAS targets within that number. Every session queues for a few seconds;
-one still queued after two minutes logs `still queued at EAS after two
-minutes`. Targets prepare one after another, so the sessions of a target
+times the number of EAS targets within that number. Every session queues
+for a few seconds; one still queued after two minutes logs `still queued at
+EAS after two minutes`. Targets prepare one after another, so the sessions of a target
 that is ready wait idle while the next target's queue and boot. A session
 still queued once another session of the run has been ready for
 `maxIdleTimeMinutes` fails the lease, and the run stops every session: EAS
@@ -123,7 +124,7 @@ A browser preview that opens without a token is logged too, as
 `watch at <url>`. A preview that needs one is not: the token would give
 anyone who reads the CI log control of the simulator.
 
-Sessions are named `e2e <target> <slot> of <slots>` and tagged `e2e`,
+Sessions are named `e2e <target> <n> of <total>` and tagged `e2e`,
 `e2e-run:<run id>`, and `e2e-target:<target>`, so
 `eas simulator:list --tag e2e-run:<run id>` finds a run's sessions.
 
@@ -158,4 +159,4 @@ Without the indicator, stopping takes about two seconds.
 
 A missing `EXPO_TOKEN`, an account without EAS Simulators, or a session that
 fails to start fails the lease with EAS's message. That ends the run before
-any test, and the sessions that did start are still stopped.
+any test, and the run's other sessions, started or queued, are still stopped.
