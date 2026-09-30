@@ -167,6 +167,13 @@ The built-in agent offers these tools while no secret has been filled:
 | `press_at({ x, y, key })` | Sends a key to the control at the point. If no control is listed, taps to focus and uses the engine's keyboard. |
 | `select_at({ x, y, value })` | Selects an option by visible label in the control at the point. |
 
+With [`email`](/email) in the config, it also offers:
+
+| Tool | What it does |
+| --- | --- |
+| `new_email_address()` | Creates an address for the attempt, given back when it ends. |
+| `wait_for_email({ address, subject?, from?, text?, timeout_seconds? })` | Waits for the next email to an address the attempt created and returns it fenced as untrusted content, secrets masked. Each call records a gap in the [replay cache](/cache). |
+
 Coordinates refer to the latest screenshot. The model must take a screenshot
 before using a point tool and should prefer node ids for listed controls.
 The runner checks each point against the tree. A point on a listed control

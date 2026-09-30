@@ -50,7 +50,8 @@ Built-in tool names are reserved. Loading the config fails with
 `report_finding` under `e2e explore`), and for a value `defineTool` did not
 build. Tools belong to
 the built-in agent: an entry with a custom `executor` cannot also set
-`tools`.
+`tools`. With [`email`](/email) configured, the agent's email tools are built in too.
+Their names (`new_email_address`, `wait_for_email`) are reserved either way.
 
 ## Declare what a tool does
 

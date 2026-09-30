@@ -15,7 +15,8 @@ import type { Agent, App, Screen } from 'e2e';
 interface Scenario {
   readonly slug: string;
   readonly goal: string;
-  readonly success: string;
+  /** The success message: a string is the whole text, a RegExp for one that names what the agent typed. */
+  readonly success: string | RegExp;
   /**
    * Why the grammar cannot finish this scenario yet. The test is declared and
    * skipped with the reason, so the gap stays visible in every run and the
@@ -27,6 +28,12 @@ interface Scenario {
 }
 
 const SCENARIOS: readonly Scenario[] = [
+  {
+    slug: 'email-verification',
+    goal: 'create an account with a new email address and verify it with the code from the email',
+    success: /^Email verified for \S+@\S+$/u,
+    gap: 'the email tools record a replay gap, so every run would call the model; tests/email-verification.e2e.ts covers the flow',
+  },
   {
     slug: 'shadow-dom-form',
     goal: 'fill the form buried in the nested shadow roots and submit it to get access',

@@ -19,6 +19,7 @@ import { compactScreenHistory, compactScreenshotHistory } from './transcript-com
 import { createToolLoopExecutor, type ToolLoopHelpers } from './tool-loop.ts';
 import { toolAppliesTo, withToolContext } from './tool.ts';
 import { boundToolOutput } from './tool-output.ts';
+import { emailTools } from './email-tools.ts';
 import type { AgentTool } from '../types.ts';
 
 const BASE_RULES = `You are an autonomous end-to-end testing agent executing exactly one test step against a real application.
@@ -67,7 +68,7 @@ export function createBuiltInAgent(options: BuiltInAgentOptions = {}): StepExecu
     system,
     prepareMessages: (messages) => compactScreenshotHistory(compactScreenHistory(messages)),
     tools: (context, helpers) => ({
-      ...guardedTools(helpers, projectTools(context, userTools)),
+      ...guardedTools(helpers, projectTools(context, attemptTools(context, userTools))),
       ...createGrammarTools(context, { guard: helpers.guard, screen: presenterFor(context) }),
     }),
     buildPrompt: async (context) => {
@@ -135,6 +136,18 @@ function formatReplayedPrefix(prefix: ReplayedPrefix): string {
         ]),
     'Continue the step from the CURRENT screen state shown below — do NOT redo the actions above.',
   ].join('\n');
+}
+
+/**
+ * The tools offered beside the grammar for one step: the runner's own
+ * attempt-scoped packs (email, when `config.email` is set) and the project's.
+ * The built-in agent and an `e2e mcp` session serve the same set.
+ */
+export function attemptTools(
+  context: StepExecutorContext,
+  tools: Readonly<Record<string, AgentTool>>,
+): Readonly<Record<string, AgentTool>> {
+  return { ...emailTools(context.attempt), ...tools };
 }
 
 /**

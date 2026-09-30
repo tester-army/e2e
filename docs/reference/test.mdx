@@ -281,6 +281,8 @@ export interface TestFixtures {
   readonly screen: Screen;
   /** The target's platform label: `web`, `ios`, `android`, or an engine's own string. */
   readonly platform: string;
+  /** Real email addresses from `config.email`. */
+  readonly email: Email;
 }
 
 export interface SetupFixtures extends TestFixtures {
@@ -300,6 +302,44 @@ Everything else is a fixture the target's engine contributes, or one of
 engine contributes `device`. Reaching for a fixture the engine does not
 contribute fails with `UNSUPPORTED_CAPABILITY`; declare `requires: ['web']`
 to skip such tests at selection instead.
+
+`email` exists when the config sets [`email`](/email). With no `email` in
+the config, reaching for it fails with `UNSUPPORTED_CAPABILITY`.
+
+```ts
+export interface Email {
+  /** A new address nobody else receives mail at, given back when the attempt ends. */
+  inbox(): Promise<Inbox>;
+}
+
+export interface Inbox {
+  readonly address: string;
+  /** Every email received so far that matches, oldest first. Waits for nothing. */
+  messages(filter?: EmailFilter): Promise<readonly EmailMessage[]>;
+  /** The oldest matching email no earlier wait returned; nothing within `timeout` (default 30000 ms) is `ASSERTION_FAILED`. */
+  waitForMessage(filter?: EmailFilter & { readonly timeout?: number }): Promise<EmailMessage>;
+}
+
+/** A string is a case-insensitive substring, a RegExp is tested as is. */
+export interface EmailFilter {
+  readonly from?: TextMatch;
+  readonly subject?: TextMatch;
+  readonly text?: TextMatch;
+}
+
+export interface EmailMessage {
+  readonly id: string;
+  /** `Acme <noreply@acme.com>` or a bare address. */
+  readonly from: string;
+  readonly to: readonly string[];
+  readonly cc: readonly string[];
+  readonly subject: string;
+  /** The HTML part's visible text, each link's URL after its label as `<https://...>`; the plain part when there is no HTML. */
+  readonly text: string;
+  readonly html: string | undefined;
+  readonly receivedAt: Date;
+}
+```
 
 The fixtures above are lazy. Destructuring in the parameter list acquires
 them before the body's first statement. Your own fixtures are not: every

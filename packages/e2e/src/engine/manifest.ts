@@ -7,6 +7,7 @@
 
 import { engineBrand } from '../internal/brands.ts';
 import { ConfigurationError } from '../internal/errors.ts';
+import { RUNNER_FIXTURE_NAMES } from '../internal/fixture-names.ts';
 import { obj } from '../internal/objects.ts';
 import { isSecret } from '../secrets.ts';
 import { ENGINE_SPI_VERSION, LOCATOR_ACTION_KINDS, POINTER_ACTION_KINDS } from './contract.ts';
@@ -78,9 +79,6 @@ const FUNCTION_MEMBERS = [
   'endAttempt',
   'dispose',
 ] as const;
-
-/** Universal fixture names a contribution may never shadow. */
-const RESERVED_FIXTURES = new Set(['agent', 'app', 'screen', 'platform', 'session']);
 
 const FIXTURE_NAME_PATTERN = /^[a-z][A-Za-z0-9]*$/;
 
@@ -281,7 +279,7 @@ export function defineEngine(spec: Engine): EngineHandle {
       if (!FIXTURE_NAME_PATTERN.test(fixture)) {
         throw invalid(name, `fixture name "${fixture}" must be a lower-camel identifier`);
       }
-      if (RESERVED_FIXTURES.has(fixture)) {
+      if (RUNNER_FIXTURE_NAMES.has(fixture)) {
         throw invalid(name, `fixture name "${fixture}" shadows a universal fixture`);
       }
       if (typeof factory !== 'function') {

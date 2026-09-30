@@ -1,0 +1,250 @@
+---
+title: Email inboxes
+description: Give tests and the agent real email addresses to sign up with, then read the verification emails the app sends.
+---
+
+Set `email` in the config and every test can get real email addresses. Use
+them to test sign-up verification, magic links, password resets, invitations,
+and anything else your app sends by email. The agent gets tools for the same
+addresses.
+
+## Set up MailDev
+
+For an app that runs locally or in CI, and whose SMTP server you set,
+`maildev()` catches every email the app sends. No account,
+no key, and delivery takes milliseconds. A deployed site that sends through
+its real mail service needs inboxes that receive mail from the internet: plug
+in a [provider](#other-email-services) for one.
+
+[MailDev](https://github.com/maildev/maildev) is an SMTP server that keeps
+every email sent to it, whatever the address, and serves it over a REST API.
+Install it beside e2e:
+
+<CodeGroup>
+```bash npm
+npm install --save-dev --save-exact maildev@3.0.0
+```
+
+```bash pnpm
+pnpm add -D -E maildev@3.0.0
+```
+
+```bash bun
+bun add -d -E maildev@3.0.0
+```
+</CodeGroup>
+
+Start it as a service of the target, point the app's SMTP settings at its
+SMTP port, and pass `maildev()` its API port. `SMTP_HOST` and `SMTP_PORT`
+below stand for whatever settings your app reads:
+
+```ts title="e2e.config.ts"
+import { maildev, type E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+
+export default {
+  targets: [
+    {
+      engine: web({
+        url: 'http://localhost:3000',
+        services: [
+          {
+            name: 'maildev',
+            executable: 'npx',
+            args: ['maildev', '--smtp', '1025', '--web', '1080', '--ip', '127.0.0.1', '--web-ip', '127.0.0.1'],
+            readyUrl: 'http://127.0.0.1:1080/api/healthz',
+            reuseExisting: true,
+          },
+        ],
+        command: { executable: 'npm', args: ['run', 'dev'], env: { SMTP_HOST: '127.0.0.1', SMTP_PORT: '1025' } },
+      }),
+    },
+  ],
+  email: maildev({ url: 'http://127.0.0.1:1080' }),
+} satisfies E2EConfig;
+```
+
+The runner starts MailDev before the app and stops it after the run, and
+reuses one you already have running on that port. CI needs nothing more. Each
+test's address is made up (`e2e-3f9a2c1b7d4e@maildev.test`) and costs nothing,
+and a test reads only the mail delivered to its own address, Bcc included.
+Change the domain with `maildev({ domain })` if the app only accepts some.
+The mail an address received is deleted when its attempt ends.
+
+MailDev 3 is new; pin the version you tested with. A MailDev that is not
+running fails the first `email.inbox()` with `EMAIL_PROVIDER_FAILED` and says
+how to start it.
+
+MailDev receives mail over SMTP. An app that sends through a mail service's
+HTTP API instead (Resend, Postmark, SendGrid, SES) needs its SMTP transport
+switched on for tests. Common settings:
+
+| Stack | Point it at MailDev |
+| --- | --- |
+| Node, nodemailer | `nodemailer.createTransport({ host: '127.0.0.1', port: 1025, ignoreTLS: true })` |
+| Auth.js, Better Auth, and other `EMAIL_SERVER` readers | `EMAIL_SERVER=smtp://127.0.0.1:1025` |
+| Rails | `config.action_mailer.smtp_settings = { address: '127.0.0.1', port: 1025 }` |
+| Django | `EMAIL_HOST=127.0.0.1`, `EMAIL_PORT=1025` |
+| Laravel | `MAIL_MAILER=smtp`, `MAIL_HOST=127.0.0.1`, `MAIL_PORT=1025` |
+
+## Read an email in a test
+
+`email.inbox()` creates a new address. `waitForMessage` waits for an email to
+arrive at it. Take the code or link out of the email's text with a pattern
+that fits your app's template:
+
+```ts title="tests/signup.e2e.ts"
+import { expect, test } from 'e2e';
+
+test('a new account verifies its email', async ({ app, screen, email }) => {
+  const inbox = await email.inbox();
+
+  await app.open('/signup');
+  await screen.getByLabel('Email').fill(inbox.address);
+  await screen.getByRole('button', { name: 'Create account' }).click();
+
+  const message = await inbox.waitForMessage({ subject: 'Verify your email' });
+  const code = /verification code is (\d{6})/.exec(message.text)?.[1];
+  expect(code).toBeDefined();
+  await screen.getByLabel('Verification code').fill(code!);
+  await screen.getByRole('button', { name: 'Verify' }).click();
+
+  await expect(screen.getByRole('heading', { name: 'Welcome' })).toBeVisible();
+});
+```
+
+For a magic link, match the URL instead:
+
+```ts
+const message = await inbox.waitForMessage({ from: 'noreply@acme.com', subject: /sign in/i });
+const link = /https:\/\/acme\.com\/magic\?token=[^\s>]+/.exec(message.text)?.[0];
+await app.open(link!);
+```
+
+The runner reads no codes or links out of an email itself. Every sender
+formats them differently, and a guess that works for one template returns a
+footer's zip code in the next. Your pattern knows your template.
+
+- `waitForMessage(filter)` returns the oldest matching email that no earlier
+  wait has returned. After a resend, call it again to get the new email. It
+  waits 30 seconds by default; pass `timeout` in milliseconds to change that.
+  If nothing arrives, the test fails with `ASSERTION_FAILED`, and the message
+  lists the emails that did arrive. A provider error during the wait is
+  retried until the deadline.
+- Filters match `from`, `subject`, and `text`. A string matches any part of
+  the field, ignoring case. A RegExp is tested as written.
+- `message.text` is what a reader sees: the HTML part's visible text, with
+  each link's URL after its label as
+  `Sign in <https://acme.com/magic?token=...>`, and hidden elements,
+  comments, styles, and scripts left out. An email with no HTML part gives
+  its plain-text part. Filters and the agent read this same text.
+  `message.html` holds the raw HTML.
+- `inbox.messages(filter)` lists everything received so far without waiting.
+
+Inboxes only receive. To test an app that takes mail in (support tickets by
+email, reply-by-email), send to its inbound address from the test with an SMTP
+client such as nodemailer.
+
+An address stays readable until the attempt ends. Then it is given back to the
+provider, whether the test passed or failed, even when the run is
+interrupted. Members of a [serial group](/reference/test#members) share the
+addresses they create, so an account one member signs up with can be read by
+the next.
+
+## Let the agent use email
+
+With `email` set, the built-in agent can create addresses and read their mail.
+You don't need to configure any tools:
+
+```ts
+await agent.act('sign up with a new email address and verify it with the code from the email');
+```
+
+| Tool | What it does |
+| --- | --- |
+| `new_email_address` | Creates a new address. |
+| `wait_for_email` | Waits for the next email to an address and returns its sender, subject, and text, with link URLs inline. |
+
+The tools only read addresses the current attempt created, whether the agent
+created them or the test did with `email.inbox()`. If the app under test talks
+the agent into reading another inbox, the tool refuses.
+
+Anyone who knows an address can put text in front of the agent, so an email
+reaches the model fenced as untrusted content, the way the screen does. Every
+secret the attempt knows is masked in it, as on the screen: an app that emails
+back a password the test typed does not hand the password to the model.
+
+The names `new_email_address` and `wait_for_email` are reserved for these
+tools. A [project tool](/tools) with either name is `INVALID_CONFIG`.
+
+### Mix the test and the agent
+
+Create the address in the test, hand it to the agent, and read the email
+yourself:
+
+```ts
+import { unique } from 'e2e';
+
+const inbox = await email.inbox();
+await agent.act('create an account for {email}', { params: { email: unique(inbox.address) } });
+const message = await inbox.waitForMessage({ subject: 'Verify' });
+```
+
+Wrap the address in [`unique()`](/cache#what-must-match) so the replay cache
+does not miss on every run.
+
+### Email tools and the replay cache
+
+What the tools return is new on every run: an address, a code, a link with a
+token. A replay that typed last run's code would fail. So each tool call
+records a gap in the [replay cache](/cache), and the step runs live from
+there. A value the agent typed or a link it opened in a later step, when it
+came from an email tool, records a gap as well
+(`step.cache.derived` reads `whole-node` or `minted-token`), so a step that
+signs up with the address an earlier step got is never replayed with the old
+one.
+
+## Other email services
+
+`email` takes any `MailProvider`; `maildev()` is one. A provider hands out
+addresses, lists and reads what arrived, and gives addresses back. The runner
+does everything else: filtering, waiting, retries, what the model is shown,
+the tools, and when addresses go back.
+
+```ts
+export interface MailProvider<Lease extends MailLease = MailLease> {
+  /** Label in error messages and the config digest. */
+  readonly name: string;
+  /** A new address, for `email.inbox()` or the agent's `new_email_address`. */
+  acquire(context: MailContext): Promise<Lease>;
+  /** Gives an address back once its attempt ends, pass or fail: deletes what was created for it and the mail it received. */
+  release(lease: Lease, context: MailContext): Promise<void>;
+  /** Every message received at exactly the lease's address, oldest first. */
+  list(lease: Lease, context: MailContext): Promise<readonly MailSummary[]>;
+  /** One listed message with its body. */
+  read(lease: Lease, id: string, context: MailContext): Promise<MailMessage>;
+}
+
+export interface MailLease {
+  /** The address. */
+  readonly address: string;
+}
+
+export interface MailContext {
+  /** Aborts when the wait, the tool call, or the cleanup budget is spent. */
+  readonly signal: AbortSignal;
+  /** The run the call belongs to, for tagging what the provider creates. */
+  readonly runId: string;
+}
+```
+
+A lease can carry extra fields of your own. `release`, `list`, and `read` get
+back the same object that `acquire` returned.
+
+Every provider failure is `EMAIL_PROVIDER_FAILED`. A failed `list` or `read`
+during a wait is retried until the wait's deadline. Throw an error with
+`retryable: false` for a failure a retry will not fix, such as a rejected key
+or an exhausted quota, and the wait ends at once. A `release` that fails or
+runs past `cleanupTimeout` marks the attempt's cleanup as failed and is
+recorded next to its result; the verdict stays. Each worker loads the config
+module and creates its own provider.

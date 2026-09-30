@@ -23,6 +23,7 @@ import type {
   TestHookFn,
   TestOptions,
 } from '../types.ts';
+import { CORE_FIXTURE_NAMES } from '../internal/fixture-names.ts';
 
 export interface SourceLocation {
   readonly file: string;
@@ -529,8 +530,6 @@ function normalizeArgs(
   return { options: optionsOrFn, fn: maybeFn };
 }
 
-/** Fixtures every attempt has without any engine or `test.extend()` defining them. */
-const CORE_FIXTURE_NAMES: ReadonlySet<string> = new Set(['agent', 'app', 'screen', 'platform', 'session']);
 
 /**
  * Checks one `test.extend()` argument against the chain it extends. Names

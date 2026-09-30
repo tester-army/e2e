@@ -4,6 +4,7 @@ export { test } from './collect/registry.ts';
 export { expect } from './expect/index.ts';
 export { credentials, secrets } from './secrets.ts';
 export { unique } from './params.ts';
+export { maildev, type MaildevOptions } from './email/maildev.ts';
 export { AgentError, isAgentError } from './agent/error.ts';
 // The markdown page the `markdown` reporter writes, for a reporter that posts
 // it elsewhere: @e2e-dev/github renders the pull request comment from it.
@@ -11,6 +12,7 @@ export { renderMarkdownReport } from './report/markdown.ts';
 export type { MarkdownReportOptions } from './report/markdown.ts';
 
 export type * from './types.ts';
+export type * from './email/types.ts';
 export type {
   ExecutorActions,
   ExecutorAttempt,

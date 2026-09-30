@@ -3,6 +3,7 @@
  * `tests/types/sdk-types.ts` pins the parts that are easy to loosen by accident.
  */
 
+import type { Email, MailProvider } from './email/types.ts';
 import type { expectationBrand, testCaseBrand } from './internal/brands.ts';
 import type { CredentialConfig, Secret, SecretConfig } from './config/secrets.ts';
 import type { Unique } from './params.ts';
@@ -568,6 +569,8 @@ export interface TestFixtures {
   readonly screen: Screen;
   /** The target's platform label: `web`, `ios`, `android`, or an engine's own string. */
   readonly platform: string;
+  /** Real email addresses from `config.email`. Acquiring it with no email configured is `UNSUPPORTED_CAPABILITY`. */
+  readonly email: Email;
 }
 
 export interface SetupFixtures extends TestFixtures {
@@ -1354,4 +1357,11 @@ export interface E2EConfig {
    * redacted from logs, traces, and the report.
    */
   secrets?: Readonly<Record<string, SecretConfig>>;
+  /**
+   * Where the `email` fixture's and the agent's email addresses come from:
+   * `maildev()` for a local app, or any `MailProvider`. With it
+   * set, the built-in agent is offered `new_email_address` and
+   * `wait_for_email`.
+   */
+  email?: MailProvider;
 }

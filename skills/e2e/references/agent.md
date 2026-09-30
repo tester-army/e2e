@@ -242,6 +242,12 @@ screenshot tools. They are masked and withheld after a secret has been filled. N
 returns runs as code or selectors: the runner validates and authorizes every
 tool call before it executes.
 
+With `email` in the config the agent also has `new_email_address` and
+`wait_for_email`: it reads only addresses the attempt created, sees each email
+fenced as untrusted with secrets masked, and every call is a replay gap, so a
+step that uses email runs live. Hand it a test's address as a param wrapped in
+`unique()` instead when the step itself need not read the mail.
+
 ## Budgets and cost
 
 | Call | Model calls | Default timeout |

@@ -2,6 +2,7 @@
 
 import type { FixtureDefinition } from '../collect/registry.ts';
 import { ConfigurationError } from '../internal/errors.ts';
+import { RUNNER_FIXTURE_NAMES } from '../internal/fixture-names.ts';
 
 /** One set-up fixture's teardown: the rest of its function after `use`. */
 export interface FixtureTeardown {
@@ -56,9 +57,10 @@ export function createExtendedFixtures(
     // Own properties only: the base object is a plain object, so `in` would
     // also see `toString` and the rest of the prototype.
     if (Object.hasOwn(fixtures, name)) {
+      const owner = RUNNER_FIXTURE_NAMES.has(name) ? 'the runner (a built-in fixture)' : `engine ${engineName}`;
       throw new ConfigurationError(
         'TEST_SETUP_FAILED',
-        `fixture "${name}" is contributed by engine ${engineName}; test.extend() cannot redefine it`,
+        `fixture "${name}" is contributed by ${owner}; test.extend() cannot redefine it`,
       );
     }
     let ready!: () => void;

@@ -30,7 +30,8 @@
     "@e2e-dev/web",
     "@openrouter/ai-sdk-provider",
     "@expo/fingerprint",
-    "@expo/repack-app"
+    "@expo/repack-app",
+    "maildev"
   ],
   "rules": {
     "unused-class-member": "warn",

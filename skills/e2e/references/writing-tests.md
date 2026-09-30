@@ -93,6 +93,7 @@ The built-in fixtures are lazy; destructure them in the callback. Your own `test
 | `web` | `Web` | Browser targets. Import `test` from `@e2e-dev/web`. |
 | `device` | `Device` | Device targets. Import `test` from `@e2e-dev/mobile`. |
 | `session` | `SetupSession` | Only in `test.setup`. |
+| `email` | `Email` | With `email` in the config. `const inbox = await email.inbox()` gives a new address, released when the attempt ends; `await inbox.waitForMessage({ subject: 'Verify' })` returns the next matching email, and the test reads the code or link out of `message.text` with its own pattern. |
 
 ### app
 

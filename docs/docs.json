@@ -167,6 +167,7 @@
             "icon": "shield-halved",
             "pages": [
               "authentication",
+              "email",
               "security",
               "telemetry"
             ]

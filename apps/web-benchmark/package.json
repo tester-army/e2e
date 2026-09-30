@@ -14,18 +14,21 @@
     "test:agent": "pnpm run build && node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts"
   },
   "dependencies": {
-    "e2e": "workspace:*",
     "@e2e-dev/web": "workspace:*",
+    "e2e": "workspace:*",
     "next": "16.3.6",
+    "nodemailer": "10.0.13",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
     "@e2e-dev/github": "workspace:*",
     "@types/node": "26.6.2",
+    "@types/nodemailer": "8.0.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "ai": "7.0.107",
+    "maildev": "3.0.0",
     "playwright": "1.63.0",
     "typescript": "7.0.2"
   }

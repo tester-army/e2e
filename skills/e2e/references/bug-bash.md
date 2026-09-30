@@ -45,8 +45,8 @@ and when a change needs a broad look before review. For one flow, a single
   gets none after that point. Charters that need their own account each need their own
   setup and session.
 - Tell the explorers what the local app cannot do, in the agent's
-  `context`: which integrations have no keys (email, payments, an AI
-  provider), what is seed data, and what must never be clicked (starting
+  `context`: which integrations have no keys (email, unless the app sends
+  through a MailDev the config sets as `email`; payments; an AI provider), what is seed data, and what must never be clicked (starting
   paid runs, connecting real accounts). Otherwise a large share of the
   findings are the missing keys.
 - Each exploration step needs a budget of 40 actions and model calls or

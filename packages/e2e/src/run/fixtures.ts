@@ -17,6 +17,8 @@ import { resolveSecretValue, sessionSecrecy, type SecretExposure } from './secre
 import { obj } from '../internal/objects.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import { FixtureRecorder } from './fixture-recording.ts';
+import { createEmailFixture } from '../email/fixture.ts';
+import { attemptMail } from '../email/mailbox.ts';
 import type { AttemptBudget } from './budget.ts';
 import { LocatorEngine } from '../locator/engine.ts';
 import {
@@ -28,6 +30,7 @@ import {
 } from '../locator/screen.ts';
 import type { ResolvedAgentConfig, ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type { Agent, App, Expectable, SetupSession, TestFixtures } from '../types.ts';
+import type { Email } from '../email/types.ts';
 import type { ArtifactRecord } from './records.ts';
 import type { StepRecord, StepRecorder } from './steps.ts';
 
@@ -122,6 +125,16 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
   const app = createApp(environment, engine, exposure);
 
   let agent: Agent | undefined;
+  let email: Email | undefined;
+  const mail =
+    environment.config.email === undefined
+      ? undefined
+      : attemptMail(environment.session, environment.attempt, {
+          provider: environment.config.email,
+          runId: environment.runId,
+          redact: ledger.redact,
+          signal: () => environment.budget.signal,
+        });
 
   /**
    * The agents this attempt can run with, resolved once each: the test's pin
@@ -189,7 +202,7 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     ...(environment.debug !== undefined ? { debug: environment.debug } : {}),
   };
 
-  const fixtures: TestFixtures & { session: SetupSession } = {
+  const fixtures = {
     get agent(): Agent {
       if (agent !== undefined) return agent;
       // The attempt's own agent is checked as the fixture is acquired, as before.
@@ -213,6 +226,18 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
       },
     },
   };
+  // Only with `config.email` set: without it the name stays free for a
+  // project's own `test.extend({ email })`, and reaching for it is the
+  // unknown-fixture error, which says how to configure one.
+  if (mail !== undefined) {
+    Object.defineProperty(fixtures, 'email', {
+      enumerable: true,
+      get(): Email {
+        email ??= createEmailFixture(mail);
+        return email;
+      },
+    });
+  }
   // Defined as accessors, not spread: spreading would invoke every factory
   // eagerly, before the test body and whether or not it touches the fixture.
   Object.defineProperties(
@@ -220,19 +245,21 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     Object.getOwnPropertyDescriptors(contributedFixtures(environment, engine, screenContext)),
   );
 
-  return { fixtures: gateUnknownFixtures(fixtures, environment), agentRuntime };
+  // `email` is typed on every test; it exists only when configured (above).
+  return { fixtures: gateUnknownFixtures(fixtures as TestFixtures & { session: SetupSession }, environment), agentRuntime };
 }
 
 /** Keys a test body may probe without meaning a fixture. */
 const PROBED_KEYS = new Set(['then', 'constructor', 'toJSON', 'toString', 'valueOf', 'inspect']);
 
-/** Fixtures other runners hand out, each pointed at the e2e way of doing the same thing. */
+/** Fixtures other runners hand out, and the runner's own that need config, each pointed at the way to get it here. */
 const FOREIGN_FIXTURE_HINTS: Readonly<Record<string, string>> = {
   page: 'there is no Playwright page: open the app with app.open() and find elements through screen; browser-only APIs are on the web fixture of a Playwright target',
   browser: 'the browser is owned by the engine: drive it through app, screen, and (on a Playwright target) web',
   context: 'the browser context is owned by the engine: cookies, routes, and storage are on the web fixture of a Playwright target',
   request: 'there is no request fixture: call fetch() directly, or reach the browser through the web fixture of a Playwright target',
   driver: 'there is no WebDriver session: drive the device through app, screen, and (on an agent-device target) device',
+  email: 'no email provider is configured: set email in e2e.config.ts, e.g. email: maildev() from e2e for a local app',
 };
 
 /**

@@ -21,6 +21,7 @@ import { containerKey, describeAction, type Placement, type RecordableAction } f
 import { describePosition } from '../cache/relocate.ts';
 import type { NodeActionName, PointActionName, RecordedAction } from '../cache/trace.ts';
 import { derivedReason } from './derived.ts';
+import { mailOfAttempt } from '../email/mailbox.ts';
 import { AgentError } from './error.ts';
 import type { ExecutorActions, ExecutorTarget, PointHit, PointTapResult } from './executor.ts';
 import type { AgentContext } from './invocation.ts';
@@ -73,6 +74,9 @@ const MAX_SCROLL_UNTIL_TEXT_CHARS = 200;
  */
 const SCROLL_UNTIL_STILL_PAGES = 3;
 const SCROLL_UNTIL_WRONG_LIST_PAGES = 2;
+
+/** What an attempt with no email configured was shown by email tools: nothing. */
+const NOTHING_MAILED: ReadonlySet<string> = new Set();
 
 /** The engine action each node verb performs; also the name its engine event carries. */
 const NODE_ACTION_KINDS = {
@@ -569,11 +573,29 @@ export class ActionDispatcher {
     // than typing a value the app may not issue again. A value a replay
     // types is the recording's own data and stays: an app that kept the last
     // run's value shows it on the first screen, and no model chose it.
+    // What the attempt's email tools showed counts as shown, whichever step
+    // read it: an address, a code, or a link from an email is this run's.
+    const mailed = mailOfAttempt(this.runtime.attempt)?.evidence ?? NOTHING_MAILED;
     if (!this.accounting.replayingTrace && (action.name === 'type' || action.name === 'typeText')) {
       const derived = derivedReason(action.value, this.options.instruction, this.options.params, {
-        shown: this.feed.shownText(),
+        shown: [...this.feed.shownText(), ...mailed],
         pixels: this.feed.pixelsShown,
       });
+      if (derived !== undefined) {
+        trace.recordDerivedGap(derived);
+        return;
+      }
+    }
+    // A link opened out of an email carries a token the next run's email will
+    // not. The email spelled it absolute; the model may open it as a path.
+    if (!this.accounting.replayingTrace && action.name === 'navigate' && mailed.size > 0) {
+      const absolute = resolveNavigationUrl(action.url, this.runtime.app.base).url;
+      // Only a whole URL an email spelled counts: an app origin that merely
+      // prefixes one (`http://localhost:3000` before `/verify?token=...`) is
+      // the flow's own navigation and replays.
+      const derived = [action.url, absolute]
+        .map((url) => derivedReason(url, this.options.instruction, this.options.params, { shown: mailed }))
+        .find((reason) => reason === 'whole-node');
       if (derived !== undefined) {
         trace.recordDerivedGap(derived);
         return;

@@ -20,6 +20,7 @@ import { cacheTokenFields, readCost } from './model/sdk.ts';
 import { OperationQueue } from './operation-queue.ts';
 import { imagePointToViewport, POINT_VERBS } from './point-tap.ts';
 import { ScreenPresenter, type ScreenOutput, type ScreenUpdateOptions } from './screen-update.ts';
+import { schemaTool, type ModelOutput } from './schema-tool.ts';
 
 /** Codes the model may pick when concluding; runtime codes are runtime-assigned. */
 const MODEL_ERROR_CODES = [
@@ -72,31 +73,6 @@ export const VERDICT_RULES = `Verdict rules:
 - When the step's goal is achieved, or you are certain it cannot be, call complete_step exactly once.
 - Conclude from the newest screen and changes already in this conversation; never guess success. Observe again before concluding only when the newest result shows work still in progress (a spinner, "Saving…", a pending state).
 - "passed" means the application behaved as the step required. "failed" means it did not. "blocked" means credentials, the environment, or test setup prevented a product verdict — blocked says nothing about the product and requires an errorCode.`;
-
-/**
- * A plain AI SDK function tool with its input typed from the schema — what
- * `tool()` from `ai` does, without loading `ai` to do it. The schema is
- * closed here, once for every tool: a field it does not declare fails
- * validation, and the SDK hands the failure back to the model as the call's
- * result instead of stripping the field and running the call without it.
- */
-function schemaTool<Schema extends z.ZodObject, Output = string>(definition: {
-  readonly description: string;
-  readonly inputSchema: Schema;
-  readonly execute: (input: z.output<Schema>) => Promise<Output>;
-  /** Maps a structured result onto model content; a string result needs none. */
-  readonly toModelOutput?: (options: { readonly output: Output }) => ModelOutput;
-}): Tool {
-  return { ...definition, inputSchema: definition.inputSchema.strict() } as Tool;
-}
-
-/** The model-facing shape of a tool result: text, or text with a screenshot attached. */
-type ModelOutput =
-  | { readonly type: 'text'; readonly value: string }
-  | {
-      readonly type: 'content';
-      readonly value: ({ readonly type: 'text'; readonly text: string } | { readonly type: 'file'; readonly data: { readonly type: 'data'; readonly data: string }; readonly mediaType: string })[];
-    };
 
 /**
  * A grammar tool: its result is a rendered screen, text or text with the

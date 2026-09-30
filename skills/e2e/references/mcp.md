@@ -56,6 +56,7 @@ The catalog, per session:
 | `select_at` | Picks the option whose visible label is `value` in the select-like control at a point; the point must land on a listed select. Listed when the engine declares `select`. |
 | `start_recording` | Starts a video of the app (`name` optional, for the file name). Listed when the engine records video. |
 | `stop_recording` | Stops it and returns the absolute path of each video file, under `<output>/videos/<session>/` (`.e2e` by default), or the URL of a provider's own recording. |
+| `new_email_address`, `wait_for_email` | With `email` in the config: a new address for the session, and the next email to it, fenced as untrusted with secrets masked. The addresses go back when the session closes. |
 | Project tools | Every `defineTool` in the agent's `tools` that applies to the target's platform, under its own name; an engine pack such as `mobileTools` adds `open_app`, `swipe`, `alert`. |
 
 The five point tools and `screenshot` stay in the catalog once a secret has

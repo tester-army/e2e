@@ -13,7 +13,7 @@
 
 import type { ToolSet } from 'ai';
 import { z } from 'zod';
-import { projectTools } from '../agent/default-agent.ts';
+import { attemptTools, projectTools } from '../agent/default-agent.ts';
 import type { ExecutorNode, StepExecutorContext } from '../agent/executor.ts';
 import { projectTree } from '../agent/observation.ts';
 import { GRAMMAR_TOOL_NAMES } from '../agent/action-names.ts';
@@ -67,7 +67,7 @@ export function createSessionCatalog(options: CatalogOptions): SessionCatalog {
     locate: locateTool(options.locator, options.session, options.redact),
     ...recording,
   };
-  const defined = options.tools;
+  const defined = attemptTools(context, options.tools);
   const readOnly = new Set(['observe', 'locate', 'screenshot']);
   const project: ToolSet = {};
   for (const [name, tool] of Object.entries(projectTools(context, defined))) {

@@ -40,9 +40,21 @@ export type GrammarActionName = (typeof GRAMMAR_ACTION_NAMES)[number];
 export const PROJECT_TOOL_EVENT_PREFIX = 'tool:';
 
 /**
+ * The names of the agent's email tools, offered when `config.email` is set.
+ * Reserved whether or not it is, so a project tool keeps its name when a
+ * config adds email later.
+ */
+const EMAIL_TOOLS = ['new_email_address', 'wait_for_email'] as const;
+export const EMAIL_TOOL_NAMES: ReadonlySet<string> = new Set<string>(EMAIL_TOOLS);
+
+/** One of the email tools' names; the pack is typed by it, so a tool and its reserved name cannot drift apart. */
+export type EmailToolName = (typeof EMAIL_TOOLS)[number];
+
+/**
  * The tools the harness adds beside the grammar, each where it adds them:
  * `complete_step` in every agent step, `locate` and the recording tools in
- * an `e2e mcp` session, and `report_finding` under `e2e explore`. A project
+ * an `e2e mcp` session, `report_finding` under `e2e explore`, and the email
+ * tools in an agent step when `config.email` is set. A project
  * tool named like one would be replaced or dropped there, so the config load
  * refuses the name.
  */
@@ -52,6 +64,7 @@ export const HARNESS_TOOL_NAMES: ReadonlyMap<string, string> = new Map([
   ['start_recording', 'an e2e mcp session'],
   ['stop_recording', 'an e2e mcp session'],
   ['report_finding', 'e2e explore'],
+  ...EMAIL_TOOLS.map((name): [string, string] => [name, 'an agent step when config.email is set']),
 ]);
 
 /**

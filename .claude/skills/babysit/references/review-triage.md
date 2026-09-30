@@ -35,6 +35,10 @@ Reply with the one fact that disproves it, then resolve. Common shapes:
   `AGENTS.md` rule that states it.
 - **A tool rule that contradicts a repo rule** in `AGENTS.md`. Cite the repo
   rule.
+- **Product hardening in a benchmark app.** `apps/*-benchmark` scenarios are
+  localhost fixtures: rate limits, token expiry, persistence, and abuse
+  controls are out of scope unless the scenario tests them. A response the
+  suite reads wrong (a missing status, a claim the UI makes) is still a fix.
 
 ## Escalate, never dismiss alone
 

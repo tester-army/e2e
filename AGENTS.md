@@ -89,10 +89,13 @@ suites that consume the built packages the way a user would.
   `tests-agent/` both gate PRs; the agentic one runs from its committed
   recordings, see "Committed recordings" under Gotchas). Scenario files are
   copies: keep diffs against the source minimal so scenarios port both ways,
-  and never fix a planted bug. The one exception is Control Inventory, ours
-  like the mobile benchmark's: plain controls, one exercise per agent verb the
-  hard scenarios never reach, with one agentic test per verb in
-  `tests-agent/control-inventory.e2e.ts`.
+  and never fix a planted bug. Two scenarios are ours, not copies. Control
+  Inventory, like the mobile benchmark's: plain controls, one exercise per
+  agent verb the hard scenarios never reach, with one agentic test per verb in
+  `tests-agent/control-inventory.e2e.ts`. Email Verification: it sends real
+  mail over SMTP (`app/src/app/api/email/route.ts`) to the MailDev the config
+  starts as a service, and `tests/email-verification.e2e.ts` exercises
+  `config.email` through `maildev()`.
 - `apps/mobile-benchmark` (`@e2e-dev/mobile-benchmark`, private) — an Expo
   app of hard mobile surfaces (merged or hidden accessibility trees, native
   alerts over modals, keyboard-covered submits, virtualized lists, a WebView,

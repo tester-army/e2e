@@ -16,6 +16,9 @@ import {
   type ArtifactStore,
   type AsyncExpectation,
   type E2EConfig,
+  type EmailMessage,
+  type MailLease,
+  type MailProvider,
   type ExecutorVerb,
   type FinishedRun,
   type KeyModifier,
@@ -489,3 +492,34 @@ grok('grok-4', {});
 ({ targets: [{ engine }], agents: { default: { model, judgmentTimeout: '30s' } } }) satisfies E2EConfig;
 // @ts-expect-error timeout is now judgmentTimeout, and maxTurns is maxModelCalls
 ({ targets: [{ engine }], agents: { default: { model, timeout: 30_000 } } }) satisfies E2EConfig;
+
+// config.email: a provider with a lease of its own shape.
+interface CatcherLease extends MailLease {
+  readonly mailbox: number;
+}
+const catcher: MailProvider<CatcherLease> = {
+  name: 'catcher',
+  acquire: async () => ({ address: 'a@catch.test', mailbox: 1 }),
+  release: async (lease) => void lease.mailbox,
+  list: async () => [],
+  read: async () => ({ id: '1', from: 'x@y.test', to: [], subject: '', receivedAt: new Date() }),
+};
+({ targets: [{ engine }], email: catcher }) satisfies E2EConfig;
+// @ts-expect-error a provider must say how to read what arrived
+({ targets: [{ engine }], email: { name: 'half', acquire: catcher.acquire, release: catcher.release } }) satisfies E2EConfig;
+
+// The email fixture: inboxes on demand, messages as plain data; the runner reads no codes or links out of them, and sends nothing.
+test('email', async ({ email }) => {
+  const inbox = await email.inbox();
+  const message: EmailMessage = await inbox.waitForMessage({ subject: /verify/i, timeout: 10_000 });
+  message.text satisfies string;
+  message.html satisfies string | undefined;
+  // @ts-expect-error an inbox only receives
+  await inbox.send({ to: 'support@acme.test', subject: 'Help', text: 'hi' });
+  // @ts-expect-error nor does a message reply
+  await message.reply({ text: 'thanks' });
+  // @ts-expect-error no code(): a test reads the code out of message.text with its own pattern
+  message.code();
+  // @ts-expect-error nor link(): a URL is in message.text or message.html
+  message.link('Verify');
+});

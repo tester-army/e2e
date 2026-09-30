@@ -1,7 +1,10 @@
 import type { E2EConfig } from 'e2e';
 import { github } from '@e2e-dev/github';
 import { gateway } from 'ai';
-import base from './e2e.config.ts';
+import deterministic, { benchmarkTarget } from './e2e.config.ts';
+
+// No mail: no agent test reads it, and without `email` no step is offered the email tools.
+const { email: _email, ...base } = deterministic;
 
 /**
  * Agentic suite against the same app and account as the deterministic one.
@@ -16,6 +19,7 @@ import base from './e2e.config.ts';
  */
 export default {
   ...base,
+  targets: [benchmarkTarget(false)],
   projectId: 'dev.e2e.web-benchmark-agent',
   tests: 'tests-agent/**/*.e2e.ts',
   // Every agent step includes model round trips, so the deterministic action

@@ -27,6 +27,8 @@ import type {
   Target,
   CacheStore,
 } from '../types.ts';
+import { asMailProvider } from '../email/provider.ts';
+import type { MailProvider } from '../email/types.ts';
 import { isEngineHandle, type EngineHandle } from '../engine/index.ts';
 import { isModelInstance, resolveAgentConfig, runLimits, type ResolvedAgentConfig, type ResolvedLimits } from './agent.ts';
 import { digestAppDeclaration, resolveTargetApp, type ResolvedApp } from './app.ts';
@@ -99,6 +101,8 @@ export interface ResolvedConfig {
   readonly credentials: ReadonlyMap<string, ResolvedCredential>;
   /** Every secret by name: `config.secrets` entries and every credential's password. */
   readonly secrets: ReadonlyMap<string, ResolvedSecret>;
+  /** Where the `email` fixture's and the agent's addresses come from; undefined when the config names none. */
+  readonly email: MailProvider | undefined;
   readonly configDigest: string;
 }
 
@@ -175,6 +179,7 @@ const TOP_LEVEL_KEYS = new Set([
   'cache',
   'credentials',
   'secrets',
+  'email',
 ]);
 
 const CACHE_KEYS = new Set(['mode', 'store', 'dir', 'strict']);
@@ -295,6 +300,7 @@ export function resolveConfig(
   const projectId = resolveProjectId(raw.projectId, options.projectRoot);
   const { credentials, secrets } = resolveSecrets(raw, env);
   checkEngineSecrets(targets, secrets);
+  const email = raw.email === undefined ? undefined : asMailProvider(raw.email);
   const { agents, agentNames, agent } = resolveAgents(raw.agents, cli.agents);
   const limits = runLimits(agents.values());
   const cache = resolveCacheConfig(raw, ci, options.projectRoot, cli.cache, cli.cacheStrict === true);
@@ -325,6 +331,7 @@ export function resolveConfig(
     limits,
     credentials,
     secrets,
+    email,
     configDigest: computeConfigDigest(raw, projectId),
   };
   return resolved;
@@ -1020,6 +1027,7 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
     agents,
     cache,
     reporters,
+    email,
     ...plain
   } = raw;
   const sanitized: Record<string, unknown> = {
@@ -1029,6 +1037,8 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
       : { reporters: Array.isArray(reporters) ? reporters.filter((reporter) => typeof reporter === 'string') : structuredCloneJsonSafe(reporters) }),
     ...(agents === undefined ? {} : { agents: digestAgents(agents) }),
     ...(cache === undefined ? {} : { cache: digestCache(cache) }),
+    // A mail provider holds a client; what it is, not what it holds, is the identity.
+    ...(email === undefined ? {} : { email: email.name }),
     projectId,
   };
   if (raw.credentials !== undefined) {

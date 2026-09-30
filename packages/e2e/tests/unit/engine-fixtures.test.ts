@@ -24,4 +24,11 @@ describe('defineEngine fixtures', () => {
     expect(factory()).toBe('hello');
     expect(Object.isFrozen(handle.fixtures)).toBe(true);
   });
+
+  it('refuses a fixture named like one the runner hands out, email included', () => {
+    for (const name of ['app', 'session', 'email']) {
+      const engine = { name: 'greedy', version: '1.0.0', spiVersion: 1 as const, observe: async () => snapshot([]), fixtures: { [name]: () => ({}) } };
+      expect(() => defineEngine(engine as never), name).toThrow(expect.objectContaining({ code: 'INVALID_CONFIG', message: `engine "greedy": fixture name "${name}" shadows a universal fixture` }));
+    }
+  });
 });

@@ -13,6 +13,7 @@ import DebouncedSearch from "./Examples/DebouncedSearch";
 import DeferredDialog from "./Examples/DeferredDialog";
 import DivSoup from "./Examples/DivSoup";
 import DragAndDrop from "./Examples/DragAndDrop";
+import EmailVerification from "./Examples/EmailVerification";
 import FileRoundTrip from "./Examples/FileRoundTrip";
 import FilterDeepLink from "./Examples/FilterDeepLink";
 import GiftCardPurchase from "./Examples/GiftCardPurchase";
@@ -357,5 +358,11 @@ export const examples: Example[] = [
     name: "Control Inventory",
     description:
       "The deterministic contract surface: plain controls with every state exposed, one exercise per agent verb. Not a hard surface.",
+  },
+  {
+    component: EmailVerification,
+    slug: "email-verification",
+    name: "Email Verification",
+    description: "Verify a new account with an emailed code, sign in from an emailed link, and invite a teammate.",
   },
 ];

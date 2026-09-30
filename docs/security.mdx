@@ -26,6 +26,7 @@ what it may do; this page lists the trust boundary.
 | The screen | An accessibility tree with node ids, roles, names, text, test ids, link targets, and states, cut at a size limit. No selectors. A link's query and fragment, where tokens ride, show only as `?…` and `#…`. |
 | The location | The current URL, redacted. |
 | A screenshot | When needed or requested, only if the engine proves secure fields are masked and no secret has been filled in the attempt. |
+| An email | With [`email`](/email) configured, what `wait_for_email` read: fenced as untrusted content inside `<email>`, known secrets masked, the body cut at 8000 characters. Only the attempt's own addresses can be read. |
 | Prior steps | `agent.act` receives bounded records from the same test or serial group. Judgments use the current screen and instruction, without prior-step records. |
 
 Secure fields appear as `value=<secure>`. Known secret values in model input

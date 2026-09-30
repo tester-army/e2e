@@ -128,6 +128,7 @@ What `call` can run depends on the session's target:
 | `type_at` | `x`, `y`, `value`; `replace` on an engine with a keyboard | Fills a listed input under the point by id. With a keyboard, anything else is tapped to focus it and typed into, at the caret unless `replace` is set; without one, a point on nothing listed fails. Listed when the engine declares `type` or a keyboard. |
 | `press_at` | `x`, `y`, `key` | Sends the key to a listed control under the point by id; with a keyboard, anything else is tapped to focus it and the key goes through the keyboard. Listed when the engine declares `press` or a keyboard. |
 | `select_at` | `x`, `y`, `value`, the option's visible label | Picks the option in the listed select-like control under the point; nothing listed there fails. Listed when the engine declares `select`. |
+| `new_email_address`, `wait_for_email` | none; `address`, optional `subject`, `from`, `text`, `timeout_seconds` | A new address for the session, and the next email to one, fenced as untrusted content with secrets masked. Listed when the config sets [`email`](/email); the session's addresses are given back when it closes. |
 | `start_recording` | `name` (optional; up to 64 letters, digits, `-`, and `_`, starting with a letter or digit) | Starts a video of the app. One recording at a time; a second start reports the one running. Listed when the engine records video. |
 | `stop_recording` | none | Stops the recording and returns the absolute path of each video file. Listed when the engine records video. |
 

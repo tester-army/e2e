@@ -35,6 +35,7 @@ import { createEngineSession } from '../engine/session.ts';
 import { createExtendedFixtures } from './extended-fixtures.ts';
 import { captureFailureEvidence } from './failure-evidence.ts';
 import { createFixtures, type ArtifactSink } from './fixtures.ts';
+import { releaseSessionMail } from '../email/mailbox.ts';
 import { publishAttempt } from '../expect/attempt.ts';
 import { SoftFailures } from '../expect/soft.ts';
 import { findRegistered, RealmManager, runHook, type FileRef, type Realm } from './realm.ts';
@@ -745,6 +746,23 @@ export class TargetExecutor implements SerialHost {
     }
     try {
       await this.debug.time('session.close', () => this.endAttempt(session, attemptId));
+    } catch (cause) {
+      record.cleanup = 'failed';
+      secondaryErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
+    }
+    // The session's email addresses go back with it, under a cleanup budget
+    // of their own that an interrupt does not cut: a Ctrl-C is exactly when
+    // an inbox would otherwise be left holding the provider's quota. One
+    // that does not go back fails the cleanup, never the verdict.
+    try {
+      const failures = await withScopedBudget(
+        this.config.cleanupTimeout,
+        NEVER_ABORTS,
+        () => new InfrastructureError('CLEANUP_TIMEOUT', 'releasing the email addresses timed out'),
+        (signal) => releaseSessionMail(session, signal),
+      );
+      if (failures.length > 0) record.cleanup = 'failed';
+      for (const failure of failures) secondaryErrors.push(serializeError(classifyError(failure), { phase: 'cleanup' }));
     } catch (cause) {
       record.cleanup = 'failed';
       secondaryErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
