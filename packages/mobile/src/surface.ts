@@ -289,6 +289,7 @@ const MOBILE_OPTION_KEYS: readonly string[] = Object.keys({
   snapshot: true,
   settle: true,
   transition: true,
+  videoTouches: true,
   launchArguments: true,
   permissions: true,
 } satisfies Record<keyof MobileOptions, true>);
