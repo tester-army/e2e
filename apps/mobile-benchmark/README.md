@@ -111,7 +111,7 @@ credential in `e2e.config.ts`, so tests reach it through
 | Flattened Registration Form | Vision-focused typing into an `accessible={true}` merged form               |
 | Flattened Login             | Credential fill via focused typing when `accessible={true}` hides the tree  |
 | Sticky Chrome Target        | Off-screen tap scrolled clear of a sticky footer                            |
-| WebView Accessibility       | Web semantics projected into the native a11y tree; fill + submit a web form |
+| WebView Accessibility       | Browser semantics projected into the native a11y tree; fill + submit a web form |
 | Permission Prompt           | OS permission dialog (outside the app a11y tree) + denied-state recovery    |
 | Photo Picker                | Selecting a seeded photo via the out-of-process system photo picker         |
 | Product Catalog             | Near-identical repeated cards, drill-in detail, stepper, cart verification  |

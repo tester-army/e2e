@@ -4,27 +4,27 @@
 
 ```ts
 // tests/todos.e2e.ts
-import { test } from '@e2e-dev/web';
-import { expect } from 'e2e';
+import { beforeEach, test } from '@e2e-dev/web';
+import { describe, expect } from 'e2e';
 
-test.describe('todos', { tags: ['todos'] }, () => {
-  test.beforeEach(async ({ app }) => {
+describe('todos', { tags: ['todos'] }, () => {
+  beforeEach(async ({ app }) => {
     await app.open('/todos');
   });
 
-  test('adds and completes a todo', async ({ agent, screen, web }) => {
+  test('adds and completes a todo', async ({ agent, screen, browser }) => {
     await agent.act('add a todo named {title}', { params: { title: 'Write the release notes' } });
     await expect(screen.getByRole('listitem')).toHaveCount(1);
-    await expect(screen.getByRole('status', { name: 'Remaining' })).toHaveText('1 remaining');
+    await expect(screen.getByRole('status', 'Remaining')).toHaveText('1 remaining');
 
     await agent.act('mark the todo as done');
-    await expect(screen.getByRole('status', { name: 'Remaining' })).toHaveText('0 remaining');
-    await expect(web).toHaveURL('/todos');
+    await expect(screen.getByRole('status', 'Remaining')).toHaveText('0 remaining');
+    await expect(browser).toHaveURL('/todos');
   });
 
   test('ignores an empty submission', async ({ screen }) => {
     // An exact interaction: the empty submit is the point of the test.
-    await screen.getByRole('button', { name: 'Add' }).tap();
+    await screen.getByRole('button', 'Add').tap();
     await expect(screen.getByRole('listitem')).toHaveCount(0);
   });
 });
@@ -39,24 +39,29 @@ that skips `app.open()` starts where the previous test left the app.
 
 ## Registration
 
-`test` is the only registration surface; everything registers at import, so
-a `describe` body is synchronous (`async` is a `COLLECTION_ERROR`).
+`test` registers everything, and `describe`, `beforeEach`, `afterEach`,
+`beforeAll`, and `afterAll` are also top-level imports of the same functions
+(`import { describe, beforeEach } from 'e2e'`; `@e2e-dev/web` and
+`@e2e-dev/mobile` export `beforeEach`/`afterEach` typed with their fixture; a
+`test.extend()` chain registers hooks that see its fixtures through
+`test.beforeEach`). Everything registers at import, so a `describe` body is
+synchronous (`async` is a `COLLECTION_ERROR`).
 
 ```ts
 test('title', async ({ app, screen }) => {});
 test('title', { tags: ['smoke'], retries: 2, timeout: 60_000 }, async ({ app }) => {});
-test.describe('group', { tags: ['billing'] }, () => { /* tests and hooks */ });
-test.describe('checkout flow', { serial: true }, () => { /* ordered, shared app state */ });
-test.beforeEach(async ({ app }) => {});     // per attempt, with test fixtures
-test.afterEach(async ({ screen }) => {});   // runs after failures too, with its own cleanup budget
-test.beforeAll(async ({ platform }) => {}); // per suite realm, no app fixtures
-test.afterAll(async () => {});
+describe('group', { tags: ['billing'] }, () => { /* tests and hooks */ });
+describe('checkout flow', { serial: true }, () => { /* ordered, shared app state */ });
+beforeEach(async ({ app }) => {});     // per attempt, with test fixtures
+afterEach(async ({ screen }) => {});   // runs after failures too, with its own cleanup budget
+beforeAll(async ({ platform }) => {}); // per suite realm, no app fixtures
+afterAll(async () => {});
 test.skip('later', async () => {});
 test.only('focus', async () => {});         // local only: CI fails with ONLY_IN_CI
-test('conditional', async () => { test.skip(await onlyOneOrg(), 'nothing to switch to'); }); // skips from the body; steps so far stay in the report
+test('conditional', async () => { test.skip(await onlyOneOrg(), 'nothing to switch to'); }); // throws: the body stops here, reported skipped; call it before the first step
 test('later', async () => { test.skip('waiting on the API'); }); // bare skip from the body
 test.setup('sign in', { sessions: ['admin'] }, async ({ app, screen, session }) => {}); // see Sign-in sessions
-const wsTest = test.extend<{ ws: Ws }>({ ws: async ({ web }, use) => { await use(await seed()); await drop(); } });
+const wsTest = test.extend<{ ws: Ws }>({ ws: async ({ browser }, use) => { await use(await seed()); await drop(); } });
 wsTest('uses the workspace', async ({ ws }) => {}); // code after use() is teardown, runs after failures too
 ```
 
@@ -94,7 +99,7 @@ or not, so a state-changing fixture belongs on its own `test`.
 `app` (`App`) and `screen` (`Screen`): always. `agent` (`Agent`): needs a
 configured model, else `MODEL_UNAVAILABLE` (topic `agent`). `platform`
 (`string`): always, hooks included; `web`, `ios`, `android`, or an engine's
-label. `web` (`Web`): browser targets, import `test` from `@e2e-dev/web`.
+label. `browser` (`Browser`): browser targets, import `test` from `@e2e-dev/web`.
 `device` (`Device`): device targets, import `test` from `@e2e-dev/mobile`.
 `session` (`SetupSession`): only in `test.setup`.
 
@@ -123,7 +128,7 @@ assertion. Every query also exists on a locator, scoped to its subtree.
 
 | Query | Matches |
 | --- | --- |
-| `getByRole(role, { name?, exact?, checked?, disabled?, selected?, expanded?, pressed?, level?, visible? })` | Semantic role, optionally by accessible name and state (`level`: heading level 1 to 6). First choice. |
+| `getByRole(role, name?, { exact?, checked?, disabled?, selected?, expanded?, pressed?, level?, visible? })` | Semantic role, optionally by accessible name (`getByRole('button', 'Save')`; the object form `{ name }` works too) and state (`level`: heading level 1 to 6). First choice. |
 | `getByLabel(text, { exact?, visible? })` | Form controls by label. |
 | `getByPlaceholder(text, { exact?, visible? })` | Inputs by placeholder. |
 | `getByText(text, { exact?, visible? })` | Visible text. |
@@ -165,7 +170,7 @@ substring; a `RegExp` matches as written.
 - `visible: true` drops nodes the page hides (a closed drawer) before the
   exactly-one rule.
 - On the web, queries reach open shadow roots and closed roots attached with
-  `attachShadow`, not declarative closed roots. `web.locator(css)`,
+  `attachShadow`, not declarative closed roots. `browser.locator(css)`,
   `frameLocator`, and `filter({ hasText })` stop at a closed root; query the
   text inside or filter with `has`.
 - `screen.scrollUntilVisible(locator, { direction?, momentum?, timeout? })`
@@ -233,14 +238,19 @@ after the body with every soft failure listed.
 
 ```ts
 await expect(screen.getByRole('dialog')).not.toBeVisible({ timeout: 10_000 });
-await expect(web).toHaveURL('/dashboard');   // relative to the base URL, or a RegExp
+await expect(browser).toHaveURL('/dashboard');   // relative to the base URL, or a RegExp
 expect(order).toMatchObject({ id: expect.any(Number), lines: [{ sku: 'a' }] });
 expect.soft(await screen.getByTestId('tax').textContent()).toBe('$8.00');  // kept, body runs on
+const users = expect(await response.json()).toMatchSchema(z.array(User)); // any Standard Schema; typed output
 ```
 
-| Locator matchers | Web matchers | Value matchers |
+`toMatchSchema(schema)` takes a synchronous Standard Schema (Zod, Valibot,
+ArkType), fails listing every issue by path, and returns the parsed value
+typed; prefer it when the app already has a schema for the response.
+
+| Locator matchers | Browser matchers | Value matchers |
 | --- | --- | --- |
-| `toBeVisible`, `toBeHidden`, `toBeAttached`, `toBeEnabled`, `toBeDisabled`, `toBeChecked`, `toBeSelected`, `toBeExpanded`, `toBeFocused`, `toHaveText`, `toContainText`, `toHaveValue`, `toHaveAttribute`, `toHaveCount`, `toHaveAccessibleName` | `toHaveURL`, `toHaveTitle`, `toHaveClass(locator, expected)` | `toBe`, `toEqual`, `toMatchObject`, `toBeTruthy`, `toBeFalsy`, `toBeNull`, `toBeUndefined`, `toBeDefined`, `toHaveLength`, `toHaveProperty`, `toContain`, `toMatch`, `toBeGreaterThan`, `toBeGreaterThanOrEqual`, `toBeLessThan`, `toBeLessThanOrEqual`, `toBeCloseTo` |
+| `toBeVisible`, `toBeHidden`, `toBeAttached`, `toBeEnabled`, `toBeDisabled`, `toBeChecked`, `toBeSelected`, `toBeExpanded`, `toBeFocused`, `toHaveText`, `toContainText`, `toHaveValue`, `toHaveAttribute`, `toHaveCount`, `toHaveAccessibleName` | `toHaveURL`, `toHaveTitle`, `toHaveClass(locator, expected)` | `toBe`, `toEqual`, `toMatchObject`, `toBeTruthy`, `toBeFalsy`, `toBeNull`, `toBeUndefined`, `toBeDefined`, `toHaveLength`, `toHaveProperty`, `toContain`, `toMatch`, `toBeGreaterThan`, `toBeGreaterThanOrEqual`, `toBeLessThan`, `toBeLessThanOrEqual`, `toBeCloseTo`, `toMatchSchema` |
 
 `toHaveText` compares the whole normalized text, `toContainText` a substring
 or RegExp, `toHaveValue` a form control's value as is, whitespace included
@@ -263,13 +273,13 @@ tests declare it. Selecting a dependent test alone still runs its setup.
 import { test } from '@e2e-dev/web';
 import { expect, credentials } from 'e2e';
 
-test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, screen, session, web }) => {
+test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, screen, session, browser }) => {
   const admin = credentials.user('admin');
   await app.open('/login');
   await screen.getByLabel('Email').fill(admin.username);
   await screen.getByLabel('Password').fill(admin.password);
-  await screen.getByRole('button', { name: 'Sign in' }).tap();
-  await expect(web).toHaveURL('/dashboard'); // prove the sign-in worked before saving
+  await screen.getByRole('button', 'Sign in').tap();
+  await expect(browser).toHaveURL('/dashboard'); // prove the sign-in worked before saving
   await session.save('admin');
 });
 ```
@@ -280,7 +290,7 @@ import { test, expect } from 'e2e';
 
 test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen }) => {
   await app.open('/dashboard');
-  await expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+  await expect(screen.getByRole('heading', 'Dashboard')).toBeVisible();
 });
 ```
 
@@ -292,7 +302,7 @@ test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen 
 - Once a secret is filled, model pixels and assertion screenshots are
   withheld for the rest of that session (later serial members included) and
   `app.screenshot()` is `POLICY_DENIED`. A restored session keeps its setup's
-  taint; a setup that signs in without a fill (`web.setCookies`, say) leaves
+  taint; a setup that signs in without a fill (`browser.setCookies`, say) leaves
   screenshots available.
 - Credentials live in the config, values in the environment:
 
@@ -309,7 +319,8 @@ credentials: {
   field per run, even over a function; `<NAME>` is the credential name
   uppercased, every character outside `[A-Z0-9]` as `_`.
 - `credentials.user('admin').password` is a `Secret` with no plaintext
-  accessor: only `fill()` and `agent.act` params accept it, stringifying it
+  accessor, named `admin.password` to the agent and in reports; `secrets.get()`
+  never returns it (separate namespaces). Only `fill()` and `agent.act` params accept it, stringifying it
   is `INVALID_CONFIG`, and `credentials.user()` outside a run throws
   `AUTH_CREDENTIAL_UNAVAILABLE`.
 - Any other sensitive value (an API key) is a `secrets` entry,
@@ -318,10 +329,13 @@ credentials: {
   handle, fills any editable input, and is redacted by name everywhere the
   runner writes.
 
-## The web fixture (browser only)
+## The browser fixture (browser only)
 
-Prefer `app` and `screen`; `web` is for what only a browser has, and a
-portable suite declares `requires: ['web']`.
+Prefer `app` and `screen`; `browser` is for what only a browser has, and a
+portable suite declares `requires: ['browser']`. Page methods act on the one
+active tab; cookies, routes, and `onDialog` cover the whole browser. A tab
+the app opens itself (`target="_blank"`, `window.open`) is not followed:
+`browser.goto` its URL instead.
 
 - `goto(url, { waitUntil?, timeout? })`, `reload({ timeout? })`,
   `back({ timeout? })`, `forward({ timeout? })`: navigation on the test
@@ -330,7 +344,7 @@ portable suite declares `requires: ['web']`.
   URL wait; `waitForURL` matches like `toHaveURL`.
 - `locator(css)`: raw CSS or XPath; not portable, a last resort.
 - `frameLocator(css)`: a `Screen` scoped to one iframe
-  (`web.frameLocator('#payment').getByLabel('Card number')`); keeps
+  (`browser.frameLocator('#payment').getByLabel('Card number')`); keeps
   `locator(css)` and `frameLocator(css)` for nesting.
 - `evaluate(fn | source, arg?)`: runs a function or source string in the
   page, JSON in and out, no closures; a throw in the page is
@@ -364,11 +378,11 @@ A `route`, `unroute`, or `waitForResponse` pattern is a glob string or
 
 - Selectors come from the source (labels, roles, text); add an `aria-label`
   or heading where the app has no accessible name rather than fall back to
-  `web.locator('.btn-primary')`.
+  `browser.locator('.btn-primary')`.
 - Test data gets a run-unique name (`Invoice ${Date.now()}`) and `afterEach`
   cleanup, so replays and retries never trip over leftovers.
 - APIs live in the same suite: `fetch(new URL('/api/users', app.baseUrl))`
-  plus value matchers, in a `test.extend` fixture that reads `web.cookies()`
+  plus value matchers, in a `test.extend` fixture that reads `browser.cookies()`
   when the API needs the session.
 - No sleeps or polling loops; a matcher with a longer `timeout` instead.
 - `await` every step call, else `STEP_NOT_AWAITED` at the line of the call.

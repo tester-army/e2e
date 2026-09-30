@@ -1,13 +1,13 @@
 ---
 name: e2e
-description: Agentic end-to-end tests with e2e, the e2e runner. Covers scaffolding e2e.config.ts, picking the Playwright browser engine or the agent-device mobile engine, starting the app under test from the config, driving flows with agent.act, judging with agent.assert, agent.waitFor, and agent.extract, pinning values with screen, app, web, and expect, shaping the agent (context, system prompt, tools, personas), the replay cache, the e2e CLI, reading .e2e/report.json, and bug bashes (parallel explore runs proven with repro tests). Use when a project depends on e2e, when asked for end-to-end, browser, mobile, or agentic UI tests, to bug bash or hunt for bugs, or when an e2e run fails.
+description: Agentic end-to-end tests with e2e, the e2e runner. Covers scaffolding e2e.config.ts, picking the Playwright browser engine or the agent-device mobile engine, starting the app under test from the config, driving flows with agent.act, judging with agent.assert, agent.waitFor, and agent.extract, pinning values with screen, app, browser, and expect, shaping the agent (context, system prompt, tools, personas), the replay cache, the e2e CLI, reading .e2e/report.json, and bug bashes (parallel explore runs proven with repro tests). Use when a project depends on e2e, when asked for end-to-end, browser, mobile, or agentic UI tests, to bug bash or hunt for bugs, or when an e2e run fails.
 ---
 
 # e2e: agentic end-to-end tests in TypeScript
 
 e2e runs UI tests with agent goals and exact assertions. `agent.act` drives
 one goal; `agent.assert`, `agent.waitFor`, and `agent.extract` judge the
-screen. `screen`, `app`, `web`, and `expect` make exact interactions and
+screen. `screen`, `app`, `browser`, and `expect` make exact interactions and
 checks. The replay cache reruns verified actions and checks their recorded end
 state without a model call; agent judgments still run live. UI targets use
 `@e2e-dev/web` for browsers or `@e2e-dev/mobile` for iOS simulators and
@@ -45,11 +45,11 @@ export default {
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('a member upgrades to Pro', async ({ app, agent, screen, web }) => {
+test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
   await app.open('/settings/billing');
   await agent.act('upgrade the workspace to the Pro plan');
   await expect(screen.getByRole('status')).toContainText('Pro');
-  await expect(web).toHaveURL('/settings/billing');
+  await expect(browser).toHaveURL('/settings/billing');
 });
 ```
 
@@ -62,7 +62,7 @@ one; the installed CLI prints the same text with `npx e2e guide <topic>`
 | Topic | File | Read it when |
 | --- | --- | --- |
 | `setup` | [references/setup.md](references/setup.md) | Adding e2e to a project, writing `e2e.config.ts`, starting the app from the config, mobile targets |
-| `writing-tests` | [references/writing-tests.md](references/writing-tests.md) | Writing or fixing tests: fixtures, locators, actions, matchers, sign-in sessions, the `web` fixture |
+| `writing-tests` | [references/writing-tests.md](references/writing-tests.md) | Writing or fixing tests: fixtures, locators, actions, matchers, sign-in sessions, the `browser` fixture |
 | `agent` | [references/agent.md](references/agent.md) | Adding `agent.*` steps, picking a model, cost and budgets, the replay cache |
 | `running` | [references/running.md](references/running.md) | CLI flags, reporters, `.e2e/report.json`, exit codes, CI |
 | `explore` | [references/explore.md](references/explore.md) | Exploring an app toward a goal without a test file: `e2e explore`, its budgets, verdict, and `run.explore` |
@@ -99,9 +99,10 @@ one; the installed CLI prints the same text with `npx e2e guide <topic>`
   `import type { E2EConfig } from 'e2e'`. `targets` is required; a UI target
   names an engine and declares the app beside it: `{ engine: web(), app: { url, command } }`.
   A tools-only target can omit the engine and set `platform`.
-- Import `test`, `expect`, `credentials`, and `secrets` from `e2e`. A test
-  that uses the `web` fixture imports `test` from `@e2e-dev/web`: the same
-  runtime `test`, typed with `web`.
+- Import `test`, `describe`, the hooks, `expect`, `credentials`, and
+  `secrets` from `e2e`. A test that uses the `browser` fixture imports `test`
+  (and `beforeEach`/`afterEach`) from `@e2e-dev/web`: the same runtime
+  functions, typed with `browser`.
 - Config and tests are ES modules whatever `package.json` sets as `type`.
 - Locators resolve when used. Actions wait for readiness and `expect` retries
   assertions. Reads such as `textContent()` fail at once on zero matches and
@@ -111,8 +112,9 @@ one; the installed CLI prints the same text with `npx e2e guide <topic>`
   (topic `writing-tests`).
 - Secrets never appear in test code. Declare accounts under `credentials` and
   every other sensitive value under `secrets` in the config; resolve with
-  `credentials.user(name).password` or `secrets.get(name)`, and hand the
-  opaque `Secret` only to `fill()` or `agent.act` params.
+  `credentials.user(name).password` or `secrets.get(name)` (separate
+  namespaces: `secrets.get` never returns a password), and hand the opaque
+  `Secret` only to `fill()` or `agent.act` params.
 - Agent instructions: one goal per `act`, the wording on screen, real values
   in params. Judge meaning, not phrasing: `toContain('Pro')`, not an exact
   sentence a model produced.

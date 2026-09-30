@@ -232,7 +232,7 @@ matches. Misses and hand-offs use the model; `agent.assert`,
   or `--no-cache`. Entries live in `.e2e/cache/`; deleting the directory
   only slows the next run.
 - An entry is written only after a later verification passes (a locator or
-  engine `expect` matcher, `locator.waitFor`, `web.waitForURL`,
+  engine `expect` matcher, `locator.waitFor`, `browser.waitForURL`,
   `agent.assert`, `agent.waitFor`), so an unchecked `act` never replays; a
   plain-value `expect`, `expect.poll`, `agent.extract`, another `act`, or
   the attempt passing confirms nothing.
