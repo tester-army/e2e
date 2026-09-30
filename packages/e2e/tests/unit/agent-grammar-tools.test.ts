@@ -110,6 +110,28 @@ describe('the grammar tools have closed schemas', () => {
     expect(fake.dispatched).toEqual([]);
   });
 
+  it('checks the taint when a point verb runs, not when it is queued: a fill batched ahead of it in the same turn wins', async () => {
+    // AI SDK turns can carry parallel tool calls; the queue runs them in order. The first
+    // body here stands in for a type_secret that taints the attempt before tap_at's turn.
+    const fake = fakeExecutorContext();
+    let tainted = false;
+    const context = { ...fake.context, get pixelsTainted() { return tainted; } };
+    let first = true;
+    const guard = async <T,>(body: () => Promise<T>): Promise<T | string> => {
+      if (!first) return body();
+      first = false;
+      tainted = true;
+      return 'Filled secret "admin".';
+    };
+    const tools = createGrammarTools(context, { guard });
+    const options = { toolCallId: 'batched', messages: [], context: undefined };
+    const queued = tools['observe']!.execute!({}, options);
+    const pointed = await tools['tap_at']!.execute!({ x: 10, y: 20 }, options);
+    expect(await queued).toBe('Filled secret "admin".');
+    expect(pointed).toContain('PIXEL_TAINTED');
+    expect(fake.dispatched).toEqual([]);
+  });
+
   it('closes complete_step', () => {
     expectClosed(schemaOf({ complete_step: createVerdictTool().tool }, 'complete_step'), { status: 'passed', summary: 'done' }, 'complete_step');
   });

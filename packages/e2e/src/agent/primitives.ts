@@ -311,7 +311,7 @@ export function createGrammarTools(
   context: StepExecutorContext,
   options: GrammarToolOptions = {},
 ): ToolSet {
-  const { guard, screen, verbs, inOrder, present, acting } = verbKit(context, options);
+  const { guard, screen, verbs, inOrder, present, perform, acting } = verbKit(context, options);
 
   const target = z
     .string()
@@ -565,7 +565,7 @@ export function createGrammarTools(
       inputSchema: z.object({}),
       execute: () => inOrder(() => guard(async () => screen.present(await context.observe({ pixels: true })))),
     });
-    Object.assign(tools, createPointTools(context, { screen, acting }));
+    Object.assign(tools, createPointTools(context, { screen, inOrder, perform }));
   }
   // Offered only when the step declared secrets and the surface can fill: an
   // empty vocabulary is better than a tool the model can only be rejected on.
@@ -644,9 +644,9 @@ function isNotFillable(cause: unknown): boolean {
  */
 function createPointTools(
   context: StepExecutorContext,
-  kit: Pick<ReturnType<typeof verbKit>, 'screen' | 'acting'>,
+  kit: Pick<ReturnType<typeof verbKit>, 'screen' | 'inOrder' | 'perform'>,
 ): ToolSet {
-  const { screen, acting } = kit;
+  const { screen, inOrder, perform } = kit;
   const verbs = context.target.verbs;
   const keyboard = verbs.has('typeText');
   const x = z.number().describe('x in the latest screenshot, pixels from the left edge');
@@ -668,6 +668,24 @@ function createPointTools(
     }
     return imagePointToViewport({ x: px, y: py }, shot.pixels, shot.viewport);
   };
+
+  /**
+   * Runs a point verb in the queue, resolving the point only when its turn
+   * comes: a `type_secret` batched ahead of it in the same turn has filled by
+   * then, so the taint check sees it, and the screenshot it reads is the one
+   * the model held when the verb ran, not when it was queued.
+   */
+  const atPoint = (
+    verb: string,
+    px: number,
+    py: number,
+    action: (point: ViewportPoint) => Promise<string | ActionOutcome | void>,
+  ): Promise<ScreenOutput | string> =>
+    inOrder(() => {
+      const point = pointOf(px, py, verb);
+      if (typeof point === 'string') return Promise.resolve(point);
+      return perform(pointAttempt(verb, at(px, py)), () => action(point));
+    });
 
   /**
    * The listed control at a point, for a verb that needs one. Nothing listed
@@ -707,11 +725,7 @@ function createPointTools(
         (verbs.has(verb) ? '.' : ', which this engine cannot do: the point must land on a listed control.') +
         ` Last resort: when the screen lists the target, ${byId}.`,
       inputSchema: z.object({ x, y }),
-      execute: ({ x: px, y: py }) => {
-        const point = pointOf(px, py, tool);
-        if (typeof point === 'string') return Promise.resolve(point);
-        return acting(pointAttempt(tool, at(px, py)), async () => (await context.actions[verb](point)).summary);
-      },
+      execute: ({ x: px, y: py }) => atPoint(tool, px, py, async (point) => (await context.actions[verb](point)).summary),
     });
   }
   if (verbs.has('type') || keyboard) {
@@ -725,10 +739,8 @@ function createPointTools(
         value: z.string(),
         ...(keyboard ? { replace: z.boolean().optional().describe('Select all and delete before typing, for a field that visibly holds text you must remove; default false. Leave it off for an empty field.') } : {}),
       }),
-      execute: ({ x: px, y: py, value, ...rest }) => {
-        const point = pointOf(px, py, 'type_at');
-        if (typeof point === 'string') return Promise.resolve(point);
-        return acting(pointAttempt('type_at', at(px, py)), async () => {
+      execute: ({ x: px, y: py, value, ...rest }) =>
+        atPoint('type_at', px, py, async (point) => {
           const found = await focusAt(point, px, py, 'type_at');
           if (found.kind === 'control') {
             const note = await typeIntoNode(context, found.control, value, found.summary);
@@ -737,8 +749,7 @@ function createPointTools(
             await context.actions.typeText(value, { replace: (rest as { replace?: boolean }).replace === true });
           }
           return `Typed into ${found.summary}.`;
-        });
-      },
+        }),
     });
   }
   if (verbs.has('press') || verbs.has('pressKey')) {
@@ -748,16 +759,13 @@ function createPointTools(
         (keyboard ? ' A listed control under the point gets the key by id; anything else is tapped to focus it and the key goes through the keyboard.' : '') +
         ' Last resort: when the screen lists the control, press by id.',
       inputSchema: z.object({ x, y, key: z.string().min(1).max(64) }),
-      execute: ({ x: px, y: py, key }) => {
-        const point = pointOf(px, py, 'press_at');
-        if (typeof point === 'string') return Promise.resolve(point);
-        return acting(pointAttempt('press_at', at(px, py)), async () => {
+      execute: ({ x: px, y: py, key }) =>
+        atPoint('press_at', px, py, async (point) => {
           const found = await focusAt(point, px, py, 'press_at');
           if (found.kind === 'control') await context.actions.press(found.control, key);
           else await context.actions.pressKey(key);
           return `Pressed ${key} on ${found.summary}.`;
-        });
-      },
+        }),
     });
   }
   if (verbs.has('select')) {
@@ -765,15 +773,12 @@ function createPointTools(
       description:
         'Pick one option, by its visible label, from the select-like control at a point in the latest screenshot. Last resort: when the screen lists the select, use select by id.',
       inputSchema: z.object({ x, y, value: z.string().min(1) }),
-      execute: ({ x: px, y: py, value }) => {
-        const point = pointOf(px, py, 'select_at');
-        if (typeof point === 'string') return Promise.resolve(point);
-        return acting(pointAttempt('select_at', at(px, py)), async () => {
+      execute: ({ x: px, y: py, value }) =>
+        atPoint('select_at', px, py, async (point) => {
           const hit = await controlAt(point, 'select_at');
           await context.actions.select(hit.control, value);
           return `Selected "${value}" in ${hit.summary}.`;
-        });
-      },
+        }),
     });
   }
   return tools;
@@ -801,26 +806,30 @@ function verbKit(context: StepExecutorContext, options: GrammarToolOptions) {
   /** The screen after an action: the changes since the one the model holds and, once the step shows pixels, a fresh screenshot. */
   const present = async (lead: string, update: ScreenUpdate = {}): Promise<ScreenOutput> =>
     screen.present(await context.observe({ pixels: screen.showingPixels }), { lead, ...update });
-  const acting = (
+  /** An action and its look at the result, for a caller already inside the queue. */
+  const perform = (
     label: ActionLabel,
     action: () => Promise<string | ActionOutcome | void>,
     { expectChange = true, ...update }: ScreenUpdate = {},
-  ): Promise<ScreenOutput> =>
-    inOrder(() =>
-      guard(async () => {
-        let outcome: ActionOutcome = { lead: label.done, expectChange };
-        try {
-          const returned = await action();
-          if (typeof returned === 'string') outcome = { lead: returned, expectChange };
-          else if (returned !== undefined) outcome = { lead: returned.lead, expectChange: returned.expectChange ?? expectChange };
-        } catch (cause) {
-          if (isRuntimeHardStop(cause)) throw cause;
-          return present(failureLead(label, cause));
-        }
-        return present(outcome.lead, { expectChange: outcome.expectChange, ...update });
-      }),
-    );
-  return { guard, screen, verbs: context.target.verbs, inOrder, present, acting };
+  ): Promise<ScreenOutput | string> =>
+    guard(async () => {
+      let outcome: ActionOutcome = { lead: label.done, expectChange };
+      try {
+        const returned = await action();
+        if (typeof returned === 'string') outcome = { lead: returned, expectChange };
+        else if (returned !== undefined) outcome = { lead: returned.lead, expectChange: returned.expectChange ?? expectChange };
+      } catch (cause) {
+        if (isRuntimeHardStop(cause)) throw cause;
+        return present(failureLead(label, cause));
+      }
+      return present(outcome.lead, { expectChange: outcome.expectChange, ...update });
+    });
+  const acting = (
+    label: ActionLabel,
+    action: () => Promise<string | ActionOutcome | void>,
+    update: ScreenUpdate = {},
+  ): Promise<ScreenOutput | string> => inOrder(() => perform(label, action, update));
+  return { guard, screen, verbs: context.target.verbs, inOrder, present, perform, acting };
 }
 
 /**
