@@ -20,6 +20,13 @@
       "twitter:image": "https://e2e.tester.army/docs/images/og.png"
     }
   },
+  "integrations": {
+    "posthog": {
+      "apiKey": "phc_rT8hpREuSj5bRGPHP6KLKNuf4kfwhP4FEf6ahHHV2ZgH",
+      "apiHost": "https://eu.i.posthog.com",
+      "sessionRecording": false
+    }
+  },
   "contextual": {
     "options": [
       "copy",
