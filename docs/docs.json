@@ -178,6 +178,7 @@
             "icon": "gears",
             "pages": [
               "ci",
+              "mobile-ci",
               "github",
               "coding-agents"
             ]

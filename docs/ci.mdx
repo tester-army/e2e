@@ -71,6 +71,9 @@ lockfile. `npx e2e` runs the installed version.
 Artifacts upload on every run that is not cancelled, so a test that failed
 and then passed on retry still has its evidence.
 
+For iOS and Android suites, see [Mobile CI](/mobile-ci): GitHub Actions, EAS
+Workflows, Bitrise, and Codemagic.
+
 Configure your CI's test-report integration to read `.e2e/junit.xml`. It
 includes startup failures such as `APP_UNREACHABLE` in a `run` suite. Add
 the [GitHub reporter](/github) to post results on the pull request. Make the
