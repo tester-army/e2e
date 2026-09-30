@@ -49,6 +49,20 @@ and when a change needs a broad look before review. For one flow, a single
   provider), what is seed data, and what must never be clicked (starting
   paid runs, connecting real accounts). Otherwise a large share of the
   findings are the missing keys.
+- Tell them, in the same `context`, what exploring itself distorts, so the
+  runner's blind spots do not come back as findings: a link that opens a
+  new tab leaves the current one unchanged, so a link is dead only when its
+  href is missing or its destination errors; accessible text splits around
+  inline links, so copy reads broken while rendering whole; an
+  infinite-scroll list keeps a "Loading more" sentinel that loads only when
+  scrolled into view; images and embeds lazy-load. Uncontexted, these
+  families dominate the findings.
+- A bash against a deployed site others use is read-only: the `context`
+  forbids signing up, signing in, and submitting anything that creates or
+  changes data, and no charter puts injection-shaped strings in URLs or
+  repeats a request in a loop. A WAF block page ("you have been blocked")
+  is the firewall working, not a finding, and the block can follow the
+  runner's IP into every later charter.
 - Each exploration step needs a budget of 40 actions and model calls or
   more (`maxSteps` and `maxModelCalls` on the agent); a project config tuned
   for short test steps (`maxSteps: 15`) starves it. That is a per-step
@@ -71,6 +85,13 @@ import { web } from '@e2e-dev/web';
 import { gateway } from 'ai';
 import base from './e2e.config.ts';
 
+// What the local app cannot do, plus the explorer's own blind spots (the
+// artifact bucket in step 5), so neither comes back as findings.
+const context =
+  'Sign in with the credential the goal names. The local app sends no email and has no AI key. Never start a paid run or connect an integration. ' +
+  'Not bugs: a link that opens a new tab leaves this one unchanged; accessible text splits around inline links, so judge copy by the rendered screen when a screenshot is available and never report split text alone as broken copy; an infinite-scroll "Loading more" sentinel loads when scrolled into view; images lazy-load, so scroll and wait before calling one blank.';
+const persona = { model: gateway('openai/gpt-6-luna-fast'), maxSteps: 40, maxModelCalls: 40, context };
+
 export default {
   ...base,
   // The project's tests, so a repro can use its setup tests' sessions, plus the repro tests from step 6.
@@ -85,13 +106,12 @@ export default {
     'bb-cart': { username: 'bb-cart@example.test', password: process.env.BUGBASH_PASSWORD ?? '' },
     'bb-account': { username: 'bb-account@example.test', password: process.env.BUGBASH_PASSWORD ?? '' },
   },
+  // The postures from step 2 as personas: same model and budgets, a
+  // different stance. Each charter picks one with --agent (step 3).
   agents: {
-    default: {
-      model: gateway('openai/gpt-6-luna-fast'),
-      maxSteps: 40,
-      maxModelCalls: 40,
-      context: 'Sign in with the credential the goal names. The local app sends no email and has no AI key. Never start a paid run or connect an integration.',
-    },
+    default: persona,
+    skeptic: { ...persona, system: 'Distrust every number, date, count, and claim on screen; cross-check each against every other place it appears.' },
+    fuzzer: { ...persona, system: "At every input, run the goal's input matrix before anything else, judging each entry before the next. Never take the happy path." },
   },
 } satisfies E2EConfig;
 ```
@@ -119,6 +139,14 @@ write them: the routes, the navigation, the forms, and, for a branch,
 Aim for five to ten charters. Each gets its own slug for its output
 directory. Overlap between charters is fine; duplicates are merged in step 4.
 
+Each posture reads best through its own persona: a named agent whose
+`system` sets the stance (config above), picked per charter in step 3. A
+generic agent walks past a stat that contradicts the same stat on another
+page; the skeptic exists to catch it. An edge-input charter names its exact
+matrix - empty, a 300-character string, unicode, leading spaces, literal
+special characters - because "fuzz everything" spends the whole time budget
+before judging a single result.
+
 ## 3. Fan out
 
 One `e2e explore` per charter, each with its own output directory, so
@@ -130,18 +158,18 @@ reports never overwrite each other: `--output .e2e/bugbash/<slug>` writes
 Run them as background shell jobs, four at a time. The explorer is the
 project's model and needs no supervision: a subagent per charter only
 spends your tokens on watching one command. Write one line per charter,
-`slug|target|charter`, then:
+`slug|target|agent|charter`, the agent naming the charter's persona, then:
 
 ```bash
 mkdir -p .e2e/bugbash
 cat > .e2e/bugbash/charters.txt <<'CHARTERS'
-cart|web|Starting at /cart, change quantities and apply a coupon; check every price, total, and label against the rest of the page
-account|web|Starting at /settings/profile, submit each field empty, too long, and with unicode; report validation that is missing or wrong
+cart|web|skeptic|Starting at /cart, change quantities and apply a coupon; check every price, total, and label against the rest of the page
+account|web|fuzzer|Starting at /settings/profile, submit each field empty, a 300-character value, unicode, and leading spaces; report validation that is missing or wrong
 CHARTERS
-while IFS='|' read -r slug target charter; do
-  [ -n "$slug" ] && printf '%s\0%s\0%s\0' "$slug" "$target" "$charter"
-done < .e2e/bugbash/charters.txt | xargs -0 -n 3 -P 4 sh -c \
-  'npx e2e explore "$3" --target "$2" --output ".e2e/bugbash/$1" --max-steps 6 --video --reporter list,markdown < /dev/null > ".e2e/bugbash/$1.log" 2>&1' _
+while IFS='|' read -r slug target agent charter; do
+  [ -n "$slug" ] && printf '%s\0%s\0%s\0%s\0' "$slug" "$target" "$agent" "$charter"
+done < .e2e/bugbash/charters.txt | xargs -0 -n 4 -P 4 sh -c \
+  'npx e2e explore "$4" --target "$2" --agent "$3" --output ".e2e/bugbash/$1" --max-steps 6 --video --reporter list,markdown < /dev/null > ".e2e/bugbash/$1.log" 2>&1' _
 ```
 
 Each run takes a minute or a few and costs what its model calls cost; the
@@ -177,6 +205,7 @@ you may, settles most of them in a minute each:
 
 | Bucket | Sign | Outcome |
 | --- | --- | --- |
+| Explorer artifact | A dead link whose href points somewhere real (it opened a new tab), a broken sentence the screenshot renders whole, a "Loading more" sentinel nothing scrolled to, a blank image or embed that lazy-loads | Rejected with the check that settled it; settle this bucket first, it is the cheapest and, uncontexted, the most common |
 | Environment | Fails on a key, a service, or a limit only the local stack lacks (an email provider, an AI key, a billing plan) | Rejected, naming the variable or service; note separately when the app handles the failure badly in a way production users would see, such as showing the raw error |
 | Design | The code, its tests, or its copy say the behavior is intended | Rejected, citing where |
 | Fixture | The seed data lacks a field real records always have | Rejected, naming the field |
@@ -196,7 +225,9 @@ when it may read the source, the repro test path, and the failure it saw.
 Without subagents, verify one area after another.
 
 1. Read `actual` against the screenshot, or the video when there is none.
-   A finding the evidence contradicts is rejected here.
+   A finding the evidence contradicts is rejected here. Check the artifact
+   bucket's signs first: the href and target behind any "dead" link, the
+   rendered screenshot behind any copy claim.
 2. Write a repro test that follows the reproduction and asserts the
    expected behavior, so it fails today and passes once the bug is fixed.
    Put it under `bugbash/` inside the directory the config's `tests` glob

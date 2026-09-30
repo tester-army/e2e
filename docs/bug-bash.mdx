@@ -25,10 +25,14 @@ config already uses.
 The agent reads the app's routes and, for a branch, the diff, and writes
 five to ten charters: one-sentence goals, each on one area with one
 posture, such as a first-time user, numbers and copy, edge input, state
-across reloads, or error paths. It runs one `e2e explore` per charter, four
+across reloads, or error paths. Each posture runs as its own persona, a
+named agent whose system prompt sets the stance, picked per charter with
+`--agent`. It runs one `e2e explore` per charter, four
 at a time, each with its own `--output` directory so reports never collide,
 and merges the findings. It sets aside findings that the local
-environment, the design, or the seed data explain. Each remaining issue
+environment, the design, or the seed data explain, and the explorer's own
+blind spots first: links that opened a new tab, text that only reads broken
+in the accessibility tree, infinite-scroll sentinels, lazy-loaded media. Each remaining issue
 gets a repro test that asserts the expected behavior, and counts as a bug
 only when that test fails with `ASSERTION_FAILED` on it; verifying
 subagents, one per area, each drive their own
@@ -65,6 +69,9 @@ itself: `npx e2e guide bug-bash`.
   and never see them.
 - Every charter costs its model calls. The last lines of each run print
   tokens, cost, and duration.
+- A bash against a deployed site others use is read-only: no signups, no
+  sign-ins, no submissions, nothing injection-shaped in URLs. A WAF block
+  is the firewall working, not a finding.
 
 ## Repro tests
 
