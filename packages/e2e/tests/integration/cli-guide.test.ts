@@ -51,5 +51,16 @@ describe('the built CLI and the bundled skill', () => {
     expect(packed).toContain('skills/e2e/SKILL.md');
     expect(packed).toContain('skills/e2e/references/writing-tests.md');
     expect(packed).toContain('dist/cli/skill.js');
+    expect(packed).toContain('README.md');
+  });
+
+  it('ships the repository README with its relative links pointing at GitHub', () => {
+    const readme = readFileSync(path.join(PACKAGE_ROOT, 'README.md'), 'utf8');
+    expect(readme).toContain('src="https://raw.githubusercontent.com/tester-army/e2e/main/.github/assets/readme-banner.png"');
+    expect(readme).not.toMatch(/(src="|href="|\]\()\.\//);
+    const relative = readme
+      .replaceAll('https://raw.githubusercontent.com/tester-army/e2e/main/', './')
+      .replaceAll('https://github.com/tester-army/e2e/blob/main/', './');
+    expect(relative).toBe(readFileSync(path.join(PACKAGE_ROOT, '..', '..', 'README.md'), 'utf8'));
   });
 });
