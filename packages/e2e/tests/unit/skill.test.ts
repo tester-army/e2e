@@ -67,6 +67,12 @@ function userFacingPages(): { file: string; text: string }[] {
 }
 
 describe('the skill and the docs', () => {
+  it('never name the removed --artifacts in the skill, which agents would copy', () => {
+    for (const { file, text } of userFacingPages().filter((page) => page.file.startsWith('skills/'))) {
+      expect(text, file).not.toContain('--artifacts');
+    }
+  });
+
   it('pass --artifacts only in a paragraph that says the flag is gone', () => {
     for (const { file, text } of userFacingPages()) {
       for (const paragraph of text.split(/\n\s*\n/).filter((block) => block.includes('--artifacts'))) {
