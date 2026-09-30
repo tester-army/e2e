@@ -88,9 +88,12 @@ describe('reads of a node replaced every frame', () => {
 
   beforeAll(async () => {
     app = await startFixtureApp();
+    // Ninety sequential reads against a page that swaps nodes every frame: on a
+    // loaded CI runner each read takes far longer than locally, and the suite
+    // asserts what the reads return, not how fast they are.
     ({ outcome, project } = await runProject(
       { 'tests/replaced.e2e.ts': SUITE },
-      { appUrl: app.url, config: { actionTimeout: 5_000, assertionTimeout: 4_000, timeout: 30_000 } },
+      { appUrl: app.url, config: { actionTimeout: 5_000, assertionTimeout: 4_000, timeout: 90_000 } },
     ));
   }, 240_000);
 
