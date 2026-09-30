@@ -18,6 +18,8 @@ packages/e2e/tests/tmp-projects/
 packages/e2e/skills/
 # npm shows the repository README on the e2e package page; the build copies it here.
 packages/e2e/README.md
+# It ships the docs pages too, for coding agents to read offline.
+packages/e2e/docs/
 .vercel
 .env*
 # `pnpm run canary` writes this changeset and consumes it in the same run.

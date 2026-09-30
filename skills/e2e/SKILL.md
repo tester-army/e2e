@@ -58,7 +58,10 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
 
 Read the topic for the job before writing code. The files sit next to this
 one; the installed CLI prints the same text with `npx e2e guide <topic>`
-(`e2e guide` alone prints this page).
+(`e2e guide` alone prints this page). For anything the topics do not cover,
+the full documentation ships in the `docs/` directory of the installed `e2e`
+package (`node_modules/e2e/docs` in a single-package project); a link such as
+`/reference/cli` is `docs/reference/cli.mdx`.
 
 | Topic | File | Read it when |
 | --- | --- | --- |

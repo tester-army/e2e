@@ -113,7 +113,10 @@ suites that consume the built packages the way a user would.
   `scripts/check-docs-examples.ts`; a shell
   block that runs `npx` or `npm install`/`ci` sits in a `<CodeGroup>` of
   `npm`, `pnpm`, and `bun` blocks, which Mintlify syncs site-wide, enforced
-  by `scripts/check-docs-package-managers.ts`).
+  by `scripts/check-docs-package-managers.ts`). The `e2e` build copies the
+  pages to `packages/e2e/docs/` (gitignored,
+  `packages/e2e/scripts/prepare-build.ts`) so the published package ships
+  them for agents to read offline.
 - `skills/e2e/` — the agent skill for consumers: `SKILL.md` plus
   `references/<topic>.md`, one per `e2e guide` topic. It lives at the repo
   root because `npx skills add tester-army/e2e` only looks in well-known

@@ -36,6 +36,10 @@ Without `init`, `npx skills add tester-army/e2e` installs the skill from the
 repository, and `npx e2e guide [topic]` prints it from the
 installed package.
 
+The package also ships these docs as `.mdx` pages in its `docs/` directory
+(`node_modules/e2e/docs` in a single-package project), so an agent can read
+any page offline. A link such as `/reference/cli` is `docs/reference/cli.mdx`.
+
 For agents that need an explicit pointer, add this line to your project
 instructions. `init` leaves those files unchanged:
 

@@ -39,7 +39,9 @@ local model.
 
 [e2e.tester.army/docs](https://e2e.tester.army/docs): quickstart, writing
 tests, mobile, migrating from Playwright, Cypress, Selenium, Detox, or
-Maestro, and the full reference.
+Maestro, and the full reference. The `e2e` package ships every page, so
+coding agents can read them offline from its `docs/` directory
+(`node_modules/e2e/docs`).
 
 ## Packages
 

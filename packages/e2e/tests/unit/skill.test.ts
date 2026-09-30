@@ -50,6 +50,10 @@ describe('the bundled agent skill', () => {
   it('ships in the published package through the build copy', () => {
     expect(packageJson.files).toContain('skills');
   });
+
+  it('ships the docs pages in the published package through the build copy', () => {
+    expect(packageJson.files).toContain('docs');
+  });
 });
 
 /** The skill sources and the docs pages, relative to the repository root, each with its text. */
