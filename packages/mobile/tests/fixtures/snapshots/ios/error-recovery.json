@@ -2,165 +2,175 @@
   "nodes": [
     {
       "hittable": false,
-      "index": 0,
-      "enabled": true,
       "label": "e2e Benchmark",
-      "type": "Application",
+      "index": 0,
+      "rect": {
+        "height": 874,
+        "y": 0,
+        "x": 0,
+        "width": 402
+      },
       "depth": 0,
-      "rect": {
-        "y": 0,
-        "x": 0,
-        "width": 402,
-        "height": 874
-      },
-      "ref": "e1"
+      "type": "Application",
+      "enabled": true,
+      "ref": "e1",
+      "kind": "application"
     },
     {
       "hittable": true,
+      "label": "Benchmark Examples",
       "index": 1,
-      "enabled": true,
-      "label": "Benchmark Examples",
-      "type": "Other",
-      "depth": 1,
-      "parentIndex": 0,
       "rect": {
-        "y": 0,
         "x": 0,
+        "y": 0,
         "width": 402,
         "height": 874
       },
-      "ref": "e2"
+      "depth": 1,
+      "type": "Other",
+      "parentIndex": 0,
+      "enabled": true,
+      "ref": "e2",
+      "kind": "other"
     },
     {
-      "hittable": true,
       "enabled": true,
-      "index": 2,
       "label": "Benchmark Examples",
-      "type": "NavigationBar",
-      "depth": 2,
-      "identifier": "Error Recovery",
-      "parentIndex": 1,
+      "index": 2,
+      "hittable": true,
       "rect": {
-        "y": 62,
         "x": 0,
+        "y": 62,
         "width": 402,
         "height": 54
       },
-      "ref": "e3"
+      "depth": 2,
+      "type": "NavigationBar",
+      "parentIndex": 1,
+      "identifier": "Error Recovery",
+      "ref": "e3",
+      "kind": "navigation-bar"
     },
     {
-      "hittable": true,
-      "enabled": true,
-      "index": 3,
-      "label": "Benchmark Examples",
-      "type": "Button",
-      "depth": 3,
-      "identifier": "BackButton",
-      "parentIndex": 2,
       "rect": {
-        "y": 62,
         "x": 16.00000000000001,
+        "y": 62,
         "width": 219.66666666666666,
         "height": 44
       },
-      "ref": "e4"
+      "parentIndex": 2,
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "index": 3,
+      "identifier": "BackButton",
+      "enabled": true,
+      "type": "Button",
+      "depth": 3,
+      "ref": "e4",
+      "kind": "button"
     },
     {
-      "hittable": true,
-      "index": 4,
-      "enabled": true,
-      "label": "Error Recovery",
-      "type": "StaticText",
-      "depth": 3,
-      "parentIndex": 2,
       "rect": {
-        "y": 73.66666666666666,
         "x": 247.66666666666669,
+        "y": 73.66666666666666,
         "width": 118,
         "height": 20.66666666666667
       },
-      "ref": "e5"
+      "parentIndex": 2,
+      "hittable": true,
+      "label": "Error Recovery",
+      "index": 4,
+      "enabled": true,
+      "type": "StaticText",
+      "depth": 3,
+      "ref": "e5",
+      "kind": "text"
     },
     {
-      "hittable": true,
-      "index": 5,
-      "enabled": true,
-      "label": "Network error: could not load drafts",
-      "type": "Other",
-      "depth": 2,
-      "parentIndex": 1,
       "rect": {
-        "y": 0,
         "x": 0,
+        "y": 0,
         "width": 402,
         "height": 874
       },
-      "ref": "e6"
+      "parentIndex": 1,
+      "hittable": true,
+      "label": "Network error: could not load drafts",
+      "index": 5,
+      "enabled": true,
+      "type": "Other",
+      "depth": 2,
+      "ref": "e6",
+      "kind": "other"
     },
     {
+      "rect": {
+        "x": 0,
+        "y": 116,
+        "width": 402,
+        "height": 758
+      },
+      "parentIndex": 5,
       "hittable": true,
       "index": 6,
       "enabled": true,
       "type": "Other",
       "depth": 3,
-      "parentIndex": 5,
-      "rect": {
-        "y": 116,
-        "x": 0,
-        "width": 402,
-        "height": 758
-      },
       "ref": "e7",
+      "kind": "other",
       "inheritsLabel": true
     },
     {
-      "hittable": true,
-      "depth": 4,
-      "enabled": true,
       "rect": {
-        "y": 447,
         "x": 73.66666412353516,
+        "y": 447,
         "width": 255,
         "height": 41
       },
-      "type": "Other",
-      "identifier": "error-banner",
       "parentIndex": 6,
+      "hittable": true,
       "index": 7,
-      "ref": "e8"
+      "identifier": "error-banner",
+      "enabled": true,
+      "type": "Other",
+      "depth": 4,
+      "ref": "e8",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 4,
-      "enabled": true,
       "rect": {
-        "y": 459,
         "x": 85.66666412353516,
+        "y": 459,
         "width": 231,
         "height": 17
       },
-      "type": "StaticText",
       "parentIndex": 6,
+      "hittable": true,
       "index": 8,
+      "enabled": true,
+      "type": "StaticText",
+      "depth": 4,
       "ref": "e9",
+      "kind": "text",
       "inheritsLabel": true
     },
     {
-      "hittable": true,
-      "depth": 4,
-      "enabled": true,
       "rect": {
-        "y": 500,
         "x": 156.6666717529297,
+        "y": 500,
         "width": 89,
         "height": 43.333343505859375
       },
-      "type": "Other",
-      "identifier": "retry-button",
       "parentIndex": 6,
+      "hittable": true,
       "label": "Retry",
       "index": 9,
-      "ref": "e10"
+      "identifier": "retry-button",
+      "enabled": true,
+      "type": "Other",
+      "depth": 4,
+      "ref": "e10",
+      "kind": "other"
     }
   ],
   "truncated": false,

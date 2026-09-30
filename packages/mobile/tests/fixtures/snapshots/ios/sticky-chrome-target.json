@@ -1,505 +1,536 @@
 {
   "nodes": [
     {
-      "index": 0,
-      "enabled": true,
-      "type": "Application",
-      "rect": {
-        "x": 0,
-        "height": 874,
-        "y": 0,
-        "width": 402
-      },
       "hittable": false,
       "label": "e2e Benchmark",
-      "depth": 0,
-      "ref": "e1"
-    },
-    {
-      "index": 1,
-      "enabled": true,
-      "type": "Other",
+      "index": 0,
       "rect": {
         "x": 0,
-        "height": 874,
         "y": 0,
+        "height": 874,
         "width": 402
       },
-      "parentIndex": 0,
-      "hittable": true,
-      "label": "Benchmark Examples",
-      "depth": 1,
-      "ref": "e2"
+      "depth": 0,
+      "type": "Application",
+      "enabled": true,
+      "ref": "e1",
+      "kind": "application"
     },
     {
-      "index": 2,
-      "enabled": true,
-      "type": "NavigationBar",
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "index": 1,
       "rect": {
-        "height": 54,
         "x": 0,
-        "width": 402,
-        "y": 62
+        "y": 0,
+        "height": 874,
+        "width": 402
       },
-      "parentIndex": 1,
-      "hittable": true,
-      "label": "Benchmark Examples",
-      "depth": 2,
+      "depth": 1,
+      "type": "Other",
+      "parentIndex": 0,
+      "enabled": true,
+      "ref": "e2",
+      "kind": "other"
+    },
+    {
       "identifier": "Sticky Chrome Target",
-      "ref": "e3"
-    },
-    {
-      "index": 3,
-      "enabled": true,
-      "type": "Button",
-      "rect": {
-        "height": 44,
-        "x": 16,
-        "width": 44,
-        "y": 62
-      },
-      "parentIndex": 2,
-      "hittable": true,
       "label": "Benchmark Examples",
-      "depth": 3,
-      "identifier": "BackButton",
-      "ref": "e4"
+      "index": 2,
+      "hittable": true,
+      "rect": {
+        "x": 0,
+        "y": 62,
+        "height": 54,
+        "width": 402
+      },
+      "depth": 2,
+      "type": "NavigationBar",
+      "parentIndex": 1,
+      "enabled": true,
+      "ref": "e3",
+      "kind": "navigation-bar"
     },
     {
-      "index": 4,
-      "enabled": true,
-      "type": "StaticText",
+      "identifier": "BackButton",
+      "label": "Benchmark Examples",
+      "index": 3,
+      "hittable": true,
       "rect": {
-        "height": 20.66666666666667,
+        "x": 16,
+        "y": 62,
+        "height": 44,
+        "width": 44
+      },
+      "depth": 3,
+      "type": "Button",
+      "parentIndex": 2,
+      "enabled": true,
+      "ref": "e4",
+      "kind": "button"
+    },
+    {
+      "rect": {
         "x": 115,
-        "width": 171.66666666666663,
-        "y": 73.66666666666666
+        "y": 73.66666666666666,
+        "height": 20.66666666666667,
+        "width": 171.66666666666663
       },
       "parentIndex": 2,
       "hittable": true,
       "label": "Sticky Chrome Target",
+      "enabled": true,
+      "index": 4,
+      "type": "StaticText",
       "depth": 3,
-      "ref": "e5"
+      "ref": "e5",
+      "kind": "text"
     },
     {
-      "index": 5,
-      "enabled": true,
-      "type": "Other",
       "rect": {
-        "height": 874,
         "x": 0,
-        "width": 402,
-        "y": 0
+        "y": 0,
+        "height": 874,
+        "width": 402
       },
       "parentIndex": 1,
       "hittable": true,
       "label": "Continue",
+      "enabled": true,
+      "index": 5,
+      "type": "Other",
       "depth": 2,
-      "ref": "e6"
+      "ref": "e6",
+      "kind": "other"
     },
     {
-      "index": 6,
-      "enabled": true,
-      "type": "Other",
       "rect": {
-        "height": 758,
         "x": 0,
-        "width": 402,
-        "y": 116
+        "y": 116,
+        "height": 758,
+        "width": 402
       },
       "parentIndex": 5,
       "hittable": true,
       "label": "Continue",
+      "enabled": true,
+      "index": 6,
+      "type": "Other",
       "depth": 3,
-      "ref": "e7"
+      "ref": "e7",
+      "kind": "other"
     },
     {
-      "index": 7,
-      "depth": 4,
-      "rect": {
-        "height": 758,
-        "x": 0,
-        "width": 402,
-        "y": 116
-      },
-      "enabled": true,
-      "type": "Other",
-      "parentIndex": 6,
-      "label": "Vertical scroll bar, 3 pages",
-      "hittable": true,
-      "ref": "e8"
-    },
-    {
-      "index": 8,
-      "depth": 5,
-      "rect": {
-        "height": 758,
-        "x": 0,
-        "width": 402,
-        "y": 116
-      },
-      "enabled": true,
-      "type": "Other",
-      "parentIndex": 7,
-      "label": "Read the agreement, tap Accept terms at the bottom, then Continue.",
-      "hittable": true,
-      "ref": "e9"
-    },
-    {
-      "index": 9,
-      "depth": 6,
-      "enabled": true,
       "rect": {
         "x": 0,
         "y": 116,
         "height": 758,
         "width": 402
       },
-      "type": "ScrollView",
-      "hiddenContentBelow": true,
+      "parentIndex": 6,
+      "hittable": true,
+      "label": "Vertical scroll bar, 3 pages",
+      "enabled": true,
+      "index": 7,
+      "type": "Other",
+      "depth": 4,
+      "ref": "e8",
+      "kind": "other"
+    },
+    {
+      "rect": {
+        "x": 0,
+        "y": 116,
+        "height": 758,
+        "width": 402
+      },
+      "parentIndex": 7,
+      "hittable": true,
+      "label": "Read the agreement, tap Accept terms at the bottom, then Continue.",
+      "enabled": true,
+      "index": 8,
+      "type": "Other",
+      "depth": 5,
+      "ref": "e9",
+      "kind": "other"
+    },
+    {
+      "rect": {
+        "x": 0,
+        "y": 116,
+        "height": 758,
+        "width": 402
+      },
       "parentIndex": 8,
       "hittable": true,
+      "hiddenContentBelow": true,
+      "enabled": true,
+      "index": 9,
+      "type": "ScrollView",
+      "depth": 6,
       "ref": "e10",
+      "kind": "scroll-area",
       "inheritsLabel": true
     },
     {
-      "index": 10,
-      "depth": 7,
       "rect": {
         "x": 0,
-        "height": 758,
         "y": 116,
+        "height": 758,
         "width": 402
       },
-      "enabled": true,
-      "type": "Other",
       "parentIndex": 9,
       "hittable": false,
+      "enabled": true,
+      "index": 10,
+      "type": "Other",
+      "depth": 7,
       "ref": "e11",
+      "kind": "other",
       "inheritsLabel": true
     },
     {
-      "index": 11,
-      "depth": 8,
       "rect": {
-        "y": 132,
         "x": 16,
+        "y": 132,
         "height": 31.333332061767578,
         "width": 370
       },
-      "enabled": true,
-      "type": "StaticText",
       "parentIndex": 10,
       "hittable": true,
+      "enabled": true,
+      "index": 11,
+      "type": "StaticText",
+      "depth": 8,
       "ref": "e12",
+      "kind": "text",
       "inheritsLabel": true
     },
     {
-      "index": 12,
-      "depth": 8,
       "rect": {
-        "y": 175.33333206176758,
         "x": 16,
+        "y": 175.33333206176758,
         "height": 18.000003814697266,
         "width": 370
       },
-      "enabled": true,
-      "type": "StaticText",
       "parentIndex": 10,
-      "label": "Section 1",
       "hittable": true,
-      "ref": "e13"
+      "label": "Section 1",
+      "enabled": true,
+      "index": 12,
+      "type": "StaticText",
+      "depth": 8,
+      "ref": "e13",
+      "kind": "text"
     },
     {
-      "index": 13,
-      "depth": 8,
       "rect": {
-        "y": 197.33333206176758,
         "x": 16,
         "height": 59.99999237060547,
+        "y": 197.33333206176758,
         "width": 370
       },
-      "enabled": true,
-      "type": "StaticText",
       "parentIndex": 10,
+      "hittable": true,
       "label": "Deterministic agreement paragraph 1 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
-      "hittable": true,
-      "ref": "e14"
+      "index": 13,
+      "enabled": true,
+      "type": "StaticText",
+      "depth": 8,
+      "ref": "e14",
+      "kind": "text"
     },
     {
-      "index": 14,
-      "depth": 8,
       "rect": {
+        "x": 16,
+        "height": 18,
         "y": 269.3333282470703,
-        "x": 16,
-        "height": 18,
         "width": 370
       },
-      "enabled": true,
-      "type": "StaticText",
       "parentIndex": 10,
+      "hittable": true,
       "label": "Section 2",
-      "hittable": true,
-      "ref": "e15"
+      "index": 14,
+      "enabled": true,
+      "type": "StaticText",
+      "depth": 8,
+      "ref": "e15",
+      "kind": "text"
     },
     {
-      "index": 15,
-      "depth": 8,
       "rect": {
+        "x": 16,
+        "height": 60,
         "y": 291.3333282470703,
-        "x": 16,
-        "height": 60,
         "width": 370
       },
-      "enabled": true,
-      "type": "StaticText",
       "parentIndex": 10,
+      "hittable": true,
       "label": "Deterministic agreement paragraph 2 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
-      "hittable": true,
-      "ref": "e16"
+      "index": 15,
+      "enabled": true,
+      "type": "StaticText",
+      "depth": 8,
+      "ref": "e16",
+      "kind": "text"
     },
     {
-      "index": 16,
-      "depth": 8,
       "rect": {
-        "y": 363.3333282470703,
         "x": 16,
-        "height": 18.000015258789062,
+        "y": 363.3333282470703,
+        "width": 370,
+        "height": 18.000015258789062
+      },
+      "parentIndex": 10,
+      "hittable": true,
+      "label": "Section 3",
+      "index": 16,
+      "enabled": true,
+      "type": "StaticText",
+      "depth": 8,
+      "ref": "e17",
+      "kind": "text"
+    },
+    {
+      "rect": {
+        "x": 16,
+        "y": 385.3333282470703,
+        "height": 60,
         "width": 370
       },
-      "enabled": true,
-      "type": "StaticText",
       "parentIndex": 10,
-      "label": "Section 3",
       "hittable": true,
-      "ref": "e17"
-    },
-    {
-      "index": 17,
-      "depth": 8,
-      "rect": {
-        "x": 16,
-        "width": 370,
-        "height": 60,
-        "y": 385.3333282470703
-      },
-      "enabled": true,
-      "type": "StaticText",
-      "parentIndex": 10,
       "label": "Deterministic agreement paragraph 3 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
-      "hittable": true,
-      "ref": "e18"
-    },
-    {
-      "index": 18,
-      "depth": 8,
-      "rect": {
-        "x": 16,
-        "width": 370,
-        "height": 18,
-        "y": 457.3333435058594
-      },
+      "index": 17,
       "enabled": true,
       "type": "StaticText",
+      "depth": 8,
+      "ref": "e18",
+      "kind": "text"
+    },
+    {
+      "rect": {
+        "height": 18,
+        "width": 370,
+        "y": 457.3333435058594,
+        "x": 16
+      },
       "parentIndex": 10,
+      "hittable": true,
       "label": "Section 4",
-      "hittable": true,
-      "ref": "e19"
+      "index": 18,
+      "enabled": true,
+      "type": "StaticText",
+      "depth": 8,
+      "ref": "e19",
+      "kind": "text"
     },
     {
-      "index": 19,
-      "depth": 8,
       "rect": {
-        "x": 16,
-        "width": 370,
         "height": 60,
-        "y": 479.3333435058594
-      },
-      "enabled": true,
-      "type": "StaticText",
-      "parentIndex": 10,
-      "label": "Deterministic agreement paragraph 4 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
-      "hittable": true,
-      "ref": "e20"
-    },
-    {
-      "index": 20,
-      "depth": 8,
-      "rect": {
-        "x": 16,
         "width": 370,
-        "height": 18,
-        "y": 551.3333435058594
+        "y": 479.3333435058594,
+        "x": 16
       },
+      "parentIndex": 10,
+      "hittable": true,
+      "label": "Deterministic agreement paragraph 4 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
+      "index": 19,
       "enabled": true,
       "type": "StaticText",
-      "parentIndex": 10,
-      "label": "Section 5",
-      "hittable": true,
-      "ref": "e21"
+      "depth": 8,
+      "ref": "e20",
+      "kind": "text"
     },
     {
-      "index": 21,
+      "rect": {
+        "height": 18,
+        "width": 370,
+        "y": 551.3333435058594,
+        "x": 16
+      },
+      "parentIndex": 10,
+      "hittable": true,
+      "label": "Section 5",
+      "index": 20,
+      "enabled": true,
+      "type": "StaticText",
       "depth": 8,
+      "ref": "e21",
+      "kind": "text"
+    },
+    {
       "rect": {
         "x": 16,
         "width": 370,
         "height": 59.999969482421875,
         "y": 573.3333435058594
       },
+      "parentIndex": 10,
+      "hittable": true,
+      "label": "Deterministic agreement paragraph 5 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
+      "index": 21,
       "enabled": true,
       "type": "StaticText",
-      "parentIndex": 10,
-      "label": "Deterministic agreement paragraph 5 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
-      "hittable": true,
-      "ref": "e22"
+      "depth": 8,
+      "ref": "e22",
+      "kind": "text"
     },
     {
-      "index": 22,
-      "depth": 8,
       "rect": {
         "x": 16,
         "width": 370,
         "height": 18,
         "y": 645.3333129882812
       },
+      "parentIndex": 10,
+      "hittable": true,
+      "label": "Section 6",
+      "index": 22,
       "enabled": true,
       "type": "StaticText",
-      "parentIndex": 10,
-      "label": "Section 6",
-      "hittable": true,
-      "ref": "e23"
+      "depth": 8,
+      "ref": "e23",
+      "kind": "text"
     },
     {
-      "index": 23,
-      "depth": 8,
       "rect": {
         "x": 16,
         "width": 370,
         "height": 60,
         "y": 667.3333129882812
       },
+      "parentIndex": 10,
+      "hittable": true,
+      "label": "Deterministic agreement paragraph 6 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
+      "index": 23,
       "enabled": true,
       "type": "StaticText",
-      "parentIndex": 10,
-      "label": "Deterministic agreement paragraph 6 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
-      "hittable": true,
-      "ref": "e24"
+      "depth": 8,
+      "ref": "e24",
+      "kind": "text"
     },
     {
-      "hittable": true,
-      "depth": 8,
       "rect": {
         "x": 16,
         "width": 370,
-        "y": 739.3333129882812,
-        "height": 18
+        "height": 18,
+        "y": 739.3333129882812
       },
-      "enabled": true,
-      "type": "StaticText",
       "parentIndex": 10,
+      "hittable": true,
       "label": "Section 7",
       "index": 24,
-      "ref": "e25"
-    },
-    {
-      "index": 25,
-      "depth": 8,
-      "rect": {
-        "y": 761.3333129882812,
-        "x": 16,
-        "height": 60,
-        "width": 370
-      },
       "enabled": true,
       "type": "StaticText",
-      "parentIndex": 10,
-      "label": "Deterministic agreement paragraph 7 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
-      "hittable": true,
-      "ref": "e26"
+      "depth": 8,
+      "ref": "e25",
+      "kind": "text"
     },
     {
       "hittable": true,
-      "depth": 8,
-      "enabled": true,
       "rect": {
-        "height": 18,
-        "width": 370,
         "x": 16,
+        "width": 370,
+        "height": 60,
+        "y": 761.3333129882812
+      },
+      "label": "Deterministic agreement paragraph 7 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
+      "index": 25,
+      "enabled": true,
+      "depth": 8,
+      "type": "StaticText",
+      "parentIndex": 10,
+      "ref": "e26",
+      "kind": "text"
+    },
+    {
+      "hittable": true,
+      "rect": {
+        "x": 16,
+        "width": 370,
+        "height": 18,
         "y": 833.3333129882812
       },
-      "type": "StaticText",
-      "parentIndex": 10,
       "label": "Section 8",
       "index": 26,
-      "ref": "e27"
+      "enabled": true,
+      "depth": 8,
+      "type": "StaticText",
+      "parentIndex": 10,
+      "ref": "e27",
+      "kind": "text"
     },
     {
       "hittable": false,
-      "depth": 8,
-      "enabled": true,
       "rect": {
-        "height": 18.66668701171875,
-        "width": 370,
         "x": 16,
+        "width": 370,
+        "height": 18.66668701171875,
         "y": 855.3333129882812
       },
-      "type": "StaticText",
-      "parentIndex": 10,
       "label": "Deterministic agreement paragraph 8 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
       "index": 27,
-      "ref": "e28"
+      "enabled": true,
+      "depth": 8,
+      "type": "StaticText",
+      "parentIndex": 10,
+      "ref": "e28",
+      "kind": "text"
     },
     {
-      "type": "Other",
-      "parentIndex": 9,
-      "depth": 7,
-      "value": "0%",
+      "hittable": true,
       "rect": {
-        "height": 668,
-        "width": 30,
         "x": 369,
+        "width": 30,
+        "height": 668,
         "y": 144
       },
-      "enabled": true,
-      "index": 28,
       "label": "Vertical scroll bar, 3 pages",
-      "hittable": true,
-      "ref": "e29"
-    },
-    {
+      "index": 28,
+      "enabled": true,
+      "value": "0%",
+      "depth": 7,
       "type": "Other",
       "parentIndex": 9,
-      "depth": 7,
-      "value": "0%",
-      "rect": {
-        "height": 30,
-        "width": 278,
-        "x": 62,
-        "y": 807
-      },
-      "enabled": true,
-      "index": 29,
-      "label": "Horizontal scroll bar, 1 page",
-      "hittable": true,
-      "ref": "e30"
+      "ref": "e29",
+      "kind": "other"
     },
     {
-      "type": "Other",
-      "depth": 5,
-      "identifier": "continue-button",
-      "enabled": true,
+      "hittable": true,
       "rect": {
-        "height": 46,
-        "width": 370,
+        "x": 62,
+        "width": 278,
+        "height": 30,
+        "y": 807
+      },
+      "label": "Horizontal scroll bar, 1 page",
+      "index": 29,
+      "enabled": true,
+      "value": "0%",
+      "depth": 7,
+      "type": "Other",
+      "parentIndex": 9,
+      "ref": "e30",
+      "kind": "other"
+    },
+    {
+      "hittable": true,
+      "rect": {
         "x": 16,
+        "width": 370,
+        "height": 46,
         "y": 800.000020980835
       },
       "label": "Continue",
       "index": 30,
-      "hittable": true,
+      "enabled": true,
+      "depth": 5,
+      "identifier": "continue-button",
+      "type": "Other",
       "parentIndex": 7,
-      "ref": "e31"
+      "ref": "e31",
+      "kind": "other"
     }
   ],
   "truncated": false,

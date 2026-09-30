@@ -455,9 +455,7 @@ tool.
 
 ### Known device limitations
 
-- `getByPlaceholder` and placeholder reads work on Android only. On iOS,
-  query a field by role and name, test id, or display value. `placeholder`
-  is the only attribute a device node has.
+- `placeholder` is the only attribute a device node has.
 - A React Native tab (`accessibilityRole="tab"`) on iOS has role `other`.
   Query it by test id or label and assert `toBeSelected`. Checkboxes,
   radios, and `toBeChecked` work on both platforms.
@@ -469,8 +467,6 @@ tool.
   `toHaveCount(0)` or `toBeHidden`.
 - `doubleTap()` on iOS is two taps about 285 ms apart. Give a double-tap
   detector a window of 350 ms or more.
-- `toBeFocused` never passes on iOS. Assert on what the app shows for
-  focus, or on the keyboard.
 - On iOS, `device.foregroundApp()` still names the session's app after
   `device.home()`. Check the screen instead.
 

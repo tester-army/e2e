@@ -1,198 +1,210 @@
 {
   "nodes": [
     {
+      "type": "Application",
+      "enabled": true,
       "hittable": false,
       "index": 0,
-      "enabled": true,
-      "label": "e2e Benchmark",
-      "type": "Application",
       "depth": 0,
       "rect": {
-        "x": 0,
-        "y": 0,
         "height": 874,
-        "width": 402
+        "y": 0,
+        "width": 402,
+        "x": 0
       },
-      "ref": "e1"
+      "label": "e2e Benchmark",
+      "ref": "e1",
+      "kind": "application"
     },
     {
+      "parentIndex": 0,
+      "type": "Other",
+      "enabled": true,
       "hittable": true,
       "index": 1,
-      "enabled": true,
-      "label": "Benchmark Examples",
-      "type": "Other",
       "depth": 1,
-      "parentIndex": 0,
       "rect": {
-        "x": 0,
-        "y": 0,
         "height": 874,
-        "width": 402
+        "y": 0,
+        "width": 402,
+        "x": 0
       },
-      "ref": "e2"
+      "label": "Benchmark Examples",
+      "ref": "e2",
+      "kind": "other"
     },
     {
+      "rect": {
+        "height": 54,
+        "y": 62,
+        "width": 402,
+        "x": 0
+      },
+      "parentIndex": 1,
       "hittable": true,
-      "index": 2,
-      "enabled": true,
       "label": "Benchmark Examples",
+      "index": 2,
+      "identifier": "Apple Pay",
+      "enabled": true,
       "type": "NavigationBar",
       "depth": 2,
-      "identifier": "Apple Pay",
-      "parentIndex": 1,
-      "rect": {
-        "x": 0,
-        "y": 62,
-        "height": 54,
-        "width": 402
-      },
-      "ref": "e3"
+      "ref": "e3",
+      "kind": "navigation-bar"
     },
     {
+      "rect": {
+        "height": 44,
+        "y": 62,
+        "width": 219.66666666666666,
+        "x": 16.00000000000001
+      },
+      "parentIndex": 2,
       "hittable": true,
-      "index": 3,
-      "enabled": true,
       "label": "Benchmark Examples",
+      "index": 3,
+      "identifier": "BackButton",
+      "enabled": true,
       "type": "Button",
       "depth": 3,
-      "identifier": "BackButton",
-      "parentIndex": 2,
-      "rect": {
-        "x": 16.00000000000001,
-        "y": 62,
-        "height": 44,
-        "width": 219.66666666666666
-      },
-      "ref": "e4"
+      "ref": "e4",
+      "kind": "button"
     },
     {
+      "rect": {
+        "height": 20.66666666666667,
+        "y": 73.66666666666666,
+        "width": 79.33333333333331,
+        "x": 247.66666666666663
+      },
+      "parentIndex": 2,
       "hittable": true,
-      "index": 4,
-      "enabled": true,
       "label": "Apple Pay",
+      "enabled": true,
+      "index": 4,
       "type": "StaticText",
       "depth": 3,
-      "parentIndex": 2,
-      "rect": {
-        "x": 247.66666666666663,
-        "y": 73.66666666666666,
-        "height": 20.66666666666667,
-        "width": 79.33333333333331
-      },
-      "ref": "e5"
+      "ref": "e5",
+      "kind": "text"
     },
     {
+      "rect": {
+        "height": 874,
+        "y": 0,
+        "width": 402,
+        "x": 0
+      },
+      "parentIndex": 1,
       "hittable": true,
-      "index": 5,
-      "enabled": true,
       "label": "Order summary",
+      "enabled": true,
+      "index": 5,
       "type": "Other",
       "depth": 2,
-      "parentIndex": 1,
-      "rect": {
-        "x": 0,
-        "y": 0,
-        "height": 874,
-        "width": 402
-      },
-      "ref": "e6"
+      "ref": "e6",
+      "kind": "other"
     },
     {
+      "rect": {
+        "height": 758,
+        "y": 116,
+        "width": 402,
+        "x": 0
+      },
+      "parentIndex": 5,
       "hittable": true,
-      "index": 6,
-      "enabled": true,
       "label": "Order summary",
+      "enabled": true,
+      "index": 6,
       "type": "Other",
       "depth": 3,
-      "parentIndex": 5,
-      "rect": {
-        "x": 0,
-        "y": 116,
-        "height": 758,
-        "width": 402
-      },
-      "ref": "e7"
+      "ref": "e7",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 4,
       "rect": {
-        "x": 123,
-        "y": 389,
         "height": 26.333343505859375,
-        "width": 156
+        "y": 389,
+        "width": 156,
+        "x": 123
       },
-      "enabled": true,
-      "type": "StaticText",
       "parentIndex": 6,
+      "hittable": true,
       "label": "Order summary",
+      "enabled": true,
       "index": 7,
-      "ref": "e8"
+      "type": "StaticText",
+      "depth": 4,
+      "ref": "e8",
+      "kind": "text"
     },
     {
-      "index": 8,
-      "depth": 4,
       "rect": {
-        "x": 40.33333396911621,
         "height": 18,
         "y": 447.6666774749756,
-        "width": 321.33331298828125
+        "width": 321.33331298828125,
+        "x": 40.33333396911621
       },
-      "enabled": true,
-      "type": "StaticText",
       "parentIndex": 6,
+      "hittable": true,
       "label": "Trail Mix 500 g — $6.99",
-      "hittable": true,
-      "ref": "e9"
+      "enabled": true,
+      "index": 8,
+      "type": "StaticText",
+      "depth": 4,
+      "ref": "e9",
+      "kind": "text"
     },
     {
-      "hittable": true,
-      "depth": 4,
       "rect": {
-        "width": 321.33331298828125,
+        "height": 18,
         "y": 471.66667556762695,
-        "x": 40.33333396911621,
-        "height": 18
-      },
-      "enabled": true,
-      "type": "StaticText",
-      "parentIndex": 6,
-      "label": "Rush delivery — $2.00",
-      "index": 9,
-      "ref": "e10"
-    },
-    {
-      "index": 10,
-      "depth": 4,
-      "enabled": true,
-      "rect": {
         "width": 321.33331298828125,
-        "height": 19.333343505859375,
-        "x": 40.33333396911621,
-        "y": 499.6666793823242
+        "x": 40.33333396911621
       },
-      "type": "StaticText",
       "parentIndex": 6,
-      "label": "Total — $8.99",
       "hittable": true,
-      "ref": "e11"
+      "label": "Rush delivery — $2.00",
+      "enabled": true,
+      "index": 9,
+      "type": "StaticText",
+      "depth": 4,
+      "ref": "e10",
+      "kind": "text"
     },
     {
-      "hittable": true,
-      "depth": 4,
       "rect": {
-        "width": 354,
-        "height": 49.666656494140625,
-        "x": 24,
-        "y": 551.3333435058594
+        "height": 19.333343505859375,
+        "y": 499.6666793823242,
+        "width": 321.33331298828125,
+        "x": 40.33333396911621
       },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "apple-pay-button",
       "parentIndex": 6,
+      "hittable": true,
+      "label": "Total — $8.99",
+      "enabled": true,
+      "index": 10,
+      "type": "StaticText",
+      "depth": 4,
+      "ref": "e11",
+      "kind": "text"
+    },
+    {
+      "rect": {
+        "height": 49.666656494140625,
+        "y": 551.3333435058594,
+        "width": 354,
+        "x": 24
+      },
+      "parentIndex": 6,
+      "hittable": true,
       "label": "Buy with Apple Pay",
       "index": 11,
-      "ref": "e12"
+      "identifier": "apple-pay-button",
+      "enabled": true,
+      "type": "Other",
+      "depth": 4,
+      "ref": "e12",
+      "kind": "other"
     }
   ],
   "truncated": false,

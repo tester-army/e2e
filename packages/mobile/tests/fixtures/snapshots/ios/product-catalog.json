@@ -1,420 +1,445 @@
 {
   "nodes": [
     {
-      "enabled": true,
       "hittable": false,
-      "rect": {
-        "y": 0,
-        "width": 402,
-        "height": 874,
-        "x": 0
-      },
-      "type": "Application",
       "label": "e2e Benchmark",
       "index": 0,
-      "depth": 0,
-      "ref": "e1"
-    },
-    {
-      "enabled": true,
-      "hittable": true,
       "rect": {
         "y": 0,
+        "height": 874,
         "width": 402,
+        "x": 0
+      },
+      "depth": 0,
+      "type": "Application",
+      "enabled": true,
+      "ref": "e1",
+      "kind": "application"
+    },
+    {
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "index": 1,
+      "rect": {
+        "width": 402,
+        "y": 0,
         "height": 874,
         "x": 0
       },
-      "type": "Other",
-      "label": "Benchmark Examples",
-      "parentIndex": 0,
-      "index": 1,
       "depth": 1,
-      "ref": "e2"
+      "type": "Other",
+      "parentIndex": 0,
+      "enabled": true,
+      "ref": "e2",
+      "kind": "other"
     },
     {
       "enabled": true,
+      "label": "Benchmark Examples",
+      "index": 2,
       "hittable": true,
-      "identifier": "Product Catalog",
       "rect": {
-        "y": 62,
         "width": 402,
+        "y": 62,
         "height": 54,
         "x": 0
       },
-      "type": "NavigationBar",
-      "label": "Benchmark Examples",
-      "parentIndex": 1,
-      "index": 2,
       "depth": 2,
-      "ref": "e3"
+      "type": "NavigationBar",
+      "parentIndex": 1,
+      "identifier": "Product Catalog",
+      "ref": "e3",
+      "kind": "navigation-bar"
     },
     {
-      "enabled": true,
-      "hittable": true,
-      "identifier": "BackButton",
       "rect": {
-        "y": 62,
         "width": 44,
+        "y": 62,
         "height": 44,
         "x": 16
       },
-      "type": "Button",
-      "label": "Benchmark Examples",
       "parentIndex": 2,
+      "hittable": true,
+      "label": "Benchmark Examples",
       "index": 3,
+      "identifier": "BackButton",
+      "enabled": true,
+      "type": "Button",
       "depth": 3,
-      "ref": "e4"
+      "ref": "e4",
+      "kind": "button"
     },
     {
-      "enabled": true,
-      "hittable": true,
       "rect": {
-        "y": 73.66666666666666,
         "width": 129,
+        "y": 73.66666666666666,
         "height": 20.66666666666667,
         "x": 136.33333333333331
       },
-      "type": "StaticText",
-      "label": "Product Catalog",
       "parentIndex": 2,
+      "hittable": true,
+      "label": "Product Catalog",
       "index": 4,
+      "enabled": true,
+      "type": "StaticText",
       "depth": 3,
-      "ref": "e5"
+      "ref": "e5",
+      "kind": "text"
     },
     {
-      "enabled": true,
-      "hittable": true,
       "rect": {
-        "y": 116,
         "width": 402,
+        "y": 116,
         "height": 758,
         "x": 0
       },
-      "type": "Other",
-      "label": "Vertical scroll bar, 1 page",
       "parentIndex": 1,
+      "hittable": true,
+      "label": "Vertical scroll bar, 1 page",
       "index": 5,
-      "depth": 2,
-      "ref": "e6"
-    },
-    {
       "enabled": true,
-      "hittable": true,
-      "rect": {
-        "y": 116,
-        "width": 402,
-        "height": 758,
-        "x": 0
-      },
       "type": "Other",
-      "label": "Add exactly 2 × Trail Mix 500 g to the cart, then review the cart",
-      "parentIndex": 5,
-      "index": 6,
-      "depth": 3,
-      "ref": "e7"
+      "depth": 2,
+      "ref": "e6",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 4,
       "rect": {
-        "y": 116,
         "width": 402,
+        "y": 116,
         "height": 758,
         "x": 0
       },
+      "parentIndex": 5,
+      "hittable": true,
+      "label": "Add exactly 2 × Trail Mix 500 g to the cart, then review the cart",
+      "index": 6,
       "enabled": true,
-      "type": "ScrollView",
+      "type": "Other",
+      "depth": 3,
+      "ref": "e7",
+      "kind": "other"
+    },
+    {
+      "rect": {
+        "width": 402,
+        "height": 758,
+        "x": 0,
+        "y": 116
+      },
       "parentIndex": 6,
+      "hittable": true,
+      "enabled": true,
       "index": 7,
+      "type": "ScrollView",
+      "depth": 4,
       "ref": "e8",
+      "kind": "scroll-area",
       "inheritsLabel": true
     },
     {
-      "hittable": true,
-      "depth": 5,
       "rect": {
-        "y": 116,
         "width": 402,
         "height": 520.6666870117188,
-        "x": 0
+        "x": 0,
+        "y": 116
       },
-      "enabled": true,
-      "type": "Other",
       "parentIndex": 7,
+      "hittable": true,
+      "enabled": true,
       "index": 8,
+      "type": "Other",
+      "depth": 5,
       "ref": "e9",
+      "kind": "other",
       "inheritsLabel": true
     },
     {
-      "hittable": true,
-      "depth": 6,
       "rect": {
-        "y": 132,
         "width": 370,
         "height": 33.66666793823242,
-        "x": 16
+        "x": 16,
+        "y": 132
       },
-      "enabled": true,
-      "type": "StaticText",
       "parentIndex": 8,
+      "hittable": true,
+      "enabled": true,
       "index": 9,
+      "type": "StaticText",
+      "depth": 6,
       "ref": "e10",
+      "kind": "text",
       "inheritsLabel": true
     },
     {
-      "hittable": true,
-      "depth": 6,
       "rect": {
-        "y": 173.66666793823242,
         "width": 81.33334350585938,
         "height": 28.999996185302734,
-        "x": 304.6666564941406
+        "x": 304.6666564941406,
+        "y": 173.66666793823242
       },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "open-cart",
       "parentIndex": 8,
+      "hittable": true,
       "label": "Cart (0)",
+      "enabled": true,
       "index": 10,
-      "ref": "e11"
+      "identifier": "open-cart",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e11",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 6,
       "rect": {
-        "x": 28.333333015441895,
-        "y": 222.99999713897705,
         "width": 308.33331298828125,
-        "height": 37
+        "height": 37,
+        "x": 28.333333015441895,
+        "y": 222.99999713897705
       },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "product-trail-mix-250",
       "parentIndex": 8,
+      "hittable": true,
       "label": "Trail Mix, 250 g · $3.99",
+      "enabled": true,
       "index": 11,
-      "ref": "e12"
+      "identifier": "product-trail-mix-250",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e12",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 6,
       "rect": {
-        "x": 336.6666564941406,
         "y": 228.33333015441895,
-        "width": 37,
-        "height": 26.333335876464844
-      },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "favorite-trail-mix-250",
-      "parentIndex": 8,
-      "label": "Favorite Trail Mix 250 g",
-      "index": 12,
-      "ref": "e13"
-    },
-    {
-      "hittable": true,
-      "depth": 6,
-      "rect": {
-        "x": 28.333333015441895,
-        "y": 292.6666612625122,
-        "width": 308.33331298828125,
-        "height": 37
-      },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "product-trail-mix-500",
-      "parentIndex": 8,
-      "label": "Trail Mix, 500 g · $6.99",
-      "index": 13,
-      "ref": "e14"
-    },
-    {
-      "hittable": true,
-      "depth": 6,
-      "rect": {
+        "height": 26.333335876464844,
         "x": 336.6666564941406,
-        "y": 297.9999942779541,
-        "width": 37,
-        "height": 26.333328247070312
+        "width": 37
       },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "favorite-trail-mix-500",
       "parentIndex": 8,
+      "hittable": true,
+      "label": "Favorite Trail Mix 250 g",
+      "enabled": true,
+      "index": 12,
+      "identifier": "favorite-trail-mix-250",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e13",
+      "kind": "other"
+    },
+    {
+      "rect": {
+        "width": 308.33331298828125,
+        "y": 292.6666612625122,
+        "height": 37,
+        "x": 28.333333015441895
+      },
+      "parentIndex": 8,
+      "hittable": true,
+      "label": "Trail Mix, 500 g · $6.99",
+      "enabled": true,
+      "index": 13,
+      "identifier": "product-trail-mix-500",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e14",
+      "kind": "other"
+    },
+    {
+      "rect": {
+        "width": 37,
+        "height": 26.333328247070312,
+        "y": 297.9999942779541,
+        "x": 336.6666564941406
+      },
+      "parentIndex": 8,
+      "hittable": true,
       "label": "Favorite Trail Mix 500 g",
       "index": 14,
-      "ref": "e15"
+      "enabled": true,
+      "identifier": "favorite-trail-mix-500",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e15",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 6,
       "rect": {
-        "x": 28.333333015441895,
-        "y": 362.3333330154419,
         "width": 308.33331298828125,
-        "height": 37.00001525878906
+        "height": 37.00001525878906,
+        "y": 362.3333330154419,
+        "x": 28.333333015441895
       },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "product-trail-mix-1000",
       "parentIndex": 8,
+      "hittable": true,
       "label": "Trail Mix, 1 kg · $11.99",
       "index": 15,
-      "ref": "e16"
+      "enabled": true,
+      "identifier": "product-trail-mix-1000",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e16",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 6,
       "rect": {
-        "x": 336.6666564941406,
-        "y": 367.6666660308838,
         "width": 37,
-        "height": 26.333328247070312
+        "height": 26.333328247070312,
+        "y": 367.6666660308838,
+        "x": 336.6666564941406
       },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "favorite-trail-mix-1000",
       "parentIndex": 8,
+      "hittable": true,
       "label": "Favorite Trail Mix 1 kg",
       "index": 16,
-      "ref": "e17"
+      "enabled": true,
+      "identifier": "favorite-trail-mix-1000",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e17",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 6,
       "rect": {
-        "x": 28.333333015441895,
-        "y": 431.9999895095825,
         "width": 308.33331298828125,
-        "height": 37
+        "height": 37,
+        "y": 431.9999895095825,
+        "x": 28.333333015441895
       },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "product-granola-500",
       "parentIndex": 8,
+      "hittable": true,
       "label": "Granola, 500 g · $5.49",
       "index": 17,
-      "ref": "e18"
+      "enabled": true,
+      "identifier": "product-granola-500",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e18",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 6,
       "rect": {
-        "x": 336.6666564941406,
-        "y": 437.3333225250244,
         "width": 37,
-        "height": 26.33331298828125
+        "height": 26.33331298828125,
+        "y": 437.3333225250244,
+        "x": 336.6666564941406
       },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "favorite-granola-500",
       "parentIndex": 8,
+      "hittable": true,
       "label": "Favorite Granola 500 g",
       "index": 18,
-      "ref": "e19"
+      "enabled": true,
+      "identifier": "favorite-granola-500",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e19",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 6,
       "rect": {
-        "x": 28.333333015441895,
-        "y": 501.66667652130127,
         "width": 308.33331298828125,
-        "height": 37
+        "height": 37,
+        "y": 501.66667652130127,
+        "x": 28.333333015441895
       },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "product-almonds-250",
       "parentIndex": 8,
+      "hittable": true,
       "label": "Almonds, 250 g · $7.99",
       "index": 19,
-      "ref": "e20"
+      "enabled": true,
+      "identifier": "product-almonds-250",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e20",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 6,
       "rect": {
-        "x": 336.6666564941406,
-        "y": 507.00000953674316,
         "width": 37,
-        "height": 26.333343505859375
+        "height": 26.333343505859375,
+        "y": 507.00000953674316,
+        "x": 336.6666564941406
       },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "favorite-almonds-250",
       "parentIndex": 8,
+      "hittable": true,
       "label": "Favorite Almonds 250 g",
       "index": 20,
-      "ref": "e21"
+      "enabled": true,
+      "identifier": "favorite-almonds-250",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e21",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 6,
       "rect": {
-        "x": 28.333333015441895,
-        "y": 571.3333330154419,
         "width": 308.33331298828125,
-        "height": 37
+        "height": 37,
+        "y": 571.3333330154419,
+        "x": 28.333333015441895
       },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "product-cashews-250",
       "parentIndex": 8,
+      "hittable": true,
       "label": "Cashews, 250 g · $8.49",
       "index": 21,
-      "ref": "e22"
+      "enabled": true,
+      "identifier": "product-cashews-250",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e22",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 6,
       "rect": {
-        "x": 336.6666564941406,
-        "y": 576.6666660308838,
         "width": 37,
-        "height": 26.333343505859375
+        "height": 26.333343505859375,
+        "y": 576.6666660308838,
+        "x": 336.6666564941406
       },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "favorite-cashews-250",
       "parentIndex": 8,
+      "hittable": true,
       "label": "Favorite Cashews 250 g",
       "index": 22,
-      "ref": "e23"
+      "enabled": true,
+      "identifier": "favorite-cashews-250",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e23",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 5,
       "rect": {
-        "x": 369,
-        "y": 144,
         "width": 30,
-        "height": 668
+        "height": 668,
+        "y": 144,
+        "x": 369
       },
-      "enabled": true,
-      "type": "Other",
       "parentIndex": 7,
+      "hittable": true,
       "label": "Vertical scroll bar, 1 page",
-      "value": "0%",
       "index": 23,
-      "ref": "e24"
+      "enabled": true,
+      "value": "0%",
+      "type": "Other",
+      "depth": 5,
+      "ref": "e24",
+      "kind": "other"
     },
     {
       "hittable": true,
-      "depth": 5,
       "rect": {
-        "x": 62,
-        "y": 807,
         "width": 278,
-        "height": 30
+        "height": 30,
+        "y": 807,
+        "x": 62
       },
       "enabled": true,
-      "type": "Other",
-      "parentIndex": 7,
+      "index": 24,
       "label": "Horizontal scroll bar, 1 page",
       "value": "0%",
-      "index": 24,
-      "ref": "e25"
+      "depth": 5,
+      "type": "Other",
+      "parentIndex": 7,
+      "ref": "e25",
+      "kind": "other"
     }
   ],
   "truncated": false,

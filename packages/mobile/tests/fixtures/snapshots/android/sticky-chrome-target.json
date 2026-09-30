@@ -3,15 +3,15 @@
     {
       "index": 0,
       "type": "android.widget.TextView",
-      "label": "11:25",
-      "value": "11:25",
-      "contentDescription": "11:25 PM",
+      "label": "6:53",
+      "value": "6:53",
+      "contentDescription": "6:53 PM",
       "identifier": "com.android.systemui:id/clock",
       "bundleId": "com.android.systemui",
       "rect": {
         "x": 47,
         "y": 47,
-        "width": 125,
+        "width": 104,
         "height": 43
       },
       "enabled": true,
@@ -21,15 +21,16 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 0,
-      "ref": "e1"
+      "ref": "e1",
+      "kind": "text"
     },
     {
       "index": 1,
       "type": "android.widget.ImageView",
-      "label": "Android System notification: ",
+      "label": "Security & privacy notification: ",
       "bundleId": "com.android.systemui",
       "rect": {
-        "x": 172,
+        "x": 151,
         "y": 1,
         "width": 58,
         "height": 135
@@ -41,10 +42,32 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 0,
-      "ref": "e2"
+      "ref": "e2",
+      "kind": "image"
     },
     {
       "index": 2,
+      "type": "android.widget.ImageView",
+      "label": "Android System notification: ",
+      "bundleId": "com.android.systemui",
+      "rect": {
+        "x": 209,
+        "y": 1,
+        "width": 58,
+        "height": 135
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 0,
+      "ref": "e3",
+      "kind": "image"
+    },
+    {
+      "index": 3,
       "type": "android.widget.ImageView",
       "label": "Wifi signal full.",
       "identifier": "com.android.systemui:id/wifi_signal",
@@ -62,10 +85,11 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 0,
-      "ref": "e3"
+      "ref": "e4",
+      "kind": "image"
     },
     {
-      "index": 3,
+      "index": 4,
       "type": "android.widget.FrameLayout",
       "label": "T-Mobile, signal full.",
       "identifier": "com.android.systemui:id/mobile_combo",
@@ -83,10 +107,11 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 0,
-      "ref": "e4"
+      "ref": "e5",
+      "kind": "group"
     },
     {
-      "index": 4,
+      "index": 5,
       "type": "android.widget.ImageView",
       "identifier": "com.android.systemui:id/mobile_signal",
       "bundleId": "com.android.systemui",
@@ -103,11 +128,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 1,
-      "parentIndex": 3,
-      "ref": "e5"
+      "parentIndex": 4,
+      "ref": "e6",
+      "kind": "image"
     },
     {
-      "index": 5,
+      "index": 6,
       "type": "android.widget.LinearLayout",
       "label": "Battery charging, 100 percent.",
       "identifier": "com.android.systemui:id/battery",
@@ -125,10 +151,11 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 0,
-      "ref": "e6"
+      "ref": "e7",
+      "kind": "group"
     },
     {
-      "index": 6,
+      "index": 7,
       "type": "android.widget.ImageView",
       "bundleId": "com.android.systemui",
       "rect": {
@@ -144,11 +171,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 1,
-      "parentIndex": 5,
-      "ref": "e7"
+      "parentIndex": 6,
+      "ref": "e8",
+      "kind": "image"
     },
     {
-      "index": 7,
+      "index": 8,
       "type": "android.widget.FrameLayout",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -164,10 +192,11 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 0,
-      "ref": "e8"
+      "ref": "e9",
+      "kind": "group"
     },
     {
-      "index": 8,
+      "index": 9,
       "type": "android.widget.LinearLayout",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -183,11 +212,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 1,
-      "parentIndex": 7,
-      "ref": "e9"
+      "parentIndex": 8,
+      "ref": "e10",
+      "kind": "group"
     },
     {
-      "index": 9,
+      "index": 10,
       "type": "android.widget.FrameLayout",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -203,11 +233,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 2,
-      "parentIndex": 8,
-      "ref": "e10"
+      "parentIndex": 9,
+      "ref": "e11",
+      "kind": "group"
     },
     {
-      "index": 10,
+      "index": 11,
       "type": "android.widget.LinearLayout",
       "identifier": "dev.e2e.benchmark:id/action_bar_root",
       "bundleId": "dev.e2e.benchmark",
@@ -224,11 +255,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 3,
-      "parentIndex": 9,
-      "ref": "e11"
+      "parentIndex": 10,
+      "ref": "e12",
+      "kind": "group"
     },
     {
-      "index": 11,
+      "index": 12,
       "type": "android.widget.FrameLayout",
       "identifier": "android:id/content",
       "bundleId": "dev.e2e.benchmark",
@@ -245,11 +277,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 4,
-      "parentIndex": 10,
-      "ref": "e12"
+      "parentIndex": 11,
+      "ref": "e13",
+      "kind": "group"
     },
     {
-      "index": 12,
+      "index": 13,
       "type": "android.widget.FrameLayout",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -265,28 +298,9 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 5,
-      "parentIndex": 11,
-      "ref": "e13"
-    },
-    {
-      "index": 13,
-      "type": "android.view.ViewGroup",
-      "bundleId": "dev.e2e.benchmark",
-      "rect": {
-        "x": 0,
-        "y": 0,
-        "width": 1080,
-        "height": 2400
-      },
-      "enabled": true,
-      "selected": false,
-      "editable": false,
-      "password": false,
-      "hintShowing": false,
-      "visibleToUser": true,
-      "depth": 6,
       "parentIndex": 12,
-      "ref": "e14"
+      "ref": "e14",
+      "kind": "group"
     },
     {
       "index": 14,
@@ -304,12 +318,34 @@
       "password": false,
       "hintShowing": false,
       "visibleToUser": true,
-      "depth": 7,
+      "depth": 6,
       "parentIndex": 13,
-      "ref": "e15"
+      "ref": "e15",
+      "kind": "group"
     },
     {
       "index": 15,
+      "type": "android.view.ViewGroup",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1080,
+        "height": 2400
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 7,
+      "parentIndex": 14,
+      "ref": "e16",
+      "kind": "group"
+    },
+    {
+      "index": 16,
       "type": "android.widget.ScrollView",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -325,11 +361,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 8,
-      "parentIndex": 14,
-      "ref": "e16"
+      "parentIndex": 15,
+      "ref": "e17",
+      "kind": "scroll-area"
     },
     {
-      "index": 16,
+      "index": 17,
       "type": "android.widget.LinearLayout",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -345,11 +382,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 9,
-      "parentIndex": 15,
-      "ref": "e17"
+      "parentIndex": 16,
+      "ref": "e18",
+      "kind": "group"
     },
     {
-      "index": 17,
+      "index": 18,
       "type": "android.view.ViewGroup",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -365,11 +403,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 10,
-      "parentIndex": 16,
-      "ref": "e18"
+      "parentIndex": 17,
+      "ref": "e19",
+      "kind": "group"
     },
     {
-      "index": 18,
+      "index": 19,
       "type": "android.widget.ImageButton",
       "label": "Navigate up",
       "bundleId": "dev.e2e.benchmark",
@@ -387,11 +426,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 11,
-      "parentIndex": 17,
-      "ref": "e19"
+      "parentIndex": 18,
+      "ref": "e20",
+      "kind": "button"
     },
     {
-      "index": 19,
+      "index": 20,
       "type": "android.widget.TextView",
       "label": "Sticky Chrome Target",
       "value": "Sticky Chrome Target",
@@ -409,28 +449,9 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 11,
-      "parentIndex": 17,
-      "ref": "e20"
-    },
-    {
-      "index": 20,
-      "type": "android.view.ViewGroup",
-      "bundleId": "dev.e2e.benchmark",
-      "rect": {
-        "x": 0,
-        "y": 283,
-        "width": 1080,
-        "height": 2117
-      },
-      "enabled": true,
-      "selected": false,
-      "editable": false,
-      "password": false,
-      "hintShowing": false,
-      "visibleToUser": true,
-      "depth": 9,
-      "parentIndex": 15,
-      "ref": "e21"
+      "parentIndex": 18,
+      "ref": "e21",
+      "kind": "text"
     },
     {
       "index": 21,
@@ -448,12 +469,34 @@
       "password": false,
       "hintShowing": false,
       "visibleToUser": true,
-      "depth": 10,
-      "parentIndex": 20,
-      "ref": "e22"
+      "depth": 9,
+      "parentIndex": 16,
+      "ref": "e22",
+      "kind": "group"
     },
     {
       "index": 22,
+      "type": "android.view.ViewGroup",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 283,
+        "width": 1080,
+        "height": 2117
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 10,
+      "parentIndex": 21,
+      "ref": "e23",
+      "kind": "group"
+    },
+    {
+      "index": 23,
       "type": "android.widget.ScrollView",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -470,12 +513,13 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 11,
-      "parentIndex": 21,
+      "parentIndex": 22,
       "hiddenContentBelow": true,
-      "ref": "e23"
+      "ref": "e24",
+      "kind": "scroll-area"
     },
     {
-      "index": 23,
+      "index": 24,
       "type": "android.widget.TextView",
       "label": "Read the agreement, tap Accept terms at the bottom, then Continue.",
       "value": "Read the agreement, tap Accept terms at the bottom, then Continue.",
@@ -493,11 +537,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e24"
+      "parentIndex": 23,
+      "ref": "e25",
+      "kind": "text"
     },
     {
-      "index": 24,
+      "index": 25,
       "type": "android.widget.TextView",
       "label": "Section 1",
       "value": "Section 1",
@@ -515,11 +560,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e25"
+      "parentIndex": 23,
+      "ref": "e26",
+      "kind": "text"
     },
     {
-      "index": 25,
+      "index": 26,
       "type": "android.widget.TextView",
       "label": "Deterministic agreement paragraph 1 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
       "value": "Deterministic agreement paragraph 1 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
@@ -537,11 +583,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e26"
+      "parentIndex": 23,
+      "ref": "e27",
+      "kind": "text"
     },
     {
-      "index": 26,
+      "index": 27,
       "type": "android.widget.TextView",
       "label": "Section 2",
       "value": "Section 2",
@@ -559,11 +606,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e27"
+      "parentIndex": 23,
+      "ref": "e28",
+      "kind": "text"
     },
     {
-      "index": 27,
+      "index": 28,
       "type": "android.widget.TextView",
       "label": "Deterministic agreement paragraph 2 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
       "value": "Deterministic agreement paragraph 2 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
@@ -581,11 +629,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e28"
+      "parentIndex": 23,
+      "ref": "e29",
+      "kind": "text"
     },
     {
-      "index": 28,
+      "index": 29,
       "type": "android.widget.TextView",
       "label": "Section 3",
       "value": "Section 3",
@@ -603,11 +652,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e29"
+      "parentIndex": 23,
+      "ref": "e30",
+      "kind": "text"
     },
     {
-      "index": 29,
+      "index": 30,
       "type": "android.widget.TextView",
       "label": "Deterministic agreement paragraph 3 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
       "value": "Deterministic agreement paragraph 3 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
@@ -625,11 +675,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e30"
+      "parentIndex": 23,
+      "ref": "e31",
+      "kind": "text"
     },
     {
-      "index": 30,
+      "index": 31,
       "type": "android.widget.TextView",
       "label": "Section 4",
       "value": "Section 4",
@@ -647,11 +698,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e31"
+      "parentIndex": 23,
+      "ref": "e32",
+      "kind": "text"
     },
     {
-      "index": 31,
+      "index": 32,
       "type": "android.widget.TextView",
       "label": "Deterministic agreement paragraph 4 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
       "value": "Deterministic agreement paragraph 4 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
@@ -669,11 +721,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e32"
+      "parentIndex": 23,
+      "ref": "e33",
+      "kind": "text"
     },
     {
-      "index": 32,
+      "index": 33,
       "type": "android.widget.TextView",
       "label": "Section 5",
       "value": "Section 5",
@@ -691,11 +744,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e33"
+      "parentIndex": 23,
+      "ref": "e34",
+      "kind": "text"
     },
     {
-      "index": 33,
+      "index": 34,
       "type": "android.widget.TextView",
       "label": "Deterministic agreement paragraph 5 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
       "value": "Deterministic agreement paragraph 5 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
@@ -713,11 +767,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e34"
+      "parentIndex": 23,
+      "ref": "e35",
+      "kind": "text"
     },
     {
-      "index": 34,
+      "index": 35,
       "type": "android.widget.TextView",
       "label": "Section 6",
       "value": "Section 6",
@@ -735,11 +790,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e35"
+      "parentIndex": 23,
+      "ref": "e36",
+      "kind": "text"
     },
     {
-      "index": 35,
+      "index": 36,
       "type": "android.widget.TextView",
       "label": "Deterministic agreement paragraph 6 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
       "value": "Deterministic agreement paragraph 6 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
@@ -757,11 +813,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e36"
+      "parentIndex": 23,
+      "ref": "e37",
+      "kind": "text"
     },
     {
-      "index": 36,
+      "index": 37,
       "type": "android.widget.TextView",
       "label": "Section 7",
       "value": "Section 7",
@@ -779,11 +836,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e37"
+      "parentIndex": 23,
+      "ref": "e38",
+      "kind": "text"
     },
     {
-      "index": 37,
+      "index": 38,
       "type": "android.widget.TextView",
       "label": "Deterministic agreement paragraph 7 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
       "value": "Deterministic agreement paragraph 7 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
@@ -801,11 +859,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e38"
+      "parentIndex": 23,
+      "ref": "e39",
+      "kind": "text"
     },
     {
-      "index": 38,
+      "index": 39,
       "type": "android.widget.TextView",
       "label": "Section 8",
       "value": "Section 8",
@@ -823,11 +882,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e39"
+      "parentIndex": 23,
+      "ref": "e40",
+      "kind": "text"
     },
     {
-      "index": 39,
+      "index": 40,
       "type": "android.widget.TextView",
       "label": "Deterministic agreement paragraph 8 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
       "value": "Deterministic agreement paragraph 8 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button.",
@@ -845,11 +905,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e40"
+      "parentIndex": 23,
+      "ref": "e41",
+      "kind": "text"
     },
     {
-      "index": 40,
+      "index": 41,
       "type": "android.view.ViewGroup",
       "label": "Continue",
       "identifier": "continue-button",
@@ -868,11 +929,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 11,
-      "parentIndex": 21,
-      "ref": "e41"
+      "parentIndex": 22,
+      "ref": "e42",
+      "kind": "group"
     },
     {
-      "index": 41,
+      "index": 42,
       "type": "android.widget.TextView",
       "label": "Continue",
       "value": "Continue",
@@ -890,8 +952,9 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 40,
-      "ref": "e42"
+      "parentIndex": 41,
+      "ref": "e43",
+      "kind": "text"
     }
   ],
   "truncated": false,

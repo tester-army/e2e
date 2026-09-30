@@ -27,7 +27,7 @@ export interface RawNode {
    * accessible name an app set beside visible text (agent-device 0.21.14+).
    */
   readonly contentDescription?: string;
-  /** The field's placeholder text, showing or not (Android, agent-device 0.21.15+). */
+  /** The field's placeholder text, showing or not (agent-device 0.21.16+). */
   readonly placeholder?: string;
   /** The checked state of a checkable control; absent for one that cannot be checked or an older helper. */
   readonly checked?: boolean;

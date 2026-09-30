@@ -52,10 +52,7 @@ test.describe('control inventory', () => {
     await name.press('Enter');
   });
 
-  // agent-device 0.21.15 carries an Android field's hint as its placeholder,
-  // showing or not; its iOS runner reports only whether the placeholder is
-  // showing, and the node gets it in the next release (its #2961).
-  test('a placeholder query and attribute reads find the field', { platforms: ['android'] }, async ({ screen }) => {
+  test('a placeholder query and attribute reads find the field', async ({ screen }) => {
     await expect(screen.getByPlaceholder('Type your name')).toHaveValue('Ada Lovelace');
     await expect(screen.getByTestId('name-input')).toHaveAttribute('placeholder', 'Type your name');
     expect(await screen.getByTestId('name-input').getAttribute('placeholder')).toBe('Type your name');
@@ -81,8 +78,6 @@ test.describe('control inventory', () => {
     await expect(screen.getByTestId('key-status')).toHaveText('key: Enter');
   });
 
-  // The status line is the evidence: agent-device reports no focused flag
-  // for an iOS text field, so `toBeFocused` has its own skipped test below.
   test('a field autofocuses on mount and focus() moves the focus', async ({ screen }) => {
     await screen.getByRole('button', { name: 'Show focus fields' }).tap();
     const status = screen.getByTestId('focus-status');
@@ -99,11 +94,7 @@ test.describe('control inventory', () => {
     await expect(status).toHaveText('focus: none');
   });
 
-  // agent-device 0.21.15's iOS runner reads XCUIElementSnapshot hasFocus (the
-  // tvOS focus engine), never hasKeyboardFocus, so an iOS text field with the
-  // keyboard up carries no focused flag and `is focused` answers false there;
-  // Android reports the focused field.
-  test('toBeFocused follows the focus', { platforms: ['android'] }, async ({ screen }) => {
+  test('toBeFocused follows the focus', async ({ screen }) => {
     await screen.getByRole('button', { name: 'Show focus fields' }).tap();
     const first = screen.getByRole('textbox', { name: 'Autofocus field' });
     const second = screen.getByRole('textbox', { name: 'Second field' });

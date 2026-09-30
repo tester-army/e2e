@@ -5,9 +5,9 @@
  * tests project them offline, so a change to how the tree reads a real iOS or
  * Android hierarchy shows up in `pnpm test` without a device. Hand-run only:
  *
- *   pnpm --filter @e2edev/mobile-benchmark run capture:snapshots --target ios-simulator
+ *   pnpm --filter @e2e-dev/mobile-benchmark run capture:snapshots --target ios-simulator
  *
- * then `E2E_GOLDEN_UPDATE=1 pnpm --filter @e2edev/mobile exec vitest run
+ * then `E2E_GOLDEN_UPDATE=1 pnpm --filter @e2e-dev/mobile exec vitest run
  * tests/unit/captured-snapshots.test.ts` and review both diffs.
  */
 
@@ -23,7 +23,7 @@ const HERE = import.meta.dirname;
 const OUT = path.join(HERE, '../../../packages/mobile/tests/fixtures/snapshots');
 
 /** The agent-device CLI the engine's own install carries, so the capture and the engine speak the same daemon version. */
-const CLI = path.join(realpathSync(createRequire(import.meta.url).resolve('@e2edev/mobile')), '../../node_modules/.bin/agent-device');
+const CLI = path.join(realpathSync(createRequire(import.meta.url).resolve('@e2e-dev/mobile')), '../../node_modules/.bin/agent-device');
 
 /** Scenario names and the platform an entry is limited to, read off the app's registry. */
 function scenarios(): { name: string; platform?: Platform }[] {

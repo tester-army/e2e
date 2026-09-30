@@ -41,11 +41,13 @@ test.describe('device fixture', () => {
   });
 
   // Android 14 and later ship no shell command for the clipboard service, so
-  // agent-device 0.21.13 reads an empty string back on the emulator; its own
-  // advice is to paste into a field and read that.
+  // agent-device refuses both calls on the emulator as unsupported; its own
+  // advice is to paste into a field and read that. The text is new each run:
+  // a write that does nothing reads back the last run's text, not an error.
   test('the clipboard reads back what was written', { platforms: ['ios'] }, async ({ device }) => {
-    await device.setClipboard('e2e clipboard 42');
-    expect(await device.clipboard()).toBe('e2e clipboard 42');
+    const text = `e2e clipboard ${Date.now()}`;
+    await device.setClipboard(text);
+    expect(await device.clipboard()).toBe(text);
   });
 
   test('home leaves the app, openApp brings it back where it was', async ({ device, screen }) => {

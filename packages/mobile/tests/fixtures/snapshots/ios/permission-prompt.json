@@ -2,165 +2,175 @@
   "nodes": [
     {
       "enabled": true,
+      "depth": 0,
+      "label": "e2e Benchmark",
       "hittable": false,
+      "type": "Application",
       "rect": {
+        "width": 402,
         "x": 0,
         "height": 874,
-        "width": 402,
         "y": 0
       },
-      "type": "Application",
-      "label": "e2e Benchmark",
       "index": 0,
-      "depth": 0,
-      "ref": "e1"
+      "ref": "e1",
+      "kind": "application"
     },
     {
       "enabled": true,
-      "hittable": true,
-      "rect": {
-        "x": 0,
-        "height": 874,
-        "width": 402,
-        "y": 0
-      },
-      "type": "Other",
+      "depth": 1,
       "label": "Benchmark Examples",
       "parentIndex": 0,
+      "hittable": true,
+      "type": "Other",
+      "rect": {
+        "x": 0,
+        "height": 874,
+        "y": 0,
+        "width": 402
+      },
       "index": 1,
-      "depth": 1,
-      "ref": "e2"
+      "ref": "e2",
+      "kind": "other"
     },
     {
       "enabled": true,
-      "hittable": true,
+      "depth": 2,
       "identifier": "Permission Prompt",
+      "label": "Benchmark Examples",
+      "parentIndex": 1,
+      "hittable": true,
+      "type": "NavigationBar",
       "rect": {
         "x": 0,
         "height": 54,
-        "width": 402,
-        "y": 62
+        "y": 62,
+        "width": 402
       },
-      "type": "NavigationBar",
-      "label": "Benchmark Examples",
-      "parentIndex": 1,
       "index": 2,
-      "depth": 2,
-      "ref": "e3"
+      "ref": "e3",
+      "kind": "navigation-bar"
     },
     {
       "enabled": true,
-      "hittable": true,
+      "depth": 3,
       "identifier": "BackButton",
+      "label": "Benchmark Examples",
+      "parentIndex": 2,
+      "hittable": true,
       "rect": {
-        "x": 16,
         "height": 44,
+        "y": 62,
         "width": 44,
-        "y": 62
+        "x": 16
       },
       "type": "Button",
-      "label": "Benchmark Examples",
-      "parentIndex": 2,
       "index": 3,
-      "depth": 3,
-      "ref": "e4"
+      "ref": "e4",
+      "kind": "button"
     },
     {
-      "enabled": true,
-      "hittable": true,
       "rect": {
+        "width": 151,
         "x": 125.33333333333331,
         "height": 20.66666666666667,
-        "width": 151,
         "y": 73.66666666666666
       },
-      "type": "StaticText",
-      "label": "Permission Prompt",
       "parentIndex": 2,
+      "hittable": true,
+      "label": "Permission Prompt",
       "index": 4,
+      "enabled": true,
+      "type": "StaticText",
       "depth": 3,
-      "ref": "e5"
+      "ref": "e5",
+      "kind": "text"
     },
     {
-      "enabled": true,
-      "hittable": true,
       "rect": {
         "x": 0,
-        "height": 874,
+        "y": 0,
         "width": 402,
-        "y": 0
+        "height": 874
       },
-      "type": "Other",
-      "label": "Voice notes",
       "parentIndex": 1,
+      "hittable": true,
+      "label": "Voice notes",
+      "enabled": true,
       "index": 5,
+      "type": "Other",
       "depth": 2,
-      "ref": "e6"
+      "ref": "e6",
+      "kind": "other"
     },
     {
-      "enabled": true,
-      "hittable": true,
       "rect": {
         "x": 0,
-        "height": 758,
+        "y": 116,
         "width": 402,
-        "y": 116
+        "height": 758
       },
-      "type": "Other",
-      "label": "Voice notes",
       "parentIndex": 5,
+      "hittable": true,
+      "label": "Voice notes",
+      "enabled": true,
       "index": 6,
+      "type": "Other",
       "depth": 3,
-      "ref": "e7"
+      "ref": "e7",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 4,
       "rect": {
         "x": 142.6666717529297,
-        "height": 26.33331298828125,
+        "y": 431.3333435058594,
         "width": 116.33332824707031,
-        "y": 431.3333435058594
+        "height": 26.33331298828125
       },
-      "enabled": true,
-      "type": "StaticText",
       "parentIndex": 6,
+      "hittable": true,
       "label": "Voice notes",
+      "enabled": true,
       "index": 7,
-      "ref": "e8"
+      "type": "StaticText",
+      "depth": 4,
+      "ref": "e8",
+      "kind": "text"
     },
     {
-      "hittable": true,
-      "depth": 4,
       "rect": {
         "x": 24,
-        "height": 33.66668701171875,
+        "y": 469.6666564941406,
         "width": 354,
-        "y": 469.6666564941406
+        "height": 33.66668701171875
       },
-      "enabled": true,
-      "type": "StaticText",
       "parentIndex": 6,
+      "hittable": true,
       "label": "Recording voice notes requires microphone access. Allow the permission when the system asks.",
+      "enabled": true,
       "index": 8,
-      "ref": "e9"
+      "type": "StaticText",
+      "depth": 4,
+      "ref": "e9",
+      "kind": "text"
     },
     {
-      "hittable": true,
-      "depth": 4,
-      "enabled": true,
       "rect": {
-        "height": 43.33331298828125,
         "x": 104.33333587646484,
+        "y": 515.3333435058594,
         "width": 193.33331298828125,
-        "y": 515.3333435058594
+        "height": 43.33331298828125
       },
-      "type": "Other",
-      "identifier": "request-permission",
       "parentIndex": 6,
+      "hittable": true,
       "label": "Enable microphone",
+      "enabled": true,
+      "identifier": "request-permission",
       "index": 9,
-      "ref": "e10"
+      "type": "Other",
+      "depth": 4,
+      "ref": "e10",
+      "kind": "other"
     }
   ],
   "truncated": false,

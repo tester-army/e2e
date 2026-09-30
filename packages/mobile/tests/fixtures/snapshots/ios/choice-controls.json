@@ -2,456 +2,483 @@
   "nodes": [
     {
       "enabled": true,
+      "depth": 0,
       "label": "e2e Benchmark",
+      "hittable": false,
       "rect": {
-        "height": 874,
         "y": 0,
         "x": 0,
-        "width": 402
+        "width": 402,
+        "height": 874
       },
-      "index": 0,
       "type": "Application",
-      "depth": 0,
-      "hittable": false,
-      "ref": "e1"
+      "index": 0,
+      "ref": "e1",
+      "kind": "application"
     },
     {
       "enabled": true,
-      "parentIndex": 0,
+      "depth": 1,
       "label": "Benchmark Examples",
+      "parentIndex": 0,
+      "hittable": true,
       "rect": {
-        "height": 874,
         "y": 0,
         "x": 0,
-        "width": 402
+        "width": 402,
+        "height": 874
       },
-      "index": 1,
       "type": "Other",
-      "depth": 1,
-      "hittable": true,
-      "ref": "e2"
+      "index": 1,
+      "ref": "e2",
+      "kind": "other"
     },
     {
-      "hittable": true,
+      "enabled": true,
+      "depth": 2,
+      "label": "Benchmark Examples",
       "identifier": "Choice Controls",
       "parentIndex": 1,
-      "label": "Benchmark Examples",
+      "hittable": true,
       "rect": {
-        "height": 54,
         "y": 62,
         "x": 0,
-        "width": 402
+        "width": 402,
+        "height": 54
       },
-      "index": 2,
       "type": "NavigationBar",
-      "depth": 2,
-      "enabled": true,
-      "ref": "e3"
+      "index": 2,
+      "ref": "e3",
+      "kind": "navigation-bar"
     },
     {
-      "hittable": true,
-      "identifier": "BackButton",
-      "parentIndex": 2,
-      "label": "Benchmark Examples",
       "rect": {
-        "height": 44,
         "y": 62,
         "x": 16,
-        "width": 44
+        "width": 44,
+        "height": 44
       },
+      "parentIndex": 2,
+      "hittable": true,
+      "label": "Benchmark Examples",
       "index": 3,
+      "enabled": true,
+      "identifier": "BackButton",
       "type": "Button",
       "depth": 3,
-      "enabled": true,
-      "ref": "e4"
+      "ref": "e4",
+      "kind": "button"
     },
     {
-      "enabled": true,
-      "parentIndex": 2,
-      "label": "Choice Controls",
       "rect": {
-        "height": 20.66666666666667,
         "y": 73.66666666666666,
         "x": 137.33333333333331,
-        "width": 127
+        "width": 127,
+        "height": 20.66666666666667
       },
+      "parentIndex": 2,
+      "hittable": true,
+      "label": "Choice Controls",
       "index": 4,
+      "enabled": true,
       "type": "StaticText",
       "depth": 3,
-      "hittable": true,
-      "ref": "e5"
+      "ref": "e5",
+      "kind": "text"
     },
     {
-      "enabled": true,
-      "parentIndex": 1,
-      "label": "Vertical scroll bar, 1 page",
       "rect": {
-        "height": 758,
         "y": 116,
         "x": 0,
-        "width": 402
+        "width": 402,
+        "height": 758
       },
+      "parentIndex": 1,
+      "hittable": true,
+      "label": "Vertical scroll bar, 1 page",
       "index": 5,
+      "enabled": true,
       "type": "Other",
       "depth": 2,
-      "hittable": true,
-      "ref": "e6"
+      "ref": "e6",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "parentIndex": 5,
-      "label": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then place the order (dismiss the keyboard first).",
       "rect": {
+        "y": 116,
         "x": 0,
         "width": 402,
-        "y": 116,
         "height": 758
       },
+      "parentIndex": 5,
+      "hittable": true,
+      "label": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then place the order (dismiss the keyboard first).",
       "index": 6,
+      "enabled": true,
       "type": "Other",
       "depth": 3,
-      "enabled": true,
-      "ref": "e7"
+      "ref": "e7",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 4,
       "rect": {
+        "y": 116,
         "x": 0,
         "width": 402,
-        "y": 116,
         "height": 758
       },
+      "parentIndex": 6,
+      "hittable": true,
+      "index": 7,
       "enabled": true,
       "type": "ScrollView",
-      "parentIndex": 6,
-      "index": 7,
+      "depth": 4,
       "ref": "e8",
+      "kind": "scroll-area",
       "inheritsLabel": true
     },
     {
-      "hittable": true,
-      "depth": 5,
       "rect": {
+        "y": 116,
         "x": 0,
         "width": 402,
-        "y": 116,
         "height": 629
       },
+      "parentIndex": 7,
+      "hittable": true,
+      "index": 8,
       "enabled": true,
       "type": "Other",
-      "parentIndex": 7,
-      "index": 8,
+      "depth": 5,
       "ref": "e9",
+      "kind": "other",
       "inheritsLabel": true
     },
     {
-      "hittable": true,
-      "depth": 6,
       "rect": {
+        "y": 140,
         "x": 24,
         "width": 354,
-        "y": 140,
         "height": 50.333335876464844
       },
+      "parentIndex": 8,
+      "hittable": true,
+      "index": 9,
       "enabled": true,
       "type": "StaticText",
-      "parentIndex": 8,
-      "index": 9,
+      "depth": 6,
       "ref": "e10",
+      "kind": "text",
       "inheritsLabel": true
     },
     {
-      "index": 10,
-      "depth": 6,
-      "enabled": true,
       "rect": {
+        "y": 210.33333587646484,
         "x": 24,
         "width": 354,
-        "y": 210.33333587646484,
         "height": 19.333328247070312
       },
-      "type": "StaticText",
       "parentIndex": 8,
-      "label": "Size",
       "hittable": true,
-      "ref": "e11"
+      "label": "Size",
+      "index": 10,
+      "enabled": true,
+      "type": "StaticText",
+      "depth": 6,
+      "ref": "e11",
+      "kind": "text"
     },
     {
+      "rect": {
+        "y": 241.66666412353516,
+        "x": 24,
+        "width": 71.33333587646484,
+        "height": 36.00000762939453
+      },
+      "parentIndex": 8,
       "hittable": true,
+      "label": "Small",
+      "index": 11,
+      "identifier": "size-small",
+      "enabled": true,
+      "value": "radio button",
+      "type": "Other",
       "depth": 6,
+      "ref": "e12",
+      "kind": "other"
+    },
+    {
       "rect": {
         "height": 36.00000762939453,
         "y": 241.66666412353516,
-        "x": 24,
-        "width": 71.33333587646484
-      },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "size-small",
-      "parentIndex": 8,
-      "label": "Small",
-      "value": "radio button",
-      "index": 11,
-      "ref": "e12"
-    },
-    {
-      "hittable": true,
-      "depth": 6,
-      "rect": {
-        "width": 88.99999237060547,
         "x": 103.33333587646484,
-        "y": 241.66666412353516,
-        "height": 36.00000762939453
+        "width": 88.99999237060547
       },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "size-medium",
       "parentIndex": 8,
+      "hittable": true,
       "label": "Medium",
-      "value": "radio button",
+      "identifier": "size-medium",
       "index": 12,
-      "ref": "e13"
+      "enabled": true,
+      "value": "radio button",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e13",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 6,
       "rect": {
-        "width": 73.00001525878906,
-        "x": 200.3333282470703,
         "y": 241.66666412353516,
+        "x": 200.3333282470703,
+        "width": 73.00001525878906,
         "height": 36.00000762939453
       },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "size-large",
       "parentIndex": 8,
+      "hittable": true,
       "label": "Large",
-      "value": "radio button",
       "index": 13,
-      "ref": "e14"
+      "identifier": "size-large",
+      "enabled": true,
+      "value": "radio button",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e14",
+      "kind": "other"
     },
     {
-      "index": 14,
-      "depth": 6,
-      "enabled": true,
       "rect": {
-        "width": 354,
-        "x": 24,
         "y": 297.6666717529297,
-        "height": 19.333328247070312
+        "height": 19.333328247070312,
+        "x": 24,
+        "width": 354
       },
-      "type": "StaticText",
       "parentIndex": 8,
+      "hittable": true,
       "label": "Toppings",
-      "hittable": true,
-      "ref": "e15"
+      "index": 14,
+      "enabled": true,
+      "type": "StaticText",
+      "depth": 6,
+      "ref": "e15",
+      "kind": "text"
     },
     {
-      "hittable": true,
-      "depth": 6,
       "rect": {
-        "width": 354,
-        "x": 24,
         "y": 329,
-        "height": 36
+        "height": 36,
+        "x": 24,
+        "width": 354
       },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "topping-cheese",
       "parentIndex": 8,
+      "hittable": true,
       "label": "Cheese",
-      "value": "checkbox, unchecked",
       "index": 15,
-      "ref": "e16"
+      "identifier": "topping-cheese",
+      "enabled": true,
+      "value": "checkbox, unchecked",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e16",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 6,
       "rect": {
-        "width": 354,
-        "x": 24,
         "y": 377,
-        "height": 36
+        "height": 36,
+        "x": 24,
+        "width": 354
       },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "topping-olives",
       "parentIndex": 8,
+      "hittable": true,
       "label": "Olives",
-      "value": "checkbox, unchecked",
       "index": 16,
-      "ref": "e17"
+      "identifier": "topping-olives",
+      "enabled": true,
+      "value": "checkbox, unchecked",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e17",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 6,
       "rect": {
-        "width": 354,
-        "x": 24,
         "y": 425,
-        "height": 36
+        "height": 36,
+        "x": 24,
+        "width": 354
       },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "topping-mushrooms",
       "parentIndex": 8,
+      "hittable": true,
       "label": "Mushrooms",
-      "value": "checkbox, unchecked",
       "index": 17,
-      "ref": "e18"
-    },
-    {
-      "hittable": true,
-      "depth": 6,
-      "rect": {
-        "width": 354,
-        "x": 24,
-        "y": 473,
-        "height": 36
-      },
+      "identifier": "topping-mushrooms",
       "enabled": true,
-      "type": "Other",
-      "identifier": "topping-onions",
-      "parentIndex": 8,
-      "label": "Onions",
       "value": "checkbox, unchecked",
-      "index": 18,
-      "ref": "e19"
-    },
-    {
-      "index": 19,
-      "depth": 6,
-      "enabled": true,
-      "rect": {
-        "width": 97.66666412353516,
-        "x": 24,
-        "y": 533.333333492279,
-        "height": 19.33331298828125
-      },
-      "type": "StaticText",
-      "parentIndex": 8,
-      "label": "Rush delivery",
-      "hittable": true,
-      "ref": "e20"
-    },
-    {
-      "index": 20,
-      "depth": 6,
-      "enabled": true,
-      "rect": {
-        "width": 63,
-        "x": 315,
-        "y": 529,
-        "height": 28
-      },
       "type": "Other",
-      "parentIndex": 8,
-      "label": "0",
-      "hittable": true,
-      "ref": "e21"
-    },
-    {
-      "hittable": true,
-      "depth": 7,
-      "rect": {
-        "width": 63,
-        "x": 315,
-        "y": 529,
-        "height": 28
-      },
-      "enabled": true,
-      "type": "Switch",
-      "identifier": "rush-delivery",
-      "parentIndex": 20,
-      "label": "0",
-      "value": "0",
-      "index": 21,
-      "ref": "e22"
-    },
-    {
-      "index": 22,
       "depth": 6,
-      "enabled": true,
+      "ref": "e18",
+      "kind": "other"
+    },
+    {
       "rect": {
+        "y": 473,
         "width": 354,
-        "x": 24,
-        "y": 577,
-        "height": 19.333343505859375
+        "height": 36,
+        "x": 24
       },
-      "type": "StaticText",
       "parentIndex": 8,
-      "label": "Delivery notes",
       "hittable": true,
-      "ref": "e23"
+      "label": "Onions",
+      "index": 18,
+      "identifier": "topping-onions",
+      "enabled": true,
+      "value": "checkbox, unchecked",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e19",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 6,
       "rect": {
-        "width": 352,
-        "x": 25,
-        "y": 609.3333435058594,
-        "height": 43.333343505859375
+        "y": 533.333333492279,
+        "width": 97.66666412353516,
+        "height": 19.33331298828125,
+        "x": 24
       },
-      "enabled": true,
-      "type": "TextField",
-      "identifier": "delivery-notes",
       "parentIndex": 8,
-      "placeholder": "Ring the doorbell twice",
+      "hittable": true,
+      "label": "Rush delivery",
+      "enabled": true,
+      "index": 19,
+      "type": "StaticText",
+      "depth": 6,
+      "ref": "e20",
+      "kind": "text"
+    },
+    {
+      "rect": {
+        "y": 529,
+        "width": 63,
+        "height": 28,
+        "x": 315
+      },
+      "parentIndex": 8,
+      "hittable": true,
+      "label": "0",
+      "enabled": true,
+      "index": 20,
+      "type": "Other",
+      "depth": 6,
+      "ref": "e21",
+      "kind": "other"
+    },
+    {
+      "rect": {
+        "x": 315,
+        "height": 28,
+        "y": 529,
+        "width": 63
+      },
+      "parentIndex": 20,
+      "hittable": true,
+      "label": "0",
+      "index": 21,
+      "identifier": "rush-delivery",
+      "enabled": true,
+      "value": "0",
+      "type": "Switch",
+      "depth": 7,
+      "ref": "e22",
+      "kind": "switch"
+    },
+    {
+      "rect": {
+        "y": 577,
+        "height": 19.333343505859375,
+        "x": 24,
+        "width": 354
+      },
+      "parentIndex": 8,
+      "hittable": true,
+      "label": "Delivery notes",
+      "enabled": true,
+      "index": 22,
+      "type": "StaticText",
+      "depth": 6,
+      "ref": "e23",
+      "kind": "text"
+    },
+    {
+      "rect": {
+        "x": 25,
+        "height": 43.333343505859375,
+        "y": 609.3333435058594,
+        "width": 352
+      },
+      "parentIndex": 8,
+      "hittable": true,
+      "identifier": "delivery-notes",
+      "enabled": true,
       "index": 23,
-      "ref": "e24"
+      "placeholder": "Ring the doorbell twice",
+      "type": "TextField",
+      "depth": 6,
+      "ref": "e24",
+      "kind": "text-field"
     },
     {
       "hittable": false,
-      "depth": 6,
-      "enabled": false,
-      "rect": {
-        "width": 354,
-        "x": 24,
-        "y": 673.6666870117188,
-        "height": 47.33331298828125
-      },
-      "type": "Other",
-      "identifier": "place-order",
-      "parentIndex": 8,
       "label": "Place order",
+      "rect": {
+        "x": 24,
+        "height": 47.33331298828125,
+        "y": 673.6666870117188,
+        "width": 354
+      },
+      "enabled": false,
       "index": 24,
-      "ref": "e25"
+      "depth": 6,
+      "identifier": "place-order",
+      "type": "Other",
+      "parentIndex": 8,
+      "ref": "e25",
+      "kind": "other"
     },
     {
       "hittable": true,
-      "depth": 5,
-      "enabled": true,
       "rect": {
         "width": 30,
         "x": 369,
         "y": 144,
         "height": 668
       },
-      "type": "Other",
-      "parentIndex": 7,
+      "enabled": true,
+      "index": 25,
       "label": "Vertical scroll bar, 1 page",
       "value": "0%",
-      "index": 25,
-      "ref": "e26"
+      "depth": 5,
+      "type": "Other",
+      "parentIndex": 7,
+      "ref": "e26",
+      "kind": "other"
     },
     {
       "hittable": true,
-      "depth": 5,
-      "enabled": true,
       "rect": {
         "width": 278,
         "x": 62,
         "y": 807,
         "height": 30
       },
-      "type": "Other",
-      "parentIndex": 7,
+      "enabled": true,
+      "index": 26,
       "label": "Horizontal scroll bar, 1 page",
       "value": "0%",
-      "index": 26,
-      "ref": "e27"
+      "depth": 5,
+      "type": "Other",
+      "parentIndex": 7,
+      "ref": "e27",
+      "kind": "other"
     }
   ],
   "truncated": false,

@@ -1,184 +1,195 @@
 {
   "nodes": [
     {
-      "index": 0,
-      "enabled": true,
-      "type": "Application",
-      "rect": {
-        "y": 0,
-        "width": 402,
-        "x": 0,
-        "height": 874
-      },
       "hittable": false,
       "label": "e2e Benchmark",
-      "depth": 0,
-      "ref": "e1"
-    },
-    {
-      "index": 1,
-      "enabled": true,
-      "type": "Other",
+      "index": 0,
       "rect": {
         "y": 0,
         "width": 402,
-        "x": 0,
-        "height": 874
+        "height": 874,
+        "x": 0
       },
-      "parentIndex": 0,
+      "depth": 0,
+      "type": "Application",
+      "enabled": true,
+      "ref": "e1",
+      "kind": "application"
+    },
+    {
       "hittable": true,
       "label": "Benchmark Examples",
-      "depth": 1,
-      "ref": "e2"
-    },
-    {
-      "index": 2,
-      "enabled": true,
-      "type": "NavigationBar",
+      "index": 1,
       "rect": {
-        "x": 0,
-        "width": 402,
-        "height": 54,
-        "y": 62
-      },
-      "parentIndex": 1,
-      "hittable": true,
-      "label": "Benchmark Examples",
-      "depth": 2,
-      "identifier": "Login Form",
-      "ref": "e3"
-    },
-    {
-      "index": 3,
-      "enabled": true,
-      "type": "Button",
-      "rect": {
-        "x": 16.00000000000001,
-        "width": 219.66666666666666,
-        "height": 44,
-        "y": 62
-      },
-      "parentIndex": 2,
-      "hittable": true,
-      "label": "Benchmark Examples",
-      "depth": 3,
-      "identifier": "BackButton",
-      "ref": "e4"
-    },
-    {
-      "index": 4,
-      "enabled": true,
-      "type": "StaticText",
-      "rect": {
-        "x": 247.66666666666669,
-        "width": 89,
-        "height": 20.66666666666667,
-        "y": 73.66666666666666
-      },
-      "parentIndex": 2,
-      "hittable": true,
-      "label": "Login Form",
-      "depth": 3,
-      "ref": "e5"
-    },
-    {
-      "index": 5,
-      "enabled": true,
-      "type": "Other",
-      "rect": {
-        "x": 0,
+        "y": 0,
         "width": 402,
         "height": 874,
-        "y": 0
+        "x": 0
       },
+      "depth": 1,
+      "type": "Other",
+      "parentIndex": 0,
+      "enabled": true,
+      "ref": "e2",
+      "kind": "other"
+    },
+    {
+      "identifier": "Login Form",
+      "label": "Benchmark Examples",
+      "index": 2,
+      "hittable": true,
+      "rect": {
+        "y": 62,
+        "width": 402,
+        "height": 54,
+        "x": 0
+      },
+      "depth": 2,
+      "type": "NavigationBar",
       "parentIndex": 1,
+      "enabled": true,
+      "ref": "e3",
+      "kind": "navigation-bar"
+    },
+    {
+      "identifier": "BackButton",
+      "label": "Benchmark Examples",
+      "index": 3,
+      "hittable": true,
+      "rect": {
+        "y": 62,
+        "width": 219.66666666666666,
+        "height": 44,
+        "x": 16.00000000000001
+      },
+      "depth": 3,
+      "type": "Button",
+      "parentIndex": 2,
+      "enabled": true,
+      "ref": "e4",
+      "kind": "button"
+    },
+    {
+      "hittable": true,
+      "label": "Login Form",
+      "enabled": true,
+      "index": 4,
+      "rect": {
+        "y": 73.66666666666666,
+        "width": 89,
+        "height": 20.66666666666667,
+        "x": 247.66666666666669
+      },
+      "depth": 3,
+      "type": "StaticText",
+      "parentIndex": 2,
+      "ref": "e5",
+      "kind": "text"
+    },
+    {
       "hittable": true,
       "label": "Use tester@tester.army / benchmark123",
+      "enabled": true,
+      "index": 5,
+      "rect": {
+        "y": 0,
+        "width": 402,
+        "height": 874,
+        "x": 0
+      },
       "depth": 2,
-      "ref": "e6"
+      "type": "Other",
+      "parentIndex": 1,
+      "ref": "e6",
+      "kind": "other"
     },
     {
-      "index": 6,
+      "hittable": true,
       "enabled": true,
-      "type": "Other",
+      "index": 6,
       "rect": {
-        "x": 0,
+        "y": 116,
         "width": 402,
         "height": 758,
-        "y": 116
+        "x": 0
       },
-      "parentIndex": 5,
-      "hittable": true,
       "depth": 3,
+      "type": "Other",
+      "parentIndex": 5,
       "ref": "e7",
+      "kind": "other",
       "inheritsLabel": true
     },
     {
+      "hittable": true,
+      "enabled": true,
       "index": 7,
-      "depth": 4,
       "rect": {
-        "x": 24,
+        "y": 406,
         "width": 354,
         "height": 15.666656494140625,
-        "y": 406
+        "x": 24
       },
-      "enabled": true,
+      "depth": 4,
       "type": "StaticText",
       "parentIndex": 6,
-      "hittable": true,
       "ref": "e8",
+      "kind": "text",
       "inheritsLabel": true
     },
     {
       "hittable": true,
-      "depth": 4,
       "rect": {
-        "x": 25,
+        "y": 434.6666564941406,
         "width": 352,
         "height": 39.333343505859375,
-        "y": 434.6666564941406
+        "x": 25
       },
       "enabled": true,
-      "type": "TextField",
-      "identifier": "email-input",
-      "parentIndex": 6,
-      "placeholder": "Email",
       "index": 8,
-      "ref": "e9"
+      "placeholder": "Email",
+      "depth": 4,
+      "identifier": "email-input",
+      "type": "TextField",
+      "parentIndex": 6,
+      "ref": "e9",
+      "kind": "text-field"
     },
     {
       "hittable": true,
-      "depth": 4,
       "rect": {
-        "x": 25,
+        "y": 488,
         "width": 352,
         "height": 39.333343505859375,
-        "y": 488
+        "x": 25
       },
       "enabled": true,
-      "type": "SecureTextField",
-      "identifier": "password-input",
-      "parentIndex": 6,
-      "placeholder": "Password",
       "index": 9,
-      "ref": "e10"
+      "placeholder": "Password",
+      "depth": 4,
+      "identifier": "password-input",
+      "type": "SecureTextField",
+      "parentIndex": 6,
+      "ref": "e10",
+      "kind": "securetextfield"
     },
     {
       "hittable": true,
-      "depth": 4,
+      "label": "Log in",
+      "enabled": true,
+      "index": 10,
       "rect": {
-        "x": 24,
+        "y": 540.6666564941406,
         "width": 354,
         "height": 43.333343505859375,
-        "y": 540.6666564941406
+        "x": 24
       },
-      "enabled": true,
-      "type": "Other",
+      "depth": 4,
       "identifier": "login-button",
+      "type": "Other",
       "parentIndex": 6,
-      "label": "Log in",
-      "index": 10,
-      "ref": "e11"
+      "ref": "e11",
+      "kind": "other"
     }
   ],
   "truncated": false,

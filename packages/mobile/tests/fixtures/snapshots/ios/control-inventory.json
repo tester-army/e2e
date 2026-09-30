@@ -1,620 +1,657 @@
 {
   "nodes": [
     {
-      "hittable": false,
       "enabled": true,
+      "depth": 0,
+      "label": "e2e Benchmark",
+      "hittable": false,
+      "type": "Application",
       "rect": {
-        "y": 0,
         "width": 402,
+        "y": 0,
         "x": 0,
         "height": 874
       },
-      "type": "Application",
-      "label": "e2e Benchmark",
       "index": 0,
-      "depth": 0,
-      "ref": "e1"
+      "ref": "e1",
+      "kind": "application"
     },
     {
-      "hittable": true,
       "enabled": true,
-      "rect": {
-        "width": 402,
-        "y": 0,
-        "x": 0,
-        "height": 874
-      },
-      "type": "Other",
+      "depth": 1,
       "label": "Benchmark Examples",
       "parentIndex": 0,
+      "hittable": true,
+      "type": "Other",
+      "rect": {
+        "width": 402,
+        "y": 0,
+        "x": 0,
+        "height": 874
+      },
       "index": 1,
-      "depth": 1,
-      "ref": "e2"
+      "ref": "e2",
+      "kind": "other"
     },
     {
-      "enabled": true,
+      "index": 2,
+      "label": "Benchmark Examples",
       "hittable": true,
+      "type": "NavigationBar",
       "identifier": "Control Inventory",
+      "parentIndex": 1,
       "rect": {
         "width": 402,
         "y": 62,
         "x": 0,
         "height": 54
       },
-      "type": "NavigationBar",
-      "label": "Benchmark Examples",
-      "parentIndex": 1,
-      "index": 2,
+      "enabled": true,
       "depth": 2,
-      "ref": "e3"
+      "ref": "e3",
+      "kind": "navigation-bar"
     },
     {
-      "enabled": true,
+      "index": 3,
+      "label": "Benchmark Examples",
       "hittable": true,
+      "type": "Button",
       "identifier": "BackButton",
+      "parentIndex": 2,
       "rect": {
         "width": 44,
         "y": 62,
         "x": 16,
         "height": 44
       },
-      "type": "Button",
-      "label": "Benchmark Examples",
-      "parentIndex": 2,
-      "index": 3,
+      "enabled": true,
       "depth": 3,
-      "ref": "e4"
+      "ref": "e4",
+      "kind": "button"
     },
     {
+      "index": 4,
+      "label": "Control Inventory",
       "hittable": true,
-      "enabled": true,
+      "type": "StaticText",
+      "parentIndex": 2,
       "rect": {
         "width": 138,
         "y": 73.66666666666666,
         "x": 132,
         "height": 20.66666666666667
       },
-      "type": "StaticText",
-      "label": "Control Inventory",
-      "parentIndex": 2,
-      "index": 4,
+      "enabled": true,
       "depth": 3,
-      "ref": "e5"
+      "ref": "e5",
+      "kind": "text"
     },
     {
-      "hittable": true,
-      "enabled": true,
-      "rect": {
-        "width": 402,
-        "y": 116,
-        "x": 0,
-        "height": 758
-      },
-      "type": "Other",
-      "label": "Vertical scroll bar, 1 page",
-      "parentIndex": 1,
       "index": 5,
+      "label": "Vertical scroll bar, 1 page",
+      "hittable": true,
+      "type": "Other",
+      "parentIndex": 1,
+      "rect": {
+        "x": 0,
+        "height": 758,
+        "y": 116,
+        "width": 402
+      },
+      "enabled": true,
       "depth": 2,
-      "ref": "e6"
+      "ref": "e6",
+      "kind": "other"
     },
     {
-      "enabled": true,
-      "hittable": true,
-      "identifier": "inventory-scroll",
-      "rect": {
-        "width": 402,
-        "y": 116,
-        "x": 0,
-        "height": 758
-      },
-      "type": "Other",
-      "label": "Inventory heading",
-      "parentIndex": 5,
       "index": 6,
+      "label": "Inventory heading",
+      "hittable": true,
+      "type": "Other",
+      "identifier": "inventory-scroll",
+      "parentIndex": 5,
+      "rect": {
+        "x": 0,
+        "height": 758,
+        "y": 116,
+        "width": 402
+      },
+      "enabled": true,
       "depth": 3,
-      "ref": "e7"
+      "ref": "e7",
+      "kind": "other"
     },
     {
       "index": 7,
-      "depth": 4,
-      "rect": {
-        "width": 402,
-        "y": 116,
-        "x": 0,
-        "height": 758
-      },
-      "enabled": true,
-      "type": "ScrollView",
-      "parentIndex": 6,
       "label": "Inventory heading",
       "hittable": true,
-      "ref": "e8"
+      "type": "ScrollView",
+      "parentIndex": 6,
+      "rect": {
+        "x": 0,
+        "height": 758,
+        "y": 116,
+        "width": 402
+      },
+      "enabled": true,
+      "depth": 4,
+      "ref": "e8",
+      "kind": "scroll-area"
     },
     {
       "index": 8,
-      "depth": 5,
-      "rect": {
-        "width": 402,
-        "y": 116,
-        "x": 0,
-        "height": 451
-      },
-      "enabled": true,
-      "type": "Other",
-      "parentIndex": 7,
       "label": "Inventory heading",
       "hittable": true,
-      "ref": "e9"
+      "type": "Other",
+      "parentIndex": 7,
+      "rect": {
+        "x": 0,
+        "height": 451,
+        "y": 116,
+        "width": 402
+      },
+      "enabled": true,
+      "depth": 5,
+      "ref": "e9",
+      "kind": "other"
     },
     {
+      "index": 9,
+      "label": "Inventory heading",
       "hittable": true,
-      "depth": 6,
-      "enabled": true,
-      "rect": {
-        "width": 370,
-        "y": 132,
-        "x": 16,
-        "height": 21.666667938232422
-      },
       "type": "StaticText",
       "identifier": "inventory-header",
       "parentIndex": 8,
-      "label": "Inventory heading",
-      "index": 9,
-      "ref": "e10"
+      "rect": {
+        "x": 16,
+        "height": 21.666667938232422,
+        "y": 132,
+        "width": 370
+      },
+      "enabled": true,
+      "depth": 6,
+      "ref": "e10",
+      "kind": "text"
     },
     {
       "index": 10,
-      "depth": 7,
-      "rect": {
-        "width": 370,
-        "y": 132,
-        "x": 16,
-        "height": 21.666667938232422
-      },
-      "enabled": true,
-      "type": "StaticText",
-      "parentIndex": 9,
       "label": "Inventory heading",
       "hittable": true,
-      "ref": "e11"
+      "type": "StaticText",
+      "parentIndex": 9,
+      "rect": {
+        "x": 16,
+        "height": 21.666667938232422,
+        "y": 132,
+        "width": 370
+      },
+      "enabled": true,
+      "depth": 7,
+      "ref": "e11",
+      "kind": "text"
     },
     {
+      "index": 11,
+      "label": "scheme: light",
       "hittable": true,
-      "depth": 6,
-      "enabled": true,
-      "rect": {
-        "width": 370,
-        "y": 161.66666793823242,
-        "x": 16,
-        "height": 17
-      },
       "type": "StaticText",
       "identifier": "color-scheme",
       "parentIndex": 8,
-      "label": "scheme: light",
-      "index": 11,
-      "ref": "e12"
-    },
-    {
-      "index": 12,
-      "depth": 7,
-      "rect": {
-        "width": 370,
-        "y": 161.66666793823242,
-        "x": 16,
-        "height": 17
-      },
-      "enabled": true,
-      "type": "StaticText",
-      "parentIndex": 11,
-      "label": "scheme: light",
-      "hittable": true,
-      "ref": "e13"
-    },
-    {
-      "hittable": true,
-      "depth": 6,
-      "enabled": true,
-      "rect": {
-        "width": 370,
-        "y": 186.66666412353516,
-        "x": 16,
-        "height": 17
-      },
-      "type": "StaticText",
-      "identifier": "orientation",
-      "parentIndex": 8,
-      "label": "orientation: portrait",
-      "index": 13,
-      "ref": "e14"
-    },
-    {
-      "index": 14,
-      "depth": 7,
-      "rect": {
-        "width": 370,
-        "y": 186.66666412353516,
-        "x": 16,
-        "height": 17
-      },
-      "enabled": true,
-      "type": "StaticText",
-      "parentIndex": 13,
-      "label": "orientation: portrait",
-      "hittable": true,
-      "ref": "e15"
-    },
-    {
-      "hittable": true,
-      "depth": 6,
-      "enabled": true,
-      "rect": {
-        "width": 370,
-        "y": 211.66666412353516,
-        "x": 16,
-        "height": 17
-      },
-      "type": "StaticText",
-      "identifier": "window-size",
-      "parentIndex": 8,
-      "label": "402x874",
-      "index": 15,
-      "ref": "e16"
-    },
-    {
-      "index": 16,
-      "depth": 7,
-      "rect": {
-        "width": 370,
-        "y": 211.66666412353516,
-        "x": 16,
-        "height": 17
-      },
-      "enabled": true,
-      "type": "StaticText",
-      "parentIndex": 15,
-      "label": "402x874",
-      "hittable": true,
-      "ref": "e17"
-    },
-    {
-      "index": 17,
-      "depth": 6,
-      "rect": {
-        "width": 370,
-        "y": 236.66666412353516,
-        "x": 16,
-        "height": 36.00000762939453
-      },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "section-tabs",
-      "parentIndex": 8,
-      "hittable": true,
-      "ref": "e18"
-    },
-    {
-      "hittable": true,
-      "depth": 6,
-      "enabled": true,
-      "rect": {
-        "width": 74.33333587646484,
-        "y": 236.66666412353516,
-        "x": 16,
-        "height": 36.00000762939453
-      },
-      "type": "Other",
-      "identifier": "tab-fields",
-      "selected": true,
-      "parentIndex": 8,
-      "label": "Fields",
-      "index": 18,
-      "ref": "e19"
-    },
-    {
-      "hittable": true,
-      "depth": 6,
-      "enabled": true,
-      "rect": {
-        "width": 87.99999237060547,
-        "y": 236.66666412353516,
-        "x": 98.33333587646484,
-        "height": 36.00000762939453
-      },
-      "type": "Other",
-      "identifier": "tab-toggles",
-      "parentIndex": 8,
-      "label": "Toggles",
-      "index": 19,
-      "ref": "e20"
-    },
-    {
-      "hittable": true,
-      "depth": 6,
-      "enabled": true,
-      "rect": {
-        "width": 96.00001525878906,
-        "y": 236.66666412353516,
-        "x": 194.3333282470703,
-        "height": 36.00000762939453
-      },
-      "type": "Other",
-      "identifier": "tab-gestures",
-      "parentIndex": 8,
-      "label": "Gestures",
-      "index": 20,
-      "ref": "e21"
-    },
-    {
-      "hittable": true,
-      "depth": 6,
-      "rect": {
-        "y": 236.66666412353516,
-        "width": 81,
-        "x": 298.3333435058594,
-        "height": 36.00000762939453
-      },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "tab-device",
-      "parentIndex": 8,
-      "label": "Device",
-      "index": 21,
-      "ref": "e22"
-    },
-    {
-      "index": 22,
-      "depth": 6,
-      "rect": {
-        "y": 284.6666717529297,
-        "width": 370,
-        "x": 16,
-        "height": 41.33332824707031
-      },
-      "enabled": true,
-      "type": "Other",
-      "parentIndex": 8,
-      "label": "Name field",
-      "hittable": true,
-      "ref": "e23"
-    },
-    {
-      "hittable": true,
-      "depth": 7,
-      "rect": {
-        "y": 285.6666717529297,
-        "width": 368,
-        "x": 17,
-        "height": 39.33332824707031
-      },
-      "enabled": true,
-      "type": "TextField",
-      "identifier": "name-input",
-      "parentIndex": 22,
-      "label": "Name field",
-      "value": "Ada Lovelace",
-      "placeholder": "Type your name",
-      "index": 23,
-      "ref": "e24"
-    },
-    {
-      "hittable": true,
-      "depth": 6,
-      "rect": {
-        "y": 334.00000381469727,
-        "width": 370,
-        "x": 16,
-        "height": 17
-      },
-      "enabled": true,
-      "type": "StaticText",
-      "identifier": "name-echo",
-      "parentIndex": 8,
-      "label": "name: Ada Lovelace",
-      "index": 24,
-      "ref": "e25"
-    },
-    {
-      "index": 25,
-      "depth": 7,
-      "rect": {
-        "y": 334.00000381469727,
-        "width": 370,
-        "x": 16,
-        "height": 17
-      },
-      "enabled": true,
-      "type": "StaticText",
-      "parentIndex": 24,
-      "label": "name: Ada Lovelace",
-      "hittable": true,
-      "ref": "e26"
-    },
-    {
-      "index": 26,
-      "depth": 6,
-      "rect": {
-        "y": 359.00000762939453,
-        "width": 370,
-        "x": 16,
-        "height": 41.333343505859375
-      },
-      "enabled": true,
-      "type": "Other",
-      "parentIndex": 8,
-      "label": "Passphrase field",
-      "hittable": true,
-      "ref": "e27"
-    },
-    {
-      "hittable": true,
-      "depth": 7,
-      "rect": {
-        "y": 360.00000762939453,
-        "width": 368,
-        "x": 17,
-        "height": 39.333343505859375
-      },
-      "enabled": true,
-      "type": "SecureTextField",
-      "identifier": "passphrase-input",
-      "parentIndex": 26,
-      "label": "Passphrase field",
-      "placeholder": "Passphrase",
-      "index": 27,
-      "ref": "e28"
-    },
-    {
-      "type": "StaticText",
-      "depth": 6,
-      "identifier": "passphrase-length",
-      "label": "passphrase length: 0",
       "rect": {
         "x": 16,
         "height": 17,
-        "width": 370,
-        "y": 408.33333587646484
+        "y": 161.66666793823242,
+        "width": 370
       },
       "enabled": true,
-      "index": 28,
-      "hittable": true,
-      "parentIndex": 8,
-      "ref": "e29"
+      "depth": 6,
+      "ref": "e12",
+      "kind": "text"
     },
     {
+      "index": 12,
+      "label": "scheme: light",
+      "hittable": true,
       "type": "StaticText",
-      "depth": 7,
+      "parentIndex": 11,
+      "rect": {
+        "x": 16,
+        "height": 17,
+        "y": 161.66666793823242,
+        "width": 370
+      },
       "enabled": true,
+      "depth": 7,
+      "ref": "e13",
+      "kind": "text"
+    },
+    {
+      "index": 13,
+      "label": "orientation: portrait",
+      "hittable": true,
+      "type": "StaticText",
+      "identifier": "orientation",
+      "parentIndex": 8,
+      "rect": {
+        "x": 16,
+        "height": 17,
+        "y": 186.66666412353516,
+        "width": 370
+      },
+      "enabled": true,
+      "depth": 6,
+      "ref": "e14",
+      "kind": "text"
+    },
+    {
+      "index": 14,
+      "label": "orientation: portrait",
+      "hittable": true,
+      "type": "StaticText",
+      "parentIndex": 13,
+      "rect": {
+        "x": 16,
+        "height": 17,
+        "y": 186.66666412353516,
+        "width": 370
+      },
+      "enabled": true,
+      "depth": 7,
+      "ref": "e15",
+      "kind": "text"
+    },
+    {
+      "index": 15,
+      "label": "402x874",
+      "hittable": true,
+      "type": "StaticText",
+      "identifier": "window-size",
+      "parentIndex": 8,
+      "rect": {
+        "x": 16,
+        "height": 17,
+        "y": 211.66666412353516,
+        "width": 370
+      },
+      "enabled": true,
+      "depth": 6,
+      "ref": "e16",
+      "kind": "text"
+    },
+    {
+      "index": 16,
+      "label": "402x874",
+      "hittable": true,
+      "type": "StaticText",
+      "parentIndex": 15,
+      "rect": {
+        "x": 16,
+        "height": 17,
+        "y": 211.66666412353516,
+        "width": 370
+      },
+      "enabled": true,
+      "depth": 7,
+      "ref": "e17",
+      "kind": "text"
+    },
+    {
+      "index": 17,
+      "hittable": true,
+      "type": "Other",
+      "identifier": "section-tabs",
+      "parentIndex": 8,
+      "rect": {
+        "x": 16,
+        "height": 36.00000762939453,
+        "y": 236.66666412353516,
+        "width": 370
+      },
+      "enabled": true,
+      "depth": 6,
+      "ref": "e18",
+      "kind": "other"
+    },
+    {
+      "index": 18,
+      "label": "Fields",
+      "hittable": true,
+      "type": "Other",
+      "identifier": "tab-fields",
+      "parentIndex": 8,
+      "rect": {
+        "x": 16,
+        "height": 36.00000762939453,
+        "y": 236.66666412353516,
+        "width": 74.33333587646484
+      },
+      "selected": true,
+      "enabled": true,
+      "depth": 6,
+      "ref": "e19",
+      "kind": "other"
+    },
+    {
+      "index": 19,
+      "label": "Toggles",
+      "hittable": true,
+      "type": "Other",
+      "identifier": "tab-toggles",
+      "parentIndex": 8,
+      "rect": {
+        "x": 98.33333587646484,
+        "height": 36.00000762939453,
+        "y": 236.66666412353516,
+        "width": 87.99999237060547
+      },
+      "enabled": true,
+      "depth": 6,
+      "ref": "e20",
+      "kind": "other"
+    },
+    {
+      "index": 20,
+      "label": "Gestures",
+      "hittable": true,
+      "type": "Other",
+      "identifier": "tab-gestures",
+      "parentIndex": 8,
+      "rect": {
+        "x": 194.3333282470703,
+        "height": 36.00000762939453,
+        "y": 236.66666412353516,
+        "width": 96.00001525878906
+      },
+      "enabled": true,
+      "depth": 6,
+      "ref": "e21",
+      "kind": "other"
+    },
+    {
+      "index": 21,
+      "label": "Device",
+      "hittable": true,
+      "type": "Other",
+      "identifier": "tab-device",
+      "parentIndex": 8,
+      "rect": {
+        "x": 298.3333435058594,
+        "height": 36.00000762939453,
+        "y": 236.66666412353516,
+        "width": 81
+      },
+      "enabled": true,
+      "depth": 6,
+      "ref": "e22",
+      "kind": "other"
+    },
+    {
+      "index": 22,
+      "label": "Name field",
+      "hittable": true,
+      "type": "Other",
+      "parentIndex": 8,
+      "rect": {
+        "x": 16,
+        "height": 41.33332824707031,
+        "y": 284.6666717529297,
+        "width": 370
+      },
+      "enabled": true,
+      "depth": 6,
+      "ref": "e23",
+      "kind": "other"
+    },
+    {
+      "hittable": true,
+      "label": "Name field",
+      "rect": {
+        "x": 17,
+        "height": 39.33332824707031,
+        "y": 285.6666717529297,
+        "width": 368
+      },
+      "index": 23,
+      "placeholder": "Type your name",
+      "value": "Ada Lovelace",
+      "enabled": true,
+      "identifier": "name-input",
+      "type": "TextField",
+      "depth": 7,
+      "parentIndex": 22,
+      "ref": "e24",
+      "kind": "text-field"
+    },
+    {
+      "hittable": true,
+      "label": "name: Ada Lovelace",
+      "rect": {
+        "x": 16,
+        "height": 17,
+        "y": 334.00000381469727,
+        "width": 370
+      },
+      "index": 24,
+      "enabled": true,
+      "depth": 6,
+      "identifier": "name-echo",
+      "type": "StaticText",
+      "parentIndex": 8,
+      "ref": "e25",
+      "kind": "text"
+    },
+    {
+      "hittable": true,
+      "label": "name: Ada Lovelace",
+      "rect": {
+        "x": 16,
+        "height": 17,
+        "y": 334.00000381469727,
+        "width": 370
+      },
+      "index": 25,
+      "enabled": true,
+      "depth": 7,
+      "type": "StaticText",
+      "parentIndex": 24,
+      "ref": "e26",
+      "kind": "text"
+    },
+    {
+      "hittable": true,
+      "label": "Passphrase field",
+      "rect": {
+        "x": 16,
+        "height": 41.333343505859375,
+        "y": 359.00000762939453,
+        "width": 370
+      },
+      "index": 26,
+      "enabled": true,
+      "depth": 6,
+      "type": "Other",
+      "parentIndex": 8,
+      "ref": "e27",
+      "kind": "other"
+    },
+    {
+      "hittable": true,
+      "rect": {
+        "height": 39.333343505859375,
+        "y": 360.00000762939453,
+        "x": 17,
+        "width": 368
+      },
+      "label": "Passphrase field",
+      "index": 27,
+      "placeholder": "Passphrase",
+      "enabled": true,
+      "depth": 7,
+      "identifier": "passphrase-input",
+      "type": "SecureTextField",
+      "parentIndex": 26,
+      "ref": "e28",
+      "kind": "securetextfield"
+    },
+    {
+      "hittable": true,
+      "label": "passphrase length: 0",
       "rect": {
         "width": 370,
         "y": 408.33333587646484,
         "x": 16,
         "height": 17
       },
-      "label": "passphrase length: 0",
-      "hittable": true,
-      "index": 29,
-      "parentIndex": 28,
-      "ref": "e30"
-    },
-    {
-      "type": "Other",
-      "depth": 6,
-      "label": "Key echo field",
+      "index": 28,
       "enabled": true,
-      "rect": {
-        "x": 16,
-        "height": 41.33331298828125,
-        "y": 433.3333435058594,
-        "width": 370
-      },
-      "index": 30,
-      "hittable": true,
+      "depth": 6,
+      "identifier": "passphrase-length",
+      "type": "StaticText",
       "parentIndex": 8,
-      "ref": "e31"
+      "ref": "e29",
+      "kind": "text"
     },
     {
-      "type": "TextField",
+      "hittable": true,
+      "rect": {
+        "width": 370,
+        "x": 16,
+        "y": 408.33333587646484,
+        "height": 17
+      },
+      "label": "passphrase length: 0",
+      "index": 29,
+      "enabled": true,
+      "depth": 7,
+      "type": "StaticText",
+      "parentIndex": 28,
+      "ref": "e30",
+      "kind": "text"
+    },
+    {
+      "hittable": true,
+      "rect": {
+        "width": 370,
+        "x": 16,
+        "y": 433.3333435058594,
+        "height": 41.33331298828125
+      },
+      "label": "Key echo field",
+      "index": 30,
+      "enabled": true,
+      "depth": 6,
+      "type": "Other",
+      "parentIndex": 8,
+      "ref": "e31",
+      "kind": "other"
+    },
+    {
+      "hittable": true,
+      "rect": {
+        "width": 368,
+        "x": 17,
+        "y": 434.3333435058594,
+        "height": 39.33331298828125
+      },
+      "label": "Key echo field",
+      "index": 31,
       "placeholder": "Key echo",
+      "enabled": true,
       "depth": 7,
       "identifier": "key-input",
-      "label": "Key echo field",
-      "rect": {
-        "x": 17,
-        "height": 39.33331298828125,
-        "y": 434.3333435058594,
-        "width": 368
-      },
-      "enabled": true,
-      "index": 31,
-      "hittable": true,
+      "type": "TextField",
       "parentIndex": 30,
-      "ref": "e32"
+      "ref": "e32",
+      "kind": "text-field"
     },
     {
-      "type": "StaticText",
+      "hittable": true,
+      "rect": {
+        "width": 370,
+        "x": 16,
+        "y": 482.6666717529297,
+        "height": 17
+      },
+      "label": "key: none",
+      "index": 32,
+      "enabled": true,
       "depth": 6,
       "identifier": "key-status",
-      "label": "key: none",
-      "enabled": true,
-      "rect": {
-        "x": 16,
-        "height": 17,
-        "y": 482.6666717529297,
-        "width": 370
-      },
-      "index": 32,
-      "hittable": true,
-      "parentIndex": 8,
-      "ref": "e33"
-    },
-    {
       "type": "StaticText",
-      "depth": 7,
-      "label": "key: none",
-      "enabled": true,
-      "rect": {
-        "x": 16,
-        "height": 17,
-        "y": 482.6666717529297,
-        "width": 370
-      },
-      "index": 33,
-      "hittable": true,
-      "parentIndex": 32,
-      "ref": "e34"
+      "parentIndex": 8,
+      "ref": "e33",
+      "kind": "text"
     },
     {
-      "type": "Button",
+      "hittable": true,
+      "rect": {
+        "width": 370,
+        "x": 16,
+        "y": 482.6666717529297,
+        "height": 17
+      },
+      "label": "key: none",
+      "index": 33,
+      "enabled": true,
+      "depth": 7,
+      "type": "StaticText",
+      "parentIndex": 32,
+      "ref": "e34",
+      "kind": "text"
+    },
+    {
+      "hittable": true,
+      "rect": {
+        "width": 370,
+        "x": 16,
+        "y": 507.6666717529297,
+        "height": 43.333343505859375
+      },
+      "label": "Show focus fields",
+      "index": 34,
+      "enabled": true,
       "depth": 6,
       "identifier": "show-focus-fields",
-      "label": "Show focus fields",
-      "enabled": true,
-      "rect": {
-        "x": 16,
-        "height": 43.333343505859375,
-        "y": 507.6666717529297,
-        "width": 370
-      },
-      "index": 34,
-      "hittable": true,
+      "type": "Button",
       "parentIndex": 8,
-      "ref": "e35"
+      "ref": "e35",
+      "kind": "button"
     },
     {
-      "type": "Other",
-      "parentIndex": 7,
-      "depth": 5,
+      "hittable": true,
+      "rect": {
+        "width": 30,
+        "x": 369,
+        "y": 144,
+        "height": 668
+      },
       "label": "Vertical scroll bar, 1 page",
+      "index": 35,
       "enabled": true,
       "value": "0%",
-      "index": 35,
-      "rect": {
-        "x": 369,
-        "height": 668,
-        "y": 144,
-        "width": 30
-      },
-      "hittable": true,
-      "ref": "e36"
-    },
-    {
+      "depth": 5,
       "type": "Other",
       "parentIndex": 7,
-      "depth": 5,
+      "ref": "e36",
+      "kind": "other"
+    },
+    {
+      "hittable": true,
       "label": "Horizontal scroll bar, 1 page",
       "enabled": true,
-      "value": "0%",
-      "index": 36,
       "rect": {
-        "x": 62,
         "height": 30,
         "y": 807,
+        "x": 62,
         "width": 278
       },
-      "hittable": true,
-      "ref": "e37"
+      "index": 36,
+      "value": "0%",
+      "depth": 5,
+      "type": "Other",
+      "parentIndex": 7,
+      "ref": "e37",
+      "kind": "other"
     }
   ],
   "truncated": false,

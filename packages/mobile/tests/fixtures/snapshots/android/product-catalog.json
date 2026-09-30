@@ -3,15 +3,15 @@
     {
       "index": 0,
       "type": "android.widget.TextView",
-      "label": "11:26",
-      "value": "11:26",
-      "contentDescription": "11:26 PM",
+      "label": "6:54",
+      "value": "6:54",
+      "contentDescription": "6:54 PM",
       "identifier": "com.android.systemui:id/clock",
       "bundleId": "com.android.systemui",
       "rect": {
         "x": 47,
         "y": 47,
-        "width": 125,
+        "width": 104,
         "height": 43
       },
       "enabled": true,
@@ -21,15 +21,16 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 0,
-      "ref": "e1"
+      "ref": "e1",
+      "kind": "text"
     },
     {
       "index": 1,
       "type": "android.widget.ImageView",
-      "label": "Android System notification: ",
+      "label": "Security & privacy notification: ",
       "bundleId": "com.android.systemui",
       "rect": {
-        "x": 172,
+        "x": 151,
         "y": 1,
         "width": 58,
         "height": 135
@@ -41,10 +42,32 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 0,
-      "ref": "e2"
+      "ref": "e2",
+      "kind": "image"
     },
     {
       "index": 2,
+      "type": "android.widget.ImageView",
+      "label": "Android System notification: ",
+      "bundleId": "com.android.systemui",
+      "rect": {
+        "x": 209,
+        "y": 1,
+        "width": 58,
+        "height": 135
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 0,
+      "ref": "e3",
+      "kind": "image"
+    },
+    {
+      "index": 3,
       "type": "android.widget.ImageView",
       "label": "Wifi signal full.",
       "identifier": "com.android.systemui:id/wifi_signal",
@@ -62,10 +85,11 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 0,
-      "ref": "e3"
+      "ref": "e4",
+      "kind": "image"
     },
     {
-      "index": 3,
+      "index": 4,
       "type": "android.widget.FrameLayout",
       "label": "T-Mobile, signal full.",
       "identifier": "com.android.systemui:id/mobile_combo",
@@ -83,10 +107,11 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 0,
-      "ref": "e4"
+      "ref": "e5",
+      "kind": "group"
     },
     {
-      "index": 4,
+      "index": 5,
       "type": "android.widget.ImageView",
       "identifier": "com.android.systemui:id/mobile_signal",
       "bundleId": "com.android.systemui",
@@ -103,11 +128,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 1,
-      "parentIndex": 3,
-      "ref": "e5"
+      "parentIndex": 4,
+      "ref": "e6",
+      "kind": "image"
     },
     {
-      "index": 5,
+      "index": 6,
       "type": "android.widget.LinearLayout",
       "label": "Battery charging, 100 percent.",
       "identifier": "com.android.systemui:id/battery",
@@ -125,10 +151,11 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 0,
-      "ref": "e6"
+      "ref": "e7",
+      "kind": "group"
     },
     {
-      "index": 6,
+      "index": 7,
       "type": "android.widget.ImageView",
       "bundleId": "com.android.systemui",
       "rect": {
@@ -144,11 +171,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 1,
-      "parentIndex": 5,
-      "ref": "e7"
+      "parentIndex": 6,
+      "ref": "e8",
+      "kind": "image"
     },
     {
-      "index": 7,
+      "index": 8,
       "type": "android.widget.FrameLayout",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -164,10 +192,11 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 0,
-      "ref": "e8"
+      "ref": "e9",
+      "kind": "group"
     },
     {
-      "index": 8,
+      "index": 9,
       "type": "android.widget.LinearLayout",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -183,11 +212,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 1,
-      "parentIndex": 7,
-      "ref": "e9"
+      "parentIndex": 8,
+      "ref": "e10",
+      "kind": "group"
     },
     {
-      "index": 9,
+      "index": 10,
       "type": "android.widget.FrameLayout",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -203,11 +233,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 2,
-      "parentIndex": 8,
-      "ref": "e10"
+      "parentIndex": 9,
+      "ref": "e11",
+      "kind": "group"
     },
     {
-      "index": 10,
+      "index": 11,
       "type": "android.widget.LinearLayout",
       "identifier": "dev.e2e.benchmark:id/action_bar_root",
       "bundleId": "dev.e2e.benchmark",
@@ -224,11 +255,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 3,
-      "parentIndex": 9,
-      "ref": "e11"
+      "parentIndex": 10,
+      "ref": "e12",
+      "kind": "group"
     },
     {
-      "index": 11,
+      "index": 12,
       "type": "android.widget.FrameLayout",
       "identifier": "android:id/content",
       "bundleId": "dev.e2e.benchmark",
@@ -245,11 +277,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 4,
-      "parentIndex": 10,
-      "ref": "e12"
+      "parentIndex": 11,
+      "ref": "e13",
+      "kind": "group"
     },
     {
-      "index": 12,
+      "index": 13,
       "type": "android.widget.FrameLayout",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -265,28 +298,9 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 5,
-      "parentIndex": 11,
-      "ref": "e13"
-    },
-    {
-      "index": 13,
-      "type": "android.view.ViewGroup",
-      "bundleId": "dev.e2e.benchmark",
-      "rect": {
-        "x": 0,
-        "y": 0,
-        "width": 1080,
-        "height": 2400
-      },
-      "enabled": true,
-      "selected": false,
-      "editable": false,
-      "password": false,
-      "hintShowing": false,
-      "visibleToUser": true,
-      "depth": 6,
       "parentIndex": 12,
-      "ref": "e14"
+      "ref": "e14",
+      "kind": "group"
     },
     {
       "index": 14,
@@ -304,12 +318,34 @@
       "password": false,
       "hintShowing": false,
       "visibleToUser": true,
-      "depth": 7,
+      "depth": 6,
       "parentIndex": 13,
-      "ref": "e15"
+      "ref": "e15",
+      "kind": "group"
     },
     {
       "index": 15,
+      "type": "android.view.ViewGroup",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1080,
+        "height": 2400
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 7,
+      "parentIndex": 14,
+      "ref": "e16",
+      "kind": "group"
+    },
+    {
+      "index": 16,
       "type": "android.widget.ScrollView",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -325,11 +361,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 8,
-      "parentIndex": 14,
-      "ref": "e16"
+      "parentIndex": 15,
+      "ref": "e17",
+      "kind": "scroll-area"
     },
     {
-      "index": 16,
+      "index": 17,
       "type": "android.widget.LinearLayout",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -345,11 +382,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 9,
-      "parentIndex": 15,
-      "ref": "e17"
+      "parentIndex": 16,
+      "ref": "e18",
+      "kind": "group"
     },
     {
-      "index": 17,
+      "index": 18,
       "type": "android.view.ViewGroup",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -365,11 +403,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 10,
-      "parentIndex": 16,
-      "ref": "e18"
+      "parentIndex": 17,
+      "ref": "e19",
+      "kind": "group"
     },
     {
-      "index": 18,
+      "index": 19,
       "type": "android.widget.ImageButton",
       "label": "Navigate up",
       "bundleId": "dev.e2e.benchmark",
@@ -387,11 +426,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 11,
-      "parentIndex": 17,
-      "ref": "e19"
+      "parentIndex": 18,
+      "ref": "e20",
+      "kind": "button"
     },
     {
-      "index": 19,
+      "index": 20,
       "type": "android.widget.TextView",
       "label": "Product Catalog",
       "value": "Product Catalog",
@@ -409,28 +449,9 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 11,
-      "parentIndex": 17,
-      "ref": "e20"
-    },
-    {
-      "index": 20,
-      "type": "android.view.ViewGroup",
-      "bundleId": "dev.e2e.benchmark",
-      "rect": {
-        "x": 0,
-        "y": 283,
-        "width": 1080,
-        "height": 2117
-      },
-      "enabled": true,
-      "selected": false,
-      "editable": false,
-      "password": false,
-      "hintShowing": false,
-      "visibleToUser": true,
-      "depth": 9,
-      "parentIndex": 15,
-      "ref": "e21"
+      "parentIndex": 18,
+      "ref": "e21",
+      "kind": "text"
     },
     {
       "index": 21,
@@ -448,12 +469,34 @@
       "password": false,
       "hintShowing": false,
       "visibleToUser": true,
-      "depth": 10,
-      "parentIndex": 20,
-      "ref": "e22"
+      "depth": 9,
+      "parentIndex": 16,
+      "ref": "e22",
+      "kind": "group"
     },
     {
       "index": 22,
+      "type": "android.view.ViewGroup",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 283,
+        "width": 1080,
+        "height": 2117
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 10,
+      "parentIndex": 21,
+      "ref": "e23",
+      "kind": "group"
+    },
+    {
+      "index": 23,
       "type": "android.widget.ScrollView",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -470,11 +513,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 11,
-      "parentIndex": 21,
-      "ref": "e23"
+      "parentIndex": 22,
+      "ref": "e24",
+      "kind": "scroll-area"
     },
     {
-      "index": 23,
+      "index": 24,
       "type": "android.view.ViewGroup",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -490,11 +534,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e24"
+      "parentIndex": 23,
+      "ref": "e25",
+      "kind": "group"
     },
     {
-      "index": 24,
+      "index": 25,
       "type": "android.widget.TextView",
       "label": "Add exactly 2 × Trail Mix 500 g to the cart, then review the cart",
       "value": "Add exactly 2 × Trail Mix 500 g to the cart, then review the cart",
@@ -512,11 +557,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e25"
+      "parentIndex": 24,
+      "ref": "e26",
+      "kind": "text"
     },
     {
-      "index": 25,
+      "index": 26,
       "type": "android.view.ViewGroup",
       "label": "Cart (0)",
       "identifier": "open-cart",
@@ -535,11 +581,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e26"
+      "parentIndex": 24,
+      "ref": "e27",
+      "kind": "group"
     },
     {
-      "index": 26,
+      "index": 27,
       "type": "android.widget.TextView",
       "label": "Cart (0)",
       "value": "Cart (0)",
@@ -557,11 +604,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 25,
-      "ref": "e27"
+      "parentIndex": 26,
+      "ref": "e28",
+      "kind": "text"
     },
     {
-      "index": 27,
+      "index": 28,
       "type": "android.view.ViewGroup",
       "label": "Trail Mix, 250 g · $3.99",
       "identifier": "product-trail-mix-250",
@@ -580,11 +628,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e28"
+      "parentIndex": 24,
+      "ref": "e29",
+      "kind": "group"
     },
     {
-      "index": 28,
+      "index": 29,
       "type": "android.widget.TextView",
       "label": "Trail Mix",
       "value": "Trail Mix",
@@ -602,11 +651,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 27,
-      "ref": "e29"
+      "parentIndex": 28,
+      "ref": "e30",
+      "kind": "text"
     },
     {
-      "index": 29,
+      "index": 30,
       "type": "android.widget.TextView",
       "label": "250 g · $3.99",
       "value": "250 g · $3.99",
@@ -624,11 +674,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 27,
-      "ref": "e30"
+      "parentIndex": 28,
+      "ref": "e31",
+      "kind": "text"
     },
     {
-      "index": 30,
+      "index": 31,
       "type": "android.view.ViewGroup",
       "label": "Favorite Trail Mix 250 g",
       "identifier": "favorite-trail-mix-250",
@@ -647,11 +698,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e31"
+      "parentIndex": 24,
+      "ref": "e32",
+      "kind": "group"
     },
     {
-      "index": 31,
+      "index": 32,
       "type": "android.widget.TextView",
       "label": "♡",
       "value": "♡",
@@ -669,11 +721,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 30,
-      "ref": "e32"
+      "parentIndex": 31,
+      "ref": "e33",
+      "kind": "text"
     },
     {
-      "index": 32,
+      "index": 33,
       "type": "android.view.ViewGroup",
       "label": "Trail Mix, 500 g · $6.99",
       "identifier": "product-trail-mix-500",
@@ -692,11 +745,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e33"
+      "parentIndex": 24,
+      "ref": "e34",
+      "kind": "group"
     },
     {
-      "index": 33,
+      "index": 34,
       "type": "android.widget.TextView",
       "label": "Trail Mix",
       "value": "Trail Mix",
@@ -714,11 +768,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 32,
-      "ref": "e34"
+      "parentIndex": 33,
+      "ref": "e35",
+      "kind": "text"
     },
     {
-      "index": 34,
+      "index": 35,
       "type": "android.widget.TextView",
       "label": "500 g · $6.99",
       "value": "500 g · $6.99",
@@ -736,11 +791,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 32,
-      "ref": "e35"
+      "parentIndex": 33,
+      "ref": "e36",
+      "kind": "text"
     },
     {
-      "index": 35,
+      "index": 36,
       "type": "android.view.ViewGroup",
       "label": "Favorite Trail Mix 500 g",
       "identifier": "favorite-trail-mix-500",
@@ -759,11 +815,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e36"
+      "parentIndex": 24,
+      "ref": "e37",
+      "kind": "group"
     },
     {
-      "index": 36,
+      "index": 37,
       "type": "android.widget.TextView",
       "label": "♡",
       "value": "♡",
@@ -781,11 +838,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 35,
-      "ref": "e37"
+      "parentIndex": 36,
+      "ref": "e38",
+      "kind": "text"
     },
     {
-      "index": 37,
+      "index": 38,
       "type": "android.view.ViewGroup",
       "label": "Trail Mix, 1 kg · $11.99",
       "identifier": "product-trail-mix-1000",
@@ -804,11 +862,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e38"
+      "parentIndex": 24,
+      "ref": "e39",
+      "kind": "group"
     },
     {
-      "index": 38,
+      "index": 39,
       "type": "android.widget.TextView",
       "label": "Trail Mix",
       "value": "Trail Mix",
@@ -826,11 +885,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 37,
-      "ref": "e39"
+      "parentIndex": 38,
+      "ref": "e40",
+      "kind": "text"
     },
     {
-      "index": 39,
+      "index": 40,
       "type": "android.widget.TextView",
       "label": "1 kg · $11.99",
       "value": "1 kg · $11.99",
@@ -848,11 +908,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 37,
-      "ref": "e40"
+      "parentIndex": 38,
+      "ref": "e41",
+      "kind": "text"
     },
     {
-      "index": 40,
+      "index": 41,
       "type": "android.view.ViewGroup",
       "label": "Favorite Trail Mix 1 kg",
       "identifier": "favorite-trail-mix-1000",
@@ -871,11 +932,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e41"
+      "parentIndex": 24,
+      "ref": "e42",
+      "kind": "group"
     },
     {
-      "index": 41,
+      "index": 42,
       "type": "android.widget.TextView",
       "label": "♡",
       "value": "♡",
@@ -893,11 +955,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 40,
-      "ref": "e42"
+      "parentIndex": 41,
+      "ref": "e43",
+      "kind": "text"
     },
     {
-      "index": 42,
+      "index": 43,
       "type": "android.view.ViewGroup",
       "label": "Granola, 500 g · $5.49",
       "identifier": "product-granola-500",
@@ -916,11 +979,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e43"
+      "parentIndex": 24,
+      "ref": "e44",
+      "kind": "group"
     },
     {
-      "index": 43,
+      "index": 44,
       "type": "android.widget.TextView",
       "label": "Granola",
       "value": "Granola",
@@ -938,11 +1002,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 42,
-      "ref": "e44"
+      "parentIndex": 43,
+      "ref": "e45",
+      "kind": "text"
     },
     {
-      "index": 44,
+      "index": 45,
       "type": "android.widget.TextView",
       "label": "500 g · $5.49",
       "value": "500 g · $5.49",
@@ -960,11 +1025,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 42,
-      "ref": "e45"
+      "parentIndex": 43,
+      "ref": "e46",
+      "kind": "text"
     },
     {
-      "index": 45,
+      "index": 46,
       "type": "android.view.ViewGroup",
       "label": "Favorite Granola 500 g",
       "identifier": "favorite-granola-500",
@@ -983,11 +1049,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e46"
+      "parentIndex": 24,
+      "ref": "e47",
+      "kind": "group"
     },
     {
-      "index": 46,
+      "index": 47,
       "type": "android.widget.TextView",
       "label": "♡",
       "value": "♡",
@@ -1005,11 +1072,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 45,
-      "ref": "e47"
+      "parentIndex": 46,
+      "ref": "e48",
+      "kind": "text"
     },
     {
-      "index": 47,
+      "index": 48,
       "type": "android.view.ViewGroup",
       "label": "Almonds, 250 g · $7.99",
       "identifier": "product-almonds-250",
@@ -1028,11 +1096,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e48"
+      "parentIndex": 24,
+      "ref": "e49",
+      "kind": "group"
     },
     {
-      "index": 48,
+      "index": 49,
       "type": "android.widget.TextView",
       "label": "Almonds",
       "value": "Almonds",
@@ -1050,11 +1119,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 47,
-      "ref": "e49"
+      "parentIndex": 48,
+      "ref": "e50",
+      "kind": "text"
     },
     {
-      "index": 49,
+      "index": 50,
       "type": "android.widget.TextView",
       "label": "250 g · $7.99",
       "value": "250 g · $7.99",
@@ -1072,11 +1142,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 47,
-      "ref": "e50"
+      "parentIndex": 48,
+      "ref": "e51",
+      "kind": "text"
     },
     {
-      "index": 50,
+      "index": 51,
       "type": "android.view.ViewGroup",
       "label": "Favorite Almonds 250 g",
       "identifier": "favorite-almonds-250",
@@ -1095,11 +1166,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e51"
+      "parentIndex": 24,
+      "ref": "e52",
+      "kind": "group"
     },
     {
-      "index": 51,
+      "index": 52,
       "type": "android.widget.TextView",
       "label": "♡",
       "value": "♡",
@@ -1117,11 +1189,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 50,
-      "ref": "e52"
+      "parentIndex": 51,
+      "ref": "e53",
+      "kind": "text"
     },
     {
-      "index": 52,
+      "index": 53,
       "type": "android.view.ViewGroup",
       "label": "Cashews, 250 g · $8.49",
       "identifier": "product-cashews-250",
@@ -1140,11 +1213,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e53"
+      "parentIndex": 24,
+      "ref": "e54",
+      "kind": "group"
     },
     {
-      "index": 53,
+      "index": 54,
       "type": "android.widget.TextView",
       "label": "Cashews",
       "value": "Cashews",
@@ -1162,11 +1236,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 52,
-      "ref": "e54"
+      "parentIndex": 53,
+      "ref": "e55",
+      "kind": "text"
     },
     {
-      "index": 54,
+      "index": 55,
       "type": "android.widget.TextView",
       "label": "250 g · $8.49",
       "value": "250 g · $8.49",
@@ -1184,11 +1259,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 52,
-      "ref": "e55"
+      "parentIndex": 53,
+      "ref": "e56",
+      "kind": "text"
     },
     {
-      "index": 55,
+      "index": 56,
       "type": "android.view.ViewGroup",
       "label": "Favorite Cashews 250 g",
       "identifier": "favorite-cashews-250",
@@ -1207,11 +1283,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e56"
+      "parentIndex": 24,
+      "ref": "e57",
+      "kind": "group"
     },
     {
-      "index": 56,
+      "index": 57,
       "type": "android.widget.TextView",
       "label": "♡",
       "value": "♡",
@@ -1229,8 +1306,9 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 55,
-      "ref": "e57"
+      "parentIndex": 56,
+      "ref": "e58",
+      "kind": "text"
     }
   ],
   "truncated": false,

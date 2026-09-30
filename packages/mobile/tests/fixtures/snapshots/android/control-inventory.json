@@ -3,15 +3,15 @@
     {
       "index": 0,
       "type": "android.widget.TextView",
-      "label": "11:26",
-      "value": "11:26",
-      "contentDescription": "11:26 PM",
+      "label": "6:54",
+      "value": "6:54",
+      "contentDescription": "6:54 PM",
       "identifier": "com.android.systemui:id/clock",
       "bundleId": "com.android.systemui",
       "rect": {
         "x": 47,
         "y": 47,
-        "width": 125,
+        "width": 104,
         "height": 43
       },
       "enabled": true,
@@ -21,15 +21,16 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 0,
-      "ref": "e1"
+      "ref": "e1",
+      "kind": "text"
     },
     {
       "index": 1,
       "type": "android.widget.ImageView",
-      "label": "Android System notification: ",
+      "label": "Security & privacy notification: ",
       "bundleId": "com.android.systemui",
       "rect": {
-        "x": 172,
+        "x": 151,
         "y": 1,
         "width": 58,
         "height": 135
@@ -41,10 +42,32 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 0,
-      "ref": "e2"
+      "ref": "e2",
+      "kind": "image"
     },
     {
       "index": 2,
+      "type": "android.widget.ImageView",
+      "label": "Android System notification: ",
+      "bundleId": "com.android.systemui",
+      "rect": {
+        "x": 209,
+        "y": 1,
+        "width": 58,
+        "height": 135
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 0,
+      "ref": "e3",
+      "kind": "image"
+    },
+    {
+      "index": 3,
       "type": "android.widget.ImageView",
       "label": "Wifi signal full.",
       "identifier": "com.android.systemui:id/wifi_signal",
@@ -62,12 +85,13 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 0,
-      "ref": "e3"
+      "ref": "e4",
+      "kind": "image"
     },
     {
-      "index": 3,
+      "index": 4,
       "type": "android.widget.FrameLayout",
-      "label": "T-Mobile, signal full.",
+      "label": "T-Mobile, three bars.",
       "identifier": "com.android.systemui:id/mobile_combo",
       "bundleId": "com.android.systemui",
       "rect": {
@@ -83,10 +107,11 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 0,
-      "ref": "e4"
+      "ref": "e5",
+      "kind": "group"
     },
     {
-      "index": 4,
+      "index": 5,
       "type": "android.widget.ImageView",
       "identifier": "com.android.systemui:id/mobile_signal",
       "bundleId": "com.android.systemui",
@@ -103,11 +128,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 1,
-      "parentIndex": 3,
-      "ref": "e5"
+      "parentIndex": 4,
+      "ref": "e6",
+      "kind": "image"
     },
     {
-      "index": 5,
+      "index": 6,
       "type": "android.widget.LinearLayout",
       "label": "Battery charging, 100 percent.",
       "identifier": "com.android.systemui:id/battery",
@@ -125,10 +151,11 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 0,
-      "ref": "e6"
+      "ref": "e7",
+      "kind": "group"
     },
     {
-      "index": 6,
+      "index": 7,
       "type": "android.widget.ImageView",
       "bundleId": "com.android.systemui",
       "rect": {
@@ -144,11 +171,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 1,
-      "parentIndex": 5,
-      "ref": "e7"
+      "parentIndex": 6,
+      "ref": "e8",
+      "kind": "image"
     },
     {
-      "index": 7,
+      "index": 8,
       "type": "android.widget.FrameLayout",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -164,10 +192,11 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 0,
-      "ref": "e8"
+      "ref": "e9",
+      "kind": "group"
     },
     {
-      "index": 8,
+      "index": 9,
       "type": "android.widget.LinearLayout",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -183,11 +212,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 1,
-      "parentIndex": 7,
-      "ref": "e9"
+      "parentIndex": 8,
+      "ref": "e10",
+      "kind": "group"
     },
     {
-      "index": 9,
+      "index": 10,
       "type": "android.widget.FrameLayout",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -203,11 +233,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 2,
-      "parentIndex": 8,
-      "ref": "e10"
+      "parentIndex": 9,
+      "ref": "e11",
+      "kind": "group"
     },
     {
-      "index": 10,
+      "index": 11,
       "type": "android.widget.LinearLayout",
       "identifier": "dev.e2e.benchmark:id/action_bar_root",
       "bundleId": "dev.e2e.benchmark",
@@ -224,11 +255,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 3,
-      "parentIndex": 9,
-      "ref": "e11"
+      "parentIndex": 10,
+      "ref": "e12",
+      "kind": "group"
     },
     {
-      "index": 11,
+      "index": 12,
       "type": "android.widget.FrameLayout",
       "identifier": "android:id/content",
       "bundleId": "dev.e2e.benchmark",
@@ -245,11 +277,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 4,
-      "parentIndex": 10,
-      "ref": "e12"
+      "parentIndex": 11,
+      "ref": "e13",
+      "kind": "group"
     },
     {
-      "index": 12,
+      "index": 13,
       "type": "android.widget.FrameLayout",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -265,28 +298,9 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 5,
-      "parentIndex": 11,
-      "ref": "e13"
-    },
-    {
-      "index": 13,
-      "type": "android.view.ViewGroup",
-      "bundleId": "dev.e2e.benchmark",
-      "rect": {
-        "x": 0,
-        "y": 0,
-        "width": 1080,
-        "height": 2400
-      },
-      "enabled": true,
-      "selected": false,
-      "editable": false,
-      "password": false,
-      "hintShowing": false,
-      "visibleToUser": true,
-      "depth": 6,
       "parentIndex": 12,
-      "ref": "e14"
+      "ref": "e14",
+      "kind": "group"
     },
     {
       "index": 14,
@@ -304,12 +318,34 @@
       "password": false,
       "hintShowing": false,
       "visibleToUser": true,
-      "depth": 7,
+      "depth": 6,
       "parentIndex": 13,
-      "ref": "e15"
+      "ref": "e15",
+      "kind": "group"
     },
     {
       "index": 15,
+      "type": "android.view.ViewGroup",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1080,
+        "height": 2400
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 7,
+      "parentIndex": 14,
+      "ref": "e16",
+      "kind": "group"
+    },
+    {
+      "index": 16,
       "type": "android.widget.ScrollView",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -325,11 +361,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 8,
-      "parentIndex": 14,
-      "ref": "e16"
+      "parentIndex": 15,
+      "ref": "e17",
+      "kind": "scroll-area"
     },
     {
-      "index": 16,
+      "index": 17,
       "type": "android.widget.LinearLayout",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -345,11 +382,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 9,
-      "parentIndex": 15,
-      "ref": "e17"
+      "parentIndex": 16,
+      "ref": "e18",
+      "kind": "group"
     },
     {
-      "index": 17,
+      "index": 18,
       "type": "android.view.ViewGroup",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -365,11 +403,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 10,
-      "parentIndex": 16,
-      "ref": "e18"
+      "parentIndex": 17,
+      "ref": "e19",
+      "kind": "group"
     },
     {
-      "index": 18,
+      "index": 19,
       "type": "android.widget.ImageButton",
       "label": "Navigate up",
       "bundleId": "dev.e2e.benchmark",
@@ -387,11 +426,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 11,
-      "parentIndex": 17,
-      "ref": "e19"
+      "parentIndex": 18,
+      "ref": "e20",
+      "kind": "button"
     },
     {
-      "index": 19,
+      "index": 20,
       "type": "android.widget.TextView",
       "label": "Control Inventory",
       "value": "Control Inventory",
@@ -409,28 +449,9 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 11,
-      "parentIndex": 17,
-      "ref": "e20"
-    },
-    {
-      "index": 20,
-      "type": "android.view.ViewGroup",
-      "bundleId": "dev.e2e.benchmark",
-      "rect": {
-        "x": 0,
-        "y": 283,
-        "width": 1080,
-        "height": 2117
-      },
-      "enabled": true,
-      "selected": false,
-      "editable": false,
-      "password": false,
-      "hintShowing": false,
-      "visibleToUser": true,
-      "depth": 9,
-      "parentIndex": 15,
-      "ref": "e21"
+      "parentIndex": 18,
+      "ref": "e21",
+      "kind": "text"
     },
     {
       "index": 21,
@@ -448,12 +469,34 @@
       "password": false,
       "hintShowing": false,
       "visibleToUser": true,
-      "depth": 10,
-      "parentIndex": 20,
-      "ref": "e22"
+      "depth": 9,
+      "parentIndex": 16,
+      "ref": "e22",
+      "kind": "group"
     },
     {
       "index": 22,
+      "type": "android.view.ViewGroup",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 283,
+        "width": 1080,
+        "height": 2117
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 10,
+      "parentIndex": 21,
+      "ref": "e23",
+      "kind": "group"
+    },
+    {
+      "index": 23,
       "type": "android.widget.ScrollView",
       "identifier": "inventory-scroll",
       "bundleId": "dev.e2e.benchmark",
@@ -471,11 +514,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 11,
-      "parentIndex": 21,
-      "ref": "e23"
+      "parentIndex": 22,
+      "ref": "e24",
+      "kind": "scroll-area"
     },
     {
-      "index": 23,
+      "index": 24,
       "type": "android.view.ViewGroup",
       "bundleId": "dev.e2e.benchmark",
       "rect": {
@@ -491,11 +535,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 12,
-      "parentIndex": 22,
-      "ref": "e24"
+      "parentIndex": 23,
+      "ref": "e25",
+      "kind": "group"
     },
     {
-      "index": 24,
+      "index": 25,
       "type": "android.view.View",
       "label": "Plain controls, every state exposed",
       "value": "Plain controls, every state exposed",
@@ -516,11 +561,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e25"
+      "parentIndex": 24,
+      "ref": "e26",
+      "kind": "group"
     },
     {
-      "index": 25,
+      "index": 26,
       "type": "android.widget.TextView",
       "label": "scheme: light",
       "value": "scheme: light",
@@ -539,11 +585,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e26"
+      "parentIndex": 24,
+      "ref": "e27",
+      "kind": "text"
     },
     {
-      "index": 26,
+      "index": 27,
       "type": "android.widget.TextView",
       "label": "orientation: portrait",
       "value": "orientation: portrait",
@@ -562,11 +609,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e27"
+      "parentIndex": 24,
+      "ref": "e28",
+      "kind": "text"
     },
     {
-      "index": 27,
+      "index": 28,
       "type": "android.widget.TextView",
       "label": "411x914",
       "value": "411x914",
@@ -585,11 +633,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e28"
+      "parentIndex": 24,
+      "ref": "e29",
+      "kind": "text"
     },
     {
-      "index": 28,
+      "index": 29,
       "type": "android.view.View",
       "identifier": "section-tabs",
       "bundleId": "dev.e2e.benchmark",
@@ -607,11 +656,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e29"
+      "parentIndex": 24,
+      "ref": "e30",
+      "kind": "group"
     },
     {
-      "index": 29,
+      "index": 30,
       "type": "android.view.View",
       "label": "Fields",
       "identifier": "tab-fields",
@@ -631,11 +681,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e30"
+      "parentIndex": 24,
+      "ref": "e31",
+      "kind": "group"
     },
     {
-      "index": 30,
+      "index": 31,
       "type": "android.widget.TextView",
       "label": "Fields",
       "value": "Fields",
@@ -653,11 +704,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 29,
-      "ref": "e31"
+      "parentIndex": 30,
+      "ref": "e32",
+      "kind": "text"
     },
     {
-      "index": 31,
+      "index": 32,
       "type": "android.view.View",
       "label": "Toggles",
       "identifier": "tab-toggles",
@@ -677,11 +729,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e32"
+      "parentIndex": 24,
+      "ref": "e33",
+      "kind": "group"
     },
     {
-      "index": 32,
+      "index": 33,
       "type": "android.widget.TextView",
       "label": "Toggles",
       "value": "Toggles",
@@ -699,11 +752,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 31,
-      "ref": "e33"
+      "parentIndex": 32,
+      "ref": "e34",
+      "kind": "text"
     },
     {
-      "index": 33,
+      "index": 34,
       "type": "android.view.View",
       "label": "Gestures",
       "identifier": "tab-gestures",
@@ -723,11 +777,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e34"
+      "parentIndex": 24,
+      "ref": "e35",
+      "kind": "group"
     },
     {
-      "index": 34,
+      "index": 35,
       "type": "android.widget.TextView",
       "label": "Gestures",
       "value": "Gestures",
@@ -745,11 +800,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 33,
-      "ref": "e35"
+      "parentIndex": 34,
+      "ref": "e36",
+      "kind": "text"
     },
     {
-      "index": 35,
+      "index": 36,
       "type": "android.view.View",
       "label": "Device",
       "identifier": "tab-device",
@@ -769,11 +825,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e36"
+      "parentIndex": 24,
+      "ref": "e37",
+      "kind": "group"
     },
     {
-      "index": 36,
+      "index": 37,
       "type": "android.widget.TextView",
       "label": "Device",
       "value": "Device",
@@ -791,11 +848,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 35,
-      "ref": "e37"
+      "parentIndex": 36,
+      "ref": "e38",
+      "kind": "text"
     },
     {
-      "index": 37,
+      "index": 38,
       "type": "android.widget.EditText",
       "label": "Ada Lovelace",
       "value": "Ada Lovelace",
@@ -819,11 +877,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e38"
+      "parentIndex": 24,
+      "ref": "e39",
+      "kind": "text-field"
     },
     {
-      "index": 38,
+      "index": 39,
       "type": "android.widget.TextView",
       "label": "name: Ada Lovelace",
       "value": "name: Ada Lovelace",
@@ -842,11 +901,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e39"
+      "parentIndex": 24,
+      "ref": "e40",
+      "kind": "text"
     },
     {
-      "index": 39,
+      "index": 40,
       "type": "android.widget.EditText",
       "label": "Passphrase",
       "value": "Passphrase",
@@ -868,11 +928,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e40"
+      "parentIndex": 24,
+      "ref": "e41",
+      "kind": "text-field"
     },
     {
-      "index": 40,
+      "index": 41,
       "type": "android.widget.TextView",
       "label": "passphrase length: 0",
       "value": "passphrase length: 0",
@@ -891,11 +952,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e41"
+      "parentIndex": 24,
+      "ref": "e42",
+      "kind": "text"
     },
     {
-      "index": 41,
+      "index": 42,
       "type": "android.widget.EditText",
       "label": "Key echo",
       "value": "Key echo",
@@ -917,11 +979,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e42"
+      "parentIndex": 24,
+      "ref": "e43",
+      "kind": "text-field"
     },
     {
-      "index": 42,
+      "index": 43,
       "type": "android.widget.TextView",
       "label": "key: none",
       "value": "key: none",
@@ -940,11 +1003,12 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e43"
+      "parentIndex": 24,
+      "ref": "e44",
+      "kind": "text"
     },
     {
-      "index": 43,
+      "index": 44,
       "type": "android.widget.Button",
       "label": "Show focus fields",
       "identifier": "show-focus-fields",
@@ -963,11 +1027,12 @@
       "visibleToUser": true,
       "hittable": true,
       "depth": 13,
-      "parentIndex": 23,
-      "ref": "e44"
+      "parentIndex": 24,
+      "ref": "e45",
+      "kind": "button"
     },
     {
-      "index": 44,
+      "index": 45,
       "type": "android.widget.TextView",
       "label": "Show focus fields",
       "value": "Show focus fields",
@@ -985,8 +1050,9 @@
       "hintShowing": false,
       "visibleToUser": true,
       "depth": 14,
-      "parentIndex": 43,
-      "ref": "e45"
+      "parentIndex": 44,
+      "ref": "e46",
+      "kind": "text"
     }
   ],
   "truncated": false,

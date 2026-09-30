@@ -98,7 +98,7 @@ function request(overrides: Partial<DeviceRequest> = {}): DeviceRequest & { line
     slot: 0,
     slots: 2,
     app: 'com.example.app',
-    agentDeviceVersion: '0.21.16',
+    agentDeviceVersion: '0.21.18',
     env,
     signal: new AbortController().signal,
     log: (line) => lines.push(line),
@@ -135,7 +135,7 @@ describe('easSimulators()', () => {
           buildId: 'b1',
           ios: { deviceIdentifier: 'iPhone 17 Pro' },
           maxIdleTimeMinutes: 10,
-          packageVersion: '0.21.16',
+          packageVersion: '0.21.18',
         },
       },
     });

@@ -307,8 +307,7 @@ export default {
 - React Native on iOS: checkbox and radio role and state come off the
   accessibility value (`getByRole`, `check()`, `toBeChecked` work); a tab is
   `other` with `selected`, query by test id or label; a plain `View` is a
-  leaf, scope to the `ScrollView` or give children test ids; `toBeFocused`
-  never passes.
+  leaf, scope to the `ScrollView` or give children test ids.
 
 ## Done when
 

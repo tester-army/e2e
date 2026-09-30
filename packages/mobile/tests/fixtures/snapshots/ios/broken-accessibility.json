@@ -1,116 +1,123 @@
 {
   "nodes": [
     {
-      "index": 0,
-      "enabled": true,
-      "type": "Application",
-      "rect": {
-        "width": 402,
-        "height": 874,
-        "x": 0,
-        "y": 0
-      },
       "hittable": false,
       "label": "e2e Benchmark",
-      "depth": 0,
-      "ref": "e1"
-    },
-    {
-      "index": 1,
-      "enabled": true,
-      "type": "Other",
+      "index": 0,
       "rect": {
+        "x": 0,
         "width": 402,
         "height": 874,
-        "x": 0,
         "y": 0
       },
-      "parentIndex": 0,
-      "hittable": true,
-      "label": "Benchmark Examples",
-      "depth": 1,
-      "ref": "e2"
+      "depth": 0,
+      "type": "Application",
+      "enabled": true,
+      "ref": "e1",
+      "kind": "application"
     },
     {
-      "index": 2,
-      "type": "NavigationBar",
-      "enabled": true,
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "index": 1,
       "rect": {
+        "x": 0,
+        "width": 402,
+        "height": 874,
+        "y": 0
+      },
+      "depth": 1,
+      "type": "Other",
+      "parentIndex": 0,
+      "enabled": true,
+      "ref": "e2",
+      "kind": "other"
+    },
+    {
+      "identifier": "Broken Accessibility",
+      "label": "Benchmark Examples",
+      "index": 2,
+      "hittable": true,
+      "rect": {
+        "x": 0,
         "width": 402,
         "height": 54,
-        "x": 0,
         "y": 62
       },
-      "parentIndex": 1,
-      "hittable": true,
-      "label": "Benchmark Examples",
       "depth": 2,
-      "identifier": "Broken Accessibility",
-      "ref": "e3"
+      "type": "NavigationBar",
+      "parentIndex": 1,
+      "enabled": true,
+      "ref": "e3",
+      "kind": "navigation-bar"
     },
     {
+      "identifier": "BackButton",
+      "label": "Benchmark Examples",
       "index": 3,
-      "type": "Button",
-      "enabled": true,
+      "hittable": true,
       "rect": {
+        "x": 16,
         "width": 44,
         "height": 44,
-        "x": 16,
         "y": 62
       },
-      "parentIndex": 2,
-      "hittable": true,
-      "label": "Benchmark Examples",
       "depth": 3,
-      "identifier": "BackButton",
-      "ref": "e4"
+      "type": "Button",
+      "parentIndex": 2,
+      "enabled": true,
+      "ref": "e4",
+      "kind": "button"
     },
     {
-      "index": 4,
-      "enabled": true,
-      "type": "StaticText",
       "rect": {
+        "x": 120.66666666666669,
         "width": 160.33333333333331,
         "height": 20.66666666666667,
-        "x": 120.66666666666669,
         "y": 73.66666666666666
       },
       "parentIndex": 2,
       "hittable": true,
       "label": "Broken Accessibility",
+      "index": 4,
+      "enabled": true,
+      "type": "StaticText",
       "depth": 3,
-      "ref": "e5"
+      "ref": "e5",
+      "kind": "text"
     },
     {
-      "index": 5,
-      "enabled": true,
-      "type": "Other",
       "rect": {
+        "x": 0,
         "width": 402,
         "height": 874,
-        "x": 0,
         "y": 0
       },
       "parentIndex": 1,
       "hittable": true,
       "label": "Tap the green circle to continue",
-      "depth": 2,
-      "ref": "e6"
-    },
-    {
-      "index": 6,
+      "index": 5,
       "enabled": true,
       "type": "Other",
+      "depth": 2,
+      "ref": "e6",
+      "kind": "other"
+    },
+    {
       "rect": {
+        "x": 0,
         "width": 402,
         "height": 758,
-        "x": 0,
         "y": 116
       },
       "parentIndex": 5,
       "hittable": true,
+      "index": 6,
+      "enabled": true,
+      "type": "Other",
       "depth": 3,
       "ref": "e7",
+      "kind": "other",
       "inheritsLabel": true
     }
   ],

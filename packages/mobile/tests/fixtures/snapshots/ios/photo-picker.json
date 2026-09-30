@@ -2,165 +2,175 @@
   "nodes": [
     {
       "enabled": true,
+      "depth": 0,
+      "label": "e2e Benchmark",
       "hittable": false,
       "rect": {
         "height": 874,
         "x": 0,
-        "y": 0,
-        "width": 402
+        "width": 402,
+        "y": 0
       },
       "type": "Application",
-      "label": "e2e Benchmark",
       "index": 0,
-      "depth": 0,
-      "ref": "e1"
+      "ref": "e1",
+      "kind": "application"
     },
     {
       "enabled": true,
+      "depth": 1,
+      "label": "Benchmark Examples",
+      "parentIndex": 0,
       "hittable": true,
       "rect": {
         "height": 874,
         "x": 0,
-        "y": 0,
-        "width": 402
+        "width": 402,
+        "y": 0
       },
       "type": "Other",
-      "label": "Benchmark Examples",
-      "parentIndex": 0,
       "index": 1,
-      "depth": 1,
-      "ref": "e2"
+      "ref": "e2",
+      "kind": "other"
     },
     {
       "enabled": true,
-      "hittable": true,
+      "depth": 2,
       "identifier": "Photo Picker",
+      "label": "Benchmark Examples",
+      "parentIndex": 1,
+      "hittable": true,
       "rect": {
         "height": 54,
         "x": 0,
-        "y": 62,
-        "width": 402
+        "width": 402,
+        "y": 62
       },
       "type": "NavigationBar",
-      "label": "Benchmark Examples",
-      "parentIndex": 1,
       "index": 2,
-      "depth": 2,
-      "ref": "e3"
+      "ref": "e3",
+      "kind": "navigation-bar"
     },
     {
       "enabled": true,
-      "hittable": true,
+      "depth": 3,
       "identifier": "BackButton",
+      "label": "Benchmark Examples",
+      "parentIndex": 2,
+      "hittable": true,
       "rect": {
         "height": 44,
         "x": 16.00000000000001,
-        "y": 62,
-        "width": 219.66666666666666
+        "width": 219.66666666666666,
+        "y": 62
       },
       "type": "Button",
-      "label": "Benchmark Examples",
-      "parentIndex": 2,
       "index": 3,
-      "depth": 3,
-      "ref": "e4"
+      "ref": "e4",
+      "kind": "button"
     },
     {
-      "enabled": true,
-      "hittable": true,
       "rect": {
         "height": 20.66666666666667,
         "x": 247.66666666666669,
-        "y": 73.66666666666666,
-        "width": 100.66666666666669
+        "width": 100.66666666666669,
+        "y": 73.66666666666666
       },
-      "type": "StaticText",
-      "label": "Photo Picker",
       "parentIndex": 2,
+      "hittable": true,
+      "label": "Photo Picker",
+      "enabled": true,
       "index": 4,
-      "depth": 3,
-      "ref": "e5"
-    },
-    {
-      "enabled": true,
-      "hittable": true,
-      "rect": {
-        "height": 874,
-        "x": 0,
-        "y": 0,
-        "width": 402
-      },
-      "type": "Other",
-      "label": "Expense report",
-      "parentIndex": 1,
-      "index": 5,
-      "depth": 2,
-      "ref": "e6"
-    },
-    {
-      "enabled": true,
-      "hittable": true,
-      "rect": {
-        "height": 758,
-        "x": 0,
-        "y": 116,
-        "width": 402
-      },
-      "type": "Other",
-      "label": "Expense report",
-      "parentIndex": 5,
-      "index": 6,
-      "depth": 3,
-      "ref": "e7"
-    },
-    {
-      "hittable": true,
-      "depth": 4,
-      "rect": {
-        "width": 151.66665649414062,
-        "height": 26.33331298828125,
-        "x": 125,
-        "y": 431.3333435058594
-      },
-      "enabled": true,
       "type": "StaticText",
+      "depth": 3,
+      "ref": "e5",
+      "kind": "text"
+    },
+    {
+      "rect": {
+        "x": 0,
+        "width": 402,
+        "height": 874,
+        "y": 0
+      },
+      "parentIndex": 1,
+      "hittable": true,
+      "label": "Expense report",
+      "index": 5,
+      "enabled": true,
+      "type": "Other",
+      "depth": 2,
+      "ref": "e6",
+      "kind": "other"
+    },
+    {
+      "rect": {
+        "x": 0,
+        "width": 402,
+        "height": 758,
+        "y": 116
+      },
+      "parentIndex": 5,
+      "hittable": true,
+      "label": "Expense report",
+      "index": 6,
+      "enabled": true,
+      "type": "Other",
+      "depth": 3,
+      "ref": "e7",
+      "kind": "other"
+    },
+    {
+      "rect": {
+        "y": 431.3333435058594,
+        "height": 26.33331298828125,
+        "width": 151.66665649414062,
+        "x": 125
+      },
       "parentIndex": 6,
+      "hittable": true,
       "label": "Expense report",
       "index": 7,
-      "ref": "e8"
-    },
-    {
-      "hittable": true,
-      "depth": 4,
-      "rect": {
-        "width": 354,
-        "height": 33.66668701171875,
-        "x": 24,
-        "y": 469.6666564941406
-      },
       "enabled": true,
       "type": "StaticText",
-      "parentIndex": 6,
-      "label": "Attach the receipt photo from your photo library to submit this expense.",
-      "index": 8,
-      "ref": "e9"
+      "depth": 4,
+      "ref": "e8",
+      "kind": "text"
     },
     {
-      "hittable": true,
-      "depth": 4,
       "rect": {
-        "width": 153.66665649414062,
-        "height": 43.33331298828125,
-        "x": 124.33333587646484,
-        "y": 515.3333435058594
+        "height": 33.66668701171875,
+        "x": 24,
+        "width": 354,
+        "y": 469.6666564941406
       },
+      "parentIndex": 6,
+      "hittable": true,
+      "label": "Attach the receipt photo from your photo library to submit this expense.",
+      "index": 8,
+      "enabled": true,
+      "type": "StaticText",
+      "depth": 4,
+      "ref": "e9",
+      "kind": "text"
+    },
+    {
+      "rect": {
+        "y": 515.3333435058594,
+        "x": 124.33333587646484,
+        "height": 43.33331298828125,
+        "width": 153.66665649414062
+      },
+      "parentIndex": 6,
+      "hittable": true,
+      "label": "Choose photo",
+      "identifier": "choose-photo",
+      "index": 9,
       "enabled": true,
       "type": "Other",
-      "identifier": "choose-photo",
-      "parentIndex": 6,
-      "label": "Choose photo",
-      "index": 9,
-      "ref": "e10"
+      "depth": 4,
+      "ref": "e10",
+      "kind": "other"
     }
   ],
   "truncated": false,

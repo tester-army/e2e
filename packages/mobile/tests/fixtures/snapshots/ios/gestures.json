@@ -1,166 +1,176 @@
 {
   "nodes": [
     {
-      "index": 0,
-      "type": "Application",
       "enabled": true,
-      "rect": {
-        "width": 402,
-        "x": 0,
-        "y": 0,
-        "height": 874
-      },
-      "hittable": false,
-      "label": "e2e Benchmark",
       "depth": 0,
-      "ref": "e1"
+      "label": "e2e Benchmark",
+      "hittable": false,
+      "type": "Application",
+      "rect": {
+        "x": 0,
+        "height": 874,
+        "y": 0,
+        "width": 402
+      },
+      "index": 0,
+      "ref": "e1",
+      "kind": "application"
     },
     {
-      "index": 1,
-      "type": "Other",
       "enabled": true,
-      "rect": {
-        "width": 402,
-        "x": 0,
-        "y": 0,
-        "height": 874
-      },
+      "depth": 1,
+      "label": "Benchmark Examples",
       "parentIndex": 0,
       "hittable": true,
-      "label": "Benchmark Examples",
-      "depth": 1,
-      "ref": "e2"
+      "type": "Other",
+      "rect": {
+        "x": 0,
+        "height": 874,
+        "y": 0,
+        "width": 402
+      },
+      "index": 1,
+      "ref": "e2",
+      "kind": "other"
     },
     {
-      "index": 2,
-      "type": "NavigationBar",
       "enabled": true,
-      "rect": {
-        "width": 402,
-        "x": 0,
-        "y": 62,
-        "height": 54
-      },
+      "depth": 2,
+      "label": "Benchmark Examples",
+      "identifier": "Gestures",
       "parentIndex": 1,
       "hittable": true,
-      "label": "Benchmark Examples",
-      "depth": 2,
-      "identifier": "Gestures",
-      "ref": "e3"
+      "type": "NavigationBar",
+      "rect": {
+        "x": 0,
+        "height": 54,
+        "y": 62,
+        "width": 402
+      },
+      "index": 2,
+      "ref": "e3",
+      "kind": "navigation-bar"
     },
     {
-      "index": 3,
-      "type": "Button",
       "enabled": true,
-      "rect": {
-        "width": 219.66666666666666,
-        "x": 16.00000000000001,
-        "y": 62,
-        "height": 44
-      },
+      "depth": 3,
+      "label": "Benchmark Examples",
+      "identifier": "BackButton",
       "parentIndex": 2,
       "hittable": true,
-      "label": "Benchmark Examples",
-      "depth": 3,
-      "identifier": "BackButton",
-      "ref": "e4"
+      "type": "Button",
+      "rect": {
+        "x": 16.00000000000001,
+        "height": 44,
+        "y": 62,
+        "width": 219.66666666666666
+      },
+      "index": 3,
+      "ref": "e4",
+      "kind": "button"
     },
     {
-      "index": 4,
-      "type": "StaticText",
-      "enabled": true,
       "rect": {
-        "width": 72.33333333333331,
         "x": 247.66666666666663,
+        "height": 20.66666666666667,
         "y": 73.66666666666666,
-        "height": 20.66666666666667
+        "width": 72.33333333333331
       },
       "parentIndex": 2,
       "hittable": true,
       "label": "Gestures",
+      "enabled": true,
+      "index": 4,
+      "type": "StaticText",
       "depth": 3,
-      "ref": "e5"
+      "ref": "e5",
+      "kind": "text"
     },
     {
-      "index": 5,
-      "type": "Other",
-      "enabled": true,
       "rect": {
-        "width": 402,
         "x": 0,
+        "height": 874,
         "y": 0,
-        "height": 874
+        "width": 402
       },
       "parentIndex": 1,
       "hittable": true,
       "label": "Step 1 of 3",
+      "enabled": true,
+      "index": 5,
+      "type": "Other",
       "depth": 2,
-      "ref": "e6"
+      "ref": "e6",
+      "kind": "other"
     },
     {
-      "index": 6,
-      "type": "Other",
-      "enabled": true,
       "rect": {
-        "width": 402,
+        "height": 758,
         "x": 0,
         "y": 116,
-        "height": 758
+        "width": 402
       },
       "parentIndex": 5,
       "hittable": true,
       "label": "Step 1 of 3",
+      "enabled": true,
+      "index": 6,
+      "type": "Other",
       "depth": 3,
-      "ref": "e7"
+      "ref": "e7",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 4,
       "rect": {
-        "width": 65,
-        "x": 168.3333282470703,
         "y": 435.6666564941406,
-        "height": 15.66668701171875
+        "height": 15.66668701171875,
+        "width": 65,
+        "x": 168.3333282470703
       },
-      "enabled": true,
-      "type": "StaticText",
       "parentIndex": 6,
+      "hittable": true,
       "label": "Step 1 of 3",
+      "enabled": true,
       "index": 7,
-      "ref": "e8"
+      "type": "StaticText",
+      "depth": 4,
+      "ref": "e8",
+      "kind": "text"
     },
     {
-      "hittable": true,
-      "depth": 4,
       "rect": {
-        "width": 335.33331298828125,
         "x": 33.33333206176758,
+        "height": 19.33331298828125,
         "y": 467.3333435058594,
-        "height": 19.33331298828125
+        "width": 335.33331298828125
       },
-      "enabled": true,
-      "type": "StaticText",
       "parentIndex": 6,
+      "hittable": true,
       "label": "Long-press the button below (hold ~1 second)",
       "index": 8,
-      "ref": "e9"
+      "enabled": true,
+      "type": "StaticText",
+      "depth": 4,
+      "ref": "e9",
+      "kind": "text"
     },
     {
-      "hittable": true,
-      "depth": 4,
       "rect": {
-        "width": 126.99998474121094,
         "x": 137.6666717529297,
+        "height": 51.333343505859375,
         "y": 503,
-        "height": 51.333343505859375
+        "width": 126.99998474121094
       },
-      "enabled": true,
-      "type": "Other",
-      "identifier": "long-press-target",
       "parentIndex": 6,
+      "hittable": true,
       "label": "Hold me",
       "index": 9,
-      "ref": "e10"
+      "identifier": "long-press-target",
+      "enabled": true,
+      "type": "Other",
+      "depth": 4,
+      "ref": "e10",
+      "kind": "other"
     }
   ],
   "truncated": false,

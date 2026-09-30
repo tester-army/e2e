@@ -2,525 +2,556 @@
   "nodes": [
     {
       "hittable": false,
-      "index": 0,
       "enabled": true,
       "label": "e2e Benchmark",
-      "type": "Application",
+      "index": 0,
+      "rect": {
+        "y": 0,
+        "height": 874,
+        "width": 402,
+        "x": 0
+      },
       "depth": 0,
+      "type": "Application",
+      "ref": "e1",
+      "kind": "application"
+    },
+    {
+      "enabled": true,
+      "index": 1,
+      "hittable": true,
+      "label": "Benchmark Examples",
       "rect": {
         "width": 402,
         "height": 874,
         "x": 0,
         "y": 0
       },
-      "ref": "e1"
-    },
-    {
-      "hittable": true,
-      "index": 1,
-      "enabled": true,
-      "label": "Benchmark Examples",
-      "type": "Other",
       "depth": 1,
       "parentIndex": 0,
-      "rect": {
-        "width": 402,
-        "height": 874,
-        "x": 0,
-        "y": 0
-      },
-      "ref": "e2"
+      "type": "Other",
+      "ref": "e2",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "index": 2,
       "enabled": true,
+      "index": 2,
       "label": "Benchmark Examples",
-      "type": "NavigationBar",
-      "depth": 2,
-      "identifier": "WebView Accessibility",
-      "parentIndex": 1,
+      "hittable": true,
       "rect": {
         "width": 402,
         "height": 54,
         "x": 0,
         "y": 62
       },
-      "ref": "e3"
+      "depth": 2,
+      "identifier": "WebView Accessibility",
+      "parentIndex": 1,
+      "type": "NavigationBar",
+      "ref": "e3",
+      "kind": "navigation-bar"
     },
     {
-      "hittable": true,
-      "index": 3,
       "enabled": true,
+      "index": 3,
       "label": "Benchmark Examples",
-      "type": "Button",
-      "depth": 3,
-      "identifier": "BackButton",
-      "parentIndex": 2,
+      "hittable": true,
       "rect": {
         "width": 44,
         "height": 44,
         "x": 16,
         "y": 62
       },
-      "ref": "e4"
+      "depth": 3,
+      "identifier": "BackButton",
+      "parentIndex": 2,
+      "type": "Button",
+      "ref": "e4",
+      "kind": "button"
     },
     {
-      "hittable": true,
-      "index": 4,
-      "enabled": true,
-      "label": "WebView Accessibility",
-      "type": "StaticText",
-      "depth": 3,
-      "parentIndex": 2,
       "rect": {
         "width": 177.66666666666663,
         "height": 20.66666666666667,
         "x": 112,
         "y": 73.66666666666666
       },
-      "ref": "e5"
+      "parentIndex": 2,
+      "hittable": true,
+      "label": "WebView Accessibility",
+      "index": 4,
+      "enabled": true,
+      "type": "StaticText",
+      "depth": 3,
+      "ref": "e5",
+      "kind": "text"
     },
     {
-      "hittable": true,
-      "index": 5,
-      "enabled": true,
-      "label": "Apply the coupon shown inside the web page (accept the terms first)",
-      "type": "Other",
-      "depth": 2,
-      "parentIndex": 1,
       "rect": {
         "width": 402,
         "height": 874,
         "x": 0,
         "y": 0
       },
-      "ref": "e6"
-    },
-    {
+      "parentIndex": 1,
       "hittable": true,
-      "index": 6,
+      "label": "Apply the coupon shown inside the web page (accept the terms first)",
+      "index": 5,
       "enabled": true,
       "type": "Other",
-      "depth": 3,
-      "parentIndex": 5,
+      "depth": 2,
+      "ref": "e6",
+      "kind": "other"
+    },
+    {
       "rect": {
         "width": 402,
         "height": 758,
         "x": 0,
         "y": 116
       },
+      "parentIndex": 5,
+      "hittable": true,
+      "index": 6,
+      "enabled": true,
+      "type": "Other",
+      "depth": 3,
       "ref": "e7",
+      "kind": "other",
       "inheritsLabel": true
     },
     {
-      "hittable": true,
-      "depth": 4,
-      "enabled": true,
       "rect": {
         "width": 370,
         "height": 33.66666793823242,
         "x": 16,
         "y": 132
       },
-      "type": "StaticText",
       "parentIndex": 6,
+      "hittable": true,
       "index": 7,
-      "ref": "e8",
-      "inheritsLabel": true
-    },
-    {
-      "hittable": true,
+      "enabled": true,
+      "type": "StaticText",
       "depth": 4,
-      "enabled": true,
+      "ref": "e8",
+      "kind": "text",
+      "inheritsLabel": true
+    },
+    {
       "rect": {
         "width": 402,
         "height": 692,
         "x": 0,
         "y": 182
       },
-      "type": "Other",
-      "identifier": "coupon-webview",
       "parentIndex": 6,
+      "hittable": true,
       "label": "Vertical scroll bar, 1 page",
+      "identifier": "coupon-webview",
       "index": 8,
-      "ref": "e9"
-    },
-    {
-      "hittable": true,
-      "depth": 5,
       "enabled": true,
-      "rect": {
-        "width": 402,
-        "height": 692,
-        "x": 0,
-        "y": 182
-      },
       "type": "Other",
-      "parentIndex": 8,
-      "index": 9,
-      "ref": "e10",
-      "inheritsLabel": true
+      "depth": 4,
+      "ref": "e9",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 6,
-      "enabled": true,
       "rect": {
         "width": 402,
         "height": 692,
         "x": 0,
         "y": 182
       },
-      "type": "WebView",
-      "parentIndex": 9,
-      "index": 10,
-      "ref": "e11",
+      "parentIndex": 8,
+      "hittable": true,
+      "index": 9,
+      "enabled": true,
+      "type": "Other",
+      "depth": 5,
+      "ref": "e10",
+      "kind": "other",
       "inheritsLabel": true
     },
     {
-      "hittable": true,
-      "index": 11,
       "rect": {
+        "width": 402,
+        "height": 692,
+        "x": 0,
+        "y": 182
+      },
+      "parentIndex": 9,
+      "hittable": true,
+      "index": 10,
+      "enabled": true,
+      "type": "WebView",
+      "depth": 6,
+      "ref": "e11",
+      "kind": "webview",
+      "inheritsLabel": true
+    },
+    {
+      "rect": {
+        "height": 692,
         "y": 182,
         "x": 0,
-        "height": 692,
         "width": 402
       },
-      "enabled": true,
-      "type": "WebView",
       "parentIndex": 10,
+      "hittable": true,
+      "index": 11,
+      "enabled": true,
       "depth": 7,
-      "ref": "e12"
+      "type": "WebView",
+      "ref": "e12",
+      "kind": "webview"
     },
     {
-      "hittable": true,
-      "depth": 8,
-      "enabled": true,
       "rect": {
-        "x": 0,
-        "width": 402,
+        "height": 692,
         "y": 0,
-        "height": 692
+        "x": 0,
+        "width": 402
       },
-      "type": "Other",
       "parentIndex": 11,
+      "hittable": true,
       "label": "Checkout coupon",
       "index": 12,
-      "ref": "e13"
+      "enabled": true,
+      "type": "Other",
+      "depth": 8,
+      "ref": "e13",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 9,
-      "enabled": true,
       "rect": {
-        "x": 0,
         "width": 402,
         "y": 182,
-        "height": 692
+        "height": 692,
+        "x": 0
       },
-      "type": "Other",
       "parentIndex": 12,
+      "hittable": true,
       "label": "Checkout coupon",
+      "enabled": true,
       "index": 13,
-      "ref": "e14"
+      "type": "Other",
+      "depth": 9,
+      "ref": "e14",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 10,
-      "enabled": true,
       "rect": {
-        "x": 24,
         "width": 354,
-        "y": 206,
-        "height": 29
+        "height": 29,
+        "x": 24,
+        "y": 206
       },
-      "type": "Other",
-      "focused": true,
       "parentIndex": 13,
+      "hittable": true,
+      "focused": true,
       "label": "Checkout coupon",
-      "value": "1",
+      "enabled": true,
       "index": 14,
-      "ref": "e15"
+      "value": "1",
+      "type": "Other",
+      "depth": 10,
+      "ref": "e15",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 11,
-      "enabled": true,
       "rect": {
         "x": 24,
-        "width": 198,
         "y": 206,
+        "width": 198,
         "height": 29
       },
-      "type": "StaticText",
-      "focused": true,
       "parentIndex": 14,
+      "hittable": true,
+      "focused": true,
       "label": "Checkout coupon",
-      "value": "Checkout coupon",
+      "enabled": true,
       "index": 15,
-      "ref": "e16"
-    },
-    {
-      "hittable": true,
-      "depth": 10,
-      "enabled": true,
-      "rect": {
-        "x": 24,
-        "width": 354,
-        "y": 253,
-        "height": 23
-      },
-      "type": "Other",
-      "focused": true,
-      "parentIndex": 13,
-      "label": "Your coupon code is",
-      "index": 16,
-      "ref": "e17"
-    },
-    {
-      "hittable": true,
-      "depth": 11,
-      "enabled": true,
-      "rect": {
-        "x": 24,
-        "width": 168,
-        "y": 253,
-        "height": 23
-      },
+      "value": "Checkout coupon",
       "type": "StaticText",
-      "focused": true,
-      "parentIndex": 16,
-      "label": "Your coupon code is",
-      "value": "Your coupon code is",
-      "index": 17,
-      "ref": "e18"
+      "depth": 11,
+      "ref": "e16",
+      "kind": "text"
     },
     {
+      "rect": {
+        "x": 24,
+        "y": 253,
+        "width": 354,
+        "height": 23
+      },
+      "parentIndex": 13,
       "hittable": true,
-      "depth": 11,
+      "focused": true,
+      "label": "Your coupon code is",
       "enabled": true,
+      "index": 16,
+      "type": "Other",
+      "depth": 10,
+      "ref": "e17",
+      "kind": "other"
+    },
+    {
+      "rect": {
+        "x": 24,
+        "y": 253,
+        "width": 168,
+        "height": 23
+      },
+      "parentIndex": 16,
+      "hittable": true,
+      "focused": true,
+      "label": "Your coupon code is",
+      "enabled": true,
+      "index": 17,
+      "value": "Your coupon code is",
+      "type": "StaticText",
+      "depth": 11,
+      "ref": "e18",
+      "kind": "text"
+    },
+    {
       "rect": {
         "x": 191,
-        "width": 126,
         "y": 253,
+        "width": 126,
         "height": 23
       },
-      "type": "StaticText",
-      "focused": true,
       "parentIndex": 16,
+      "hittable": true,
+      "focused": true,
       "label": "TA-BENCH-50",
-      "value": "TA-BENCH-50",
-      "index": 18,
-      "ref": "e19"
-    },
-    {
-      "hittable": true,
-      "depth": 11,
-      "rect": {
-        "y": 253,
-        "x": 316,
-        "height": 23,
-        "width": 6
-      },
       "enabled": true,
+      "index": 18,
+      "value": "TA-BENCH-50",
       "type": "StaticText",
-      "focused": true,
-      "parentIndex": 16,
-      "label": ".",
-      "value": ".",
-      "index": 19,
-      "ref": "e20"
+      "depth": 11,
+      "ref": "e19",
+      "kind": "text"
     },
     {
+      "rect": {
+        "x": 316,
+        "y": 253,
+        "width": 6,
+        "height": 23
+      },
+      "parentIndex": 16,
       "hittable": true,
-      "depth": 10,
+      "focused": true,
+      "label": ".",
+      "enabled": true,
+      "index": 19,
+      "value": ".",
+      "type": "StaticText",
+      "depth": 11,
+      "ref": "e20",
+      "kind": "text"
+    },
+    {
       "rect": {
         "height": 23,
         "x": 24,
         "y": 294,
         "width": 354
       },
-      "enabled": true,
-      "type": "Other",
-      "focused": true,
       "parentIndex": 13,
+      "hittable": true,
+      "focused": true,
       "label": "Coupon code",
+      "enabled": true,
       "index": 20,
-      "ref": "e21"
+      "type": "Other",
+      "depth": 10,
+      "ref": "e21",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 11,
       "rect": {
+        "height": 23,
         "x": 24,
-        "width": 108,
         "y": 294,
+        "width": 108
+      },
+      "parentIndex": 20,
+      "hittable": true,
+      "focused": true,
+      "label": "Coupon code",
+      "enabled": true,
+      "index": 21,
+      "value": "Coupon code",
+      "type": "StaticText",
+      "depth": 11,
+      "ref": "e22",
+      "kind": "text"
+    },
+    {
+      "rect": {
+        "height": 41,
+        "x": 24,
+        "y": 321,
+        "width": 337
+      },
+      "parentIndex": 13,
+      "hittable": true,
+      "focused": true,
+      "label": "Coupon code",
+      "enabled": true,
+      "index": 22,
+      "type": "TextField",
+      "depth": 10,
+      "ref": "e23",
+      "kind": "text-field"
+    },
+    {
+      "rect": {
+        "height": 23,
+        "x": 24,
+        "y": 378,
+        "width": 354
+      },
+      "parentIndex": 13,
+      "hittable": true,
+      "focused": true,
+      "label": "I accept the terms",
+      "enabled": true,
+      "index": 23,
+      "type": "Other",
+      "depth": 10,
+      "ref": "e24",
+      "kind": "other"
+    },
+    {
+      "rect": {
+        "height": 23,
+        "x": 26,
+        "y": 378,
+        "width": 168
+      },
+      "parentIndex": 23,
+      "hittable": true,
+      "focused": true,
+      "label": "I accept the terms",
+      "enabled": true,
+      "index": 24,
+      "value": "0",
+      "type": "Switch",
+      "depth": 11,
+      "ref": "e25",
+      "kind": "switch"
+    },
+    {
+      "focused": true,
+      "hittable": true,
+      "label": "I accept the terms",
+      "enabled": true,
+      "index": 25,
+      "rect": {
+        "y": 378,
+        "height": 23,
+        "x": 48,
+        "width": 146
+      },
+      "depth": 11,
+      "type": "Other",
+      "parentIndex": 23,
+      "ref": "e26",
+      "kind": "other"
+    },
+    {
+      "focused": true,
+      "hittable": true,
+      "rect": {
+        "x": 48,
+        "y": 378,
+        "width": 146,
         "height": 23
       },
       "enabled": true,
-      "type": "StaticText",
-      "focused": true,
-      "parentIndex": 20,
-      "label": "Coupon code",
-      "value": "Coupon code",
-      "index": 21,
-      "ref": "e22"
-    },
-    {
-      "hittable": true,
-      "depth": 10,
-      "enabled": true,
-      "rect": {
-        "width": 337,
-        "height": 41,
-        "y": 321,
-        "x": 24
-      },
-      "type": "TextField",
-      "focused": true,
-      "parentIndex": 13,
-      "label": "Coupon code",
-      "index": 22,
-      "ref": "e23"
-    },
-    {
-      "hittable": true,
-      "depth": 10,
-      "enabled": true,
-      "rect": {
-        "width": 354,
-        "height": 23,
-        "y": 378,
-        "x": 24
-      },
-      "type": "Other",
-      "focused": true,
-      "parentIndex": 13,
       "label": "I accept the terms",
-      "index": 23,
-      "ref": "e24"
-    },
-    {
-      "hittable": true,
-      "depth": 11,
-      "enabled": true,
-      "rect": {
-        "width": 168,
-        "height": 23,
-        "y": 378,
-        "x": 26
-      },
-      "type": "Switch",
-      "focused": true,
-      "parentIndex": 23,
-      "label": "I accept the terms",
-      "value": "0",
-      "index": 24,
-      "ref": "e25"
-    },
-    {
-      "hittable": true,
-      "depth": 11,
-      "enabled": true,
-      "rect": {
-        "width": 146,
-        "height": 23,
-        "y": 378,
-        "x": 48
-      },
-      "type": "Other",
-      "focused": true,
-      "parentIndex": 23,
-      "label": "I accept the terms",
-      "index": 25,
-      "ref": "e26"
-    },
-    {
-      "hittable": true,
-      "depth": 12,
-      "enabled": true,
-      "rect": {
-        "width": 146,
-        "height": 23,
-        "y": 378,
-        "x": 48
-      },
-      "type": "StaticText",
-      "focused": true,
-      "parentIndex": 25,
-      "label": "I accept the terms",
-      "value": "I accept the terms",
       "index": 26,
-      "ref": "e27"
+      "value": "I accept the terms",
+      "depth": 12,
+      "type": "StaticText",
+      "parentIndex": 25,
+      "ref": "e27",
+      "kind": "text"
     },
     {
+      "focused": true,
       "hittable": true,
-      "depth": 10,
+      "label": "Apply coupon",
       "enabled": true,
+      "index": 27,
       "rect": {
         "width": 161,
-        "height": 49,
         "y": 425,
-        "x": 24
+        "x": 24,
+        "height": 49
       },
+      "depth": 10,
       "type": "Button",
-      "focused": true,
       "parentIndex": 13,
-      "label": "Apply coupon",
-      "index": 27,
-      "ref": "e28"
+      "ref": "e28",
+      "kind": "button"
     },
     {
-      "type": "Other",
-      "parentIndex": 13,
-      "depth": 10,
-      "enabled": true,
+      "focused": true,
+      "hittable": true,
       "label": "alert",
+      "enabled": true,
+      "index": 28,
       "rect": {
         "width": 354,
-        "height": 10,
         "y": 206,
-        "x": 24
+        "x": 24,
+        "height": 10
       },
-      "index": 28,
-      "focused": true,
-      "hittable": true,
-      "ref": "e29"
+      "depth": 10,
+      "type": "Other",
+      "parentIndex": 13,
+      "ref": "e29",
+      "kind": "other"
     },
     {
-      "type": "Other",
-      "parentIndex": 10,
-      "depth": 7,
-      "value": "0%",
-      "enabled": true,
+      "hittable": true,
       "rect": {
+        "width": 30,
         "y": 182,
         "x": 369,
-        "height": 630,
-        "width": 30
+        "height": 630
       },
+      "enabled": true,
       "index": 29,
-      "hittable": true,
+      "value": "0%",
+      "depth": 7,
+      "type": "Other",
+      "parentIndex": 10,
       "ref": "e30",
+      "kind": "other",
       "inheritsLabel": true
     },
     {
-      "type": "Other",
-      "parentIndex": 10,
-      "depth": 7,
-      "value": "0%",
-      "enabled": true,
-      "label": "Horizontal scroll bar, 1 page",
+      "hittable": true,
       "rect": {
+        "width": 278,
         "y": 841,
         "x": 62,
-        "height": 30,
-        "width": 278
+        "height": 30
       },
+      "enabled": true,
       "index": 30,
-      "hittable": true,
-      "ref": "e31"
+      "label": "Horizontal scroll bar, 1 page",
+      "value": "0%",
+      "depth": 7,
+      "type": "Other",
+      "parentIndex": 10,
+      "ref": "e31",
+      "kind": "other"
     }
   ],
   "truncated": false,

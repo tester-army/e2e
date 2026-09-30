@@ -13,7 +13,7 @@
     "e2e": "workspace:*",
     "@e2e-dev/web": "workspace:*",
     "@types/node": "26.6.2",
-    "agent-device": "0.21.16",
+    "agent-device": "0.21.18",
     "ai": "7.0.107",
     "mint": "4.2.909",
     "playwright": "1.63.0",

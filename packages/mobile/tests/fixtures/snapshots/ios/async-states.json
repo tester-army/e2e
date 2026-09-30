@@ -1,167 +1,177 @@
 {
   "nodes": [
     {
-      "index": 0,
       "enabled": true,
+      "depth": 0,
+      "label": "e2e Benchmark",
+      "hittable": false,
       "type": "Application",
       "rect": {
         "x": 0,
         "y": 0,
-        "width": 402,
-        "height": 874
+        "height": 874,
+        "width": 402
       },
-      "hittable": false,
-      "label": "e2e Benchmark",
-      "depth": 0,
-      "ref": "e1"
+      "index": 0,
+      "ref": "e1",
+      "kind": "application"
     },
     {
-      "index": 1,
       "enabled": true,
-      "type": "Other",
-      "rect": {
-        "height": 874,
-        "width": 402,
-        "x": 0,
-        "y": 0
-      },
+      "depth": 1,
+      "label": "Benchmark Examples",
       "parentIndex": 0,
       "hittable": true,
-      "label": "Benchmark Examples",
-      "depth": 1,
-      "ref": "e2"
+      "type": "Other",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "height": 874,
+        "width": 402
+      },
+      "index": 1,
+      "ref": "e2",
+      "kind": "other"
     },
     {
-      "index": 2,
       "enabled": true,
-      "type": "NavigationBar",
-      "rect": {
-        "height": 54,
-        "width": 402,
-        "x": 0,
-        "y": 62
-      },
+      "depth": 2,
+      "label": "Benchmark Examples",
+      "identifier": "Async States",
       "parentIndex": 1,
       "hittable": true,
-      "label": "Benchmark Examples",
-      "depth": 2,
-      "identifier": "Async States",
-      "ref": "e3"
+      "type": "NavigationBar",
+      "rect": {
+        "y": 62,
+        "height": 54,
+        "x": 0,
+        "width": 402
+      },
+      "index": 2,
+      "ref": "e3",
+      "kind": "navigation-bar"
     },
     {
-      "index": 3,
       "enabled": true,
-      "type": "Button",
-      "rect": {
-        "height": 44,
-        "width": 219.66666666666666,
-        "x": 16.00000000000001,
-        "y": 62
-      },
+      "depth": 3,
+      "label": "Benchmark Examples",
+      "identifier": "BackButton",
       "parentIndex": 2,
       "hittable": true,
-      "label": "Benchmark Examples",
-      "depth": 3,
-      "identifier": "BackButton",
-      "ref": "e4"
+      "rect": {
+        "x": 16.00000000000001,
+        "y": 62,
+        "width": 219.66666666666666,
+        "height": 44
+      },
+      "type": "Button",
+      "index": 3,
+      "ref": "e4",
+      "kind": "button"
     },
     {
-      "index": 4,
-      "enabled": true,
-      "type": "StaticText",
       "rect": {
-        "height": 20.66666666666667,
-        "width": 104.33333333333331,
         "x": 247.66666666666663,
-        "y": 73.66666666666666
+        "y": 73.66666666666666,
+        "width": 104.33333333333331,
+        "height": 20.66666666666667
       },
       "parentIndex": 2,
       "hittable": true,
       "label": "Async States",
+      "enabled": true,
+      "index": 4,
+      "type": "StaticText",
       "depth": 3,
-      "ref": "e5"
+      "ref": "e5",
+      "kind": "text"
     },
     {
-      "index": 5,
-      "enabled": true,
-      "type": "Other",
       "rect": {
-        "height": 874,
         "width": 402,
+        "y": 0,
         "x": 0,
-        "y": 0
+        "height": 874
       },
       "parentIndex": 1,
       "hittable": true,
       "label": "Loading…",
-      "depth": 2,
-      "ref": "e6"
-    },
-    {
-      "index": 6,
+      "index": 5,
       "enabled": true,
       "type": "Other",
+      "depth": 2,
+      "ref": "e6",
+      "kind": "other"
+    },
+    {
       "rect": {
-        "height": 758,
         "width": 402,
+        "y": 116,
         "x": 0,
-        "y": 116
+        "height": 758
       },
       "parentIndex": 5,
       "hittable": true,
       "label": "In progress",
-      "depth": 3,
-      "ref": "e7"
-    },
-    {
-      "hittable": true,
-      "depth": 4,
-      "rect": {
-        "height": 36,
-        "width": 36,
-        "x": 183,
-        "y": 462.6666564941406
-      },
+      "index": 6,
       "enabled": true,
       "type": "Other",
-      "identifier": "initial-loading",
-      "parentIndex": 6,
-      "label": "In progress",
-      "index": 7,
-      "ref": "e8"
+      "depth": 3,
+      "ref": "e7",
+      "kind": "other"
     },
     {
-      "hittable": true,
-      "depth": 5,
       "rect": {
-        "height": 36,
         "width": 36,
+        "y": 462.6666564941406,
         "x": 183,
-        "y": 462.6666564941406
+        "height": 36
       },
-      "enabled": true,
-      "type": "ActivityIndicator",
-      "parentIndex": 7,
+      "parentIndex": 6,
+      "hittable": true,
       "label": "In progress",
-      "value": "1",
-      "index": 8,
-      "ref": "e9"
+      "identifier": "initial-loading",
+      "index": 7,
+      "enabled": true,
+      "type": "Other",
+      "depth": 4,
+      "ref": "e8",
+      "kind": "other"
     },
     {
-      "index": 9,
-      "depth": 4,
       "rect": {
-        "height": 17,
-        "width": 62.666656494140625,
-        "x": 169.6666717529297,
-        "y": 510.3333435058594
+        "width": 36,
+        "y": 462.6666564941406,
+        "x": 183,
+        "height": 36
       },
+      "parentIndex": 7,
+      "hittable": true,
+      "label": "In progress",
+      "index": 8,
+      "enabled": true,
+      "value": "1",
+      "type": "ActivityIndicator",
+      "depth": 5,
+      "ref": "e9",
+      "kind": "activity-indicator"
+    },
+    {
+      "rect": {
+        "width": 62.666656494140625,
+        "y": 510.3333435058594,
+        "x": 169.6666717529297,
+        "height": 17
+      },
+      "parentIndex": 6,
+      "hittable": true,
+      "label": "Loading…",
+      "index": 9,
       "enabled": true,
       "type": "StaticText",
-      "parentIndex": 6,
-      "label": "Loading…",
-      "hittable": true,
-      "ref": "e10"
+      "depth": 4,
+      "ref": "e10",
+      "kind": "text"
     }
   ],
   "truncated": false,

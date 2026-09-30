@@ -1,217 +1,230 @@
 {
   "nodes": [
     {
-      "index": 0,
-      "type": "Application",
       "enabled": true,
-      "rect": {
-        "x": 0,
-        "width": 402,
-        "y": 0,
-        "height": 874
-      },
-      "hittable": false,
-      "label": "e2e Benchmark",
       "depth": 0,
-      "ref": "e1"
+      "label": "e2e Benchmark",
+      "hittable": false,
+      "type": "Application",
+      "rect": {
+        "height": 874,
+        "y": 0,
+        "x": 0,
+        "width": 402
+      },
+      "index": 0,
+      "ref": "e1",
+      "kind": "application"
     },
     {
-      "index": 1,
-      "type": "Other",
       "enabled": true,
-      "rect": {
-        "x": 0,
-        "width": 402,
-        "y": 0,
-        "height": 874
-      },
+      "depth": 1,
+      "label": "Benchmark Examples",
       "parentIndex": 0,
       "hittable": true,
-      "label": "Benchmark Examples",
-      "depth": 1,
-      "ref": "e2"
+      "rect": {
+        "y": 0,
+        "x": 0,
+        "height": 874,
+        "width": 402
+      },
+      "type": "Other",
+      "index": 1,
+      "ref": "e2",
+      "kind": "other"
     },
     {
-      "index": 2,
-      "type": "NavigationBar",
       "enabled": true,
-      "rect": {
-        "x": 0,
-        "width": 402,
-        "y": 62,
-        "height": 54
-      },
+      "depth": 2,
+      "label": "Benchmark Examples",
+      "identifier": "Debounced Search",
       "parentIndex": 1,
       "hittable": true,
-      "label": "Benchmark Examples",
-      "depth": 2,
-      "identifier": "Debounced Search",
-      "ref": "e3"
+      "rect": {
+        "y": 62,
+        "x": 0,
+        "height": 54,
+        "width": 402
+      },
+      "type": "NavigationBar",
+      "index": 2,
+      "ref": "e3",
+      "kind": "navigation-bar"
     },
     {
-      "index": 3,
-      "type": "Button",
       "enabled": true,
-      "rect": {
-        "x": 16,
-        "width": 44,
-        "y": 62,
-        "height": 44
-      },
+      "depth": 3,
+      "label": "Benchmark Examples",
+      "identifier": "BackButton",
       "parentIndex": 2,
       "hittable": true,
-      "label": "Benchmark Examples",
-      "depth": 3,
-      "identifier": "BackButton",
-      "ref": "e4"
+      "rect": {
+        "y": 62,
+        "x": 16,
+        "height": 44,
+        "width": 44
+      },
+      "type": "Button",
+      "index": 3,
+      "ref": "e4",
+      "kind": "button"
     },
     {
-      "index": 4,
-      "type": "StaticText",
-      "enabled": true,
       "rect": {
-        "x": 125.33333333333331,
         "width": 151.33333333333331,
+        "height": 20.66666666666667,
         "y": 73.66666666666666,
-        "height": 20.66666666666667
+        "x": 125.33333333333331
       },
       "parentIndex": 2,
       "hittable": true,
       "label": "Debounced Search",
+      "index": 4,
+      "enabled": true,
+      "type": "StaticText",
       "depth": 3,
-      "ref": "e5"
+      "ref": "e5",
+      "kind": "text"
     },
     {
-      "index": 5,
-      "type": "Other",
-      "enabled": true,
       "rect": {
-        "x": 0,
         "width": 402,
+        "height": 874,
         "y": 0,
-        "height": 874
+        "x": 0
       },
       "parentIndex": 1,
       "hittable": true,
       "label": "Search for and select \"Benchmark Target\"",
+      "index": 5,
+      "enabled": true,
+      "type": "Other",
       "depth": 2,
-      "ref": "e6"
+      "ref": "e6",
+      "kind": "other"
     },
     {
-      "index": 6,
-      "type": "Other",
-      "enabled": true,
       "rect": {
-        "x": 0,
         "width": 402,
+        "height": 758,
         "y": 116,
-        "height": 758
+        "x": 0
       },
       "parentIndex": 5,
       "hittable": true,
+      "index": 6,
+      "enabled": true,
+      "type": "Other",
       "depth": 3,
       "ref": "e7",
+      "kind": "other",
       "inheritsLabel": true
     },
     {
-      "index": 7,
-      "depth": 4,
       "rect": {
         "width": 370,
-        "x": 16,
         "height": 15.666666030883789,
-        "y": 132
+        "y": 132,
+        "x": 16
       },
+      "parentIndex": 6,
+      "hittable": true,
+      "index": 7,
       "enabled": true,
       "type": "StaticText",
-      "parentIndex": 6,
-      "hittable": true,
+      "depth": 4,
       "ref": "e8",
+      "kind": "text",
       "inheritsLabel": true
     },
     {
-      "hittable": true,
-      "depth": 4,
       "rect": {
-        "x": 17,
-        "y": 160.66666793823242,
+        "width": 368,
         "height": 39.33333206176758,
-        "width": 368
+        "y": 160.66666793823242,
+        "x": 17
       },
-      "enabled": true,
-      "type": "TextField",
-      "identifier": "search-input",
       "parentIndex": 6,
-      "placeholder": "Search…",
+      "hittable": true,
+      "enabled": true,
       "index": 8,
-      "ref": "e9"
-    },
-    {
-      "hittable": true,
+      "identifier": "search-input",
+      "placeholder": "Search…",
+      "type": "TextField",
       "depth": 4,
-      "enabled": true,
-      "rect": {
-        "x": 16,
-        "height": 645,
-        "y": 213,
-        "width": 370
-      },
-      "type": "Other",
-      "identifier": "search-results",
-      "parentIndex": 6,
-      "label": "Vertical scroll bar, 1 page",
-      "index": 9,
-      "ref": "e10"
+      "ref": "e9",
+      "kind": "text-field"
     },
     {
-      "hittable": true,
-      "depth": 5,
-      "enabled": true,
       "rect": {
-        "x": 16,
+        "width": 370,
         "height": 645,
         "y": 213,
-        "width": 370
+        "x": 16
       },
-      "type": "ScrollView",
+      "parentIndex": 6,
+      "hittable": true,
+      "label": "Vertical scroll bar, 1 page",
+      "enabled": true,
+      "index": 9,
+      "identifier": "search-results",
+      "type": "Other",
+      "depth": 4,
+      "ref": "e10",
+      "kind": "other"
+    },
+    {
+      "rect": {
+        "width": 370,
+        "height": 645,
+        "y": 213,
+        "x": 16
+      },
       "parentIndex": 9,
+      "hittable": true,
       "index": 10,
+      "enabled": true,
+      "type": "ScrollView",
+      "depth": 5,
       "ref": "e11",
+      "kind": "scroll-area",
       "inheritsLabel": true
     },
     {
-      "hittable": true,
-      "depth": 6,
-      "enabled": true,
       "rect": {
-        "x": 353,
+        "width": 30,
         "height": 599,
         "y": 213,
-        "width": 30
+        "x": 353
       },
-      "type": "Other",
       "parentIndex": 10,
-      "value": "0%",
+      "hittable": true,
       "index": 11,
+      "enabled": true,
+      "value": "0%",
+      "type": "Other",
+      "depth": 6,
       "ref": "e12",
+      "kind": "other",
       "inheritsLabel": true
     },
     {
-      "hittable": true,
-      "depth": 6,
-      "enabled": true,
       "rect": {
-        "x": 62,
+        "width": 278,
         "height": 30,
         "y": 825,
-        "width": 278
+        "x": 62
       },
-      "type": "Other",
       "parentIndex": 10,
+      "hittable": true,
       "label": "Horizontal scroll bar, 1 page",
-      "value": "0%",
       "index": 12,
-      "ref": "e13"
+      "enabled": true,
+      "value": "0%",
+      "type": "Other",
+      "depth": 6,
+      "ref": "e13",
+      "kind": "other"
     }
   ],
   "truncated": false,
