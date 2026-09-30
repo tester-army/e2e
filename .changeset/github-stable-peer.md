@@ -2,4 +2,4 @@
 "@e2e-dev/github": patch
 ---
 
-Ships alongside the stable runner. The previous builds named one canary runner build in their peer range and refused a stable `e2e`.
+`@e2e-dev/github` installs next to a stable `e2e` again. The published builds pinned their `e2e` peer to one canary build, so `npm install` refused to resolve it against a versioned runner.
