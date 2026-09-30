@@ -109,6 +109,10 @@ describe('secrets.get', () => {
     expect(deferred.name).toBe('admin');
     expect(deferred.purpose).toBe('generic-secret');
     expect(unknown.name).toBe('not-declared-yet');
+    // Only the resolved config knows the name is a credential's password.
+    const password = secrets.get('admin.password');
+    setSecretRegistry(registry([admin], [adminPassword]));
+    expect(password.purpose).toBe('password');
   });
 
   it('refuses to become a string before any run exists, so a config cannot pass the reference off as the value', () => {

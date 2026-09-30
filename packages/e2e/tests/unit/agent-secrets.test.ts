@@ -11,6 +11,8 @@ import type { AgentContext } from '../../src/agent/invocation.ts';
 import { authorizeSecretFill } from '../../src/agent/secrets.ts';
 import type { ResolvedCredential, ResolvedSecret } from '../../src/config/resolve.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
+import { secretBrand } from '../../src/internal/brands.ts';
+import type { Secret } from '../../src/types.ts';
 import { credentials, setSecretRegistry } from '../../src/secrets.ts';
 
 const admin: ResolvedCredential = { name: 'admin', username: 'admin@example.com' };
@@ -85,5 +87,14 @@ describe('authorizeSecretFill', () => {
       message: 'field purpose none is incompatible with secret purpose password',
     });
     expect(recorder.decisions).toEqual(['secret.purpose:denied:POLICY_DENIED']);
+  });
+
+  it('judges the purpose by the config, not by what a handle claims', async () => {
+    const claimsGeneric: Secret = Object.freeze({ name: adminPassword.name, purpose: 'generic-secret', [secretBrand]: true as const });
+    const recorder = host();
+    await expect(authorizeSecretFill(recorder, runtime(), claimsGeneric, asPlainTextbox)).rejects.toMatchObject({
+      code: 'POLICY_DENIED',
+      message: 'field purpose none is incompatible with secret purpose password',
+    });
   });
 });

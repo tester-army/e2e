@@ -75,9 +75,9 @@ function makeSecret(name: string, purpose: SecretPurpose): Secret {
 /**
  * The handle `secrets.get()` returns before any run installed a registry: at
  * config evaluation, where an engine option holds it until the engine
- * resolves it during an attempt. `secrets.get()` names a `config.secrets`
- * entry, never a credential's password, so the purpose is known up front;
- * the config load checks the name. Turned into a string
+ * resolves it during an attempt. Only the resolved config knows whether the
+ * name is a credential's password (`admin.password`), so the purpose is read
+ * from the run's registry when asked; the config load checks the name. Turned into a string
  * (a template literal, `String()`, `+`, `JSON.stringify`) it throws: the
  * config holds a name, not the value, and a string would pass the name off
  * as the value where only a string fits, a command's env or an agent's context.
@@ -89,7 +89,13 @@ function deferredSecret(name: string): Secret {
       `secrets.get(${JSON.stringify(name)}) is a reference to a secret, not its value: only an engine option that declares secrets accepts it, such as web({ basicAuth: { password } }); where a string is needed, such as a command's env or an agent's context, read the value yourself (process.env)`,
     );
   };
-  const handle = { name, purpose: 'generic-secret' as const, [secretBrand]: true as const };
+  const handle = {
+    name,
+    get purpose(): SecretPurpose {
+      return registrySlot.get(globalThis)?.secrets.get(name)?.purpose ?? 'generic-secret';
+    },
+    [secretBrand]: true as const,
+  };
   Object.defineProperties(handle, {
     toString: { value: notAValue },
     toJSON: { value: notAValue },

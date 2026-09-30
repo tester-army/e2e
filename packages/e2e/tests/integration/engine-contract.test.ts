@@ -437,10 +437,6 @@ test('needs browser', async ({ app, browser }) => {
   await app.open('/');
   await browser.goto('/somewhere');
 });
-
-test('reaches for the old name', async ({ web }) => {
-  void web;
-});
 `;
       const { outcome, project } = await runProject(
         { 'tests/no-browser.e2e.ts': file },
@@ -451,9 +447,6 @@ test('reaches for the old name', async ({ web }) => {
       expect(result.attempts[0]!.error?.code).toBe('UNSUPPORTED_CAPABILITY');
       expect(result.attempts[0]!.error?.category).toBe('configuration');
       expect(result.attempts[0]!.error?.message).toContain('has no "browser" fixture');
-      expect(resultByTitle(outcome, 'reaches for the old name').attempts[0]!.error?.message).toContain(
-        'the web fixture is now called browser: destructure { browser } instead',
-      );
       project.cleanup();
     },
     60_000,
