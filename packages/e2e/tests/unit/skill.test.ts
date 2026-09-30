@@ -50,7 +50,10 @@ describe('the bundled agent skill', () => {
 
   it('ships in the published package through the build copy', () => {
     expect(packageJson.files).toContain('skills');
-    expect(packageJson.scripts['build']).toContain("cpSync('../../skills/e2e','skills/e2e'");
+    expect(packageJson.scripts['build']).toContain('node scripts/prepare-build.ts');
+    expect(readFileSync(new URL('../../scripts/prepare-build.ts', import.meta.url), 'utf8')).toContain(
+      "cpSync('../../skills/e2e', 'skills/e2e'",
+    );
   });
 });
 

@@ -347,11 +347,11 @@ trees, on both platforms, without a device.
 
 ## Gotchas
 
-- Status prose drifts. `packages/e2e/README.md` and the docs pages can claim
-  things that have since landed or been removed (the located verbs and the
-  locate cache are both gone, for example). Verify against `src/` before
-  repeating or relying on any "not implemented yet" list — and fix the prose
-  when you find it stale.
+- Status prose drifts. `README.md` (the build copies it into `packages/e2e/`
+  for npm) and the docs pages can claim things that have since landed or
+  been removed (the located verbs and the locate cache are both gone, for
+  example). Verify against `src/` before repeating or relying on any "not
+  implemented yet" list — and fix the prose when you find it stale.
 - Committed recordings. The two benchmarks commit their agentic suites' replay
   cache (`apps/web-benchmark/.e2e/cache/`,
   `apps/mobile-benchmark/.e2e/cache/`; their `.gitignore`s leave it
