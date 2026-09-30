@@ -107,9 +107,11 @@ describe('manifest', () => {
     expect(() => harness({ permissions: { camera: 'granted' } } as never)).toThrow(
       expect.objectContaining({ code: 'INVALID_CONFIG', message: 'mobile({ permissions }).camera must be one of grant, deny, reset, got "granted"' }),
     );
-    expect(() => harness({ permissions: 'camera' } as never)).toThrow(
-      expect.objectContaining({ code: 'INVALID_CONFIG', message: 'mobile({ permissions }) must be an object of permission names to grant, deny, reset' }),
-    );
+    for (const permissions of ['camera', null, ['camera'], new Map([['camera', 'grant']])]) {
+      expect(() => harness({ permissions } as never)).toThrow(
+        expect.objectContaining({ code: 'INVALID_CONFIG', message: 'mobile({ permissions }) must be a plain object of permission names to grant, deny, reset' }),
+      );
+    }
     expect(() => harness({ permissions: { camera: 'grant', 'media-library': 'deny', photos: undefined } } as never)).not.toThrow();
   });
 

@@ -313,7 +313,8 @@ const PERMISSION_NAMES: readonly string[] = Object.keys({
 const PERMISSION_STATES: readonly string[] = Object.keys({ grant: true, deny: true, reset: true } satisfies Record<PermissionState, true>);
 
 /**
- * Refuses a permissions map before any device command: a name agent-device
+ * Refuses a permissions map before any device command: anything but a plain
+ * object, a name agent-device
  * does not set, naming the nearest, or a state other than grant, deny, or
  * reset. `INVALID_CONFIG` for the engine option, `INVALID_ARGUMENT` for a
  * test's `device.openApp`. An `undefined` state is skipped, as the preset
@@ -323,8 +324,10 @@ function assertPermissions(label: string, permissions: unknown, code: 'INVALID_C
   const fail = (message: string): never => {
     throw code === 'INVALID_CONFIG' ? new ConfigurationError(code, message) : new TestError(code, message);
   };
-  if (typeof permissions !== 'object' || permissions === null || Array.isArray(permissions)) {
-    fail(`${label} must be an object of permission names to ${PERMISSION_STATES.join(', ')}`);
+  // A Map or class instance carries no own keys to check, and the preset would apply none of it.
+  const prototype: unknown = typeof permissions === 'object' && permissions !== null ? Object.getPrototypeOf(permissions) : undefined;
+  if (prototype !== Object.prototype && prototype !== null) {
+    fail(`${label} must be a plain object of permission names to ${PERMISSION_STATES.join(', ')}`);
   }
   rejectUnknownKeys(label, permissions as object, PERMISSION_NAMES, code);
   for (const [name, state] of Object.entries(permissions as Record<string, unknown>)) {

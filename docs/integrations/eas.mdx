@@ -88,9 +88,9 @@ mobile({ platform: 'ios', app: 'com.example.app', appPath: 'build/App.app', devi
 | `agentDeviceVersion`    | the engine's | The agent-device version EAS starts the session's daemon at. Defaults to the one `@e2e-dev/mobile` pins, so the remote daemon answers as the engine's client expects; without it EAS starts the latest. |
 | `tags`                  | `[]`        | Tags on every session, beside the run's own. |
 
-An option not in this table, both `buildId` and `applicationArchiveUrl`, or a
-`maxIdleTimeMinutes` not below `maxDurationMinutes` fails the config load with
-`INVALID_CONFIG`.
+An option not in this table, `buildId` and `applicationArchiveUrl` together, or
+a `maxIdleTimeMinutes` not below a `maxDurationMinutes` passed with it fails the
+config load with `INVALID_CONFIG`.
 
 ## Sessions
 
