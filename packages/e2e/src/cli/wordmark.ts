@@ -276,16 +276,17 @@ export interface PlayWordmarkOptions {
 }
 
 /**
- * Writes the word on `stream` and resolves with it at rest on the screen and
- * the cursor restored. Where motion does not belong the wordmark is printed
- * at rest at once; a stream that is not a wide enough terminal gets nothing.
+ * Writes the word on `stream` and resolves with it at rest on the screen, one
+ * blank line under it, and the cursor restored. Where motion does not belong
+ * the wordmark is printed at rest at once; a stream that is not a wide enough
+ * terminal gets nothing.
  * Ctrl-C or SIGTERM during the writing restores the cursor and exits 130,
  * as an interrupted run does.
  */
 export async function playWordmark(stream: WordmarkStream, options: PlayWordmarkOptions = {}): Promise<void> {
   if (!fits(stream)) return;
   if (options.motion === false || !animates(stream, options.env ?? process.env)) {
-    stream.write(`${rest().join('\n')}\n`);
+    stream.write(`${rest().join('\n')}\n\n`);
     return;
   }
   const styled = styledOn(stream);
@@ -310,7 +311,7 @@ export async function playWordmark(stream: WordmarkStream, options: PlayWordmark
       paint(frame(elapsed, styled));
       await sleep(FRAME_MS);
     }
-    paint(rest());
+    paint([...rest(), '']);
   } finally {
     process.off('SIGINT', interrupted);
     process.off('SIGTERM', interrupted);

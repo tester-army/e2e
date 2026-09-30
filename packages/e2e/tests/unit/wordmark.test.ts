@@ -67,18 +67,18 @@ describe('playWordmark', () => {
     expect(out.writes).toEqual([]);
   });
 
-  it('prints the wordmark at rest, without motion, in CI, on a dumb terminal, and when motion is declined', async () => {
+  it('prints the wordmark at rest, without motion, in CI, on a dumb terminal, and when motion is declined, with a blank line under it', async () => {
     for (const options of [{ env: { CI: 'true' } }, { env: { TERM: 'dumb' } }, { env: {}, motion: false }]) {
       const out = stream({ depth: 1 });
       await playWordmark(out, options);
-      expect(out.writes).toEqual([`${REST.join('\n')}\n`]);
+      expect(out.writes).toEqual([`${REST.join('\n')}\n\n`]);
     }
   });
 
   it('prints the wordmark at rest on a terminal too short to repaint it in place', async () => {
     const short = stream({ rows: 10 });
     await playWordmark(short, { env: {} });
-    expect(short.writes).toEqual([`${REST.join('\n')}\n`]);
+    expect(short.writes).toEqual([`${REST.join('\n')}\n\n`]);
   });
 
   it('writes the word in over a second or so, repainting in place with a dim edge behind the pen, and leaves it at rest with the cursor shown', async () => {
@@ -105,7 +105,7 @@ describe('playWordmark', () => {
     const quarter = stripVTControlCharacters(paints[Math.floor(paints.length / 4)]!).split('\n');
     expect(quarter.some((line) => /\S/u.test(line.slice(0, 15)))).toBe(true);
     expect(quarter.every((line) => line.slice(38).trim() === '')).toBe(true);
-    // The last paint is the word at rest, unstyled, in place.
-    expect(paints.at(-1)).toBe(`${ESC}[?2026h${ESC}[10A${ESC}[0J${REST.join('\n')}\n${ESC}[?2026l`);
+    // The last paint is the word at rest, unstyled, in place, with a blank line under it.
+    expect(paints.at(-1)).toBe(`${ESC}[?2026h${ESC}[10A${ESC}[0J${REST.join('\n')}\n\n${ESC}[?2026l`);
   });
 });
