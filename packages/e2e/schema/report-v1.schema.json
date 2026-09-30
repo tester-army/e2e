@@ -221,6 +221,7 @@
         },
         "derived": { "enum": ["pixels", "whole-node", "minted-token", "date"] },
         "notRecorded": { "enum": ["param-collision"] },
+        "missingAnchors": { "type": "array", "items": { "type": "string" }, "maxItems": 8 },
         "replayedActions": { "type": "integer", "minimum": 0 },
         "totalActions": { "type": "integer", "minimum": 0 }
       },

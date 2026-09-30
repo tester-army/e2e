@@ -125,6 +125,9 @@ function formatReplayedPrefix(prefix: ReplayedPrefix): string {
       ? [
           'Every recorded action ran, but the screen does not show the recorded end state. ' +
             'Check whether the step actually took effect before doing anything — the recorded flow may have silently failed to commit.',
+          ...(prefix.missingAnchors === undefined || prefix.missingAnchors.length === 0
+            ? []
+            : [`Not on screen from the recorded end state: ${prefix.missingAnchors.join('; ')}.`]),
         ]
       : []),
     ...(prefix.uncertainAction === undefined

@@ -366,6 +366,12 @@ export interface ReplayedPrefix {
    * would double-commit a mutation the runner promised not to repeat.
    */
   readonly uncertainAction?: string;
+  /**
+   * Present on an `end-mismatch` over the recorded end anchors: the ones the
+   * last readable screen did not show, as prose (`text "Saved"`), or all of
+   * them when no screen could be read. Absent when the route differed.
+   */
+  readonly missingAnchors?: readonly string[];
 }
 
 /** One verb of the action grammar. */

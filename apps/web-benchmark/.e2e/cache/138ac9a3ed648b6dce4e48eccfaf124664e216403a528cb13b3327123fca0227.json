@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:35:05.517Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Open details\" in \"Navigation\"",
+        "target": {
+          "role": "button",
+          "name": "Open details",
+          "within": "Navigation"
+        }
+      },
+      {
+        "name": "back",
+        "summary": "navigate back"
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/control-inventory.e2e.ts::control%20inventory::back%20returns%20from%20the%20details%20view%20to%20the%20inventory",
+      "targetId": "web",
+      "instructionDigest": "b654f62f1b06969b737e6bc5900524da39b012965a0d82aef45fce7af099ba6c"
+    },
+    "summary": "Opened the details view and used browser history to return to the inventory. The inventory is visible again and its navigation status reads “back on the inventory.”",
+    "startPath": "/e/control-inventory",
+    "endPath": "/e/control-inventory",
+    "endAnchors": [
+      {
+        "role": "status",
+        "name": "Navigation state",
+        "text": "back on the inventory"
+      }
+    ],
+    "endWaitMs": 11835
+  }
+}

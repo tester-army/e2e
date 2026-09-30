@@ -23,9 +23,11 @@ The run summary reports the outcomes:
 | `handed off` | `agent-concluded` | Replay started, then the agent took over. |
 | `missed` | `missed` | The agent ran the step from the beginning. |
 
-Misses and hand-offs also include `step.cache.reason`. `agent.act()` returns
-the same cache object as `result.cache`. The cache object is absent when
-caching is off for the step.
+Misses and hand-offs also include `step.cache.reason`. An `end-mismatch`
+hand-off also lists `step.cache.missingAnchors`, the controls from the
+recorded end state the screen did not show, as prose (`text "Saved"`), and
+the agent is told the same. `agent.act()` returns the same cache object as
+`result.cache`. The cache object is absent when caching is off for the step.
 
 To rule the cache out of a failure, run once without it:
 
@@ -37,12 +39,30 @@ npx e2e run --no-cache
 
 1. Check the starting screen: the same route, whatever the record id, the
    query, or the fragment. Retries always run live.
-2. Find each recorded control and repeat its action. The runner matches
-   controls by their role, name, test id, and surrounding context. It waits
-   for missing controls and stops if a match is ambiguous. A control with no
-   name is found by its place among the unnamed controls of its kind.
+2. Find each recorded control and repeat its action. The runner tries the
+   strongest identity it recorded first and degrades from there:
+
+   | Rung | Identity | Where it comes from |
+   | --- | --- | --- |
+   | 1 | test id | `data-testid` on web, the accessibility identifier on iOS and Android |
+   | 2 | element id | an authored `id` attribute on web; an id that ends in a digit or reads like a hash is a framework's counter (`:r3:`, `mat-input-2`, `input-1739`) and is skipped |
+   | 3 | exact label | the accessible name, or the text when there is no name |
+   | 4 | label shape | the label with tallies and relative times folded: `Reply (0 replies)` finds `Reply (1 reply)`, `Bob · now` finds `Bob · 5m`. A number that names something stays as it reads: `Page 2` never finds `Page 3`, nor `Delete item 3` `Delete item 4` |
+   | 5 | place | an unnamed control by its index among the unnamed controls of its kind |
+
+   A control found on an id rung is the control whatever its label reads
+   now, a `Like (0 likes)` button that became `Unlike (1 like)`. Twins are
+   told apart by their recorded place, never by their labels, and a rung that
+   finds another number of them than were recorded hands off instead. It
+   waits for missing controls and stops if a match is ambiguous.
+   Give controls test ids: a label that carries state changes on every run,
+   an id only when the code does, and then the step simply re-records.
 3. Check the final path and controls that appeared during the original step.
-   Text that changes with the data, a count, a date, an id, is not used.
+   Controls are checked by test id and their label as it reads, with only a
+   relative time such as `now` folded: a count is usually the effect itself,
+   so `Count: 1` recorded does not pass at `Count: 0`. Text that changes with
+   the data, a count, a date, an id, a relative time, a tally such as `2
+   replies`, is not recorded when anything steadier appeared.
 4. Finish without a model call, or let the agent continue with a record of
    what ran and why replay stopped.
 
@@ -123,13 +143,13 @@ Cancelling a run leaves the cache unchanged.
 | `invalid-entry` | The file is unreadable, over 1 MiB, or from another schema version. | `npx e2e cache clear`. |
 | `truncated` | The recording hit a limit, see [below](#limits-and-gaps). | Split the step, or pass the secret as a `Secret`. |
 | `wrong-context` | The app was on another screen than when the step was recorded: a different route, not a different record, query, or fragment. | Open the same screen before the step. |
-| `target-not-found` | A recorded control did not appear within 15 seconds. | The UI changed. The next passing run re-records. |
+| `target-not-found` | A recorded control did not appear within 15 seconds: nothing with its test id, and nothing with its label or its label's shape either. | The UI changed. The next passing run re-records. |
 | `target-ambiguous` | The number of matching controls changed. | Give repeated controls distinct names or use unique test data. |
 | `gap` | An action cannot be replayed, see [below](#limits-and-gaps). | The agent continues this part live. Put stable values in `params`. |
 | `action-failed` | The app rejected a replayed action. | Check the app. |
 | `action-uncertain` | A replayed action failed with an unknown commit state. The agent is told to check before acting again. | Check the app. |
 | `viewport-changed` | A bare-point tap or hover was recorded on a viewport of another size. | Keep the viewport fixed. |
-| `end-mismatch` | Every action ran, but the recorded path or a control that should have appeared did not come back. | Leftover data from an earlier run, a banner that comes and goes, or a regression. |
+| `end-mismatch` | Every action ran, but the recorded path or a control that should have appeared did not come back; `missingAnchors` names the controls. | Leftover data from an earlier run, a banner that comes and goes, or a regression. |
 
 A stop before any action ran is a miss. After replay starts, it is a
 hand-off. Unique test data and cleanup in `afterEach` help avoid stale

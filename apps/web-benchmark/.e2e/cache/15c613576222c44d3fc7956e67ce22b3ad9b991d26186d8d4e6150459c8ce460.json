@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:34:51.098Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)",
+        "derived": "whole-node"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Apply\"",
+        "target": {
+          "role": "button",
+          "name": "Apply",
+          "elementId": "apply"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20iframe-form",
+      "targetId": "web",
+      "instructionDigest": "5ea16155d5cd3ee4fc67e7511534964bca91116fa0412e4523428844f9f85c15"
+    },
+    "summary": "Read coupon code SAVE-1234 from the first frame, entered it in the checkout frame, and applied it. The page now shows “Coupon applied.”",
+    "startPath": "/e/iframe-form",
+    "endPath": "/e/iframe-form",
+    "endAnchors": [
+      {
+        "text": "Coupon applied",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 11906
+  }
+}

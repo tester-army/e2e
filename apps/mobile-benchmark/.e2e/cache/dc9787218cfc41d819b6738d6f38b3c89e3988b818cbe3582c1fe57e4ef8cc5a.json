@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:36:33.018Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "scrollUntil",
+        "summary": "scroll down until \"Item 137\" shows (10 screens)",
+        "text": "Item 137",
+        "direction": "down"
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Item 137\"",
+        "target": {
+          "role": "other",
+          "name": "Item 137",
+          "testId": "item-137",
+          "selector": "id=item-137"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Infinite%20Scroll%20List",
+      "targetId": "ios-simulator",
+      "instructionDigest": "240960ef8daa93f30d3183a42cf877c23681993025141766e480102a3eca2d75"
+    },
+    "summary": "Scrolled the paginated list until Item 137 was visible, tapped Item 137, and verified the screen shows “Found item 137.”",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Found item 137",
+        "testId": "success-message"
+      },
+      {
+        "role": "other",
+        "name": "Found item 137"
+      }
+    ],
+    "endWaitMs": 11932
+  }
+}

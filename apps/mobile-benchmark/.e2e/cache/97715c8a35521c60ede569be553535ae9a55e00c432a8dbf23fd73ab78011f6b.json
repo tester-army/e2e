@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:37:25.513Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"tester01\" into textbox \"username-input\"",
+        "target": {
+          "role": "textbox",
+          "testId": "username-input",
+          "selector": "id=username-input"
+        },
+        "value": "tester01"
+      },
+      {
+        "name": "type",
+        "summary": "type \"4826\" into textbox \"pin-input\"",
+        "target": {
+          "role": "textbox",
+          "testId": "pin-input",
+          "selector": "id=pin-input",
+          "inputPurpose": "password"
+        },
+        "value": "4826"
+      },
+      {
+        "name": "type",
+        "summary": "type \"This is a valid note.\" into textbox \"Vertical scroll bar, 1 page\"",
+        "target": {
+          "role": "textbox",
+          "name": "Vertical scroll bar, 1 page",
+          "testId": "notes-input",
+          "selector": "id=notes-input"
+        },
+        "value": "This is a valid note."
+      },
+      {
+        "name": "dismissKeyboard",
+        "summary": "dismiss the keyboard"
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Submit\"",
+        "target": {
+          "role": "other",
+          "name": "Submit",
+          "testId": "submit-button",
+          "selector": "id=submit-button"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Text%20Input%20Variations",
+      "targetId": "ios-simulator",
+      "instructionDigest": "fbc47cae1853b33f40b2f33da5fd5f41dfc811c660e7aecb291ad1d964757d21"
+    },
+    "summary": "Entered username tester01, a 4-digit PIN, and notes exceeding 10 characters, then submitted. The screen confirms “Form submitted.”",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Form submitted",
+        "testId": "success-message"
+      },
+      {
+        "role": "other",
+        "name": "Form submitted"
+      },
+      {
+        "role": "scroll-view",
+        "name": "Form submitted"
+      }
+    ],
+    "endWaitMs": 11968
+  }
+}

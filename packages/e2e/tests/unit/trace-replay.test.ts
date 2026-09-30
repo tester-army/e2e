@@ -110,19 +110,20 @@ describe('verifyAnchors', () => {
 
   it('holds trivially for a trace without anchors, without observing', async () => {
     const host = makeHost({});
-    await expect(verifyAnchors(host, [])).resolves.toBe(true);
+    await expect(verifyAnchors(host, [])).resolves.toEqual([]);
     expect(host.observations).toBe(0);
   });
 
   it('holds when every anchor is present, counting an ambiguous match as presence', async () => {
     const twin: SemanticNode = { ...saved, ref: { id: 'm2', revision: 'r1' } };
     const host = makeHost({ nodes: [upgrade, saved, twin] });
-    await expect(verifyAnchors(host, [savedAnchor, { role: 'button', name: 'Upgrade' }])).resolves.toBe(true);
+    await expect(verifyAnchors(host, [savedAnchor, { role: 'button', name: 'Upgrade' }])).resolves.toEqual([]);
   });
 
   it('fails when any anchor is missing once the clock leaves no room to wait', async () => {
     const host = makeHost({ nodes: [upgrade, email], remainingMs: 50 });
-    await expect(verifyAnchors(host, [{ role: 'button', name: 'Upgrade' }, savedAnchor])).resolves.toBe(false);
+    // The anchors still missing come back, so the hand-off can name them.
+    await expect(verifyAnchors(host, [{ role: 'button', name: 'Upgrade' }, savedAnchor])).resolves.toEqual([savedAnchor]);
   });
 
   it('treats a surface that cannot be observed as a mismatch, never as a step failure', async () => {
@@ -130,7 +131,7 @@ describe('verifyAnchors', () => {
     host.capture = async () => {
       throw new Error('no surface to observe');
     };
-    await expect(verifyAnchors(host, [savedAnchor])).resolves.toBe(false);
+    await expect(verifyAnchors(host, [savedAnchor])).resolves.toEqual([savedAnchor]);
   });
 
   it('rethrows a runtime hard stop raised while looking', async () => {
@@ -151,7 +152,7 @@ describe('verifyAnchors', () => {
       shown = host.observations >= 3;
       return screen(list);
     };
-    await expect(verifyAnchors(host, [savedAnchor])).resolves.toBe(true);
+    await expect(verifyAnchors(host, [savedAnchor])).resolves.toEqual([]);
     expect(shown).toBe(true);
   });
 });

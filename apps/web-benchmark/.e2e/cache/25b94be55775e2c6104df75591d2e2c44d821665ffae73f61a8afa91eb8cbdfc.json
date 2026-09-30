@@ -1,0 +1,76 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:37:51.786Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "secondaryTap",
+        "summary": "secondary-tap node \"report.pdf\"",
+        "target": {
+          "text": "report.pdf"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"More actions for report.pdf\"",
+        "target": {
+          "role": "button",
+          "name": "More actions for report.pdf",
+          "text": "⋯"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Rename\"",
+        "target": {
+          "role": "button",
+          "name": "Rename"
+        }
+      },
+      {
+        "name": "type",
+        "summary": "type \"summary.pdf\" into textbox \"New file name\"",
+        "target": {
+          "role": "textbox",
+          "name": "New file name"
+        },
+        "value": "summary.pdf"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save\"",
+        "target": {
+          "role": "button",
+          "name": "Save"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20context-menu-trap",
+      "targetId": "web",
+      "instructionDigest": "63530e281eafd2d07743a56500bfed3eae14e1ab7a4c0ad00e838e8b51912917"
+    },
+    "summary": "Used the file’s More actions menu to rename report.pdf to summary.pdf. The file list now shows summary.pdf and a success message confirms it was renamed.",
+    "startPath": "/e/context-menu-trap",
+    "endPath": "/e/context-menu-trap",
+    "endAnchors": [
+      {
+        "text": "File renamed to summary.pdf",
+        "testId": "success-message"
+      },
+      {
+        "text": "summary.pdf"
+      },
+      {
+        "role": "button",
+        "name": "More actions for summary.pdf",
+        "text": "⋯"
+      }
+    ],
+    "endWaitMs": 12431
+  }
+}

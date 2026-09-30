@@ -1,7 +1,7 @@
 /** End anchors: the step's delta as relocatable descriptors. */
 
 import { describe, expect, it } from 'vitest';
-import { anchorsPresent, describeAnchors } from '../../src/cache/anchors.ts';
+import { anchorsPresent, describeAnchor, describeAnchors, missingAnchors } from '../../src/cache/anchors.ts';
 import { MAX_TRACE_ANCHORS } from '../../src/cache/trace.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import { createRedactor } from '../../src/internal/redact.ts';
@@ -32,10 +32,11 @@ describe('describeAnchors', () => {
       row,
       toast,
     ]);
+    // Nodes their text names come before a node only its accessible name names.
     expect(describeAnchors(start, end, options)).toEqual([
       { role: 'status', name: 'Marker', text: 'saved' },
-      { role: 'link', name: 'PB-Twin-Alpha' },
       { text: 'Playbook saved' },
+      { role: 'link', name: 'PB-Twin-Alpha' },
     ]);
   });
 
@@ -72,15 +73,15 @@ describe('describeAnchors', () => {
     const anchors = describeAnchors(nodes([]), end, { ...options, redact });
     expect(JSON.stringify(anchors)).not.toContain('hunter2');
     expect(anchors).toEqual([
-      { role: 'textbox', name: 'Password' },
       { text: 'you typed <secret:password>' },
+      { role: 'textbox', name: 'Password' },
     ]);
   });
 
-  it('prefers leaves over containers, which only repeat their children', () => {
+  it('anchors on leaves alone while any appeared; containers only repeat their children', () => {
     // Six list items, each a container over one text leaf, plus a status line
-    // after the list: 13 new descriptors for a cap of 8. The observation index
-    // holds parents and children alike, in document order.
+    // after the list. The observation index holds parents and children alike,
+    // in document order.
     const flattened: SemanticNode[] = [];
     for (let index = 0; index < 6; index += 1) {
       const label = node(`t${index}`, { text: `Todo ${index}` });
@@ -91,14 +92,22 @@ describe('describeAnchors', () => {
     }
     flattened.push(node('status', { role: 'status', text: '1 remaining' }));
     const anchors = describeAnchors(nodes([]), nodes(flattened), options);
-    expect(anchors).toHaveLength(MAX_TRACE_ANCHORS);
-    // Every leaf survives — the status line included — and the cap falls on
-    // the containers, whose names only repeat what the leaves already say.
-    expect(anchors.slice(0, 7)).toEqual([
+    // Every leaf, the status line included, and no container: whether a shell
+    // group is listed differs between captures, and it would hand a replay
+    // off whose effect is plainly on screen.
+    expect(anchors).toEqual([
       ...Array.from({ length: 6 }, (_, index) => ({ text: `Todo ${index}` })),
       { role: 'status', text: '1 remaining' },
     ]);
-    expect(anchors[7]).toEqual({ role: 'listitem', name: 'Todo 0Delete Todo 0' });
+  });
+
+  it('falls back to containers when nothing else appeared, up to the cap', () => {
+    const groups = Array.from({ length: MAX_TRACE_ANCHORS + 2 }, (_, index) =>
+      node(`g${index}`, { role: 'group', name: `Section ${index}`, children: [heading] }),
+    );
+    const anchors = describeAnchors(nodes([heading]), nodes([heading, ...groups]), options);
+    expect(anchors).toHaveLength(MAX_TRACE_ANCHORS);
+    expect(anchors[0]).toEqual({ role: 'group', name: 'Section 0' });
   });
 
   it('does not mistake a re-minted test id for a new node', () => {
@@ -154,6 +163,48 @@ describe('describeAnchors', () => {
     expect(describeAnchors(nodes([heading]), end, options)).toEqual([{ role: 'alert', name: 'Roles' }]);
   });
 
+  it('skips relative times and social tallies, which move with every step before them', () => {
+    const end = nodes([
+      heading,
+      node('a', { text: '· now' }),
+      node('b', { text: 'Posted yesterday' }),
+      node('c', { role: 'text', name: '1 like', testId: 'likeCount-expanded' }),
+      node('d', { role: 'button', name: 'Unlike (1 like)', testId: 'likeBtn' }),
+      node('e', { role: 'button', name: 'Reply (2 replies)' }),
+      node('f', { role: 'text', name: '3 followers' }),
+      node('g', { role: 'text', name: 'Post text only', testId: 'postText' }),
+    ]);
+    expect(describeAnchors(nodes([heading]), end, options)).toEqual([{ role: 'text', name: 'Post text only', testId: 'postText' }]);
+  });
+
+  it('does not mistake a count of something else, or a word like "known", for a tally', () => {
+    const end = nodes([
+      heading,
+      node('a', { text: '3 / 30 steps' }),
+      node('b', { text: 'Well known' }),
+      node('c', { text: 'Step (1 of 5)' }),
+    ]);
+    expect(describeAnchors(nodes([heading]), end, options)).toHaveLength(3);
+  });
+
+  it('keeps the durable anchors when the cap bites: test-id nodes first, then text, then names', () => {
+    const named = Array.from({ length: MAX_TRACE_ANCHORS }, (_, index) => node(`n${index}`, { role: 'button', name: `Option ${index}` }));
+    const withId = node('id', { role: 'text', name: 'Post text only', testId: 'postText' });
+    const plain = node('tx', { text: 'Playbook saved' });
+    const anchors = describeAnchors(nodes([heading]), nodes([heading, ...named, withId, plain]), options);
+    expect(anchors).toHaveLength(MAX_TRACE_ANCHORS);
+    expect(anchors.slice(0, 2)).toEqual([
+      { role: 'text', name: 'Post text only', testId: 'postText' },
+      { text: 'Playbook saved' },
+    ]);
+  });
+
+  it('prefers a stable container over leaves that are all volatile', () => {
+    const group = node('g', { role: 'group', name: 'Saved items', children: [heading] });
+    const stamp = node('s', { text: 'Posted yesterday' });
+    expect(describeAnchors(nodes([heading]), nodes([heading, group, stamp]), options)).toEqual([{ role: 'group', name: 'Saved items' }]);
+  });
+
   it('is empty when nothing appeared', () => {
     expect(describeAnchors(nodes([heading, emptyMarker]), nodes([heading, emptyMarker]), options)).toEqual([]);
   });
@@ -185,5 +236,24 @@ describe('anchorsPresent', () => {
     const rerendered = node('r2', { role: 'link', name: 'PB-Twin-Alpha', testId: 'row-9f8e' });
     expect(anchorsPresent([anchor], nodes([rerendered]), options)).toBe(true);
     expect(anchorsPresent([{ role: 'listitem', testId: 'row-1a2b' }], nodes([rerendered]), options)).toBe(false);
+  });
+});
+
+describe('missingAnchors', () => {
+  it('lists the anchors a screen does not show, in recorded order', () => {
+    const rowAnchor = { role: 'link', name: 'PB-Twin-Alpha' };
+    const saved = { role: 'status', name: 'Marker', text: 'saved' };
+    expect(missingAnchors([rowAnchor, saved], nodes([heading]), options)).toEqual([rowAnchor, saved]);
+    expect(missingAnchors([rowAnchor, saved], nodes([savedMarker]), options)).toEqual([rowAnchor]);
+    expect(missingAnchors([rowAnchor, saved], nodes([savedMarker, row]), options)).toEqual([]);
+  });
+});
+
+describe('describeAnchor', () => {
+  it('reads like an action summary, with the test id when there is one', () => {
+    expect(describeAnchor({ role: 'status', name: 'Marker', text: 'saved' })).toBe('status "Marker"');
+    expect(describeAnchor({ text: 'Playbook saved' })).toBe('node "Playbook saved"');
+    expect(describeAnchor({ role: 'text', name: 'Post with an image', testId: 'postText' })).toBe('text "Post with an image" (testid postText)');
+    expect(describeAnchor({ role: 'generic', testId: 'spinner' })).toBe('generic (testid spinner)');
   });
 });

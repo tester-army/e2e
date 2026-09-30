@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:35:01.178Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "scrollUntil",
+        "summary": "scroll down on node \"feed\" until \"Golden Ticket\" shows (20 screens)",
+        "text": "Golden Ticket",
+        "direction": "down",
+        "target": {
+          "testId": "feed"
+        },
+        "spans": 0.3083
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Claim\"",
+        "target": {
+          "role": "button",
+          "name": "Claim",
+          "testId": "claim-button"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20infinite-scroll",
+      "targetId": "web",
+      "instructionDigest": "5693e0682199f2201375a207ac10bd69b22c26925bbf8fd87e06a9f6d1abeca9"
+    },
+    "summary": "Scrolled the feed until the Golden Ticket loaded, then clicked Claim. The page confirms “Golden Ticket claimed.”",
+    "startPath": "/e/infinite-scroll",
+    "endPath": "/e/infinite-scroll",
+    "endAnchors": [
+      {
+        "text": "Golden Ticket claimed",
+        "testId": "success-message"
+      },
+      {
+        "role": "button",
+        "name": "Claim",
+        "testId": "claim-button"
+      },
+      {
+        "text": "Item 41"
+      },
+      {
+        "text": "Feed entry 41 of 200"
+      },
+      {
+        "text": "Item 42"
+      },
+      {
+        "text": "Feed entry 42 of 200"
+      },
+      {
+        "text": "Item 43"
+      },
+      {
+        "text": "Feed entry 43 of 200"
+      }
+    ],
+    "endWaitMs": 11803
+  }
+}

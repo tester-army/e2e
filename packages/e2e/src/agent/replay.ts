@@ -12,7 +12,7 @@
  * divergence.
  */
 
-import { anchorsPresent } from '../cache/anchors.ts';
+import { missingAnchors } from '../cache/anchors.ts';
 import { isRelocatableDescriptor, MAIN_LIST_SHARE, relocateDescriptor, type RelocationFailure, type RelocationResult } from '../cache/relocate.ts';
 import { isNodeAction, type ActionTrace, type DerivedReason, type RecordedAction, type TraceTargetDescriptor, type TraceViewport } from '../cache/trace.ts';
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
@@ -362,15 +362,17 @@ export async function verifyAnchors(
   host: ReplayHost,
   anchors: readonly TraceTargetDescriptor[],
   options: { readonly waitMs?: number; readonly initial?: SemanticScreen } = {},
-): Promise<boolean> {
-  if (anchors.length === 0) return true;
+): Promise<readonly TraceTargetDescriptor[]> {
+  if (anchors.length === 0) return [];
   const startedMs = Date.now();
+  // The anchors the last readable screen did not show; all of them until a screen was read.
+  let missing: readonly TraceTargetDescriptor[] = anchors;
   try {
-    const present = await pollSettled(host, ({ nodes }) =>
-      anchorsPresent(anchors, nodes, host) ? true : undefined,
-      options.initial === undefined ? HELD_STILL : { kind: 'in-hand', screen: options.initial },
-    );
-    if (present === true) return true;
+    const present = await pollSettled(host, ({ nodes }) => {
+      missing = missingAnchors(anchors, nodes, host);
+      return missing.length === 0 ? true : undefined;
+    }, options.initial === undefined ? HELD_STILL : { kind: 'in-hand', screen: options.initial });
+    if (present === true) return [];
     // The settling backoff covers a slow re-render; the recorded run may have
     // waited far longer than that for its effect — a report that takes half a
     // minute — and so does the replay, up to what the recording needed, while
@@ -379,13 +381,14 @@ export async function verifyAnchors(
     while (Date.now() < deadline && !host.signal.aborted) {
       await sleep(Math.min(END_WAIT_POLL_MS, deadline - Date.now()), host.signal);
       const screen = await host.observe('raw');
-      if (screen.kind === 'pixels' || !host.traceEligible) return false;
-      if (anchorsPresent(anchors, screen.nodes, host)) return true;
+      if (screen.kind === 'pixels' || !host.traceEligible) return missing;
+      missing = missingAnchors(anchors, screen.nodes, host);
+      if (missing.length === 0) return [];
     }
-    return false;
+    return missing;
   } catch (cause) {
     if (isReplayFatal(cause, host.signal)) throw cause;
-    return false;
+    return missing;
   }
 }
 

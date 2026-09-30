@@ -147,7 +147,7 @@ describe('trace cache: record then zero-turn replay', () => {
     expect(entry.payload.startPath).toBe('/');
     // The recording's own check, kept as data: the counter reading 2 appeared
     // during the step, so a replay must show it again before passing alone.
-    expect(entry.payload.endAnchors).toContainEqual({ role: 'status', name: 'Counter', text: '2' });
+    expect(entry.payload.endAnchors).toContainEqual(expect.objectContaining({ role: 'status', name: 'Counter', text: '2' }));
   });
 
   it('replays the second run zero-turn without invoking the executor', () => {
@@ -204,7 +204,9 @@ describe('trace cache: divergence hands the step over mid-step', () => {
     rewriteOnlyEntry(project, (payload) => {
       const [firstTap, secondTap] = payload.actions;
       if (firstTap === undefined || secondTap?.name !== 'tap') throw new Error(`expected two taps, got ${JSON.stringify(payload.actions)}`);
-      return { ...payload, actions: [firstTap, { ...secondTap, target: { ...secondTap.target, name: 'No Such Button' } }] };
+      // Every rung must miss: the ids as well as the label, or an id would still find it.
+      const gone = { ...secondTap.target, name: 'No Such Button', testId: 'no-such-button', elementId: 'no-such-button' };
+      return { ...payload, actions: [firstTap, { ...secondTap, target: gone }] };
     });
     secondRun = await runExisting(project, options(second));
   }, 240_000);
@@ -393,7 +395,7 @@ describe('trace cache: the recorded end state gates self-finalization', () => {
     const { entry } = readOnlyEntry(project);
     expect(entry.payload.startPath).toBe('/storage');
     expect(entry.payload.endPath).toBe('/storage');
-    expect(entry.payload.endAnchors).toContainEqual({ role: 'status', name: 'Marker', text: 'saved' });
+    expect(entry.payload.endAnchors).toContainEqual(expect.objectContaining({ role: 'status', name: 'Marker', text: 'saved' }));
 
     const second = await runExisting(project, options());
     expect(second.exitCode).toBe(0);
@@ -411,24 +413,27 @@ describe('trace cache: the recorded end state gates self-finalization', () => {
     expect(outcome.exitCode).toBe(0);
     const record = records.at(-1)!;
     expect(record.calls).toBe(1);
+    // The hand-off names the anchor the screen lacked, to the agent and in the report alike.
     expect(record.prefixes[0]).toMatchObject({
       stopReason: 'end-mismatch',
       replayedActions: ['tap button "Save marker"'],
       totalActions: 1,
+      missingAnchors: ['status "Marker"'],
     });
     const step = resultByTitle(outcome, 'saves the marker').attempts.at(-1)!.steps.find((s) => s.api === 'agent.act')!;
     expect(step.cache).toEqual({
       mode: 'agent-concluded',
       reason: 'end-mismatch',
+      missingAnchors: ['status "Marker"'],
       replayedActions: 1,
       totalActions: 1,
     });
     // The executor's pass re-stages the entry with the live anchors: healed.
-    expect(readOnlyEntry(project).entry.payload.endAnchors).toContainEqual({
+    expect(readOnlyEntry(project).entry.payload.endAnchors).toContainEqual(expect.objectContaining({
       role: 'status',
       name: 'Marker',
       text: 'saved',
-    });
+    }));
   }, 240_000);
 
   it('evicts the entry when the executor had to act again after an end-mismatch', async () => {
@@ -767,7 +772,7 @@ describe('trace cache: a bare-point tap replays like a coordinate-driven tool', 
     expect(entry.payload.actions).toEqual([
       { name: 'tapAt', summary: 'tap the point (300, 60)', point: { x: 300, y: 60 }, viewport: { width: 1280, height: 720 } },
     ]);
-    expect(entry.payload.endAnchors).toContainEqual({ role: 'status', name: 'Hit', text: 'red' });
+    expect(entry.payload.endAnchors).toContainEqual(expect.objectContaining({ role: 'status', name: 'Hit', text: 'red' }));
 
     const second = await runExisting(project, options());
     expect(second.exitCode).toBe(0);
@@ -982,7 +987,7 @@ describe('trace cache: a composed word that appears on screen is not a run-time 
     // word: neither fill is recorded as a run-time value gap.
     expect(entry.payload.actions.map((action) => action.name)).toEqual(['type', 'type']);
     expect(entry.payload.actions.map((action) => ('value' in action ? action.value : undefined))).toEqual(['one', 'two']);
-    expect(entry.payload.endAnchors).toContainEqual({ role: 'status', name: 'Filled', text: 'one+two' });
+    expect(entry.payload.endAnchors).toContainEqual(expect.objectContaining({ role: 'status', name: 'Filled', text: 'one+two' }));
 
     const second = await runExisting(project, options());
     expect(second.exitCode).toBe(0);

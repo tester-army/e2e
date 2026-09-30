@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:37:20.148Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"trail mix\" into combobox \"Search snacks\"",
+        "target": {
+          "role": "combobox",
+          "name": "Search snacks",
+          "testId": "search-input",
+          "placeholder": "Search snacks"
+        },
+        "value": "trail mix"
+      },
+      {
+        "name": "tap",
+        "summary": "tap option \"Trail Mix 500 g\"",
+        "target": {
+          "role": "option",
+          "name": "Trail Mix 500 g",
+          "testId": "option-trail-mix-500-g"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20debounced-search",
+      "targetId": "web",
+      "instructionDigest": "e5044d8a420a21763ff0ba6ba21266a9cf45e9607dd3496c435089c8d757d4e8"
+    },
+    "summary": "Searched for “trail mix,” selected exactly “Trail Mix 500 g,” and the page confirmed it was added to the cart.",
+    "startPath": "/e/debounced-search",
+    "endPath": "/e/debounced-search",
+    "endAnchors": [
+      {
+        "text": "Added Trail Mix 500 g to the cart",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 11772
+  }
+}

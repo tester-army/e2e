@@ -122,6 +122,9 @@ export interface OpenAppOptions {
   readonly permissions?: LaunchPermissions;
 }
 
+/** One settings request as the agent-device SDK takes it, before this worker's device selection is added. */
+type SettingsRequest = Parameters<AgentDeviceClient['settings']['update']>[0];
+
 /** The snapshot fields this engine reads off agent-device's response. */
 interface RawSnapshot {
   readonly nodes?: readonly RawNode[];
@@ -440,6 +443,16 @@ export class AgentDeviceSurface {
   requireClient(): AgentDeviceClient {
     if (this.client === undefined) throw invalidState('the agent-device engine is not initialized');
     return this.client;
+  }
+
+  /**
+   * A settings request, named for this worker's device like every other
+   * command: the daemon resolves one without a selection against every
+   * booted device, so a second booted simulator or emulator made these fail
+   * as ambiguous.
+   */
+  settings(label: string, request: SettingsRequest, signal?: AbortSignal): Promise<unknown> {
+    return this.command(label, (client) => client.settings.update({ ...this.selection(), ...request }), signal);
   }
 
   /**
@@ -764,11 +777,7 @@ export class AgentDeviceSurface {
   }
 
   private async permission(permission: DevicePermission, state: PermissionState, signal: AbortSignal): Promise<void> {
-    await this.command(
-      `permission ${permission} ${state}`,
-      (client) => client.settings.update({ setting: 'permission', permission, state }),
-      signal,
-    );
+    await this.settings(`permission ${permission} ${state}`, { setting: 'permission', permission, state }, signal);
   }
 
   /**
@@ -1379,11 +1388,7 @@ export class AgentDeviceSurface {
   async reset(operation: OperationContext): Promise<void> {
     const app = this.pinnedApp;
     if (app === undefined) throw unsupported(`app.clearState needs the engine option \`app\`, or ${UNINSTALLED_BUILD}`);
-    await this.command(
-      'clear app state',
-      (client) => client.settings.update({ setting: 'clear-app-state', state: 'clear', app }),
-      operation.signal,
-    );
+    await this.settings('clear app state', { setting: 'clear-app-state', state: 'clear', app }, operation.signal);
     await this.openApp(app, { relaunch: true }, operation.signal);
   }
 
@@ -1396,11 +1401,7 @@ export class AgentDeviceSurface {
     if (this.options.platform !== 'ios') {
       throw unsupported('device.clearKeychain resets an iOS simulator keychain; Android has none to reset');
     }
-    await this.command(
-      'device.clearKeychain',
-      (client) => client.settings.update({ setting: 'reset-keychain', state: 'clear' }),
-      signal,
-    );
+    await this.settings('device.clearKeychain', { setting: 'reset-keychain', state: 'clear' }, signal);
   }
 
   /**

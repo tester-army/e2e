@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:35:11.432Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "scrollUntil",
+        "summary": "scroll down until \"Footnote\" shows (already there)",
+        "text": "Footnote",
+        "direction": "down"
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/control-inventory.e2e.ts::control%20inventory::scroll_to%20brings%20the%20footnote%20into%20view",
+      "targetId": "web",
+      "instructionDigest": "60d7d1c1109f3844ed7b5cd3f6f351e1b297af10aa7e4371ed45de087cce0df3"
+    },
+    "summary": "Scrolled to the Footnote paragraph at the bottom of the page; the Footnote state now reports “in view.”",
+    "startPath": "/e/control-inventory",
+    "endPath": "/e/control-inventory",
+    "endAnchors": [
+      {
+        "role": "status",
+        "name": "Footnote state",
+        "text": "in view"
+      }
+    ],
+    "endWaitMs": 11925
+  }
+}

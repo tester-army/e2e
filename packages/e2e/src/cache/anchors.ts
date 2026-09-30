@@ -16,9 +16,16 @@
 import type { SemanticNode } from '../engine/surface.ts';
 import { describeTarget } from '../agent/actions.ts';
 import {
+  AGE,
   describeNodes,
-  descriptorTiers,
   fieldsEqual,
+  identifyingProjection,
+  isAnonymous,
+  isRelocatableDescriptor,
+  RELATIVE_TIME,
+  sameLabels,
+  SEMANTIC_ID_FIELDS,
+  withoutIds,
   type DescriptorField,
   type DescriptorMatchOptions,
 } from './relocate.ts';
@@ -34,16 +41,18 @@ export type AnchorOptions = DescriptorMatchOptions;
  * step whose save never took. The structural selector is left out — anchors
  * ask whether an effect is visible, never where it sits in the document.
  */
-const ANCHOR_FIELDS: readonly DescriptorField[] = ['role', 'name', 'text', 'testId', 'placeholder', 'inputPurpose'];
+const ANCHOR_FIELDS: readonly DescriptorField[] = ['role', 'name', 'text', 'testId', 'elementId', 'placeholder', 'inputPurpose'];
 
 /**
  * Derives the end anchors of one step: relocatable descriptors present in the
  * passing observation and absent from the starting one, deduplicated, capped.
- * Leaves come first, then containers, each in document order: a container's
- * accessible name is usually the concatenation of its children's, so it
- * repeats what the leaves already say — and on a list-heavy screen those
- * repeats would crowd the one status line that names the effect out of the
- * cap.
+ * Stable leaves are the anchors; stable containers stand in when every leaf
+ * that appeared is volatile, and only with nothing stable at all do the
+ * volatile leaves, then containers, stay. A container's accessible name is usually the concatenation of its children's,
+ * so it repeats what the leaves already say, and whether a screen's shell
+ * groups (a tab bar, a scroll view named after its first tab) are listed at
+ * all differs from one capture to the next on a device, so a replay whose
+ * effect is plainly on screen would still hand off over them.
  */
 export function describeAnchors(
   startNodes: ReadonlyMap<string, SemanticNode>,
@@ -66,23 +75,42 @@ export function describeAnchors(
     seen.add(key);
     (node.children === undefined || node.children.length === 0 ? leaves : containers).push(descriptor);
   }
-  const all = [...leaves, ...containers];
-  const stable = all.filter((anchor) => !isVolatileAnchor(anchor));
-  return (stable.length > 0 ? stable : all).slice(0, MAX_TRACE_ANCHORS);
+  const stable = (anchors: TraceTargetDescriptor[]): TraceTargetDescriptor[] => anchors.filter((anchor) => !isVolatileAnchor(anchor));
+  // Stable leaves, else stable containers, else whatever appeared: a volatile
+  // leaf beside a steady group must not push the group out.
+  const chosen = [stable(leaves), stable(containers), leaves, containers].find((group) => group.length > 0) ?? [];
+  return chosen.toSorted((a, b) => durability(a) - durability(b)).slice(0, MAX_TRACE_ANCHORS);
+}
+
+/**
+ * How well an anchor survives a re-render, best first, so the cap drops the
+ * fragile ones: a labelled node with a test id, then a node only a test id
+ * names, then a node its text names, then one its accessible name names,
+ * which on a device is often a concatenation. `toSorted` is stable, so
+ * ties keep document order.
+ */
+function durability(anchor: TraceTargetDescriptor): number {
+  if (anchor.testId !== undefined || anchor.elementId !== undefined) return anchor.name !== undefined || anchor.text !== undefined ? 0 : 1;
+  if (anchor.text !== undefined) return 2;
+  return 3;
 }
 
 /**
  * Text that cannot read the same on the next run: a minted key prefix or id,
- * a countdown or age, a date, a clock time, a timing in milliseconds, a
- * pagination range or record count that grows with the data every run
- * leaves behind. An anchor made of it hands every replay off, so it is
- * skipped while some stable anchor exists; with nothing else, the volatile
- * ones stay, because a replay that always hands off is still safer than
- * one that passes on mechanics alone.
+ * a countdown or age, a relative time (`now`, `yesterday`), a date, a clock
+ * time, a timing in milliseconds, a pagination range or record count that
+ * grows with the data every run leaves behind, or a social tally (`1 like`,
+ * `Reply (2 replies)`) that moves with every step before it. An anchor made
+ * of it hands every replay off, so it is skipped while some stable anchor
+ * exists; with nothing else, the volatile ones stay, because a replay that
+ * always hands off is still safer than one that passes on mechanics alone.
  */
 const VOLATILE_TEXT: readonly RegExp[] = [
   /\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{12,}\b/,
-  /\b\d+\s*(?:ms|s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?|d|days?|weeks?|months?|years?)\b/i,
+  AGE,
+  RELATIVE_TIME,
+  /\b\d+\s+(?:likes?|reposts?|quotes?|repl(?:y|ies)|followers?|following|comments?|views?|posts?|members?|notifications?|mentions?|unread|new)\b/i,
+  /\(\s*\d+\s+[a-z]+\s*\)/i,
   /\b\d+\s*(?:to|-|\u2013)\s*\d+\s+of\s+\d+\b/i,
   /\b\d+\s+(?:results?|items?|rows?|entries|records?|matches|total)\b/i,
   /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:,?\s+\d{4})?\b/i,
@@ -110,42 +138,67 @@ function isVolatileAnchor(anchor: TraceTargetDescriptor): boolean {
 }
 
 /**
- * Whether every anchor is present in a fresh observation: some tier of the
- * anchor (`descriptorTiers` — so a test id that churned per render is
- * forgiven when the remaining fields still identify the node) equals some
- * candidate on every anchor field. Two matching nodes are the effect twice
- * over, not an ambiguity.
+ * Whether every anchor is present in a fresh observation: some candidate
+ * matches every anchor (`anchorMatches`). Two matching nodes are the effect
+ * twice over, not an ambiguity.
  */
 export function anchorsPresent(
   anchors: readonly TraceTargetDescriptor[],
   nodes: ReadonlyMap<string, SemanticNode>,
   options: AnchorOptions,
 ): boolean {
+  return missingAnchors(anchors, nodes, options).length === 0;
+}
+
+/**
+ * The anchors a fresh observation does not show, in recorded order: the
+ * effect a hand-off is missing, named so the report and the agent can say
+ * which one rather than only that the end state differed.
+ */
+export function missingAnchors(
+  anchors: readonly TraceTargetDescriptor[],
+  nodes: ReadonlyMap<string, SemanticNode>,
+  options: AnchorOptions,
+): TraceTargetDescriptor[] {
   const candidates = describeNodes(nodes, options).map((node) => node.descriptor);
-  return anchors.every((anchor) =>
-    descriptorTiers(anchor).some((tier) =>
-      candidates.some((candidate) => fieldsEqual(tier, candidate, ANCHOR_FIELDS)),
-    ),
-  );
+  return anchors.filter((anchor) => !candidates.some((candidate) => anchorMatches(anchor, candidate)));
+}
+
+/**
+ * Whether a candidate is the anchor: the same kind of node, with both labels
+ * reading as recorded once relative times are folded (`Bob · now` is still
+ * the post at `Bob · 5m`). Counts are not folded: an anchor that says
+ * `Count: 1` or `Cart (2 items)` is usually the very effect the step had, and
+ * a screen left at `Count: 0` must not pass as it. A recorded test id
+ * identifies the node when the candidate carries it; otherwise, or when the
+ * id churned, the remaining fields must identify it on their own, as
+ * `identifyingProjection` keys it.
+ */
+function anchorMatches(anchor: TraceTargetDescriptor, candidate: TraceTargetDescriptor): boolean {
+  const semantic = withoutIds(anchor);
+  const sameId = (anchor.testId !== undefined && candidate.testId === anchor.testId) || (anchor.elementId !== undefined && candidate.elementId === anchor.elementId);
+  const identified = sameId || !isAnonymous(semantic);
+  return identified && fieldsEqual(semantic, candidate, SEMANTIC_ID_FIELDS) && sameLabels(anchor, candidate, ['name', 'text'], 'times');
+}
+
+/** One anchor as prose, the way an action summary names its target: `text "Saved"`, `button "Publish" (testid postBtn)`. */
+export function describeAnchor(anchor: TraceTargetDescriptor): string {
+  const label = anchor.name ?? anchor.text ?? anchor.placeholder;
+  const role = anchor.role ?? 'node';
+  const named = label === undefined ? role : `${role} ${JSON.stringify(label)}`;
+  return anchor.testId === undefined ? named : `${named} (testid ${anchor.testId})`;
 }
 
 /** One node's anchor projection, or undefined when it could identify nothing. */
 function anchorDescriptor(node: SemanticNode, options: AnchorOptions): TraceTargetDescriptor | undefined {
   const described = describeTarget(node, options.redact);
-  if (described === undefined || descriptorTiers(described).length === 0) return undefined;
+  if (described === undefined || !isRelocatableDescriptor(described)) return undefined;
   const { selector: _selector, ...anchor } = described;
   return anchor;
 }
 
-/**
- * Set key for one descriptor: its loosest identifying tier over the anchor
- * fields, in fixed order. Keying on the semantic tier whenever it identifies
- * the node means an app that mints test ids per render cannot make every
- * unchanged control look new after a re-render and crowd the real effect out
- * of the capped list; a node only a test id identifies keeps it.
- */
+/** Set key for one descriptor: its identifying projection over the anchor fields, in fixed order. */
 function anchorKey(descriptor: TraceTargetDescriptor): string {
-  const tiers = descriptorTiers(descriptor);
-  const loosest = tiers[tiers.length - 1] ?? descriptor;
-  return JSON.stringify(ANCHOR_FIELDS.map((field) => loosest[field]));
+  const projection = identifyingProjection(descriptor);
+  return JSON.stringify(ANCHOR_FIELDS.map((field) => projection[field]));
 }

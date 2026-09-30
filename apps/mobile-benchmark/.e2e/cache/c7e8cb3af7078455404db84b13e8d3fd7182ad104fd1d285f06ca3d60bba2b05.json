@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:40:01.012Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Claim reward\"",
+        "target": {
+          "role": "other",
+          "name": "Claim reward",
+          "testId": "claim-button",
+          "selector": "id=claim-button"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Async%20States",
+      "targetId": "ios-simulator",
+      "instructionDigest": "fdc4e142da6e03180c7a75853bbbeb788efe25a58ccefefc640c6041870b36ce"
+    },
+    "summary": "Waited for the Async States reward screen to load, refreshed the reward area, and tapped Claim reward. The latest screen confirms “Reward claimed.”",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "other",
+        "name": "Horizontal scroll bar, 1 page"
+      }
+    ],
+    "endWaitMs": 18216
+  }
+}

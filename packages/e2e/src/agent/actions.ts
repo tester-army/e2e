@@ -257,6 +257,24 @@ function describePlaced(
  * Values a secure node holds are never part of it — descriptors carry how a
  * node is named, not what it contains.
  */
+/**
+ * An element id worth relocating by: one a developer wrote, not one a
+ * framework minted per render (`:r3:`, `radix-:r1:`, `input-1739`,
+ * `mat-input-2`, `mui-3`). A minted id is a counter, so it ends in a digit
+ * and names whichever control rendered in that place this time; an id rung
+ * that trusted it would act on the wrong control while the right one sits
+ * beside it under its own label. Any trailing digit disqualifies an id, and
+ * so does a long mix of letters and digits, the shape of a hash.
+ */
+function stableElementId(id: string | undefined): string | undefined {
+  if (id === undefined) return undefined;
+  const trimmed = id.trim();
+  if (trimmed === '' || trimmed.length > MAX_TRACE_DESCRIPTOR_CHARS) return undefined;
+  if (!/^[A-Za-z][\w-]*$/.test(trimmed)) return undefined;
+  if (/\d$/.test(trimmed) || /^(?=[\w-]*\d)(?=[\w-]*[A-Za-z])[\w-]{12,}$/.test(trimmed)) return undefined;
+  return trimmed;
+}
+
 export function describeTarget(
   node: SemanticNode,
   redact: (text: string) => string,
@@ -270,6 +288,9 @@ export function describeTarget(
   const name = field(node.name);
   const text = field(node.text);
   const testId = field(node.testId);
+  // Through `field` like every other descriptor field: an id a secret value
+  // leaked into is redacted, and a redacted id is no id at all.
+  const elementId = stableElementId(field(node.attributes?.['id']));
   const placeholder = field(node.attributes?.['placeholder']);
   const selector = node.selector === undefined ? undefined : bound(node.selector, MAX_TRACE_DESCRIPTOR_CHARS);
   const inputPurpose =
@@ -279,6 +300,7 @@ export function describeTarget(
     ...(name === undefined ? {} : { name }),
     ...(text === undefined || text === name ? {} : { text }),
     ...(testId === undefined ? {} : { testId }),
+    ...(elementId === undefined ? {} : { elementId }),
     ...(placeholder === undefined ? {} : { placeholder }),
     ...(selector === undefined ? {} : { selector }),
     ...(inputPurpose === undefined ? {} : { inputPurpose }),

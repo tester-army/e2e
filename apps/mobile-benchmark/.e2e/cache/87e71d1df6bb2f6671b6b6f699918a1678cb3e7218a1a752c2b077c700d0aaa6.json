@@ -1,0 +1,92 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:37:57.549Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tapAt",
+        "summary": "tap the point (237, 514) on other \"Tap the green circle to continue\"",
+        "point": {
+          "x": 237,
+          "y": 514
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Tap the green circle to continue"
+          },
+          "fx": 0.5896,
+          "fy": 0.5251
+        }
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (167, 514) on other \"Enter the code 7291 and press the arrow…\"",
+        "point": {
+          "x": 167,
+          "y": 514
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Enter the code 7291 and press the arrow, →"
+          },
+          "fx": 0.4154,
+          "fy": 0.5251
+        }
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)",
+        "derived": "pixels"
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (268, 514) on other \"Enter the code 7291 and press the arrow…\"",
+        "point": {
+          "x": 268,
+          "y": 514
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Enter the code 7291 and press the arrow, →"
+          },
+          "fx": 0.6667,
+          "fy": 0.5251
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Broken%20Accessibility",
+      "targetId": "ios-simulator",
+      "instructionDigest": "39a6071dd8e903747ecddcc20ac06b4c62c7e399b90ef1a0c2e79a3bcb5c4e92"
+    },
+    "summary": "Completed the flow by tapping the green circle, entering code 7291, and pressing the arrow. The latest screen displays “Access granted.”",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "other",
+        "name": "Access granted"
+      }
+    ],
+    "endWaitMs": 14340
+  }
+}

@@ -119,18 +119,10 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
   const device: Device = {
     locator: (selector) => context.locator({ kind: 'selector', selector }),
     async setNetwork(state) {
-      await surface.command(
-        'device.setNetwork',
-        (client) => client.settings.update({ setting: 'wifi', state: state === 'offline' ? 'off' : 'on' }),
-        context.signal,
-      );
+      await surface.settings('device.setNetwork', { setting: 'wifi', state: state === 'offline' ? 'off' : 'on' }, context.signal);
     },
     async setAirplaneMode(enabled) {
-      await surface.command(
-        'device.setAirplaneMode',
-        (client) => client.settings.update({ setting: 'airplane', state: enabled ? 'on' : 'off' }),
-        context.signal,
-      );
+      await surface.settings('device.setAirplaneMode', { setting: 'airplane', state: enabled ? 'on' : 'off' }, context.signal);
     },
     async setPermission(permission, state) {
       await surface.setPermission(permission, state, context.signal);
@@ -140,51 +132,24 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
       // `clearLocation` switched them off for good on the emulator (the
       // setting outlives the app); iOS has no such switch.
       if (surface.options.platform === 'android') {
-        await surface.command(
-          'device.setLocation',
-          (client) => client.settings.update({ setting: 'location', state: 'on' }),
-          context.signal,
-        );
+        await surface.settings('device.setLocation', { setting: 'location', state: 'on' }, context.signal);
       }
-      await surface.command(
-        'device.setLocation',
-        (client) => client.settings.update({ setting: 'location', state: 'set', latitude, longitude }),
-        context.signal,
-      );
+      await surface.settings('device.setLocation', { setting: 'location', state: 'set', latitude, longitude }, context.signal);
     },
     async clearLocation() {
-      await surface.command(
-        'device.clearLocation',
-        (client) => client.settings.update({ setting: 'location', state: 'off' }),
-        context.signal,
-      );
+      await surface.settings('device.clearLocation', { setting: 'location', state: 'off' }, context.signal);
     },
     async setAppearance(mode) {
-      await surface.command(
-        'device.setAppearance',
-        (client) => client.settings.update({ setting: 'appearance', state: mode }),
-        context.signal,
-      );
+      await surface.settings('device.setAppearance', { setting: 'appearance', state: mode }, context.signal);
     },
     async setOrientation(orientation) {
       await surface.screenCommand('device.setOrientation', (client) => client.command.orientation({ orientation }), context.signal);
     },
     async setBiometrics(sensor, result) {
-      await surface.command(
-        'device.setBiometrics',
-        (client) =>
-          sensor === 'fingerprint'
-            ? client.settings.update({ setting: 'fingerprint', state: result })
-            : client.settings.update({ setting: sensor, state: result }),
-        context.signal,
-      );
+      await surface.settings('device.setBiometrics', { setting: sensor, state: result }, context.signal);
     },
     async enrollBiometrics(sensor, enrolled) {
-      await surface.command(
-        'device.enrollBiometrics',
-        (client) => client.settings.update({ setting: sensor, state: enrolled ? 'enroll' : 'unenroll' }),
-        context.signal,
-      );
+      await surface.settings('device.enrollBiometrics', { setting: sensor, state: enrolled ? 'enroll' : 'unenroll' }, context.signal);
     },
     async installApp(appPath, options) {
       return surface.installApp(appPath, options ?? {}, context.signal);

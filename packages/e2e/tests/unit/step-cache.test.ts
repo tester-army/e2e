@@ -404,9 +404,11 @@ describe('StepTraceSession', () => {
     expect(session.cacheInfo).toEqual({
       mode: 'agent-concluded',
       reason: 'end-mismatch',
+      missingAnchors: ['status "Marker"'],
       replayedActions: 1,
       totalActions: 1,
     });
+    expect(session.replayedPrefix?.missingAnchors).toEqual(['status "Marker"']);
   });
 
   it('heals stale anchors when the executor settled an end-mismatch without acting', async () => {

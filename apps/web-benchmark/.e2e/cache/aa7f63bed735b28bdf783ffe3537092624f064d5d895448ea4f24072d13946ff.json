@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:34:36.735Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)",
+        "derived": "minted-token"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Submit\"",
+        "target": {
+          "role": "button",
+          "name": "Submit"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20shadow-dom-form",
+      "targetId": "web",
+      "instructionDigest": "c6884af43cef64f928cde4eaa3be0cbc128893f01611d32236baf514a915c0a6"
+    },
+    "summary": "Entered SHADOW-42 and submitted the nested-shadow-root form. The page now shows “Access granted.”",
+    "startPath": "/e/shadow-dom-form",
+    "endPath": "/e/shadow-dom-form",
+    "endAnchors": [
+      {
+        "text": "Access granted",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 11607
+  }
+}

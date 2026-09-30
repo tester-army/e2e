@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:38:42.264Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Buy now\" in \"Wireless Headphones\"",
+        "target": {
+          "role": "button",
+          "name": "Buy now",
+          "testId": "buy-headphones",
+          "within": "Wireless Headphones"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20promo-storefront",
+      "targetId": "web",
+      "instructionDigest": "1bf3aabb828b9b084d447df3a78d1fa700b5b28b8d5847dcc5ffcb9b0ce3bd45"
+    },
+    "summary": "Clicked Buy now for Wireless Headphones. The storefront now displays “Order confirmed.”",
+    "startPath": "/e/promo-storefront",
+    "endPath": "/e/promo-storefront",
+    "endAnchors": [
+      {
+        "text": "Order confirmed",
+        "testId": "success-message"
+      },
+      {
+        "text": "Jonas"
+      },
+      {
+        "text": "Amelia"
+      }
+    ],
+    "endWaitMs": 11602
+  }
+}

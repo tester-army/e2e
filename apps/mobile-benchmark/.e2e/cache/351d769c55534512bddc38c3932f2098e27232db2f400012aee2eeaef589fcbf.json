@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:44:00.386Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap other \"Choose photo\"",
+        "target": {
+          "role": "other",
+          "name": "Choose photo",
+          "testId": "choose-photo",
+          "selector": "id=choose-photo"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap image \"Photo, September 29, 09:57\" (1 of 8)",
+        "target": {
+          "role": "image",
+          "name": "Photo, September 29, 09:57",
+          "testId": "PXGGridLayout-Info",
+          "selector": "id=PXGGridLayout-Info",
+          "position": {
+            "index": 0,
+            "of": 8
+          }
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Photo%20Picker",
+      "targetId": "ios-simulator",
+      "instructionDigest": "d601aab262121b364841d0fcc4785cb58a9ec678addac0d10f4a1683f22638a6"
+    },
+    "summary": "Opened the photo library and selected the most recent photo (September 29, 09:57). The screen confirms: “Receipt attached: icon.png”.",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Photo Picker",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Receipt attached: icon.png",
+        "testId": "success-message"
+      },
+      {
+        "role": "navigation",
+        "testId": "Photo Picker"
+      }
+    ],
+    "endWaitMs": 13315
+  }
+}

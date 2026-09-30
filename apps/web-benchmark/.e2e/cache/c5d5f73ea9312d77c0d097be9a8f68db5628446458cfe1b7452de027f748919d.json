@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:37:57.876Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Tap me\"",
+        "target": {
+          "role": "button",
+          "name": "Tap me",
+          "testId": "target-button"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Tap me\"",
+        "target": {
+          "role": "button",
+          "name": "Tap me",
+          "testId": "target-button"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Tap me\"",
+        "target": {
+          "role": "button",
+          "name": "Tap me",
+          "testId": "target-button"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20stale-dom",
+      "targetId": "web",
+      "instructionDigest": "c7958b2326b3f2b42541d8b8261d04bb3d18d3fbbf439d754e64d72856a74ba4"
+    },
+    "summary": "Clicked the Tap me button three times; the page now shows Progress: 3 / 3 and “Target clicked 3 times.”",
+    "startPath": "/e/stale-dom",
+    "endPath": "/e/stale-dom",
+    "endAnchors": [
+      {
+        "text": "Progress: 3 / 3",
+        "testId": "progress"
+      },
+      {
+        "text": "Target clicked 3 times",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 11483
+  }
+}

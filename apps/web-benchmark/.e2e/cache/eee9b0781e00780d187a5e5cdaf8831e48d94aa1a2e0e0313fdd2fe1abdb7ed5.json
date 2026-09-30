@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:37:03.822Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "scrollTo",
+        "summary": "scroll button \"Accept terms\" into view",
+        "target": {
+          "role": "button",
+          "name": "Accept terms",
+          "testId": "accept-button"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Accept terms\"",
+        "target": {
+          "role": "button",
+          "name": "Accept terms",
+          "testId": "accept-button"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20sticky-chrome",
+      "targetId": "web",
+      "instructionDigest": "507883318a8655d47afe9f680ee91cde1ae64055fbef530129cc289101a30c23"
+    },
+    "summary": "Scrolled the terms panel until the Accept terms button was clear of the sticky footer, clicked it once, and verified the “Terms accepted” success message.",
+    "startPath": "/e/sticky-chrome",
+    "endPath": "/e/sticky-chrome",
+    "endAnchors": [
+      {
+        "text": "Terms accepted",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 12071
+  }
+}

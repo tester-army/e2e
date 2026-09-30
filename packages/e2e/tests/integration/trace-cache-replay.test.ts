@@ -98,7 +98,7 @@ describe('trace cache: every flow records on the first run and replays without a
     expect(payload.actions[0]).toMatchObject({ name: 'type', value: '{{param:/name}}' });
     expect(payload.startPath).toBe('/companies/new');
     expect(payload.endPath).toBe('/companies/{{param:/name|uri}}');
-    expect(payload.endAnchors).toContainEqual({ role: 'heading', name: '{{param:/name}}' });
+    expect(payload.endAnchors).toContainEqual(expect.objectContaining({ role: 'heading', name: '{{param:/name}}' }));
     expect(JSON.stringify(entry)).not.toMatch(/E2E \d+ Company/u);
   });
 
@@ -106,14 +106,14 @@ describe('trace cache: every flow records on the first run and replays without a
     const [entry] = entriesFor(project, 'searches');
     const { payload } = entry!;
     expect(payload.endPath).toBe('/search?q={{param:/q|form}}');
-    expect(payload.endAnchors).toContainEqual({ role: 'heading', name: 'Results for {{param:/q}}' });
+    expect(payload.endAnchors).toContainEqual(expect.objectContaining({ role: 'heading', name: 'Results for {{param:/q}}' }));
     expect(JSON.stringify(entry)).not.toMatch(/E2E[ +]\d+[ +]widget/u);
   });
 
   it('records no anchor made of a result count, a millisecond timing, or a bare badge number', () => {
     const [entry] = entriesFor(project, 'searches');
     const anchors = entry!.payload.endAnchors ?? [];
-    expect(anchors).toContainEqual({ role: 'status', name: 'Search state', text: 'done' });
+    expect(anchors).toContainEqual(expect.objectContaining({ role: 'status', name: 'Search state', text: 'done' }));
     for (const anchor of anchors) {
       for (const text of [anchor.name, anchor.text]) {
         if (text === undefined) continue;
@@ -126,7 +126,7 @@ describe('trace cache: every flow records on the first run and replays without a
 
   it('records the start path with the minted id the recording run opened; a replay under another id leaves the entry as recorded', () => {
     expect(recordedArchive!.payload.startPath).toBe('/records/1a2b3c4d5e6f');
-    expect(recordedArchive!.payload.endAnchors).toContainEqual({ role: 'status', name: 'Record state', text: 'archived' });
+    expect(recordedArchive!.payload.endAnchors).toContainEqual(expect.objectContaining({ role: 'status', name: 'Record state', text: 'archived' }));
     const [afterReplay] = entriesFor(project, 'archives a record');
     expect(afterReplay!.payload).toEqual(recordedArchive!.payload);
   });

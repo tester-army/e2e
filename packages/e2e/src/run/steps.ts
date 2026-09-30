@@ -120,6 +120,8 @@ export interface StepCacheInfo {
    * recording could not tell which param a recorded input came from.
    */
   notRecorded?: 'param-collision';
+  /** On an `end-mismatch` hand-off: the recorded end anchors the screen did not show, as prose. */
+  missingAnchors?: string[];
   replayedActions: number;
   totalActions: number;
 }

@@ -1,0 +1,98 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:47:15.628Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap other \"Buy with Apple Pay\"",
+        "target": {
+          "role": "other",
+          "name": "Buy with Apple Pay",
+          "testId": "apple-pay-button",
+          "selector": "id=apple-pay-button"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Simulated Card - Visa, ‪•••• 1234‬, Joh…\"",
+        "target": {
+          "role": "button",
+          "name": "Simulated Card - Visa, ‪•••• 1234‬, John Doe 1 Infinite Loop Cupertino CA 95014",
+          "testId": "pass",
+          "selector": "id=pass"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"John Doe, 1 Infinite Loop Cupertino CA …\" in \"Map Pin\"",
+        "target": {
+          "role": "button",
+          "name": "John Doe, 1 Infinite Loop Cupertino CA 95014 United States",
+          "testId": "billing-address",
+          "selector": "id=billing-address",
+          "within": "Map Pin"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Done\"",
+        "target": {
+          "role": "button",
+          "name": "Done",
+          "testId": "next",
+          "selector": "id=next"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Done\"",
+        "target": {
+          "role": "button",
+          "name": "Done",
+          "testId": "dismiss",
+          "selector": "id=dismiss"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Pay with Passcode\"",
+        "target": {
+          "role": "button",
+          "name": "Pay with Passcode",
+          "testId": "footer",
+          "selector": "id=footer"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Apple%20Pay%20Billing%20Address",
+      "targetId": "ios-simulator",
+      "instructionDigest": "bdc2a58d2726e93ed533d5388d2ac639914cbfa62317aebc063aebace72496ff"
+    },
+    "summary": "Started Apple Pay, accepted the billing address on the sheet (John Doe, 1 Infinite Loop, Cupertino, CA 95014), and paid. The app confirms “Payment complete: $8.99” and shows billing ZIP 95014.",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Apple Pay Billing Address",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Payment complete: $8.99",
+        "testId": "success-message"
+      },
+      {
+        "role": "text",
+        "name": "Billing ZIP: 95014",
+        "testId": "billing-zip"
+      },
+      {
+        "role": "navigation",
+        "testId": "Apple Pay Billing Address"
+      }
+    ],
+    "endWaitMs": 17823
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:34:37.650Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"{{param:/label}}\" into textbox \"Label (e.g. Cabin)\"",
+        "target": {
+          "role": "textbox",
+          "name": "Label (e.g. Cabin)",
+          "testId": "label-input",
+          "placeholder": "Label (e.g. Cabin)"
+        },
+        "value": "{{param:/label}}"
+      },
+      {
+        "name": "type",
+        "summary": "type \"7 Pine Way, Bend\" into textbox \"Street address\"",
+        "target": {
+          "role": "textbox",
+          "name": "Street address",
+          "testId": "line-input",
+          "placeholder": "Street address"
+        },
+        "value": "7 Pine Way, Bend"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Add address\"",
+        "target": {
+          "role": "button",
+          "name": "Add address",
+          "testId": "add-button"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/unique-cache.e2e.ts::act%20adds%20an%20address%20with%20a%20run-unique%20label",
+      "targetId": "web",
+      "instructionDigest": "7e6f99066c5bc180c1e5188150277917670b918eb0a9646ac967ef798648b455"
+    },
+    "summary": "Added the address labeled “Cabin muo12nl4” with line “7 Pine Way, Bend.” The address appears in the saved-address list and the app displayed “Address saved.”",
+    "startPath": "/e/saved-addresses",
+    "endPath": "/e/saved-addresses",
+    "endAnchors": [
+      {
+        "text": "Address saved",
+        "testId": "toast"
+      },
+      {
+        "text": "{{param:/label}}"
+      }
+    ],
+    "endWaitMs": 11948
+  }
+}

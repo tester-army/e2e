@@ -35,6 +35,10 @@ Reply with the one fact that disproves it, then resolve. Common shapes:
   `AGENTS.md` rule that states it.
 - **A tool rule that contradicts a repo rule** in `AGENTS.md`. Cite the repo
   rule.
+- **A committed recording judged as code.** An entry under `.e2e/cache/` is
+  what the recording run did (a redundant tap, a tool gap, an end path the
+  reader saw); it is re-recorded, never hand-edited. Cite the replay pass
+  that ran it, or the hand-off reason the report gives for it.
 
 ## Escalate, never dismiss alone
 

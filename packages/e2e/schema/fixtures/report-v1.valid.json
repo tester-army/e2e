@@ -56,7 +56,9 @@
         "id": "4bbfd0a6dbf44ac1018dd6ca1a6243d742b24607aa735b28d57541e1128507d3",
         "testId": "tests/example.e2e.ts::opens%20app",
         "kind": "test",
-        "tags": ["smoke"],
+        "tags": [
+          "smoke"
+        ],
         "declarationIndex": 0,
         "titlePath": [
           "opens app"
@@ -170,6 +172,68 @@
                   "message": "semantic capture timed out",
                   "retryable": false
                 }
+              },
+              {
+                "id": "018f0f5c-7b2a-7abc-8abc-0123456789ab:2",
+                "index": 2,
+                "kind": "agent",
+                "api": "agent.act",
+                "label": "an end-mismatch hand-off that names the missing anchor",
+                "source": {
+                  "file": "tests/example.e2e.ts",
+                  "line": 3,
+                  "column": 1
+                },
+                "status": "passed",
+                "startedAt": "2026-07-24T12:00:00.000Z",
+                "durationMs": 4200,
+                "events": [
+                  {
+                    "kind": "model",
+                    "startedAt": "2026-07-24T12:00:00.100Z",
+                    "durationMs": 2840,
+                    "status": "passed",
+                    "name": "executor",
+                    "count": 120,
+                    "inputTokens": 100,
+                    "outputTokens": 20,
+                    "reasoning": "A modal blocks the checkout button; closing it before continuing."
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-07-24T12:00:03.000Z",
+                    "durationMs": 27,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Close\""
+                  }
+                ],
+                "metrics": {
+                  "modelCalls": 1,
+                  "actionSteps": 1,
+                  "observationBytes": 512,
+                  "contextBytes": 0,
+                  "ledgerBytes": 0
+                },
+                "cache": {
+                  "mode": "agent-concluded",
+                  "reason": "end-mismatch",
+                  "missingAnchors": [
+                    "status \"Marker\""
+                  ],
+                  "replayedActions": 1,
+                  "totalActions": 1
+                },
+                "artifacts": [],
+                "turns": [
+                  {
+                    "index": 1,
+                    "calls": [
+                      "tap({\"target\":\"n19\"})"
+                    ],
+                    "outcome": "Tapped #n19.\nScreen changes: 4 added."
+                  }
+                ]
               }
             ],
             "artifacts": [

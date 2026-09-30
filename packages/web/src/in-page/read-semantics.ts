@@ -76,7 +76,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   } =
     options.mode.kind === 'tree'
       ? {
-          attributes: ['type', 'autocomplete', 'href', 'role', 'placeholder'],
+          attributes: ['id', 'type', 'autocomplete', 'href', 'role', 'placeholder'],
           textLimit: options.mode.textLimit,
           nameLimit: options.mode.nameLimit,
           redactHref: true,

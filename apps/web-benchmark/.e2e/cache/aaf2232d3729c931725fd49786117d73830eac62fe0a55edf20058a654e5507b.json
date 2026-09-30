@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:34:42.575Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "longPress",
+        "summary": "long-press button \"Hold me\" in \"Gestures\"",
+        "target": {
+          "role": "button",
+          "name": "Hold me",
+          "within": "Gestures"
+        }
+      },
+      {
+        "name": "doubleTap",
+        "summary": "double-tap button \"Double-click me\" in \"Gestures\"",
+        "target": {
+          "role": "button",
+          "name": "Double-click me",
+          "within": "Gestures"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/control-inventory.e2e.ts::control%20inventory::a%20long%20press%20and%20a%20double%20click%20are%20chosen%20over%20a%20plain%20tap",
+      "targetId": "web",
+      "instructionDigest": "9fe8b7fcfeb1bd36e8d003d5c7e5feb16042211ec61970b63314a6c7bac345b0"
+    },
+    "summary": "Long-pressed Hold me until Hold state read “long-pressed,” then double-clicked Double-click me; Double-click state now reads “double-clicked.”",
+    "startPath": "/e/control-inventory",
+    "endPath": "/e/control-inventory",
+    "endAnchors": [
+      {
+        "role": "status",
+        "name": "Hold state",
+        "text": "long-pressed"
+      },
+      {
+        "role": "status",
+        "name": "Double-click state",
+        "text": "double-clicked"
+      }
+    ],
+    "endWaitMs": 12451
+  }
+}

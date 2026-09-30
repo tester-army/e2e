@@ -249,7 +249,7 @@ describe('lifecycle', () => {
     const before = h.fake.calls.length;
     await h.engine.session!.restart!(operation());
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
-      ['settings.update', { setting: 'permission', permission: 'camera', state: 'grant' }],
+      ['settings.update', { platform: 'ios', device: 'iPhone 16e', setting: 'permission', permission: 'camera', state: 'grant' }],
       ['apps.open', { app: 'Settings', platform: 'ios', device: 'iPhone 16e', relaunch: true, launchArgs: ['-e2e', 'YES'] }],
     ]);
   });
@@ -504,7 +504,7 @@ describe('lifecycle', () => {
     await h.engine.session!.restart!(operation());
     expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'com.example.app', platform: 'ios', relaunch: true });
     await h.engine.session!.reset!(operation());
-    expect(h.fake.lastArgs('settings.update')).toEqual({ setting: 'clear-app-state', state: 'clear', app: 'com.example.app' });
+    expect(h.fake.lastArgs('settings.update')).toEqual({ platform: 'ios', setting: 'clear-app-state', state: 'clear', app: 'com.example.app' });
     expect(h.fake.methods().filter((m) => m === 'apps.install')).toHaveLength(1);
 
     // A build named by path that is the engine's own counts the same; another path pins nothing.
@@ -912,7 +912,7 @@ describe('session hooks, viewport swipe, location, artifacts', () => {
       ['interactions.scroll', { direction: 'down', settle: true, settleQuietMs: 150 }],
       ['command.back', { settle: true, settleQuietMs: 150 }],
       ['apps.open', { app: 'Settings', platform: 'ios', relaunch: true }],
-      ['settings.update', { setting: 'clear-app-state', state: 'clear', app: 'Settings' }],
+      ['settings.update', { platform: 'ios', setting: 'clear-app-state', state: 'clear', app: 'Settings' }],
       ['apps.open', { app: 'Settings', platform: 'ios', relaunch: true }],
     ]);
   });
@@ -1365,16 +1365,16 @@ describe('device fixture', () => {
     expect(await device.clipboard()).toBe('pasted');
     await device.setClipboard('x');
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
-      ['settings.update', { setting: 'wifi', state: 'off' }],
-      ['settings.update', { setting: 'airplane', state: 'on' }],
-      ['settings.update', { setting: 'permission', permission: 'camera', state: 'grant' }],
-      ['settings.update', { setting: 'location', state: 'set', latitude: 37.3349, longitude: -122.009 }],
-      ['settings.update', { setting: 'location', state: 'off' }],
-      ['settings.update', { setting: 'appearance', state: 'dark' }],
+      ['settings.update', { platform: 'ios', setting: 'wifi', state: 'off' }],
+      ['settings.update', { platform: 'ios', setting: 'airplane', state: 'on' }],
+      ['settings.update', { platform: 'ios', setting: 'permission', permission: 'camera', state: 'grant' }],
+      ['settings.update', { platform: 'ios', setting: 'location', state: 'set', latitude: 37.3349, longitude: -122.009 }],
+      ['settings.update', { platform: 'ios', setting: 'location', state: 'off' }],
+      ['settings.update', { platform: 'ios', setting: 'appearance', state: 'dark' }],
       ['command.orientation', { orientation: 'landscape-left' }],
-      ['settings.update', { setting: 'faceid', state: 'match' }],
-      ['settings.update', { setting: 'fingerprint', state: 'nonmatch' }],
-      ['settings.update', { setting: 'touchid', state: 'enroll' }],
+      ['settings.update', { platform: 'ios', setting: 'faceid', state: 'match' }],
+      ['settings.update', { platform: 'ios', setting: 'fingerprint', state: 'nonmatch' }],
+      ['settings.update', { platform: 'ios', setting: 'touchid', state: 'enroll' }],
       ['apps.open', { app: 'Reminders', platform: 'ios', relaunch: true }],
       // The close names the app the session observed, so agent-device terminates it before the session ends.
       ['apps.close', { app: 'com.apple.Preferences' }],
@@ -1399,7 +1399,7 @@ describe('device fixture', () => {
     await fixture(h).setPermission('microphone', 'reset');
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
       ['apps.open', { app: 'Settings', platform: 'ios', device: 'iPhone 16e' }],
-      ['settings.update', { setting: 'permission', permission: 'microphone', state: 'reset' }],
+      ['settings.update', { platform: 'ios', device: 'iPhone 16e', setting: 'permission', permission: 'microphone', state: 'reset' }],
     ]);
   });
 
@@ -1412,7 +1412,7 @@ describe('device fixture', () => {
     await fixture(h).setPermission('microphone', 'reset');
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
       ['apps.open', { app: 'Settings', platform: 'ios' }],
-      ['settings.update', { setting: 'permission', permission: 'microphone', state: 'reset' }],
+      ['settings.update', { platform: 'ios', setting: 'permission', permission: 'microphone', state: 'reset' }],
     ]);
 
     // The session lost its app since the open (a failed attempt left it on none): agent-device's refusal gets one open and one more try.
@@ -1446,9 +1446,9 @@ describe('device fixture', () => {
     await device.setLocation({ latitude: 52.2297, longitude: 21.0122 });
     await device.clearLocation();
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
-      ['settings.update', { setting: 'location', state: 'on' }],
-      ['settings.update', { setting: 'location', state: 'set', latitude: 52.2297, longitude: 21.0122 }],
-      ['settings.update', { setting: 'location', state: 'off' }],
+      ['settings.update', { platform: 'android', setting: 'location', state: 'on' }],
+      ['settings.update', { platform: 'android', setting: 'location', state: 'set', latitude: 52.2297, longitude: 21.0122 }],
+      ['settings.update', { platform: 'android', setting: 'location', state: 'off' }],
     ]);
   });
 
@@ -1542,7 +1542,7 @@ describe('device fixture', () => {
     await device.closeApp();
     await h.engine.session!.restart!(operation());
     const open = (extra: Record<string, unknown>): [string, unknown] => ['apps.open', { platform: 'ios', ...extra }];
-    const permission = (name: string, state: string): [string, unknown] => ['settings.update', { setting: 'permission', permission: name, state }];
+    const permission = (name: string, state: string): [string, unknown] => ['settings.update', { platform: 'ios', setting: 'permission', permission: name, state }];
     const fresh = open({ app: 'com.example.app', relaunch: true, launchArgs: ['-e2e', 'YES'] });
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
       // This worker has opened nothing in its session yet: a foreground open puts the session on the app first.
@@ -1555,7 +1555,7 @@ describe('device fixture', () => {
       permission('location', 'deny'),
       fresh,
       // A state clear resets the permissions with the data; they are put back before the relaunch.
-      ['settings.update', { setting: 'clear-app-state', state: 'clear', app: 'com.example.app' }],
+      ['settings.update', { platform: 'ios', setting: 'clear-app-state', state: 'clear', app: 'com.example.app' }],
       permission('camera', 'grant'),
       permission('location', 'deny'),
       fresh,
@@ -1582,9 +1582,9 @@ describe('device fixture', () => {
     await device.openApp('com.other', { permissions: {} });
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
       ['apps.open', { platform: 'ios', app: 'com.other' }],
-      ['settings.update', { setting: 'permission', permission: 'photos', state: 'reset' }],
+      ['settings.update', { platform: 'ios', setting: 'permission', permission: 'photos', state: 'reset' }],
       ['apps.open', { platform: 'ios', app: 'com.other', relaunch: true, launchArgs: ['--reset-onboarding'] }],
-      ['settings.update', { setting: 'permission', permission: 'photos', state: 'reset' }],
+      ['settings.update', { platform: 'ios', setting: 'permission', permission: 'photos', state: 'reset' }],
       ['apps.open', { platform: 'ios', app: 'com.other' }],
       ['apps.open', { platform: 'ios', app: 'com.other' }],
     ]);
@@ -1612,7 +1612,7 @@ describe('device fixture', () => {
     const before = ios.fake.calls.length;
     await fixture(ios).clearKeychain();
     expect(ios.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
-      ['settings.update', { setting: 'reset-keychain', state: 'clear' }],
+      ['settings.update', { platform: 'ios', setting: 'reset-keychain', state: 'clear' }],
     ]);
 
     const android = harness({ platform: 'android', app: 'com.example.app' });
@@ -1737,7 +1737,7 @@ describe('video', () => {
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
       // The session is gone, so it is put on the app again before the permission, as after closeApp.
       ['apps.open', { platform: 'ios', app: 'com.example.app' }],
-      ['settings.update', { setting: 'permission', permission: 'camera', state: 'grant' }],
+      ['settings.update', { platform: 'ios', setting: 'permission', permission: 'camera', state: 'grant' }],
       ['apps.open', { platform: 'ios', app: 'com.example.app', relaunch: true }],
     ]);
   });

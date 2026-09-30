@@ -1,0 +1,124 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:45:29.927Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap radio \"Medium\"",
+        "target": {
+          "role": "radio",
+          "name": "Medium",
+          "testId": "size-medium",
+          "selector": "id=size-medium"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap checkbox \"Cheese\"",
+        "target": {
+          "role": "checkbox",
+          "name": "Cheese",
+          "testId": "topping-cheese",
+          "selector": "id=topping-cheese"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap checkbox \"Olives\"",
+        "target": {
+          "role": "checkbox",
+          "name": "Olives",
+          "testId": "topping-olives",
+          "selector": "id=topping-olives"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap switch \"0\"",
+        "target": {
+          "role": "switch",
+          "name": "0",
+          "testId": "rush-delivery",
+          "selector": "id=rush-delivery"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap textbox \"Ring the doorbell twice\"",
+        "target": {
+          "role": "textbox",
+          "testId": "delivery-notes",
+          "placeholder": "Ring the doorbell twice",
+          "selector": "id=delivery-notes"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap checkbox \"✓, Mushrooms\"",
+        "target": {
+          "role": "checkbox",
+          "name": "✓, Mushrooms",
+          "testId": "topping-mushrooms",
+          "selector": "id=topping-mushrooms"
+        }
+      },
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"return\"",
+        "target": {
+          "role": "button",
+          "name": "return",
+          "testId": "Return",
+          "selector": "id=Return"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Place order\"",
+        "target": {
+          "role": "other",
+          "name": "Place order",
+          "testId": "place-order",
+          "selector": "id=place-order"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Choice%20Controls",
+      "targetId": "ios-simulator",
+      "instructionDigest": "e45bc3c8dfe206c28355448b56384192428222d9ab9b304cefdfa5b86f6da188"
+    },
+    "summary": "Selected Medium, checked only Cheese and Olives, enabled rush delivery, and dismissed the keyboard. Placed the order; the screen confirms “Order placed: Medium with Cheese, Olives (rush).”",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Order placed: Medium with Cheese, Olives (rush)",
+        "testId": "success-message"
+      },
+      {
+        "role": "other",
+        "name": "Order placed: Medium with Cheese, Olives (rush)"
+      }
+    ],
+    "endWaitMs": 13180
+  }
+}

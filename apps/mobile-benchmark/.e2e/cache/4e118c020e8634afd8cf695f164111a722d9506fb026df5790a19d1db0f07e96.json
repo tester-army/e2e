@@ -1,0 +1,183 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:41:25.863Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tapAt",
+        "summary": "tap the point (172, 225) on other \"Create your benchmark account, First na…\"",
+        "point": {
+          "x": 172,
+          "y": 225
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Create your benchmark account, First name, Last name, Email address, Set password, Passwords must contain a minimum of 8 characters. By signing up you confirm you have read the benchmark terms. This filler paragraph exists so the form spans roughly two screens and the scroll indicator reports multi…"
+          },
+          "fx": 0.4279,
+          "fy": 0.1438
+        }
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (52, 225) on other \"Create your benchmark account, First na…\"",
+        "point": {
+          "x": 52,
+          "y": 225
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Create your benchmark account, First name, Last name, Email address, Set password, Passwords must contain a minimum of 8 characters. By signing up you confirm you have read the benchmark terms. This filler paragraph exists so the form spans roughly two screens and the scroll indicator reports multi…"
+          },
+          "fx": 0.1294,
+          "fy": 0.1438
+        }
+      },
+      {
+        "name": "typeText",
+        "summary": "type \"Ada\" into the focused field",
+        "value": "Ada",
+        "replace": false
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (117, 311) on other \"Create your benchmark account, First na…\"",
+        "point": {
+          "x": 117,
+          "y": 311
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Create your benchmark account, First name, Last name, Email address, Set password, Passwords must contain a minimum of 8 characters. By signing up you confirm you have read the benchmark terms. This filler paragraph exists so the form spans roughly two screens and the scroll indicator reports multi…"
+          },
+          "fx": 0.291,
+          "fy": 0.2573
+        }
+      },
+      {
+        "name": "typeText",
+        "summary": "type \"Lovelace\" into the focused field",
+        "value": "Lovelace",
+        "replace": false
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (120, 394) on other \"Create your benchmark account, First na…\"",
+        "point": {
+          "x": 120,
+          "y": 394
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Create your benchmark account, First name, Last name, Email address, Set password, Passwords must contain a minimum of 8 characters. By signing up you confirm you have read the benchmark terms. This filler paragraph exists so the form spans roughly two screens and the scroll indicator reports multi…"
+          },
+          "fx": 0.2985,
+          "fy": 0.3668
+        }
+      },
+      {
+        "name": "typeText",
+        "summary": "type \"ada@example.com\" into the focused field",
+        "value": "ada@example.com",
+        "replace": false
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (122, 478) on other \"Create your benchmark account, First na…\"",
+        "point": {
+          "x": 122,
+          "y": 478
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Create your benchmark account, First name, Last name, Email address, Set password, Passwords must contain a minimum of 8 characters. By signing up you confirm you have read the benchmark terms. This filler paragraph exists so the form spans roughly two screens and the scroll indicator reports multi…"
+          },
+          "fx": 0.3035,
+          "fy": 0.4776
+        }
+      },
+      {
+        "name": "typeText",
+        "summary": "type \"Lovelace1815\" into the focused field",
+        "value": "Lovelace1815",
+        "replace": false
+      },
+      {
+        "name": "dismissKeyboard",
+        "summary": "dismiss the keyboard"
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (199, 758) on other \"Create your benchmark account, First na…\"",
+        "point": {
+          "x": 199,
+          "y": 758
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Create your benchmark account, First name, Last name, Email address, Set password, Passwords must contain a minimum of 8 characters. By signing up you confirm you have read the benchmark terms. This filler paragraph exists so the form spans roughly two screens and the scroll indicator reports multi…"
+          },
+          "fx": 0.495,
+          "fy": 0.847
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Not Now\"",
+        "target": {
+          "role": "button",
+          "name": "Not Now"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Flattened%20Registration%20Form",
+      "targetId": "ios-simulator",
+      "instructionDigest": "99f3046e1cffa27d71f282e7a46fd975917dcd9e39992518bc6fc19c46f414ac"
+    },
+    "summary": "Filled the registration form with Ada Lovelace, ada@example.com, and the requested password, then submitted it. The screen now displays “Account created.”",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "other",
+        "name": "Account created"
+      }
+    ],
+    "endWaitMs": 13227
+  }
+}

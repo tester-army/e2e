@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:38:27.445Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tapAt",
+        "summary": "tap the point (281, 540) on other \"Benchmark Examples\"",
+        "point": {
+          "x": 281,
+          "y": 540
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Benchmark Examples"
+          },
+          "fx": 0.699,
+          "fy": 0.6178
+        }
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (121, 540) on other \"Benchmark Examples\"",
+        "point": {
+          "x": 121,
+          "y": 540
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Benchmark Examples"
+          },
+          "fx": 0.301,
+          "fy": 0.6178
+        }
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (200, 538) on other \"Benchmark Examples\"",
+        "point": {
+          "x": 200,
+          "y": 538
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Benchmark Examples"
+          },
+          "fx": 0.4975,
+          "fy": 0.6156
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Vision%20Only",
+      "targetId": "ios-simulator",
+      "instructionDigest": "e950bf904a3587f9a1d42a4dc15c29517000d20a1e31c8bd896e96a9c6ebd6d1"
+    },
+    "summary": "Tapped the square, then circle, then diamond as instructed. The screen now displays “Sequence complete.”",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endWaitMs": 15969
+  }
+}

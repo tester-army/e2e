@@ -61,7 +61,14 @@
                   "contextBytes": 0,
                   "ledgerBytes": 0
                 },
-                "artifacts": []
+                "artifacts": [],
+                "cache": {
+                  "mode": "agent-concluded",
+                  "reason": "end-mismatch",
+                  "missingAnchors": [42],
+                  "replayedActions": 1,
+                  "totalActions": 1
+                }
               }
             ]
           }

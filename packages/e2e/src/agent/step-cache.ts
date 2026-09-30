@@ -12,14 +12,14 @@
  * when replay performed no action.
  */
 
-import { anchorsPresent, describeAnchors } from '../cache/anchors.ts';
+import { anchorsPresent, describeAnchor, describeAnchors } from '../cache/anchors.ts';
 import type { AgentCacheContext } from '../cache/context.ts';
 import { decideTraceReplay, opensWithNavigate, type TraceReplayMissReason } from '../cache/decide.ts';
 import { compareRoutes, routeOf } from '../cache/route.ts';
 import { instructionDigest } from '../cache/identity.ts';
 import { TraceRecorder } from '../cache/recorder.ts';
 import { expandTrace, templateParams, templatesCollide, templateTrace, type ParamTemplate } from '../cache/template.ts';
-import { readTraceEntry, type ActionTrace, type DerivedReason, type TraceEntry } from '../cache/trace.ts';
+import { readTraceEntry, type ActionTrace, type DerivedReason, type TraceEntry, type TraceTargetDescriptor } from '../cache/trace.ts';
 import { sleep } from '../internal/time.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
@@ -68,6 +68,9 @@ export interface StepCacheOptions {
 export type StepOutcome = 'passed' | 'failed' | 'cancelled';
 
 type HandOffReason = ReplayedPrefix['stopReason'];
+
+/** Whether the recorded end state returned; on a mismatch, the anchors that did not (none when the route itself differed). */
+type EndStateVerdict = { readonly kind: 'matched' } | { readonly kind: 'mismatch'; readonly missing: readonly TraceTargetDescriptor[] };
 
 /** One store read: a validated entry, or why none was read. */
 type EntryRead =
@@ -352,8 +355,9 @@ export class StepTraceSession {
     }
     const outcome = await replayTrace(this.host, trace, start?.kind === 'semantic' ? { initial: start } : {});
     this.consumedReplay = true;
+    const end = outcome.completed ? await this.endStateMatches(trace) : undefined;
     const stopReason: HandOffReason | undefined = outcome.completed
-      ? (await this.endStateMatches(trace))
+      ? end?.kind === 'matched'
         ? undefined
         : 'end-mismatch'
       : (outcome.stopReason ?? 'action-failed');
@@ -364,7 +368,7 @@ export class StepTraceSession {
       this.info = this.missed(stopReason, outcome.total, outcome.derived);
       return undefined;
     }
-    this.handOff(outcome, stopReason);
+    this.handOff(outcome, stopReason, end?.kind === 'mismatch' ? end.missing : []);
     return undefined;
   }
 
@@ -374,15 +378,20 @@ export class StepTraceSession {
    * present again. A route the path leaves undecided is the recorded screen
    * only if the anchors are already on it, which then needs no second look.
    */
-  private async endStateMatches(trace: ActionTrace): Promise<boolean> {
-    if (!this.host.traceEligible) return false;
+  private async endStateMatches(trace: ActionTrace): Promise<EndStateVerdict> {
+    const anchors = trace.endAnchors ?? [];
+    // No screen to read: every recorded anchor is unaccounted for.
+    if (!this.host.traceEligible) return { kind: 'mismatch', missing: anchors };
     const arrived = await this.endScreen(trace);
-    if (arrived === undefined) return false;
-    if (arrived.anchorsSeen) return true;
-    return (await verifyAnchors(this.host, trace.endAnchors ?? [], {
+    if (arrived === 'unreadable') return { kind: 'mismatch', missing: anchors };
+    // Another screen: the route is what differed, and anchors are not the story.
+    if (arrived === 'elsewhere') return { kind: 'mismatch', missing: [] };
+    if (arrived.anchorsSeen) return { kind: 'matched' };
+    const missing = await verifyAnchors(this.host, trace.endAnchors ?? [], {
       initial: arrived.screen,
       ...(trace.endWaitMs === undefined ? {} : { waitMs: trace.endWaitMs }),
-    })) && this.host.traceEligible;
+    });
+    return missing.length === 0 && this.host.traceEligible ? { kind: 'matched' } : { kind: 'mismatch', missing };
   }
 
   /**
@@ -392,16 +401,18 @@ export class StepTraceSession {
    * verify them again. A route still undecided when the poll runs out is
    * handed on with the anchors unseen: the caller's anchor wait, sized by
    * the recording, is the one that decides it, as for a route that matched.
+   * `unreadable` when no semantic screen could be captured, `elsewhere` when
+   * the app is on another route.
    */
   private async endScreen(
     trace: ActionTrace,
-  ): Promise<{ readonly screen: SemanticScreen; readonly anchorsSeen: boolean } | undefined> {
+  ): Promise<{ readonly screen: SemanticScreen; readonly anchorsSeen: boolean } | 'unreadable' | 'elsewhere'> {
     const startedMs = Date.now();
     const recorded = trace.endPath === undefined ? undefined : routeOf(trace.endPath);
     const anchors = trace.endAnchors ?? [];
     for (let attempt = 0; ; attempt += 1) {
       const observation = await probeScreen(this.host, 'raw');
-      if (observation?.kind !== 'semantic' || !this.host.traceEligible) return undefined;
+      if (observation?.kind !== 'semantic' || !this.host.traceEligible) return 'unreadable';
       if (recorded === undefined || observation.path === undefined) return { screen: observation, anchorsSeen: false };
       const verdict = compareRoutes(recorded, routeOf(observation.path));
       if (verdict === 'same') return { screen: observation, anchorsSeen: false };
@@ -419,7 +430,7 @@ export class StepTraceSession {
         this.host.remainingMs() <= delay ||
         this.host.signal.aborted
       ) {
-        return undecided ? { screen: observation, anchorsSeen: false } : undefined;
+        return undecided ? { screen: observation, anchorsSeen: false } : 'elsewhere';
       }
       await sleep(delay, this.host.signal);
     }
@@ -435,18 +446,22 @@ export class StepTraceSession {
     return { status: 'passed', summary: replaySummary(outcome.executed, trace.summary) };
   }
 
-  private handOff(outcome: ReplayOutcome, stopReason: HandOffReason): void {
+  private handOff(outcome: ReplayOutcome, stopReason: HandOffReason, missing: readonly TraceTargetDescriptor[] = []): void {
     if (stopReason === 'end-mismatch') this.actionsAtEndMismatch = this.recorder?.recordedCount ?? 0;
+    // Named, so the report and the agent see which effect did not return, not only that one did not.
+    const missingAnchors = missing.length === 0 ? undefined : missing.map(describeAnchor);
     this.prefix = {
       replayedActions: outcome.summaries,
       totalActions: outcome.total,
       stopReason,
       ...(outcome.uncertainAction === undefined ? {} : { uncertainAction: outcome.uncertainAction }),
+      ...(missingAnchors === undefined ? {} : { missingAnchors }),
     };
     this.info = {
       mode: 'agent-concluded',
       reason: stopReason,
       ...(outcome.derived === undefined ? {} : { derived: outcome.derived }),
+      ...(missingAnchors === undefined ? {} : { missingAnchors }),
       replayedActions: outcome.executed,
       totalActions: outcome.total,
     };

@@ -1,0 +1,101 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-30T11:46:05.956Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"New card\"",
+        "target": {
+          "role": "button",
+          "name": "New card",
+          "testId": "New card",
+          "selector": "id=\"New card\""
+        }
+      },
+      {
+        "name": "type",
+        "summary": "type \"4242424242424242\" into textbox \"Card number\"",
+        "target": {
+          "role": "textbox",
+          "name": "Card number"
+        },
+        "value": "4242424242424242"
+      },
+      {
+        "name": "type",
+        "summary": "type \"12/34\" into textbox \"expiration date\"",
+        "target": {
+          "role": "textbox",
+          "name": "expiration date"
+        },
+        "value": "12/34"
+      },
+      {
+        "name": "type",
+        "summary": "type \"123\" into textbox \"CVC\"",
+        "target": {
+          "role": "textbox",
+          "name": "CVC"
+        },
+        "value": "123"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Pay 10,99 US$\"",
+        "target": {
+          "role": "button",
+          "name": "Pay 10,99 US$"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Stripe%20PaymentSheet",
+      "targetId": "ios-simulator",
+      "instructionDigest": "548f26f27a3de78ff303cdeec5ab1eda061f15f1a1f2eaff404934e13b5e1176"
+    },
+    "summary": "Entered the Stripe test card 4242 4242 4242 4242, expiry 12/34, and CVC 123, supplied the required UK postal code, and tapped Pay. The screen confirms “Stripe test payment completed.”",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "button",
+        "name": "Benchmark Examples",
+        "testId": "BackButton"
+      },
+      {
+        "role": "text",
+        "name": "Stripe PaymentSheet"
+      },
+      {
+        "role": "text",
+        "name": "Stripe test payment"
+      },
+      {
+        "role": "text",
+        "name": "Complete the payment in Stripe’s native PaymentSheet."
+      },
+      {
+        "role": "text",
+        "name": "Test card details"
+      },
+      {
+        "role": "text",
+        "name": "Card: 4242 4242 4242 4242"
+      },
+      {
+        "role": "text",
+        "name": "Expiry: 12/34 · CVC: 123"
+      },
+      {
+        "role": "text",
+        "name": "Postal code: SW1A 1AA"
+      }
+    ],
+    "endWaitMs": 15492
+  }
+}

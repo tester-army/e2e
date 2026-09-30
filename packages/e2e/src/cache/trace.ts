@@ -111,6 +111,8 @@ export interface TraceTargetDescriptor {
   readonly name?: string;
   readonly text?: string;
   readonly testId?: string;
+  /** The element's own `id` attribute on a document platform, when it reads as authored rather than minted. */
+  readonly elementId?: string;
   readonly placeholder?: string;
   readonly selector?: string;
   readonly inputPurpose?: string;
@@ -642,6 +644,7 @@ export const DESCRIPTOR_FIELDS = [
   'name',
   'text',
   'testId',
+  'elementId',
   'placeholder',
   'selector',
   'inputPurpose',
