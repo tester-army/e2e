@@ -1,10 +1,11 @@
 /**
- * Asserts that every code block a docs page shows from `docs/examples/`
- * matches the file it came from.
+ * Asserts that every code block a docs page or the consumer skill shows from
+ * `docs/examples/` matches the file it came from.
  *
  * The examples are typechecked against the built packages (`pnpm --filter
- * @e2e-dev/docs typecheck`); Mintlify cannot import a file into a page, so the
- * page carries a copy of each and this script keeps the copies honest.
+ * @e2e-dev/docs typecheck`); Mintlify cannot import a file into a page and a
+ * skill is plain markdown, so the page carries a copy of each and this script
+ * keeps the copies honest.
  *
  * Usage: `node scripts/check-docs-examples.ts`. Exits 1 listing every block
  * that drifted from its example.
@@ -27,6 +28,8 @@ const EXAMPLES: Record<string, string> = {
   'docs/examples/mobile/device-provider.ts': 'docs/mobile.mdx',
   'docs/examples/mobile/device-cloud-provider.ts': 'docs/mobile.mdx',
   'docs/examples/web/browser-provider.ts': 'docs/browser.mdx',
+  'docs/examples/skill/e2e.config.ts': 'skills/e2e/SKILL.md',
+  'docs/examples/skill/e2e.setup.config.ts': 'skills/e2e/references/setup.md',
 };
 
 function read(path: string): string {

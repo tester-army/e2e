@@ -849,7 +849,7 @@ brings, since it goes to the engine rather than onto the page. The digest
 records the name only. The reference is not the value: turned into a string
 (a template literal, `String()`, `+`, `JSON.stringify`) it throws
 `INVALID_CONFIG`, and so does one placed in an `args` entry or `env` value of
-`app.command` or a service, which take strings and placeholders only. Read a value a string needs, such as an app's API
+`app.command`, which takes strings and placeholders only. Read a value a string needs, such as an app's API
 key, from `process.env` yourself.
 
 ```ts
@@ -862,7 +862,7 @@ export type SecretPurpose = 'password' | 'generic-secret';
 
 /** Opaque host-side value accepted only by sensitive input sinks. */
 export interface Secret {
-  /** The entry's name in `credentials` or `secrets`. */
+  /** The entry's name in `secrets`, or `<credential>.password` for a credential's password. */
   readonly name: string;
   /** Where the value may be filled. */
   readonly purpose: SecretPurpose;

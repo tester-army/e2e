@@ -129,7 +129,7 @@ import { web } from '@e2e-dev/web';
 import { vault } from './support/vault.ts';
 
 export default {
-  targets: [{ engine: web({ url: 'http://127.0.0.1:3000' }) }],
+  targets: [{ engine: web(), app: { url: 'http://127.0.0.1:3000' } }],
   credentials: {
     admin: {
       username: 'admin@example.test',

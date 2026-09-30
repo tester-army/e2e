@@ -77,10 +77,11 @@ export default {
   tests: 'tests/**/*.e2e.ts',
   targets: [
     {
-      engine: web({
+      engine: web(),
+      app: {
         url: 'http://127.0.0.1:3000',
         command: { executable: 'pnpm', args: ['dev'], log: '.e2e/logs/app.log' },
-      }),
+      },
     },
   ],
   // Model behind every agent.* step.
