@@ -49,22 +49,13 @@ and when a change needs a broad look before review. For one flow, a single
   provider), what is seed data, and what must never be clicked (starting
   paid runs, connecting real accounts). Otherwise a large share of the
   findings are the missing keys.
-- Tell them, in the same `context`, what exploring itself distorts, so the
-  runner's blind spots do not come back as findings: a link that opens a
-  new tab leaves the current one unchanged, so an unchanged screen alone
-  does not make a link dead (step 6 settles it by opening the destination,
-  since a valid href does not prove the click worked either); accessible
-  text splits around
-  inline links, so copy reads broken while rendering whole; an
-  infinite-scroll list keeps a "Loading more" sentinel that loads only when
-  scrolled into view; images and embeds lazy-load. Uncontexted, these
+- Tell them, in the same `context`, the explorer artifacts from step 5's
+  first bucket (the config below carries the sentence). Uncontexted, those
   families dominate the findings.
-- A bash against a deployed site others use is read-only: the `context`
-  forbids signing up, signing in, and submitting anything that creates or
-  changes data, and no charter puts injection-shaped strings in URLs or
-  repeats a request in a loop. A WAF block page ("you have been blocked")
-  is the firewall working, not a finding, and the block can follow the
-  runner's IP into every later charter.
+- A bash against a deployed site others use is read-only: no signups,
+  sign-ins, or submissions, nothing injection-shaped in URLs, no request
+  loops. A WAF block is the firewall working, not a finding, and it can
+  follow the runner's IP into every later charter.
 - Each exploration step needs a budget of 40 actions and model calls or
   more (`maxSteps` and `maxModelCalls` on the agent); a project config tuned
   for short test steps (`maxSteps: 15`) starves it. That is a per-step
@@ -141,13 +132,12 @@ write them: the routes, the navigation, the forms, and, for a branch,
 Aim for five to ten charters. Each gets its own slug for its output
 directory. Overlap between charters is fine; duplicates are merged in step 4.
 
-Each posture reads best through its own persona: a named agent whose
-`system` sets the stance (config above), picked per charter in step 3. A
-generic agent walks past a stat that contradicts the same stat on another
-page; the skeptic exists to catch it. An edge-input charter names its exact
-matrix - empty, a 300-character string, unicode, leading spaces, literal
-special characters - because "fuzz everything" spends the whole time budget
-before judging a single result.
+Give each posture its persona (config above), picked per charter in step
+3: a generic agent walks past a stat that contradicts the same stat on
+another page; the skeptic catches it. An edge-input charter names its
+exact matrix - empty, a 300-character string, unicode, leading spaces,
+literal special characters - or it spends the whole time budget before
+judging a single result.
 
 ## 3. Fan out
 
@@ -207,7 +197,7 @@ you may, settles most of them in a minute each:
 
 | Bucket | Sign | Outcome |
 | --- | --- | --- |
-| Explorer artifact | A "dead" link with `target="_blank"` that opens its destination when clicked with popup capture or navigated to directly, a broken sentence the screenshot renders whole, a "Loading more" sentinel nothing scrolled to, a blank image or embed that lazy-loads | Rejected with the check that settled it; settle this bucket first, it is the cheapest and, uncontexted, the most common. A new-tab link whose destination never opens stays a candidate |
+| Explorer artifact | A "dead" `target="_blank"` link whose destination opens when clicked with popup capture or navigated to directly, a broken sentence the screenshot renders whole, a "Loading more" sentinel nothing scrolled to, a lazy-loading image or embed | Rejected with the check that settled it; settle this bucket first. A new-tab link whose destination never opens stays a candidate |
 | Environment | Fails on a key, a service, or a limit only the local stack lacks (an email provider, an AI key, a billing plan) | Rejected, naming the variable or service; note separately when the app handles the failure badly in a way production users would see, such as showing the raw error |
 | Design | The code, its tests, or its copy say the behavior is intended | Rejected, citing where |
 | Fixture | The seed data lacks a field real records always have | Rejected, naming the field |
@@ -227,11 +217,10 @@ when it may read the source, the repro test path, and the failure it saw.
 Without subagents, verify one area after another.
 
 1. Read `actual` against the screenshot, or the video when there is none.
-   A finding the evidence contradicts is rejected here. Check the artifact
-   bucket's signs first: for a "dead" link, that its destination actually
-   opens (click it with popup capture in your session, or navigate to its
-   href), since a valid href with a prevented default is still a dead link;
-   for a copy claim, the rendered screenshot.
+   A finding the evidence contradicts is rejected here. Settle the
+   artifact bucket first: a "dead" link's destination must actually open
+   (a valid href with a prevented default is still dead), a copy claim
+   must show in the rendered screenshot.
 2. Write a repro test that follows the reproduction and asserts the
    expected behavior, so it fails today and passes once the bug is fixed.
    Put it under `bugbash/` inside the directory the config's `tests` glob
