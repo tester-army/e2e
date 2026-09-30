@@ -85,6 +85,10 @@ before any reviewer does.
     `.github/filters.yml`, so the benchmark suites skip a change they cover.
 13. Core naming an engine noun (`Web`, `browser`, `page`, `route`,
     `playwright`) outside the `init` presets.
+14. A scripted rename of our API spelling (a fixture name, a call shape)
+    that also rewrote another library's code: a Playwright `page.getByRole`
+    in a migration sample, a raw `Page` from `surfaceOf`. Grep the diff for
+    the old spelling on receivers that are not ours.
 
 ## Keeping this file useful
 
