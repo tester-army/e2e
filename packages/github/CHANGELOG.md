@@ -1,5 +1,11 @@
 # @e2e-dev/github
 
+## 0.3.0
+
+### Patch Changes
+
+- [#682](https://github.com/tester-army/e2e/pull/682) [`e4fca9d`](https://github.com/tester-army/e2e/commit/e4fca9debd85cc5be2b2df40357e9e071e92595e) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `@e2e-dev/github` installs next to a stable `e2e` again. The published builds pinned their `e2e` peer to one canary build, so `npm install` refused to resolve it against a versioned runner.
+
 ## 0.3.0-canary-20260928184528
 
 ### Minor Changes

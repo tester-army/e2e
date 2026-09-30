@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/kernel",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Kernel hosted browsers for e2e: run web targets in Kernel's hosted Chromium",
   "keywords": [
     "e2e",

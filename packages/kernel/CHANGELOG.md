@@ -1,5 +1,21 @@
 # @e2e-dev/integrations
 
+## 0.1.0
+
+### Minor Changes
+
+- [#659](https://github.com/tester-army/e2e/pull/659) [`4e7bb64`](https://github.com/tester-army/e2e/commit/4e7bb643ac42d0f53cdaad381be634c5a7ed1315) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `@e2e-dev/kernel`, Kernel hosted browsers for the web engine: `web({ browser: kernel() })` runs a target in Kernel's hosted Chromium, one browser per worker slot, or per attempt with `scope: 'attempt'`. `kernel(options)` takes Kernel's create-browser body as is, reads `KERNEL_API_KEY` from the run's environment, tags every browser with the run, target, and slot, defaults `timeout_seconds` to 600 so Kernel deletes a browser a dead worker never released, and logs each browser's live view URL when Kernel gives one. `@onkernel/sdk` and `@e2e-dev/web` are peers.
+
+- [#610](https://github.com/tester-army/e2e/pull/610) [`aadcb5d`](https://github.com/tester-army/e2e/commit/aadcb5dddb79217608a88c75af6cc4e5a582c592) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `kernel()` records an attempt that records video as a Kernel replay of the browser's screen, saved as `video/replay.mp4`. `replay` takes Kernel's start-replay options (`framerate`, `max_duration_in_seconds`, `record_audio`), or `false` for the page screencast; a headless browser, which Kernel cannot replay, gets the screencast. `e2e` is now a peer.
+
+### Patch Changes
+
+- [#669](https://github.com/tester-army/e2e/pull/669) [`f5bc45a`](https://github.com/tester-army/e2e/commit/f5bc45ac145718ec82396f28339d479c48d66612) Thanks [@okwasniewski](https://github.com/okwasniewski)! - A Kernel error no longer carries a trailing newline into the run's error: a bad `KERNEL_API_KEY` reads `browser provider "kernel" could not lease a browser: 401 Invalid or disabled API key while preparing engine web for target "kernel"` on one line.
+
+- [#669](https://github.com/tester-army/e2e/pull/669) [`f5bc45a`](https://github.com/tester-army/e2e/commit/f5bc45ac145718ec82396f28339d479c48d66612) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `browser.waitForDownload` works on a Kernel browser. It failed with `download failed: download.saveAs: canceled` on every hosted browser, which saves a download to its own disk. A `BrowserProvider` can now implement `downloads: { dir, read }`: the engine has the browser save under `dir` on its machine and reads the finished file back through `read`. `kernel()` implements it with Kernel's browser filesystem API. On a provider without it, a failed download names the provider and the missing `downloads`.
+
+- [#669](https://github.com/tester-army/e2e/pull/669) [`f5bc45a`](https://github.com/tester-army/e2e/commit/f5bc45ac145718ec82396f28339d479c48d66612) Thanks [@okwasniewski](https://github.com/okwasniewski)! - A worker that dies no longer leaks its Kernel browser. With `kernel({ scope: 'attempt' })`, a crashed or killed worker left its attempt's browser running until Kernel's `timeout_seconds`, ten minutes by default; a replacement a worker leased in `worker` scope leaked the same way. A `BrowserProvider` can now implement `sweep(context)`, which the engine calls once per target when the run ends to release the run's leases a worker left open, and `kernel()` deletes every browser still active with the run's `e2e_run` and `e2e_target` tags. The reporter names each browser it released.
+
 ## 0.1.0-canary-20260929180659
 
 ### Minor Changes
