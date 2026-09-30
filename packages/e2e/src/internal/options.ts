@@ -59,11 +59,18 @@ export function unknownKeyMessage(label: string, value: object, keys: readonly s
 }
 
 /**
- * Refuses a config object carrying a key outside `keys` with
- * `INVALID_CONFIG`, naming the nearest known key, so a misspelled option
- * fails at load instead of falling through to a default.
+ * Refuses an object carrying a key outside `keys`, naming the nearest known
+ * key, so a misspelled option fails instead of falling through to a default:
+ * `INVALID_CONFIG` for a config object, the default, or `INVALID_ARGUMENT`
+ * for an argument a test passes.
  */
-export function rejectUnknownKeys(label: string, value: object, keys: readonly string[]): void {
+export function rejectUnknownKeys(
+  label: string,
+  value: object,
+  keys: readonly string[],
+  code: 'INVALID_CONFIG' | 'INVALID_ARGUMENT' = 'INVALID_CONFIG',
+): void {
   const message = unknownKeyMessage(label, value, keys);
-  if (message !== undefined) throw new ConfigurationError('INVALID_CONFIG', message);
+  if (message === undefined) return;
+  throw code === 'INVALID_CONFIG' ? new ConfigurationError(code, message) : new TestError(code, message);
 }

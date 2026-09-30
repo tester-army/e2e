@@ -199,7 +199,11 @@ foreground open first; that open is the one process start no permission can
 precede, and the relaunch after it has them. The warm-up passes no launch
 argument and touches no permission.
 `device.openApp(app, { relaunch: true, launchArguments, permissions })` does
-the same for one launch of any app.
+the same for one launch of any app. A permission name outside
+`DevicePermission` (naming the nearest one when it is a likely typo) or a
+state other than `grant`, `deny`, or `reset` fails before any device command:
+`INVALID_CONFIG` in `mobile({ permissions })`, `INVALID_ARGUMENT` in
+`device.openApp`.
 
 The engine declares one worker per configured device. With no `device`,
 `prepare` uses the booted devices it finds, capped by the run's slots, and

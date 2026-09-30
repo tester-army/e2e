@@ -294,6 +294,46 @@ const MOBILE_OPTION_KEYS: readonly string[] = Object.keys({
   permissions: true,
 } satisfies Record<keyof MobileOptions, true>);
 
+/** Every permission agent-device sets, kept equal to `DevicePermission` by the compiler. */
+const PERMISSION_NAMES: readonly string[] = Object.keys({
+  camera: true,
+  microphone: true,
+  photos: true,
+  contacts: true,
+  notifications: true,
+  calendar: true,
+  location: true,
+  reminders: true,
+  motion: true,
+  siri: true,
+  'media-library': true,
+} satisfies Record<DevicePermission, true>);
+
+/** Every state a permission takes, kept equal to `PermissionState` by the compiler. */
+const PERMISSION_STATES: readonly string[] = Object.keys({ grant: true, deny: true, reset: true } satisfies Record<PermissionState, true>);
+
+/**
+ * Refuses a permissions map before any device command: a name agent-device
+ * does not set, naming the nearest, or a state other than grant, deny, or
+ * reset. `INVALID_CONFIG` for the engine option, `INVALID_ARGUMENT` for a
+ * test's `device.openApp`. An `undefined` state is skipped, as the preset
+ * skips it.
+ */
+function assertPermissions(label: string, permissions: unknown, code: 'INVALID_CONFIG' | 'INVALID_ARGUMENT'): void {
+  const fail = (message: string): never => {
+    throw code === 'INVALID_CONFIG' ? new ConfigurationError(code, message) : new TestError(code, message);
+  };
+  if (typeof permissions !== 'object' || permissions === null || Array.isArray(permissions)) {
+    fail(`${label} must be an object of permission names to ${PERMISSION_STATES.join(', ')}`);
+  }
+  rejectUnknownKeys(label, permissions as object, PERMISSION_NAMES, code);
+  for (const [name, state] of Object.entries(permissions as Record<string, unknown>)) {
+    if (state !== undefined && !PERMISSION_STATES.includes(state as string)) {
+      fail(`${label}.${name} must be one of ${PERMISSION_STATES.join(', ')}, got ${typeof state === 'string' ? `"${state}"` : String(state)}`);
+    }
+  }
+}
+
 /** Resolves the `transition` option: the default budget or a custom one. */
 function transitionMs(transition: MobileOptions['transition']): number {
   const budget = transition ?? DEFAULT_TRANSITION_MS;
@@ -371,6 +411,7 @@ export class AgentDeviceSurface {
     private readonly createClient: ClientFactory,
   ) {
     rejectUnknownKeys('mobile()', options, MOBILE_OPTION_KEYS);
+    if (options.permissions !== undefined) assertPermissions('mobile({ permissions })', options.permissions, 'INVALID_CONFIG');
     assertConfiguredApp(options.app);
     this.pool = new DevicePool(options, createClient);
     this.settleOptions = settleOptions(options.settle);
@@ -651,6 +692,7 @@ export class AgentDeviceSurface {
    */
   async openApp(app: string, options: OpenAppOptions, signal: AbortSignal): Promise<void> {
     assertAppId(app);
+    if (options.permissions !== undefined) assertPermissions('device.openApp({ permissions })', options.permissions, 'INVALID_ARGUMENT');
     const relaunch = options.relaunch === true;
     // The engine's own launch options belong to a fresh launch of the pinned
     // app. A foreground-only open of a running app takes no arguments, and a
