@@ -513,7 +513,9 @@ The report goes to the same PostHog project as [telemetry](/telemetry#feedback),
 as one `e2e_feedback` event, together with the anonymous machine facts every
 telemetry event carries. Before sending, the value of every environment
 variable whose name holds `KEY`, `TOKEN`, `SECRET`, `PASS`, `_PWD`,
-`CREDENTIAL`, `AUTH`, `COOKIE`, or `PRIVATE` becomes `<secret:NAME>`, and bearer tokens,
+`CREDENTIAL`, `AUTH`, `COOKIE`, or `PRIVATE` becomes `<secret:NAME>` when it
+is at least six characters long, the minimum for a config secret, since a
+shorter one would rewrite ordinary words. Bearer tokens,
 URL credentials, private keys, JWTs, and common API key shapes become
 `<redacted>`. Do not paste app data, page content, or test files.
 
