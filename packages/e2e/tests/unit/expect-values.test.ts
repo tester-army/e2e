@@ -331,8 +331,8 @@ describe('toMatchSchema', () => {
     failsWith(() => e2eExpect<unknown>(null, 'GET /users').toMatchSchema(User), /^GET \/users: expected null to match the schema:\n- /);
   });
 
-  it('negates', () => {
-    e2eExpect<unknown>({ id: 'x' }).not.toMatchSchema(User);
+  it('negates, returning nothing', () => {
+    vexpect(e2eExpect<unknown>({ id: 'x' }).not.toMatchSchema(User)).toBeUndefined();
     failsWith(() => e2eExpect<unknown>({ id: 1, email: 'ada@example.com' }).not.toMatchSchema(User), /not to match the schema/);
   });
 

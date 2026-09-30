@@ -254,7 +254,7 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
   /**
    * Validates synchronously: a matcher returns before anything could await
    * it. The output is the schema's (defaults applied, transforms run); a
-   * negated check that passes returns the value as given.
+   * negated check returns nothing, as its type says.
    */
   toMatchSchema<Schema extends StandardSchemaV1>(schema: Schema): StandardSchemaV1.InferOutput<Schema> {
     requireStandardSchema(schema, 'toMatchSchema schema');
@@ -272,7 +272,7 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
       () => `expected ${format(this.actual)} to match the schema:\n${(issues ?? []).map((issue) => `- ${describeIssue(issue)}`).join('\n')}`,
       () => `expected ${format(this.actual)} not to match the schema`,
     );
-    return (result.issues === undefined ? result.value : this.actual) as StandardSchemaV1.InferOutput<Schema>;
+    return (this.negated || result.issues !== undefined ? undefined : result.value) as StandardSchemaV1.InferOutput<Schema>;
   }
 
   /** The one body of the four ordering matchers: a number on the left, a phrase for the message. */
