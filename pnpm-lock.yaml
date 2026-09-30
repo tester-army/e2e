@@ -393,6 +393,9 @@ importers:
       '@types/node':
         specifier: 26.6.2
         version: 26.6.2
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
       typescript:
         specifier: 7.0.2
         version: 7.0.2

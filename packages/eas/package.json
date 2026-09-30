@@ -52,11 +52,13 @@
     "test:unit": "vitest run tests/unit"
   },
   "peerDependencies": {
-    "@e2e-dev/mobile": ">=0.8.0 <1"
+    "@e2e-dev/mobile": ">=0.8.0 <1",
+    "e2e": ">=0.15.0 <1"
   },
   "devDependencies": {
     "@e2e-dev/mobile": "workspace:*",
     "@types/node": "26.6.2",
+    "e2e": "workspace:*",
     "typescript": "7.0.2",
     "vitest": "5.0.1"
   },

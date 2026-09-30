@@ -2,6 +2,7 @@
 
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { DeviceLease, DeviceProvider, DeviceReleaseContext, DeviceRequest } from '@e2e-dev/mobile';
+import { ConfigurationError, rejectUnknownKeys } from 'e2e/engine';
 import { envValue } from './env.ts';
 import { easSessions, type EasSessionState, type EasSessions } from './client.ts';
 
@@ -32,6 +33,18 @@ const POLL_FAILURES_TOLERATED = 3;
  * while the next target's queue.
  */
 const idleDeadlines = new Map<string, Map<string, number>>();
+
+/** Every option `easSimulators()` takes, kept equal to `EasSimulatorsOptions` by the compiler. */
+const OPTION_KEYS: readonly string[] = Object.keys({
+  projectId: true,
+  buildId: true,
+  applicationArchiveUrl: true,
+  device: true,
+  maxIdleTimeMinutes: true,
+  maxDurationMinutes: true,
+  agentDeviceVersion: true,
+  tags: true,
+} satisfies Record<keyof EasSimulatorsOptions, true>);
 
 /** What `easSimulators()` takes: the Expo project, the app each simulator starts with, and the simulator itself. */
 export interface EasSimulatorsOptions {
@@ -75,12 +88,13 @@ export interface EasSimulatorsOptions {
  * `EXPO_TOKEN` comes from the run's environment.
  */
 export function easSimulators(options: EasSimulatorsOptions): DeviceProvider {
+  rejectUnknownKeys('easSimulators()', options, OPTION_KEYS);
   const { projectId, buildId, applicationArchiveUrl, device, maxDurationMinutes, agentDeviceVersion, tags = [] } = options;
   if (buildId !== undefined && applicationArchiveUrl !== undefined) {
-    throw new Error('easSimulators: pass `buildId` or `applicationArchiveUrl`, not both');
+    throw new ConfigurationError('INVALID_CONFIG', 'easSimulators: pass `buildId` or `applicationArchiveUrl`, not both');
   }
   if (options.maxIdleTimeMinutes !== undefined && maxDurationMinutes !== undefined && options.maxIdleTimeMinutes >= maxDurationMinutes) {
-    throw new Error('easSimulators: `maxIdleTimeMinutes` must be below `maxDurationMinutes`, as EAS requires');
+    throw new ConfigurationError('INVALID_CONFIG', 'easSimulators: `maxIdleTimeMinutes` must be below `maxDurationMinutes`, as EAS requires');
   }
   const idleMinutes = options.maxIdleTimeMinutes ?? (maxDurationMinutes === undefined ? DEFAULT_MAX_IDLE_TIME_MINUTES : Math.min(DEFAULT_MAX_IDLE_TIME_MINUTES, maxDurationMinutes - 1));
   // EAS takes no idle limit of zero; a session that short runs to its duration.

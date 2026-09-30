@@ -284,7 +284,9 @@ describe('easSimulators()', () => {
     eas.calls = [];
     await easSimulators({ projectId: 'p1', maxDurationMinutes: 1 }).acquire(request());
     expect(eas.calls[0]?.variables['input']).not.toHaveProperty('maxIdleTimeMinutes');
-    expect(() => easSimulators({ projectId: 'p1', maxIdleTimeMinutes: 10, maxDurationMinutes: 10 })).toThrow('`maxIdleTimeMinutes` must be below `maxDurationMinutes`');
+    expect(() => easSimulators({ projectId: 'p1', maxIdleTimeMinutes: 10, maxDurationMinutes: 10 })).toThrow(
+      expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringContaining('`maxIdleTimeMinutes` must be below `maxDurationMinutes`') }),
+    );
   });
 
   it('gives up on a session that boots for fifteen minutes after leaving the queue', async () => {
@@ -328,6 +330,17 @@ describe('easSimulators()', () => {
     await expect(easSimulators({ projectId: 'p1', buildId: 'b1' }).acquire(request({ appPath: '/builds/App.app' }))).rejects.toThrow("leave the engine's `appPath` out");
     expect(eas.calls).toEqual([]);
     await expect(easSimulators({ projectId: 'p1' }).acquire(request({ appPath: '/builds/App.app' }))).resolves.toMatchObject({ id: 's1' });
-    expect(() => easSimulators({ projectId: 'p1', buildId: 'b1', applicationArchiveUrl: 'https://example.com/App.tar.gz' })).toThrow('not both');
+    expect(() => easSimulators({ projectId: 'p1', buildId: 'b1', applicationArchiveUrl: 'https://example.com/App.tar.gz' })).toThrow(
+      expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringContaining('not both') }),
+    );
+  });
+
+  it('rejects an option it does not know, naming the nearest', () => {
+    expect(() => easSimulators({ projectId: 'p1', buildID: 'b1' } as never)).toThrow(
+      expect.objectContaining({ code: 'INVALID_CONFIG', message: 'easSimulators() has unknown key "buildID"; did you mean "buildId"?' }),
+    );
+    expect(() => easSimulators({ projectId: 'p1', platform: 'ios' } as never)).toThrow(
+      expect.objectContaining({ code: 'INVALID_CONFIG', message: 'easSimulators() has unknown key "platform"; expected one of projectId, buildId, applicationArchiveUrl, device, maxIdleTimeMinutes, maxDurationMinutes, agentDeviceVersion, tags' }),
+    );
   });
 });
