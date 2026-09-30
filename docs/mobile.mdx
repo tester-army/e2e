@@ -3,7 +3,8 @@ title: Testing iOS and Android
 description: Set up a simulator or emulator target, write a device test, and know what differs from the web.
 ---
 
-`@e2e-dev/mobile` runs tests on iOS simulators and Android emulators.
+`@e2e-dev/mobile` runs tests on iOS simulators and Android emulators. It is
+built on [agent-device](https://github.com/callstack/agent-device).
 Tests use the same `agent`, `screen`, and `expect` APIs as browser tests.
 A test launches the configured app with `app.open()`; between tests the app
 stays where the last one left it.
