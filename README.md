@@ -1,16 +1,16 @@
-<a href="https://tester.army/e2e?utm_source=e2e&utm_medium=github&utm_campaign=readme_banner"><img src="./.github/assets/readme-banner.png" alt="e2e by TesterArmy" width="100%" /></a>
+<a href="https://tester.army/e2e?utm_source=e2e&utm_medium=github&utm_campaign=readme_banner"><img src="./.github/assets/readme-banner.png" alt="e2e, the open source AI testing framework by TesterArmy" width="100%" /></a>
 
 <p align="center">
   <a href="https://tester.army?utm_source=e2e&utm_medium=github&utm_campaign=readme_badge"><img alt="Made by TesterArmy" src="./.github/assets/made-by-testerarmy.svg" /></a>
   <a href="https://www.npmjs.com/package/e2e"><img alt="npm version" src="https://img.shields.io/npm/v/e2e.svg?style=for-the-badge&labelColor=000000" /></a>
+  <a href="https://github.com/tester-army/e2e/actions/workflows/spec.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/tester-army/e2e/spec.yml?branch=main&style=for-the-badge&label=CI&labelColor=000000" /></a>
   <a href="./LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green.svg?style=for-the-badge&labelColor=000000" /></a>
   <a href="https://tester.army/discord"><img alt="Join the community on Discord" src="https://img.shields.io/badge/Join%20the%20community-5865F2.svg?style=for-the-badge&logo=discord&logoColor=white&labelColor=000000" /></a>
 </p>
 
 # e2e
 
-[e2e](https://tester.army/e2e?utm_source=e2e&utm_medium=github&utm_campaign=readme_intro) is an end-to-end testing framework for web and mobile apps. Describe a goal in natural language and an agent interacts with the app to complete it. Use locators and assertions in the same test to check exact results. Customize anything from agent to the engine.
-
+[e2e](https://tester.army/e2e?utm_source=e2e&utm_medium=github&utm_campaign=readme_intro) is an end-to-end testing framework for web and mobile apps. Describe a goal in natural language and an agent drives the app to reach it. Check the result with locators and assertions in the same test.
 
 ```ts
 // tests/checkout.e2e.ts
@@ -26,39 +26,48 @@ test('a member upgrades to Pro', async ({ app, agent, screen }) => {
 });
 ```
 
-```bash
-npx e2e init
-```
-
 An agent step that a later assertion verifies records its actions, and the
 next run replays them with no model calls until the app changes. Tests
 without agent steps need no model. Bring your own subscription, API key, or
 local model.
 
-## Documentation
+## Quick start
 
-[e2e.tester.army/docs](https://e2e.tester.army/docs): quickstart, writing
-tests, mobile, migrating from Playwright, Cypress, Selenium, Detox, or
-Maestro, and the full reference. The `e2e` package ships every page, so
-coding agents can read them offline from its `docs/` directory
-(`node_modules/e2e/docs`).
+```bash
+npx e2e init
+npx e2e run
+```
+
+`init` asks for a platform and a model, then writes a config and an example
+test. Requires Node.js 22.12 or newer.
 
 ## Packages
 
-- [`e2e`](https://www.npmjs.com/package/e2e): SDK, runner, and CLI.
-- [`@e2e-dev/web`](https://www.npmjs.com/package/@e2e-dev/web): the browser engine.
-- [`@e2e-dev/mobile`](https://www.npmjs.com/package/@e2e-dev/mobile): the iOS and Android engine.
-- [`@e2e-dev/github`](https://www.npmjs.com/package/@e2e-dev/github): the pull request comment reporter.
-- [`@e2e-dev/kernel`](https://www.npmjs.com/package/@e2e-dev/kernel): Kernel hosted browsers for the web
-  engine.
-- [`@e2e-dev/eas`](https://www.npmjs.com/package/@e2e-dev/eas): EAS Simulators hosted iOS simulators and
-  Android emulators for the mobile engine.
+| Package | What it does |
+| --- | --- |
+| [`e2e`](https://www.npmjs.com/package/e2e) | The SDK, runner, and CLI. |
+| [`@e2e-dev/web`](https://www.npmjs.com/package/@e2e-dev/web) | Browser engine: Chromium, Firefox, and WebKit through Playwright. |
+| [`@e2e-dev/mobile`](https://www.npmjs.com/package/@e2e-dev/mobile) | iOS and Android engine: simulators and emulators through agent-device. |
+| [`@e2e-dev/github`](https://www.npmjs.com/package/@e2e-dev/github) | Reporter that posts results as a pull request comment. |
+| [`@e2e-dev/kernel`](https://www.npmjs.com/package/@e2e-dev/kernel) | Kernel hosted browsers for the web engine. |
+| [`@e2e-dev/eas`](https://www.npmjs.com/package/@e2e-dev/eas) | EAS Simulators hosted iOS simulators and Android emulators for the mobile engine. |
+
+## Documentation
+
+[e2e.tester.army/docs](https://e2e.tester.army/docs). The `e2e` package ships
+every page, so coding agents can read them offline in `node_modules/e2e/docs`.
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) and [SECURITY.md](./SECURITY.md).
-Apache-2.0.
+See [CONTRIBUTING.md](./CONTRIBUTING.md). Report vulnerabilities through
+[SECURITY.md](./SECURITY.md), not public issues. Questions go to
+[Discord](https://tester.army/discord).
 
-Built by [TesterArmy](https://tester.army/?utm_source=e2e&utm_medium=github&utm_campaign=readme_footer),
-the agentic testing platform that runs plain-English tests on web and mobile
-apps and reports back with screenshots and recordings.
+## Made by TesterArmy
+
+e2e is built by [TesterArmy](https://tester.army/?utm_source=e2e&utm_medium=github&utm_campaign=readme_footer),
+an AI QA platform that tests web and mobile apps from plain-language flows on
+every pull request or on a schedule.
+[Book a demo](https://tester.army/meet?utm_source=e2e&utm_medium=github&utm_campaign=readme_footer).
+
+Apache-2.0.
