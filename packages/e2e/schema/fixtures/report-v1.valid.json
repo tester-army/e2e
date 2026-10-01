@@ -422,14 +422,14 @@
           "status": "passed",
           "attempts": [
             {
-              "id": "018f0f5c-7b2a-7abc-8abc-1123456789ab",
+              "id": "018f0f5c-7b2a-7abc-8abc-2123456789ab",
               "index": 0,
               "status": "passed",
               "startedAt": "2026-07-24T12:00:00.000Z",
               "durationMs": 1000,
               "steps": [
                 {
-                  "id": "018f0f5c-7b2a-7abc-8abc-0123456789ab:0",
+                  "id": "018f0f5c-7b2a-7abc-8abc-3123456789ab:0",
                   "index": 0,
                   "kind": "agent",
                   "api": "agent.act",
@@ -489,7 +489,7 @@
                   ]
                 },
                 {
-                  "id": "018f0f5c-7b2a-7abc-8abc-0123456789ab:1",
+                  "id": "018f0f5c-7b2a-7abc-8abc-3123456789ab:1",
                   "index": 1,
                   "kind": "agent",
                   "api": "agent.assert",
@@ -521,10 +521,10 @@
               ],
               "artifacts": [
                 {
-                  "id": "018f0f5c-7b2a-7abc-8abc-1123456789ab:artifact:0",
+                  "id": "018f0f5c-7b2a-7abc-8abc-2123456789ab:artifact:0",
                   "kind": "video",
                   "mediaType": "video/webm",
-                  "path": "web/tests_example.e2e.ts__opens_app/attempt-0/video/video.webm",
+                  "path": "web/tests_example.e2e.ts__carried/attempt-0/video/video.webm",
                   "size": 8,
                   "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
                   "startedAt": "2026-07-24T12:00:00.000Z",
@@ -534,7 +534,7 @@
                   }
                 },
                 {
-                  "id": "018f0f5c-7b2a-7abc-8abc-1123456789ab:artifact:1",
+                  "id": "018f0f5c-7b2a-7abc-8abc-2123456789ab:artifact:1",
                   "kind": "video",
                   "mediaType": "video/mp4",
                   "url": "https://recordings.example.com/sessions/abc/replay.mp4",
@@ -549,7 +549,7 @@
               "cleanup": "complete",
               "failure": {
                 "url": "http://127.0.0.1:3000/todos",
-                "screen": "018f0f5c-7b2a-7abc-8abc-1123456789ab:artifact:0",
+                "screen": "018f0f5c-7b2a-7abc-8abc-2123456789ab:artifact:0",
                 "candidates": [
                   "#n19 button \"Add\""
                 ]

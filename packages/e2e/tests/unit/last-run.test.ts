@@ -162,6 +162,8 @@ describe('readLastRun and lastFailedIds', () => {
       '{"schemaVersion":"report-1","run":{"results":[],"errors":[{"phase":"afterAll","scope":{"file":"a.e2e.ts","targetId":"web"}}],"serialGroups":[]}}',
       '{"schemaVersion":"report-1","run":{"results":[{"id":"a","status":"passed","file":"a.e2e.ts","titlePath":["a"]}],"errors":[],"serialGroups":[]}}',
       '{"schemaVersion":"report-1","run":{"results":[{"id":"a","status":"passed","file":"a.e2e.ts","titlePath":["a"],"attempts":[{}]}],"errors":[],"serialGroups":[]}}',
+      '{"schemaVersion":"report-1","run":{"results":[{"id":"a","status":"passed","file":"a.e2e.ts","titlePath":["a"],"attempts":[{"artifacts":[null]}]}],"errors":[],"serialGroups":[]}}',
+      '{"schemaVersion":"report-1","run":{"results":[{"id":"a","status":"passed","file":"a.e2e.ts","titlePath":["a"],"attempts":[{"artifacts":[{"path":1}]}]}],"errors":[],"serialGroups":[]}}',
       '{"schemaVersion":"report-1","run":{"results":[],"errors":[],"serialGroups":[{"id":"g"}]}}',
       '{"schemaVersion":"report-1","run":{"results":[],"errors":[],"serialGroups":[],"carried":{"results":[{"id":"a"}],"errors":[],"serialGroups":[]}}}',
       '{"schemaVersion":"report-1","run":{"results":[],"errors":[],"serialGroups":[],"carried":{"results":[]}}}',

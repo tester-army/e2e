@@ -219,9 +219,20 @@ function isRunPart(value: unknown): value is { results: ReportResult[]; errors: 
 /** Whether a result or serial group lists its attempts, each with its artifacts, the way a rerun reads them. */
 function hasAttempts(value: object): boolean {
   const { attempts } = value as { attempts?: unknown };
+  return Array.isArray(attempts) && attempts.every(hasArtifacts);
+}
+
+/** Whether an attempt lists its artifacts as records whose path, when there is one, is a string. */
+function hasArtifacts(attempt: unknown): boolean {
+  if (typeof attempt !== 'object' || attempt === null) return false;
+  const { artifacts } = attempt as { artifacts?: unknown };
   return (
-    Array.isArray(attempts) &&
-    attempts.every((attempt) => typeof attempt === 'object' && attempt !== null && Array.isArray((attempt as { artifacts?: unknown }).artifacts))
+    Array.isArray(artifacts) &&
+    artifacts.every((artifact) => {
+      if (typeof artifact !== 'object' || artifact === null) return false;
+      const { path } = artifact as { path?: unknown };
+      return path === undefined || typeof path === 'string';
+    })
   );
 }
 
