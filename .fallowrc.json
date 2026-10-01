@@ -16,6 +16,7 @@
     "apps/mobile-benchmark/index.ts",
     "packages/e2e/tests/types/sdk-types.ts",
     "packages/web/tests/types/connection.ts",
+    "packages/web/tests/types/routes.ts",
     "packages/mobile/tests/types/options.ts",
     "packages/e2e/tests/live/*.ts"
   ],

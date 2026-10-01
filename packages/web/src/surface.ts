@@ -52,7 +52,7 @@ import { connectionAbort } from './operation-budget.ts';
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from './closed-shadow.ts';
 import { SECURE_FIELD_SELECTOR, type RawNodeData } from './read-node.ts';
 import { readSelector, takeReadsFunction } from './read-selector.ts';
-import { httpCredentials, installSiteHeaders, lowercaseNames } from './protected-app.ts';
+import { httpCredentials, installSiteHeaders, lowercaseNames, siteHeadersFor } from './protected-app.ts';
 import { RefRegistry } from './refs.ts';
 import {
   cancelled,
@@ -241,6 +241,7 @@ export class PlaywrightSurface {
   private readonly testIdAttribute: string;
   private readonly userAgent: string | undefined;
   private app: EngineAppInfo = {};
+  private projectRoot = '';
   private headed = false;
   private artifactsDir = '';
   private artifactCounter = 0;
@@ -287,6 +288,7 @@ export class PlaywrightSurface {
   /** Provisions the shared browser once per worker: a local launch, or a CDP attach. */
   async init(info: EngineInitInfo): Promise<void> {
     this.app = info.app;
+    this.projectRoot = info.projectRoot;
     this.headed = info.headed;
     this.leases?.init(info);
     // The browser was installed in `prepare`; a launch or attach is the one
@@ -493,6 +495,16 @@ export class PlaywrightSurface {
     const context = this.requireContext();
     this.routes.push({ predicate, handler });
     await context.route(predicate, handler);
+  }
+
+  /** The configured headers a request to `url` carries, lowercased; `undefined` off the app's site. */
+  siteHeaders(url: string): Readonly<Record<string, string>> | undefined {
+    return siteHeadersFor(url, this.app.site, this.headers);
+  }
+
+  /** Resolves a file a test names against the project root, as config paths do, never `process.cwd()`. */
+  projectPath(file: string): string {
+    return path.resolve(this.projectRoot, file);
   }
 
   /** Removes one registered route from the attempt and the current context. */

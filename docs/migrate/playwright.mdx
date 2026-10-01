@@ -219,9 +219,9 @@ what to do today.
 | Playwright | e2e | Status |
 | --- | --- | --- |
 | `page.route(pattern, handler)` | `browser.route(pattern, handler)`; a string or `RegExp` pattern, no predicate function; the handler decides exactly once | web only |
-| `route.fulfill({ json, body, status, headers })` | the same; `json` or `body`, never both | web only |
-| `route.fulfill({ path, contentType })`, `route.fetch()` | not yet; read the file in the test and pass `body` | missing |
-| `route.continue(overrides)`, `route.abort(code)` | `continue()` and `abort()` take no arguments | missing |
+| `route.fulfill({ json, body, path, status, headers, contentType })` | the same; one of `json`, `body`, or `path`, and `path` is relative to the project root | web only |
+| `route.continue({ url, method, headers, postData })`, `route.fallback()` | the same; a `url` goes through the navigation rule, and `fallback()` takes no overrides | web only |
+| `route.fetch()`, `route.abort(code)`, `route.fallback(overrides)` | not yet; `abort()` takes no error code | missing |
 | `page.unroute()` | `browser.unroute()` | web only |
 | `page.waitForResponse(pattern)` | `browser.waitForResponse(pattern)`: a string or `RegExp`, no predicate function; `url`, `status`, `headers`, `json()`, `text()` | web only |
 | `response.ok()`, `response.body()`, `response.request()` | not yet; `status` and `text()` | missing |

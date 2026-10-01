@@ -21,12 +21,27 @@ export function lowercaseNames(headers: Readonly<Record<string, string>>): Reado
 }
 
 /**
+ * The configured headers a request to `url` carries: all of them for the
+ * app's site, none for any other site or when there is no site policy.
+ */
+export function siteHeadersFor(
+  url: string | URL,
+  site: string | undefined,
+  headers: Readonly<Record<string, string>> | undefined,
+): Readonly<Record<string, string>> | undefined {
+  if (headers === undefined || site === undefined) return undefined;
+  return sameSite(url, site) ? headers : undefined;
+}
+
+/**
  * Adds the configured headers to every request bound for the app's site,
  * via a context route that falls back to the network. A request for any
  * other site is not routed at all; without a site there is no policy and
- * nothing is routed. Nothing awaits a route handler, so a fallback that
- * fails (the page closed under the request) is dropped rather than left to
- * surface as an unhandled rejection.
+ * nothing is routed. Registered before any test route, so it runs last: a
+ * test route's `fallback` reaches it, and a `continue`, which skips it,
+ * merges the same headers itself (`siteHeadersFor`). Nothing awaits a route
+ * handler, so a fallback that fails (the page closed under the request) is
+ * dropped rather than left to surface as an unhandled rejection.
  */
 export async function installSiteHeaders(
   context: BrowserContext,
@@ -35,7 +50,7 @@ export async function installSiteHeaders(
 ): Promise<void> {
   if (headers === undefined || site === undefined) return;
   await context.route(
-    (url) => sameSite(url, site),
+    (url) => siteHeadersFor(url, site, headers) !== undefined,
     async (route) => {
       await route.fallback({ headers: { ...route.request().headers(), ...headers } }).catch(() => undefined);
     },

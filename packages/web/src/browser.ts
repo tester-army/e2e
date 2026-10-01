@@ -21,11 +21,13 @@ import {
   EngineError,
   matchesText,
   pollCondition,
+  raceAbort,
   rejectUnknownOptions,
   TestError,
   toTextPattern,
   urlMatches,
   validateJsonValue,
+  withTimeout,
   type EngineFixtureContext,
   type FixtureOperation,
   type FixtureOperations,
@@ -37,18 +39,39 @@ import type { DialogHandler } from './dialogs.ts';
 import { saveDownloadsTo, saveFromBrowser, saveLocally } from './downloads.ts';
 import { isTestErrorCode, message as causeMessage, translatePwError } from './support.ts';
 import { compileEvaluation } from './evaluation.ts';
+import { lowercaseNames } from './protected-app.ts';
+import { parseContinue, parseFulfill, requireNoArguments } from './route-options.ts';
 import { routePatternMatches, routePatternsEqual } from './route-pattern.ts';
 import type { PlaywrightSurface } from './surface.ts';
 
-/** `json` or `body`, never both; neither fulfills with an empty body. */
+/**
+ * One of `json`, `body`, or `path`, or none for an empty body. `path` names a
+ * file relative to the project root; its `Content-Type` follows its
+ * extension unless `contentType` or a `content-type` header sets one.
+ */
 export type RouteFulfillResponse = {
   status?: number;
   headers?: Record<string, string>;
+  /** Sets the `Content-Type` response header. */
+  contentType?: string;
 } & (
-  | { json: JsonValue; body?: never }
-  | { body: string; json?: never }
-  | { body?: never; json?: never }
+  | { json: JsonValue; body?: never; path?: never }
+  | { body: string; json?: never; path?: never }
+  | { path: string; json?: never; body?: never }
+  | { body?: never; json?: never; path?: never }
 );
+
+/** What `continue` changes about the request before it goes to the network. */
+export interface RouteContinueOverrides {
+  /** Resolved against the base URL like `goto`; must keep the request's scheme. */
+  url?: string;
+  /** Request method. */
+  method?: string;
+  /** Replaces every request header; the configured `headers` for the app's site are added on top. */
+  headers?: Record<string, string>;
+  /** Request body. */
+  postData?: string;
+}
 
 export interface WebRoute {
   /** The intercepted request. */
@@ -60,8 +83,10 @@ export interface WebRoute {
   };
   /** Fulfills the intercepted request once. */
   fulfill(response: RouteFulfillResponse): Promise<void>;
-  /** Continues the intercepted request once. */
-  continue(): Promise<void>;
+  /** Sends the intercepted request to the network once, skipping every other route. */
+  continue(overrides?: RouteContinueOverrides): Promise<void>;
+  /** Hands the intercepted request to the route registered before this one, or the network when none matches. */
+  fallback(): Promise<void>;
   /** Aborts the intercepted request once. */
   abort(): Promise<void>;
 }
@@ -73,9 +98,9 @@ export interface WebResponse {
   readonly status: number;
   /** Response headers, lower-cased names. */
   readonly headers: Readonly<Record<string, string>>;
-  /** Parses the response body as JSON; rejects with `ACTION_FAILED` when the body could not be read. */
+  /** Waits for the body and parses it as JSON; rejects with `ACTION_FAILED` when the body could not be read. */
   json<T = unknown>(): Promise<T>;
-  /** Reads the response body as text; rejects with `ACTION_FAILED` when the body could not be read. */
+  /** Waits for the body and reads it as text; rejects with `ACTION_FAILED` when the body could not be read. */
   text(): Promise<string>;
 }
 
@@ -343,33 +368,55 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           }
           decided = true;
         };
-        const postData = route.request().postData();
+        // Validation runs before `decide`, so a rejected option leaves the
+        // request to the abort below. A Playwright call that fails after the
+        // decision aborts too, rather than leaving the page's request pending.
+        const decideWith = async (name: string, act: () => Promise<void>): Promise<void> => {
+          decide(name);
+          try {
+            await act();
+          } catch (cause) {
+            await route.abort().catch(() => undefined);
+            throw cause;
+          }
+        };
+        const request = route.request();
+        const postData = request.postData();
         const publicRoute: WebRoute = {
           request: {
-            url: route.request().url(),
-            method: route.request().method(),
-            headers: route.request().headers(),
+            url: request.url(),
+            method: request.method(),
+            headers: request.headers(),
             ...(postData === null ? {} : { postData }),
           },
           fulfill: async (response) => {
-            decide('fulfill');
-            await route.fulfill({
-              status: response.status ?? 200,
-              headers: response.headers ?? {},
-              ...('json' in response && response.json !== undefined
-                ? { json: response.json }
-                : 'body' in response && response.body !== undefined
-                  ? { body: response.body }
-                  : { body: '' }),
-            });
+            const decision = parseFulfill(response, (file) => surface.projectPath(file));
+            await decideWith('fulfill', () => route.fulfill({
+              ...decision,
+              ...(decision.json === undefined && decision.path === undefined && decision.body === undefined
+                ? { body: '' }
+                : {}),
+            }));
           },
-          continue: async () => {
-            decide('continue');
-            await route.fallback();
+          continue: async (overrides) => {
+            const { headers, ...decision } = parseContinue(overrides, request.url(), context.app.resolveUrl);
+            // `continue` skips every route registered before this one, the
+            // site-header route included, so it merges those headers itself.
+            const site = surface.siteHeaders(decision.url ?? request.url());
+            await decideWith('continue', () => route.continue({
+              ...decision,
+              ...(headers === undefined && site === undefined
+                ? {}
+                : { headers: { ...lowercaseNames(headers ?? request.headers()), ...site } }),
+            }));
           },
-          abort: async () => {
-            decide('abort');
-            await route.abort();
+          fallback: async (...args: unknown[]) => {
+            requireNoArguments('route.fallback', args);
+            await decideWith('fallback', () => route.fallback());
+          },
+          abort: async (...args: unknown[]) => {
+            requireNoArguments('route.abort', args);
+            await decideWith('abort', () => route.abort());
           },
         };
         try {
@@ -377,7 +424,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           if (!decided) {
             throw new TestError(
               'ACTION_FAILED',
-              'route handler returned without calling fulfill, continue, or abort',
+              'route handler returned without calling fulfill, continue, fallback, or abort',
             );
           }
         } catch (cause) {
@@ -421,13 +468,27 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           (candidate) => routePatternMatches(wirePattern, candidate.url()),
           { timeout: currentOperation.timeoutMs },
         );
-        const body = await readResponseBody(response);
+        // Started now, while the browser still holds the body, and awaited
+        // only by `text` and `json` on a budget of their own: the timeout
+        // bounds the match, never a body still streaming in behind headers
+        // that already arrived.
+        const body = readResponseBody(response);
+        const text = async (): Promise<string> => {
+          const { signal, timeoutMs } = context.operation();
+          const read = await raceAbort(
+            withTimeout(body, timeoutMs, () =>
+              new TestError('ACTION_FAILED', `waitForResponse: response body did not finish within ${timeoutMs}ms`)),
+            signal,
+            'waitForResponse body',
+          );
+          return read();
+        };
         return {
           url: response.url(),
           status: response.status(),
           headers: response.headers(),
-          json: async <T = unknown>() => JSON.parse(await body()) as T,
-          text: body,
+          json: async <T = unknown>() => JSON.parse(await text()) as T,
+          text,
         };
       });
     },
@@ -451,23 +512,26 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       const scheme = new URL(baseHref()).protocol === 'https:' ? 'https' : 'http';
       // The harness's URL rule decides which cookie targets are admitted; a
       // domain cookie is checked as the origin it would be sent to. The rule
-      // admits `about:blank` for navigation, which holds no cookie.
-      for (const cookie of cookies) {
+      // admits `about:blank` for navigation, which holds no cookie. A `url`
+      // cookie is set on the URL the rule resolved, so a relative one lands
+      // on the base URL the way `goto` would.
+      const targets = cookies.map((cookie) => {
         const target = context.app.resolveUrl(
           cookie.url === undefined ? `${scheme}://${cookie.domain.replace(/^\./, '')}` : cookie.url,
         );
         if (!/^https?:/.test(target)) {
           throw new ConfigurationError('POLICY_DENIED', `cookie URL must be http(s): ${target}`);
         }
-      }
+        return cookie.url === undefined
+          ? { domain: cookie.domain, path: cookie.path ?? '/' }
+          : { url: target };
+      });
       return surface.guard(context.operation(), 'setCookies', async () => {
         await surface.requireContext().addCookies(
-          cookies.map((cookie) => ({
+          cookies.map((cookie, index) => ({
             name: cookie.name,
             value: cookie.value,
-            ...(cookie.url === undefined
-              ? { domain: cookie.domain, path: cookie.path ?? '/' }
-              : { url: cookie.url }),
+            ...targets[index]!,
             ...(cookie.expires !== undefined ? { expires: cookie.expires } : {}),
             ...(cookie.httpOnly !== undefined ? { httpOnly: cookie.httpOnly } : {}),
             ...(cookie.secure !== undefined ? { secure: cookie.secure } : {}),

@@ -39,7 +39,9 @@ await app.open('/checkout');
 await expect(screen.getByText('$42.00')).toBeVisible();
 ```
 
-Each handler must call exactly one of `fulfill`, `continue`, or `abort`. An
+Each handler must call exactly one of `fulfill`, `continue`, `fallback`, or
+`abort`. The newest route runs first; `continue` sends the request straight to
+the network, while `fallback` passes it to the route registered before. An
 `expect` that fails inside the handler fails the test, at the next step or at
 the end of the test when nothing follows. To inspect a real response, start
 waiting before the action that sends it:

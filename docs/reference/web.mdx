@@ -397,10 +397,26 @@ const flag = await browser.evaluate(
 path segment, `**` across `/`) or a `RegExp`, both tested against the full
 URL; a predicate function is `INVALID_ARGUMENT`. A route survives
 `app.restart()`, `app.clearState()`, and session restore.
-The handler must decide exactly once with `fulfill`, `continue`, or `abort`;
-deciding twice or not at all is `ACTION_FAILED`, as is a `waitForResponse`
-that nothing matches inside the deadline. The response resolves once its body
-is known: `url`, `status`, and `headers` are always readable, and a body the
+The handler must decide exactly once with `fulfill`, `continue`, `fallback`,
+or `abort`; deciding twice or not at all is `ACTION_FAILED`. Routes run newest
+first. `continue` sends the request to the network and no other route sees
+it; its `url` resolves against the base URL and goes through the same rule as
+`goto`, so a forbidden scheme is `POLICY_DENIED`, and it must keep the
+request's scheme. `headers` replaces every request header. The configured
+`headers` still ride a continued request bound for the app's site, and only
+that site. `fallback` hands the request to the route registered before this
+one, or the network when none matches. `fulfill` takes one of `json`, `body`,
+or `path`, a file relative to the project root whose extension sets the
+`Content-Type` unless `contentType` or a `content-type` header does. An option
+a decision does not take (Playwright's `abort(errorCode)`, a misspelled key) is
+`INVALID_ARGUMENT`: the request is aborted and the next step fails.
+
+A `waitForResponse` that nothing matches inside the deadline is
+`ACTION_FAILED`. The deadline bounds the match: the response resolves as soon
+as its headers arrive, and `text()` and `json()` wait for the body on a budget
+of their own, `config.actionTimeout` capped by the test deadline; a body still
+streaming when it runs out is `ACTION_FAILED`. `url`, `status`, and `headers`
+are always readable, and a body the
 browser could not read (a connection reset short of the declared
 `Content-Length`, a request the page aborted, or a redirect, whose body the
 browser never keeps) rejects `text()` and `json()` with `ACTION_FAILED`
@@ -421,15 +437,34 @@ expect(response.status).toBe(201);
 ```
 
 ```ts
-/** `json` or `body`, never both; neither fulfills with an empty body. */
+/**
+ * One of `json`, `body`, or `path`, or none for an empty body. `path` names a
+ * file relative to the project root; its `Content-Type` follows its
+ * extension unless `contentType` or a `content-type` header sets one.
+ */
 export type RouteFulfillResponse = {
   status?: number;
   headers?: Record<string, string>;
+  /** Sets the `Content-Type` response header. */
+  contentType?: string;
 } & (
-  | { json: JsonValue; body?: never }
-  | { body: string; json?: never }
-  | { body?: never; json?: never }
+  | { json: JsonValue; body?: never; path?: never }
+  | { body: string; json?: never; path?: never }
+  | { path: string; json?: never; body?: never }
+  | { body?: never; json?: never; path?: never }
 );
+
+/** What `continue` changes about the request before it goes to the network. */
+export interface RouteContinueOverrides {
+  /** Resolved against the base URL like `goto`; must keep the request's scheme. */
+  url?: string;
+  /** Request method. */
+  method?: string;
+  /** Replaces every request header; the configured `headers` for the app's site are added on top. */
+  headers?: Record<string, string>;
+  /** Request body. */
+  postData?: string;
+}
 
 export interface WebRoute {
   /** The intercepted request. */
@@ -441,8 +476,10 @@ export interface WebRoute {
   };
   /** Fulfills the intercepted request once. */
   fulfill(response: RouteFulfillResponse): Promise<void>;
-  /** Continues the intercepted request once. */
-  continue(): Promise<void>;
+  /** Sends the intercepted request to the network once, skipping every other route. */
+  continue(overrides?: RouteContinueOverrides): Promise<void>;
+  /** Hands the intercepted request to the route registered before this one, or the network when none matches. */
+  fallback(): Promise<void>;
   /** Aborts the intercepted request once. */
   abort(): Promise<void>;
 }
@@ -454,9 +491,9 @@ export interface WebResponse {
   readonly status: number;
   /** Response headers, lower-cased names. */
   readonly headers: Readonly<Record<string, string>>;
-  /** Parses the response body as JSON. */
+  /** Waits for the body and parses it as JSON. */
   json<T = unknown>(): Promise<T>;
-  /** Reads the response body as text. */
+  /** Waits for the body and reads it as text. */
   text(): Promise<string>;
 }
 ```
@@ -464,7 +501,8 @@ export interface WebResponse {
 ### Cookies and viewport
 
 `setCookies` validates every cookie before setting any; an unparseable
-target or a forbidden scheme is `POLICY_DENIED` and nothing is set. For the
+target or a forbidden scheme is `POLICY_DENIED` and nothing is set. A
+relative `url` resolves against the base URL, as `goto` resolves it. For the
 `domain` form the scheme follows the base URL and a leading `.` is stripped.
 `setViewport` records the new size on the report. It works before the first
 navigation too, as Playwright's `setViewportSize` does: the next `app.open`
@@ -586,7 +624,7 @@ cannot reuse node IDs or publish handles over a newer observation.
 `BrowserProvider`, `BrowserProviderScope`, `BrowserRequest`, `BrowserLease`,
 `BrowserReleaseContext`, `BrowserProviderDownloads`, `BrowserDownloadContext`,
 `PlaywrightLiveSurface`, `Browser`, `FrameScreen`,
-`BrowserExpectation`, `WebRoute`, `RouteFulfillResponse`, `WebResponse`,
+`BrowserExpectation`, `WebRoute`, `RouteFulfillResponse`, `RouteContinueOverrides`, `WebResponse`,
 `Cookie`, `CookieFields`, `Dialog`, and `DialogHandler` are exported from the
 package for typing config helpers and fixtures. The runtime exports are
 `web`, [`surfaceOf`](#surfaceof), and `test`, `describe`, `beforeEach`,

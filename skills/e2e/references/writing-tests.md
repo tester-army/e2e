@@ -368,14 +368,18 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
 - `evaluate(fn | source, arg?)`: runs a function or source string in the
   page, JSON in and out, no closures; a throw in the page is
   `EVALUATE_FAILED`.
-- `route(pattern, handler)`, `unroute(pattern)`: intercept requests;
-  `route.request` has `url`, `method`, `headers`, `postData`. The handler
-  calls exactly one of `fulfill({ status?, headers?, json | body })`,
-  `continue()`, or `abort()`; none or two fails the next step with
-  `ACTION_FAILED`.
-- `waitForResponse(pattern, { timeout? })`: resolves with
-  `{ url, status, headers, json(), text() }`; `text()` and `json()` reject
-  with `ACTION_FAILED` when the body could not be read.
+- `route(pattern, handler)`, `unroute(pattern)`: intercept requests, newest
+  route first; `route.request` has `url`, `method`, `headers`, `postData`.
+  The handler calls exactly one of
+  `fulfill({ status?, headers?, contentType?, json | body | path })`,
+  `continue({ url?, method?, headers?, postData? })` (straight to the
+  network), `fallback()` (the route registered before it), or `abort()`;
+  none or two fails the next step with `ACTION_FAILED`, an unsupported
+  option with `INVALID_ARGUMENT`.
+- `waitForResponse(pattern, { timeout? })`: resolves once the headers
+  arrive, with `{ url, status, headers, json(), text() }`; `text()` and
+  `json()` wait for the body (up to the action timeout) and reject with
+  `ACTION_FAILED` when it could not be read.
 - `cookies()`, `setCookies([...])`: a target is an http(s) URL or a domain.
 - `setViewport({ width, height })`: resize.
 - `onDialog('accept' | 'dismiss' | handler)`: awaited; resolves to an async
