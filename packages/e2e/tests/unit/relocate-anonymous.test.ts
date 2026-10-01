@@ -38,10 +38,12 @@ describe('an anonymous target', () => {
     expect(relocateDescriptor(recorded, screen(textbox('a', 'Email'), textbox('b'), textbox('c')))).toEqual({ kind: 'failed', failure: 'target-not-found' });
   });
 
-  it('diverges when the number of unnamed twins changed, one survivor included, or none is left', () => {
+  it('diverges when the number of unnamed controls changed, or none is left', () => {
     const recorded = { role: 'textbox', position: { index: 0, of: 1 } };
     expect(relocateDescriptor(recorded, screen(textbox('a'), textbox('b')))).toEqual({ kind: 'failed', failure: 'target-ambiguous', candidates: ['a', 'b'] });
     expect(relocateDescriptor(recorded, screen(textbox('a', 'Email')))).toEqual({ kind: 'failed', failure: 'target-not-found' });
+    // Counted among two with no container, even one survivor is never taken for it.
+    expect(relocateDescriptor({ role: 'textbox', position: { index: 1, of: 2 } }, screen(textbox('a', 'Email'), textbox('b')))).toEqual({ kind: 'failed', failure: 'target-not-found' });
   });
 
   it('never lets a churned test id fall back to an anonymous position', () => {

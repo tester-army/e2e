@@ -110,7 +110,7 @@ describe('verifyEndState', () => {
   const saved: SemanticNode = { ref: { id: 'm', revision: 'r1' }, role: 'status', name: 'Marker', text: 'saved' };
   const savedAnchor = { role: 'status', name: 'Marker', text: 'saved' };
   const verifyAnchors = (host: ReplayHost, endAnchors: readonly TraceTargetDescriptor[]) =>
-    verifyEndState(host, (nodes) => deltaHolds({ endAnchors }, nodes, new Map()));
+    verifyEndState(host, (live) => deltaHolds({ endAnchors }, live.nodes, new Map()));
 
   it('holds when every anchor is present, counting an ambiguous match as presence', async () => {
     const twin: SemanticNode = { ...saved, ref: { id: 'm2', revision: 'r1' } };

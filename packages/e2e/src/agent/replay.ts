@@ -372,13 +372,13 @@ export async function replayTrace(
  */
 export async function verifyEndState(
   host: ReplayHost,
-  holds: (nodes: ObservedNodes) => boolean,
+  holds: (screen: SemanticScreen) => boolean,
   options: { readonly waitMs?: number; readonly initial?: SemanticScreen } = {},
 ): Promise<boolean> {
   const startedMs = Date.now();
   try {
-    const present = await pollSettled(host, ({ nodes }) =>
-      holds(nodes) ? true : undefined,
+    const present = await pollSettled(host, (screen) =>
+      holds(screen) ? true : undefined,
       options.initial === undefined ? HELD_STILL : { kind: 'in-hand', screen: options.initial },
     );
     if (present === true) return true;
@@ -391,7 +391,7 @@ export async function verifyEndState(
       await sleep(Math.min(END_WAIT_POLL_MS, deadline - Date.now()), host.signal);
       const screen = await host.observe('raw');
       if (screen.kind === 'pixels' || !host.traceEligible) return false;
-      if (holds(screen.nodes)) return true;
+      if (holds(screen)) return true;
     }
     return false;
   } catch (cause) {

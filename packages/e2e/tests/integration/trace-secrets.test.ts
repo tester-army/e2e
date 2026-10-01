@@ -226,12 +226,15 @@ describe('trace secrecy', () => {
   it('records the executor fill in the cache by the secret name alone, with no value', () => {
     expect(readEntries(project)).toHaveLength(1);
     const [entry] = entriesFor(project, 'fills through the executor');
-    expect(entry!.payload.actions[0]).toEqual({
-      name: 'typeSecret',
-      summary: expect.stringContaining('member.password'),
-      target: expect.objectContaining({ role: 'textbox', name: 'Password' }),
-      secret: 'member.password',
-    });
+    expect(entry!.payload.actions).toEqual([
+      {
+        name: 'typeSecret',
+        summary: expect.stringContaining('member.password'),
+        target: expect.objectContaining({ role: 'textbox', name: 'Password' }),
+        secret: 'member.password',
+      },
+      expect.objectContaining({ name: 'tap', target: expect.objectContaining({ role: 'button', name: 'Increment' }) }),
+    ]);
   });
 
   it('leaves the plaintext nowhere under .e2e, in the report, or in what the store received', () => {

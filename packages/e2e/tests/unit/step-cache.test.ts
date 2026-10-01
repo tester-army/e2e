@@ -706,6 +706,15 @@ describe('StepTraceSession', () => {
     expect(already.cacheInfo).toMatchObject({ mode: 'agent-concluded', reason: 'end-mismatch' });
   });
 
+  it('takes no look of the end wait as the end state once the screen moved off the recorded route', async () => {
+    const context = entryContext({ endPath: '/customers', endAnchors: [savedAnchor], endWaitMs: 2_000 });
+    // The route matches first with the effect missing; the anchors then show on another page.
+    const host = { ...makeHost(['/pricing', '/customers', ...Array.from({ length: 20 }, () => '/elsewhere')], [[], [], [savedMarker]]), remainingMs: () => 60_000 };
+    const session = makeSession(context, host);
+    expect(await session.begin()).toBeUndefined();
+    expect(session.cacheInfo).toMatchObject({ reason: 'end-mismatch' });
+  }, 30_000);
+
   it('evicts an entry that did not serve a pass with nothing to record in its place', async () => {
     let deleted = 0;
     const base = entryContext({ actions: [{ name: 'tap', summary: 'tap button "Save"', target: { role: 'button', name: 'Save' } }], startPath: '/form', endAnchors: [savedAnchor] });
