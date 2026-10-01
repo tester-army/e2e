@@ -59,8 +59,9 @@ export interface AgentCacheContext {
   readonly strict: false | { readonly advice: string };
   /**
    * Claims one step's key hash. Not a pure derivation: each claim advances
-   * the per-attempt occurrence index for its signature, which is what lets a
-   * test repeat the same instruction and cache each occurrence separately.
+   * the per-attempt occurrence index for its agent and signature, which is
+   * what lets a test repeat the same instruction and cache each occurrence
+   * separately.
    * Exactly one claim per dispatched step, in execution order — the
    * `StepTraceSession` constructor is the sole caller and owns that
    * invariant structurally.
@@ -185,7 +186,8 @@ export function createAgentCacheContext(options: {
   // agent's call of the same instruction must not renumber this one's.
   const indexers = new Map<string, ReturnType<typeof createCallIndexer>>();
   const nextCallIndex = (agent: CacheAgentIdentity, signature: TraceCallSignature): number => {
-    const agentKey = canonicalJson([agent.name, agent.context ?? null]);
+    // Folded like the key folds it (`buildTraceCacheKey`): no context is the empty one.
+    const agentKey = canonicalJson([agent.name, agent.context ?? '']);
     const indexer = indexers.get(agentKey) ?? createCallIndexer();
     indexers.set(agentKey, indexer);
     return indexer(signature);
