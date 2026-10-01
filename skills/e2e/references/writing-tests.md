@@ -226,11 +226,14 @@ attributes is `POLICY_DENIED`, as is `toHaveAttribute` on one, negated too.
 
 `expect(locator)` polls up to `config.assertionTimeout` (5 s) or
 `{ timeout }`; `.not` inverts and passes once the negation has held 1 s
-continuously, so it never returns in under a second. `expect(value,
+continuously, or for the whole `timeout` when that is shorter, so it never
+returns sooner. `expect(value,
 message?)` is synchronous.
 `expect.poll(read, { timeout?, interval?, message? })` re-reads until a value
 matcher passes (`assertionTimeout` and 100 ms by default, stopping with the
-attempt); a throwing read keeps polling, and it is not a report step.
+attempt); a throwing read keeps polling, and it is not a report step. A
+poll the body or a hook returns without awaiting is cancelled and fails that
+phase with `STEP_NOT_AWAITED`.
 `expect.soft(x)` keeps a failure instead of throwing; the attempt fails
 after the body with every soft failure listed. If the body calls `test.skip`,
 the test stays skipped and the failures remain in `secondaryErrors`. The CLI
@@ -404,5 +407,5 @@ A `route`, `unroute`, or `waitForResponse` pattern is a glob string or
   plus value matchers, in a `test.extend` fixture that reads `browser.cookies()`
   when the API needs the session.
 - No sleeps or polling loops; a matcher with a longer `timeout` instead.
-- `await` every step call, else `STEP_NOT_AWAITED` at the line of the call.
+- `await` every step call and `expect.poll`, else `STEP_NOT_AWAITED` at the line of the call.
 - Assert the fact a model produced with `toContain`, not its exact sentence.

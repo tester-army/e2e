@@ -52,7 +52,7 @@ before passing its result to `expect`.
 | Default timeout | `config.assertionTimeout`, 5000 ms |
 | Override | `{ timeout }` in milliseconds, on every locator and `browser` matcher |
 | Unknown option | `INVALID_ARGUMENT` before the first read, from JavaScript too |
-| Negation grace window | A negated matcher passes after 1000 ms of continuous truth, or after the whole budget when `{ timeout }` is shorter than that |
+| Negation grace window | A negated matcher passes after 1000 ms of continuous truth, or at the deadline when `{ timeout }` is shorter than that and the negation held for the whole budget. The window counts from the moment the first read that saw the negation started, so a slow read counts toward it |
 | Failure code | `ASSERTION_FAILED`, exit code 1 |
 
 Locator strictness: except for `toHaveCount` and the list form of
@@ -555,3 +555,12 @@ await expect.poll(() => readStatus(), { message: 'the batch never finished' }).n
 
 `expect.poll` is not recorded as a report step; a timeout surfaces only as
 the test's failure.
+
+Await every poll. A poll belongs to the phase that started it: the test body
+(with its fixtures and `beforeEach` hooks), one `afterEach` hook or fixture
+teardown, or one `beforeAll` or `afterAll` hook. When that phase returns while
+the poll still runs, the poll is cancelled and the phase fails with
+`STEP_NOT_AWAITED` at the line of the call, whether or not the poll would
+have passed. It never fails a later test. A body that threw keeps its own
+error and records this one under `secondaryErrors`, and a suite hook reports
+it as `HOOK_FAILED`.

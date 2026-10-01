@@ -2,7 +2,8 @@
 
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { isAbandonedStepRejection, StepRecorder, type StepProgress } from '../../src/run/steps.ts';
+import { isAbandonedRejection } from '../../src/internal/abandoned.ts';
+import { StepRecorder, type StepProgress } from '../../src/run/steps.ts';
 
 function recorder(): { steps: StepRecorder; heard: StepProgress[] } {
   const heard: StepProgress[] = [];
@@ -30,7 +31,7 @@ describe('StepRecorder.abandonRunning', () => {
     expect(steps.all()[0]?.status).toBe('passed');
     const cause = new Error('awaited and failed');
     await expect(steps.run('app', 'app.open', '/', () => Promise.reject(cause))).rejects.toBe(cause);
-    expect(isAbandonedStepRejection(cause)).toBe(false);
+    expect(isAbandonedRejection(cause)).toBe(false);
   });
 
   it('fails the running step at the line it was called from and observes its later rejection', async () => {
@@ -50,10 +51,10 @@ describe('StepRecorder.abandonRunning', () => {
     expect(steps.completed()).toEqual([]);
 
     const cause = new Error('no attempt is running');
-    expect(isAbandonedStepRejection(cause)).toBe(false);
+    expect(isAbandonedRejection(cause)).toBe(false);
     body.fail(cause);
     await expect(step).rejects.toThrow('no attempt is running');
-    expect(isAbandonedStepRejection(cause)).toBe(true);
+    expect(isAbandonedRejection(cause)).toBe(true);
     expect(record).toMatchObject({ status: 'failed', error: { code: 'STEP_NOT_AWAITED' } });
     expect(heard.map((progress) => progress.phase)).toEqual(['start', 'end']);
     expect(steps.completed()).toEqual([record]);

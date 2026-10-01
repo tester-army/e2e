@@ -27,7 +27,7 @@ import type {
   WorkerToMain,
 } from './protocol.ts';
 import { TargetWorker, type ResolvedUnitPairs, type TargetWorkerDeps } from './session.ts';
-import { isAbandonedStepRejection } from '../steps.ts';
+import { isAbandonedRejection } from '../../internal/abandoned.ts';
 
 /**
  * Outbound messages in flight. `process.send` is asynchronous and a
@@ -206,13 +206,13 @@ function main(): void {
   process.on('SIGINT', () => undefined);
   process.on('SIGTERM', () => undefined);
   process.on('uncaughtException', (cause) => fatal(cause));
-  // A step the body did not await rejects on a promise nobody holds once it
-  // is cancelled; the attempt has already recorded it as STEP_NOT_AWAITED.
+  // A step or poll the test did not await rejects on a promise nobody holds
+  // once it is cancelled; the attempt has already recorded it as STEP_NOT_AWAITED.
   // Any other rejection nobody caught is charged to the attempt in flight,
   // or recorded against the last test that finished; only before any test
   // has finished is it the worker's.
   process.on('unhandledRejection', (cause) => {
-    if (isAbandonedStepRejection(cause)) return;
+    if (isAbandonedRejection(cause)) return;
     if (worker?.strayRejection(cause) !== true) fatal(cause);
   });
 

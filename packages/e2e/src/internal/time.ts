@@ -70,24 +70,36 @@ export interface PollConditionOptions {
  * Polls a condition until it holds (or, when negated, until its negation has
  * held continuously for the negation grace window), throwing the caller's
  * error at the deadline.
+ *
+ * A negation holds from the moment the read that first saw it was issued, so
+ * a slow read counts toward the window. A budget shorter than the window
+ * still has to be satisfiable: the negation then only needs to hold for the
+ * whole budget, and passes at the deadline on what it has seen, since a read
+ * past the deadline has no budget left.
  */
 export async function pollCondition(options: PollConditionOptions): Promise<void> {
-  // A budget shorter than the grace window still has to be satisfiable: the
-  // negation then only needs to hold for the budget itself.
-  const grace = Math.min(NEGATION_GRACE_MS, Math.max(0, options.deadline.remaining()));
-  let negatedTrueSince: number | undefined;
+  const { deadline, negated } = options;
+  const startedAt = Date.now();
+  const grace = Math.min(NEGATION_GRACE_MS, deadline.remaining(startedAt));
+  let readAt = startedAt;
+  let holdingSince: number | undefined;
+  const holds = (now: number): boolean => holdingSince !== undefined && now - holdingSince >= grace;
   for (;;) {
     const value = await options.evaluate();
-    if (!options.negated) {
+    if (!negated) {
       if (value === true) return;
-    } else if (value === false) {
-      negatedTrueSince ??= Date.now();
-      if (Date.now() - negatedTrueSince >= grace) return;
     } else {
-      negatedTrueSince = undefined;
+      holdingSince = value === false ? (holdingSince ?? readAt) : undefined;
     }
-    if (options.deadline.expired()) throw await options.onTimeout();
-    await sleep(POLL_INTERVAL_MS, options.signal);
+    const now = Date.now();
+    if (holds(now)) return;
+    if (deadline.expired(now)) throw await options.onTimeout();
+    await sleep(negated ? Math.min(POLL_INTERVAL_MS, deadline.remaining(now)) : POLL_INTERVAL_MS, options.signal);
+    readAt = Date.now();
+    if (negated && deadline.expired(readAt)) {
+      if (holds(readAt)) return;
+      throw await options.onTimeout();
+    }
   }
 }
 

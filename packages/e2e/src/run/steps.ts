@@ -5,6 +5,7 @@ import { isAgentError } from '../agent/error.ts';
 import type { ReplayHandOffReason } from '../agent/executor.ts';
 import type { TraceReplayMissReason } from '../cache/decide.ts';
 import type { DerivedReason } from '../cache/trace.ts';
+import { markAbandonedRejection, relocateStack } from '../internal/abandoned.ts';
 import { withAiTraceStep } from '../internal/ai-trace.ts';
 import { classifyError, serializeError, TestError, withHint, type SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
@@ -273,18 +274,6 @@ export interface StepRecorderOptions {
 /** Frames kept when a step captures where it was called from; the user's line is a few frames up. */
 const STEP_STACK_FRAMES = 20;
 
-/** What abandoned steps rejected with. The promise the test holds rejects with the same value, and nobody awaits it. */
-const ABANDONED_REJECTIONS = new WeakSet<object>();
-
-/**
- * Whether an unhandled rejection is an abandoned step's: already recorded as
- * `STEP_NOT_AWAITED`, reaching the process only because the promise the
- * test did not await rejected with it. Such a rejection is not a fault.
- */
-export function isAbandonedStepRejection(cause: unknown): boolean {
-  return typeof cause === 'object' && cause !== null && ABANDONED_REJECTIONS.has(cause);
-}
-
 /**
  * The stack at a step's start, or nothing without a project root to read it
  * against. Every step pays the capture, since the failing one is not known
@@ -301,13 +290,6 @@ function stepStack(projectRoot: string | undefined): string | undefined {
   } finally {
     Error.stackTraceLimit = limit;
   }
-}
-
-/** Points `error` at the frames of `stack`, keeping its own name and message as the first line. */
-function relocate(error: Error, stack: string | undefined): void {
-  if (stack === undefined) return;
-  const frames = stack.split('\n').slice(1).join('\n');
-  error.stack = `${error.name}: ${error.message}\n${frames}`;
 }
 
 /** Characters of a step label an error message quotes before clipping it. */
@@ -413,7 +395,7 @@ export class StepRecorder {
       return result;
     } catch (cause) {
       if (this.abandoned.has(record.id)) {
-        if (typeof cause === 'object' && cause !== null) ABANDONED_REJECTIONS.add(cause);
+        markAbandonedRejection(cause);
         throw cause;
       }
       record.durationMs = Date.now() - startedMs;
@@ -454,7 +436,7 @@ export class StepRecorder {
         'STEP_NOT_AWAITED',
         withHint(`the test body returned before ${step.api} ${quoted(step.label)}${more} finished`, 'put `await` in front of every step call'),
       );
-      relocate(error, this.stacks.get(step.id));
+      relocateStack(error, this.stacks.get(step.id));
       first ??= error;
       this.abandoned.add(step.id);
       step.status = 'failed';

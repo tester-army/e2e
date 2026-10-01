@@ -205,6 +205,98 @@ describe('pollCondition', () => {
     await promise;
   });
 
+  /** A negated poll whose evaluations take `firstMs`, then `restMs`, each reporting the negation; records when each read was issued. */
+  function slowNegation(timeoutMs: number, firstMs: number, restMs: number) {
+    const issuedAt: number[] = [];
+    let resolvedAt: number | undefined;
+    let rejected: unknown;
+    const startedAt = Date.now();
+    const promise = pollCondition(
+      makeOptions({
+        negated: true,
+        timeoutMs,
+        evaluate: async () => {
+          issuedAt.push(Date.now() - startedAt);
+          await new Promise((resolve) => setTimeout(resolve, issuedAt.length === 1 ? firstMs : restMs));
+          return false;
+        },
+      }),
+    );
+    void promise.then(
+      () => {
+        resolvedAt = Date.now() - startedAt;
+      },
+      (cause: unknown) => {
+        rejected = cause;
+      },
+    );
+    return {
+      promise,
+      issuedAt,
+      get resolvedAt() {
+        return resolvedAt;
+      },
+      get rejected() {
+        return rejected;
+      },
+    };
+  }
+
+  it('negated: a slow first read counts toward a budget shorter than the grace window', async () => {
+    vi.useFakeTimers();
+    const poll = slowNegation(500, 80, 10);
+    await vi.advanceTimersByTimeAsync(499);
+    expect(poll.resolvedAt).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3);
+    expect(poll.rejected).toBeUndefined();
+    expect(poll.resolvedAt).toBe(500);
+    // Passing at the deadline takes no read past it: that read would have no budget.
+    expect(poll.issuedAt.every((at) => at < 500)).toBe(true);
+    await poll.promise;
+  });
+
+  it('negated: a slow first read counts toward the grace window under a longer budget', async () => {
+    vi.useFakeTimers();
+    const poll = slowNegation(1500, 80, 10);
+    await vi.advanceTimersByTimeAsync(NEGATION_GRACE_MS - 1);
+    expect(poll.resolvedAt).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 2);
+    expect(poll.rejected).toBeUndefined();
+    expect(poll.resolvedAt).toBeGreaterThanOrEqual(NEGATION_GRACE_MS);
+    expect(poll.resolvedAt).toBeLessThan(1500);
+    await poll.promise;
+  });
+
+  it('negated: fast reads under a short budget pass at the deadline, not before', async () => {
+    vi.useFakeTimers();
+    const poll = slowNegation(500, 0, 0);
+    await vi.advanceTimersByTimeAsync(499);
+    expect(poll.resolvedAt).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(poll.resolvedAt).toBe(500);
+    await poll.promise;
+  });
+
+  it('negated: a budget shorter than the grace window still fails when the positive state was seen', async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    const promise = pollCondition(
+      makeOptions({
+        negated: true,
+        timeoutMs: 500,
+        evaluate: async () => {
+          calls += 1;
+          return calls === 3;
+        },
+      }),
+    );
+    const assertion = expect(promise).rejects.toThrow('poll timed out');
+    await vi.advanceTimersByTimeAsync(1000);
+    await assertion;
+    // It decided at the deadline instead of reading past it.
+    expect(calls).toBe(5);
+  });
+
   it('stops polling when the signal aborts between evaluations', async () => {
     vi.useFakeTimers();
     const controller = new AbortController();

@@ -2,6 +2,8 @@ import { describe, expect as vexpect, it } from 'vitest';
 import { z } from 'zod';
 import { currentAttempt, publishAttempt } from '../../src/expect/attempt.ts';
 import { expect as e2eExpect } from '../../src/expect/index.ts';
+import { currentPollScope, openPollScope } from '../../src/expect/poll-scope.ts';
+import { isAbandonedRejection } from '../../src/internal/abandoned.ts';
 import { SoftFailures } from '../../src/expect/soft.ts';
 import { ConfigurationError, TestError } from '../../src/internal/errors.ts';
 import { Deadline } from '../../src/internal/time.ts';
@@ -303,6 +305,105 @@ describe('expect.poll', () => {
       next.end();
       vexpect(currentAttempt()).toBeUndefined();
     });
+  });
+});
+
+describe('expect.poll in a poll scope', () => {
+  /** A read that counts its calls and never passes `toBe('done')`. */
+  function counting(): { read: () => string; reads: () => number } {
+    let reads = 0;
+    return {
+      read: () => {
+        reads += 1;
+        return 'running';
+      },
+      reads: () => reads,
+    };
+  }
+
+  async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
+    return promise.then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+  }
+
+  it('fails the phase that returned before its poll finished, at the line of the call, and cancels it', async () => {
+    const scope = openPollScope('the test body');
+    const status = counting();
+    const poll = e2eExpect.poll(status.read, { timeout: 5000, interval: 5 }).toBe('done');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const error = scope.close();
+    vexpect(error).toBeInstanceOf(TestError);
+    vexpect(error?.code).toBe('STEP_NOT_AWAITED');
+    vexpect(error?.message).toBe(
+      'the test body returned before expect.poll(...).toBe(...) finished; put `await` in front of every expect.poll call',
+    );
+    vexpect(error?.stack).toContain('expect-poll.test.ts');
+    const rejection = await rejectionOf(poll);
+    vexpect(rejection).toMatchObject({ code: 'CANCELLED' });
+    vexpect(isAbandonedRejection(rejection)).toBe(true);
+    const readsAtClose = status.reads();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    vexpect(status.reads()).toBe(readsAtClose);
+  });
+
+  it('names one poll and counts the rest, negation included', async () => {
+    const scope = openPollScope('the afterEach hook');
+    const polls = [
+      e2eExpect.poll(() => 1, { timeout: 5000 }).not.toBe(1),
+      e2eExpect.poll(() => 1, { timeout: 5000 }).toBe(2),
+    ];
+    const error = scope.close();
+    vexpect(error?.message).toMatch(/^the afterEach hook returned before expect\.poll\(\.\.\.\)\.not\.toBe\(\.\.\.\) and 1 more finished/);
+    await Promise.allSettled(polls);
+  });
+
+  it('a poll that would have passed still fails its phase when not awaited', async () => {
+    const scope = openPollScope('the test body');
+    const poll = e2eExpect.poll(settling('running', 'done', 3).read, { interval: 20 }).toBe('done');
+    vexpect(scope.close()?.code).toBe('STEP_NOT_AWAITED');
+    await vexpect(poll).rejects.toMatchObject({ code: 'CANCELLED' });
+  });
+
+  it('closes quietly when every poll was awaited, whatever its outcome', async () => {
+    const scope = openPollScope('the test body');
+    await e2eExpect.poll(settling('running', 'done', 1).read, { interval: 5 }).toBe('done');
+    await failsWith(() => e2eExpect.poll(() => 'running', { timeout: 30, interval: 5 }).toBe('done'), /timed out after 30 ms/);
+    vexpect(scope.close()).toBeUndefined();
+  });
+
+  it('owns polls only while open, and closing twice reports nothing more', async () => {
+    const scope = openPollScope('the test body');
+    vexpect(currentPollScope()).toBe(scope);
+    const poll = e2eExpect.poll(() => 'running', { timeout: 5000 }).toBe('done');
+    vexpect(scope.close()?.code).toBe('STEP_NOT_AWAITED');
+    vexpect(scope.close()).toBeUndefined();
+    vexpect(currentPollScope()).toBeUndefined();
+    await rejectionOf(poll);
+  });
+
+  it('a stale close never releases the scope opened after it', () => {
+    const first = openPollScope('the test body');
+    const second = openPollScope('the afterEach hook');
+    first.close();
+    vexpect(currentPollScope()).toBe(second);
+    second.close();
+    vexpect(currentPollScope()).toBeUndefined();
+  });
+
+  it('marks the rejection of a promise derived from an abandoned poll', async () => {
+    const scope = openPollScope('the test body');
+    const derived = e2eExpect.poll(() => 'running', { timeout: 5000 }).toBe('done').then(() => 'never');
+    scope.close();
+    vexpect(isAbandonedRejection(await rejectionOf(derived))).toBe(true);
+  });
+
+  it('stays out of the way of a poll outside any scope', async () => {
+    const poll = e2eExpect.poll(settling('running', 'done', 2).read, { interval: 5 }).toBe('done');
+    const scope = openPollScope('the test body');
+    vexpect(scope.close()).toBeUndefined();
+    await poll;
   });
 });
 

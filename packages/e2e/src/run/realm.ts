@@ -1,6 +1,7 @@
 /** Suite realm lifecycle: module re-import, beforeAll/afterAll scope tracking. */
 
 import { importModule } from '../config/load.ts';
+import { openPollScope } from '../expect/poll-scope.ts';
 import {
   classifyError,
   E2EError,
@@ -59,22 +60,33 @@ export function findRegistered(realm: Realm, test: CollectedTest): RegisteredTes
 /**
  * Runs one hook, or a fixture teardown, within its budget. One that overruns
  * fails with the runner's timeout error naming `label`; `onTimeout` lets the
- * caller cancel what it started.
+ * caller cancel what it started. The hook owns the `expect.poll` calls it
+ * starts: one still running when it returns fails it with
+ * `STEP_NOT_AWAITED` and is cancelled, and one left by a hook that failed is
+ * cancelled beside that failure.
  */
-export function runHook(
+export async function runHook(
   label: string,
   run: () => void | Promise<void>,
   timeoutMs: number,
   onTimeout?: () => void,
 ): Promise<void> {
-  return withTimeout(
-    Promise.resolve().then(run),
-    timeoutMs,
-    () => {
-      onTimeout?.();
-      return new TestTimeoutError(`${label} timed out`);
-    },
-  );
+  const polls = openPollScope(`the ${label}`);
+  try {
+    await withTimeout(
+      Promise.resolve().then(run),
+      timeoutMs,
+      () => {
+        onTimeout?.();
+        return new TestTimeoutError(`${label} timed out`);
+      },
+    );
+  } catch (cause) {
+    polls.close();
+    throw cause;
+  }
+  const notAwaited = polls.close();
+  if (notAwaited !== undefined) throw notAwaited;
 }
 
 export interface RealmManagerOptions {
