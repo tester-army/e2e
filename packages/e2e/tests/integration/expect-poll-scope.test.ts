@@ -18,7 +18,7 @@ test('an unawaited poll fails the body that started it', async () => {
     .poll(() => {
       counters.abandonedReads = (counters.abandonedReads ?? 0) + 1;
       return false;
-    }, { timeout: 400 })
+    }, { timeout: 30_000 })
     .toBe(true);
 });
 

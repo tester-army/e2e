@@ -232,8 +232,8 @@ message?)` is synchronous.
 `expect.poll(read, { timeout?, interval?, message? })` re-reads until a value
 matcher passes (`assertionTimeout` and 100 ms by default, stopping with the
 attempt); a throwing read keeps polling, and it is not a report step. A
-poll the body or a hook returns without awaiting is cancelled and fails that
-phase with `STEP_NOT_AWAITED`.
+poll that the body or a hook returns without awaiting is cancelled and fails
+that phase with `STEP_NOT_AWAITED`.
 `expect.soft(x)` keeps a failure instead of throwing; the attempt fails
 after the body with every soft failure listed. If the body calls `test.skip`,
 the test stays skipped and the failures remain in `secondaryErrors`. The CLI
