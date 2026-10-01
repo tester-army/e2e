@@ -67,6 +67,12 @@ Please don't open public issues for security vulnerabilities. Follow
 [SECURITY.md](./SECURITY.md) and report them to
 [security@tester.army](mailto:security@tester.army).
 
+## Status
+
+> [!NOTE]
+> e2e is in active development on the way to 1.0. APIs and config can still
+> change between minor releases.
+
 ## Made by TesterArmy
 
 e2e is built by [TesterArmy](https://tester.army/?utm_source=e2e&utm_medium=github&utm_campaign=readme_footer),
