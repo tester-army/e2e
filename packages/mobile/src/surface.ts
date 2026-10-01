@@ -76,6 +76,9 @@ import {
   type Point,
 } from './support.ts';
 
+/** Hinge poses `device.fold` accepts: `closed` lights the outer display, `half-open` and `open` the inner one. */
+export type FoldPose = 'closed' | 'half-open' | 'open';
+
 /** How `installApp` puts a build on the device. */
 export interface InstallAppOptions {
   /**
@@ -1371,6 +1374,18 @@ export class AgentDeviceSurface {
       operation.signal,
     );
     await this.openApp(app, { relaunch: true }, operation.signal);
+  }
+
+  /**
+   * Sends a foldable iOS simulator's hinge to a pose; agent-device confirms
+   * the angle through CoreDevice before it answers. The pose moves the app to
+   * another panel, so it counts as an action like a rotation.
+   */
+  async fold(pose: FoldPose, signal: AbortSignal): Promise<void> {
+    if (this.options.platform !== 'ios') {
+      throw unsupported('device.fold drives a foldable iOS simulator (iPhone Duo) through agent-device; it has no Android driver');
+    }
+    await this.screenCommand('device.fold', (client) => client.command.fold({ pose }), signal);
   }
 
   /**

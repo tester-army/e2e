@@ -135,7 +135,7 @@ test('shows the version offline in dark mode', async ({ agent, device, screen })
 ```
 
 Methods: `setNetwork`, `setAirplaneMode`, `setPermission`, `setLocation`,
-`clearLocation`, `setAppearance`, `setOrientation`, `setBiometrics`,
+`clearLocation`, `setAppearance`, `setOrientation`, `fold`, `setBiometrics`,
 `enrollBiometrics`, `installApp`, `openApp`, `closeApp`, `clearKeychain`,
 `foregroundApp`, `home`, `back`, `alert`, `dismissKeyboard`, `clipboard`,
 `setClipboard`, and the `locator` accessor.

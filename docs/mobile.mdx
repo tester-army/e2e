@@ -405,6 +405,28 @@ await expect(screen.getByText('Order #42')).toBeVisible();
 `app.clearState()` leaves alone, so a stored session token is gone on the
 next launch. iOS only; Android has no keychain to reset.
 
+`device.fold(pose)` puts a foldable iOS simulator, the iPhone Duo, in a hinge
+pose: `closed` lights the outer display, `half-open` (a 130° book) and `open`
+the inner one. It returns once the simulator reports the hinge at that angle,
+typically 10 to 16 seconds, so keep `actionTimeout` at 20 seconds or more, and
+the next observation reads the app on the other display. The engine never
+resets the pose: a retry and the next test start in whatever pose a test left,
+so fold back in `afterEach`, which runs when the test fails too:
+
+```ts
+import { afterEach, test } from '@e2e-dev/mobile';
+
+afterEach(async ({ device }) => {
+  await device.fold('closed');
+});
+
+test('the list and the detail split across the fold', async ({ agent, app, device }) => {
+  await app.open();
+  await device.fold('half-open');
+  await agent.assert('the list and the detail sit on either side of the fold', { vision: true });
+});
+```
+
 Every method is in the [mobile engine reference](/reference/mobile#device).
 
 ### Agent tools
@@ -470,6 +492,9 @@ tool.
   detector a window of 350 ms or more.
 - On iOS, `device.foregroundApp()` still names the session's app after
   `device.home()`. Check the screen instead.
+- On an iPhone Duo, `--video` records the display that was lit when the
+  recording started. After `device.fold` moves the app to the other display,
+  the rest of the video is black.
 
 ## Troubleshooting
 

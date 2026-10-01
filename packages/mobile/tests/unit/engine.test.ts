@@ -1257,7 +1257,7 @@ describe('device fixture', () => {
     });
   });
 
-  it('counts a back, home, alert, keyboard, or rotation as an action, so a control that arrives with it waits out the transition budget', async () => {
+  it('counts a back, home, alert, keyboard, rotation, or fold as an action, so a control that arrives with it waits out the transition budget', async () => {
     const h = harness({ transition: 120 });
     await openAttempt(h);
     await observed(h, 'Back');
@@ -1268,6 +1268,7 @@ describe('device fixture', () => {
       () => device.alert('accept'),
       () => device.dismissKeyboard(),
       () => device.setOrientation('landscape-left'),
+      () => device.fold('half-open'),
     ]) {
       h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
       await observed(h, 'Back');
@@ -1363,6 +1364,7 @@ describe('device fixture', () => {
     await device.clearLocation();
     await device.setAppearance('dark');
     await device.setOrientation('landscape-left');
+    await device.fold('half-open');
     await device.setBiometrics('faceid', 'match');
     await device.setBiometrics('fingerprint', 'nonmatch');
     await device.enrollBiometrics('touchid', true);
@@ -1383,6 +1385,7 @@ describe('device fixture', () => {
       ['settings.update', { setting: 'location', state: 'off' }],
       ['settings.update', { setting: 'appearance', state: 'dark' }],
       ['command.orientation', { orientation: 'landscape-left' }],
+      ['command.fold', { pose: 'half-open' }],
       ['settings.update', { setting: 'faceid', state: 'match' }],
       ['settings.update', { setting: 'fingerprint', state: 'nonmatch' }],
       ['settings.update', { setting: 'touchid', state: 'enroll' }],
@@ -1630,6 +1633,22 @@ describe('device fixture', () => {
     await openAttempt(android);
     const count = android.fake.calls.length;
     await expect(fixture(android).clearKeychain()).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
+    expect(android.fake.calls.length).toBe(count);
+  });
+
+  it('folds an iOS simulator and refuses Android without a device command', async () => {
+    const ios = harness();
+    await openAttempt(ios);
+    ios.fake.respond('command.fold', () => {
+      throw new AppError('UNSUPPORTED_OPERATION', 'fold requires a foldable iOS simulator such as iPhone Duo');
+    });
+    await expect(fixture(ios).fold('open')).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
+    expect(declared?.fold?.label?.('half-open')).toBe('half-open');
+
+    const android = harness({ platform: 'android', bundleId: 'com.example.app' });
+    await openAttempt(android);
+    const count = android.fake.calls.length;
+    await expect(fixture(android).fold('half-open')).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
     expect(android.fake.calls.length).toBe(count);
   });
 

@@ -8,7 +8,7 @@
 import type { EngineFixtureContext, Locator } from 'e2e/engine';
 import { linkLabel, linkTarget } from './links.ts';
 import type { DevicePermission, PermissionState } from './options.ts';
-import type { AgentDeviceSurface, InstallAppOptions, InstalledApp, OpenAppOptions } from './surface.ts';
+import type { AgentDeviceSurface, FoldPose, InstallAppOptions, InstalledApp, OpenAppOptions } from './surface.ts';
 
 /** Orientations `setOrientation` accepts. */
 export type DeviceOrientation = 'portrait' | 'portrait-upside-down' | 'landscape-left' | 'landscape-right';
@@ -47,6 +47,15 @@ export interface Device {
   setAppearance(mode: 'light' | 'dark'): Promise<void>;
   /** Rotates the device. */
   setOrientation(orientation: DeviceOrientation): Promise<void>;
+  /**
+   * Puts a foldable iOS simulator (iPhone Duo) in a hinge pose and resolves
+   * once agent-device reads the angle back from CoreDevice at that pose,
+   * typically 10 to 16 seconds later. `closed` lights the outer display;
+   * `half-open` (a 130° book) and `open` light the inner one, whose app
+   * window has a different size, so the next observation reads a new screen.
+   * Any device without a hinge is `UNSUPPORTED_CAPABILITY`.
+   */
+  fold(pose: FoldPose): Promise<void>;
   /** Simulates one biometric attempt on the open app. */
   setBiometrics(sensor: BiometricSensor, result: 'match' | 'nonmatch'): Promise<void>;
   /** Enrolls or unenrolls the simulator's Face ID or Touch ID. */
@@ -169,6 +178,9 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
     async setOrientation(orientation) {
       await surface.screenCommand('device.setOrientation', (client) => client.command.orientation({ orientation }), context.signal);
     },
+    async fold(pose) {
+      await surface.fold(pose, context.signal);
+    },
     async setBiometrics(sensor, result) {
       await surface.command(
         'device.setBiometrics',
@@ -242,6 +254,7 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
     clearLocation: action,
     setAppearance: { ...action, label: (mode) => mode },
     setOrientation: { ...action, label: (orientation) => orientation },
+    fold: { ...action, label: (pose) => pose },
     setBiometrics: action,
     enrollBiometrics: action,
     installApp: { ...action, label: (appPath) => appPath ?? surface.appPath ?? 'appPath' },

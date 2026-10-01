@@ -249,6 +249,15 @@ export interface Device {
   setAppearance(mode: 'light' | 'dark'): Promise<void>;
   /** Rotates the device. */
   setOrientation(orientation: DeviceOrientation): Promise<void>;
+  /**
+   * Puts a foldable iOS simulator (iPhone Duo) in a hinge pose and resolves
+   * once agent-device reads the angle back from CoreDevice at that pose,
+   * typically 10 to 16 seconds later. `closed` lights the outer display;
+   * `half-open` (a 130° book) and `open` light the inner one, whose app
+   * window has a different size, so the next observation reads a new screen.
+   * Any device without a hinge is `UNSUPPORTED_CAPABILITY`.
+   */
+  fold(pose: FoldPose): Promise<void>;
   /** Simulates one biometric attempt on the open app. */
   setBiometrics(sensor: BiometricSensor, result: 'match' | 'nonmatch'): Promise<void>;
   /** Enrolls or unenrolls the simulator's Face ID or Touch ID. */
@@ -362,6 +371,9 @@ export type DevicePermission =
 /** Orientations `setOrientation` accepts. */
 export type DeviceOrientation = 'portrait' | 'portrait-upside-down' | 'landscape-left' | 'landscape-right';
 
+/** Hinge poses `device.fold` accepts: `closed` lights the outer display, `half-open` and `open` the inner one. */
+export type FoldPose = 'closed' | 'half-open' | 'open';
+
 /** How `device.installApp` installs a build. */
 export interface InstallAppOptions {
   /**
@@ -399,8 +411,8 @@ keeps its text and hint there, and a busy or wedged iOS automation runner
 names itself and the recovery (see
 [Troubleshooting](/mobile#troubleshooting)).
 
-`back`, `home`, `alert`, `dismissKeyboard`, and `setOrientation` change the
-screen, so they count as actions for the `transition` budget the way a tap
+`back`, `home`, `alert`, `dismissKeyboard`, `setOrientation`, and `fold`
+change the screen, so they count as actions for the `transition` budget the way a tap
 does: a control that arrives with the screen they reveal waits out the budget
 before the next action lands on it.
 
