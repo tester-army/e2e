@@ -67,6 +67,6 @@ export async function httpCredentials(
  */
 function basicCredentials(username: string, password: string): string[] {
   const encoded = Buffer.from(`${username}:${password}`, 'utf8').toString('base64');
-  const unpadded = encoded.replace(/=+$/, '');
+  const unpadded = encoded.replace(/={1,2}$/, '');
   return unpadded === encoded ? [encoded] : [encoded, unpadded];
 }

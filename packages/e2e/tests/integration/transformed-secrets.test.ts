@@ -20,7 +20,7 @@ const TOKEN = 'Tok-9f3aC0DeB1e7';
 const NOTE = 'first line 4417\nsecond line Qx';
 
 /** Every form of the two values a reader or a transform can produce. */
-const FORMS = [TOKEN, TOKEN.toUpperCase(), TOKEN.toLowerCase(), NOTE, NOTE.replace('\n', ' '), JSON.stringify(NOTE).slice(1, -1)];
+const FORMS = [TOKEN, TOKEN.toUpperCase(), TOKEN.toLowerCase(), NOTE, NOTE.replaceAll('\n', ' '), JSON.stringify(NOTE).slice(1, -1)];
 
 const SUITE = `import { test, expect, secrets } from 'e2e';
 
@@ -46,7 +46,7 @@ test('matches the transformed text', async ({ app, screen }) => {
   await fillBoth(app, screen);
   await expect(screen.getByTestId('upper')).toHaveText(${JSON.stringify(TOKEN.toUpperCase())});
   await expect(screen.getByTestId('lower')).toHaveText(${JSON.stringify(TOKEN.toLowerCase())});
-  await expect(screen.getByTestId('note-echo')).toHaveText(${JSON.stringify(NOTE.replace('\n', ' '))});
+  await expect(screen.getByTestId('note-echo')).toHaveText(${JSON.stringify(NOTE.replaceAll('\n', ' '))});
 });
 `;
 

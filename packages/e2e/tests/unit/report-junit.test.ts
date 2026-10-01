@@ -3,9 +3,9 @@ import type { Report1Document, ReportSerialGroup } from '../../src/report/build.
 import { renderJunitReport } from '../../src/report/junit.ts';
 import { REPORT_AT as AT, reportAttempt, reportDocument, reportError, reportResult } from '../helpers/report.ts';
 
-/** XML 1.0 `Char`, over UTF-16 code units: a surrogate counts only as a proper pair. */
+/** XML 1.0 `Char`, over code points: a lone surrogate is a code point of its own and falls outside every range. */
 // oxlint-disable-next-line no-control-regex -- the allowed range is the point
-const XML_CHARS = /^(?:[\u0009\u000a\u000d\u0020-\ud7ff\ue000-\ufffd]|[\ud800-\udbff][\udc00-\udfff])*$/;
+const XML_CHARS = /^[\u0009\u000a\u000d\u0020-\ud7ff\ue000-\ufffd\u{10000}-\u{10ffff}]*$/u;
 const ENTITY_ONLY = /&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)/;
 const START_TAG = /^<([A-Za-z_][\w.-]*)((?:\s+[A-Za-z_][\w.-]*="[^"<]*")*)\s*(\/?)>$/;
 
