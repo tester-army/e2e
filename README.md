@@ -58,9 +58,14 @@ every page, so coding agents can read them offline in `node_modules/e2e/docs`.
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md). Report vulnerabilities through
-[SECURITY.md](./SECURITY.md), not public issues. Questions go to
+See [CONTRIBUTING.md](./CONTRIBUTING.md). Questions go to
 [Discord](https://tester.army/discord).
+
+## Security
+
+Please don't open public issues for security vulnerabilities. Follow
+[SECURITY.md](./SECURITY.md) and report them to
+[security@tester.army](mailto:security@tester.army).
 
 ## Made by TesterArmy
 
