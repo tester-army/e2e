@@ -38,8 +38,10 @@ npx e2e init
 npx e2e run
 ```
 
-`init` asks for a platform and a model, then writes a config and an example
-test. Requires Node.js 22.12 or newer.
+`init` asks for an engine, web or mobile, and a model provider, then writes a
+config and an example test. For web, start your app at `http://localhost:3000`
+first, or set its URL in `e2e.config.ts`. The
+[quickstart](https://e2e.tester.army/docs/quickstart) lists what you need.
 
 ## Packages
 
@@ -66,8 +68,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md). Report vulnerabilities through
 ## Made by TesterArmy
 
 e2e is built by [TesterArmy](https://tester.army/?utm_source=e2e&utm_medium=github&utm_campaign=readme_footer),
-an AI QA platform that tests web and mobile apps from plain-language flows on
-every pull request or on a schedule.
-[Book a demo](https://tester.army/meet?utm_source=e2e&utm_medium=github&utm_campaign=readme_footer).
+the agentic testing platform that runs plain-language tests on web and mobile
+apps, on every pull request or on a schedule.
 
 Apache-2.0.
