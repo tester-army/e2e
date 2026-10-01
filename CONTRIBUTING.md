@@ -136,8 +136,10 @@ The runner publishes to npmjs as `e2e`; engines and reporters publish under
 the `@e2e-dev` scope. All are public packages: anyone can install them and read
 the release on GitHub. After a PR with a changeset lands on `main`, the release
 workflow opens a `chore: version packages` pull request that applies the
-pending changesets. Merging that PR re-runs the full gate, publishes the new
-versions, and creates the matching GitHub release. `@e2edev/e2e` is the
+pending changesets. That PR gets no CI of its own (it is opened with
+`GITHUB_TOKEN`), so check `main` is green before merging it. Merging it checks
+peer ranges, builds, publishes the new versions, and creates the matching
+GitHub release. `@e2edev/e2e` is the
 runner's retired name, and the `@e2edev` scope is the engines' and reporters'
 retired scope; both are deprecated on npm.
 
