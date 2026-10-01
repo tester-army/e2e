@@ -175,6 +175,9 @@ describe('readLastRun and lastFailedIds', () => {
 });
 
 describe('carryForward', () => {
+  /** `carryForward` with the rerun having collected the tests its report has rows for, unless `collected` says more. */
+  const carry = (lastRun: Report1Document, current: Report1Document, collected: readonly string[] = []) =>
+    carryForward(lastRun, current, new Set([...current.run.results.map((result) => result.testId), ...collected]));
   const failed = (id: string, extra: Row = {}): Row => ({ id, status: 'failed', attempts: [{ artifacts: [{ path: `web/${id}/attempt-0/failure.png` }] }], ...extra });
   const passed = (id: string, extra: Row = {}): Row => ({ id, status: 'passed', attempts: [{ artifacts: [] }], ...extra });
   const carriedIds = (carried: ReturnType<typeof carryForward>) => carried?.results.map((result) => result.testId);
@@ -184,73 +187,85 @@ describe('carryForward', () => {
 
   it('carries what the run before owed and another filter left out, as that run reported it', () => {
     const before = document([failed('broken'), { id: 'limit', status: 'skipped', skip: { cause: 'failure-limit', reason: 'stopped' } }, passed('fine')]);
-    const carried = carryForward(before, document([passed('broken'), leftOut('limit'), leftOut('fine', 'did not fail in the last run')]));
+    const carried = carry(before, document([passed('broken'), leftOut('limit'), leftOut('fine', 'did not fail in the last run')]));
     expect(carriedIds(carried)).toEqual(['limit']);
     expect(carried?.results[0]).toEqual(before.run.results[1]);
     expect(carried?.errors).toEqual([]);
     // What the rerun ran is its own result now, passed or not; nothing owed left out is nothing carried.
-    expect(carryForward(before, document([failed('broken'), passed('limit'), leftOut('fine')]))).toBeUndefined();
+    expect(carry(before, document([failed('broken'), passed('limit'), leftOut('fine')]))).toBeUndefined();
   });
 
   it('keeps a test owed across consecutive reruns until one runs it, and the next --last-failed selects it', () => {
     const first = document([failed('a'), failed('b')]);
-    const carriedOnce = carryForward(first, document([passed('a'), leftOut('b')]));
+    const carriedOnce = carry(first, document([passed('a'), leftOut('b')]));
     expect(carriedIds(carriedOnce)).toEqual(['b']);
     const second = document([passed('a'), leftOut('b')], [], { carried: carriedOnce });
     expect([...lastFailedIds(second)]).toEqual([idOf('b')]);
 
     // Left out again: still the first run's row, not the filtered one in between.
-    expect(carryForward(second, document([leftOut('a', 'did not fail in the last run'), leftOut('b')]))?.results).toEqual([first.run.results[1]]);
+    expect(carry(second, document([leftOut('a', 'did not fail in the last run'), leftOut('b')]))?.results).toEqual([first.run.results[1]]);
     // Run again, it is the rerun's own result.
-    expect(carryForward(second, document([leftOut('a'), passed('b')]))).toBeUndefined();
+    expect(carry(second, document([leftOut('a'), passed('b')]))).toBeUndefined();
     // A test the rerun no longer has cannot run again.
-    expect(carryForward(second, document([leftOut('a')]))).toBeUndefined();
+    expect(carry(second, document([leftOut('a')]))).toBeUndefined();
   });
 
   it('carries a suite hook failure while its scope holds a carried test, and drops it once the scope ran again', () => {
     const before = document([inScope(passed), failed('elsewhere', { file: 'tests/b.e2e.ts' })], [afterAll, { code: 'CLEANUP_TIMEOUT', phase: 'cleanup' }]);
-    const narrowed = carryForward(before, document([leftOut('in-scope'), passed('elsewhere', { file: 'tests/b.e2e.ts' })]));
+    const narrowed = carry(before, document([leftOut('in-scope'), passed('elsewhere', { file: 'tests/b.e2e.ts' })]));
     expect(carriedIds(narrowed)).toEqual(['in-scope']);
     expect(narrowed?.errors).toEqual([afterAll]);
 
     // The scope ran again and the hook passed: resolved. It failed again: the rerun reports it itself, once.
     const elsewhere = passed('elsewhere', { file: 'tests/b.e2e.ts' });
-    expect(carryForward(before, document([inScope(passed), elsewhere]))).toBeUndefined();
-    expect(carryForward(before, document([inScope(passed), elsewhere], [afterAll]))).toBeUndefined();
+    expect(carry(before, document([inScope(passed), elsewhere]))).toBeUndefined();
+    expect(carry(before, document([inScope(passed), elsewhere], [afterAll]))).toBeUndefined();
 
     // A hook failure carried from further back stays carried with its scope.
     const second = document([leftOut('in-scope'), passed('elsewhere', { file: 'tests/b.e2e.ts' })], [], { carried: narrowed });
-    expect(carryForward(second, document([leftOut('in-scope'), leftOut('elsewhere')]))?.errors).toEqual([afterAll]);
+    expect(carry(second, document([leftOut('in-scope'), leftOut('elsewhere')]))?.errors).toEqual([afterAll]);
   });
 
   it('resolves a hook whose scope ran again without it failing, though another filter left part of the scope out', () => {
     const sibling = (status: (id: string, extra?: Row) => Row) => status('sibling', { titlePath: ['teardown', 'sibling'] });
     const before = document([inScope(passed), sibling(passed)], [afterAll]);
-    expect(carryForward(before, document([inScope(passed), leftOut('sibling')]))).toBeUndefined();
+    expect(carry(before, document([inScope(passed), leftOut('sibling')]))).toBeUndefined();
     // Failing again it is the rerun's own error, and the sibling it left out stays owed.
-    const again = carryForward(before, document([inScope(passed), leftOut('sibling')], [afterAll]));
+    const again = carry(before, document([inScope(passed), leftOut('sibling')], [afterAll]));
     expect(carriedIds(again)).toEqual(['sibling']);
     expect(again?.errors).toEqual([]);
     // A scope test the rerun selected but never ran does not show the hook passing.
     const limited = { id: 'in-scope', titlePath: ['teardown', 'in-scope'], status: 'skipped', skip: { cause: 'failure-limit', reason: 'stopped' } };
-    expect(carryForward(before, document([limited, leftOut('sibling')]))?.errors).toEqual([afterAll]);
+    expect(carry(before, document([limited, leftOut('sibling')]))?.errors).toEqual([afterAll]);
   });
 
   it('carries a test on a target or agent the rerun did not select, while the test and the target are still there', () => {
     const before = document([failed('a'), failed('a', { targetId: 'mobile', id: 'a-mobile', testId: 'a' }), failed('a', { agent: 'other', id: 'a-other', testId: 'a' })]);
-    const onWeb = carryForward(before, document([passed('a')]));
+    const onWeb = carry(before, document([passed('a')]));
     expect(onWeb?.results.map((result) => [result.targetId, result.agent])).toEqual([
       ['mobile', 'default'],
       ['web', 'other'],
     ]);
     // A target the config no longer has cannot run it again.
-    expect(carryForward(before, document([passed('a'), passed('a', { agent: 'other', id: 'a-other', testId: 'a' })], [], { targets: [{ id: 'web' }] }))).toBeUndefined();
+    expect(carry(before, document([passed('a'), passed('a', { agent: 'other', id: 'a-other', testId: 'a' })], [], { targets: [{ id: 'web' }] }))).toBeUndefined();
+  });
+
+  it('carries a setup whose afterAll failed when the rerun needed none of its sessions, so the report has no row for it', () => {
+    const setupScope = { ...afterAll, scopeId: 'file', scope: { file: 'tests/auth.e2e.ts', targetId: 'web', titlePath: [] } };
+    const signIn = passed('sign in', { kind: 'setup', file: 'tests/auth.e2e.ts' });
+    const before = document([signIn, passed('signed in'), failed('unrelated')], [setupScope]);
+    const narrowed = document([leftOut('signed in'), passed('unrelated')]);
+    const carried = carry(before, narrowed, ['sign in']);
+    expect(carriedIds(carried)).toEqual(['sign in']);
+    expect(carried?.errors).toEqual([setupScope]);
+    // A setup the rerun no longer collects is gone with its debt.
+    expect(carry(before, narrowed)).toBeUndefined();
   });
 
   it("carries a serial member's group, where its attempts live", () => {
     const group = { id: 'group', attempts: [{ artifacts: [{ path: 'web/group/attempt-0/trace.zip' }] }] };
     const before = document([failed('member', { serialGroupId: 'group', attempts: [] }), failed('other')], [], { serialGroups: [group] });
-    const carried = carryForward(before, document([leftOut('member'), passed('other')]));
+    const carried = carry(before, document([leftOut('member'), passed('other')]));
     expect(carriedIds(carried)).toEqual(['member']);
     expect(carried?.serialGroups).toEqual([group]);
   });

@@ -135,23 +135,19 @@ function sameHook(a: ReportError, b: ReportError): boolean {
  * of a failed `beforeAll` or `afterAll` this run did not see pass: a hook
  * whose scope this run ran again without it failing is resolved, and one
  * that failed again is this run's own error, which still makes its left-out
- * tests owed. A test this run did not run is one another filter left out
- * (its unselected row) or one on a target or agent this run did not select
- * (no row, though the test and the target are still there); a test the run
- * no longer has cannot run again and is dropped. A test this run selected is
- * no longer carried, whatever its outcome: its own result says it now.
+ * tests owed. A test this run did not run is one it collected (`collected`,
+ * by test id), on a target the config still has, that it did not select:
+ * left out by a filter, on a target or agent the run did not ask for, or a
+ * setup no selected test needed, which the report lists no row for. A test the run no
+ * longer collects cannot run again and is dropped. A test this run selected
+ * is no longer carried, whatever its outcome: its own result says it now.
  * Undefined when nothing is carried.
  */
-export function carryForward(lastRun: Report1Document, current: Report1Document): ReportCarried | undefined {
+export function carryForward(lastRun: Report1Document, current: Report1Document, collected: ReadonlySet<string>): ReportCarried | undefined {
   const selected = new Set(current.run.results.filter((result) => result.selected !== false).map(rerunId));
-  const present = new Set(current.run.results.map(rerunId));
-  const tests = new Set(current.run.results.map((result) => result.testId));
   const targets = new Set(current.run.targets.map((target) => target.id));
-  const notRun = (result: ReportResult): boolean => {
-    const id = rerunId(result);
-    if (selected.has(id)) return false;
-    return present.has(id) || (tests.has(result.testId) && targets.has(result.targetId));
-  };
+  const notRun = (result: ReportResult): boolean =>
+    !selected.has(rerunId(result)) && collected.has(result.testId) && targets.has(result.targetId);
 
   const failedAgain = current.run.errors.filter(isSuiteHookFailure);
   const hooks = [...lastRun.run.errors.filter(isSuiteHookFailure), ...(lastRun.run.carried?.errors ?? [])];

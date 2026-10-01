@@ -416,6 +416,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   // reporters get it beside this run's report to fold the rerun into it, and
   // this run's report carries what it owed that this run left out.
   let lastRun: Report1Document | undefined;
+  // The ids of every test collection found, a setup no selected test needed
+  // among them: what a rerun can still carry when the report lists no row.
+  let collectedTestIds: ReadonlySet<string> = new Set();
   const buildRunReport = (exitCode: RunExitCode): Report1Document => {
     const document = buildReport({
       runId,
@@ -430,7 +433,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       targetProvenance,
       explore: options.tests?.explore?.snapshot(),
     });
-    const carried = lastRun === undefined ? undefined : carryForward(lastRun, document);
+    const carried = lastRun === undefined ? undefined : carryForward(lastRun, document, collectedTestIds);
     return carried === undefined ? document : { ...document, run: { ...document.run, carried } };
   };
 
@@ -621,6 +624,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
                 );
           const inputs = await selectionInputs(options, config);
           lastRun = inputs.lastRun;
+          collectedTestIds = new Set(collection.tests.map((test) => test.id));
           const selection = repeatEach(
             select(
               collection,

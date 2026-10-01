@@ -1271,12 +1271,19 @@ test('unrelated', async () => {
       writeFileSync(path.join(project.dir, 'tests', 'other.e2e.ts'), `import { test } from 'e2e';
 test('unrelated', async () => {});
 `);
+      // A rerun that needs none of the setup's sessions carries its failed afterAll, with no row for the setup.
+      const narrowed = await runExisting(project, { appUrl: app.url, runOptions: { lastFailed: true, grep: [/unrelated/] } });
+      expect(narrowed.exitCode).toBe(0);
+      expect(ran(narrowed)).toEqual([['unrelated', 'passed']]);
+      expect(narrowed.report.run.carried?.results.map((result) => [result.kind, result.titlePath.at(-1)])).toEqual([['setup', 'sign in']]);
+      expect(narrowed.report.run.carried?.errors.map((error) => error.code)).toEqual(['HOOK_FAILED']);
+      assertValidReport(narrowed.report);
+
       const second = await runExisting(project, { appUrl: app.url, runOptions: { lastFailed: true } });
       expect(second.exitCode).toBe(1);
       expect(ran(second)).toEqual([
         ['sign in', 'passed'],
         ['signed in', 'passed'],
-        ['unrelated', 'passed'],
       ]);
       expect(second.report.run.errors.map((error) => error.code)).toEqual(['HOOK_FAILED']);
 
