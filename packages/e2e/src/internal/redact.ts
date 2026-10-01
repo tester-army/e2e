@@ -110,7 +110,7 @@ function compile(values: readonly (readonly [string, string])[]): Compiled {
     });
     if (cut === 0) return redact(text);
     // An occurrence the whole-value pass would rewrite across the fragment's start joins the fragment.
-    let start = tailKey.at[tailKey.key.length - cut] ?? 0;
+    let start = tailKey.at(tailKey.key.length - cut);
     pattern.lastIndex = 0;
     for (let match = pattern.exec(tail); match !== null && match.index < start; match = pattern.exec(tail)) {
       if (match.index + match[0].length > start) {
@@ -269,9 +269,14 @@ function caseKey(text: string): string {
 /** A text as a cut or a fragment of a value is compared, and where each of its units starts in the text. */
 interface ReadingKey {
   readonly key: string;
-  /** The index in the text of each unit of `key`, then the text's length, so a stretch of `key` maps back to one of the text. */
-  readonly at: readonly number[];
+  /** The index in the text of the unit of `key` at `index`; `key.length` maps to the text's length, so a stretch of `key` maps back to one of the text. */
+  readonly at: (index: number) => number;
 }
+
+/** Whitespace a reader rewrites: a run of two or more, or one character other than a plain space. */
+const COLLAPSIBLE = /\s\s|[^\S ]/u;
+/** UTF-16 units joined into one string at a time when the key is rebuilt. */
+const KEY_CHUNK = 8192;
 
 /**
  * `text` as a cut or a fragment of a value is compared: `caseKey`, with each
@@ -279,27 +284,76 @@ interface ReadingKey {
  * (`normalizeText`) shows it before cutting. A value holding a line break, a
  * tab, a CRLF, a no-break space, or a run of spaces then agrees with what a
  * collapsed text keeps of it, and a stretch of the key maps back to the text
- * through `at`.
+ * through `at`. `caseKey` keeps every index, so text with nothing to collapse
+ * is its own key. Otherwise the key is rebuilt unit by unit into a typed
+ * array, and `at` keeps one pair of offsets per collapsed run: a trace text
+ * of many megabytes costs a few times its size, never an object per unit.
  */
 function readingKey(text: string): ReadingKey {
   const cased = caseKey(text);
-  let key = '';
-  const at: number[] = [];
-  let inRun = false;
+  if (!COLLAPSIBLE.test(cased)) return { key: cased, at: (index) => index };
+  const units = new Uint16Array(cased.length);
+  // Pairs of where a stretch after a collapsed run starts, in the key and in the text.
+  let breaks = new Int32Array(64);
+  let pairs = 0;
+  let length = 0;
   for (let index = 0; index < cased.length; index += 1) {
-    const unit = cased.charAt(index);
-    const space = WHITESPACE.test(unit);
-    if (space && inRun) continue;
-    inRun = space;
-    key += space ? ' ' : unit;
-    at.push(index);
+    const unit = cased.charCodeAt(index);
+    if (!isWhitespace(unit)) {
+      units[length++] = unit;
+      continue;
+    }
+    let end = index + 1;
+    while (end < cased.length && isWhitespace(cased.charCodeAt(end))) end += 1;
+    units[length++] = 0x20;
+    if (end - index > 1 || unit !== 0x20) {
+      if (2 * pairs + 2 > breaks.length) {
+        const grown = new Int32Array(breaks.length * 2);
+        grown.set(breaks);
+        breaks = grown;
+      }
+      breaks[2 * pairs] = length;
+      breaks[2 * pairs + 1] = end;
+      pairs += 1;
+    }
+    index = end - 1;
   }
-  at.push(text.length);
-  return { key, at };
+  const chunks: string[] = [];
+  for (let start = 0; start < length; start += KEY_CHUNK) {
+    chunks.push(String.fromCharCode(...units.subarray(start, Math.min(length, start + KEY_CHUNK))));
+  }
+  return {
+    key: chunks.join(''),
+    at: (index) => {
+      // The last stretch starting at or before `index`; before the first run the key and the text agree.
+      let low = -1;
+      let high = pairs - 1;
+      while (low < high) {
+        const middle = (low + high + 1) >> 1;
+        if ((breaks[2 * middle] ?? 0) <= index) low = middle;
+        else high = middle - 1;
+      }
+      return low === -1 ? index : (breaks[2 * low + 1] ?? 0) + index - (breaks[2 * low] ?? 0);
+    },
+  };
 }
 
-/** One UTF-16 unit of whitespace, as `normalizeText` collapses it. */
-const WHITESPACE = /^\s$/u;
+/** Whether a UTF-16 unit is one `\s` matches: what `normalizeText` collapses. */
+function isWhitespace(unit: number): boolean {
+  return (
+    unit === 0x20 ||
+    (unit >= 0x09 && unit <= 0x0d) ||
+    unit === 0xa0 ||
+    unit === 0x1680 ||
+    (unit >= 0x2000 && unit <= 0x200a) ||
+    unit === 0x2028 ||
+    unit === 0x2029 ||
+    unit === 0x202f ||
+    unit === 0x205f ||
+    unit === 0x3000 ||
+    unit === 0xfeff
+  );
+}
 
 /** One non-ASCII character's `caseKey`, the same length as `ch`. */
 function caseKeyOf(ch: string): string {
@@ -429,8 +483,8 @@ function rewriteFragments(text: string, owners: ReadonlyMap<string, number>, mar
     }
     let end = start + FRAGMENT_LENGTH;
     while (end < key.length && owners.has(key.slice(end + 1 - FRAGMENT_LENGTH, end + 1))) end += 1;
-    out += `${text.slice(kept, at[start])}${markers[owner] ?? ''}`;
-    kept = at[end] ?? text.length;
+    out += `${text.slice(kept, at(start))}${markers[owner] ?? ''}`;
+    kept = at(end);
     start = end;
   }
   return out + text.slice(kept);

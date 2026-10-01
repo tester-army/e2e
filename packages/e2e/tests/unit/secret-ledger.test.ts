@@ -431,6 +431,20 @@ describe('redactFragments', () => {
     expect(ledger.redactFragments('plain abcde xyz fghij')).toBe('plain abcde xyz fghij');
   });
 
+  it.each([
+    ['single spaces', 'var a = 1; '],
+    ['line breaks and indentation', 'var a = 1;\n    '],
+  ])('reads a large text with %s in about its own size, and still finds a fragment at its end', (_kind, line) => {
+    const ledger = new SecretLedger([['apiKey', SECRET]]);
+    const text = `${line.repeat(Math.ceil(8_000_000 / line.length))}${SECRET.slice(10, 30)}`;
+    const before = process.memoryUsage().heapUsed;
+    const started = performance.now();
+    const redacted = ledger.redactFragments(text);
+    expect(performance.now() - started).toBeLessThan(5_000);
+    expect(process.memoryUsage().heapUsed - before).toBeLessThan(text.length * 16);
+    expect(redacted.endsWith('<secret:apiKey>')).toBe(true);
+  });
+
   it('scans a long text in one linear pass', () => {
     const ledger = new SecretLedger([['apiKey', SECRET]]);
     const text = `${SECRET.slice(0, 7).toUpperCase()} `.repeat(20_000);
