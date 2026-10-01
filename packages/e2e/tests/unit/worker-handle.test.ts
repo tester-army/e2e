@@ -58,6 +58,7 @@ describe('ChildProcessRunner', () => {
         ports: {},
         runId: 'run',
         artifactsRoot: dir,
+        rerunDir: undefined,
         headed: false,
         sessionsRoot: dir,
         sessionKeyBase64: '',

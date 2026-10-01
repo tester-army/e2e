@@ -63,7 +63,10 @@ Upload artifacts even when a retry passes. Each failure's evidence links open
 the run's Artifacts section; inside the download, every test has a directory
 named after it and the agent that ran it
 (`web/tests_billing.e2e.ts__upgrades/default/attempt-0/`), so keep
-`path: .e2e/artifacts` and the download lines up with the report. A project
+`path: .e2e/artifacts` and the download lines up with the report. A
+`--last-failed` rerun keeps the first run's directories and puts its own
+under `rerun-1/`, so a flaky test's failed attempt still links to its own
+files. A project
 below the checkout root, such as `packages/e2e-tests`, gets source links under
 that path. The checkout root is the nearest directory holding `.git` inside
 `GITHUB_WORKSPACE`, so `actions/checkout` with a `path` input works too.
@@ -144,10 +147,13 @@ passes:
 The comment covers the whole suite, not only the tests the rerun ran again.
 A test that failed and then passed shows as flaky, a test that failed twice
 stays failed, one that was interrupted and then passed shows as passed, and
-the rest keep their first-pass results. The comment
-matches the job's status: it stays red when another filter kept a failed
-test out of the rerun, and shows ⏹️ when it kept out a test the first pass
-never finished.
+the rest keep their first-pass results. The comment stays red while the
+rerun left out something it owed: a failed test, one `--max-failures` stopped
+before it ran, or a failed `beforeAll` or `afterAll` whose tests another
+filter kept out of the rerun. It shows ⏹️ when the rerun left out a test the
+first pass never finished. The rerun's own exit code counts only what it ran.
+A failed attempt's evidence links to the first run's files, which the rerun
+keeps.
 
 ## Matrix jobs
 

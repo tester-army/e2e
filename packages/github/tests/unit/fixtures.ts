@@ -99,6 +99,8 @@ export function report(
     readonly serialGroups?: readonly ReportSerialGroup[];
     readonly targets?: readonly string[];
     readonly projectId?: string;
+    /** What a `--last-failed` rerun carries; the fixture's own carried section is never inherited. */
+    readonly carried?: ReportRun['carried'];
   } = {},
 ): Report {
   const status = input.status ?? 'passed';
@@ -117,6 +119,7 @@ export function report(
       serialGroups: input.serialGroups ?? [],
       results,
       errors: input.errors ?? [],
+      carried: input.carried,
     },
   };
 }

@@ -32,6 +32,8 @@ export interface InProcessRunnerOptions {
   readonly inMemory?: (InMemoryAttempts & { readonly registration: ModuleRegistration }) | undefined;
   readonly runId: string;
   readonly artifactsRoot: string;
+  /** See `TargetExecutorOptions.rerunDir`. */
+  readonly rerunDir: string | undefined;
   readonly sessionStore: SessionStore;
   readonly headed: boolean;
   readonly debug: DebugTrace;
@@ -133,6 +135,7 @@ class InProcessRunner implements UnitRunner {
       sessionStore: this.options.sessionStore,
       runId: this.options.runId,
       artifactsRoot: this.options.artifactsRoot,
+      rerunDir: this.options.rerunDir,
       headed: this.options.headed,
       workerSlot: this.workerSlot,
       env: this.options.envFor(this.targetName),

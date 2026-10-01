@@ -13,7 +13,7 @@ import { groupTitles, type RegisteredTest } from '../collect/registry.ts';
 import { pairRecordings, type SkipInfo, type TestTargetPair } from '../collect/select.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
 import type { ArtifactStore } from '../types.ts';
-import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
+import { attemptSegments, createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
 import type { AttemptContext, ClosingRecord, SessionClose, SessionPlan } from './execute.ts';
 import type { ArtifactSink } from './fixtures.ts';
 import type { StepRecord } from './steps.ts';
@@ -51,6 +51,8 @@ export interface SharedSerialSession {
 export interface SerialHost {
   readonly target: ResolvedTarget;
   readonly artifactsRoot: string;
+  /** See `TargetExecutorOptions.rerunDir`. */
+  readonly rerunDir: string | undefined;
   readonly runId: string;
   /** The configured artifact store, so group-owned artifacts (the shared trace) upload like any other. */
   readonly artifactStore: ArtifactStore | undefined;
@@ -186,13 +188,13 @@ async function runSerialAttempt(
   const memberRecords: SerialMemberRecord[] = [];
   const first = members[0]!;
   const recordings = pairRecordings(first, attemptIndex);
-  const artifactSegments = [
+  const artifactSegments = attemptSegments(host.rerunDir, [
     host.target.name,
     sanitizePathSegment(first.test.serialId ?? first.test.id),
     first.agent,
     ...repeatSegment(first.repeat),
     `attempt-${attemptIndex}`,
-  ];
+  ]);
   const artifacts = createAttemptArtifacts({
     artifactsRoot: host.artifactsRoot,
     segments: artifactSegments,

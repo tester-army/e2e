@@ -61,6 +61,8 @@ export interface WorkerBootstrap {
   readonly workerSlot: number;
   readonly runId: string;
   readonly artifactsRoot: string;
+  /** See `TargetExecutorOptions.rerunDir`. */
+  readonly rerunDir: string | undefined;
   readonly headed: boolean;
   readonly sessionsRoot: string;
   /** Per-run AES key; transferred only over this channel, never disk or env. */

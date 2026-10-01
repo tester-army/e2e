@@ -27,7 +27,7 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status or switch
 | `--tag <tags>` | Any of the tags, comma-separated or repeated; all of them with `--tag-mode all`. An empty `--target`, `--tag`, or `--agent` value is a usage error, exit 2. |
 | `--exclude-tag <tags>` | Drop tests carrying any of these tags, however selected. |
 | `--grep <pattern>`, `--grep-invert <pattern>` | Keep, or drop, tests whose title (describe titles and test title joined by spaces, `checkout pays`; not file or tags) matches a regular expression. Bare pattern or `'/pattern/i'`; repeat for alternatives. |
-| `--last-failed` | The tests the previous run (`<output>/report.json`) did not pass, plus every test in a failed `beforeAll` or `afterAll` scope. No report is `NO_LAST_RUN`, exit 2. |
+| `--last-failed` | The tests the previous run (`<output>/report.json`) did not pass or never ran (`--max-failures` included), plus every test in a failed `beforeAll` or `afterAll` scope. A test another filter leaves out stays owed (`run.carried` in the report) until a rerun runs it. No report is `NO_LAST_RUN`, exit 2. |
 | `--shard <index/total>` | One contiguous slice of the selected tests (`--shard 2/3`), cut after every other filter; serial groups stay whole, each shard brings its own setup tests. |
 | `--headed` | Visible browser or simulator when the engine supports it. |
 | `--agent <names>` | Run unpinned tests as these `agents.<name>` entries (default `agents.default`), comma-separated or repeated; several names run each such test once per agent. |
@@ -87,7 +87,8 @@ its own tools.
 `summary.md`, `failures/`, `ai-trace.json`, `sessions/`, and `artifacts/`
 (screenshots, Playwright traces, videos, `--debug` transcripts, downloads).
 `artifacts/` is cleared once a run's tests start; a run stopping before
-leaves the last run's files. The report records every artifact path, a
+leaves the last run's files, and a `--last-failed` rerun keeps the files
+the report it reruns names and writes its own under `artifacts/rerun-<n>/`. The report records every artifact path, a
 hosted service's video by URL.
 
 - `list` (default): setup steps, one line per file and target, a `Failed

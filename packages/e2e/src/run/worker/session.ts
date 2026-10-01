@@ -41,6 +41,8 @@ export interface TargetWorkerDeps {
   readonly sessionStore: SessionStore;
   readonly runId: string;
   readonly artifactsRoot: string;
+  /** See `TargetExecutorOptions.rerunDir`. */
+  readonly rerunDir: string | undefined;
   readonly headed: boolean;
   /** See `TargetExecutorOptions.workerSlot`. */
   readonly workerSlot: number;
@@ -102,6 +104,7 @@ export class TargetWorker {
         target: deps.target,
         runId: deps.runId,
         artifactsRoot: deps.artifactsRoot,
+        rerunDir: deps.rerunDir,
         sessionStore: deps.sessionStore,
         headed: deps.headed,
         workerSlot: deps.workerSlot,

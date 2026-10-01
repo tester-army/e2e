@@ -7,6 +7,7 @@ import { attempt, report, result } from './fixtures.ts';
 
 type ReportSerialGroup = Report['run']['serialGroups'][number];
 type ReportSerialAttempt = ReportSerialGroup['attempts'][number];
+type ReportError = Report['run']['errors'][number];
 
 const failedAttempt = attempt({ status: 'failed', error: { code: 'ASSERTION_FAILED', message: 'no cart' } });
 const leftOut = { cause: 'filtered' as const, reason: 'did not fail in the last run' };
@@ -200,6 +201,79 @@ describe('foldLastRun', () => {
     expect(byTitle(folded).get('A#0')).toMatchObject({ status: 'failed' });
     expect(folded.run.summary).toMatchObject({ failed: 1, interrupted: 0 });
     expect(renderMarkdownReport(folded)).toContain('### 🔴 e2e: 1 failed');
+  });
+
+  it('keeps the page red while the rerun carries a hook failure or a failed test it did not run again, with their evidence', () => {
+    const scope = { file: 'tests/a.e2e.ts', targetId: 'web', titlePath: [] };
+    const hook: ReportError = { category: 'test', code: 'HOOK_FAILED', message: 'afterAll failed: teardown broke', retryable: false, phase: 'afterAll', scopeId: 'file', scope };
+    const evidence = attempt({ artifacts: ['screenshot'] });
+    const inHookScope = result({ title: 'A', file: 'tests/a.e2e.ts', status: 'passed', attempts: [evidence] });
+    const before = report({ status: 'failed', results: [inHookScope, result({ title: 'B', status: 'failed', attempts: [failedAttempt] })], errors: [hook] });
+    const onlyB = report({
+      results: [
+        result({ title: 'A', file: 'tests/a.e2e.ts', status: 'skipped', selected: false, skip: { cause: 'filtered', reason: 'title does not match --grep' } }),
+        result({ title: 'B', status: 'passed', attempts: [attempt()] }),
+      ],
+      carried: { results: [inHookScope], serialGroups: [], errors: [hook] },
+    });
+    const folded = foldLastRun(onlyB, before);
+    expect(byTitle(folded).get('A#0')).toEqual(inHookScope);
+    expect(byTitle(folded).get('B#0')).toMatchObject({ status: 'flaky' });
+    expect(folded.run.errors).toEqual([hook]);
+    expect(folded.run.status).toBe('failed');
+    expect(folded.run.exitCode).toBe(1);
+    const page = renderMarkdownReport(folded);
+    expect(page).toContain('### 🔴 e2e: 1 flaky, 1 passed');
+    expect(page).toContain('HOOK_FAILED');
+
+    // A carried test that failed reds the page on its own.
+    const carriedFailure = result({ title: 'C', status: 'failed', attempts: [failedAttempt] });
+    const withFailure = report({
+      results: [result({ title: 'C', status: 'skipped', selected: false, skip: leftOut }), result({ title: 'B', status: 'passed', attempts: [attempt()] })],
+      carried: { results: [carriedFailure], serialGroups: [], errors: [] },
+    });
+    expect(foldLastRun(withFailure, report({ results: [result({ title: 'B', status: 'skipped', selected: false, skip: leftOut })] })).run.status).toBe('failed');
+
+    // So does one the failure limit stopped before it ever ran.
+    const neverRan = result({ title: 'D', status: 'skipped', skip: { cause: 'failure-limit', reason: 'run stopped after 1 failure (--max-failures 1)' } });
+    const withLimit = report({
+      results: [result({ title: 'D', status: 'skipped', selected: false, skip: leftOut }), result({ title: 'B', status: 'passed', attempts: [attempt()] })],
+      carried: { results: [neverRan], serialGroups: [], errors: [] },
+    });
+    expect(foldLastRun(withLimit, report({ results: [result({ title: 'B', status: 'skipped', selected: false, skip: leftOut })] })).run).toMatchObject({ status: 'failed', exitCode: 1 });
+  });
+
+  it('reads a test the run before carried by the row it carried, so a rerun that runs it at last folds in its first failure', () => {
+    const firstFailure = result({ title: 'A', status: 'failed', attempts: [failedAttempt] });
+    const narrowed = report({
+      results: [
+        result({ title: 'A', status: 'skipped', selected: false, skip: { cause: 'filtered', reason: 'title does not match --grep' } }),
+        result({ title: 'B', status: 'passed', attempts: [attempt()] }),
+      ],
+      carried: { results: [firstFailure], serialGroups: [], errors: [] },
+    });
+    const atLast = report({
+      results: [result({ title: 'A', status: 'passed', attempts: [attempt()] }), result({ title: 'B', status: 'skipped', selected: false, skip: leftOut })],
+    });
+    const folded = foldLastRun(atLast, narrowed);
+    expect(byTitle(folded).get('A#0')).toMatchObject({ status: 'flaky' });
+    expect(byTitle(folded).get('A#0')?.attempts.map((entry) => entry.status)).toEqual(['failed', 'passed']);
+    expect(byTitle(folded).get('B#0')).toMatchObject({ status: 'passed', selected: true });
+    expect(folded.run.status).toBe('passed');
+  });
+
+  it("shows a carried serial member's group, where its attempts live", () => {
+    const memberTestId = 'tests/example.e2e.ts::wizard::step%20one';
+    const member = result({ title: ['wizard', 'step one'], status: 'failed', serialGroupId: 'g1' });
+    const group = serialGroup('g1', memberTestId, 'failed');
+    const narrowed = report({
+      results: [{ ...member, status: 'skipped', selected: false, skip: { cause: 'filtered', reason: 'title does not match --grep' } }],
+      carried: { results: [member], serialGroups: [group], errors: [] },
+    });
+    const folded = foldLastRun(narrowed, report({ results: [{ ...member, status: 'skipped', selected: false, skip: leftOut }] }));
+    expect(folded.run.serialGroups).toEqual([group]);
+    expect(folded.run.status).toBe('failed');
+    expect(renderMarkdownReport(folded)).toContain('step one broke');
   });
 
   it('leaves the rerun alone when the run before is another project\'s', () => {

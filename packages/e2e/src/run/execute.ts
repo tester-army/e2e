@@ -29,7 +29,7 @@ import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts'
 import { pairRecordings, type TestTargetPair } from '../collect/select.ts';
 import type { AttemptRecording, AttemptRecordings, RecordingKind } from '../internal/recording-modes.ts';
 import type { ArtifactStore, Secret } from '../types.ts';
-import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
+import { attemptSegments, createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
 import { AttemptBudget } from './budget.ts';
 import { createEngineSession } from '../engine/session.ts';
 import { createExtendedFixtures } from './extended-fixtures.ts';
@@ -81,6 +81,12 @@ export interface TargetExecutorOptions {
   readonly target: ResolvedTarget;
   readonly runId: string;
   readonly artifactsRoot: string;
+  /**
+   * The directory under `artifactsRoot` a `--last-failed` rerun's attempts
+   * write in (`claimRerunDir`), beside the evidence of the run it reruns;
+   * undefined when the attempts fill the root themselves.
+   */
+  readonly rerunDir?: string | undefined;
   readonly sessionStore: SessionStore;
   readonly headed: boolean;
   /** This worker's slot among the target's workers; see `EngineInitInfo.workerSlot`. */
@@ -156,6 +162,7 @@ export class TargetExecutor implements SerialHost {
     return this.config.artifactStore;
   }
   readonly artifactsRoot: string;
+  readonly rerunDir: string | undefined;
   readonly interruptSignal: AbortSignal;
   readonly realms: RealmManager;
   readonly debug: DebugTrace;
@@ -173,6 +180,7 @@ export class TargetExecutor implements SerialHost {
   constructor(private readonly options: TargetExecutorOptions) {
     this.target = options.target;
     this.artifactsRoot = options.artifactsRoot;
+    this.rerunDir = options.rerunDir;
     this.interruptSignal = options.interruptSignal;
     this.debug = options.debug ?? new DebugTrace(false);
     this.models = new WorkerModels((error) => {
@@ -850,7 +858,13 @@ export class TargetExecutor implements SerialHost {
       // several times, from overwriting itself.
       segments:
         shared?.artifactSegments ??
-        [this.target.name, sanitizePathSegment(registered.artifactName ?? pair.test.id), pair.agent, ...repeatSegment(pair.repeat), `attempt-${attemptIndex}`],
+        attemptSegments(this.rerunDir, [
+          this.target.name,
+          sanitizePathSegment(registered.artifactName ?? pair.test.id),
+          pair.agent,
+          ...repeatSegment(pair.repeat),
+          `attempt-${attemptIndex}`,
+        ]),
       attemptId,
       currentStepId: () => steps.currentStepId,
       ...(this.config.artifactStore === undefined ? {} : { store: this.config.artifactStore }),

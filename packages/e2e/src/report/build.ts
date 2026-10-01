@@ -338,6 +338,20 @@ export interface ReportSummary {
   skipped: number;
 }
 
+/**
+ * What earlier runs left unresolved that a `--last-failed` rerun did not run
+ * again, because another filter left it out: the results as those runs
+ * reported them, the serial groups their members' attempts live on, and the
+ * suite hook failures whose scope still holds a carried test. The next
+ * `--last-failed` selects these tests too, so a test that never ran again
+ * stays owed until it does.
+ */
+export interface ReportCarried {
+  results: readonly ReportResult[];
+  serialGroups: readonly ReportSerialGroup[];
+  errors: readonly ReportError[];
+}
+
 export interface Report1Document {
   schemaVersion: 'report-1';
   run: {
@@ -368,6 +382,11 @@ export interface Report1Document {
     summary: ReportSummary;
     limits: ReportLimits;
     usage: ReportUsage;
+    /**
+     * Present on a `--last-failed` rerun that left out a test an earlier run
+     * did not pass. Not part of this run's status, exit code, or summary.
+     */
+    carried?: ReportCarried | undefined;
     /** Present on an `e2e explore` run only. */
     explore?: ReportExplore | undefined;
   };

@@ -1,18 +1,20 @@
 /**
  * `output` and `--output`: every result a run writes lands under one
  * directory, the artifact tree is cleared once a run's tests start (a run
- * that stops before leaves the last run's evidence), `--last-failed` reads
- * the report there, and a store's `putLink` receives the recordings a
- * hosted service keeps.
+ * that stops before leaves the last run's evidence, and a `--last-failed`
+ * rerun keeps what the report it reruns names), `--last-failed` reads the
+ * report there, and a store's `putLink` receives the recordings a hosted
+ * service keeps.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createFakeEngine, FAKE_APP, FAKE_APP_URL } from '../helpers/fake-engine.ts';
 import { engineConfig } from '../helpers/fixture-config.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
-import { createProject, resultByTitle, runExisting, runProject } from '../helpers/run-project.ts';
+import { createProject, resultByTitle, runExisting, runProject, type RunOutcome } from '../helpers/run-project.ts';
 import type { StoredArtifact, StoredArtifactLink } from '../../src/index.ts';
 
 const PASSING_TEST = `import { test } from 'e2e';
@@ -99,6 +101,50 @@ describe('output', () => {
         const elsewhere = await runExisting(project, { appUrl: FAKE_APP_URL, config, runOptions: { lastFailed: true, output: 'other' } });
         expect(elsewhere.report.run.errors.map((error) => error.code)).toEqual(['NO_LAST_RUN']);
         expect(rerun.reportPath).toBe(path.join(project.dir, 'results', 'report.json'));
+      } finally {
+        project.cleanup();
+      }
+    },
+    60_000,
+  );
+
+  it(
+    'keeps the evidence a --last-failed rerun folds in, byte for byte, and files the rerun\'s own beside it',
+    async () => {
+      const project = createProject({ 'tests/pass.e2e.ts': PASSING_TEST, 'tests/fail.e2e.ts': FAILING_TEST });
+      try {
+        const config = engineConfig(createFakeEngine({ artifacts: true }).engine);
+        const artifacts = path.join(project.dir, '.e2e', 'artifacts');
+        const screenshotOf = (outcome: RunOutcome) =>
+          resultByTitle(outcome, 'fails on purpose').attempts[0]!.artifacts.find((artifact) => artifact.kind === 'screenshot')!;
+        const onDisk = (artifact: { path?: string | undefined; sha256?: string | undefined }) =>
+          createHash('sha256').update(readFileSync(path.join(artifacts, artifact.path!))).digest('hex') === artifact.sha256;
+
+        const first = await runExisting(project, { appUrl: FAKE_APP_URL, config });
+        const firstShot = screenshotOf(first);
+        expect(firstShot.path).toMatch(/^fake\/.*\/attempt-0\//);
+        const planted = path.join(artifacts, 'fake', 'planted.txt');
+        writeFileSync(planted, 'named by no report');
+
+        const rerun = await runExisting(project, { appUrl: FAKE_APP_URL, config, runOptions: { lastFailed: true } });
+        expect(rerun.status).toBe('failed');
+        const rerunShot = screenshotOf(rerun);
+        expect(rerunShot.path).toBe(`rerun-1/${firstShot.path}`);
+        expect(onDisk(firstShot)).toBe(true);
+        expect(onDisk(rerunShot)).toBe(true);
+        expect(existsSync(planted)).toBe(false);
+        assertValidReport(rerun.report);
+
+        // The next rerun keeps what the report it reruns names, the first run's evidence no more.
+        const again = await runExisting(project, { appUrl: FAKE_APP_URL, config, runOptions: { lastFailed: true } });
+        expect(screenshotOf(again).path).toBe(`rerun-2/${firstShot.path}`);
+        expect(onDisk(rerunShot)).toBe(true);
+        expect(existsSync(path.join(artifacts, firstShot.path!))).toBe(false);
+
+        // A full run starts from an empty tree, at the root again.
+        const full = await runExisting(project, { appUrl: FAKE_APP_URL, config });
+        expect(screenshotOf(full).path).toBe(firstShot.path);
+        expect(readdirSync(artifacts)).toEqual(['fake']);
       } finally {
         project.cleanup();
       }

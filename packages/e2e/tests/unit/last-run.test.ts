@@ -3,7 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { resultId } from '../../src/internal/ids.ts';
-import { lastFailedIds, readLastRun } from '../../src/run/last-run.ts';
+import type { Report1Document } from '../../src/report/build.ts';
+import { carryForward, lastFailedIds, readLastRun, reportArtifactPaths } from '../../src/run/last-run.ts';
 
 let dir: string;
 
@@ -19,28 +20,46 @@ function reportFile(content: string): string {
   return file;
 }
 
+type Row = Record<string, unknown>;
+
 /**
- * A report whose results each name a test by `id` as their test id and title,
- * in `tests/a.e2e.ts` on target `web` as agent `default`, selected, unless a
- * result says otherwise.
+ * A report document whose results each name a test by `id` as their test id
+ * and title, in `tests/a.e2e.ts` on target `web` as agent `default`,
+ * selected, with no attempts, unless a result says otherwise. `run` adds or
+ * overrides run fields; a `carried` there gets the same result defaults.
  */
-function report(results: readonly Record<string, unknown>[], errors: readonly Record<string, unknown>[] = []): string {
-  return JSON.stringify({
+function document(results: readonly Row[], errors: readonly Row[] = [], run: Row = {}): Report1Document {
+  const row = (result: Row): Row => ({
+    testId: result['id'],
+    titlePath: [result['id']],
+    file: 'tests/a.e2e.ts',
+    targetId: 'web',
+    agent: 'default',
+    selected: true,
+    attempts: [],
+    ...result,
+  });
+  const carried = run['carried'] as { results: Row[]; serialGroups?: Row[]; errors?: Row[] } | undefined;
+  return {
     schemaVersion: 'report-1',
     run: {
-      results: results.map((result) => ({
-        testId: result['id'],
-        titlePath: [result['id']],
-        file: 'tests/a.e2e.ts',
-        targetId: 'web',
-        agent: 'default',
-        selected: true,
-        ...result,
-      })),
+      results: results.map(row),
       errors,
+      serialGroups: [],
+      targets: [{ id: 'web' }, { id: 'mobile' }],
+      ...run,
+      ...(carried === undefined ? {} : { carried: { serialGroups: [], errors: [], ...carried, results: carried.results.map(row) } }),
     },
-  });
+  } as unknown as Report1Document;
 }
+
+/** `document` as the text of a report file. */
+function report(results: readonly Row[], errors: readonly Row[] = [], run: Row = {}): string {
+  return JSON.stringify(document(results, errors, run));
+}
+
+/** A result the run left out with a filter. */
+const leftOut = (id: string, reason = 'title does not match --grep'): Row => ({ id, status: 'skipped', selected: false, skip: { cause: 'filtered', reason } });
 
 const idOf = (testId: string) => resultId(testId, 'web', 'default');
 const readLastFailed = async (file: string): Promise<ReadonlySet<string>> => lastFailedIds(await readLastRun(file));
@@ -61,11 +80,12 @@ describe('readLastRun and lastFailedIds', () => {
           { id: 'predecessor', status: 'skipped', skip: { cause: 'serial-predecessor-failed', reason: 'step 1 failed' } },
           { id: 'hook', status: 'skipped', skip: { cause: 'hook-failed', reason: 'beforeAll failed' } },
           { id: 'worker', status: 'skipped', skip: { cause: 'infrastructure-unavailable', reason: 'worker process exited' } },
+          { id: 'limit', status: 'skipped', skip: { cause: 'failure-limit', reason: 'the run stopped at its failure limit' } },
           { id: 'no-skip', status: 'skipped' },
         ]),
       ),
     );
-    expect([...ids]).toEqual(['failed', 'timed-out', 'interrupted', 'setup-failed', 'predecessor', 'hook', 'worker'].map(idOf));
+    expect([...ids]).toEqual(['failed', 'timed-out', 'interrupted', 'setup-failed', 'predecessor', 'hook', 'worker', 'limit'].map(idOf));
   });
 
   it('is empty when every result passed, and names a test once however many of its repeats failed', async () => {
@@ -137,13 +157,112 @@ describe('readLastRun and lastFailedIds', () => {
       '{"schemaVersion":"report-1","run":{"results":[{"id":"a"}]}}',
       '{"schemaVersion":"report-1","run":{"results":[{"id":"a","status":"skipped","skip":"later"}]}}',
       '{"schemaVersion":"report-1","run":{"results":[]}}',
-      '{"schemaVersion":"report-1","run":{"results":[],"errors":[{"phase":1}]}}',
-      '{"schemaVersion":"report-1","run":{"results":[],"errors":[{"phase":"afterAll","scope":{"file":"a.e2e.ts","targetId":"web"}}]}}',
+      '{"schemaVersion":"report-1","run":{"results":[],"errors":[]}}',
+      '{"schemaVersion":"report-1","run":{"results":[],"errors":[{"phase":1}],"serialGroups":[]}}',
+      '{"schemaVersion":"report-1","run":{"results":[],"errors":[{"phase":"afterAll","scope":{"file":"a.e2e.ts","targetId":"web"}}],"serialGroups":[]}}',
+      '{"schemaVersion":"report-1","run":{"results":[{"id":"a","status":"passed","file":"a.e2e.ts","titlePath":["a"]}],"errors":[],"serialGroups":[]}}',
+      '{"schemaVersion":"report-1","run":{"results":[{"id":"a","status":"passed","file":"a.e2e.ts","titlePath":["a"],"attempts":[{}]}],"errors":[],"serialGroups":[]}}',
+      '{"schemaVersion":"report-1","run":{"results":[],"errors":[],"serialGroups":[{"id":"g"}]}}',
+      '{"schemaVersion":"report-1","run":{"results":[],"errors":[],"serialGroups":[],"carried":{"results":[{"id":"a"}],"errors":[],"serialGroups":[]}}}',
+      '{"schemaVersion":"report-1","run":{"results":[],"errors":[],"serialGroups":[],"carried":{"results":[]}}}',
     ]) {
       await expect(readLastRun(reportFile(content)), content).rejects.toMatchObject({
         code: 'NO_LAST_RUN',
         message: expect.stringMatching(/^--last-failed needs a report-1 document at .*report\.json, which holds something else; run once without the flag to write one$/u),
       });
     }
+  });
+});
+
+describe('carryForward', () => {
+  const failed = (id: string, extra: Row = {}): Row => ({ id, status: 'failed', attempts: [{ artifacts: [{ path: `web/${id}/attempt-0/failure.png` }] }], ...extra });
+  const passed = (id: string, extra: Row = {}): Row => ({ id, status: 'passed', attempts: [{ artifacts: [] }], ...extra });
+  const carriedIds = (carried: ReturnType<typeof carryForward>) => carried?.results.map((result) => result.testId);
+  const scope = { file: 'tests/a.e2e.ts', targetId: 'web', titlePath: ['teardown'] };
+  const afterAll = { code: 'HOOK_FAILED', phase: 'afterAll', scopeId: 'teardown', scope };
+  const inScope = (status: (id: string, extra?: Row) => Row) => status('in-scope', { titlePath: ['teardown', 'in-scope'] });
+
+  it('carries what the run before owed and another filter left out, as that run reported it', () => {
+    const before = document([failed('broken'), { id: 'limit', status: 'skipped', skip: { cause: 'failure-limit', reason: 'stopped' } }, passed('fine')]);
+    const carried = carryForward(before, document([passed('broken'), leftOut('limit'), leftOut('fine', 'did not fail in the last run')]));
+    expect(carriedIds(carried)).toEqual(['limit']);
+    expect(carried?.results[0]).toEqual(before.run.results[1]);
+    expect(carried?.errors).toEqual([]);
+    // What the rerun ran is its own result now, passed or not; nothing owed left out is nothing carried.
+    expect(carryForward(before, document([failed('broken'), passed('limit'), leftOut('fine')]))).toBeUndefined();
+  });
+
+  it('keeps a test owed across consecutive reruns until one runs it, and the next --last-failed selects it', () => {
+    const first = document([failed('a'), failed('b')]);
+    const carriedOnce = carryForward(first, document([passed('a'), leftOut('b')]));
+    expect(carriedIds(carriedOnce)).toEqual(['b']);
+    const second = document([passed('a'), leftOut('b')], [], { carried: carriedOnce });
+    expect([...lastFailedIds(second)]).toEqual([idOf('b')]);
+
+    // Left out again: still the first run's row, not the filtered one in between.
+    expect(carryForward(second, document([leftOut('a', 'did not fail in the last run'), leftOut('b')]))?.results).toEqual([first.run.results[1]]);
+    // Run again, it is the rerun's own result.
+    expect(carryForward(second, document([leftOut('a'), passed('b')]))).toBeUndefined();
+    // A test the rerun no longer has cannot run again.
+    expect(carryForward(second, document([leftOut('a')]))).toBeUndefined();
+  });
+
+  it('carries a suite hook failure while its scope holds a carried test, and drops it once the scope ran again', () => {
+    const before = document([inScope(passed), failed('elsewhere', { file: 'tests/b.e2e.ts' })], [afterAll, { code: 'CLEANUP_TIMEOUT', phase: 'cleanup' }]);
+    const narrowed = carryForward(before, document([leftOut('in-scope'), passed('elsewhere', { file: 'tests/b.e2e.ts' })]));
+    expect(carriedIds(narrowed)).toEqual(['in-scope']);
+    expect(narrowed?.errors).toEqual([afterAll]);
+
+    // The scope ran again and the hook passed: resolved. It failed again: the rerun reports it itself, once.
+    const elsewhere = passed('elsewhere', { file: 'tests/b.e2e.ts' });
+    expect(carryForward(before, document([inScope(passed), elsewhere]))).toBeUndefined();
+    expect(carryForward(before, document([inScope(passed), elsewhere], [afterAll]))).toBeUndefined();
+
+    // A hook failure carried from further back stays carried with its scope.
+    const second = document([leftOut('in-scope'), passed('elsewhere', { file: 'tests/b.e2e.ts' })], [], { carried: narrowed });
+    expect(carryForward(second, document([leftOut('in-scope'), leftOut('elsewhere')]))?.errors).toEqual([afterAll]);
+  });
+
+  it('resolves a hook whose scope ran again without it failing, though another filter left part of the scope out', () => {
+    const sibling = (status: (id: string, extra?: Row) => Row) => status('sibling', { titlePath: ['teardown', 'sibling'] });
+    const before = document([inScope(passed), sibling(passed)], [afterAll]);
+    expect(carryForward(before, document([inScope(passed), leftOut('sibling')]))).toBeUndefined();
+    // Failing again it is the rerun's own error, and the sibling it left out stays owed.
+    const again = carryForward(before, document([inScope(passed), leftOut('sibling')], [afterAll]));
+    expect(carriedIds(again)).toEqual(['sibling']);
+    expect(again?.errors).toEqual([]);
+    // A scope test the rerun selected but never ran does not show the hook passing.
+    const limited = { id: 'in-scope', titlePath: ['teardown', 'in-scope'], status: 'skipped', skip: { cause: 'failure-limit', reason: 'stopped' } };
+    expect(carryForward(before, document([limited, leftOut('sibling')]))?.errors).toEqual([afterAll]);
+  });
+
+  it('carries a test on a target or agent the rerun did not select, while the test and the target are still there', () => {
+    const before = document([failed('a'), failed('a', { targetId: 'mobile', id: 'a-mobile', testId: 'a' }), failed('a', { agent: 'other', id: 'a-other', testId: 'a' })]);
+    const onWeb = carryForward(before, document([passed('a')]));
+    expect(onWeb?.results.map((result) => [result.targetId, result.agent])).toEqual([
+      ['mobile', 'default'],
+      ['web', 'other'],
+    ]);
+    // A target the config no longer has cannot run it again.
+    expect(carryForward(before, document([passed('a'), passed('a', { agent: 'other', id: 'a-other', testId: 'a' })], [], { targets: [{ id: 'web' }] }))).toBeUndefined();
+  });
+
+  it("carries a serial member's group, where its attempts live", () => {
+    const group = { id: 'group', attempts: [{ artifacts: [{ path: 'web/group/attempt-0/trace.zip' }] }] };
+    const before = document([failed('member', { serialGroupId: 'group', attempts: [] }), failed('other')], [], { serialGroups: [group] });
+    const carried = carryForward(before, document([leftOut('member'), passed('other')]));
+    expect(carriedIds(carried)).toEqual(['member']);
+    expect(carried?.serialGroups).toEqual([group]);
+  });
+
+  it('names every artifact file a report points at, its carried ones included', () => {
+    const group = { id: 'group', attempts: [{ artifacts: [{ path: 'web/group/attempt-0/trace.zip' }, { url: 'https://hosted.example/v.mp4' }] }] };
+    const carried = { results: [failed('old')], serialGroups: [group] };
+    const paths = reportArtifactPaths(document([failed('new'), passed('fine')], [], { carried }));
+    expect([...paths].toSorted()).toEqual(['web/group/attempt-0/trace.zip', 'web/new/attempt-0/failure.png', 'web/old/attempt-0/failure.png']);
+  });
+
+  it('reads the tests a report carries back as ones to run again', async () => {
+    expect([...(await readLastFailed(reportFile(report([passed('a')], [], { carried: { results: [failed('owed')] } }))))]).toEqual([idOf('owed')]);
   });
 });

@@ -180,7 +180,13 @@ abandoned reporter keeps the CLI alive after the run has ended.
 With `--last-failed`, `lastRun` is the report the rerun selected from. The
 rerun's own report lists the tests it left out as unselected, so a reporter
 that keeps one place current, the way `@e2e-dev/github` keeps a pull request
-comment, folds the rerun into `lastRun` to show both runs as one.
+comment, folds the rerun into `lastRun` to show both runs as one. A test the
+rerun owed but another filter left out is in the rerun's `run.carried`: its
+last result, the serial group its attempts live on, and the `beforeAll` or
+`afterAll` failure whose scope holds it, from whichever earlier run reported
+them. A fold shows the carried result in place of the unselected one and
+counts a carried failure or hook error against the outcome. The artifacts
+both reports name are on disk under `artifactsRoot`.
 
 The rows a reporter resolves with print under the `list` summary in the same
 layout as `Report`; the `json` reporter does not carry them:

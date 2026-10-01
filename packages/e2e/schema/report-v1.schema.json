@@ -671,8 +671,20 @@
         "summary": { "$ref": "#/$defs/summary" },
         "limits": { "$ref": "#/$defs/limits" },
         "usage": { "$ref": "#/$defs/usage" },
+        "carried": { "$ref": "#/$defs/carried" },
         "explore": { "$ref": "#/$defs/explore" },
         "extensions": { "$ref": "#/$defs/extensions" }
+      }
+    },
+    "carried": {
+      "description": "What earlier runs left unresolved that a --last-failed rerun did not run again: their results as they reported them, the serial groups those results' attempts live on, and the suite hook failures whose scope still holds one of them. The next --last-failed selects these tests too. Not part of the run's status, exit code, or summary.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["results", "serialGroups", "errors"],
+      "properties": {
+        "results": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/result" } },
+        "serialGroups": { "type": "array", "items": { "$ref": "#/$defs/serialGroup" } },
+        "errors": { "type": "array", "items": { "$ref": "#/$defs/error" } }
       }
     },
     "exploreFinding": {

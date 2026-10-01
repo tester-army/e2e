@@ -72,21 +72,29 @@ function summarize(results: readonly ReportResult[], base: ReportSummary): Repor
 /**
  * The rerun folded into the run it selected from. A result the rerun has
  * under the same id is folded with it; a test the rerun left out keeps what
- * the run before said. Results the rerun has no id for at all, the further
+ * the run before said, or what the rerun carries for it when an earlier run
+ * left it owed (`run.carried`), and so do the serial groups those results'
+ * attempts live on. Results the rerun has no id for at all, the further
  * repeats of a `--repeat-each` first pass a plain rerun ran once, fold into
  * the rerun's first result of that test, or stay as carried rows when the
  * rerun left the test out. A run before of another project leaves the rerun
  * as it is. The outcome is the rerun's unless a carried result failed, as a
- * test another filter kept out of the rerun can have: then the page is red,
- * since it lists a failure. The start is the run before's, so the footer's
- * duration spans both.
+ * test another filter kept out of the rerun can have, or the rerun carries
+ * anything (`run.carried`): a test it owed and never ran, a failure limit's
+ * skip among them, or a suite hook failure whose scope it did not run again.
+ * Then the page is red, since the suite is not known to pass. The start is
+ * the run before's, so the footer's duration spans both.
  */
 export function foldLastRun(current: Report, lastRun: Report): Report {
   if (lastRun.run.project.id !== current.run.project.id) return current;
+  const carried = current.run.carried;
+  const carriedById = new Map((carried?.results ?? []).map((result) => [result.id, result]));
   const currentIds = new Set(current.run.results.map((result) => result.id));
-  const beforeById = new Map(lastRun.run.results.map((result) => [result.id, result]));
+  // The run before's own carried rows stand for the tests it left out, over their filtered rows.
+  const before = [...lastRun.run.results, ...(lastRun.run.carried?.results ?? [])];
+  const beforeById = new Map(before.map((result) => [result.id, result]));
   const leftovers = new Map<string, ReportResult[]>();
-  for (const result of lastRun.run.results) {
+  for (const result of beforeById.values()) {
     if (currentIds.has(result.id)) continue;
     const key = testKey(result);
     leftovers.set(key, [...(leftovers.get(key) ?? []), result]);
@@ -98,26 +106,29 @@ export function foldLastRun(current: Report, lastRun: Report): Report {
 
   const results: ReportResult[] = [];
   for (const result of current.run.results) {
-    const before = beforeById.get(result.id);
+    const previous = beforeById.get(result.id);
     if (!result.selected) {
-      results.push(before ?? result);
+      results.push(carriedById.get(result.id) ?? previous ?? result);
       continue;
     }
     const key = testKey(result);
     const extra = firstOfKey.get(key) === result.id ? (leftovers.get(key) ?? []) : [];
     if (extra.length > 0) leftovers.delete(key);
-    results.push(foldRerun(result, before === undefined ? extra : [before, ...extra]));
+    results.push(foldRerun(result, previous === undefined ? extra : [previous, ...extra]));
   }
   for (const extra of leftovers.values()) results.push(...extra);
 
-  const beforeGroups = new Map(lastRun.run.serialGroups.map((group) => [group.id, group]));
+  const beforeGroups = new Map([...lastRun.run.serialGroups, ...(lastRun.run.carried?.serialGroups ?? [])].map((group) => [group.id, group]));
   const currentGroupIds = new Set(current.run.serialGroups.map((group) => group.id));
+  const carriedGroups = (carried?.serialGroups ?? []).filter((group) => !currentGroupIds.has(group.id) && !beforeGroups.has(group.id));
   const serialGroups = [
-    ...lastRun.run.serialGroups.filter((group) => !currentGroupIds.has(group.id)),
+    ...[...beforeGroups.values()].filter((group) => !currentGroupIds.has(group.id)),
+    ...carriedGroups,
     ...current.run.serialGroups.map((group) => foldGroup(group, beforeGroups.get(group.id))),
   ];
 
-  const carriedFailure = results.some((result) => result.selected && FAILED_STATUSES.has(result.status));
+  const carriedErrors = carried?.errors ?? [];
+  const carriedFailure = carriedById.size > 0 || carriedErrors.length > 0 || results.some((result) => result.selected && FAILED_STATUSES.has(result.status));
   return {
     ...current,
     run: {
@@ -127,6 +138,7 @@ export function foldLastRun(current: Report, lastRun: Report): Report {
       startedAt: lastRun.run.startedAt,
       serialGroups,
       results,
+      errors: [...current.run.errors, ...carriedErrors],
       summary: summarize(results, current.run.summary),
     },
   };

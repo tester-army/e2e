@@ -41,7 +41,8 @@ import { runUnits } from './scheduler.ts';
 import { buildWorkPlans, plannedSlots, type TargetWorkPlan } from './units.ts';
 import { SessionStore } from './sessions.ts';
 import { outputLayout } from './output.ts';
-import { lastFailedIds, readLastRun } from './last-run.ts';
+import { claimRerunDir, pruneArtifacts } from './artifacts.ts';
+import { carryForward, lastFailedIds, readLastRun, reportArtifactPaths } from './last-run.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setSecretRegistry } from '../secrets.ts';
 import { withAbort } from '../internal/time.ts';
@@ -411,8 +412,12 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   // Detected once the config names the project root; a report written before
   // that (a config failure) has no checkout to describe.
   let vcs: VcsInfo | undefined;
-  const buildRunReport = (exitCode: RunExitCode): Report1Document =>
-    buildReport({
+  // The report `--last-failed` selected from, once collection has read it;
+  // reporters get it beside this run's report to fold the rerun into it, and
+  // this run's report carries what it owed that this run left out.
+  let lastRun: Report1Document | undefined;
+  const buildRunReport = (exitCode: RunExitCode): Report1Document => {
+    const document = buildReport({
       runId,
       config: loaded.config,
       vcs,
@@ -425,6 +430,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       targetProvenance,
       explore: options.tests?.explore?.snapshot(),
     });
+    const carried = lastRun === undefined ? undefined : carryForward(lastRun, document);
+    return carried === undefined ? document : { ...document, run: { ...document.run, carried } };
+  };
 
   /**
    * Writes the canonical report and returns its path only once the file
@@ -485,9 +493,6 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     }
   };
 
-  // The report `--last-failed` selected from, once collection has read it;
-  // reporters get it beside this run's report to fold the rerun into it.
-  let lastRun: Report1Document | undefined;
   /**
    * Whether the run got as far as its tests. Only such a run writes into the
    * output directory: one that stopped before leaves the previous run's
@@ -714,15 +719,25 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // Tests are about to start, and only now is the previous run's evidence
     // given up: the artifact tree is emptied, so what is there once this run
     // ends is its own and nothing a report no longer names, and this run's
-    // report replaces the last. A run that stopped before here (no test
-    // selected, a collection error, a target that cannot record what it asks,
-    // an app that failed to start, an interrupt) leaves both, and
+    // report replaces the last. A `--last-failed` rerun keeps the evidence
+    // the report it reruns names instead, since that report's results fold
+    // into the rerun's and its carried tests do not run again, and files its
+    // own attempts in a fresh `rerun-<n>` directory beside it, so no attempt
+    // overwrites an earlier one's files. A run that stopped before here (no
+    // test selected, a collection error, a target that cannot record what it
+    // asks, an app that failed to start, an interrupt) leaves both, and
     // `--last-failed` still reads the run that executed. A wipe that fails
     // part way has already given up the old evidence, so this run's report
     // records the failure.
     testsStarted = true;
+    let rerunDir: string | undefined;
     try {
-      await rm(layout.artifacts, { recursive: true, force: true });
+      if (lastRun === undefined) {
+        await rm(layout.artifacts, { recursive: true, force: true });
+      } else {
+        await pruneArtifacts(layout.artifacts, reportArtifactPaths(lastRun));
+        rerunDir = await claimRerunDir(layout.artifacts);
+      }
     } catch (cause) {
       recordFailure(cause, 'launch');
       return;
@@ -748,6 +763,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             inMemory: options.tests,
             runId,
             artifactsRoot,
+            rerunDir,
             sessionStore: store,
             headed: options.headed ?? false,
             debug,
@@ -761,6 +777,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             ports: config.ports,
             runId,
             artifactsRoot,
+            rerunDir,
             headed: options.headed ?? false,
             sessionsRoot: layout.sessions,
             sessionKeyBase64: store.exportKeyForWorker(),

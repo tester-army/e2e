@@ -383,7 +383,7 @@ run.
 | `report.json` | The canonical report; `--last-failed` reads the one here |
 | `junit.xml`, `summary.md`, `failures/` | The `junit` and `markdown` reporters' files |
 | `ai-trace.json` | `--ai-trace` |
-| `artifacts/` | Screenshots, traces, videos, downloads, and logs, one directory per attempt. Cleared once a run's tests start, so it holds the latest run's evidence and nothing its report no longer names |
+| `artifacts/` | Screenshots, traces, videos, downloads, and logs, one directory per attempt. Cleared once a run's tests start, so it holds the latest run's evidence and nothing its report no longer names. A `--last-failed` rerun keeps the files the report it reruns names and writes its own attempts under `artifacts/rerun-<n>/` |
 | `sessions/` | The run's encrypted `test.setup` sessions, deleted when it ends |
 | `videos/<session>/` | [`e2e mcp`](/reference/mcp#recording) session recordings |
 
