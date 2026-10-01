@@ -35,7 +35,9 @@ describe('value matchers', () => {
     e2eExpect(null).toBeNull();
     e2eExpect(undefined).toBeUndefined();
     e2eExpect('x').toBeDefined();
-    failsWith(() => e2eExpect(null).toBeDefined(), /defined/);
+    e2eExpect(null).toBeDefined();
+    failsWith(() => e2eExpect(undefined).toBeDefined(), /to be defined/);
+    failsWith(() => e2eExpect(null).not.toBeDefined(), /not to be defined/);
   });
 
   it('toContain works on strings, arrays, sets, and iterables', () => {

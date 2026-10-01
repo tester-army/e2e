@@ -215,7 +215,7 @@ export interface ValueExpectation<T> {
   toBeNull(): void;
   /** Requires undefined. */
   toBeUndefined(): void;
-  /** Requires a non-nullish value. */
+  /** Requires any value but undefined; null passes. */
   toBeDefined(): void;
   /** Requires a `length` property equal to `expected`: a string, an array, or anything array-like. */
   toHaveLength(expected: number): void;

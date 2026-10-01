@@ -130,7 +130,7 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
 
   toBeDefined(): void {
     this.check(
-      this.actual !== undefined && this.actual !== null,
+      this.actual !== undefined,
       () => `expected ${format(this.actual)} to be defined`,
       () => `expected ${format(this.actual)} not to be defined`,
     );
