@@ -83,7 +83,7 @@ where runs fail, but no test content, app content, or credentials. Opt out with
 ## Made by TesterArmy
 
 e2e is built by [TesterArmy](https://tester.army/?utm_source=e2e&utm_medium=github&utm_campaign=readme_footer),
-the agentic testing platform that runs plain-language tests on web and mobile
+the agentic testing platform that runs natural language tests on web and mobile
 apps, on every pull request or on a schedule.
 
 Apache-2.0.

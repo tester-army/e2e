@@ -1,18 +1,35 @@
 ---
 title: Quickstart
-description: Run your first web or mobile test, then add AI with your own subscription or API key.
+description: Set up e2e with one prompt to your coding agent, or step by step.
 ---
 
-Set up a test, run it, then let an agent drive a flow. Agent steps can use
-your own ChatGPT, GitHub Copilot, or SuperGrok subscription, an API key, or a
-local model.
+## Set up with your coding agent
+
+Open Claude Code, Codex, Cursor, or another coding agent in your app's
+directory and paste this prompt:
+
+<Prompt description="Set up e2e and write a first test" actions={["copy", "cursor"]}>
+Set up e2e end-to-end tests in this project. Docs: `https://e2e.tester.army/docs/quickstart.md`
+
+1. Run `npx e2e init --yes` (or the pnpm or bun equivalent for this project). It writes a web config using Vercel AI Gateway, an example test, the e2e skill, and MCP config. It installs nothing yet.
+2. Read the e2e skill (`npx e2e guide` prints it, `npx e2e guide <topic>` prints a topic) and follow it for every step below.
+3. Point the target at this app. For a web app, set its URL and the command that starts its dev server. For an iOS or Android app, replace @e2e-dev/web and playwright with @e2e-dev/mobile and rewrite the example test for the mobile engine.
+4. Ask me which model to use for agent steps: a ChatGPT, GitHub Copilot, or SuperGrok subscription, an API key, or a local model. Configure it with its provider package. If it needs a sign-in, give me the `npx e2e login` command and wait until I confirm.
+5. Install dependencies, run the example test, and fix setup errors until it passes.
+6. Write one test for the most important user flow in this app, run it, and iterate until it passes.
+</Prompt>
+
+The agent installs the [e2e skill](/coding-agents), so later prompts like
+"add a test for checkout" or "why did this run fail" work without more setup.
 
 <Note>
 Use Node.js 22.12 or newer. On Windows, run inside WSL. Mobile tests also
 need Xcode with an iOS simulator runtime, or the Android SDK with an emulator.
 </Note>
 
-## Run your first test
+## Set up manually
+
+### Run your first test
 
 <Steps>
   <Step title="Create the test project">
@@ -32,11 +49,10 @@ need Xcode with an iOS simulator runtime, or the Android SDK with an emulator.
   ```
   </CodeGroup>
 
-  Choose **Web (Playwright)** or **Mobile (iOS/Android)**, then choose your
-  subscription or model provider. Choose **None** if you only want tests
-  without AI. The wizard writes a config and example test, adds dependencies,
-  and offers to set up your coding agent. Existing config and test files stay intact.
-  If you skipped installing dependencies, run `npm install`, `pnpm install`, or `bun install`.
+  Choose **Web (Playwright)** or **Mobile (iOS/Android)**, then a
+  subscription or model provider, or **None** for tests without AI. The
+  wizard writes a config and an example test, adds dependencies, and offers
+  to set up your coding agent. Existing files stay intact.
 
   <Tabs>
     <Tab title="Web">
@@ -119,19 +135,19 @@ test('Settings opens', async ({ app, screen }) => {
   ```
   </CodeGroup>
 
-  e2e downloads a browser if needed, or boots the configured simulator or
-  emulator. The example checks that the app opens and writes the result to
-  `.e2e/report.json`. It makes no model calls, so no sign-in or API key is needed yet.
+  e2e downloads a browser or boots the simulator or emulator, checks that
+  the app opens, and writes `.e2e/report.json`. No model calls yet, so no
+  sign-in or API key needed.
   </Step>
 </Steps>
 
-## Use a subscription or API key
+### Use a subscription or API key
 
-Connect the option you chose in the wizard before running an agent step.
+Connect the provider you chose in the wizard.
 
 <Tabs>
   <Tab title="Subscription">
-  Sign in to your existing plan. You do not need a separate API key.
+  Sign in to your existing plan. No API key needed.
 
   | Subscription | Command |
   | --- | --- |
@@ -139,30 +155,28 @@ Connect the option you chose in the wizard before running an agent step.
   | GitHub Copilot | `npx e2e login github-copilot` |
   | SuperGrok or X Premium+ | `npx e2e login spacexai` |
 
-  Follow the terminal prompts. Copilot reuses your GitHub CLI login if
-  available; otherwise it needs an OAuth app client ID. See
-  [Subscriptions](/subscriptions) for manual setup and sign-in help.
+  Copilot reuses your GitHub CLI login if available. See
+  [Subscriptions](/subscriptions) for details.
   </Tab>
   <Tab title="API key">
-  Set the environment variable for your provider in the terminal where you
-  run e2e. For Vercel AI Gateway:
+  Set your provider's key in the terminal where you run e2e. For Vercel AI
+  Gateway:
 
   ```bash
   export AI_GATEWAY_API_KEY="your-api-key"
   ```
 
-  With a project linked by `npx vercel link`, the gateway can use a
-  [Vercel OIDC token](/models#vercel-oidc-instead-of-a-key) instead of a
-  key. OpenRouter uses `OPENROUTER_API_KEY`. You can also configure a
-  provider directly with its own API key, or use a local model. See
-  [Models](/models) for config examples.
+  A project linked with `vercel link` can use a
+  [Vercel OIDC token](/models#vercel-oidc-instead-of-a-key) instead.
+  OpenRouter uses `OPENROUTER_API_KEY`. See [Models](/models) for other
+  providers and local models.
   </Tab>
 </Tabs>
 
-## Add an agent step
+### Add an agent step
 
-Create a test with one goal per `agent.act` call, then check the result.
-Adapt the web example to a flow your app supports:
+Give `agent.act` one goal per call, then check the result. Adapt the
+example to a flow in your app:
 
 <Tabs>
   <Tab title="Web">
@@ -202,8 +216,8 @@ test('the agent opens General', async ({ agent, app, device }) => {
   </Tab>
 </Tabs>
 
-Use `params` for values the goal refers to. Use `agent.assert` for a
-judgment about the screen and `expect` for an exact check.
+`params` fill the goal's placeholders. `agent.assert` judges the screen;
+`expect` checks an exact value.
 
 <CodeGroup>
 ```bash npm
@@ -219,9 +233,8 @@ bunx e2e run tests/agent.e2e.ts
 ```
 </CodeGroup>
 
-If you chose **None** during setup, [add a model to your config](/models)
-first. To watch a web test, add `--headed`. To run the agent without replaying
-cached actions, add `--no-cache`.
+Chose **None** in the wizard? [Add a model](/models) first. Add `--headed`
+to watch a web test, `--no-cache` to skip replaying cached actions.
 
 ## Next
 

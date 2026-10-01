@@ -4,7 +4,7 @@ description: Goals, checks, extraction, and the deterministic APIs.
 ---
 
 Use agent calls for goals and questions about the screen. Use `screen` and
-`expect` when you know the exact action or value to check. A test can use both.
+`expect` when you know the exact action or value to check. A test can freely mix both.
 
 ```ts title="tests/todos.e2e.ts"
 import { test, expect } from 'e2e';
@@ -20,16 +20,10 @@ test('todos survive a filter round-trip', async ({ app, agent, screen }) => {
 });
 ```
 
-Import `expect` from `e2e`. Import `test` from `e2e`, or from `@e2e-dev/web`
-or `@e2e-dev/mobile` to get the `browser` or `device` fixture typed. It is the
-same `test` either way.
-
 ## Goals: `agent.act`
 
 Give `act` one goal. The agent chooses and performs the actions, then returns
-when the goal passes or throws when it fails. Await every agent and screen
-call; a test that returns while one is still running fails with
-`STEP_NOT_AWAITED`.
+when the goal passes or throws when it fails.
 
 ```ts
 await agent.act('complete checkout with the test card');
@@ -37,8 +31,7 @@ await agent.act('invite {email} as an editor', { params: { email: 'ada@example.t
 ```
 
 Pass values through `params` so the agent uses your test data. For passwords,
-use a `Secret`. The model sees its name, and the runner fills its value.
-See [Signing in](/authentication).
+use a `Secret`, this prevents the model from seeing your secrets. See [Signing in](/authentication).
 
 ```ts
 import { credentials } from 'e2e';
@@ -79,8 +72,7 @@ exit codes.
 
 `assert` checks a statement against the current screen. A false statement
 fails with `ASSERTION_FAILED`. If the screen does not provide enough evidence,
-it fails with `ASSERTION_INCONCLUSIVE`. The report includes the explanation
-and a screenshot when the security policy allows one.
+it fails with `ASSERTION_INCONCLUSIVE`.
 
 The judging model sees the statement and the current screen. It does not see
 earlier steps or the acting agent's summaries.
@@ -101,11 +93,7 @@ await agent.waitFor('the export finishes and a download link appears', {
 
 `extract` reads structured data from the screen. Provide a
 [Standard Schema](https://standardschema.dev) validator, such as Zod, to define
-the result. Invalid output gets one repair attempt before `MODEL_OUTPUT_INVALID`.
-The model sees the schema's shape but not its value rules, so `min`, `max`,
-and patterns check what it read rather than steer it. When the screen does not
-show the data, `extract` fails with `ASSERTION_INCONCLUSIVE` instead of
-returning `""` or `0`.
+the result.
 
 ```ts
 import { z } from 'zod';
@@ -184,58 +172,9 @@ fails. See [Your own fixtures](/reference/test#your-own-fixtures).
 
 ## Tests without a screen
 
-API tests run in the same files and the same run as UI tests. A test that
-takes only `app` calls no model. Call the API with `fetch` and check the
-response with the value matchers.
-
-```ts title="tests/users-api.e2e.ts"
-import { test, expect } from 'e2e';
-import { z } from 'zod';
-
-const User = z.object({ id: z.number(), name: z.string() });
-
-test('GET /api/users returns the seeded users', async ({ app }) => {
-  const response = await fetch(new URL('/api/users', app.baseUrl));
-  expect(response.status).toBe(200);
-  expect(response.headers.get('content-type')).toContain('application/json');
-  const users = expect(await response.json()).toMatchSchema(z.array(User));
-  expect(users).toHaveLength(3);
-  expect(users.map((user) => user.name)).toEqual(['Ada', 'Grace', expect.any(String)]);
-});
-```
-
-`toMatchSchema` takes any [Standard Schema](/reference/expect#matching-a-schema)
-(Zod, Valibot, ArkType), so the schema your app parses the API with checks
-that the API still matches it, and it returns the value typed.
-
-`app.baseUrl` is the target's `app.url`, with the port the run allocated when
-it declared port 0, so the same file runs against the `app.command` the config
-starts and against a deployed preview. For state the API writes after it
-answers, [`expect.poll`](/reference/expect#polling-a-value) re-reads until a
-matcher passes.
-
-To call the API as a signed-in user, write [a fixture](/reference/test#your-own-fixtures)
-that sends `browser.cookies()` with each request. Every test registered through
-this `test` acquires `browser`, so it needs a web target:
-
-```ts title="tests/api.ts"
-import { test as base } from '@e2e-dev/web';
-
-export const test = base.extend<{ api: (path: string, init?: RequestInit) => Promise<Response> }>({
-  api: async ({ app, browser }, use) => {
-    await use(async (path, init) => {
-      const headers = new Headers(init?.headers);
-      headers.set('cookie', (await browser.cookies()).map((c) => `${c.name}=${c.value}`).join('; '));
-      return fetch(new URL(path, app.baseUrl), { ...init, headers });
-    });
-  },
-});
-```
-
-On a web target, an API test still opens a browser context. A target
-without an engine opens nothing, but it has no `app.baseUrl`, so read the
-URL from an environment variable. `e2e init` sets up such a target when you
-choose **None** at the engine prompt.
+A test that takes only `app` calls no model and drives no screen. Use it to
+check your API with `fetch` in the same run as UI tests. See
+[Testing APIs](/api-testing).
 
 ## Structure
 

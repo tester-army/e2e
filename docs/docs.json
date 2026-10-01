@@ -152,6 +152,13 @@
             ]
           },
           {
+            "group": "API",
+            "icon": "server",
+            "pages": [
+              "api-testing"
+            ]
+          },
+          {
             "group": "Models and agents",
             "icon": "wand-magic-sparkles",
             "pages": [

@@ -1,0 +1,63 @@
+---
+title: Testing APIs
+description: Check your API with fetch and value matchers, in the same files and run as UI tests.
+---
+
+API tests run in the same files and the same run as UI tests. A test that
+takes only `app` calls no model. Call the API with `fetch` and check the
+response with the value matchers.
+
+```ts title="tests/users-api.e2e.ts"
+import { test, expect } from 'e2e';
+import { z } from 'zod';
+
+const User = z.object({ id: z.number(), name: z.string() });
+
+test('GET /api/users returns the seeded users', async ({ app }) => {
+  const response = await fetch(new URL('/api/users', app.baseUrl));
+  expect(response.status).toBe(200);
+  expect(response.headers.get('content-type')).toContain('application/json');
+  const users = expect(await response.json()).toMatchSchema(z.array(User));
+  expect(users).toHaveLength(3);
+  expect(users.map((user) => user.name)).toEqual(['Ada', 'Grace', expect.any(String)]);
+});
+```
+
+`toMatchSchema` takes any [Standard Schema](/reference/expect#matching-a-schema)
+(Zod, Valibot, ArkType), so the schema your app parses the API with checks
+that the API still matches it, and it returns the value typed.
+
+## Where the API runs
+
+`app.baseUrl` is the target's `app.url`, with the port the run allocated when
+it declared port 0, so the same file runs against the `app.command` the config
+starts and against a deployed preview. For state the API writes after it
+answers, [`expect.poll`](/reference/expect#polling-a-value) re-reads until a
+matcher passes.
+
+## Signed-in requests
+
+To call the API as a signed-in user, write [a fixture](/reference/test#your-own-fixtures)
+that sends `browser.cookies()` with each request. Every test registered through
+this `test` acquires `browser`, so it needs a web target:
+
+```ts title="tests/api.ts"
+import { test as base } from '@e2e-dev/web';
+
+export const test = base.extend<{ api: (path: string, init?: RequestInit) => Promise<Response> }>({
+  api: async ({ app, browser }, use) => {
+    await use(async (path, init) => {
+      const headers = new Headers(init?.headers);
+      headers.set('cookie', (await browser.cookies()).map((c) => `${c.name}=${c.value}`).join('; '));
+      return fetch(new URL(path, app.baseUrl), { ...init, headers });
+    });
+  },
+});
+```
+
+## Without a browser
+
+On a web target, an API test still opens a browser context. A target
+without an engine opens nothing, but it has no `app.baseUrl`, so read the
+URL from an environment variable. `e2e init` sets up such a target when you
+choose **None** at the engine prompt.

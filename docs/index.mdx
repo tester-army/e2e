@@ -1,14 +1,16 @@
 ---
 title: Introduction
-description: Write end-to-end tests with AI goals, locators, and assertions for web and mobile apps.
+description: Open source AI testing for web and mobile apps. Spend less time on tests and more time building.
 ---
 
-e2e is an end-to-end testing framework for web and mobile apps. Describe
-a [goal](/writing-tests#goals-agent-act) in natural
-language and an agent interacts with the app to complete it.
-Use [locators](/writing-tests#deterministic-apis-screen-and-expect)
-and [assertions](/reference/expect#locator-matchers)
-in the same test to check exact results.
+e2e is a next-generation testing framework for web and mobile
+apps, built to keep up with the speed we ship software today.
+
+You choose how agentic each test is: fully deterministic with
+[locators](/writing-tests#deterministic-apis-screen-and-expect) and
+[assertions](/reference/expect#locator-matchers), fully driven by an agent
+from [goals](/writing-tests#goals-agent-act) in natural language, or a mix of
+both in the same test.
 
 ```ts title="tests/checkout.e2e.ts"
 import { test, expect } from 'e2e';
@@ -23,51 +25,48 @@ test('a member upgrades to Pro', async ({ app, agent, screen }) => {
 });
 ```
 
-Use your own [subscription](/subscriptions), [API key, or local model](/models).
-Tests without agent steps run without a model.
+## Why e2e
+
+Testing should not slow down how fast you ship or how sure you are of what
+you shipped.
+
+- **Time back.** Write a goal instead of a script of selectors and waits.
+  When the UI changes, the agent adapts, so you spend less time writing and
+  fixing tests and more time building.
+- **Less risk.** Cover more of the flows your users depend on, on web and
+  mobile, and catch regressions before they reach production.
+- **Cheap runs.** Verified `agent.act` steps [replay from a cache](/cache)
+  with no model calls. Test more flows without the token bill or a slow CI.
 
 ## How it works
 
-Configure a target for your app and a model for the agent:
-
-```ts title="e2e.config.ts"
-import type { E2EConfig } from 'e2e';
-import { web } from '@e2e-dev/web';
-import { gateway } from 'ai';
-
-export default {
-  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
-  agents: { default: { model: gateway('openai/gpt-6-luna-fast') } },
-} satisfies E2EConfig;
-```
-
-A target is one place tests run, such as Chromium or an iPhone simulator.
-Its engine drives it. Each test runs once per target. An attempt is one run
-of one test on one target; a retry is a new attempt with fresh fixtures.
-
-The web engine drives Chromium, Firefox, and WebKit through Playwright. The
-mobile engine drives iOS simulators and Android emulators through agent-device. Both expose the same
-agent and screen APIs, with extra APIs for platform-specific operations.
-You can also [write an engine](/writing-an-engine) for another platform.
-
-Passing `act` steps that a later check verifies are [cached](/cache). The next run replays them without
-a model call and hands back to the agent if the app changed. `assert`,
-`waitFor`, and `extract` always call the model.
-
-The runner [redacts registered secrets](/security) from model input and
-records steps, failures, and artifacts in a [report](/debugging).
+- **Targets.** Each test runs once per target, such as Chromium or an iPhone
+  simulator. The [web engine](/starting-your-app) drives browsers through
+  Playwright, the [mobile engine](/mobile) drives iOS simulators and Android
+  emulators through agent-device, and you can
+  [write your own](/writing-an-engine).
+- **Agent steps.** `agent.act` completes a goal. `agent.assert`,
+  `agent.waitFor`, and `agent.extract` judge the screen. Use your own
+  [subscription](/subscriptions), [API key, or local model](/models). Tests
+  without agent steps need no model.
+- **Cache.** An `act` step that a later check verifies is recorded. The next
+  run replays it and hands back to the agent when the app changed. `assert`,
+  `waitFor`, and `extract` always call the model.
+- **Reports.** The runner [redacts registered secrets](/security) from model
+  input and records steps, failures, and artifacts in a
+  [report](/debugging) you or your coding agent can read.
 
 ## Get started
 
 <CardGroup cols={2}>
   <Card title="Quickstart" icon="rocket" href="/quickstart">
-    Set up a project with your subscription or API key and run a test.
+    One prompt for your coding agent, or set up by hand.
   </Card>
   <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">
     Write goals, check outcomes, and extract data.
   </Card>
-  <Card title="Web" icon="globe" href="/starting-your-app">
-    Start your app and configure browser tests.
+  <Card title="Coding agents" icon="robot" href="/coding-agents">
+    Let your coding agent write, run, and debug tests.
   </Card>
   <Card title="Mobile" icon="mobile-screen" href="/mobile">
     Run tests on iOS simulators and Android emulators.
