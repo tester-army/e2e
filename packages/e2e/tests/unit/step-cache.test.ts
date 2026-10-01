@@ -15,6 +15,7 @@ import type { RedactedNode } from '../../src/agent/observation.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import { redacted, redactedNodes } from '../helpers/redacted.ts';
 import type { JsonValue } from '../../src/types.ts';
+import { SecretLedger } from '../../src/internal/redact.ts';
 
 const savedMarker: SemanticNode = {
   ref: { id: 'm1', revision: 'r1' },
@@ -82,6 +83,7 @@ function makeSession(cache: AgentCacheContext, host: StepCacheHost, overrides: P
     templates: [],
     executor: { name: 'test' },
     redact: (text) => text,
+    redactCut: (text) => text,
     maxActions: 25,
     stepIndex: 1,
     ...overrides,
@@ -282,6 +284,31 @@ describe('StepTraceSession', () => {
     await staged.conclude('passed', 'passed');
     expect(anchored.staged).toHaveLength(1);
     expect(stagedTrace(anchored).startPath).toBeUndefined();
+  });
+
+  it('takes no unchanged node for the delta when a secret registered after the starting screen masks it', async () => {
+    const context = fakeContext(noEntry.store.read);
+    const ledger = new SecretLedger();
+    const status: SemanticNode = { ref: { id: 's', revision: 'r1' }, role: 'status', name: 'Code token-2718-value' };
+    const button: SemanticNode = { ref: { id: 'b', revision: 'r1' }, role: 'button', name: 'Save marker' };
+    const screens = [[status, button], [status, button, savedMarker]];
+    const host: StepCacheHost = {
+      ...makeHost(['/storage', '/storage']),
+      // Each capture is redacted with the ledger as it stood then, as the feed redacts it.
+      observe: async () => ({
+        kind: 'semantic' as const,
+        nodes: redactedNodes((screens.length > 1 ? screens.shift() : screens[0]) ?? [], ledger),
+        viewport: { width: 1280, height: 720 },
+        path: '/storage',
+      }),
+    };
+    const session = makeSession(context, host, { redact: ledger.redact, redactCut: ledger.redactCut });
+    await session.begin();
+    // A provider-backed fill resolves the value only now.
+    ledger.register('token', 'token-2718-value');
+    session.record({ name: 'tap', node: redacted(button, ledger) });
+    await session.conclude('passed', 'saved the marker');
+    expect(stagedTrace(context).endAnchors).toEqual([savedAnchor]);
   });
 
   it('stages the delta between the starting and passing screens as end anchors', async () => {

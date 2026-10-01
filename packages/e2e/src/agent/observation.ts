@@ -226,6 +226,22 @@ export function redactNode(node: SemanticNode, redaction: NodeRedaction): Redact
 }
 
 /**
+ * An earlier capture's nodes redacted again through the ledger as it is now,
+ * each on its own fields, children left out. A secret a provider resolved
+ * after the capture masks text the capture still shows, so the two captures
+ * read alike wherever the screen did not change. Redacting redacted text
+ * changes nothing else: a marker is never read again.
+ */
+export function redactNodesAgain(
+  nodes: ReadonlyMap<string, RedactedNode>,
+  redaction: NodeRedaction,
+): ReadonlyMap<string, RedactedNode> {
+  const again = new Map<string, RedactedNode>();
+  for (const [id, { children: _children, ...fields }] of nodes) again.set(id, redactNode(fields, redaction));
+  return again;
+}
+
+/**
  * One observed string with every secret taken out, in the form it is written
  * and in the one-line form a line, a descriptor, or an anchor shows it
  * (`collapseText`). A field exactly as long as `limit`, and so possibly cut

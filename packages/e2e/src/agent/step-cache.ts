@@ -35,6 +35,7 @@ import {
   type ReplayOutcome,
   type SemanticScreen,
 } from './replay.ts';
+import { redactNodesAgain } from './observation.ts';
 import type { SettleMode } from './settle-policy.ts';
 
 /**
@@ -59,6 +60,8 @@ export interface StepCacheOptions {
   readonly templates: readonly ParamTemplate[];
   readonly executor: { readonly name: string; readonly version?: string };
   readonly redact: (text: string) => string;
+  /** `redact` for a field cut at its observed limit (`SecretLedger.redactCut`). */
+  readonly redactCut: (text: string) => string;
   readonly maxActions: number;
   /** Timeline index of the step being dispatched. */
   readonly stepIndex: number;
@@ -490,7 +493,10 @@ export class StepTraceSession {
     const observation = await probeScreen(this.host, 'held-still');
     if (!this.host.traceEligible || observation?.kind !== 'semantic') return;
     const { nodes: endNodes, path: endPath } = observation;
-    const endAnchors = describeAnchors(this.startNodes, endNodes);
+    // The start capture may predate a secret this step resolved; read with
+    // the ledger as it is now, an unchanged node is no delta.
+    const startNodes = redactNodesAgain(this.startNodes, { redact: this.options.redact, redactCut: this.options.redactCut });
+    const endAnchors = describeAnchors(startNodes, endNodes);
     const trace = recorder.finalize({
       executor: this.options.executor,
       recordedFor: {
