@@ -561,6 +561,8 @@ Await every poll. A poll belongs to the phase that started it: the test body
 teardown, or one `beforeAll` or `afterAll` hook. When that phase returns while
 the poll still runs, the poll is cancelled and the phase fails with
 `STEP_NOT_AWAITED` at the line of the call, whether or not the poll would
-have passed. It never fails a later test. A body that threw keeps its own
+have passed. It never fails a later test: a poll started by work its phase
+left running, such as a body past its timeout, is cancelled before its first
+read. A body that threw keeps its own
 error and records this one under `secondaryErrors`, and a suite hook reports
 it as `HOOK_FAILED`.

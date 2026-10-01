@@ -1,6 +1,7 @@
 /** The fixtures a test's `test.extend()` chain adds to one attempt. */
 
 import type { FixtureDefinition } from '../collect/registry.ts';
+import { pollLineage, type PollLineage } from '../expect/poll-scope.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 
 /** One set-up fixture's teardown: the rest of its function after `use`. */
@@ -32,6 +33,8 @@ interface FixtureState {
   /** The definition's whole run: pending while `use` is, settled once it returned. */
   readonly run: Promise<void>;
   release(): void;
+  /** Where the function's polls go; handed to the teardown's scope when it is released. */
+  readonly polls: PollLineage;
   /** A protocol violation (`use` called twice) to report at teardown. */
   misuse(): ConfigurationError | undefined;
 }
@@ -97,8 +100,10 @@ export function createExtendedFixtures(
       ready();
       return released;
     };
+    // The function's polls are the body's until `use` returns, then its teardown's.
+    const polls = pollLineage();
     const run = Promise.resolve()
-      .then(() => definition.fn(fixtures, use))
+      .then(() => polls.run(() => definition.fn(fixtures, use)))
       .then(
         () => {
           if (!used) {
@@ -120,7 +125,7 @@ export function createExtendedFixtures(
     // its rejection; a torn-down one is awaited below.
     run.catch(() => undefined);
     await provided;
-    if (!abandoned) active.push({ name, run, release, misuse: () => misuse });
+    if (!abandoned) active.push({ name, run, release, polls, misuse: () => misuse });
   };
 
   return {
@@ -132,6 +137,7 @@ export function createExtendedFixtures(
       return active.toReversed().map((state) => ({
         name: state.name,
         run: async () => {
+          state.polls.handOver();
           state.release();
           await state.run;
           const misuse = state.misuse();

@@ -119,6 +119,19 @@ test('the test after the beforeAll is never charged', async () => {
 });
 `;
 
+/** A body the timeout cut keeps running; the poll it starts later is its own, never the next test's. */
+const TIMED_OUT_SUITE = `import { test, expect } from 'e2e';
+
+test('times out, then polls from its leftover body', { timeout: 1000 }, async () => {
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  await expect.poll(() => false, { timeout: 2000 }).toBe(true);
+});
+
+test('runs while the leftover body polls, and is never charged', async () => {
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+});
+`;
+
 const NOT_AWAITED = /returned before expect\.poll\(\.\.\.\)\.toBe\(\.\.\.\) finished; put `await` in front of every expect\.poll call$/;
 
 describe('expect.poll not awaited, in a run', () => {
@@ -135,6 +148,7 @@ describe('expect.poll not awaited, in a run', () => {
         'tests/b-leaky-fixture.e2e.ts': LEAKY_FIXTURE_SUITE,
         'tests/b-tidy-fixture.e2e.ts': TIDY_FIXTURE_SUITE,
         'tests/c-before-all.e2e.ts': BEFORE_ALL_SUITE,
+        'tests/d-timed-out.e2e.ts': TIMED_OUT_SUITE,
       },
       { appUrl: app.url, configSource: workerConfigSource(1) },
     ));
@@ -185,9 +199,16 @@ describe('expect.poll not awaited, in a run', () => {
       'the test after them is never charged, and the abandoned poll read no more',
       'the test after the hooks is never charged',
       'the test after the beforeAll is never charged',
+      'runs while the leftover body polls, and is never charged',
     ]) {
       expect(resultByTitle(outcome, title).status, title).toBe('passed');
     }
+  });
+
+  it('keeps a timed-out body to its own timeout', () => {
+    const attempt = resultByTitle(outcome, 'times out, then polls from its leftover body').attempts[0]!;
+    expect(attempt.error?.code).toBe('TEST_TIMEOUT');
+    expect(attempt.secondaryErrors).toEqual([]);
   });
 
   it('fails the test whose afterEach, beforeEach, or fixture teardown left a poll running', () => {

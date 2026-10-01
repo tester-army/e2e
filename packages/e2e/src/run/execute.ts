@@ -36,7 +36,7 @@ import { createExtendedFixtures } from './extended-fixtures.ts';
 import { captureFailureEvidence } from './failure-evidence.ts';
 import { createFixtures, type ArtifactSink } from './fixtures.ts';
 import { publishAttempt } from '../expect/attempt.ts';
-import { openPollScope, type PollScope } from '../expect/poll-scope.ts';
+import { PollScope, runInPollScope } from '../expect/poll-scope.ts';
 import { SoftFailures } from '../expect/soft.ts';
 import { findRegistered, RealmManager, runHook, type FileRef, type Realm } from './realm.ts';
 import type {
@@ -880,7 +880,7 @@ export class TargetExecutor implements SerialHost {
     let phase: AttemptPhase = 'launch';
     let timedOut = false;
     // The polls the fixtures, the beforeEach hooks, and the body start.
-    let bodyPolls: PollScope | undefined;
+    const bodyPolls = new PollScope('the test body');
     // Captured the moment the primary failure lands: steps that pass later —
     // afterEach cleanup, teardown — must not confirm traces the failure
     // implicated (a cleanup assertion says nothing about the failed flow).
@@ -1023,7 +1023,7 @@ export class TargetExecutor implements SerialHost {
        */
       const abandonNotAwaited = async (): Promise<TestError[]> => {
         if (attemptEnd.signal.aborted) return [];
-        const pollsNotAwaited = bodyPolls?.close();
+        const pollsNotAwaited = bodyPolls.close();
         const stepsNotAwaited = steps.abandonRunning();
         if (stepsNotAwaited !== undefined) {
           attemptAbort.abort();
@@ -1075,14 +1075,13 @@ export class TargetExecutor implements SerialHost {
       // own timeout — minutes, on a device target. The abandoned body goes
       // down with the worker process; the attempt records the interrupt and
       // moves to cleanup.
-      bodyPolls = openPollScope('the test body');
       const work = this.options.isolated
         ? withAbort(
-            mainWork(),
+            runInPollScope(bodyPolls, mainWork),
             this.interruptSignal,
             () => new E2EError('interrupted', 'INTERRUPTED', `run interrupted in phase ${phase}`),
           )
-        : mainWork();
+        : runInPollScope(bodyPolls, mainWork);
       const body = Promise.race([
         work,
         new Promise<never>((_, reject) => {
@@ -1108,7 +1107,7 @@ export class TargetExecutor implements SerialHost {
         // captured is recorded, not aimed at it.
         cutBody = undefined;
         // A body cut short may have been awaiting its polls; they end with it.
-        bodyPolls?.close();
+        bodyPolls.close();
         // `skipRunningTest` has already refused the cases that may not skip.
         if (isRuntimeSkip(cause)) skipped = cause;
         else {
@@ -1168,7 +1167,7 @@ export class TargetExecutor implements SerialHost {
     } catch (cause) {
       recordFailure(cause, phase);
     } finally {
-      bodyPolls?.close();
+      bodyPolls.close();
       this.strayFailure = undefined;
       this.lastAttemptTestId = pair.test.id;
       attemptEnd.abort();

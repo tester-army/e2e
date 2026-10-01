@@ -1,7 +1,7 @@
 /** Suite realm lifecycle: module re-import, beforeAll/afterAll scope tracking. */
 
 import { importModule } from '../config/load.ts';
-import { openPollScope } from '../expect/poll-scope.ts';
+import { PollScope, runInPollScope } from '../expect/poll-scope.ts';
 import {
   classifyError,
   E2EError,
@@ -71,10 +71,10 @@ export async function runHook(
   timeoutMs: number,
   onTimeout?: () => void,
 ): Promise<void> {
-  const polls = openPollScope(`the ${label}`);
+  const polls = new PollScope(`the ${label}`);
   try {
     await withTimeout(
-      Promise.resolve().then(run),
+      runInPollScope(polls, () => Promise.resolve().then(run)),
       timeoutMs,
       () => {
         onTimeout?.();
