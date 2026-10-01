@@ -22,6 +22,7 @@ import { createRequire } from 'node:module';
 import { asBrowserProvider } from './provider.ts';
 import { PlaywrightSurface, type WebOptions } from './surface.ts';
 import { createBrowserFixture } from './browser.ts';
+import { FIELD_VALUE_CONTROL, headerProblem } from './protected-app.ts';
 
 /** App fields only a device target reads. */
 const NATIVE_APP_KEYS = ['bundleId', 'appPath', 'launchArguments', 'permissions'] as const;
@@ -178,13 +179,6 @@ function persistentContextLimit(what: string, mode: string, leased: boolean): Co
   );
 }
 
-/** An HTTP header field name: one or more `token` characters (RFC 9110). */
-const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
-
-/** A control character no HTTP field value may carry; a horizontal tab is the one the grammar allows. */
-// oxlint-disable-next-line no-control-regex -- the control characters are the point
-const FIELD_VALUE_CONTROL = /[\u0000-\u0008\u000A-\u001F\u007F]/;
-
 /** True for a plain object; the shape both options take. Config runs as JavaScript, so the types alone are no guard. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -201,21 +195,8 @@ function validateHeaders(headers: unknown): void {
     throw new ConfigurationError('INVALID_CONFIG', 'web({ headers }) must be an object of header name to value');
   }
   for (const [name, value] of Object.entries(headers)) {
-    if (!HEADER_NAME.test(name)) {
-      throw new ConfigurationError('INVALID_CONFIG', `web({ headers }) has an invalid header name: "${name}"`);
-    }
-    if (typeof value !== 'string') {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `web({ headers }) header "${name}" must be a string, got ${typeof value}`,
-      );
-    }
-    if (FIELD_VALUE_CONTROL.test(value)) {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `web({ headers }) header "${name}" must not contain a control character`,
-      );
-    }
+    const problem = headerProblem(name, value);
+    if (problem !== undefined) throw new ConfigurationError('INVALID_CONFIG', `web({ headers }) ${problem}`);
   }
 }
 

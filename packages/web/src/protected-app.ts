@@ -15,6 +15,26 @@ export interface PlaywrightHttpCredential {
   readonly password: string;
 }
 
+/** An HTTP header field name: one or more `token` characters (RFC 9110). */
+const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+
+/** A control character no HTTP field value may carry; a horizontal tab is the one the grammar allows. */
+// oxlint-disable-next-line no-control-regex -- the control characters are the point
+export const FIELD_VALUE_CONTROL = /[\u0000-\u0008\u000A-\u001F\u007F]/;
+
+/**
+ * Why the browser could not send this header, or `undefined` when it can: a
+ * name outside the token grammar, a value that is not a string, or one
+ * carrying a control character (a line break is a header-injection vector).
+ * Config and route overrides both check headers here.
+ */
+export function headerProblem(name: string, value: unknown): string | undefined {
+  if (!HEADER_NAME.test(name)) return `has an invalid header name: "${name}"`;
+  if (typeof value !== 'string') return `header "${name}" must be a string, got ${typeof value}`;
+  if (FIELD_VALUE_CONTROL.test(value)) return `header "${name}" must not contain a control character`;
+  return undefined;
+}
+
 /** Header names lowercased, as Playwright reports a request's own headers. */
 export function lowercaseNames(headers: Readonly<Record<string, string>>): Readonly<Record<string, string>> {
   return Object.fromEntries(Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]));

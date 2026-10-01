@@ -9,6 +9,7 @@
 
 import { statSync } from 'node:fs';
 import { TestError, validateJsonValue, type JsonValue } from 'e2e/engine';
+import { headerProblem } from './protected-app.ts';
 
 /** What `route.fulfill` hands Playwright once the response is validated. */
 export interface FulfillDecision {
@@ -131,21 +132,28 @@ function requireString(api: string, key: string, value: unknown, nonempty: boole
   return value;
 }
 
-/** A header map of string values, or `undefined` when none was given. */
+/** A header map the browser can send, or `undefined` when none was given. */
 function requireHeaders(api: string, value: unknown): Record<string, string> | undefined {
   if (value === undefined) return undefined;
-  if (
-    typeof value !== 'object' || value === null || Array.isArray(value)
-    || Object.values(value).some((entry) => typeof entry !== 'string')
-  ) {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new TestError('INVALID_ARGUMENT', `${api} headers must map names to string values`);
+  }
+  for (const [name, entry] of Object.entries(value)) {
+    const problem = headerProblem(name, entry);
+    if (problem !== undefined) throw new TestError('INVALID_ARGUMENT', `${api} ${problem}`);
   }
   return value as Record<string, string>;
 }
 
 /** Rejects a path that does not name a regular file; synchronous so the check lands before the decision. */
 function requireFile(file: string): void {
-  if (statSync(file, { throwIfNoEntry: false })?.isFile() !== true) {
+  let isFile = false;
+  try {
+    isFile = statSync(file, { throwIfNoEntry: false })?.isFile() === true;
+  } catch {
+    // A directory on the path the runner may not search (`EACCES`): not a file the route can serve.
+  }
+  if (!isFile) {
     throw new TestError('INVALID_ARGUMENT', `route.fulfill path is not a readable file: ${file}`);
   }
 }
