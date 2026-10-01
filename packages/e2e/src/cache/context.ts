@@ -21,6 +21,7 @@ import {
   type CacheAgentIdentity,
   type CacheTargetIdentity,
   type TraceCacheKind,
+  type TraceCallSignature,
 } from './identity.ts';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES, type CacheStore } from './store.ts';
 import type { ActionTrace } from './trace.ts';
@@ -180,7 +181,15 @@ export function createAgentCacheContext(options: {
       writable: mode === 'read-write',
     });
   const project = projectIdentity(options.projectId);
-  const nextCallIndex = createCallIndexer();
+  // One occurrence count per agent: the agent is part of the key, so another
+  // agent's call of the same instruction must not renumber this one's.
+  const indexers = new Map<string, ReturnType<typeof createCallIndexer>>();
+  const nextCallIndex = (agent: CacheAgentIdentity, signature: TraceCallSignature): number => {
+    const agentKey = canonicalJson([agent.name, agent.context ?? null]);
+    const indexer = indexers.get(agentKey) ?? createCallIndexer();
+    indexers.set(agentKey, indexer);
+    return indexer(signature);
+  };
   return {
     mode,
     store,
@@ -195,7 +204,7 @@ export function createAgentCacheContext(options: {
           testId: options.testId,
           target: options.target,
           signature,
-          callIndex: nextCallIndex(signature),
+          callIndex: nextCallIndex(agent, signature),
           agent,
           policyVersion: REPLAY_POLICY_VERSION,
         }),

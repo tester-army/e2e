@@ -248,6 +248,10 @@ describe('flushStagedTraces', () => {
     const monthly = fresh().claimKeyHash('act', 'approve the order', undefined, { name: 'buyer', context: 'Monthly' });
     expect(new Set([buyer, admin, monthly]).size).toBe(3);
     expect(fresh().claimKeyHash('act', 'approve the order', undefined, { name: 'buyer', context: undefined })).toBe(buyer);
+    // Another agent calling the same instruction first does not renumber this agent's occurrence.
+    const shared = fresh();
+    shared.claimKeyHash('act', 'approve the order', undefined, { name: 'admin', context: undefined });
+    expect(shared.claimKeyHash('act', 'approve the order', undefined, { name: 'buyer', context: undefined })).toBe(buyer);
   });
 
   it('claims distinct key hashes per occurrence of the same signature', () => {
