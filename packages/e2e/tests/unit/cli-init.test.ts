@@ -96,7 +96,7 @@ describe('e2e init', () => {
     expect(JSON.parse(read('package.json'))).toEqual({
       private: true,
       type: 'module',
-      devDependencies: { 'e2e': dependencyRange(runnerVersion), '@e2e-dev/web': '0.x', playwright: '^1', ai: '^7.0.0' },
+      devDependencies: { 'e2e': dependencyRange(runnerVersion), '@e2e-dev/web': '0.x', playwright: '^1', ai: '^7.0.0', zod: '^4.1.8' },
       scripts: { 'test:e2e': 'e2e run' },
     });
     expect(read('e2e.config.ts')).toContain('agents: {\n    default: {\n      model: ');
@@ -203,9 +203,10 @@ describe('e2e init', () => {
       'e2e',
       ...(engine === 'web' ? ['@e2e-dev/web', 'playwright'] : []),
       ...(device ? ['@e2e-dev/mobile'] : []),
-      ...(ai ? ['ai', '@openrouter/ai-sdk-provider'] : []),
+      ...(ai ? ['ai', 'zod', '@openrouter/ai-sdk-provider'] : []),
     ]);
     expect(manifest.devDependencies.ai).toBe(ai ? '^7.0.0' : undefined);
+    expect(manifest.devDependencies.zod).toBe(ai ? '^4.1.8' : undefined);
     expect(manifest.devDependencies['@openrouter/ai-sdk-provider']).toBe(ai ? '^3.0.0' : undefined);
     expect(read('e2e.config.ts').includes('agents: {')).toBe(ai);
     expect(read('e2e.config.ts').includes("import { openrouter } from '@openrouter/ai-sdk-provider';")).toBe(ai);
@@ -356,7 +357,7 @@ describe('e2e init', () => {
     async (type) => {
       const manifest = `${JSON.stringify({
         name: 'existing-app', type, scripts: { 'test:e2e': 'e2e run --workers 1' },
-        dependencies: { 'e2e': 'workspace:*', '@e2e-dev/web': 'workspace:*', playwright: '1.59.0-alpha-2026-01-01', ai: '^7.0.12' },
+        dependencies: { 'e2e': 'workspace:*', '@e2e-dev/web': 'workspace:*', playwright: '1.59.0-alpha-2026-01-01', ai: '^7.0.12', zod: '^4.0.0' },
       }, null, 4)}\n`;
       writeFileSync(path.join(dir, 'package.json'), manifest);
       for (let run = 0; run < 2; run += 1) {
@@ -395,12 +396,12 @@ describe('e2e init', () => {
     expect(JSON.parse(read('package.json'))).toEqual({
       ...manifest,
       scripts: { dev: 'vite', 'test:e2e': 'e2e run' },
-      devDependencies: { ...manifest.devDependencies, 'e2e': expect.any(String), playwright: '^1' },
+      devDependencies: { ...manifest.devDependencies, 'e2e': expect.any(String), playwright: '^1', zod: '^4.1.8' },
     });
     expect(read('package.json')).toContain('\r\n    "name"');
     const written = JSON.parse(read('package.json'));
     expect(Object.keys(written)).toEqual(Object.keys(manifest));
-    expect(Object.keys(written.devDependencies)).toEqual(['@e2e-dev/web', 'e2e', 'playwright', 'vite']);
+    expect(Object.keys(written.devDependencies)).toEqual(['@e2e-dev/web', 'e2e', 'playwright', 'vite', 'zod']);
     expect(Object.keys(written.scripts)).toEqual(['dev', 'test:e2e']);
   });
 
