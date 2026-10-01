@@ -3,7 +3,9 @@
  * a tool call on every turn (`toolChoice: 'required'`) and names
  * `complete_step` on the final ones; some models reject that request shape
  * outright (Anthropic's Claude Fable 5.1 answers HTTP 400 with
- * `tool_choice: type "tool" and "any" are not supported for this model.`),
+ * `tool_choice: type "tool" and "any" are not supported for this model.`;
+ * DeepSeek's V4 models think by default and answer a forced choice with
+ * `Thinking mode does not support this tool_choice`),
  * and a gateway forwards the provider's words.
  *
  * The loop reacts to this refusal differently from any other provider
@@ -13,6 +15,7 @@
 
 const FORCED_CHOICE_PATTERNS: readonly RegExp[] = [
   /tool_choice.*not supported/i, // Anthropic
+  /does not support (?:this |the )?tool_choice/i, // DeepSeek V4 in thinking mode (its default)
   /tool_choice.*(?:unsupported|is not allowed|cannot be)/i, // OpenAI-compatible proxies
   /(?:forced|required) tool (?:choice|call|use).*not supported/i, // generic
   /does not support (?:forced|required) tool/i, // generic

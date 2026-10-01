@@ -154,6 +154,17 @@ describe('isForcedToolChoiceRejected', () => {
     ).toBe(true);
   });
 
+  it("reads DeepSeek's refusal in thinking mode, its default", () => {
+    expect(
+      isForcedToolChoiceRejected({
+        statusCode: 400,
+        message: 'Bad Request',
+        responseBody:
+          '{"error":{"message":"Thinking mode does not support this tool_choice (request_id: 73b8c958)","type":"invalid_request_error","param":null,"code":"invalid_request_error"}}',
+      }),
+    ).toBe(true);
+  });
+
   it('ignores server failures and unrelated messages that mention tools', () => {
     expect(isForcedToolChoiceRejected(Object.assign(new Error('tool_choice is not supported'), { statusCode: 502 }))).toBe(false);
     expect(isForcedToolChoiceRejected(new Error('tool_choice must name a defined tool'))).toBe(false);

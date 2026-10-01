@@ -103,6 +103,11 @@ Use `agent` as `agents.default`. Add `apiKey` if the server requires one.
 Model IDs depend on the provider. Gateways usually use `provider/model`;
 direct providers use their own model IDs.
 
+DeepSeek's V4 models (`@ai-sdk/deepseek`) think by default, and in that mode
+they refuse the forced tool choice agent steps ask for. The step is sent again
+with `auto` and an instruction to reply with tool calls only, and later steps
+on that model start that way, so thinking can stay on.
+
 ### Vercel OIDC instead of a key
 
 Without `AI_GATEWAY_API_KEY`, `gateway()` authenticates with a Vercel OIDC
