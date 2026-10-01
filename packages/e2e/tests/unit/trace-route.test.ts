@@ -1,86 +1,118 @@
 /** Routes: a location reduced to the screen it names, across the URL shapes apps use. */
 
 import { describe, expect, it } from 'vitest';
-import { compareRoutes, routeKey, routeOf } from '../../src/cache/route.ts';
+import { appLocation, sameRoute } from '../../src/cache/route.ts';
 
-const key = (location: string) => routeKey(routeOf(location));
-const verdict = (recorded: string, live: string) => compareRoutes(routeOf(recorded), routeOf(live));
+/** Whether every location names the same screen as the first. */
+const alike = (first: string, ...others: string[]) => others.every((other) => sameRoute(first, other));
 
-describe('routeOf', () => {
+describe('route identity', () => {
   it('abstracts the ids apps mint: uuids, hex and digit runs, random tokens, prefixed record ids', () => {
-    expect(key('/runs/3f2504e0-4f89-11d3-9a0c-0305e82c3301')).toBe('/runs/:id');
-    expect(key('/projects/a77c12665e90/tests')).toBe('/projects/:id/tests');
-    expect(key('/orders/42')).toBe('/orders/:id');
-    expect(key('/page/1')).toBe('/page/:id');
-    expect(key('/blog/2024/09/18/launch-day')).toBe('/blog/:id/:id/:id/launch-day');
-    expect(key('/dashboard/e2e-45961c4c/projects/0c1d2e3f4a5b')).toBe('/dashboard/:id/projects/:id');
-    expect(key('/keys/omk_7Qx9Lm2Pz4Rt8Wv1')).toBe('/keys/:id');
-    expect(key('/projects/PROJ-016')).toBe('/projects/:id');
-    expect(key('/invoices/INV-2041')).toBe('/invoices/:id');
+    expect(alike('/runs/3f2504e0-4f89-11d3-9a0c-0305e82c3301', '/runs/8374a7a7-a64a-422d-9183-4350756c7f07')).toBe(true);
+    expect(alike('/projects/a77c12665e90/tests', '/projects/0c1d2e3f4a5b/tests')).toBe(true);
+    expect(alike('/orders/42', '/orders/7')).toBe(true);
+    expect(alike('/blog/2024/09/18/launch-day', '/blog/2025/01/02/launch-day')).toBe(true);
+    expect(alike('/dashboard/e2e-45961c4c/projects/0c1d2e3f4a5b', '/dashboard/e2e-12345678/projects/a77c12665e90')).toBe(true);
+    expect(alike('/keys/omk_7Qx9Lm2Pz4Rt8Wv1', '/keys/omk_1Ab2Cd3Ef4Gh5Ij')).toBe(true);
+    expect(alike('/projects/PROJ-016', '/projects/PROJ-017')).toBe(true);
+    expect(alike('/invoices/INV-2041', '/invoices/INV-87')).toBe(true);
   });
 
-  it('keeps the words a router owns: versions, locales, dates in words, capitalized and dashed slugs', () => {
-    expect(key('/projects/integrations')).toBe('/projects/integrations');
-    expect(key('/api/v2/companies-v2/new')).toBe('/api/v2/companies-v2/new');
-    expect(key('/en-US/settings/general')).toBe('/en-US/settings/general');
-    expect(key('/Products/Summer-Sneaker')).toBe('/Products/Summer-Sneaker');
-    expect(key('/users/john_doe')).toBe('/users/john_doe');
-    expect(key('/news/page-2')).toBe('/news/page-2');
-    expect(key('/docs/index.html')).toBe('/docs/index.html');
-    expect(key('/tags/c++')).toBe('/tags/c++');
-    expect(key('/shop/%E9%9E%8B')).toBe('/shop/\u978b');
-    expect(key('/projects/new')).not.toBe(key('/projects/a77c12665e90'));
+  it('keeps the words a router owns: versions, locales, capitalized and dashed slugs', () => {
+    for (const [location, other] of [
+      ['/projects/integrations', '/projects/settings'],
+      ['/api/v2/companies-v2/new', '/api/v3/companies-v2/new'],
+      ['/en-US/settings/general', '/de-DE/settings/general'],
+      ['/Products/Summer-Sneaker', '/Products/Winter-Boot'],
+      ['/users/john_doe', '/users/jane_doe'],
+      ['/news/page-2', '/news/page-3'],
+      ['/tags/c++', '/tags/c'],
+      ['/shop/%E9%9E%8B', '/shop/x'],
+      ['/projects/new', '/projects/a77c12665e90'],
+    ] as const) {
+      expect(alike(location, location), location).toBe(true);
+      expect(alike(location, other), location).toBe(false);
+    }
+    expect(alike('/shop/%E9%9E%8B', '/shop/\u978b')).toBe(true);
   });
 
-  it('ignores the query, the fragment, a trailing slash, and the origin', () => {
-    expect(key('/companies?search=E2E+abc&page=2')).toBe('/companies');
-    expect(key('/companies/')).toBe('/companies');
-    expect(key('/companies#top')).toBe('/companies');
-    expect(key('/settings?')).toBe('/settings');
-    expect(key('https://app.example.test/companies?x=1')).toBe('/companies');
-    expect(key('/')).toBe('/');
+  it('ignores the fragment and a trailing slash, and keeps the origin a location names', () => {
+    expect(alike('/companies', '/companies/', '/companies#top')).toBe(true);
+    expect(alike('/settings', '/settings?')).toBe(true);
+    expect(alike('https://app.example.test/companies?x=1', 'https://app.example.test/companies?x=2')).toBe(true);
+    expect(alike('https://app.example.test/companies', '/companies')).toBe(false);
   });
 
-  it('routes by the fragment when the app does', () => {
-    expect(key('/#/companies/8374a7a7-a64a-422d-9183-4350756c7f07')).toBe('/companies/:id');
-    expect(key('/app/#/settings?tab=2')).toBe('/settings');
-    expect(key('https://app.example.test/#/orders/42')).toBe('/orders/:id');
+  it('keeps the query as part of the screen, with minted values as ids, in any order', () => {
+    expect(alike('/task?mode=unsafe', '/task?mode=safe')).toBe(false);
+    expect(alike('/companies?search=E2E+abc&page=2', '/companies?page=3&search=other+term')).toBe(true);
+    expect(alike('/companies?tab=notes&sort=name', '/companies?sort=name&tab=notes')).toBe(true);
+    expect(alike('/companies?tab=notes', '/companies?tab=files')).toBe(false);
+    // Ids, cache busters, signed tokens, timestamps, and dates are the run's, not the screen's.
+    expect(alike(
+      '/list?id=42&_=1727780000&token=eyJhbGciOiJIUzI1NiJ9.x1.y2&at=2026-10-01T10:00:00Z',
+      '/list?id=7&_=1727780999&token=eyJhbGciOiJIUzI1NiJ9.a9.b8&at=2026-10-02T11:30:00Z',
+    )).toBe(true);
+    expect(alike('/r?8f14e45fceea167a', '/r?c9f0f895fb98ab91')).toBe(true);
+    expect(alike('/tickets?open=INV-2041', '/tickets?open=INV-87')).toBe(true);
+    expect(alike('/reports?from=2026-10-01&view=week', '/reports?from=2026-10-02&view=week')).toBe(true);
+    expect(alike('/reports?from=2026-10-01&view=week', '/reports?from=2026-10-01&view=month')).toBe(false);
+  });
+
+  it('routes by the fragment when the app does, its query included', () => {
+    expect(alike('/#/companies/8374a7a7-a64a-422d-9183-4350756c7f07', '/companies/1')).toBe(true);
+    expect(alike('/app/#/settings?tab=2', '/settings?tab=3')).toBe(true);
+    expect(alike('/app/?lang=en#/settings?tab=billing', '/settings?lang=en&tab=billing')).toBe(true);
+    expect(alike('https://app.example.test/#/orders/42', 'https://app.example.test/orders/7')).toBe(true);
   });
 
   it('treats a segment with whitespace as a record name, and a literal plus as a literal', () => {
-    expect(key('/companies/Acme%20Corp')).toBe('/companies/:id');
-    expect(key('/companies/Acme Corp')).toBe('/companies/:id');
-    expect(key('/companies/Acme+Corp')).toBe('/companies/Acme+Corp');
+    expect(alike('/companies/Acme%20Corp', '/companies/Acme Corp', '/companies/42')).toBe(true);
+    expect(alike('/companies/Acme+Corp', '/companies/42')).toBe(false);
   });
 
   it('keeps an encoded slash inside a segment from becoming a segment', () => {
-    expect(routeOf('/a%2Fb/c')).toEqual({ kind: 'url', segments: ['a/b', 'c'] });
-    expect(verdict('/a%2Fb/c', '/a/b/c')).toBe('different');
+    expect(alike('/a%2Fb/c', '/a/b/c')).toBe(false);
   });
 
   it('keeps a location that is not a web address as itself: a device screen title, a browser page', () => {
-    expect(routeOf('Settings')).toEqual({ kind: 'opaque', location: 'Settings' });
-    expect(routeOf('General > About')).toEqual({ kind: 'opaque', location: 'General > About' });
-    expect(routeOf('about:blank')).toEqual({ kind: 'opaque', location: 'about:blank' });
-    expect(routeOf('chrome-error://chromewebdata/')).toEqual({ kind: 'opaque', location: 'chrome-error://chromewebdata/' });
+    for (const location of ['Settings', 'General > About', 'about:blank', 'chrome-error://chromewebdata/']) {
+      expect(alike(location, location), location).toBe(true);
+    }
+    expect(alike('Settings', 'General')).toBe(false);
+    expect(alike('Settings', '/Settings')).toBe(false);
   });
 });
 
-describe('compareRoutes', () => {
-  it('is same on equal routes, whatever the ids', () => {
-    expect(verdict('/orders/1', '/orders/2')).toBe('same');
-    expect(verdict('/companies?search=a', '/companies?search=b#x')).toBe('same');
-    expect(verdict('Settings', 'Settings')).toBe('same');
-    expect(verdict('/projects/PROJ-016', '/projects/PROJ-017')).toBe('same');
+describe('appLocation', () => {
+  it('keeps a location on the app origin as its path, so another deployment of the app reads alike', () => {
+    expect(appLocation('https://pr-12.preview.test/shop?x=1#top', 'https://pr-12.preview.test')).toBe('/shop?x=1#top');
+    expect(appLocation('https://other.test/shop', 'https://pr-12.preview.test')).toBe('https://other.test/shop');
+    expect(appLocation('https://other.test/shop', undefined)).toBe('https://other.test/shop');
+    expect(appLocation('Settings', 'https://pr-12.preview.test')).toBe('Settings');
+  });
+});
+
+describe('sameRoute', () => {
+  it('is true on equal routes, whatever the ids and the fragment', () => {
+    expect(sameRoute('/orders/1', '/orders/2')).toBe(true);
+    expect(sameRoute('/companies?search=a+b', '/companies?search=c+d#x')).toBe(true);
+    expect(sameRoute('/companies?b=2&a=1', '/companies?a=1&b=2')).toBe(true);
+    expect(sameRoute('Settings', 'Settings')).toBe(true);
   });
 
-  it('leaves exactly one unexplained segment to the screen, and nothing else', () => {
-    expect(verdict('/products/summer-sneaker', '/products/winter-boot')).toBe('undecided');
-    expect(verdict('/products/summer-sneaker', '/products/a77c12665e90')).toBe('undecided');
-    expect(verdict('/shop/summer/sneaker', '/shop/winter/boot')).toBe('different');
-    expect(verdict('/projects', '/projects/a77c12665e90')).toBe('different');
-    expect(verdict('/settings/billing', '/settings/members')).toBe('undecided');
-    expect(verdict('Settings', 'General')).toBe('different');
-    expect(verdict('Settings', '/settings')).toBe('different');
+  it('is false on another query value or key, a missing query, or another origin', () => {
+    expect(sameRoute('/task?mode=safe', '/task?mode=unsafe')).toBe(false);
+    expect(sameRoute('/companies', '/companies?tab=notes')).toBe(false);
+    expect(sameRoute('/shop', 'http://localhost:4400/shop')).toBe(false);
+    expect(sameRoute('http://127.0.0.1:4400/shop', 'http://localhost:4400/shop')).toBe(false);
+  });
+
+  it('is false on any literal that differs, a slug included: only the screen could say, and a lookalike screen is where a wrong link lands', () => {
+    expect(sameRoute('/products/summer-sneaker', '/products/winter-boot')).toBe(false);
+    expect(sameRoute('/settings-page', '/profile')).toBe(false);
+    expect(sameRoute('/projects', '/projects/a77c12665e90')).toBe(false);
+    expect(sameRoute('Settings', 'General')).toBe(false);
+    expect(sameRoute('Settings', '/settings')).toBe(false);
   });
 });

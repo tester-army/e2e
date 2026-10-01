@@ -90,10 +90,13 @@ const CONTAINER_ROLES: ReadonlySet<string> = new Set(['row', 'listitem', 'articl
 const MAX_WITHIN_CHARS = 80;
 
 /**
- * The key of the nearest named container a node sits in — the first text of
- * its row or list item — when that key says more than the node's own name.
- * Ten rows each with a "Delete" button are ten identical descriptors; "Delete
- * in the row that starts with Budget draft" is one.
+ * The key of the nearest named container a node sits in, the first text of
+ * its row or list item or else the container's own label, when that key says
+ * more than the node's own name. Ten rows each with a "Delete" button are ten
+ * identical descriptors; "Delete in the row that starts with Budget draft" is
+ * one. A row whose only text is its own (`<li>Alpha <button><svg/></li>`)
+ * is keyed by it. Only the nearest container counts: the list around a row
+ * with no text names every row alike, so its key would tell no twin apart.
  */
 export function containerKey(
   id: string,
@@ -106,12 +109,9 @@ export function containerKey(
   while (cursor !== undefined) {
     const container = nodes.get(cursor);
     if (container !== undefined && CONTAINER_ROLES.has(container.role ?? '')) {
-      const key = firstLeafText(container);
-      if (key !== undefined) {
-        const clean = bound(collapseText(key), MAX_WITHIN_CHARS);
-        return clean === '' || squash(clean) === own ? undefined : clean;
-      }
-      return undefined;
+      const key = firstLeafText(container) ?? ownLabel(container);
+      const clean = key === undefined ? '' : bound(collapseText(key), MAX_WITHIN_CHARS);
+      return clean === '' || squash(clean) === own ? undefined : clean;
     }
     cursor = parents.get(cursor);
   }
@@ -136,6 +136,12 @@ function firstLeafText(node: RedactedNode): string | undefined {
     if (deeper !== undefined) return deeper;
   }
   return undefined;
+}
+
+/** A container's own name or text, when it has one. */
+function ownLabel(node: RedactedNode): string | undefined {
+  const label = (node.name ?? node.text ?? '').trim();
+  return label === '' ? undefined : label;
 }
 
 function squash(text: string): string {

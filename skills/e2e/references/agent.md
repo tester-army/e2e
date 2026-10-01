@@ -56,8 +56,8 @@ Tests use `agents.default` unless selected otherwise:
 - `{ agent: 'name' }` on an `agent.*` call overrides the test's choice.
 
 For signed-in personas, pair an agent with a `session` in a describe block
-repeated per persona; the cache records per agent step, so a specialised
-agent replays too.
+repeated per persona; the cache keys every entry by the agent and its
+context, so each persona records and replays its own steps.
 
 ## act: one goal
 
@@ -242,14 +242,19 @@ matches. Misses and hand-offs use the model; `agent.assert`,
   `agent.assert`, `agent.waitFor`), so an unchecked `act` never replays; a
   plain-value `expect`, `expect.poll`, `agent.extract`, another `act`, or
   the attempt passing confirms nothing.
-- A replay needs the app on the recorded path (unless the recording opens
-  with a navigation), re-finds each control by role, name, test id,
-  placeholder, and input purpose, and passes alone only when the recorded
-  end path and the controls seen during the step are back; otherwise the
-  agent takes over mid-step. `step.cache.reason` says why: `no-entry`,
+- A replay needs the app on the recorded route (origin, path, and query,
+  ids and tokens aside; unless the recording opens with a navigation),
+  re-finds each control by role, name, test id, placeholder, input purpose,
+  and its named row (an unnamed control with twins and no named container
+  hands off), and passes alone only when the recorded end route is back,
+  every control that appeared (with its checked or selected state) is
+  there, every one that went away is gone, at least one of those changed
+  during the replay, and no new alert showed; otherwise the agent takes
+  over mid-step. Entries are keyed per agent and per `agentContext`. `step.cache.reason` says why: `no-entry`,
   `wrong-context`, `target-not-found`, `target-ambiguous`, `end-mismatch`,
   and so on.
-- A step recording no actions creates no entry; one whose `unique()` value
+- A step recording no actions, or changing nothing on screen or in the
+  route, creates no entry; one whose `unique()` value
   equals, is spelled inside, or is the encoded form of another param's value
   is not recorded either (`step.cache.notRecorded`: `param-collision`).
 - `e2e init` gitignores `.e2e/cache/`; remove that line to commit entries

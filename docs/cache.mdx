@@ -45,16 +45,45 @@ bunx e2e run --no-cache
 
 ## How a replay works
 
-1. Check the starting screen: the same route, whatever the record id, the
-   query, or the fragment. Retries always run live.
+1. Check the starting screen: the same route, whatever the record id or the
+   fragment. Retries always run live.
 2. Find each recorded control and repeat its action. The runner matches
    controls by their role, name, test id, and surrounding context. It waits
    for missing controls and stops if a match is ambiguous. A control with no
-   name is found by its place among the unnamed controls of its kind.
-3. Check the final path and controls that appeared during the original step.
-   Text that changes with the data, a count, a date, an id, is not used.
+   name is found by its place among the unnamed controls of its kind inside
+   the same named row, list item, or group; with no such container to tell
+   it from its twins, the agent takes the step.
+3. Check the final route and what the original step changed: the controls
+   that appeared, with their checked, selected, expanded, or pressed state,
+   and the ones that went away. At least one of those changes must happen
+   during the replay, counted from the first screen the replay saw on the
+   route it ended on, so an outcome already on screen before the actions
+   that should produce it proves nothing; a step whose last action moved to
+   another route has that move as its evidence. An alert the replay raised
+   that the recording never saw stops it too. Text that reads differently on
+   every run, a date, a time, a duration, an id, is not used, except in an
+   alert, where it is read as a placeholder.
 4. Finish without a model call, or let the agent continue with a record of
    what ran and why replay stopped.
+
+A route is the origin, the path, and the query. Ids, tokens, timestamps,
+and cache busters in either the path or the query are read as an id
+placeholder, so `/orders/42?t=1727780000` and `/orders/7?t=1727780999` are
+one route. Every other query value is part of it: `?mode=safe` and
+`?mode=unsafe`, or `/companies` and `/companies?tab=notes`, are different
+screens, and so is a tracking parameter that was not there when the step
+was recorded. Two routes that differ in one word, `/products/summer-sneaker`
+and `/products/winter-boot`, are different screens too, even when they look
+alike. A location on the app's own origin is compared by its path, so a
+recording follows the app to a preview deployment that shares its
+`app.identity`; a page on any other origin is another route.
+
+A count that names what it counts, `3 records imported` or `Showing 1 to 9
+of 9 results`, is part of the effect when the step made it appear on the
+screen it acted on, and must read the same on replay. A count that was
+already on screen and only moved, `41 items` to `42 items`, or one on a
+screen the step navigated to, is not used, since leftover data from earlier
+runs moves it again. A bare number such as a badge is never used.
 
 Typed values replay as recorded, even when an earlier run left the same
 value on screen. Secret fills resolve the current value by name and run
@@ -62,10 +91,14 @@ through authorization again.
 
 ## What must match
 
-A cache entry belongs to a specific test, target, instruction, and set of
-params. Renaming the test or target, changing the instruction or an ordinary
-param, or upgrading the engine's major or minor version causes a miss.
-Changing the model does not.
+A cache entry belongs to a specific test, target, instruction, set of
+params, and agent. Renaming the test or target, changing the instruction or
+an ordinary param, running with another configured agent, changing the
+agent's `context` or the test's `agentContext`, or upgrading the engine's
+major or minor version causes a miss. A test that runs once per agent
+(`agent: ['buyer', 'admin']`) records once per agent. Changing the model
+does not. The agent context enters the key as a hash of its redacted text,
+so a secret in it contributes only its name.
 
 A timestamp or a fresh email address would cause a miss on every run. Wrap
 values like these in `unique()` so the runner substitutes the current value
@@ -96,7 +129,9 @@ identity. On devices, replay uses the
 
 In `read-write` mode, the runner saves a recording at the end of the
 attempt when a later verification step passed. A step that took no action
-records nothing.
+records nothing, and neither does one that changed nothing the replay could
+check: no control appeared, went away, or changed state, and the route
+stayed the same.
 
 | Counts as verification | Does not count |
 | --- | --- |
@@ -145,14 +180,14 @@ such as an `afterEach` assertion.
 | `retry` | Retries never replay. | Nothing. |
 | `invalid-entry` | The file is unreadable, over 1 MiB, or from another schema version. | `npx e2e cache clear`. |
 | `truncated` | The recording hit a limit, see [below](#limits-and-gaps). | Split the step, or pass the secret as a `Secret`. |
-| `wrong-context` | The app was on another screen than when the step was recorded: a different route, not a different record, query, or fragment. | Open the same screen before the step. |
-| `target-not-found` | A recorded control did not appear within 15 seconds. | The UI changed. The next passing run re-records. |
+| `wrong-context` | The app was on another screen than when the step was recorded: a different origin, path, or query, not a different record id or fragment. | Open the same screen before the step. |
+| `target-not-found` | A recorded control did not appear within 15 seconds, or it has no name and no named container to tell it from its twins. | The UI changed: the next passing run re-records. For an unnamed control, give it a label or put it in a named row or group. |
 | `target-ambiguous` | The number of matching controls changed. | Give repeated controls distinct names or use unique test data. |
 | `gap` | An action cannot be replayed, see [below](#limits-and-gaps). | The agent continues this part live. Put stable values in `params`. |
 | `action-failed` | The app rejected a replayed action. | Check the app. |
 | `action-uncertain` | A replayed action failed with an unknown commit state. The agent is told to check before acting again. | Check the app. |
 | `viewport-changed` | A bare-point tap or hover was recorded on a viewport of another size. | Keep the viewport fixed. |
-| `end-mismatch` | Every action ran, but the recorded path or a control that should have appeared did not come back. | Leftover data from an earlier run, a banner that comes and goes, or a regression. |
+| `end-mismatch` | Every action ran, but the recorded route, a control that should have appeared or gone away, or a recorded state did not come back; the outcome was already on screen before the replay; or the replay raised an alert the recording never saw. | Leftover data from an earlier run, a banner that comes and goes, or a regression. |
 
 A stop before any action ran is a miss. After replay starts, it is a
 hand-off. Unique test data and cleanup in `afterEach` help avoid stale
@@ -176,8 +211,9 @@ the instruction or `params`, or ones the agent composed itself, replay.
 
 Each entry is a JSON file under `.e2e/cache/`, named by a hash of its key.
 It contains actions, target descriptions, typed text, a step summary, and
-checks for the final state. Those checks include the path and up to eight
-controls that appeared during the step.
+checks for the final state. Those checks include the route, up to eight
+controls that appeared during the step, alerts and status messages first,
+and up to eight that went away.
 
 Entries contain no prompts, conversations, screenshots, observed trees, or
 secret values. A secret fill stores only the secret's name. Other typed
@@ -220,12 +256,16 @@ Local runs leave a committed directory clean unless something changed. A
 replayed step never rewrites its entry, and a live re-recording with the same
 actions, paths, and anchors is not written: the summary, the measured end
 wait, and the rule that flagged a typed run-time value differ between two
-live runs of the same flow and do not count. A file changes when:
+live runs of the same flow and do not count. Upgrading `e2e` to a version
+that changes how entries are matched re-keys every entry, so the first run
+after it records them again. A file changes when:
 
 - a step records for the first time,
 - the agent finishes a step after a hand-off, re-recording what it saw,
 - a step fails after replaying, or ends in an `end-mismatch` the agent had
   to repair, which deletes the entry,
+- a step with an entry passes without leaving anything to record, which
+  deletes the entry,
 - no verification step confirmed the entry by the end of the attempt, which
   deletes it.
 

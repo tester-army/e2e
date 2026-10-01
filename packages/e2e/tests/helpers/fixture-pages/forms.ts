@@ -37,11 +37,11 @@ const UNANCHORED_PAGE = `<!doctype html>
  * query derived from any row matches all of them, so the sweep can only resolve
  * one by pinning an index.
  *
- * `?reverse=1` serves the same three offers in the opposite order. Cache route
- * identity drops the query, so both URLs are the same place and share a key,
- * which is how a warm run can replay an entry recorded against a page whose rows
- * have since reordered. An index would land on the wrong offer; a selector
- * anchored on the button's own name does not.
+ * `?reverse=1`, or the `b` variant (`FixtureApp.setVariant`) under the plain
+ * URL, serves the same three offers in the opposite order: a warm run replays
+ * an entry recorded against a page whose rows have since reordered. An index
+ * would land on the wrong offer; a selector anchored on the button's own name
+ * does not.
  *
  * The widget appended at body level is what a chat bubble, a consent frame, or a
  * React portal does, and it shifts every nth-child index under body.
@@ -79,8 +79,9 @@ ${rows}
 
 /**
  * Controls a recording can only re-find by their place: two fields named by
- * placeholder alone, two textboxes with no name at all, and three buttons
- * sharing one label outside any row or list item. `?variant=b` prepends a
+ * placeholder alone, two textboxes with no name at all in one named group,
+ * and three buttons sharing one label outside any row or list item. The
+ * `b` variant (`?variant=b`, or `FixtureApp.setVariant`) prepends a
  * banner and swaps the two placeholder fields, so every node's id and
  * rectangle move while the counts and the unnamed order stay.
  */
@@ -99,8 +100,11 @@ ${moved ? '  <div role="note">Announcement: scheduled maintenance tonight</div>\
   <div>
 ${moved ? `${motto}\n${nickname}` : `${nickname}\n${motto}`}
   </div>
-  <div class="anon"><input /></div>
-  <div class="anon"><input /></div>
+  <fieldset>
+    <legend>Codenames</legend>
+    <div class="anon"><input /></div>
+    <div class="anon"><input /></div>
+  </fieldset>
 ${rows}
   <button onclick="summarize()">Submit</button>
   <output id="picked" role="status" aria-label="Picked">none</output>
@@ -250,6 +254,6 @@ export const FORM_PAGES: Record<string, PageRenderer> = {
 </body>
 </html>`),
   '/unanchored': constant(UNANCHORED_PAGE),
-  '/repeats': (_state, url) => renderRepeats(url.searchParams.get('reverse') === '1'),
+  '/repeats': (_state, url) => renderRepeats(url.searchParams.get('reverse') === '1' || url.searchParams.get('variant') === 'b'),
   '/twins-form': (_state, url) => renderTwinsForm(url.searchParams.get('variant')),
 };

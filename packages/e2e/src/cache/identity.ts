@@ -7,10 +7,13 @@
  * contributes only its stable name and purpose, exactly as the executor sees
  * it in the projected params.
  *
- * Executor identity is deliberately absent (OQ10's conservative default):
- * entries are shared across roster members and carry their producer as
- * provenance on the entry, so a future ReplayPolicy can reject foreign traces
- * without a re-key.
+ * The agent a step runs with is part of the key: its configured name, since
+ * two agents of one test (`agent: ['buyer', 'admin']`) act as different
+ * people, and a digest of the context it reads, since a test's
+ * `agentContext` decides what the step does. The context is digested after
+ * redaction, so a registered secret in it contributes its name only. The
+ * executor that produced a trace stays provenance on the entry: the agent's
+ * name already keeps two configured agents apart.
  */
 
 import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
@@ -41,7 +44,18 @@ export interface TraceCacheKey {
   readonly instructionDigest: string;
   readonly paramsDigest: string;
   readonly appIdentity: string;
+  /** Name of the configured agent the step ran with. */
+  readonly agent: string;
+  /** SHA-256 of the agent's redacted context (its `context` then the test's `agentContext`), or of the empty string. */
+  readonly agentContextDigest: string;
   readonly policyVersion: string;
+}
+
+/** The agent a step runs with, as the key sees it. */
+export interface CacheAgentIdentity {
+  readonly name: string;
+  /** The context the agent reads, already redacted. */
+  readonly context: string | undefined;
 }
 
 /** Identity of the target/engine/app a trace was recorded against. */
@@ -157,6 +171,7 @@ export function buildTraceCacheKey(parts: {
   readonly target: CacheTargetIdentity;
   readonly signature: TraceCallSignature;
   readonly callIndex: number;
+  readonly agent: CacheAgentIdentity;
   readonly policyVersion: string;
 }): TraceCacheKey {
   return {
@@ -174,6 +189,8 @@ export function buildTraceCacheKey(parts: {
     instructionDigest: parts.signature.instructionDigest,
     paramsDigest: parts.signature.paramsDigest,
     appIdentity: parts.target.appIdentity,
+    agent: parts.agent.name,
+    agentContextDigest: sha256Hex(parts.agent.context ?? ''),
     policyVersion: parts.policyVersion,
   };
 }

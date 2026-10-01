@@ -166,7 +166,8 @@ export const FLOWS: readonly Flow[] = [
   },
   {
     title: 'fills the twins form',
-    open: (variant) => (variant === 'replay' ? '/twins-form?variant=b' : '/twins-form'),
+    // The replay run renders the `b` variant (`FixtureApp.setVariant`) under the recorded URL.
+    open: () => '/twins-form',
     body: `  await agent.act('fill in the twins form');
   await expect(screen.getByRole('status', { name: 'Summary' })).toHaveText('nickname=ada motto=carpe diem first=quill second=ember picked=2');`,
     script: {
@@ -190,7 +191,8 @@ export const FLOWS: readonly Flow[] = [
   },
   {
     title: 'reserves offer B',
-    open: (variant) => (variant === 'replay' ? '/repeats?reverse=1' : '/repeats'),
+    // The replay run renders the `b` variant, the offers reversed, under the recorded URL.
+    open: () => '/repeats',
     body: `  await agent.act('reserve offer B');
   await expect(screen.getByRole('status', { name: 'Picked' })).toHaveText('B');`,
     script: {

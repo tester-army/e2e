@@ -241,11 +241,21 @@ describe('flushStagedTraces', () => {
     expect(store.entries.get(KEY_C)).toBe(stored);
   });
 
+  it('claims a key per agent and per agent context, so one agent never replays another\'s recording', () => {
+    const fresh = () => contextWith(memoryStore());
+    const buyer = fresh().claimKeyHash('act', 'approve the order', undefined, { name: 'buyer', context: undefined });
+    const admin = fresh().claimKeyHash('act', 'approve the order', undefined, { name: 'admin', context: undefined });
+    const monthly = fresh().claimKeyHash('act', 'approve the order', undefined, { name: 'buyer', context: 'Monthly' });
+    expect(new Set([buyer, admin, monthly]).size).toBe(3);
+    expect(fresh().claimKeyHash('act', 'approve the order', undefined, { name: 'buyer', context: undefined })).toBe(buyer);
+  });
+
   it('claims distinct key hashes per occurrence of the same signature', () => {
     const context = contextWith(memoryStore());
-    const first = context.claimKeyHash('act', 'open billing', undefined);
-    const repeat = context.claimKeyHash('act', 'open billing', undefined);
-    const other = context.claimKeyHash('act', 'open billing', { fast: true });
+    const agent = { name: 'default', context: undefined };
+    const first = context.claimKeyHash('act', 'open billing', undefined, agent);
+    const repeat = context.claimKeyHash('act', 'open billing', undefined, agent);
+    const other = context.claimKeyHash('act', 'open billing', { fast: true }, agent);
     expect(first).toMatch(/^[a-f0-9]{64}$/);
     expect(repeat).not.toBe(first);
     expect(other).not.toBe(first);

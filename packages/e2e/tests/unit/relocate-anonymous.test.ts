@@ -29,18 +29,18 @@ describe('an anonymous target', () => {
     expect(describePosition(form.get('name')!, undefined, form)).toEqual({ index: 0, of: 1 });
   });
 
-  it('relocates to the unnamed twin at its place, never to a named control of the same role', () => {
-    const recorded = { role: 'textbox', position: { index: 1, of: 2 } };
-    const form = screen(textbox('a', 'Email'), textbox('b'), textbox('c'));
-    expect(relocateDescriptor(recorded, form)).toEqual({ kind: 'found', id: 'c' });
+  it('relocates the only unnamed control of its role, never to a named control of the same role', () => {
     expect(relocateDescriptor({ role: 'textbox', position: { index: 0, of: 1 } }, screen(textbox('a', 'Email'), textbox('b')))).toEqual({ kind: 'found', id: 'b' });
   });
 
-  it('diverges when the number of unnamed twins changed, one survivor included, or none is left', () => {
+  it('hands off a place counted among unnamed twins with no container to tell them apart, since rows reorder', () => {
     const recorded = { role: 'textbox', position: { index: 1, of: 2 } };
-    expect(relocateDescriptor(recorded, screen(textbox('a'), textbox('b'), textbox('c')))).toEqual({ kind: 'failed', failure: 'target-ambiguous', candidates: ['a', 'b', 'c'] });
-    // One unnamed twin where two were counted: it may be the other field.
-    expect(relocateDescriptor(recorded, screen(textbox('a', 'Email'), textbox('b')))).toEqual({ kind: 'failed', failure: 'target-ambiguous', candidates: ['b'] });
+    expect(relocateDescriptor(recorded, screen(textbox('a', 'Email'), textbox('b'), textbox('c')))).toEqual({ kind: 'failed', failure: 'target-not-found' });
+  });
+
+  it('diverges when the number of unnamed twins changed, one survivor included, or none is left', () => {
+    const recorded = { role: 'textbox', position: { index: 0, of: 1 } };
+    expect(relocateDescriptor(recorded, screen(textbox('a'), textbox('b')))).toEqual({ kind: 'failed', failure: 'target-ambiguous', candidates: ['a', 'b'] });
     expect(relocateDescriptor(recorded, screen(textbox('a', 'Email')))).toEqual({ kind: 'failed', failure: 'target-not-found' });
   });
 

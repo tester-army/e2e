@@ -215,8 +215,10 @@ default, follows the configured cache mode. A recorded step replays without
 calling `runStep`. A replay that stops partway calls `runStep` with
 `ctx.replayedPrefix`: continue from the current screen and do not redo the
 replayed actions. What a step does through `ctx.actions` is recorded; a
-mutating tool call leaves a gap the executor fills on replay. Entries are not
-keyed by executor, so an entry one agent recorded replays for another.
+mutating tool call leaves a gap the executor fills on replay. Entries are
+keyed by the configured agent and its context, so an entry one agent
+recorded never replays for another; the executor itself is not part of the
+key, so changing an agent's executor keeps its entries.
 
 `'off'` never replays or records the executor's steps, so every step reaches
 `runStep`. Use it for a brain whose own history or memory is the source of

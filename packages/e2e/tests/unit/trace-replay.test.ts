@@ -3,7 +3,9 @@
 import { describe, expect, it } from 'vitest';
 import { AgentError } from '../../src/agent/error.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
-import { replayTrace, verifyAnchors, type ObservedScreen, type ReplayHost } from '../../src/agent/replay.ts';
+import { replayTrace, verifyEndState, type ObservedScreen, type ReplayHost } from '../../src/agent/replay.ts';
+import { deltaHolds } from '../../src/cache/anchors.ts';
+import type { TraceTargetDescriptor } from '../../src/cache/trace.ts';
 import type { SettleMode } from '../../src/agent/settle-policy.ts';
 import type { ActionTrace, RecordedAction } from '../../src/cache/trace.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
@@ -104,15 +106,11 @@ function screen(nodes: readonly SemanticNode[], viewport = VIEWPORT) {
   return { kind: 'semantic' as const, nodes: redactedNodes(nodes), viewport };
 }
 
-describe('verifyAnchors', () => {
+describe('verifyEndState', () => {
   const saved: SemanticNode = { ref: { id: 'm', revision: 'r1' }, role: 'status', name: 'Marker', text: 'saved' };
   const savedAnchor = { role: 'status', name: 'Marker', text: 'saved' };
-
-  it('holds trivially for a trace without anchors, without observing', async () => {
-    const host = makeHost({});
-    await expect(verifyAnchors(host, [])).resolves.toBe(true);
-    expect(host.observations).toBe(0);
-  });
+  const verifyAnchors = (host: ReplayHost, endAnchors: readonly TraceTargetDescriptor[]) =>
+    verifyEndState(host, (nodes) => deltaHolds({ endAnchors }, nodes, new Map()));
 
   it('holds when every anchor is present, counting an ambiguous match as presence', async () => {
     const twin: SemanticNode = { ...saved, ref: { id: 'm2', revision: 'r1' } };
@@ -157,6 +155,24 @@ describe('verifyAnchors', () => {
 });
 
 describe('replayTrace', () => {
+  it('looks at the screen before a free action that follows another one only while the caller asks', async () => {
+    const free = trace([
+      { name: 'navigate', summary: 'navigate to "/newsletter"', url: '/newsletter' },
+      { name: 'typeText', summary: 'type "a@b.c" into the focused field', value: 'a@b.c', replace: false },
+      { name: 'pressKey', summary: 'press "Enter" on the focused field', key: 'Enter' },
+    ]);
+    const asking = makeHost({});
+    let asked = 0;
+    // The caller has seen its route after the first look, and asks no more.
+    await replayTrace(asking, free, { looksBeforeFree: () => (asked += 1) === 1 });
+    expect(asking.calls).toEqual(['navigate', 'typeText', 'pressKey']);
+    expect(asking.looks).toHaveLength(1);
+    expect(asked).toBe(2);
+    const silent = makeHost({});
+    await replayTrace(silent, free);
+    expect(silent.looks).toEqual([]);
+  });
+
   it('replays a full trace and reports completion', async () => {
     const host = makeHost({});
     const outcome = await replayTrace(
@@ -320,14 +336,16 @@ describe('replayTrace', () => {
 
   it('keeps looking while a positioned target is ambiguous, since a form still rendering shows fewer twins', async () => {
     const unnamed = (id: string): SemanticNode => ({ ref: { id, revision: 'r1' }, role: 'textbox' });
-    const host = makeHost({ nodes: [unnamed('a')] });
+    // Unnamed twins are told apart by their place only inside a named container.
+    const row = (fields: SemanticNode[]): SemanticNode[] => [{ ref: { id: 'row', revision: 'r1' }, role: 'listitem', name: 'Shipping', children: fields }, ...fields];
+    const host = makeHost({ nodes: row([unnamed('a')]) });
     let captures = 0;
     host.capture = async () => {
       captures += 1;
       // The first look shows one unnamed textbox where the recording counted two; the form finishes rendering after that.
-      return screen(captures < 3 ? [unnamed('a')] : [unnamed('a'), unnamed('b')]);
+      return screen(captures < 3 ? row([unnamed('a')]) : row([unnamed('a'), unnamed('b')]));
     };
-    const outcome = await replayTrace(host, trace([{ name: 'type', summary: 'type "x" into textbox (2 of 2)', target: { role: 'textbox', position: { index: 1, of: 2 } }, value: 'x' }]));
+    const outcome = await replayTrace(host, trace([{ name: 'type', summary: 'type "x" into textbox in "Shipping" (2 of 2)', target: { role: 'textbox', within: 'Shipping', position: { index: 1, of: 2 } }, value: 'x' }]));
     expect(outcome).toMatchObject({ completed: true, executed: 1 });
     expect(host.calls).toEqual(['type']);
     // The retries between the backoff delays read the screen raw.

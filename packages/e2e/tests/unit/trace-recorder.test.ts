@@ -40,6 +40,16 @@ const conclusion = {
 };
 
 describe('TraceRecorder', () => {
+  it('poisons a trace whose target is an unnamed twin no named row tells apart, and keeps one that a row does', () => {
+    const icon = redacted({ ref: { id: 'i', revision: 'r1' }, role: 'button' });
+    const orphan = makeRecorder();
+    orphan.record({ name: 'tap', node: icon, position: { index: 1, of: 2 } });
+    expect(orphan.finalize(conclusion)?.truncated).toBe(true);
+    const rowed = makeRecorder();
+    rowed.record({ name: 'tap', node: icon, within: 'Alpha', position: { index: 0, of: 1 } });
+    expect(rowed.finalize(conclusion)?.truncated).toBeUndefined();
+  });
+
   it('records durable descriptors and readable summaries', () => {
     const recorder = makeRecorder();
     recorder.record({ name: 'navigate', url: '/billing' });

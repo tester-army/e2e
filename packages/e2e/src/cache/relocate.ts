@@ -25,7 +25,7 @@ import type { TracePosition, TraceTargetDescriptor } from './trace.ts';
  * change, because an entry recorded under different rules could relocate to a
  * different node.
  */
-export const REPLAY_POLICY_VERSION = 'conservative/5';
+export const REPLAY_POLICY_VERSION = 'conservative/6';
 
 /**
  * The share of the viewport a scrolled node must have covered when it was
@@ -46,7 +46,7 @@ export type RelocationResult =
 export type DescriptorField = keyof TraceTargetDescriptor;
 
 /** A node's descriptor projection alongside its per-observation id. */
-export interface DescribedNode {
+interface DescribedNode {
   readonly id: string;
   readonly descriptor: TraceTargetDescriptor;
 }
@@ -58,17 +58,12 @@ const IDENTITY_FIELDS: readonly DescriptorField[] = ['role', 'name', 'testId', '
 const IDENTITY_FIELDS_WITH_TEXT: readonly DescriptorField[] = [...IDENTITY_FIELDS, 'text'];
 
 /**
- * Whether a descriptor can identify a node at all. Role or selector alone
- * cannot: a wrong match acts on the wrong control, so such a descriptor is
- * not relocatable and, as an anchor, would prove nothing.
- */
-/**
  * A descriptor with nothing to identify the control by: no test id, name,
- * text, or placeholder, only a role. A form built without labels is made of
- * these. Such a descriptor relocates by its place among the unnamed
- * controls of its kind, so it is relocatable only once a position was
- * recorded for it, and it is matched strictly (`fieldsIdentical`): an
- * unnamed textbox must never stand in for a named one.
+ * text, or placeholder, only a role. An icon button and a form built
+ * without labels are made of these. Such a descriptor relocates by its place
+ * among the unnamed controls of its kind, and it is matched strictly
+ * (`fieldsIdentical`): an unnamed textbox must never stand in for a named
+ * one.
  */
 function isAnonymous(descriptor: TraceTargetDescriptor): boolean {
   return (
@@ -79,8 +74,20 @@ function isAnonymous(descriptor: TraceTargetDescriptor): boolean {
   );
 }
 
+/**
+ * Whether a descriptor can identify a node at all. Role or selector alone
+ * cannot: a wrong match acts on the wrong control, so such a descriptor is
+ * not relocatable and, as an anchor, would prove nothing. An anonymous one
+ * is relocatable by its recorded place only when that place means something
+ * on the next screen: it was the one unnamed control of its role, or it sits
+ * in a named container (`within`) that tells it from its twins. A place
+ * counted among twins with no container is an order, and rows that reorder
+ * would hand the action to the wrong one, so such a target hands off.
+ */
 export function isRelocatableDescriptor(descriptor: TraceTargetDescriptor): boolean {
-  return isAnonymous(descriptor) ? descriptor.role !== undefined && descriptor.position !== undefined : true;
+  if (!isAnonymous(descriptor)) return true;
+  const { position } = descriptor;
+  return descriptor.role !== undefined && position !== undefined && (position.of === 1 || descriptor.within !== undefined);
 }
 
 /** The semantic tier of a descriptor: every identity field but the test id. */
@@ -141,7 +148,7 @@ function fieldsIdentical(
 const projections = new WeakMap<ReadonlyMap<string, RedactedNode>, readonly DescribedNode[]>();
 
 /** Projects every node of an observation the way the recorder described its targets. */
-export function describeNodes(nodes: ReadonlyMap<string, RedactedNode>): readonly DescribedNode[] {
+function describeNodes(nodes: ReadonlyMap<string, RedactedNode>): readonly DescribedNode[] {
   const cached = projections.get(nodes);
   if (cached !== undefined) return cached;
   const described: DescribedNode[] = [];

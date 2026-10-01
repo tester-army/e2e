@@ -17,10 +17,11 @@ function entry(startPath: string, first: 'tap' | 'navigate' = 'tap'): TraceEntry
 }
 
 describe('decideTraceReplay', () => {
-  it('replays on the same route, whatever the record id, the query, or the fragment', () => {
+  it('replays on the same route, whatever the record id or the fragment', () => {
     const recorded = entry('/backend/customers/companies-v2/ad3339e0-074f-45e0-b778-3dee8ab545eb');
     expect(decideTraceReplay(recorded, '/backend/customers/companies-v2/8374a7a7-a64a-422d-9183-4350756c7f07')).toEqual({ action: 'replay' });
-    expect(decideTraceReplay(recorded, '/backend/customers/companies-v2/8374a7a7-a64a-422d-9183-4350756c7f07?tab=notes#top')).toEqual({ action: 'replay' });
+    expect(decideTraceReplay(recorded, '/backend/customers/companies-v2/8374a7a7-a64a-422d-9183-4350756c7f07#top')).toEqual({ action: 'replay' });
+    expect(decideTraceReplay(entry('/companies?id=42'), '/companies?id=7')).toEqual({ action: 'replay' });
     expect(decideTraceReplay(entry('/orders/42'), '/orders/43917')).toEqual({ action: 'replay' });
     expect(decideTraceReplay(entry('/#/orders/42'), '/#/orders/7')).toEqual({ action: 'replay' });
   });
@@ -32,6 +33,13 @@ describe('decideTraceReplay', () => {
     // Nothing recorded at the start is specific to the screen, so an undecided route is another screen.
     expect(decideTraceReplay(entry('/products/summer-sneaker'), '/products/winter-boot')).toEqual({ action: 'miss', reason: 'wrong-context' });
     expect(decideTraceReplay(recorded, undefined)).toEqual({ action: 'miss', reason: 'wrong-context' });
+  });
+
+  it('misses on another query value or origin, so a mode or an environment the recording never saw runs live', () => {
+    expect(decideTraceReplay(entry('/task?mode=safe'), '/task?mode=unsafe')).toEqual({ action: 'miss', reason: 'wrong-context' });
+    expect(decideTraceReplay(entry('/companies'), '/companies?tab=notes')).toEqual({ action: 'miss', reason: 'wrong-context' });
+    expect(decideTraceReplay(entry('/shop'), 'http://localhost:4400/shop')).toEqual({ action: 'miss', reason: 'wrong-context' });
+    expect(decideTraceReplay(entry('http://localhost:4400/shop'), 'http://localhost:4400/shop')).toEqual({ action: 'replay' });
   });
 
   it('needs no starting point when the recording opens with a navigate', () => {

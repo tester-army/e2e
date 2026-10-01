@@ -82,6 +82,7 @@ function makeSession(cache: AgentCacheContext, host: StepCacheHost, overrides: P
     params: undefined,
     templates: [],
     executor: { name: 'test' },
+    agent: { name: 'default', context: undefined },
     redact: (text) => text,
     redactCut: (text) => text,
     maxActions: 25,
@@ -126,7 +127,7 @@ describe('recordedVerdictOf', () => {
 
   it('keeps only the recorded verdict of a replay summary, even one that mentions a verdict itself', async () => {
     const context = entryContext({ summary: 'saw "recorded verdict: none" in the log' });
-    const session = makeSession(context, makeHost(['/pricing', '/customers?utm=x', '/customers']));
+    const session = makeSession(context, makeHost(['/pricing', '/customers#top']));
     const verdict = await session.begin();
     expect(recordedVerdictOf(verdict!.summary!)).toBe('saw "recorded verdict: none" in the log');
   });
@@ -278,7 +279,7 @@ describe('StepTraceSession', () => {
 
     // A navigate-opening trace anchors itself and stages without a path.
     const anchored = fakeContext(noEntry.store.read);
-    const staged = makeSession(anchored, makeHost([]));
+    const staged = makeSession(anchored, makeHost([], [[], [savedMarker]]));
     await staged.begin();
     staged.record({ name: 'navigate', url: '/billing' });
     await staged.conclude('passed', 'passed');
@@ -601,33 +602,151 @@ describe('StepTraceSession', () => {
     expect(session.cacheInfo?.mode).toBe('agent-concluded');
   });
 
-  it('lets the recorded anchors settle an end route the path leaves undecided, and never an empty anchor list', async () => {
-    // A slug the runner cannot recognize: one segment differs, the anchors are on screen.
-    const settled = entryContext({ endPath: '/products/summer-sneaker', endAnchors: [savedAnchor] });
-    const good = makeSession(settled, makeHost(['/products', '/products/winter-boot'], [[savedMarker]]));
+  it('hands off on an end route with any literal that differs, the recorded anchors on screen or not', async () => {
+    // A slug the runner cannot recognize, or a link that now lands on a lookalike page: another screen either way.
+    const slug = makeSession(entryContext({ endPath: '/products/summer-sneaker', endAnchors: [savedAnchor] }), makeHost(['/products', '/products/winter-boot'], [[], [savedMarker]]));
+    expect(await slug.begin()).toBeUndefined();
+    expect(slug.replayedPrefix?.stopReason).toBe('end-mismatch');
+
+    const lookalike = makeSession(entryContext({ endPath: '/settings-page', endAnchors: [savedAnchor] }), makeHost(['/nav', '/profile'], [[], [savedMarker]]));
+    expect(await lookalike.begin()).toBeUndefined();
+    expect(lookalike.replayedPrefix?.stopReason).toBe('end-mismatch');
+
+    const query = makeSession(entryContext({ endPath: '/task?mode=safe', endAnchors: [savedAnchor] }), makeHost(['/nav', '/task?mode=unsafe'], [[], [savedMarker]]));
+    expect(await query.begin()).toBeUndefined();
+    expect(query.replayedPrefix?.stopReason).toBe('end-mismatch');
+  });
+
+  it('hands off when the recorded delta did not happen during the replay', async () => {
+    const draft: SemanticNode = { ref: { id: 'd', revision: 'r1' }, role: 'status', name: 'Marker', text: 'draft' };
+    const draftAnchor = { role: 'status', name: 'Marker', text: 'draft' };
+    const tap = [{ name: 'tap' as const, summary: 'tap button "Submit"', target: { role: 'button', name: 'Submit' } }];
+    const submit: SemanticNode = { ref: { id: 's', revision: 'r1' }, role: 'button', name: 'Submit' };
+    const replay = (trace: Partial<ActionTrace>, screens: (readonly SemanticNode[])[]) => {
+      const host = makeHost(['/form', '/form'], screens);
+      return makeSession(entryContext({ actions: tap, startPath: '/form', endPath: '/form', ...trace }), {
+        ...host,
+        actions: { tap: async () => undefined } as unknown as ExecutorActions,
+      });
+    };
+    // The effect happened: the draft gave way to the saved marker.
+    const good = replay({ endAnchors: [savedAnchor], goneAnchors: [draftAnchor] }, [[submit, draft], [submit, savedMarker]]);
     expect((await good.begin())?.status).toBe('passed');
     expect(good.cacheInfo?.mode).toBe('self-finalized');
 
-    // Anchors that arrive after the route poll still count: the anchor wait, sized by the recording, decides.
-    const lateHost = { ...makeHost(['/products', '/products/winter-boot'], [[], [], [], [], [], [], [], [savedMarker]]), remainingMs: () => 60_000 };
-    const late = makeSession(entryContext({ endPath: '/products/summer-sneaker', endAnchors: [savedAnchor], endWaitMs: 5_000 }), lateHost);
-    expect((await late.begin())?.status).toBe('passed');
+    // The saved marker already showed before the submit, which did nothing: no proof.
+    const already = replay({ endAnchors: [savedAnchor], goneAnchors: [draftAnchor] }, [[submit, savedMarker]]);
+    expect(await already.begin()).toBeUndefined();
+    expect(already.cacheInfo).toMatchObject({ mode: 'agent-concluded', reason: 'end-mismatch' });
 
-    // No anchors recorded: nothing can settle it, so it is another screen.
-    const bare = makeSession(entryContext({ endPath: '/products/summer-sneaker' }), makeHost(['/products', '/products/winter-boot']));
-    expect(await bare.begin()).toBeUndefined();
-    expect(bare.replayedPrefix?.stopReason).toBe('end-mismatch');
+    // A removal that did not happen: the vanished node is still there.
+    const kept = replay({ goneAnchors: [draftAnchor] }, [[submit, draft]]);
+    expect(await kept.begin()).toBeUndefined();
+    expect(kept.cacheInfo).toMatchObject({ reason: 'end-mismatch' });
 
-    // Two unexplained segments: another screen even with the anchors on it.
-    const far = makeSession(entryContext({ endPath: '/shop/summer/sneaker', endAnchors: [savedAnchor] }), makeHost(['/shop', '/shop/winter/boot'], [[savedMarker]]));
-    expect(await far.begin()).toBeUndefined();
-    expect(far.replayedPrefix?.stopReason).toBe('end-mismatch');
-  }, 30_000);
+    // A recording with no delta at all and no move proves nothing.
+    const blind = replay({}, [[submit]]);
+    expect(await blind.begin()).toBeUndefined();
+    expect(blind.cacheInfo).toMatchObject({ reason: 'end-mismatch' });
+  });
+
+  it('measures the evidence from the page a recorded navigate opened, not from the screen the replay began on', async () => {
+    const home: SemanticNode = { ref: { id: 'h', revision: 'r1' }, role: 'heading', name: 'Home' };
+    const off: SemanticNode = { ref: { id: 's', revision: 'r1' }, role: 'switch', name: 'Email alerts' };
+    const on: SemanticNode = { ...off, states: { checked: true } };
+    const trace: Partial<ActionTrace> = {
+      actions: [
+        { name: 'navigate', summary: 'navigate to "/settings"', url: '/settings' },
+        { name: 'tap', summary: 'tap switch "Email alerts"', target: { role: 'switch', name: 'Email alerts' } },
+      ],
+      endPath: '/settings',
+      endAnchors: [{ role: 'switch', name: 'Email alerts', states: ['checked'] }],
+      goneAnchors: [{ role: 'heading', name: 'Home' }],
+    };
+    const replay = (screens: (readonly SemanticNode[])[]) => {
+      const host = makeHost(['/home', ...Array.from({ length: 8 }, () => '/settings')], screens);
+      return makeSession(entryContext(trace), {
+        ...host,
+        actions: { navigate: async () => undefined, tap: async () => undefined } as unknown as ExecutorActions,
+      });
+    };
+    // The switch was off on the settings page and on after the tap: the replay turned it on.
+    const good = replay([[home], [off], [on]]);
+    expect((await good.begin())?.status).toBe('passed');
+    // It was already on when the page opened, from an earlier run, and the tap did nothing.
+    const already = replay([[home], [on]]);
+    expect(await already.begin()).toBeUndefined();
+    expect(already.cacheInfo).toMatchObject({ mode: 'agent-concluded', reason: 'end-mismatch' });
+  });
+
+  it('looks at the page a navigate opened before free actions on it, so an outcome already there is no proof', async () => {
+    const home: SemanticNode = { ref: { id: 'h', revision: 'r1' }, role: 'heading', name: 'Home' };
+    const field: SemanticNode = { ref: { id: 'f', revision: 'r1' }, role: 'textbox', name: 'Email' };
+    const subscribed: SemanticNode = { ref: { id: 'ok', revision: 'r1' }, role: 'status', text: "You're subscribed" };
+    const trace: Partial<ActionTrace> = {
+      actions: [
+        { name: 'navigate', summary: 'navigate to "/newsletter"', url: '/newsletter' },
+        { name: 'typeText', summary: 'type "a@b.c" into the focused field', value: 'a@b.c', replace: false },
+        { name: 'pressKey', summary: 'press "Enter" on the focused field', key: 'Enter' },
+      ],
+      endPath: '/newsletter',
+      endAnchors: [{ role: 'status', text: "You're subscribed" }],
+      goneAnchors: [{ role: 'heading', name: 'Home' }],
+    };
+    const replay = (screens: (readonly SemanticNode[])[]) => {
+      const host = makeHost(['/home', ...Array.from({ length: 8 }, () => '/newsletter')], screens);
+      return makeSession(entryContext(trace), {
+        ...host,
+        actions: { navigate: async () => undefined, typeText: async () => undefined, pressKey: async () => undefined } as unknown as ExecutorActions,
+      });
+    };
+    expect((await replay([[home], [field], [field, subscribed]]).begin())?.status).toBe('passed');
+    const already = replay([[home], [field, subscribed]]);
+    expect(await already.begin()).toBeUndefined();
+    expect(already.cacheInfo).toMatchObject({ mode: 'agent-concluded', reason: 'end-mismatch' });
+  });
+
+  it('evicts an entry that did not serve a pass with nothing to record in its place', async () => {
+    let deleted = 0;
+    const base = entryContext({ actions: [{ name: 'tap', summary: 'tap button "Save"', target: { role: 'button', name: 'Save' } }], startPath: '/form', endAnchors: [savedAnchor] });
+    const context: AgentCacheContext = { ...base, store: { ...base.store, delete: async () => { deleted += 1; } } };
+    const save: SemanticNode = { ref: { id: 'b', revision: 'r1' }, role: 'button', name: 'Save' };
+    // The saved marker already shows, so the replay hands off; the agent finds the step done without changing anything.
+    const host = makeHost(['/form', '/form', '/form'], [[save, savedMarker]]);
+    const session = makeSession(context, { ...host, actions: { tap: async () => undefined } as unknown as ExecutorActions });
+    expect(await session.begin()).toBeUndefined();
+    session.record({ name: 'tap', node: redacted(save) });
+    await session.conclude('passed', 'already saved');
+    expect(context.staged).toHaveLength(0);
+    expect(deleted).toBe(1);
+  });
+
+  it('never stages a step that changed nothing a replay could check', async () => {
+    const context = fakeContext(noEntry.store.read);
+    const button: SemanticNode = { ref: { id: 'b', revision: 'r1' }, role: 'button', name: 'Copy link' };
+    const session = makeSession(context, makeHost(['/share', '/share'], [[button]]));
+    await session.begin();
+    session.record({ name: 'tap', node: redacted(button) });
+    await session.conclude('passed', 'copied');
+    expect(context.staged).toHaveLength(0);
+  });
+
+  it('stages what a removal-only step made vanish', async () => {
+    const context = fakeContext(noEntry.store.read);
+    const item: SemanticNode = { ref: { id: 'i', revision: 'r1' }, role: 'listitem', name: 'Item A' };
+    const button: SemanticNode = { ref: { id: 'b', revision: 'r1' }, role: 'button', name: 'Delete' };
+    const session = makeSession(context, makeHost(['/items', '/items'], [[item, button], [button]]));
+    await session.begin();
+    session.record({ name: 'tap', node: redacted(button) });
+    await session.conclude('passed', 'deleted');
+    expect(stagedTrace(context)).toMatchObject({ goneAnchors: [{ role: 'listitem', name: 'Item A' }] });
+    expect(stagedTrace(context).endAnchors).toBeUndefined();
+  });
 
   it('stages the entry it replayed whole to keep, never as a recording, and reports the recorded verdict', async () => {
     const context = entryContext({ endPath: '/customers' });
     let captures = 0;
-    const host = makeHost(['/pricing', '/customers?utm=x', '/customers']);
+    const host = makeHost(['/pricing', '/customers#top']);
     const counted = { ...host, observe: async (mode: SettleMode) => { captures += 1; return host.observe(mode); } };
     const session = makeSession(context, counted);
     const verdict = await session.begin();

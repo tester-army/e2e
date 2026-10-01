@@ -67,6 +67,7 @@ describe('traceCacheKeyHash', () => {
     target,
     signature: traceCallSignature('act', 'open billing', undefined),
     callIndex: 0,
+    agent: { name: 'default', context: 'The billing period is Monthly.' },
     policyVersion: 'replay-policy/0',
   };
 
@@ -89,8 +90,18 @@ describe('traceCacheKeyHash', () => {
     ['driver minor', { target: { ...target, engineVersion: '1.62.0' } }],
     ['driver SPI version', { target: { ...target, spiVersion: 2 } }],
     ['policy version', { policyVersion: 'replay-policy/1' }],
+    ['agent', { agent: { ...parts.agent, name: 'admin' } }],
+    ['agent context', { agent: { ...parts.agent, context: 'The billing period is Daily.' } }],
+    ['agent context, to none', { agent: { name: 'default', context: undefined } }],
   ])('changes when the %s changes', (_label, override) => {
     const hash = traceCacheKeyHash(buildTraceCacheKey(parts));
     expect(traceCacheKeyHash(buildTraceCacheKey({ ...parts, ...override }))).not.toBe(hash);
+  });
+
+  it('keys the agent context by digest, never by its text', () => {
+    const key = buildTraceCacheKey({ ...parts, agent: { name: 'buyer', context: 'Pay with <secret:card>.' } });
+    expect(key.agent).toBe('buyer');
+    expect(key.agentContextDigest).toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(key)).not.toContain('Pay with');
   });
 });

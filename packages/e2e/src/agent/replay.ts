@@ -12,7 +12,6 @@
  * divergence.
  */
 
-import { anchorsPresent } from '../cache/anchors.ts';
 import { isRelocatableDescriptor, MAIN_LIST_SHARE, relocateDescriptor, type RelocationFailure, type RelocationResult } from '../cache/relocate.ts';
 import { isNodeAction, type ActionTrace, type DerivedReason, type RecordedAction, type TraceTargetDescriptor, type TraceViewport } from '../cache/trace.ts';
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
@@ -41,6 +40,11 @@ export type ObservedNodes = ReadonlyMap<string, RedactedNode>;
 /** One capture's location and viewport, with nodes only when semantic evidence is available. */
 export type ObservedScreen = {
   readonly viewport: TraceViewport;
+  /**
+   * Where the capture was, as the cache compares it (`appLocation`): on the
+   * app's own origin its path, query, and fragment; elsewhere the whole
+   * location; a device's screen title as it is.
+   */
   readonly path?: string;
 } & (
   | { readonly kind: 'semantic'; readonly nodes: ObservedNodes }
@@ -230,6 +234,13 @@ export interface ReplayOptions {
    * instead of capturing again: nothing has happened since it was taken.
    */
   readonly initial?: SemanticScreen;
+  /**
+   * Asked before a free action (a navigate, typed text, a key) that follows
+   * another action; true takes the look a targeted action would have taken.
+   * A free action reads no screen, so without it the screen the previous
+   * action left goes unseen.
+   */
+  readonly looksBeforeFree?: () => boolean;
 }
 
 /** Replays one trace until it completes or diverges. */
@@ -276,6 +287,7 @@ export async function replayTrace(
           break;
         }
         case 'free':
+          if (previous !== undefined && options.looksBeforeFree?.() === true) await firstLook(host, look);
           await planned.invoke();
           break;
         case 'scroll': {
@@ -349,25 +361,24 @@ export async function replayTrace(
 }
 
 /**
- * Verifies a trace's recorded end anchors against the live screen: every
- * anchor must be present again (`anchors.ts`, every recorded field equal) or
- * the replay must not pass on its own. Waits on the same settling backoff
+ * Waits for a trace's recorded end state on the live screen: `holds` (the
+ * recorded delta, `cache/anchors.ts`) must be true of one look, or the
+ * replay must not pass on its own. Waits on the same settling backoff
  * relocation uses, because the recording run's final look came seconds of
  * model latency after its last action and a replay's comes right away: a
  * save still in flight is a wait, not a divergence. A surface that cannot be
  * observed at all is a mismatch too — the executor gets the step and judges
  * the live state; only runtime hard stops propagate.
  */
-export async function verifyAnchors(
+export async function verifyEndState(
   host: ReplayHost,
-  anchors: readonly TraceTargetDescriptor[],
+  holds: (nodes: ObservedNodes) => boolean,
   options: { readonly waitMs?: number; readonly initial?: SemanticScreen } = {},
 ): Promise<boolean> {
-  if (anchors.length === 0) return true;
   const startedMs = Date.now();
   try {
     const present = await pollSettled(host, ({ nodes }) =>
-      anchorsPresent(anchors, nodes) ? true : undefined,
+      holds(nodes) ? true : undefined,
       options.initial === undefined ? HELD_STILL : { kind: 'in-hand', screen: options.initial },
     );
     if (present === true) return true;
@@ -380,7 +391,7 @@ export async function verifyAnchors(
       await sleep(Math.min(END_WAIT_POLL_MS, deadline - Date.now()), host.signal);
       const screen = await host.observe('raw');
       if (screen.kind === 'pixels' || !host.traceEligible) return false;
-      if (anchorsPresent(anchors, screen.nodes)) return true;
+      if (holds(screen.nodes)) return true;
     }
     return false;
   } catch (cause) {

@@ -18,6 +18,12 @@ import { RECORD_PAGES, renderCompany, renderRecord } from './fixture-pages/recor
 
 export interface FixtureApp {
   readonly url: string;
+  /**
+   * Renders every page as `variant` from now on, as `?variant=` does for one
+   * request: the screen changes under a recording while its URL, which the
+   * replay cache compares query and all, stays the one the recording saw.
+   */
+  setVariant(variant: string | null): void;
   close(): Promise<void>;
 }
 
@@ -137,6 +143,7 @@ function html(response: ServerResponse, body: string): void {
 /** Answers one request from the tables above, or 404. */
 function serve(request: IncomingMessage, response: ServerResponse, state: FixtureState): void {
   const url = new URL(request.url ?? '/', 'http://localhost');
+  if (state.variant !== null && !url.searchParams.has('variant')) url.searchParams.set('variant', state.variant);
   const route = ROUTES[url.pathname];
   if (route !== undefined) {
     html(response, route(state, url));
@@ -159,12 +166,15 @@ function serve(request: IncomingMessage, response: ServerResponse, state: Fixtur
 
 /** Starts the fixture app on an ephemeral loopback port. */
 export async function startFixtureApp(): Promise<FixtureApp> {
-  const state: FixtureState = { searches: 0, feedRequests: 0, todos: new Set() };
+  const state: FixtureState = { searches: 0, feedRequests: 0, todos: new Set(), variant: null };
   const server: Server = createServer((request, response) => serve(request, response, state));
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${port}`,
+    setVariant: (variant) => {
+      state.variant = variant;
+    },
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));

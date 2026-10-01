@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { inflateEntry, readZip } from '../../src/internal/zip.ts';
+import type { ExecutorNode } from '../../src/agent/executor.ts';
 import type { ArtifactStore, StoredArtifact } from '../../src/types.ts';
 import type { RunOutcome } from '../../src/run/runner.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
@@ -119,16 +120,20 @@ describe('trace secrecy', () => {
               name: 'secret-filler',
               async runStep(context) {
                 const observation = await context.observe({ tree: true });
-                const secure = (function find(node): { id: string } | undefined {
-                  if (node.states?.secure === true) return node;
-                  for (const child of node.children ?? []) {
-                    const found = find(child);
-                    if (found !== undefined) return found;
-                  }
-                  return undefined;
-                })(observation.tree!);
+                const find = (match: (node: ExecutorNode) => boolean) =>
+                  (function walk(node: ExecutorNode): ExecutorNode | undefined {
+                    if (match(node)) return node;
+                    for (const child of node.children ?? []) {
+                      const found = walk(child);
+                      if (found !== undefined) return found;
+                    }
+                    return undefined;
+                  })(observation.tree!);
                 // Declared secrets are keyed by the credential's name, not the param's.
-                await context.actions.typeSecret({ id: secure!.id }, 'member.password');
+                await context.actions.typeSecret({ id: find((node) => node.states?.secure === true)!.id }, 'member.password');
+                // A secure field never shows its value, so the fill alone leaves nothing a replay
+                // could check; the counter is the step's visible effect, which makes it recordable.
+                await context.actions.tap({ id: find((node) => node.role === 'button' && node.name === 'Increment')!.id });
                 return { status: 'passed', summary: 'filled' };
               },
             },
@@ -221,14 +226,12 @@ describe('trace secrecy', () => {
   it('records the executor fill in the cache by the secret name alone, with no value', () => {
     expect(readEntries(project)).toHaveLength(1);
     const [entry] = entriesFor(project, 'fills through the executor');
-    expect(entry!.payload.actions).toEqual([
-      {
-        name: 'typeSecret',
-        summary: expect.stringContaining('member.password'),
-        target: expect.objectContaining({ role: 'textbox', name: 'Password' }),
-        secret: 'member.password',
-      },
-    ]);
+    expect(entry!.payload.actions[0]).toEqual({
+      name: 'typeSecret',
+      summary: expect.stringContaining('member.password'),
+      target: expect.objectContaining({ role: 'textbox', name: 'Password' }),
+      secret: 'member.password',
+    });
   });
 
   it('leaves the plaintext nowhere under .e2e, in the report, or in what the store received', () => {

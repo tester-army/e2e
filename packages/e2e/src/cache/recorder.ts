@@ -108,16 +108,19 @@ export class TraceRecorder {
     readonly summary: string;
     readonly startPath?: string;
     readonly endPath?: string;
-    /** Already projected and capped by `describeAnchors`; recorded as given. */
+    /** Already projected and capped by `describeDelta`; recorded as given. */
     readonly endAnchors?: readonly TraceTargetDescriptor[];
+    /** The other side of the same delta: what was on screen at the start and gone at the end. */
+    readonly goneAnchors?: readonly TraceTargetDescriptor[];
     /** How long the recorded run took to reach its end state, plus margin. */
     readonly endWaitMs?: number;
   }): ActionTrace | undefined {
     if (this.actions.length === 0) return undefined;
     const summary = bound(this.redact(conclusion.summary), MAX_TRACE_SUMMARY_CHARS);
-    // Anchors are replay preconditions, so they follow the input rule: a path
-    // the redactor alters carried a secret (a token in a query string) and
-    // the trace is marked non-replayable rather than storing it verbatim.
+    // Locations are replay preconditions, so they follow the input rule: a
+    // path the redactor alters carried a secret (a token in a query string),
+    // and one too long to keep whole cannot be compared, so either marks the
+    // trace non-replayable rather than storing it bent.
     const startPath = this.anchorPath(conclusion.startPath);
     const endPath = this.anchorPath(conclusion.endPath);
     return {
@@ -141,6 +144,9 @@ export class TraceRecorder {
       ...(conclusion.endAnchors === undefined || conclusion.endAnchors.length === 0
         ? {}
         : { endAnchors: conclusion.endAnchors }),
+      ...(conclusion.goneAnchors === undefined || conclusion.goneAnchors.length === 0
+        ? {}
+        : { goneAnchors: conclusion.goneAnchors }),
       ...(conclusion.endWaitMs === undefined
         ? {}
         : { endWaitMs: Math.min(MAX_TRACE_END_WAIT_MS, Math.max(0, Math.round(conclusion.endWaitMs))) }),
@@ -149,10 +155,7 @@ export class TraceRecorder {
   }
 
   private anchorPath(value: string | undefined): string | undefined {
-    if (value === undefined || value === '') return undefined;
-    const redacted = this.redact(value);
-    if (redacted !== value) this.truncated = true;
-    return bound(redacted, MAX_TRACE_DESCRIPTOR_CHARS);
+    return value === undefined || value === '' ? undefined : this.verbatim(value);
   }
 
   /**
@@ -163,12 +166,14 @@ export class TraceRecorder {
    * kept whole.
    */
   private toRecorded(action: RecordableAction, { target, summary, destination }: DescribedAction): RecordedAction {
-    // A targeted commit whose node yields no durable descriptor cannot be
-    // re-found; the trace stays honest by poisoning instead of guessing.
+    // A targeted commit whose node yields no descriptor a replay could
+    // re-find it by (none at all, or an unnamed twin with no named row to
+    // tell it apart) cannot replay; the trace stays honest by poisoning
+    // instead of guessing.
     const require = (descriptor: TraceTargetDescriptor | undefined): TraceTargetDescriptor => {
-      if (descriptor !== undefined) return descriptor;
+      if (descriptor !== undefined && isRelocatableDescriptor(descriptor)) return descriptor;
       this.truncated = true;
-      return { role: 'unknown' };
+      return descriptor ?? { role: 'unknown' };
     };
     const requireTarget = (): TraceTargetDescriptor => require(target);
     if (isNodeAction(action)) return { name: action.name, summary, target: requireTarget() };

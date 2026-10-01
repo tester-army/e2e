@@ -11,6 +11,8 @@ export interface FixtureState {
   feedRequests: number;
   /** Todos added through `/api/todos`. */
   readonly todos: Set<string>;
+  /** The variant every page renders when the request names none (`FixtureApp.setVariant`). */
+  variant: string | null;
 }
 
 /** Renders one page for one request. */

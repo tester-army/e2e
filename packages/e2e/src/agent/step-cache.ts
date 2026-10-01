@@ -12,14 +12,14 @@
  * when replay performed no action.
  */
 
-import { anchorsPresent, describeAnchors } from '../cache/anchors.ts';
+import { deltaEvidenced, deltaHolds, describeDelta } from '../cache/anchors.ts';
 import type { AgentCacheContext } from '../cache/context.ts';
 import { decideTraceReplay, opensWithNavigate, type TraceReplayMissReason } from '../cache/decide.ts';
-import { compareRoutes, routeOf } from '../cache/route.ts';
-import { instructionDigest } from '../cache/identity.ts';
+import { sameRoute } from '../cache/route.ts';
+import { instructionDigest, type CacheAgentIdentity } from '../cache/identity.ts';
 import { TraceRecorder } from '../cache/recorder.ts';
 import { expandTrace, templateParams, templatesCollide, templateTrace, type ParamTemplate } from '../cache/template.ts';
-import { readTraceEntry, type ActionTrace, type DerivedReason, type TraceEntry } from '../cache/trace.ts';
+import { readTraceEntry, type ActionTrace, type DerivedReason, type TraceEntry, type TraceTargetDescriptor } from '../cache/trace.ts';
 import { sleep } from '../internal/time.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
@@ -28,14 +28,14 @@ import { AgentError, isAgentError, isModelUnreachable } from './error.ts';
 import { isRuntimeHardStop, type ReplayedPrefix, type StepVerdict } from './executor.ts';
 import {
   replayTrace,
-  verifyAnchors,
+  verifyEndState,
   type ObservedNodes,
   type ObservedScreen,
   type ReplayHost,
   type ReplayOutcome,
   type SemanticScreen,
 } from './replay.ts';
-import { redactNodesAgain } from './observation.ts';
+import { redactNodesAgain, type NodeRedaction } from './observation.ts';
 import type { SettleMode } from './settle-policy.ts';
 
 /**
@@ -59,6 +59,8 @@ export interface StepCacheOptions {
   /** The `unique()` values in the params: slots in the key and the recording, filled from each call. */
   readonly templates: readonly ParamTemplate[];
   readonly executor: { readonly name: string; readonly version?: string };
+  /** The agent the step runs with, part of the key (`cache/identity.ts`). */
+  readonly agent: CacheAgentIdentity;
   readonly redact: (text: string) => string;
   /** `redact` for a field cut at its observed limit (`SecretLedger.redactCut`). */
   readonly redactCut: (text: string) => string;
@@ -124,9 +126,8 @@ const STALE_REASONS: ReadonlySet<StepCacheInfo['reason']> = new Set<StepCacheInf
 const END_WAIT_MARGIN_MS = 10_000;
 /**
  * How long a replay waits for a recorded destination path to be the current
- * one. A step that moved records no anchors: the path is its whole
- * postcondition, and the replayed tap that starts the navigation returns
- * before the new document commits. Reading the path once, right after the
+ * one. The replayed tap that starts a navigation returns before the new
+ * document commits. Reading the path once, right after the
  * tap, hands every navigation off as an end-mismatch; polling with the
  * settling backoff lets the destination arrive. Bounded like anchor polling.
  */
@@ -139,6 +140,7 @@ export class StepTraceSession {
   private readonly keyHash: string;
   private readonly recorder: TraceRecorder | undefined;
   private readonly options: StepCacheOptions;
+  private readonly redaction: NodeRedaction;
   private info: StepCacheInfo | undefined;
   private prefix: ReplayedPrefix | undefined;
   private startPath: string | undefined;
@@ -162,6 +164,8 @@ export class StepTraceSession {
   private replayedWhole = false;
   /** True once a cached entry's actions were run this step, fully or partly. */
   private consumedReplay = false;
+  /** True once the store returned an entry for this step, whether or not it replayed. */
+  private readEntryHit = false;
   /** True once `cache.strict` failed the step on its recording, which is then kept for review rather than evicted. */
   private failedStale = false;
   /** Grammar actions recorded so far when an end-mismatch hand-off happened. */
@@ -170,14 +174,19 @@ export class StepTraceSession {
   constructor(host: StepCacheHost, options: StepCacheOptions) {
     this.host = host;
     this.options = options;
+    this.redaction = { redact: options.redact, redactCut: options.redactCut };
     this.cache = options.cache;
     // The key digests the params as the recording spells them, a placeholder
     // where each `unique()` value was, so every run's value finds one entry.
-    this.keyHash = options.cache.claimKeyHash('act', options.instruction, templateParams(options.params, options.templates));
+    this.keyHash = options.cache.claimKeyHash(
+      'act',
+      options.instruction,
+      templateParams(options.params, options.templates),
+      options.agent,
+    );
     if (options.cache.mode === 'read-write') {
       this.recorder = new TraceRecorder({
-        redact: options.redact,
-        redactCut: options.redactCut,
+        ...this.redaction,
         maxActions: options.maxActions,
       });
     }
@@ -235,6 +244,7 @@ export class StepTraceSession {
     // replay finishes stays the cache's through its verdict and the re-stage,
     // so a reporter never shows a model turn that is not coming. Only a replay
     // that cannot finish the step hands it to the model.
+    this.readEntryHit = true;
     this.host.replaying(true);
     const verdict = await this.replayEntry(read.entry);
     if (verdict === undefined) {
@@ -280,6 +290,10 @@ export class StepTraceSession {
    *   anchor, or end wait, so drift is repaired only once a relocation fails
    *   and the hand-off that follows re-records.
    * - passed otherwise: stage the recorded trace for attempt-end settlement.
+   *   When this pass leaves nothing to stage (it changed nothing a replay
+   *   could check) and an entry was read for the step, evict that entry: it
+   *   did not serve this pass, and nothing recorded will replace it, so
+   *   keeping it would hand every later run off the same way.
    * - failed after consuming a replay: evict. Without this, a diverged replay
    *   whose step then fails stages nothing — and the poisoned entry would
    *   replay its bad prefix on every future first attempt.
@@ -305,7 +319,7 @@ export class StepTraceSession {
         if (this.repairedAfterEndMismatch(recorder)) await this.evict();
         else if (this.replayedWhole) {
           this.cache.staged.push({ kind: 'keep', keyHash: this.keyHash, stepIndex: this.options.stepIndex });
-        } else await this.stage(recorder, verdictSummary);
+        } else if (!(await this.stage(recorder, verdictSummary)) && this.readEntryHit) await this.evict();
         return;
     }
   }
@@ -369,10 +383,34 @@ export class StepTraceSession {
       this.info = this.missed(decision.reason, trace.actions.length);
       return undefined;
     }
-    const outcome = await replayTrace(this.host, trace, start?.kind === 'semantic' ? { initial: start } : {});
+    // Every screen the replay looks at, in order, from the start: the end
+    // check measures the recorded delta from the first of them on the route
+    // the replay ends on, so a free action is preceded by a look until one
+    // on the recorded end route has been seen.
+    const screens: ObservedScreen[] = start === undefined ? [] : [start];
+    const onEndRoute = (screen: ObservedScreen | undefined) =>
+      screen !== undefined && (trace.endPath === undefined || screen.path === undefined || sameRoute(screen.path, trace.endPath));
+    const host = this.host;
+    const watched: ReplayHost = {
+      get traceEligible() {
+        return host.traceEligible;
+      },
+      observe: async (mode) => {
+        const screen = await host.observe(mode);
+        screens.push(screen);
+        return screen;
+      },
+      actions: host.actions,
+      signal: host.signal,
+      remainingMs: () => host.remainingMs(),
+    };
+    const outcome = await replayTrace(watched, trace, {
+      ...(start?.kind === 'semantic' ? { initial: start } : {}),
+      looksBeforeFree: () => !onEndRoute(screens.at(-1)),
+    });
     this.consumedReplay = true;
     const stopReason: HandOffReason | undefined = outcome.completed
-      ? (await this.endStateMatches(trace))
+      ? start?.kind === 'semantic' && (await this.endStateMatches(trace, start, screens))
         ? undefined
         : 'end-mismatch'
       : (outcome.stopReason ?? 'action-failed');
@@ -389,48 +427,45 @@ export class StepTraceSession {
 
   /**
    * The trace's postcondition against the live screen: the recorded end
-   * route (when the live location is known) and every recorded end anchor
-   * present again. A route the path leaves undecided is the recorded screen
-   * only if the anchors are already on it, which then needs no second look.
+   * route when the live location is known, the recorded delta on the
+   * screen (`deltaHolds`), and evidence that the replay produced it rather
+   * than finding it there (`deltaEvidenced`). The evidence is measured from
+   * the first screen the replay saw on the route it ended on (`screens`, in
+   * order): the start for a step that stays on one screen, the page a
+   * recorded navigate opened before the switch on it was tapped. An outcome
+   * already showing there proves nothing, and neither does a recording with
+   * no delta at all.
    */
-  private async endStateMatches(trace: ActionTrace): Promise<boolean> {
+  private async endStateMatches(trace: ActionTrace, start: SemanticScreen, screens: readonly ObservedScreen[]): Promise<boolean> {
     if (!this.host.traceEligible) return false;
     const arrived = await this.endScreen(trace);
     if (arrived === undefined) return false;
-    if (arrived.anchorsSeen) return true;
-    return (await verifyAnchors(this.host, trace.endAnchors ?? [], {
-      initial: arrived.screen,
+    // Both captures may predate a secret the replay resolved; read with the
+    // ledger as it is now, an unchanged node is no change.
+    const baseline = baselineScreen(screens, arrived.path);
+    const baselineNodes = baseline === undefined ? undefined : redactNodesAgain(baseline.nodes, this.redaction);
+    if (!deltaEvidenced(trace, baselineNodes, inputTargets(trace))) return false;
+    const beforeNodes = baselineNodes ?? redactNodesAgain(start.nodes, this.redaction);
+    return (await verifyEndState(this.host, (nodes) => deltaHolds(trace, nodes, beforeNodes), {
+      initial: arrived,
       ...(trace.endWaitMs === undefined ? {} : { waitMs: trace.endWaitMs }),
     })) && this.host.traceEligible;
   }
 
   /**
    * Captures the semantic end state once its route matches the recording,
-   * polling while a navigation the last action started commits. Reports
-   * whether the anchors were what settled the route, so the caller does not
-   * verify them again. A route still undecided when the poll runs out is
-   * handed on with the anchors unseen: the caller's anchor wait, sized by
-   * the recording, is the one that decides it, as for a route that matched.
+   * polling while a navigation the last action started commits. A route
+   * that never matches is another screen, whatever it shows: a link that
+   * now lands on a page sharing the recorded one's layout is exactly the
+   * flow that went wrong.
    */
-  private async endScreen(
-    trace: ActionTrace,
-  ): Promise<{ readonly screen: SemanticScreen; readonly anchorsSeen: boolean } | undefined> {
+  private async endScreen(trace: ActionTrace): Promise<SemanticScreen | undefined> {
     const startedMs = Date.now();
-    const recorded = trace.endPath === undefined ? undefined : routeOf(trace.endPath);
-    const anchors = trace.endAnchors ?? [];
+    const recorded = trace.endPath;
     for (let attempt = 0; ; attempt += 1) {
       const observation = await probeScreen(this.host, 'raw');
       if (observation?.kind !== 'semantic' || !this.host.traceEligible) return undefined;
-      if (recorded === undefined || observation.path === undefined) return { screen: observation, anchorsSeen: false };
-      const verdict = compareRoutes(recorded, routeOf(observation.path));
-      if (verdict === 'same') return { screen: observation, anchorsSeen: false };
-      // A path the runner cannot recognize as the recorded route is the
-      // recorded screen only if the recorded effect is visibly on it; with
-      // no anchors recorded there is nothing to see, and it is another screen.
-      const undecided = verdict === 'undecided' && anchors.length > 0;
-      if (undecided && anchorsPresent(anchors, observation.nodes)) {
-        return { screen: observation, anchorsSeen: true };
-      }
+      if (recorded === undefined || observation.path === undefined || sameRoute(recorded, observation.path)) return observation;
       const delay = END_PATH_DELAYS_MS[attempt];
       if (
         delay === undefined ||
@@ -438,7 +473,7 @@ export class StepTraceSession {
         this.host.remainingMs() <= delay ||
         this.host.signal.aborted
       ) {
-        return undecided ? { screen: observation, anchorsSeen: false } : undefined;
+        return undefined;
       }
       await sleep(delay, this.host.signal);
     }
@@ -482,22 +517,25 @@ export class StepTraceSession {
    *
    * The end path and a fresh settled observation are the trace's
    * postcondition — the state the step passed in. The delta between the
-   * baseline and the passing observation becomes the end anchors. When the
-   * step moved to another pathname the whole new screen is the delta, and its
-   * first stable anchors back the path check, which matches a created
-   * record's page up to the id the app minted for it. A postcondition that
-   * cannot be captured stages nothing: a trace without its check would
-   * replay on mechanics alone.
+   * baseline and the passing observation becomes the anchors: what appeared
+   * and what vanished. When the step moved to another pathname the whole new
+   * screen is the delta, and its first stable anchors back the path check,
+   * which matches a created record's page up to the id the app minted for
+   * it. A postcondition that cannot be captured stages nothing, and neither
+   * does a step that changed nothing a replay could check, no node and no
+   * route: a trace without its check would replay on mechanics alone.
    */
-  private async stage(recorder: TraceRecorder, verdictSummary: string | undefined): Promise<void> {
-    if (!this.host.traceEligible || this.startNodes === undefined || recorder.recordedCount === 0) return;
+  private async stage(recorder: TraceRecorder, verdictSummary: string | undefined): Promise<boolean> {
+    if (!this.host.traceEligible || this.startNodes === undefined || recorder.recordedCount === 0) return false;
     const observation = await probeScreen(this.host, 'held-still');
-    if (!this.host.traceEligible || observation?.kind !== 'semantic') return;
+    if (!this.host.traceEligible || observation?.kind !== 'semantic') return false;
     const { nodes: endNodes, path: endPath } = observation;
     // The start capture may predate a secret this step resolved; read with
     // the ledger as it is now, an unchanged node is no delta.
-    const startNodes = redactNodesAgain(this.startNodes, { redact: this.options.redact, redactCut: this.options.redactCut });
-    const endAnchors = describeAnchors(startNodes, endNodes);
+    const startNodes = redactNodesAgain(this.startNodes, this.redaction);
+    const routeMoved = this.startPath !== undefined && endPath !== undefined && !sameRoute(this.startPath, endPath);
+    const delta = describeDelta(startNodes, endNodes, routeMoved);
+    if (delta.appeared.length === 0 && delta.gone.length === 0 && !routeMoved) return false;
     const trace = recorder.finalize({
       executor: this.options.executor,
       recordedFor: {
@@ -508,7 +546,8 @@ export class StepTraceSession {
       summary: verdictSummary ?? 'step passed',
       ...(this.startPath === undefined ? {} : { startPath: this.startPath }),
       ...(endPath === undefined ? {} : { endPath }),
-      endAnchors,
+      endAnchors: delta.appeared,
+      goneAnchors: delta.gone,
       // How long the app took to show its end state after the last action,
       // plus room for a slower day: the budget a replay waits for the anchors
       // to return. Measured from the last action, not the step's start: the
@@ -516,22 +555,23 @@ export class StepTraceSession {
       // which does not think, to wait.
       endWaitMs: Date.now() - (recorder.lastActionAtMs ?? this.startedMs) + END_WAIT_MARGIN_MS,
     });
-    if (trace === undefined) return;
+    if (trace === undefined) return false;
     // A trace with no start anchor — no recorded path (a surface without a URL)
     // and no opening navigate — could never replay: `wrong-context` forever.
     // Writing it would be pure store traffic, so it is not written at all.
-    if (trace.startPath === undefined && !opensWithNavigate(trace)) return;
+    if (trace.startPath === undefined && !opensWithNavigate(trace)) return false;
     // Stored with a slot where each `unique()` value appeared, so the next
     // run's values — a fresh timestamped name — replay the same flow. A
     // recording that cannot be templated safely is not written at all; when
     // the reason is the params themselves, the report says so.
     if (templatesCollide(this.options.params, this.options.templates)) {
       if (this.info !== undefined) this.info = { ...this.info, notRecorded: 'param-collision' };
-      return;
+      return false;
     }
     const templated = templateTrace(trace, this.options.templates);
-    if (templated === undefined) return;
+    if (templated === undefined) return false;
     this.cache.staged.push({ kind: 'write', keyHash: this.keyHash, trace: templated, stepIndex: this.options.stepIndex });
+    return true;
   }
 
   /**
@@ -556,6 +596,26 @@ export class StepTraceSession {
       totalActions,
     };
   }
+}
+
+/** The controls a trace's input actions set a value or a state on: their changed anchors echo the input. */
+function inputTargets(trace: ActionTrace): TraceTargetDescriptor[] {
+  return trace.actions.flatMap((action) => ('target' in action && action.target !== undefined ? [action.target] : []));
+}
+
+/**
+ * The first semantic screen of the replay's last stretch on the route it
+ * ended on (`endPath`), or undefined when its last screen before the end
+ * was on another route, so the last action moved it. A screen or an end
+ * without a location counts as on the route: there is nothing to compare.
+ */
+function baselineScreen(screens: readonly ObservedScreen[], endPath: string | undefined): SemanticScreen | undefined {
+  let baseline: SemanticScreen | undefined;
+  for (const screen of screens) {
+    if (endPath !== undefined && screen.path !== undefined && !sameRoute(screen.path, endPath)) baseline = undefined;
+    else if (screen.kind === 'semantic') baseline ??= screen;
+  }
+  return baseline;
 }
 
 /**

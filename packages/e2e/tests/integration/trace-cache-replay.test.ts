@@ -54,6 +54,8 @@ describe('trace cache: every flow records on the first run and replays without a
     recordedModelCalls = loopCalls.length;
     [recordedArchive] = entriesFor(project, 'archives a record');
     writeFileSync(path.join(project.dir, FLOWS_FILE), flowsSuite(FLOWS, 'replay'), 'utf8');
+    // The twins form moves every node, and the offers reverse, under the URL the recording saw.
+    app.setVariant('b');
     replayed = await runExisting(project, { appUrl: app.url, config: cacheConfig(flowsModel()) });
   }, 240_000);
 
@@ -131,12 +133,12 @@ describe('trace cache: every flow records on the first run and replays without a
     expect(afterReplay!.payload).toEqual(recordedArchive!.payload);
   });
 
-  it('records a placeholder-named field, unnamed twins by their place, and same-named buttons by position', () => {
+  it('records a placeholder-named field, unnamed twins by their place in their group, and same-named buttons by position', () => {
     const [entry] = entriesFor(project, 'fills the twins form');
     const targets = entry!.payload.actions.map((action) => ('target' in action ? action.target : undefined));
     expect(targets[0]).toMatchObject({ role: 'textbox', name: 'Nickname', placeholder: 'Nickname' });
-    expect(targets[2]).toMatchObject({ role: 'textbox', position: { index: 0, of: 2 } });
-    expect(targets[3]).toMatchObject({ role: 'textbox', position: { index: 1, of: 2 } });
+    expect(targets[2]).toMatchObject({ role: 'textbox', within: 'Codenames', position: { index: 0, of: 2 } });
+    expect(targets[3]).toMatchObject({ role: 'textbox', within: 'Codenames', position: { index: 1, of: 2 } });
     for (const anonymous of [targets[2], targets[3]]) {
       expect(anonymous?.name).toBeUndefined();
       expect(anonymous?.placeholder).toBeUndefined();
@@ -159,15 +161,11 @@ describe('trace cache: every flow records on the first run and replays without a
 const company = flowByTitle('creates a company');
 const archives = flowByTitle('archives a record');
 
-/** The flows whose second run changes the screen under the recording. */
+/** The flows whose second run changes the screen under the recording: run under the `renamed` variant (`FixtureApp.setVariant`), one of them on another route. */
 const DIVERGENCE: readonly Flow[] = [
-  { ...company, open: (variant) => (variant === 'replay' ? '/companies/new?variant=renamed' : '/companies/new') },
+  company,
   { ...archives, open: (variant) => (variant === 'replay' ? '/drafts/1a2b3c4d5e6f' : '/records/1a2b3c4d5e6f') },
-  {
-    ...archives,
-    title: 'retires a record',
-    open: (variant) => (variant === 'replay' ? '/records/2b3c4d5e6f7a?variant=renamed' : '/records/2b3c4d5e6f7a'),
-  },
+  { ...archives, title: 'retires a record', open: () => '/records/2b3c4d5e6f7a' },
 ];
 
 describe('trace cache: a changed screen hands the step to the agent, which re-records it', () => {
@@ -180,6 +178,7 @@ describe('trace cache: a changed screen hands the step to the agent, which re-re
     project = createProject({ [FLOWS_FILE]: flowsSuite(DIVERGENCE, 'record') });
     expectPassed(await runExisting(project, { appUrl: app.url, config: cacheConfig(flowsModel()) }));
     writeFileSync(path.join(project.dir, FLOWS_FILE), flowsSuite(DIVERGENCE, 'replay'), 'utf8');
+    app.setVariant('renamed');
     replayed = await runExisting(project, { appUrl: app.url, config: cacheConfig(flowsModel()) });
   }, 240_000);
 
@@ -231,6 +230,7 @@ describe('trace cache: --strict-cache fails a stale recording instead of handing
     project = createProject({ [FLOWS_FILE]: flowsSuite(DIVERGENCE, 'record') });
     expectPassed(await runExisting(project, { appUrl: app.url, config: cacheConfig(flowsModel()) }));
     writeFileSync(path.join(project.dir, FLOWS_FILE), flowsSuite(DIVERGENCE, 'replay'), 'utf8');
+    app.setVariant('renamed');
     strict = await runExisting(project, { appUrl: app.url, config: cacheConfig(flowsModel()), runOptions: { strictCache: true } });
     strictModelCalls = loopCalls.length;
   }, 240_000);

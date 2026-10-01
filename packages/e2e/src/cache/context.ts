@@ -18,6 +18,7 @@ import {
   projectIdentity,
   traceCacheKeyHash,
   traceCallSignature,
+  type CacheAgentIdentity,
   type CacheTargetIdentity,
   type TraceCacheKind,
 } from './identity.ts';
@@ -67,6 +68,7 @@ export interface AgentCacheContext {
     kind: TraceCacheKind,
     instruction: string,
     params: Readonly<Record<string, JsonValue>> | undefined,
+    agent: CacheAgentIdentity,
   ): string;
   /**
    * Trace writes staged during the attempt. A trace is not trusted the moment
@@ -185,7 +187,7 @@ export function createAgentCacheContext(options: {
     identity: { testId: options.testId, targetId: options.target.targetId },
     replayEligible: options.attemptIndex === 0,
     strict: options.cache.strict === false ? false : { advice: staleAdvice(options.cache, options.cache.strict, options.projectRoot) },
-    claimKeyHash: (kind, instruction, params) => {
+    claimKeyHash: (kind, instruction, params, agent) => {
       const signature = traceCallSignature(kind, instruction, params);
       return traceCacheKeyHash(
         buildTraceCacheKey({
@@ -194,6 +196,7 @@ export function createAgentCacheContext(options: {
           target: options.target,
           signature,
           callIndex: nextCallIndex(signature),
+          agent,
           policyVersion: REPLAY_POLICY_VERSION,
         }),
       );

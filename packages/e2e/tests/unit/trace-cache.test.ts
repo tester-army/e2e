@@ -81,6 +81,15 @@ describe('trace-1 entry', () => {
     expect(entryOf(trace({ endAnchors: [] })).payload.endAnchors).toBeUndefined();
   });
 
+  it('round-trips both sides of the delta, anchor states included, and a long location whole', () => {
+    const goneAnchors = [{ role: 'listitem', name: 'Item A' }];
+    const endAnchors = [{ role: 'switch', name: 'Email notifications', states: ['checked' as const, 'pressed' as const] }];
+    const longPath = `/search?q=${'x'.repeat(1_000)}`;
+    const entry = entryOf(trace({ startPath: longPath, endAnchors, goneAnchors }));
+    expect(entry.payload).toMatchObject({ startPath: longPath, endAnchors, goneAnchors });
+    expect(entryOf(trace({ goneAnchors: [] })).payload.goneAnchors).toBeUndefined();
+  });
+
   it('drops unknown fields instead of carrying them', () => {
     const document = roundTrip(trace()) as Record<string, unknown>;
     document['extra'] = 'x';
@@ -122,6 +131,13 @@ describe('trace-1 entry', () => {
       'too many anchors',
       withPayload({ endAnchors: Array.from({ length: MAX_TRACE_ANCHORS + 1 }, (_, i) => ({ text: `a${i}` })) }),
     ],
+    ['non-array gone anchors', withPayload({ goneAnchors: { role: 'status' } })],
+    ['too many gone anchors', withPayload({ goneAnchors: Array.from({ length: MAX_TRACE_ANCHORS + 1 }, (_, i) => ({ text: `a${i}` })) })],
+    ['unknown anchor state', withPayload({ endAnchors: [{ role: 'switch', states: ['focused'] }] })],
+    ['unsorted anchor states', withPayload({ endAnchors: [{ role: 'switch', states: ['selected', 'checked'] }] })],
+    ['repeated anchor state', withPayload({ endAnchors: [{ role: 'switch', states: ['checked', 'checked'] }] })],
+    ['empty anchor states', withPayload({ endAnchors: [{ role: 'switch', name: 'On', states: [] }] })],
+    ['oversized start path', withPayload({ startPath: `/${'x'.repeat(MAX_TRACE_INPUT_CHARS + 1)}` })],
   ])('rejects %s', (_label, document) => {
     expect(readTraceEntry(document)).toBeUndefined();
   });
@@ -153,12 +169,12 @@ describe('decideTraceReplay', () => {
     }
   });
 
-  it('compares the start path by pathname so query strings never cold-miss', () => {
+  it('compares the start path as a route: the query is part of it, its minted values and the fragment are not', () => {
     const entry = entryOf(trace());
-    expect(decideTraceReplay(entry, '/settings?utm_source=mail').action).toBe('replay');
-    expect(decideTraceReplay(entryOf(trace({ startPath: '/settings?tab=2' })), '/settings').action).toBe(
-      'replay',
-    );
+    expect(decideTraceReplay(entry, '/settings#billing').action).toBe('replay');
+    expect(decideTraceReplay(entryOf(trace({ startPath: '/settings?tab=2' })), '/settings?tab=7').action).toBe('replay');
+    expect(decideTraceReplay(entryOf(trace({ startPath: '/settings?tab=notes' })), '/settings').action).toBe('miss');
+    expect(decideTraceReplay(entry, '/settings?utm_source=mail').action).toBe('miss');
     expect(decideTraceReplay(entry, '/settings/billing')).toEqual({
       action: 'miss',
       reason: 'wrong-context',

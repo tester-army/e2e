@@ -35,6 +35,7 @@ import type { AgentObservation } from './observation.ts';
 import { ObservationFeed } from './observation-feed.ts';
 import { recordPolicyEvent } from './phases.ts';
 import type { ObservedScreen } from './replay.ts';
+import { appLocation } from '../cache/route.ts';
 import { OperationQueue } from './operation-queue.ts';
 import { StepAccounting } from './step-accounting.ts';
 import { failedStepOutcome, StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
@@ -243,6 +244,10 @@ class ActDispatch {
             executor: {
               name: agent.executor.name,
               ...(agent.executor.version === undefined ? {} : { version: agent.executor.version }),
+            },
+            agent: {
+              name: agent.name,
+              context: agent.agentContext === undefined ? undefined : runtime.redact(agent.agentContext),
             },
             redact: runtime.redact,
             redactCut: runtime.redactCut,
@@ -478,7 +483,7 @@ class ActDispatch {
     const feed = this.feed;
     return {
       get traceEligible() { return feed.traceEligible; },
-      observe: async (mode) => screenOf(await this.feed.probe(mode)),
+      observe: async (mode) => screenOf(await this.feed.probe(mode), this.runtime.app.base?.origin),
       actions: this.dispatcher.actions,
       signal: this.accounting.signal,
       remainingMs: () => this.accounting.remainingMs(),
@@ -537,10 +542,10 @@ class ActDispatch {
 }
 
 /** The replay engine's view of a capture: the nodes, and the viewport a recorded point is checked against. */
-function screenOf(observation: AgentObservation): ObservedScreen {
+function screenOf(observation: AgentObservation, appOrigin: string | undefined): ObservedScreen {
   const metadata = {
     viewport: { width: observation.viewport.width, height: observation.viewport.height },
-    ...(observation.path === undefined ? {} : { path: observation.path }),
+    ...(observation.location === undefined ? {} : { path: appLocation(observation.location, appOrigin) }),
   };
   return observation.kind === 'semantic'
     ? { ...metadata, kind: 'semantic', nodes: observation.nodes }

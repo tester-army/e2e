@@ -109,9 +109,12 @@ agent if the problem affects several tests:
 5. Compare models or `providerOptions` by running the same tests with
    `--agent <name>`.
 
-Named agents can use the [replay cache](/cache). Custom tools and executors
-have their own replay constraints, described under [project tools](/tools)
-and [custom executors](/executors#replay-cache).
+Named agents can use the [replay cache](/cache). Each agent records its
+own entries, keyed by its name and its context, so a test that runs as
+`buyer` and as `admin` never replays one persona's steps for the other, and
+changing `agentContext` records again. Custom tools and executors have their
+own replay constraints, described under [project tools](/tools) and
+[custom executors](/executors#replay-cache).
 
 ## Pick an agent per run
 

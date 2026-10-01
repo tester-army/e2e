@@ -3,7 +3,7 @@ import type { Observation, SemanticNode } from '../../src/engine/surface.ts';
 import { changeShape, interactiveNodeCount, isTransitionalObservation, observationShape, prepareObservation, projectTree, redactNode, settleObservation } from '../../src/agent/observation.ts';
 import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT } from '../../src/engine/contract.ts';
 import { SecretLedger } from '../../src/internal/redact.ts';
-import { describeAnchors } from '../../src/cache/anchors.ts';
+import { describeDelta } from '../../src/cache/anchors.ts';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
   return { ref: { id, revision: 'r1' }, ...extra };
@@ -230,7 +230,7 @@ describe('prepareObservation', () => {
       expect(cut(OBSERVED_NAME_LIMIT, kept)).toHaveLength(OBSERVED_NAME_LIMIT);
       const prepared = prepareObservation(observation(tree), { redact: ledger.redact, redactCut: ledger.redactCut, maxBytes: 16_384 });
       assert(prepared.kind === 'semantic');
-      const anchors = describeAnchors(new Map(), prepared.nodes);
+      const anchors = describeDelta(new Map(), prepared.nodes, false).appeared;
       expect(anchors.map((anchor) => anchor.name ?? anchor.text).join(' ')).toContain('<secret:multi>');
       for (const shown of [prepared.text, JSON.stringify(projectTree(prepared.tree)), JSON.stringify(anchors)]) {
         expect(shown).toContain('<secret:multi>');
@@ -245,7 +245,7 @@ describe('prepareObservation', () => {
     const prepared = prepareObservation(observation(tree), { redact: ledger.redact, redactCut: ledger.redactCut, maxBytes: 4_096 });
     assert(prepared.kind === 'semantic');
     expect(prepared.nodes.get('n2')).toMatchObject({ name: 'say <secret:phrase> now', testId: '<secret:phrase>' });
-    expect(JSON.stringify(describeAnchors(new Map(), prepared.nodes))).not.toContain('horse');
+    expect(JSON.stringify(describeDelta(new Map(), prepared.nodes, false).appeared)).not.toContain('horse');
   });
 
   it('truncates at the byte limit while keeping the root and flagging truncation', () => {

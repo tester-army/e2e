@@ -228,7 +228,8 @@ describe('semantic fallback handoff', () => {
         return pixelSnapshot(captures);
       },
     });
-    const entry = buildTraceEntry({ actions: [...expected.recorded], startPath: '/start', summary: 'saved', executor: { name: 'fixture' } });
+    // The target declares no app, so the location is compared whole, origin included.
+    const entry = buildTraceEntry({ actions: [...expected.recorded], startPath: 'https://fixture.test/start', summary: 'saved', executor: { name: 'fixture' } });
     const executor: StepExecutor = {
       name: 'replay-executor',
       async runStep(context) {

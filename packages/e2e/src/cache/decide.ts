@@ -8,7 +8,7 @@
  * entry alone cannot: is it whole, and is the app where the recording began?
  */
 
-import { compareRoutes, routeOf } from './route.ts';
+import { sameRoute } from './route.ts';
 import type { ActionTrace, TraceEntry } from './trace.ts';
 
 /**
@@ -36,15 +36,13 @@ export type TraceReplayDecision =
  * not open with a navigate carries a start precondition: the app must be on
  * the screen where the recording began, or the recorded actions would run
  * against a different screen than they were proven on. The screen is its
- * route (`routeOf`), not its URL; a route the path leaves undecided is a
- * miss, since nothing recorded at the start is specific enough to settle it.
+ * route (`cache/route.ts`), not its URL: the same origin, path, and query,
+ * whatever the ids in them.
  */
 export function decideTraceReplay(entry: TraceEntry, currentPath: string | undefined): TraceReplayDecision {
   const trace = entry.payload;
   if (trace.truncated === true) return { action: 'miss', reason: 'truncated' };
   if (opensWithNavigate(trace)) return { action: 'replay' };
   if (trace.startPath === undefined || currentPath === undefined) return { action: 'miss', reason: 'wrong-context' };
-  return compareRoutes(routeOf(trace.startPath), routeOf(currentPath)) === 'same'
-    ? { action: 'replay' }
-    : { action: 'miss', reason: 'wrong-context' };
+  return sameRoute(trace.startPath, currentPath) ? { action: 'replay' } : { action: 'miss', reason: 'wrong-context' };
 }

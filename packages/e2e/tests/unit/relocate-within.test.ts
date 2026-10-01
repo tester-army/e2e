@@ -3,7 +3,7 @@ import type { RedactedNode } from '../../src/agent/observation.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import { redacted } from '../helpers/redacted.ts';
 import { containerKey, describeAction } from '../../src/agent/actions.ts';
-import { relocateDescriptor } from '../../src/cache/relocate.ts';
+import { describePosition, relocateDescriptor } from '../../src/cache/relocate.ts';
 
 const identity = (text: string): string => text;
 
@@ -50,5 +50,49 @@ describe('container keys', () => {
     expect(relocateDescriptor({ role: 'button', name: 'Delete' }, nodes)).toMatchObject({ kind: 'failed', failure: 'target-ambiguous' });
     // The row is gone: not found, never the other row's button.
     expect(relocateDescriptor({ role: 'button', name: 'Delete', within: 'Offsite plan' }, nodes)).toEqual({ kind: 'failed', failure: 'target-not-found' });
+  });
+
+  it('keys an icon button by its row\'s own label when the row has no other text, and finds it after the rows reorder', () => {
+    // `<li>Alpha <button><svg/></button></li>`: the list item is named from its content, the button by nothing.
+    const list = (order: readonly string[]) => {
+      const nodes = new Map<string, RedactedNode>();
+      const parents = new Map<string, string>();
+      for (const label of order) {
+        const button: SemanticNode = { ref: { id: `b-${label}`, revision: 'r' }, role: 'button' };
+        nodes.set(`li-${label}`, redacted({ ref: { id: `li-${label}`, revision: 'r' }, role: 'listitem', name: label, children: [button] }));
+        nodes.set(button.ref.id, redacted(button));
+        parents.set(button.ref.id, `li-${label}`);
+      }
+      return { nodes, parents };
+    };
+    const recorded = list(['Alpha', 'Beta']);
+    const within = containerKey('b-Alpha', recorded.nodes, recorded.parents);
+    expect(within).toBe('Alpha');
+    const position = describePosition(recorded.nodes.get('b-Alpha')!, within, recorded.nodes);
+    expect(position).toEqual({ index: 0, of: 1 });
+    const live = list(['Beta', 'Alpha']);
+    expect(relocateDescriptor({ role: 'button', within: within!, position: position! }, live.nodes)).toEqual({ kind: 'found', id: 'b-Alpha' });
+  });
+
+  it('keys a control by its nearest container only, so rows with no text of their own share no outer label', () => {
+    const nodes = new Map<string, RedactedNode>();
+    const parents = new Map<string, string>();
+    const button: SemanticNode = { ref: { id: 'b', revision: 'r' }, role: 'button' };
+    const group: SemanticNode = { ref: { id: 'g', revision: 'r' }, role: 'group', children: [button] };
+    const title: SemanticNode = { ref: { id: 't', revision: 'r' }, text: 'Shipping address' };
+    nodes.set('r', redacted({ ref: { id: 'r', revision: 'r' }, role: 'region', children: [title, group] }));
+    for (const node of [title, group, button]) nodes.set(node.ref.id, redacted(node));
+    parents.set('b', 'g');
+    parents.set('g', 'r');
+    parents.set('t', 'r');
+    expect(containerKey('b', nodes, parents)).toBeUndefined();
+
+    // A row whose first text is the link itself names it already: the list around it says nothing more.
+    const link: SemanticNode = { ref: { id: 'l', revision: 'r' }, role: 'link', name: 'Beta' };
+    nodes.set('l', redacted(link));
+    nodes.set('li', redacted({ ref: { id: 'li', revision: 'r' }, role: 'listitem', name: 'Beta', children: [link] }));
+    parents.set('l', 'li');
+    parents.set('li', 'r');
+    expect(containerKey('l', nodes, parents)).toBeUndefined();
   });
 });

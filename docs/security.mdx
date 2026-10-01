@@ -236,8 +236,12 @@ actions without consulting a model and are not signed.
 
 The runner validates entries before use. Invalid entries become misses.
 Files are named by a hash of the expected key and refused if larger than
-1 MiB. Entries store actions and a redacted summary; replay executes only
-the actions. Secret fills store a name and authorize the fill again.
+1 MiB. The key holds the agent's context only as a hash of its redacted
+text, so no secret value enters it. Entries store actions and a redacted
+summary; replay executes only the actions. Secret fills store a name and
+authorize the fill again. An entry recorded by one agent never replays for
+another, and one recorded on the app's origin never replays on a page from
+another origin.
 
 `e2e init` ignores `.e2e/cache/` in Git. If you choose to
 [commit recordings](/cache#commit-the-replay-cache), review their actions and typed

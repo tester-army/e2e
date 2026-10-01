@@ -227,17 +227,24 @@ export function redactNode(node: SemanticNode, redaction: NodeRedaction): Redact
 
 /**
  * An earlier capture's nodes redacted again through the ledger as it is now,
- * each on its own fields, children left out. A secret a provider resolved
- * after the capture masks text the capture still shows, so the two captures
- * read alike wherever the screen did not change. Redacting redacted text
- * changes nothing else: a marker is never read again.
+ * each on its own fields, then linked to its redacted-again children, so the
+ * tree keeps its shape (which nodes are leaves) without a subtree redacted
+ * once per ancestor. A secret a provider resolved after the capture masks
+ * text the capture still shows, so the two captures read alike wherever the
+ * screen did not change. Redacting redacted text changes nothing else: a
+ * marker is never read again.
  */
 export function redactNodesAgain(
   nodes: ReadonlyMap<string, RedactedNode>,
   redaction: NodeRedaction,
 ): ReadonlyMap<string, RedactedNode> {
-  const again = new Map<string, RedactedNode>();
+  const again = new Map<string, { children?: readonly RedactedNode[] } & RedactedNode>();
   for (const [id, { children: _children, ...fields }] of nodes) again.set(id, redactNode(fields, redaction));
+  for (const [id, { children }] of nodes) {
+    const node = again.get(id);
+    if (node === undefined || children === undefined) continue;
+    node.children = children.map((child) => again.get(child.ref.id)).filter((child) => child !== undefined);
+  }
   return again;
 }
 
