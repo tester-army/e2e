@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { readGuide, readSkillFiles, skillTopics } from '../../src/cli/skill.ts';
 
@@ -56,15 +57,20 @@ describe('the bundled agent skill', () => {
   });
 });
 
+/** Every `.md` and `.mdx` file under `dir`, relative to `root`, never descending into `node_modules`. */
+function markdownFiles(root: URL, dir: string): string[] {
+  return readdirSync(new URL(dir, root), { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return entry.name === 'node_modules' ? [] : markdownFiles(root, `${path}/`);
+    return /\.mdx?$/.test(entry.name) ? [path] : [];
+  });
+}
+
 /** The skill sources and the docs pages, relative to the repository root, each with its text. */
 function userFacingPages(): { file: string; text: string }[] {
   const root = new URL('../../../../', import.meta.url);
-  return ['skills/e2e', 'docs']
-    .flatMap((dir) =>
-      readdirSync(new URL(dir, root), { recursive: true, encoding: 'utf8' })
-        .filter((file) => /\.mdx?$/.test(file) && !file.includes('node_modules'))
-        .map((file) => `${dir}/${file}`),
-    )
+  return ['skills/e2e/', 'docs/']
+    .flatMap((dir) => markdownFiles(root, dir))
     .map((file) => ({ file, text: readFileSync(new URL(file, root), 'utf8') }));
 }
 
