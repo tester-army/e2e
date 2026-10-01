@@ -12,10 +12,9 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { formatNode, prepareObservation, type AgentObservation } from '../agent/observation.ts';
+import { formatNode, prepareObservation, type AgentObservation, type RedactedNode } from '../agent/observation.ts';
 import type { ResolvedConfig } from '../config/resolve.ts';
 import type { OperationContext, TargetSession } from '../engine/surface.ts';
-import type { SemanticNode } from '../engine/contract.ts';
 import { truncateUtf8, type E2EError } from '../internal/errors.ts';
 import { isTypoOf } from '../internal/suggest.ts';
 import type { ArtifactSink } from './fixtures.ts';
@@ -135,11 +134,13 @@ function locatorCandidates(
 ): string[] {
   if (observation.kind === 'pixels') return [];
   if (error.code !== 'LOCATOR_NOT_FOUND' && error.code !== 'LOCATOR_AMBIGUOUS') return [];
-  const { role, testId, name } = error.details ?? {};
+  const details = error.details ?? {};
+  // The nodes are redacted; the query is compared in the same form, so a secret test id still finds its node.
+  const [role, testId, name] = [details.role, details.testId, details.name].map((value) => (value === undefined ? undefined : redact(value)));
   const words = tokens(name ?? '');
   if (role === undefined && testId === undefined && words.length === 0) return [];
 
-  const scored: { score: number; node: SemanticNode }[] = [];
+  const scored: { score: number; node: RedactedNode }[] = [];
   for (const node of observation.nodes.values()) {
     const roleMatched = role !== undefined && node.role?.toLowerCase() === role.toLowerCase();
     const testIdMatched = testId !== undefined && node.testId !== undefined && (node.testId === testId || node.testId.includes(testId) || testId.includes(node.testId));
@@ -165,7 +166,7 @@ function locatorCandidates(
   return scored
     .toSorted((a, b) => b.score - a.score)
     .slice(0, MAX_CANDIDATES)
-    .map(({ node }) => truncateUtf8(formatNode(node, 0, redact, appOrigin), MAX_CANDIDATE_BYTES));
+    .map(({ node }) => truncateUtf8(formatNode(node, 0, appOrigin), MAX_CANDIDATE_BYTES));
 }
 
 /**

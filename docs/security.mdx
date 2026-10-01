@@ -147,9 +147,13 @@ Matching covers the value as written, JSON-escaped, HTML-escaped, and
 percent-encoded, in any letter case (so a CSS `text-transform` does not hide
 it), and with its whitespace collapsed. Text cut at a length limit is masked
 too when it ends with the first 8 or more characters of a value (half of a
-value shorter than 16). Redaction rewrites only what the runner reports;
-assertions still compare the text the page shows. Secret values never enter
-cache entries.
+value shorter than 16), as written or with its whitespace collapsed, the way
+an engine collapses text before it cuts it. Every string of the observed
+screen, names, text, values, test ids, attributes, selectors, and frame
+paths alike, is redacted once, before the model, an executor's tree, a
+replay cache descriptor, or an end anchor reads it. Redaction rewrites only
+what the runner reports; assertions still compare the text the page shows.
+Secret values and their cut parts never enter cache entries.
 
 A static value shorter than 6 characters is `INVALID_CONFIG`, and a provider
 returning one fails the fill: every occurrence of so short a value would take
@@ -163,13 +167,13 @@ ordinary text with it.
   a hash, is a different string and passes through.
 - A value the app renders in another Unicode normalization form, decomposed
   accents where the secret has composed ones, passes through.
-- Text that widens the whitespace inside the value, or drops it, passes
-  through.
+- Text that drops the whitespace inside the value passes through. Text that
+  widens it passes through too, except on the observed screen: a field whose
+  collapsed form holds the value is kept collapsed and masked.
 - A value spread over several nodes, one character per cell as a PIN pad
   shows it, is not one string in the tree and passes through.
-- Text cut at a length limit is matched by its prefix only in the value's
-  own form: a case mapping that changes length (`ß` shown as `SS`) or
-  whitespace collapsed to one space escapes the prefix rule.
+- A case mapping that changes length (`ß` shown as `SS`) escapes the prefix
+  rule for text cut at a length limit.
 - A title is redacted when its file is collected, before any provider
   runs, so a value a secret provider returns is not redacted from titles.
 - A Playwright trace from a session no secret reached is kept as recorded,
@@ -180,7 +184,7 @@ ordinary text with it.
   redacted.
 - A Playwright trace from a session a secret reached, filled or held by the
   engine, is rewritten before it is kept: any run of 8 or more characters of
-  a value becomes `<secret:name>`, so unrelated text that shares 8 characters
+  a value, its whitespace collapsed or not, becomes `<secret:name>`, so unrelated text that shares 8 characters
   with a value is masked too. A base64 or base64url run that decodes to a
   value or such a fragment (a basic-auth header, a cookie, a token segment)
   is replaced whole. After a fill, screencast frames are dropped; with only

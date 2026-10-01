@@ -303,6 +303,39 @@ describe('redactCut', () => {
     expect(ledger.redactCut('receipt CUT-SEC')).toBe('receipt CUT-SEC');
   });
 
+  describe.each([
+    ['a line break', '\n'],
+    ['a tab', '\t'],
+    ['a CRLF', '\r\n'],
+    ['a no-break space', ' '],
+    ['repeated spaces', '   '],
+  ])('a value with %s, cut after the engine collapsed it', (_kind, separator) => {
+    const lead = 'leadqzrtmwxplkdsnvbhcjfg';
+    const tail = 'tailyqaeuoirktywzxnumbvcxzlkjhgfdsapoiuytrewqmnbvcxzlkj';
+    const ledger = new SecretLedger([['multi', `${lead}${separator}${tail}`]]);
+
+    it.each([
+      ['in the second part', `${lead} ${tail.slice(0, 14)}`],
+      ['on the collapsed space', `${lead} `],
+      ['in the first part', lead.slice(0, 10)],
+    ])('rewrites the part left when the cut falls %s', (_where, kept) => {
+      expect(ledger.redactCut(`${'x'.repeat(40)} ${kept}`)).toBe(`${'x'.repeat(40)} <secret:multi>`);
+    });
+
+    it('rewrites the part with the whitespace as the value writes it, or widened', () => {
+      expect(ledger.redactCut(`pad ${lead}${separator}${tail.slice(0, 3)}`)).toBe('pad <secret:multi>');
+      expect(ledger.redactCut(`pad ${lead}\n\n\n${tail.slice(0, 3)}`)).toBe('pad <secret:multi>');
+    });
+  });
+
+  it('rewrites a cut hex value with a line break, and one whose leading whitespace the reader trimmed', () => {
+    const hex = new SecretLedger([['hex', '0f3a9c71e4b2d85601aa7c3e\n9b84f0c2d17e6a35b9f04c8d2e71a6b3c95d08f4e2a7b61c3d9e0f5a8b47c26']]);
+    expect(hex.redactCut('id 0f3a9c71e4b2d85601aa7c3e 9b84f0c2d1')).toBe('id <secret:hex>');
+    const padded = new SecretLedger([['padded', '\n\t  padded-secret-value-2718']]);
+    expect(padded.redactCut('value: padded-secr')).toBe('value:<secret:padded>');
+    expect(padded.redactCut('padded-secr')).toBe('<secret:padded>');
+  });
+
   it('changes nothing with no value registered', () => {
     expect(new SecretLedger().redactCut('anything at all')).toBe('anything at all');
   });
@@ -388,6 +421,14 @@ describe('redactFragments', () => {
     expect(turkish).toContain('İ');
     expect(ledger.redactFragments(`x ${turkish} y`)).toBe('x <secret:turkish> y');
     expect(ledger.redactFragments(`x ${'long-ſecret-ſtring-3141'.slice(3, 18).toUpperCase()} y`)).toBe('x <secret:longS> y');
+  });
+
+  it('rewrites a fragment spanning a whitespace run the text collapsed, widened, or spelled otherwise, run included', () => {
+    const ledger = new SecretLedger([['multi', 'abcde\r\n\tfghijklmnopqrstu']]);
+    for (const separator of [' ', '\n', ' ', '  \t ']) {
+      expect(ledger.redactFragments(`cut [abcde${separator}fgh] end`)).toBe('cut [<secret:multi>] end');
+    }
+    expect(ledger.redactFragments('plain abcde xyz fghij')).toBe('plain abcde xyz fghij');
   });
 
   it('scans a long text in one linear pass', () => {

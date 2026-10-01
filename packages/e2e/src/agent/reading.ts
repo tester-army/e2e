@@ -5,7 +5,6 @@
  */
 
 import type { SemanticNode } from '../engine/surface.ts';
-import type { SemanticAgentObservation } from './observation.ts';
 
 /** A reading for matching: lower-cased, whitespace runs collapsed, trimmed. */
 export function normalizeReading(text: string): string {
@@ -54,7 +53,7 @@ function* descendants(node: SemanticNode): Generator<SemanticNode> {
  * would end the paging before the list moved.
  */
 export function nodeReading(
-  observation: Pick<SemanticAgentObservation, 'nodes'>,
+  observation: { readonly nodes: ReadonlyMap<string, SemanticNode> },
   needle: string,
   scope?: SemanticNode,
 ): SemanticNode | undefined {
@@ -78,7 +77,7 @@ export function nodeReading(
  * and one slot on the screen while the text in them changes, and that is the
  * list moving.
  */
-export function readingShape(observation: Pick<SemanticAgentObservation, 'nodes'>): string {
+export function readingShape(observation: { readonly nodes: ReadonlyMap<string, SemanticNode> }): string {
   const lines: string[] = [];
   for (const node of observation.nodes.values()) {
     if (node.name === undefined && node.text === undefined) continue;

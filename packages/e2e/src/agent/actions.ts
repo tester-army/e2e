@@ -271,7 +271,7 @@ export function describeTarget(
   const text = field(node.text);
   const testId = field(node.testId);
   const placeholder = field(node.attributes?.['placeholder']);
-  const selector = node.selector === undefined ? undefined : bound(node.selector, MAX_TRACE_DESCRIPTOR_CHARS);
+  const selector = node.selector === undefined ? undefined : bound(redact(node.selector), MAX_TRACE_DESCRIPTOR_CHARS);
   const inputPurpose =
     node.inputPurpose === undefined || node.inputPurpose === 'none' ? undefined : node.inputPurpose;
   const descriptor: TraceTargetDescriptor = {

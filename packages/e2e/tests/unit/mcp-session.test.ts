@@ -36,11 +36,11 @@ describe('locateQuery', () => {
 describe('describeLocate', () => {
   it('tells the agent which test outcome the locator would have', () => {
     const query = locateQuery({ role: 'button', name: 'Save' });
-    expect(describeLocate(query, 1, [node('button', 'Save')], keep)).toBe(
+    expect(describeLocate(query, 1, [node('button', 'Save')], { redact: keep, redactCut: keep })).toBe(
       '1 node matches getByRole("button", name: "Save").\nUse: screen.getByRole("button", "Save")\n- button "Save"',
     );
-    expect(describeLocate(query, 0, [], keep)).toContain('LOCATOR_NOT_FOUND');
-    const ambiguous = describeLocate(query, 12, [node('button', 'Save', { states: { disabled: true } })], keep);
+    expect(describeLocate(query, 0, [], { redact: keep, redactCut: keep })).toContain('LOCATOR_NOT_FOUND');
+    const ambiguous = describeLocate(query, 12, [node('button', 'Save', { states: { disabled: true } })], { redact: keep, redactCut: keep });
     expect(ambiguous).toContain('12 nodes match');
     expect(ambiguous).toContain('LOCATOR_AMBIGUOUS');
     expect(ambiguous).toContain('- button "Save" [disabled]');
@@ -49,7 +49,7 @@ describe('describeLocate', () => {
 
   it('never shows the value of a secure node', () => {
     const query = locateQuery({ label: 'Password' });
-    const text = describeLocate(query, 1, [node('textbox', 'Password', { value: 'hunter2', states: { secure: true } })], keep);
+    const text = describeLocate(query, 1, [node('textbox', 'Password', { value: 'hunter2', states: { secure: true } })], { redact: keep, redactCut: keep });
     expect(text).not.toContain('hunter2');
     expect(text).toContain('[secure]');
   });
@@ -59,7 +59,7 @@ describe('describeLocate', () => {
     const query = locateQuery({ label: 'API key' });
     const filled = node('textbox', 'API key', { value: 'sk-live-SUPERSECRET-0000' });
     const echoed = node('status', 'Saved key', { text: 'Saved sk-live-SUPERSECRET-0000' });
-    const text = describeLocate(query, 2, [filled, echoed], ledger.redact);
+    const text = describeLocate(query, 2, [filled, echoed], ledger);
     expect(text).not.toContain('sk-live-SUPERSECRET-0000');
     expect(text).toContain('- textbox "API key" value "<secret:apiKey>"');
     expect(text).toContain('- status "Saved key" text "Saved <secret:apiKey>"');

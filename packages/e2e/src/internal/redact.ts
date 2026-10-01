@@ -87,23 +87,30 @@ function compile(values: readonly (readonly [string, string])[]): Compiled {
   // `split` on a capturing pattern returns the markers at the odd indexes; those pass through untouched.
   const redact = (text: string): string =>
     text.split(known).map((piece, index) => (index % 2 === 1 ? piece : rewrite(piece))).join('');
-  const valueKeys = entries.map(([, value]) => caseKey(value));
+  const valueKeys = entries.map(([, value]) => readingKey(value).key);
+  // A reader trims a value's leading whitespace as it trims any text's, so a cut part may begin past it.
+  const leadingForms = entries.map(([, value], index) => {
+    const key = valueKeys[index] ?? '';
+    return secretLength(value.trim()) >= MIN_SECRET_LENGTH && key.trimStart() !== key ? [key, key.trimStart()] : [key];
+  });
   const redactCut = (text: string): string => {
     // Only what follows the last marker can end in a value cut short.
     const tail = text.split(known).at(-1) ?? '';
-    const tailKey = caseKey(tail);
+    const tailKey = readingKey(tail);
     let cut = 0;
     let marker = '';
-    valueKeys.forEach((value, index) => {
-      const length = leadingPartAtEnd(tailKey, value, Math.min(FRAGMENT_LENGTH, Math.ceil(value.length / 2)));
-      if (length > cut) {
-        cut = length;
-        marker = markers[index] ?? '';
+    leadingForms.forEach((forms, index) => {
+      for (const value of forms) {
+        const length = leadingPartAtEnd(tailKey.key, value, Math.min(FRAGMENT_LENGTH, Math.ceil(value.length / 2)));
+        if (length > cut) {
+          cut = length;
+          marker = markers[index] ?? '';
+        }
       }
     });
     if (cut === 0) return redact(text);
     // An occurrence the whole-value pass would rewrite across the fragment's start joins the fragment.
-    let start = tail.length - cut;
+    let start = tailKey.at[tailKey.key.length - cut] ?? 0;
     pattern.lastIndex = 0;
     for (let match = pattern.exec(tail); match !== null && match.index < start; match = pattern.exec(tail)) {
       if (match.index + match[0].length > start) {
@@ -259,6 +266,41 @@ function caseKey(text: string): string {
   return out;
 }
 
+/** A text as a cut or a fragment of a value is compared, and where each of its units starts in the text. */
+interface ReadingKey {
+  readonly key: string;
+  /** The index in the text of each unit of `key`, then the text's length, so a stretch of `key` maps back to one of the text. */
+  readonly at: readonly number[];
+}
+
+/**
+ * `text` as a cut or a fragment of a value is compared: `caseKey`, with each
+ * whitespace run read as one space, as an engine that collapses whitespace
+ * (`normalizeText`) shows it before cutting. A value holding a line break, a
+ * tab, a CRLF, a no-break space, or a run of spaces then agrees with what a
+ * collapsed text keeps of it, and a stretch of the key maps back to the text
+ * through `at`.
+ */
+function readingKey(text: string): ReadingKey {
+  const cased = caseKey(text);
+  let key = '';
+  const at: number[] = [];
+  let inRun = false;
+  for (let index = 0; index < cased.length; index += 1) {
+    const unit = cased.charAt(index);
+    const space = WHITESPACE.test(unit);
+    if (space && inRun) continue;
+    inRun = space;
+    key += space ? ' ' : unit;
+    at.push(index);
+  }
+  at.push(text.length);
+  return { key, at };
+}
+
+/** One UTF-16 unit of whitespace, as `normalizeText` collapses it. */
+const WHITESPACE = /^\s$/u;
+
 /** One non-ASCII character's `caseKey`, the same length as `ch`. */
 function caseKeyOf(ch: string): string {
   const upper = sameLength(ch.toUpperCase(), ch);
@@ -349,8 +391,9 @@ function leadingPartAtEnd(text: string, value: string, minimum: number): number 
 /**
  * Every run of `FRAGMENT_LENGTH` characters of every value, mapped to the
  * index of the first value holding it; values come longest first, so a run
- * two values share names the longer one. The values come as `caseKey`
- * reads them, so a run in any case finds its owner.
+ * two values share names the longer one. The values come as `readingKey`
+ * reads them, so a run in any case or with its whitespace collapsed finds
+ * its owner.
  */
 function fragmentOwners(values: readonly string[]): Map<string, number> {
   const owners = new Map<string, number>();
@@ -366,27 +409,28 @@ function fragmentOwners(values: readonly string[]): Map<string, number> {
 /**
  * `text` with every stretch whose windows of `FRAGMENT_LENGTH` characters
  * each occur in a value replaced by the marker of the value owning its first
- * window. Windows are looked up by `caseKey`, as `owners` is keyed, so a
- * fragment in another case is one too. The stretch grows one window at a time, so the
- * scan is linear in the text and a run spanning two values becomes one
- * marker.
+ * window. Windows are looked up by `readingKey`, as `owners` is keyed, so a
+ * fragment in another case or with another whitespace run is one too, and
+ * the stretch is cut back out of `text` whole, its whitespace runs included.
+ * The stretch grows one window at a time, so the scan is linear in the text
+ * and a run spanning two values becomes one marker.
  */
 function rewriteFragments(text: string, owners: ReadonlyMap<string, number>, markers: readonly string[]): string {
   if (owners.size === 0) return text;
-  const key = caseKey(text);
+  const { key, at } = readingKey(text);
   let out = '';
   let kept = 0;
   let start = 0;
-  while (start + FRAGMENT_LENGTH <= text.length) {
+  while (start + FRAGMENT_LENGTH <= key.length) {
     const owner = owners.get(key.slice(start, start + FRAGMENT_LENGTH));
     if (owner === undefined) {
       start += 1;
       continue;
     }
     let end = start + FRAGMENT_LENGTH;
-    while (end < text.length && owners.has(key.slice(end + 1 - FRAGMENT_LENGTH, end + 1))) end += 1;
-    out += `${text.slice(kept, start)}${markers[owner] ?? ''}`;
-    kept = end;
+    while (end < key.length && owners.has(key.slice(end + 1 - FRAGMENT_LENGTH, end + 1))) end += 1;
+    out += `${text.slice(kept, at[start])}${markers[owner] ?? ''}`;
+    kept = at[end] ?? text.length;
     start = end;
   }
   return out + text.slice(kept);
@@ -498,9 +542,12 @@ export class SecretLedger {
    * `FRAGMENT_LENGTH` characters, or half of a value shorter than twice that.
    * A cut is one position, so a boundary this short seldom matches plain text
    * by chance. Matched as the value is written, in any case (`caseKey`), as
-   * a CSS `text-transform` shows it: the cut falls on text as the engine read
-   * it, before any serializer spells it. A case mapping that changes length
-   * (`ß` to `SS`) is not followed, nor is collapsed whitespace. The part is found before whole values are
+   * a CSS `text-transform` shows it, and with every whitespace run on both
+   * sides read as one space (`readingKey`) and the value's leading whitespace
+   * dropped where whole-value matching trims it (`valuePattern`), as an
+   * engine that collapses text before cutting it shows it: the cut falls on
+   * text as the engine read it, before any serializer spells it. A case
+   * mapping that changes length (`ß` to `SS`) is not followed. The part is found before whole values are
    * rewritten, so a value that starts with another registered value is not
    * half rewritten as the shorter one, and an occurrence running into the
    * part joins its marker. Bound like `redact`.
@@ -513,7 +560,7 @@ export class SecretLedger {
    * becomes its marker. For a recording that keeps what an engine read raw
    * (a Playwright trace holds the page's cut text and selections), where a
    * value cut or selected partway through survives whole-value matching.
-   * Matched as the value is written, in any case, like `redactCut`. A
+   * Matched in any case and with whitespace runs collapsed, like `redactCut`. A
    * base64 or base64url run that decodes to text holding a value or a
    * fragment is rewritten whole (a basic-auth header the engine sent). Bound
    * like `redact`.

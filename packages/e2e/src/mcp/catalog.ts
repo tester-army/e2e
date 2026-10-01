@@ -15,7 +15,7 @@ import type { ToolSet } from 'ai';
 import { z } from 'zod';
 import { projectTools } from '../agent/default-agent.ts';
 import type { ExecutorNode, StepExecutorContext } from '../agent/executor.ts';
-import { projectTree } from '../agent/observation.ts';
+import { projectTree, redactNode, type NodeRedaction } from '../agent/observation.ts';
 import { GRAMMAR_TOOL_NAMES } from '../agent/action-names.ts';
 import { createGrammarTools } from '../agent/primitives.ts';
 import type { ScreenPresenter } from '../agent/screen-update.ts';
@@ -50,7 +50,7 @@ export interface CatalogOptions {
   /** The agent's project tools (`agents.<name>.tools`), served beside the built-in ones. */
   readonly tools: Readonly<Record<string, AgentTool>>;
   /** The attempt's secret ledger: what `locate` shows of a node passes through it, as `observe` does. */
-  readonly redact: (text: string) => string;
+  readonly redaction: NodeRedaction;
   /** The session's recorder, when the engine records video. */
   readonly recorder: SessionRecorder | undefined;
   readonly warn: (message: string) => void;
@@ -68,7 +68,7 @@ export function createSessionCatalog(options: CatalogOptions): SessionCatalog {
   const builtIn: ToolSet = {
     observe: fullObserveTool(context, screen),
     ...verbs,
-    locate: locateTool(options.locator, options.session, options.redact),
+    locate: locateTool(options.locator, options.session, options.redaction),
     ...recording,
   };
   const defined = options.tools;
@@ -101,7 +101,7 @@ function fullObserveTool(context: StepExecutorContext, screen: ScreenPresenter):
 }
 
 /** The session's `locate`: a semantic locator tried against the live screen, with the verdict a test would get. */
-function locateTool(locator: LocatorEngine, session: TargetSession, redact: (text: string) => string): ToolSet[string] {
+function locateTool(locator: LocatorEngine, session: TargetSession, redaction: NodeRedaction): ToolSet[string] {
   return {
     description:
       'Try a semantic locator against the live screen before writing it into a test: screen.getByRole(role, name), getByText, getByLabel, getByPlaceholder, or getByTestId. Returns how many nodes match and which, plus the test code to use. Exactly one of role, text, label, placeholder, or testId; name narrows a role query. Matching is exact unless exact is false.',
@@ -121,7 +121,7 @@ function locateTool(locator: LocatorEngine, session: TargetSession, redact: (tex
       for (const ref of refs.slice(0, MAX_LOCATE_NODES)) {
         read.push(await session.read(ref, locator.operation()));
       }
-      return describeLocate(query, refs.length, read, redact);
+      return describeLocate(query, refs.length, read, redaction);
     },
   };
 }
@@ -165,12 +165,12 @@ export function locateQuery(args: LocateArgs): LocateQuery {
 }
 
 /** Renders a locate result: the count, the verdict a test would get, and the nodes, each through the attempt's redactor. */
-export function describeLocate(query: LocateQuery, count: number, nodes: readonly SemanticNode[], redact: (text: string) => string): string {
+export function describeLocate(query: LocateQuery, count: number, nodes: readonly SemanticNode[], redaction: NodeRedaction): string {
   const lines = [`${count === 1 ? '1 node matches' : `${count} nodes match`} ${describeExpression(query.expression)}.`];
   if (count === 1) lines.push(`Use: ${query.code}`);
   else if (count === 0) lines.push('A test using this locator would fail with LOCATOR_NOT_FOUND. Check the accessible name in the observation (observe), or loosen the match with exact: false.');
   else lines.push(`A test action on ${query.code} would fail with LOCATOR_AMBIGUOUS. Narrow it with a name, getByRole(role, name), .filter({ hasText }), .first(), or .nth(i), or scope it under a container.`);
-  for (const node of nodes) lines.push(`- ${describeNode(projectTree(node, redact))}`);
+  for (const node of nodes) lines.push(`- ${describeNode(projectTree(redactNode(node, redaction)))}`);
   if (count > nodes.length) lines.push(`- and ${count - nodes.length} more`);
   return lines.join('\n');
 }

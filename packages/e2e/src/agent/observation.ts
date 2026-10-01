@@ -23,9 +23,9 @@ type PixelsWithheld = 'MASKING_UNPROVEN';
 export type AgentObservation = AgentObservationMetadata & (
   | {
       readonly kind: 'semantic';
-      readonly nodes: ReadonlyMap<string, SemanticNode>;
+      readonly nodes: ReadonlyMap<string, RedactedNode>;
       readonly parents: ReadonlyMap<string, string>;
-      readonly tree: SemanticNode;
+      readonly tree: RedactedNode;
       readonly truncated: boolean;
       readonly pixels?: ExecutorPixels | undefined;
       readonly pixelsWithheld?: PixelsWithheld | undefined;
@@ -57,10 +57,11 @@ interface AgentObservationMetadata {
  *
  * Pixels whose masking the engine cannot prove (fewer masked regions than
  * secure nodes) are withheld before they reach a model or disk; the semantic
- * tree never carries secure values. Registered secret values are additionally
- * replaced by their stable secret name, and so is the leading part of one a
- * field the engine cut at its limit ends with. A field holding one keeps no
- * selection, as a secure field keeps none.
+ * tree never carries secure values. Every string of every node is redacted
+ * once, here (`redactNode`): registered secret values are replaced by their
+ * stable secret name, and so is the leading part of one a field the engine
+ * cut at its limit ends with. A field holding one keeps no selection, as a
+ * secure field keeps none.
  */
 export function prepareObservation(
   observation: Observation,
@@ -96,12 +97,11 @@ export function prepareObservation(
       pixels: pixels.cleared,
     };
   }
-  const tree = protectSecrets(observation.tree, options);
-  const nodes = new Map<string, SemanticNode>();
+  const tree = redactNode(observation.tree, options);
+  const nodes = new Map<string, RedactedNode>();
   const parents = new Map<string, string>();
   indexNodes(tree, nodes, parents);
 
-  const redact = options.redact;
   const lines: string[] = [];
   const encoder = new TextEncoder();
   // The marker is reserved up front so a truncated observation still fits the
@@ -115,9 +115,9 @@ export function prepareObservation(
   let bytes = 0;
   let cutByBudget = false;
 
-  const emit = (node: SemanticNode, depth: number): void => {
+  const emit = (node: RedactedNode, depth: number): void => {
     if (cutByBudget) return;
-    const line = formatNode(node, depth, redact, options.appOrigin);
+    const line = formatNode(node, depth, options.appOrigin);
     const size = encoder.encode(`${line}\n`).byteLength;
     if (lines.length > 0 && bytes + size > budget) {
       cutByBudget = true;
@@ -151,40 +151,97 @@ export function prepareObservation(
   };
 }
 
-/** The fields an engine may cut, each at its observed limit. */
-const CUT_FIELDS = [
-  ['name', OBSERVED_NAME_LIMIT],
-  ['text', OBSERVED_TEXT_LIMIT],
-  ['value', OBSERVED_TEXT_LIMIT],
-  ['selection', OBSERVED_TEXT_LIMIT],
-] as const;
+/** What redacts a node: whole values, and the leading part of one a cut field ends with. */
+export type NodeRedaction = Pick<SecretLedger, 'redact' | 'redactCut'>;
 
-type Redaction = Pick<SecretLedger, 'redact' | 'redactCut'>;
+declare const REDACTED: unique symbol;
 
 /**
- * The tree with what whole-value redaction misses taken out, before any
- * consumer reads it. Every field exactly as long as its observed limit, and
- * so possibly cut there, passes through `redactCut`: a secret the cut stopped
- * partway through leaves a leading part at the end that no whole value
- * matches. A shorter field is whole, and so is a longer one (a native input's
- * value, which no engine cuts); both are left to `redact`. A selection that
- * may show part of a secret is dropped, as a secure field's is. A subtree
- * with nothing changed is returned as it is.
+ * A semantic node every string of which has passed the attempt's secret
+ * ledger (`redactNode`). Model-facing text and executor trees render only
+ * from this shape, so a node no redaction touched cannot reach them.
  */
-function protectSecrets(node: SemanticNode, redaction: Redaction): SemanticNode {
-  const withhold = node.selection !== undefined && selectionMayHoldSecret(node, node.selection, redaction);
-  const changed: { -readonly [Field in (typeof CUT_FIELDS)[number][0]]?: string } = {};
-  for (const [field, limit] of CUT_FIELDS) {
-    const text = node[field];
-    if (text?.length !== limit || (withhold && field === 'selection')) continue;
-    const redacted = redaction.redactCut(text);
-    if (redacted !== text) changed[field] = redacted;
+export interface RedactedNode extends Omit<SemanticNode, 'children'> {
+  readonly [REDACTED]: true;
+  readonly children?: readonly RedactedNode[];
+}
+
+type NodeField = Exclude<keyof SemanticNode, 'children'>;
+
+/** One field's redaction: its value with every secret taken out, or undefined to drop it. */
+type FieldRedaction<Field extends NodeField> = (
+  value: NonNullable<SemanticNode[Field]>,
+  node: SemanticNode,
+  redaction: NodeRedaction,
+) => SemanticNode[Field] | undefined;
+
+/** Leaves a field the engine fills from a closed set (an enum, booleans, numbers) or mints itself as it is. */
+const keep = <Value>(value: Value): Value => value;
+
+/**
+ * How each field of a node is redacted, one entry per field of
+ * `SemanticNode`: a field added to the contract does not compile until it
+ * says how its text is redacted, and a key an engine sends that the
+ * contract does not name is dropped. Every string passes through
+ * `redactText`. A secure node keeps no value or selection, and a selection
+ * that may show part of a secret is dropped, as a secure field's is. The ref
+ * is the engine's own handle, sent back to it to act, never page text.
+ */
+const NODE_FIELDS: { readonly [Field in NodeField]-?: FieldRedaction<Field> } = {
+  ref: keep,
+  role: (role, _node, redaction) => redactText(role, redaction),
+  name: (name, _node, redaction) => redactText(name, redaction, OBSERVED_NAME_LIMIT),
+  text: (text, _node, redaction) => redactText(text, redaction, OBSERVED_TEXT_LIMIT),
+  value: (value, node, redaction) => (node.states?.secure === true ? undefined : redactText(value, redaction, OBSERVED_TEXT_LIMIT)),
+  selection: (selection, node, redaction) =>
+    node.states?.secure === true || selectionMayHoldSecret(node, selection, redaction)
+      ? undefined
+      : redactText(selection, redaction, OBSERVED_TEXT_LIMIT),
+  testId: (testId, _node, redaction) => redactText(testId, redaction),
+  inputPurpose: keep,
+  states: keep,
+  level: keep,
+  attributes: (attributes, _node, redaction) =>
+    Object.fromEntries(Object.entries(attributes).map(([key, value]) => [redactText(key, redaction), redactText(value, redaction)])),
+  rect: keep,
+  selector: (selector, _node, redaction) => redactText(selector, redaction),
+  framePath: (framePath, _node, redaction) => framePath.map((selector) => redactText(selector, redaction)),
+};
+
+/**
+ * The node and its subtree with every secret taken out of every field
+ * (`NODE_FIELDS`), before any consumer reads it: the model's text, the
+ * executor's tree, cache descriptors and anchors, failure evidence.
+ */
+export function redactNode(node: SemanticNode, redaction: NodeRedaction): RedactedNode {
+  const redacted: Record<string, unknown> = {};
+  for (const [field, value] of Object.entries(node)) {
+    if (field === 'children' || value === undefined || !Object.hasOwn(NODE_FIELDS, field)) continue;
+    const redactValue = NODE_FIELDS[field as NodeField] as FieldRedaction<NodeField>;
+    const result = redactValue(value as never, node, redaction);
+    if (result !== undefined) redacted[field] = result;
   }
-  const children = node.children?.map((child) => protectSecrets(child, redaction));
-  const sameChildren = (children ?? []).every((child, index) => child === node.children?.[index]);
-  if (!withhold && Object.keys(changed).length === 0 && sameChildren) return node;
-  const { selection: _selection, ...withoutSelection } = node;
-  return { ...(withhold ? withoutSelection : node), ...changed, ...(children === undefined ? {} : { children }) };
+  if (node.children !== undefined) redacted['children'] = node.children.map((child) => redactNode(child, redaction));
+  return redacted as unknown as RedactedNode;
+}
+
+/**
+ * One observed string with every secret taken out, in the form it is written
+ * and in the one-line form a line, a descriptor, or an anchor shows it
+ * (`collapseText`). A field exactly as long as `limit`, and so possibly cut
+ * there, passes through `redactCut`: a secret the cut stopped partway through
+ * leaves a leading part at the end that no whole value matches. A shorter
+ * field is whole, and so is a longer one (a native input's value, which no
+ * engine cuts); both pass through `redact`. A field whose collapsed form
+ * still holds a secret (the whitespace inside a value widened) is kept
+ * collapsed and redacted, so no later collapse brings the value back.
+ */
+function redactText(text: string, redaction: NodeRedaction, limit?: number): string {
+  const pass = text.length === limit ? redaction.redactCut : redaction.redact;
+  const redacted = pass(text);
+  const collapsed = collapseText(redacted);
+  const read = pass(collapsed);
+  return read === collapsed ? redacted : read;
 }
 
 /**
@@ -194,10 +251,10 @@ function protectSecrets(node: SemanticNode, redaction: Redaction): SemanticNode 
  * come from the cut-off rest, which the runner never sees. The page never
  * learns the secrets: the check is redaction changing the field.
  */
-function selectionMayHoldSecret(node: SemanticNode, selection: string, redaction: Redaction): boolean {
+function selectionMayHoldSecret(node: SemanticNode, selection: string, redaction: NodeRedaction): boolean {
   const fields = [node.value, node.text].filter((text) => text !== undefined);
   const cut = (text: string): boolean => text.length === OBSERVED_TEXT_LIMIT;
-  if (fields.some((text) => (cut(text) ? redaction.redactCut(text) : redaction.redact(text)) !== text)) return true;
+  if (fields.some((text) => redactText(text, redaction, OBSERVED_TEXT_LIMIT) !== text)) return true;
   return fields.some(cut) && !fields.some((text) => text.includes(selection));
 }
 
@@ -296,36 +353,32 @@ export function interactiveNodeCount(observation: Pick<ExecutorObservation, 'tex
 }
 
 /**
- * Projects the raw tree onto the executor-facing node shape: the same
- * redaction the text serialization applies, field by field, and no value or
- * selection at all for a secure node, and a link target bounded as a line
+ * Projects a redacted tree onto the executor-facing node shape, the fields
+ * the text serialization renders, with a link target bounded as a line
  * bounds it: a target on `appOrigin` keeps that origin and loses no more of
  * its path than the line does. Selectors stay behind — they are relocation
  * material for the trace cache, not something a brain reasons about.
  */
-export function projectTree(node: SemanticNode, redact: (text: string) => string, appOrigin?: string): ExecutorNode {
-  const secure = node.states?.secure === true;
+export function projectTree(node: RedactedNode, appOrigin?: string): ExecutorNode {
   const attributes =
     node.attributes === undefined
       ? undefined
       : Object.fromEntries(
-          Object.entries(node.attributes).map(([key, value]) => [key, key === 'href' ? treeHref(redact(value), appOrigin) : redact(value)]),
+          Object.entries(node.attributes).map(([key, value]) => [key, key === 'href' ? treeHref(value, appOrigin) : value]),
         );
   return {
     id: node.ref.id,
     ...(node.role === undefined ? {} : { role: node.role }),
-    ...(node.name === undefined ? {} : { name: redact(node.name) }),
-    ...(node.text === undefined ? {} : { text: redact(node.text) }),
-    ...(node.value === undefined || secure ? {} : { value: redact(node.value) }),
-    ...(node.selection === undefined || secure ? {} : { selection: redact(node.selection) }),
+    ...(node.name === undefined ? {} : { name: node.name }),
+    ...(node.text === undefined ? {} : { text: node.text }),
+    ...(node.value === undefined ? {} : { value: node.value }),
+    ...(node.selection === undefined ? {} : { selection: node.selection }),
     ...(node.inputPurpose === undefined ? {} : { inputPurpose: node.inputPurpose }),
     ...(node.states === undefined ? {} : { states: node.states }),
     ...(attributes === undefined ? {} : { attributes }),
     ...(node.rect === undefined ? {} : { rect: node.rect }),
     ...(node.framePath === undefined ? {} : { framePath: node.framePath }),
-    ...(node.children === undefined
-      ? {}
-      : { children: node.children.map((child) => projectTree(child, redact, appOrigin)) }),
+    ...(node.children === undefined ? {} : { children: node.children.map((child) => projectTree(child, appOrigin)) }),
   };
 }
 
@@ -341,36 +394,31 @@ const MAX_HREF_LENGTH = 256;
  * lines, and the model needs their text, not a filler word. A link target on
  * `appOrigin`, the app base URL's, renders as its path.
  */
-export function formatNode(
-  node: SemanticNode,
-  depth: number,
-  redact: (text: string) => string,
-  appOrigin?: string,
-): string {
+export function formatNode(node: RedactedNode, depth: number, appOrigin?: string): string {
   const parts: string[] = [`#${node.ref.id}`];
   if (node.role !== undefined && node.role !== '') parts.push(node.role);
-  if (node.name !== undefined && node.name !== '') parts.push(JSON.stringify(redact(node.name)));
+  if (node.name !== undefined && node.name !== '') parts.push(JSON.stringify(node.name));
   const text = node.text === undefined ? '' : collapseText(node.text);
-  if (text !== '' && text !== node.name) parts.push(`text=${JSON.stringify(redact(text))}`);
+  if (text !== '' && text !== node.name) parts.push(`text=${JSON.stringify(text)}`);
   // Disambiguators the model needs when role and name repeat. The engine has
   // already reduced href to origin and path.
   if (node.testId !== undefined && node.testId !== '') parts.push(`testid=${JSON.stringify(node.testId)}`);
   const href = node.attributes?.['href'];
-  if (href !== undefined && href !== '') parts.push(`href=${JSON.stringify(renderHref(redact(href), appOrigin))}`);
+  if (href !== undefined && href !== '') parts.push(`href=${JSON.stringify(renderHref(href, appOrigin))}`);
   const placeholder = node.attributes?.['placeholder'];
   if (placeholder !== undefined && placeholder !== '' && (node.name ?? '') === '') {
-    parts.push(`placeholder=${JSON.stringify(redact(placeholder))}`);
+    parts.push(`placeholder=${JSON.stringify(placeholder)}`);
   }
   if (node.states?.secure === true) {
     parts.push('value=<secure>');
   } else if (node.value !== undefined && node.value !== '') {
-    parts.push(`value=${JSON.stringify(redact(node.value))}`);
+    parts.push(`value=${JSON.stringify(node.value)}`);
   }
   // What a Shift+Arrow press selected: without it the model extends a
   // selection blind and cannot tell one word from its neighbour. Rendered
   // verbatim (escaped), since a selected space or newline is a selection too.
-  if (node.selection !== undefined && node.selection !== '' && node.states?.secure !== true) {
-    parts.push(`selection=${JSON.stringify(redact(node.selection))}`);
+  if (node.selection !== undefined && node.selection !== '') {
+    parts.push(`selection=${JSON.stringify(node.selection)}`);
   }
   if (node.inputPurpose !== undefined && node.inputPurpose !== 'none') {
     parts.push(`purpose=${node.inputPurpose}`);
@@ -586,8 +634,8 @@ export function isTransitionalObservation(observation: AgentObservation): boolea
 }
 
 function indexNodes(
-  node: SemanticNode,
-  into: Map<string, SemanticNode>,
+  node: RedactedNode,
+  into: Map<string, RedactedNode>,
   parents: Map<string, string>,
 ): void {
   into.set(node.ref.id, node);

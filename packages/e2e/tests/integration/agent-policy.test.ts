@@ -4,17 +4,20 @@
  * agent-act-stress.test.ts.
  */
 
+import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT, type SemanticNode } from '../../src/engine/contract.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { installFakeLoopModel, loopCalls, nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { extracted, installFakeModel, judgment } from '../helpers/fake-model.ts';
 import type { FakeCall } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
-import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
+import { createProject, resultByTitle, runExisting, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
 import type { SdkLanguageModel } from '../../src/agent/ai-sdk.ts';
 import type { StepExecutor } from '../../src/agent/executor.ts';
-import { createFakeEngine, FAKE_APP_URL } from '../helpers/fake-engine.ts';
+import { createFakeEngine, FAKE_APP, FAKE_APP_URL } from '../helpers/fake-engine.ts';
 
 const SUITE = `import { test, credentials } from 'e2e';
 
@@ -459,6 +462,86 @@ describe('tool calls outside the vocabulary', () => {
       project.cleanup();
     }
   }, 120_000);
+});
+
+describe('a secret the observed screen shows', () => {
+  it('reaches no observation text, executor tree, cache entry, or report, whole or as the part a cut field keeps', async () => {
+    const probe = 'probeKqZrTmWxpLdsNvbHcjFgyQaeUoiRktYwzXnu';
+    const lead = 'leadqzrtmwxplkdsnvbhcjfg';
+    const tail = 'tailyqaeuoirktywzxnumbvcxzlkjhgfdsapoiuytrewqmnbvcxzlkj';
+    const multiline = `${lead}\r\n\t${tail}`;
+    const collapsed = `${lead} ${tail}`;
+    const cutName = `${'x'.repeat(OBSERVED_NAME_LIMIT - collapsed.length + 20)} ${collapsed}`.slice(0, OBSERVED_NAME_LIMIT);
+    const cutText = `${'y'.repeat(OBSERVED_TEXT_LIMIT - collapsed.length + 30)} ${collapsed}`.slice(0, OBSERVED_TEXT_LIMIT);
+    const children: SemanticNode[] = [
+      { ref: { id: 'go', revision: '' }, role: 'button', name: cutName, testId: probe, selector: `[data-testid="${probe}"]` },
+      {
+        ref: { id: 'frame', revision: '' },
+        role: 'iframe',
+        name: 'Embedded',
+        children: [{ ref: { id: 'inner', revision: '' }, role: 'button', name: 'Inner', framePath: [`iframe[name="${probe}"]`] }],
+      },
+    ];
+    const revealed: SemanticNode = { ref: { id: 'out', revision: '' }, role: 'status', name: cutName, text: cutText, testId: probe };
+    const fake = createFakeEngine({
+      tree: { ref: { id: 'root', revision: '' }, role: 'document', children },
+      onStartAttempt: () => {
+        children.splice(2);
+      },
+      perform: (ref) => {
+        if (ref.id === 'go' && !children.includes(revealed)) children.push(revealed);
+      },
+    });
+    const seen: string[] = [];
+    const executor: StepExecutor = {
+      name: 'screen-reader',
+      version: '1',
+      async runStep(context) {
+        const before = await context.observe({ tree: true });
+        await context.actions.tap({ id: nodeIdFor(before.text, /button "/) });
+        const after = await context.observe({ tree: true });
+        seen.push(before.text, JSON.stringify(before.tree), after.text, JSON.stringify(after.tree));
+        return { status: 'passed', summary: 'revealed' };
+      },
+    };
+    const suite = `import { test, expect } from 'e2e';
+
+test('reveals the output', async ({ app, agent, screen }) => {
+  await app.open();
+  await agent.act('reveal the output');
+  await expect(screen.getByRole('status')).toBeVisible();
+});
+`;
+    const project = createProject({ 'tests/screen.e2e.ts': suite });
+    const options = {
+      appUrl: FAKE_APP_URL,
+      config: {
+        targets: [{ name: 'fake', platform: 'fake', engine: fake.engine, app: FAKE_APP }],
+        agents: { default: { executor } },
+        secrets: { probe, multiline },
+        cache: 'read-write' as const,
+      },
+    };
+    try {
+      const recorded = await runExisting(project, options);
+      const replayed = await runExisting(project, options);
+      expect(resultByTitle(recorded, 'reveals the output').status).toBe('passed');
+      // The redacted anchors still match the redacted screen, so the replay finalizes on its own.
+      const replay = resultByTitle(replayed, 'reveals the output').attempts[0]?.steps.find((step) => step.api === 'agent.act');
+      expect(replay?.cache).toMatchObject({ mode: 'self-finalized', replayedActions: 1 });
+      const cacheDir = path.join(project.dir, '.e2e', 'cache');
+      const entries = readdirSync(cacheDir).map((file) => readFileSync(path.join(cacheDir, file), 'utf8'));
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toContain('<secret:multiline>');
+      const written = [...seen, ...entries, readFileSync(path.join(project.dir, '.e2e', 'report.json'), 'utf8'), JSON.stringify(recorded), JSON.stringify(replayed)];
+      expect(seen.join('\n')).toContain('<secret:probe>');
+      for (const fragment of [probe, multiline, collapsed, lead.slice(0, 12), tail.slice(0, 8)]) {
+        for (const text of written) expect(text).not.toContain(fragment);
+      }
+    } finally {
+      project.cleanup();
+    }
+  }, 60_000);
 });
 
 describe('a secret fill the engine rejects', () => {

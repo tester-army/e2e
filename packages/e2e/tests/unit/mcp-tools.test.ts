@@ -100,7 +100,7 @@ describe('invokeTool', () => {
       locator: { resolveAll } as never,
       session: {} as never,
       tools: {},
-      redact: (text) => text,
+      redaction: { redact: (text) => text, redactCut: (text) => text },
       recorder: undefined,
       warn: () => undefined,
     });

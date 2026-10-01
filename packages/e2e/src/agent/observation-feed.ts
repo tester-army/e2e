@@ -177,7 +177,7 @@ export class ObservationFeed {
       ...metadata,
       text: observation.text,
       truncated: observation.truncated,
-      ...(options.tree === true ? { tree: projectTree(observation.tree, this.runtime.redact, this.runtime.app.base?.origin) } : {}),
+      ...(options.tree === true ? { tree: projectTree(observation.tree, this.runtime.app.base?.origin) } : {}),
       ...pixels,
     };
   }
