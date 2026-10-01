@@ -2,20 +2,22 @@
 
 import { describe, expect, it } from 'vitest';
 import type { SemanticNode } from '../../src/engine/surface.ts';
+import type { RedactedNode } from '../../src/agent/observation.ts';
 import { nodeReading, normalizeReading, readingShape } from '../../src/agent/reading.ts';
+import { redacted } from '../helpers/redacted.ts';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
   return { ref: { id, revision: 'r1' }, ...extra };
 }
 
 /** The observation's node index over a tree, depth first, as the feed builds it. */
-function indexOf(...roots: SemanticNode[]): { nodes: Map<string, SemanticNode> } {
-  const nodes = new Map<string, SemanticNode>();
-  const walk = (entry: SemanticNode) => {
+function indexOf(...roots: SemanticNode[]): { nodes: Map<string, RedactedNode> } {
+  const nodes = new Map<string, RedactedNode>();
+  const walk = (entry: RedactedNode) => {
     nodes.set(entry.ref.id, entry);
     for (const child of entry.children ?? []) walk(child);
   };
-  for (const root of roots) walk(root);
+  for (const root of roots) walk(redacted(root));
   return { nodes };
 }
 

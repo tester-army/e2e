@@ -30,7 +30,7 @@ import type { OperationQueue } from './operation-queue.ts';
 import { instrumentPhase, recordPolicyEvent } from './phases.ts';
 import { describePointAction, describePointHit, hitTest, POINT_VERBS, type PointProse } from './point-tap.ts';
 import { nodeReading, normalizeReading, readingShape } from './reading.ts';
-import type { AgentObservation, SemanticAgentObservation } from './observation.ts';
+import type { AgentObservation, RedactedNode, SemanticAgentObservation } from './observation.ts';
 import { authorizeSecretFill } from './secrets.ts';
 import { SETTLE_AFTER } from './settle-policy.ts';
 import type { StepAccounting } from './step-accounting.ts';
@@ -277,7 +277,7 @@ export class ActionDispatcher {
     return this.runtime.target.verbs;
   }
 
-  private async performNode(name: NodeActionName, node: SemanticNode): Promise<RecordableAction> {
+  private async performNode(name: NodeActionName, node: RedactedNode): Promise<RecordableAction> {
     await this.session.perform(node.ref, { kind: NODE_ACTION_KINDS[name] }, this.accounting.actionOperation());
     return { name, node };
   }
@@ -607,7 +607,7 @@ export class ActionDispatcher {
   private commitTargeted(
     name: GrammarActionName,
     target: ExecutorTarget,
-    perform: (node: SemanticNode) => Promise<RecordableAction>,
+    perform: (node: RedactedNode) => Promise<RecordableAction>,
   ): Promise<void> {
     // Resolved inside the body, so it reads the screen the earlier actions of the turn left.
     return this.runAction(name, () => this.targeted(this.feed.resolve(target), perform));
@@ -620,7 +620,7 @@ export class ActionDispatcher {
    */
   private async targeted(
     resolved: Resolved,
-    perform: (node: SemanticNode, observation: SemanticAgentObservation) => Promise<RecordableAction>,
+    perform: (node: RedactedNode, observation: SemanticAgentObservation) => Promise<RecordableAction>,
   ): Promise<RecordableAction> {
     let { node, observation } = resolved;
     for (let relocations = 0; ; relocations += 1) {
@@ -649,9 +649,8 @@ export class ActionDispatcher {
    * number picks the same one.
    */
   private placementOf({ node, observation }: Resolved): Placement {
-    const redact = this.runtime.redact;
-    const within = containerKey(node.ref.id, observation.nodes, observation.parents, redact);
-    const position = describePosition(node, within, observation.nodes, { redact });
+    const within = containerKey(node.ref.id, observation.nodes, observation.parents);
+    const position = describePosition(node, within, observation.nodes);
     return {
       ...(within === undefined ? {} : { within }),
       ...(position === undefined ? {} : { position }),

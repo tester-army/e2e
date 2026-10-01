@@ -12,11 +12,10 @@
  */
 
 import { MAIN_LIST_SHARE } from '../cache/relocate.ts';
-import type { SemanticNode } from '../engine/surface.ts';
 import { overlapShare, viewportShare, type Box } from '../internal/geometry.ts';
 import type { ExecutorTarget } from './executor.ts';
 import { nodeGone, type ObservationFeed, type Resolved } from './observation-feed.ts';
-import type { SemanticAgentObservation } from './observation.ts';
+import type { RedactedNode, SemanticAgentObservation } from './observation.ts';
 
 /**
  * How much of its old box a node must cover, and be covered by, to count as
@@ -43,8 +42,8 @@ export function resolveScrollTarget(feed: ObservationFeed, target: ExecutorTarge
 }
 
 /** The listed node of the role whose box overlaps `box` most, when it overlaps enough. */
-export function samePlace(observation: SemanticAgentObservation, role: string | undefined, box: Box): SemanticNode | undefined {
-  let best: { node: SemanticNode; overlap: number } | undefined;
+export function samePlace(observation: SemanticAgentObservation, role: string | undefined, box: Box): RedactedNode | undefined {
+  let best: { node: RedactedNode; overlap: number } | undefined;
   for (const node of observation.nodes.values()) {
     if (node.role !== role || node.rect === undefined || node.states?.hidden === true) continue;
     const overlap = overlapShare(node.rect, box);

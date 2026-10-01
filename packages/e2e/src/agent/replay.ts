@@ -16,6 +16,7 @@ import { anchorsPresent } from '../cache/anchors.ts';
 import { isRelocatableDescriptor, MAIN_LIST_SHARE, relocateDescriptor, type RelocationFailure, type RelocationResult } from '../cache/relocate.ts';
 import { isNodeAction, type ActionTrace, type DerivedReason, type RecordedAction, type TraceTargetDescriptor, type TraceViewport } from '../cache/trace.ts';
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
+import type { RedactedNode } from './observation.ts';
 import { hasCause } from '../internal/errors.ts';
 import { containsPoint, type Box } from '../internal/geometry.ts';
 import { sleep } from '../internal/time.ts';
@@ -35,7 +36,7 @@ const RETRY_DELAYS_MS = [100, 300, 600, 1_000, 3_000] as const;
 const RETRY_TIMEOUT_MS = 15_000;
 
 /** The nodes of one observation, keyed by their per-observation ids. */
-export type ObservedNodes = ReadonlyMap<string, SemanticNode>;
+export type ObservedNodes = ReadonlyMap<string, RedactedNode>;
 
 /** One capture's location and viewport, with nodes only when semantic evidence is available. */
 export type ObservedScreen = {
@@ -63,7 +64,6 @@ export interface ReplayHost {
   readonly actions: ExecutorActions;
   readonly signal: AbortSignal;
   remainingMs(): number;
-  readonly redact: (text: string) => string;
 }
 
 export interface ReplayOutcome {
@@ -367,7 +367,7 @@ export async function verifyAnchors(
   const startedMs = Date.now();
   try {
     const present = await pollSettled(host, ({ nodes }) =>
-      anchorsPresent(anchors, nodes, host) ? true : undefined,
+      anchorsPresent(anchors, nodes) ? true : undefined,
       options.initial === undefined ? HELD_STILL : { kind: 'in-hand', screen: options.initial },
     );
     if (present === true) return true;
@@ -380,7 +380,7 @@ export async function verifyAnchors(
       await sleep(Math.min(END_WAIT_POLL_MS, deadline - Date.now()), host.signal);
       const screen = await host.observe('raw');
       if (screen.kind === 'pixels' || !host.traceEligible) return false;
-      if (anchorsPresent(anchors, screen.nodes, host)) return true;
+      if (anchorsPresent(anchors, screen.nodes)) return true;
     }
     return false;
   } catch (cause) {
@@ -400,10 +400,9 @@ async function relocate(
   descriptor: TraceTargetDescriptor,
   look: Look,
 ): Promise<Relocated> {
-  const options = { redact: host.redact };
   let last: Relocated = { kind: 'failed', failure: 'target-not-found' };
   const settled = await pollSettled(host, (screen): Relocated | undefined => {
-    const result = relocateDescriptor(descriptor, screen.nodes, options);
+    const result = relocateDescriptor(descriptor, screen.nodes);
     if (result.kind === 'failed') {
       last = result.failure === 'target-not-found' ? result : { ...result, screen };
       return retryable(result.failure, descriptor) ? undefined : last;
@@ -428,16 +427,15 @@ async function relocatePair(
   destination: TraceTargetDescriptor,
   look: Look,
 ): Promise<{ readonly kind: 'found'; readonly source: string; readonly destination: string } | { readonly kind: 'failed'; readonly failure: RelocationFailure }> {
-  const options = { redact: host.redact };
   let last: RelocationFailure = 'target-not-found';
   const failed = (descriptor: TraceTargetDescriptor, failure: RelocationFailure) => {
     last = failure;
     return retryable(failure, descriptor) ? undefined : { kind: 'failed' as const, failure };
   };
   const settled = await pollSettled(host, (screen) => {
-    const from = relocateDescriptor(source, screen.nodes, options);
+    const from = relocateDescriptor(source, screen.nodes);
     if (from.kind === 'failed') return failed(source, from.failure);
-    const to = relocateDescriptor(destination, screen.nodes, options);
+    const to = relocateDescriptor(destination, screen.nodes);
     if (to.kind === 'failed') return failed(destination, to.failure);
     return { kind: 'found' as const, source: from.id, destination: to.id };
   }, look);
@@ -458,7 +456,7 @@ function retryable(failure: RelocationFailure, descriptor: TraceTargetDescriptor
 
 /** A relocation with the node it found, or with the screen its look-alikes are on, for a replay that needs boxes. */
 type Relocated =
-  | (Extract<RelocationResult, { kind: 'found' }> & { readonly node: SemanticNode })
+  | (Extract<RelocationResult, { kind: 'found' }> & { readonly node: RedactedNode })
   | Extract<RelocationResult, { failure: 'target-not-found' }>
   | (Extract<RelocationResult, { failure: 'target-ambiguous' }> & { readonly screen: SemanticScreen });
 
@@ -481,7 +479,7 @@ function placeWithin(relocated: Relocated, planned: Extract<PlannedCall, { kind:
   if (viewport.width !== planned.viewport.width || viewport.height !== planned.viewport.height) return undefined;
   const containing = relocated.candidates
     .map((id) => nodes.get(id))
-    .filter((node): node is SemanticNode => node !== undefined && node.states?.hidden !== true)
+    .filter((node): node is RedactedNode => node !== undefined && node.states?.hidden !== true)
     .map((node) => usableBox(node.rect))
     .filter((box): box is Box => box !== undefined && containsPoint(box, planned.point));
   if (containing.length === 1) return inside(containing[0]!);

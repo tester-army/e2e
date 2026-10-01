@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest';
+import type { RedactedNode } from '../../src/agent/observation.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
+import { redacted } from '../helpers/redacted.ts';
 import { containerKey, describeAction } from '../../src/agent/actions.ts';
 import { relocateDescriptor } from '../../src/cache/relocate.ts';
 
 const identity = (text: string): string => text;
 
 /** A two-row table: identical "Delete" buttons told apart only by their row. */
-function table(): { nodes: Map<string, SemanticNode>; parents: Map<string, string> } {
-  const nodes = new Map<string, SemanticNode>();
+function table(): { nodes: Map<string, RedactedNode>; parents: Map<string, string> } {
+  const nodes = new Map<string, RedactedNode>();
   const parents = new Map<string, string>();
   const add = (id: string, node: Omit<SemanticNode, 'ref'>, parent?: string): SemanticNode => {
     const full: SemanticNode = { ref: { id, revision: 'r' }, ...node };
-    nodes.set(id, full);
+    nodes.set(id, redacted(full));
     if (parent !== undefined) parents.set(id, parent);
     return full;
   };
@@ -28,10 +30,10 @@ function table(): { nodes: Map<string, SemanticNode>; parents: Map<string, strin
 describe('container keys', () => {
   it('names the row a control sits in by the row\'s first text', () => {
     const { nodes, parents } = table();
-    expect(containerKey('d1', nodes, parents, identity)).toBe('Budget draft');
-    expect(containerKey('d2', nodes, parents, identity)).toBe('Vendor list');
+    expect(containerKey('d1', nodes, parents)).toBe('Budget draft');
+    expect(containerKey('d2', nodes, parents)).toBe('Vendor list');
     // The cell itself is the row's key: nothing to add.
-    expect(containerKey('c1', nodes, parents, identity)).toBeUndefined();
+    expect(containerKey('c1', nodes, parents)).toBeUndefined();
   });
 
   it('records the key with the action and reads it back in the prose', () => {
@@ -44,10 +46,9 @@ describe('container keys', () => {
   it('relocates a same-named control by its row instead of diverging as ambiguous', () => {
     const { nodes, parents } = table();
     void parents;
-    const options = { redact: identity };
-    expect(relocateDescriptor({ role: 'button', name: 'Delete', within: 'Vendor list' }, nodes, options)).toEqual({ kind: 'found', id: 'd2' });
-    expect(relocateDescriptor({ role: 'button', name: 'Delete' }, nodes, options)).toMatchObject({ kind: 'failed', failure: 'target-ambiguous' });
+    expect(relocateDescriptor({ role: 'button', name: 'Delete', within: 'Vendor list' }, nodes)).toEqual({ kind: 'found', id: 'd2' });
+    expect(relocateDescriptor({ role: 'button', name: 'Delete' }, nodes)).toMatchObject({ kind: 'failed', failure: 'target-ambiguous' });
     // The row is gone: not found, never the other row's button.
-    expect(relocateDescriptor({ role: 'button', name: 'Delete', within: 'Offsite plan' }, nodes, options)).toEqual({ kind: 'failed', failure: 'target-not-found' });
+    expect(relocateDescriptor({ role: 'button', name: 'Delete', within: 'Offsite plan' }, nodes)).toEqual({ kind: 'failed', failure: 'target-not-found' });
   });
 });

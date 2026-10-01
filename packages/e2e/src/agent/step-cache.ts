@@ -424,7 +424,7 @@ export class StepTraceSession {
       // recorded screen only if the recorded effect is visibly on it; with
       // no anchors recorded there is nothing to see, and it is another screen.
       const undecided = verdict === 'undecided' && anchors.length > 0;
-      if (undecided && anchorsPresent(anchors, observation.nodes, { redact: this.options.redact })) {
+      if (undecided && anchorsPresent(anchors, observation.nodes)) {
         return { screen: observation, anchorsSeen: true };
       }
       const delay = END_PATH_DELAYS_MS[attempt];
@@ -490,7 +490,7 @@ export class StepTraceSession {
     const observation = await probeScreen(this.host, 'held-still');
     if (!this.host.traceEligible || observation?.kind !== 'semantic') return;
     const { nodes: endNodes, path: endPath } = observation;
-    const endAnchors = describeAnchors(this.startNodes, endNodes, this.options);
+    const endAnchors = describeAnchors(this.startNodes, endNodes);
     const trace = recorder.finalize({
       executor: this.options.executor,
       recordedFor: {

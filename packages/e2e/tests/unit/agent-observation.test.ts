@@ -230,7 +230,7 @@ describe('prepareObservation', () => {
       expect(cut(OBSERVED_NAME_LIMIT, kept)).toHaveLength(OBSERVED_NAME_LIMIT);
       const prepared = prepareObservation(observation(tree), { redact: ledger.redact, redactCut: ledger.redactCut, maxBytes: 16_384 });
       assert(prepared.kind === 'semantic');
-      const anchors = describeAnchors(new Map(), prepared.nodes, { redact: ledger.redact });
+      const anchors = describeAnchors(new Map(), prepared.nodes);
       expect(anchors.map((anchor) => anchor.name ?? anchor.text).join(' ')).toContain('<secret:multi>');
       for (const shown of [prepared.text, JSON.stringify(projectTree(prepared.tree)), JSON.stringify(anchors)]) {
         expect(shown).toContain('<secret:multi>');
@@ -245,7 +245,7 @@ describe('prepareObservation', () => {
     const prepared = prepareObservation(observation(tree), { redact: ledger.redact, redactCut: ledger.redactCut, maxBytes: 4_096 });
     assert(prepared.kind === 'semantic');
     expect(prepared.nodes.get('n2')).toMatchObject({ name: 'say <secret:phrase> now', testId: '<secret:phrase>' });
-    expect(JSON.stringify(describeAnchors(new Map(), prepared.nodes, { redact: ledger.redact }))).not.toContain('horse');
+    expect(JSON.stringify(describeAnchors(new Map(), prepared.nodes))).not.toContain('horse');
   });
 
   it('truncates at the byte limit while keeping the root and flagging truncation', () => {

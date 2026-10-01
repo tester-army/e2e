@@ -481,7 +481,6 @@ class ActDispatch {
       actions: this.dispatcher.actions,
       signal: this.accounting.signal,
       remainingMs: () => this.accounting.remainingMs(),
-      redact: this.runtime.redact,
       replaying: (active) => {
         this.runtime.steps.replaying(active);
         this.accounting.replaying(active);

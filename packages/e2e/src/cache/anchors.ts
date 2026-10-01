@@ -13,18 +13,15 @@
  * be equal, text included, and presence is enough — uniqueness is not asked.
  */
 
-import type { SemanticNode } from '../engine/surface.ts';
+import type { RedactedNode } from '../agent/observation.ts';
 import { describeTarget } from '../agent/actions.ts';
 import {
   describeNodes,
   descriptorTiers,
   fieldsEqual,
   type DescriptorField,
-  type DescriptorMatchOptions,
 } from './relocate.ts';
 import { MAX_TRACE_ANCHORS, type TraceTargetDescriptor } from './trace.ts';
-
-export type AnchorOptions = DescriptorMatchOptions;
 
 /**
  * Every field an anchor records. Unlike target relocation, text is never
@@ -46,20 +43,19 @@ const ANCHOR_FIELDS: readonly DescriptorField[] = ['role', 'name', 'text', 'test
  * cap.
  */
 export function describeAnchors(
-  startNodes: ReadonlyMap<string, SemanticNode>,
-  endNodes: ReadonlyMap<string, SemanticNode>,
-  options: AnchorOptions,
+  startNodes: ReadonlyMap<string, RedactedNode>,
+  endNodes: ReadonlyMap<string, RedactedNode>,
 ): TraceTargetDescriptor[] {
   const before = new Set<string>();
   for (const node of startNodes.values()) {
-    const descriptor = anchorDescriptor(node, options);
+    const descriptor = anchorDescriptor(node);
     if (descriptor !== undefined) before.add(anchorKey(descriptor));
   }
   const seen = new Set<string>();
   const leaves: TraceTargetDescriptor[] = [];
   const containers: TraceTargetDescriptor[] = [];
   for (const node of endNodes.values()) {
-    const descriptor = anchorDescriptor(node, options);
+    const descriptor = anchorDescriptor(node);
     if (descriptor === undefined) continue;
     const key = anchorKey(descriptor);
     if (before.has(key) || seen.has(key)) continue;
@@ -118,10 +114,9 @@ function isVolatileAnchor(anchor: TraceTargetDescriptor): boolean {
  */
 export function anchorsPresent(
   anchors: readonly TraceTargetDescriptor[],
-  nodes: ReadonlyMap<string, SemanticNode>,
-  options: AnchorOptions,
+  nodes: ReadonlyMap<string, RedactedNode>,
 ): boolean {
-  const candidates = describeNodes(nodes, options).map((node) => node.descriptor);
+  const candidates = describeNodes(nodes).map((node) => node.descriptor);
   return anchors.every((anchor) =>
     descriptorTiers(anchor).some((tier) =>
       candidates.some((candidate) => fieldsEqual(tier, candidate, ANCHOR_FIELDS)),
@@ -130,8 +125,8 @@ export function anchorsPresent(
 }
 
 /** One node's anchor projection, or undefined when it could identify nothing. */
-function anchorDescriptor(node: SemanticNode, options: AnchorOptions): TraceTargetDescriptor | undefined {
-  const described = describeTarget(node, options.redact);
+function anchorDescriptor(node: RedactedNode): TraceTargetDescriptor | undefined {
+  const described = describeTarget(node);
   if (described === undefined || descriptorTiers(described).length === 0) return undefined;
   const { selector: _selector, ...anchor } = described;
   return anchor;

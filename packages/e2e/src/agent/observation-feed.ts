@@ -28,6 +28,7 @@ import {
   settleObservation,
   type AgentObservation,
   type PendingChange,
+  type RedactedNode,
   type SemanticAgentObservation,
 } from './observation.ts';
 import { observationByteBudget } from './observation-budget.ts';
@@ -53,14 +54,14 @@ const MAX_SHOWN_TEXTS = 4_096;
 
 /** A target resolved to a node of the observation it was found in. */
 export interface Resolved {
-  readonly node: SemanticNode;
+  readonly node: RedactedNode;
   readonly observation: SemanticAgentObservation;
 }
 
 /** What a target names on the newest screen: the id as the screen lists it, the node or nothing, and the screen looked at. */
 export interface Lookup {
   readonly id: string;
-  readonly node: SemanticNode | undefined;
+  readonly node: RedactedNode | undefined;
   readonly observation: SemanticAgentObservation;
 }
 
@@ -243,9 +244,8 @@ export class ObservationFeed {
    * through the queued observe: this runs inside a queued action body, and a
    * queued observation would wait on its own caller.
    */
-  async relocate(stale: SemanticNode): Promise<{ node: SemanticNode; observation: SemanticAgentObservation } | undefined> {
-    const options = { redact: this.runtime.redact };
-    const descriptor = describeTarget(stale, options.redact);
+  async relocate(stale: RedactedNode): Promise<{ node: RedactedNode; observation: SemanticAgentObservation } | undefined> {
+    const descriptor = describeTarget(stale);
     if (descriptor === undefined) return undefined;
     this.accounting.checkpoint();
     const observation = await instrumentPhase(
@@ -256,7 +256,7 @@ export class ObservationFeed {
     );
     this.publish(observation);
     if (observation.kind === 'pixels') return undefined;
-    const relocated = relocateDescriptor(descriptor, observation.nodes, options);
+    const relocated = relocateDescriptor(descriptor, observation.nodes);
     if (relocated.kind !== 'found') return undefined;
     const node = observation.nodes.get(relocated.id);
     return node === undefined ? undefined : { node, observation };
@@ -441,13 +441,12 @@ export class ObservationFeed {
   }
 
   /** The newest node matching the descriptor of what `id` named in a recent observation, if exactly one. */
-  private refound(id: string, latest: SemanticAgentObservation): SemanticNode | undefined {
+  private refound(id: string, latest: SemanticAgentObservation): RedactedNode | undefined {
     const earlier = this.lastSeen(id)?.node;
     if (earlier === undefined) return undefined;
-    const options = { redact: this.runtime.redact };
-    const descriptor = describeTarget(earlier, options.redact);
+    const descriptor = describeTarget(earlier);
     if (descriptor === undefined) return undefined;
-    const relocated = relocateDescriptor(descriptor, latest.nodes, options);
+    const relocated = relocateDescriptor(descriptor, latest.nodes);
     return relocated.kind === 'found' ? latest.nodes.get(relocated.id) : undefined;
   }
 

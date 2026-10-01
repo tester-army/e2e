@@ -5,27 +5,26 @@ import { describeAction } from '../../src/agent/actions.ts';
 import { describePosition, relocateDescriptor } from '../../src/cache/relocate.ts';
 import { buildTraceEntry, readTraceEntry, type ActionTrace } from '../../src/cache/trace.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
-import { createRedactor } from '../../src/internal/redact.ts';
-
-const options = { redact: createRedactor(new Map()) };
+import type { RedactedNode } from '../../src/agent/observation.ts';
+import { redactedNodes } from '../helpers/redacted.ts';
 
 function button(id: string, name = 'Set up'): SemanticNode {
   return { ref: { id, revision: 'r' }, role: 'button', name };
 }
 
-function screen(...list: SemanticNode[]): ReadonlyMap<string, SemanticNode> {
-  return new Map(list.map((entry) => [entry.ref.id, entry]));
+function screen(...list: SemanticNode[]): ReadonlyMap<string, RedactedNode> {
+  return redactedNodes(list);
 }
 
 describe('describePosition', () => {
   it('records where a target stands among the twins its description matches', () => {
     const cards = screen(button('a'), button('b'), button('c'));
-    expect(describePosition(cards.get('b')!, undefined, cards, options)).toEqual({ index: 1, of: 3 });
+    expect(describePosition(cards.get('b')!, undefined, cards)).toEqual({ index: 1, of: 3 });
   });
 
   it('records nothing for a target its description already names alone', () => {
     const cards = screen(button('a'), button('x', 'Save'));
-    expect(describePosition(cards.get('x')!, undefined, cards, options)).toBeUndefined();
+    expect(describePosition(cards.get('x')!, undefined, cards)).toBeUndefined();
   });
 
   it('counts twins inside the recorded container only', () => {
@@ -37,7 +36,7 @@ describe('describePosition', () => {
       { ref: { id: 't2', revision: 'r' }, text: 'Beta' },
       button('d2', 'Delete'),
     );
-    expect(describePosition(rows.get('d2')!, 'Beta', rows, options)).toBeUndefined();
+    expect(describePosition(rows.get('d2')!, 'Beta', rows)).toBeUndefined();
   });
 });
 
@@ -45,25 +44,25 @@ describe('relocation with a recorded position', () => {
   const descriptor = { role: 'button', name: 'Set up', position: { index: 1, of: 3 } };
 
   it('relocates to the same twin when the live screen shows the same number of them', () => {
-    expect(relocateDescriptor(descriptor, screen(button('p'), button('q'), button('r')), options)).toEqual({
+    expect(relocateDescriptor(descriptor, screen(button('p'), button('q'), button('r')))).toEqual({
       kind: 'found',
       id: 'q',
     });
   });
 
   it('diverges as ambiguous when a twin appeared or vanished', () => {
-    expect(relocateDescriptor(descriptor, screen(button('p'), button('q')), options)).toEqual({
+    expect(relocateDescriptor(descriptor, screen(button('p'), button('q')))).toEqual({
       kind: 'failed',
       failure: 'target-ambiguous',
       candidates: ['p', 'q'],
     });
     expect(
-      relocateDescriptor(descriptor, screen(button('p'), button('q'), button('r'), button('s')), options),
+      relocateDescriptor(descriptor, screen(button('p'), button('q'), button('r'), button('s'))),
     ).toEqual({ kind: 'failed', failure: 'target-ambiguous', candidates: ['p', 'q', 'r', 's'] });
   });
 
   it('still diverges without a recorded position', () => {
-    expect(relocateDescriptor({ role: 'button', name: 'Set up' }, screen(button('p'), button('q')), options)).toEqual({
+    expect(relocateDescriptor({ role: 'button', name: 'Set up' }, screen(button('p'), button('q')))).toEqual({
       kind: 'failed',
       failure: 'target-ambiguous',
       candidates: ['p', 'q'],
@@ -74,7 +73,7 @@ describe('relocation with a recorded position', () => {
     const cards = screen(button('a'), button('b'));
     const described = describeAction(
       { name: 'tap', node: cards.get('b')!, position: { index: 1, of: 2 } },
-      options.redact,
+      (text) => text,
     );
     expect(described.summary).toBe('tap button "Set up" (2 of 2)');
     expect(described.target?.position).toEqual({ index: 1, of: 2 });

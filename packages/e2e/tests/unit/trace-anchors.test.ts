@@ -4,12 +4,13 @@ import { describe, expect, it } from 'vitest';
 import { anchorsPresent, describeAnchors } from '../../src/cache/anchors.ts';
 import { MAX_TRACE_ANCHORS } from '../../src/cache/trace.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
+import type { RedactedNode } from '../../src/agent/observation.ts';
 import { createRedactor } from '../../src/internal/redact.ts';
+import { redactedNodes } from '../helpers/redacted.ts';
 
-const options = { redact: createRedactor(new Map()) };
 
-function nodes(list: SemanticNode[]): ReadonlyMap<string, SemanticNode> {
-  return new Map(list.map((entry) => [entry.ref.id, entry]));
+function nodes(list: SemanticNode[]): ReadonlyMap<string, RedactedNode> {
+  return redactedNodes(list);
 }
 
 function node(id: string, fields: Omit<SemanticNode, 'ref'>): SemanticNode {
@@ -32,7 +33,7 @@ describe('describeAnchors', () => {
       row,
       toast,
     ]);
-    expect(describeAnchors(start, end, options)).toEqual([
+    expect(describeAnchors(start, end)).toEqual([
       { role: 'status', name: 'Marker', text: 'saved' },
       { role: 'link', name: 'PB-Twin-Alpha' },
       { text: 'Playbook saved' },
@@ -45,7 +46,7 @@ describe('describeAnchors', () => {
       node('icon', { role: 'button', selector: 'tr:nth-child(3) button' }),
       node('blank', { role: 'generic' }),
     ]);
-    const anchors = describeAnchors(nodes([]), end, options);
+    const anchors = describeAnchors(nodes([]), end);
     expect(anchors).toEqual([{ role: 'link', name: 'PB-Twin-Alpha' }]);
     expect(JSON.stringify(anchors)).not.toContain('selector');
   });
@@ -57,19 +58,22 @@ describe('describeAnchors', () => {
       ),
       node('dup', { role: 'listitem', text: 'Row 0' }),
     ]);
-    const anchors = describeAnchors(nodes([]), end, options);
+    const anchors = describeAnchors(nodes([]), end);
     expect(anchors).toHaveLength(MAX_TRACE_ANCHORS);
     expect(anchors[0]).toEqual({ role: 'listitem', text: 'Row 0' });
     expect(anchors.at(-1)).toEqual({ role: 'listitem', text: `Row ${MAX_TRACE_ANCHORS - 1}` });
   });
 
-  it('never carries node values or secret plaintext', () => {
+  it('never carries node values, nor secret plaintext from nodes redacted with their observation', () => {
     const redact = createRedactor(new Map([['password', 'hunter2']]));
-    const end = nodes([
-      node('pw', { role: 'textbox', name: 'Password', value: 'hunter2', states: { secure: true } }),
-      node('echo', { text: 'you typed hunter2' }),
-    ]);
-    const anchors = describeAnchors(nodes([]), end, { ...options, redact });
+    const end = redactedNodes(
+      [
+        node('pw', { role: 'textbox', name: 'Password', value: 'hunter2', states: { secure: true } }),
+        node('echo', { text: 'you typed hunter2' }),
+      ],
+      { redact, redactCut: redact },
+    );
+    const anchors = describeAnchors(nodes([]), end);
     expect(JSON.stringify(anchors)).not.toContain('hunter2');
     expect(anchors).toEqual([
       { role: 'textbox', name: 'Password' },
@@ -90,7 +94,7 @@ describe('describeAnchors', () => {
       );
     }
     flattened.push(node('status', { role: 'status', text: '1 remaining' }));
-    const anchors = describeAnchors(nodes([]), nodes(flattened), options);
+    const anchors = describeAnchors(nodes([]), nodes(flattened));
     expect(anchors).toHaveLength(MAX_TRACE_ANCHORS);
     // Every leaf survives — the status line included — and the cap falls on
     // the containers, whose names only repeat what the leaves already say.
@@ -105,12 +109,12 @@ describe('describeAnchors', () => {
     const before = node('t1', { role: 'button', name: 'Start sync', testId: 'toggle-r1-2' });
     const after = node('t2', { role: 'button', name: 'Start sync', testId: 'toggle-r2-2' });
     const effect = node('e', { text: 'Activate plan is on' });
-    expect(describeAnchors(nodes([before]), nodes([after, effect]), options)).toEqual([
+    expect(describeAnchors(nodes([before]), nodes([after, effect]))).toEqual([
       { text: 'Activate plan is on' },
     ]);
     // A node only its test id identifies still counts by that id.
     const idOnly = node('x', { role: 'generic', testId: 'spinner' });
-    expect(describeAnchors(nodes([]), nodes([idOnly]), options)).toEqual([{ role: 'generic', testId: 'spinner' }]);
+    expect(describeAnchors(nodes([]), nodes([idOnly]))).toEqual([{ role: 'generic', testId: 'spinner' }]);
   });
 
   it('skips text that cannot read the same twice while a stable anchor remains', () => {
@@ -123,12 +127,12 @@ describe('describeAnchors', () => {
       node('w', { text: '17:42' }),
       node('n', { text: 'Release pipeline' }),
     ]);
-    expect(describeAnchors(nodes([heading]), end, options)).toEqual([{ text: 'Release pipeline' }]);
+    expect(describeAnchors(nodes([heading]), end)).toEqual([{ text: 'Release pipeline' }]);
   });
 
   it('keeps volatile anchors when nothing stable appeared, so the replay hands off rather than passing blind', () => {
     const end = nodes([heading, node('k', { text: 'sk_b1bccf4e03c5_...' })]);
-    expect(describeAnchors(nodes([heading]), end, options)).toEqual([{ text: 'sk_b1bccf4e03c5_...' }]);
+    expect(describeAnchors(nodes([heading]), end)).toEqual([{ text: 'sk_b1bccf4e03c5_...' }]);
   });
 
   it('does not mistake progress, versions, short ids, or a named counter for volatile text', () => {
@@ -139,7 +143,7 @@ describe('describeAnchors', () => {
       node('c', { text: 'E2E workspace 00d8365e' }),
       node('d', { role: 'status', name: 'Counter', text: '1' }),
     ]);
-    expect(describeAnchors(nodes([heading]), end, options)).toHaveLength(4);
+    expect(describeAnchors(nodes([heading]), end)).toHaveLength(4);
   });
 
   it('skips pagination ranges, record counts, millisecond timings, and bare numbers, which grow with the data', () => {
@@ -151,11 +155,11 @@ describe('describeAnchors', () => {
       node('s', { text: '11' }),
       node('t', { role: 'alert', name: 'Roles' }),
     ]);
-    expect(describeAnchors(nodes([heading]), end, options)).toEqual([{ role: 'alert', name: 'Roles' }]);
+    expect(describeAnchors(nodes([heading]), end)).toEqual([{ role: 'alert', name: 'Roles' }]);
   });
 
   it('is empty when nothing appeared', () => {
-    expect(describeAnchors(nodes([heading, emptyMarker]), nodes([heading, emptyMarker]), options)).toEqual([]);
+    expect(describeAnchors(nodes([heading, emptyMarker]), nodes([heading, emptyMarker]))).toEqual([]);
   });
 });
 
@@ -164,26 +168,26 @@ describe('anchorsPresent', () => {
 
   it('requires every recorded field, text included, unlike target relocation', () => {
     // Same named node, different text: the effect is missing, so the anchor is.
-    expect(anchorsPresent([savedAnchor], nodes([heading, emptyMarker]), options)).toBe(false);
-    expect(anchorsPresent([savedAnchor], nodes([heading, savedMarker]), options)).toBe(true);
+    expect(anchorsPresent([savedAnchor], nodes([heading, emptyMarker]))).toBe(false);
+    expect(anchorsPresent([savedAnchor], nodes([heading, savedMarker]))).toBe(true);
   });
 
   it('is presence, not uniqueness', () => {
     const twin = node('m2', { role: 'status', name: 'Marker', text: 'saved' });
-    expect(anchorsPresent([savedAnchor], nodes([savedMarker, twin]), options)).toBe(true);
+    expect(anchorsPresent([savedAnchor], nodes([savedMarker, twin]))).toBe(true);
   });
 
   it('requires every anchor, and holds trivially for none', () => {
     const rowAnchor = { role: 'link', name: 'PB-Twin-Alpha' };
-    expect(anchorsPresent([savedAnchor, rowAnchor], nodes([savedMarker, row]), options)).toBe(true);
-    expect(anchorsPresent([savedAnchor, rowAnchor], nodes([savedMarker]), options)).toBe(false);
-    expect(anchorsPresent([], nodes([]), options)).toBe(true);
+    expect(anchorsPresent([savedAnchor, rowAnchor], nodes([savedMarker, row]))).toBe(true);
+    expect(anchorsPresent([savedAnchor, rowAnchor], nodes([savedMarker]))).toBe(false);
+    expect(anchorsPresent([], nodes([]))).toBe(true);
   });
 
   it('forgives a churned test id when the other fields still identify the node', () => {
     const anchor = { role: 'link', name: 'PB-Twin-Alpha', testId: 'row-1a2b' };
     const rerendered = node('r2', { role: 'link', name: 'PB-Twin-Alpha', testId: 'row-9f8e' });
-    expect(anchorsPresent([anchor], nodes([rerendered]), options)).toBe(true);
-    expect(anchorsPresent([{ role: 'listitem', testId: 'row-1a2b' }], nodes([rerendered]), options)).toBe(false);
+    expect(anchorsPresent([anchor], nodes([rerendered]))).toBe(true);
+    expect(anchorsPresent([{ role: 'listitem', testId: 'row-1a2b' }], nodes([rerendered]))).toBe(false);
   });
 });

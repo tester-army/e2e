@@ -7,6 +7,7 @@ import { replayTrace, verifyAnchors, type ObservedScreen, type ReplayHost } from
 import type { SettleMode } from '../../src/agent/settle-policy.ts';
 import type { ActionTrace, RecordedAction } from '../../src/cache/trace.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
+import { redactedNodes } from '../helpers/redacted.ts';
 
 const upgrade: SemanticNode = { ref: { id: 'n1', revision: 'r1' }, role: 'button', name: 'Upgrade' };
 const email: SemanticNode = { ref: { id: 'n2', revision: 'r1' }, role: 'textbox', name: 'Email' };
@@ -94,14 +95,13 @@ function makeHost(options: {
     actions,
     signal: new AbortController().signal,
     remainingMs: () => options.remainingMs ?? 60_000,
-    redact: (text: string) => text,
   };
   return host;
 }
 
 /** One observed screen over the given nodes. */
 function screen(nodes: readonly SemanticNode[], viewport = VIEWPORT) {
-  return { kind: 'semantic' as const, nodes: new Map(nodes.map((n) => [n.ref.id, n])), viewport };
+  return { kind: 'semantic' as const, nodes: redactedNodes(nodes), viewport };
 }
 
 describe('verifyAnchors', () => {

@@ -1,28 +1,28 @@
 /** Step trace recording: durable descriptors, redaction, verbatim inputs. */
 
 import { describe, expect, it } from 'vitest';
-import type { SemanticNode } from '../../src/engine/surface.ts';
 import { describeTarget } from '../../src/agent/actions.ts';
 import { TraceRecorder } from '../../src/cache/recorder.ts';
 import { buildTraceEntry, MAX_TRACE_INPUT_CHARS, readTraceEntry } from '../../src/cache/trace.ts';
 import { createRedactor } from '../../src/internal/redact.ts';
+import { redacted } from '../helpers/redacted.ts';
 
-const upgradeButton: SemanticNode = {
+const upgradeButton = redacted({
   ref: { id: 'n42', revision: 'r1' },
   role: 'button',
   name: 'Upgrade',
   text: 'Upgrade',
   testId: 'upgrade-cta',
   selector: '[data-testid="upgrade-cta"]',
-};
+});
 
-const passwordField: SemanticNode = {
+const passwordField = redacted({
   ref: { id: 'n7', revision: 'r1' },
   role: 'textbox',
   name: 'Password',
   inputPurpose: 'password',
   states: { secure: true },
-};
+});
 
 function makeRecorder(options: { maxActions?: number; secrets?: ReadonlyMap<string, string> } = {}) {
   return new TraceRecorder({
@@ -74,7 +74,8 @@ describe('TraceRecorder', () => {
     const secrets = new Map([['member-password', 'hunter2']]);
     const recorder = makeRecorder({ secrets });
     recorder.record({ name: 'typeSecret', node: passwordField, secret: 'member-password' });
-    recorder.record({ name: 'tap', node: { ...upgradeButton, name: 'Greeting hunter2' } });
+    const redact = createRedactor(secrets);
+    recorder.record({ name: 'tap', node: redacted({ ...upgradeButton, name: 'Greeting hunter2' }, { redact, redactCut: redact }) });
     const trace = recorder.finalize(conclusion);
     const serialized = JSON.stringify(trace);
     expect(serialized).not.toContain('hunter2');
@@ -103,7 +104,7 @@ describe('TraceRecorder', () => {
   });
 
   it('keeps the smallest coverage when folding scrolls, and none when a repeat lacks one', () => {
-    const list: SemanticNode = { ref: { id: 'l1', revision: 'r1' }, role: 'group', name: 'Rows', rect: { x: 0, y: 0, width: 390, height: 500 } };
+    const list = redacted({ ref: { id: 'l1', revision: 'r1' }, role: 'group', name: 'Rows', rect: { x: 0, y: 0, width: 390, height: 500 } });
     const recorder = makeRecorder();
     recorder.record({ name: 'scroll', direction: 'down', node: list, spans: 0.6 });
     recorder.record({ name: 'scroll', direction: 'down', node: list, spans: 0.4 });
@@ -162,7 +163,7 @@ describe('TraceRecorder', () => {
   });
 
   it('records every node verb, a state, a drag with its destination, files, and a back step, and reads them back', () => {
-    const doneColumn: SemanticNode = { ref: { id: 'n9', revision: 'r1' }, role: 'region', name: 'Done column' };
+    const doneColumn = redacted({ ref: { id: 'n9', revision: 'r1' }, role: 'region', name: 'Done column' });
     const recorder = makeRecorder();
     recorder.record({ name: 'hover', node: upgradeButton });
     recorder.record({ name: 'doubleTap', node: upgradeButton });
@@ -216,26 +217,23 @@ describe('TraceRecorder', () => {
 
 describe('describeTarget', () => {
   it('drops text duplicating the name and never records values', () => {
-    const identity = (text: string): string => text;
-    expect(describeTarget(upgradeButton, identity)?.text).toBeUndefined();
+    expect(describeTarget(upgradeButton)?.text).toBeUndefined();
     const described = describeTarget(
-      { ...passwordField, value: 's3cr3t' },
-      identity,
-    );
+      { ...passwordField, value: 's3cr3t' });
     expect(described).toEqual({ role: 'textbox', name: 'Password', inputPurpose: 'password' });
     expect(JSON.stringify(described)).not.toContain('s3cr3t');
   });
 
   it('returns undefined for a node with nothing durable to say', () => {
     expect(
-      describeTarget({ ref: { id: 'n1', revision: 'r1' } }, (text) => text),
+      describeTarget(redacted({ ref: { id: 'n1', revision: 'r1' } })),
     ).toBeUndefined();
   });
 });
 
 describe('TraceRecorder: bare-point taps', () => {
   const viewport = { width: 1280, height: 720 };
-  const map: SemanticNode = { ref: { id: 'm1', revision: 'r1' }, role: 'img', name: 'Map', rect: { x: 100, y: 200, width: 400, height: 200 } };
+  const map = redacted({ ref: { id: 'm1', revision: 'r1' }, role: 'img', name: 'Map', rect: { x: 100, y: 200, width: 400, height: 200 } });
 
   it('records the point with its viewport, and where it sat inside the node that contained it', () => {
     const recorder = makeRecorder();
@@ -253,7 +251,7 @@ describe('TraceRecorder: bare-point taps', () => {
 
   it('records a point under an anonymous container by the viewport alone, since a group among groups cannot be re-found', () => {
     const recorder = makeRecorder();
-    const merged: SemanticNode = { ref: { id: 'g1', revision: 'r1' }, role: 'group', rect: { x: 0, y: 0, width: 1280, height: 720 } };
+    const merged = redacted({ ref: { id: 'g1', revision: 'r1' }, role: 'group', rect: { x: 0, y: 0, width: 1280, height: 720 } });
     recorder.record({ name: 'tapAt', point: { x: 400, y: 260 }, viewport, under: merged });
     const trace = recorder.finalize({ ...conclusion, startPath: '/canvas' });
     expect(trace?.actions[0]).toEqual({ name: 'tapAt', summary: 'tap the point (400, 260) on group', point: { x: 400, y: 260 }, viewport });

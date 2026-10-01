@@ -8,10 +8,10 @@
  */
 
 import type { PointActionName } from '../cache/trace.ts';
-import type { SemanticNode, ViewportPoint, ViewportSize } from '../engine/surface.ts';
+import type { ViewportPoint, ViewportSize } from '../engine/surface.ts';
 import { clamp, clampToViewport, containsPoint } from '../internal/geometry.ts';
 import type { ExecutorPixels } from './executor.ts';
-import { INTERACTIVE_ROLES, type AgentObservation, type SemanticAgentObservation } from './observation.ts';
+import { INTERACTIVE_ROLES, type AgentObservation, type RedactedNode, type SemanticAgentObservation } from './observation.ts';
 
 /**
  * Scales a point read off a screenshot into the observation's CSS pixels and
@@ -37,9 +37,9 @@ export function imagePointToViewport(
 
 export interface HitTest {
   /** The innermost enabled control whose box contains the point, if any. */
-  readonly control: SemanticNode | undefined;
+  readonly control: RedactedNode | undefined;
   /** The innermost listed node of any role whose box contains the point, if any. */
-  readonly under: SemanticNode | undefined;
+  readonly under: RedactedNode | undefined;
 }
 
 /**
@@ -61,15 +61,15 @@ export function hitTest(observation: AgentObservation, point: ViewportPoint): Hi
  * The innermost listed node whose box contains the point, among those
  * `accept` admits: deepest in the tree, then the smallest box. Hidden nodes
  * and nodes without a box are skipped. Every box is in the top-level
- * viewport's CSS pixels, nested documents included (`SemanticNode.rect`), so
+ * viewport's CSS pixels, nested documents included (`RedactedNode.rect`), so
  * a node inside an iframe is found like any other.
  */
 function innermostAt(
   observation: SemanticAgentObservation,
   point: ViewportPoint,
-  accept: (node: SemanticNode) => boolean = () => true,
-): SemanticNode | undefined {
-  let best: { node: SemanticNode; depth: number; area: number } | undefined;
+  accept: (node: RedactedNode) => boolean = () => true,
+): RedactedNode | undefined {
+  let best: { node: RedactedNode; depth: number; area: number } | undefined;
   for (const node of observation.nodes.values()) {
     const rect = node.rect;
     if (rect === undefined || rect.width <= 0 || rect.height <= 0) continue;
@@ -124,8 +124,8 @@ export function describePointAction(
   input: PointProse & {
     readonly verb: PointActionName;
     readonly point: ViewportPoint;
-    readonly control: SemanticNode | undefined;
-    readonly under: SemanticNode | undefined;
+    readonly control: RedactedNode | undefined;
+    readonly under: RedactedNode | undefined;
   },
 ): string {
   const { did } = POINT_VERBS[input.verb];
@@ -141,8 +141,8 @@ export function describePointAction(
 export function describePointHit(
   input: PointProse & {
     readonly point: ViewportPoint;
-    readonly control: SemanticNode | undefined;
-    readonly under: SemanticNode | undefined;
+    readonly control: RedactedNode | undefined;
+    readonly under: RedactedNode | undefined;
   },
 ): string {
   const at = `(${String(input.point.x)}, ${String(input.point.y)})`;
@@ -152,6 +152,6 @@ export function describePointHit(
 }
 
 /** A node as prose: its observation line, which the model holds. */
-function describeNode(prose: PointProse, node: SemanticNode): string {
+function describeNode(prose: PointProse, node: RedactedNode): string {
   return nodeLine(prose.observation, node.ref.id);
 }

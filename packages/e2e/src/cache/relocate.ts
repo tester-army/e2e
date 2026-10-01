@@ -15,7 +15,7 @@
  * rules and can never drift from relocation.
  */
 
-import type { SemanticNode } from '../engine/surface.ts';
+import type { RedactedNode } from '../agent/observation.ts';
 import { containerKey, describeTarget, parentsOf } from '../agent/actions.ts';
 import type { TracePosition, TraceTargetDescriptor } from './trace.ts';
 
@@ -44,10 +44,6 @@ export type RelocationResult =
   | { readonly kind: 'failed'; readonly failure: 'target-ambiguous'; readonly candidates: readonly string[] };
 
 export type DescriptorField = keyof TraceTargetDescriptor;
-
-export interface DescriptorMatchOptions {
-  readonly redact: (text: string) => string;
-}
 
 /** A node's descriptor projection alongside its per-observation id. */
 export interface DescribedNode {
@@ -135,10 +131,6 @@ function fieldsIdentical(
   return fields.every((field) => candidate[field] === recorded[field]);
 }
 
-interface Projection extends DescriptorMatchOptions {
-  readonly described: readonly DescribedNode[];
-}
-
 /**
  * Descriptor projections per observation. A replay relocates every recorded
  * action, in two tiers, against the same node map (and again per settling
@@ -146,21 +138,18 @@ interface Projection extends DescriptorMatchOptions {
  * a node is a pure function of the node: it is computed once per observation
  * and shared by every lookup into it.
  */
-const projections = new WeakMap<ReadonlyMap<string, SemanticNode>, Projection>();
+const projections = new WeakMap<ReadonlyMap<string, RedactedNode>, readonly DescribedNode[]>();
 
 /** Projects every node of an observation the way the recorder described its targets. */
-export function describeNodes(
-  nodes: ReadonlyMap<string, SemanticNode>,
-  options: DescriptorMatchOptions,
-): readonly DescribedNode[] {
+export function describeNodes(nodes: ReadonlyMap<string, RedactedNode>): readonly DescribedNode[] {
   const cached = projections.get(nodes);
-  if (cached !== undefined && cached.redact === options.redact) return cached.described;
+  if (cached !== undefined) return cached;
   const described: DescribedNode[] = [];
   for (const [id, node] of nodes) {
-    const descriptor = describeTarget(node, options.redact);
+    const descriptor = describeTarget(node);
     if (descriptor !== undefined) described.push({ id, descriptor });
   }
-  projections.set(nodes, { redact: options.redact, described });
+  projections.set(nodes, described);
   return described;
 }
 
@@ -175,10 +164,9 @@ export function describeNodes(
  */
 export function relocateDescriptor(
   descriptor: TraceTargetDescriptor,
-  nodes: ReadonlyMap<string, SemanticNode>,
-  options: DescriptorMatchOptions,
+  nodes: ReadonlyMap<string, RedactedNode>,
 ): RelocationResult {
-  const matches = matchingIds(descriptor, nodes, options);
+  const matches = matchingIds(descriptor, nodes);
   if (matches.length === 0) return { kind: 'failed', failure: 'target-not-found' };
   const { position } = descriptor;
   // A lone match is the node for a descriptor with an identity. An anonymous
@@ -200,10 +188,9 @@ export function relocateDescriptor(
  */
 function matchingIds(
   descriptor: TraceTargetDescriptor,
-  nodes: ReadonlyMap<string, SemanticNode>,
-  options: DescriptorMatchOptions,
+  nodes: ReadonlyMap<string, RedactedNode>,
 ): readonly string[] {
-  const candidates = describeNodes(nodes, options);
+  const candidates = describeNodes(nodes);
   // A recorded container key must hold: the same "Delete" in another row is
   // a different control. Checked against the tree the candidates came from,
   // never guessed.
@@ -213,7 +200,7 @@ function matchingIds(
       : (() => {
           const parents = parentsOf(nodes);
           return candidates.filter(
-            (candidate) => containerKey(candidate.id, nodes, parents, options.redact) === descriptor.within,
+            (candidate) => containerKey(candidate.id, nodes, parents) === descriptor.within,
           );
         })();
   for (const tier of descriptorTiers(descriptor)) {
@@ -245,19 +232,18 @@ const MAX_POSITIONED_TWINS = 1000;
  * card apart without an app change; a distinct label makes it unnecessary.
  */
 export function describePosition(
-  node: SemanticNode,
+  node: RedactedNode,
   within: string | undefined,
-  nodes: ReadonlyMap<string, SemanticNode>,
-  options: DescriptorMatchOptions,
+  nodes: ReadonlyMap<string, RedactedNode>,
 ): TracePosition | undefined {
-  const described = describeTarget(node, options.redact);
+  const described = describeTarget(node);
   if (described === undefined || (described.role === undefined && isAnonymous(described))) return undefined;
   // An anonymous target has no identity to match alone; its position is what
   // makes it relocatable, so it is counted among its unnamed twins even when
   // it is the only one, and described with a placeholder position to do so.
   const anonymous = isAnonymous(described);
   const probe = { ...described, ...(within === undefined ? {} : { within }), ...(anonymous ? { position: { index: 0, of: 1 } } : {}) };
-  const ids = matchingIds(probe, nodes, options);
+  const ids = matchingIds(probe, nodes);
   if (ids.length < (anonymous ? 1 : 2) || ids.length > MAX_POSITIONED_TWINS) return undefined;
   const index = ids.indexOf(node.ref.id);
   return index === -1 ? undefined : { index, of: ids.length };

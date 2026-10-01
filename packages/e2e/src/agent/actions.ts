@@ -9,7 +9,8 @@
  * summary, a live event line, and a relocation candidate can never drift.
  */
 
-import type { SemanticNode, ViewportPoint, ViewportSize } from '../engine/surface.ts';
+import type { ViewportPoint, ViewportSize } from '../engine/surface.ts';
+import type { RedactedNode } from './observation.ts';
 import {
   bound,
   isNodeAction,
@@ -21,29 +22,29 @@ import {
   type TracePosition,
 } from '../cache/trace.ts';
 import { sanitizeText } from '../internal/errors.ts';
-import { normalizeText } from '../internal/text.ts';
+import { collapseText } from '../internal/text.ts';
 import type { ScrollDirection } from '../types.ts';
 
 /** One committed grammar action, addressed by the node it actually ran against. */
 export type RecordableAction =
-  | ({ readonly name: NodeActionName; readonly node: SemanticNode } & Placement)
-  | ({ readonly name: 'type'; readonly node: SemanticNode; readonly value: string } & Placement)
-  | ({ readonly name: 'typeSecret'; readonly node: SemanticNode; readonly secret: string } & Placement)
-  | ({ readonly name: 'press'; readonly node: SemanticNode; readonly key: string } & Placement)
-  | ({ readonly name: 'select'; readonly node: SemanticNode; readonly value: string } & Placement)
-  | ({ readonly name: 'check'; readonly node: SemanticNode; readonly checked: boolean } & Placement)
+  | ({ readonly name: NodeActionName; readonly node: RedactedNode } & Placement)
+  | ({ readonly name: 'type'; readonly node: RedactedNode; readonly value: string } & Placement)
+  | ({ readonly name: 'typeSecret'; readonly node: RedactedNode; readonly secret: string } & Placement)
+  | ({ readonly name: 'press'; readonly node: RedactedNode; readonly key: string } & Placement)
+  | ({ readonly name: 'select'; readonly node: RedactedNode; readonly value: string } & Placement)
+  | ({ readonly name: 'check'; readonly node: RedactedNode; readonly checked: boolean } & Placement)
   /** Project-relative paths as the executor gave them; replay authorizes them again. */
-  | ({ readonly name: 'upload'; readonly node: SemanticNode; readonly paths: readonly string[] } & Placement)
+  | ({ readonly name: 'upload'; readonly node: RedactedNode; readonly paths: readonly string[] } & Placement)
   /** The dragged node with its placement, and where it was dropped, with its own. */
   | ({
       readonly name: 'drag';
-      readonly node: SemanticNode;
-      readonly destination: { readonly node: SemanticNode } & Placement;
+      readonly node: RedactedNode;
+      readonly destination: { readonly node: RedactedNode } & Placement;
     } & Placement)
   | ({
       readonly name: 'scroll';
       readonly direction: ScrollDirection;
-      readonly node?: SemanticNode;
+      readonly node?: RedactedNode;
       /** The share of the viewport the node covered when scrolled, 0 to 1 (`ScrollAction.spans`). */
       readonly spans?: number;
     } & Placement)
@@ -52,7 +53,7 @@ export type RecordableAction =
       readonly name: 'scrollUntil';
       readonly text: string;
       readonly direction: ScrollDirection;
-      readonly node?: SemanticNode;
+      readonly node?: RedactedNode;
       readonly spans?: number;
       /** How many pages it took; in the summary, never in the trace, since a replay pages for itself. */
       readonly screens: number;
@@ -73,7 +74,7 @@ export type RecordableAction =
       readonly name: PointActionName;
       readonly point: ViewportPoint;
       readonly viewport: ViewportSize;
-      readonly under?: SemanticNode;
+      readonly under?: RedactedNode;
     };
 
 /** Where the node sat when it was acted on: its container's key and its place among identical twins. */
@@ -96,9 +97,8 @@ const MAX_WITHIN_CHARS = 80;
  */
 export function containerKey(
   id: string,
-  nodes: ReadonlyMap<string, SemanticNode>,
+  nodes: ReadonlyMap<string, RedactedNode>,
   parents: ReadonlyMap<string, string>,
-  redact: (text: string) => string,
 ): string | undefined {
   const node = nodes.get(id);
   const own = node === undefined ? '' : squash(node.name ?? node.text ?? '');
@@ -108,7 +108,7 @@ export function containerKey(
     if (container !== undefined && CONTAINER_ROLES.has(container.role ?? '')) {
       const key = firstLeafText(container);
       if (key !== undefined) {
-        const clean = bound(redact(sanitizeText(key)).replace(/\s+/g, ' ').trim(), MAX_WITHIN_CHARS);
+        const clean = bound(collapseText(key), MAX_WITHIN_CHARS);
         return clean === '' || squash(clean) === own ? undefined : clean;
       }
       return undefined;
@@ -119,7 +119,7 @@ export function containerKey(
 }
 
 /** Parent id of every non-root node, derived from the tree the node map indexes. */
-export function parentsOf(nodes: ReadonlyMap<string, SemanticNode>): ReadonlyMap<string, string> {
+export function parentsOf(nodes: ReadonlyMap<string, RedactedNode>): ReadonlyMap<string, string> {
   const parents = new Map<string, string>();
   for (const node of nodes.values()) {
     for (const child of node.children ?? []) parents.set(child.ref.id, node.ref.id);
@@ -128,7 +128,7 @@ export function parentsOf(nodes: ReadonlyMap<string, SemanticNode>): ReadonlyMap
 }
 
 /** The first leaf's own text under a container, depth-first. */
-function firstLeafText(node: SemanticNode): string | undefined {
+function firstLeafText(node: RedactedNode): string | undefined {
   for (const child of node.children ?? []) {
     const own = (child.children?.length ?? 0) === 0 ? (child.text ?? child.name ?? '').trim() : '';
     if (own !== '') return own;
@@ -179,11 +179,11 @@ export function describeAction(
 ): DescribedAction {
   const target =
     'node' in action
-      ? describePlaced(action.node, action, redact)
+      ? describePlaced(action.node, action)
       : 'point' in action
-        ? describePlaced(action.under, {}, redact)
+        ? describePlaced(action.under, {})
         : undefined;
-  const destination = action.name === 'drag' ? describePlaced(action.destination.node, action.destination, redact) : undefined;
+  const destination = action.name === 'drag' ? describePlaced(action.destination.node, action.destination) : undefined;
   const where = describeForSummary(target);
   const safe = (value: string) => quote(redact(sanitizeText(value)));
   const prose = (() => {
@@ -236,12 +236,8 @@ export function describeAction(
 }
 
 /** A node's durable descriptor with the placement it was acted on in; undefined for no node or nothing durable. */
-function describePlaced(
-  node: SemanticNode | undefined,
-  placement: Placement,
-  redact: (text: string) => string,
-): TraceTargetDescriptor | undefined {
-  const described = node === undefined ? undefined : describeTarget(node, redact);
+function describePlaced(node: RedactedNode | undefined, placement: Placement): TraceTargetDescriptor | undefined {
+  const described = node === undefined ? undefined : describeTarget(node);
   if (described === undefined) return undefined;
   return {
     ...described,
@@ -255,15 +251,13 @@ function describePlaced(
  * replay re-finds it by, plus the engine's structural selector hint (kept as
  * provenance for tuned policies; the conservative relocator ignores it).
  * Values a secure node holds are never part of it — descriptors carry how a
- * node is named, not what it contains.
+ * node is named, not what it contains. The node was redacted with its
+ * observation (`redactNode`), each field in the one-line form read here too.
  */
-export function describeTarget(
-  node: SemanticNode,
-  redact: (text: string) => string,
-): TraceTargetDescriptor | undefined {
+export function describeTarget(node: RedactedNode): TraceTargetDescriptor | undefined {
   const field = (value: string | undefined): string | undefined => {
     if (value === undefined) return undefined;
-    const collapsed = normalizeText(redact(sanitizeText(value)));
+    const collapsed = collapseText(value);
     return collapsed === '' ? undefined : bound(collapsed, MAX_TRACE_DESCRIPTOR_CHARS);
   };
   const role = field(node.role);
@@ -271,7 +265,7 @@ export function describeTarget(
   const text = field(node.text);
   const testId = field(node.testId);
   const placeholder = field(node.attributes?.['placeholder']);
-  const selector = node.selector === undefined ? undefined : bound(redact(node.selector), MAX_TRACE_DESCRIPTOR_CHARS);
+  const selector = node.selector === undefined ? undefined : bound(node.selector, MAX_TRACE_DESCRIPTOR_CHARS);
   const inputPurpose =
     node.inputPurpose === undefined || node.inputPurpose === 'none' ? undefined : node.inputPurpose;
   const descriptor: TraceTargetDescriptor = {
