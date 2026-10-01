@@ -1,5 +1,13 @@
 # e2e
 
+## 0.15.1
+
+### Patch Changes
+
+- [#706](https://github.com/tester-army/e2e/pull/706) [`1a80c23`](https://github.com/tester-army/e2e/commit/1a80c23d8789382847aa78fb5325ecc1281c3b6a) Thanks [@okwasniewski](https://github.com/okwasniewski)! - npm package pages: `e2e` ships the repository README, and every package has keywords people search for.
+
+- [#709](https://github.com/tester-army/e2e/pull/709) [`9f62d9b`](https://github.com/tester-army/e2e/commit/9f62d9bdce82c5b705ecba6d51076fb89f37eb63) Thanks [@okwasniewski](https://github.com/okwasniewski)! - The bundled skill (`e2e init`, `e2e guide`) shows the current config shape: its first `e2e.config.ts` and the setup example declare the app on the target, `targets: [{ engine: web(), app: { url, command } }]`, instead of the removed `web({ url, command })`, which fails at config load with `INVALID_CONFIG`. The `running` topic no longer mentions service processes, which this version does not start.
+
 ## 0.15.0
 
 ### Minor Changes

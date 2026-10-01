@@ -1,5 +1,11 @@
 # @e2e-dev/eas
 
+## 0.1.1
+
+### Patch Changes
+
+- [#706](https://github.com/tester-army/e2e/pull/706) [`1a80c23`](https://github.com/tester-army/e2e/commit/1a80c23d8789382847aa78fb5325ecc1281c3b6a) Thanks [@okwasniewski](https://github.com/okwasniewski)! - npm package pages: `e2e` ships the repository README, and every package has keywords people search for.
+
 ## 0.1.0
 
 ### Minor Changes

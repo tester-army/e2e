@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/web",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Web engine for e2e agentic end-to-end testing, built on Playwright",
   "keywords": [
     "e2e",
