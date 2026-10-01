@@ -18,7 +18,7 @@ import { ConfigurationError, withHint } from '../internal/errors.ts';
 import type { ProviderOptions } from '../types.ts';
 import { failureHint, isAbort, TRANSPORT_RETRIES } from './model/sdk.ts';
 import { isContextOverflow } from './model/overflow.ts';
-import { isForcedToolChoiceRejected } from './model/tool-choice.ts';
+import { isForcedToolCallSkipped, isForcedToolChoiceDowngraded, isForcedToolChoiceRejected } from './model/tool-choice.ts';
 import { withStallGuard } from './model/stall.ts';
 import { providerHints, type ProviderHints, type ProviderModelRef } from './model/provider-hints.ts';
 import { isScreenOutput, toolResultTexts } from './screen-update.ts';
@@ -30,7 +30,7 @@ import {
   type StepExecutorContext,
   type StepVerdict,
 } from './executor.ts';
-import { createVerdictTool, trackModelCalls, VERDICT_RULES } from './primitives.ts';
+import { createVerdictTool, trackModelCalls, VERDICT_RULES, type ModelCallTracker } from './primitives.ts';
 import {
   checkFailureStreak,
   checkLoopGuards,
@@ -93,6 +93,15 @@ type ToolChoiceMode = 'required' | 'auto';
 /** Appended to the instructions when the model cannot be forced to call tools. */
 const TOOL_CALLS_ONLY_RULE =
   'Reply with tool calls only. A reply without a tool call does nothing and spends a turn; the step ends only through complete_step.';
+
+/** The usage of a turn the SDK threw on: the provider answered, but the SDK reports no usage for it. */
+const UNREPORTED_USAGE = {
+  inputTokens: undefined,
+  inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+  outputTokens: undefined,
+  outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+  totalTokens: undefined,
+};
 
 /** Sent when a turn came back as text without a tool call. */
 const TEXT_REPLY_NOTICE =
@@ -228,6 +237,8 @@ class LoopRun {
   private overflowNote: string | undefined;
   /** How this step asks for tool calls; flips to `auto` when the model rejects a forced choice. */
   private toolChoice: ToolChoiceMode;
+  /** The tool-choice mode the running generate call's instructions were written for. */
+  private instructedFor: ToolChoiceMode = 'required';
   /** The last turn that ran, for continuing after a reply without tool calls. */
   private lastStep: StepResult<ToolSet> | undefined;
   /** `model` as the loop sends requests to it: each one bounded, so a stalled response is sent again. */
@@ -278,6 +289,7 @@ class LoopRun {
             this.lastStep = step;
             this.recordTurn(step);
             tracker.onStepEnd(step);
+            this.noticeToolChoiceDowngrade(step);
           },
         });
         const continued = this.continueAfterTextReply(result.responseMessages);
@@ -292,7 +304,7 @@ class LoopRun {
           prompt = shrunk;
           continue;
         }
-        const freed = this.freeToolChoiceRetry(cause);
+        const freed = this.freeToolChoiceRetry(cause, tracker);
         if (freed !== undefined) {
           prompt = freed;
           continue;
@@ -337,6 +349,7 @@ class LoopRun {
 
   private buildLoop(tools: ToolSet) {
     const system = this.instructions();
+    this.instructedFor = this.toolChoice;
     const providerOptions = this.hints.providerOptions(
       this.options.providerOptions ?? this.context.providerOptions,
       system,
@@ -362,8 +375,8 @@ class LoopRun {
   /**
    * A generate call that returned without a verdict and without a hard stop
    * ended on a turn that made no tool call: the SDK loop stops when there is
-   * nothing to execute. Under `required` that cannot happen; under `auto` the
-   * model may answer in prose. While turns remain, the reply is kept in the
+   * nothing to execute. Under `required` the SDK throws instead (see
+   * `freeToolChoiceRetry`); under `auto` the model may answer in prose. While turns remain, the reply is kept in the
    * history and the model is told to act, on the same turn budget.
    */
   private continueAfterTextReply(responseMessages: readonly ModelMessage[]): ModelMessage[] | undefined {
@@ -383,19 +396,44 @@ class LoopRun {
   /**
    * A model that refuses a forced tool choice (HTTP 400 naming
    * `tool_choice`) is asked again with `auto` and a tool-calls-only rule in
-   * its instructions, on the same turn budget. The refusal is remembered per
-   * model instance, so later steps start in that mode.
+   * its instructions, on the same turn budget. So is one whose reply had no
+   * tool call under a forced choice: the SDK throws `ToolChoiceViolationError`
+   * for it, which happens when the provider downgraded the choice to `auto`
+   * and the model answered in prose. Either way the model is remembered, so
+   * later steps start in that mode.
    */
-  private freeToolChoiceRetry(cause: unknown): ModelMessage[] | undefined {
+  private freeToolChoiceRetry(cause: unknown, tracker: ModelCallTracker): ModelMessage[] | undefined {
     if (this.toolChoice === 'auto' || this.lastRequest === undefined) return undefined;
-    if (this.context.signal.aborted || this.hardStop !== undefined || !isForcedToolChoiceRejected(cause)) {
+    if (this.context.signal.aborted || this.hardStop !== undefined) return undefined;
+    if (isForcedToolCallSkipped(cause)) {
+      // The provider answered, and billed, before the SDK threw: the turn counts.
+      tracker.onStepEnd({ usage: UNREPORTED_USAGE, providerMetadata: undefined, reasoningText: undefined });
+      this.turnsUsed += 1;
+      this.turns.push({ index: this.turnsUsed, calls: [], outcome: skippedReplyText(cause.content), notes: [] });
+      this.note(`turn ${String(this.turnsUsed)} answered without the forced tool call: retrying with auto`);
+    } else if (isForcedToolChoiceRejected(cause)) {
+      this.note(`the model rejected a forced tool choice before turn ${String(this.turnsUsed + 1)}: retrying with auto`);
+    } else {
       return undefined;
     }
     this.toolChoice = 'auto';
     FREE_TOOL_CHOICE_MODELS.add(this.model);
     this.turnOffset = this.turnsUsed;
-    this.note(`the model rejected a forced tool choice before turn ${String(this.turnsUsed + 1)}: retrying with auto`);
     return this.lastRequest;
+  }
+
+  /**
+   * A provider that downgraded a forced choice to `auto` on its own (a
+   * `toolChoice` warning on a turn that otherwise succeeded) is treated like
+   * one that refused it: the rest of the step asks with `auto` under the
+   * tool-calls-only rule, and the model is remembered, so later steps start
+   * in that mode.
+   */
+  private noticeToolChoiceDowngrade(step: StepResult<ToolSet>): void {
+    if (this.toolChoice === 'auto' || step.warnings?.some(isForcedToolChoiceDowngraded) !== true) return;
+    this.toolChoice = 'auto';
+    FREE_TOOL_CHOICE_MODELS.add(this.model);
+    this.note(`the provider sent auto in place of a forced tool choice on turn ${String(this.turnsUsed)}: continuing with auto`);
   }
 
   /**
@@ -462,6 +500,7 @@ class LoopRun {
     messages?: ModelMessage[];
     activeTools?: string[];
     toolChoice?: ToolChoiceMode | { type: 'tool'; toolName: string };
+    instructions?: ReturnType<ProviderHints['instructions']>;
   }> {
     let prepared = messages;
     if (this.options.prepareMessages !== undefined) {
@@ -554,6 +593,8 @@ class LoopRun {
     // alone under `auto`; the notices above already tell it to call it.
     return {
       ...(outgoing === messages ? {} : { messages: outgoing }),
+      // A switch to `auto` inside this generate call: the remaining turns get the tool-calls-only rule too.
+      ...(this.toolChoice === this.instructedFor ? {} : { instructions: this.hints.instructions(this.instructions()) }),
       ...(forced
         ? {
             activeTools: ['complete_step'],
@@ -713,6 +754,18 @@ function truncate(text: string, max: number): string {
 }
 
 /** A tool result for the transcript: a screenshot-carrying result reads as its text plus the image size, never the bytes. */
+/** The prose of a reply the SDK refused for lacking the forced tool call, as a turn outcome. */
+function skippedReplyText(content: readonly unknown[] | undefined): string {
+  const text = (content ?? [])
+    .flatMap((part) => {
+      const record = part as { type?: unknown; text?: unknown };
+      return record.type === 'text' && typeof record.text === 'string' ? [record.text] : [];
+    })
+    .join('')
+    .trim();
+  return text === '' ? '' : `assistant: ${truncate(text, MAX_TURN_TEXT_CHARS)}`;
+}
+
 function describeOutput(output: unknown): string {
   if (isScreenOutput(output)) return `${output.text}\n[screenshot, ${String(output.pixels.data.byteLength)} bytes]`;
   return safeJson(output);

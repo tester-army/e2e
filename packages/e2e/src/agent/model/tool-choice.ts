@@ -18,6 +18,30 @@ const FORCED_CHOICE_PATTERNS: readonly RegExp[] = [
   /does not support (?:forced|required) tool/i, // generic
 ];
 
+/**
+ * Whether a call warning says the provider sent `auto` in place of the
+ * forced choice it was asked for. The AI SDK's Anthropic provider does this
+ * itself for models it knows reject forced tool use (Claude Sonnet 5.5), so
+ * the request succeeds and no refusal ever reaches the loop.
+ */
+export function isForcedToolChoiceDowngraded(warning: { readonly type: string; readonly feature?: string }): boolean {
+  return warning.type === 'unsupported' && warning.feature === 'toolChoice';
+}
+
+/**
+ * Whether a turn under a forced choice came back as a finished reply without
+ * a tool call. The AI SDK (7.0.88 and later) throws `AI_ToolChoiceViolationError`
+ * for that, which is how a downgrading provider's prose answer surfaces. It is
+ * matched by name, since earlier 7.x releases export no such class; a reply
+ * cut off by the token limit or a content filter says nothing about the
+ * provider and does not count.
+ */
+export function isForcedToolCallSkipped(error: unknown): error is { readonly content?: readonly unknown[] } {
+  if (typeof error !== 'object' || error === null) return false;
+  const record = error as { name?: unknown; finishReason?: unknown };
+  return record.name === 'AI_ToolChoiceViolationError' && record.finishReason === 'stop';
+}
+
 /** Longest cause chain walked; a wrapped error rarely nests deeper. */
 const MAX_CAUSE_DEPTH = 8;
 

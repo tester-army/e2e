@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { isForcedToolChoiceRejected } from '../../src/agent/model/tool-choice.ts';
+import { isForcedToolCallSkipped, isForcedToolChoiceRejected } from '../../src/agent/model/tool-choice.ts';
 import { defineTool } from '../../src/agent/tool.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
 import { defineEngine } from '../../src/engine/index.ts';
@@ -144,6 +144,89 @@ describe('tool loop forced tool choice', () => {
   });
 });
 
+/** The warning the AI SDK's Anthropic provider attaches when it sends `auto` in place of a forced choice. */
+const DOWNGRADE = {
+  type: 'unsupported',
+  feature: 'toolChoice',
+  details: "toolChoice 'required' is not supported by this model because it rejects forced tool use. Using 'auto' instead.",
+} as const;
+
+/** A provider that rewrites every forced choice to `auto` and says so only as a call warning. */
+function downgradingForcedChoice(respond: LoopResponder): LoopResponder {
+  return (call) => {
+    if (call.toolChoice === 'auto') return respond(call);
+    const answer = respond(call);
+    return Array.isArray(answer) ? { toolCalls: answer, warnings: [DOWNGRADE] } : { ...answer, warnings: [DOWNGRADE] };
+  };
+}
+
+describe('tool loop downgraded tool choice', () => {
+  beforeAll(() => {
+    (globalThis as { AI_SDK_LOG_WARNINGS?: boolean }).AI_SDK_LOG_WARNINGS = false;
+  });
+  afterAll(() => {
+    delete (globalThis as { AI_SDK_LOG_WARNINGS?: boolean }).AI_SDK_LOG_WARNINGS;
+  });
+
+  it('continues the step with auto and the tool-calls-only rule once the provider reports a downgrade', async () => {
+    const model = installFakeLoopModel(
+      downgradingForcedChoice(({ turn }) => (turn === 1 ? [{ toolName: 'peek', input: {} }] : [conclude])),
+    );
+    const { fixtures, steps } = runtime({ agents: { default: { tools: { peek }, model } } });
+
+    await fixtures.agent.act('look around');
+
+    // The downgraded turn succeeded, so nothing is sent again.
+    expect(loopCalls.map((call) => call.toolChoice)).toEqual(['required', 'auto']);
+    expect(loopCalls[0]!.system).not.toContain('Reply with tool calls only');
+    expect(loopCalls[1]!.system).toContain('Reply with tool calls only');
+    const step = steps.all()[0]!;
+    expect(step.status).toBe('passed');
+    expect(step.metrics?.modelCalls).toBe(2);
+  });
+
+  it('retries with auto when a downgraded turn answers in prose', async () => {
+    const model = installFakeLoopModel(
+      downgradingForcedChoice(({ turn }) => (turn === 1 ? { text: 'Let me look around first.' } : [conclude])),
+    );
+    const { fixtures, steps } = runtime({ agents: { default: { model } } });
+
+    await fixtures.agent.act('look around');
+
+    expect(loopCalls.map((call) => call.toolChoice)).toEqual(['required', 'auto']);
+    expect(loopCalls[1]!.prompt).toBe(loopCalls[0]!.prompt);
+    expect(loopCalls[1]!.system).toContain('Reply with tool calls only');
+    const step = steps.all()[0]!;
+    expect(step.status).toBe('passed');
+    // The prose reply was answered and billed before the SDK threw on it.
+    expect(step.metrics?.modelCalls).toBe(2);
+  });
+
+  it('starts later steps on the same model in auto with the tool-calls-only rule', async () => {
+    const model = installFakeLoopModel(downgradingForcedChoice(() => [conclude]));
+    const { fixtures } = runtime({ agents: { default: { model } } });
+
+    await fixtures.agent.act('first');
+    await fixtures.agent.act('second');
+
+    expect(loopCalls.map((call) => call.toolChoice)).toEqual(['required', 'auto']);
+    expect(loopCalls[1]!.system).toContain('Reply with tool calls only');
+  });
+
+  it('ignores warnings about other features', async () => {
+    const model = installFakeLoopModel(() => ({
+      toolCalls: [conclude],
+      warnings: [{ type: 'unsupported', feature: 'temperature' }],
+    }));
+    const { fixtures } = runtime({ agents: { default: { model } } });
+
+    await fixtures.agent.act('first');
+    await fixtures.agent.act('second');
+
+    expect(loopCalls.map((call) => call.toolChoice)).toEqual(['required', 'required']);
+  });
+});
+
 describe('isForcedToolChoiceRejected', () => {
   it('reads the provider message through a gateway wrapper and a spent retry chain', () => {
     expect(isForcedToolChoiceRejected(REJECTION)).toBe(true);
@@ -159,5 +242,25 @@ describe('isForcedToolChoiceRejected', () => {
     expect(isForcedToolChoiceRejected(new Error('tool_choice must name a defined tool'))).toBe(false);
     expect(isForcedToolChoiceRejected(new Error('Rate limit reached'))).toBe(false);
     expect(isForcedToolChoiceRejected(undefined)).toBe(false);
+  });
+});
+
+describe('isForcedToolCallSkipped', () => {
+  const violation = (finishReason: string) =>
+    Object.assign(new Error('Model response did not contain a tool call even though tool choice was required.'), {
+      name: 'AI_ToolChoiceViolationError',
+      finishReason,
+      content: [{ type: 'text', text: 'Let me look first.' }],
+    });
+
+  it('matches a finished prose reply by the SDK error name', () => {
+    expect(isForcedToolCallSkipped(violation('stop'))).toBe(true);
+  });
+
+  it('ignores a reply cut off or filtered, and anything not named as the violation', () => {
+    expect(isForcedToolCallSkipped(violation('length'))).toBe(false);
+    expect(isForcedToolCallSkipped(violation('content-filter'))).toBe(false);
+    expect(isForcedToolCallSkipped(Object.assign(new Error('x'), { finishReason: 'stop' }))).toBe(false);
+    expect(isForcedToolCallSkipped(undefined)).toBe(false);
   });
 });

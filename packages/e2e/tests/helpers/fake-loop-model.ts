@@ -7,7 +7,7 @@
  */
 
 import type { ModelInstance } from '../../src/types.ts';
-import { createScriptedInstance, scriptedResult } from './scripted-model.ts';
+import { createScriptedInstance, scriptedResult, type ScriptedWarning } from './scripted-model.ts';
 
 export interface LoopCall {
   /** One-based generate round within the step. */
@@ -40,13 +40,17 @@ export interface LoopToolCall {
   readonly input: Record<string, unknown>;
 }
 
-/** A turn's scripted answer: tool calls, or prose without any (`{ text }`). Either form may carry `reasoning`. */
+/**
+ * A turn's scripted answer: tool calls, or prose without any (`{ text }`).
+ * Either object form may carry `reasoning`, and the call `warnings` the
+ * provider attached to the response.
+ */
 export type LoopResponder = (
   call: LoopCall,
 ) =>
   | readonly LoopToolCall[]
-  | { readonly text: string; readonly reasoning?: string }
-  | { readonly toolCalls: readonly LoopToolCall[]; readonly reasoning?: string };
+  | { readonly text: string; readonly reasoning?: string; readonly warnings?: readonly ScriptedWarning[] }
+  | { readonly toolCalls: readonly LoopToolCall[]; readonly reasoning?: string; readonly warnings?: readonly ScriptedWarning[] };
 
 /** Recorded calls, newest last. Cleared by every installFakeLoopModel call. */
 export const loopCalls: LoopCall[] = [];
@@ -113,14 +117,14 @@ export function installFakeLoopModel(respond: LoopResponder): ModelInstance {
       return scriptedResult(answer.map(toPart), 'tool-calls');
     }
     const object = answer as
-      | { readonly text: string; readonly reasoning?: string }
-      | { readonly toolCalls: readonly LoopToolCall[]; readonly reasoning?: string };
+      | { readonly text: string; readonly reasoning?: string; readonly warnings?: readonly ScriptedWarning[] }
+      | { readonly toolCalls: readonly LoopToolCall[]; readonly reasoning?: string; readonly warnings?: readonly ScriptedWarning[] };
     const reasoning =
       object.reasoning === undefined ? [] : [{ type: 'reasoning' as const, text: object.reasoning }];
     if ('toolCalls' in object) {
-      return scriptedResult([...reasoning, ...object.toolCalls.map(toPart)], 'tool-calls');
+      return scriptedResult([...reasoning, ...object.toolCalls.map(toPart)], 'tool-calls', object.warnings);
     }
-    return scriptedResult([...reasoning, { type: 'text' as const, text: object.text }], 'stop');
+    return scriptedResult([...reasoning, { type: 'text' as const, text: object.text }], 'stop', object.warnings);
   });
 }
 

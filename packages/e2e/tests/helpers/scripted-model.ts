@@ -27,10 +27,11 @@ export function createScriptedInstance<Options>(
   } as ModelInstance;
 }
 
-/** One scripted generate result with the fixed test usage envelope. */
+/** One scripted generate result with the fixed test usage envelope, and the call warnings a provider attached. */
 export function scriptedResult(
   content: readonly unknown[],
   finishReason: 'stop' | 'tool-calls',
+  warnings: readonly ScriptedWarning[] = [],
 ): object {
   return {
     content,
@@ -40,6 +41,13 @@ export function scriptedResult(
       outputTokens: { total: 20, text: 20, reasoning: 0 },
       totalTokens: 120,
     },
-    warnings: [],
+    warnings,
   };
+}
+
+/** A provider call warning, as the AI SDK carries it onto `step.warnings`. */
+export interface ScriptedWarning {
+  readonly type: 'unsupported' | 'compatibility' | 'other';
+  readonly feature?: string;
+  readonly details?: string;
 }
