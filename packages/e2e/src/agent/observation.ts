@@ -240,6 +240,7 @@ function redactText(text: string, redaction: NodeRedaction, limit?: number): str
   const pass = text.length === limit ? redaction.redactCut : redaction.redact;
   const redacted = pass(text);
   const collapsed = collapseText(redacted);
+  if (collapsed === redacted) return redacted;
   const read = pass(collapsed);
   return read === collapsed ? redacted : read;
 }
