@@ -67,6 +67,13 @@ Please don't open public issues for security vulnerabilities. Follow
 [SECURITY.md](./SECURITY.md) and report them to
 [security@tester.army](mailto:security@tester.army).
 
+## Telemetry
+
+The CLI sends anonymous usage data, such as which commands and engines run and
+where runs fail, but no test content, app content, or credentials. Opt out with
+`npx e2e telemetry disable` or `E2E_TELEMETRY_DISABLED=1`.
+[Telemetry](https://e2e.tester.army/docs/telemetry) lists every field.
+
 ## Status
 
 > [!NOTE]
