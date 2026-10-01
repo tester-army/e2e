@@ -34,13 +34,11 @@ local model.
 
 ```bash
 npx e2e init
-npx e2e run
 ```
 
 `init` asks for an engine, web or mobile, and a model provider, then writes a
-config and an example test. For web, start your app at `http://localhost:3000`
-first, or set its URL in `e2e.config.ts`. The
-[quickstart](https://e2e.tester.army/docs/quickstart) lists what you need.
+config and an example test. The
+[quickstart](https://e2e.tester.army/docs/quickstart) covers the rest.
 
 ## Packages
 
