@@ -187,26 +187,34 @@ describe('e2e init', () => {
   });
 
   it.each([
-    { engine: 'none', ai: false },
-    { engine: 'none', ai: true },
-    { engine: 'web', ai: false },
-    { engine: 'web', ai: true },
-    { engine: 'mobile', ai: false },
-    { engine: 'mobile', ai: true },
-  ] as const)('matches imports and dependencies to engine=$engine, ai=$ai', async ({ engine, ai }) => {
+    { engine: 'none', ai: false, mcp: false },
+    { engine: 'none', ai: false, mcp: true },
+    { engine: 'none', ai: true, mcp: true },
+    { engine: 'web', ai: false, mcp: false },
+    { engine: 'web', ai: false, mcp: true },
+    { engine: 'web', ai: true, mcp: false },
+    { engine: 'web', ai: true, mcp: true },
+    { engine: 'mobile', ai: false, mcp: false },
+    { engine: 'mobile', ai: false, mcp: true },
+    { engine: 'mobile', ai: true, mcp: true },
+  ] as const)('matches imports and dependencies to engine=$engine, ai=$ai, mcp=$mcp', async ({ engine, ai, mcp }) => {
     vi.mocked(clack.select).mockResolvedValueOnce(engine).mockResolvedValueOnce(ai ? 'openrouter' : 'none');
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    if (!mcp) vi.mocked(clack.multiselect).mockResolvedValueOnce(['.agents/skills']).mockResolvedValueOnce([]);
     await init(dir);
     const manifest = JSON.parse(read('package.json'));
     const device = engine === 'mobile';
+    // The MCP server reads its tools' schemas through the AI SDK, so registering it needs `ai` even with no gateway.
+    const sdk = ai || mcp;
     expect(Object.keys(manifest.devDependencies)).toEqual([
       'e2e',
       ...(engine === 'web' ? ['@e2e-dev/web', 'playwright'] : []),
       ...(device ? ['@e2e-dev/mobile'] : []),
-      ...(ai ? ['ai', 'zod', '@openrouter/ai-sdk-provider'] : []),
+      ...(sdk ? ['ai', 'zod'] : []),
+      ...(ai ? ['@openrouter/ai-sdk-provider'] : []),
     ]);
-    expect(manifest.devDependencies.ai).toBe(ai ? '^7.0.0' : undefined);
-    expect(manifest.devDependencies.zod).toBe(ai ? '^4.1.8' : undefined);
+    expect(manifest.devDependencies.ai).toBe(sdk ? '^7.0.0' : undefined);
+    expect(manifest.devDependencies.zod).toBe(sdk ? '^4.1.8' : undefined);
     expect(manifest.devDependencies['@openrouter/ai-sdk-provider']).toBe(ai ? '^3.0.0' : undefined);
     expect(read('e2e.config.ts').includes('agents: {')).toBe(ai);
     expect(read('e2e.config.ts').includes("import { openrouter } from '@openrouter/ai-sdk-provider';")).toBe(ai);
@@ -425,7 +433,7 @@ describe('e2e init', () => {
     await init(dir);
     const written = JSON.parse(read('package.json'));
     expect(written.dependencies).toEqual(manifest.dependencies);
-    expect(Object.keys(written.devDependencies)).toEqual(['e2e', '@e2e-dev/web']);
+    expect(Object.keys(written.devDependencies)).toEqual(['e2e', '@e2e-dev/web', 'ai', 'zod']);
   });
 
   it.each([
@@ -512,7 +520,8 @@ describe('e2e init', () => {
     writeFileSync(path.join(dir, config), '// custom config\n');
     await init(dir, { yes: true });
     expect(read(config)).toBe('// custom config\n');
-    expect(Object.keys(JSON.parse(read('package.json')).devDependencies)).toEqual(['e2e']);
+    // No engine or gateway package is assumed; ai and zod come from registering the MCP server, which needs them.
+    expect(Object.keys(JSON.parse(read('package.json')).devDependencies)).toEqual(['e2e', 'ai', 'zod']);
     expect(JSON.parse(read('package.json')).scripts).toEqual({ 'test:e2e': 'e2e run' });
     if (config.endsWith('.mts')) expect(existsSync(path.join(dir, 'e2e.config.ts'))).toBe(false);
   });

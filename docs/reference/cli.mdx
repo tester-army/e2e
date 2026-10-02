@@ -119,7 +119,7 @@ lockfile, then the invoking package manager, then npm.
 
 | Creates | Content |
 | --- | --- |
-| `package.json` | Created as a private ESM package when missing; otherwise only missing dependencies and scripts are added. Sibling packages (`@e2e-dev/web`, `@e2e-dev/mobile`) get the caret range of the version released with the CLI, or that exact version when the CLI is a prerelease. A `test:e2e` script runs `e2e run` unless one exists |
+| `package.json` | Created as a private ESM package when missing; otherwise only missing dependencies and scripts are added. Sibling packages (`@e2e-dev/web`, `@e2e-dev/mobile`) get the caret range of the version released with the CLI, or that exact version when the CLI is a prerelease. `ai` and `zod` are added with a gateway, or when the MCP server is registered, since it reads tool schemas through the AI SDK. A `test:e2e` script runs `e2e run` unless one exists |
 | `e2e.config.ts` | One target for the selected engine, with the app in its `app`. Playwright reads `APP_URL` (default `http://localhost:3000`) into `app.url` and shows `app.command` in a comment. Mobile sets `app: { bundleId: 'Settings' }` on iOS and `com.android.settings` on Android. With a gateway, `agents.default` is `{ model, system }` |
 | `tests/example.e2e.ts` | An app-open test that passes against any page, plus a commented agent test. Device setup gets a Settings check instead |
 | `.gitignore` | Appends `node_modules/`, `.e2e/artifacts/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/junit.xml`, `.e2e/summary.md`, `.e2e/failures/`, `.e2e/logs/`, and `.e2e/videos/`. Committing the cache is opt-in; see [commit the replay cache](/cache#commit-the-replay-cache) |

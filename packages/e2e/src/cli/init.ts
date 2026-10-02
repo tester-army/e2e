@@ -214,7 +214,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
     return done('invalid-project', 2);
   }
 
-  const scaffold = createScaffold(engine, model);
+  const scaffold = createScaffold(engine, model, mcpFiles.length > 0);
   const dependencies = addDependencies(pkg.manifest, scaffold.dependencies);
   const { manifest, additions: scripts } = addScripts(dependencies.manifest, SCRIPTS);
   if (dependencies.additions.length > 0) {

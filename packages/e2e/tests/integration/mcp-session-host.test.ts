@@ -133,6 +133,23 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     }
   });
 
+  it('refuses to open without the ai package, naming the session rather than agent calls', async () => {
+    // The SDK loader caches its outcome in this realm slot; a cached failure is what a project without `ai` sees.
+    const slot = Symbol.for('e2e.ai-sdk.v1');
+    const saved = Object.getOwnPropertyDescriptor(globalThis, slot);
+    Object.defineProperty(globalThis, slot, { value: { failure: new Error("Cannot find package 'ai'") }, configurable: true });
+    try {
+      const fake = createFakeEngine();
+      const opened = host(() => fake).open({});
+      await expect(opened).rejects.toMatchObject({ code: 'MODEL_UNAVAILABLE' });
+      await expect(opened).rejects.toThrow(/an MCP session needs the "ai" package .* even with no model configured/);
+      expect(fake.inits).toHaveLength(0);
+    } finally {
+      if (saved === undefined) Reflect.deleteProperty(globalThis, slot);
+      else Object.defineProperty(globalThis, slot, saved);
+    }
+  });
+
   it('closes an idle session and disposes the engine', async () => {
     const fakes = engines();
     const idle = host(fakes.next, { idleMs: 300 });

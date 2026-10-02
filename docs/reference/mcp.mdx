@@ -53,6 +53,25 @@ For clients that use a `mcpServers` config, add:
 }
 ```
 
+The server reads its tools' schemas through the AI SDK, so the project needs
+the `ai` package even when it configures no model and runs no agent steps.
+`e2e init` adds it when you register the server. Without it, `open_session`
+fails with `MODEL_UNAVAILABLE`. To add it by hand:
+
+<CodeGroup>
+```bash npm
+npm install -D ai
+```
+
+```bash pnpm
+pnpm add -D ai
+```
+
+```bash bun
+bun add -d ai
+```
+</CodeGroup>
+
 Start the server in the project directory. Config discovery works like
 `e2e run`. Set `--config` for another location, or pass `config` to
 `open_session` for one session.

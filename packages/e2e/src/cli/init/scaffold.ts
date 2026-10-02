@@ -26,8 +26,12 @@ function agentConfig(model: ScaffoldModel): string {
   },`;
 }
 
-/** Composes common setup, the selected engine, and optional AI support. */
-export function createScaffold(engineId: EngineId, model: ScaffoldModel | undefined) {
+/**
+ * Composes common setup, the selected engine, and optional AI support. `mcp`
+ * says whether the `e2e mcp` server is registered: its catalog reads tool
+ * schemas through the AI SDK, so it needs `ai` even with no gateway.
+ */
+export function createScaffold(engineId: EngineId, model: ScaffoldModel | undefined, mcp: boolean) {
   const engine = getEnginePreset(engineId);
   const gateway = model === undefined ? undefined : getGatewayPreset(model.gateway);
   const imports = [
@@ -45,7 +49,8 @@ export function createScaffold(engineId: EngineId, model: ScaffoldModel | undefi
       'e2e': dependencyRange(packageVersion(import.meta.url, '../../../package.json', '0.0.0')),
       ...engine.dependencies,
       // zod is a peer of `ai` and every provider; npm and pnpm install peers, Yarn does not.
-      ...(gateway === undefined ? {} : { ai: '^7.0.0', zod: '^4.1.8', ...gateway.dependencies }),
+      ...(gateway !== undefined || mcp ? { ai: '^7.0.0', zod: '^4.1.8' } : {}),
+      ...gateway?.dependencies,
     },
     config: `${imports.join('\n')}
 

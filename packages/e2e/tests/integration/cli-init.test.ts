@@ -78,7 +78,7 @@ describe('initializing standalone projects', () => {
   );
 
   it('loads the engine-less scaffold and collects its HTTP example', async () => {
-    const scaffold = createScaffold('none', { gateway: 'openrouter' });
+    const scaffold = createScaffold('none', { gateway: 'openrouter' }, false);
     writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ type: 'module', devDependencies: scaffold.dependencies }));
     writeFileSync(path.join(dir, 'e2e.config.ts'), scaffold.config);
     mkdirSync(path.join(dir, 'tests'));
@@ -102,7 +102,7 @@ describe('initializing standalone projects', () => {
     { host: 'linux', platform: 'android' },
   ] as const)('loads the $platform device scaffold generated on $host without a simulator', async ({ host, platform }) => {
     vi.spyOn(os, 'platform').mockReturnValue(host);
-    const scaffold = createScaffold('mobile', { gateway: 'vercel' });
+    const scaffold = createScaffold('mobile', { gateway: 'vercel' }, false);
     writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ type: 'module', devDependencies: scaffold.dependencies }));
     writeFileSync(path.join(dir, 'e2e.config.ts'), scaffold.config);
     mkdirSync(path.join(dir, 'tests'));
