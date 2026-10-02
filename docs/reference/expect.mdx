@@ -212,7 +212,7 @@ export interface BrowserExpectation {
 
 A relative `toHaveURL` string resolves against the base URL and matches
 exactly after normalization; a `RegExp` tests the full URL. Anything else,
-such as a predicate function, is `INVALID_ARGUMENT`. Each `web` matcher takes
+such as a predicate function, is `INVALID_ARGUMENT`. Each `browser` matcher takes
 `timeout` only; any other key, such as Playwright's `ignoreCase` on
 `toHaveURL`, is `INVALID_ARGUMENT`.
 
