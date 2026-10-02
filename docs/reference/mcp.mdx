@@ -53,6 +53,9 @@ For clients that use a `mcpServers` config, add:
 }
 ```
 
+The server needs no model: a project without the optional `ai` package
+opens sessions and drives the app with the deterministic tools.
+
 Start the server in the project directory. Config discovery works like
 `e2e run`. Set `--config` for another location, or pass `config` to
 `open_session` for one session.

@@ -20,6 +20,9 @@ Or declare it in the client's project config (`.mcp.json` for Claude Code,
 { "mcpServers": { "e2e": { "command": "npx", "args": ["e2e", "mcp"] } } }
 ```
 
+No model is needed: without the optional `ai` package, sessions open and the
+deterministic tools work.
+
 Flags: `--config <path>` names the default config file, `--target <name>`
 fixes the target every session opens on, `--headless` hides the browser or
 simulator (sessions are headed by default outside CI), `--max-sessions <n>`
