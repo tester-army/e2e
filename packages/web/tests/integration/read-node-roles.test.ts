@@ -75,6 +75,30 @@ describe('role mapping', () => {
     expect(flatten(tree).some((node) => node.role === 'presentation')).toBe(false);
   });
 
+  it('reports an inline svg as an image, named by its title child, as Playwright does', async () => {
+    await page.setContent(`
+      <input aria-label="Message">
+      <div class="send-btn"><svg viewBox="0 0 24 24" width="24" height="24" data-testid="bare"><path d="M2 3 L22 12 L2 21 Z"/></svg></div>
+      <svg width="10" height="10" data-testid="titled"><title>Close</title></svg>
+      <svg width="10" height="10" aria-label="Labelled" data-testid="labelled"><title>Ignored</title></svg>
+      <svg width="10" height="10" aria-hidden="true" data-testid="decorative"></svg>
+      <svg width="10" height="10" role="presentation"><title>Decor</title></svg>
+      <a href="/home" data-testid="home"><svg width="10" height="10" role="none"><title>Home</title></svg></a>
+    `);
+    const nodes = await rolesByTestId();
+    expect(nodes.get('bare')).toMatchObject({ role: 'image' });
+    expect(nodes.get('bare')?.name).toBeUndefined();
+    expect(nodes.get('titled')).toMatchObject({ role: 'image', name: 'Close' });
+    expect(nodes.get('labelled')).toMatchObject({ role: 'image', name: 'Labelled' });
+    expect(nodes.has('decorative')).toBe(false);
+    expect(nodes.get('home')).toMatchObject({ role: 'link', name: 'Home' });
+    const { tree } = await capture();
+    expect(flatten(tree).filter((node) => node.role === 'presentation' || node.role === 'none')).toEqual([]);
+    expect(await page.getByRole('img').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid'))))
+      .toEqual(['bare', 'titled', 'labelled']);
+    expect(await page.getByRole('img', { name: 'Close', exact: true }).getAttribute('data-testid')).toBe('titled');
+  });
+
   it('passes the composite widget roles through from role attributes and names their items from content', async () => {
     await page.setContent(`
       <style>${EMPTY_BOXES}</style>
@@ -310,8 +334,8 @@ describe('contenteditable editing hosts', () => {
     await page.frames()[1]?.waitForLoadState('domcontentloaded');
     const { tree } = await capture();
     const roles = Object.fromEntries(flatten(tree).filter((node) => node.testId !== undefined).map((node) => [node.testId, node.role]));
-    // A pixel-only surface stays unlisted: with no role, name, or text it is not a node at all.
-    expect(roles).toEqual({ frame: 'iframe', host: 'textbox' });
+    // A pixel-only surface stays unlisted: with no role, name, or text it is not a node at all. An svg is an image.
+    expect(roles).toEqual({ svg: 'image', frame: 'iframe', host: 'textbox' });
   });
 
   it('drops a name taken from a block placeholder once the editor has content, and keeps one from the host', async () => {

@@ -167,6 +167,10 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
         return 'textbox';
       case 'img':
         return el.getAttribute('alt') === '' ? 'presentation' : 'image';
+      // An inline icon is a picture whether or not anything names it, as
+      // Playwright reads it; Chrome ignores an unnamed one.
+      case 'svg':
+        return 'image';
       case 'nav':
         return 'navigation';
       case 'main':
@@ -396,6 +400,25 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   };
 
   /**
+   * The `<title>` child an SVG element is named by (SVG-AAM), as Playwright
+   * reads it: `<svg><title>Close</title></svg>` is the image "Close". An svg
+   * marked `presentation` or `none` takes no name of its own from it, though
+   * the title still names a link or button around it.
+   */
+  const svgTitleOf = (el: Element): string | null => {
+    if (!(el instanceof SVGElement)) return null;
+    const title = Array.from(el.children).find((child) => child instanceof SVGTitleElement);
+    const text = (title?.textContent ?? '').replace(/\s+/g, ' ').trim();
+    return text === '' ? null : text;
+  };
+
+  /** True for an element whose role removes its semantics: `presentation` or `none`. */
+  const isPresentational = (el: Element): boolean => {
+    const role = implicitRole(el);
+    return role === 'presentation' || role === 'none';
+  };
+
+  /**
    * True for a referenced target accname 2A reads whole: hidden itself, or
    * under an `aria-hidden` ancestor, which excludes it from the tree as
    * surely as its own attribute would.
@@ -465,8 +488,8 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     if (referenced !== null) return referenced.join(' ');
     const ariaLabel = el.getAttribute('aria-label');
     if (ariaLabel !== null && ariaLabel.trim() !== '') return ariaLabel.trim();
-    const alt = altOf(el);
-    if (alt !== null) return alt;
+    const alternative = altOf(el) ?? svgTitleOf(el);
+    if (alternative !== null) return alternative;
     if (NAME_OPAQUE_TAGS.has(el.tagName)) return '';
     const content = childrenNameOf(el, walk);
     if (content !== '') return content;
@@ -615,8 +638,8 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
         .trim();
       if (joined !== '') return joined;
     }
-    const alt = altOf(el);
-    if (alt !== null) return alt;
+    const alternative = altOf(el) ?? (isPresentational(el) ? null : svgTitleOf(el));
+    if (alternative !== null) return alternative;
     const captionTag = NAMING_CHILD_TAGS[el.tagName.toLowerCase()];
     if (captionTag !== undefined) {
       const caption = Array.from(el.children).find((child) => child.tagName.toLowerCase() === captionTag);
@@ -1187,8 +1210,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   /** True when a node carries semantics worth sending to a model. */
   const isInteresting = (el: Element): boolean => {
     if (el.hasAttribute(options.testIdAttribute)) return true;
-    const role = implicitRole(el);
-    if (role !== null && role !== 'presentation' && role !== 'none') return true;
+    if (implicitRole(el) !== null && !isPresentational(el)) return true;
     if (accessibleName(el) !== null) return true;
     return directTextOf(el) !== '';
   };

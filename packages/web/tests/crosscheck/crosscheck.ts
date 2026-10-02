@@ -77,6 +77,16 @@ const CHROME_IGNORES = new Set(['rowgroup']);
  */
 const ENGINE_ONLY_ROLES = new Set(['box']);
 
+/**
+ * An unnamed inline svg: Chrome's tree ignores it or leaves it out, while
+ * Playwright reads it as `img` and its aria snapshot lists it. The tree
+ * lists it as Playwright does, so an icon-only control a person sees reaches
+ * the model even when nothing names it.
+ */
+function isUnnamedSvg(node: SemanticNode, facts: ElementFacts): boolean {
+  return facts.svgRoot && node.role === 'image' && (node.name ?? '') === '';
+}
+
 /** Engine roles ARIA does not define, so `getByRole` cannot be asked for them. */
 const NON_ARIA_ROLES = new Set(['box', 'iframe']);
 
@@ -155,6 +165,7 @@ export async function captureTagged(page: Page): Promise<{
         inChildFrame: view !== null && view !== view.top,
         inClosedShadow: root instanceof ShadowRoot && root.mode === 'closed',
         editingHost: el instanceof HTMLElement && el.isContentEditable,
+        svgRoot: el instanceof SVGSVGElement,
       };
     }, [MARKER, id]));
   }
@@ -169,6 +180,8 @@ interface ElementFacts {
   readonly inClosedShadow: boolean;
   /** An editor's host, which the tree reads as the `textbox` it is. Chrome calls it `generic`. */
   readonly editingHost: boolean;
+  /** An inline `<svg>`, which Chrome ignores unless something names it. */
+  readonly svgRoot: boolean;
 }
 
 /** The fields of CDP's `Accessibility.AXNode` the check reads. */
@@ -281,6 +294,7 @@ export async function crossCheck(page: Page): Promise<CrossCheckResult> {
       const fact = facts.get(node.ref.id);
       if (node.role === undefined || STRUCTURAL_ROLES.has(node.role) || fact === undefined || fact.inChildFrame) continue;
       compared += 1;
+      if (isUnnamedSvg(node, fact)) continue;
       const ax = chrome.byId.get(node.ref.id);
       if (ax === undefined) disagreements.push({ oracle: 'chrome', field: 'unknown', ours: node.role, theirs: 'no AX node', node: describe(node.role, node.name ?? '') });
       else compareWithChrome(node, ax, fact, disagreements);
