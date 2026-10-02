@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { describeTarget } from '../../src/agent/actions.ts';
 import { TraceRecorder } from '../../src/cache/recorder.ts';
 import { buildTraceEntry, MAX_TRACE_INPUT_CHARS, readTraceEntry } from '../../src/cache/trace.ts';
-import { createRedactor } from '../../src/internal/redact.ts';
+import { createRedactor, SecretLedger } from '../../src/internal/redact.ts';
 import { redacted } from '../helpers/redacted.ts';
 
 const upgradeButton = redacted({
@@ -25,8 +25,10 @@ const passwordField = redacted({
 });
 
 function makeRecorder(options: { maxActions?: number; secrets?: ReadonlyMap<string, string> } = {}) {
+  const redact = createRedactor(options.secrets ?? new Map());
   return new TraceRecorder({
-    redact: createRedactor(options.secrets ?? new Map()),
+    redact,
+    redactCut: redact,
     ...(options.maxActions === undefined ? {} : { maxActions: options.maxActions }),
   });
 }
@@ -83,6 +85,18 @@ describe('TraceRecorder', () => {
     expect(serialized).toContain('"secret":"member-password"');
     // Descriptor redaction alone never poisons the trace.
     expect(trace?.truncated).toBeUndefined();
+  });
+
+  it('masks a secret resolved after the node was captured', () => {
+    const ledger = new SecretLedger();
+    const recorder = new TraceRecorder({ redact: ledger.redact, redactCut: ledger.redactCut });
+    const field = redacted({ ...passwordField, states: {}, name: 'Code token-2718-value' }, ledger);
+    // A provider-backed fill resolves the value only inside the action.
+    ledger.register('token', 'token-2718-value');
+    recorder.record({ name: 'typeSecret', node: field, secret: 'token' });
+    const serialized = JSON.stringify(recorder.finalize(conclusion));
+    expect(serialized).not.toContain('token-2718-value');
+    expect(serialized).toContain('Code <secret:token>');
   });
 
   it('poisons the trace instead of bending a replay input', () => {

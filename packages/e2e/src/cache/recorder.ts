@@ -41,6 +41,8 @@ const DERIVED_GAP_SUMMARY = 'tool type (run-time value)';
 export interface TraceRecorderOptions {
   /** The run's secret redactor; applied to every recorded string. */
   readonly redact: (text: string) => string;
+  /** `redact` for a field cut at its observed limit (`SecretLedger.redactCut`). */
+  readonly redactCut: (text: string) => string;
   readonly maxActions?: number;
 }
 
@@ -48,10 +50,12 @@ export class TraceRecorder {
   private readonly actions: RecordedAction[] = [];
   private truncated = false;
   private readonly redact: (text: string) => string;
+  private readonly redactCut: (text: string) => string;
   private readonly maxActions: number;
 
   constructor(options: TraceRecorderOptions) {
     this.redact = options.redact;
+    this.redactCut = options.redactCut;
     this.maxActions = Math.min(options.maxActions ?? MAX_TRACE_ACTIONS, MAX_TRACE_ACTIONS);
   }
 
@@ -69,7 +73,7 @@ export class TraceRecorder {
 
   /** Records one committed grammar action. */
   record(action: RecordableAction): void {
-    this.push(this.toRecorded(action, describeAction(action, this.redact)));
+    this.push(this.toRecorded(action, describeAction(action, { redact: this.redact, redactCut: this.redactCut })));
     this.lastActionAt = Date.now();
   }
 

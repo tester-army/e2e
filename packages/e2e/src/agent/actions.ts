@@ -10,7 +10,7 @@
  */
 
 import type { ViewportPoint, ViewportSize } from '../engine/surface.ts';
-import type { RedactedNode } from './observation.ts';
+import { redactNode, type NodeRedaction, type RedactedNode } from './observation.ts';
 import {
   bound,
   isNodeAction,
@@ -172,20 +172,22 @@ const NODE_ACTION_PROSE: Readonly<Record<NodeActionName, (where: string) => stri
 /** How each point verb reads: `tap the point (x, y)`, `hover over the point (x, y)`. */
 const POINT_ACTION_PROSE: Readonly<Record<PointActionName, string>> = { tapAt: 'tap', hoverAt: 'hover over' };
 
-/** Describes one committed action for recording and for the live event. */
-export function describeAction(
-  action: RecordableAction,
-  redact: (text: string) => string,
-): DescribedAction {
+/**
+ * Describes one committed action for recording and for the live event. Its
+ * nodes pass the ledger again as it is now: a secret resolved after the
+ * capture (inside the action itself) masks what the capture still shows.
+ */
+export function describeAction(action: RecordableAction, redaction: NodeRedaction): DescribedAction {
   const target =
     'node' in action
-      ? describePlaced(action.node, action)
+      ? describePlaced(action.node, action, redaction)
       : 'point' in action
-        ? describePlaced(action.under, {})
+        ? describePlaced(action.under, {}, redaction)
         : undefined;
-  const destination = action.name === 'drag' ? describePlaced(action.destination.node, action.destination) : undefined;
+  const destination =
+    action.name === 'drag' ? describePlaced(action.destination.node, action.destination, redaction) : undefined;
   const where = describeForSummary(target);
-  const safe = (value: string) => quote(redact(sanitizeText(value)));
+  const safe = (value: string) => quote(redaction.redact(sanitizeText(value)));
   const prose = (() => {
     if (isNodeAction(action)) return NODE_ACTION_PROSE[action.name](where);
     switch (action.name) {
@@ -236,8 +238,14 @@ export function describeAction(
 }
 
 /** A node's durable descriptor with the placement it was acted on in; undefined for no node or nothing durable. */
-function describePlaced(node: RedactedNode | undefined, placement: Placement): TraceTargetDescriptor | undefined {
-  const described = node === undefined ? undefined : describeTarget(node);
+function describePlaced(
+  node: RedactedNode | undefined,
+  placement: Placement,
+  redaction: NodeRedaction,
+): TraceTargetDescriptor | undefined {
+  if (node === undefined) return undefined;
+  const { children: _children, ...fields } = node;
+  const described = describeTarget(redactNode(fields, redaction));
   if (described === undefined) return undefined;
   return {
     ...described,

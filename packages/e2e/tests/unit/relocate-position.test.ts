@@ -73,7 +73,7 @@ describe('relocation with a recorded position', () => {
     const cards = screen(button('a'), button('b'));
     const described = describeAction(
       { name: 'tap', node: cards.get('b')!, position: { index: 1, of: 2 } },
-      (text) => text,
+      { redact: (text) => text, redactCut: (text) => text },
     );
     expect(described.summary).toBe('tap button "Set up" (2 of 2)');
     expect(described.target?.position).toEqual({ index: 1, of: 2 });

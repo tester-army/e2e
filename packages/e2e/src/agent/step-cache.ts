@@ -177,6 +177,7 @@ export class StepTraceSession {
     if (options.cache.mode === 'read-write') {
       this.recorder = new TraceRecorder({
         redact: options.redact,
+        redactCut: options.redactCut,
         maxActions: options.maxActions,
       });
     }

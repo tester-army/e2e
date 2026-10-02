@@ -547,14 +547,14 @@ export class ActionDispatcher {
 
   private async runActionNow(name: GrammarActionName, body: () => Promise<RecordableAction>): Promise<void> {
     this.accounting.reserveAction();
-    const redact = this.runtime.redact;
+    const redaction = { redact: this.runtime.redact, redactCut: this.runtime.redactCut };
     let action: RecordableAction;
     try {
       action = await instrumentPhase(
         this.runtime,
         { api: this.accounting.api, kind: 'engine', phase: 'agent.action', name },
         body,
-        (committed) => ({ detail: describeAction(committed, redact).summary }),
+        (committed) => ({ detail: describeAction(committed, redaction).summary }),
       );
     } catch (cause) {
       this.accounting.checkpoint(cause);

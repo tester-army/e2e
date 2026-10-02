@@ -38,7 +38,7 @@ describe('container keys', () => {
 
   it('records the key with the action and reads it back in the prose', () => {
     const { nodes } = table();
-    const described = describeAction({ name: 'tap', node: nodes.get('d1')!, within: 'Budget draft' }, identity);
+    const described = describeAction({ name: 'tap', node: nodes.get('d1')!, within: 'Budget draft' }, { redact: identity, redactCut: identity });
     expect(described.target?.within).toBe('Budget draft');
     expect(described.summary).toBe('tap button "Delete" in "Budget draft"');
   });
