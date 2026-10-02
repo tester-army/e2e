@@ -140,77 +140,9 @@ If none are booted, it boots one. Two workers never drive the same device.
 
 ## Physical devices
 
-agent-device drives a phone plugged into your machine the same way it
-drives a simulator, so a physical device needs no other engine or option.
-List what agent-device sees, then name the phone in `device` as it is
-listed:
-
-<CodeGroup>
-```bash npm
-npx agent-device devices --platform ios
-```
-
-```bash pnpm
-pnpm exec agent-device devices --platform ios
-```
-
-```bash bun
-bunx agent-device devices --platform ios
-```
-</CodeGroup>
-
-```ts
-mobile({ platform: 'ios', device: 'QA iPhone' })
-```
-
-Name a phone by its name, not its id. The engine reads a `device` string as
-an id only when it is a simulator UDID or an `emulator-<port>` serial, so a
-phone's UDID or adb serial is looked up as a name and not found. The first
-device with a matching name wins, so give each phone a unique name: two
-phones both called `iPhone` or `Pixel 8` would bind one phone to two
-workers. Without `device`, a connected phone counts as booted and joins the
-pool beside any booted simulators, so name it to be sure a run lands on it.
-
-Set the phone up once:
-
-- **iOS**: the phone is paired and trusted, unlocked, with Developer Mode
-  on. agent-device builds and signs its XCTest runner onto the phone, so set
-  `AGENT_DEVICE_IOS_TEAM_ID` to your team id and `AGENT_DEVICE_IOS_BUNDLE_ID`
-  to a unique reverse-DNS id (`com.example.agentdevice.runner`); the
-  signing profile must allow that id and `<id>.uitests`. Set them before the
-  first agent-device command, or run `npx agent-device daemon stop` after:
-  a running daemon keeps the environment it started with. The first run
-  builds the runner and takes longer. `app.appPath` must be a signed device
-  build: a simulator `.app` does not install on a phone.
-- **Android**: USB debugging is on and the phone is authorized, listed as
-  `device` in `adb devices`. `app.appPath` is the same `.apk`.
-
-`npx agent-device doctor` checks the setup, and
-`npx agent-device help physical-device` covers iOS signing in detail.
-
-Some device controls need a simulator or emulator, and fail on a phone with
-agent-device's message:
-
-- On an iPhone, every device setting is simulator-only: `app.permissions`
-  and `device.setPermission`, `app.clearState()`, `device.setNetwork`,
-  `device.setAirplaneMode`, `device.setLocation`, `device.clearLocation`,
-  `device.setAppearance`, the biometric methods, and `device.clearKeychain`.
-  So are `device.clipboard`, `device.setClipboard`, and `device.fold`. For a
-  fresh start, reinstall with `device.installApp(path, { reinstall: true })`.
-- An older iPhone that `xcrun devicectl list devices` does not list is
-  driven without CoreDevice: taps, typing, and the screen work, but
-  installs, `--video`, `device.openLink`, and `app.launchArguments` fail.
-  Install the build from Xcode and pin `app.bundleId`.
-- On an Android phone, `device.setLocation` is emulator-only, and
-  `device.setBiometrics('fingerprint', ...)` works only where the phone
-  exposes `cmd fingerprint`.
-- `--video` on an iPhone is built from screenshots at about 15 frames a
-  second, and drops frames.
-- A phone is not this machine, so `localhost` in the app is the phone
-  itself. Point the app at your machine's network address, or on Android
-  forward the port with `adb reverse tcp:<port> tcp:<port>`.
-
-To run on phones in a device farm, see [Hosted devices](#hosted-devices).
+A phone connected to your machine works as a device too: name it in
+`device`. Setup and the controls that need a simulator are on
+[Physical devices](/physical-devices).
 
 ## Hosted devices
 

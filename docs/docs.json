@@ -150,7 +150,8 @@
             "group": "Mobile",
             "icon": "mobile-screen",
             "pages": [
-              "mobile"
+              "mobile",
+              "physical-devices"
             ]
           },
           {
