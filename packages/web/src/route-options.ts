@@ -8,7 +8,7 @@
  */
 
 import { statSync } from 'node:fs';
-import { TestError, validateJsonValue, type JsonValue } from 'e2e/engine';
+import { rejectUnknownOptions, TestError, validateJsonValue, type JsonValue } from 'e2e/engine';
 import { headerProblem } from './protected-app.ts';
 
 /** What `route.fulfill` hands Playwright once the response is validated. */
@@ -30,8 +30,8 @@ export interface ContinueDecision {
   readonly postData?: string;
 }
 
-const FULFILL_KEYS = new Set(['status', 'headers', 'contentType', 'json', 'body', 'path']);
-const CONTINUE_KEYS = new Set(['url', 'method', 'headers', 'postData']);
+const FULFILL_KEYS = ['status', 'headers', 'contentType', 'json', 'body', 'path'];
+const CONTINUE_KEYS = ['url', 'method', 'headers', 'postData'];
 
 /**
  * Validates `route.fulfill(response)`, synchronously so the decision is
@@ -107,20 +107,14 @@ export function requireNoArguments(api: string, args: readonly unknown[]): void 
 function requireOptions(
   api: string,
   value: unknown,
-  allowed: ReadonlySet<string>,
+  allowed: readonly string[],
   optional: boolean,
 ): Record<string, unknown> {
-  if (value === undefined && optional) return {};
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (value === undefined) {
+    if (optional) return {};
     throw new TestError('INVALID_ARGUMENT', `${api} takes an options object`);
   }
-  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
-  if (unknown.length > 0) {
-    throw new TestError(
-      'INVALID_ARGUMENT',
-      `${api} does not support ${unknown.map((key) => JSON.stringify(key)).join(', ')}; it takes ${[...allowed].join(', ')}`,
-    );
-  }
+  rejectUnknownOptions(api, value as object, allowed);
   return value as Record<string, unknown>;
 }
 

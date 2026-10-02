@@ -222,7 +222,7 @@ describe('browser.route decisions', () => {
 
   it.each([
     ['an unknown fulfill key', (route: WebRoute) => untyped(route.fulfill, { bodyy: 'typo' }),
-      'route.fulfill does not support "bodyy"; it takes status, headers, contentType, json, body, path'],
+      'route.fulfill options has no key "bodyy"; it takes status, headers, contentType, json, body, path'],
     ['two fulfill sources', (route: WebRoute) => untyped(route.fulfill, { body: 'a', json: { b: 1 } }),
       'route.fulfill takes one of json, body, or path; got json and body'],
     ['a missing fulfill file', (route: WebRoute) => route.fulfill({ path: 'missing.json' }),
@@ -234,7 +234,7 @@ describe('browser.route decisions', () => {
     ['fulfill json that is not JSON', (route: WebRoute) => untyped(route.fulfill, { json: { n: 1n } }),
       expect.stringContaining('route.fulfill json')],
     ['an unknown continue key', (route: WebRoute) => untyped(route.continue, { urll: '/echo' }),
-      'route.continue does not support "urll"; it takes url, method, headers, postData'],
+      'route.continue options has no key "urll"; it takes url, method, headers, postData'],
     ['non-string continue headers', (route: WebRoute) => untyped(route.continue, { headers: { 'x-n': 1 } }),
       'route.continue header "x-n" must be a string, got number'],
     ['a continue header name outside the token grammar', (route: WebRoute) => route.continue({ headers: { 'x a': 'b' } }),
