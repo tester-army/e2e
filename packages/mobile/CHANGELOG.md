@@ -1,5 +1,13 @@
 # @e2e-dev/mobile
 
+## 0.9.0
+
+### Minor Changes
+
+- [#731](https://github.com/tester-army/e2e/pull/731) [`88cef2c`](https://github.com/tester-army/e2e/commit/88cef2c26d0b095ce490e9f86c09221ce28d8fa9) Thanks [@szdziedzic](https://github.com/szdziedzic)! - A `DeviceProvider`'s `acquire` request carries `projectRoot`, the directory the config's relative paths resolve against, so a provider reads project files there instead of `process.cwd()`.
+
+- [#740](https://github.com/tester-army/e2e/pull/740) [`bb904d4`](https://github.com/tester-army/e2e/commit/bb904d40d39d170a4ab38c4616552226bf77017f) Thanks [@NathanWalker](https://github.com/NathanWalker)! - `device.fold(pose)` puts a foldable iOS simulator (iPhone Duo) in a hinge pose: `'closed'` lights the outer display, `'half-open'` (a 130° book) and `'open'` the inner one. It runs agent-device's `fold` command, which sends the simulator's hinge event and reads the angle back from CoreDevice before it resolves, so the next observation reads the app on the other display. Like `setOrientation`, it counts as an action for the `transition` budget. A device without a hinge is `UNSUPPORTED_CAPABILITY`, and Android is refused before any device command. The pose type is exported as `FoldPose`.
+
 ## 0.8.1
 
 ### Patch Changes

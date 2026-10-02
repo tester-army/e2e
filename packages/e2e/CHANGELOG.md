@@ -1,5 +1,21 @@
 # e2e
 
+## 0.15.2
+
+### Patch Changes
+
+- [#710](https://github.com/tester-army/e2e/pull/710) [`6b25a3a`](https://github.com/tester-army/e2e/commit/6b25a3a4c8c8053151e6d323d0cc3079f1f6d90e) Thanks [@okwasniewski](https://github.com/okwasniewski)! - A failure where no model answered (`MODEL_PROVIDER_FAILED`, `MODEL_UNAVAILABLE`) no longer evicts replay cache entries. It says nothing about the app, so a read-write run without model access keeps every recording it did not confirm, including a step that replayed whole before an `agent.assert` that could not reach its model and a replay that handed off to the model mid-step, and still saves the steps verified before the failure.
+
+- [#736](https://github.com/tester-army/e2e/pull/736) [`c9c3e14`](https://github.com/tester-army/e2e/commit/c9c3e14869f5ee50c97fc3b8fa9de3a527562f4d) Thanks [@programmrz](https://github.com/programmrz)! - Agent steps on DeepSeek's V4 models no longer fail on their first turn with `MODEL_PROVIDER_FAILED`. In thinking mode, DeepSeek's default, the API refuses a forced tool choice with `Thinking mode does not support this tool_choice`; that refusal now reads as one, so the step retries with `auto` and the tool-calls-only rule, as it already did for Anthropic, and thinking can stay on.
+
+- [#735](https://github.com/tester-army/e2e/pull/735) [`28b09f3`](https://github.com/tester-army/e2e/commit/28b09f3c1954d62ea14ee53fb280a9ff7da6297b) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `e2e init` adds `zod` next to `ai` when it sets up a model gateway. `zod` is a peer of `ai` and every provider package; npm and pnpm install peers on their own, Yarn does not, so a Yarn project failed to load the generated config with `CONFIG_LOAD_FAILED`. A Yarn project scaffolded with a model gateway before this fix needs `yarn add -D zod`.
+
+- [#708](https://github.com/tester-army/e2e/pull/708) [`4ee772c`](https://github.com/tester-army/e2e/commit/4ee772cc4ab800b1f2d4be4723bf28e2909b1edc) Thanks [@okwasniewski](https://github.com/okwasniewski)! - The package ships the documentation pages: coding agents can read them offline from `node_modules/e2e/docs`.
+
+- [#742](https://github.com/tester-army/e2e/pull/742) [`4f17480`](https://github.com/tester-army/e2e/commit/4f1748038014715b88942a366ec40461092f7683) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `expect(value).toBeDefined()` now passes on `null`, as it does in Playwright, Jest, and Vitest; only `undefined` fails it. It used to reject `null` too, so `expect(null).not.toBeDefined()` passed where Playwright fails. `expect.poll(read).toBeDefined()` follows: a read that returns `null` now passes on the first try instead of waiting. For the old non-nullish check, use `toEqual(expect.anything())`.
+
+- [#739](https://github.com/tester-army/e2e/pull/739) [`8d38206`](https://github.com/tester-army/e2e/commit/8d38206f460415b70706b45acb820bb0e24832ae) Thanks [@NathanWalker](https://github.com/NathanWalker)! - The agent loop handles providers that downgrade a forced tool choice instead of refusing it, as the AI SDK's Anthropic provider does for Claude models that reject forced tool use (Claude Sonnet 5.5 through `@ai-sdk/anthropic`). Such a request succeeds with `auto`, so the HTTP 400 path never ran: the loop kept asking for a forced choice, the SDK logged an `AI SDK Warning ... toolChoice` line on every turn, steps ran without the tool-calls-only instruction, and a turn the model answered in prose failed the step with `MODEL_PROVIDER_FAILED` (the SDK's `ToolChoiceViolationError`). Now a `toolChoice` call warning switches the step to `auto` and gives its remaining turns the instruction, a prose answer under a forced choice is retried with `auto` like a refusal, and later steps on that model start in `auto`.
+
 ## 0.15.1
 
 ### Patch Changes
