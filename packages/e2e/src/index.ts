@@ -3,6 +3,7 @@
 export { afterAll, afterEach, beforeAll, beforeEach, describe, test } from './collect/registry.ts';
 export { expect } from './expect/index.ts';
 export { credentials, secrets } from './secrets.ts';
+export { defineService } from './services.ts';
 export { unique } from './params.ts';
 export { AgentError, isAgentError } from './agent/error.ts';
 // The markdown page the `markdown` reporter writes, for a reporter that posts

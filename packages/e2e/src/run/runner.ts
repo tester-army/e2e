@@ -685,24 +685,25 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     emit({ type: 'plan', total: selection.pairs.length, files: plannedFiles(selection) });
     options.tests?.explore?.subscribe((progress) => emit({ type: 'explore', progress }));
 
-    // Each selected target declares the app it drives and the command that
-    // starts it. Nothing spawns once the run was interrupted. Each command is
-    // one setup step; a reused process or an ignored `reuseExisting` narrates
-    // as a run notice.
-    const processHooks = () => ({
+    // Each selected target declares the app it drives: the dependency
+    // processes it needs and the command that starts it. Every service is
+    // ready before the first app command starts, and nothing spawns once the
+    // run was interrupted. Each process is one setup step; a reused process
+    // or an ignored `reuseExisting` narrates as a run notice.
+    const processHooks = (kind: 'service' | 'app') => ({
       ci: isCiMode(env),
       notice: (message: string) => emit({ type: 'notice', target: 'app', message }),
-      starting: (label: string) => emit({ type: 'setup', step: { kind: 'app', label }, state: 'started' }),
+      starting: (label: string) => emit({ type: 'setup', step: { kind, label }, state: 'started' }),
       ready: (label: string, durationMs: number, reused: boolean) =>
         emit({
           type: 'setup',
-          step: { kind: 'app', label },
+          step: { kind, label },
           state: 'finished',
           durationMs,
           ...(reused ? { outcome: 'reused' as const } : {}),
         }),
     });
-    processes = await startDeclaredProcesses(targets, config.projectRoot, processHooks, interrupted, debug);
+    processes = await startDeclaredProcesses(targets, config, processHooks, interrupted, debug);
     // A run cancelled while the app was starting runs no test: the interrupt
     // alone decides the outcome.
     if (interrupted.aborted) return;

@@ -829,12 +829,15 @@ validateApp(app, { targetName }) {
 ```
 
 `validateApp` runs for every target the engine serves, with `{}` for a
-target that declares no `app`. The resolved app comes back to the engine as
+target that declares no `app`. A `url` that is a service placeholder
+(`app: { url: webServer.url }`) reaches it as the placeholder's token, so the
+engine can check that there is a URL, never where it points. The resolved app comes back to the engine as
 `EnginePrepareInfo.app` and `EngineInitInfo.app`: the site of the URL, which
 `sameSite` from `e2e/engine` applies to a URL, and the device fields as the
 target declared them. The URL itself stays with the harness, which opens it
-through `session.open`. The target's `command` and `readyUrl` never reach
-the engine: the runner starts it. `CommandConfig` is exported from `e2e`, not
+through `session.open`. The target's `command`, `readyUrl`, and `services`
+never reach the engine: the runner starts them. `CommandConfig`,
+`ServiceHandle`, and `defineService` are exported from `e2e`, not
 `e2e/engine`.
 
 ## Session

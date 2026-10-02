@@ -103,7 +103,7 @@ async function pollMatcher(
     await sleep(Math.min(interval, deadline.remaining()), signal);
   }
   const ending =
-    deadline === own
+    deadline.endsAt === own.endsAt
       ? `timed out after ${timeout} ms`
       : `stopped at the attempt deadline after ${Date.now() - startedAt} ms`;
   throw new TestError(

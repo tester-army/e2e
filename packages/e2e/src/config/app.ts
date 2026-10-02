@@ -1,20 +1,24 @@
 /**
  * Per-target app resolution: the `app` a target declares, checked field by
- * field and by the target's engine where an error can name the target, then
- * resolved on the port the run assigned when `app.url` asked for a free one.
+ * field and by the target's engine where an error can name the target. An
+ * `app.command` becomes the target's own process in the service resolution
+ * (`app:<target>`), and `app.url` then reads that process's address like any
+ * service placeholder.
  */
 
 import type { EngineAppDeclaration, EngineAppInfo, EngineHandle } from '../engine/index.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { obj } from '../internal/objects.ts';
 import { rejectUnknownKeys } from '../internal/options.ts';
+import { serviceTokens, tokenOf } from '../internal/service-tokens.ts';
 import { didYouMean } from '../internal/suggest.ts';
-import { isImplicitTestHost, normalizeBaseUrl, portOf, requestsFreePort, siteOf, withPort, type NormalizedBaseUrl } from '../internal/urls.ts';
+import { isImplicitTestHost, normalizeBaseUrl, requestsFreePort, siteOf, type NormalizedBaseUrl } from '../internal/urls.ts';
 import type { AppPermissionState, CommandConfig, TargetApp } from '../types.ts';
-import { checkLog, digestCommand, isRecord, normalizeCommand } from './command.ts';
+import { isRecord, normalizeCommand } from './command.ts';
 import { httpUrl } from './validate.ts';
+import { bindTokens, checkTargetTokens, processTemplate, type ProcessTemplate, type ResolvedService, type ServiceTemplate } from './services/index.ts';
 
-/** A target's `app` as checked: every field's shape, nothing resolved yet. */
+/** A target's `app` as checked: every field's shape, every placeholder as its token text. */
 export interface TargetAppDeclaration {
   readonly url: string | undefined;
   readonly bundleId: string | undefined;
@@ -28,27 +32,14 @@ export interface TargetAppDeclaration {
 }
 
 /**
- * A declared URL with port 0 asks the run for a free port on its loopback
- * host. `port` is the one the run assigned, undefined until it did: a config
- * resolved outside a run (`e2e list`, the cache CLI) keeps the `:0` URL.
- */
-export interface PortRequest {
-  /** The hostname to bind, as the URL spelled it. */
-  readonly host: string;
-  readonly port: number | undefined;
-}
-
-/**
  * The app one target drives, as the harness resolved the target's `app`
  * declaration. Navigation policy, cache and session identity, the report's
- * target record, the engine's app info, and the app process all read from
- * here; a target that declares nothing gets the empty resolution.
+ * target record, and the engine's app info all read from here; a target that
+ * declares nothing gets the empty resolution.
  */
 export interface ResolvedApp {
-  /** Normalized base URL on the run's port; undefined for a surface without addressable locations. */
+  /** Normalized base URL on the run's ports; undefined for a surface without addressable locations. */
   readonly base: NormalizedBaseUrl | undefined;
-  /** The free-port request the declared URL made; undefined when it names a port or there is no URL. */
-  readonly portRequest: PortRequest | undefined;
   /**
    * The site of the base URL, as `siteOf` reads it: where configured
    * headers go and whose child frames observations read. Undefined without
@@ -68,10 +59,6 @@ export interface ResolvedApp {
   readonly appPath: string | undefined;
   readonly launchArguments: readonly string[] | undefined;
   readonly permissions: Readonly<Record<string, AppPermissionState>> | undefined;
-  /** `app.command` with `{port}` expanded to the port the app is served on. */
-  readonly command: CommandConfig | undefined;
-  /** Readiness probe for `command`; defined whenever `command` is. */
-  readonly readyUrl: string | undefined;
 }
 
 const ENVIRONMENTS: ReadonlySet<unknown> = new Set(['test', 'staging', 'production']);
@@ -92,13 +79,13 @@ const TARGET_APP_KEYS: readonly string[] = Object.keys({
 } satisfies Record<keyof TargetApp, true>);
 
 /** Keys a target itself takes; anything else is refused, naming where it belongs. */
-export const TARGET_KEYS: ReadonlySet<string> = new Set(['name', 'platform', 'engine', 'app', 'trace', 'video']);
+export const TARGET_KEYS: ReadonlySet<string> = new Set(['name', 'platform', 'engine', 'app', 'services', 'trace', 'video']);
 
 /** Why a key is not a target's, with the nearest one when it reads like a typo. */
 export function unknownTargetKey(where: string, key: string): ConfigurationError {
   return new ConfigurationError(
     'INVALID_CONFIG',
-    `${where} has unknown key "${key}"; a target is { name?, platform?, engine?, app?, trace?, video? }${didYouMean(key, [...TARGET_KEYS])}`,
+    `${where} has unknown key "${key}"; a target is { name?, platform?, engine?, app?, services?, trace?, video? }${didYouMean(key, [...TARGET_KEYS])}`,
   );
 }
 
@@ -110,6 +97,7 @@ function nonEmptyString(value: unknown, label: string): string | undefined {
   }
   return value;
 }
+
 
 /**
  * Checks the shape of a target's `app` and hands what the engine reads of it
@@ -161,85 +149,118 @@ export function checkTargetApp(targetName: string, engine: EngineHandle | undefi
   return checked;
 }
 
-/** The token a command or a readiness URL writes where the app's port goes. */
-const PORT_TOKEN = '{port}';
-
 /**
- * Substitutes `{port}` in one configured string. A target without a URL has
- * no port to offer, so the token there is a config error naming the field.
+ * The process a target's `app.command` is, as a template of the service
+ * resolution, and `app.url` as that resolution reads it. The command serves
+ * `app.url` (its port is `{port}`) and is probed at `app.readyUrl`, else at
+ * `app.url`; it runs after every service of the target's graph, whose
+ * addresses it may read. A `url` a service serves has no command of its
+ * own, and a free port nothing starts on is refused.
  */
-function expandPort(value: string, port: number | undefined, label: string): string {
-  if (!value.includes(PORT_TOKEN)) return value;
-  if (port === undefined) {
-    throw new ConfigurationError('INVALID_CONFIG', `${label} uses ${PORT_TOKEN}, but the target declares no url to take the port from`);
-  }
-  return value.replaceAll(PORT_TOKEN, String(port));
-}
-
-/** The command with `{port}` expanded in every `args` entry and `env` value. */
-function expandCommandPort(command: CommandConfig, label: string, port: number | undefined): CommandConfig {
-  const { args, env } = command;
-  return obj({
-    ...command,
-    args: args?.map((arg) => expandPort(arg, port, `${label}.args`)),
-    env: env === undefined ? undefined : Object.fromEntries(Object.entries(env).map(([key, value]) => [key, expandPort(value, port, `${label}.env.${key}`)])),
-  });
-}
-
-/**
- * Resolves one target's app from its checked declaration. `port` is the free
- * port the run assigned to a URL declared with port 0: it replaces the 0 in
- * the base URL and the default readiness probe. The default identity keeps
- * the declared `:0`, so cache and session entries survive the port changing
- * every run. `{port}` in the command and its readiness URL expands to the
- * port the app is served on, assigned or fixed; while a requested port is
- * unassigned that is 0, so the config resolves the same way before and
- * after assignment. A free port nothing starts on, and `reuseExisting` on a
- * free port, are refused: what already answers cannot serve a port the run
- * assigns.
- */
-export function resolveTargetApp(targetName: string, app: TargetAppDeclaration, projectRoot: string, port?: number): ResolvedApp {
+export function appProcess(
+  targetName: string,
+  app: TargetAppDeclaration,
+  graph: readonly string[],
+  templates: ReadonlyMap<string, ServiceTemplate>,
+  projectRoot: string,
+): { readonly template: ProcessTemplate | undefined; readonly url: string | undefined } {
   const where = `target "${targetName}"`;
-  const declaredBase = app.url === undefined ? undefined : normalizeBaseUrl(app.url);
-  const portRequest =
-    declaredBase === undefined || !requestsFreePort(declaredBase) ? undefined : { host: new URL(declaredBase.href).hostname, port };
-  const base = declaredBase !== undefined && portRequest?.port !== undefined ? withPort(declaredBase, portRequest.port) : declaredBase;
-  const appPort = base === undefined ? undefined : portOf(base);
-  const hostname = base === undefined ? undefined : new URL(base.href).hostname;
-
-  if (app.command === undefined && portRequest !== undefined) {
+  const [served] = app.url === undefined ? [] : serviceTokens(app.url);
+  if (app.command === undefined) {
+    // Nothing probes a readyUrl without a command; its shape is still checked, like every field.
+    if (app.readyUrl !== undefined) httpUrl(app.readyUrl.replaceAll('{port}', '1'), `${where} app.readyUrl`);
+    if (app.url === undefined) return { template: undefined, url: undefined };
+    checkTargetTokens(app.url, `${where} app.url`, targetName, graph, templates);
+    if (served === undefined && requestsFreePort(normalizeBaseUrl(app.url))) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `${where} app.url asks for a free port (port 0), but nothing starts on it: add app.command to start the app there on {port}, or serve the target from a service, app: { url: webServer.url }`,
+      );
+    }
+    return { template: undefined, url: app.url };
+  }
+  if (served !== undefined) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      `${where} app.url asks for a free port (port 0), but nothing starts on it: add app.command to start the app there on {port}`,
+      `${where} app.url is the address of service "${served.service}", which serves the app, and app.command would start a second process there; drop app.command, or give the target an app.url of its own`,
     );
   }
-  const command = app.command === undefined ? undefined : expandCommandPort(app.command, `${where} app.command`, appPort);
-  if (command !== undefined) checkLog(command, `${where} app.command`, projectRoot);
-  if (command?.reuseExisting === true && portRequest !== undefined) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `${where} app.command.reuseExisting cannot find an app already running on a free port: port 0 is a new port every run; give the app a fixed port, or drop reuseExisting`,
-    );
-  }
-  const readyUrl =
-    httpUrl(app.readyUrl === undefined ? undefined : expandPort(app.readyUrl, appPort, `${where} app.readyUrl`), `${where} app.readyUrl`) ?? base?.href;
-  if (command !== undefined && readyUrl === undefined) {
+  if (app.url === undefined && app.readyUrl === undefined) {
     throw new ConfigurationError('APP_URL_REQUIRED', `${where} declares app.command without a URL to poll: declare app.url or app.readyUrl beside it`);
   }
+  const base = app.url === undefined ? undefined : normalizeBaseUrl(app.url);
+  const name = `app:${targetName}`;
+  const origin = base === undefined ? undefined : new URL(base.href);
+  const template = processTemplate(
+    {
+      name,
+      label: `${where} command`,
+      role: 'app',
+      where: `${where} app.command`,
+      readyWhere: `${where} app.readyUrl`,
+      command: app.command,
+      readyUrl: app.readyUrl ?? (origin === undefined ? undefined : `${origin.protocol}//${origin.hostname}:{port}${origin.pathname}`),
+      ports: {},
+      teardown: undefined,
+      serves: base,
+      dependencies: graph,
+    },
+    templates,
+    projectRoot,
+  );
+  return { template, url: base === undefined ? undefined : `${tokenOf(name, 'url')}${base.basePath}` };
+}
 
+/**
+ * The base URL `url` reads on the resolved services' ports. A placeholder
+ * that reads as no app URL (a service's smtp address) is named as written,
+ * with the target, not as the `:0` address it stands for.
+ */
+function baseUrl(targetName: string, url: string, services: ReadonlyMap<string, ResolvedService>): NormalizedBaseUrl {
+  const bound = bindTokens(url, services);
+  try {
+    return normalizeBaseUrl(bound);
+  } catch (cause) {
+    const [token] = serviceTokens(url);
+    if (token === undefined || !(cause instanceof ConfigurationError)) throw cause;
+    const address = `service "${token.service}"'s ${token.port === undefined ? 'primary' : token.port} ${token.kind === 'url' ? 'address' : 'port'}`;
+    throw new ConfigurationError(
+      'INVALID_APP_URL',
+      `target "${targetName}" app.url is ${url}, ${address}, which a target cannot open: ${cause.message.replaceAll(bound, url)}`,
+      { cause },
+    );
+  }
+}
+
+/**
+ * Resolves one target's app from its checked declaration, `url` as the
+ * service resolution reads it, and the services bound without the run's
+ * ports: the identity keeps a free port's declared 0, so cache and session
+ * entries survive the port changing every run.
+ */
+export function resolveTargetApp(
+  targetName: string,
+  app: TargetAppDeclaration,
+  url: string | undefined,
+  services: ReadonlyMap<string, ResolvedService>,
+): ResolvedApp {
+  const base = url === undefined ? undefined : baseUrl(targetName, url, services);
+  const hostname = base === undefined ? undefined : new URL(base.href).hostname;
   return {
     base,
-    portRequest,
     site: hostname === undefined ? undefined : siteOf(hostname),
     environment: app.environment ?? (hostname !== undefined && !isImplicitTestHost(hostname) ? 'production' : 'test'),
-    identity: app.identity ?? (declaredBase === undefined ? undefined : `${declaredBase.origin}${declaredBase.basePath}`) ?? app.bundleId ?? app.appPath,
+    identity: app.identity ?? (base === undefined ? undefined : `${base.origin}${base.basePath}`) ?? app.bundleId ?? app.appPath,
     bundleId: app.bundleId,
     appPath: app.appPath,
     launchArguments: app.launchArguments,
     permissions: app.permissions,
-    command,
-    readyUrl: command === undefined ? undefined : readyUrl,
   };
+}
+
+/** The app with its base URL, `url` bound on `services`' ports; everything else was settled without them. */
+export function bindTargetApp(targetName: string, app: ResolvedApp, url: string | undefined, services: ReadonlyMap<string, ResolvedService>): ResolvedApp {
+  return url === undefined ? app : { ...app, base: baseUrl(targetName, url, services) };
 }
 
 /** What `prepare` and `init` receive about the target's app: its site policy and what a device launches. */
@@ -249,11 +270,12 @@ export function engineAppInfo(app: ResolvedApp): EngineAppInfo {
 }
 
 /**
- * A target's app as it enters the config digest: the declaration, with the
- * command's env values reduced to their names. The run's port never enters
- * it, so a worker handed the port reads the same digest.
+ * A target's app as it enters the config digest: everything but the base
+ * URL, which carries the ports the run assigns (the target digests the URL
+ * as declared), and the site, which the URL implies. An `app.command` enters
+ * with the services, as the process it is.
  */
-export function digestTargetApp(app: TargetAppDeclaration) {
-  const { command, ...facts } = app;
-  return obj({ ...facts, command: command === undefined ? undefined : digestCommand(command) });
+export function digestTargetApp(app: ResolvedApp) {
+  const { base: _base, site: _site, ...facts } = app;
+  return obj(facts);
 }

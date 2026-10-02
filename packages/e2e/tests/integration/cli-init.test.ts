@@ -71,6 +71,7 @@ describe('initializing standalone projects', () => {
       expect(readFileSync(path.join(dir, 'e2e.config.ts'), 'utf8')).toContain("model: gateway('openai/gpt-6-luna-fast'),");
       expect(config.agent.model).toMatchObject({ provider: 'gateway', id: 'openai/gpt-6-luna-fast' });
       expect(config.targets[0]!.app.base).toMatchObject({ origin: appUrl ?? 'http://localhost:3000' });
+      expect(config.services.size).toBe(0);
       expect(collection.tests.map((test) => ({ title: test.title, file: test.file }))).toEqual([
         { title: 'app opens', file: 'tests/example.e2e.ts' },
       ]);

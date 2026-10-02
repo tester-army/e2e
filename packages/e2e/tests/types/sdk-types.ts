@@ -7,6 +7,7 @@
 import { z } from 'zod';
 import {
   credentials,
+  defineService,
   expect,
   secrets,
   unique,
@@ -116,8 +117,49 @@ engineSnapshot.treeUnavailable satisfies true | undefined;
 // @ts-expect-error an engine only drives the app: the target declares it
 ({ name: 'toy', version: '1.0.0', spiVersion: 1, app: { url: 'http://localhost:3000' } }) satisfies Engine;
 ({ name: 'toy', version: '1.0.0', spiVersion: 1, validateApp: (app, { targetName }) => void [app.bundleId, targetName] }) satisfies Engine;
-// @ts-expect-error a target declares its app; there is no services list in this version
-({ targets: [{ engine, app: { url: 'http://localhost:3000' }, services: [] }] }) satisfies E2EConfig;
+const db = defineService({
+  name: 'db',
+  executable: 'docker',
+  args: ['compose', 'up', '--wait'],
+  waitForExit: true,
+  teardown: { executable: 'docker', args: ['compose', 'down'] },
+});
+const seed = defineService({
+  name: 'seed',
+  dependsOn: [db],
+  start: async ({ services, signal }) => void [services['db']?.url, signal.aborted],
+  stop: async () => {},
+});
+const mail = defineService({
+  name: 'mail',
+  executable: 'mailpit',
+  args: ['--smtp', '127.0.0.1:{port:smtp}', '--listen', '127.0.0.1:{port:http}'],
+  ports: { smtp: 0, http: 0 },
+  readyUrl: 'http://127.0.0.1:{port:http}/livez',
+});
+const webServer = defineService({
+  name: 'web-server',
+  executable: 'pnpm',
+  args: ['dev', '--port', '{port}', '--smtp-port', mail.portOf('smtp')],
+  env: { SMTP_URL: mail.urlOf('smtp'), MAIL_API: `${mail.urlOf('http')}/api`, MAIL_PORT: mail.port },
+  readyUrl: 'http://127.0.0.1:0',
+  dependsOn: [seed, mail],
+});
+({
+  targets: [
+    { name: 'chromium', engine, app: { url: webServer.url }, services: [webServer] },
+    { name: 'admin', engine, app: { url: 'http://127.0.0.1:0/admin/', command: { executable: 'pnpm', args: ['admin', '--port', '{port}'], env: { API: webServer.url } } }, services: [webServer] },
+  ],
+}) satisfies E2EConfig;
+// @ts-expect-error a service is a process or a function, never both
+defineService({ name: 'both', executable: 'x', waitForExit: true, start: async () => {} });
+// @ts-expect-error a service has a name
+defineService({ executable: 'x', waitForExit: true });
+defineService({ name: 'seeded', startupTimeout: 120_000, start: async () => {} });
+// @ts-expect-error services are defineService handles, not the plain objects they used to be
+({ targets: [{ engine, services: [{ name: 'db', executable: 'docker', waitForExit: true }] }] }) satisfies E2EConfig;
+// @ts-expect-error services belong to the targets that need them; there is no top-level list
+({ targets, services: [webServer] }) satisfies E2EConfig;
 declare const model: ModelInstance;
 // A model is the live AI SDK object: every LanguageModelV2 through V4 assigns, and so does a subscription constructor.
 declare const modelV2: LanguageModelV2;

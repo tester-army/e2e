@@ -1,8 +1,9 @@
 /**
- * Free ports for app URLs declared with port 0. The runner picks them once,
- * after the config loads and before anything spawns, and hands the
- * assignments (`config.ports`, by target name) to every worker in its
- * bootstrap, so each process resolves the same app URLs from the same file.
+ * Free ports for app URLs and service addresses declared with port 0. The
+ * runner picks them once, after the config loads and before anything
+ * spawns, and hands the assignments (`config.ports`, keyed by `portKey`) to
+ * every worker in its bootstrap, so each process resolves the same URLs and
+ * placeholders from the same file.
  */
 
 import net from 'node:net';
@@ -10,33 +11,32 @@ import { assignPorts, type ResolvedConfig } from '../config/resolve.ts';
 import { ConfigurationError, errorMessage } from '../internal/errors.ts';
 
 /**
- * The config with a free port assigned to every target whose URL asked for
- * one and has none yet; the same config when none did. Every port is held
- * until all are chosen, so two targets never receive the same one. A
- * loopback host this machine cannot bind is a bad app URL, reported before
- * anything starts.
+ * The config with a free port assigned to every service address that asked
+ * for one and has none yet (a target's `app.command` is a service here); the
+ * same config when none did. Every port is held until all are chosen, so two
+ * requests never receive the same one. A loopback host this machine cannot
+ * bind is a bad app URL, reported before anything starts.
  */
 export async function allocateAppPorts(config: ResolvedConfig): Promise<ResolvedConfig> {
-  const pending = config.targets.filter((target) => target.app.portRequest !== undefined && !Object.hasOwn(config.ports, target.name));
+  const pending = config.portRequests.filter((request) => config.ports[request.key] === undefined);
   if (pending.length === 0) return config;
 
   const reserved: net.Server[] = [];
   const ports: Record<string, number> = { ...config.ports };
   try {
-    for (const { name, app } of pending) {
-      const host = app.portRequest!.host;
+    for (const { key, owner, host } of pending) {
       let server: net.Server;
       try {
         server = await reserve(host);
       } catch (cause) {
         throw new ConfigurationError(
           'INVALID_APP_URL',
-          `target "${name}" asks for a free port on ${host}, which this machine cannot bind: ${errorMessage(cause)}`,
+          `${owner} asks for a free port on ${host}, which this machine cannot bind: ${errorMessage(cause)}`,
           { cause },
         );
       }
       reserved.push(server);
-      ports[name] = portOf(server);
+      ports[key] = portOf(server);
     }
   } finally {
     await Promise.all(reserved.map(release));

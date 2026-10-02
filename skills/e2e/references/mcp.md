@@ -34,7 +34,7 @@ Four tools; everything a session can do is a catalog behind `call`.
 
 | Tool | Does |
 | --- | --- |
-| `open_session` | Loads the config (`config` names another file; default the nearest `e2e.config.ts`), starts the declared app command if any, boots the engine, opens the app URL, and returns the session id, the catalog, and the first observation. `target` is required when the config declares several. Each session has its own browser or device. |
+| `open_session` | Loads the config (`config` names another file; default the nearest `e2e.config.ts`), starts the services the target needs and its app command, boots the engine, opens the app URL, and returns the session id, the catalog, and the first observation. `target` is required when the config declares several. Each session has its own browser or device. |
 | `tools` | The catalog: one line per tool with its argument names (`?` marks optional), the first sentence of its description, and `[read-only]` where it changes nothing. `tools {tool}` shows the full description and the JSON Schema of its arguments. |
 | `call` | Runs one catalog tool: `call {tool: "tap", args: {target: "n42"}}`. Arguments are checked against the tool's schema first; a wrong one fails with `INVALID_ARGUMENT` naming the field. |
 | `close_session` | Saves a recording still running, ends the attempt, disposes the engine, stops the app processes the session started once no other session uses them. |
@@ -102,7 +102,9 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
   and passes its session id to every `tools`, `call`, and `close_session`.
   A call may leave `session` out only while one session is open. Sessions
   open at once share one config. Sessions on the same app command share its
-  process, which stops when the last of them closes. On mobile, two sessions
+  process, and sessions that need the same service share it; each stops when
+  the last of them closes. A session opening beside another reads the free
+  ports that one was assigned. On mobile, two sessions
   on one simulator fight over it: one target per device (topic `setup`), each
   session on its own target.
 - `TARGET_REQUIRED`: pass `target` to `open_session` or start with `--target`.

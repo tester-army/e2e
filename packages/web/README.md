@@ -30,7 +30,9 @@ export default {
 ```
 
 The target declares the app; the engine only drives it. The target's `app`
-takes `url` (the base URL `app.open()` opens; required on a `web()` target),
+takes `url` (the base URL `app.open()` opens, or the `url` placeholder of a
+`defineService` dev server several targets share, each listing its handle in
+`services`; required on a `web()` target),
 `command` (a process the runner starts before the run and stops after it,
 with `readyUrl` to poll, default `url`), `environment` (`test`, `staging`,
 `production`; inferred from the host), and `identity` (a stable cache and

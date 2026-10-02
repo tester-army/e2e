@@ -74,7 +74,7 @@ protocol; anything a config module writes to stdout is redirected.
 
 | Tool | Arguments | Result |
 | --- | --- | --- |
-| `open_session` | `target` (optional), `config` (optional path) | Loads the config, starts the target's app command, boots the engine, starts one attempt, opens the app URL when the engine can navigate. Returns the session id, the catalog, and the first observation. |
+| `open_session` | `target` (optional), `config` (optional path) | Loads the config, starts the services the target needs and its app command, boots the engine, starts one attempt, opens the app URL when the engine can navigate. Returns the session id, the catalog, and the first observation. |
 | `tools` | `tool` (optional), `session` (required while several are open) | The catalog, one line per tool. With `tool`, its full description and argument schema. |
 | `call` | `tool`, `args` (optional), `session` (required while several are open) | Runs one catalog tool. Arguments are validated against the tool's closed schema first: a wrong type or an argument the tool does not declare is `INVALID_ARGUMENT`, and nothing runs. An action that fails is an error result that still carries the screen it re-observed, and leads with the tool, its target, and the code: `navigate file:///etc/passwd failed: POLICY_DENIED: forbidden URL scheme: file:`. |
 | `close_session` | `session` (required while several are open) | Saves a recording still running, ends the attempt, disposes the engine, stops the app processes the session started once no other session uses them. |
@@ -100,17 +100,23 @@ and passes its id to every `tools`, `call`, and `close_session`.
 - While the server shuts down it cancels sessions still opening and waits
   for them, closes every session, and refuses new ones with `SESSION_OPEN`.
   A client that cancels an `open_session`, or disconnects, cancels it too.
-  A cancelled open fails with `CANCELLED` once what it started (an app command
-  still waiting on its `readyUrl`, say) has stopped.
+  A cancelled open fails with `CANCELLED` once what it started (a service a
+  hung `start` depends on, say) has stopped.
 - Each session loads the config afresh, down to the files it imports by
   path, such as a base config it spreads, so each gets engine instances of
   its own. An engine created inside a package is one instance every session
   shares, and a second session on it fails with `ENGINE_IN_USE`.
-- Sessions on one app command share its process: the first session starts
-  it, and it stops when the last of them closes. A URL declared with port
-  `0` gets its own port in each session, and so its own process. A shared
-  start that every waiting session gave up on is cancelled, and the next
-  session starts it afresh.
+- Sessions share the processes they both need: sessions on one target
+  share its app command, and sessions whose targets need the same service
+  share it. The first session starts a process, and it stops when the last
+  of them closes. A URL or service address declared with port `0` gets its
+  port from the first session; every session that opens while one is still
+  open reads the same port, so the process it shares is the one that answers
+  there. A function service is shared by its name and
+  dependencies alone: after editing its `start` or `stop`, close every
+  session on it (or restart the server) for the next one to run the new
+  code. A shared start that every waiting session gave up on is cancelled,
+  and the next session starts it afresh.
 - On mobile, each session needs its own simulator or emulator: declare one
   target per device, each naming its `device`, and open each session on its
   own target.

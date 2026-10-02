@@ -1,7 +1,7 @@
 /**
- * The command a target's `app.command` is declared with: its shape checked
- * once, where it is declared, so the rest of the resolution only ever sees
- * strings.
+ * The command every spawned process is declared with, a service's or a
+ * target's `app.command`: its shape checked once, where it is declared.
+ * Placeholders are strings already; the service resolution reads them.
  */
 
 import path from 'node:path';
@@ -15,12 +15,18 @@ import { describeValue, positiveInt } from './validate.ts';
 
 /**
  * How a spawned process counts as ready: a URL that answers, or the process
- * itself exiting with code 0.
+ * itself exiting with code 0 (a migration, `docker compose up --wait`).
  */
 export type Readiness = { readonly readyUrl: string } | { readonly waitForExit: true };
 
-/** The keys of a `CommandConfig`, kept equal to the type by the compiler. */
-const COMMAND_KEYS: readonly string[] = Object.keys({
+/** A command the runner spawns, its placeholders substituted, named for error messages. */
+export interface ResolvedCommand {
+  readonly label: string;
+  readonly command: CommandConfig;
+}
+
+/** The keys of a `CommandConfig`: an app command and a service teardown take these only. */
+export const COMMAND_KEYS: readonly string[] = Object.keys({
   executable: true,
   args: true,
   cwd: true,
@@ -54,8 +60,8 @@ function commandString(value: unknown, label: string): string {
 
 /**
  * Checks the shape of one command and returns a frozen copy: only the keys a
- * command takes, a non-empty executable, string args and env values, when
- * set positive integer timeouts, a non-empty `log`, and a boolean
+ * command takes, a non-empty executable, string args and env values, when set
+ * positive integer timeouts, a non-empty `log`, and a boolean
  * `reuseExisting`. A misspelled key would otherwise be dropped without a
  * word; a NaN or infinite budget would make the readiness loop spin without
  * a deadline. An `env` entry whose value is `undefined` is dropped, as
@@ -115,7 +121,7 @@ export function checkLog(command: CommandConfig, label: string, projectRoot: str
   }
 }
 
-/** A command as it enters the config digest: env values reduced to their names. */
+/** A command as it enters the config digest: placeholders as their tokens, env values reduced to their names. */
 export function digestCommand(command: CommandConfig) {
   const { env, ...rest } = command;
   return obj({ ...rest, env: env === undefined ? undefined : Object.fromEntries(Object.keys(env).map((key) => [key, { envName: key }])) });

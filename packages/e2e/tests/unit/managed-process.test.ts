@@ -1,4 +1,4 @@
-/** ManagedProcess: the readiness wait honours the run's interrupt, `reuseExisting` attaches. */
+/** ManagedProcess: the readiness wait honours the run's interrupt, `reuseExisting` attaches. Services: order, teardown, and function services. */
 
 import fs from 'node:fs';
 import http from 'node:http';
@@ -6,8 +6,21 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InfrastructureError } from '../../src/internal/errors.ts';
-import { ManagedProcess } from '../../src/run/managed-process.ts';
-import type { CommandConfig } from '../../src/types.ts';
+import { ManagedProcess, type ManagedProcessHooks } from '../../src/run/managed-process.ts';
+import { defineService } from '../../src/services.ts';
+import type { CommandConfig, ProcessServiceOptions, ServiceHandle } from '../../src/types.ts';
+import { serviceStack } from '../helpers/service-stack.ts';
+
+/** A process service as a test writes it: the name is optional, `s<index>` standing in. */
+type ServiceConfig = Omit<ProcessServiceOptions, 'name'> & { readonly name?: string };
+
+/** The stack a run starts for one target listing these services in order, reporting through `hooks`. */
+function stackOver(list: readonly (ServiceConfig | ServiceHandle)[], projectRoot: string, hooks: ManagedProcessHooks = {}) {
+  const handles = list.map((options, index) =>
+    'port' in options ? options : defineService({ ...options, name: options.name ?? `s${index}` } as ProcessServiceOptions),
+  );
+  return serviceStack(handles, { projectRoot, hooks, cleanupTimeout: 5_000 });
+}
 
 describe('ManagedProcess', () => {
   it('stops waiting for readiness and takes the process down when the signal aborts', async () => {
@@ -268,6 +281,15 @@ describe('ManagedProcess stall diagnostics', () => {
   });
 });
 
+/** A service that appends its tag to a shared log and exits 0; the log is the order of events. */
+function logStep(log: string, tag: string, exitCode = 0): string {
+  return `require('node:fs').appendFileSync(${JSON.stringify(log)}, ${JSON.stringify(tag)} + '\\n'); process.exit(${exitCode});`;
+}
+
+function readLog(log: string): string[] {
+  return fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean) : [];
+}
+
 /** An in-process server standing in for the dev server the user already has running. */
 async function alreadyRunning(): Promise<{ url: string; close: () => Promise<void> }> {
   const server = http.createServer((_request, response) => {
@@ -426,4 +448,321 @@ describe('ManagedProcess reuseExisting', () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   }, 20_000);
+
+  it('reuses a readyUrl service the same way and skips its teardown', async () => {
+    const running = await alreadyRunning();
+    const log = path.join(dir, 'log');
+    const notices: string[] = [];
+    try {
+      const emulator = {
+        name: 'emulator',
+        executable: process.execPath,
+        args: ['-e', logStep(log, 'up:emulator')],
+        readyUrl: running.url,
+        reuseExisting: true,
+        teardown: { executable: process.execPath, args: ['-e', logStep(log, 'down:emulator')] },
+      };
+      const stack = stackOver(
+        [emulator, { executable: process.execPath, args: ['-e', logStep(log, 'up:migrate')], waitForExit: true }],
+        dir,
+        { ci: false, notice: (message) => notices.push(message) },
+      );
+      await stack.start();
+      expect(notices).toEqual([`service "emulator": reusing the process already serving ${running.url}`]);
+      expect(await stack.stop()).toEqual([]);
+      expect(readLog(log)).toEqual(['up:migrate']);
+      expect(await isReachable(running.url)).toBe(true);
+      // In CI the same service is refused as already running, and a teardown for what never started does not run.
+      const refused = stackOver([emulator], dir, { ci: true });
+      await expect(refused.start()).rejects.toMatchObject({ code: 'APP_ALREADY_RUNNING' });
+      expect(await refused.stop()).toEqual([]);
+      expect(readLog(log)).toEqual(['up:migrate']);
+    } finally {
+      await running.close();
+    }
+  });
+});
+
+describe('target services', () => {
+  let dir: string;
+  const stack = (services: readonly ServiceConfig[]) => stackOver(services, dir);
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-services-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('reports each service starting and ready through the hooks, in order', async () => {
+    const events: string[] = [];
+    const services = stackOver(
+      [
+        { name: 'db', executable: process.execPath, args: ['-e', 'process.exit(0)'], waitForExit: true },
+        { name: 'seed', executable: process.execPath, args: ['-e', 'process.exit(0)'], waitForExit: true },
+      ],
+      dir,
+      {
+        starting: (label) => events.push(`starting ${label}`),
+        ready: (label, durationMs, reused) => events.push(`ready ${label} ${durationMs >= 0} ${reused}`),
+      },
+    );
+    await services.start();
+    expect(events).toEqual([
+      'starting service "db"',
+      'ready service "db" true false',
+      'starting service "seed"',
+      'ready service "seed" true false',
+    ]);
+    expect(await services.stop()).toEqual([]);
+  });
+
+  it('starts waitForExit services in order and runs their teardowns in reverse', async () => {
+    const log = path.join(dir, 'log');
+    const services = stack([
+      {
+        executable: process.execPath,
+        args: ['-e', logStep(log, 'up:db')],
+        waitForExit: true,
+        teardown: { executable: process.execPath, args: ['-e', logStep(log, 'down:db')] },
+      },
+      {
+        executable: process.execPath,
+        args: ['-e', logStep(log, 'up:migrate')],
+        waitForExit: true,
+      },
+      {
+        executable: process.execPath,
+        args: ['-e', logStep(log, 'up:seed')],
+        waitForExit: true,
+        teardown: { executable: process.execPath, args: ['-e', logStep(log, 'down:seed')] },
+      },
+    ]);
+    await services.start();
+    expect(readLog(log)).toEqual(['up:db', 'up:migrate', 'up:seed']);
+    expect(await services.stop()).toEqual([]);
+    expect(readLog(log)).toEqual(['up:db', 'up:migrate', 'up:seed', 'down:seed', 'down:db']);
+    // A second stop has nothing left to do.
+    expect(await services.stop()).toEqual([]);
+    expect(readLog(log)).toHaveLength(5);
+  });
+
+  it('writes service and teardown output to their log files, sharing one file when told to', async () => {
+    const services = stack([
+      {
+        executable: process.execPath,
+        args: ['-e', chatter()],
+        waitForExit: true,
+        log: 'services.log',
+        teardown: { executable: process.execPath, args: ['-e', chatter()], log: 'services.log' },
+      },
+      {
+        executable: process.execPath,
+        args: ['-e', chatter(3)],
+        waitForExit: true,
+        log: path.join('.e2e', 'migrate.log'),
+      },
+    ]);
+    const failure = await services.start().catch((error: unknown) => error);
+    expect((failure as InfrastructureError).code).toBe('APP_UNREACHABLE');
+    expect(await services.stop()).toEqual([]);
+    const shared = fs.readFileSync(path.join(dir, 'services.log'), 'utf8');
+    expect(shared.match(/to stdout/g)).toHaveLength(2);
+    expect(shared.match(/to stderr/g)).toHaveLength(2);
+    const migrate = fs.readFileSync(path.join(dir, '.e2e', 'migrate.log'), 'utf8');
+    expect(migrate).toContain('to stdout');
+    expect(migrate).toContain('to stderr');
+  });
+
+  it('fails with APP_UNREACHABLE naming the service when a waitForExit service exits non-zero, and still tears down', async () => {
+    const log = path.join(dir, 'log');
+    const services = stack([
+      {
+        executable: process.execPath,
+        args: ['-e', logStep(log, 'up:db')],
+        waitForExit: true,
+        teardown: { executable: process.execPath, args: ['-e', logStep(log, 'down:db')] },
+      },
+      {
+        name: 'migrate',
+        executable: process.execPath,
+        args: ['-e', logStep(log, 'up:migrate', 2)],
+        waitForExit: true,
+        teardown: { executable: process.execPath, args: ['-e', logStep(log, 'down:migrate')] },
+      },
+      {
+        executable: process.execPath,
+        args: ['-e', logStep(log, 'up:never')],
+        waitForExit: true,
+      },
+    ]);
+    const failure = await services.start().catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(InfrastructureError);
+    expect((failure as InfrastructureError).code).toBe('APP_UNREACHABLE');
+    // The name replaces the position and the command line, which here would be a page of script.
+    expect((failure as InfrastructureError).message).toBe(
+      'service "migrate" exited with code 2 instead of 0\nset log on this command to keep its output',
+    );
+    // The third service never started; the two that did are torn down in reverse.
+    expect(await services.stop()).toEqual([]);
+    expect(readLog(log)).toEqual(['up:db', 'up:migrate', 'down:migrate', 'down:db']);
+  });
+
+  it('reports teardown failures instead of throwing and keeps tearing down', async () => {
+    const log = path.join(dir, 'log');
+    const services = stack([
+      {
+        executable: process.execPath,
+        args: ['-e', logStep(log, 'up:a')],
+        waitForExit: true,
+        teardown: { executable: process.execPath, args: ['-e', logStep(log, 'down:a')] },
+      },
+      {
+        name: 'cache',
+        executable: process.execPath,
+        args: ['-e', logStep(log, 'up:b')],
+        waitForExit: true,
+        teardown: { executable: process.execPath, args: ['-e', logStep(log, 'down:b', 1)] },
+      },
+    ]);
+    await services.start();
+    const failures = await services.stop();
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toBeInstanceOf(InfrastructureError);
+    expect((failures[0] as InfrastructureError).message).toBe(
+      'service "cache" teardown exited with code 1 instead of 0\nset log on this command to keep its output',
+    );
+    expect(readLog(log)).toEqual(['up:a', 'up:b', 'down:b', 'down:a']);
+  });
+
+  it('times out a waitForExit service that never exits and kills it', async () => {
+    const services = stack([
+      {
+        executable: process.execPath,
+        args: ['-e', 'setInterval(() => {}, 1000)'],
+        waitForExit: true,
+        startupTimeout: 500,
+        shutdownTimeout: 1_000,
+      },
+    ]);
+    const startedAt = Date.now();
+    const failure = await services.start().catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(InfrastructureError);
+    expect((failure as InfrastructureError).code).toBe('APP_UNREACHABLE');
+    expect((failure as InfrastructureError).message).toBe(
+      'service "s0" did not exit within 500 ms\nset log on this command to keep its output',
+    );
+    expect(Date.now() - startedAt).toBeLessThan(10_000);
+    expect(await services.stop()).toEqual([]);
+  }, 20_000);
+
+  it('stops starting services once the signal aborts and still tears down what started', async () => {
+    const log = path.join(dir, 'log');
+    const controller = new AbortController();
+    const services = stackOver(
+      [
+          {
+            name: 'a',
+            executable: process.execPath,
+            args: ['-e', logStep(log, 'up:a')],
+            waitForExit: true,
+            teardown: { executable: process.execPath, args: ['-e', logStep(log, 'down:a')] },
+          },
+          {
+            name: 'b',
+            executable: process.execPath,
+            args: ['-e', 'setInterval(() => {}, 1000)'],
+            waitForExit: true,
+            shutdownTimeout: 1_000,
+          },
+          {
+            name: 'never',
+            executable: process.execPath,
+            args: ['-e', logStep(log, 'up:never')],
+            waitForExit: true,
+          },
+      ],
+      dir,
+      {
+        starting: (label) => {
+          if (label === 'service "b"') controller.abort();
+        },
+      },
+    );
+    await services.start(controller.signal);
+    expect(await services.stop()).toEqual([]);
+    expect(readLog(log)).toEqual(['up:a', 'down:a']);
+  }, 20_000);
+
+  it('skips the teardown of a service whose executable never spawned', async () => {
+    const log = path.join(dir, 'log');
+    const services = stack([
+      {
+        name: 'missing',
+        executable: path.join(dir, 'no-such-executable'),
+        waitForExit: true,
+        teardown: { executable: process.execPath, args: ['-e', logStep(log, 'down:missing')] },
+      },
+    ]);
+    await expect(services.start()).rejects.toMatchObject({ code: 'APP_UNREACHABLE', message: expect.stringContaining('service "missing" failed to start') });
+    expect(await services.stop()).toEqual([]);
+    expect(readLog(log)).toEqual([]);
+  });
+});
+
+describe('function services', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-function-services-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('stops waiting on a hung start at the first interrupt, then stops it and its dependencies and runs their teardowns', async () => {
+    const log = path.join(dir, 'log');
+    const db = defineService({
+      name: 'db',
+      executable: process.execPath,
+      args: ['-e', logStep(log, 'up:db')],
+      waitForExit: true,
+      teardown: { executable: process.execPath, args: ['-e', logStep(log, 'down:db')] },
+    });
+    let startSignal: AbortSignal | undefined;
+    const seed = defineService({
+      name: 'seed',
+      dependsOn: [db],
+      start: ({ signal }) => {
+        startSignal = signal;
+        return new Promise(() => {});
+      },
+      stop: async () => {
+        fs.appendFileSync(log, 'stop:seed\n');
+      },
+    });
+    const interrupt = new AbortController();
+    const services = stackOver([seed], dir, { starting: (label) => label === 'service "seed"' && setTimeout(() => interrupt.abort(), 50) });
+    const timers = (): number => process.getActiveResourcesInfo().filter((resource) => resource === 'Timeout').length;
+    const timersBefore = timers();
+    const startedAt = Date.now();
+    await services.start(interrupt.signal);
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    expect(startSignal?.aborted).toBe(true);
+    // The startup budget's timer goes with the interrupt, or it would hold the runner open until it fires.
+    expect(timers()).toBeLessThanOrEqual(timersBefore);
+    expect(await services.stop()).toEqual([]);
+    expect(readLog(log)).toEqual(['up:db', 'stop:seed', 'down:db']);
+  });
+
+  it('bounds a start by its startupTimeout, failing with APP_UNREACHABLE naming the service', async () => {
+    const hung = defineService({ name: 'seed', startupTimeout: 200, start: () => new Promise(() => {}) });
+    const services = stackOver([hung], dir);
+    await expect(services.start()).rejects.toMatchObject({ code: 'APP_UNREACHABLE', message: 'service "seed" did not start within 200 ms' });
+  });
+
+  it('names the service whose stop throws', async () => {
+    const broken = defineService({ name: 'seed', start: async () => {}, stop: async () => { throw new Error('stop blew up'); } });
+    const services = stackOver([broken], dir);
+    await services.start();
+    expect(await services.stop()).toEqual([expect.objectContaining({ message: 'service "seed" stop failed: stop blew up' })]);
+  });
 });

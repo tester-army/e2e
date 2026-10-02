@@ -103,8 +103,9 @@ before a bare `--trace` or `--video`.
 
 ## Your config applies
 
-Explore reads `e2e.config.ts`, including the target, app command, model, and
-agent context. It starts the target's app command. Use `--agent <name>` to select a configured agent.
+Explore reads `e2e.config.ts`, including the target, app command, services,
+model, and agent context. It starts the app command and the services the
+target needs. Use `--agent <name>` to select a configured agent.
 The agent's `tools` and `system` instructions also apply. Custom executors
 are replaced by the built-in agent for exploration, with a notice naming the
 agent. The built-in agent needs a model: an entry with none, a custom

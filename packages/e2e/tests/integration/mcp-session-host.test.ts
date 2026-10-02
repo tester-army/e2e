@@ -17,7 +17,7 @@ import { createFakeEngine, FAKE_APP, type FakeEngineBehavior, type FakeEngineHan
 import { freePort } from '../helpers/free-port.ts';
 import { gate } from '../helpers/gate.ts';
 import { startupLog, writeStartupScripts } from '../helpers/startup-scripts.ts';
-import type { RecordingMode, TargetApp } from '../../src/types.ts';
+import type { RecordingMode, ServiceHandle, TargetApp } from '../../src/types.ts';
 
 const sessionModule = new URL('../../dist/mcp/session.js', import.meta.url).href;
 const { SessionHost } = (await import(sessionModule)) as typeof import('../../src/mcp/session.ts');
@@ -25,6 +25,8 @@ const resolveModule = new URL('../../dist/config/resolve.js', import.meta.url).h
 const { resolveConfig } = (await import(resolveModule)) as typeof import('../../src/config/resolve.ts');
 const secretsModule = new URL('../../dist/secrets.js', import.meta.url).href;
 const { credentials, secrets } = (await import(secretsModule)) as typeof import('../../src/secrets.ts');
+const servicesModule = new URL('../../dist/services.js', import.meta.url).href;
+const { defineService } = (await import(servicesModule)) as typeof import('../../src/services.ts');
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -55,6 +57,7 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     readonly video?: RecordingMode;
     /** The target's app; the fake's own URL by default. */
     readonly app?: TargetApp;
+    readonly services?: readonly ServiceHandle[];
     /** Holds every config load until it settles. */
     readonly loaded?: Promise<void>;
     /** Runs while a config file evaluates, as its top-level code would. */
@@ -74,7 +77,7 @@ describe('SessionHost', { timeout: 60_000 }, () => {
         options.evaluate?.(configPath);
         const config = resolveConfig(
           {
-            targets: [{ name: 'kiosk', platform: 'kiosk', engine: engine().engine, app: options.app ?? FAKE_APP }],
+            targets: [{ name: 'kiosk', platform: 'kiosk', engine: engine().engine, app: options.app ?? FAKE_APP, ...(options.services === undefined ? {} : { services: options.services }) }],
             credentials: { admin: { username: 'admin', password: 'kiosk-pw' } },
             ...(options.trace === undefined ? {} : { trace: options.trace }),
             ...(options.video === undefined ? {} : { video: options.video }),
@@ -311,6 +314,27 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     await expect(fetch(url)).rejects.toThrow();
   });
 
+  it('shares a fixed-port app command across sessions when an unrelated service asks for a free port', async () => {
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}`;
+    writeStartupScripts(dir);
+    // Its port is assigned per session; the app command's is fixed, so both sessions must find the one process.
+    const mock = defineService({ name: 'mock', executable: process.execPath, args: ['server.cjs', '{port}'], readyUrl: 'http://127.0.0.1:0' });
+    const shared = host(engines().next, {
+      maxSessions: 3,
+      app: { url, command: { executable: process.execPath, args: ['server.cjs', String(port)] } },
+      services: [mock],
+    });
+    const [first, second] = (await Promise.all([shared.open({}), shared.open({})])).map(sessionId) as [string, string];
+    const third = sessionId(await shared.open({}));
+    expect(startupLog(dir)).toBe('app\napp\n');
+    await shared.close('done', first);
+    await shared.close('done', second);
+    expect(await (await fetch(url)).text()).toBe('ready');
+    await shared.close('done', third);
+    await expect(fetch(url)).rejects.toThrow();
+  });
+
   it('cancels a session still opening when it shuts down, waits for it, and admits none meanwhile', async () => {
     const loading = gate();
     const fakes = engines();
@@ -331,14 +355,13 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     expect(fakes.made.map((fake) => fake.stats())).toEqual([expect.objectContaining({ attemptsStarted: 0 })]);
   });
 
-  it('stops the app command a hung start left running when the request is cancelled', async () => {
+  it('stops the dependency a hung service start left running when the request is cancelled', async () => {
     const port = await freePort();
     const url = `http://127.0.0.1:${port}`;
     writeStartupScripts(dir);
-    // The server answers, but the readiness probe never does: the start hangs with the process up.
-    const cancelling = host(engines().next, {
-      app: { url, readyUrl: 'http://127.0.0.1:1/', command: { executable: process.execPath, args: ['server.cjs', String(port)], startupTimeout: 600_000 } },
-    });
+    const server = defineService({ name: 'server', executable: process.execPath, args: ['server.cjs', String(port)], readyUrl: url });
+    const hung = defineService({ name: 'hung', dependsOn: [server], start: () => new Promise(() => {}) });
+    const cancelling = host(engines().next, { services: [hung] });
     const request = new AbortController();
     const opening = cancelling.open({}, request.signal);
     await expect.poll(() => fetch(url).then((response) => response.ok, () => false)).toBe(true);

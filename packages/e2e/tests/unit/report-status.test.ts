@@ -20,6 +20,7 @@ const target = {
   platform: 'web',
   engine: undefined,
   app: { base: undefined, site: undefined, environment: 'test', identity: undefined },
+  services: [],
 } as unknown as ResolvedTarget;
 
 function failedAttempt(error: SerializedError): AttemptRecord {

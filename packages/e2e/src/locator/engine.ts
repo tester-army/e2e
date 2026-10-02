@@ -180,7 +180,6 @@ export class LocatorEngine {
    * multiple matches fail immediately with LOCATOR_AMBIGUOUS.
    */
   async resolveExactlyOne(expression: LocatorExpression, deadline: Deadline): Promise<NodeRef> {
-    const startedMs = Date.now();
     for (;;) {
       const ref = assertSingle(await this.resolveOnce(expression, deadline), expression);
       if (ref !== null) return ref;
@@ -190,7 +189,7 @@ export class LocatorEngine {
         throw new TestError(
           'LOCATOR_NOT_FOUND',
           `locator matched no nodes within ${describeExpression(expression)}`,
-          { details: locatorDetails(expression, Date.now() - startedMs) },
+          { details: locatorDetails(expression, deadline.elapsed()) },
         );
       }
       await sleep(POLL_INTERVAL_MS, this.signal);
@@ -358,7 +357,6 @@ export class LocatorEngine {
   ): Promise<void> {
     this.checkPointerAction(action);
     const deadline = this.deadline(timeoutMs);
-    const startedMs = Date.now();
     if (this.session.actions.has('scrollIntoView')) {
       await this.performUntil(expression, { kind: 'scrollIntoView' }, deadline);
     }
@@ -373,7 +371,7 @@ export class LocatorEngine {
         throw new TestError(
           'LOCATOR_NOT_FOUND',
           `locator did not become visible with a box to act within: ${describeExpression(expression)}`,
-          { details: locatorDetails(expression, Date.now() - startedMs) },
+          { details: locatorDetails(expression, deadline.elapsed()) },
         );
       }
       await sleep(POLL_INTERVAL_MS, this.signal);

@@ -28,9 +28,9 @@ A Playwright key the runner recognizes (`testDir`, `baseURL`, `webServer`,
 | --- | --- | --- |
 | `use.baseURL` | `app: { url }` on the target | renamed |
 | `webServer` | `app: { url, command }` on the target, see [Starting your app](/starting-your-app) | renamed |
-| `webServer` array | `app: { url, command }` on each target; targets declaring the same command share one process. Other dependency processes are not started by this version | missing |
-| `webServer.reuseExistingServer` | `app.command: { reuseExisting: true }`; CI ignores it | renamed |
-| `globalSetup`, `globalTeardown` | not yet; `test.setup` for sign-in, hooks and fixtures for setup code | missing |
+| `webServer` array | `defineService({ name, executable, readyUrl })` handles in the target's `services`; a server several projects share is one service, with `app: { url: webServer.url }` | renamed |
+| `webServer.reuseExistingServer` | `app.command: { reuseExisting: true }` or `reuseExisting` on a service; CI ignores it | renamed |
+| `globalSetup`, `globalTeardown` | a function service, `defineService({ name, start, stop })`, in the target's `services`; `test.setup` for sign-in | renamed |
 | `projects` | `targets`, one engine instance each | renamed |
 | `projects[].dependencies` for sign-in | `test.setup` and `{ session }`, see [Signing in](/authentication) | renamed |
 | `testDir`, `testMatch` | `tests`, globs relative to the project root | renamed |

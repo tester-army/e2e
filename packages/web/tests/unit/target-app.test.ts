@@ -1,6 +1,6 @@
 /**
  * The app under test is the target's: `web()` refuses the options that used
- * to describe it as unknown keys, and checks the target's `app` for what a browser needs.
+ * to describe it, and checks the target's `app` for what a browser needs.
  */
 
 import { describe, expect, it } from 'vitest';

@@ -178,6 +178,14 @@ export interface Target {
   /** The app under test: what it is, where it is served, and the command that starts it. */
   app?: TargetApp;
   /**
+   * The services this target needs, `defineService` handles: started once
+   * for the run before the first test, with every service they depend on,
+   * dependencies first, and stopped at the end in reverse. A service several
+   * targets list is one process. A service no selected target needs does not
+   * start.
+   */
+  services?: readonly ServiceHandle[];
+  /**
    * Which attempts on this target record a trace, in place of the config's
    * `trace`; `--trace` and a test's own `trace` win over it. A mode set here
    * is required of the engine: one that cannot trace fails the run with
@@ -236,15 +244,15 @@ targets: [
 
 | Key | Targets | Meaning |
 | --- | --- | --- |
-| `url` | web | Base URL: `app.open()` opens it and relative navigation resolves against it. WHATWG-normalized; no userinfo, query, or fragment; a missing scheme becomes `https://`, or `http://` for a loopback host. Plain HTTP is accepted for loopback hosts only. Port `0` on `127.0.0.1` or `[::1]` asks for a [free port](#free-ports) |
+| `url` | web | Base URL: `app.open()` opens it and relative navigation resolves against it. WHATWG-normalized; no userinfo, query, or fragment; a missing scheme becomes `https://`, or `http://` for a loopback host. Plain HTTP is accepted for loopback hosts only. Port `0` on `127.0.0.1` or `[::1]` asks for a [free port](#free-ports). A service placeholder (`url: webServer.url`) serves the target from that [service](#services) |
 | `bundleId` | mobile | The installed app a device launches: a bundle id, an Android package name, or a display name the device resolves (`Settings`). A link is `INVALID_CONFIG`: a test opens one with `device.openLink` |
 | `appPath` | mobile | The build the suite runs against, an iOS `.app` bundle or an Android `.apk`, resolved against the project root. Without `bundleId`, the app it installs is the one launched. See [the device engine](/reference/mobile#engine) for when it is installed |
 | `identity` | any | Stable identity keying replay cache and session entries. Defaults to the URL's origin and base path, else `bundleId`, else `appPath`. Set a stable value to reuse entries across preview URLs or versioned build paths. Different apps must have different identities to prevent replay across them |
 | `environment` | any | `test`, `staging`, or `production`. Labels the target in the report and joins the cache and session identity digest; never gates a run. Defaults to `test` for loopback, `.localhost`, and `.test` hosts and for an app without a URL, `production` otherwise |
 | `launchArguments` | mobile | Arguments every fresh launch passes the app: `app.open()`, `app.restart()`, and `app.clearState()`. Arguments that select a build mode change what the app is: give each mode its own `identity` |
 | `permissions` | mobile | Permissions the app holds on every fresh launch, by name, each `grant`, `deny`, or `reset`; see [permissions](/reference/mobile#engine) |
-| `command` | any | Process the runner starts before the first test and stops on every exit path (a dev server, Metro for a debug build); see [command](#command). Targets declaring the same command share one process, probed at the first declaring target's `readyUrl` |
-| `readyUrl` | any | URL polled until `command` is ready (a 200-499 status); defaults to `url`, and is required without one. `{port}` in it is the port of `url` |
+| `command` | any | Process the runner starts before the first test and stops on every exit path (a dev server, Metro for a debug build); see [command](#command). Starts after the target's services are ready: shorthand for a service only this target uses, and it serves `url`, so a `url` that is a service placeholder cannot have one. Two processes probing one fixed address are `INVALID_CONFIG`; a process several targets share is a [service](#services) |
+| `readyUrl` | any | URL polled until `command` is ready (a 200-499 status); defaults to `url`, and is required without one. `{port}` in it is the port of `url`. It is the command's own address, so a service placeholder here is `INVALID_CONFIG` |
 
 Each engine checks the keys at config load, with `INVALID_CONFIG` naming
 the target. A `web()` target needs `app.url` and refuses `bundleId`,
@@ -257,8 +265,7 @@ did-you-mean. A target with `app` and no engine is
 The old spellings are unknown keys and fail at config load with
 `INVALID_CONFIG`: `web({ url })` and the other app options of `web()` and
 `mobile()`, `mobile({ app })` (now `app.bundleId`), an app key directly on the
-target, a top-level `app` or `url`, and `services` anywhere, which this
-version does not have.
+target, and a top-level `app`, `url`, or `services`.
 
 Port `0` on any host other than `127.0.0.1` or `[::1]`, `localhost`
 included, is `INVALID_APP_URL`, and a port-0 `url` with nothing to start on
@@ -293,10 +300,12 @@ app: {
 `localhost:0` is `INVALID_APP_URL`: it may resolve to an address other than
 the one the command binds. Write the address the command will bind.
 
-Each target asking for port `0` gets its own port and its own process; two
-targets that declare the same command on a fixed port share one. `{port}` in
-`app.command` and `app.readyUrl` is the port of `url`. The default `identity`
-derives from the declared `:0`, so cache and session entries do not churn
+Each target asking for port `0` gets its own port. Two targets that share one
+dev server on a free port declare it as a [service](#services) and set
+`app: { url: webServer.url }`. `{port}` is always the declaring process's own
+port: in `app.command` the port of `url`, in a service the free port its
+own `readyUrl` asks for. The default `identity` derives from the declared `:0`,
+through a service placeholder too, so cache and session entries do not churn
 with the port. Tests read the allocated URL from
 [`app.baseUrl`](/reference/app).
 
@@ -306,11 +315,11 @@ with the port. Tests read the allocated URL from
 export interface CommandConfig {
   /** Resolved with `PATH`; never shell-interpreted. */
   executable: string;
-  /** Passed verbatim; `{port}` expands to the app's port. */
+  /** Passed verbatim; `{port}` expands to the process's own port, a service placeholder to that service's address. */
   args?: readonly string[];
   /** Working directory, resolved from the project root. */
   cwd?: string;
-  /** Added to the inherited set; `{port}` expands in values. */
+  /** Added to the runner's environment, which the process inherits whole; `{port}` and placeholders expand in values. */
   env?: Readonly<Record<string, string>>;
   /** Ready-probe budget in milliseconds; default 60000. Expiry is `APP_UNREACHABLE`. */
   startupTimeout?: number;
@@ -321,9 +330,9 @@ export interface CommandConfig {
   /**
    * When the readiness URL already answers before the command starts, use that
    * process instead of spawning: nothing is started and nothing is stopped.
-   * Off by default; CI ignores it and always starts the command. A URL on a
-   * free port (port 0) can never already answer, so the two together are
-   * `INVALID_CONFIG`.
+   * Off by default; CI ignores it and always starts the command. A readiness
+   * URL on a free port (port 0) can never already answer, so the two together
+   * are `INVALID_CONFIG`.
    */
   reuseExisting?: boolean;
 }
@@ -335,23 +344,263 @@ output, so keep it in an ignored directory. A startup failure quotes the last
 replaced by `<secret:NAME>` markers. Without `reuseExisting`, a `readyUrl`
 that already answers is `APP_ALREADY_RUNNING`. `reuseExisting` on an app
 whose `app.url` asks for port 0 is `INVALID_CONFIG`: a process already
-running cannot serve the port the run assigns.
+running cannot serve the port the run assigns. An `app.readyUrl` on port 0
+is `INVALID_CONFIG` too: the app's port is `app.url`'s, written as `{port}`. A named port
+(`{port:smtp}`) in `app.command` is `INVALID_CONFIG`: only a service
+declares those.
 
-The child inherits only `PATH`, `HOME`, the temp-directory variables, and
-`command.env`, so pass what the app needs explicitly. Every `args` entry and
-`env` value is a string; anything else, a number or a `secrets.get()` handle
-included, is `INVALID_CONFIG`, except an `undefined` `env` value, which is
-dropped. The runner never terminates a process it did not start.
+The child inherits the runner's whole environment, as a dev server started
+from the same shell would, with `command.env` on top. Every `args` entry and
+`env` value is a string or a service placeholder; anything else, a number or
+a `secrets.get()` handle included, is `INVALID_CONFIG`, except an `undefined`
+`env` value, which is dropped. The runner never terminates a process it did
+not start.
 
 ### services
 
-<Note>
-Dependency processes (a database, an API mock, a dev server several targets
-share) are not started by this version, and `services` is an unknown key
-wherever it appears. Start them before the run, or have `app.command` start
-a script that brings them up and serves the app. A services API returns in a
-later release.
-</Note>
+A service is a process or a function the run needs beside the app: a
+database, an API mock, a dev server several targets share, seeding code.
+Declare each once with `defineService` from `e2e` and list the handle it
+returns in the `services` of every target that needs it:
+
+```ts title="e2e.config.ts"
+import { defineService, type E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+
+const db = defineService({
+  name: 'db',
+  executable: 'docker',
+  args: ['compose', 'up', '--wait'],
+  waitForExit: true,
+  teardown: { executable: 'docker', args: ['compose', 'down'] },
+});
+const seed = defineService({
+  name: 'seed',
+  dependsOn: [db],
+  start: async () => { /* insert fixtures */ },
+  stop: async () => { /* delete them */ },
+});
+const stripe = defineService({
+  name: 'stripe',
+  executable: 'stripe-mock',
+  args: ['-http-port', '{port}'],
+  readyUrl: 'http://127.0.0.1:0',
+});
+const webServer = defineService({
+  name: 'web-server',
+  executable: 'pnpm',
+  args: ['dev', '--port', '{port}'],
+  env: { STRIPE_API_BASE: stripe.url },
+  readyUrl: 'http://127.0.0.1:0',
+  dependsOn: [seed, stripe],
+});
+
+export default {
+  targets: [
+    { name: 'chromium', engine: web(), app: { url: webServer.url }, services: [webServer] },
+    { name: 'firefox', engine: web({ browser: 'firefox' }), app: { url: webServer.url }, services: [webServer] },
+  ],
+} satisfies E2EConfig;
+```
+
+```ts
+/** What every service declares, whichever form it takes. */
+interface ServiceBase {
+  /**
+   * The service's name in errors, reporter output, and placeholders: ASCII
+   * letters, digits, `_`, and `-`, at most 64 characters. One name is one
+   * service across the run; two handles with the same name are
+   * `INVALID_CONFIG`.
+   */
+  name: string;
+  /**
+   * Services that must be ready before this one starts, and stop after it.
+   * A target that lists this service gets them too, whether it lists them or
+   * not. Each is a handle defined before this one, and the list is copied
+   * when the service is defined, so services never depend on each other in a
+   * cycle.
+   */
+  dependsOn?: readonly ServiceHandle[];
+}
+
+/**
+ * A service the runner spawns (a database container, an API mock, a dev
+ * server): a command with exactly one readiness contract, `readyUrl` or
+ * `waitForExit: true`.
+ */
+export interface ProcessServiceOptions extends ServiceBase, CommandConfig {
+  /**
+   * HTTP readiness probe, a status of 200 through 499 counts as ready. It is
+   * also the service's primary address (`svc.url`, `svc.port`). Port 0 on a
+   * loopback address (`http://127.0.0.1:0`) asks the run for a free port,
+   * which `{port}` names in the service's args, env, and teardown; on a
+   * fixed port `{port}` is `INVALID_CONFIG` (write the port). It may name a
+   * port of `ports` as `{port:name}`, but not another service's address: it
+   * is this service's own.
+   */
+  readyUrl?: string;
+  /**
+   * Wait for the process to exit with code 0 instead of probing a URL
+   * (migrations, `docker compose up --wait`). A non-zero exit or the
+   * `startupTimeout` expiring is `APP_UNREACHABLE`.
+   */
+  waitForExit?: true;
+  /**
+   * Named ports, each 0 for a free port the run assigns or a fixed number:
+   * `{ smtp: 0, http: 0 }`, read as `{port:smtp}` in the service's own args,
+   * env, `readyUrl`, and teardown, and as `svc.urlOf('smtp')` or
+   * `svc.portOf('smtp')` elsewhere. A name is a lowercase URL scheme
+   * (`http`, `smtp`, `postgres`): `svc.urlOf('smtp')` reads `smtp://host:port`.
+   */
+  ports?: Readonly<Record<string, number>>;
+  /**
+   * Command run during teardown after the service itself has stopped
+   * (`docker compose down`). Runs on every exit path, is waited on until it
+   * exits within its own `startupTimeout`, and a failure is recorded as a
+   * cleanup-phase run error rather than a crash.
+   */
+  teardown?: CommandConfig;
+}
+
+/**
+ * A service that is code rather than a process: global setup and teardown
+ * (seeding a database, starting an in-process mock). `start` resolves once
+ * the service is ready; `stop` runs at the end of the run, in reverse
+ * dependency order. It has no address.
+ */
+export interface FunctionServiceOptions extends ServiceBase {
+  start(context: ServiceContext): Promise<void>;
+  stop?(context: ServiceContext): Promise<void>;
+  /**
+   * Budget for `start` in milliseconds; default 60000. Expiry is
+   * `APP_UNREACHABLE` naming the service, and aborts the context's signal.
+   */
+  startupTimeout?: number;
+}
+
+/** What a function service's `start` and `stop` receive. */
+export interface ServiceContext {
+  /** `start`: aborts on interrupt. `stop`: aborts when the cleanup budget is spent. */
+  readonly signal: AbortSignal;
+  /** Directory relative paths in the config resolve against. */
+  readonly projectRoot: string;
+  /** Where every service this one depends on, directly or through another, is served, by name. */
+  readonly services: Readonly<Record<string, ServiceAddresses>>;
+}
+
+/** Where one service is served, as the run resolved it. */
+export interface ServiceAddresses {
+  /** The primary address, the origin of `readyUrl`; undefined without one. */
+  readonly url: string | undefined;
+  /** The primary port; undefined without a `readyUrl`. */
+  readonly port: number | undefined;
+  /** Every named port, assigned. */
+  readonly ports: Readonly<Record<string, number>>;
+}
+
+/** What `defineService` returns. Frozen; a spread copy is not a service. */
+export interface ServiceHandle {
+  readonly name: string;
+  /** Placeholder for the primary address, the origin of `readyUrl`. */
+  readonly url: string;
+  /** Placeholder for the primary port. */
+  readonly port: string;
+  /** Placeholder for a named port of `ports`, with its name as the scheme. */
+  urlOf(port: string): string;
+  /** Placeholder for a named port's number. */
+  portOf(port: string): string;
+}
+```
+
+A service is a process (`executable`) or a function (`start`, optionally
+`stop`); both, neither, or a key of the other form is `INVALID_CONFIG`, and
+so is any other unknown key, in the service or its `teardown`, naming the
+nearest known one. A process service needs exactly one readiness contract: `readyUrl`, polled
+until it answers 200-499, or `waitForExit: true`, ready when it exits 0. A
+function service runs in the runner process. A `start` that throws, or that
+has not resolved within its `startupTimeout` (60 s by default), fails the
+run's startup with `APP_UNREACHABLE` (`service "seed" failed to start:
+...`, `service "seed" did not start within 60000 ms`). An interrupt stops
+the wait at once: the run tears down what started, `stop` included, and
+the context's signal tells a `start` still running to wind down. `stop`
+must finish within `cleanupTimeout`, else the run records a
+`CLEANUP_TIMEOUT` cleanup error; a `stop` that throws is a cleanup error
+naming the service (`service "seed" stop failed: ...`). The handle is the service: a plain object
+(the old service shape) or a spread copy in `services` or `dependsOn` is
+`INVALID_CONFIG`, and the message says to wrap it in `defineService()`.
+
+Services live for the whole run. Every service a selected target needs, its
+list plus everything reachable through `dependsOn` whether the target lists
+it or not, starts once before the first test, each after its dependencies
+and ready before the next starts; then the app commands start. Several
+targets listing one service share one process, and a service no selected
+target needs does not start. `dependsOn` is copied when the service is
+defined, and a dependency is a handle that already exists, so there is no
+cycle to declare. On every exit path the runner stops the app commands, then
+the services in reverse order, each followed by its `teardown` command. A
+teardown runs only for a process the run spawned: not for one it reused, one
+refused as already running, or one that failed to spawn. A failing stop or
+teardown is a `cleanup` run error and never skips the ones after it.
+`e2e explore` and `e2e mcp` sessions start the services their one target
+needs.
+
+Two processes probing one fixed address, two services, an `app.command` and
+a service, or two targets' `app.command`s, are `INVALID_CONFIG`: the second
+would find the first answering and fail with `APP_ALREADY_RUNNING`. A
+process several targets share is one service each of them lists.
+
+`{port}` in a service is its own free port: it is valid only when the
+service's `readyUrl` asks for one with port 0 on a literal loopback address
+(`http://127.0.0.1:0`, `http://127.0.0.1:0/health`). On a fixed port
+(`http://127.0.0.1:7000/health`) it is `INVALID_CONFIG` saying to write the
+port directly, and without a `readyUrl` it is `INVALID_CONFIG` too. A
+service that needs the app's address starts the app as a service,
+`const app = defineService({ ..., readyUrl: 'http://127.0.0.1:0' })`, lists
+`dependsOn: [app]`, and reads `app.port` or `app.url`. In `app.command`,
+`{port}` is the port of `app.url`, fixed or free. A free port on any
+host other than `127.0.0.1` or `[::1]`, `localhost` included, is
+`INVALID_CONFIG`, as is `{port}` inside `readyUrl`, which is where the own
+port comes from. A service with several ports names them in `ports` and
+reads them as `{port:name}`; an undeclared name is `INVALID_CONFIG`.
+
+A handle's `url` and `port` are placeholders for where the service is
+served:
+
+| Placeholder | Reads as |
+| --- | --- |
+| `svc.url` | the origin of its `readyUrl`: `http://127.0.0.1:54321` |
+| `svc.port` | the port of its `readyUrl`: `54321` |
+| `svc.urlOf('smtp')` | the named port, with its name as the scheme: `smtp://127.0.0.1:1025` |
+| `svc.portOf('smtp')` | the named port: `1025` |
+
+Each is a plain string holding a deterministic token (`{service:stripe.url}`), used directly
+(`env: { API: stripe.url }`) or in a template literal
+(`` `${stripe.url}/v1` ``). The runner substitutes it with the assigned
+address, identically in every worker, in the `args` and `env` of a service
+or an app command, in `teardown`, and in `app.url`. A `readyUrl`, a
+service's or `app.readyUrl`, is the process's own address and cannot hold
+one; neither can the `app.url` of a target with an `app.command`, which
+serves it. A service reads only the services
+it depends on, directly or through another; a target's app only the services
+in the target's graph. A placeholder outside those, or for an
+address the service does not have (a function service, a service without a
+`readyUrl`, an undeclared port name), is `INVALID_CONFIG`. An `app.url`
+placeholder that reads as no app URL (`url: mail.urlOf('smtp')`) is
+`INVALID_APP_URL` naming the target and the placeholder.
+
+Tests never see a placeholder resolved. Navigating to one
+(`app.open(String(svc.url))`, the agent's navigate, `web.goto`) is
+`INVALID_APP_URL` naming the service, and `fetch` of one fails as an
+invalid URL. Open paths relative to `app.url` and read the resolved URL from
+`app.baseUrl`.
+
+`reuseExisting` works on a `readyUrl` service on a fixed port and skips its
+`teardown`. On a `waitForExit` service, or on a service with any free port
+(a `readyUrl` on port 0, or a named port of 0), it is `INVALID_CONFIG`. A service
+inherits the runner's environment like any [command](#command). Services
+enter the config digest as declared, env values by name and placeholders as
+tokens; the assigned ports never do.
+[Starting your app](/starting-your-app) walks through each kind.
 
 ## output
 

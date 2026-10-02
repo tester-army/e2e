@@ -103,7 +103,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     // One worker on one target: one slot to provision.
     prepared = await engines.prepare(target, 1, { runId, projectRoot: config.projectRoot, env: options.env, signal, notice });
     const hooks = { ci: config.ci, notice: (message: string) => notice('app', message) };
-    processes = await startDeclaredProcesses([target], config.projectRoot, () => hooks, signal, debug, options.processes);
+    processes = await startDeclaredProcesses([target], config, () => hooks, signal, debug, options.processes);
     if (signal.aborted) {
       // Cancelled before or while the processes started: what did start stops before the open fails.
       await processes.stop((failure) => notice(target.name, classifyError(failure).message));

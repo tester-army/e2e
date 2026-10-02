@@ -27,12 +27,14 @@ import type {
   CacheStore,
 } from '../types.ts';
 import { isModelInstance, resolveAgentConfig, runLimits, type ResolvedAgentConfig, type ResolvedLimits } from './agent.ts';
-import { bindTargets, digestTargets, resolveTargets, TARGET_NAME_PATTERN, type PortAssignments, type ResolvedTarget } from './targets.ts';
+import type { PortAssignments, PortRequest, ResolvedService } from './services/index.ts';
+import { bindTargets, digestTargets, resolveTargets, TARGET_NAME_PATTERN, type ResolvedTarget } from './targets.ts';
 import { credentialNamed, credentialSecretName, envName, isSecretValue, secretValueProblem } from './secrets.ts';
 
 export type { ResolvedAgentConfig, ResolvedLimits } from './agent.ts';
 export type { ResolvedApp } from './app.ts';
-export type { PortAssignments, ResolvedTarget } from './targets.ts';
+export type { PortAssignments, ResolvedService } from './services/index.ts';
+export type { ResolvedTarget } from './targets.ts';
 
 /** A named account. */
 export interface ResolvedCredential {
@@ -56,7 +58,11 @@ export interface ResolvedConfig {
   readonly configPath: string | undefined;
   readonly ci: boolean;
   readonly targets: readonly ResolvedTarget[];
-  /** The free ports the run assigned (`assignPorts`), by target name; empty until it did. */
+  /** Every process and function a target needs, in start order: dependencies first, each target's `app.command` last. */
+  readonly services: ReadonlyMap<string, ResolvedService>;
+  /** The free ports the services ask the run for. */
+  readonly portRequests: readonly PortRequest[];
+  /** The free ports the run assigned (`assignPorts`); empty until it did. */
   readonly ports: PortAssignments;
   readonly tests: readonly string[];
   readonly timeout: number;
@@ -189,6 +195,7 @@ const FOREIGN_TOP_LEVEL_KEYS: Readonly<Record<string, string>> = {
   url: APP_BELONGS_TO_TARGET,
   baseURL: APP_BELONGS_TO_TARGET,
   baseUrl: APP_BELONGS_TO_TARGET,
+  services: 'services are declared per target: targets: [{ app, services }]',
   webServer: 'the runner starts the app from the target: targets: [{ engine: web(), app: { url, command: { executable, args } } }]',
   use: "browser options are engine options (engine: web({ ... })), and the app under test is the target's app: { url }",
   projects: 'one target per browser or device: targets: [{ engine }]',
@@ -209,9 +216,9 @@ export function isCiMode(env: NodeJS.ProcessEnv = process.env): boolean {
 
 /**
  * Resolves a raw config object plus environment into an immutable resolved
- * config, without the run's ports: a free port reads 0, as declared, which
- * is what identities and the digest key on. `assignPorts` puts a run's
- * ports in.
+ * config, without the run's ports: every free port reads 0, as declared,
+ * which is what identities and the digest key on. `assignPorts` puts a
+ * run's ports in.
  */
 export function resolveConfig(
   raw: E2EConfig,
@@ -243,7 +250,7 @@ export function resolveConfig(
   }
 
   const recordings = runRecordings(raw, cli, ci);
-  const targets = resolveTargets(raw.targets, options.projectRoot, (target, where) => ({
+  const { targets, services, portRequests } = resolveTargets(raw.targets, options.projectRoot, (target, where) => ({
     trace: targetRecording(recordings.trace, target.trace, `${where} trace`, 'trace'),
     video: targetRecording(recordings.video, target.video, `${where} video`, 'video'),
   }));
@@ -283,6 +290,8 @@ export function resolveConfig(
     configPath: options.configPath,
     ci,
     targets,
+    services,
+    portRequests,
     ports: {},
     tests,
     timeout,
@@ -304,19 +313,19 @@ export function resolveConfig(
     credentials,
     secrets,
     allSecrets,
-    configDigest: computeConfigDigest(raw, projectId, targets),
+    configDigest: computeConfigDigest(raw, projectId, { targets, services }),
   };
   return resolved;
 }
 
 /**
- * The config on the free ports the run assigned: each target's app resolved
- * again on its port. Pure, so the runner and each worker reach the same URLs
- * from the same config and ports; the digest and the identities stand,
- * because the ports never enter them.
+ * The config on the free ports the run assigned: every service's addresses
+ * and each target's base URL. Pure, so the runner and each worker reach the
+ * same URLs from the same config and ports; the digest and the identities
+ * stand, because the ports never enter them.
  */
 export function assignPorts(config: ResolvedConfig, ports: PortAssignments): ResolvedConfig {
-  return { ...config, targets: bindTargets(config.targets, config.projectRoot, ports), ports };
+  return { ...config, ...bindTargets(config, ports), ports };
 }
 
 /**
@@ -883,7 +892,7 @@ function resolveAgents(
 function computeConfigDigest(
   raw: E2EConfig,
   projectId: string,
-  targets: readonly ResolvedTarget[],
+  resolved: Parameters<typeof digestTargets>[0],
 ): string {
   // Only plain data is JSON-cloned. Every live value is reduced to its
   // identity before any clone sees it, since its object graph may not
@@ -937,8 +946,8 @@ function computeConfigDigest(
       Object.keys(raw.secrets).map((name) => [name, { secretName: name }]),
     );
   }
-  // Targets enter as resolved: see `digestTargets`.
-  sanitized['targets'] = digestTargets(targets);
+  // Targets and services enter as resolved: see `digestTargets`.
+  Object.assign(sanitized, digestTargets(resolved));
   return canonicalDigest(sanitized);
 }
 

@@ -4,9 +4,11 @@ description: What the model can access, how the runner handles secrets, and the 
 ---
 
 Test code and configuration run with your operating-system permissions.
-This includes engines, tools, reporters, stores, secret providers, and app
-commands. e2e does not sandbox them. Run untrusted pull request code in an
-external sandbox without secrets or write tokens.
+This includes engines, tools, reporters, stores, secret providers, app
+commands, and services. e2e does not sandbox them, and the processes it
+starts inherit the runner's whole environment, model keys and CI tokens
+included. Run untrusted pull request code in an external sandbox without
+secrets or write tokens.
 
 The model receives app content as untrusted evidence. It requests actions
 through tools; the runner validates and performs those actions. Cached
@@ -181,7 +183,7 @@ ordinary text with it.
   `redaction: "incomplete"`.
 - The `headers` a protected preview needs are recorded in the trace as
   request headers. Share that trace as you would the bypass secret.
-- `command.log` is captured as the process writes it.
+- `command.log` and service logs are captured as the process writes them.
   The runner does not redact them. Keep secrets out of your app's stdout.
 
 ## Sessions

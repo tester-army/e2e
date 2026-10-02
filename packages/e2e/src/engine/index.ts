@@ -169,7 +169,9 @@ export interface EngineAppInfo {
  * (`targets: [{ engine, app }]`); an engine only drives it. The harness has
  * checked the shape of every field before `Engine.validateApp` sees it, so
  * an engine can require what its platform needs (a URL, a bundle id) and
- * refuse what it cannot drive, naming the target.
+ * refuse what it cannot drive, naming the target. A URL that is a service
+ * placeholder reads as its token: the engine checks that there is one,
+ * never where it points.
  */
 export type EngineAppDeclaration = EngineAppInfo & {
   /** Base URL the target opens, as declared; see `TargetApp.url`. */

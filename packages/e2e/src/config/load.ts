@@ -178,7 +178,7 @@ export async function loadConfigModule(configPath: string, options: ConfigLoadOp
   try {
     moduleValue = await importFresh(configPath, 'module', options.graph === true);
   } catch (cause) {
-    // A factory the config calls (web(), mobile()) or
+    // A factory the config calls (web(), mobile(), defineService()) or
     // `secrets.get()` refusing its options at evaluation is a config error
     // with its own code; only a failed import is a load failure.
     if (cause instanceof ConfigurationError) throw cause;

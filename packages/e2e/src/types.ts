@@ -4,6 +4,7 @@
  */
 
 import type { expectationBrand, testCaseBrand } from './internal/brands.ts';
+import type { ServiceHandle } from './types/services.ts';
 import type { CredentialConfig, Secret, SecretConfig } from './config/secrets.ts';
 import type { Unique } from './params.ts';
 import type { StepExecutor } from './agent/executor.ts';
@@ -967,11 +968,11 @@ export interface Expect extends ExpectCall {
 export interface CommandConfig {
   /** Resolved with `PATH`; never shell-interpreted. */
   executable: string;
-  /** Passed verbatim; `{port}` expands to the app's port. */
+  /** Passed verbatim; `{port}` expands to the process's own port, a service placeholder to that service's address. */
   args?: readonly string[];
   /** Working directory, resolved from the project root. */
   cwd?: string;
-  /** Added to the inherited set; `{port}` expands in values. */
+  /** Added to the runner's environment, which the process inherits whole; `{port}` and placeholders expand in values. */
   env?: Readonly<Record<string, string>>;
   /** Ready-probe budget in milliseconds; default 60000. Expiry is `APP_UNREACHABLE`. */
   startupTimeout?: number;
@@ -982,12 +983,14 @@ export interface CommandConfig {
   /**
    * When the readiness URL already answers before the command starts, use that
    * process instead of spawning: nothing is started and nothing is stopped.
-   * Off by default; CI ignores it and always starts the command. A URL on a
-   * free port (port 0) can never already answer, so the two together are
-   * `INVALID_CONFIG`.
+   * Off by default; CI ignores it and always starts the command. A readiness
+   * URL on a free port (port 0) can never already answer, so the two together
+   * are `INVALID_CONFIG`.
    */
   reuseExisting?: boolean;
 }
+
+export type { FunctionServiceOptions, ProcessServiceOptions, ServiceAddresses, ServiceContext, ServiceHandle, ServiceOptions } from './types/services.ts';
 
 /** A permission's state when the app launches: held, refused, or not asked for yet, so the OS asks again. */
 export type AppPermissionState = 'grant' | 'deny' | 'reset';
@@ -1009,7 +1012,9 @@ export interface TargetApp {
    * loopback host. Plain HTTP is accepted for loopback hosts only. A URL on
    * `127.0.0.1` or `[::1]` with port 0 asks the run for a free port for
    * `command`, handed to it as `{port}`; without a command nothing would
-   * serve it, so that is `INVALID_CONFIG`.
+   * serve it, so that is `INVALID_CONFIG`. A service placeholder
+   * (`app: { url: webServer.url }`) serves the target from that service, so
+   * several targets can share one dev server on a free port.
    */
   url?: string | undefined;
   /**
@@ -1053,12 +1058,14 @@ export interface TargetApp {
   permissions?: Readonly<Record<string, AppPermissionState>> | undefined;
   /**
    * Process the runner starts before the first test and stops at the end of
-   * the run (a dev server, Metro for a debug build). Structured, never
-   * shell-interpreted; the child inherits only `PATH`, `HOME`, the
-   * temp-directory variables, and `command.env`. `{port}` in it is the port
-   * of `url`, fixed or free. Targets declaring the same command share one
-   * process, probed at the first declaring target's `readyUrl`. A release
-   * build has no command.
+   * the run (a dev server, Metro for a debug build), after the target's
+   * services are ready: shorthand for a service only this target uses.
+   * Structured, never shell-interpreted. `{port}` in it is the port of
+   * `url`, fixed or free, or the free port of a `readyUrl` on port 0 without
+   * a `url`. It serves `url`, so a `url` that is a
+   * service placeholder cannot have one. Two processes probing one fixed
+   * address are `INVALID_CONFIG`: a process several targets share is a
+   * `defineService`. A release build has no command.
    */
   command?: CommandConfig | undefined;
   /**
@@ -1086,6 +1093,14 @@ export interface Target {
   engine?: EngineHandle;
   /** The app under test: what it is, where it is served, and the command that starts it. */
   app?: TargetApp;
+  /**
+   * The services this target needs, `defineService` handles: started once
+   * for the run before the first test, with every service they depend on,
+   * dependencies first, and stopped at the end in reverse. A service several
+   * targets list is one process. A service no selected target needs does not
+   * start.
+   */
+  services?: readonly ServiceHandle[];
   /**
    * Which attempts on this target record a trace, in place of the config's
    * `trace`; `--trace` and a test's own `trace` win over it. A mode set here

@@ -1,22 +1,21 @@
 /**
  * What a run and a standalone attempt both do before the first engine
  * session: grade each target against its engine declaration, run the
- * engines' `prepare` hooks, and start the app commands the targets declare.
+ * engines' `prepare` hooks, and start the app processes the targets declare.
  * One owner, so the dev-loop session (`e2e mcp`) and a test run can never
  * provision differently.
  */
 
 import { pairRecording, type TestTargetPair } from '../collect/select.ts';
 import { engineAppInfo } from '../config/app.ts';
-import type { ResolvedTarget } from '../config/resolve.ts';
+import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError, InfrastructureError, translateProvisioningError } from '../internal/errors.ts';
 import { Deadline, NEVER_ABORTS, withScopedBudget } from '../internal/time.ts';
 import { describeTarget, type TargetProvenance } from '../report/build.ts';
 import { isRetryMode, recordsOnSomeAttempt, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
-import { declaredCommands } from './declared-processes.ts';
-import { ManagedProcess, type AppProcesses, type ManagedProcessHooks } from './managed-process.ts';
+import { startService, type AppProcesses, type ManagedProcessHooks } from './managed-process.ts';
 import { UNSHARED, type ProcessPool } from './process-pool.ts';
 
 const RECORDING_KINDS: readonly RecordingKind[] = ['trace', 'video'];
@@ -219,24 +218,27 @@ export class PreparedEngines {
   }
 }
 
-/** The hooks the app commands report through; a run narrates each as a setup step. */
-export type ProcessHooks = () => ManagedProcessHooks;
+/** The hooks each role of process reports through; a run narrates services and app commands as distinct setup steps. */
+export type ProcessHooks = (role: 'service' | 'app') => ManagedProcessHooks;
 
 /**
- * Starts every distinct app command the targets declare, in target order,
- * deduplicated across targets (two browsers on one dev server share one
- * process). `pool` decides whether each is started for this call or shared
- * with others that declare it. Nothing more is acquired once `signal`
- * aborted; what was acquired is returned for release either way.
+ * Starts what the targets need, in the run's start order: every service of
+ * their graphs once, dependencies first, and each target's `app.command`
+ * after them. All of it runs for the whole run or session. `pool` decides
+ * whether each is started for this call or shared with others that need it.
+ * Nothing more is acquired once `signal` aborted; what was acquired is
+ * returned for release either way.
  */
 export async function startDeclaredProcesses(
   targets: readonly ResolvedTarget[],
-  projectRoot: string,
+  config: Pick<ResolvedConfig, 'projectRoot' | 'services' | 'cleanupTimeout'>,
   hooks: ProcessHooks,
   signal: AbortSignal,
   debug: DebugTrace,
   pool: ProcessPool = UNSHARED,
 ): Promise<AppProcesses> {
+  const { projectRoot, cleanupTimeout } = config;
+  const needed = new Set(targets.flatMap((target) => target.services));
   const held: AppProcesses[] = [];
   const processes: AppProcesses = {
     async stop(onFailure) {
@@ -244,28 +246,16 @@ export async function startDeclaredProcesses(
     },
   };
   // A cleanup failure after a failed start is a notice at most: the startup failure is the one reported.
-  const onCleanupFailure = (failure: unknown): void => hooks().notice?.(`cleanup after a failed start: ${String(failure)}`);
+  const onCleanupFailure = (failure: unknown): void => hooks('app').notice?.(`cleanup after a failed start: ${String(failure)}`);
   try {
-    for (const { label, command, readyUrl, key } of declaredCommands(targets)) {
+    for (const service of config.services.values()) {
+      if (!needed.has(service.name)) continue;
       if (signal.aborted) return processes;
-      const start = async (scope: AbortSignal): Promise<AppProcesses> => {
-        const app = new ManagedProcess(label, command, projectRoot, { readyUrl }, hooks());
-        const stop: AppProcesses['stop'] = async (onFailure) => {
-          try {
-            await app.stop();
-          } catch (cause) {
-            onFailure(cause);
-          }
-        };
-        try {
-          await debug.time(`app.start(${label})`, () => app.start(scope));
-        } catch (cause) {
-          await stop(onCleanupFailure);
-          throw cause;
-        }
-        return { stop };
-      };
-      held.push(await pool.acquire(`${projectRoot}\0command:${key}`, start, signal));
+      const start = (scope: AbortSignal): Promise<AppProcesses> =>
+        debug.time(`app.start(${service.label})`, () =>
+          startService(service, { projectRoot, hooks: hooks(service.role), cleanupTimeout, signal: scope, onCleanupFailure }),
+        );
+      held.push(await pool.acquire(`${projectRoot}\0${service.key}`, start, signal));
     }
     return processes;
   } catch (cause) {

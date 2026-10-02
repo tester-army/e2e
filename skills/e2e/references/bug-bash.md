@@ -14,11 +14,11 @@ prove each bug. Report confirmed bugs only, each with its failing test.
   port `0` so each run starts its own app on a free port. `reuseExisting` is
   ignored when `CI` is set, as in many agent sandboxes: use port `0` or
   unset `CI`. A fixed port that is not reused fails every run after the first.
-- When the target's `app.command` brings up a stack of its own (a database
-  it starts and removes on exit), the first explorer to finish removes the
-  database under the rest. Start the stack once yourself with the config's
-  command and environment, and explore with a bug-bash config that declares
-  no command (below).
+- When the target declares `services` with a `teardown` (`docker compose
+  down --volumes`), the first explorer to finish removes the database under
+  the rest. Start the stack once yourself with the config's commands and
+  environment, and explore with a bug-bash config that declares no services
+  or command (below).
 - Explore a production build when the project has one. A dev server that
   compiles a route on first visit reads to the explorer as a dead link.
 - Seed one disposable workspace or user per charter with the project's own
@@ -70,7 +70,7 @@ export default {
   ...shared,
   // The project's tests, so a repro can use its setup tests' sessions, plus the repro tests from step 6.
   tests: [shared.tests ?? 'tests/**/*.e2e.ts', 'tests/bugbash/**/*.e2e.ts'].flat(),
-  // The app already runs: no command.
+  // The app already runs: no services, no command.
   targets: [{ name: 'web', engine: web(), app: { url: 'http://127.0.0.1:3000' } }],
   retries: 0,
   reporters: ['list'],

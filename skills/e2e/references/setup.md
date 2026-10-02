@@ -133,17 +133,16 @@ or `E2E_USER_ADMIN_PASSWORD` first, or defer to fill time with
 ## The app under test
 
 The target declares the app; the engine only drives it. `web({ url })`,
-`mobile({ app })`, and the other old app options are unknown keys. The
-target's `app`:
+`mobile({ app })`, and the other old app options are unknown keys. The target's `app`:
 
 | Key | Meaning |
 | --- | --- |
-| `url` | Base URL for `app.open()` and relative navigation; required on a `web()` target, not supported on a mobile target yet. Missing scheme: `https://`, `http://` for loopback; port `0` on `127.0.0.1` or `[::1]` takes a free port. |
+| `url` | Base URL for `app.open()` and relative navigation; required on a `web()` target, not supported on a mobile target yet. Missing scheme: `https://`, `http://` for loopback; port `0` on `127.0.0.1` or `[::1]` takes a free port. A service placeholder (`url: webServer.url`) serves the target from that service. |
 | `bundleId` | Device targets: the bundle id, package name, or display name (`Settings`) `app.open()` launches. |
 | `appPath` | Device targets: the `.app` or `.apk` under test. A device target needs `bundleId` or `appPath`. |
 | `launchArguments`, `permissions` | Device targets: arguments and permission states (`grant`, `deny`, `reset`) every fresh launch gets. |
-| `command` | The process serving `url`: `{ executable, args, cwd, env, startupTimeout, shutdownTimeout, log, reuseExisting }`; `{port}` in `args` and `env` expands to `url`'s port. Targets declaring the same command share one process. |
-| `readyUrl` | Readiness probe when it differs from `url`; `{port}` expands too. |
+| `command` | The process serving `url`, for this target alone: `{ executable, args, cwd, env, startupTimeout, shutdownTimeout, log, reuseExisting }`; `{port}` in `args` and `env` expands to `url`'s port. Two processes probing one fixed address are `INVALID_CONFIG`, and so is a command beside a `url` that is a service placeholder; share a process as a service. |
+| `readyUrl` | Readiness probe when it differs from `url`; `{port}` expands too. The command's own address: never a service placeholder. |
 | `environment` | `'test'`, `'staging'`, `'production'`; inferred from the host, labels the report and cache key. |
 | `identity` | Stable identity for cache and session keys when the origin changes per deploy (preview URLs). Defaults to the URL's origin and path, else `bundleId`, else `appPath`. |
 
@@ -154,9 +153,8 @@ a target that opens `127.0.0.1` or `[::1]` while `next dev` identifies as
 `localhost` target needs no entry, and a production `next start` target is
 unaffected.
 
-There is no `services` key in this version: it is an unknown key wherever it
-appears. Start dependency processes before the run, or have `app.command`
-start a script that brings them up and serves the app.
+`services` sits on the target beside `app`: `defineService` handles started
+before `app.command`, dependencies first. See [Services](#services).
 
 `web()` options:
 
@@ -216,9 +214,8 @@ app: {
   499 status within `startupTimeout` (default 60 s), and stops it when the run
   ends, fails, or is interrupted (`shutdownTimeout`, default 10 s). Never
   ready is `APP_UNREACHABLE`; `.e2e/report.json` is still written.
-- The child gets only `PATH`, `HOME`, the temp-directory variables,
-  `SystemRoot` and `COMSPEC` on Windows, and `command.env`; pass the rest
-  through `env`. Model keys and `E2E_USER_*` values are never inherited.
+- The child inherits the runner's whole environment, with `command.env` on
+  top, as a dev server started from the same shell would.
 - Output is discarded unless `log` names a file under an ignored directory
   such as `.e2e/logs/`; without it a server dying on boot is invisible.
 - A `url` answering before the spawn is `APP_ALREADY_RUNNING`;
@@ -230,8 +227,11 @@ app: {
   free port; the command receives it as
   `{port}` in `args` or `env` (`args: ['dev', '--port', '{port}']`), which
   also expands in `readyUrl`. Tests read the URL from `app.baseUrl`; the
-  cache identity keeps `:0`. A port-0 `url` with no `command`, and
-  `reuseExisting` beside one, are `INVALID_CONFIG`.
+  cache identity keeps `:0`. `{port}` is always the declaring process's own
+  port, so in a service it is the service's. Each target with a port-0 `url`
+  gets its own port and process; to share one, make it a service. A port-0
+  `url` with no `command`, and `reuseExisting` beside one, are
+  `INVALID_CONFIG`.
   A port grabbed between allocation and spawn fails the start with
   `APP_UNREACHABLE`; rerun.
 
@@ -239,6 +239,97 @@ For an app started elsewhere, point `app.url` at it, literally or via
 `process.env.APP_URL ?? 'http://localhost:3000'`; the runner reads no
 `APP_URL` and loads no `.env`, so put `process.loadEnvFile('.env')` atop
 `e2e.config.ts` (workers re-import it).
+
+### Services
+
+Databases, migrations, mocks, a dev server several targets share, and
+global setup code are services: declare each once with `defineService` from
+`e2e` and list the handle in the `services` of every target that needs it.
+
+```ts
+import { defineService, type E2EConfig } from 'e2e';
+
+const db = defineService({
+  name: 'db',
+  executable: 'docker',
+  args: ['compose', 'up', '--wait', 'postgres'],
+  waitForExit: true,
+  teardown: { executable: 'docker', args: ['compose', 'down'] },
+});
+const seed = defineService({
+  name: 'seed',
+  dependsOn: [db],
+  start: async () => { /* insert fixtures */ },
+  stop: async () => { /* delete them */ },
+});
+const stripe = defineService({
+  name: 'stripe',
+  executable: 'stripe-mock',
+  args: ['-http-port', '{port}'],
+  readyUrl: 'http://127.0.0.1:0',
+});
+const mail = defineService({
+  name: 'mail',
+  executable: 'mailpit',
+  args: ['--smtp', '127.0.0.1:{port:smtp}', '--listen', '127.0.0.1:{port:http}'],
+  ports: { smtp: 0, http: 0 },
+  readyUrl: 'http://127.0.0.1:{port:http}/livez',
+});
+const webServer = defineService({
+  name: 'web-server',
+  executable: 'pnpm',
+  args: ['dev', '--port', '{port}'],
+  env: { STRIPE_API_BASE: stripe.url, SMTP_URL: mail.urlOf('smtp') },
+  readyUrl: 'http://127.0.0.1:0',
+  dependsOn: [seed, stripe, mail],
+});
+
+export default {
+  targets: [
+    { name: 'chromium', engine: web(), app: { url: webServer.url }, services: [webServer] },
+    { name: 'firefox', engine: web({ browser: 'firefox' }), app: { url: webServer.url }, services: [webServer] },
+  ],
+} satisfies E2EConfig;
+```
+
+- Two forms, never both: a process (`executable`, with exactly one of
+  `readyUrl` or `waitForExit: true`) or a function (`start`, optionally
+  `stop`) that runs in the runner process, the counterpart of global setup
+  and teardown. A throwing `start`, or one past its `startupTimeout` (60 s
+  by default), fails startup with `APP_UNREACHABLE` naming the service;
+  Ctrl-C stops waiting on it at once. `stop` has the run's `cleanupTimeout`,
+  else `CLEANUP_TIMEOUT`; a throwing `stop` is a cleanup error naming the
+  service. Both receive
+  `{ signal, projectRoot, services }`, `services` holding `{ url, port, ports }`
+  for every dependency by name.
+- `name` is required (letters, digits, `_`, `-`, at most 64) and one name is
+  one service across the run. Only the handle is a service: a plain object
+  or a spread copy in `services` or `dependsOn` is `INVALID_CONFIG`.
+- Lifetime is the run. Every service a selected target needs, including
+  everything reachable through `dependsOn`, starts once before the first
+  test, each after its dependencies; then the app commands. At the end the
+  runner stops the app commands, then the services in reverse, each followed
+  by its `teardown` command, which runs only for a process the run spawned.
+  Targets listing one service share one process; a service no selected
+  target needs does not start. `dependsOn` takes handles defined earlier, so
+  there is no cycle. Two processes probing one fixed address are
+  `INVALID_CONFIG`.
+- Ports: `readyUrl: 'http://127.0.0.1:0'` gives the service a free port,
+  `{port}` in its own `args`, `env`, and `teardown`. `{port}` in a service on
+  a fixed port (write the port) or without a `readyUrl` is `INVALID_CONFIG`.
+  `ports: { smtp: 0 }` declares named ports (lowercase
+  schemes), read as `{port:smtp}` in the service's own strings.
+- Placeholders: `svc.url` (`http://127.0.0.1:54321`), `svc.port`,
+  `svc.urlOf('smtp')` (`smtp://127.0.0.1:1025`), `svc.portOf('smtp')`, directly or
+  in a template literal, in `args`, `env`, `teardown`, and `app.url`, never in
+  a `readyUrl`. A service reads only services in its `dependsOn`
+  (transitively), a target's app only services in its graph.
+- Tests never see a placeholder: navigating to one is `INVALID_APP_URL`, and
+  `fetch` of one fails. Navigate relative to `app.url`; read `app.baseUrl`.
+- `reuseExisting` needs a `readyUrl` on a fixed port and no free port
+  anywhere (the app's URL, the service's `ports`); with one it is
+  `INVALID_CONFIG`.
+- `e2e explore` and `e2e mcp` sessions start the services their target needs.
 
 ## Environment variables the runner reads
 

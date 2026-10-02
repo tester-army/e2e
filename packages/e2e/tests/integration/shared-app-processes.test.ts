@@ -1,9 +1,9 @@
 /**
  * `SharedAppProcesses` under `startDeclaredProcesses`, the one flow a run and
  * a live session both start app processes through: attempts on fresh loads
- * of one config share its app command, whatever else each opens, a process
- * that is stopping is started afresh only once it is gone, and a shared
- * start outlives the attempt that began it.
+ * of one config share its app command and each service they both need,
+ * whatever else each needs, a process that is stopping is started afresh only
+ * once it is gone, and a shared start outlives the attempt that began it.
  */
 
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -22,6 +22,8 @@ const poolModule = new URL('../../dist/run/process-pool.js', import.meta.url).hr
 const { SharedAppProcesses } = (await import(poolModule)) as typeof import('../../src/run/process-pool.ts');
 const resolveModule = new URL('../../dist/config/resolve.js', import.meta.url).href;
 const { resolveConfig } = (await import(resolveModule)) as typeof import('../../src/config/resolve.ts');
+const servicesModule = new URL('../../dist/services.js', import.meta.url).href;
+const { defineService } = (await import(servicesModule)) as typeof import('../../src/services.ts');
 const debugModule = new URL('../../dist/internal/debug.js', import.meta.url).href;
 const { DebugTrace } = (await import(debugModule)) as typeof import('../../src/internal/debug.ts');
 
@@ -48,7 +50,7 @@ describe('SharedAppProcesses', { timeout: 30_000 }, () => {
   });
 
   /** One config load, as a live session loads it: one target per declaration, named t0, t1, and so on. */
-  const load = (...declared: Pick<Target, 'app'>[]) =>
+  const load = (...declared: Pick<Target, 'app' | 'services'>[]) =>
     resolveConfig(
       { targets: declared.map((target, index) => ({ name: `t${index}`, platform: 'kiosk', engine: createFakeEngine().engine, ...target })) } as never,
       { projectRoot: dir, env: {} },
@@ -62,7 +64,7 @@ describe('SharedAppProcesses', { timeout: 30_000 }, () => {
   ) =>
     startDeclaredProcesses(
       config.targets.filter((target) => target.name === name),
-      config.projectRoot,
+      config,
       () => ({ ci: false }),
       signal,
       new DebugTrace(false),
@@ -74,20 +76,23 @@ describe('SharedAppProcesses', { timeout: 30_000 }, () => {
 
   const serving = async (): Promise<boolean> => fetch(url).then((response) => response.ok, () => false);
 
-  it('shares the app command sessions on fresh loads both declare, whatever page each opens', async () => {
-    /** A fresh load of one config: t0 opens the app's root, t1 a page of it, on one command. */
-    const config = () => load({ app: { url, command } }, { app: { url: `${url}/m`, command } });
+  it('shares the app command and the services sessions on fresh loads both need, whatever else each needs', async () => {
+    const service = (name: string) => defineService({ name, executable: process.execPath, args: ['service.cjs', name], waitForExit: true });
+    /** A fresh load of one config: t0 serves the app and needs db, t1 is a page of it that needs db and mail. */
+    const config = () => {
+      const db = service('db');
+      return load({ app: { url, command }, services: [db] }, { app: { url: `${url}/m` }, services: [db, service('mail')] });
+    };
     const pool = new SharedAppProcesses();
     const first = await start(pool, config());
     const second = await start(pool, config(), 't1');
     const third = await start(pool, config());
-    expect(startupLog(dir)).toBe('app\n');
+    expect(startupLog(dir)).toBe('db\napp\nmail\n');
     await first.stop(() => undefined);
     expect(await serving()).toBe(true);
     await third.stop(() => undefined);
-    expect(await serving()).toBe(true);
-    await second.stop(() => undefined);
     expect(await serving()).toBe(false);
+    await second.stop(() => undefined);
   });
 
   it('waits for a process that is stopping before it starts it again', async () => {
@@ -118,9 +123,10 @@ describe('SharedAppProcesses', { timeout: 30_000 }, () => {
     expect(await serving()).toBe(false);
   });
 
-  it('aborts a hung start once every attempt waiting on it gave up, stopping the process it started', async () => {
-    // The server answers, but the readiness probe never does: the start hangs with the process up.
-    const config = load({ app: { url, readyUrl: 'http://127.0.0.1:1/', command: { ...command, startupTimeout: 600_000 } } });
+  it('aborts a hung start once every attempt waiting on it gave up, stopping the dependency it started', async () => {
+    const server = defineService({ name: 'server', executable: process.execPath, args: ['server.cjs', String(port)], readyUrl: url });
+    const hung = defineService({ name: 'hung', dependsOn: [server], start: () => new Promise(() => {}) });
+    const config = load({ services: [hung] });
     const pool = new SharedAppProcesses();
     const cancel = new AbortController();
     const opening = start(pool, config, 't0', cancel.signal);

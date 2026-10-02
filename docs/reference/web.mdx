@@ -319,7 +319,9 @@ in a suite that also runs on other platforms.
 ### Navigation
 
 `goto` defaults `waitUntil` to `'load'` and throws `POLICY_DENIED` for a
-`file:`, `data:`, or `javascript:` URL. `waitForURL` polls every 100 ms; a
+`file:`, `data:`, or `javascript:` URL, and `INVALID_APP_URL` for one holding
+a [service placeholder](/reference/config#services): open a path relative to
+`app.url` instead. `waitForURL` polls every 100 ms; a
 relative string resolves against the base URL and matches exactly after
 normalization, a `RegExp` tests the full URL, anything else (a predicate
 function, say) is `INVALID_ARGUMENT`, and a timeout is `ASSERTION_FAILED`. It

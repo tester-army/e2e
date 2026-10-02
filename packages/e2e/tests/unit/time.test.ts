@@ -29,13 +29,14 @@ describe('Deadline', () => {
     expect(deadline.expired(101)).toBe(true);
   });
 
-  it('min returns the earlier deadline and prefers the first on ties', () => {
+  it('min ends with the earlier deadline and times the wait from now', () => {
     const early = new Deadline(100, 0);
     const late = new Deadline(200, 0);
-    expect(Deadline.min(early, late)).toBe(early);
-    expect(Deadline.min(late, early)).toBe(early);
-    const tie = new Deadline(100, 0);
-    expect(Deadline.min(early, tie)).toBe(early);
+    const capped = Deadline.min(late, early, 40);
+    expect(capped.endsAt).toBe(100);
+    expect(capped.remaining(40)).toBe(60);
+    expect(capped.elapsed(70)).toBe(30);
+    expect(Deadline.min(early, late, 0).endsAt).toBe(100);
   });
 });
 

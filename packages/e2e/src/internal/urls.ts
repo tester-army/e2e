@@ -1,6 +1,7 @@
 /** URL normalization and origin policy helpers. */
 
 import { ConfigurationError } from './errors.ts';
+import { serviceTokens } from './service-tokens.ts';
 import { testPattern } from './regexp.ts';
 import { toTextPattern } from './text.ts';
 
@@ -56,7 +57,7 @@ export function normalizeBaseUrl(raw: string): NormalizedBaseUrl {
  * free on one address family only, so a port-0 URL must name the address the
  * command binds rather than a name that may resolve to either.
  */
-function isLoopbackAddress(hostname: string): boolean {
+export function isLoopbackAddress(hostname: string): boolean {
   return hostname === '[::1]' || /^127(\.\d{1,3}){3}$/.test(hostname);
 }
 
@@ -70,13 +71,6 @@ export function portOf(base: NormalizedBaseUrl): number {
   const url = new URL(base.href);
   if (url.port !== '') return Number(url.port);
   return url.protocol === 'https:' ? 443 : 80;
-}
-
-/** The base URL re-serialized on another port; everything else is kept. */
-export function withPort(base: NormalizedBaseUrl, port: number): NormalizedBaseUrl {
-  const url = new URL(base.href);
-  url.port = String(port);
-  return { href: url.href, origin: url.origin, basePath: url.pathname };
 }
 
 /**
@@ -119,6 +113,13 @@ const FORBIDDEN_PROTOCOLS = new Set(['file:', 'data:', 'javascript:']);
  * would guard nothing.
  */
 export function resolveNavigationUrl(input: string, base: NormalizedBaseUrl | undefined): { url: string } {
+  const [placeholder] = serviceTokens(String(input));
+  if (placeholder !== undefined) {
+    throw new ConfigurationError(
+      'INVALID_APP_URL',
+      `navigation to "${String(input)}" holds the placeholder of service "${placeholder.service}", which only the config substitutes (a target's app.url, a service's or command's args, env, and readyUrl); open a path relative to the target's app.url instead`,
+    );
+  }
   let url: URL;
   try {
     url = new URL(input, base?.href);

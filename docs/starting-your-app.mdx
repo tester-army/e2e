@@ -67,16 +67,15 @@ The main command options are:
 | --- | --- |
 | `reuseExisting: true` | Use an already-running server locally. CI ignores this and reports `APP_ALREADY_RUNNING`. |
 | `log` | Save the app's stdout and stderr to a project-relative file. Startup errors include the last 20 lines, with `command.env` values redacted. The log file itself is unredacted. |
-| `env` | Environment variables for the app. The child inherits `PATH`, `HOME`, and the temp-directory variables, plus these. |
+| `env` | Environment variables for the app, on top of the runner's own, which it inherits. |
 | `startupTimeout` | How long to wait for readiness, 60 seconds by default. |
 
 To probe a health endpoint instead of the base URL, set `readyUrl` beside
 `command`: `app: { url, command, readyUrl: 'http://localhost:3000/health' }`.
 
 The command runs without a shell. `executable` is resolved on `PATH` and
-`args` are passed as written. The child inherits only `PATH`, `HOME`, the
-temp-directory variables, and `env`, so pass what the app needs explicitly.
-See the
+`args` are passed as written. The child inherits the runner's whole
+environment, with `env` on top. See the
 [command reference](/reference/config#command) for all options.
 
 ### Let the runner pick the port
@@ -96,7 +95,8 @@ app: {
 Tests can read the allocated URL from `app.baseUrl`. Cache entries remain
 valid when the port changes. Use `127.0.0.1` or `[::1]`, matching the address
 the command binds; `localhost:0` is rejected. See
-[free ports](/reference/config#free-ports) for details.
+[free ports](/reference/config#free-ports) for details, and
+[share a dev server](#share-a-dev-server) for several targets on one.
 
 ### Next.js dev targets
 
@@ -122,15 +122,126 @@ Use `'[::1]'` in the list when `app.url` opens `http://[::1]:0`.
 A target on `localhost` needs no entry, because `next dev` identifies as
 `localhost`. A production `next start` target is unaffected either way.
 
-## Dependencies
+## Start dependencies first
 
-<Note>
-This version starts only `app.command` (one process for every target that
-declares the same command). Databases, mocks, and other processes the app
-needs are not started by the runner yet: bring them up before the run, or
-have `app.command` start a script that brings them up and serves the app. A
-services API returns in a later release.
-</Note>
+Declare databases, migrations, and other processes the app needs with
+`defineService` from `e2e`, and list them in the target's `services`. They
+start before the first test, each after the services it depends on, then the
+app command starts. When the run ends, fails, or is interrupted, they stop in
+reverse order.
+
+```ts title="e2e.config.ts"
+import { defineService, type E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+
+const db = defineService({
+  name: 'db',
+  executable: 'docker',
+  args: ['compose', 'up', '--wait', 'postgres'],
+  waitForExit: true,
+  teardown: { executable: 'docker', args: ['compose', 'down'] },
+});
+const migrate = defineService({
+  name: 'migrate',
+  executable: 'pnpm',
+  args: ['db:migrate'],
+  waitForExit: true,
+  log: '.e2e/logs/services.log',
+  dependsOn: [db],
+});
+
+export default {
+  targets: [{
+    engine: web(),
+    app: {
+      url: 'http://localhost:3000',
+      command: { executable: 'pnpm', args: ['dev'], log: '.e2e/logs/app.log' },
+    },
+    services: [migrate],
+  }],
+} satisfies E2EConfig;
+```
+
+The target lists only `migrate`; `db` starts first because `migrate` depends
+on it. A service is ready when its `readyUrl` responds, or, with
+`waitForExit: true`, when it exits successfully. `teardown` runs after every
+service has stopped. Each service accepts the same `log`, `env`, and `cwd`
+options as `command`. Every service needs a `name`, unique across the run.
+
+The terminal shows startup progress. If a service fails to start, the error
+includes the recent lines from its log, and `teardown` runs only for a
+process the run spawned. Use separate log files when you
+need to distinguish output from services running at the same time.
+
+### Seed data with a function
+
+Setup and teardown code that runs once per run, such as seeding a database,
+is a function service. `start` runs in the runner process before the first
+test and resolves when setup is done; `stop` runs when the run ends:
+
+```ts
+const seed = defineService({
+  name: 'seed',
+  dependsOn: [migrate],
+  start: async () => { await insertFixtures(); },
+  stop: async () => { await deleteFixtures(); },
+});
+```
+
+A `start` that throws, or that has not resolved within `startupTimeout`
+(60 seconds by default), fails the run's startup with `APP_UNREACHABLE`
+naming the service. Ctrl-C stops waiting on a `start` at once and tears
+down what started; `signal` tells a `start` still running to stop. `stop`
+has `cleanupTimeout` to finish. Both receive
+`{ signal, projectRoot, services }`, where `services` holds the
+`{ url, port, ports }` of every service this one depends on, by name.
+
+### Mocks on free ports
+
+A service asks for a free port with port `0` in its `readyUrl`, and reads it
+as `{port}` in its own `args`, `env`, and `teardown`. On a fixed port,
+write the port itself: `{port}` there is `INVALID_CONFIG`, since it used to
+mean the app's port. A service with more than one port names them in
+`ports` and reads each as `{port:name}`:
+
+```ts
+const stripe = defineService({
+  name: 'stripe',
+  executable: 'stripe-mock',
+  args: ['-http-port', '{port}'],
+  readyUrl: 'http://127.0.0.1:0',
+});
+const mail = defineService({
+  name: 'mail',
+  executable: 'mailpit',
+  args: ['--smtp', '127.0.0.1:{port:smtp}', '--listen', '127.0.0.1:{port:http}'],
+  ports: { smtp: 0, http: 0 },
+  readyUrl: 'http://127.0.0.1:{port:http}/livez',
+});
+```
+
+Other processes reach a service through placeholders on its handle:
+`stripe.url` is `http://127.0.0.1:<port>`, `stripe.port` the port alone, and
+`mail.urlOf('smtp')` is `smtp://127.0.0.1:<port>`, the port name as the scheme.
+Pass them in `args` or `env`, directly or in a template literal:
+
+```ts title="Target fragment"
+app: {
+  url: 'http://localhost:3000',
+  command: {
+    executable: 'pnpm',
+    args: ['dev'],
+    env: { STRIPE_API_BASE: `${stripe.url}/v1`, SMTP_URL: mail.urlOf('smtp') },
+  },
+},
+services: [stripe, mail],
+```
+
+A target's app reads only the services in the target's graph, and a service
+only the services it depends on; any other placeholder fails the config load.
+Placeholders are for the config: tests navigate relative to `app.url` and read
+the resolved URL from `app.baseUrl`. See
+[services](/reference/config#services) for every rule.
 
 ## Several targets
 
@@ -150,12 +261,42 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Two targets that declare the same `app.command` share one process. Every
-test runs on every target unless it is scoped with `platforms` or
+Every test runs on every target unless it is scoped with `platforms` or
 `requires`; `--target <name>` selects at run time. A device target sits
 beside a browser target in the same list; see the
 [Mobile engine reference](/reference/mobile). One target per screen size is
 how a suite runs at several [viewports](/viewports).
+
+### Share a dev server
+
+`app.command` starts a process for its target alone, and two processes
+probing one fixed address fail the config load: the second would find the
+first already answering. Declare a dev server several targets share as a
+service, and point each target's `app.url` at it:
+
+```ts title="e2e.config.ts"
+import { defineService, type E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+
+const webServer = defineService({
+  name: 'web-server',
+  executable: 'pnpm',
+  args: ['dev', '--port', '{port}'],
+  readyUrl: 'http://127.0.0.1:0',
+});
+
+export default {
+  targets: [
+    { name: 'chromium', engine: web(), app: { url: webServer.url }, services: [webServer] },
+    { name: 'firefox', engine: web({ browser: 'firefox' }), app: { url: webServer.url }, services: [webServer] },
+  ],
+} satisfies E2EConfig;
+```
+
+Both targets run against one process on one free port. A service several
+targets list starts once, and a service no selected target needs does not
+start. The service serves the app, so a target whose `app.url` is its
+placeholder has no `app.command` of its own.
 
 ## Protected previews
 
@@ -223,7 +364,7 @@ trace can contain your bypass secret. Restrict access to those traces.
 
 <CardGroup cols={2}>
   <Card title="Config reference" icon="sliders" href="/reference/config#the-app-under-test">
-    `app`, `command`, and every app key.
+    `app`, `command`, `services`, and every app key.
   </Card>
   <Card title="Web engine reference" icon="masks-theater" href="/reference/web">
     Browser, viewport, `connect`, `headers`, `basicAuth`.

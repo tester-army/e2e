@@ -51,9 +51,10 @@ export interface WorkerBootstrap {
    */
   readonly cli: CliOverrides;
   /**
-   * The free ports the runner assigned to app URLs declared with port 0, by
-   * target name. Chosen once in the runner and outside the digest, so a
-   * worker must be told them to resolve the same URLs.
+   * The free ports the runner assigned to service addresses declared with
+   * port 0 (a target's `app.command` is a service here), keyed by
+   * `portKey`. Chosen once in the runner and outside the digest, so a worker
+   * must be told them to resolve the same URLs and placeholders.
    */
   readonly ports: PortAssignments;
   readonly targetName: string;

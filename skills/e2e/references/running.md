@@ -23,7 +23,7 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status or switch
 | --- | --- |
 | `[files...]` | Files, directories, quoted globs relative to the project root, or a bare name (`signup`, `signup.e2e.ts`, `agent/signup.e2e.ts` all select `tests/agent/signup.e2e.ts`); `file:line` is the test whose `test(` opens on that line. They narrow the config `tests` glob, never bypass it. |
 | `--config <path>` | Config file; default `e2e.config.ts` or `.mts`, found upward. |
-| `--target <ids>` | Target names, comma-separated or repeated; only these start their app commands. Unknown names fail before startup. |
+| `--target <ids>` | Target names, comma-separated or repeated; only these start their app commands and the services they need. Unknown names fail before startup. |
 | `--tag <tags>` | Any of the tags, comma-separated or repeated; all of them with `--tag-mode all`. An empty `--target`, `--tag`, or `--agent` value is a usage error, exit 2. |
 | `--exclude-tag <tags>` | Drop tests carrying any of these tags, however selected. |
 | `--grep <pattern>`, `--grep-invert <pattern>` | Keep, or drop, tests whose title (describe titles and test title joined by spaces, `checkout pays`; not file or tags) matches a regular expression. Bare pattern or `'/pattern/i'`; repeat for alternatives. |

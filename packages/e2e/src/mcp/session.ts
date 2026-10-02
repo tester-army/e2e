@@ -16,7 +16,7 @@ import { z } from 'zod';
 import { loadAiSdkIfInstalled } from '../agent/ai-sdk.ts';
 import { openInteractiveStep, type InteractiveStep } from '../agent/interactive-step.ts';
 import { ScreenPresenter } from '../agent/screen-update.ts';
-import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
+import { assignPorts, type PortAssignments, type ResolvedConfig, type ResolvedTarget } from '../config/resolve.ts';
 import { secretHandle } from '../secrets.ts';
 import { ConfigurationError, errorMessage, InfrastructureError, type SerializedError } from '../internal/errors.ts';
 import { LocatorEngine } from '../locator/engine.ts';
@@ -88,6 +88,18 @@ export class SessionHost {
   private readonly apps = new SharedAppProcesses();
   /** Aborts every open still running once the server shuts down, so none leaves a process behind. */
   private readonly shutdown = new AbortController();
+  /**
+   * The free ports the sessions' processes were started on. A shared process
+   * serves one address, and a process is shared by what it runs and the
+   * addresses of what it depends on, so a session that opens while one that
+   * was assigned ports is still admitted reads the same ports; once none is
+   * left, the next session gets fresh ones.
+   */
+  private ports: PortAssignments = {};
+  /** The admitted sessions that were assigned `ports`; once none is left, the next session gets fresh ones. */
+  private readonly portHolders = new Set<string>();
+  /** Port assignment, one session at a time, so two sessions opening at once cannot each pick their own. */
+  private assigning: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly options: SessionHostOptions) {
     this.sessions = new SessionRegistry(this.maxSessions);
@@ -130,12 +142,19 @@ export class SessionHost {
 
   private async teardown(live: LiveSession, reason: string): Promise<string> {
     if (live.idleTimer !== undefined) clearTimeout(live.idleTimer);
-    const { value, cleanupErrors } = await this.closeAttempt(live.attempt, live.abort, async () => {
-      await live.step.end({ status: 'passed', summary: `session closed: ${reason}` });
-      const outcome = await live.step.done;
-      // The recorder runs this after a start or stop still in flight, even one the step's deadline abandoned.
-      return { outcome, saved: await this.saveRecording(live) };
-    });
+    let closed: Awaited<ReturnType<typeof this.closeAttempt<{ outcome: Awaited<InteractiveStep['done']>; saved: string | undefined }>>>;
+    try {
+      closed = await this.closeAttempt(live.attempt, live.abort, async () => {
+        await live.step.end({ status: 'passed', summary: `session closed: ${reason}` });
+        const outcome = await live.step.done;
+        // The recorder runs this after a start or stop still in flight, even one the step's deadline abandoned.
+        return { outcome, saved: await this.saveRecording(live) };
+      });
+    } finally {
+      // Only once the attempt's processes are stopped: a session opening meanwhile must keep binding the same ports.
+      this.releasePorts(live.id);
+    }
+    const { value, cleanupErrors } = closed;
     const lines = [`Session ${live.id} closed (${reason}); ${live.actions} tool calls ran.`];
     if (value.saved !== undefined) lines.push(value.saved);
     if (value.outcome.error !== undefined) lines.push(`The session step ended with: ${errorMessage(value.outcome.error)}`);
@@ -186,6 +205,28 @@ export class SessionHost {
     );
   }
 
+  /**
+   * The config on the run's ports: a session is its own run, so a URL or a
+   * service address declared with port 0 gets a port here: the one the
+   * sessions still holding ports read, a free one when none does.
+   */
+  private assignSessionPorts(id: string, loaded: LoadedConfig): Promise<ResolvedConfig> {
+    const assigned = this.assigning.then(async () => {
+      const config = await allocateAppPorts(assignPorts(loaded, this.portHolders.size > 0 ? this.ports : {}));
+      this.ports = config.ports;
+      this.portHolders.add(id);
+      return config;
+    });
+    this.assigning = assigned.catch(() => undefined);
+    return assigned;
+  }
+
+  /** A session that leaves stops holding the ports; the last one to leave lets the next session start afresh. */
+  private releasePorts(id: string): void {
+    this.portHolders.delete(id);
+    if (this.portHolders.size === 0) this.ports = {};
+  }
+
   private async openSession(id: string, options: OpenSessionOptions, request: AbortSignal | undefined): Promise<string> {
     // The catalog renders synchronously, so the optional SDK is loaded once
     // here when installed. Without it the catalog reads the tools' Standard
@@ -197,10 +238,6 @@ export class SessionHost {
     const configPath = this.options.locateConfig(options.config);
     this.sessions.claimConfig(id, configPath);
     const loaded = await this.options.loadConfig(configPath);
-    // A session is its own run: a URL declared with port 0 gets a port here.
-    const config = await allocateAppPorts(loaded);
-    const target = this.resolveTarget(config, options.target);
-    this.sessions.claimEngine(id, target.name, target.engine);
     const ttlMs = this.options.ttlMs ?? SESSION_TTL_MS;
     const abort = new AbortController();
     // Until the session is live, the request and the server's shutdown can abort the open.
@@ -211,6 +248,10 @@ export class SessionHost {
     let attempt: StandaloneAttempt | undefined;
     let step: InteractiveStep | undefined;
     try {
+      // From here on a failure releases the ports this session was assigned.
+      const config = await this.assignSessionPorts(id, loaded);
+      const target = this.resolveTarget(config, options.target);
+      this.sessions.claimEngine(id, target.name, target.engine);
       attempt = await openStandaloneAttempt({
         // A session records video only between start_recording and
         // stop_recording: the configured video mode is for runs, and would
@@ -280,6 +321,8 @@ export class SessionHost {
       await this.closeAttempt(attempt, abort, async () => {
         await step?.end({ status: 'failed', summary: 'opening the session failed' });
       }).catch(() => undefined);
+      // After the close: what this open started is stopped before another session may take its ports.
+      this.releasePorts(id);
       throw cause;
     }
   }
@@ -428,7 +471,7 @@ export class SessionHost {
     return defineMcpTool({
       name: 'open_session',
       description:
-        'Open a live session on one target of an e2e project: loads the config, starts the app command the target declares (if any), boots the engine (a browser, a simulator), opens the app URL, and returns the session id, the catalog of tools it can run, and the first observation. Several sessions can be open at once, one per agent, each with its own engine: pass the returned session id to every later call. Then act with call and look with call {tool: "observe"}.',
+        'Open a live session on one target of an e2e project: loads the config, starts the services and app command the target declares (if any), boots the engine (a browser, a simulator), opens the app URL, and returns the session id, the catalog of tools it can run, and the first observation. Several sessions can be open at once, one per agent, each with its own engine: pass the returned session id to every later call. Then act with call and look with call {tool: "observe"}.',
       inputSchema: z.object({
         target: z.string().min(1).optional().describe('Target name from the config; required when the config declares several'),
         config: z.string().min(1).optional().describe("Path to an e2e config file, relative to the server's directory; default: the nearest e2e.config.ts"),
