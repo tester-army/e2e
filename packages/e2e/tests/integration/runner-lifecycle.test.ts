@@ -1192,6 +1192,38 @@ test('${title}', async () => {
   );
 
   it(
+    '--last-failed narrowed past a file that fails to import keeps owing its tests until a run carries them out',
+    async () => {
+      const failing = (title: string) => `import { test } from 'e2e';
+test('${title}', async () => {
+  throw new Error('${title} is broken');
+});
+`;
+      const project = createProject({ 'tests/first.e2e.ts': failing('first'), 'tests/second.e2e.ts': failing('second') });
+      const first = await runExisting(project, { appUrl: app.url });
+      expect(first.exitCode).toBe(1);
+
+      // `second` is owed and its file no longer imports; a rerun narrowed to `first` cannot collect it, so it carries it.
+      writeFileSync(path.join(project.dir, 'tests', 'first.e2e.ts'), `import { test } from 'e2e';\ntest('first', async () => {});\n`);
+      writeFileSync(path.join(project.dir, 'tests', 'second.e2e.ts'), `import './not-written-yet.ts';\n${failing('second')}`);
+      const narrowed = await runExisting(project, { appUrl: app.url, runOptions: { lastFailed: true, files: ['tests/first.e2e.ts'] } });
+      expect(narrowed.exitCode).toBe(0);
+      expect(narrowed.results.map((result) => [result.test.title, result.status])).toEqual([['first', 'passed']]);
+      expect(narrowed.report.run.carried?.results.map((result) => [result.titlePath.at(-1), result.status])).toEqual([['second', 'failed']]);
+      assertValidReport(narrowed.report);
+
+      // Once the file imports again, the next --last-failed runs `second`, and only it.
+      writeFileSync(path.join(project.dir, 'tests', 'second.e2e.ts'), `import { test } from 'e2e';\ntest('second', async () => {});\n`);
+      const owed = await runExisting(project, { appUrl: app.url, runOptions: { lastFailed: true } });
+      expect(owed.exitCode).toBe(0);
+      expect(owed.results.filter((result) => result.selected).map((result) => result.test.title)).toEqual(['second']);
+      expect(owed.report.run.carried).toBeUndefined();
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
     '--last-failed carries a failed hook another filter kept from running again, until its scope runs',
     async () => {
       const hooks = (teardown: string) => `import { test } from 'e2e';

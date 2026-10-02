@@ -126,6 +126,12 @@ function sameHook(a: ReportError, b: ReportError): boolean {
   );
 }
 
+/** What a rerun's collection found: the tests it collected by id, and the files it discovered but could not collect. */
+export interface RerunCollection {
+  readonly testIds: ReadonlySet<string>;
+  readonly uncollectedFiles: ReadonlySet<string>;
+}
+
 /**
  * What a `--last-failed` rerun carries forward from the report it selected
  * from: every result that report owed a rerun and this run did not run, as
@@ -138,16 +144,19 @@ function sameHook(a: ReportError, b: ReportError): boolean {
  * tests owed. A test this run did not run is one it collected (`collected`,
  * by test id), on a target the config still has, that it did not select:
  * left out by a filter, on a target or agent the run did not ask for, or a
- * setup no selected test needed, which the report lists no row for. A test the run no
- * longer collects cannot run again and is dropped. A test this run selected
- * is no longer carried, whatever its outcome: its own result says it now.
- * Undefined when nothing is carried.
+ * setup no selected test needed, which the report lists no row for. A test in
+ * a file the run found but could not collect (`uncollectedFiles`, a narrowed
+ * run past a file that fails to import) is still there and stays carried. A
+ * test the run no longer collects cannot run again and is dropped. A test
+ * this run selected is no longer carried, whatever its outcome: its own
+ * result says it now. Undefined when nothing is carried.
  */
-export function carryForward(lastRun: Report1Document, current: Report1Document, collected: ReadonlySet<string>): ReportCarried | undefined {
+export function carryForward(lastRun: Report1Document, current: Report1Document, collected: RerunCollection): ReportCarried | undefined {
   const selected = new Set(current.run.results.filter((result) => result.selected !== false).map(rerunId));
   const targets = new Set(current.run.targets.map((target) => target.id));
-  const notRun = (result: ReportResult): boolean =>
-    !selected.has(rerunId(result)) && collected.has(result.testId) && targets.has(result.targetId);
+  const stillThere = (result: ReportResult): boolean =>
+    collected.testIds.has(result.testId) || collected.uncollectedFiles.has(result.file);
+  const notRun = (result: ReportResult): boolean => !selected.has(rerunId(result)) && stillThere(result) && targets.has(result.targetId);
 
   const failedAgain = current.run.errors.filter(isSuiteHookFailure);
   const hooks = [...lastRun.run.errors.filter(isSuiteHookFailure), ...(lastRun.run.carried?.errors ?? [])];

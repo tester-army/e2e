@@ -177,9 +177,12 @@ describe('readLastRun and lastFailedIds', () => {
 });
 
 describe('carryForward', () => {
-  /** `carryForward` with the rerun having collected the tests its report has rows for, unless `collected` says more. */
-  const carry = (lastRun: Report1Document, current: Report1Document, collected: readonly string[] = []) =>
-    carryForward(lastRun, current, new Set([...current.run.results.map((result) => result.testId), ...collected]));
+  /** `carryForward` with the rerun having collected the tests its report has rows for, unless `collected` says more, and failed to collect `uncollected`. */
+  const carry = (lastRun: Report1Document, current: Report1Document, collected: readonly string[] = [], uncollected: readonly string[] = []) =>
+    carryForward(lastRun, current, {
+      testIds: new Set([...current.run.results.map((result) => result.testId), ...collected]),
+      uncollectedFiles: new Set(uncollected),
+    });
   const failed = (id: string, extra: Row = {}): Row => ({ id, status: 'failed', attempts: [{ artifacts: [{ path: `web/${id}/attempt-0/failure.png` }] }], ...extra });
   const passed = (id: string, extra: Row = {}): Row => ({ id, status: 'passed', attempts: [{ artifacts: [] }], ...extra });
   const carriedIds = (carried: ReturnType<typeof carryForward>) => carried?.results.map((result) => result.testId);
@@ -261,6 +264,13 @@ describe('carryForward', () => {
     expect(carriedIds(carried)).toEqual(['sign in']);
     expect(carried?.errors).toEqual([setupScope]);
     // A setup the rerun no longer collects is gone with its debt.
+    expect(carry(before, narrowed)).toBeUndefined();
+  });
+
+  it('carries a test in a file a narrowed rerun found but could not collect, and drops it once the file is gone', () => {
+    const before = document([failed('a'), failed('b', { file: 'tests/b.e2e.ts' })]);
+    const narrowed = document([passed('a')]);
+    expect(carriedIds(carry(before, narrowed, [], ['tests/b.e2e.ts']))).toEqual(['b']);
     expect(carry(before, narrowed)).toBeUndefined();
   });
 

@@ -42,7 +42,7 @@ import { buildWorkPlans, plannedSlots, type TargetWorkPlan } from './units.ts';
 import { SessionStore } from './sessions.ts';
 import { outputLayout } from './output.ts';
 import { claimRerunDir, pruneArtifacts } from './artifacts.ts';
-import { carryForward, lastFailedIds, readLastRun, reportArtifactPaths } from './last-run.ts';
+import { carryForward, lastFailedIds, readLastRun, reportArtifactPaths, type RerunCollection } from './last-run.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setSecretRegistry } from '../secrets.ts';
 import { withAbort } from '../internal/time.ts';
@@ -417,8 +417,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   // this run's report carries what it owed that this run left out.
   let lastRun: Report1Document | undefined;
   // The ids of every test collection found, a setup no selected test needed
-  // among them: what a rerun can still carry when the report lists no row.
-  let collectedTestIds: ReadonlySet<string> = new Set();
+  // among them, and the files it could not collect: what a rerun can still
+  // carry when the report lists no row.
+  let rerunCollection: RerunCollection = { testIds: new Set(), uncollectedFiles: new Set() };
   const buildRunReport = (exitCode: RunExitCode): Report1Document => {
     const document = buildReport({
       runId,
@@ -433,7 +434,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       targetProvenance,
       explore: options.tests?.explore?.snapshot(),
     });
-    const carried = lastRun === undefined ? undefined : carryForward(lastRun, document, collectedTestIds);
+    const carried = lastRun === undefined ? undefined : carryForward(lastRun, document, rerunCollection);
     return carried === undefined ? document : { ...document, run: { ...document.run, carried } };
   };
 
@@ -624,7 +625,10 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
                 );
           const inputs = await selectionInputs(options, config);
           lastRun = inputs.lastRun;
-          collectedTestIds = new Set(collection.tests.map((test) => test.id));
+          rerunCollection = {
+            testIds: new Set(collection.tests.map((test) => test.id)),
+            uncollectedFiles: new Set(collection.uncollected.map((skipped) => skipped.file)),
+          };
           const selection = repeatEach(
             select(
               collection,
