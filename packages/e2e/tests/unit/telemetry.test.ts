@@ -4,7 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runsFromCheckout } from '../../src/telemetry/checkout.ts';
-import { EVENT_CLI_SESSION, EVENT_RUN_COMPLETED, runCompletedEvent } from '../../src/telemetry/events.ts';
+import { EVENT_CLI_SESSION, EVENT_RUN_COMPLETED, runCompletedEvent, type RunContext } from '../../src/telemetry/events.ts';
 import { POSTHOG_HOST, POSTHOG_PROJECT_KEY } from '../../src/telemetry/posthog.ts';
 import { collectEnvironment, fleetName, statedIdentity } from '../../src/telemetry/environment.ts';
 import { preferencesPath, TelemetryStore } from '../../src/telemetry/store.ts';
@@ -12,6 +12,7 @@ import { NOTICE_VERSION, Telemetry, type TelemetryOptions } from '../../src/tele
 import { sampleReport } from '../helpers/sample-report.ts';
 
 const temporaries: string[] = [];
+const RUN: RunContext = { command: 'run', flags: [], config: undefined };
 
 function tempDir(): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-telemetry-'));
@@ -157,7 +158,7 @@ describe('Telemetry', () => {
   it('batches every event of an invocation into one request and then has nothing left', async () => {
     const { telemetry, sent } = create();
     telemetry.session('run', []);
-    telemetry.record(runCompletedEvent(sampleReport(), []));
+    telemetry.record(runCompletedEvent(sampleReport(), RUN));
     await telemetry.flush();
     expect(sent.calls).toHaveLength(1);
     expect(sent.calls[0]!.body.batch.map((item) => item.event)).toEqual([EVENT_CLI_SESSION, EVENT_RUN_COMPLETED]);
@@ -168,9 +169,35 @@ describe('Telemetry', () => {
     expect(sent.calls).toHaveLength(1);
   });
 
+  it('sends what a long-lived command queued before it ends, and leaves the session event to the flush', async () => {
+    const { telemetry, sent } = create();
+    telemetry.session('mcp', []);
+    telemetry.record(runCompletedEvent(sampleReport(), RUN));
+    const sending = telemetry.sendQueued();
+    telemetry.endSession(0);
+    await telemetry.flush();
+    await sending;
+    expect(sent.calls.map((call) => call.body.batch.map((item) => item.event))).toEqual([[EVENT_RUN_COMPLETED], [EVENT_CLI_SESSION]]);
+    // Same invocation, same session id, so the two requests group.
+    expect(sent.calls[0]!.body.batch[0]!.properties['session_id']).toBe(sent.calls[1]!.body.batch[0]!.properties['session_id']);
+  });
+
+  it('stops sending what a long-lived command queues once another process saved an opt-out', async () => {
+    const configDir = tempDir();
+    const running = create({ configDir });
+    running.telemetry.session('mcp', []);
+    running.telemetry.record(runCompletedEvent(sampleReport(), RUN));
+    await running.telemetry.sendQueued();
+    create({ configDir }).telemetry.setEnabled(false);
+    running.telemetry.record(runCompletedEvent(sampleReport(), RUN));
+    await running.telemetry.sendQueued();
+    await running.telemetry.flush();
+    expect(running.sent.calls).toHaveLength(1);
+  });
+
   it('sends the session first, named as the CLI last named it', async () => {
     const { telemetry, sent } = create();
-    telemetry.record(runCompletedEvent(sampleReport(), []));
+    telemetry.record(runCompletedEvent(sampleReport(), RUN));
     telemetry.session('run');
     telemetry.session('run', ['--tag']);
     await telemetry.flush();
@@ -183,7 +210,7 @@ describe('Telemetry', () => {
   it('stamps how the invocation ended on the session event alone', async () => {
     const { telemetry, sent } = create();
     telemetry.session('run');
-    telemetry.record(runCompletedEvent(sampleReport(), []));
+    telemetry.record(runCompletedEvent(sampleReport(), RUN));
     telemetry.endSession(0);
     await telemetry.flush();
     const [session, run] = sent.calls[0]!.body.batch;

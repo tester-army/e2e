@@ -332,7 +332,7 @@ async function runToOutcome(
     const outcome = await start(signals);
     process.exitCode = outcome.exitCode;
     // The run event is the report's own numbers; every run has a report, even one that failed before its first test.
-    telemetry.record(runCompletedEvent(outcome.report, usedFlags(command)));
+    telemetry.record(runCompletedEvent(outcome.report, { command: commandPath(command), flags: usedFlags(command), config: outcome.config }));
   } catch (cause) {
     reportFailure(telemetry, cause);
   } finally {
@@ -512,7 +512,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
       ].join('\n'),
     )
     .action(async (options: { config?: string; target?: string; headless?: boolean; maxSessions?: number }) => {
-      process.exitCode = await mcp(version, options);
+      process.exitCode = await mcp(version, options, telemetry);
     });
 
   const runCommand = program

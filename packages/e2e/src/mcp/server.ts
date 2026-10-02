@@ -15,6 +15,13 @@ import { ConfigurationError, errorMessage } from '../internal/errors.ts';
 import { loadProjectConfig, locateProjectConfig } from './config.ts';
 import { SessionHost } from './session.ts';
 import { errorResult } from './tools.ts';
+import type { McpSessionSummary } from './usage.ts';
+
+/** The client as it named itself in `initialize`. */
+export interface McpClient {
+  readonly name: string;
+  readonly version: string;
+}
 
 export interface ServeOptions {
   readonly cwd: string;
@@ -34,6 +41,8 @@ export interface ServeOptions {
   readonly log: (line: string) => void;
   /** Ends the server from outside: a process signal. */
   readonly signal?: AbortSignal | undefined;
+  /** Told once per `open_session`, when its session closes or its open fails, with the client that asked; undefined before `initialize`. */
+  readonly onSessionEnd?: ((summary: McpSessionSummary, client: McpClient | undefined) => void) | undefined;
 }
 
 const INSTRUCTIONS = `e2e is a local-first end-to-end test runner; this server drives an e2e project's app (its e2e.config.ts) live.
@@ -63,6 +72,10 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
     maxSessions: options.maxSessions,
     defaultTarget: options.target,
     log,
+    onSessionEnd: (summary) => {
+      const client = server.server.getClientVersion();
+      options.onSessionEnd?.(summary, client === undefined ? undefined : { name: client.name, version: client.version });
+    },
   });
 
   for (const spec of host.toolSpecs()) {

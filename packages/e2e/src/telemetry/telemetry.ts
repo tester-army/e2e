@@ -4,8 +4,10 @@
  * One instance lives for one CLI invocation. Commands hand it events; at the
  * end of the invocation `flush` sends them in a single bounded request, so a
  * command never waits on telemetry for more than the flush budget and never
- * fails because of it. Telemetry is a CLI concern only: the runner never
- * constructs this class.
+ * fails because of it. A long-lived command (`e2e mcp`) sends what it has
+ * queued as it goes with `sendQueued`, so a client that kills it loses only
+ * what was still in progress. Telemetry is a CLI concern only: the runner
+ * never constructs this class.
  *
  * Off means off at every step. `E2E_TELEMETRY_DISABLED`, `DO_NOT_TRACK`, a
  * source checkout of the repository, an `e2e telemetry disable`, or a
@@ -36,7 +38,7 @@ import { anonymousProjectId } from './project.ts';
 import { preferencesPath, TelemetryStore, telemetryConfigDir } from './store.ts';
 
 /** Bumped when what is collected changes enough that the notice must show again. */
-export const NOTICE_VERSION = 2;
+export const NOTICE_VERSION = 3;
 /** The longest a flush may hold the process; the project lookup and the request share it. */
 const DEFAULT_FLUSH_MS = 2_000;
 
@@ -62,7 +64,7 @@ export interface TelemetryOptions {
 /** The one-time notice: what is collected, and the two ways out. */
 function noticeText(): string {
   return [
-    `${picocolors.bold('e2e collects anonymous usage telemetry')} to improve the framework: the command, the versions, the OS, and run counts. Never test names, app data, or credentials.`,
+    `${picocolors.bold('e2e collects anonymous usage telemetry')} to improve the framework: the command, the versions, the OS, and run and MCP session counts. Never test names, app data, or credentials.`,
     `Opt out with ${picocolors.cyan('e2e telemetry disable')} or ${picocolors.cyan('E2E_TELEMETRY_DISABLED=1')}. What is sent: ${picocolors.underline(`${DOCS_URL}/telemetry`)}`,
     '',
     '',
@@ -99,6 +101,8 @@ export class Telemetry {
   private command: { readonly name: string; readonly flags: readonly string[] } | undefined;
   private failure: string | undefined;
   private exitCode: number | undefined;
+  /** Sends `sendQueued` started that have not settled; the flush waits for them. */
+  private readonly sending = new Set<Promise<void>>();
 
   constructor(options: TelemetryOptions) {
     this.version = options.version;
@@ -231,14 +235,30 @@ export class Telemetry {
   }
 
   /**
-   * Sends everything queued in one request, or prints it under debug. One
-   * deadline covers the project lookup still running and the request; a
-   * lost batch is the accepted cost of a command that never waits on
-   * telemetry.
+   * Sends everything queued in one request, or prints it under debug, and
+   * waits for the sends `sendQueued` started. One deadline covers the
+   * project lookup still running and the request; a lost batch is the
+   * accepted cost of a command that never waits on telemetry.
    */
   async flush(maxWaitMs: number = DEFAULT_FLUSH_MS): Promise<void> {
     const events = [...this.sessionEvent(), ...this.queue.splice(0)];
     this.command = undefined;
+    await Promise.all([this.send(events, maxWaitMs), ...this.sending]);
+  }
+
+  /**
+   * Sends what is queued now, without the session event, which only the
+   * flush at the end can complete. For a command that runs until its client
+   * goes away; the caller need not wait, the flush does.
+   */
+  sendQueued(maxWaitMs: number = DEFAULT_FLUSH_MS): Promise<void> {
+    const sending = this.send(this.queue.splice(0), maxWaitMs).finally(() => this.sending.delete(sending));
+    this.sending.add(sending);
+    return sending;
+  }
+
+  /** Sends `events` in one bounded request, or prints them under debug; nothing when off. */
+  private async send(events: readonly TelemetryEvent[], maxWaitMs: number): Promise<void> {
     if (events.length === 0) return;
     // A choice saved from another process while this command ran wins over the snapshot taken at its start.
     const store: TelemetryStore | undefined = this.statedId === undefined ? this.store() : undefined;

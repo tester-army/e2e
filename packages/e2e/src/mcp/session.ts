@@ -18,7 +18,7 @@ import { openInteractiveStep, type InteractiveStep } from '../agent/interactive-
 import { ScreenPresenter } from '../agent/screen-update.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import { secretHandle } from '../secrets.ts';
-import { ConfigurationError, errorMessage, InfrastructureError, type SerializedError } from '../internal/errors.ts';
+import { classifyError, ConfigurationError, errorMessage, InfrastructureError, type SerializedError } from '../internal/errors.ts';
 import { LocatorEngine } from '../locator/engine.ts';
 import { allocateAppPorts } from '../run/app-ports.ts';
 import { SharedAppProcesses } from '../run/process-pool.ts';
@@ -30,6 +30,7 @@ import { createSessionCatalog, isGrammarVerb, type SessionCatalog } from './cata
 import type { LoadedConfig } from './config.ts';
 import { describeRecording, SessionRecorder } from './recording.ts';
 import { SessionRegistry } from './sessions.ts';
+import { failedResultCode, SessionUsage, type McpSessionSummary, type SessionEndedBy } from './usage.ts';
 import { actionResult, catalogLine, defineMcpTool, describeToolDetail, errorResult, invokeTool, redactResult, textResult, type McpToolCallExtra, type McpToolResult, type McpToolSpec } from './tools.ts';
 
 /** How long one session may live, whatever happens. */
@@ -56,6 +57,7 @@ interface LiveSession {
   readonly abort: AbortController;
   idleTimer: NodeJS.Timeout | undefined;
   actions: number;
+  readonly usage: SessionUsage;
 }
 
 export interface OpenSessionOptions {
@@ -79,6 +81,8 @@ export interface SessionHostOptions {
   readonly ttlMs?: number | undefined;
   /** How many sessions may be open at once, from `--max-sessions`; default `SESSION_BOUNDS.default`. */
   readonly maxSessions?: number | undefined;
+  /** Told once per `open_session`, when its session closes or its open fails. */
+  readonly onSessionEnd?: ((summary: McpSessionSummary) => void) | undefined;
 }
 
 /** Owns the live sessions, up to the server's limit, and the fixed MCP tools that drive them. */
@@ -112,30 +116,34 @@ export class SessionHost {
    * it, or disconnects, aborts the open and what it started.
    */
   open(options: OpenSessionOptions, signal?: AbortSignal): Promise<string> {
-    return this.sessions.admit((id) => this.openSession(id, options, signal));
+    const usage = new SessionUsage(this.sessions.liveCount, this.options.headed);
+    return this.sessions.admit((id) => this.openSession(id, options, usage, signal)).catch((cause: unknown) => {
+      this.options.onSessionEnd?.(usage.openFailed(classifyError(cause).code));
+      throw cause;
+    });
   }
 
   /** Closes one session, the only one when `session` is omitted, and returns what happened; a session already closing returns that close. */
-  async close(reason: string, session?: string): Promise<string> {
+  async close(reason: string, session?: string, endedBy: SessionEndedBy = 'agent'): Promise<string> {
     if (session === undefined && !this.sessions.hasLive) return 'No session is open.';
-    return this.sessions.close(session, reason, (live) => this.teardown(live, reason));
+    return this.sessions.close(session, reason, (live) => this.teardown(live, reason, endedBy));
   }
 
   /** Closes every session, for a server that is shutting down; undefined when none was open. */
   async closeAll(reason: string): Promise<string | undefined> {
     this.shutdown.abort();
-    const summaries = await this.sessions.closeAll(reason, (live) => this.teardown(live, reason));
+    const summaries = await this.sessions.closeAll(reason, (live) => this.teardown(live, reason, 'server'));
     return summaries.length === 0 ? undefined : summaries.join('\n');
   }
 
-  private async teardown(live: LiveSession, reason: string): Promise<string> {
+  private async teardown(live: LiveSession, reason: string, endedBy: SessionEndedBy): Promise<string> {
     if (live.idleTimer !== undefined) clearTimeout(live.idleTimer);
     const { value, cleanupErrors } = await this.closeAttempt(live.attempt, live.abort, async () => {
       await live.step.end({ status: 'passed', summary: `session closed: ${reason}` });
       const outcome = await live.step.done;
       // The recorder runs this after a start or stop still in flight, even one the step's deadline abandoned.
       return { outcome, saved: await this.saveRecording(live) };
-    });
+    }).finally(() => this.options.onSessionEnd?.(live.usage.closed(endedBy)));
     const lines = [`Session ${live.id} closed (${reason}); ${live.actions} tool calls ran.`];
     if (value.saved !== undefined) lines.push(value.saved);
     if (value.outcome.error !== undefined) lines.push(`The session step ended with: ${errorMessage(value.outcome.error)}`);
@@ -178,15 +186,27 @@ export class SessionHost {
   call(session: string | undefined, name: string, args: Record<string, unknown>, extra: McpToolCallExtra): Promise<McpToolResult> {
     const live = this.sessions.resolve(session);
     const tool = live.catalog.tools[name];
-    if (tool === undefined) throw this.unknownTool(live, name);
+    if (tool === undefined) {
+      const error = this.unknownTool(live, name);
+      live.usage.failed(error.code);
+      throw error;
+    }
     const redact = live.attempt.agentRuntime.redact;
+    live.usage.called(name, live.catalog.project.has(name));
     return this.run(live, () => invokeTool(name, tool, args, extra)).then(
-      (result) => redactResult(isGrammarVerb(name) ? actionResult(name, result) : result, redact),
-      (cause: unknown) => redactResult(errorResult(cause), redact),
+      (result) => {
+        const settled = isGrammarVerb(name) ? actionResult(name, result) : result;
+        if (settled.isError === true) live.usage.failed(failedResultCode(settled.content.find((part) => part.type === 'text')?.text ?? ''));
+        return redactResult(settled, redact);
+      },
+      (cause: unknown) => {
+        live.usage.failed(classifyError(cause).code);
+        return redactResult(errorResult(cause), redact);
+      },
     );
   }
 
-  private async openSession(id: string, options: OpenSessionOptions, request: AbortSignal | undefined): Promise<string> {
+  private async openSession(id: string, options: OpenSessionOptions, usage: SessionUsage, request: AbortSignal | undefined): Promise<string> {
     // The catalog renders synchronously, so the optional SDK is loaded once
     // here when installed. Without it the catalog reads the tools' Standard
     // Schemas, and only a model-backed call needs the package.
@@ -200,6 +220,7 @@ export class SessionHost {
     // A session is its own run: a URL declared with port 0 gets a port here.
     const config = await allocateAppPorts(loaded);
     const target = this.resolveTarget(config, options.target);
+    usage.resolved(target.platform, target.engine);
     this.sessions.claimEngine(id, target.name, target.engine);
     const ttlMs = this.options.ttlMs ?? SESSION_TTL_MS;
     const abort = new AbortController();
@@ -265,6 +286,7 @@ export class SessionHost {
         abort,
         idleTimer: undefined,
         actions: 0,
+        usage,
       };
       const text = this.openingText(live, config, await this.firstScreen(live));
       // A first screen that came back despite the cancel must not become a live session nobody asked for.
@@ -272,7 +294,7 @@ export class SessionHost {
       opening.removeEventListener('abort', cancel);
       this.sessions.activate(live);
       // A step that ends on its own (the TTL, a hard stop) ends the session.
-      void step.done.then((outcome) => this.endOnItsOwn(live, outcome.error === undefined ? 'the session step concluded' : errorMessage(outcome.error)));
+      void step.done.then((outcome) => this.endOnItsOwn(live, outcome.error === undefined ? 'the session step concluded' : errorMessage(outcome.error), 'step'));
       this.touch(live);
       return text;
     } catch (cause) {
@@ -285,10 +307,10 @@ export class SessionHost {
   }
 
   /** Closes a live session that ended without a close_session: its step concluded, or it sat idle. */
-  private endOnItsOwn(live: LiveSession, why: string): void {
+  private endOnItsOwn(live: LiveSession, why: string, endedBy: SessionEndedBy): void {
     if (!this.sessions.isLive(live.id)) return;
     this.options.log('warning', `session ${live.id} ended: ${why}`);
-    this.close(why, live.id).catch((cause: unknown) => this.options.log('error', `closing session ${live.id} failed: ${errorMessage(cause)}`));
+    this.close(why, live.id, endedBy).catch((cause: unknown) => this.options.log('error', `closing session ${live.id} failed: ${errorMessage(cause)}`));
   }
 
   /** A recorder writing to `<output>/videos/<session>/`, when the engine records video. */
@@ -411,7 +433,7 @@ export class SessionHost {
   private touch(live: LiveSession): void {
     if (live.idleTimer !== undefined) clearTimeout(live.idleTimer);
     const idleMs = this.options.idleMs ?? SESSION_IDLE_MS;
-    live.idleTimer = setTimeout(() => this.endOnItsOwn(live, `idle for ${Math.round(idleMs / 60_000)} minutes`), idleMs);
+    live.idleTimer = setTimeout(() => this.endOnItsOwn(live, `idle for ${Math.round(idleMs / 60_000)} minutes`, 'idle'), idleMs);
     live.idleTimer.unref();
   }
 

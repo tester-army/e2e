@@ -38,6 +38,8 @@ export interface SessionCatalog {
   readonly tools: ToolSet;
   /** The tools that change nothing on the app. */
   readonly readOnly: ReadonlySet<string>;
+  /** The project's own tools among them. */
+  readonly project: ReadonlySet<string>;
 }
 
 export interface CatalogOptions {
@@ -78,7 +80,7 @@ export function createSessionCatalog(options: CatalogOptions): SessionCatalog {
     project[name] = tool;
     if (defined[name]?.annotations.mutates === false) readOnly.add(name);
   }
-  return { tools: { ...builtIn, ...project }, readOnly };
+  return { tools: { ...builtIn, ...project }, readOnly, project: new Set(Object.keys(project)) };
 }
 
 /**

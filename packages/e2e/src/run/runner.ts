@@ -270,6 +270,8 @@ export interface RunOutcome {
   /** Where the AI trace was written; undefined unless `aiTrace` was requested. */
   aiTracePath: string | undefined;
   results: readonly ResultRecord[];
+  /** The config the run resolved; undefined when it failed to load. */
+  config: ResolvedConfig | undefined;
 }
 
 /**
@@ -539,7 +541,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       forceController.signal,
     );
     listReporter?.rows(rows);
-    return { exitCode, status, report, reportPath, aiTracePath, results };
+    return { exitCode, status, report, reportPath, aiTracePath, results, config: loaded.config };
   };
 
   if (loaded.config === undefined) {

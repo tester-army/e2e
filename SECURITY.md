@@ -84,14 +84,22 @@ and step counts, attempt counts, engine names and versions, platforms, cache
 replay counts, the agent's action counts by the runner's own action names,
 model provider and public model id, token totals, and the runner's error codes,
 each paired for an engine or provider failure with a kind from a closed list
-(`timeout`, `rate-limit`, `device`, ...) that the message was matched against.
+(`timeout`, `rate-limit`, `device`, ...) that the message was matched against,
+plus counts and option ids of the config features used (workers, retries,
+agents, recording modes, ...) and, for `e2e explore`, why it stopped and how
+many steps and findings of each kind and severity it had. One `e2e_mcp_session`
+event per `e2e mcp` session carries the name and version the MCP client gives
+itself, the platform and engine, how the session ended, its duration, and its
+tool calls counted by the runner's own tool names with the error codes they
+failed with.
 Events are attributed to a random per-machine id and a hashed project id (the
 SHA-256 of the repository's root commit); in CI the vendor's name stands in for
 the machine, a platform that sets `E2E_TELEMETRY_FLEET` is attributed to that
 name, and without git, or with a shallow checkout, there is no project id. Test titles, file paths,
 URLs, instructions, observations, messages, stack traces, environment
-variables, and credentials are never sent as telemetry. Engine names, platforms, and model
-ids are sent as your config declares them when they are plain tokens and as
+variables, and credentials are never sent as telemetry, nor are MCP tool
+arguments or results, exploration goals, or findings. Engine names, platforms, model
+ids, and MCP client names are sent as declared when they are plain tokens and as
 `other` otherwise; an error code that is not an upper-case token is `OTHER`.
 Every property
 is listed at [e2e.tester.army/docs/telemetry](https://e2e.tester.army/docs/telemetry),
@@ -106,8 +114,8 @@ Telemetry falls under the disclosure policy above.
 There is no crash reporting and no update check. The complete list of
 outbound connections a run can make:
 
-- one telemetry request per CLI invocation to `eu.i.posthog.com`, unless
-  opted out
+- one telemetry request per CLI invocation to `eu.i.posthog.com`, plus one
+  per session that `e2e mcp` serves, unless opted out
 - one request to `eu.i.posthog.com` per `e2e feedback` someone runs, carrying
   the report written into its flags; `E2E_TELEMETRY_DISABLED` and
   `DO_NOT_TRACK` stop it

@@ -53,7 +53,12 @@ export class SessionRegistry<S extends NamedSession> {
 
   /** Whether any session is live. */
   get hasLive(): boolean {
-    return this.live().length > 0;
+    return this.liveCount > 0;
+  }
+
+  /** How many sessions are live. */
+  get liveCount(): number {
+    return this.live().length;
   }
 
   /**

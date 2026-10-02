@@ -1,18 +1,22 @@
 /**
  * The events e2e sends, built from facts the CLI already holds. Every
  * property is a count, a duration, a version, or a short token. The builders
- * copy no title, file, URL, instruction, message, or stack out of the report;
- * the one look at a message, in `failure-kind.ts`, yields a token from a
- * closed list.
- * The names a project declares for its engines, platforms, and model pass
- * through when they are plain tokens, so a homegrown engine counts as itself;
- * a name shaped like a path, a URL, or a sentence folds to `other`, and an
- * error code that is not an upper-case token, the shape of every runner
- * code, folds to `OTHER`. The unit tests hold the payload to that promise.
+ * copy no title, file, URL, instruction, message, or stack out of the report,
+ * the config, or an MCP session; the one look at a message, in
+ * `failure-kind.ts`, yields a token from a closed list.
+ * The names a project declares for its engines, platforms, and model, and the
+ * name an MCP client gives itself, pass through when they are plain tokens,
+ * so a homegrown engine counts as itself; a name shaped like a path, a URL,
+ * or a sentence folds to `other`, and an error code that is not an upper-case
+ * token, the shape of every runner code, folds to `OTHER`. The unit tests
+ * hold the payload to that promise.
  */
 
-import { GRAMMAR_ACTION_NAMES, PROJECT_TOOL_EVENT_PREFIX } from '../agent/action-names.ts';
-import type { Report1Document, ReportError, ReportStep, ReportUsage } from '../report/build.ts';
+import { GRAMMAR_ACTION_NAMES, GRAMMAR_TOOL_NAMES, PROJECT_TOOL_EVENT_PREFIX } from '../agent/action-names.ts';
+import type { ResolvedConfig } from '../config/resolve.ts';
+import type { McpClient } from '../mcp/server.ts';
+import type { McpSessionSummary } from '../mcp/usage.ts';
+import type { Report1Document, ReportError, ReportExplore, ReportStep, ReportUsage } from '../report/build.ts';
 import { STEP_KINDS } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
 import { failureKind } from './failure-kind.ts';
@@ -31,6 +35,8 @@ export const EVENT_CLI_SESSION = 'e2e_cli_session';
 export const EVENT_RUN_COMPLETED = 'e2e_run_completed';
 /** One per `e2e init`, however it ended: what was chosen and whether anything was written. */
 export const EVENT_INIT_COMPLETED = 'e2e_init_completed';
+/** One per `open_session` an `e2e mcp` server served, sent when the session closes or its open fails. */
+export const EVENT_MCP_SESSION = 'e2e_mcp_session';
 /** The session's error code for a flag or argument commander rejected; no runner code exists for it. */
 export const USAGE_ERROR_CODE = 'CLI_USAGE';
 
@@ -133,6 +139,11 @@ function unique(values: readonly string[]): string[] {
   return [...new Set(values)].toSorted();
 }
 
+/** Counts keyed in sorted order, so equal counts serialize equally. */
+function sortedCounts(counts: ReadonlyMap<string, number>): Record<string, number> {
+  return Object.fromEntries([...counts].toSorted());
+}
+
 /** What carries steps and errors: a plain attempt, a serial attempt, or one of its members. */
 interface ReportScope {
   readonly steps?: readonly ReportStep[];
@@ -177,7 +188,7 @@ function agentActions(steps: readonly ReportStep[]): Record<string, number> {
       counts.set(name, (counts.get(name) ?? 0) + 1);
     }
   }
-  return Object.fromEntries([...counts].toSorted());
+  return sortedCounts(counts);
 }
 
 /** Whether anyone priced the model calls: a gateway that did, nobody, or no calls to price. */
@@ -191,7 +202,67 @@ function durationMs(startedAt: string, finishedAt: string): number | null {
   return Number.isFinite(duration) ? Math.max(0, duration) : null;
 }
 
-export function runCompletedEvent(report: Report1Document, flags: readonly string[]): TelemetryEvent {
+/** What the CLI knows of a run beyond its report. */
+export interface RunContext {
+  /** `run` or `explore`. */
+  readonly command: string;
+  /** The flag names given, never their values. */
+  readonly flags: readonly string[];
+  /** The config the run resolved; undefined when it failed to load. */
+  readonly config: ResolvedConfig | undefined;
+}
+
+/**
+ * Which config features a run used: counts, booleans, and the runner's own
+ * option ids, never a name, a path, or a value the project wrote.
+ */
+function configFeatures(config: ResolvedConfig): Record<string, JsonValue> {
+  const agents = [...config.agents.values()];
+  return {
+    config_workers: config.workers,
+    config_retries: config.retries,
+    config_agents: config.agents.size,
+    config_custom_executor: agents.some((agent) => agent.executor !== undefined),
+    config_separate_judge: agents.some((agent) => agent.judge !== undefined && agent.judge.model !== agent.model?.model),
+    config_project_tools: new Set(agents.flatMap((agent) => Object.keys(agent.tools))).size,
+    config_credentials: config.credentials.size,
+    config_secrets: config.secrets.size,
+    config_cache_mode: config.cache.mode,
+    config_cache_store: config.cache.store === undefined ? 'file' : 'custom',
+    config_cache_strict: config.cache.strict !== false,
+    config_reporters: unique(config.reporters),
+    config_custom_reporters: config.customReporters.length,
+    config_artifact_store: config.artifactStore !== undefined,
+    config_trace_modes: unique(config.targets.map((target) => target.trace.mode)),
+    config_video_modes: unique(config.targets.map((target) => target.video.mode)),
+    config_app_commands: config.targets.filter((target) => target.app.command !== undefined).length,
+    config_environments: unique(config.targets.map((target) => target.app.environment)),
+  };
+}
+
+const EXPLORE_STEP_STATUSES = ['passed', 'failed', 'blocked', 'exhausted'] as const;
+const SEVERITIES = [1, 2, 3, 4, 5] as const;
+
+/** What `e2e explore` was given and found, by count: never the goal, a step's charter, or a finding's words. */
+function exploreProperties(explore: ReportExplore): Record<string, JsonValue> {
+  return {
+    explore_ended: explore.ended,
+    explore_max_steps: explore.budgets.maxSteps,
+    explore_timeout_ms: explore.budgets.timeoutMs,
+    explore_steps: explore.steps.length,
+    ...Object.fromEntries(
+      EXPLORE_STEP_STATUSES.map((status): [string, number] => [`explore_steps_${status}`, explore.steps.filter((step) => step.status === status).length]),
+    ),
+    explore_assessed: explore.summary !== undefined,
+    explore_issues: explore.findings.filter((finding) => finding.kind === 'issue').length,
+    explore_warnings: explore.findings.filter((finding) => finding.kind === 'warning').length,
+    explore_findings_by_severity: Object.fromEntries(
+      SEVERITIES.map((severity): [string, number] => [String(severity), explore.findings.filter((finding) => finding.severity === severity).length]),
+    ),
+  };
+}
+
+export function runCompletedEvent(report: Report1Document, context: RunContext): TelemetryEvent {
   const { run } = report;
   const recorded = [...scopes(report)];
   const steps = recorded.flatMap((scope) => scope.steps ?? []);
@@ -207,10 +278,11 @@ export function runCompletedEvent(report: Report1Document, flags: readonly strin
     name: EVENT_RUN_COMPLETED,
     at: run.finishedAt,
     properties: {
+      command: context.command,
       status: run.status,
       exit_code: run.exitCode,
       duration_ms: durationMs(run.startedAt, run.finishedAt),
-      flags: [...flags],
+      flags: [...context.flags],
       tests_discovered: run.summary.discovered,
       tests_selected: run.summary.selected,
       tests_executed: run.summary.executed,
@@ -245,6 +317,50 @@ export function runCompletedEvent(report: Report1Document, flags: readonly strin
       primary_error_code: primary === undefined ? null : errorCodeToken(primary.code),
       error_codes: unique(errors.map((error) => errorCodeToken(error.code))).slice(0, MAX_ERROR_CODES),
       error_kinds: unique(errors.flatMap(failureKind)).slice(0, MAX_ERROR_CODES),
+      // A run whose config never loaded has no features to report.
+      ...(context.config === undefined ? {} : configFeatures(context.config)),
+      ...(run.explore === undefined ? {} : exploreProperties(run.explore)),
+    },
+  };
+}
+
+/**
+ * The catalog tools an MCP session serves itself, by name: the grammar and
+ * the session's own (`createSessionCatalog`). A project's tools arrive
+ * counted together; any name outside this set folds to `other`.
+ */
+const SESSION_TOOLS: ReadonlySet<string> = new Set([...GRAMMAR_TOOL_NAMES, 'locate', 'start_recording', 'stop_recording']);
+
+/** One MCP session: the client, the target's platform and engine, how it ended, and its calls by the runner's tool names. */
+export function mcpSessionEvent(summary: McpSessionSummary, client: McpClient | undefined): TelemetryEvent {
+  const calls = new Map<string, number>();
+  for (const [name, count] of summary.toolCalls) {
+    const key = SESSION_TOOLS.has(name) ? name : 'other';
+    calls.set(key, (calls.get(key) ?? 0) + count);
+  }
+  if (summary.projectToolCalls > 0) calls.set('tool', summary.projectToolCalls);
+  const codes = new Map<string, number>();
+  for (const [code, count] of summary.errorCodes) {
+    const key = errorCodeToken(code);
+    codes.set(key, (codes.get(key) ?? 0) + count);
+  }
+  return {
+    name: EVENT_MCP_SESSION,
+    properties: {
+      client: client === undefined ? null : plainToken(client.name),
+      client_version: client === undefined ? null : plainToken(client.version),
+      outcome: summary.outcome,
+      ended_by: summary.endedBy ?? null,
+      error_code: summary.openErrorCode === undefined ? null : errorCodeToken(summary.openErrorCode),
+      platform: summary.platform === undefined ? null : plainToken(summary.platform),
+      engine: summary.engine === undefined ? null : engineLabel(summary.engine),
+      headed: summary.headed,
+      duration_ms: Math.max(0, Math.round(summary.durationMs)),
+      sessions_open: summary.concurrent,
+      calls_total: [...calls.values()].reduce((total, count) => total + count, 0),
+      calls_failed: summary.failedCalls,
+      calls: sortedCounts(calls),
+      error_codes: sortedCounts(new Map([...codes].toSorted().slice(0, MAX_ERROR_CODES))),
     },
   };
 }

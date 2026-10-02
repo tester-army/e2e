@@ -59,9 +59,11 @@ sends nothing.
 ## What is sent
 
 Each command sends a session event. `run` and `explore` also send a run event,
-and `init` an init event. `--help` and `--version` send nothing, also when
-asked on a command. Events go in one request when the command ends, with a
-two-second deadline for all telemetry work.
+`init` an init event, and `mcp` one event per MCP session. `--help` and
+`--version` send nothing, also when asked on a command. Events go in one
+request when the command ends, with a two-second deadline for all telemetry
+work. `e2e mcp` runs as long as its client does, so it sends each MCP session
+event in its own request when that session ends, with the same deadline.
 
 Every event carries these properties.
 
@@ -110,10 +112,11 @@ Versions:
 | `engine`, `gateway` | The ids of the engine and the model gateway chosen for a new config (`web`, `mobile`, `none`; `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `grok`, `none`), `null` when not asked. Never the endpoint typed for an OpenAI-compatible gateway |
 | `skill`, `mcp`, `install` | Whether the agent skill, the MCP registration, and the dependency install were chosen |
 
-`e2e_run_completed`, once per `e2e run` or `e2e explore`, built from the numbers in `report.json`:
+`e2e_run_completed`, once per `e2e run` or `e2e explore`, built from the numbers in `report.json` and the resolved config:
 
 | Property | Value |
 | --- | --- |
+| `command` | `run` or `explore` |
 | `status`, `exit_code`, `duration_ms` | The run's outcome |
 | `flags` | The names of the flags given to the run command, never their values |
 | `tests_discovered`, `tests_selected`, `tests_executed`, `tests_passed`, `tests_failed`, `tests_flaky`, `tests_skipped` | The summary counts |
@@ -129,11 +132,50 @@ Versions:
 | `primary_error_code` | The first error the run recorded, which is the one that decided its status: a run-level error, else the failed attempt's verdict, else a step's; `null` for a clean run |
 | `error_kinds` | For `ENGINE_FAILURE`, `MODEL_PROVIDER_FAILED`, and `ERROR`, whose code says where a failure surfaced but not what it was: the code and a kind read off the message against a closed list (`auth`, `rate-limit`, `overloaded`, `timeout`, `network`, `server`, `bad-request`, `device`, `daemon`, `browser`, `permission`, `not-found`, `memory`, `other`), as `MODEL_PROVIDER_FAILED:rate-limit`. Only the kind's name leaves the machine, never the message |
 
+Which config features the run used, absent when the config did not load. Each
+is a count, a boolean, or one of the runner's own option values, never a name,
+a path, or a value you wrote:
+
+| Property | Value |
+| --- | --- |
+| `config_workers`, `config_retries` | The worker count and retries the run resolved |
+| `config_agents`, `config_custom_executor`, `config_separate_judge`, `config_project_tools` | How many agents are configured, whether any has a custom executor or a judge model of its own, and how many distinct project tools they declare |
+| `config_credentials`, `config_secrets` | How many credentials and secrets are configured |
+| `config_cache_mode`, `config_cache_store`, `config_cache_strict` | `off`, `read-only`, or `read-write`; `file` or `custom`; whether strict replay is on |
+| `config_reporters`, `config_custom_reporters`, `config_artifact_store` | The built-in reporter ids (`list`, `json`, `junit`, `markdown`), how many reporter objects the config adds, and whether an artifact store is set |
+| `config_trace_modes`, `config_video_modes` | The distinct recording modes across targets (`off`, `on`, `retain-on-failure`, `on-first-retry`, `on-all-retries`) |
+| `config_app_commands`, `config_environments` | How many targets start an app command, and the distinct app environments (`test`, `staging`, `production`) |
+
+On `e2e explore` only, what the exploration was given and found, by count.
+Never the goal, a step's charter, or a finding's words:
+
+| Property | Value |
+| --- | --- |
+| `explore_ended` | Why it stopped: `finished`, `step-limit`, `time`, `stuck`, or `aborted` |
+| `explore_max_steps`, `explore_timeout_ms` | The budgets it ran with |
+| `explore_steps`, `explore_steps_passed`, `explore_steps_failed`, `explore_steps_blocked`, `explore_steps_exhausted` | Exploration steps, by how each ended |
+| `explore_assessed` | Whether the agent gave a closing assessment |
+| `explore_issues`, `explore_warnings`, `explore_findings_by_severity` | Findings by kind, and by severity: `{"1": 0, "2": 1, "3": 0, "4": 0, "5": 1}` |
+
+`e2e_mcp_session`, once per `open_session` an `e2e mcp` server receives, sent when the session closes or the open fails:
+
+| Property | Value |
+| --- | --- |
+| `client`, `client_version` | The name and version the MCP client gives itself (`claude-code`, `cursor-vscode`, ...). A value that is not a plain token is reported as `other`; `null` before the client introduced itself |
+| `outcome`, `error_code` | `closed` for a session that opened, `open-failed` with the runner code it failed with (`APP_UNREACHABLE`, `ENGINE_FAILURE`, ...) |
+| `ended_by` | `agent` for `close_session`, `idle`, `step` for the session's time limit, `server` when the server shut down; `null` for a failed open |
+| `platform`, `engine`, `headed` | The target's platform and engine with its version, as for a run, and whether the UI was shown |
+| `duration_ms`, `sessions_open` | How long the session lived, and how many other sessions were open when it opened |
+| `calls_total`, `calls_failed`, `calls` | Tool calls, failed calls (a call of a tool the session does not have included), and calls by the session's own tool names: `{"observe": 4, "tap": 9, "locate": 2, "screenshot": 1}`. A project's own tools are counted together as `tool` and anything else as `other`; no other name is sent |
+| `error_codes` | How often each runner code failed a call: `{"LOCATOR_NOT_FOUND": 2}`, at most 20 codes. A code that is not an upper-case token is reported as `OTHER` |
+
 ## What is never sent
 
 Test titles, file paths, URLs, origins, instructions, observations, page
 content, screenshots, error messages, stack traces, environment variable
-values, credentials, or file contents. Events include only the properties
+values, credentials, or file contents. Nor the names of targets, agents,
+credentials, secrets, or project tools, the arguments or results of MCP tool
+calls, an exploration's goal, or its findings. Events include only the properties
 listed above.
 
 ## In CI

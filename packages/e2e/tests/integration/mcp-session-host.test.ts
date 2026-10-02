@@ -6,7 +6,8 @@
  * a shutdown cancels sessions still opening and waits for them, a cancelled
  * open stops what it started, an `open_session` that fails
  * after the attempt opened tears the attempt down and leaves the host ready
- * for the next one, and a session records video only when the agent asks.
+ * for the next one, a session records video only when the agent asks, and
+ * every open reports one usage summary when it ends.
  */
 
 import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
@@ -17,6 +18,7 @@ import { createFakeEngine, FAKE_APP, type FakeEngineBehavior, type FakeEngineHan
 import { freePort } from '../helpers/free-port.ts';
 import { gate } from '../helpers/gate.ts';
 import { startupLog, writeStartupScripts } from '../helpers/startup-scripts.ts';
+import type { McpSessionSummary } from '../../src/mcp/usage.ts';
 import type { RecordingMode, TargetApp } from '../../src/types.ts';
 
 const sessionModule = new URL('../../dist/mcp/session.js', import.meta.url).href;
@@ -59,6 +61,7 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     readonly loaded?: Promise<void>;
     /** Runs while a config file evaluates, as its top-level code would. */
     readonly evaluate?: (configPath: string) => void;
+    readonly onSessionEnd?: (summary: McpSessionSummary) => void;
   }
 
   /**
@@ -89,6 +92,7 @@ describe('SessionHost', { timeout: 60_000 }, () => {
       idleMs: options.idleMs,
       ttlMs: options.ttlMs,
       maxSessions: options.maxSessions,
+      onSessionEnd: options.onSessionEnd,
     });
 
   const sessionId = (text: string): string => /^Session (\S+) open/.exec(text)![1]!;
@@ -446,5 +450,38 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     expect(opened).not.toContain('start_recording');
     const closed = await plain.close('done');
     expect(closed).not.toContain('Recording');
+  });
+
+  it('reports one summary per open: its calls by tool, its failures by code, and how it ended', async () => {
+    const summaries: McpSessionSummary[] = [];
+    const counted = host(engines().next, { idleMs: 300, onSessionEnd: (summary) => summaries.push(summary) });
+    const signal = new AbortController().signal;
+    const id = sessionId(await counted.open({}));
+    await counted.call(id, 'observe', {}, { signal });
+    const missed = await counted.call(id, 'tap', { target: 'n999' }, { signal });
+    expect(missed.isError).toBe(true);
+    expect(() => counted.call(id, 'teleport', {}, { signal })).toThrow(/UNKNOWN_TOOL|not available/);
+    await counted.close('closed by the agent', id);
+    await expect(counted.open({ target: 'nowhere' })).rejects.toMatchObject({ code: 'UNKNOWN_TARGET' });
+    await counted.open({});
+    await sleep(1_000);
+
+    expect(summaries).toHaveLength(3);
+    const [closed, failed, idle] = summaries as [McpSessionSummary, McpSessionSummary, McpSessionSummary];
+    expect(closed).toMatchObject({
+      outcome: 'closed',
+      endedBy: 'agent',
+      platform: 'kiosk',
+      engine: { name: 'fake' },
+      headed: false,
+      concurrent: 0,
+      toolCalls: new Map([['observe', 1], ['tap', 1]]),
+      projectToolCalls: 0,
+      failedCalls: 2,
+      errorCodes: new Map([['LOCATOR_NOT_FOUND', 1], ['UNKNOWN_TOOL', 1]]),
+    });
+    expect(closed.durationMs).toBeGreaterThan(0);
+    expect(failed).toMatchObject({ outcome: 'open-failed', endedBy: undefined, openErrorCode: 'UNKNOWN_TARGET', platform: undefined });
+    expect(idle).toMatchObject({ outcome: 'closed', endedBy: 'idle', platform: 'kiosk' });
   });
 });
