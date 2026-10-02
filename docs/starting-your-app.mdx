@@ -98,6 +98,30 @@ valid when the port changes. Use `127.0.0.1` or `[::1]`, matching the address
 the command binds; `localhost:0` is rejected. See
 [free ports](/reference/config#free-ports) for details.
 
+### Next.js dev targets
+
+Next.js 16 blocks cross-origin requests to its dev resources. A target that
+opens `127.0.0.1` or `[::1]` while `next dev` identifies as `localhost`
+renders and never hydrates. Locators resolve and clicks land, but no React
+handler runs, so the test fails and every retry fails the same way.
+
+Add the host the target opens to `allowedDevOrigins`:
+
+```ts title="next.config.ts"
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
+  allowedDevOrigins: ['127.0.0.1'],
+};
+
+export default nextConfig;
+```
+
+Use `'[::1]'` in the list when `app.url` opens `http://[::1]:0`.
+
+A target on `localhost` needs no entry, because `next dev` identifies as
+`localhost`. A production `next start` target is unaffected either way.
+
 ## Dependencies
 
 <Note>

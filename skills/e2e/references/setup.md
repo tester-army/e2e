@@ -147,6 +147,13 @@ target's `app`:
 | `environment` | `'test'`, `'staging'`, `'production'`; inferred from the host, labels the report and cache key. |
 | `identity` | Stable identity for cache and session keys when the origin changes per deploy (preview URLs). Defaults to the URL's origin and path, else `bundleId`, else `appPath`. |
 
+A Next.js 16 dev server blocks cross-origin requests to its dev resources, so
+a target that opens `127.0.0.1` or `[::1]` while `next dev` identifies as
+`localhost` never hydrates. Add the host to `allowedDevOrigins` in
+`next.config.ts` (`'127.0.0.1'`, or `'[::1]'` for the bracket form). A
+`localhost` target needs no entry, and a production `next start` target is
+unaffected.
+
 There is no `services` key in this version: it is an unknown key wherever it
 appears. Start dependency processes before the run, or have `app.command`
 start a script that brings them up and serves the app.
