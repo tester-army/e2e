@@ -67,6 +67,19 @@ export async function loadAiSdk(): Promise<AiSdk> {
 }
 
 /**
+ * The SDK when the optional peer is installed, else undefined: for the seams
+ * that have a way to do their job without it.
+ */
+export async function loadAiSdkIfInstalled(): Promise<AiSdk | undefined> {
+  return loadAiSdk().catch(() => undefined);
+}
+
+/** The SDK when an earlier call loaded it, else undefined; never loads it. */
+export function loadedAiSdk(): AiSdk | undefined {
+  return cache().loaded;
+}
+
+/**
  * The already-loaded SDK, for the few synchronous seams (error-class checks)
  * that run strictly after an async caller primed the cache.
  */

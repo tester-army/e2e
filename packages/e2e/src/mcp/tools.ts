@@ -8,17 +8,20 @@
  * validates the arguments against the schema, runs the tool, and renders its
  * output in the MCP result envelope.
  *
- * The schemas are read through the AI SDK's `asSchema`, and the SDK is an
- * optional peer dependency: this module reaches it only through the lazy
- * loader, never a static import, since the CLI loads this module for every
- * command and `e2e init` runs before `ai` is installed.
+ * The schemas are read through the AI SDK's `asSchema` when it is installed,
+ * and through the schema's own Standard Schema (zod's, among others) when it
+ * is not. The SDK is an optional peer dependency: this module reaches it only
+ * through the lazy loader, never a static import, since the CLI loads this
+ * module for every command and `e2e init` runs before `ai` is installed.
  */
 
 import type { JSONSchema7, Tool, ToolExecutionOptions, ToolSet } from 'ai';
 import type { z } from 'zod';
-import { aiSdk, loadAiSdk } from '../agent/ai-sdk.ts';
+import { loadAiSdk, loadAiSdkIfInstalled, loadedAiSdk } from '../agent/ai-sdk.ts';
 import { isFailedResult } from '../agent/loop-guards.ts';
 import { codedMessage, ConfigurationError, errorMessage } from '../internal/errors.ts';
+import { describeIssue } from '../internal/standard-schema.ts';
+import type { StandardSchemaV1 } from '../types.ts';
 
 /** One MCP content part this server emits. */
 export type McpContent =
@@ -92,13 +95,31 @@ const CATALOG_SENTENCE_MAX = 160;
  * never need. A zod schema converts synchronously; a schema that only
  * resolves lazily is shown as an open object rather than awaited, since the
  * catalog is rendered inline. Synchronous, so the session that renders the
- * catalog has loaded the SDK first.
+ * catalog has loaded the SDK first when it is installed; without it, the
+ * schema's Standard JSON Schema converter is read instead.
  */
 export function toolJsonSchema(tool: ToolSet[string]): JSONSchema7 {
-  const raw = aiSdk().asSchema(tool.inputSchema).jsonSchema;
-  if (typeof (raw as PromiseLike<JSONSchema7>).then === 'function') return { type: 'object' };
+  const sdk = loadedAiSdk();
+  const raw = sdk === undefined ? standardJsonSchema(tool.inputSchema) : sdk.asSchema(tool.inputSchema).jsonSchema;
+  if (raw === undefined || typeof (raw as PromiseLike<JSONSchema7>).then === 'function') return { type: 'object' };
   const { $schema: _draft, ...schema } = raw as JSONSchema7;
   return schema;
+}
+
+/** A Standard Schema that may also carry the Standard JSON Schema converter. */
+interface StandardToolSchema extends StandardSchemaV1 {
+  readonly '~standard': StandardSchemaV1['~standard'] & {
+    readonly jsonSchema?: { readonly input: (options: { readonly target: string }) => unknown };
+  };
+}
+
+function standardSchemaOf(schema: unknown): StandardToolSchema | undefined {
+  const props = (schema as Partial<StandardToolSchema> | undefined)?.['~standard'];
+  return typeof props === 'object' && props !== null && typeof props.validate === 'function' ? (schema as StandardToolSchema) : undefined;
+}
+
+function standardJsonSchema(schema: unknown): unknown {
+  return standardSchemaOf(schema)?.['~standard'].jsonSchema?.input({ target: 'draft-07' });
 }
 
 /**
@@ -167,14 +188,26 @@ export async function invokeTool(
 }
 
 async function validateArgs(name: string, tool: ToolSet[string], args: Record<string, unknown>): Promise<unknown> {
-  const { asSchema } = await loadAiSdk();
+  const sdk = await loadAiSdkIfInstalled();
+  const standard = standardSchemaOf(tool.inputSchema);
+  if (sdk === undefined && standard !== undefined) {
+    const result = await standard['~standard'].validate(args);
+    if (result.issues === undefined) return result.value;
+    throw invalidArgs(name, result.issues.map(describeIssue).join('; '));
+  }
+  // A schema the SDK built (`jsonSchema()`, a lazy schema) only exists with the SDK installed.
+  const { asSchema } = sdk ?? (await loadAiSdk());
   const schema = asSchema(tool.inputSchema);
   if (schema.validate === undefined) return args;
   const result = await schema.validate(args);
   if (result.success) return result.value;
-  throw new ConfigurationError(
+  throw invalidArgs(name, describeValidationError(result.error));
+}
+
+function invalidArgs(name: string, issues: string): ConfigurationError {
+  return new ConfigurationError(
     'INVALID_ARGUMENT',
-    `call ${name}: ${describeValidationError(result.error)}; tools {tool: ${JSON.stringify(name)}} shows its arguments`,
+    `call ${name}: ${issues}; tools {tool: ${JSON.stringify(name)}} shows its arguments`,
   );
 }
 

@@ -13,7 +13,7 @@
  */
 
 import { z } from 'zod';
-import { loadAiSdk } from '../agent/ai-sdk.ts';
+import { loadAiSdkIfInstalled } from '../agent/ai-sdk.ts';
 import { openInteractiveStep, type InteractiveStep } from '../agent/interactive-step.ts';
 import { ScreenPresenter } from '../agent/screen-update.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
@@ -187,10 +187,10 @@ export class SessionHost {
   }
 
   private async openSession(id: string, options: OpenSessionOptions, request: AbortSignal | undefined): Promise<string> {
-    // The catalog reads the tools' schemas through the AI SDK, synchronously
-    // and on every render, so the optional SDK is loaded once here: a project
-    // without it learns so before an attempt opens a browser.
-    await loadAiSdk();
+    // The catalog renders synchronously, so the optional SDK is loaded once
+    // here when installed. Without it the catalog reads the tools' Standard
+    // Schemas, and only a model-backed call needs the package.
+    await loadAiSdkIfInstalled();
     // The config is claimed before it evaluates: its top-level code resolves
     // secrets against the registry an open session installed, which only
     // knows that session's config.
