@@ -56,6 +56,7 @@ describe('e2e mcp telemetry', () => {
     });
     const send = (message: Record<string, unknown>): void => void stdin.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
     send({ id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'claude-code', version: '2.1.0' } } });
+    await vi.waitFor(() => expect(frames.some((frame) => (JSON.parse(frame) as { id?: number }).id === 1)).toBe(true));
     send({ method: 'notifications/initialized' });
     send({ id: 2, method: 'tools/call', params: { name: 'open_session', arguments: { config: 'acme/missing.config.ts' } } });
 

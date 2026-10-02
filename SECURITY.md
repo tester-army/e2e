@@ -88,7 +88,8 @@ each paired for an engine or provider failure with a kind from a closed list
 plus counts and option ids of the config features used (workers, retries,
 agents, recording modes, ...) and, for `e2e explore`, why it stopped and how
 many steps and findings of each kind and severity it had. One `e2e_mcp_session`
-event per `e2e mcp` session carries the name and version the MCP client gives
+event per `e2e mcp` session that closes or fails to open (one still open when
+the client kills the server is lost) carries the name and version the MCP client gives
 itself, the platform and engine, how the session ended, its duration, and its
 tool calls counted by the runner's own tool names with the error codes they
 failed with.
@@ -114,8 +115,8 @@ Telemetry falls under the disclosure policy above.
 There is no crash reporting and no update check. The complete list of
 outbound connections a run can make:
 
-- one telemetry request per CLI invocation to `eu.i.posthog.com`, plus one
-  per session that `e2e mcp` serves, unless opted out
+- one telemetry request per CLI invocation to `eu.i.posthog.com`, plus at
+  most one per session that `e2e mcp` serves, unless opted out
 - one request to `eu.i.posthog.com` per `e2e feedback` someone runs, carrying
   the report written into its flags; `E2E_TELEMETRY_DISABLED` and
   `DO_NOT_TRACK` stop it

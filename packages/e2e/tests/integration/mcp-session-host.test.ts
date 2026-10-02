@@ -478,7 +478,7 @@ describe('SessionHost', { timeout: 60_000 }, () => {
       engine: { name: 'fake' },
       headed: false,
       concurrent: 0,
-      toolCalls: new Map([['observe', 1], ['select', 1], ['tap', 1]]),
+      toolCalls: new Map([['observe', 1], ['select', 1], ['tap', 1], ['teleport', 1]]),
       projectToolCalls: 0,
       failedCalls: 3,
       errorCodes: new Map([['LOCATOR_NOT_FOUND', 2], ['UNKNOWN_TOOL', 1]]),
@@ -486,5 +486,23 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     expect(closed.durationMs).toBeGreaterThan(0);
     expect(failed).toMatchObject({ outcome: 'open-failed', endedBy: undefined, openErrorCode: 'UNKNOWN_TARGET', platform: undefined });
     expect(idle).toMatchObject({ outcome: 'closed', endedBy: 'idle', platform: 'kiosk' });
+  });
+
+  it('counts an action that failed and then could not look at the screen as one failed call', async () => {
+    let broken = false;
+    const fake = createFakeEngine({
+      observe: () => {
+        if (broken) throw new Error('screen unavailable');
+      },
+    });
+    const summaries: McpSessionSummary[] = [];
+    const counted = host(() => fake, { onSessionEnd: (summary) => summaries.push(summary) });
+    const id = sessionId(await counted.open({}));
+    broken = true;
+    const result = await counted.call(id, 'tap', { target: 'n999' }, { signal: new AbortController().signal });
+    expect(result.isError).toBe(true);
+    broken = false;
+    await counted.close('done', id);
+    expect(summaries[0]).toMatchObject({ toolCalls: new Map([['tap', 1]]), failedCalls: 1 });
   });
 });

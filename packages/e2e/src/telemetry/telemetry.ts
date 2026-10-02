@@ -64,7 +64,7 @@ export interface TelemetryOptions {
 /** The one-time notice: what is collected, and the two ways out. */
 function noticeText(): string {
   return [
-    `${picocolors.bold('e2e collects anonymous usage telemetry')} to improve the framework: the command, the versions, the OS, and run and MCP session counts. Never test names, app data, or credentials.`,
+    `${picocolors.bold('e2e collects anonymous usage telemetry')} to improve the framework: the command, the versions, the OS, and summaries of runs and MCP sessions. Never test names, app data, or credentials.`,
     `Opt out with ${picocolors.cyan('e2e telemetry disable')} or ${picocolors.cyan('E2E_TELEMETRY_DISABLED=1')}. What is sent: ${picocolors.underline(`${DOCS_URL}/telemetry`)}`,
     '',
     '',

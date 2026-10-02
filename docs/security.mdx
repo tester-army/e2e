@@ -252,8 +252,8 @@ what comes back is validated again before use.
 
 Built-in features may connect to:
 
-- one telemetry request per CLI invocation to `eu.i.posthog.com`, plus one
-  per session that `e2e mcp` serves, unless opted out; see [Telemetry](/telemetry)
+- one telemetry request per CLI invocation to `eu.i.posthog.com`, plus at
+  most one per session that `e2e mcp` serves, unless opted out; see [Telemetry](/telemetry)
 - one request to `eu.i.posthog.com` per `e2e feedback` you run; see
   [Feedback](/telemetry#feedback)
 - the provider endpoint used by your configured model. Deterministic tests

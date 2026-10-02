@@ -25,11 +25,11 @@ export interface McpSessionSummary {
   readonly durationMs: number;
   /** Sessions live beside this one when it opened. */
   readonly concurrent: number;
-  /** Calls of the built-in catalog tools, by name. */
+  /** Calls of every other name, the built-in catalog tools and names the session does not have, by name; telemetry folds the latter. */
   readonly toolCalls: ReadonlyMap<string, number>;
   /** Calls of the project's own tools, together. */
   readonly projectToolCalls: number;
-  /** Calls whose result was an error, a tool the session does not have included. */
+  /** Calls whose result was an error. */
   readonly failedCalls: number;
   /** How often each runner code failed a call. */
   readonly errorCodes: ReadonlyMap<string, number>;

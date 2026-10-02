@@ -134,7 +134,7 @@ Versions:
 
 Which config features the run used, absent when the config did not load. Each
 is a count, a boolean, or one of the runner's own option values, never a name,
-a path, or a value you wrote:
+a path, or free text you wrote:
 
 | Property | Value |
 | --- | --- |
@@ -157,7 +157,7 @@ Never the goal, a step's charter, or a finding's words:
 | `explore_assessed` | Whether the agent gave a closing assessment |
 | `explore_issues`, `explore_warnings`, `explore_findings_by_severity` | Findings by kind, and by severity: `{"1": 0, "2": 1, "3": 0, "4": 0, "5": 1}` |
 
-`e2e_mcp_session`, once per `open_session` an `e2e mcp` server receives, sent when the session closes or the open fails:
+`e2e_mcp_session`, once per `open_session` an `e2e mcp` server receives, sent when the session closes or the open fails. A session still open when the client kills the server is not sent:
 
 | Property | Value |
 | --- | --- |
@@ -166,7 +166,7 @@ Never the goal, a step's charter, or a finding's words:
 | `ended_by` | `agent` for `close_session`, `idle`, `step` for the session's time limit, `server` when the server shut down; `null` for a failed open |
 | `platform`, `engine`, `headed` | The target's platform and engine with its version, as for a run, and whether the UI was shown |
 | `duration_ms`, `sessions_open` | How long the session lived, and how many other sessions were open when it opened |
-| `calls_total`, `calls_failed`, `calls` | Tool calls, failed calls (a call of a tool the session does not have included), and calls by the session's own tool names: `{"observe": 4, "tap": 9, "locate": 2, "screenshot": 1}`. A project's own tools are counted together as `tool` and anything else as `other`; no other name is sent |
+| `calls_total`, `calls_failed`, `calls` | Tool calls, failed calls, and calls by the session's own tool names: `{"observe": 4, "tap": 9, "locate": 2, "screenshot": 1}`. A project's own tools are counted together as `tool` and anything else as `other`; no other name is sent |
 | `error_codes` | How often each runner code failed a call: `{"LOCATOR_NOT_FOUND": 2}`, at most 20 codes. A code that is not an upper-case token is reported as `OTHER` |
 
 ## What is never sent

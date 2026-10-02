@@ -826,8 +826,10 @@ function verbKit(context: StepExecutorContext, options: GrammarToolOptions) {
         else if (returned !== undefined) outcome = { lead: returned.lead, expectChange: returned.expectChange ?? expectChange };
       } catch (cause) {
         if (isRuntimeHardStop(cause)) throw cause;
+        const failed = await present(failureLead(label, cause));
+        // After the look, so a look that throws fails the call once, as itself.
         options.onActionFailed?.(cause);
-        return present(failureLead(label, cause));
+        return failed;
       }
       return present(outcome.lead, { expectChange: outcome.expectChange, ...update });
     });

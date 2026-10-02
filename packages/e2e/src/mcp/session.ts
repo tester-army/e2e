@@ -186,13 +186,13 @@ export class SessionHost {
   call(session: string | undefined, name: string, args: Record<string, unknown>, extra: McpToolCallExtra): Promise<McpToolResult> {
     const live = this.sessions.resolve(session);
     const tool = live.catalog.tools[name];
+    live.usage.called(name, live.catalog.project.has(name));
     if (tool === undefined) {
       const error = this.unknownTool(live, name);
       live.usage.failed(error.code);
       throw error;
     }
     const redact = live.attempt.agentRuntime.redact;
-    live.usage.called(name, live.catalog.project.has(name));
     return this.run(live, () => invokeTool(name, tool, args, extra)).then(
       (result) => {
         if (!isGrammarVerb(name)) {
