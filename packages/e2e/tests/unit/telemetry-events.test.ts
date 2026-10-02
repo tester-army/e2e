@@ -19,6 +19,11 @@ import { REPORT_AT, reportAttempt, reportDocument, reportError, reportResult, re
 import { SAMPLE_REPORT_SECRETS, sampleReport } from '../helpers/sample-report.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 
+/** A structurally valid AI SDK model that is never called. */
+function fakeModel(provider: string, modelId: string): unknown {
+  return { specificationVersion: 'v4', provider, modelId, supportedUrls: {}, doGenerate: () => Promise.reject(new Error('not called')), doStream: () => Promise.reject(new Error('not called')) };
+}
+
 /** A run whose config never loaded, without flags. */
 const RUN: RunContext = { command: 'run', flags: [], config: undefined };
 
@@ -279,6 +284,15 @@ describe('telemetry events', () => {
     });
     expect(JSON.stringify(event)).not.toMatch(/acme|admin@|token-value|pw/u);
     expect(runCompletedEvent(sampleReport(), RUN).properties).not.toHaveProperty('config_workers');
+  });
+
+  it('counts a judge as separate only when it is another model, not another instance of the same one', () => {
+    const separate = (agent: Record<string, unknown>) =>
+      runCompletedEvent(sampleReport(), { ...RUN, config: resolveConfig({ targets: [{ platform: 'web' }], agents: { default: agent } } as never, { projectRoot: '/tmp/acme', env: {} }) })
+        .properties['config_separate_judge'];
+    expect(separate({ model: fakeModel('openai', 'gpt-5') })).toBe(false);
+    expect(separate({ model: fakeModel('openai', 'gpt-5'), judge: fakeModel('openai', 'gpt-5') })).toBe(false);
+    expect(separate({ model: fakeModel('openai', 'gpt-5-mini'), judge: fakeModel('openai', 'gpt-5') })).toBe(true);
   });
 
   it('counts what an exploration was given and found, never its goal, charters, or findings', () => {

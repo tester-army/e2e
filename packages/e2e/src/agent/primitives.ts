@@ -211,6 +211,12 @@ export interface GrammarToolOptions {
    * otherwise.
    */
   readonly screen?: ScreenPresenter;
+  /**
+   * Told the cause of every action that failed into a result rather than a
+   * throw, before it becomes the result's text: the one place its runner
+   * code is still structured.
+   */
+  readonly onActionFailed?: ((cause: unknown) => void) | undefined;
 }
 
 /**
@@ -820,6 +826,7 @@ function verbKit(context: StepExecutorContext, options: GrammarToolOptions) {
         else if (returned !== undefined) outcome = { lead: returned.lead, expectChange: returned.expectChange ?? expectChange };
       } catch (cause) {
         if (isRuntimeHardStop(cause)) throw cause;
+        options.onActionFailed?.(cause);
         return present(failureLead(label, cause));
       }
       return present(outcome.lead, { expectChange: outcome.expectChange, ...update });

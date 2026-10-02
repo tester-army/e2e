@@ -13,6 +13,7 @@
  */
 
 import { GRAMMAR_ACTION_NAMES, GRAMMAR_TOOL_NAMES, PROJECT_TOOL_EVENT_PREFIX } from '../agent/action-names.ts';
+import { modelLabel } from '../config/agent.ts';
 import type { ResolvedConfig } from '../config/resolve.ts';
 import type { McpClient } from '../mcp/server.ts';
 import type { McpSessionSummary } from '../mcp/usage.ts';
@@ -223,7 +224,9 @@ function configFeatures(config: ResolvedConfig): Record<string, JsonValue> {
     config_retries: config.retries,
     config_agents: config.agents.size,
     config_custom_executor: agents.some((agent) => agent.executor !== undefined),
-    config_separate_judge: agents.some((agent) => agent.judge !== undefined && agent.judge.model !== agent.model?.model),
+    config_separate_judge: agents.some(
+      (agent) => agent.judge !== undefined && (agent.model === undefined || modelLabel(agent.judge) !== modelLabel(agent.model)),
+    ),
     config_project_tools: new Set(agents.flatMap((agent) => Object.keys(agent.tools))).size,
     config_credentials: config.credentials.size,
     config_secrets: config.secrets.size,

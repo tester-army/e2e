@@ -30,7 +30,7 @@ import { createSessionCatalog, isGrammarVerb, type SessionCatalog } from './cata
 import type { LoadedConfig } from './config.ts';
 import { describeRecording, SessionRecorder } from './recording.ts';
 import { SessionRegistry } from './sessions.ts';
-import { failedResultCode, SessionUsage, type McpSessionSummary, type SessionEndedBy } from './usage.ts';
+import { SessionUsage, type McpSessionSummary, type SessionEndedBy } from './usage.ts';
 import { actionResult, catalogLine, defineMcpTool, describeToolDetail, errorResult, invokeTool, redactResult, textResult, type McpToolCallExtra, type McpToolResult, type McpToolSpec } from './tools.ts';
 
 /** How long one session may live, whatever happens. */
@@ -195,9 +195,12 @@ export class SessionHost {
     live.usage.called(name, live.catalog.project.has(name));
     return this.run(live, () => invokeTool(name, tool, args, extra)).then(
       (result) => {
-        const settled = isGrammarVerb(name) ? actionResult(name, result) : result;
-        if (settled.isError === true) live.usage.failed(failedResultCode(settled.content.find((part) => part.type === 'text')?.text ?? ''));
-        return redactResult(settled, redact);
+        if (!isGrammarVerb(name)) {
+          // A grammar action's failure was counted with its code as it happened; a project tool's result carries none.
+          if (result.isError === true) live.usage.failed(undefined);
+          return redactResult(result, redact);
+        }
+        return redactResult(actionResult(name, result), redact);
       },
       (cause: unknown) => {
         live.usage.failed(classifyError(cause).code);
@@ -273,6 +276,7 @@ export class SessionHost {
           assertionTimeout: config.assertionTimeout,
         }),
         warn: (message) => this.options.log('warning', message),
+        onActionFailed: (cause) => usage.failed(classifyError(cause).code),
       });
       const live: LiveSession = {
         id,

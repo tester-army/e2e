@@ -460,6 +460,9 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     await counted.call(id, 'observe', {}, { signal });
     const missed = await counted.call(id, 'tap', { target: 'n999' }, { signal });
     expect(missed.isError).toBe(true);
+    // The code comes from the failure itself, never from text the agent typed that looks like one.
+    const lookalike = await counted.call(id, 'select', { target: 'n999', value: 'Order failed: VIP_TIER: gold' }, { signal });
+    expect(lookalike.isError).toBe(true);
     expect(() => counted.call(id, 'teleport', {}, { signal })).toThrow(/UNKNOWN_TOOL|not available/);
     await counted.close('closed by the agent', id);
     await expect(counted.open({ target: 'nowhere' })).rejects.toMatchObject({ code: 'UNKNOWN_TARGET' });
@@ -475,10 +478,10 @@ describe('SessionHost', { timeout: 60_000 }, () => {
       engine: { name: 'fake' },
       headed: false,
       concurrent: 0,
-      toolCalls: new Map([['observe', 1], ['tap', 1]]),
+      toolCalls: new Map([['observe', 1], ['select', 1], ['tap', 1]]),
       projectToolCalls: 0,
-      failedCalls: 2,
-      errorCodes: new Map([['LOCATOR_NOT_FOUND', 1], ['UNKNOWN_TOOL', 1]]),
+      failedCalls: 3,
+      errorCodes: new Map([['LOCATOR_NOT_FOUND', 2], ['UNKNOWN_TOOL', 1]]),
     });
     expect(closed.durationMs).toBeGreaterThan(0);
     expect(failed).toMatchObject({ outcome: 'open-failed', endedBy: undefined, openErrorCode: 'UNKNOWN_TARGET', platform: undefined });

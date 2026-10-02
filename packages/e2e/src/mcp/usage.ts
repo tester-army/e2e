@@ -41,14 +41,6 @@ export interface SessionEngine {
   readonly version: string;
 }
 
-/** The runner code a failed grammar result leads with: `tap #n9 failed: LOCATOR_NOT_FOUND: …`. */
-const FAILED_RESULT_CODE = / failed: ([A-Z][A-Z0-9_]{2,63}):/u;
-
-/** The code a failed result's first line names, when it names one. */
-export function failedResultCode(text: string): string | undefined {
-  return FAILED_RESULT_CODE.exec(text.split('\n', 1)[0] ?? '')?.[1];
-}
-
 /** The live counters of one session. */
 export class SessionUsage {
   private readonly startedAt = Date.now();
