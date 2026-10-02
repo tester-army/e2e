@@ -8,8 +8,8 @@
  */
 
 import type { Readable, Writable } from 'node:stream';
-import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { McpServer, ResourceTemplate } from '@modelcontextprotocol/server';
+import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { readGuide, skillTopics } from '../cli/skill.ts';
 import { ConfigurationError, errorMessage } from '../internal/errors.ts';
 import { loadProjectConfig, locateProjectConfig } from './config.ts';
@@ -73,10 +73,10 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
         inputSchema: spec.inputSchema,
         annotations: { readOnlyHint: spec.readOnly, openWorldHint: false },
       },
-      async (args, extra) => {
+      async (args, ctx) => {
         // A failure is a result the agent can react to, never a protocol error.
         try {
-          return await spec.call(args, { signal: extra.signal });
+          return await spec.call(args, { signal: ctx.mcpReq.signal });
         } catch (cause) {
           return errorResult(cause);
         }

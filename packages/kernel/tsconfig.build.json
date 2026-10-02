@@ -4,9 +4,7 @@
     "rootDir": "src",
     "outDir": "dist",
     "noEmit": false,
-    "declaration": true,
-    "sourceMap": true,
-    "declarationMap": true
+    "declaration": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules"]

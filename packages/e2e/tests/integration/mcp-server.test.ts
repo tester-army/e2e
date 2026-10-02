@@ -12,8 +12,8 @@
 import { readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { Client } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { createProject, type FixtureProject } from '../helpers/run-project.ts';
@@ -69,7 +69,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
   let stderr = '';
 
   const invoke = async (name: string, args: Record<string, unknown> = {}): Promise<ToolText> => {
-    const result = (await client.callTool({ name, arguments: args }, undefined, { timeout: 110_000 })) as {
+    const result = (await client.callTool({ name, arguments: args }, { timeout: 110_000 })) as {
       content: { type: string; text?: string }[];
       isError?: boolean;
     };

@@ -167,7 +167,7 @@ describe('the scan', () => {
   });
 
   it('names the package a specifier belongs to', () => {
-    expect(packageOf('@modelcontextprotocol/sdk/server/mcp.js')).toBe('@modelcontextprotocol/sdk');
+    expect(packageOf('@modelcontextprotocol/server/stdio')).toBe('@modelcontextprotocol/server');
     expect(packageOf('tsx/esm/api')).toBe('tsx');
     expect(packageOf('e2e/engine')).toBe('e2e');
     expect(packageOf('zod')).toBe('zod');

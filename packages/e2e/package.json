@@ -85,7 +85,7 @@
   "dependencies": {
     "@ai-sdk/provider": "4.0.18",
     "@clack/prompts": "1.8.1",
-    "@modelcontextprotocol/sdk": "1.30.1",
+    "@modelcontextprotocol/server": "2.2.0",
     "@vitest/expect": "5.0.2",
     "commander": "15.0.0",
     "picocolors": "1.1.1",
@@ -118,6 +118,7 @@
     "@ai-sdk/openai-compatible": "3.0.53",
     "@ai-sdk/xai": "5.0.4",
     "@e2e-dev/web": "workspace:*",
+    "@modelcontextprotocol/client": "2.2.0",
     "@openrouter/ai-sdk-provider": "3.1.0",
     "@types/node": "26.6.2",
     "@types/pngjs": "6.0.5",
