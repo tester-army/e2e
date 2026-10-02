@@ -32,7 +32,7 @@ const REQUIRED_INSTRUCTIONS = 'Follow the user request.';
  * client is too old for. This is the Codex CLI release current when the list
  * was last checked; bump it when a model the ChatGPT app shows is missing.
  */
-const CODEX_CLIENT_VERSION = '0.155.1';
+const CODEX_CLIENT_VERSION = '0.160.0';
 
 export interface CodexCredentials extends OAuthCredentials {
   /** The ChatGPT account the requests bill to. */
