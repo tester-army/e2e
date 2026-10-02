@@ -240,7 +240,9 @@ bunx e2e models openai    # one provider
 
 Asks the vendor which models the stored login serves and prints one line per
 model: the id `chatgpt()`, `copilot()`, or `grok()` takes, the vendor's name
-for it, and its notes (reasoning levels, vision, preview, hidden). Without a
+for it, and its notes (reasoning levels, vision, preview, hidden, and for
+Copilot `not enabled` or `no chat completions` when `copilot()` cannot call
+it). Without a
 stored login, or when the named provider has none, exits 1 with the sign-in
 command; when one of several logins fails to list, the others still print and
 the command exits 1. An unknown provider exits 2. See

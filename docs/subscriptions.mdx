@@ -130,6 +130,15 @@ vision, preview, or hidden. ChatGPT lists what the Codex backend serves your
 plan; Copilot lists the chat models of your plan; SuperGrok lists the
 language models the token reaches.
 
+Copilot also lists models that `copilot()` cannot call, and marks them:
+
+- `not enabled`: the model is off for your plan. Turn it on in your Copilot
+  settings on GitHub, or ask your organization admin if they manage your
+  seat.
+- `no chat completions`: Copilot serves the model only over other APIs,
+  mostly its Responses API. `copilot()` uses chat completions, so pick
+  another model.
+
 ## Sign-in help
 
 - ChatGPT opens a browser to sign in. Use `npx e2e login openai --device`

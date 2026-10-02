@@ -149,13 +149,17 @@ interface CopilotModel {
   readonly name?: unknown;
   readonly vendor?: unknown;
   readonly preview?: unknown;
+  readonly policy?: { readonly state?: unknown };
+  readonly supported_endpoints?: unknown;
   readonly capabilities?: { readonly type?: unknown; readonly supports?: { readonly tool_calls?: unknown; readonly vision?: unknown } };
 }
 
 /**
  * The chat models the Copilot plan serves; embeddings and other kinds are
- * left out because only chat models fit `copilot()`. The request goes through
- * `send`, so an enterprise login lists its own host.
+ * left out because only chat models fit `copilot()`. A model the plan has
+ * not enabled, or one Copilot serves without `/chat/completions`, is listed
+ * but marked: `copilot()` posts to `/chat/completions`, which rejects both. The
+ * request goes through `send`, so an enterprise login lists its own host.
  */
 async function listCopilotModels(fetch: FetchFunction): Promise<SubscriptionModel[]> {
   const response = await fetch(`${COPILOT_API_URL}/models`);
@@ -171,6 +175,8 @@ async function listCopilotModels(fetch: FetchFunction): Promise<SubscriptionMode
         supports?.tool_calls === true ? 'tools' : undefined,
         supports?.vision === true ? 'vision' : undefined,
         model.preview === true ? 'preview' : undefined,
+        typeof model.policy?.state === 'string' && model.policy.state !== 'enabled' ? 'not enabled' : undefined,
+        servesChatCompletions(model) ? undefined : 'no chat completions',
       ].filter((part) => part !== undefined);
       return {
         id: model.id as string,
@@ -178,4 +184,9 @@ async function listCopilotModels(fetch: FetchFunction): Promise<SubscriptionMode
         ...(detail.length === 0 ? {} : { detail: detail.join(', ') }),
       };
     });
+}
+
+/** Whether `copilot()` can reach the model; an entry that names no endpoints is served over chat completions. */
+function servesChatCompletions(model: CopilotModel): boolean {
+  return !Array.isArray(model.supported_endpoints) || model.supported_endpoints.includes('/chat/completions');
 }

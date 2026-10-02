@@ -113,7 +113,7 @@ describe('Copilot requests', () => {
     expect(api.requests).toHaveLength(1);
   });
 
-  it('lists the chat models of the plan through the login, leaving embeddings out', async () => {
+  it('lists the chat models of the plan through the login, leaving embeddings out and marking what copilot() cannot use', async () => {
     let seen: Received | undefined;
     const api = await serve((request, response) => {
       seen = request;
@@ -122,6 +122,11 @@ describe('Copilot requests', () => {
           { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', vendor: 'Anthropic', capabilities: { type: 'chat', supports: { tool_calls: true, vision: true } } },
           { id: 'text-embedding-3-small', name: 'Embedding', vendor: 'Azure OpenAI', capabilities: { type: 'embeddings' } },
           { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', vendor: 'OpenAI', preview: true, capabilities: { type: 'chat', supports: { tool_calls: true } } },
+          { id: 'claude-haiku-4.5', vendor: 'Anthropic', policy: { state: 'enabled' }, supported_endpoints: ['/chat/completions', '/v1/messages'], capabilities: { type: 'chat' } },
+          { id: 'claude-opus-5', vendor: 'Anthropic', policy: { state: 'disabled' }, supported_endpoints: ['/v1/messages', '/chat/completions'], capabilities: { type: 'chat' } },
+          { id: 'claude-fable-5.1', vendor: 'Anthropic', policy: { state: 'unconfigured' }, capabilities: { type: 'chat' } },
+          { id: 'claude-messages', vendor: 'Anthropic', supported_endpoints: ['/v1/messages'], capabilities: { type: 'chat' } },
+          { id: 'gpt-6-luna', vendor: 'OpenAI', policy: { state: 'enabled' }, supported_endpoints: ['/responses', 'ws:/responses'], capabilities: { type: 'chat' } },
         ],
       });
     });
@@ -136,6 +141,11 @@ describe('Copilot requests', () => {
     expect(models).toEqual([
       { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', detail: 'Anthropic, tools, vision' },
       { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', detail: 'OpenAI, tools, preview' },
+      { id: 'claude-haiku-4.5', detail: 'Anthropic' },
+      { id: 'claude-opus-5', detail: 'Anthropic, not enabled' },
+      { id: 'claude-fable-5.1', detail: 'Anthropic, not enabled' },
+      { id: 'claude-messages', detail: 'Anthropic, no chat completions' },
+      { id: 'gpt-6-luna', detail: 'OpenAI, no chat completions' },
     ]);
   });
 });
