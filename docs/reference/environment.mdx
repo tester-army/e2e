@@ -15,13 +15,19 @@ Configure a model in `e2e.config.ts`. Its provider reads the API key:
 `AI_GATEWAY_API_KEY`, `gateway()` uses a
 [Vercel OIDC token](/models#vercel-oidc-instead-of-a-key). A missing
 credential fails on the first model call. Subscription models use a stored
-login instead.
+login instead. `orcarouter()` uses `ORCAROUTER_API_KEY`, or the key `npx e2e
+login orcarouter` stores; `orcarouterAuth()` uses the key the `npx e2e login
+orcarouter-oauth` sign-in minted.
 See [Models](/models) and [Subscriptions](/subscriptions).
 
 | Variable | Reading | Effect |
 | --- | --- | --- |
 | `E2E_OAUTH_CREDENTIALS` | value | The stored subscription logins as JSON, the contents of `oauth.json`, for a machine nobody can sign in on. The `e2e/oauth/*` models and `e2e models` read it in place of `$XDG_CONFIG_HOME/e2e/oauth.json`; `e2e login` and `e2e logout` refuse to change it, and refreshed tokens are not written back |
 | `XDG_CONFIG_HOME` | value | Directory of the stored logins, `$XDG_CONFIG_HOME/e2e/oauth.json`; default `~/.config/e2e/oauth.json` |
+| `ORCAROUTER_API_KEY` | value | The OrcaRouter API key `orcarouter()` and `npx e2e login orcarouter` read |
+| `ORCA_BASE_URL` | value | Shared self-hosted OrcaRouter base for both surfaces; `ORCA_AUTH_BASE_URL` and `ORCA_API_BASE_URL` override it. HTTPS is required unless the host is loopback |
+| `ORCA_AUTH_BASE_URL` | value | The OrcaRouter consent and code-exchange origin; default `https://www.orcarouter.ai`. Never the inference origin |
+| `ORCA_API_BASE_URL` | value | The OrcaRouter inference and model-catalog base; default `https://api.orcarouter.ai/v1`. Never the auth origin |
 
 ## Credentials and secrets
 

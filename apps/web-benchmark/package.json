@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "pnpm run build && node node_modules/e2e/dist/cli/bin.js run",
     "test:headed": "pnpm run build && node node_modules/e2e/dist/cli/bin.js run --headed",
-    "test:agent": "pnpm run build && node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts"
+    "test:agent": "pnpm run build && node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts",
+    "evidence": "node orca-evidence.mjs"
   },
   "dependencies": {
     "e2e": "workspace:*",

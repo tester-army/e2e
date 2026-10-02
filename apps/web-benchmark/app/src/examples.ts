@@ -27,6 +27,7 @@ import NativeDialogs from "./Examples/NativeDialogs";
 import NewsletterSignup from "./Examples/NewsletterSignup";
 import NewTabFlow from "./Examples/NewTabFlow";
 import OnboardingWizard from "./Examples/OnboardingWizard";
+import OrcaRouterConnect from "./orca/OrcaRouterConnect";
 import OrderHistory from "./Examples/OrderHistory";
 import OtpAutoAdvance from "./Examples/OtpAutoAdvance";
 import OverlayTrap from "./Examples/OverlayTrap";
@@ -357,5 +358,12 @@ export const examples: Example[] = [
     name: "Control Inventory",
     description:
       "The deterministic contract surface: plain controls with every state exposed, one exercise per agent verb. Not a hard surface.",
+  },
+  {
+    component: OrcaRouterConnect,
+    slug: "orcarouter-connect",
+    name: "OrcaRouter Connect",
+    description:
+      "Connect a model provider two ways - a pasted API key or OAuth 2.0 with PKCE - and pick models from the catalog the provider serves.",
   },
 ];

@@ -58,6 +58,9 @@ export function createOAuthFetch<Credentials extends OAuthCredentials>(
   const remedy = options.loginHint ?? 'sign in again';
 
   async function current(): Promise<Credentials> {
+    // A variable the user set is an explicit choice and beats a stored login.
+    const fromEnvironment = provider.environmentCredentials?.() as Credentials | undefined;
+    if (fromEnvironment !== undefined) return fromEnvironment;
     const stored = await store.get(provider.id);
     if (stored === undefined) {
       throw new OAuthError(
@@ -67,6 +70,28 @@ export function createOAuthFetch<Credentials extends OAuthCredentials>(
     }
     // What this process renewed wins over a source that could not keep it; the store holds this provider's own shape.
     return (shared.renewed.get(provider.id) ?? stored) as Credentials;
+  }
+
+  /**
+   * The credential this process saw rejected, keyed by its access value. A
+   * durable credential the relay already refused is terminal: it stays out of
+   * use until a new login replaces it, so nothing keeps calling a dead key.
+   * Matching on the value, not on presence, is what keeps the transition
+   * generation-safe: a later login stores a different key and is unaffected.
+   * The old secret is left where it is, so a misclassification stays
+   * recoverable.
+   */
+  const closed = new Set<string>();
+
+  async function currentOrReauth(): Promise<Credentials> {
+    const credentials = await current();
+    if (closed.has(credentials.access)) {
+      throw new OAuthError(
+        'LOGIN_REQUIRED',
+        `the stored ${provider.name} credential was rejected and needs reauthentication${options.loginHint === undefined ? '' : `; ${options.loginHint}`}`,
+      );
+    }
+    return credentials;
   }
 
   async function persist(renewed: Credentials): Promise<void> {
@@ -127,12 +152,15 @@ export function createOAuthFetch<Credentials extends OAuthCredentials>(
       return provider.send === undefined ? upstream(request) : provider.send(request, credentials, upstream);
     };
 
-    let credentials = await current();
+    let credentials = await currentOrReauth();
     if (expiring(credentials)) credentials = await refresh(credentials);
     const response = await attempt(credentials);
     if (response.status !== 401) return response;
     // Nothing to refresh (Copilot's GitHub token) means the token is revoked for good.
     if (credentials.refresh === '') {
+      // Only the access value that made this request closes; a later login
+      // stores a different one and is unaffected by this failure.
+      closed.add(credentials.access);
       throw new OAuthError('LOGIN_REQUIRED', `${provider.name} rejected the stored token (${await describeResponse(response)}); ${remedy}`);
     }
     await response.body?.cancel();

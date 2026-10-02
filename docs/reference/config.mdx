@@ -761,6 +761,7 @@ sign-in, use the [`e2e/oauth/*` models](/subscriptions).
 | --- | --- | --- | --- |
 | [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) | `gateway('openai/gpt-6-luna-fast')` | `ai` | `AI_GATEWAY_API_KEY`, or a Vercel OIDC token without it |
 | [OpenRouter](https://openrouter.ai/models) | `openrouter('openai/gpt-6-luna-fast')` | `@openrouter/ai-sdk-provider` | `OPENROUTER_API_KEY` |
+| [OrcaRouter](https://www.orcarouter.ai) | `orcarouter('orcarouter/auto')` | `e2e/oauth/orcarouter` | `ORCAROUTER_API_KEY`, or a key stored by `npx e2e login orcarouter` |
 | Any OpenAI-compatible endpoint | `createOpenAICompatible({ name, baseURL, apiKey? }).chatModel('llama3.2')` | `@ai-sdk/openai-compatible` | `apiKey`, when the endpoint needs one |
 | A provider directly | `openai('gpt-6-luna')`, `anthropic(...)`, ... | `@ai-sdk/openai`, `@ai-sdk/anthropic`, ... | the provider's own variable |
 

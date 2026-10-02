@@ -39,6 +39,8 @@ describe('the built declarations', () => {
     ['oauth/chatgpt.d.ts', 'chatgpt', 'ChatGptOptions'],
     ['oauth/copilot.d.ts', 'copilot', 'CopilotOptions'],
     ['oauth/grok.d.ts', 'grok', 'GrokOptions'],
+    ['oauth/orcarouter.d.ts', 'orcarouter', 'OrcaRouterOptions'],
+    ['oauth/orcarouter-auth.d.ts', 'orcarouterAuth', 'OrcaRouterAuthOptions'],
   ])('%s declares a constructor of the model id alone', (file, constructor, options) => {
     const text = declaration(file);
     expect(text).toMatch(new RegExp(`export declare function ${constructor}\\(modelId: string\\): LanguageModelV4;`, 'u'));

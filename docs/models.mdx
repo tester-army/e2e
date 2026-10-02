@@ -65,6 +65,24 @@ const agent = { model: openrouter('openai/gpt-6-luna-fast') };
 
 Use `agent` as `agents.default` in your config.
   </Tab>
+  <Tab title="OrcaRouter">
+
+[OrcaRouter](https://www.orcarouter.ai) is an OpenAI-compatible AI gateway
+that routes many providers behind one endpoint. Install
+`@ai-sdk/openai-compatible` and either set `ORCAROUTER_API_KEY` or sign in to
+mint a key of your own:
+
+```ts title="Model setup"
+import { orcarouter } from 'e2e/oauth/orcarouter';
+
+const agent = { model: orcarouter('orcarouter/auto') };
+```
+
+Use `orcarouterAuth('orcarouter/auto')` from `e2e/oauth/orcarouter-auth` when
+the key came from `npx e2e login orcarouter-oauth`; both entries send the same
+requests to the same endpoint. `npx e2e models orcarouter` lists the ids the
+catalog serves.
+  </Tab>
   <Tab title="Provider API key">
 
 Install the provider's AI SDK package and set its API key. For OpenAI,

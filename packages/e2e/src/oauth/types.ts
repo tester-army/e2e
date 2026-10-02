@@ -9,7 +9,11 @@
 /** What a login returns and a refresh renews; providers extend it with what their requests need. */
 export interface OAuthCredentials {
   readonly access: string;
-  /** Empty when the vendor issues non-expiring tokens. */
+  /**
+   * Empty when the vendor issues non-expiring tokens, and empty when the
+   * vendor issues a durable key with no refresh grant at all (OrcaRouter):
+   * such a credential is reused until the vendor revokes it.
+   */
   readonly refresh: string;
   /** Epoch milliseconds; `0` when the token does not expire. */
   readonly expires: number;
@@ -46,6 +50,13 @@ export interface OAuthProvider<Credentials extends OAuthCredentials = OAuthCrede
   login(callbacks: OAuthLoginCallbacks, options?: LoginOptions): Promise<Credentials>;
   /** Renews the credentials, or throws an OAuthError when the user has to sign in again. */
   refresh(credentials: Credentials): Promise<Credentials>;
+  /**
+   * A credential the process environment already holds, for a provider whose
+   * key users keep in one variable. Consulted before the store, so an
+   * explicitly set variable wins over a stored login, the way an `E2E_USER_*`
+   * override wins over the config. Absent or `undefined`, the store decides.
+   */
+  environmentCredentials?(): Credentials | undefined;
   /**
    * Sends one API request. It arrives with the bearer token and the user
    * agent set and the SDK's own key header removed; the provider rewrites the

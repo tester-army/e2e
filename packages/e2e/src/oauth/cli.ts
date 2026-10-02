@@ -137,6 +137,8 @@ const PROVIDER_HINTS: Record<ProviderId, string> = {
   openai: 'ChatGPT Plus/Pro, the Codex sign-in',
   'github-copilot': 'GitHub Copilot: OpenAI, Anthropic, Google, and SpaceXAI models',
   spacexai: 'SuperGrok or X Premium+',
+  orcarouter: 'OrcaRouter with a key you paste, or ORCAROUTER_API_KEY',
+  'orcarouter-oauth': 'OrcaRouter signed in through the browser',
 };
 
 /** A terminal picker over providers; without a terminal the provider has to be named. */

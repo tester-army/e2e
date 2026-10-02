@@ -3,6 +3,7 @@
 import { packageVersion } from '../internal/package-version.ts';
 import { createCodexProvider, type CodexLoginOptions } from './providers/openai.ts';
 import { createCopilotProvider, type CopilotLoginOptions } from './providers/github-copilot.ts';
+import { createApiKeyProvider, createAuthProvider } from './providers/orcarouter.ts';
 import { createXaiProvider } from './providers/xai.ts';
 import type { OAuthProvider } from './types.ts';
 
@@ -10,17 +11,23 @@ export interface LoginOptionsById {
   readonly openai: CodexLoginOptions;
   readonly 'github-copilot': CopilotLoginOptions;
   readonly spacexai: Record<string, never>;
+  /** OrcaRouter reached with a key the user pastes, or the one in ORCAROUTER_API_KEY. */
+  readonly orcarouter: Record<string, never>;
+  /** OrcaRouter reached by authorizing in a browser, which mints a key of its own. */
+  readonly 'orcarouter-oauth': Record<string, never>;
 }
 
 export type ProviderId = keyof LoginOptionsById;
 
-export const PROVIDER_IDS = ['openai', 'github-copilot', 'spacexai'] as const satisfies readonly ProviderId[];
+export const PROVIDER_IDS = ['openai', 'github-copilot', 'spacexai', 'orcarouter', 'orcarouter-oauth'] as const satisfies readonly ProviderId[];
 
 // Method shorthand is bivariant, so each specialised provider fits the base interface without a cast.
 const PROVIDERS: Record<ProviderId, OAuthProvider> = {
   openai: createCodexProvider(),
   'github-copilot': createCopilotProvider(),
   spacexai: createXaiProvider(),
+  orcarouter: createApiKeyProvider(),
+  'orcarouter-oauth': createAuthProvider(),
 };
 
 export function isProviderId(id: string): id is ProviderId {

@@ -8,6 +8,7 @@
 
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { timingSafeEqual as nodeTimingSafeEqual } from 'node:crypto';
 import { OAuthError } from './errors.ts';
 
 export interface CallbackServerOptions {
@@ -44,7 +45,8 @@ export async function startCallbackServer(options: CallbackServerOptions): Promi
     };
     if (url.pathname !== options.path) return reply(404, 'Not found', 'This address is not part of the login.');
     // The state binds the answer to this attempt; anything else on the port is ignored.
-    if (url.searchParams.get('state') !== options.state) return reply(400, 'Login failed', 'The state does not match this login attempt.');
+    // Compared in constant time so the answer cannot be probed byte by byte.
+    if (!timingSafeEqual(url.searchParams.get('state') ?? '', options.state)) return reply(400, 'Login failed', 'The state does not match this login attempt.');
     const error = url.searchParams.get('error');
     if (error !== null) {
       reply(400, 'Login failed', url.searchParams.get('error_description') ?? error);
@@ -91,6 +93,13 @@ export async function startCallbackServer(options: CallbackServerOptions): Promi
       server.closeAllConnections();
     },
   };
+}
+
+/** Constant-time comparison of the callback state; different lengths are unequal without leaking where they differ. */
+function timingSafeEqual(actual: string, expected: string): boolean {
+  const left = Buffer.from(actual);
+  const right = Buffer.from(expected);
+  return left.length === right.length && nodeTimingSafeEqual(left, right);
 }
 
 function escapeHtml(value: string): string {

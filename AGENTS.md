@@ -92,7 +92,18 @@ suites that consume the built packages the way a user would.
   and never fix a planted bug. The one exception is Control Inventory, ours
   like the mobile benchmark's: plain controls, one exercise per agent verb the
   hard scenarios never reach, with one agentic test per verb in
-  `tests-agent/control-inventory.e2e.ts`.
+  `tests-agent/control-inventory.e2e.ts`. OrcaRouter Connect
+  (`app/src/orca/`, `tests/orcarouter-connect.e2e.ts`) is ours too: the
+  provider configuration surface where a pasted API key and the OAuth 2.0 +
+  PKCE browser sign-in sit side by side over one model catalog. Its model
+  control reads the recorded live `GET /v1/models` body
+  (`app/public/orca/catalog.json`). `orca-evidence.mjs` in this package is the
+  screenshot shooter (`pnpm --filter @e2e-dev/web-benchmark run evidence`); it
+  writes the screenshots, the manifest, and a copy of the recorded catalog into
+  the generated, untracked `orca-evidence/` at the repository root.
+  `app/src/orca-options.ts` mirrors the
+  package's `selectModels`, pinned against it by
+  `tests/orca-catalog-parity.e2e.ts`.
 - `apps/mobile-benchmark` (`@e2e-dev/mobile-benchmark`, private) — an Expo
   app of hard mobile surfaces (merged or hidden accessibility trees, native
   alerts over modals, keyboard-covered submits, virtualized lists, a WebView,

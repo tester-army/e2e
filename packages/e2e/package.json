@@ -62,6 +62,14 @@
     "./oauth/grok": {
       "types": "./dist/oauth/grok.d.ts",
       "default": "./dist/oauth/grok.js"
+    },
+    "./oauth/orcarouter": {
+      "types": "./dist/oauth/orcarouter.d.ts",
+      "default": "./dist/oauth/orcarouter.js"
+    },
+    "./oauth/orcarouter-auth": {
+      "types": "./dist/oauth/orcarouter-auth.d.ts",
+      "default": "./dist/oauth/orcarouter-auth.js"
     }
   },
   "bin": {

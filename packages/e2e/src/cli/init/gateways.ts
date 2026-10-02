@@ -5,7 +5,7 @@
  * entry here.
  */
 
-export type GatewayId = 'vercel' | 'openrouter' | 'openai-compatible' | 'chatgpt' | 'copilot' | 'grok';
+export type GatewayId = 'vercel' | 'openrouter' | 'orcarouter' | 'orcarouter-auth' | 'openai-compatible' | 'chatgpt' | 'copilot' | 'grok';
 
 export interface GatewayPreset {
   readonly id: GatewayId;
@@ -40,6 +40,28 @@ export const GATEWAYS: readonly GatewayPreset[] = [
     import: "import { openrouter } from '@openrouter/ai-sdk-provider';",
     comment: 'OpenRouter serves the model id and reads OPENROUTER_API_KEY.',
     model: () => "openrouter('openai/gpt-6-luna-fast')",
+  },
+  {
+    // The routing entry is the one id the fallback catalog always carries, so a
+    // scaffold never names a model the live catalog has since moved on. The
+    // other ids are listed by `e2e models orcarouter`.
+    id: 'orcarouter',
+    label: 'OrcaRouter (API key)',
+    hint: 'one key for every provider; reads ORCAROUTER_API_KEY',
+    dependencies: { '@ai-sdk/openai-compatible': '^3.0.0' },
+    import: "import { orcarouter } from 'e2e/oauth/orcarouter';",
+    comment: 'OrcaRouter serves the model id and reads ORCAROUTER_API_KEY; orcarouter/auto routes to a model that fits. Paste a key with `e2e login orcarouter`; `e2e models orcarouter` lists the ids.',
+    model: () => "orcarouter('orcarouter/auto')",
+  },
+  {
+    id: 'orcarouter-auth',
+    label: 'OrcaRouter (sign in)',
+    hint: 'authorize in a browser; OrcaRouter issues the key',
+    dependencies: { '@ai-sdk/openai-compatible': '^3.0.0' },
+    import: "import { orcarouterAuth } from 'e2e/oauth/orcarouter-auth';",
+    comment: 'Your OrcaRouter account serves the model after a browser sign-in that issues the key; sign in once with `e2e login orcarouter-oauth`, `e2e models orcarouter` lists the ids.',
+    login: 'orcarouter-oauth',
+    model: () => "orcarouterAuth('orcarouter/auto')",
   },
   {
     id: 'openai-compatible',

@@ -14,6 +14,10 @@ dist/
 **/.e2e/videos/
 # No .e2e/cache/ rule: the benchmarks commit theirs (AGENTS.md, "Committed recordings").
 packages/e2e/tests/tmp-projects/
+# The OrcaRouter GUI evidence is generated into `orca-evidence/` at run time by
+# `apps/web-benchmark/orca-evidence.mjs`; never commit it, so the verification
+# checks leave the tracked tree untouched.
+/orca-evidence/
 # The e2e package ships the repository skill (skills/e2e); the build copies it here.
 packages/e2e/skills/
 # npm shows the repository README on the e2e package page; the build copies it here.

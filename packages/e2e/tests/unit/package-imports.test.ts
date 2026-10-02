@@ -37,7 +37,7 @@ const SCOPES: readonly Scope[] = [
     optionalPeerHomes: {
       ai: ['agent/ai-sdk.ts'],
       '@ai-sdk/openai': ['oauth/chatgpt.ts'],
-      '@ai-sdk/openai-compatible': ['oauth/copilot.ts'],
+      '@ai-sdk/openai-compatible': ['oauth/copilot.ts', 'oauth/orcarouter-model.ts'],
       '@ai-sdk/xai': ['oauth/grok.ts'],
     },
   },

@@ -257,6 +257,8 @@ describe('e2e init', () => {
       options: [
         expect.objectContaining({ value: 'vercel', label: 'Vercel AI Gateway' }),
         expect.objectContaining({ value: 'openrouter', label: 'OpenRouter' }),
+        expect.objectContaining({ value: 'orcarouter', label: 'OrcaRouter (API key)' }),
+        expect.objectContaining({ value: 'orcarouter-auth', label: 'OrcaRouter (sign in)' }),
         expect.objectContaining({ value: 'openai-compatible', label: 'OpenAI-compatible endpoint' }),
         expect.objectContaining({ value: 'chatgpt', label: 'ChatGPT Plus/Pro subscription' }),
         expect.objectContaining({ value: 'copilot', label: 'GitHub Copilot subscription' }),
@@ -278,6 +280,7 @@ describe('e2e init', () => {
     { gateway: 'chatgpt', provider: 'openai', line: "import { chatgpt } from 'e2e/oauth/chatgpt';", model: "model: chatgpt('gpt-6-luna'),", sdk: '@ai-sdk/openai' },
     { gateway: 'copilot', provider: 'github-copilot', line: "import { copilot } from 'e2e/oauth/copilot';", model: "model: copilot('claude-sonnet-5'),", sdk: '@ai-sdk/openai-compatible' },
     { gateway: 'grok', provider: 'spacexai', line: "import { grok } from 'e2e/oauth/grok';", model: "model: grok('grok-4'),", sdk: '@ai-sdk/xai' },
+    { gateway: 'orcarouter-auth', provider: 'orcarouter-oauth', line: "import { orcarouterAuth } from 'e2e/oauth/orcarouter-auth';", model: "model: orcarouterAuth('orcarouter/auto'),", sdk: '@ai-sdk/openai-compatible' },
   ] as const)('writes a $gateway subscription model and names the sign-in as the next step', async ({ gateway, provider, line, model, sdk }) => {
     vi.mocked(clack.select).mockResolvedValueOnce('web').mockResolvedValueOnce(gateway);
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);

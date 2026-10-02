@@ -20,13 +20,13 @@ describe('e2e login / logout', () => {
   it('needs a named provider when there is no terminal to pick in', async () => {
     const out: string[] = [];
     expect(await cli.runLogin(undefined, {}, quietIo(out))).toBe(1);
-    expect(out.join('')).toContain('name a provider: openai, github-copilot, spacexai');
+    expect(out.join('')).toContain('name a provider: openai, github-copilot, spacexai, orcarouter, orcarouter-oauth');
   });
 
   it('turns an unknown provider into one error line, not a stack trace', async () => {
     const out: string[] = [];
     expect(await cli.runLogout('nope', quietIo(out))).toBe(1);
-    expect(out.join('')).toContain('name a provider: openai, github-copilot, spacexai');
+    expect(out.join('')).toContain('name a provider: openai, github-copilot, spacexai, orcarouter, orcarouter-oauth');
     expect(out.join('').split('\n').filter(Boolean)).toHaveLength(1);
   });
 });
@@ -35,7 +35,7 @@ describe('e2e models', () => {
   it('lists models only for stored logins and says how to sign in when there is none', async () => {
     const out: string[] = [];
     expect(await cli.runModels(undefined, quietIo(out))).toBe(1);
-    expect(out.join('')).toContain('no login is stored; sign in with e2e login <openai|github-copilot|spacexai>');
+    expect(out.join('')).toContain('no login is stored; sign in with e2e login <openai|github-copilot|spacexai|orcarouter|orcarouter-oauth>');
     out.length = 0;
     expect(await cli.runModels('spacexai', quietIo(out))).toBe(1);
     expect(out.join('')).toContain('no SpaceXAI login is stored; run `npx e2e login spacexai`');

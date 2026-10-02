@@ -56,6 +56,7 @@ key, or a local endpoint. Authenticate:
 | SuperGrok or X Premium+ | `npx e2e login spacexai` |
 | Vercel AI Gateway | Set `AI_GATEWAY_API_KEY`, or sign in to the Vercel CLI and `npx vercel link`; without the key `gateway()` uses a Vercel OIDC token |
 | OpenRouter | Set `OPENROUTER_API_KEY` |
+| OrcaRouter | Set `ORCAROUTER_API_KEY`, or paste a key with `npx e2e login orcarouter`; `npx e2e login orcarouter-oauth` authorizes in a browser and mints one |
 | Local or self-hosted endpoint | Set the endpoint URL and a model it serves, plus a key if required |
 
 Switching an existing config to ChatGPT: install `ai` and `@ai-sdk/openai`,
