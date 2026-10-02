@@ -127,6 +127,7 @@ describe('Copilot requests', () => {
           { id: 'claude-fable-5.1', vendor: 'Anthropic', policy: { state: 'unconfigured' }, capabilities: { type: 'chat' } },
           { id: 'claude-messages', vendor: 'Anthropic', supported_endpoints: ['/v1/messages'], capabilities: { type: 'chat' } },
           { id: 'gpt-6-luna', vendor: 'OpenAI', policy: { state: 'enabled' }, supported_endpoints: ['/responses', 'ws:/responses'], capabilities: { type: 'chat' } },
+          { id: 'gpt-5.5', vendor: 'OpenAI', policy: { state: 'disabled' }, supported_endpoints: ['/responses'], capabilities: { type: 'chat' } },
         ],
       });
     });
@@ -146,6 +147,7 @@ describe('Copilot requests', () => {
       { id: 'claude-fable-5.1', detail: 'Anthropic, not enabled' },
       { id: 'claude-messages', detail: 'Anthropic, no chat completions' },
       { id: 'gpt-6-luna', detail: 'OpenAI, no chat completions' },
+      { id: 'gpt-5.5', detail: 'OpenAI, not enabled, no chat completions' },
     ]);
   });
 });
