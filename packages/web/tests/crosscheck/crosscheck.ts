@@ -293,8 +293,8 @@ export async function crossCheck(page: Page): Promise<CrossCheckResult> {
     for (const node of nodes) {
       const fact = facts.get(node.ref.id);
       if (node.role === undefined || STRUCTURAL_ROLES.has(node.role) || fact === undefined || fact.inChildFrame) continue;
-      compared += 1;
       if (isUnnamedSvg(node, fact)) continue;
+      compared += 1;
       const ax = chrome.byId.get(node.ref.id);
       if (ax === undefined) disagreements.push({ oracle: 'chrome', field: 'unknown', ours: node.role, theirs: 'no AX node', node: describe(node.role, node.name ?? '') });
       else compareWithChrome(node, ax, fact, disagreements);

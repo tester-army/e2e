@@ -334,7 +334,7 @@ describe('contenteditable editing hosts', () => {
     await page.frames()[1]?.waitForLoadState('domcontentloaded');
     const { tree } = await capture();
     const roles = Object.fromEntries(flatten(tree).filter((node) => node.testId !== undefined).map((node) => [node.testId, node.role]));
-    // A pixel-only surface stays unlisted: with no role, name, or text it is not a node at all. An svg is an image.
+    // A canvas, with no role, name, or text, is not a node at all; an svg has the image role, so it is listed.
     expect(roles).toEqual({ svg: 'image', frame: 'iframe', host: 'textbox' });
   });
 
