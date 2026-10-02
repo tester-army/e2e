@@ -338,6 +338,125 @@ html.dark body .code-block-fade-overlay {
   outline-offset: 3px;
 }
 
+#content .video-card {
+  display: flex;
+  align-items: stretch;
+  gap: 1.25rem;
+  margin-block: 1.25rem;
+  padding-right: 1.25rem;
+  border: 1px solid var(--e2e-hairline);
+  border-radius: 0;
+  color: var(--e2e-ink);
+  text-decoration: none;
+  transition: border-color 200ms ease-out;
+}
+
+#content .video-card:hover,
+#content .video-card:focus-visible {
+  border-color: var(--e2e-ink);
+}
+
+#content .video-card:focus-visible {
+  outline: 2px solid var(--e2e-ink);
+  outline-offset: 2px;
+}
+
+#content .video-card-thumbnail {
+  position: relative;
+  flex-shrink: 0;
+  width: 200px;
+  /* 16:9 at least, taller when the text wraps, so the image always meets the border. */
+  min-height: 112.5px;
+  overflow: hidden;
+  background: var(--e2e-surface, var(--e2e-hairline));
+}
+
+/* hqdefault.jpg is 4:3 with letterbox bars; cover crops them away. */
+#content .video-card-thumbnail img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border-radius: 0;
+  object-fit: cover;
+}
+
+/* Bottom right, clear of the title the thumbnail carries on its left. */
+#content .video-card-play {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+}
+
+#content .video-card-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.25rem;
+  min-width: 0;
+  padding-block: 0.75rem;
+}
+
+#content .video-card-title {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+#content .video-card-subtitle {
+  color: var(--e2e-muted);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+#content .video-card-arrow {
+  flex-shrink: 0;
+  align-self: center;
+  width: 14px;
+  height: 14px;
+  color: var(--e2e-muted);
+  transition: color 200ms ease-out;
+}
+
+#content .video-card:hover .video-card-arrow,
+#content .video-card:focus-visible .video-card-arrow {
+  color: var(--e2e-ink);
+}
+
+#content .video-card-new-tab {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #content .video-card,
+  #content .video-card-arrow {
+    transition: none;
+  }
+}
+
+@media (max-width: 640px) {
+  #content .video-card-thumbnail {
+    width: 128px;
+    min-height: 72px;
+  }
+
+  #content .video-card-subtitle {
+    display: none;
+  }
+}
+
 /* The "Copy page" menu shows titles only. docs.json requires a description on
    every custom option and Mintlify renders one under each title, so the second
    line is hidden here, on the built-in items too. The menu has no id; the

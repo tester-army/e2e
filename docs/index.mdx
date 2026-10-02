@@ -3,6 +3,8 @@ title: Introduction
 description: Open source AI testing for web and mobile apps. Spend less time on tests and more time building.
 ---
 
+import { VideoCard } from './snippets/video-card.jsx';
+
 e2e is a next-generation testing framework for web and mobile
 apps, built to keep up with the speed we ship software today.
 
@@ -11,6 +13,12 @@ You choose how agentic each test is: fully deterministic with
 [assertions](/reference/expect#locator-matchers), fully driven by an agent
 from [goals](/writing-tests#goals-agent-act) in natural language, or a mix of
 both in the same test.
+
+<VideoCard
+  id="NEawZb6Hssw"
+  title="Watch e2e explained in 2 minutes"
+  subtitle="Learn how to chain agent goals with deterministic locator checks, run the same tests on web, iOS, and Android, and set up a project in a minute."
+/>
 
 ```ts title="tests/checkout.e2e.ts"
 import { test, expect } from 'e2e';
