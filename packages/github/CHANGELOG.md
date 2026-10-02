@@ -1,5 +1,13 @@
 # @e2e-dev/github
 
+## 0.3.2
+
+### Patch Changes
+
+- [#720](https://github.com/tester-army/e2e/pull/720) [`62bfe0a`](https://github.com/tester-army/e2e/commit/62bfe0a896a50f501f071d31c8935e0e0bdabfcf) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Two matrix jobs whose `key`, workflow, or job differ only after the first 200 encoded characters now keep their own pull request comments instead of overwriting one. A long field's marker ends in a digest of the whole value; markers of shorter fields are unchanged, so existing comments are still found. A job with a field that long posts one new comment after upgrading and leaves its old one behind. The reporter only takes a comment whose first line is its marker, so a reply quoting the marker is never edited.
+
+- [#763](https://github.com/tester-army/e2e/pull/763) [`b573756`](https://github.com/tester-army/e2e/commit/b573756818d7d04088142d29e0e730cfbaf21b45) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Installing `e2e` pulls in 29 packages instead of 117 and takes about 31MB instead of 36MB. `e2e mcp` now runs on the split MCP SDK (`@modelcontextprotocol/server` 2.2.0) in place of `@modelcontextprotocol/sdk`, which brought in express, hono, and the rest of an HTTP server stack that stdio never used. The server keeps the same protocol version, so existing clients connect as before. Packages are built and published without sourcemaps, which pointed at a `src/` that was never shipped. Stack traces show `dist/` positions.
+
 ## 0.3.1
 
 ### Patch Changes

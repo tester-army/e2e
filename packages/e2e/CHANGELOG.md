@@ -1,5 +1,27 @@
 # e2e
 
+## 0.16.0
+
+### Minor Changes
+
+- [#762](https://github.com/tester-army/e2e/pull/762) [`83c17e2`](https://github.com/tester-army/e2e/commit/83c17e261e1e6de043c6ae96b9251fecf05356d6) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Anonymous telemetry covers `e2e mcp` and `e2e explore`. Each MCP session sends one `e2e_mcp_session` event when it closes or fails to open: the client's self-reported name and version, the platform and engine, how it ended, and its tool calls counted by the runner's own tool names with the error codes they failed with. `e2e_run_completed` adds `command`, counts and option ids of the config features the run used, and for `e2e explore` why it stopped and its steps and findings by kind and severity. Beyond the client's own name, no project names, paths, tool arguments or results, goals, or findings are sent. The notice shows again once; `E2E_TELEMETRY_DEBUG=1` prints every event, and the opt-outs are unchanged.
+
+### Patch Changes
+
+- [#760](https://github.com/tester-army/e2e/pull/760) [`b3c9832`](https://github.com/tester-army/e2e/commit/b3c9832aa78ac073ceeb4f11e21c833b8ed1e6f7) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - `e2e models openai` asks the ChatGPT backend for its model list as Codex CLI 0.160.0 (was 0.155.1). The backend hides models from clients it considers too old, so models unlocked since 0.155.1 now show up and can be passed to `chatgpt()`.
+
+- [#767](https://github.com/tester-army/e2e/pull/767) [`5609f5e`](https://github.com/tester-army/e2e/commit/5609f5e5f0e1a72d632c9cce185135f337d1b86d) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `e2e models github-copilot` marks the models `copilot()` cannot call: `not enabled` for a model your plan has not turned on, and `no chat completions` for a model Copilot serves only over other APIs such as Responses. These used to be listed like any other model and then failed the first agent step with "The requested model is not supported".
+
+- [#579](https://github.com/tester-army/e2e/pull/579) [`c6c39ad`](https://github.com/tester-army/e2e/commit/c6c39ad3f631cc0a29d788af7d8e6b798ef5307c) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Locator matchers honor Playwright's `{ checked: false }`, `{ enabled: false }`, `{ visible: false }`, and `{ attached: false }`, which flip the matcher, and `{ ignoreCase }` on `toHaveText`, `toContainText`, `toHaveAccessibleName`, and `toHaveAttribute(name, value)`. Before, these were ignored at runtime, so `toBeChecked({ checked: false })` passed on a checked box and `not.toContainText('error', { ignoreCase: true })` passed on `Error`. Any other option key, or a flag that is not a boolean, is now `INVALID_ARGUMENT` before the first read, from JavaScript too.
+  
+  `e2e/engine` exports `rejectUnknownOptions(api, options, known, code?)`, the check the runner's own fixtures use, so an engine refuses an option its fixture methods and matchers do not take the same way.
+
+- [#759](https://github.com/tester-army/e2e/pull/759) [`0cda95d`](https://github.com/tester-army/e2e/commit/0cda95daa72aa88874e2348942913f075f5df5a1) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - `e2e mcp` opens a session in a project without the optional `ai` package. Without the AI SDK, the catalog and the argument checks read each tool's Standard Schema (zod's), so a deterministic-only project (no `agents`, `e2e init` with no model gateway) can `open_session`, `observe`, `locate`, and drive the page.
+
+- [#727](https://github.com/tester-army/e2e/pull/727) [`dec903b`](https://github.com/tester-army/e2e/commit/dec903bd4c20a58cd01a4c09e7ab55ecae6a1cce) Thanks [@okwasniewski](https://github.com/okwasniewski)! - A registered secret value passed as a plain string is now redacted in more places: test and describe titles (and the test ids, reporter output, and artifact and failure-page file names derived from them), step labels, `agent.act` and `agent.assert` instructions and params as executors and the model receive them, `agentContext`, judgment prompts, and an `e2e explore` goal. Error messages, observations, and worker console output already masked it. A test whose title spells out a secret gets a new id, so `--last-failed` from an earlier run does not select it once. Not covered: a value only a secret provider returns stays in titles, and a Playwright trace of a session no secret reached is kept as recorded.
+
+- [#763](https://github.com/tester-army/e2e/pull/763) [`b573756`](https://github.com/tester-army/e2e/commit/b573756818d7d04088142d29e0e730cfbaf21b45) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Installing `e2e` pulls in 29 packages instead of 117 and takes about 31MB instead of 36MB. `e2e mcp` now runs on the split MCP SDK (`@modelcontextprotocol/server` 2.2.0) in place of `@modelcontextprotocol/sdk`, which brought in express, hono, and the rest of an HTTP server stack that stdio never used. The server keeps the same protocol version, so existing clients connect as before. Packages are built and published without sourcemaps, which pointed at a `src/` that was never shipped. Stack traces show `dist/` positions.
+
 ## 0.15.2
 
 ### Patch Changes

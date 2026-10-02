@@ -1,5 +1,19 @@
 # @e2e-dev/web
 
+## 0.11.2
+
+### Patch Changes
+
+- [#748](https://github.com/tester-army/e2e/pull/748) [`8415579`](https://github.com/tester-army/e2e/commit/84155791f7bc970ac3eb74d1d6f59e9c54a6e5c4) Thanks [@okwasniewski](https://github.com/okwasniewski)! - A locator whose match the page replaces on every animation frame (a field re-rendered each frame) no longer fails with `LOCATOR_NOT_FOUND` "node became stale" on a loaded machine. Locate read each match in a protocol call after the one that found it, so when a frame passed between the two, which a busy runner makes likely every time, the read found the match detached and the locate retried until the action timeout. Each match is now read in the same in-page task that finds it, so the read never sees a replaced element. A `getByLabel` or `getByDisplayValue` match is still pinned to the element that was read.
+  
+  A `browser.locator` selector with a `*` capture before its last part (`*css=article >> text=Hello`) now fails with `INVALID_LOCATOR` instead of resolving; use `filter({ has })`. A capture rewrites the chain so the elements it returns are never the ones the rest of the locate reads, and composing anything onto such a selector already matched the captured element instead of its descendants.
+
+- [#763](https://github.com/tester-army/e2e/pull/763) [`b573756`](https://github.com/tester-army/e2e/commit/b573756818d7d04088142d29e0e730cfbaf21b45) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Installing `e2e` pulls in 29 packages instead of 117 and takes about 31MB instead of 36MB. `e2e mcp` now runs on the split MCP SDK (`@modelcontextprotocol/server` 2.2.0) in place of `@modelcontextprotocol/sdk`, which brought in express, hono, and the rest of an HTTP server stack that stdio never used. The server keeps the same protocol version, so existing clients connect as before. Packages are built and published without sourcemaps, which pointed at a `src/` that was never shipped. Stack traces show `dist/` positions.
+
+- [#770](https://github.com/tester-army/e2e/pull/770) [`7fd610b`](https://github.com/tester-army/e2e/commit/7fd610b0c22b58ddbb0c08557685e3a677dd3ba7) Thanks [@okwasniewski](https://github.com/okwasniewski)! - The web semantic tree lists an inline `<svg>` as an `image`, named by its `<title>` child, as Playwright's `getByRole('img')` and aria snapshot read it. An icon-only control built from an unnamed wrapper and an svg no longer disappears from what the agent sees.
+
+- [#579](https://github.com/tester-army/e2e/pull/579) [`c6c39ad`](https://github.com/tester-army/e2e/commit/c6c39ad3f631cc0a29d788af7d8e6b798ef5307c) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `expect(browser).toHaveURL`, `toHaveTitle`, `toHaveClass`, and `browser.waitForURL` refuse an option other than `timeout` with `INVALID_ARGUMENT` instead of ignoring it, so Playwright's `ignoreCase` on `toHaveURL` or `waitUntil` on `waitForURL` no longer runs as if absent.
+
 ## 0.11.1
 
 ### Patch Changes
