@@ -113,11 +113,13 @@ interface StandardToolSchema extends StandardSchemaV1 {
   };
 }
 
+/** The tool schema as a Standard Schema v1, or undefined for a schema the AI SDK built. */
 function standardSchemaOf(schema: unknown): StandardToolSchema | undefined {
   const props = (schema as Partial<StandardToolSchema> | undefined)?.['~standard'];
   return typeof props === 'object' && props !== null && typeof props.validate === 'function' ? (schema as StandardToolSchema) : undefined;
 }
 
+/** The draft-07 JSON Schema a Standard Schema's own converter produces, or undefined without one. */
 function standardJsonSchema(schema: unknown): unknown {
   return standardSchemaOf(schema)?.['~standard'].jsonSchema?.input({ target: 'draft-07' });
 }
@@ -204,6 +206,7 @@ async function validateArgs(name: string, tool: ToolSet[string], args: Record<st
   throw invalidArgs(name, describeValidationError(result.error));
 }
 
+/** The failure a `call` with arguments its tool's schema rejects gets. */
 function invalidArgs(name: string, issues: string): ConfigurationError {
   return new ConfigurationError(
     'INVALID_ARGUMENT',
