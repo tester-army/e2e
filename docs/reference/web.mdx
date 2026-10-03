@@ -107,7 +107,7 @@ export interface WebOptions {
 }
 
 /** One init script: JavaScript source, a file of it, or a function that takes no argument. */
-type WebInitScript = string | { readonly path: string } | (() => unknown);
+export type WebInitScript = string | { readonly path: string } | (() => unknown);
 
 /** The engine's screencast of the page: the frame size and the JPEG quality of the frames it encodes. */
 export interface WebScreencastOptions {
