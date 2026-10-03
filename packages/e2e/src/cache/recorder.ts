@@ -129,15 +129,7 @@ export class TraceRecorder {
         name: conclusion.executor.name,
         ...(conclusion.executor.version === undefined ? {} : { version: conclusion.executor.version }),
       },
-      recordedFor: {
-        // Harness identity rather than screen content, so the redactor here is
-        // belt and braces: a title that happened to carry a registered secret
-        // is masked like any other recorded string, and provenance is not
-        // replay input, so masking it poisons nothing.
-        testId: bound(this.redact(conclusion.recordedFor.testId), MAX_TRACE_DESCRIPTOR_CHARS),
-        targetId: bound(this.redact(conclusion.recordedFor.targetId), MAX_TRACE_DESCRIPTOR_CHARS),
-        instructionDigest: conclusion.recordedFor.instructionDigest,
-      },
+      recordedFor: recordedProvenance(conclusion.recordedFor, this.redact),
       summary: summary.trim() === '' ? 'step passed' : summary,
       ...(startPath === undefined ? {} : { startPath }),
       ...(endPath === undefined ? {} : { endPath }),
@@ -294,4 +286,23 @@ function sameTarget(a: TraceTargetDescriptor | undefined, b: TraceTargetDescript
     a.position?.index === b.position?.index &&
     a.position?.of === b.position?.of
   );
+}
+
+/**
+ * Provenance as an entry stores it. Harness identity rather than screen
+ * content, so the redactor here is belt and braces: a title or agent name
+ * that happened to carry a registered secret is masked like any other
+ * recorded string, and provenance is not replay input, so masking it poisons
+ * nothing. A step compares its own provenance in this form to the entries
+ * the store holds.
+ */
+export function recordedProvenance(provenance: TraceProvenance, redact: (text: string) => string): TraceProvenance {
+  return {
+    testId: bound(redact(provenance.testId), MAX_TRACE_DESCRIPTOR_CHARS),
+    targetId: bound(redact(provenance.targetId), MAX_TRACE_DESCRIPTOR_CHARS),
+    instructionDigest: provenance.instructionDigest,
+    ...(provenance.paramsDigest === undefined ? {} : { paramsDigest: provenance.paramsDigest }),
+    ...(provenance.callIndex === undefined ? {} : { callIndex: provenance.callIndex }),
+    ...(provenance.agent === undefined ? {} : { agent: bound(redact(provenance.agent), MAX_TRACE_DESCRIPTOR_CHARS) }),
+  };
 }

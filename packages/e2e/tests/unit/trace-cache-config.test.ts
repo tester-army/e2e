@@ -243,23 +243,23 @@ describe('flushStagedTraces', () => {
 
   it('claims a key per agent and per agent context, so one agent never replays another\'s recording', () => {
     const fresh = () => contextWith(memoryStore());
-    const buyer = fresh().claimKeyHash('act', 'approve the order', undefined, { name: 'buyer', context: undefined });
-    const admin = fresh().claimKeyHash('act', 'approve the order', undefined, { name: 'admin', context: undefined });
-    const monthly = fresh().claimKeyHash('act', 'approve the order', undefined, { name: 'buyer', context: 'Monthly' });
+    const buyer = fresh().claimKey('act', 'approve the order', undefined, { name: 'buyer', context: undefined }).keyHash;
+    const admin = fresh().claimKey('act', 'approve the order', undefined, { name: 'admin', context: undefined }).keyHash;
+    const monthly = fresh().claimKey('act', 'approve the order', undefined, { name: 'buyer', context: 'Monthly' }).keyHash;
     expect(new Set([buyer, admin, monthly]).size).toBe(3);
-    expect(fresh().claimKeyHash('act', 'approve the order', undefined, { name: 'buyer', context: undefined })).toBe(buyer);
+    expect(fresh().claimKey('act', 'approve the order', undefined, { name: 'buyer', context: undefined }).keyHash).toBe(buyer);
     // Another agent calling the same instruction first does not renumber this agent's occurrence.
     const shared = fresh();
-    shared.claimKeyHash('act', 'approve the order', undefined, { name: 'admin', context: undefined });
-    expect(shared.claimKeyHash('act', 'approve the order', undefined, { name: 'buyer', context: undefined })).toBe(buyer);
+    shared.claimKey('act', 'approve the order', undefined, { name: 'admin', context: undefined });
+    expect(shared.claimKey('act', 'approve the order', undefined, { name: 'buyer', context: undefined }).keyHash).toBe(buyer);
   });
 
   it('claims distinct key hashes per occurrence of the same signature', () => {
     const context = contextWith(memoryStore());
     const agent = { name: 'default', context: undefined };
-    const first = context.claimKeyHash('act', 'open billing', undefined, agent);
-    const repeat = context.claimKeyHash('act', 'open billing', undefined, agent);
-    const other = context.claimKeyHash('act', 'open billing', { fast: true }, agent);
+    const first = context.claimKey('act', 'open billing', undefined, agent).keyHash;
+    const repeat = context.claimKey('act', 'open billing', undefined, agent).keyHash;
+    const other = context.claimKey('act', 'open billing', { fast: true }, agent).keyHash;
     expect(first).toMatch(/^[a-f0-9]{64}$/);
     expect(repeat).not.toBe(first);
     expect(other).not.toBe(first);

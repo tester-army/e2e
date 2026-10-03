@@ -369,6 +369,12 @@ trees, on both platforms, without a device.
   commit the changed entries in the same pull request as the scenario change.
   The web benchmark's agent job runs with `--strict-cache`, so a recording a
   change broke fails with `REPLAY_STALE` instead of quietly calling the model.
+  That includes a change to the cache key (`REPLAY_POLICY_VERSION`, a new key
+  field, an engine minor): strict lists the file store and fails a step whose
+  key misses while an entry recorded for the same step sits under another key
+  (`cache/rekeyed.ts`). Such a change re-records every entry and deletes the
+  old ones in the same pull request. A step that was never recorded still
+  runs live.
   The web benchmark's entries are in. The mobile benchmark's iOS entries are
   recorded on a Mac; nobody has recorded on an Android emulator yet, so the
   Android side spends model calls until an emulator recording is committed.

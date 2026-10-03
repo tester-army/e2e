@@ -257,8 +257,57 @@ describe('trace cache: --strict-cache fails a stale recording instead of handing
   });
 });
 
-/** The one-flow suite the target and repeat suites run: the counter, incremented twice. */
+/** The one-flow suite the target, repeat, and re-keyed suites run: the counter, incremented twice. */
 const COUNTER_SUITE = flowsSuite([flowByTitle('increments the counter')], 'record');
+
+describe('trace cache: --strict-cache fails a step whose key changed under its recording', () => {
+  let app: FixtureApp;
+  let project: FixtureProject;
+  let oldEntry = '';
+
+  /** The agent's context is part of every key, so changing it re-keys every recorded step. */
+  const rekeyed = (): Omit<E2EConfig, 'targets'> => {
+    const model = flowsModel();
+    return { ...cacheConfig(model), agents: { default: { model, context: 'The counter starts at zero.' } } };
+  };
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    project = createProject({ [FLOWS_FILE]: COUNTER_SUITE });
+    expectPassed(await runExisting(project, { appUrl: app.url, config: cacheConfig(flowsModel()) }));
+    const entries = readEntries(project);
+    expect(entries).toHaveLength(1);
+    oldEntry = path.basename(entries[0]!.file);
+  }, 120_000);
+
+  afterAll(async () => {
+    project?.cleanup();
+    await app?.close();
+  });
+
+  it('fails the step with REPLAY_STALE naming the old entry, without a model call', async () => {
+    const outcome = await runExisting(project, { appUrl: app.url, config: rekeyed(), runOptions: { strictCache: true } });
+    expect(outcome.exitCode).toBe(2);
+    expect(loopCalls).toHaveLength(0);
+    const step = onlyActStep(outcome, 'increments the counter');
+    expect(step.error?.code).toBe('REPLAY_STALE');
+    expect(step.error?.message).toContain(`stored under another cache key (${oldEntry})`);
+    expect(step.error?.message).toContain('commit the changed entry under .e2e/cache, then delete the old one');
+    expect(step.cache?.reason).toBe('no-entry');
+  }, 120_000);
+
+  it('runs the step live without the flag, and a strict run then replays the new recording', async () => {
+    const lenient = await runExisting(project, { appUrl: app.url, config: rekeyed() });
+    expectPassed(lenient);
+    expect(loopCalls.length).toBeGreaterThan(0);
+    expectMissed(onlyActStep(lenient, 'increments the counter'), 'no-entry', 0);
+    expect(readEntries(project)).toHaveLength(2);
+
+    const strict = await runExisting(project, { appUrl: app.url, config: rekeyed(), runOptions: { strictCache: true } });
+    expectPassed(strict);
+    expectReplayed(onlyActStep(strict, 'increments the counter'), 2);
+  }, 120_000);
+});
 
 /** Runs `e2e cache <command>` against the project, returning what it printed. */
 async function cacheCli(project: FixtureProject, command: 'ls' | 'stats'): Promise<string> {

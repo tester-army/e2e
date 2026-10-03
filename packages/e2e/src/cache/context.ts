@@ -23,8 +23,9 @@ import {
   type TraceCacheKind,
   type TraceCallSignature,
 } from './identity.ts';
+import type { StoredRecordings } from './rekeyed.ts';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES, type CacheStore } from './store.ts';
-import type { ActionTrace } from './trace.ts';
+import type { ActionTrace, TraceProvenance } from './trace.ts';
 import type { JsonValue } from '../types.ts';
 
 /**
@@ -44,21 +45,28 @@ export type StagedTrace = {
   | { readonly kind: 'keep' }
 );
 
+/** One step's claimed key: its hash, and the step it names as an entry records it. */
+export interface ClaimedKey {
+  readonly keyHash: string;
+  /** The step's identity before redaction; the recorder redacts it on the way to disk. */
+  readonly step: TraceProvenance;
+}
+
 export interface AgentCacheContext {
   readonly mode: 'read-only' | 'read-write';
   readonly store: CacheStore;
-  /** Test and target a write is recorded for, as `e2e cache ls` prints them. */
-  readonly identity: { readonly testId: string; readonly targetId: string };
   /** Whether this attempt may replay; writes are governed by `mode` alone. */
   readonly replayEligible: boolean;
   /**
    * A recording that no longer replays fails its step (`REPLAY_STALE`)
    * instead of handing it to the executor, with `advice` on how to re-record
-   * it: the knobs to turn off and where the entry lives.
+   * it: the knobs to turn off and where the entry lives. `recordings`, set
+   * when the store can be listed, finds the recording of a step whose key
+   * changed under it, which is stale too rather than missing.
    */
-  readonly strict: false | { readonly advice: string };
+  readonly strict: false | { readonly advice: string; readonly recordings?: StoredRecordings };
   /**
-   * Claims one step's key hash. Not a pure derivation: each claim advances
+   * Claims one step's key. Not a pure derivation: each claim advances
    * the per-attempt occurrence index for its agent and signature, which is
    * what lets a test repeat the same instruction and cache each occurrence
    * separately.
@@ -66,12 +74,12 @@ export interface AgentCacheContext {
    * `StepTraceSession` constructor is the sole caller and owns that
    * invariant structurally.
    */
-  claimKeyHash(
+  claimKey(
     kind: TraceCacheKind,
     instruction: string,
     params: Readonly<Record<string, JsonValue>> | undefined,
     agent: CacheAgentIdentity,
-  ): string;
+  ): ClaimedKey;
   /**
    * Trace writes staged during the attempt. A trace is not trusted the moment
    * its own step passes — the verification step after it is what proves the
@@ -171,6 +179,8 @@ export function createAgentCacheContext(options: {
   readonly testId: string;
   readonly target: CacheTargetIdentity;
   readonly attemptIndex: number;
+  /** The run's listing of the file store under `cache.strict`, shared by its attempts (`storedRecordingsFor`). */
+  readonly recordings?: StoredRecordings | undefined;
 }): AgentCacheContext | undefined {
   const mode = options.cache.mode;
   if (mode === 'off') return undefined;
@@ -195,22 +205,39 @@ export function createAgentCacheContext(options: {
   return {
     mode,
     store,
-    identity: { testId: options.testId, targetId: options.target.targetId },
     replayEligible: options.attemptIndex === 0,
-    strict: options.cache.strict === false ? false : { advice: staleAdvice(options.cache, options.cache.strict, options.projectRoot) },
-    claimKeyHash: (kind, instruction, params, agent) => {
+    strict:
+      options.cache.strict === false
+        ? false
+        : {
+            advice: staleAdvice(options.cache, options.cache.strict, options.projectRoot),
+            ...(options.recordings === undefined ? {} : { recordings: options.recordings }),
+          },
+    claimKey: (kind, instruction, params, agent) => {
       const signature = traceCallSignature(kind, instruction, params);
-      return traceCacheKeyHash(
+      const callIndex = nextCallIndex(agent, signature);
+      const keyHash = traceCacheKeyHash(
         buildTraceCacheKey({
           project,
           testId: options.testId,
           target: options.target,
           signature,
-          callIndex: nextCallIndex(agent, signature),
+          callIndex,
           agent,
           policyVersion: REPLAY_POLICY_VERSION,
         }),
       );
+      return {
+        keyHash,
+        step: {
+          testId: options.testId,
+          targetId: options.target.targetId,
+          instructionDigest: signature.instructionDigest,
+          paramsDigest: signature.paramsDigest,
+          callIndex,
+          agent: agent.name,
+        },
+      };
     },
     staged: [],
   };

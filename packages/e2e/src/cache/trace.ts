@@ -79,16 +79,25 @@ const SHA256_HEX = /^[a-f0-9]{64}$/u;
 
 /**
  * What a trace was recorded for, in the terms a person uses: the test, the
- * target, and the digest of the instruction. None of it is replay input —
- * every one of these fields is already in the key, so a mismatch is a miss
- * before an entry is ever read — and none of it is trusted as such. It exists
- * so a file named after a digest can say which test it belongs to.
+ * target, the digest of the instruction, and, on entries recorded since they
+ * were added, the rest of what names the step within its test. None of it is
+ * replay input — every one of these fields is already in the key, so a
+ * mismatch is a miss before an entry is ever read — and none of it is trusted
+ * as such. It exists so a file named after a digest can say which step it
+ * belongs to, and so `cache.strict` can tell a step whose key changed under
+ * its recording from a step that was never recorded.
  */
 export interface TraceProvenance {
   readonly testId: string;
   readonly targetId: string;
   /** SHA-256 of the normalized instruction (`cache/identity.ts`). */
   readonly instructionDigest: string;
+  /** SHA-256/JCS of the step's params as the key digests them, a placeholder for each `unique()` value. */
+  readonly paramsDigest?: string;
+  /** Zero-based occurrence of the step among its repeats in the attempt. */
+  readonly callIndex?: number;
+  /** Name of the configured agent the step ran with. */
+  readonly agent?: string;
 }
 
 /**
@@ -862,7 +871,22 @@ function readProvenance(document: unknown): TraceProvenance | undefined {
   const instructionDigest = raw['instructionDigest'];
   if (testId === undefined || targetId === undefined) return undefined;
   if (typeof instructionDigest !== 'string' || !SHA256_HEX.test(instructionDigest)) return undefined;
-  return { testId, targetId, instructionDigest };
+  const paramsDigest = raw['paramsDigest'];
+  if (paramsDigest !== undefined && (typeof paramsDigest !== 'string' || !SHA256_HEX.test(paramsDigest))) return undefined;
+  const callIndex = raw['callIndex'];
+  if (callIndex !== undefined && (typeof callIndex !== 'number' || !Number.isSafeInteger(callIndex) || callIndex < 0)) {
+    return undefined;
+  }
+  const agent = raw['agent'] === undefined ? undefined : readBoundedText(raw['agent'], MAX_TRACE_DESCRIPTOR_CHARS);
+  if (raw['agent'] !== undefined && agent === undefined) return undefined;
+  return {
+    testId,
+    targetId,
+    instructionDigest,
+    ...(paramsDigest === undefined ? {} : { paramsDigest }),
+    ...(callIndex === undefined ? {} : { callIndex }),
+    ...(agent === undefined ? {} : { agent }),
+  };
 }
 
 function readBoundedText(value: unknown, maxChars: number): string | undefined {
