@@ -56,8 +56,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:unit": "vitest run tests/unit",
-    "test:simulator": "E2E_AGENT_DEVICE_SIMULATOR=1 vitest run tests/integration"
+    "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
     "agent-device": "0.21.20",
