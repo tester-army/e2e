@@ -1,0 +1,6 @@
+# The examples pin no lockfile here: each one installs the latest release in
+# its ranges, the way a fresh project would. A copied example can commit its own.
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+bun.lock

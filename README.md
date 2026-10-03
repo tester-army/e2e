@@ -40,6 +40,11 @@ npx e2e init
 config and an example test. The
 [quickstart](https://e2e.tester.army/docs/quickstart) covers the rest.
 
+To see a finished setup in your stack, open
+[`examples/`](https://github.com/tester-army/e2e/tree/main/examples):
+Vite, Next.js, Expo, and SwiftUI, each a standalone project with a passing
+suite.
+
 ## Packages
 
 | Package | What it does |

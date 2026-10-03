@@ -61,7 +61,9 @@ one; the installed CLI prints the same text with `npx e2e guide <topic>`
 (`e2e guide` alone prints this page). For anything the topics do not cover,
 the full documentation ships in the `docs/` directory of the installed `e2e`
 package (`node_modules/e2e/docs` in a single-package project); a link such as
-`/reference/cli` is `docs/reference/cli.mdx`.
+`/reference/cli` is `docs/reference/cli.mdx`. Complete projects for Vite,
+Next.js, Expo, and SwiftUI, each with its config, scripts, and a passing
+suite, are in https://github.com/tester-army/e2e/tree/main/examples.
 
 | Topic | File | Read it when |
 | --- | --- | --- |

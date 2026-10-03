@@ -1,0 +1,18 @@
+{
+  "name": "e2e-example-with-swiftui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:ios": "xcodebuild -project ../HelloApp.xcodeproj -scheme HelloApp -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath ../build -quiet build",
+    "install:ios": "xcrun simctl install booted ../build/Build/Products/Debug-iphonesimulator/HelloApp.app",
+    "test:e2e": "e2e run"
+  },
+  "devDependencies": {
+    "@e2e-dev/mobile": "^0.9.0",
+    "@types/node": "^26.6.4",
+    "ai": "^7.0.0",
+    "e2e": "^0.15.2",
+    "typescript": "^7.0.2",
+    "zod": "^4.1.8"
+  }
+}
