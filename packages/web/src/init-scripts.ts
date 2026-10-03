@@ -22,9 +22,10 @@ export function validateInitScripts(scripts: unknown): void {
   if (!Array.isArray(scripts)) {
     throw new ConfigurationError('INVALID_CONFIG', 'web({ initScripts }) must be an array of scripts');
   }
-  scripts.forEach((script: unknown, index) => {
-    assertInitScript(script, (problem) => new ConfigurationError('INVALID_CONFIG', `web({ initScripts })[${index}] ${problem}`));
-  });
+  // Indexed, not `forEach`, so a hole in a sparse array is refused like `undefined`.
+  for (let index = 0; index < scripts.length; index += 1) {
+    assertInitScript(scripts[index], (problem) => new ConfigurationError('INVALID_CONFIG', `web({ initScripts })[${index}] ${problem}`));
+  }
 }
 
 /** The configured `initScripts`, read into page source once per process and handed to each attempt as the start of its own list. */
@@ -93,7 +94,9 @@ function assertInitScript(script: unknown, fail: (problem: string) => Error): as
 
 /**
  * The page source of one script. A function is called with its JSON argument
- * as Playwright calls it, beside the `__name` helper tsx's output needs. A
+ * as Playwright calls it, beside the `__name` helper tsx's output needs; the
+ * argument is parsed in the page, since an object literal would turn an own
+ * `__proto__` key into the prototype. A
  * file gets a `sourceURL`, so a stack trace in the page names it.
  */
 async function initScriptSource(
@@ -103,7 +106,7 @@ async function initScriptSource(
 ): Promise<string> {
   if (typeof script === 'string') return script;
   if (typeof script === 'function') {
-    return `(() => {\n${KEEP_NAMES_HELPER}\n(${script.toString()}\n)(${arg === undefined ? '' : JSON.stringify(arg)});\n})();`;
+    return `(() => {\n${KEEP_NAMES_HELPER}\n(${script.toString()}\n)(${arg === undefined ? '' : `JSON.parse(${JSON.stringify(JSON.stringify(arg))})`});\n})();`;
   }
   const file = resolvePath(script.path);
   try {

@@ -114,10 +114,14 @@ describe('init scripts', () => {
       await browser.reload();
       expect(await seenAtBoot(browser)).toEqual(['config', 'wallet:0xabc']);
 
+      const arg = JSON.parse('{"__proto__":{"own":true}}') as { __proto__: { own: boolean } };
+      await browser.addInitScript((value) => {
+        (window.trail ??= []).push(`own __proto__:${String(Object.hasOwn(value, '__proto__'))}`);
+      }, arg);
       await browser.addInitScript({ path: 'from-file.js' });
       await surface.reset(operation());
       await browser.goto('/');
-      expect(await seenAtBoot(browser)).toEqual(['config', 'wallet:0xabc', 'file']);
+      expect(await seenAtBoot(browser)).toEqual(['config', 'wallet:0xabc', 'own __proto__:true', 'file']);
     });
     await attempt({}, async (browser) => {
       await browser.goto('/');
