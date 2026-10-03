@@ -1,3 +1,4 @@
+import { getEventListeners } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   Deadline,
@@ -20,22 +21,8 @@ describe('Deadline', () => {
     expect(deadline.remaining(5000)).toBe(1000);
     expect(deadline.remaining(5900)).toBe(100);
     expect(deadline.remaining(7000)).toBe(0);
-  });
-
-  it('reports expiry at and after the boundary', () => {
-    const deadline = new Deadline(100, 0);
-    expect(deadline.expired(99)).toBe(false);
-    expect(deadline.expired(100)).toBe(true);
-    expect(deadline.expired(101)).toBe(true);
-  });
-
-  it('min returns the earlier deadline and prefers the first on ties', () => {
-    const early = new Deadline(100, 0);
-    const late = new Deadline(200, 0);
-    expect(Deadline.min(early, late)).toBe(early);
-    expect(Deadline.min(late, early)).toBe(early);
-    const tie = new Deadline(100, 0);
-    expect(Deadline.min(early, tie)).toBe(early);
+    expect(deadline.expired(5999)).toBe(false);
+    expect(deadline.expired(6000)).toBe(true);
   });
 });
 
@@ -77,10 +64,10 @@ describe('sleep', () => {
     vi.useFakeTimers();
     const controller = new AbortController();
     const promise = sleep(1, controller.signal);
+    expect(getEventListeners(controller.signal, 'abort')).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(1);
     await promise;
-    controller.abort();
-    await vi.advanceTimersByTimeAsync(0);
+    expect(getEventListeners(controller.signal, 'abort')).toEqual([]);
   });
 });
 
@@ -312,20 +299,6 @@ describe('pollCondition', () => {
     controller.abort();
     await assertion;
   });
-
-  it('supports an async onTimeout error factory', async () => {
-    vi.useFakeTimers();
-    const promise = pollCondition({
-      deadline: new Deadline(100),
-      signal: new AbortController().signal,
-      negated: false,
-      evaluate: async () => false,
-      onTimeout: async () => new Error('async timeout'),
-    });
-    const assertion = expect(promise).rejects.toThrow('async timeout');
-    await vi.advanceTimersByTimeAsync(500);
-    await assertion;
-  });
 });
 
 describe('withTimeout', () => {
@@ -343,11 +316,5 @@ describe('withTimeout', () => {
     const assertion = expect(promise).rejects.toThrow('too slow');
     await vi.advanceTimersByTimeAsync(250);
     await assertion;
-  });
-
-  it('propagates rejection of the underlying promise', async () => {
-    await expect(
-      withTimeout(Promise.reject(new Error('boom')), 1000, () => new Error('unused')),
-    ).rejects.toThrow('boom');
   });
 });

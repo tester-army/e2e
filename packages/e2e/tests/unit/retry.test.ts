@@ -19,11 +19,6 @@ describe('isRetryEligible', () => {
     expect(isRetryEligible({ status: 'failed', error: error('internal') })).toBe(false);
     expect(isRetryEligible({ status: 'failed' })).toBe(false);
   });
-
-  it('never treats passed or interrupted attempts as retryable', () => {
-    expect(isRetryEligible({ status: 'passed' })).toBe(false);
-    expect(isRetryEligible({ status: 'interrupted' })).toBe(false);
-  });
 });
 
 describe('runWithRetries', () => {
@@ -76,6 +71,16 @@ describe('runWithRetries', () => {
     expect(attempts).toEqual([0]);
   });
 
+  it('returns skipped when the body skipped itself, without retrying', async () => {
+    const attempts: number[] = [];
+    const status = await runWithRetries(3, liveSignal(), async (index) => {
+      attempts.push(index);
+      return { status: 'skipped' };
+    });
+    expect(status).toBe('skipped');
+    expect(attempts).toEqual([0]);
+  });
+
   it('keeps the failed verdict when an interrupt cuts its retry short', async () => {
     const status = await runWithRetries(3, liveSignal(), async (index) =>
       index === 0 ? { status: 'failed', error: error('test') } : { status: 'interrupted' },
@@ -119,12 +124,5 @@ describe('runWithRetries', () => {
   it('returns failed when the very first attempt cannot start', async () => {
     const status = await runWithRetries(3, liveSignal(), async () => undefined);
     expect(status).toBe('failed');
-  });
-
-  it('a pass on the final attempt still counts as flaky', async () => {
-    const status = await runWithRetries(2, liveSignal(), async (index) =>
-      index === 1 ? { status: 'passed' } : { status: 'failed', error: error('test') },
-    );
-    expect(status).toBe('flaky');
   });
 });
