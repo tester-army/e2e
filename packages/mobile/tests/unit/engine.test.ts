@@ -757,6 +757,26 @@ describe('observation', () => {
     expect(treeOnly.root.children).toHaveLength(1);
   });
 
+  it('withholds the pixels of a screen with a secure field when the image cannot be read or decoded', async () => {
+    const h = harness();
+    // A PNG signature and header naming the size, with no image data behind them: the size reads, the decode fails.
+    const headerOnly = encodePng({ width: 195, height: 422, channels: 4, pixels: new Uint8Array(195 * 422 * 4) }).subarray(0, 33);
+    let shot: Uint8Array = new Uint8Array([1, 2, 3]);
+    h.fake.respond('capture.screenshot', (args) => {
+      writeFileSync((args as { path: string }).path, shot);
+      return { path: (args as { path: string }).path };
+    });
+    await openAttempt(h);
+    for (const bytes of [new Uint8Array([1, 2, 3]), headerOnly]) {
+      shot = bytes;
+      const observation = await h.engine.observe!(operation(), { pixels: true });
+      expect(observation.pixels).toBeUndefined();
+      expect(observation.root.children).toHaveLength(1);
+      await expect(h.engine.artifacts!.screenshot('password', operation())).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+    }
+    expect(existsSync(path.join(artifactsDir, 'screenshots'))).toBe(false);
+  });
+
   it('cancels a snapshot when the operation aborts', async () => {
     const h = harness();
     h.fake.respond('capture.snapshot', () => new Promise(() => undefined));
@@ -1613,12 +1633,14 @@ describe('device fixture', () => {
     expect(android.fake.calls.length).toBe(count);
   });
 
-  it('labels openApp and openLink steps without the link query, so a magic-link token never enters the report', () => {
+  it('labels openApp and openLink steps without the link query and setClipboard by length, so a token never enters the report', () => {
     fixture(harness());
     expect(declared?.openApp?.label?.('https://app.example.com/magic?token=s3cret#frag')).toBe('https://app.example.com/magic');
     expect(declared?.openApp?.label?.('com.apple.Preferences')).toBe('com.apple.Preferences');
     expect(declared?.openLink?.label?.('myapp://orders/42?ref=mail')).toBe('myapp://orders/42');
     expect(declared?.openLink?.label?.('verify?token=s3cret')).toBe('verify');
+    // Clipboard text is often a code or token the test copied, never a configured secret the ledger would redact.
+    expect(declared?.setClipboard?.label?.('482913')).toBe('6 chars');
   });
 });
 
@@ -1891,6 +1913,22 @@ describe('deterministic actions', () => {
     h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
     await h.engine.perform!(landed.ref, { kind: 'tap' }, test());
     expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
+  });
+
+  it('acts on the duplicate nearest where the control was when a fresh snapshot lists several alike', async () => {
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await h.engine.perform!((await observed(h, 'Back')).ref, { kind: 'tap' }, test());
+    const add = (ref: string, y: number) => ({ ref, index: 10, parentIndex: 0, depth: 1, type: 'button', label: 'Add', rect: { x: 0, y, width: 390, height: 44 } });
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, nodes: [...SETTINGS_NODES, add('@e11', 600)] }));
+    const arriving = await observed(h, 'Add');
+    // A list of rows that each carry an identical Add button: the row the test meant has settled 10 points lower.
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      nodes: [...SETTINGS_NODES, add('@e20', 200), { ...add('@e21', 610), index: 11 }],
+    }));
+    await h.engine.perform!(arriving.ref, { kind: 'tap' }, test());
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e21' });
   });
 
   it('gives a control that moved with the last action the budget too, and skips it once the budget has elapsed', async () => {
