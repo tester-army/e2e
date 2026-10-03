@@ -55,14 +55,10 @@ function rootAttributes(xml: string): Record<string, string> {
 }
 
 describe('renderJunitReport', () => {
-  it('starts with the XML declaration and ends with a newline', () => {
+  it('renders an empty run as a declaration and a root with zero counts and no suites, ending in a newline', () => {
     const xml = render(reportDocument());
     expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<testsuites ')).toBe(true);
     expect(xml.endsWith('</testsuites>\n')).toBe(true);
-  });
-
-  it('renders an empty run as a root with zero counts and no suites', () => {
-    const xml = render(reportDocument());
     expect(rootAttributes(xml)).toEqual({
       name: 'e2e',
       tests: '0',

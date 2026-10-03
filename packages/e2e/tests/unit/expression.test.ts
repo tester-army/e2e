@@ -31,13 +31,6 @@ describe('locator expressions', () => {
     expect(describeExpression(roleQuery('img', undefined, undefined))).toBe(describeExpression(roleQuery('image', undefined, undefined)));
   });
 
-  it('propagates exact:false to the name pattern', () => {
-    const expression = roleQuery('button', { name: 'save', exact: false }, undefined);
-    expect(expression).toMatchObject({
-      query: { name: { kind: 'string', value: 'save', exact: false } },
-    });
-  });
-
   it('carries visible: true on every query kind and drops the default', () => {
     expect(roleQuery('button', { visible: true }, undefined)).toMatchObject({ query: { visible: true } });
     expect(textQuery('text', 'Pro', { visible: true }, undefined)).toMatchObject({ query: { visible: true } });

@@ -454,13 +454,6 @@ describe('renderMarkdownReport', () => {
     expect(body).toContain('and 5 more\n</details>');
   });
 
-  it('renders a result from a report written before results carried repeat without a suffix', () => {
-    const legacy = { ...named({ title: 'checkout', status: 'failed' }), repeat: undefined as unknown as number };
-    const body = renderMarkdownReport(page({ status: 'failed', results: [legacy] }));
-    expect(body).toContain('checkout');
-    expect(body).not.toContain('repeat #');
-  });
-
   it('reads a serial member from its group: error, steps, failure evidence, and the artifacts of the attempt that failed', () => {
     const member = named({ title: 'step two', status: 'failed', serialGroupId: 'g1' });
     const group: ReportSerialGroup = {
@@ -544,11 +537,15 @@ describe('renderMarkdownReport', () => {
     expect(body).not.toContain('INTERRUPTED');
   });
 
-  it('counts zero failed attempts for a flaky test a foreign document gives one attempt, never a negative', () => {
+  it('tolerates a document written before results carried repeat, or one giving a flaky test a single attempt', () => {
+    const legacy = { ...named({ title: 'checkout', status: 'failed' }), repeat: undefined as unknown as number };
+    const legacyBody = renderMarkdownReport(page({ status: 'failed', results: [legacy] }));
+    expect(legacyBody).toContain('checkout');
+    expect(legacyBody).not.toContain('repeat #');
     const oneAttempt = named({ title: 'odd', status: 'flaky', attempts: [attempt({ status: 'passed' })] });
-    const body = renderMarkdownReport(page({ results: [oneAttempt] }));
-    expect(body).toContain('| ⚠️ | odd (0 failed attempts first) | 1.2s |');
-    expect(body).not.toContain('-1');
+    const foreignBody = renderMarkdownReport(page({ results: [oneAttempt] }));
+    expect(foreignBody).toContain('| ⚠️ | odd (0 failed attempts first) | 1.2s |');
+    expect(foreignBody).not.toContain('-1');
   });
 
   it('caps the failure blocks and drops what follows before the body outgrows a comment', () => {
@@ -679,20 +676,21 @@ describe('renderMarkdownReport for an exploration', () => {
     expect(body).toContain('open `` https://example.test/`code` `` then ``` https://x.example/``q`` ``` and `` https://y.example/z` `` or plain `https://ok.example`\n');
   });
 
-  it('keeps an assessment that starts like a heading, a list, or a rule as prose', () => {
-    expect(renderMarkdownReport(explored({ summary: '# Verdict\n- the cart is the weak spot' }))).toContain('**Assessment**\n\n\\# Verdict - the cart is the weak spot\n');
-    expect(renderMarkdownReport(explored({ summary: '1. the cart is the weak spot' }))).toContain('**Assessment**\n\n1\\. the cart is the weak spot\n');
-    expect(renderMarkdownReport(explored({ summary: '---' }))).toContain('**Assessment**\n\n\\---\n');
-    expect(renderMarkdownReport(explored({ summary: '1.5 stars, see @octocat' }))).toContain('**Assessment**\n\n1.5 stars, see `@octocat`\n');
-  });
-
-  it('keeps an assessment that starts with a plus, an equals sign, an underscore, or a parenthesised number as prose', () => {
-    expect(renderMarkdownReport(explored({ summary: '+ item' }))).toContain('**Assessment**\n\n\\+ item\n');
-    expect(renderMarkdownReport(explored({ summary: '= title' }))).toContain('**Assessment**\n\n\\= title\n');
-    expect(renderMarkdownReport(explored({ summary: '_ under' }))).toContain('**Assessment**\n\n\\_ under\n');
-    expect(renderMarkdownReport(explored({ summary: '1) list' }))).toContain('**Assessment**\n\n1\\) list\n');
-    // Past the first character the same marks are prose already.
-    expect(renderMarkdownReport(explored({ summary: 'a+b = c_d (1) e' }))).toContain('**Assessment**\n\na+b = c_d (1) e\n');
+  it('keeps an assessment that starts like a heading, a list, a rule, or another block opener as prose', () => {
+    const cases = [
+      ['# Verdict\n- the cart is the weak spot', '\\# Verdict - the cart is the weak spot'],
+      ['1. the cart is the weak spot', '1\\. the cart is the weak spot'],
+      ['---', '\\---'],
+      ['1.5 stars, see @octocat', '1.5 stars, see `@octocat`'],
+      ['+ item', '\\+ item'],
+      ['= title', '\\= title'],
+      ['_ under', '\\_ under'],
+      ['1) list', '1\\) list'],
+      ['a+b = c_d (1) e', 'a+b = c_d (1) e'],
+    ] as const;
+    for (const [summary, prose] of cases) {
+      expect(renderMarkdownReport(explored({ summary })), summary).toContain(`**Assessment**\n\n${prose}\n`);
+    }
   });
 
   it('links the evidence to the run page when there is one, and names the kind when the reader has neither', () => {
