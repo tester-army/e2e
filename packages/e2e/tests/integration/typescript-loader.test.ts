@@ -11,7 +11,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
+import { promisify, stripVTControlCharacters } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 // The built loader, as a project's CLI runs it.
@@ -154,14 +154,14 @@ function createProject(manifest: Record<string, unknown>): void {
   symlinkSync(path.join(dir, 'packages', 'core'), path.join(dir, 'node_modules', '@scope', 'core'), 'junction');
 }
 
-/** Runs the CLI in the project; resolves with stdout whatever the exit code. */
+/** Runs the CLI in the project; resolves with stdout, colors stripped (CI turns them on), whatever the exit code. */
 async function runCli(...args: string[]): Promise<{ code: number; stdout: string }> {
   try {
     const { stdout } = await execFileAsync(process.execPath, [CLI, 'run', '--no-cache', ...args], { cwd: dir });
-    return { code: 0, stdout };
+    return { code: 0, stdout: stripVTControlCharacters(stdout) };
   } catch (error) {
     const failed = error as { code: number; stdout: string };
-    return { code: failed.code, stdout: failed.stdout };
+    return { code: failed.code, stdout: stripVTControlCharacters(failed.stdout) };
   }
 }
 
