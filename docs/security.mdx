@@ -103,7 +103,8 @@ redaction and disables pixels for the rest of the attempt.
 
 After any secret fill, for the rest of the attempt, screenshot and pixel
 tools are unavailable, `app.screenshot()` is denied, and the runner omits
-assertion and failure screenshots. The app could display the value anywhere,
+assertion, failure, and [every-step](/reference/config#screenshot)
+screenshots. The app could display the value anywhere,
 beyond the field's masked rectangle.
 
 A test that restores a [session](#sessions) whose setup filled a secret keeps
@@ -252,6 +253,8 @@ project-relative path you configure.
 | `artifacts/.../*.webm`, `*.mp4` | Video, opt-in through `video` or `--video`; `retain-on-failure` keeps only the attempts that did not pass. | incomplete |
 | `artifacts/.../downloads/*` | Files the app served through a download. Text ones are rewritten after a secret fill or when an engine option holds a secret; the rest are kept as served. | complete or incomplete |
 | `artifacts/.../failure/screen.txt` | The redacted tree at the moment of failure. | complete |
+| `report.json` step `argument` | What a step was given: typed text, a key, an expected value. A secret is `<secret:name>`; any text typed into a secure field is `<withheld>`, decided by reading the field before typing. | complete |
+| `evidence/<runId>.evidence` | The [evidence pack](/reference/config#evidence): the report's redacted step records, each test's identity (id, title, file, line) as its definition but never its source, and only the artifacts recorded `complete` or `not-required`. Videos, binary downloads, `command.log`, and console output never go in. | complete |
 | `ai-trace.json` | Every model call, opt-in via `--ai-trace`. Prompts are the redacted ones the model saw; inline image bytes are replaced by their size. | as the prompt |
 | `sessions/<runId>/` | Encrypted sessions, deleted at cleanup. | encrypted |
 | `videos/<session>/*.webm`, `*.mp4` | Videos an `e2e mcp` session recorded with `start_recording`, kept until you delete them. Never handed to `artifacts.store`. | none |

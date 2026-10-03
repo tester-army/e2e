@@ -46,6 +46,28 @@ jobs:
         run: pnpm --filter @e2e-dev/web exec playwright install chromium --with-deps
       - name: Testbed
         run: pnpm --filter @e2e-dev/testbed test
+      # The run's evidence pack, uploaded alone so the hosted viewer opens it
+      # straight from this run (it reads an Actions artifact holding one .evidence
+      # file); the link goes to the job summary, which a fork's read-only token can
+      # still write.
+      - name: Upload evidence
+        id: evidence
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: evidence-testbed
+          path: apps/testbed/.e2e/evidence/*.evidence
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Link the evidence
+        if: ${{ !cancelled() && steps.evidence.outputs.artifact-url != '' }}
+        continue-on-error: true
+        env:
+          ARTIFACT_URL: ${{ steps.evidence.outputs.artifact-url }}
+        run: |
+          link="https://evidence.lambdatest.com/?pack=$(node -e 'process.stdout.write(encodeURIComponent(process.env.ARTIFACT_URL))')"
+          echo "[Open the testbed run in the evidence viewer]($link)" >> "$GITHUB_STEP_SUMMARY"
 
   test:
     runs-on: blacksmith-4vcpu-ubuntu-2404

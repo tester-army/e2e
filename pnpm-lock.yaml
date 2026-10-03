@@ -326,6 +326,9 @@ importers:
       '@modelcontextprotocol/server':
         specifier: 2.2.0
         version: 2.2.0
+      '@testmuai/evidence-cli':
+        specifier: 0.1.7
+        version: 0.1.7
       '@vitest/expect':
         specifier: 5.0.2
         version: 5.0.2
@@ -2662,6 +2665,11 @@ packages:
     resolution: {integrity: sha512-+PmQX0PiAYPMeVYe237LJAYvOMYW1j2rH5YROyS3b4CTVJum34HfRvKvAzozHAQG0TnHNdUfY9nCeUyRAs//cw==}
     engines: {node: '>=14.16'}
 
+  '@testmuai/evidence-cli@0.1.7':
+    resolution: {integrity: sha512-GYzOiSK5mA1RVLv5863ZsH90FjpV1oetRfNeEAhazzwkX75dJfZ8+gjXbpyJvLWeAVMCz8pvg4yEQPuLzJcc8Q==}
+    engines: {node: '>=18'}
+    hasBin: true
+
   '@tootallnate/quickjs-emscripten@0.23.0':
     resolution: {integrity: sha512-C5Mc6rdnsaJDjO3UpGW/CQTHtCKaYlScZTly4JIu97Jxo/odCiH0ITnDXSJPTOrEKk/ycSZ0AOgTmkDtkOsvIA==}
 
@@ -2959,6 +2967,10 @@ packages:
   address@1.2.2:
     resolution: {integrity: sha512-4B/qKCfeE/ODUaAUpSwfzazo5x29WD4r3vXiWsB7I2mSDAihwEqKO+g8GELZUQSSAo5e1XTYh3ZVfLyxBc12nA==}
     engines: {node: '>= 10.0.0'}
+
+  adm-zip@0.5.18:
+    resolution: {integrity: sha512-ufJnssQGbxzLNS1Ho9bCtX4rQKCCvoVuDLHoJyc3F9dOGDB4BkWs2Ci0kv53lqocAEQ/Cbi+I2XCsNYGqVYqng==}
+    engines: {node: '>=12.0'}
 
   adm-zip@0.6.0:
     resolution: {integrity: sha512-XleryMhbuksdKtofnWZ9Sk+4CUTbms4Mb/EU32SZwToAyZ5RgVos/ki8n+yr0LWHOGKuakbXTuuYNHLQjhddgg==}
@@ -9923,6 +9935,15 @@ snapshots:
     dependencies:
       defer-to-connect: 2.0.1
 
+  '@testmuai/evidence-cli@0.1.7':
+    dependencies:
+      adm-zip: 0.5.18
+      ajv: 8.20.0
+      ajv-formats: 3.0.1(ajv@8.20.0)
+      commander: 12.1.0
+      picocolors: 1.1.1
+      yaml: 2.9.0
+
   '@tootallnate/quickjs-emscripten@0.23.0': {}
 
   '@tybys/wasm-util@0.10.3':
@@ -10173,6 +10194,8 @@ snapshots:
   acorn@8.18.0: {}
 
   address@1.2.2: {}
+
+  adm-zip@0.5.18: {}
 
   adm-zip@0.6.0: {}
 

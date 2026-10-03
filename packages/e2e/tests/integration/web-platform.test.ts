@@ -847,7 +847,8 @@ describe('web platform integration', () => {
     const result = resultByTitle(outcome, 'downloads are captured as artifacts');
     const attempt = result.attempts[0]!;
     const waitStep = attempt.steps.find((step) => step.api === 'browser.waitForDownload');
-    expect(waitStep?.artifacts).toHaveLength(1);
+    const downloadsOf = (ids: readonly string[] = []) => ids.filter((id) => attempt.artifacts.find((artifact) => artifact.id === id)?.kind === 'download');
+    expect(downloadsOf(waitStep?.artifacts)).toHaveLength(1);
     const tapStep = attempt.steps.find((step) => step.api === 'locator.tap');
     expect(tapStep?.artifacts ?? []).toHaveLength(0);
     const download = attempt.artifacts.find((artifact) => artifact.kind === 'download');

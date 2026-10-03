@@ -4,7 +4,9 @@ description: Receive run events and publish results with a custom reporter.
 ---
 
 Add reporter objects to `reporters` in `e2e.config.ts`, alongside the
-[built-in reporters](/reference/cli#output). Use `onEvent` for live progress
+[built-in reporters](/reference/cli#output). The [evidence pack](/reference/config#evidence)
+is written by one more built-in reporter, which runs whenever evidence is on:
+it is not listed in `reporters`, and `--reporter` does not remove it. Use `onEvent` for live progress
 and `onRunFinished` to process the final report and artifacts.
 
 ```ts

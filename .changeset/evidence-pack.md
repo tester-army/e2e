@@ -1,0 +1,5 @@
+---
+'e2e': minor
+---
+
+Every run now writes a sealed `.evidence` pack, `<output>/evidence/<runId>.evidence`, in the open format `@testmuai/evidence-cli` defines: each test's source, steps, verdicts (`failed` for an assertion, `broken` for a check that could not decide), a frame per step, a failure record on the failing step, and logs, validated at the L1 profile. While it is on, `screenshot` defaults to `every-step`. Turn it off with `evidence: false`, `E2E_EVIDENCE=0`, or `--no-evidence`; `e2e init` adds `.e2e/evidence/` to `.gitignore`. Each report step also records `argument`, what it was given beside its target (typed text, a key, an expected value, or `<secret:name>`), and the pack's `step.json` reads as a sentence: `Fill getByLabel("Username") with "ada"`. Steps also record `target`, where they acted in CSS pixels (the node's box, and a positioned tap's point), which the pack writes as the viewer's `coordinates` and `element_rect`. An engine's `screenshot()` may now return `{ path, viewport }` in place of a path, and a step frame records that viewport, which the pack writes as `environment.resolution`.

@@ -41,6 +41,8 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status or switch
 | `--pass-with-no-tests` | Exit 0, not `NO_TESTS`, when nothing matches. |
 | `--debug` | Phase timings and an agent step table on stderr; transcripts as artifacts. |
 | `--ai-trace` | Every model call, to `<output>/ai-trace.json`. |
+| `--no-evidence` | No evidence pack this run; `screenshot` then defaults to `on-failure`. |
+| `--screenshot <mode>` | The runner's own screenshots, over the config and every target: `on-failure`, `every-step` (the default while evidence is on), `off`. A test's own `screenshot` still wins. |
 | `--trace [mode]`, `--video [mode]` | Which attempts record a trace, or a video (WebM on browsers, MP4 on devices), over the config and every target: bare is `on`; `--trace off` skips the cost; `retain-on-failure` (video) keeps only failed attempts; `on-first-retry` records first retries, `on-all-retries` every retry. A test's own `trace` or `video` still wins; targets whose engine cannot record are skipped with a notice. Both are greedy: write `--video=<mode>` or put test files first. The failure recap names the video. |
 
 ```bash

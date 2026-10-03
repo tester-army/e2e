@@ -60,8 +60,8 @@ describe('trace cache: a replay runs at the speed of the deterministic API', () 
   beforeAll(async () => {
     app = await startFixtureApp();
     project = createProject({ 'tests/speed.e2e.ts': SUITE });
-    recorded = await runExisting(project, { appUrl: app.url, config: cacheConfig(flowsModel()) });
-    replayed = await runExisting(project, { appUrl: app.url, config: cacheConfig(flowsModel()) });
+    recorded = await runExisting(project, { appUrl: app.url, config: { ...cacheConfig(flowsModel()), evidence: false } });
+    replayed = await runExisting(project, { appUrl: app.url, config: { ...cacheConfig(flowsModel()), evidence: false } });
   }, 240_000);
 
   afterAll(async () => {

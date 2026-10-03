@@ -43,6 +43,7 @@ const target: ResolvedTarget = {
   declaredApp: EMPTY_DECLARED,
   trace: { mode: 'off', source: 'default' },
   video: { mode: 'off', source: 'default' },
+  screenshot: 'on-failure',
 };
 
 function makeTest(
@@ -85,6 +86,7 @@ const defaultOptions: ResolvedTestOptions = {
   serial: false,
   trace: undefined,
   video: undefined,
+  screenshot: undefined,
 };
 
 function makePair(test: CollectedTest, overrides: Partial<TestTargetPair> = {}): TestTargetPair {

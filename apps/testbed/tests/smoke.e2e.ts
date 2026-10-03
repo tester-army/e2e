@@ -20,6 +20,13 @@ test('screenshots capture evidence', { tags: ['smoke'] }, async ({ app }) => {
   await app.screenshot('landing');
 });
 
+// Every passed step leaves a frame of the screen it left; the report links each to its step.
+test('every step leaves a screenshot', { tags: ['smoke'], screenshot: 'every-step' }, async ({ app, screen, browser }) => {
+  await app.open();
+  await screen.getByRole('link', 'Todos').tap();
+  await expect(browser).toHaveURL('/todos');
+});
+
 test('value matchers name their check and compare numbers loosely', { tags: ['smoke'] }, async ({ app, screen }) => {
   await app.open();
   const links = await screen.getByRole('link').count();

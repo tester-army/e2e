@@ -885,7 +885,8 @@ describe('web engine lifecycle', () => {
       expect(password?.rect).toBeDefined();
       await engine.perform!(password!.ref, { kind: 'fill', value: 'hunter2', sensitive: true }, operation('cm1'));
 
-      const relative = await engine.artifacts!.screenshot('closed', operation('cm1'));
+      const shot = await engine.artifacts!.screenshot('closed', operation('cm1'));
+      const relative = typeof shot === 'string' ? shot : shot.path;
       const image = decodePng(new Uint8Array(readFileSync(path.join(shotDir, relative))));
       const centre = (rect: NonNullable<SemanticNode['rect']>) =>
         [Math.round(rect.x + rect.width / 2), Math.round(rect.y + rect.height / 2)] as const;
@@ -1125,7 +1126,7 @@ describe('web engine lifecycle', () => {
       await boot(engine, app);
       await engine.startAttempt!(attempt('m1', shotDir));
       await engine.session!.open!(`${app.url}/login`, operation('m1'));
-      expect(await engine.artifacts!.screenshot('first', operation('m1'))).toBe('screenshots/001-first.png');
+      expect(await engine.artifacts!.screenshot('first', operation('m1'))).toMatchObject({ path: 'screenshots/001-first.png', viewport: { width: expect.any(Number), height: expect.any(Number) } });
       await engine.endAttempt!(cleanup());
 
       await engine.startAttempt!(attempt('m2', shotDir));
@@ -1137,7 +1138,8 @@ describe('web engine lifecycle', () => {
       expect(password?.rect).toBeDefined();
       await engine.perform!(password!.ref, { kind: 'fill', value: 'hunter2', sensitive: true }, operation('m2'));
 
-      const relative = await engine.artifacts!.screenshot('login', operation('m2'));
+      const shot = await engine.artifacts!.screenshot('login', operation('m2'));
+      const relative = typeof shot === 'string' ? shot : shot.path;
       expect(relative).toBe('screenshots/001-login.png');
       const image = decodePng(new Uint8Array(readFileSync(path.join(shotDir, relative))));
       const centre = (rect: NonNullable<SemanticNode['rect']>) =>

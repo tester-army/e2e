@@ -984,6 +984,36 @@ describe('session hooks, viewport swipe, location, artifacts', () => {
     expect(await location(cold)).toBeUndefined();
   });
 
+  it('a cancellation during the viewport probe fails the screenshot instead of returning it without a viewport', async () => {
+    const h = harness();
+    const image = { width: 390, height: 844, channels: 3 as const, pixels: new Uint8Array(390 * 844 * 3).fill(200) };
+    let captures = 0;
+    let probeFile: string | undefined;
+    let settleProbe: (() => void) | undefined;
+    const controller = new AbortController();
+    h.fake.respond('capture.screenshot', (args) => {
+      captures += 1;
+      const file = (args as { path: string }).path;
+      if (captures === 1) {
+        writeFileSync(file, encodePng(image));
+        return { path: file };
+      }
+      // The probe for the screen's logical size: cancelled while it is in flight, settled once the test has asserted.
+      probeFile = file;
+      controller.abort();
+      return new Promise((resolve) => {
+        settleProbe = () => resolve({ path: file });
+      });
+    });
+    // A screen whose snapshot has no geometry, so the screenshot has to probe for its size.
+    h.fake.respond('capture.snapshot', () => ({ nodes: [] }));
+    await openAttempt(h);
+    await expect(h.engine.artifacts!.screenshot('probe', operation(controller.signal))).rejects.toMatchObject({ code: 'CANCELLED' });
+    settleProbe!();
+    // Once the abandoned probe settles, its capture cleans up after itself.
+    await vi.waitFor(() => expect(existsSync(path.dirname(probeFile!))).toBe(false));
+  });
+
   it('numbers screenshots per attempt, masks secure fields in them, and refuses an unmaskable one', async () => {
     const h = harness();
     const image = { width: 390, height: 844, channels: 3 as const, pixels: new Uint8Array(390 * 844 * 3).fill(200) };
@@ -995,8 +1025,8 @@ describe('session hooks, viewport swipe, location, artifacts', () => {
       return { path: file };
     });
     await openAttempt(h);
-    expect(await h.engine.artifacts!.screenshot('first shot', operation())).toBe('screenshots/001-first_shot.png');
-    expect(await h.engine.artifacts!.screenshot(undefined, operation())).toBe('screenshots/002-screenshot.png');
+    expect(await h.engine.artifacts!.screenshot('first shot', operation())).toMatchObject({ path: 'screenshots/001-first_shot.png' });
+    expect(await h.engine.artifacts!.screenshot(undefined, operation())).toMatchObject({ path: 'screenshots/002-screenshot.png' });
     const written = decodePng(new Uint8Array(readFileSync(path.join(artifactsDir, 'screenshots', '002-screenshot.png'))));
     const at = (x: number, y: number) => [...written.pixels.subarray((y * written.width + x) * written.channels, (y * written.width + x) * written.channels + 3)];
     expect(at(100, 290)).toEqual([0, 0, 0]);
@@ -1004,7 +1034,7 @@ describe('session hooks, viewport swipe, location, artifacts', () => {
 
     await h.engine.endAttempt!(cleanup());
     await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
-    expect(await h.engine.artifacts!.screenshot('again', operation())).toBe('screenshots/001-again.png');
+    expect(await h.engine.artifacts!.screenshot('again', operation())).toMatchObject({ path: 'screenshots/001-again.png' });
 
     h.fake.respond('capture.snapshot', () => ({
       nodes: [{ ref: 'e1', type: 'SecureTextField', label: 'PIN', value: '1234' }],

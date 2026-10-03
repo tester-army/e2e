@@ -355,6 +355,24 @@ describe('e2e run argument parsing', () => {
     expect(lastRunOptions()).toMatchObject({ trace: undefined, video: undefined });
   });
 
+  it('passes --no-evidence through, and nothing without it', async () => {
+    await invoke('run', '--no-evidence');
+    expect(lastRunOptions()).toMatchObject({ noEvidence: true });
+    runMock.mockClear();
+    await invoke('run');
+    expect(lastRunOptions()).toMatchObject({ noEvidence: false });
+  });
+
+  it('parses --screenshot, and refuses a value that is not a mode', async () => {
+    await invoke('run', '--screenshot', 'every-step');
+    expect(lastRunOptions()).toMatchObject({ screenshot: 'every-step' });
+    runMock.mockClear();
+    await invoke('run', '--screenshot', 'always');
+    expect(runMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+    expect(written(stderrSpy)).toContain('expected a mode (on-failure, every-step, off), got "always"');
+  });
+
   it('refuses a --trace value that is not a mode, with the way to write one', async () => {
     await invoke('run', '--trace', 'tests/a.e2e.ts');
     expect(runMock).not.toHaveBeenCalled();
@@ -643,6 +661,8 @@ describe('e2e --version and --help', () => {
       '--ai-trace',
       '--trace',
       '--video',
+      '--no-evidence',
+      '--screenshot',
       '-h',
     ]);
     // Commander wraps at the help width, so the choices may span two lines.

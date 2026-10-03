@@ -85,6 +85,28 @@ jobs:
           pnpm --filter @e2e-dev/web-benchmark run start > /tmp/benchmark-app.log 2>&1 &
           for _ in $(seq 1 60); do curl -sf "$CROSSCHECK_BENCHMARK_URL" > /dev/null && break; sleep 1; done
           pnpm --filter @e2e-dev/web exec vitest run --project integration tests/integration/crosscheck.test.ts
+      # The run's evidence pack, uploaded alone so the hosted viewer opens it
+      # straight from this run (it reads an Actions artifact holding one .evidence
+      # file); the link goes to the job summary, which a fork's read-only token can
+      # still write.
+      - name: Upload evidence
+        id: evidence
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: evidence-web-benchmark
+          path: apps/web-benchmark/.e2e/evidence/*.evidence
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Link the evidence
+        if: ${{ !cancelled() && steps.evidence.outputs.artifact-url != '' }}
+        continue-on-error: true
+        env:
+          ARTIFACT_URL: ${{ steps.evidence.outputs.artifact-url }}
+        run: |
+          link="https://evidence.lambdatest.com/?pack=$(node -e 'process.stdout.write(encodeURIComponent(process.env.ARTIFACT_URL))')"
+          echo "[Open the web benchmark run in the evidence viewer]($link)" >> "$GITHUB_STEP_SUMMARY"
       # The comment is the result; the artifact is evidence for it. A storage
       # quota that refuses the upload must not turn a green suite red.
       - name: Upload report
@@ -143,6 +165,28 @@ jobs:
         # --strict-cache: a committed recording that no longer replays fails
         # the job instead of spending model calls on every run.
         run: pnpm --filter @e2e-dev/web-benchmark run test:agent --strict-cache
+      # The run's evidence pack, uploaded alone so the hosted viewer opens it
+      # straight from this run (it reads an Actions artifact holding one .evidence
+      # file); the link goes to the job summary, which a fork's read-only token can
+      # still write.
+      - name: Upload evidence
+        id: evidence
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: evidence-web-benchmark-agent
+          path: apps/web-benchmark/.e2e/evidence/*.evidence
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Link the evidence
+        if: ${{ !cancelled() && steps.evidence.outputs.artifact-url != '' }}
+        continue-on-error: true
+        env:
+          ARTIFACT_URL: ${{ steps.evidence.outputs.artifact-url }}
+        run: |
+          link="https://evidence.lambdatest.com/?pack=$(node -e 'process.stdout.write(encodeURIComponent(process.env.ARTIFACT_URL))')"
+          echo "[Open the web benchmark agent run in the evidence viewer]($link)" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload report
         if: ${{ !cancelled() }}
         continue-on-error: true

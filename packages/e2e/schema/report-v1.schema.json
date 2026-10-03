@@ -269,6 +269,16 @@
       "required": ["id", "index", "kind", "api", "label", "source", "status", "startedAt", "durationMs", "events", "artifacts"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
+        "argument": { "type": "string", "maxLength": 1024, "description": "What the step was given beside its target, redacted: typed text, a key, an expected value, or <secret:name>." },
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Where the step acted, in CSS pixels: the box of the node it resolved to, and the point of a positioned pointer action.",
+          "properties": {
+            "box": { "type": "object", "additionalProperties": false, "required": ["x", "y", "width", "height"], "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "width": { "type": "number", "minimum": 0 }, "height": { "type": "number", "minimum": 0 } } },
+            "point": { "type": "object", "additionalProperties": false, "required": ["x", "y"], "properties": { "x": { "type": "number" }, "y": { "type": "number" } } }
+          }
+        },
         "index": { "type": "integer", "minimum": 0 },
         "kind": { "enum": ["agent", "locator", "assertion", "screen", "app", "session", "resource"] },
         "api": { "type": "string", "minLength": 1 },

@@ -137,6 +137,8 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
   const outcome = await run({
     cwd: projectRoot,
     rawConfig: raw,
+    // An exploration has no test file to stand as a pack's definition, and its report is the record.
+    noEvidence: true,
     agent: options.agent,
     env,
     tests: {

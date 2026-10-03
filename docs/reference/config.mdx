@@ -115,6 +115,17 @@ export interface E2EConfig {
    */
   video?: RecordingMode;
   /**
+   * Which steps the runner screenshots; default `every-step` while
+   * `evidence` is on, else `on-failure`. A target's `screenshot` wins over
+   * it, `--screenshot <mode>` over both, and a test's own `screenshot` over all.
+   */
+  screenshot?: ScreenshotMode;
+  /**
+   * The sealed `.evidence` pack each run writes; on by default. `false`, or
+   * `E2E_EVIDENCE=0` / `--no-evidence` for one run, writes none.
+   */
+  evidence?: boolean | EvidenceConfig;
+  /**
    * The results directory, relative to the project root; default `.e2e`.
    * `--output <dir>` overrides it for one run.
    */
@@ -204,6 +215,12 @@ export interface Target {
    * `UNSUPPORTED_ARTIFACT`.
    */
   video?: RecordingMode;
+  /**
+   * Which steps the runner screenshots on this target, in place of the
+   * config's `screenshot`; `--screenshot` and a test's own `screenshot` win
+   * over it.
+   */
+  screenshot?: ScreenshotMode;
 }
 ```
 
@@ -435,9 +452,10 @@ artifacts: {
 ```
 
 `artifacts` says where artifacts go, not which are made: [`trace` and
-`video`](#recording) choose the recordings, and a failure's screenshot and
-screen text are captured whenever the engine can (never after a secret
-fill, see [Security](/security)). The removed forms fail with
+`video`](#recording) choose the recordings, [`screenshot`](#screenshot)
+chooses the runner's own screenshots, and a failure's screen text is
+captured whenever the engine can. No screenshot is taken after a secret
+fill (see [Security](/security)). The removed forms fail with
 `INVALID_CONFIG` naming what replaced them: a kinds list (`artifacts:
 ['screenshot', 'trace']` or `artifacts.kinds`) names the `trace` mode it
 meant, `artifacts.trace` names `trace: 'on-all-retries'` for `record:
@@ -634,6 +652,113 @@ a step's offset into it.
 A recording masks nothing and is recorded with `redaction: 'incomplete'`.
 Under `retain-on-failure` a link is left out of the report of a passed
 attempt, but the service still holds the recording.
+
+## screenshot
+
+```ts
+screenshot: 'every-step',
+targets: [
+  { name: 'chromium', engine: web(), app: { url } },
+  { name: 'phone', engine: mobile(), screenshot: 'on-failure' },
+],
+```
+
+`screenshot` chooses the screenshots the runner takes on its own, beside the
+ones a test asks for with `app.screenshot()` and the one `agent.assert` keeps:
+
+```ts
+export type ScreenshotMode = 'on-failure' | 'every-step' | 'off';
+```
+
+| Mode | Screenshots |
+| --- | --- |
+| `on-failure` | one when an attempt fails, as `failure.screenshot` in the report; the default when [`evidence`](#evidence) is off |
+| `every-step` | also one after every top-level step that passes, attached to that step; the default while `evidence` is on |
+| `off` | none from the runner; the failure screen text is still kept |
+
+Under `every-step` the frame is taken once the step's work is done, so a
+step's screenshot is the screen it left. `app.screenshot` and `agent.assert`
+keep their own frame and get no second one (an `agent.assert` with
+`screenshot: false` has none). A step that fails gets none either; when its
+failure fails the attempt, the failure screenshot shows that screen. A step
+called inside another step is part of it and gets no frame of its own. An
+engine that cannot take screenshots is asked for none.
+
+Each capture is bounded by `actionTimeout` and counts toward the test's
+`timeout`, but not toward the step's reported `durationMs`, which stays the
+step's own work so timings compare across modes. One that fails or times out is
+recorded on the step as an `engine` event named `step.screenshot` and never
+fails the step. After a secret fill no screenshot is taken for the rest of
+the attempt: each later step records a `policy` event with `PIXEL_TAINTED`
+instead, and a frame whose capture overlapped a fill is deleted unseen.
+
+The mode is set like `trace` and `video`, lowest first: the top of the
+config, a target's `screenshot`, `--screenshot <mode>` on
+[`e2e run`](/reference/cli#e2e-run), and a test's or describe's own
+[`screenshot` option](/reference/test#options), innermost wins. It never
+enters the config digest, so changing it never invalidates cached replays.
+
+A frame after every step costs one engine screenshot per step.
+
+## evidence
+
+```ts
+evidence: { outDir: 'test-results/evidence' },
+```
+
+Every `e2e run` writes one sealed `.evidence` pack, `<output>/evidence/<runId>.evidence`,
+in the open format [`@testmuai/evidence-cli`](https://github.com/LambdaTest/evidence-cli)
+defines: one folder per test with a `test.json` naming it (id, title path, file, line, tags; never its source, which can hold a secret as a plain string), a `result.yaml` of its
+steps and verdict, a frame for each step the runner could capture (none with `screenshot: 'off'`, after a secret fill, or on an engine without screenshots), a `failure.yaml` on the step a failure
+landed on, and logs. The pack is a zip that tools built on that format read
+and validate, the run's results as one shareable file.
+
+```ts
+export interface EvidenceConfig {
+  /** Whether the run writes one; default true. */
+  enabled?: boolean;
+  /** The directory the pack goes in, relative to the project root; default `<output>/evidence`. */
+  outDir?: string;
+  /** The evidence profile the pack is validated at; default `L1` (artifacts included). */
+  profile?: 'L0' | 'L1';
+}
+```
+
+`evidence: false` (or `{ enabled: false }`) writes none, and so does
+`E2E_EVIDENCE=0` (`false` and `off` too) or `--no-evidence` for one run,
+whatever the config says. While evidence is on, [`screenshot`](#screenshot)
+defaults to `every-step`; set `screenshot` to keep the pack without the
+per-step cost.
+
+How a run maps onto the pack:
+
+| Pack | From the run |
+| --- | --- |
+| `run.yaml` | the run id, start and end, project id, runner version, platforms, commit, and model; token, cost, and artifact-size metrics |
+| `tests/t-<id>/` | one folder per selected result, named from the result id, so a test on two targets or under `--repeat-each` is two folders. The viewer lists it by `external_id.session_name`: the title path, plus the target, agent, or repeat when those tell two results with one title apart (`checkout · phone`, `checkout · web · repeat 2`) |
+| `result.yaml` | the verdict, every attempt, `flaky`, tags, the final attempt's steps (each with its api as `kind`, label, duration, and cache mode), and `environment.resolution`, the viewport a step's boxes are measured in (from a step frame or an agent step), when one was |
+| `steps/<n>-<attempt>-<index>/` | `step.json`: the viewer's fields (`summary`, a sentence such as `Fill getByLabel("Username") with "ada"`, plus `kind`, `status`, `duration_ms`, `url` on an `app.open` or failing step, and `coordinates` and `element_rect` in CSS pixels where the step acted, which the viewer draws as a cursor and an outline) and the report's step record under `e2e`, without model turns; the step's frame as `screenshot.png` |
+| `failure.yaml` | on the failing step: the error, expected and actual (a matcher's, or an `agent.assert` instruction against its explanation), the locator, the URL, the failure frame, and the screen text |
+| `logs/` | the steps as `steps.ndjson`, agent turns as `agent.ndjson`, and the engine's trace when its redaction allows |
+
+The format separates `failed`, the app was wrong, from `broken`, the check
+could not decide. Only `ASSERTION_FAILED` is `failed`; every other failure (an
+inconclusive judgment, a locator that matched nothing, a timeout) is
+`broken`. Only artifacts recorded `complete` or `not-required` are copied, so
+videos and binary downloads never go in; `command.log` and console output
+stay out too. A value `agent.extract` returned is not copied either.
+
+The directory keeps the latest run's pack only: a run removes the `*.evidence`
+packs already there, as it clears `artifacts/`, and nothing else. `outDir`
+must be inside the project and outside the cache directory and the
+directories a run clears. `e2e explore` writes no pack. A pack holds the
+run's frames and, with `trace` on, its traces: tens of megabytes for a suite
+of a few dozen tests, which a CI job uploading `.e2e/` uploads too.
+
+The pack is written after the run, as a reporter: a pack that cannot be
+written or does not validate is a line in the run summary and never changes
+the run's status or exit code. Changing `evidence` never invalidates cached
+replays.
 
 ## agents
 

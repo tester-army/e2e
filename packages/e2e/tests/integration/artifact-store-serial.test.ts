@@ -63,6 +63,8 @@ describe('ArtifactStore across a serial group', () => {
         reporters: ['json'] as const,
         cache: 'off' as const,
         trace: 'on',
+        // The store's counts are what is under test; no every-step frames or pack.
+        evidence: false,
         artifacts: { store },
       },
     });

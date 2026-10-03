@@ -240,6 +240,12 @@ export interface TestOptions {
    * records as one unit. A mode set here is required of the target's engine.
    */
   video?: RecordingMode;
+  /**
+   * Which of the test's steps the runner screenshots, in place of the run's:
+   * the same modes as the config's `screenshot`. Innermost wins, over
+   * `--screenshot` too.
+   */
+  screenshot?: ScreenshotMode;
 }
 
 export interface DescribeOptions extends Omit<TestOptions, 'only'> {
@@ -295,6 +301,11 @@ test('checkout', { video: 'on' }, async ({ agent }) => {
   await agent.act('Buy the first product in the catalog');
 });
 ```
+
+`screenshot` takes a [screenshot mode](/reference/config#screenshot):
+`on-failure`, `every-step`, or `off`. A test's or group's own value wins over
+`--screenshot`, the target's, and the config's. Unlike `trace` and `video`, a
+member of a serial group may set its own.
 
 `serial: true` makes the group one ordered retry unit with shared app state
 and shared secret state: a secret fill withholds pixels for the rest of the

@@ -25,6 +25,7 @@ import {
   type PointTapResult,
   type PollExpectation,
   type RecordingMode,
+  type ScreenshotMode,
   type Reporter,
   type Role,
   type RoleAlias,
@@ -180,6 +181,12 @@ unique(7);
 ({ targets, trace: 'on-all-retries', video: 'retain-on-failure' }) satisfies E2EConfig;
 ({ targets: [{ name: 'phone', engine, trace: 'off', video: 'on-first-retry' }], trace: 'on', video: 'off' }) satisfies E2EConfig;
 'on-all-retries' satisfies RecordingMode;
+({ targets: [{ name: 'phone', engine, screenshot: 'off' }], screenshot: 'every-step' }) satisfies E2EConfig;
+'on-failure' satisfies ScreenshotMode;
+// @ts-expect-error screenshot is a closed set of modes
+({ targets, screenshot: 'always' }) satisfies E2EConfig;
+// @ts-expect-error screenshot is a mode, not a boolean
+({ targets, screenshot: true }) satisfies E2EConfig;
 // @ts-expect-error trace is a closed set of modes; record: 'retries' is on-all-retries
 ({ targets, trace: 'retries' }) satisfies E2EConfig;
 // @ts-expect-error video is a closed set of modes

@@ -83,8 +83,14 @@ failed result:
 - `error` contains the code, message, source line, and assertion details.
 - `failure` identifies the screen and screenshot artifacts and any locator
   candidates.
-- `steps` shows the calls leading to the failure. Failed agent steps include
-  recent model turns.
+- `steps` shows the calls leading to the failure. A step's `label` names its
+  target and `argument` what it was given: the text a fill typed, the key a
+  press sent, the value an assertion expected, or `<secret:name>` for a
+  secret. Text typed into a secure field (a password input) records
+  `<withheld>`, whether or not it came from a secret. `target` says where
+  the step acted, in CSS pixels: the `box` of the node it resolved to and,
+  for a positioned tap, the `point`; an agent step records its last action's.
+  Failed agent steps include recent model turns.
 - `artifacts` lists the captured files.
 
 ## Artifacts
@@ -94,9 +100,11 @@ Artifacts land under `.e2e/artifacts/` (`<output>/artifacts/` when the
 Each run empties it first, so it holds the latest run's evidence:
 
 - **Screenshots.** Failed attempts capture one whenever the engine can and
-  pixels are allowed. The built-in `agent.assert` also captures one after
+  pixels are allowed, unless [`screenshot: 'off'`](/reference/config#screenshot). The built-in `agent.assert` also captures one after
   either verdict unless `screenshot: false` disables it. Capture can fail or
-  be withheld. Use `app.screenshot('label')` to capture one explicitly.
+  be withheld. Use `app.screenshot('label')` to capture one explicitly, or
+  [`screenshot: 'every-step'`](/reference/config#screenshot) for one after
+  every step that passes.
 - **Playwright traces** on the attempts the [`trace`](/reference/config#trace)
   mode records: every attempt locally, the first retry in CI. Open one with
   `npx playwright show-trace <file>`; `--trace off` skips the cost for one
@@ -106,6 +114,11 @@ Each run empties it first, so it holds the latest run's evidence:
   secret reached the session (filled, or held by the engine for basic auth)
   and the file is text, which the runner rewrites and marks `complete`.
 - **Videos** and **agent transcripts** when you ask for them; see below.
+
+Beside the report, `<output>/evidence/<runId>.evidence` (`.e2e/evidence/` by
+default, or the directory `evidence.outDir` names) holds the run as one
+sealed [evidence pack](/reference/config#evidence): each test's steps, a
+frame per step, and a failure record on the step that failed.
 
 After a secret fill, no screenshots are taken for the rest of the attempt; see
 [screenshots after a secret fill](/security#screenshots-after-a-secret-fill).

@@ -106,8 +106,11 @@ describe.skipIf(!enabled)('agent-device engine on a booted iOS simulator', () =>
   });
 
   it('writes a screenshot artifact under the attempt directory', async () => {
-    const relative = await engine.artifacts!.screenshot('settings', operation());
+    const shot = await engine.artifacts!.screenshot('settings', operation());
+    const relative = typeof shot === 'string' ? shot : shot.path;
     expect(relative).toBe('screenshots/001-settings.png');
+    // Node boxes are in points: the shot says the screen size they are measured against.
+    expect(typeof shot === 'string' ? undefined : shot.viewport?.width).toBeGreaterThan(0);
     const absolute = path.join(artifactsDir, relative);
     expect(existsSync(absolute)).toBe(true);
     expect(statSync(absolute).size).toBeGreaterThan(0);

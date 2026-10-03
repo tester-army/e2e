@@ -251,7 +251,7 @@ export interface OperationContext {
 | `keyboard.{type,press,dismiss?}` | `keyboard` | `observe` | the agent's `type` and `press` without a target, the keyboard fallback of `type_at` and `press_at` on a point the tree lists nothing at, and `dismiss_keyboard` when `dismiss` exists: input to whatever holds focus, for a field drawn on a canvas or flattened out of a platform's tree; with the `focus` action, `locator.pressSequentially`, which the harness composes as `focus` then `keyboard.type` |
 | `fixtures.<name>` | `<name>` | - | a contributed fixture; `requires: ['<name>']` gates at selection |
 | `state` | `state` | - | `test.setup` sessions and the `session:` option |
-| `artifacts` | `artifacts` | - | `app.screenshot()`, assertion evidence, the failure screenshot, and every [`trace` and `video` mode](/reference/config#recording) but `off`, from the config, a target, a test, `--trace`, or `--video` |
+| `artifacts` | `artifacts` | - | `app.screenshot()`, assertion evidence, the failure screenshot, the [`every-step` screenshots](/reference/config#screenshot) (from the config, a target, a test, or `--screenshot`), and every [`trace` and `video` mode](/reference/config#recording) but `off`, from the config, a target, a test, `--trace`, or `--video` |
 | `validateApp` | - | - | a config-load check of the target's `app` |
 | `session` | - | - | `app.open()` and the agent's `navigate` verb (`open`), `app.back()` and the agent's `back` verb (`back`), `app.restart()` (`restart`), `app.clearState()` (`reset`) |
 
@@ -1016,13 +1016,25 @@ export interface EngineStateCapability {
 ## Artifacts
 
 ```ts
+/** A screenshot an engine took, and the viewport its node boxes are measured against. */
+export interface EngineScreenshot {
+  readonly path: string;
+  /** The screen in the units of `SemanticNode.rect`: CSS pixels on a browser, points on a device. */
+  readonly viewport?: ViewportSize;
+}
+
 /**
  * Evidence capture. Paths are relative to the attempt artifact directory the
  * engine received in `startAttempt`.
  */
 export interface EngineArtifacts {
-  /** Captures a redacted screenshot; secure fields are masked at the source. */
-  screenshot(label: string | undefined, context: OperationContext): Promise<string>;
+  /**
+   * Captures a redacted screenshot; secure fields are masked at the source.
+   * Returns the artifact-relative path, or the path with the viewport the
+   * screen measured when the engine knows it, so a step's boxes (in the units
+   * of `SemanticNode.rect`) can be placed on an image whose pixels are larger.
+   */
+  screenshot(label: string | undefined, context: OperationContext): Promise<string | EngineScreenshot>;
   /** Starts recording an execution trace for the attempt. */
   startTrace?(context: OperationContext): Promise<void>;
   /**

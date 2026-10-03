@@ -229,6 +229,8 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
   };
 
   const tree = behavior.tree ?? FAKE_NODE;
+  /** Screenshots taken so far, for unique artifact names. */
+  let shots = 0;
   const location = `${FAKE_APP_URL}/`;
   let videoStartedAt: string | undefined;
 
@@ -426,15 +428,15 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
               record(`artifacts.screenshot(${label ?? ''})`, operation);
               // A file the runner can measure, so the artifact record is
               // complete; its bytes differ per attempt, as a screen's would.
+              // One file per capture, named like an engine names it, so a test can tell frames apart.
+              shots += 1;
+              const relative = `screenshots/${String(shots).padStart(3, '0')}-${(label ?? 'screenshot').replace(/[^A-Za-z0-9_-]/g, '_')}.png`;
               const dir = attempts[current]?.artifactsDir;
               if (dir !== undefined) {
                 mkdirSync(path.join(dir, 'screenshots'), { recursive: true });
-                writeFileSync(
-                  path.join(dir, 'screenshots', 'fake.png'),
-                  Buffer.concat([FAKE_PNG, Buffer.from(operation.attemptId, 'utf8')]),
-                );
+                writeFileSync(path.join(dir, relative), Buffer.concat([FAKE_PNG, Buffer.from(operation.attemptId, 'utf8')]));
               }
-              return 'screenshots/fake.png';
+              return relative;
             },
             ...(behavior.video === true
               ? {

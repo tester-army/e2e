@@ -73,10 +73,20 @@ function filesUnder(dir: string): string[] {
 export function contentsUnder(dir: string): [string, string][] {
   return filesUnder(dir).flatMap((file) => {
     const bytes = readFileSync(file);
-    const entries = file.endsWith('.zip')
-      ? readZip(bytes).map((entry) => [`${file}!${entry.name}`, inflateEntry(entry).toString('latin1')] as [string, string])
-      : [];
-    return [[file, bytes.toString('latin1')], ...entries];
+    return [[file, bytes.toString('latin1')], ...archiveContents(file, bytes)];
+  });
+}
+
+/** Archives nested deeper than this are not opened: a pack holds trace zips, and nothing real nests further. */
+const MAX_ARCHIVE_DEPTH = 3;
+
+/** Every entry of a `.zip` or a sealed `.evidence` pack, and of the archives inside it (a pack holds trace zips), as text. */
+function archiveContents(name: string, bytes: Uint8Array, depth = 0): [string, string][] {
+  if (depth >= MAX_ARCHIVE_DEPTH || (!name.endsWith('.zip') && !name.endsWith('.evidence'))) return [];
+  return readZip(bytes).flatMap((entry) => {
+    const inner = inflateEntry(entry);
+    const entryName = `${name}!${entry.name}`;
+    return [[entryName, inner.toString('latin1')] as [string, string], ...archiveContents(entryName, inner, depth + 1)];
   });
 }
 

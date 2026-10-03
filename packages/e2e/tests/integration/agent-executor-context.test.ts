@@ -357,7 +357,11 @@ describe('assert evidence under a custom executor', () => {
         expect.objectContaining({ name: 'assert.screenshot', decision: 'denied', code: 'PIXEL_TAINTED', status: 'failed' }),
       ]);
     }
-    expect(attempt.artifacts.filter((artifact) => artifact.kind === 'screenshot')).toEqual([]);
+    // The one frame is the step before the fill (the default every-step frame of app.open); nothing after it.
+    const openStep = attempt.steps.find((step) => step.api === 'app.open')!;
+    expect(attempt.artifacts.filter((artifact) => artifact.kind === 'screenshot').map((artifact) => artifact.producer)).toEqual([
+      { kind: 'step', stepId: openStep.id },
+    ]);
     expect(attempt.failure?.screen).toBeDefined();
     expect(attempt.failure?.screenshot).toBeUndefined();
   });

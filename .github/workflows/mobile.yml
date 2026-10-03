@@ -189,7 +189,7 @@ jobs:
           E2E_MOBILE_BENCHMARK_IOS_APP: ${{ steps.app.outputs.app-path }}
           E2E_MOBILE_BENCHMARK_COMMENT: ios${{ env.SUITE == 'agentic' && ' agent' || '' }}
           E2E_RUN: node node_modules/e2e/dist/cli/bin.js run --target ios-simulator ${{ env.SUITE == 'agentic' && '--config e2e.agent.config.ts --output .e2e/agent' || '' }}
-        run: $E2E_RUN || $E2E_RUN --last-failed
+        run: $E2E_RUN || E2E_EVIDENCE=0 $E2E_RUN --last-failed
       # The artifact upload below fails whenever the repository's quota is
       # full, so the failure evidence goes into the log as well.
       - name: Failure screens
@@ -201,6 +201,30 @@ jobs:
             echo
             echo "::endgroup::"
           done
+      # The run's evidence pack, uploaded alone so the hosted viewer opens it
+      # straight from this run (it reads an Actions artifact holding one .evidence
+      # file); the link goes to the job summary, which a fork's read-only token can
+      # still write. The `--last-failed` retry writes no pack, so the pack alone
+      # survives from the first, full pass (failures included); the retry still
+      # replaces that pass's report.json and artifacts/ in the output directory.
+      - name: Upload evidence
+        id: evidence
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: evidence-mobile-ios-${{ env.SUITE }}
+          path: apps/mobile-benchmark/.e2e/**/evidence/*.evidence
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Link the evidence
+        if: ${{ !cancelled() && steps.evidence.outputs.artifact-url != '' }}
+        continue-on-error: true
+        env:
+          ARTIFACT_URL: ${{ steps.evidence.outputs.artifact-url }}
+        run: |
+          link="https://evidence.lambdatest.com/?pack=$(node -e 'process.stdout.write(encodeURIComponent(process.env.ARTIFACT_URL))')"
+          echo "[Open the iOS ${{ env.SUITE }} run in the evidence viewer]($link)" >> "$GITHUB_STEP_SUMMARY"
       # The report is small and says what the first attempt of a flaky test
       # met, so it is kept from every run; the artifacts (screens, traces,
       # video) only from a red one, since the quota is shared.
@@ -300,7 +324,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
           disable-animations: true
           working-directory: apps/mobile-benchmark
-          script: $E2E_RUN || $E2E_RUN --last-failed
+          script: $E2E_RUN || E2E_EVIDENCE=0 $E2E_RUN --last-failed
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -317,6 +341,29 @@ jobs:
             echo
             echo "::endgroup::"
           done
+      # The run's evidence pack, uploaded alone so the hosted viewer opens it
+      # straight from this run (it reads an Actions artifact holding one .evidence
+      # file); the link goes to the job summary, which a fork's read-only token can
+      # still write. The `--last-failed` retry writes no pack, so this is the
+      # first, full pass, failures included.
+      - name: Upload evidence
+        id: evidence
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: evidence-mobile-android-${{ env.SUITE }}
+          path: apps/mobile-benchmark/.e2e/**/evidence/*.evidence
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Link the evidence
+        if: ${{ !cancelled() && steps.evidence.outputs.artifact-url != '' }}
+        continue-on-error: true
+        env:
+          ARTIFACT_URL: ${{ steps.evidence.outputs.artifact-url }}
+        run: |
+          link="https://evidence.lambdatest.com/?pack=$(node -e 'process.stdout.write(encodeURIComponent(process.env.ARTIFACT_URL))')"
+          echo "[Open the Android ${{ env.SUITE }} run in the evidence viewer]($link)" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload report
         if: ${{ !cancelled() }}
         continue-on-error: true

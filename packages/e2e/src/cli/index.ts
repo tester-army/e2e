@@ -12,7 +12,8 @@ import { list, run, type ListedPair, type RunOptions, type RunOutcome } from '..
 import { explore, STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/index.ts';
 import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { bounded } from '../report/format.ts';
-import type { BuiltinReporter, RecordingMode } from '../types.ts';
+import type { BuiltinReporter, RecordingMode, ScreenshotMode } from '../types.ts';
+import { isScreenshotMode, SCREENSHOT_MODES } from '../internal/screenshot-mode.ts';
 import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES } from '../internal/recording-modes.ts';
 import { runsFromCheckout } from '../telemetry/checkout.ts';
 import { initCompletedEvent, runCompletedEvent, USAGE_ERROR_CODE } from '../telemetry/events.ts';
@@ -177,6 +178,14 @@ function parseRecordingMode(flag: '--trace' | '--video'): (value: string) => Rec
     }
     return value;
   };
+}
+
+/** The parser of `--screenshot <mode>`. */
+function parseScreenshotMode(value: string): ScreenshotMode {
+  if (!isScreenshotMode(value)) {
+    throw new InvalidArgumentError(`expected a mode (${SCREENSHOT_MODES.join(', ')}), got "${value}"`);
+  }
+  return value;
 }
 
 /**
@@ -547,6 +556,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .option('--ai-trace', 'record every model call to <output>/ai-trace.json (unbox-ai)')
     .option('--trace [mode]', `which attempts record a trace: ${RECORDING_MODES.join(', ')} (bare: on), over the config and every target`, parseRecordingMode('--trace'))
     .option('--video [mode]', `which attempts record a video: ${RECORDING_MODES.join(', ')} (bare: on), over the config and every target`, parseRecordingMode('--video'))
+    .option('--no-evidence', 'write no evidence pack this run, whatever the config and E2E_EVIDENCE say')
+    .option('--screenshot <mode>', `which steps the runner screenshots: ${SCREENSHOT_MODES.join(', ')}, over the config and every target`, parseScreenshotMode)
     .addHelpText(
       'after',
       [
@@ -596,6 +607,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           aiTrace?: boolean;
           trace?: RecordingMode | true;
           video?: RecordingMode | true;
+          screenshot?: ScreenshotMode;
+          evidence?: boolean;
         },
         command: Command,
       ) => {
@@ -620,6 +633,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             aiTrace: options.aiTrace,
             trace: recordingOption(options.trace),
             video: recordingOption(options.video),
+            screenshot: options.screenshot,
+            noEvidence: options.evidence === false,
             interruptSignal: signals.interruptSignal,
             forceSignal: signals.forceSignal,
           }),

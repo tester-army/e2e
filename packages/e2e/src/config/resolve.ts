@@ -8,6 +8,7 @@ import { ConfigurationError } from '../internal/errors.ts';
 import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
 import { realpathOfExisting } from '../internal/paths.ts';
 import { didYouMean } from '../internal/suggest.ts';
+import { isScreenshotMode, SCREENSHOT_MODES } from '../internal/screenshot-mode.ts';
 import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
 import { BUILTIN_REPORTER_LIST, BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { isStepExecutor } from '../agent/executor.ts';
@@ -24,6 +25,8 @@ import type {
   SecretProvider,
   SecretPurpose,
   RecordingMode,
+  ScreenshotMode,
+  EvidenceConfig,
   CacheStore,
 } from '../types.ts';
 import { isModelInstance, resolveAgentConfig, runLimits, type ResolvedAgentConfig, type ResolvedLimits } from './agent.ts';
@@ -75,6 +78,8 @@ export interface ResolvedConfig {
   readonly reporters: readonly BuiltinReporter[];
   /** The reporter objects the config names; `--reporter` never removes one. */
   readonly customReporters: readonly Reporter[];
+  /** The evidence pack the run writes; undefined when evidence is off. */
+  readonly evidence: ResolvedEvidence | undefined;
   /**
    * The agents unpinned tests run as, one result each: `agents.default`, or
    * the names `--agent` gave, in order and deduplicated. Never empty.
@@ -95,6 +100,13 @@ export interface ResolvedConfig {
    */
   readonly allSecrets: ReadonlyMap<string, ResolvedSecret>;
   readonly configDigest: string;
+}
+
+/** Where the run's evidence pack goes, and the profile it is validated at. */
+export interface ResolvedEvidence {
+  /** Absolute directory the `<runId>.evidence` pack is written in. */
+  readonly outDir: string;
+  readonly profile: 'L0' | 'L1';
 }
 
 /**
@@ -141,6 +153,10 @@ export interface CliOverrides {
   trace?: RecordingMode;
   /** `--video [mode]`: which attempts record a video, over the config's and every target's `video`. */
   video?: RecordingMode;
+  /** `--screenshot <mode>`: which steps the runner screenshots, over the config's and every target's `screenshot`. */
+  screenshot?: ScreenshotMode;
+  /** `--no-evidence`: the run writes no evidence pack, whatever the config and `E2E_EVIDENCE` say. */
+  evidence?: false;
   /** `--agent`: the configured agents unpinned tests run as, instead of `default` alone. */
   agents?: readonly string[];
 }
@@ -161,6 +177,8 @@ const TOP_LEVEL_KEYS = new Set([
   'output',
   'trace',
   'video',
+  'screenshot',
+  'evidence',
   'reporters',
   'agents',
   'cache',
@@ -245,9 +263,12 @@ export function resolveConfig(
   }
 
   const recordings = runRecordings(raw, cli, ci);
+  const evidenceOn = evidenceEnabled(raw.evidence, env, cli);
+  const screenshot = runScreenshot(raw, cli, evidenceOn);
   const targets = resolveTargets(raw.targets, options.projectRoot, (target, where) => ({
     trace: targetRecording(recordings.trace, target.trace, `${where} trace`, 'trace'),
     video: targetRecording(recordings.video, target.video, `${where} video`, 'video'),
+    screenshot: targetScreenshot(screenshot, target.screenshot, `${where} screenshot`),
   }));
   const tests = normalizeTests(raw.tests, options.projectRoot);
 
@@ -283,6 +304,7 @@ export function resolveConfig(
   const limits = runLimits(agents.values());
   const cache = resolveCacheConfig(raw, ci, options.projectRoot, cli.cache, cli.cacheStrict === true);
   const output = resolveOutput(raw.output, cli.output, options.projectRoot, cache.dir, tests);
+  const evidence = evidenceOn ? resolveEvidence(raw.evidence, options.projectRoot, output, cache.dir) : undefined;
 
   const resolved: ResolvedConfig = {
     projectId,
@@ -304,6 +326,7 @@ export function resolveConfig(
     output,
     reporters,
     customReporters,
+    evidence,
     agentNames,
     agent,
     agents,
@@ -604,6 +627,108 @@ function targetRecording(run: RunRecording, own: unknown, where: string, kind: R
   return { mode: run.fallback, source: 'default' };
 }
 
+
+/** Checks one `screenshot` value: a mode, or undefined when the key is unset. */
+function screenshotMode(value: unknown, where: string): ScreenshotMode | undefined {
+  if (value === undefined) return undefined;
+  if (!isScreenshotMode(value)) {
+    throw new ConfigurationError('INVALID_CONFIG', `${where} must be one of ${SCREENSHOT_MODES.join(', ')}, got ${describeValue(value)}`);
+  }
+  return value;
+}
+
+/** The run's screenshot mode before any target speaks: the flag, the config root, and the default under both. */
+interface RunScreenshot {
+  readonly cli: ScreenshotMode | undefined;
+  readonly config: ScreenshotMode | undefined;
+  readonly fallback: ScreenshotMode;
+}
+
+/** The run's screenshot mode before any target speaks, from the flag and the config root. */
+function runScreenshot(raw: E2EConfig, cli: CliOverrides, evidence: boolean): RunScreenshot {
+  return {
+    cli: screenshotMode(cli.screenshot, '--screenshot'),
+    config: screenshotMode(raw.screenshot, 'screenshot'),
+    // An evidence pack shows each step by its frame, so evidence asks for one per step unless someone chose otherwise.
+    fallback: evidence ? 'every-step' : 'on-failure',
+  };
+}
+
+const EVIDENCE_KEYS: ReadonlySet<string> = new Set(['enabled', 'outDir', 'profile']);
+const EVIDENCE_OFF_VALUES: ReadonlySet<string> = new Set(['0', 'false', 'off']);
+
+/**
+ * Whether the run writes an evidence pack: `--no-evidence` first, then
+ * `E2E_EVIDENCE` (`0`, `false`, or `off` turn it off; any other value is
+ * ignored), then the config, then on.
+ */
+function evidenceEnabled(value: unknown, env: NodeJS.ProcessEnv, cli: CliOverrides): boolean {
+  checkEvidenceShape(value);
+  if (cli.evidence === false) return false;
+  const fromEnv = env['E2E_EVIDENCE']?.trim().toLowerCase();
+  if (fromEnv !== undefined && EVIDENCE_OFF_VALUES.has(fromEnv)) return false;
+  if (value === false) return false;
+  if (typeof value === 'object' && value !== null && (value as EvidenceConfig).enabled === false) return false;
+  return true;
+}
+
+/** Refuses an `evidence` value that is not a boolean or `{ enabled?, outDir?, profile? }` with valid fields. */
+function checkEvidenceShape(value: unknown): void {
+  if (value === undefined || typeof value === 'boolean') return;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ConfigurationError('INVALID_CONFIG', `evidence must be true, false, or { enabled?, outDir?, profile? }, got ${describeValue(value)}`);
+  }
+  for (const key of Object.keys(value)) {
+    if (!EVIDENCE_KEYS.has(key)) {
+      throw new ConfigurationError('INVALID_CONFIG', `evidence has unknown key "${key}"; evidence is { enabled?, outDir?, profile? }${didYouMean(key, [...EVIDENCE_KEYS])}`);
+    }
+  }
+  const { enabled, profile, outDir } = value as Record<string, unknown>;
+  if (enabled !== undefined && typeof enabled !== 'boolean') {
+    throw new ConfigurationError('INVALID_CONFIG', `evidence.enabled must be a boolean, got ${describeValue(enabled)}`);
+  }
+  if (profile !== undefined && profile !== 'L0' && profile !== 'L1') {
+    throw new ConfigurationError('INVALID_CONFIG', `evidence.profile must be 'L0' or 'L1', got ${describeValue(profile)}`);
+  }
+  if (outDir !== undefined && (typeof outDir !== 'string' || outDir.trim() === '')) {
+    throw new ConfigurationError('INVALID_CONFIG', `evidence.outDir must be a non-empty path relative to the project root, got ${describeValue(outDir)}`);
+  }
+}
+
+/** The pack's directory and profile, for a run that writes one. */
+function resolveEvidence(value: unknown, projectRoot: string, output: string, cacheDir: string): ResolvedEvidence {
+  const settings = typeof value === 'object' && value !== null ? (value as EvidenceConfig) : {};
+  const outDir = settings.outDir === undefined ? path.join(output, 'evidence') : path.resolve(projectRoot, settings.outDir);
+  if (settings.outDir !== undefined) {
+    const named = `evidence.outDir ${JSON.stringify(settings.outDir)}`;
+    const refuse = (reason: string): never => {
+      throw new ConfigurationError('INVALID_CONFIG', `${named} ${reason}`);
+    };
+    const root = realpathOfExisting(projectRoot);
+    const real = realpathOfExisting(outDir);
+    if (real === root || !isWithin(real, root)) refuse('must be a directory inside the project, not its root');
+    // A run removes every pack in it: never a directory the cache is committed from, or one each run clears.
+    const cache = realpathOfExisting(cacheDir);
+    if (isWithin(real, cache)) refuse(`is the cache directory ${path.relative(root, cache)} or inside it; keep packs and the replay cache apart`);
+    for (const owned of OUTPUT_OWNED_DIRS) {
+      const dir = realpathOfExisting(path.join(output, owned));
+      if (isWithin(real, dir)) refuse(`is inside ${path.relative(root, dir)}, which every run clears; name a directory of its own`);
+    }
+    const existing = nearestExisting(outDir);
+    if (existing !== undefined && !statSync(existing).isDirectory()) refuse('is a file, or under one; name a directory');
+  }
+  return { outDir, profile: settings.profile ?? 'L1' };
+}
+
+/**
+ * A target's effective screenshot mode: the flag, else the target's own,
+ * else the config root's, else the default. The target's own is checked
+ * whether or not the flag wins over it, so a flag never hides a config mistake.
+ */
+function targetScreenshot(run: RunScreenshot, own: unknown, where: string): ScreenshotMode {
+  const target = screenshotMode(own, where);
+  return run.cli ?? target ?? run.config ?? run.fallback;
+}
 
 /**
  * Splits `reporters` into the built-in ids and the reporter objects.
@@ -931,7 +1056,7 @@ function computeConfigDigest(
   // and secrets are reduced below.
   //
   // `artifacts` holds only a host store, a live value, so it never enters the
-  // digest. Nor does `output`, where results land, nor `trace` and `video`, at the top or on a target: recording
+  // digest. Nor does `output`, where results land, nor `trace`, `video`, and `screenshot`, at the top or on a target: recording
   // a run must never invalidate the replays it would otherwise make. A
   // reporter object changes nothing about what a run records, so it never
   // enters the digest either; the built-in ids digest as they always have,
@@ -945,6 +1070,8 @@ function computeConfigDigest(
     output: _output,
     trace: _trace,
     video: _video,
+    screenshot: _screenshot,
+    evidence: _evidence,
     targets: _targets,
     credentials: _credentials,
     secrets: _secrets,

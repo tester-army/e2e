@@ -31,6 +31,7 @@ import type {
   StepMetrics,
   StepModelInfo,
   StepRecord,
+  StepTarget,
   StepTurn,
   VisionDegradation,
 } from '../run/steps.ts';
@@ -168,6 +169,10 @@ export interface ReportStep {
   kind: StepRecord['kind'];
   api: string;
   label: string;
+  /** What the step was given beside its target, redacted: typed text, a key, an expected value, `<secret:name>`. */
+  argument?: string | undefined;
+  /** Where the step acted, in CSS pixels: the node's box, and a positioned action's point. */
+  target?: StepTarget | undefined;
   source: ReportSource;
   status: StepRecord['status'];
   startedAt: string;

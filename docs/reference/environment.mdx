@@ -49,6 +49,7 @@ short would take ordinary text with it.
 | Variable | Reading | Effect |
 | --- | --- | --- |
 | `CI` | flag | CI mode: `retries` defaults to 1 and `workers` to 1, `cache` defaults to `read-only`, a focused test is `ONLY_IN_CI`, and `reuseExisting` on an app command is ignored |
+| `E2E_EVIDENCE` | value | `0`, `false`, or `off` (any case) turn the [evidence pack](/reference/config#evidence) off for the run, over the config; any other value is ignored. `--no-evidence` does the same |
 
 ## Diagnostics
 

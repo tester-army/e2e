@@ -44,6 +44,8 @@ export interface FailureEvidenceOptions {
   readonly operation: (signal: AbortSignal, timeoutMs: number) => OperationContext;
   /** Aborts the capture: a run interrupt has no time for evidence. */
   readonly interrupt: AbortSignal;
+  /** Whether the screenshot mode allows the failure frame; `screenshot: 'off'` does not. */
+  readonly screenshot: boolean;
 }
 
 /**
@@ -92,7 +94,7 @@ export async function captureFailureEvidence(options: FailureEvidenceOptions): P
 
   // Pixels only when no secret has been filled: rectangle masking cannot
   // prove a tainted viewport redacted.
-  if (!options.secrecy.exposure.withholdsPixels && !signal.aborted) {
+  if (options.screenshot && !options.secrecy.exposure.withholdsPixels && !signal.aborted) {
     try {
       const relative = await options.session.artifacts.screenshot('failure', operation);
       evidence.screenshot = options.artifacts.register('screenshot', relative);

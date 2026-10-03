@@ -27,6 +27,7 @@ import {
   type GrammarVerb,
   type LocatorActionKind,
   type NodeRef,
+  type OperationContext,
   type PointerActionKind,
   type SemanticNode,
   type SessionApp,
@@ -197,8 +198,15 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
     reset: guard('app state reset', engine?.session?.reset),
   };
 
+  const shoot = guard('screenshots', engine?.artifacts?.screenshot);
+  // An engine returns a path, or the path with its viewport; every caller but the step frame wants the path.
+  const capture = async (label: string | undefined, operation: OperationContext) => {
+    const shot = await shoot(label, operation);
+    return typeof shot === 'string' ? { path: shot } : { path: shot.path, ...(shot.viewport === undefined ? {} : { viewport: shot.viewport }) };
+  };
   const artifacts: SessionArtifacts = {
-    screenshot: guard('screenshots', engine?.artifacts?.screenshot),
+    screenshot: async (label, operation) => (await capture(label, operation)).path,
+    capture,
     ...(engine?.artifacts?.startTrace === undefined || engine.artifacts.stopTrace === undefined
       ? {}
       : {

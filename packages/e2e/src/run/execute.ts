@@ -53,7 +53,8 @@ import { adoptSecrecy, carriedSecrecy, processSecrets, registerDerivedSecrets, r
 import { isSecret } from '../secrets.ts';
 import { SessionStaging, SessionStore, targetIdentity, type SessionIdentity } from './sessions.ts';
 import { redactTraceArchives } from './trace-redaction.ts';
-import { StepRecorder, type StepProgress } from './steps.ts';
+import { captureStepScreenshot } from './step-screenshot.ts';
+import { StepRecorder, type StepProgress, type StepRecord } from './steps.ts';
 import { EngineError } from '../engine/contract.ts';
 import { hostedVideoUrl } from '../engine/recording.ts';
 import { WorkerModels } from './worker-models.ts';
@@ -808,11 +809,30 @@ export class TargetExecutor implements SerialHost {
     // step label; the ledger is live, so a value resolved mid-attempt is
     // covered too. Before a session opens, the static values still are.
     const redact = (text: string): string => redactForSession(openSession ?? undefined, this.config.allSecrets, text);
-    const steps = new StepRecorder(attemptId, {
+    // The test's own mode wins over the target's, which already took the flag and the config.
+    const screenshotMode = pair.options.screenshot ?? this.target.screenshot;
+    const steps: StepRecorder = new StepRecorder(attemptId, {
       attempt: { id: shared?.attemptId ?? attemptId, index: attemptIndex },
       maxEventsPerStep: this.config.limits.maxEventsPerStep,
       projectRoot: this.config.projectRoot,
       redact,
+      // An engine without screenshots is asked for none, the way a run-level trace skips one that cannot trace.
+      ...(screenshotMode === 'every-step' && this.target.engine?.artifacts !== undefined
+        ? {
+            // Reads the session and artifacts lazily: no step runs before both exist.
+            afterStep: (stepRecord: StepRecord) =>
+              captureStepScreenshot({
+                record: stepRecord,
+                session: openSession,
+                secrecy: openSession === null ? undefined : sessionSecrecy(openSession, this.config.allSecrets),
+                steps,
+                artifacts: artifacts.sink,
+                operation: (signal, timeoutMs) => this.op(attemptId, timeoutMs, signal),
+                timeoutMs: this.config.actionTimeout,
+                signal: attemptAbort.signal,
+              }),
+          }
+        : {}),
       ...(onProgress === undefined
         ? {}
         : { onProgress: (progress: StepProgress) => onProgress(pair, progress) }),
@@ -915,6 +935,7 @@ export class TargetExecutor implements SerialHost {
         artifacts: artifacts.sink,
         operation: (signal, timeoutMs) => this.op(attemptId, timeoutMs, signal),
         interrupt: this.interruptSignal,
+        screenshot: screenshotMode !== 'off',
       }).catch(() => undefined);
       if (evidence !== undefined) record.failure = evidence;
     };

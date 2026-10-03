@@ -232,6 +232,10 @@ export class ActionDispatcher {
       // the tree's root is the page itself and follows no layout shift.
       const under = hit.under === undefined || (observation.kind === 'semantic' && hit.under.ref.id === observation.tree.ref.id) ? undefined : hit.under;
       await this.runActionNow(verb, async () => {
+        this.runtime.steps.amendTarget({
+          point: { x: clamped.x, y: clamped.y },
+          ...(under?.rect === undefined ? {} : { box: { x: under.rect.x, y: under.rect.y, width: under.rect.width, height: under.rect.height } }),
+        });
         await this.session.performAt(clamped, { kind: nodeVerb }, this.accounting.actionOperation());
         return {
           name: verb,
@@ -625,6 +629,8 @@ export class ActionDispatcher {
     let { node, observation } = resolved;
     for (let relocations = 0; ; relocations += 1) {
       const placement = this.placementOf({ node, observation });
+      // The step's frame shows the screen after its last action: that action's node is where the cursor goes.
+      if (node.rect !== undefined) this.runtime.steps.amendTarget({ box: { x: node.rect.x, y: node.rect.y, width: node.rect.width, height: node.rect.height } });
       try {
         return { ...(await perform(node, observation)), ...placement };
       } catch (cause) {

@@ -111,6 +111,8 @@ export interface SessionApp {
 export interface SessionArtifacts {
   /** Captures a redacted screenshot and returns an artifact-relative path. */
   screenshot(label: string | undefined, operation: OperationContext): Promise<string>;
+  /** `screenshot`, with the viewport the engine measured when it reported one. */
+  capture(label: string | undefined, operation: OperationContext): Promise<{ readonly path: string; readonly viewport?: ViewportSize }>;
   /** Starts trace recording. */
   startTrace?(operation: OperationContext): Promise<void>;
   /** Stops trace recording and returns the artifact-relative path, or every segment written, in order. */

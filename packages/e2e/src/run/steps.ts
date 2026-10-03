@@ -6,7 +6,7 @@ import type { ReplayHandOffReason } from '../agent/executor.ts';
 import type { TraceReplayMissReason } from '../cache/decide.ts';
 import type { DerivedReason } from '../cache/trace.ts';
 import { withAiTraceStep } from '../internal/ai-trace.ts';
-import { classifyError, serializeError, TestError, withHint, type SerializedError } from '../internal/errors.ts';
+import { classifyError, sanitizeText, serializeError, TestError, truncateUtf8, withHint, type SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import { sourceLocation, type SourceLocation } from '../internal/source.ts';
 
@@ -57,6 +57,15 @@ export interface StepEvent {
    * trace, never here.
    */
   reasoning?: string;
+}
+
+/**
+ * Where a step acted, in the CSS pixels of `SemanticNode.rect`: the box of
+ * the node it resolved to, and the exact point of a positioned pointer action.
+ */
+export interface StepTarget {
+  box?: { x: number; y: number; width: number; height: number };
+  point?: { x: number; y: number };
 }
 
 /** Required accounting for every agent step. */
@@ -166,6 +175,10 @@ export interface StepRecord {
   kind: StepKind;
   api: string;
   label: string;
+  /** What the step was given beside its target, redacted and bounded; absent when it took nothing. */
+  argument?: string;
+  /** Where on the screen the step acted, in CSS pixels; absent for a step that acted on no node or point. */
+  target?: StepTarget;
   /** The test line the step was called from; absent when no project line was on the stack. */
   source?: SourceLocation;
   status: 'passed' | 'failed' | 'blocked' | 'timed-out' | 'cancelled';
@@ -255,6 +268,12 @@ export interface StepRunOptions {
   readonly verifies?: boolean;
   /** The configured agent an agent step runs with, recorded on the step. */
   readonly agent?: string | undefined;
+  /**
+   * What the step was given beside its target: the text a fill types, the
+   * key a press sends, the value an assertion expects. A secret is passed as
+   * `<secret:name>`, never its value, and the recorder redacts it again.
+   */
+  readonly argument?: string | undefined;
 }
 
 export interface StepRecorderOptions {
@@ -268,7 +287,17 @@ export interface StepRecorderOptions {
   readonly projectRoot?: string;
   /** Replaces secret values in a step's label, and in its error's message and details, before the record keeps them. */
   readonly redact?: (text: string) => string;
+  /**
+   * Runs once a top-level step has passed, inside its scope and before its
+   * end is published, so what it attaches or records lands on that step
+   * (the every-step screenshot). What it throws is dropped: it never
+   * changes the step's verdict.
+   */
+  readonly afterStep?: (record: StepRecord) => Promise<void>;
 }
+
+/** Bytes of a step's argument the record keeps; the report schema caps it the same. */
+const MAX_ARGUMENT_BYTES = 1024;
 
 /** Frames kept when a step captures where it was called from; the user's line is a few frames up. */
 const STEP_STACK_FRAMES = 20;
@@ -337,6 +366,7 @@ export class StepRecorder {
   private readonly onProgress: ((progress: StepProgress) => void) | undefined;
   private readonly projectRoot: string | undefined;
   private readonly redact: ((text: string) => string) | undefined;
+  private readonly afterStep: ((record: StepRecord) => Promise<void>) | undefined;
 
   constructor(
     private readonly attemptId: string,
@@ -347,6 +377,34 @@ export class StepRecorder {
     this.onProgress = options.onProgress;
     this.projectRoot = options.projectRoot;
     this.redact = options.redact;
+    this.afterStep = options.afterStep;
+  }
+
+  /**
+   * Replaces the running step's argument once the step knows more than it did
+   * when it started (a fill learns whether its field is secure). Outside a
+   * running step this is a no-op, as `recordEvent` is.
+   */
+  amendArgument(argument: string): void {
+    const current = this.current();
+    if (current !== undefined) current.argument = this.boundArgument(argument);
+  }
+
+  /** Records the viewport the running step's boxes are measured against; outside a running step this is a no-op. */
+  amendViewport(viewport: { width: number; height: number; scale: number }): void {
+    const current = this.current();
+    if (current !== undefined && current.viewport === undefined) current.viewport = viewport;
+  }
+
+  /** Records where the running step acted; outside a running step this is a no-op. */
+  amendTarget(target: StepTarget): void {
+    const current = this.current();
+    if (current !== undefined) current.target = target;
+  }
+
+  /** An argument as the record keeps it: redacted, control characters replaced, and bounded. */
+  private boundArgument(argument: string): string {
+    return truncateUtf8(sanitizeText(this.redact?.(argument) ?? argument), MAX_ARGUMENT_BYTES);
   }
 
   /** The step currently executing, when inside StepRecorder.run. */
@@ -376,6 +434,8 @@ export class StepRecorder {
     // spelled into an instruction or a locator stops here, once.
     const label = this.redact?.(rawLabel) ?? rawLabel;
     const index = this.steps.length;
+    // A step called while another runs is part of it; only the outer one is the test's.
+    const nested = this.current() !== undefined;
     const startedAt = timestamp();
     const stack = stepStack(this.projectRoot);
     const source = sourceLocation(stack, this.projectRoot);
@@ -385,6 +445,7 @@ export class StepRecorder {
       kind,
       api,
       label,
+      ...(options.argument === undefined ? {} : { argument: this.boundArgument(options.argument) }),
       ...(source === undefined ? {} : { source }),
       status: 'passed',
       startedAt,
@@ -397,12 +458,12 @@ export class StepRecorder {
     this.running.add(record.id);
     if (stack !== undefined) this.stacks.set(record.id, stack);
     this.publish(record, { phase: 'start', kind, api, label });
-    const promise = this.execute(record, body, options);
+    const promise = this.execute(record, body, options, nested);
     this.pending.set(record.id, promise);
     return promise;
   }
 
-  private async execute<T>(record: StepRecord, body: () => Promise<T>, options: StepRunOptions): Promise<T> {
+  private async execute<T>(record: StepRecord, body: () => Promise<T>, options: StepRunOptions, nested: boolean): Promise<T> {
     const startedMs = Date.now();
     try {
       // Model calls made inside the body are attributed to this step.
@@ -410,6 +471,14 @@ export class StepRecorder {
       if (this.abandoned.has(record.id)) return result;
       record.durationMs = Date.now() - startedMs;
       if (options.verifies === true) this.lastVerified = Math.max(this.lastVerified, record.index);
+      const afterStep = this.afterStep;
+      if (!nested && afterStep !== undefined) {
+        try {
+          await this.scope.run(record, () => afterStep(record));
+        } catch {
+          // The hook never decides the step: a throw, sync or async, is dropped.
+        }
+      }
       return result;
     } catch (cause) {
       if (this.abandoned.has(record.id)) {

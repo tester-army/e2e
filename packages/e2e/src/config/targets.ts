@@ -7,7 +7,7 @@
 import { isEngineHandle, type EngineHandle } from '../engine/index.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import type { ResolvedRecording } from '../internal/recording-modes.ts';
-import type { Target } from '../types.ts';
+import type { ScreenshotMode, Target } from '../types.ts';
 import { checkTargetApp, digestTargetApp, resolveTargetApp, TARGET_KEYS, unknownTargetKey, type ResolvedApp, type TargetAppDeclaration } from './app.ts';
 import { isRecord } from './command.ts';
 import { describeValue } from './validate.ts';
@@ -29,16 +29,18 @@ export interface ResolvedTarget {
   readonly trace: ResolvedRecording;
   /** Which attempts on the target record a video: `--video`, else the target's `video`, else the config's, else `off`. A test's own `video` wins over it. */
   readonly video: ResolvedRecording;
+  /** Which steps the runner screenshots on the target: `--screenshot`, else the target's `screenshot`, else the config's, else `every-step` while evidence is on and `on-failure` when it is off. A test's own `screenshot` wins over it. */
+  readonly screenshot: ScreenshotMode;
 }
 
 /** A safe artifact path segment: the filename alphabet, and never `.` or `..`, which would name a directory's self or parent. */
 export const TARGET_NAME_PATTERN = /^(?!\.+$)[A-Za-z0-9_.-]+$/;
 
-/** Resolves `targets`: each target's name, platform, engine, recordings, and app, without the run's ports. */
+/** Resolves `targets`: each target's name, platform, engine, recordings, screenshot mode, and app, without the run's ports. */
 export function resolveTargets(
   declared: unknown,
   projectRoot: string,
-  recordings: (target: Target, where: string) => Pick<ResolvedTarget, 'trace' | 'video'>,
+  recordings: (target: Target, where: string) => Pick<ResolvedTarget, 'trace' | 'video' | 'screenshot'>,
 ): readonly ResolvedTarget[] {
   if (declared === undefined) {
     throw new ConfigurationError(

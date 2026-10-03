@@ -86,6 +86,7 @@
     "@ai-sdk/provider": "4.0.18",
     "@clack/prompts": "1.8.1",
     "@modelcontextprotocol/server": "2.2.0",
+    "@testmuai/evidence-cli": "0.1.7",
     "@vitest/expect": "5.0.2",
     "commander": "15.0.0",
     "picocolors": "1.1.1",

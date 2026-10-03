@@ -177,6 +177,21 @@ describe('registration', () => {
       }),
     ).rejects.toThrow(`describe options: ${kind} must be one of ${modes}, got "yes"`);
   });
+
+  it('accepts a screenshot mode on tests, groups, and setups, and rejects anything else', async () => {
+    const registration = await collectModule(async () => {
+      test.setup('auth', { sessions: ['a'], screenshot: 'off' }, noop);
+      test.describe('group', { screenshot: 'every-step' }, () => {
+        test('x', { screenshot: 'on-failure' }, noop);
+      });
+    });
+    expect(registration.tests.map((item) => item.options.screenshot)).toEqual(['off', 'on-failure']);
+    await expect(
+      collectModule(async () => {
+        test('x', { screenshot: 'on' } as never, noop);
+      }),
+    ).rejects.toThrow('test options: screenshot must be one of on-failure, every-step, off, got "on"');
+  });
 });
 
 describe('old trace spellings on a test', () => {

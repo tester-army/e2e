@@ -105,6 +105,8 @@ describe('a secret in an engine option', () => {
     // A trace archive is searched entry by entry: its own bytes are compressed.
     const contents = contentsUnder(`${project.dir}/.e2e`).filter(([name]) => !name.endsWith('.zip'));
     expect(contents.some(([name]) => name.includes('.zip!'))).toBe(true);
+    // The evidence pack, opened entry by entry, is searched too.
+    expect(contents.some(([name]) => name.includes('.evidence!tests/'))).toBe(true);
     for (const [file, text] of contents) expect(text, file).not.toContain(PASSWORD);
   });
 
@@ -123,7 +125,7 @@ describe('a secret in an engine option', () => {
     const shot = resultByTitle(outcome, 'takes a screenshot of the page, an engine-held secret tainting no pixels');
     expect(shot.status, JSON.stringify(shot.attempts[0]?.error)).toBe('passed');
     const failure = resultByTitle(outcome, 'fails on the echoed Authorization header').attempts[0]!;
-    expect(failure.artifacts.filter((artifact) => artifact.kind === 'screenshot')).toHaveLength(1);
+    expect(failure.failure?.screenshot).toBeDefined();
     expect(contentsUnder(`${project.dir}/.e2e`).some(([name]) => name.includes('.zip!screencast/'))).toBe(true);
     const download = resultByTitle(outcome, 'downloads the echoed headers').attempts[0]!.artifacts.find((artifact) => artifact.kind === 'download')!;
     expect(download.redaction).toBe('complete');

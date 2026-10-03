@@ -147,6 +147,8 @@
                 "kind": "agent",
                 "api": "agent.assert",
                 "label": "the result is visible",
+                "argument": "visible",
+                "target": { "box": { "x": 40, "y": 60, "width": 120, "height": 30 }, "point": { "x": 45, "y": 66 } },
                 "source": {
                   "file": "tests/example.e2e.ts",
                   "line": 3,

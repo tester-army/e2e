@@ -41,7 +41,8 @@ await expect(screen.getByText('$42.00')).toBeVisible();
 
 Each handler must call exactly one of `fulfill`, `continue`, or `abort`. An
 `expect` that fails inside the handler fails the test, at the next step or at
-the end of the test when nothing follows. To inspect a real response, start
+the end of the test when nothing follows (a screenshot step only looks, so it
+never takes the failure). To inspect a real response, start
 waiting before the action that sends it:
 
 ```ts
