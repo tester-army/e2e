@@ -68,10 +68,12 @@ describe('browser.route decisions', () => {
   let page: Page;
   let browser: Browser;
 
-  /** The harness's navigation rule as far as these tests reach it: relative to the base, `file:` denied. */
+  /** The harness's navigation rule: relative to the base, only http(s) and the exact `about:blank` admitted. */
   const resolveUrl = (url: string): string => {
     const resolved = new URL(url, `${origin}/`);
-    if (resolved.protocol === 'file:') throw new TestError('POLICY_DENIED', `forbidden URL scheme: ${resolved.protocol}`);
+    if (!['http:', 'https:'].includes(resolved.protocol) && resolved.href !== 'about:blank') {
+      throw new TestError('POLICY_DENIED', `forbidden URL scheme: ${resolved.protocol}`);
+    }
     return resolved.href;
   };
 
@@ -196,6 +198,8 @@ describe('browser.route decisions', () => {
 
   it.each([
     ['a forbidden scheme', 'file:///etc/hosts', 'POLICY_DENIED', 'forbidden URL scheme: file:'],
+    ['a wrapped scheme', 'view-source:file:///etc/hosts', 'POLICY_DENIED', 'forbidden URL scheme: view-source:'],
+    ['about:blank', 'about:blank', 'INVALID_ARGUMENT', "route.continue url must keep the request's http: scheme; got about:"],
     ['another scheme', 'https://127.0.0.1/echo', 'INVALID_ARGUMENT', "route.continue url must keep the request's http: scheme; got https:"],
   ])('continue to %s aborts the request and fails the next step', async (_name, url, code, message) => {
     await browser.route('**/api/quote', (route) => route.continue({ url }));
