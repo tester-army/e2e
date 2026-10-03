@@ -1,23 +1,22 @@
 /**
- * Compiles a TypeScript or JSX file to JavaScript this Node.js runs, with oxc. The
- * output carries an inline source map, so stack traces, a test's location,
- * and failure code frames point at the TypeScript source. Syntax the running
- * Node.js lacks (`using`, for one) is lowered for it; the helpers that needs
- * come from e2e's own copy of `@oxc-project/runtime`, which the project need
- * not install. The nearest tsconfig.json decides the options that change what
- * runs: JSX, legacy decorators, class field semantics, and import elision.
+ * Compiles a TypeScript or JSX file to JavaScript this Node.js runs, with
+ * oxc. The output carries an inline source map, so stack traces, a test's
+ * location, and failure code frames point at the source. Syntax the running
+ * Node.js lacks (`using`, for one) is lowered for it, with helpers from e2e's
+ * own copy of `@oxc-project/runtime`, which the project need not install.
+ * The caller passes the compiler options that change what runs: JSX, legacy
+ * decorators, class field semantics, and import elision.
  */
 
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { transformSync, type JsxOptions, type OxcError, type TransformOptions } from 'oxc-transform';
-import { tsconfigFor, type CompilerOptions } from './tsconfig.ts';
+import { importedCommonJsRequireRunsHooks } from '../internal/node-version.ts';
+import type { CompiledExtension } from './compiled-files.ts';
+import type { CompilerOptions } from './tsconfig.ts';
 
-/** The module system a compiled file runs under. */
-export type ModuleFormat = 'module' | 'commonjs';
-
-/** TypeScript targets that predate ES2022, where class fields are assigned rather than defined. */
-const ASSIGNED_FIELDS_TARGET = /^es(?:3|5|6|20(?:15|16|17|18|19|20|21))$/i;
+/** The first ECMAScript edition that defines class fields rather than assigning them. */
+const DEFINED_FIELDS_SINCE = 2022;
 
 /** JSX as the tsconfig asks for it; classic `React.createElement` when it names no automatic runtime. */
 function jsxOptions(options: CompilerOptions): JsxOptions {
@@ -32,12 +31,26 @@ function jsxOptions(options: CompilerOptions): JsxOptions {
 }
 
 /**
+ * The ECMAScript year a tsconfig `target` names, or undefined for `ESNext`
+ * and an unset target. `ES6` is 2015; `ES3` and `ES5` count as 2009, the
+ * year of ES5.
+ */
+function targetYear(target: string | undefined): number | undefined {
+  const edition = /^es(\d+)$/i.exec(target ?? '')?.[1];
+  if (edition === undefined) return undefined;
+  const number = Number(edition);
+  if (number === 6) return 2015;
+  return number < 2015 ? 2009 : number;
+}
+
+/**
  * `useDefineForClassFields` as TypeScript reads it: explicit, or false for a
  * target below ES2022. An unset target keeps define semantics, as esbuild did.
  */
 function definesClassFields(options: CompilerOptions): boolean {
   if (options.useDefineForClassFields !== undefined) return options.useDefineForClassFields;
-  return options.target === undefined || !ASSIGNED_FIELDS_TARGET.test(options.target);
+  const year = targetYear(options.target);
+  return year === undefined || year >= DEFINED_FIELDS_SINCE;
 }
 
 /** The oxc options a tsconfig's compiler options call for. */
@@ -67,63 +80,86 @@ function describeError(file: string, source: Buffer, error: OxcError): string {
 /**
  * Oxc keeps a file whose only imports were type-only a module by appending
  * `export {};`, even when told the source is CommonJS, where that statement
- * is a syntax error. TypeScript emits nothing for it.
+ * is a syntax error and TypeScript emits nothing. It is an oxc bug, not yet
+ * reported upstream (oxc 0.152.0, `crates/oxc_transformer/src/typescript/
+ * annotations.rs`, the `no_modules_remaining && some_modules_deleted`
+ * branch); the statement is always the last line oxc prints.
  */
 function withoutModuleMarker(code: string): string {
   return code.replace(/(^|\n)export \{\};\n$/, '$1');
 }
 
 /**
- * The first statement of compiled CommonJS. The `require` Node.js hands a
- * CommonJS module an ES module imports resolves without module hooks (on
- * Node.js 22, and on 24 before 24.18), so `require('./helper')` would miss
- * `helper.ts`, a tsconfig alias, and the helpers compiled code requires from
- * e2e's install. A `require` from `createRequire` resolves through them.
+ * A `require` that runs resolve hooks, for compiled CommonJS on a Node.js
+ * whose `require` in a CommonJS module an ES module imported does not (see
+ * `importedCommonJsRequireRunsHooks`). Without it, `require('./helper')`
+ * from such a module misses `helper.ts`, a tsconfig alias, and the helpers
+ * compiled code requires from e2e's install.
  */
 const HOOKED_REQUIRE = 'require = require("node:module").createRequire(__filename);';
 
-/** A directive on a line of its own, as oxc prints the prologue: `"use strict";`. */
-const DIRECTIVE = /^(["'])[^"'\\]*\1;$/;
+/** A directive as oxc prints the prologue, one per line: `"use strict";`. */
+const DIRECTIVE = /^"(?:[^"\\]|\\.)*";$/;
 
 /**
- * Compiled CommonJS with `HOOKED_REQUIRE` as its first statement: after a
- * hashbang and the directive prologue, which have to stay first, with the
- * source map moved down the line it adds.
+ * Compiled CommonJS whose `require` runs resolve hooks. The statement joins
+ * the end of the last directive, so the prologue stays first and no line
+ * moves. With no directive it takes a line of its own, after a hashbang,
+ * and the source map gains an unmapped line there.
  */
 function withHookedRequire(code: string, mappings: string): { code: string; mappings: string } {
   const lines = code.split('\n');
-  let at = lines[0]?.startsWith('#!') === true ? 1 : 0;
-  while (at < lines.length && DIRECTIVE.test(lines[at]!)) at += 1;
-  lines.splice(at, 0, HOOKED_REQUIRE);
-  const lineMappings = mappings.split(';');
-  while (lineMappings.length < at) lineMappings.push('');
-  lineMappings.splice(at, 0, '');
-  return { code: lines.join('\n'), mappings: lineMappings.join(';') };
+  const first = lines[0]?.startsWith('#!') === true ? 1 : 0;
+  let last = first - 1;
+  while (last + 1 < lines.length && DIRECTIVE.test(lines[last + 1]!)) last += 1;
+  if (last >= first) {
+    lines[last] = `${lines[last]!} ${HOOKED_REQUIRE}`;
+    return { code: lines.join('\n'), mappings };
+  }
+  lines.splice(first, 0, HOOKED_REQUIRE);
+  const mappedLines = mappings.split(';');
+  mappedLines.splice(first, 0, '');
+  return { code: lines.join('\n'), mappings: mappedLines.join(';') };
 }
 
 const ownRequire = createRequire(import.meta.url);
+/** Each helper's file in e2e's copy of `@oxc-project/runtime`, resolved once. */
+const helperFiles = new Map<string, string>();
 
 /**
- * The compiled code with every runtime helper oxc imports pointed at e2e's
- * own copy, by URL for `import` and by path for `require`. Rewriting the
- * specifiers oxc wrote, rather than redirecting the package name in the
- * resolver, leaves a project's own `@oxc-project/runtime` alone.
+ * The compiled code with each runtime helper it imports or requires taken
+ * from e2e's own copy: by URL for `import`, by path for `require`. Oxc 0.152
+ * has no option to name the helper source, so the import and require
+ * specifiers it printed (`helpersUsed`) are rewritten; a redirect of the
+ * package name in the resolver would also catch a project's own
+ * `@oxc-project/runtime` imports.
  */
-function withOwnHelpers(code: string, helpers: Readonly<Record<string, string>>, format: ModuleFormat): string {
+function withOwnHelpers(code: string, helpers: Readonly<Record<string, string>>, format: CompiledExtension['format']): string {
   let rewritten = code;
   for (const specifier of new Set(Object.values(helpers))) {
-    const file = ownRequire.resolve(specifier);
-    rewritten = rewritten.replaceAll(JSON.stringify(specifier), JSON.stringify(format === 'module' ? pathToFileURL(file).href : file));
+    let file = helperFiles.get(specifier);
+    if (file === undefined) {
+      file = ownRequire.resolve(specifier);
+      helperFiles.set(specifier, file);
+    }
+    const written = JSON.stringify(specifier);
+    rewritten =
+      format === 'module'
+        ? rewritten.replaceAll(` from ${written};`, ` from ${JSON.stringify(pathToFileURL(file).href)};`)
+        : rewritten.replaceAll(`require(${written})`, `require(${JSON.stringify(file)})`);
   }
   return rewritten;
 }
 
-/** `source`, the TypeScript or JSX in `file`, compiled to JavaScript for `format`, with an inline source map. */
-export function compileTypeScript(file: string, source: string, format: ModuleFormat): string {
+/**
+ * `source`, the content of `file`, compiled to JavaScript for its kind with
+ * `compilerOptions`, with an inline source map.
+ */
+export function compileTypeScript(file: string, source: string, kind: CompiledExtension, compilerOptions: CompilerOptions): string {
   const result = transformSync(file, source, {
-    ...transformOptions(tsconfigFor(file)?.compilerOptions ?? {}),
-    lang: file.endsWith('.tsx') ? 'tsx' : file.endsWith('.jsx') ? 'jsx' : 'ts',
-    sourceType: format,
+    ...transformOptions(compilerOptions),
+    lang: kind.lang,
+    sourceType: kind.format,
     target: `node${process.versions.node}`,
     sourcemap: true,
   });
@@ -132,8 +168,12 @@ export function compileTypeScript(file: string, source: string, format: ModuleFo
     const bytes = Buffer.from(source, 'utf8');
     throw new SyntaxError(errors.map((error) => describeError(file, bytes, error)).join('\n'));
   }
-  const compiled = { code: withOwnHelpers(result.code, result.helpersUsed, format), mappings: result.map?.mappings ?? '' };
-  const { code, mappings } = format === 'commonjs' ? withHookedRequire(withoutModuleMarker(compiled.code), compiled.mappings) : compiled;
+  let code = withOwnHelpers(result.code, result.helpersUsed, kind.format);
+  let mappings = result.map?.mappings ?? '';
+  if (kind.format === 'commonjs') {
+    code = withoutModuleMarker(code);
+    if (!importedCommonJsRequireRunsHooks()) ({ code, mappings } = withHookedRequire(code, mappings));
+  }
   const map = {
     ...result.map,
     mappings,

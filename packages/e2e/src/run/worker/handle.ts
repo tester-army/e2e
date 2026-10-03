@@ -15,16 +15,15 @@ import type {
 /**
  * Resolves the worker entry for both src (vitest, .ts) and dist (.js)
  * layouts. From source, e2e's own loader is registered before the entry
- * loads: Node.js strips types but does not compile the rest of TypeScript.
+ * loads (`config/register.ts`): Node.js strips types but does not compile
+ * the rest of TypeScript.
  */
 function resolveEntry(): { path: string; execArgv: string[] } {
   const js = fileURLToPath(new URL('./entry.js', import.meta.url));
   if (existsSync(js)) return { path: js, execArgv: [] };
   const ts = fileURLToPath(new URL('./entry.ts', import.meta.url));
   if (existsSync(ts)) {
-    const register = `import { registerLoader } from ${JSON.stringify(new URL('../../config/esm-hooks.ts', import.meta.url).href)}; registerLoader();`;
-    // A data: URL percent-decodes its payload, which would turn a %23 in the checkout's path into a hash.
-    return { path: ts, execArgv: ['--import', `data:text/javascript,${encodeURIComponent(register)}`] };
+    return { path: ts, execArgv: ['--import', new URL('../../config/register.ts', import.meta.url).href] };
   }
   throw new InfrastructureError('WORKER_ENTRY_MISSING', 'e2e worker entry module not found');
 }

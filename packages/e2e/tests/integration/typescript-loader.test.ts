@@ -73,6 +73,9 @@ class Decorated {}
 export = { decorated: (): string[] => [...seen, Decorated.name], strict: (function (this: unknown) { return this === undefined; })() };
 `,
   'lib/comp.jsx': "export const comp = () => 'jsx file';\n",
+  // CommonJS throwing from a known line, with and without a directive prologue.
+  'lib/thrower.cts': "'use strict';\nfunction boom(): never {\n  throw new Error('cts');\n}\nexport = { boom };\n",
+  'lib/thrower-sloppy.cts': "function boom(): never {\n  throw new Error('cts');\n}\nexport = { boom };\n",
   'lib/view.tsx': `export const h = (tag: string, _props: unknown, ...children: unknown[]): string => \`<\${tag}>\${children.join('')}</\${tag}>\`;
 export const view = (): string => <b>jsx</b>;
 `,
@@ -106,6 +109,8 @@ import { mts } from '../lib/esm.mts';
 import cjs from '../lib/cjs.cts';
 import { view } from '../lib/view.tsx';
 import { comp } from '../lib/comp';
+import thrower from '../lib/thrower.cts';
+import sloppyThrower from '../lib/thrower-sloppy.cts';
 import { Box, Color, Shapes, decorated, size } from '../lib/features';
 import { sub } from '#internal/sub';
 import { sub as viaJs } from '#js/sub';
@@ -124,6 +129,15 @@ test('module formats load', () => {
   expect([mts, cjs.cts, data.answer, attributed.answer]).toEqual(['mts', '.cts', 42, 42]);
   expect(cjs.required).toEqual(['extensionless', 'paths', ['Decorated', 'Decorated'], true]);
   expect(comp()).toBe('jsx file');
+  const stackOf = (boom: () => never): string => {
+    try {
+      return boom();
+    } catch (error) {
+      return (error as Error).stack ?? '';
+    }
+  };
+  expect(stackOf(thrower.boom)).toContain('lib/thrower.cts:3:9');
+  expect(stackOf(sloppyThrower.boom)).toContain('lib/thrower-sloppy.cts:2:9');
 });
 
 test('TypeScript compiles', () => {

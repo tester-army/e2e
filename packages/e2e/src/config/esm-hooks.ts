@@ -1,19 +1,19 @@
 /**
  * e2e's TypeScript loader: synchronous module customization hooks
  * (`module.registerHooks`) that run config, test, and helper TypeScript and
- * JSX on Node.js, for `import` and `require` alike.
+ * JSX on Node.js, for `import` and `require` alike. `compiled-files.ts` says
+ * which files it compiles and which tsconfig.json governs them.
  *
- * Resolve, for a project file (outside `node_modules`):
- * - a relative or absolute import from TypeScript or JSX resolves the way
- *   TypeScript does: `./x.js` to `x.ts` or `x.tsx` (`.mjs` to `.mts`, `.cjs`
- *   to `.cts`), an extensionless `./x` to `x.ts`, `x.tsx`, `x.jsx`, `x.js`,
- *   or `x.json`, and a directory to its index;
- * - a bare specifier the nearest tsconfig.json maps through `paths` or
- *   `baseUrl` resolves to the mapped file, before any package of that name.
- * Everything else, `#` imports and packages included, resolves as Node.js
- * resolves it; when the file an `import` names is missing, the TypeScript
- * file behind it is tried the same way (`#x` mapped to `./x.js`, `./x` from
- * JavaScript).
+ * Resolve: an import written in a compiled file follows TypeScript's rules;
+ * every other import, JavaScript's included, resolves as Node.js resolves it.
+ * - A relative or absolute path: `./x.js` names `x.ts`, `x.tsx`, or `x.jsx`
+ *   when one exists (`./x.mjs` names `x.mts`, `./x.cjs` names `x.cts`), an
+ *   extensionless `./x` names `x.ts`, `x.tsx`, `x.jsx`, `x.js`, or `x.json`,
+ *   and a directory names its index the same way.
+ * - A bare specifier the project's tsconfig.json maps through `paths` or
+ *   `baseUrl` names the mapped file, before any package of that name.
+ * - A `#` import or package export that names a missing `./x.js` (or `.mjs`,
+ *   `.cjs`) names the TypeScript file behind it, for an `import`.
  *
  * Format: `.ts`, `.mts`, `.tsx`, and `.jsx` are ES modules wherever they are
  * and whatever the nearest package.json says, so a Next.js app, or any
@@ -26,64 +26,50 @@
  * on to every file it reaches by path or `#` import outside `node_modules`,
  * so the project's own graph (a config and the base config or targets file
  * it imports) evaluates afresh with it, while packages stay one shared
- * instance.
+ * instance. The graph's tsconfig.json and file lookups are its own too
+ * (`tsconfig.ts`).
+ *
+ * This module, and everything it imports from e2e, is loaded by Node.js's
+ * own type stripping when a worker runs from source (`register.ts`), so it
+ * holds to erasable TypeScript: no enums, namespaces, or parameter
+ * properties.
  */
 
-import { readFileSync, statSync } from 'node:fs';
 import nodeModule, { type LoadHookSync, type ResolveHookContext, type ResolveHookSync } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { InfrastructureError } from '../internal/errors.ts';
+import { unsupportedNodeMessage } from '../internal/node-version.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
-import { tsconfigFor } from './tsconfig.ts';
-import { compileTypeScript, type ModuleFormat } from './typescript.ts';
+import { compiledSource, IMPLIED_EXTENSIONS, isProjectFile, writtenCandidates, type CompiledSource } from './compiled-files.ts';
+import { projectView, type ProjectView } from './tsconfig.ts';
+import { compileTypeScript } from './typescript.ts';
 
 type Resolution = ReturnType<ResolveHookSync>;
 type NextResolve = Parameters<ResolveHookSync>[2];
 
-/** TypeScript and JSX, which the loader compiles. */
-const COMPILED = /\.(?:[cm]?ts|[jt]sx)$/;
 const PATH_SPECIFIER = /^(?:\.{1,2}\/|\/|file:)/;
 /** A URL scheme other than `file:` (`node:`, `data:`, `https:`); never a tsconfig alias. */
 const URL_SCHEME = /^[a-z][\d+.a-z-]*:/i;
-/** A file inside an installed package. */
-const INSTALLED = /\/node_modules\//;
 /** The query parameter a fresh module graph carries on every project file. */
 const GRAPH_PARAM = 'e2e-graph';
 
-/** The TypeScript files a JavaScript extension stands for, in TypeScript's order, then the file itself. */
-const TYPESCRIPT_FOR_JAVASCRIPT: Readonly<Record<string, readonly string[]>> = {
-  '.js': ['.ts', '.tsx', '.js', '.jsx'],
-  '.jsx': ['.tsx', '.ts', '.jsx', '.js'],
-  '.mjs': ['.mts', '.mjs'],
-  '.cjs': ['.cts', '.cjs'],
-};
-/** Tried, in order, after an extensionless path and after a directory's `index`. */
-const IMPLIED_EXTENSIONS = ['.ts', '.tsx', '.jsx', '.js', '.json'] as const;
-
 /**
  * How a specifier reaches its file: by path (a relative or absolute path, a
- * `file:` URL, a tsconfig alias the loader mapped to one), through the
+ * `file:` URL, a tsconfig alias the loader mapped to a file), through the
  * importing package's own `#` imports, or by a package name.
  */
 type Reach = 'path' | 'own-imports' | 'package';
 
-/** How `specifier` reaches its file. */
+/** How `specifier`, as written, reaches its file. */
 function reach(specifier: string): Reach {
   if (PATH_SPECIFIER.test(specifier)) return 'path';
   return specifier.startsWith('#') ? 'own-imports' : 'package';
 }
 
-/** A file the project owns: a `file:` URL outside `node_modules`. */
-function projectFile(url: string): URL | undefined {
-  if (!url.startsWith('file:')) return undefined;
-  const parsed = new URL(url);
-  return INSTALLED.test(parsed.pathname) ? undefined : parsed;
-}
-
-/** A query parameter of the importing module's URL. */
-function parentParam(context: Pick<ResolveHookContext, 'parentURL'>, name: string): string | null {
-  const { parentURL } = context;
-  return parentURL?.startsWith('file:') === true ? new URL(parentURL).searchParams.get(name) : null;
+/** The `e2e-graph` value of a module URL: the fresh graph it belongs to, or null. */
+function graphOf(url: string | undefined): string | null {
+  return url?.startsWith('file:') === true ? new URL(url).searchParams.get(GRAPH_PARAM) : null;
 }
 
 /**
@@ -97,63 +83,63 @@ export function freshModuleURL(absolutePath: string, key: string, graph: boolean
   return url.href;
 }
 
-function isFile(file: string): boolean {
-  return statSync(file, { throwIfNoEntry: false })?.isFile() === true;
+/** The first of `candidates` that is a file. */
+function firstFile(candidates: readonly string[], view: ProjectView): string | undefined {
+  return candidates.find((candidate) => view.isFile(candidate));
+}
+
+/** The TypeScript file behind `target`'s written extension (`x.ts` for `x.js`), or the file as written. */
+function swappedFile(target: string, view: ProjectView): string | undefined {
+  const extension = path.extname(target);
+  const stem = target.slice(0, target.length - extension.length);
+  return firstFile(writtenCandidates(extension).map((candidate) => `${stem}${candidate}`), view);
 }
 
 /**
- * The file a TypeScript import of the path `target` names, when it is not
- * `target` itself: the TypeScript file behind a JavaScript extension, the
- * file an extensionless path leaves out, or a directory's index.
+ * The file an import of the path `target` names under TypeScript's rules:
+ * the TypeScript file behind a written extension, the file itself, the file
+ * an extensionless path leaves out, or a directory's index.
  */
-function typeScriptFile(target: string): string | undefined {
-  const extension = path.extname(target);
-  const swaps = TYPESCRIPT_FOR_JAVASCRIPT[extension];
-  if (swaps !== undefined) {
-    const stem = target.slice(0, -extension.length);
-    return swaps.map((swap) => `${stem}${swap}`).find(isFile);
-  }
-  if (isFile(target)) return target;
+function typeScriptFile(target: string, view: ProjectView): string | undefined {
+  if (writtenCandidates(path.extname(target)).length > 0) return swappedFile(target, view);
+  if (view.isFile(target)) return target;
   for (const base of [target, path.join(target, 'index')]) {
-    const found = IMPLIED_EXTENSIONS.map((implied) => `${base}${implied}`).find(isFile);
+    const found = firstFile(IMPLIED_EXTENSIONS.map((implied) => `${base}${implied}`), view);
     if (found !== undefined) return found;
   }
   return undefined;
 }
 
-/** A file a specifier names, with the query and hash its URL carried. */
+/** A file an import names, with the query and hash its URL carried. */
 interface Target {
   readonly file: string;
   readonly suffix: string;
 }
 
 /**
- * The file a project file's import names under TypeScript's rules, or
- * undefined to resolve `specifier` as Node.js does: a path imported from
- * TypeScript (`./x.js`, `./x`, `./dir`), or a bare specifier the importer's
- * tsconfig maps. Installed packages resolve as they were published.
+ * The file an import written in `importer` names under TypeScript's rules,
+ * when that is not what Node.js would resolve: a path (`./x.js`, `./x`,
+ * `./dir`), or a bare specifier the project's tsconfig maps.
  */
-function typeScriptTarget(specifier: string, parentURL: string | undefined): Target | undefined {
-  if (parentURL === undefined || projectFile(parentURL) === undefined) return undefined;
+function typeScriptTarget(specifier: string, importer: CompiledSource, view: ProjectView): Target | undefined {
   if (PATH_SPECIFIER.test(specifier)) {
-    if (!compiled(parentURL)) return undefined;
-    const url = new URL(specifier, parentURL);
+    const url = new URL(specifier, pathToFileURL(importer.file));
     const suffix = `${url.search}${url.hash}`;
     url.search = '';
     url.hash = '';
     const target = fileURLToPath(url);
-    const file = typeScriptFile(target);
+    const file = typeScriptFile(target, view);
     return file === undefined || file === target ? undefined : { file, suffix };
   }
-  if (specifier.startsWith('#') || URL_SCHEME.test(specifier) || nodeModule.isBuiltin(specifier)) return undefined;
-  for (const candidate of tsconfigFor(fileURLToPath(parentURL))?.paths?.(specifier) ?? []) {
-    const file = typeScriptFile(candidate);
+  if (!importer.project || specifier.startsWith('#') || URL_SCHEME.test(specifier) || nodeModule.isBuiltin(specifier)) return undefined;
+  for (const candidate of view.tsconfigFor(importer.file)?.paths?.(specifier) ?? []) {
+    const file = typeScriptFile(candidate, view);
     if (file !== undefined) return { file, suffix: '' };
   }
   return undefined;
 }
 
-/** Whether `context` resolves a `require()`, whose resolver takes paths where `import` takes `file:` URLs. */
+/** Whether `context` is a `require()`, whose resolver takes paths where `import` takes `file:` URLs. */
 function requires(context: Pick<ResolveHookContext, 'conditions'>): boolean {
   return context.conditions.includes('require');
 }
@@ -163,24 +149,11 @@ function targetSpecifier(target: Target, context: ResolveHookContext): string {
   return requires(context) ? target.file : `${pathToFileURL(target.file).href}${target.suffix}`;
 }
 
-/** Whether `url` is a file the loader compiles. */
-function compiled(url: string | undefined): boolean {
-  return url?.startsWith('file:') === true && COMPILED.test(new URL(url).pathname);
-}
-
-/** The format a compiled file runs as, or undefined for any other file. */
-function compiledFormat(pathname: string): ModuleFormat | undefined {
-  if (!COMPILED.test(pathname)) return undefined;
-  return pathname.endsWith('.cts') ? 'commonjs' : 'module';
-}
-
 /** The resolution, with a compiled file's format set to the one the loader compiles it for. */
 function withFormat(resolution: Resolution): Resolution {
-  if (!resolution.url.startsWith('file:')) return resolution;
-  const format = compiledFormat(new URL(resolution.url).pathname);
+  const format = compiledSource(resolution.url)?.kind.format;
   return format === undefined || resolution.format === format ? resolution : { ...resolution, format };
 }
-
 
 /**
  * The resolution, joined to its importer's fresh graph: a project file
@@ -189,77 +162,82 @@ function withFormat(resolution: Resolution): Resolution {
  * instance, even a workspace package that resolves outside `node_modules`: a
  * second instance of it would import a second instance of e2e itself.
  */
-export function inGraph(specifier: string, context: Pick<ResolveHookContext, 'parentURL'>, resolution: Resolution): Resolution {
-  if (reach(specifier) === 'package') return resolution;
-  const graph = parentParam(context, GRAPH_PARAM);
-  const file = projectFile(resolution.url);
-  if (graph === null || file === undefined || file.searchParams.has(GRAPH_PARAM)) return resolution;
+function inGraph(how: Reach, parentURL: string | undefined, resolution: Resolution): Resolution {
+  if (how === 'package' || !resolution.url.startsWith('file:')) return resolution;
+  const graph = graphOf(parentURL);
+  const file = new URL(resolution.url);
+  if (graph === null || !isProjectFile(file) || file.searchParams.has(GRAPH_PARAM)) return resolution;
   file.searchParams.set(GRAPH_PARAM, graph);
   return { ...resolution, url: file.href };
 }
 
-/** Node.js errors for a target that is not there, which carry the target's URL. */
-const MISSING_TARGET = new Set(['ERR_MODULE_NOT_FOUND', 'ERR_UNSUPPORTED_DIR_IMPORT']);
-
 /**
- * Node.js's resolution of `request`, retried on the TypeScript file behind a
- * target it did not find, for a project file's import: a `#` import or
- * package export naming `./x.js` where `x.ts` is, or an extensionless or
- * directory import from JavaScript.
+ * Node.js's resolution of `request`, a `#` import or package export written
+ * in a compiled file, retried on the TypeScript file behind the target it
+ * did not find (`x.ts` for a mapped `./x.js`). An `import` only: Node.js
+ * reports the missing target's URL on that error, and not on `require()`'s.
  */
-function resolveOrTypeScript(request: string, context: ResolveHookContext, nextResolve: NextResolve): Resolution {
+function resolveExport(request: string, context: ResolveHookContext, nextResolve: NextResolve, view: ProjectView): Resolution {
   try {
     return nextResolve(request, context);
   } catch (error) {
     const { code, url } = error as { code?: unknown; url?: unknown };
-    const recoverable =
-      typeof code === 'string' && MISSING_TARGET.has(code) && typeof url === 'string' && url.startsWith('file:') &&
-      context.parentURL !== undefined && projectFile(context.parentURL) !== undefined;
-    const file = recoverable ? typeScriptFile(fileURLToPath(url)) : undefined;
-    if (file === undefined) throw error;
-    return nextResolve(targetSpecifier({ file, suffix: '' }, context), context);
+    const missing = code === 'ERR_MODULE_NOT_FOUND' && typeof url === 'string' && url.startsWith('file:') ? fileURLToPath(url) : undefined;
+    const file = missing === undefined ? undefined : swappedFile(missing, view);
+    if (file === undefined || file === missing) throw error;
+    return nextResolve(pathToFileURL(file).href, context);
   }
 }
 
 export const resolve: ResolveHookSync = (specifier, context, nextResolve) => {
-  const target = typeScriptTarget(specifier, context.parentURL);
+  const importer = compiledSource(context.parentURL);
+  // Only an import written in a compiled file looks at the project's files.
+  const view = importer === undefined ? undefined : projectView(graphOf(context.parentURL));
+  const target = importer === undefined || view === undefined ? undefined : typeScriptTarget(specifier, importer, view);
+  const how: Reach = target === undefined ? reach(specifier) : 'path';
   const request = target === undefined ? specifier : targetSpecifier(target, context);
-  const found = resolveOrTypeScript(request, context, nextResolve);
-  if (requires(context)) {
-    // CommonJS caches modules by file, with no query to make one fresh.
-    return withFormat(found);
-  }
-  const resolution = withFormat(found);
-  // A file the loader mapped, a tsconfig alias included, joins a fresh graph like any path.
-  return inGraph(target === undefined ? specifier : pathToFileURL(target.file).href, context, resolution);
+  const resolution = withFormat(
+    view !== undefined && how !== 'path' ? resolveExport(request, context, nextResolve, view) : nextResolve(request, context),
+  );
+  // CommonJS caches modules by file, with no query to make one fresh.
+  return requires(context) ? resolution : inGraph(how, context.parentURL, resolution);
 };
 
 export const load: LoadHookSync = (url, context, nextLoad) => {
-  if (!url.startsWith('file:')) return nextLoad(url, context);
-  const { pathname } = new URL(url);
-  const format = compiledFormat(pathname);
-  if (format !== undefined) {
-    const file = fileURLToPath(url);
-    return { format, source: compileTypeScript(file, readFileSync(file, 'utf8'), format), shortCircuit: true };
+  const source = compiledSource(url);
+  if (source !== undefined) {
+    const { format } = source.kind;
+    const loaded = nextLoad(url, { ...context, format });
+    const compilerOptions = source.project ? (projectView(graphOf(url)).tsconfigFor(source.file)?.compilerOptions ?? {}) : {};
+    return { format, source: compileTypeScript(source.file, text(loaded.source), source.kind, compilerOptions), shortCircuit: true };
   }
   // A require() has no import attributes, whatever the hook types say.
-  if (pathname.endsWith('.json') && !context.conditions.includes('require') && context.importAttributes?.type === undefined) {
-    const text = readFileSync(fileURLToPath(url), 'utf8').replace(/^\uFEFF/, '');
-    return { format: 'module', source: `export default JSON.parse(${JSON.stringify(text)});\n`, shortCircuit: true };
+  if (url.startsWith('file:') && path.extname(new URL(url).pathname) === '.json' && !requires(context) && context.importAttributes?.type === undefined) {
+    const loaded = nextLoad(url, { ...context, format: 'json', importAttributes: { ...context.importAttributes, type: 'json' } });
+    return { format: 'module', source: `export default JSON.parse(${JSON.stringify(text(loaded.source))});\n`, shortCircuit: true };
   }
   return nextLoad(url, context);
 };
+
+/** Module source as text, a byte order mark dropped, whichever form the next hook returned it in. */
+function text(source: ReturnType<LoadHookSync>['source']): string {
+  if (source === undefined || source === null) return '';
+  return typeof source === 'string' ? source.replace(/^﻿/, '') : new TextDecoder().decode(source);
+}
 
 /** Marks the process whose module loader already runs these hooks, whichever copy of e2e registered them. */
 const registration = realmSlot<true>('e2e.typescript-loader.v1');
 
 /**
  * Registers the hooks once per process, and has stack traces follow the
- * source maps the compiled files carry.
+ * source maps the compiled files carry. Refuses a Node.js whose module hooks
+ * the loader cannot rely on (`node-version.ts`).
  */
 export function registerLoader(): void {
   if (registration.get(globalThis) === true) return;
-  registration.set(globalThis, true);
+  const unsupported = unsupportedNodeMessage(process.versions.node);
+  if (unsupported !== undefined) throw new InfrastructureError('NODE_UNSUPPORTED', unsupported);
   nodeModule.registerHooks({ resolve, load });
+  registration.set(globalThis, true);
   process.setSourceMapsEnabled(true);
 }

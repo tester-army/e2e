@@ -1,42 +1,19 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { LoadHookContext, ResolveHookContext } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { inGraph, load, resolve } from '../../src/config/esm-hooks.ts';
-import { forgetTsconfigs } from '../../src/config/tsconfig.ts';
+import { load, resolve } from '../../src/config/esm-hooks.ts';
 
 type Resolution = { url: string; format?: string | null | undefined };
 
 const IMPORT = ['node', 'import'];
 const REQUIRE = ['node', 'require'];
 
-/**
- * Resolves `specifier` from `parentURL` through the hook, with a stand-in for
- * Node's own resolution as `nextResolve` that records what it was asked and
- * reports `missing` as Node.js does a file that is not there.
- */
-function resolveFrom(
-  parentURL: string | undefined,
-  specifier: string,
-  { format = null, conditions = IMPORT, missing }: { format?: string | null; conditions?: string[]; missing?: string } = {},
-): { resolution: Resolution; asked: string[] } {
-  const asked: string[] = [];
-  const context: ResolveHookContext = { conditions, importAttributes: {}, parentURL };
-  const resolution = resolve(specifier, context, (next, nextContext) => {
-    asked.push(next);
-    if (next === specifier && missing !== undefined) {
-      throw Object.assign(new Error(`Cannot find module '${missing}'`), { code: 'ERR_MODULE_NOT_FOUND', url: missing });
-    }
-    const url = /^(?:file|node|data):/.test(next) ? next : path.isAbsolute(next) ? pathToFileURL(next).href : new URL(next, nextContext?.parentURL ?? 'file:///').href;
-    return { url, format };
-  });
-  return { resolution, asked };
-}
-
-let dir: string;
-let project: string;
+// Created at collection: the case tables below name files in it.
+const dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-esm-hooks-'));
+const project = path.join(dir, 'app');
 
 /** Writes `files` under the project directory. */
 function write(files: Readonly<Record<string, string>>): void {
@@ -49,13 +26,42 @@ function write(files: Readonly<Record<string, string>>): void {
 
 const url = (relative: string): string => pathToFileURL(path.join(project, relative)).href;
 
+/**
+ * Resolves `specifier` from `parentURL` through the hook. The stand-in for
+ * Node.js's own resolution records what it was asked, resolves relative
+ * specifiers and paths, and fails like Node.js for a file that is not on
+ * disk; `exports` maps a bare or `#` specifier to the URL a package's map
+ * names, existing or not.
+ */
+function resolveFrom(
+  parentURL: string | undefined,
+  specifier: string,
+  { format = null, conditions = IMPORT, exports = {} }: { format?: string | null; conditions?: string[]; exports?: Record<string, string> } = {},
+): { resolution: Resolution; asked: string[] } {
+  const asked: string[] = [];
+  const context: ResolveHookContext = { conditions, importAttributes: {}, parentURL };
+  const resolution = resolve(specifier, context, (next, nextContext) => {
+    asked.push(next);
+    const target =
+      exports[next] ?? (/^(?:node|data):/.test(next) ? next : path.isAbsolute(next) ? pathToFileURL(next).href : new URL(next, nextContext?.parentURL ?? 'file:///').href);
+    if (target.startsWith('file:') && !target.startsWith('file:///app/')) {
+      try {
+        readFileSync(fileURLToPath(target));
+      } catch {
+        throw Object.assign(new Error(`Cannot find module '${target}'`), { code: 'ERR_MODULE_NOT_FOUND', url: target });
+      }
+    }
+    return { url: target, format };
+  });
+  return { resolution, asked };
+}
+
 beforeAll(() => {
-  dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-esm-hooks-'));
-  project = path.join(dir, 'app');
   write({
     'tsconfig.json': '{\n  // JSONC, as tsc reads it\n  "compilerOptions": { "baseUrl": ".", "paths": { "@lib/*": ["lib/*"] } },\n}\n',
     // A root index, which the empty request a `#` import is not must never reach.
     'index.ts': '',
+    'e2e.config.ts': '',
     'tests/example.e2e.ts': '',
     'tests/plain.js': '',
     'internal/sub.ts': '',
@@ -64,13 +70,13 @@ beforeAll(() => {
     'lib/esm.mts': '',
     'lib/cjs.cts': '',
     'lib/only.js': '',
+    'lib/util.js': '',
     'lib/data.json': '{}',
     'lib/comp.jsx': '',
     'lib/dir/index.ts': '',
     'node_modules/dep/index.ts': '',
     'node_modules/dep/helper.ts': '',
   });
-  forgetTsconfigs();
 });
 
 afterAll(() => {
@@ -81,18 +87,32 @@ describe('resolve', () => {
   it.each([
     ['./x.js to x.ts', '../lib/helper.js', 'lib/helper.ts'],
     ['./x.js to x.tsx', '../lib/view.js', 'lib/view.tsx'],
-    ['./x.jsx to x.tsx', '../lib/view.jsx', 'lib/view.tsx'],
+    ['./x.js to x.jsx', '../lib/comp.js', 'lib/comp.jsx'],
     ['./x.mjs to x.mts', '../lib/esm.mjs', 'lib/esm.mts'],
     ['./x.cjs to x.cts', '../lib/cjs.cjs', 'lib/cjs.cts'],
     ['an extensionless import', '../lib/helper', 'lib/helper.ts'],
+    ['an extensionless JavaScript import', '../lib/util', 'lib/util.js'],
     ['an extensionless JSON import', '../lib/data', 'lib/data.json'],
     ['a directory to its index', '../lib/dir', 'lib/dir/index.ts'],
-    ['an extensionless import to x.jsx', '../lib/comp', 'lib/comp.jsx'],
     ['a tsconfig paths alias', '@lib/helper', 'lib/helper.ts'],
     ['a tsconfig baseUrl import', 'lib/view', 'lib/view.tsx'],
   ])('resolves %s from TypeScript', (_case, specifier, file) => {
-    const { asked } = resolveFrom(url('tests/example.e2e.ts'), specifier);
-    expect(asked).toEqual([url(file)]);
+    expect(resolveFrom(url('tests/example.e2e.ts'), specifier).asked).toEqual([url(file)]);
+  });
+
+  it.each([
+    ['an extensionless import', '../lib/util'],
+    ['an extensionless TypeScript import', '../lib/helper'],
+    ['an extensionless JSON import', '../lib/data'],
+    ['a directory import', '../lib/dir'],
+    ['./x.js naming x.ts', '../lib/helper.js'],
+    ['a tsconfig alias', '@lib/helper'],
+  ])('gives JavaScript Node.js resolution: %s fails as Node.js reports it', (_case, specifier) => {
+    expect(() => resolveFrom(url('tests/plain.js'), specifier)).toThrow('Cannot find module');
+  });
+
+  it('keeps the query and hash of the specifier', () => {
+    expect(resolveFrom(url('tests/example.e2e.ts'), '../lib/helper?v=1#x').asked).toEqual([`${url('lib/helper.ts')}?v=1#x`]);
   });
 
   it.each([
@@ -105,35 +125,33 @@ describe('resolve', () => {
     expect(resolution).toEqual({ url: url(file), format: 'module' });
   });
 
+  it('retries a # import from TypeScript that maps to a missing ./x.js on x.ts', () => {
+    const exports = { '#js/sub': url('internal/sub.js') };
+    expect(resolveFrom(url('tests/example.e2e.ts'), '#js/sub', { exports }).asked).toEqual(['#js/sub', url('internal/sub.ts')]);
+  });
+
   it.each([
-    ['a # import naming ./x.js', 'tests/example.e2e.ts', '#internal/sub', 'internal/sub.js', 'internal/sub.ts'],
-    ['an extensionless import from JavaScript', 'tests/plain.js', '../lib/helper', 'lib/helper', 'lib/helper.ts'],
-    ['a directory import from JavaScript', 'tests/plain.js', '../lib/dir', 'lib/dir', 'lib/dir/index.ts'],
-  ])('retries %s Node.js could not find on the TypeScript file behind it', (_case, parent, specifier, missing, file) => {
-    expect(resolveFrom(url(parent), specifier, { missing: url(missing) }).asked).toEqual([specifier, url(file)]);
-  });
-
-  it('leaves a missing file with no TypeScript behind it, and one an installed package names, to fail as Node.js reports it', () => {
-    expect(() => resolveFrom(url('tests/example.e2e.ts'), '#internal/gone', { missing: url('internal/gone.js') })).toThrow("Cannot find module");
-    expect(() => resolveFrom(url('node_modules/dep/index.ts'), '#dep/helper', { missing: url('node_modules/dep/helper.js') })).toThrow("Cannot find module");
-  });
-
-  it('keeps the query and hash of the specifier', () => {
-    const { asked } = resolveFrom(url('tests/example.e2e.ts'), '../lib/helper?v=1#x');
-    expect(asked).toEqual([`${url('lib/helper.ts')}?v=1#x`]);
+    ['from JavaScript', 'tests/plain.js', { '#js/sub': url('internal/sub.js') }, '#js/sub'],
+    ['with no TypeScript behind it', 'tests/example.e2e.ts', { '#gone': url('internal/gone.js') }, '#gone'],
+    ['to an extensionless target', 'tests/example.e2e.ts', { '#bare': url('internal/sub') }, '#bare'],
+  ])('leaves a # import %s missing as Node.js reports it', (_case, parent, exports, specifier) => {
+    expect(() => resolveFrom(url(parent), specifier, { exports })).toThrow('Cannot find module');
   });
 
   it.each([
     ['a file that exists as written', 'tests/example.e2e.ts', '../lib/only.js'],
-    ['a missing file, for Node.js to report', 'tests/example.e2e.ts', '../lib/missing.js'],
-    ['a relative import from JavaScript', 'tests/plain.js', '../lib/helper'],
     ['a # import', 'tests/example.e2e.ts', '#lib/helper'],
-    ['a builtin a paths pattern could match', 'tests/example.e2e.ts', 'fs'],
-    ['a package no alias names', 'tests/example.e2e.ts', 'dep'],
-    ['a path inside an installed package', 'node_modules/dep/index.ts', './helper'],
-    ['an alias from an installed package', 'node_modules/dep/index.ts', '@lib/helper'],
+    ['a builtin a paths pattern could match', 'tests/example.e2e.ts', 'node:fs'],
+    ['a path inside an installed package', 'node_modules/dep/index.ts', './helper.ts'],
   ])('leaves %s to Node.js', (_case, parent, specifier) => {
-    expect(resolveFrom(url(parent), specifier).asked).toEqual([specifier]);
+    expect(resolveFrom(url(parent), specifier, { exports: { '#lib/helper': 'file:///app/lib/helper.ts' } }).asked).toEqual([specifier]);
+  });
+
+  it('gives an installed package TypeScript resolution but not the project tsconfig', () => {
+    expect(resolveFrom(url('node_modules/dep/index.ts'), './helper').asked).toEqual([url('node_modules/dep/helper.ts')]);
+    expect(resolveFrom(url('node_modules/dep/index.ts'), '@lib/helper', { exports: { '@lib/helper': 'file:///app/elsewhere.js' } }).asked).toEqual([
+      '@lib/helper',
+    ]);
   });
 
   it.each([
@@ -143,8 +161,9 @@ describe('resolve', () => {
     ['.cts', 'lib/cjs.cts', 'commonjs-typescript', 'commonjs'],
     ['.jsx', 'lib/comp.jsx', null, 'module'],
     ['installed .ts', 'node_modules/dep/index.ts', 'commonjs', 'module'],
-  ])('runs %s as %s whatever the package scope says', (_case, file, format, expected) => {
+  ])('runs %s as %s whatever the package scope says, for import and require', (_case, file, format, expected) => {
     expect(resolveFrom(undefined, url(file), { format }).resolution).toEqual({ url: url(file), format: expected });
+    expect(resolveFrom(url('tests/plain.js'), path.join(project, file), { format, conditions: REQUIRE }).resolution.format).toBe(expected);
   });
 
   it.each([
@@ -155,93 +174,94 @@ describe('resolve', () => {
     expect(resolveFrom(undefined, specifier, { format }).resolution).toEqual({ url: specifier, format });
   });
 
-  it('types TypeScript a require() reaches by its extension, from JavaScript too', () => {
-    expect(resolveFrom(url('tests/plain.js'), '../lib/helper.ts', { conditions: REQUIRE, format: 'commonjs-typescript' }).resolution).toEqual({
-      url: url('lib/helper.ts'),
-      format: 'module',
-    });
-    expect(resolveFrom(url('tests/plain.js'), '../lib/cjs.cts', { conditions: REQUIRE }).resolution.format).toBe('commonjs');
-  });
-
   it.each(['tests/plain.js', 'tests/example.e2e.ts'])('leaves an @oxc-project/runtime import %s writes to the project', (parent) => {
-    expect(resolveFrom(url(parent), '@oxc-project/runtime/helpers/decorate').asked).toEqual(['@oxc-project/runtime/helpers/decorate']);
-  });
-
-  it('leaves a require() out of fresh graphs, which CommonJS cannot load twice', () => {
-    const fromGraph = `${url('lib/cjs.cts')}?e2e=module-3&e2e-graph=module-3`;
-    expect(resolveFrom(fromGraph, './helper', { conditions: REQUIRE }).resolution.url).toBe(url('lib/helper.ts'));
+    const exports = { '@oxc-project/runtime/helpers/decorate': 'file:///app/node_modules/@oxc-project/runtime/decorate.js' };
+    expect(resolveFrom(url(parent), '@oxc-project/runtime/helpers/decorate', { exports }).asked).toEqual(['@oxc-project/runtime/helpers/decorate']);
   });
 });
 
-describe('inGraph', () => {
-  const parent = 'file:///app/e2e.agent.config.ts?e2e=module-3&e2e-graph=module-3';
+describe('fresh module graphs', () => {
+  const fromGraph = (relative: string): string => `${url(relative)}?e2e=module-3&e2e-graph=module-3`;
 
   it.each([
-    ['a relative import', './e2e.config.ts', 'file:///app/e2e.config.ts'],
-    ['a parent-relative import', '../shared/targets.ts', 'file:///shared/targets.ts'],
-    ['an absolute path', '/app/targets.ts', 'file:///app/targets.ts'],
-    ['a file: URL', 'file:///app/src/targets.ts', 'file:///app/src/targets.ts'],
-    ['a # subpath import', '#targets', 'file:///app/src/targets.ts'],
-  ])('hands the graph on to %s', (_case, specifier, target) => {
-    expect(inGraph(specifier, { parentURL: parent }, { url: target, format: 'module' })).toEqual({
-      url: `${target}?e2e-graph=module-3`,
-      format: 'module',
-    });
+    ['a relative import', './e2e.config.ts', 'e2e.config.ts'],
+    ['an extensionless import', './lib/helper', 'lib/helper.ts'],
+    ['a tsconfig alias the loader maps', '@lib/helper', 'lib/helper.ts'],
+  ])('hands the graph on to %s', (_case, specifier, file) => {
+    expect(resolveFrom(fromGraph('e2e.config.ts'), specifier, { format: 'module' }).resolution.url).toBe(`${url(file)}?e2e-graph=module-3`);
   });
 
-  it('keeps the query a resolution already carries', () => {
-    expect(inGraph('./a.ts', { parentURL: parent }, { url: 'file:///app/a.ts?v=1', format: 'module' }).url).toBe(
-      'file:///app/a.ts?v=1&e2e-graph=module-3',
-    );
+  it('hands the graph on to a # import and keeps the query a resolution already carries', () => {
+    const exports = { '#sub': `${url('internal/sub.ts')}?v=1` };
+    expect(resolveFrom(fromGraph('e2e.config.ts'), '#sub', { exports }).resolution.url).toBe(`${url('internal/sub.ts')}?v=1&e2e-graph=module-3`);
   });
 
   it.each([
-    ['a package by name', '@e2e-dev/web', parent, 'file:///work/packages/web/dist/index.js'],
-    ['a file under node_modules', './lib.js', 'file:///app/node_modules/dep/index.js?e2e-graph=module-3', 'file:///app/node_modules/dep/lib.js'],
-    ['an importer outside any graph', './e2e.config.ts', 'file:///app/e2e.agent.config.ts?e2e=module-1', 'file:///app/e2e.config.ts'],
-    ['the entry, which has no importer', 'file:///app/e2e.config.ts', undefined, 'file:///app/e2e.config.ts'],
-    ['a builtin', 'node:path', parent, 'node:path'],
-  ])('leaves %s alone', (_case, specifier, parentURL, target) => {
-    const resolution = { url: target, format: 'module' };
-    expect(inGraph(specifier, { parentURL }, resolution)).toBe(resolution);
+    ['a package by name', fromGraph('e2e.config.ts'), '@e2e-dev/web', { '@e2e-dev/web': 'file:///app/packages/web/dist/index.js' }],
+    ['a file under node_modules', `${url('node_modules/dep/index.ts')}?e2e-graph=module-3`, './helper.ts', {}],
+    ['an importer outside any graph', `${url('e2e.config.ts')}?e2e=module-1`, './lib/helper.ts', {}],
+    ['a builtin', fromGraph('e2e.config.ts'), 'node:path', {}],
+  ])('leaves %s alone', (_case, parentURL, specifier, exports) => {
+    expect(resolveFrom(parentURL, specifier, { exports }).resolution.url).not.toContain('e2e-graph');
   });
 
-  it('hands the graph on to a tsconfig alias the loader maps', () => {
-    const fromGraph = `${url('e2e.config.ts')}?e2e=module-3&e2e-graph=module-3`;
-    expect(resolveFrom(fromGraph, '@lib/helper', { format: 'module' }).resolution.url).toBe(`${url('lib/helper.ts')}?e2e-graph=module-3`);
+  it('leaves a require() out of fresh graphs, which CommonJS cannot load twice', () => {
+    expect(resolveFrom(fromGraph('lib/cjs.cts'), './helper', { conditions: REQUIRE }).resolution.url).toBe(url('lib/helper.ts'));
   });
 
-  it('runs inside the resolve hook', () => {
-    expect(resolveFrom(parent, './e2e.config.ts', { format: 'module' }).resolution).toEqual({
-      url: 'file:///app/e2e.config.ts?e2e-graph=module-3',
-      format: 'module',
-    });
+  it('reads tsconfig.json afresh for a new graph and once for every other load', () => {
+    write({ 'graph/tsconfig.json': JSON.stringify({ compilerOptions: { paths: { '@x': ['./a.ts'] } } }), 'graph/a.ts': '', 'graph/b.ts': '', 'graph/main.ts': '' });
+    const parent = (graph: string | undefined): string => `${url('graph/main.ts')}${graph === undefined ? '' : `?e2e-graph=${graph}`}`;
+    expect(resolveFrom(parent(undefined), '@x').asked).toEqual([url('graph/a.ts')]);
+    expect(resolveFrom(parent('g-1'), '@x').asked).toEqual([url('graph/a.ts')]);
+    write({ 'graph/tsconfig.json': JSON.stringify({ compilerOptions: { paths: { '@x': ['./b.ts'] } } }) });
+    expect(resolveFrom(parent('g-2'), '@x').asked).toEqual([url('graph/b.ts')]);
+    expect(resolveFrom(parent('g-1'), '@x').asked).toEqual([url('graph/a.ts')]);
+    expect(resolveFrom(parent(undefined), '@x').asked).toEqual([url('graph/a.ts')]);
   });
 });
 
 describe('load', () => {
   const context = (overrides: Partial<LoadHookContext> = {}): LoadHookContext => ({
-    conditions: ['node', 'import'],
+    conditions: IMPORT,
     format: undefined,
     importAttributes: {},
     ...overrides,
   });
-  const passThrough = () => ({ format: 'next', source: 'next' });
 
-  it('compiles TypeScript for the format its extension calls for', () => {
+  /** A stand-in for Node.js's own load: the file's bytes, with the format and attributes it was asked for. */
+  function nextFromDisk(asked: LoadHookContext[]) {
+    return (next: string, nextContext?: Partial<LoadHookContext>) => {
+      asked.push(nextContext as LoadHookContext);
+      return { format: nextContext?.format ?? 'next', source: readFileSync(fileURLToPath(next)) };
+    };
+  }
+
+  it('compiles TypeScript Node.js loaded, as the format its extension calls for', () => {
     write({ 'lib/typed.ts': 'export const n: number = 1;\n', 'lib/typed.cts': 'const n: number = 1;\nmodule.exports = n;\n' });
-    const esm = load(`${url('lib/typed.ts')}?e2e=collect-1`, context(), passThrough);
+    const asked: LoadHookContext[] = [];
+    const esm = load(`${url('lib/typed.ts')}?e2e=collect-1`, context(), nextFromDisk(asked));
     expect(esm).toMatchObject({ format: 'module', shortCircuit: true });
-    expect(String(esm.source)).toMatch(/^export const n = 1;\n/);
-    const cjs = load(url('lib/typed.cts'), context({ conditions: ['node', 'require'] }), passThrough);
+    expect(String(esm.source)).toContain('export const n = 1;');
+    const cjs = load(url('lib/typed.cts'), context({ conditions: REQUIRE }), nextFromDisk(asked));
     expect(cjs).toMatchObject({ format: 'commonjs' });
-    expect(String(cjs.source)).toMatch(/\nconst n = 1;\nmodule\.exports = n;\n/);
+    expect(String(cjs.source)).toContain('module.exports = n;');
+    expect(asked.map((nextContext) => nextContext.format)).toEqual(['module', 'commonjs']);
+  });
+
+  it('compiles with the project tsconfig, and an installed package without it', () => {
+    write({ 'jsx/tsconfig.json': JSON.stringify({ compilerOptions: { jsx: 'react', jsxFactory: 'h' } }), 'jsx/view.tsx': 'export const a = <b />;\n' });
+    write({ 'jsx/node_modules/dep/view.tsx': 'export const a = <b />;\n' });
+    expect(String(load(url('jsx/view.tsx'), context(), nextFromDisk([])).source)).toContain('h("b"');
+    expect(String(load(url('jsx/node_modules/dep/view.tsx'), context(), nextFromDisk([])).source)).toContain('React.createElement("b"');
   });
 
   it('loads JSON imported without a type attribute as a module exporting the parsed file', async () => {
-    write({ 'lib/settings.json': '\uFEFF{ "__proto__": { "polluted": true }, "answer": 42 }' });
-    const loaded = load(url('lib/settings.json'), context(), passThrough);
+    write({ 'lib/settings.json': '﻿{ "__proto__": { "polluted": true }, "answer": 42 }' });
+    const asked: LoadHookContext[] = [];
+    const loaded = load(url('lib/settings.json'), context(), nextFromDisk(asked));
     expect(loaded.format).toBe('module');
+    expect(asked[0]).toMatchObject({ format: 'json', importAttributes: { type: 'json' } });
     const module = (await import(`data:text/javascript,${encodeURIComponent(String(loaded.source))}`)) as { default: Record<string, unknown> };
     expect(module.default['answer']).toBe(42);
     expect(Object.getPrototypeOf(module.default)).toBe(Object.prototype);
@@ -249,9 +269,10 @@ describe('load', () => {
 
   it.each([
     ['JSON with a type attribute', 'lib/data.json', context({ importAttributes: { type: 'json' } })],
-    ['JSON a require() reads', 'lib/data.json', context({ conditions: ['node', 'require'] })],
+    ['JSON a require() reads', 'lib/data.json', context({ conditions: REQUIRE })],
     ['JavaScript', 'lib/only.js', context()],
   ])('hands %s to Node.js', (_case, file, loadContext) => {
+    const passThrough = () => ({ format: 'next', source: 'next' });
     expect(load(url(file), loadContext, passThrough)).toEqual({ format: 'next', source: 'next' });
   });
 });

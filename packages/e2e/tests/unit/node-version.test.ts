@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { SUPPORTED_NODE_RANGE, unsupportedNodeMessage } from '../../src/internal/node-version.ts';
+import { importedCommonJsRequireRunsHooks, SUPPORTED_NODE_RANGE, unsupportedNodeMessage } from '../../src/internal/node-version.ts';
 
 describe('unsupportedNodeMessage', () => {
   it('mirrors the engines field of every published package', () => {
@@ -25,5 +25,17 @@ describe('unsupportedNodeMessage', () => {
     expect(message).toBe(
       'e2e requires Node.js 22.22.3 or newer on Node.js 22, or 24.8.0 or newer; this is Node.js 22.18.0. Upgrade Node.js, or switch versions with your version manager (nvm install 24, fnm install 24, volta install node@24).',
     );
+  });
+
+  it.each([
+    ['22.23.3', false],
+    ['24.17.0', false],
+    ['24.18.0', true],
+    ['25.9.0', false],
+    ['26.1.0', false],
+    ['26.2.0', true],
+    ['27.0.0', true],
+  ])('on Node.js %s, the require of a CommonJS module an ES module imported runs hooks: %s', (version, expected) => {
+    expect(importedCommonJsRequireRunsHooks(version)).toBe(expected);
   });
 });

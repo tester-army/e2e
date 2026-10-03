@@ -3,6 +3,7 @@
 import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getCallSites } from 'node:util';
 import { testCaseBrand } from '../internal/brands.ts';
 import { describeValue } from '../config/validate.ts';
 import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES } from '../internal/recording-modes.ts';
@@ -497,8 +498,6 @@ const PACKAGE_ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import
  * repository.
  */
 const RUNNER_ROOTS = ['src', 'dist'].map((dir) => `${path.join(PACKAGE_ROOT, dir)}${path.sep}`);
-/** `at name (location:line:column)` or `at location:line:column`. */
-const STACK_FRAME = /^at (?:[^(]*? \()?(.+?):(\d+):(\d+)\)?$/;
 const NODE_MODULES_SEGMENT = /[\\/]node_modules[\\/]/;
 
 /** The path with symlinks resolved, or the path itself when it cannot be resolved. */
@@ -521,17 +520,12 @@ function realPath(file: string): string {
  * package's frames are never a test's location.
  */
 function captureSource(moduleFile: string | undefined): SourceLocation | undefined {
-  const stack = new Error().stack;
-  if (stack === undefined) return undefined;
   let outsideModule: SourceLocation | undefined;
-  for (const line of stack.split('\n').slice(1)) {
-    const match = STACK_FRAME.exec(line.trim());
-    if (match === null) continue;
-    // A module's own URL carries the loader's cache-busting query; a source-mapped
-    // frame names the file by path, spaces and `%` and `#` included.
-    const file = match[1]!.startsWith('file:') ? fileURLToPath(match[1]!) : match[1]!;
-    if (RUNNER_ROOTS.some((root) => file.startsWith(root)) || file.startsWith('node:')) continue;
-    const location = { file, line: Number(match[2]), column: Number(match[3]) };
+  for (const site of getCallSites({ sourceMap: true })) {
+    // An ES module names itself by URL, the loader's cache-busting query included; CommonJS by path.
+    const file = site.scriptName.startsWith('file:') ? fileURLToPath(site.scriptName) : site.scriptName;
+    if (file === '' || RUNNER_ROOTS.some((root) => file.startsWith(root)) || file.startsWith('node:')) continue;
+    const location = { file, line: site.lineNumber, column: site.columnNumber };
     if (moduleFile !== undefined && (file === moduleFile || realPath(file) === moduleFile)) {
       return location;
     }

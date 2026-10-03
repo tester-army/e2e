@@ -6,7 +6,6 @@ import { ConfigurationError, isForeignE2EError } from '../internal/errors.ts';
 import type { E2EConfig } from '../types.ts';
 import { explainModuleError } from './diagnose.ts';
 import { freshModuleURL, registerLoader } from './esm-hooks.ts';
-import { forgetTsconfigs } from './tsconfig.ts';
 
 const CONFIG_NAMES = ['e2e.config.ts', 'e2e.config.mts'] as const;
 
@@ -112,8 +111,6 @@ let imports = 0;
 async function importFresh(absolutePath: string, cacheKey: string, graph: boolean): Promise<unknown> {
   imports += 1;
   registerLoader();
-  // A tsconfig.json edited since the last import applies to this one.
-  forgetTsconfigs();
   return import(freshModuleURL(absolutePath, `${cacheKey}-${imports}`, graph));
 }
 

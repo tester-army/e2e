@@ -18,7 +18,8 @@
     "packages/web/tests/types/connection.ts",
     "packages/web/tests/types/routes.ts",
     "packages/mobile/tests/types/options.ts",
-    "packages/e2e/tests/live/*.ts"
+    "packages/e2e/tests/live/*.ts",
+    "packages/e2e/src/config/register.ts"
   ],
   "ignorePatterns": [
     "docs/**",

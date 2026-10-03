@@ -16,7 +16,7 @@ export default defineConfig({
   test: {
     // Built packages load natively, as in a project: their dynamic imports
     // reach e2e's own module hooks instead of Vite's module runner.
-    server: { deps: { external: [/\/dist\//] } },
+    server: { deps: { external: [/[\\/]packages[\\/](?:e2e|web|mobile|github|kernel|eas)[\\/]dist[\\/]/] } },
     testTimeout: 30_000,
     hookTimeout: 30_000,
     pool: 'forks',

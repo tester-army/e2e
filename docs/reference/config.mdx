@@ -77,18 +77,22 @@ not turned into `require` calls. A `.ts` file written with `require` or
 `module.exports` fails to load: name it `.cts`. JavaScript keeps the format
 its package declares.
 
-e2e compiles TypeScript itself and resolves the import forms TypeScript
-accepts: `./helper.js` and `./helper` load `helper.ts`, `./lib` loads
-`lib/index.ts`, a bare import that the nearest `tsconfig.json` maps through
-`paths` or `baseUrl` loads the mapped file, and a `#` import or package export
-that names a missing `./x.js` loads `x.ts` when imported (a `require()` of it
-fails as Node.js reports it). From that `tsconfig.json` it reads
-`jsx`, `jsxFactory`, `jsxFragmentFactory`, `jsxImportSource`,
-`experimentalDecorators`, `emitDecoratorMetadata`, `useDefineForClassFields`
-(and `target`, which sets its default), and `verbatimModuleSyntax`. Decorators
-compile only with `experimentalDecorators`. A JSON file imported without
-`with { type: 'json' }` loads with its parsed contents as the default export.
-Stack traces and failure locations point at the TypeScript source.
+e2e compiles TypeScript and JSX itself, and an import written in such a file
+resolves the way TypeScript resolves it: `./helper.js` and `./helper` load
+`helper.ts`, `./lib` loads `lib/index.ts`, a bare import that the nearest
+`tsconfig.json` maps through `paths` or `baseUrl` loads the mapped file, and a
+`#` import or package export that names a missing `./x.js` loads `x.ts` when
+imported (a `require()` of it fails as Node.js reports it). An import written
+in a JavaScript file resolves as Node.js resolves it. From that
+`tsconfig.json` e2e reads `jsx`, `jsxFactory`, `jsxFragmentFactory`,
+`jsxImportSource`, `experimentalDecorators`, `emitDecoratorMetadata`,
+`useDefineForClassFields` (and `target`, which sets its default), and
+`verbatimModuleSyntax`; TypeScript inside an installed package compiles
+without the project's `tsconfig.json`. The `tsconfig.json` is read once per
+process, and again for each session `e2e mcp` opens.
+Decorators compile only with `experimentalDecorators`. A JSON file imported
+without `with { type: 'json' }` loads with its parsed contents as the default
+export. Stack traces and failure locations point at the TypeScript source.
 
 ## Top level
 
