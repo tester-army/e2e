@@ -146,6 +146,9 @@ test('TypeScript compiles', () => {
 });
 `,
   'tests/failing/fails.e2e.ts': FAILING,
+  // A test the file declares through a helper it awaits: the file's own frame is an async one.
+  'lib/declare.ts': "import { test } from 'e2e';\n\nexport async function declareLater(): Promise<void> {\n  await Promise.resolve();\n  test('declared after an await', () => {});\n}\n",
+  'tests/failing/declared.e2e.ts': "import { declareLater } from '../../lib/declare';\n\nawait declareLater();\n",
   // URL syntax and a space in a file name, which a stack frame names as a path.
   'tests/failing/50% off #1.e2e.ts': FAILING,
 };
@@ -211,6 +214,7 @@ describe('the TypeScript loader', () => {
       expect(report).toContain(`"source":{"file":"${file}","line":5,"column":1}`);
       expect(report).toContain(`"source":{"file":"${file}","line":7,"column":19}`);
     }
+    expect(report).toMatch(/"source":\{"file":"tests\/failing\/declared\.e2e\.ts","line":3,"column":\d+\}/);
   });
 
   it('names the file, line, and column of a syntax error in the config', async () => {

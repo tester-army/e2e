@@ -3,7 +3,6 @@
 import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getCallSites } from 'node:util';
 import { testCaseBrand } from '../internal/brands.ts';
 import { describeValue } from '../config/validate.ts';
 import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES } from '../internal/recording-modes.ts';
@@ -509,6 +508,27 @@ function realPath(file: string): string {
   }
 }
 
+/** `at name (location:line:column)` or `at location:line:column`, either one after `async` for an awaiting caller. */
+const STACK_FRAME = /^at (?:async )?(?:[^(]*? \()?(.+?):(\d+):(\d+)\)?$/;
+
+/**
+ * Every frame of the current stack as a source location, the async frames
+ * of awaiting callers included (a test file that awaits a helper declaring
+ * tests is one), at the source positions Node.js's source maps give them.
+ * Read from the stack text: `util.getCallSites` leaves the async frames out,
+ * and with source maps on Node.js does not hand `Error.prepareStackTrace`
+ * the call sites at all.
+ */
+function stackLocations(): SourceLocation[] {
+  return (new Error().stack ?? '').split('\n').slice(1).flatMap((line) => {
+    const match = STACK_FRAME.exec(line.trim());
+    if (match === null) return [];
+    // An ES module names itself by URL, the loader's cache-busting query included; a mapped frame or CommonJS by path.
+    const file = match[1]!.startsWith('file:') ? fileURLToPath(match[1]!) : match[1]!;
+    return [{ file, line: Number(match[2]), column: Number(match[3]) }];
+  });
+}
+
 /**
  * Where a test was declared, read off the stack of its `test()` call. The
  * innermost frame in the module being collected wins, so a test declared
@@ -521,11 +541,9 @@ function realPath(file: string): string {
  */
 function captureSource(moduleFile: string | undefined): SourceLocation | undefined {
   let outsideModule: SourceLocation | undefined;
-  for (const site of getCallSites({ sourceMap: true })) {
-    // An ES module names itself by URL, the loader's cache-busting query included; CommonJS by path.
-    const file = site.scriptName.startsWith('file:') ? fileURLToPath(site.scriptName) : site.scriptName;
-    if (file === '' || RUNNER_ROOTS.some((root) => file.startsWith(root)) || file.startsWith('node:')) continue;
-    const location = { file, line: site.lineNumber, column: site.columnNumber };
+  for (const location of stackLocations()) {
+    const { file } = location;
+    if (RUNNER_ROOTS.some((root) => file.startsWith(root)) || file.startsWith('node:')) continue;
     if (moduleFile !== undefined && (file === moduleFile || realPath(file) === moduleFile)) {
       return location;
     }
