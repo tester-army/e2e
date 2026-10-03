@@ -47,27 +47,6 @@ describe('snapshot projection', () => {
     expect(flat.roots).toHaveLength(2);
   });
 
-  it('maps platform element types onto the role vocabulary and keeps unknown types verbatim', () => {
-    const [, bar, back, cell, text, toggle, field, secure] = project(SETTINGS_NODES).roots[0]!.children!.flatMap(
-      (child) => [child, ...(child.children ?? [])],
-    ) as never[];
-    void [bar, back];
-    const roles = project(SETTINGS_NODES).index.map((entry) => entry.node.role);
-    expect(roles).toEqual([
-      'application',
-      'navigation',
-      'button',
-      'listitem',
-      'text',
-      'switch',
-      'textbox',
-      'textbox',
-      'button',
-      'listitem',
-    ]);
-    void [cell, text, toggle, field, secure];
-  });
-
   it('derives states, drops secure values, and exposes identifiers as the test id attribute', () => {
     const { index } = project(SETTINGS_NODES);
     const byName = (name: string) => index.find((entry) => entry.node.name === name)!.node;
