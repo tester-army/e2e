@@ -3,6 +3,9 @@ import type { SemanticNode } from '../../src/engine/surface.ts';
 import { expect as expectFixture } from '../../src/expect/index.ts';
 import type { AsyncExpectation } from '../../src/types.ts';
 import { createScreenFixture } from '../helpers/screen-fixture.ts';
+import { useFakeTime } from '../helpers/fake-time.ts';
+
+useFakeTime();
 
 const checked: SemanticNode = {
   ref: { id: 'node-1', revision: '' },

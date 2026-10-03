@@ -9,6 +9,9 @@ import { describe, expect, it } from 'vitest';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import { expect as expectFixture } from '../../src/expect/index.ts';
 import { createScreenFixture, SCREEN_FIXTURE_TIMEOUT_MS } from '../helpers/screen-fixture.ts';
+import { useFakeTime } from '../helpers/fake-time.ts';
+
+useFakeTime();
 
 function item(id: string, text: string, states?: NonNullable<SemanticNode['states']>): SemanticNode {
   return { ref: { id, revision: '' }, role: 'listitem', text, ...(states === undefined ? {} : { states }) };

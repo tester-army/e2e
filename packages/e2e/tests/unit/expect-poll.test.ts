@@ -8,6 +8,9 @@ import { SoftFailures } from '../../src/expect/soft.ts';
 import { ConfigurationError, TestError } from '../../src/internal/errors.ts';
 import { Deadline } from '../../src/internal/time.ts';
 import { AttemptBudget } from '../../src/run/budget.ts';
+import { useFakeTime } from '../helpers/fake-time.ts';
+
+useFakeTime();
 
 /** Publishes a fake attempt for one test; `end()` clears it. */
 function attempt(options: { assertionTimeout: number; deadlineMs: number }) {

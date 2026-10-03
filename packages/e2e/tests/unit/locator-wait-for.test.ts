@@ -11,6 +11,9 @@ import type { Locator } from '../../src/types.ts';
 import { invalid } from '../helpers/invalid.ts';
 import { screenOver } from '../helpers/screen-over.ts';
 import { snapshot } from '../helpers/snapshot.ts';
+import { useFakeTime } from '../helpers/fake-time.ts';
+
+useFakeTime();
 
 const CHANGE_AFTER_MS = 1_200;
 

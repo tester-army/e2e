@@ -20,6 +20,9 @@ import { defineEngine, LOCATOR_ACTION_KINDS } from '../../src/engine/index.ts';
 import { createEngineSession } from '../../src/engine/session.ts';
 import { roleQuery, testIdQuery, textQuery } from '../../src/locator/expression.ts';
 import { snapshot } from '../helpers/snapshot.ts';
+import { useFakeTime } from '../helpers/fake-time.ts';
+
+useFakeTime();
 
 const REF: NodeRef = { id: 'node-1', revision: 'rev-1' };
 const NODE: SemanticNode = { ref: REF, role: 'button', name: 'Submit' };
@@ -365,7 +368,7 @@ describe('translateLocatorError mapping table', () => {
       EXPRESSION,
     );
     expect(translated.message).toContain('stale');
-    expect(translated.message.length).toBeGreaterThan('node became stale'.length);
+    expect(translated.message).toMatch(/: getByRole\("button"\)$/);
   });
 });
 

@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import { expect as expectFixture } from '../../src/expect/index.ts';
 import { createScreenFixture } from '../helpers/screen-fixture.ts';
+import { useFakeTime } from '../helpers/fake-time.ts';
+
+useFakeTime();
 
 describe('attribute and focus expectations', () => {
   it('matches attribute presence and values without normalizing whitespace', async () => {

@@ -11,6 +11,9 @@ import type { ActionOptions, Locator, Screen } from '../../src/types.ts';
 import { invalid } from '../helpers/invalid.ts';
 import { screenOver } from '../helpers/screen-over.ts';
 import { snapshot } from '../helpers/snapshot.ts';
+import { useFakeTime } from '../helpers/fake-time.ts';
+
+useFakeTime();
 
 const BOX = { ref: { id: 'agree', revision: '' }, role: 'checkbox' as const, name: 'Agree' };
 const BIN = { ref: { id: 'bin', revision: '' }, role: 'region' as const, name: 'Bin' };

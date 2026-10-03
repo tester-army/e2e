@@ -2,6 +2,9 @@ import { describe, expect as vexpect, it } from 'vitest';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import { expect as expectFixture } from '../../src/expect/index.ts';
 import { createScreenFixture } from '../helpers/screen-fixture.ts';
+import { useFakeTime } from '../helpers/fake-time.ts';
+
+useFakeTime();
 
 describe('toHaveValue', () => {
   const textarea: SemanticNode = { ref: { id: 'node-1', revision: '' }, role: 'textbox', value: 'line1\n\nline2  ' };
