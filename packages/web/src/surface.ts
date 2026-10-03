@@ -334,11 +334,14 @@ export class PlaywrightSurface {
     this.leases?.init(info);
     // The browser was installed in `prepare`; a launch or attach is the one
     // boot step left that can outlive a launch budget, and it honours the
-    // init signal. Reading the init scripts does not wait on it.
-    await Promise.all([
+    // init signal. Reading the init scripts runs beside it, and a failed
+    // read is thrown only once the launch settled, so `dispose` owns the
+    // browser it may have started.
+    const settled = await Promise.allSettled([
       this.configuredInitScripts.load(info.projectRoot),
       this.persistent ? undefined : this.acquireBrowser(info.signal),
     ]);
+    for (const outcome of settled) if (outcome.status === 'rejected') throw outcome.reason;
   }
 
   /** Whether attempts ride a persistent remote context, provisioned per attempt, instead of contexts on one shared browser. */

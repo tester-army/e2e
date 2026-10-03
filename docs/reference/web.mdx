@@ -446,7 +446,7 @@ names the file, else `source` or `function`, never the code.
 
 ```ts
 await browser.addInitScript(
-  (wallet) => { window.ethereum = { selectedAddress: wallet.address }; },
+  (wallet) => { Object.assign(window, { ethereum: { selectedAddress: wallet.address } }); },
   { address: '0x1234' },
 );
 await app.open('/console');
