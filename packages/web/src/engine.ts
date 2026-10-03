@@ -271,7 +271,12 @@ function isLanguageTag(tag: string): boolean {
   }
 }
 
-/** Refuses a time zone the browser would refuse only when the first context opens. */
+/**
+ * Refuses, at config load, a time zone the browser would otherwise refuse at
+ * the first context. Best effort: Node cannot tell a miscased alias
+ * (`us/eastern`) from the real one, so the browser's own `Invalid timezone ID`
+ * stays the final word.
+ */
 function validateTimezoneId(timezoneId: unknown): void {
   if (typeof timezoneId !== 'string' || timezoneId === '' || !isTimeZone(timezoneId)) {
     throw new ConfigurationError('INVALID_CONFIG', `web({ timezoneId }) must be an IANA time zone such as "Europe/Berlin", got ${JSON.stringify(timezoneId)}`);
