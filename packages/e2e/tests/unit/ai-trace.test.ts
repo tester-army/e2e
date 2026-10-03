@@ -7,6 +7,7 @@ import {
   withAiTraceScope,
   withAiTraceStep,
 } from '../../src/internal/ai-trace.ts';
+import { gate } from '../helpers/gate.ts';
 
 const SCOPE = { test: 'todos › adds one', testId: 't1', target: 'web', agent: 'default', attempt: 0 };
 
@@ -208,7 +209,7 @@ describe('AiTraceRecorder', () => {
   it('attributes a nested generation to the tool that made it, even when tools overlap', async () => {
     const recorder = new AiTraceRecorder();
     const t = recorder.telemetry;
-    const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const innerBDone = gate();
     for (const callId of ['A', 'B']) {
       await t.onStart?.({ callId, operationId: 'ai.generateText' } as never);
       await t.onStepStart?.({
@@ -226,7 +227,7 @@ describe('AiTraceRecorder', () => {
         callId: 'A',
         toolCallId: 'ta',
         execute: async () => {
-          await delay(15);
+          await innerBDone.promise;
           await generation(recorder, 'innerA');
         },
       } as never),
@@ -234,8 +235,8 @@ describe('AiTraceRecorder', () => {
         callId: 'B',
         toolCallId: 'tb',
         execute: async () => {
-          await delay(1);
           await generation(recorder, 'innerB');
+          innerBDone.open();
         },
       } as never),
     ]);

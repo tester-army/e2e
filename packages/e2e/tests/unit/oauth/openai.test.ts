@@ -7,6 +7,7 @@ import { MemoryCredentialStore } from './helpers/store.ts';
 import { chatgpt } from '../../../src/oauth/chatgpt.ts';
 import { extractAccountId, parseAuthorizationInput, sendCodexRequest } from '../../../src/oauth/providers/openai.ts';
 import { echoUpstream, fakeJwt, json, startServer, useServers, useVendor, type Echo, type Received } from './helpers/server.ts';
+import { onFakeTimeouts } from './helpers/time.ts';
 
 const serve = useServers(afterEach);
 const vendor = useVendor(afterEach);
@@ -134,7 +135,7 @@ describe('Codex login', () => {
     });
     const provider = createCodexProvider({ issuer: issuer.url });
     let shown: unknown;
-    const credentials = await provider.login({ onAuth: (info) => (shown = info), onPrompt: async () => '' }, { method: 'device' });
+    const credentials = await onFakeTimeouts(() => provider.login({ onAuth: (info) => (shown = info), onPrompt: async () => '' }, { method: 'device' }));
     expect(shown).toMatchObject({ url: `${issuer.url}/codex/device`, userCode: 'ABCD-EFGH' });
     expect(credentials.accountId).toBe('acct_123');
   });

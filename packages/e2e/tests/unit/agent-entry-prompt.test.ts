@@ -8,8 +8,11 @@ import { createFixtures } from '../../src/run/fixtures.ts';
 import { StepRecorder } from '../../src/run/steps.ts';
 import { WorkerModels } from '../../src/run/worker-models.ts';
 import type { E2EConfig } from '../../src/types.ts';
+import { runAgentStepsOnFakeTime } from '../helpers/agent-fake-time.ts';
 import { installFakeLoopModel, loopCalls } from '../helpers/fake-loop-model.ts';
 import { snapshot } from '../helpers/snapshot.ts';
+
+runAgentStepsOnFakeTime();
 
 /** A real fixture graph with an in-memory engine and no runner process or model provider. */
 function runtime(overrides: Partial<E2EConfig>, agentContext?: string) {

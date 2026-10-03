@@ -637,11 +637,17 @@ describe('settleObservation', () => {
   });
 
   it('returns the unchanged screen once the change wait runs out', async () => {
-    const source = scripted(['old']);
-    const started = Date.now();
-    const value = await settleObservation(source.capture, (v) => v, clock, { ...fast, changedFrom: leaving() });
-    expect(value).toBe('old');
-    expect(Date.now() - started).toBeGreaterThanOrEqual(140);
+    vi.useFakeTimers();
+    try {
+      const source = scripted(['old']);
+      const started = Date.now();
+      const pending = settleObservation(source.capture, (v) => v, clock, { ...fast, changedFrom: leaving() });
+      await vi.runAllTimersAsync();
+      expect(await pending).toBe('old');
+      expect(Date.now() - started).toBeGreaterThanOrEqual(150);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('never settles on a transitional capture while the change wait lasts', async () => {

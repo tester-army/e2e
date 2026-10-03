@@ -5,6 +5,7 @@ import { createXaiProvider } from '../../../src/oauth/providers/xai.ts';
 import { MemoryCredentialStore } from './helpers/store.ts';
 import { grok } from '../../../src/oauth/grok.ts';
 import { fakeJwt, json, useServers, useVendor, type Received } from './helpers/server.ts';
+import { onFakeTimeouts } from './helpers/time.ts';
 
 const serve = useServers(afterEach);
 const vendor = useVendor(afterEach);
@@ -30,7 +31,7 @@ describe('SpaceXAI login', () => {
     });
     const provider = createXaiProvider({ issuer: issuer.url, referrer: 'my-tool' });
     let shown: unknown;
-    const credentials = await provider.login({ onAuth: (info) => (shown = info), onPrompt: async () => '' });
+    const credentials = await onFakeTimeouts(() => provider.login({ onAuth: (info) => (shown = info), onPrompt: async () => '' }));
     expect(shown).toMatchObject({ url: 'https://accounts.x.ai/oauth2/device?user_code=ABCD-EFGH', userCode: 'ABCD-EFGH' });
     expect(credentials).toEqual({ access: fakeJwt({ exp }), refresh: 'rt-1', expires: exp * 1000 });
   });

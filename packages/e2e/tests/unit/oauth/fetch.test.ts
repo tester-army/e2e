@@ -8,6 +8,7 @@ import { createOAuthFetch } from '../../../src/oauth/fetch.ts';
 import { type OAuthCredentials, type OAuthProvider } from '../../../src/oauth/types.ts';
 import { MemoryCredentialStore } from './helpers/store.ts';
 import { json, useServers } from './helpers/server.ts';
+import { onFakeTimeouts } from './helpers/time.ts';
 
 const serve = useServers(afterEach);
 
@@ -98,7 +99,7 @@ describe('createOAuthFetch', () => {
     const testProvider = provider();
     testProvider.refreshes.push('rt-0');
     const fetch = createOAuthFetch(testProvider, { store, userAgent: 'p', loginHint: 'run `npx e2e login test`' });
-    await expect(fetch('http://127.0.0.1:1/')).rejects.toMatchObject({
+    await expect(onFakeTimeouts(() => fetch('http://127.0.0.1:1/'))).rejects.toMatchObject({
       code: 'LOGIN_REQUIRED',
       message: 'refresh token rt-0 was already used; run `npx e2e login test`',
     });
@@ -111,8 +112,10 @@ describe('createOAuthFetch', () => {
     testProvider.refreshes.push('rt-0');
     const fetch = createOAuthFetch(testProvider, { store, userAgent: 'p' });
     // The other process rotated the token and stores it a moment after this one was rejected.
-    setTimeout(() => void store.set('test', { access: 'theirs', refresh: 'rt-1', expires: Date.now() + 3_600_000 }), 300);
-    await fetch(api.url);
+    await onFakeTimeouts(async () => {
+      setTimeout(() => void store.set('test', { access: 'theirs', refresh: 'rt-1', expires: Date.now() + 3_600_000 }), 300);
+      await fetch(api.url);
+    });
     expect(api.requests[0]?.headers['authorization']).toBe('Bearer theirs');
   });
 

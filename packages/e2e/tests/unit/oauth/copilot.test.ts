@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { copilot } from '../../../src/oauth/copilot.ts';
 import { copilotBaseUrl, copilotProtocolFor, createCopilotProvider, enterpriseHost, sendCopilotRequest } from '../../../src/oauth/providers/github-copilot.ts';
 import { echoUpstream, json, useServers, useVendor, type Echo, type Received } from './helpers/server.ts';
+import { onFakeTimeouts } from './helpers/time.ts';
 
 const serve = useServers(afterEach);
 const vendor = useVendor(afterEach);
@@ -28,7 +29,9 @@ describe('Copilot login', () => {
     });
     const provider = createCopilotProvider({ githubUrl: github.url, githubCliToken: noCli });
     let shown: unknown;
-    const credentials = await provider.login({ onAuth: (info) => (shown = info), onPrompt: async () => '' }, { clientId: 'Iv23_my_app', enterpriseUrl: 'https://gh.acme.com/' });
+    const credentials = await onFakeTimeouts(() =>
+      provider.login({ onAuth: (info) => (shown = info), onPrompt: async () => '' }, { clientId: 'Iv23_my_app', enterpriseUrl: 'https://gh.acme.com/' }),
+    );
     expect(shown).toMatchObject({ url: 'https://github.com/login/device', userCode: 'WXYZ-1234' });
     expect(credentials).toEqual({ access: 'gho_token', refresh: '', expires: 0, enterpriseUrl: 'gh.acme.com' });
   });

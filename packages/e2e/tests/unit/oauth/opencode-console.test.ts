@@ -7,6 +7,7 @@ import { opencodeConsole } from '../../../src/oauth/opencode-console.ts';
 import { createOpencodeConsoleProvider } from '../../../src/oauth/providers/opencode-console.ts';
 import { MemoryCredentialStore } from './helpers/store.ts';
 import { json, useServers, useVendor, type Received } from './helpers/server.ts';
+import { onFakeTimeouts } from './helpers/time.ts';
 
 const serve = useServers(afterEach);
 const vendor = useVendor(afterEach);
@@ -96,7 +97,7 @@ describe('OpenCode Console login', () => {
     const provider = createOpencodeConsoleProvider({ consoleUrl: `${consoleServer.url}/console` });
     let shown: { url: string; instructions: string; userCode?: string } | undefined;
     const before = Date.now();
-    const credentials = await provider.login({ onAuth: (info) => (shown = info), onPrompt: async () => '' });
+    const credentials = await onFakeTimeouts(() => provider.login({ onAuth: (info) => (shown = info), onPrompt: async () => '' }));
     expect(shown?.url).toBe(`${consoleServer.url}/console/device?user_code=ABCD-EFGH&client_id=e2e`);
     expect(shown?.userCode).toBe('ABCD-EFGH');
     expect(shown?.instructions).toContain(`Open ${consoleServer.url}/console/device?user_code=ABCD-EFGH&client_id=e2e`);

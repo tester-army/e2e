@@ -14,6 +14,7 @@ import { createFixtures } from '../../src/run/fixtures.ts';
 import { StepRecorder } from '../../src/run/steps.ts';
 import { WorkerModels } from '../../src/run/worker-models.ts';
 import type { E2EConfig } from '../../src/types.ts';
+import { runAgentStepsOnFakeTime } from '../helpers/agent-fake-time.ts';
 import { installFakeLoopModel } from '../helpers/fake-loop-model.ts';
 import { judgment } from '../helpers/fake-model.ts';
 import { createScriptedInstance, scriptedResult } from '../helpers/scripted-model.ts';
@@ -24,6 +25,8 @@ vi.mock(import('../../src/agent/model/stall.ts'), async (importOriginal) => {
   const stall = await importOriginal();
   return { withStallGuard: (sdk, model, onStall, stallMs = 50) => stall.withStallGuard(sdk, model, onStall, stallMs) };
 });
+
+runAgentStepsOnFakeTime();
 
 /** Settles only when `signal` aborts, as a request the provider never answers does. */
 function never(signal: AbortSignal | undefined): Promise<never> {
@@ -66,15 +69,10 @@ describe('withStallGuard', () => {
   });
 
   it('clears its timer when the provider throws before returning a promise', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    try {
-      const inner = asSdkLanguageModel(createScriptedInstance('fake', 'throws', async () => scriptedResult([], 'stop')));
-      const throwing = { ...inner, doGenerate: () => { throw new Error('bad request shape'); } } as typeof inner;
-      await expect(generateText({ model: withStallGuard(ai, throwing, () => undefined, 50), prompt: 'hello', maxRetries: 0 })).rejects.toThrow('bad request shape');
-      expect(vi.getTimerCount()).toBe(0);
-    } finally {
-      vi.useRealTimers();
-    }
+    const inner = asSdkLanguageModel(createScriptedInstance('fake', 'throws', async () => scriptedResult([], 'stop')));
+    const throwing = { ...inner, doGenerate: () => { throw new Error('bad request shape'); } } as typeof inner;
+    await expect(generateText({ model: withStallGuard(ai, throwing, () => undefined, 50), prompt: 'hello', maxRetries: 0 })).rejects.toThrow('bad request shape');
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("passes the caller's cancellation through as it was, not as a stall", async () => {

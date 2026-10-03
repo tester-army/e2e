@@ -7,7 +7,7 @@
  * `filter({ has })` locator, has to come from the same target's screen.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EngineError, resolveExpression, type NodeRef, type SemanticNode } from '../../src/engine/index.ts';
 import { sleep } from '../../src/internal/time.ts';
 import type { Locator, Screen } from '../../src/types.ts';
@@ -75,6 +75,15 @@ function scrollScreen(script: ScrollScript) {
   });
   return { screen, steps, swipes };
 }
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setTimerTickMode('nextTimerAsync');
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('screen.scrollUntilVisible', () => {
   it('on a locator, swipes that node instead of the viewport, so a scroll container pages', async () => {

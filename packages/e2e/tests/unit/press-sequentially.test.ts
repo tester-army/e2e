@@ -4,7 +4,7 @@
  * sees, what the step records, and what is refused before any node resolves.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LOCATOR_ACTION_KINDS, type LocatorActionKind } from '../../src/engine/index.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
 import { secrets, setSecretRegistry } from '../../src/secrets.ts';
@@ -41,6 +41,16 @@ function fieldScreen(shape: { keyboard?: boolean; actions?: readonly LocatorActi
   return { screen, steps, log, locate };
 }
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+/** Puts the test on fake time that jumps to each next timer, so a typing delay costs no wall time. */
+function autoAdvancingTime(): void {
+  vi.useFakeTimers();
+  vi.setTimerTickMode('nextTimerAsync');
+}
+
 describe('locator.pressSequentially', () => {
   it('focuses the one matching node, then types the whole text in one keyboard call', async () => {
     const { screen, steps, log } = fieldScreen();
@@ -52,14 +62,16 @@ describe('locator.pressSequentially', () => {
   });
 
   it('with a delay, types one character per call and waits between them', async () => {
+    autoAdvancingTime();
     const { screen, log } = fieldScreen();
     const started = Date.now();
     await screen.getByLabel('City').pressSequentially('Wa', { delay: 60 });
     expect(log).toEqual(['focus:city', 'type:W', 'type:a']);
-    expect(Date.now() - started).toBeGreaterThanOrEqual(55);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(60);
   });
 
   it('cuts a pause at the action deadline and sends no character past it', async () => {
+    autoAdvancingTime();
     const { screen, log } = fieldScreen();
     const started = Date.now();
     await expect(screen.getByLabel('City').pressSequentially('ab', { delay: 1000, timeout: 100 })).rejects.toMatchObject({
