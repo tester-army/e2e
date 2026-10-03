@@ -103,6 +103,7 @@ What is sent and how to read it is on the [Telemetry](/telemetry) page.
 | `KERNEL_API_KEY` | value | The API key `kernel()` from `@e2e-dev/kernel` creates browsers with; unset, the browser lease fails. See [Kernel](/integrations/kernel) |
 | `EXPO_TOKEN` | value | The Expo access token `easSimulators()` from `@e2e-dev/eas` starts and stops simulator sessions with; unset, it uses the eas-cli login in `.expo/state.json` under `HOME` (`USERPROFILE` on Windows), and with neither the device lease fails. See [EAS Simulators](/integrations/eas) |
 | `HOME`, `USERPROFILE` | value | The home `easSimulators()` finds the eas-cli login under when `EXPO_TOKEN` is unset: `USERPROFILE` on Windows, `HOME` elsewhere, the OS user's home when unset |
+| `LT_USERNAME`, `LT_ACCESS_KEY` | value | The TestMu AI username and access key `testmu()` from `@e2e-dev/testmu` leases devices with; it sets them in the runner process's environment only while it calls the agent-device daemon it starts, which reads them from there, and with either unset the device lease fails. See [TestMu AI](/integrations/testmu) |
 | `E2E_AGENT_DEVICE_POOL_<TARGET>_<digest>` | value | Written by `@e2e-dev/mobile` in `prepare` and read by each worker to find its booted device. Not meant to be set by hand |
 
 ## What app processes inherit

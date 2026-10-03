@@ -290,6 +290,9 @@ importers:
       '@e2e-dev/mobile':
         specifier: workspace:*
         version: link:../packages/mobile
+      '@e2e-dev/testmu':
+        specifier: workspace:*
+        version: link:../packages/testmu
       '@e2e-dev/web':
         specifier: workspace:*
         version: link:../packages/web
@@ -472,6 +475,27 @@ importers:
       vitest:
         specifier: 5.0.1
         version: 5.0.1(@types/node@26.6.2)(vite@8.1.5(@types/node@26.6.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
+
+  packages/testmu:
+    devDependencies:
+      '@e2e-dev/mobile':
+        specifier: workspace:*
+        version: link:../mobile
+      '@types/node':
+        specifier: 26.6.2
+        version: 26.6.2
+      agent-device:
+        specifier: 0.21.18
+        version: 0.21.18(ai@7.0.107(zod@4.6.1))
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@26.6.2)(vite@8.1.5(@types/node@26.6.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.14)(yaml@2.9.0))
 
   packages/web:
     devDependencies:

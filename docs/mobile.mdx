@@ -192,8 +192,10 @@ ends. The engine drives each lease through the agent-device daemon the lease
 names instead of the local one, so any service that runs an agent-device
 daemon next to a simulator, an emulator, or a physical device works. Nothing
 in the framework knows a vendor: for [EAS Simulators](/integrations/eas),
-`easSimulators()` from `@e2e-dev/eas` is the provider, and for
-any other service a provider is a few dozen lines in your project.
+`easSimulators()` from `@e2e-dev/eas` is the provider, for
+[TestMu AI](/integrations/testmu), `testmu()` from `@e2e-dev/testmu` is the
+provider, and for any other service a provider is a few dozen lines in your
+project.
 
 ```ts
 export interface DeviceProvider {
@@ -348,7 +350,8 @@ on `app.bundleId`, so traces recorded locally replay on hosted devices.
 
 A device cloud agent-device speaks to itself needs no session API of your
 own: the provider allocates a lease through a daemon it starts for the run and
-hands the worker the lease scope as `client`.
+hands the worker the lease scope as `client`. `testmu()` from
+`@e2e-dev/testmu` works this way for [TestMu AI](/integrations/testmu).
 
 ```ts title="device-cloud-provider.ts"
 import { createAgentDeviceClient } from 'agent-device';
