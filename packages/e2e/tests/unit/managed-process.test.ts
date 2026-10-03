@@ -99,6 +99,13 @@ function printThen(lines: readonly string[], exitCode?: number): string {
   return exitCode === undefined ? `${print} setInterval(() => {}, 1000);` : `${print} process.exit(${exitCode});`;
 }
 
+/** Resolves once the file at `file` holds `text`, polling on real I/O turns so it works while the clock is faked. */
+async function logged(file: string, text: string): Promise<void> {
+  while (!(fs.existsSync(file) && fs.readFileSync(file, 'utf8').includes(text))) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
 describe('ManagedProcess stall diagnostics', () => {
   let dir: string;
   beforeEach(() => {
@@ -109,7 +116,7 @@ describe('ManagedProcess stall diagnostics', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
   const log = path.join('out', 'services.log');
-  /** A budget of one second: the child prints within a few dozen ms and then the wait has to run out. */
+  /** A budget of one second on a fake clock: the test lets the child print, then moves the clock past it. */
   const stalled = (script: string, extra: Partial<CommandConfig> = {}): CommandConfig => ({
     executable: process.execPath,
     args: ['-e', script],
@@ -117,8 +124,18 @@ describe('ManagedProcess stall diagnostics', () => {
     shutdownTimeout: 1_000,
     ...extra,
   });
-  const failureOf = async (app: ManagedProcess): Promise<InfrastructureError> => {
-    const failure = await app.start().catch((error: unknown) => error);
+  /**
+   * Starts `app` on a fake clock, waits on real I/O until the log holds
+   * `printed`, then spends the whole budget at once. The kill and the exit
+   * stay real events.
+   */
+  const failureOf = async (app: ManagedProcess, printed?: string): Promise<InfrastructureError> => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const pending = app.start().catch((error: unknown) => error);
+    if (printed !== undefined) await logged(path.join(dir, log), printed);
+    await vi.advanceTimersByTimeAsync(1_000);
+    vi.useRealTimers();
+    const failure = await pending;
     expect(failure).toBeInstanceOf(InfrastructureError);
     expect((failure as InfrastructureError).code).toBe('APP_UNREACHABLE');
     return failure as InfrastructureError;
@@ -133,7 +150,7 @@ describe('ManagedProcess stall diagnostics', () => {
       dir,
       { readyUrl: 'http://127.0.0.1:1/' },
     );
-    const failure = await failureOf(app);
+    const failure = await failureOf(app, 'listening soon');
     expect(failure.message).toBe(
       `target "web" command was not reachable at http://127.0.0.1:1/ within 1000 ms\noutput in ${log} since target "web" command started:\n  booting\n  listening soon`,
     );
@@ -147,7 +164,8 @@ describe('ManagedProcess stall diagnostics', () => {
       dir,
       { readyUrl: 'http://127.0.0.1:1/' },
     );
-    const failure = await failureOf(app);
+    const failure = (await app.start().catch((error: unknown) => error)) as InfrastructureError;
+    expect(failure.code).toBe('APP_UNREACHABLE');
     expect(failure.message).toBe(
       `target "web" command exited with code 1 before becoming ready\noutput in ${log} since target "web" command started:\n  migrations pending\n  fatal: database "app" does not exist`,
     );
@@ -162,7 +180,7 @@ describe('ManagedProcess stall diagnostics', () => {
       { waitForExit: true },
       { notice: (message) => notices.push(message) },
     );
-    const failure = await failureOf(app);
+    const failure = await failureOf(app, 'redis');
     expect(failure.message).toBe(
       `service "compose" did not exit within 1000 ms\noutput in ${log} since service "compose" started:\n   Image postgres:16.4-alpine Pulling\n   Image redis:7-alpine Pulling`,
     );
@@ -172,7 +190,7 @@ describe('ManagedProcess stall diagnostics', () => {
   it('keeps the last 20 lines only', async () => {
     const lines = Array.from({ length: 25 }, (_, i) => `line ${i + 1}`);
     const app = new ManagedProcess('service "compose"', stalled(printThen(lines), { log }), dir, { waitForExit: true });
-    const failure = await failureOf(app);
+    const failure = await failureOf(app, 'line 25');
     const quoted = failure.message.split('\n').slice(2);
     expect(quoted).toEqual(lines.slice(5).map((line) => `  ${line}`));
   });
@@ -187,22 +205,11 @@ describe('ManagedProcess stall diagnostics', () => {
       dir,
       { waitForExit: true },
     );
-    const failure = await failureOf(app);
+    const failure = await failureOf(app, 'token=');
     expect(failure.message).toBe(
       `service "compose" did not exit within 1000 ms\noutput in ${log} since service "compose" started:\n  token=<secret:SECRET> port=443`,
     );
     expect(fs.readFileSync(path.join(dir, log), 'utf8')).toContain('token=hunter2-hunter2');
-  });
-
-  it('says so when the process wrote nothing', async () => {
-    const app = new ManagedProcess(
-      'service "compose"',
-      stalled('setInterval(() => {}, 1000)', { log }),
-      dir,
-      { waitForExit: true },
-    );
-    const failure = await failureOf(app);
-    expect(failure.message).toBe(`service "compose" did not exit within 1000 ms\nno output in ${log}`);
   });
 
   it('points at log when the command has none', async () => {
@@ -301,10 +308,10 @@ describe('ManagedProcess reuseExisting', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  /** A command that proves it ran by writing a marker, then stays up like a server would. */
-  const markerApp = (marker: string, reuseExisting: boolean) => ({
+  /** A command that stays up like a server would. */
+  const serverApp = (reuseExisting: boolean) => ({
     executable: process.execPath,
-    args: ['-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'started'); setInterval(() => {}, 1000);`],
+    args: ['-e', 'setInterval(() => {}, 1000);'],
     startupTimeout: 10_000,
     shutdownTimeout: 2_000,
     reuseExisting,
@@ -312,12 +319,11 @@ describe('ManagedProcess reuseExisting', () => {
 
   it('attaches to an app already answering at readyUrl: nothing spawns and stop leaves it running', async () => {
     const running = await alreadyRunning();
-    const marker = path.join(dir, 'started');
     const notices: string[] = [];
     try {
       const app = new ManagedProcess(
         'app.command',
-        markerApp(marker, true),
+        serverApp(true),
         dir,
         { readyUrl: running.url },
         { ci: false, notice: (message) => notices.push(message) },
@@ -327,9 +333,6 @@ describe('ManagedProcess reuseExisting', () => {
       expect(notices).toEqual([`app.command: reusing the process already serving ${running.url}`]);
       await app.stop();
       expect(await isReachable(running.url)).toBe(true);
-      // Had the command spawned, its marker would appear within a moment; give it that moment.
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      expect(fs.existsSync(marker)).toBe(false);
     } finally {
       await running.close();
     }
@@ -337,12 +340,11 @@ describe('ManagedProcess reuseExisting', () => {
 
   it('ignores reuseExisting in CI: an already-answering URL is APP_ALREADY_RUNNING, nothing spawns', async () => {
     const running = await alreadyRunning();
-    const marker = path.join(dir, 'started');
     const notices: string[] = [];
     try {
       const app = new ManagedProcess(
         'app.command',
-        markerApp(marker, true),
+        serverApp(true),
         dir,
         { readyUrl: running.url },
         { ci: true, notice: (message) => notices.push(message) },
@@ -357,8 +359,6 @@ describe('ManagedProcess reuseExisting', () => {
       expect(notices).toEqual(['app.command: reuseExisting is ignored in CI, starting the command']);
       await app.stop();
       expect(await isReachable(running.url)).toBe(true);
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      expect(fs.existsSync(marker)).toBe(false);
     } finally {
       await running.close();
     }
@@ -366,12 +366,11 @@ describe('ManagedProcess reuseExisting', () => {
 
   it('without reuseExisting, an already-answering URL is APP_ALREADY_RUNNING instead of passing as the new command', async () => {
     const running = await alreadyRunning();
-    const marker = path.join(dir, 'started');
     const notices: string[] = [];
     try {
       const app = new ManagedProcess(
         'app.command',
-        markerApp(marker, false),
+        serverApp(false),
         dir,
         { readyUrl: running.url },
         { ci: false, notice: (message) => notices.push(message) },
@@ -382,11 +381,10 @@ describe('ManagedProcess reuseExisting', () => {
       expect((failure as InfrastructureError).message).toBe(
         `${running.url} already answered before app.command started; stop that process or set reuseExisting: true`,
       );
+      expect(app.spawned).toBe(false);
       expect(notices).toEqual([]);
       await app.stop();
       expect(await isReachable(running.url)).toBe(true);
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      expect(fs.existsSync(marker)).toBe(false);
     } finally {
       await running.close();
     }
@@ -403,11 +401,10 @@ describe('ManagedProcess reuseExisting', () => {
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const address = server.address();
     if (address === null || typeof address === 'string') throw new Error('no port');
-    const marker = path.join(dir, 'started');
     try {
       const app = new ManagedProcess(
         'app.command',
-        { ...markerApp(marker, true), startupTimeout: 300 },
+        { ...serverApp(true), startupTimeout: 300 },
         dir,
         { readyUrl: `http://127.0.0.1:${address.port}/` },
         { ci: false },

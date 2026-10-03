@@ -1,6 +1,11 @@
 import { stripVTControlCharacters } from 'node:util';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { playWordmark, wordmarkBanner, type WordmarkStream } from '../../src/cli/wordmark.ts';
+
+vi.mock('node:timers/promises', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:timers/promises')>()),
+  setTimeout: (ms: number) => new Promise<void>((resolve) => globalThis.setTimeout(resolve, ms)),
+}));
 
 const ESC = '\u001b';
 
@@ -57,6 +62,7 @@ describe('playWordmark', () => {
   const sigtermListeners = process.listenerCount('SIGTERM');
 
   afterEach(() => {
+    vi.useRealTimers();
     expect(process.listenerCount('SIGINT')).toBe(sigintListeners);
     expect(process.listenerCount('SIGTERM')).toBe(sigtermListeners);
   });
@@ -67,21 +73,21 @@ describe('playWordmark', () => {
     expect(out.writes).toEqual([]);
   });
 
-  it('prints the wordmark at rest, without motion, in CI, on a dumb terminal, and when motion is declined, with a blank line under it', async () => {
-    for (const options of [{ env: { CI: 'true' } }, { env: { TERM: 'dumb' } }, { env: {}, motion: false }]) {
-      const out = stream({ depth: 1 });
+  it('prints the wordmark at rest, without motion, in CI, on a dumb terminal, when motion is declined, and on a terminal too short to repaint it in place, with a blank line under it', async () => {
+    for (const [out, options] of [
+      [stream({ depth: 1 }), { env: { CI: 'true' } }],
+      [stream({ depth: 1 }), { env: { TERM: 'dumb' } }],
+      [stream({ depth: 1 }), { env: {}, motion: false }],
+      [stream({ rows: 10 }), { env: {} }],
+    ] as const) {
       await playWordmark(out, options);
       expect(out.writes).toEqual([`${REST.join('\n')}\n\n`]);
     }
   });
 
-  it('prints the wordmark at rest on a terminal too short to repaint it in place', async () => {
-    const short = stream({ rows: 10 });
-    await playWordmark(short, { env: {} });
-    expect(short.writes).toEqual([`${REST.join('\n')}\n\n`]);
-  });
-
   it('writes the word in over a second or so, repainting in place with a dim edge behind the pen, and leaves it at rest with the cursor shown', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    vi.setTimerTickMode('nextTimerAsync');
     const out = stream();
     const started = performance.now();
     await playWordmark(out, { env: {} });
