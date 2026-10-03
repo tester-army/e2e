@@ -49,7 +49,7 @@ describe('compileTypeScript', () => {
 
   it('compiles legacy decorators with metadata when the tsconfig enables them', () => {
     const compiled = code(compile('const d = (t: unknown) => t;\n@d export class A { m(x: string): void {} }\n', { experimentalDecorators: true, emitDecoratorMetadata: true }));
-    expect(compiled).toContain('from "@oxc-project/runtime/helpers/decorate"');
+    expect(compiled).toMatch(/from "file:\/\/\/[^"]*\/@oxc-project\/runtime\/src\/helpers\/decorate\.js"/);
     expect(compiled).not.toContain('@d');
   });
 
@@ -62,7 +62,12 @@ describe('compileTypeScript', () => {
 
   it('lowers syntax the running Node.js lacks with helpers from e2e', () => {
     const compiled = code(compile('export {};\n{ using x = { [Symbol.dispose]() {} }; }\n'));
-    expect(compiled.includes('@oxc-project/runtime/helpers/usingCtx')).toBe(process.versions.node.startsWith('22.'));
+    expect(compiled.includes('/@oxc-project/runtime/src/helpers/usingCtx.js')).toBe(process.versions.node.startsWith('22.'));
+  });
+
+  it('requires the helpers .cts needs from the copy e2e installs, by path', () => {
+    const compiled = code(compile('const d = (t: unknown) => t;\n@d class A {}\nmodule.exports = A;\n', { experimentalDecorators: true }, 'decorated.cts'));
+    expect(compiled).toMatch(/require\("\/[^"]*\/@oxc-project\/runtime\/src\/helpers\/decorate\.js"\)/);
   });
 
   it('compiles .cts to CommonJS, with no module marker for its type-only imports', () => {

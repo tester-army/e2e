@@ -58,24 +58,30 @@ function installRuns(dir: string, manifest: Manifest): string | undefined {
   return existsSync(join(dir, 'binding.gyp')) ? 'node-gyp rebuild (binding.gyp)' : undefined;
 }
 
-/** The dependencies an install of `manifest` brings in, each with whether it may be absent. */
+/**
+ * The dependencies an install of `manifest` brings in, each with whether it
+ * may be absent. A name in `optionalDependencies` is optional even when
+ * `dependencies` names it too, as npm reads it.
+ */
 function installedDependencies(manifest: Manifest): [name: string, optional: boolean][] {
+  const optional = new Set(Object.keys(manifest.optionalDependencies ?? {}));
   const peers = Object.keys(manifest.peerDependencies ?? {}).filter((name) => manifest.peerDependenciesMeta?.[name]?.optional !== true);
+  const required = [...Object.keys(manifest.dependencies ?? {}), ...peers].filter((name) => !optional.has(name));
   return [
-    ...Object.keys(manifest.dependencies ?? {}).map((name): [string, boolean] => [name, false]),
-    ...Object.keys(manifest.optionalDependencies ?? {}).map((name): [string, boolean] => [name, true]),
-    ...peers.map((name): [string, boolean] => [name, false]),
+    ...[...new Set(required)].map((name): [string, boolean] => [name, false]),
+    ...[...optional].map((name): [string, boolean] => [name, true]),
   ];
 }
 
 /**
- * Every package in the installed dependency tree of the package in
- * `packageDir` (not the package itself) whose install runs a script. Throws
- * when a required dependency is not installed: the tree cannot be read.
+ * The package in `packageDir`, then every package in its installed
+ * dependency tree, whose install runs a script. Throws when a required
+ * dependency is not installed: the tree cannot be read.
  */
 export function findInstallScripts(packageDir: string): InstallScript[] {
   const root = readManifest(packageDir);
-  const found: InstallScript[] = [];
+  const ownRuns = installRuns(packageDir, root);
+  const found: InstallScript[] = ownRuns === undefined ? [] : [{ chain: root.name, runs: ownRuns }];
   const seen = new Set<string>([realpathSync(packageDir)]);
   const queue: { dir: string; manifest: Manifest; chain: string }[] = [{ dir: realpathSync(packageDir), manifest: root, chain: root.name }];
   for (let next = queue.shift(); next !== undefined; next = queue.shift()) {

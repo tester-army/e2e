@@ -30,7 +30,7 @@
  */
 
 import { readFileSync, statSync } from 'node:fs';
-import nodeModule, { createRequire, type LoadHookSync, type ResolveHookContext, type ResolveHookSync } from 'node:module';
+import nodeModule, { type LoadHookSync, type ResolveHookContext, type ResolveHookSync } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { realmSlot } from '../internal/realm-slot.ts';
@@ -49,8 +49,6 @@ const URL_SCHEME = /^[a-z][\d+.a-z-]*:/i;
 const INSTALLED = /\/node_modules\//;
 /** The query parameter a fresh module graph carries on every project file. */
 const GRAPH_PARAM = 'e2e-graph';
-/** Where the helpers compiled code imports live; resolved from e2e's own install, not the project's. */
-const RUNTIME_HELPERS = '@oxc-project/runtime/';
 
 /** The TypeScript files a JavaScript extension stands for, in TypeScript's order, then the file itself. */
 const TYPESCRIPT_FOR_JAVASCRIPT: Readonly<Record<string, readonly string[]>> = {
@@ -223,19 +221,7 @@ function resolveOrTypeScript(request: string, context: ResolveHookContext, nextR
   }
 }
 
-const ownRequire = createRequire(import.meta.url);
-
-/** A helper compiled code imports or requires, resolved from e2e's own install rather than the project's. */
-function resolveHelper(specifier: string, context: ResolveHookContext, nextResolve: NextResolve): Resolution {
-  if (!requires(context)) return nextResolve(specifier, { ...context, parentURL: import.meta.url });
-  // The CommonJS resolver looks up from the requiring module, never from a
-  // parentURL, so e2e requires the helper itself; that lookup comes back
-  // through this hook from this module, which is not compiled code.
-  return nextResolve(ownRequire.resolve(specifier), context);
-}
-
 export const resolve: ResolveHookSync = (specifier, context, nextResolve) => {
-  if (specifier.startsWith(RUNTIME_HELPERS) && compiled(context.parentURL)) return resolveHelper(specifier, context, nextResolve);
   const target = typeScriptTarget(specifier, context.parentURL);
   const request = target === undefined ? specifier : targetSpecifier(target, context);
   const found = resolveOrTypeScript(request, context, nextResolve);

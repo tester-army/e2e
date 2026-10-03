@@ -22,8 +22,9 @@ function resolveEntry(): { path: string; execArgv: string[] } {
   if (existsSync(js)) return { path: js, execArgv: [] };
   const ts = fileURLToPath(new URL('./entry.ts', import.meta.url));
   if (existsSync(ts)) {
-    const hooks = JSON.stringify(new URL('../../config/esm-hooks.ts', import.meta.url).href);
-    return { path: ts, execArgv: ['--import', `data:text/javascript,import { registerLoader } from ${hooks}; registerLoader();`] };
+    const register = `import { registerLoader } from ${JSON.stringify(new URL('../../config/esm-hooks.ts', import.meta.url).href)}; registerLoader();`;
+    // A data: URL percent-decodes its payload, which would turn a %23 in the checkout's path into a hash.
+    return { path: ts, execArgv: ['--import', `data:text/javascript,${encodeURIComponent(register)}`] };
   }
   throw new InfrastructureError('WORKER_ENTRY_MISSING', 'e2e worker entry module not found');
 }

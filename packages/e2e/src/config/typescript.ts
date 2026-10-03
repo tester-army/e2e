@@ -3,11 +3,12 @@
  * output carries an inline source map, so stack traces, a test's location,
  * and failure code frames point at the TypeScript source. Syntax the running
  * Node.js lacks (`using`, for one) is lowered for it; the helpers that needs
- * come from `@oxc-project/runtime`, which the loader resolves from e2e's own
- * install. The nearest tsconfig.json decides the options that change what
+ * come from e2e's own copy of `@oxc-project/runtime`, which the project need
+ * not install. The nearest tsconfig.json decides the options that change what
  * runs: JSX, legacy decorators, class field semantics, and import elision.
  */
 
+import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { transformSync, type JsxOptions, type OxcError, type TransformOptions } from 'oxc-transform';
 import { tsconfigFor, type CompilerOptions } from './tsconfig.ts';
@@ -100,6 +101,23 @@ function withHookedRequire(code: string, mappings: string): { code: string; mapp
   return { code: lines.join('\n'), mappings: lineMappings.join(';') };
 }
 
+const ownRequire = createRequire(import.meta.url);
+
+/**
+ * The compiled code with every runtime helper oxc imports pointed at e2e's
+ * own copy, by URL for `import` and by path for `require`. Rewriting the
+ * specifiers oxc wrote, rather than redirecting the package name in the
+ * resolver, leaves a project's own `@oxc-project/runtime` alone.
+ */
+function withOwnHelpers(code: string, helpers: Readonly<Record<string, string>>, format: ModuleFormat): string {
+  let rewritten = code;
+  for (const specifier of new Set(Object.values(helpers))) {
+    const file = ownRequire.resolve(specifier);
+    rewritten = rewritten.replaceAll(JSON.stringify(specifier), JSON.stringify(format === 'module' ? pathToFileURL(file).href : file));
+  }
+  return rewritten;
+}
+
 /** `source`, the TypeScript or JSX in `file`, compiled to JavaScript for `format`, with an inline source map. */
 export function compileTypeScript(file: string, source: string, format: ModuleFormat): string {
   const result = transformSync(file, source, {
@@ -114,7 +132,7 @@ export function compileTypeScript(file: string, source: string, format: ModuleFo
     const bytes = Buffer.from(source, 'utf8');
     throw new SyntaxError(errors.map((error) => describeError(file, bytes, error)).join('\n'));
   }
-  const compiled = { code: result.code, mappings: result.map?.mappings ?? '' };
+  const compiled = { code: withOwnHelpers(result.code, result.helpersUsed, format), mappings: result.map?.mappings ?? '' };
   const { code, mappings } = format === 'commonjs' ? withHookedRequire(withoutModuleMarker(compiled.code), compiled.mappings) : compiled;
   const map = {
     ...result.map,

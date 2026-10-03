@@ -22,8 +22,8 @@ describe('findInstallScripts', () => {
     const app = pkg('app', {
       name: 'app',
       scripts: { build: 'tsc', prepublishOnly: 'check' },
-      dependencies: { loader: '1' },
-      optionalDependencies: { 'native-other-os': '1' },
+      dependencies: { loader: '1', 'native-both': '1' },
+      optionalDependencies: { 'native-other-os': '1', 'native-both': '1' },
       peerDependencies: { peer: '1', 'optional-peer': '1' },
       peerDependenciesMeta: { 'optional-peer': { optional: true } },
     });
@@ -39,6 +39,11 @@ describe('findInstallScripts', () => {
       { chain: 'app > peer@1.0.0', runs: 'node-gyp rebuild (binding.gyp)' },
       { chain: 'app > loader@1.0.0 > bundler@0.28.2', runs: 'postinstall: node install.js' },
     ]);
+  });
+
+  it('finds an install script of the package itself', () => {
+    const own = pkg('own', { name: 'own', scripts: { postinstall: 'node setup.js' } });
+    assert.deepEqual(findInstallScripts(own), [{ chain: 'own', runs: 'postinstall: node setup.js' }]);
   });
 
   it('refuses a tree with a required dependency missing', () => {

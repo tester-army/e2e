@@ -155,21 +155,6 @@ describe('resolve', () => {
     expect(resolveFrom(undefined, specifier, { format }).resolution).toEqual({ url: specifier, format });
   });
 
-  it('resolves the helpers compiled code imports from e2e itself', () => {
-    let parent: string | undefined;
-    resolve('@oxc-project/runtime/helpers/decorate', { conditions: IMPORT, importAttributes: {}, parentURL: url('tests/example.e2e.ts') }, (specifier, context) => {
-      parent = context?.parentURL;
-      return { url: `file:///e2e/node_modules/${specifier}.js` };
-    });
-    expect(parent).toMatch(/\/src\/config\/esm-hooks\.ts$/);
-  });
-
-  it('resolves the helpers compiled CommonJS requires to the copy e2e installs, by path', () => {
-    const { asked } = resolveFrom(url('lib/cjs.cts'), '@oxc-project/runtime/helpers/decorate', { conditions: REQUIRE });
-    expect(asked).toHaveLength(1);
-    expect(asked[0]).toMatch(/[\\/]@oxc-project[\\/]runtime[\\/]src[\\/]helpers[\\/]decorate\.js$/);
-  });
-
   it('types TypeScript a require() reaches by its extension, from JavaScript too', () => {
     expect(resolveFrom(url('tests/plain.js'), '../lib/helper.ts', { conditions: REQUIRE, format: 'commonjs-typescript' }).resolution).toEqual({
       url: url('lib/helper.ts'),
@@ -178,8 +163,8 @@ describe('resolve', () => {
     expect(resolveFrom(url('tests/plain.js'), '../lib/cjs.cts', { conditions: REQUIRE }).resolution.format).toBe('commonjs');
   });
 
-  it('leaves the runtime helpers JavaScript imports to the project', () => {
-    expect(resolveFrom(url('tests/plain.js'), '@oxc-project/runtime/helpers/decorate').asked).toEqual(['@oxc-project/runtime/helpers/decorate']);
+  it.each(['tests/plain.js', 'tests/example.e2e.ts'])('leaves an @oxc-project/runtime import %s writes to the project', (parent) => {
+    expect(resolveFrom(url(parent), '@oxc-project/runtime/helpers/decorate').asked).toEqual(['@oxc-project/runtime/helpers/decorate']);
   });
 
   it('leaves a require() out of fresh graphs, which CommonJS cannot load twice', () => {
