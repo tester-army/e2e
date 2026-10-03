@@ -371,8 +371,8 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
 - `evaluate(fn | source, arg?)`: runs a function or source string in the
   page, JSON in and out, no closures; a throw in the page is
   `EVALUATE_FAILED`.
-- `addInitScript(source | { path } | fn, arg?)`: runs before the page's own
-  scripts; call it before `app.open`. `arg` is JSON.
+- `addInitScript(source | { path } | fn)`, `addInitScript(fn, arg)`: runs
+  before the page's own scripts; call it before `app.open`. `arg` is JSON.
 - `route(pattern, handler)`, `unroute(pattern)`: intercept requests, newest
   route first; `route.request` has `url`, `method`, `headers`, `postData`.
   The handler calls exactly one of
