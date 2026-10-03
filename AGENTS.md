@@ -72,6 +72,11 @@ suites that consume the built packages the way a user would.
   engine's provider seam (`BrowserProvider` for web, `DeviceProvider` for
   mobile) and imports the engine's types only; the engines never know it
   exists.
+- `packages/testmuai` - the published `@e2e-dev/testmuai` package:
+  TestMu AI hosted Chrome and Edge for the web engine (`BrowserProvider`).
+  A TestMu AI session starts when its CDP websocket opens and ends when it
+  closes, so the provider only builds the URL: no SDK, no API call, and
+  `@e2e-dev/web` is its only peer.
 - `packages/eas` - the published `@e2e-dev/eas` package: EAS Simulators
   hosted iOS simulators and Android emulators for the mobile engine
   (`DeviceProvider`). Expo publishes no SDK for the sessions API, so it calls

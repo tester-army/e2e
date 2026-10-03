@@ -1,0 +1,159 @@
+---
+title: TestMu AI browsers
+sidebarTitle: TestMu AI
+description: Run web targets in TestMu AI's hosted Chrome and Edge with the testmuai() browser provider from @e2e-dev/testmuai.
+---
+
+`testmuai()` from `@e2e-dev/testmuai` is a
+[browser provider](/browser#hosted-browsers) for
+[TestMu AI](https://www.lambdatest.com). By default each worker slot gets its
+own TestMu AI session for the run; `scope: 'attempt'` gives every test
+attempt its own session instead. Tests and CI stay the same; the config
+changes only in the target's `browser`.
+
+## Setup
+
+<CodeGroup>
+```bash npm
+npm install --save-dev @e2e-dev/testmuai
+```
+
+```bash pnpm
+pnpm add -D @e2e-dev/testmuai
+```
+
+```bash bun
+bun add -d @e2e-dev/testmuai
+```
+</CodeGroup>
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { testmuai } from '@e2e-dev/testmuai';
+
+export default {
+  targets: [
+    {
+      name: 'testmuai',
+      engine: web({ browser: testmuai(), viewport: null }),
+      app: { url: 'https://staging.example.com' },
+    },
+  ],
+} satisfies E2EConfig;
+```
+
+Set `LT_USERNAME` and `LT_ACCESS_KEY` in the environment `e2e run` starts in,
+such as CI secrets. To get them, [sign up for TestMu AI](https://accounts.lambdatest.com/register)
+or log in to your account, then copy your username and access key from
+**Account Settings → Password & Security → Username and Access Key**
+([accounts.lambdatest.com/security/username-accesskey](https://accounts.lambdatest.com/security/username-accesskey)).
+
+Each worker gets its own session, so `workers` sets how
+many run at once. Keep it within your TestMu AI plan's parallel sessions:
+a session beyond it waits in TestMu AI's queue, and the web engine gives a
+session 60 seconds to accept the CDP connection, so one that waits longer
+fails its attempt. See [Limits](#limits).
+
+## Options
+
+| Option | Default | Meaning |
+| ------ | ------- | ------- |
+| `scope` | `'worker'` | `'worker'`: one session per worker slot for the run. `'attempt'`: a fresh session per test attempt, retries included. See [Scopes](#scopes). |
+| `browserName` | `'Chrome'` | `'Chrome'` or `'MicrosoftEdge'`. The web engine attaches over CDP, so the browser must be Chromium-based; any other value fails the config. |
+| `browserVersion` | `'latest'` | Any version TestMu AI offers for the platform, such as `'140'`. |
+| `platform` | `'Windows 11'` | A TestMu AI desktop platform, such as `'Windows 10'` or `'macOS Sequoia'`. |
+| `build` | `'e2e <run id>'` | The TestMu AI build the sessions are grouped under. |
+| `route` | `'/puppeteer'` | The hub route that serves the session's CDP endpoint. See [Routes](#routes). |
+| `hub` | `'cdp.lambdatest.com'` | The hub host, without a scheme or path. |
+| `capabilities` | none | Further `LT:Options` capabilities, such as `video`, `network`, `console`, `idleTimeout`, `resolution`, or `tunnel` and `tunnelName` for [TestMu AI Tunnel](https://www.lambdatest.com/support/docs/testing-locally-hosted-pages/). `idleTimeout` is 600 seconds when absent. `user`, `accessKey`, `build`, `name`, and `platform` fail the config here: the provider sets them from the environment and the options above. |
+
+```ts
+testmuai({
+  scope: 'attempt',
+  platform: 'Windows 10',
+  build: `checkout ${process.env.GITHUB_SHA}`,
+  capabilities: { video: true, network: true, idleTimeout: 300 },
+})
+```
+
+A misspelled option, a `route` other than the two below, or a `hub` with a
+scheme or path fails with `INVALID_CONFIG` when the config loads.
+
+## Scopes
+
+`scope: 'worker'` keeps one session per worker slot for the whole run and
+gives every attempt a new browser context in it, as a local run does: a test
+never sees another test's cookies, storage, or permissions. TestMu AI shows
+it as one session, named after the target and the slot, that covers every
+test the worker ran.
+
+`scope: 'attempt'` starts a session per attempt, so each test is its own
+TestMu AI session, named after the target and the attempt. It costs a
+session start per test and carries the limits of a
+[per-attempt lease](/browser#hosted-browsers): no `headers`, `basicAuth`, or
+`userAgent`, no `app.clearState()`, and no [sessions](/authentication). A
+dropped connection cannot be resumed. The engine reconnects to the same CDP
+URL, which starts a new TestMu AI session under the same name; the engine
+sees a different browser, closes it, and fails the attempt with
+`CDP recovery failed`. That second session shows in the dashboard and counts
+against your plan while it lasts.
+
+## Routes
+
+A TestMu AI session starts when its CDP websocket opens, on one of the
+hub's routes:
+
+- `'/puppeteer'` (default) serves a raw CDP endpoint and works with every
+  account today. TestMu AI's dashboard labels these sessions Puppeteer.
+- `'/playwright-cdp'` is TestMu AI's route for Playwright's
+  `connectOverCDP`. Its sessions are labelled Playwright. Use it once
+  TestMu AI serves raw CDP on it for your account.
+
+## Limits
+
+- **60-second connect.** The web engine waits 60 seconds for the browser to
+  accept the CDP connection, and `launchTimeout` does not change that. A
+  session still in TestMu AI's queue, or a platform slow to provision (Edge on
+  macOS can take close to a minute), fails its attempt with
+  `connectOverCDP: Timeout 60000ms exceeded`. Windows with Chrome or Edge
+  connects well inside it.
+- **About 25 workers per target in `worker` scope.** The engine hands every
+  worker's CDP URL to the workers in one environment variable capped at 16 KB,
+  and each URL carries its capabilities. Past about 25 workers (fewer with
+  many `capabilities`) the run fails at start with `ENGINE_FAILURE: the
+  browser leases take ... bytes`. `scope: 'attempt'` leases in each worker and
+  has no such ceiling.
+
+## Recordings
+
+TestMu AI records the session's screen itself when you pass
+`capabilities: { video: true }`; watch it in the TestMu AI dashboard. The
+provider does not hand that recording to e2e, so an attempt that records
+[video](/reference/config#video) gets the web engine's screencast of the
+page, as a local run does.
+
+## Downloads
+
+TestMu AI's browsers save downloads on their own machines, and the provider
+has no way to read them back, so `browser.waitForDownload` fails with
+`ENGINE_FAILURE` naming the provider. Assert on the download link or the
+request instead.
+
+## What the provider does
+
+- Builds the session's CDP URL with the capabilities above and returns it as
+  the lease. It calls no TestMu AI API: opening the websocket starts the
+  session and the engine closing it ends the session, so `release` has
+  nothing to call.
+- Names every session `e2e <target> <slot or attempt>` inside the build, and
+  logs `TestMu AI session "<name>" in build "<build>"` to the reporter as
+  each lease is made.
+- Reads `LT_USERNAME` and `LT_ACCESS_KEY` from the run's environment and puts
+  them only in the CDP URL: they never appear in a log line. A missing or
+  blank one fails the lease with `LT_USERNAME and LT_ACCESS_KEY must be set`;
+  in `worker` scope that ends the run before any test.
+- Sets `idleTimeout` to 600 seconds unless `capabilities` sets one: the hub
+  otherwise ends a session after 300 seconds without browser traffic, which a
+  slow step between two browser calls can exceed. The same timeout ends a
+  session a dead worker held.
