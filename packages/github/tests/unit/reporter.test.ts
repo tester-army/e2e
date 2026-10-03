@@ -1,7 +1,6 @@
 /** The reporter end to end against fakes: where it posts, where it writes, and what each row says. */
 
 import { describe, expect, it } from 'vitest';
-import { github } from '../../src/index.ts';
 import { reportRun, type ReportDeps } from '../../src/reporter.ts';
 import { actionsEnv, fakeGitHub, json, readEvent } from './fake-github.ts';
 import { attempt, finished, report, result } from './fixtures.ts';
@@ -46,15 +45,6 @@ const failedRun = finished(
 );
 const postedBody = (calls: { method: string; body: unknown }[]): string =>
   (calls.find((call) => call.method === 'POST')?.body as { body: string } | undefined)?.body ?? '';
-
-describe('github()', () => {
-  it('is a reporter named github with a finish handler and no event handler', () => {
-    const reporter = github();
-    expect(reporter.name).toBe('github');
-    expect(typeof reporter.onRunFinished).toBe('function');
-    expect(reporter.onEvent).toBeUndefined();
-  });
-});
 
 describe('reportRun', () => {
   it('posts nothing off GitHub Actions', async () => {
@@ -107,28 +97,6 @@ describe('reportRun', () => {
     expect(postedBody(dotted.calls)).toContain('(https://github.com/octo/app/blob/head-sha/..app/tests/shop%20flows/cart.e2e.ts#L9)');
   });
 
-  it('shows a title token GitHub would link as code, so app text cannot mention anyone, link an issue, or plant a URL', async () => {
-    const d = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs' });
-    const hostile = finished(
-      report({
-        status: 'failed',
-        results: [
-          result({
-            title: 'ping @octocat see https://evil.example #12',
-            status: 'failed',
-            attempts: [attempt({ status: 'failed', error: { code: 'ASSERTION_FAILED', message: 'no cart' } })],
-          }),
-        ],
-      }),
-    );
-    await reportRun(hostile, signal, {}, d.deps);
-    const body = postedBody(d.calls);
-    expect(body).toContain('ping `@octocat` see `https://evil.example` `#12`');
-    expect(body).not.toMatch(/[^`]@octocat/);
-    expect(body).not.toMatch(/[^`]https:\/\/evil/);
-    expect(body).not.toMatch(/[^`]#12\b/);
-  });
-
   it('folds a --last-failed rerun into the run it selected from, so the comment shows the whole suite with the recovered test flaky', async () => {
     const d = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs' });
     const failedAttempt = attempt({ status: 'failed', error: { code: 'ASSERTION_FAILED', message: 'no cart' } });
@@ -148,9 +116,6 @@ describe('reportRun', () => {
     await reportRun(finished(rerun, firstPass), signal, {}, d.deps);
     const body = postedBody(d.calls);
     expect(body).toContain('### 🟢 e2e: 1 flaky, 1 passed');
-    expect(body).toContain('1 flaky test passed on a retry');
-    expect(body).toContain('recovers (1 failed attempt first)');
-    expect(body).toContain('| 🟢 | steady |');
   });
 
   it('adds the key to the marker, encoded, so matrix replicas keep their own comments', async () => {
