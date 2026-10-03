@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Node.js 24.11 or newer, or 22.22.3 or newer on Node.js 22.
+- Node.js 24.8 or newer, or 22.22.3 or newer on Node.js 22.
 - ES modules: `.ts` config, tests, helpers, and workspace packages exporting
   `.ts` source load as ESM regardless of the nearest `package.json` `type`
   (CommonJS packages need no change); never `require` or `module.exports`.

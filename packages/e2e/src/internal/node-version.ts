@@ -4,10 +4,10 @@
  * otherwise surface as an unrelated TypeError deep inside a run.
  *
  * e2e's TypeScript loader runs on `module.registerHooks`. Before 22.22.3 on
- * Node.js 22 and 24.11.0 on 24, a CommonJS file a test imports cannot
- * `require()` an ES module those hooks load, such as a project's TypeScript
- * (the module lookup throws inside Node.js), so each release line has its
- * own floor, and Node.js 23 has none.
+ * Node.js 22 and 24.8.0 on 24, a CommonJS file a test imports cannot
+ * `require()` an ES module those hooks load, such as a project's TypeScript:
+ * Node.js throws reading its own cache (nodejs/node#59679 fixed it). So each
+ * release line has its own floor, and Node.js 23 has none.
  */
 
 type Version = readonly [number, number, number];
@@ -15,7 +15,7 @@ type Version = readonly [number, number, number];
 /** The first release of each supported line; any later major counts from the last one. */
 const FLOORS: readonly Version[] = [
   [22, 22, 3],
-  [24, 11, 0],
+  [24, 8, 0],
 ];
 
 /** `engines.node` in package.json; a unit test keeps the two in step. */
@@ -43,6 +43,7 @@ export function unsupportedNodeMessage(current: string): string | undefined {
   const have = parse(current);
   const supported = FLOORS.some((floor, index) => atLeast(have, floor) && (index === FLOORS.length - 1 || have[0] === floor[0]));
   if (supported) return undefined;
-  const floors = FLOORS.map((floor) => floor.join('.'));
-  return `e2e requires Node.js ${floors.slice(0, -1).join(', ')} or newer on its release line, or ${floors.at(-1)!} or newer; this is Node.js ${current.replace(/^v/, '')}. Upgrade Node.js, or switch versions with your version manager (nvm use 24, fnm use 24, volta pin node@24).`;
+  const lines = FLOORS.slice(0, -1).map((floor) => `${floor.join('.')} or newer on Node.js ${floor[0]}`);
+  const required = `${lines.join(', ')}, or ${FLOORS.at(-1)!.join('.')} or newer`;
+  return `e2e requires Node.js ${required}; this is Node.js ${current.replace(/^v/, '')}. Upgrade Node.js, or switch versions with your version manager (nvm install 24, fnm install 24, volta install node@24).`;
 }
