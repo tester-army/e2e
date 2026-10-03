@@ -134,6 +134,8 @@ describe('resolve', () => {
   it('retries a # import from TypeScript that maps to a missing ./x.js on x.ts', () => {
     const exports = { '#js/sub': url('internal/sub.js') };
     expect(resolveFrom(url('tests/example.e2e.ts'), '#js/sub', { exports }).asked).toEqual(['#js/sub', url('internal/sub.ts')]);
+    const withQuery = { '#js/sub': `${url('internal/sub.js')}?v=1#h` };
+    expect(resolveFrom(url('tests/example.e2e.ts'), '#js/sub', { exports: withQuery }).asked).toEqual(['#js/sub', `${url('internal/sub.ts')}?v=1#h`]);
   });
 
   it.each([

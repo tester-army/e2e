@@ -182,10 +182,12 @@ function resolveExport(request: string, context: ResolveHookContext, nextResolve
     return nextResolve(request, context);
   } catch (error) {
     const { code, url } = error as { code?: unknown; url?: unknown };
-    const missing = code === 'ERR_MODULE_NOT_FOUND' && typeof url === 'string' && url.startsWith('file:') ? fileURLToPath(url) : undefined;
-    const file = missing === undefined ? undefined : swappedFile(missing, view);
-    if (file === undefined || file === missing) throw error;
-    return nextResolve(pathToFileURL(file).href, context);
+    const missing = code === 'ERR_MODULE_NOT_FOUND' && typeof url === 'string' && url.startsWith('file:') ? new URL(url) : undefined;
+    const target = missing === undefined ? undefined : fileURLToPath(missing);
+    const file = target === undefined ? undefined : swappedFile(target, view);
+    if (missing === undefined || file === undefined || file === target) throw error;
+    // The swapped file keeps the target's query and hash, which are part of its module identity.
+    return nextResolve(`${pathToFileURL(file).href}${missing.search}${missing.hash}`, context);
   }
 }
 
