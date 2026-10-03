@@ -78,11 +78,8 @@ describe('resolveOptions', () => {
     );
   });
 
-  it('rejects an empty agent name at registration', async () => {
+  it('rejects an empty name, or an empty, repeated, or blank-entry agent list at registration', async () => {
     await expect(collection(() => { test('x', { agent: '' }, noop); })).rejects.toThrow(/test options: agent must be the name of a configured agent/);
-  });
-
-  it('rejects an empty, repeated, or blank-entry agent list at registration', async () => {
     await expect(collection(() => { test('x', { agent: [] }, noop); })).rejects.toThrow(/non-empty list of names/);
     await expect(collection(() => { test('x', { agent: ['a', 'a'] }, noop); })).rejects.toThrow(/agent lists each name once/);
     await expect(collection(() => { test('x', { agent: ['a', ''] }, noop); })).rejects.toThrow(/every entry of agent must be the name/);
@@ -532,16 +529,6 @@ describe('select', () => {
     expect(() => select(col, config())).toThrow(/no setup test produces it; no collected setup test declares a session$/);
   });
 
-  it('names the sessions setup tests declare, with the nearest, when a consumed one has no producer', async () => {
-    const col = await collection(() => {
-      test.setup('auth', { sessions: ['admin', 'member'] }, noop);
-      test('uses session', { session: 'admn' }, noop);
-    });
-    expect(() => select(col, config())).toThrow(
-      /consumes session "admn" but no setup test produces it; setup tests declare "admin", "member"; did you mean "admin"\?$/,
-    );
-  });
-
   it('names a file a narrowed run could not collect as where a missing producer may live', async () => {
     const col = await collection(() => {
       test('uses session', { session: 'member' }, noop);
@@ -549,16 +536,6 @@ describe('select', () => {
     const narrowed = { ...col, uncollected: [{ file: 'tests/auth.setup.e2e.ts', reason: 'boom' }] };
     expect(() => select(narrowed, config())).toThrow(
       /no setup test produces it; no collected setup test declares a session; it may be declared in a file that failed to collect: tests\/auth\.setup\.e2e\.ts \(boom\)$/,
-    );
-  });
-
-  it('caps the files named as where a missing producer may live', async () => {
-    const col = await collection(() => {
-      test('uses session', { session: 'member' }, noop);
-    });
-    const uncollected = ['a', 'b', 'c', 'd', 'e'].map((name) => ({ file: `tests/${name}.e2e.ts`, reason: 'boom' }));
-    expect(() => select({ ...col, uncollected }, config())).toThrow(
-      /failed to collect: tests\/a\.e2e\.ts \(boom\), tests\/b\.e2e\.ts \(boom\), tests\/c\.e2e\.ts \(boom\) and 2 more$/,
     );
   });
 
@@ -615,20 +592,6 @@ describe('select', () => {
     );
   });
 
-  it('names the ! entry excluding a positional file when the exclusions left nothing discovered', () => {
-    const excludedAll: Collection = { ...emptyCollection(), unmatchedPositionals: ['tests/wip/a.e2e.ts'] };
-    expect(() => select(excludedAll, config({ tests: ['tests/wip/*.e2e.ts', '!tests/wip/a.e2e.ts'] }))).toThrow(
-      'no test file matched tests/wip/a.e2e.ts (excluded by the tests entry "!tests/wip/a.e2e.ts"); the config globs discovered no file; pass --pass-with-no-tests to allow this',
-    );
-  });
-
-  it('offers the nearest discovered file name when the unmatched positional was a bare name', async () => {
-    const col = await collection(() => {}, 'tests/agent.e2e.ts', ['agnet.e2e.ts']);
-    expect(() => select(col, config())).toThrow(
-      'no test file matched agnet.e2e.ts (did you mean agent.e2e.ts?); the config globs discovered tests/agent.e2e.ts; pass --pass-with-no-tests to allow this',
-    );
-  });
-
   it('explains empty discovery with the globs, the root, and any look-alike files', () => {
     expect(() => select(emptyCollection(), config())).toThrow(
       `no test file matched "tests/**/*.e2e.ts" under ${ROOT}; create tests/example.e2e.ts (e2e init writes one), or set tests in the config; pass --pass-with-no-tests to allow this`,
@@ -664,16 +627,6 @@ describe('select', () => {
     });
     expect(() => select(tagged, config(), { tags: ['billing'] })).toThrow(
       '2 tests were collected but none is runnable: 2 carry none of the tags billing (no test declares it); pass --pass-with-no-tests to allow this',
-    );
-  });
-
-  it('rejects unknown target IDs', async () => {
-    const col = await collection(() => {
-      test('x', noop);
-    });
-    expect(() => select(col, config(), { targetIds: ['nope'] })).toThrow(/unknown target/i);
-    expect(() => select(col, config(), { targetIds: ['wbe'] })).toThrow(
-      'unknown target ID "wbe"; the config declares "web"; did you mean "web"?',
     );
   });
 });

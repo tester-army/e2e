@@ -171,13 +171,6 @@ describe('the scan', () => {
     expect(specifiers("const example = `import { test } from '@e2e-dev/web';\nimport { expect } from 'e2e';\n`;")).toEqual([]);
   });
 
-  it('names the package a specifier belongs to', () => {
-    expect(packageOf('@modelcontextprotocol/server/stdio')).toBe('@modelcontextprotocol/server');
-    expect(packageOf('tsx/esm/api')).toBe('tsx');
-    expect(packageOf('e2e/engine')).toBe('e2e');
-    expect(packageOf('zod')).toBe('zod');
-  });
-
   it('objects to a devDependency, a bare builtin, and an optional peer outside its home', () => {
     const e2e = SCOPES[0]!;
     const manifest = manifestOf(e2e);

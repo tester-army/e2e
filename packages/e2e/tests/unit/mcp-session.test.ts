@@ -11,16 +11,13 @@ function node(role: string, name: string, extra: Partial<SemanticNode> = {}): Se
 const keep = (text: string): string => text;
 
 describe('locateQuery', () => {
-  it('builds the role query and the matching screen call', () => {
+  it('builds each query kind and the matching screen call, carrying exact: false into both', () => {
     const query = locateQuery({ role: 'button', name: 'Save' });
     expect(query.code).toBe('screen.getByRole("button", "Save")');
     expect(query.expression).toMatchObject({ kind: 'query', query: { kind: 'role', name: { kind: 'string', value: 'Save', exact: true } } });
-  });
-
-  it('carries exact: false into both the expression and the code', () => {
-    const query = locateQuery({ text: 'sign', exact: false });
-    expect(query.code).toBe('screen.getByText("sign", { exact: false })');
-    expect(query.expression).toMatchObject({ query: { kind: 'text', value: { exact: false } } });
+    const text = locateQuery({ text: 'sign', exact: false });
+    expect(text.code).toBe('screen.getByText("sign", { exact: false })');
+    expect(text.expression).toMatchObject({ query: { kind: 'text', value: { exact: false } } });
     expect(locateQuery({ label: 'Email' }).code).toBe('screen.getByLabel("Email")');
     expect(locateQuery({ placeholder: 'you@example.test' }).code).toBe('screen.getByPlaceholder("you@example.test")');
     expect(locateQuery({ testId: 'items' }).code).toBe('screen.getByTestId("items")');

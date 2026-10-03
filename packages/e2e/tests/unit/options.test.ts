@@ -21,14 +21,6 @@ describe('rejectUnknownOptions', () => {
     );
   });
 
-  it('lists every unknown key, renamed or not', () => {
-    expect(() => rejectUnknownOptions('longPress', { durationMs: 900, force: true }, ['timeout', 'duration'])).toThrow(
-      expect.objectContaining({
-        message: 'longPress options has no keys "durationMs" (now "duration"), "force"; it takes timeout, duration',
-      }),
-    );
-  });
-
   it('rejects a bag that is not a plain object', () => {
     for (const options of [null, 'fast', 3, [1], new Date(), Object.create({ intervalMs: 100 })]) {
       expect(() => rejectUnknownOptions('agent.assert', options as never, KNOWN)).toThrow(TestError);

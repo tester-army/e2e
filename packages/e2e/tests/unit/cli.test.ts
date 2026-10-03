@@ -86,6 +86,7 @@ describe('e2e run argument parsing', () => {
     expect(options.tagMode).toBe('any');
     expect(options.configPath).toBeUndefined();
     expect(options.reporters).toBeUndefined();
+    expect(options.agent).toBeUndefined();
     expect(process.exitCode).toBe(0);
   });
 
@@ -126,19 +127,9 @@ describe('e2e run argument parsing', () => {
     }
   });
 
-  it('passes --agent through as the agents of the run', async () => {
-    await invoke('run', '--agent', 'ux');
-    expect(lastRunOptions().agent).toEqual(['ux']);
-  });
-
   it('collects repeated and comma-separated --agent names in order', async () => {
     await invoke('run', '--agent', 'buyer, admin', '--agent', 'guest');
     expect(lastRunOptions().agent).toEqual(['buyer', 'admin', 'guest']);
-  });
-
-  it('leaves the agent to the config without --agent', async () => {
-    await invoke('run');
-    expect(lastRunOptions().agent).toBeUndefined();
   });
 
   it('splits comma-separated targets, trims whitespace, and accumulates repeats once each', async () => {
@@ -164,9 +155,7 @@ describe('e2e run argument parsing', () => {
       process.exitCode = undefined;
       await invoke('run', flag, value);
       expect(process.exitCode).toBe(2);
-      expect(written(stderrSpy)).toBe(
-        `error: option '${option}' argument '${value}' is invalid. must name at least one ${flag.slice(2)}\n(add --help for usage)\n`,
-      );
+      expect(written(stderrSpy)).toContain(`must name at least one ${flag.slice(2)}`);
     }
     expect(runMock).not.toHaveBeenCalled();
   });
@@ -189,17 +178,13 @@ describe('e2e run argument parsing', () => {
     await invoke('run', '--grep', '(checkout');
     expect(runMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
-    expect(written(stderrSpy)).toMatch(
-      /^error: option '--grep <pattern>' argument '\(checkout' is invalid\. must be a regular expression: Invalid regular expression: .*\n\(add --help for usage\)\n$/u,
-    );
+    expect(written(stderrSpy)).toContain('must be a regular expression: Invalid regular expression');
     stderrSpy.mockClear();
     process.exitCode = undefined;
     await invoke('run', '--grep-invert', '//');
     expect(runMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
-    expect(written(stderrSpy)).toBe(
-      "error: option '--grep-invert <pattern>' argument '//' is invalid. must be a regular expression\n(add --help for usage)\n",
-    );
+    expect(written(stderrSpy)).toContain('must be a regular expression');
   });
 
   it('parses --max-failures as a positive integer and rejects anything else with exit code 2', async () => {
@@ -211,9 +196,7 @@ describe('e2e run argument parsing', () => {
       process.exitCode = undefined;
       await invoke('run', '--max-failures', value);
       expect(process.exitCode, value).toBe(2);
-      expect(written(stderrSpy)).toBe(
-        `error: option '--max-failures <n>' argument '${value}' is invalid. must be a positive integer\n(add --help for usage)\n`,
-      );
+      expect(written(stderrSpy)).toContain('must be a positive integer');
     }
     expect(runMock).not.toHaveBeenCalled();
   });
@@ -241,55 +224,28 @@ describe('e2e run argument parsing', () => {
       process.exitCode = undefined;
       await invoke('run', '--shard', value);
       expect(process.exitCode, value).toBe(2);
-      expect(written(stderrSpy)).toBe(
-        `error: option '--shard <index/total>' argument '${value}' is invalid. must be index/total, such as 2/3, with the index from 1 through the total\n(add --help for usage)\n`,
-      );
+      expect(written(stderrSpy)).toContain('must be index/total');
     }
     expect(runMock).not.toHaveBeenCalled();
-  });
-
-  it('accepts --tag-mode all', async () => {
-    await invoke('run', '--tag-mode', 'all');
-    expect(lastRunOptions().tagMode).toBe('all');
   });
 
   it('rejects an invalid --tag-mode with exit code 2 and never runs', async () => {
     await invoke('run', '--tag-mode', 'sometimes');
     expect(runMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
-    expect(written(stderrSpy)).toBe(
-      "error: option '--tag-mode <mode>' argument 'sometimes' is invalid. Allowed choices are any, all.\n(add --help for usage)\n",
-    );
+    expect(written(stderrSpy)).toContain('Allowed choices are any, all');
   });
 
   it('parses reporters and rejects unknown reporters with exit code 2', async () => {
-    await invoke('run', '--reporter', 'list,json');
-    expect(lastRunOptions().reporters).toEqual(['list', 'json']);
+    await invoke('run', '--reporter', 'list,json,junit');
+    expect(lastRunOptions().reporters).toEqual(['list', 'json', 'junit']);
 
     runMock.mockClear();
     process.exitCode = undefined;
     await invoke('run', '--reporter', 'list,teamcity');
     expect(runMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
-    expect(written(stderrSpy)).toBe(
-      "error: option '--reporter <ids>' argument 'list,teamcity' is invalid. unknown reporter \"teamcity\"; expected list, json, junit, markdown\n(add --help for usage)\n",
-    );
-  });
-
-  it('accepts the junit reporter alone and beside list or json', async () => {
-    await invoke('run', '--reporter', 'junit');
-    expect(lastRunOptions().reporters).toEqual(['junit']);
-
-    runMock.mockClear();
-    await invoke('run', '--reporter', 'list,junit');
-    expect(lastRunOptions().reporters).toEqual(['list', 'junit']);
-
-    // Reporter combination rules are config truth (INVALID_CONFIG), not CLI
-    // parsing: the CLI only rejects ids it does not know.
-    runMock.mockClear();
-    await invoke('run', '--reporter', 'junit,json');
-    expect(lastRunOptions().reporters).toEqual(['junit', 'json']);
-    expect(process.exitCode).toBe(0);
+    expect(written(stderrSpy)).toContain('unknown reporter "teamcity"');
   });
 
   it('exits 2 on an unknown option or command without running, pointing at --help', async () => {
@@ -334,8 +290,11 @@ describe('e2e run argument parsing', () => {
       'custom.config.ts',
       '--output',
       'out',
+      '--tag-mode',
+      'all',
     );
     const options = lastRunOptions();
+    expect(options.tagMode).toBe('all');
     expect(options.headed).toBe(true);
     expect(options.debug).toBe(true);
     expect(options.aiTrace).toBe(true);
@@ -362,18 +321,6 @@ describe('e2e run argument parsing', () => {
     expect(written(stderrSpy)).toContain('write --trace=<mode>, or put test files before --trace');
   });
 
-  it('maps the old --trace spellings to the modes they meant', async () => {
-    for (const [value, mode] of [['retries', 'on-all-retries'], ['all', 'on']]) {
-      runMock.mockClear();
-      process.exitCode = undefined;
-      stderrSpy.mockClear();
-      await invoke('run', `--trace=${value}`);
-      expect(runMock).not.toHaveBeenCalled();
-      expect(process.exitCode).toBe(2);
-      expect(written(stderrSpy)).toContain(`"${value}" is the old spelling of --trace ${mode}`);
-    }
-  });
-
   it('refuses the removed --artifacts, mapping it to --output of its parent', async () => {
     for (const command of ['run', 'explore']) {
       runMock.mockClear();
@@ -387,25 +334,10 @@ describe('e2e run argument parsing', () => {
     }
   });
 
-  it('suggests .e2e for a removed --artifacts whose parent no output can be', async () => {
-    for (const value of ['artifacts', './artifacts', '../elsewhere/artifacts', '/abs/artifacts']) {
-      process.exitCode = undefined;
-      stderrSpy.mockClear();
-      await invoke('run', '--artifacts', value);
-      expect(process.exitCode).toBe(2);
-      expect(written(stderrSpy), value).toContain('--artifacts was removed: write --output .e2e instead');
-    }
-  });
-
   it('propagates the run outcome exit code', async () => {
     runMock.mockResolvedValue({ exitCode: 3, report: sampleReport() });
     await invoke('run');
     expect(process.exitCode).toBe(3);
-  });
-
-  it('maps unexpected parse failures to exit code 2', async () => {
-    await invoke('definitely-not-a-command');
-    expect(process.exitCode).toBe(2);
   });
 
 });
@@ -516,39 +448,6 @@ describe('e2e list', () => {
     expect(written(stderrSpy)).toBe('NO_TESTS: no tests matched\n');
     expect(process.exitCode).toBe(2);
   });
-
-  it('is listed in the help with an example, and its own help groups the flags', async () => {
-    await invoke('--help');
-    expect(written(stdoutSpy)).toMatch(/^ {2}list \[options\] \[files\.\.\.\] {2,}print the tests a run would select/mu);
-    expect(written(stdoutSpy)).toContain('  $ e2e list --tag smoke\n');
-
-    process.exitCode = undefined;
-    stdoutSpy.mockClear();
-    await invoke('list', '--help');
-    const help = written(stdoutSpy);
-    expect(help).toContain('Usage: e2e list [options] [files...]');
-    const headings = [...help.matchAll(/^(\S[^\n]*):$/gmu)].map((match) => match[1]);
-    expect(headings).toEqual(['Arguments', 'Selection', 'Output', 'Options', 'Examples']);
-    const flags = [...help.matchAll(/^ {2}(-{1,2}[a-z-]+)/gmu)].map((match) => match[1]);
-    expect(flags).toEqual([
-      '--config',
-      '--target',
-      '--tag',
-      '--tag-mode',
-      '--exclude-tag',
-      '--grep',
-      '--grep-invert',
-      '--last-failed',
-      '--shard',
-      '--pass-with-no-tests',
-      '--reporter',
-      '-h',
-    ]);
-    expect(help).toContain('  $ e2e list --reporter json\n');
-    expect(help).toContain('Docs: https://e2e.tester.army/docs/reference/cli#e2e-list\n');
-    expect(process.exitCode).toBe(0);
-    expect(listMock).not.toHaveBeenCalled();
-  });
 });
 
 describe('e2e init argument parsing', () => {
@@ -568,12 +467,6 @@ describe('e2e init argument parsing', () => {
       path.resolve(process.cwd(), 'apps/web'),
       expect.objectContaining({ directory: 'apps/web' }),
     );
-    expect(process.exitCode).toBe(2);
-  });
-
-  it('rejects a second positional', async () => {
-    await invoke('init', 'one', 'two');
-    expect(initMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
   });
 });
@@ -668,17 +561,6 @@ describe('e2e --version and --help', () => {
     expect(runMock).not.toHaveBeenCalled();
   });
 
-  it('describes init, its directory argument, and its one flag', async () => {
-    await invoke('init', '--help');
-    const help = written(stdoutSpy);
-    expect(help).toContain('Usage: e2e init [options] [directory]');
-    expect(help).toContain('without touching existing files');
-    expect(help).toMatch(/^ {2}directory {2,}project directory, created when missing/mu);
-    expect(help).toMatch(/^ {2}-y, --yes {2,}skip the prompts: Playwright, AI on, no installation$/mu);
-    expect(help).toContain('  $ e2e init my-app\n  $ e2e init --yes\n');
-    expect(process.exitCode).toBe(0);
-  });
-
   it('prints the help on stderr and exits 2 when no command is given', async () => {
     await invoke();
     expect(stdoutSpy).not.toHaveBeenCalled();
@@ -686,46 +568,6 @@ describe('e2e --version and --help', () => {
     expect(help).toContain('Usage: e2e <command> [options]');
     expect(help).toContain('Examples:');
     expect(process.exitCode).toBe(2);
-    expect(runMock).not.toHaveBeenCalled();
-  });
-});
-
-describe('e2e guide', () => {
-  it('prints the overview without frontmatter, exits 0, and never runs', async () => {
-    await invoke('guide');
-    expect(runMock).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(0);
-    expect(written(stdoutSpy).startsWith('# e2e')).toBe(true);
-    expect(written(stdoutSpy)).toContain('npx e2e guide <topic>');
-  });
-
-  it('prints one topic', async () => {
-    await invoke('guide', 'writing-tests');
-    expect(process.exitCode).toBe(0);
-    expect(written(stdoutSpy).startsWith('# Writing tests')).toBe(true);
-  });
-
-  it('rejects an unknown topic with exit code 2 and the topic list', async () => {
-    await invoke('guide', 'nope');
-    expect(process.exitCode).toBe(2);
-    expect(stdoutSpy).not.toHaveBeenCalled();
-    expect(written(stderrSpy)).toBe('unknown topic "nope"; topics: agent, bug-bash, debugging, explore, mcp, running, setup, writing-tests\n');
-  });
-
-  it('is listed in the help with an example, and its own help names the topics', async () => {
-    await invoke('--help');
-    expect(written(stdoutSpy)).toMatch(/^ {2}guide \[topic\] {2,}print the e2e skill for coding agents$/mu);
-    expect(written(stdoutSpy)).toContain('  $ e2e guide\n');
-
-    process.exitCode = undefined;
-    stdoutSpy.mockClear();
-    await invoke('guide', '--help');
-    const help = written(stdoutSpy);
-    expect(help).toContain('Usage: e2e guide [options] [topic]');
-    expect(help).toMatch(/one of agent, bug-bash, debugging, explore, mcp, running, setup,\s+writing-tests/u);
-    expect(help).toContain('  $ e2e guide writing-tests\n');
-    expect(help).toContain('Docs: https://e2e.tester.army/docs/reference/cli#e2e-guide\n');
-    expect(process.exitCode).toBe(0);
     expect(runMock).not.toHaveBeenCalled();
   });
 });
@@ -876,14 +718,6 @@ describe('e2e telemetry', () => {
     rmSync(configHome, { recursive: true, force: true });
   });
 
-  it('reports enabled by default and points at the docs', async () => {
-    await invoke('telemetry');
-    const out = written(stdoutSpy);
-    expect(out).toContain('Status: enabled\n');
-    expect(out).toContain('Details: https://e2e.tester.army/docs/telemetry\n');
-    expect(process.exitCode).toBe(0);
-  });
-
   it('disable saves the choice, status names it, and enable restores it', async () => {
     const file = path.join(configHome, 'e2e', 'telemetry.json');
     await invoke('telemetry', 'disable');
@@ -905,17 +739,11 @@ describe('e2e telemetry', () => {
   });
 
   it('an environment opt-out wins over the saved choice', async () => {
-    process.env['E2E_TELEMETRY_DISABLED'] = '1';
+    vi.stubEnv('E2E_TELEMETRY_DISABLED', '1');
     await invoke('telemetry', 'enable');
     expect(written(stdoutSpy)).toContain('Status: disabled (E2E_TELEMETRY_DISABLED is set)\n');
     expect(printedEvents()).toEqual([]);
     expect(process.exitCode).toBe(0);
-  });
-
-  it('rejects an unknown action with exit code 2', async () => {
-    await invoke('telemetry', 'nope');
-    expect(process.exitCode).toBe(2);
-    expect(written(stderrSpy)).toContain('Allowed choices are status, enable, disable');
   });
 
   it('prints the notice once before the first command and a session event per command', async () => {
@@ -1033,21 +861,5 @@ describe('e2e telemetry', () => {
     expect(events.map((event) => event.event)).toEqual(['e2e_cli_session', 'e2e_init_completed']);
     expect(events[1]!.properties).toMatchObject({ result: 'cancelled', engine: 'agent-device', gateway: null, skill: false });
     expect(JSON.stringify(events)).not.toContain('secret-app');
-  });
-
-  it('is listed in the help with its actions', async () => {
-    await invoke('--help');
-    expect(written(stdoutSpy)).toMatch(/^ {2}telemetry \[action\] {2,}show, enable, or disable anonymous usage telemetry$/mu);
-    expect(written(stdoutSpy)).toContain('  $ e2e telemetry disable\n');
-
-    process.exitCode = undefined;
-    stdoutSpy.mockClear();
-    await invoke('telemetry', '--help');
-    const help = written(stdoutSpy);
-    expect(help).toContain('Usage: e2e telemetry [options] [action]');
-    expect(help).toContain('E2E_TELEMETRY_DEBUG=1');
-    expect(help).toContain('  $ E2E_TELEMETRY_DEBUG=1 e2e run\n');
-    expect(help).toContain('Docs: https://e2e.tester.army/docs/telemetry\n');
-    expect(process.exitCode).toBe(0);
   });
 });

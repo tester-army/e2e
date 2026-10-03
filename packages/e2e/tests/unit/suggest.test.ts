@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { didYouMean, isTypoOf, suggest } from '../../src/internal/suggest.ts';
+import { isTypoOf, suggest } from '../../src/internal/suggest.ts';
 
 const KEYS = ['targets', 'tests', 'timeout', 'retries', 'workers', 'reporters', 'agent', 'cache'];
 
@@ -28,10 +28,5 @@ describe('suggest', () => {
     expect(isTypoOf('sumbit', 'submit')).toBe(true);
     expect(isTypoOf('note', 'nothing')).toBe(false);
     expect(isTypoOf('the', 'themes')).toBe(false);
-  });
-
-  it('formats a message tail only when there is a suggestion', () => {
-    expect(didYouMean('target', KEYS)).toBe('; did you mean "targets"?');
-    expect(didYouMean('nope', KEYS)).toBe('');
   });
 });

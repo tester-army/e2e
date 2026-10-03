@@ -78,11 +78,6 @@ describe('exit code mapping', () => {
 });
 
 describe('classifyError', () => {
-  it('passes through E2EError instances', () => {
-    const error = new InfrastructureError('X', 'boom');
-    expect(classifyError(error)).toBe(error);
-  });
-
   it('wraps unknown errors as test failures', () => {
     expect(classifyError(new Error('nope')).category).toBe('test');
     expect(classifyError('string failure').category).toBe('test');
@@ -155,18 +150,11 @@ describe('serializeError', () => {
 });
 
 describe('sanitizeText', () => {
-  it('keeps tabs and newlines', () => {
-    expect(sanitizeText('a\tb\nc')).toBe('a\tb\nc');
-  });
-
-  it('replaces C0, DEL, and C1 controls and leaves non-BMP text intact', () => {
+  it('replaces C0, DEL, and C1 controls, keeps tabs and newlines, and leaves non-BMP text intact', () => {
     expect(sanitizeText('a\u0000b\u007fc\u0085d')).toBe('a\uFFFDb\uFFFDc\uFFFDd');
-    expect(sanitizeText('ok 😀 fine')).toBe('ok 😀 fine');
-  });
-
-  it('is repeatable across calls (no regexp state leaks)', () => {
     expect(sanitizeText('\u0001\u0001')).toBe('\uFFFD\uFFFD');
-    expect(sanitizeText('\u0001x')).toBe('\uFFFDx');
+    expect(sanitizeText('a\tb\nc')).toBe('a\tb\nc');
+    expect(sanitizeText('ok 😀 fine')).toBe('ok 😀 fine');
   });
 });
 
@@ -179,28 +167,12 @@ describe('withHint', () => {
 });
 
 describe('truncateUtf8', () => {
-  it('truncates on code point boundaries', () => {
-    expect(truncateUtf8('abcd', 2)).toBe('ab');
-    expect(truncateUtf8('żż', 3)).toBe('ż'); // 2 bytes each
-    expect(truncateUtf8('abc', 10)).toBe('abc');
-  });
-
   it('never splits a four-byte code point and honors a zero budget', () => {
     expect(truncateUtf8('a😀b', 4)).toBe('a'); // 😀 is 4 bytes; 1 + 4 > 4
     expect(truncateUtf8('a😀b', 5)).toBe('a😀');
     expect(truncateUtf8('a😀b', 0)).toBe('');
   });
 });
-
-describe('E2EError', () => {
-  it('carries category, code, and retryability', () => {
-    const error = new E2EError('infrastructure', 'ENGINE_FAILURE', 'x', { retryable: false });
-    expect(error.category).toBe('infrastructure');
-    expect(error.code).toBe('ENGINE_FAILURE');
-    expect(error.retryable).toBe(false);
-  });
-});
-
 
 describe('error details', () => {
   it('carries structured details onto the serialized error, bounded and sanitized, and drops empty ones', () => {

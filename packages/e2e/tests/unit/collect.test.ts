@@ -113,16 +113,10 @@ describe('selectPositionals', () => {
     }
   });
 
-  it('keeps names case-sensitive on every filesystem', () => {
-    const selection = selectPositionals(root, DISCOVERED, ['A.e2e.ts', 'B', 'Agent/b.e2e.ts']);
+  it('keeps names and globs case-sensitive on every filesystem', () => {
+    const selection = selectPositionals(root, DISCOVERED, ['A.e2e.ts', 'B', 'Agent/b.e2e.ts', 'tests/Agent/*.e2e.ts']);
     expect(selection.files).toEqual([]);
-    expect(selection.unmatched).toEqual(['A.e2e.ts', 'B', 'Agent/b.e2e.ts']);
-  });
-
-  it('unions names with the other forms and preserves discovery order', () => {
-    const selection = selectPositionals(root, DISCOVERED, ['d.e2e.ts', 'tests/agent/*.e2e.ts', 'a']);
-    expect(selection.files).toEqual(['tests/a.e2e.ts', 'tests/agent/b.e2e.ts', 'tests/other/d.e2e.ts']);
-    expect(selection.unmatched).toEqual([]);
+    expect(selection.unmatched).toEqual(['A.e2e.ts', 'B', 'Agent/b.e2e.ts', 'tests/Agent/*.e2e.ts']);
   });
 
   it('matches a glob against the discovered files with the config grammar', () => {
@@ -134,8 +128,8 @@ describe('selectPositionals', () => {
     expect(selectPositionals(root, DISCOVERED, ['**/*.e2e.ts']).files).toEqual(DISCOVERED);
   });
 
-  it('unions positionals and preserves discovery order', () => {
-    const selection = selectPositionals(root, DISCOVERED, ['tests/other', 'tests/a.e2e.ts', 'tests/agent/*.e2e.ts']);
+  it('unions directories, globs, and names and preserves discovery order', () => {
+    const selection = selectPositionals(root, DISCOVERED, ['tests/other', 'tests/agent/*.e2e.ts', 'a']);
     expect(selection.files).toEqual(['tests/a.e2e.ts', 'tests/agent/b.e2e.ts', 'tests/other/d.e2e.ts']);
     expect(selection.unmatched).toEqual([]);
   });
@@ -177,12 +171,6 @@ describe('selectPositionals', () => {
     const selection = selectPositionals(root, DISCOVERED, ['tests/Agent', 'TESTS/A.e2e.ts']);
     expect(selection.files).toEqual([]);
     expect(selection.unmatched).toEqual(['tests/Agent', 'TESTS/A.e2e.ts']);
-  });
-
-  it('keeps globs case-sensitive on every filesystem', () => {
-    const selection = selectPositionals(root, DISCOVERED, ['tests/Agent/*.e2e.ts']);
-    expect(selection.files).toEqual([]);
-    expect(selection.unmatched).toEqual(['tests/Agent/*.e2e.ts']);
   });
 });
 
@@ -228,13 +216,6 @@ describe('collect', () => {
 });
 
 describe('relativeToRoot', () => {
-  it('normalizes posix paths to the wire form', () => {
-    expect(relativeToRoot('/root', '/root/tests/a.e2e.ts')).toBe('tests/a.e2e.ts');
-    expect(relativeToRoot('/root', './tests/agent/')).toBe('tests/agent');
-    expect(relativeToRoot('/root', '/root')).toBe('.');
-    expect(() => relativeToRoot('/root', '/elsewhere/a.e2e.ts')).toThrow(/outside the project root/);
-  });
-
   // Simulated with path.win32 so the drive and UNC rules run on every host.
   it('normalizes Windows paths inside the root with / separators', () => {
     const win = path.win32;

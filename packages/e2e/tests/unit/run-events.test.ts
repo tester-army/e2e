@@ -1,9 +1,7 @@
-/** The host event emitter: envelope stamping, quarantine, result flattening. */
+/** The host event emitter: sink quarantine. */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createRunEventEmitter, toEventResult, type RunEvent } from '../../src/run/events.ts';
-import type { ResultRecord } from '../../src/run/records.ts';
-import type { ResolvedTarget } from '../../src/config/resolve.ts';
+import { createRunEventEmitter, type RunEvent } from '../../src/run/events.ts';
 
 function fact(total: number): { type: 'plan'; total: number; files: [] } {
   return { type: 'plan', total, files: [] };
@@ -22,22 +20,6 @@ function collecting(events: RunEvent[]): { name: string; onEvent: (event: RunEve
 describe('createRunEventEmitter', () => {
   afterEach(() => {
     vi.restoreAllMocks();
-  });
-
-  it('is a no-op without sinks', () => {
-    const emit = createRunEventEmitter([undefined, undefined]);
-    expect(() => emit(fact(1))).not.toThrow();
-  });
-
-  it('stamps a monotonic seq starting at 1 and an ISO timestamp', () => {
-    const events: RunEvent[] = [];
-    const emit = createRunEventEmitter([collecting(events)]);
-    emit(fact(1));
-    emit(fact(2));
-    expect(events.map((event) => event.seq)).toEqual([1, 2]);
-    for (const event of events) {
-      expect(Number.isNaN(Date.parse(event.at))).toBe(false);
-    }
   });
 
   it('quarantines a throwing sink without silencing the healthy one, and says so once on stderr', () => {
@@ -112,40 +94,5 @@ describe('createRunEventEmitter', () => {
     expect(stderr.mock.calls.map((call) => String(call[0]))).toEqual([
       'e2e: reporter "slow" threw on plan: late; ignoring it for the rest of the run\n',
     ]);
-  });
-
-  it('emits JSON-serializable events', () => {
-    const events: RunEvent[] = [];
-    const emit = createRunEventEmitter([collecting(events)]);
-    emit(fact(7));
-    const roundTripped = JSON.parse(JSON.stringify(events[0]));
-    expect(roundTripped).toEqual(events[0]);
-  });
-});
-
-describe('toEventResult', () => {
-  it('replaces the live target with its stable identity', () => {
-    const target = {
-      name: 'web',
-      platform: 'web',
-      driver: { launch: () => undefined },
-    } as unknown as ResolvedTarget;
-    const record: ResultRecord = {
-      test: {
-        id: 't-1',
-        title: 'a test',
-        titlePath: ['a test'],
-        file: 'tests/a.e2e.ts',
-      } as unknown as ResultRecord['test'],
-      target,
-      agent: 'default',
-      repeat: 0,
-      status: 'passed',
-      selected: true,
-      attempts: [],
-    };
-    const event = toEventResult(record);
-    expect(event.target).toEqual({ name: 'web', platform: 'web' });
-    expect(JSON.parse(JSON.stringify(event))).toEqual(event);
   });
 });

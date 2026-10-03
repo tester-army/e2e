@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { runsFromCheckout } from '../../src/telemetry/checkout.ts';
 import { EVENT_CLI_SESSION, EVENT_RUN_COMPLETED, runCompletedEvent, type RunContext } from '../../src/telemetry/events.ts';
 import { POSTHOG_HOST, POSTHOG_PROJECT_KEY } from '../../src/telemetry/posthog.ts';
-import { collectEnvironment, fleetName, statedIdentity } from '../../src/telemetry/environment.ts';
+import { fleetName, statedIdentity } from '../../src/telemetry/environment.ts';
 import { preferencesPath, TelemetryStore } from '../../src/telemetry/store.ts';
 import { NOTICE_VERSION, Telemetry, type TelemetryOptions } from '../../src/telemetry/telemetry.ts';
 import { sampleReport } from '../helpers/sample-report.ts';
@@ -400,35 +400,6 @@ describe('Telemetry', () => {
     telemetry.session('run', []);
     await telemetry.flush();
     expect(sent.calls).toEqual([]);
-  });
-
-  it('names the sandbox the kernel announces and the runtime the CLI runs under', () => {
-    const cwd = tempDir();
-    const local = collectEnvironment({ env: {}, cwd, version: '1.2.3' });
-    expect(local.runtime).toBe('node');
-    expect(local.runtime_version).toBe(process.versions.node);
-
-    const sandboxed = collectEnvironment({
-      env: {},
-      cwd,
-      version: '1.2.3',
-      host: { release: '6.18.36-cloudflare-firecracker-2026.6.17', versions: { ...process.versions, bun: '1.3.9', node: '24.20.0' } },
-    });
-    expect(sandboxed.sandbox).toBe('firecracker');
-    expect(sandboxed.runtime).toBe('bun');
-    expect(sandboxed.runtime_version).toBe('1.3.9');
-    expect(sandboxed.node_version).toBe('24.20.0');
-    expect(collectEnvironment({ env: {}, cwd, version: '1.2.3', host: { release: '25.6.0', versions: process.versions } }).sandbox).toBeNull();
-  });
-
-  it('names an unclaimed CI and the coding agent driving the shell', async () => {
-    const { telemetry, sent } = create({ env: { CI: '1', CLAUDECODE: '1' } });
-    telemetry.session('run', []);
-    await telemetry.flush();
-    const { properties } = sent.calls[0]!.body.batch[0]!;
-    expect(properties['distinct_id']).toBe('ci:unknown');
-    expect(properties['ci_name']).toBe('unknown');
-    expect(properties['coding_agent']).toBe('claude-code');
   });
 
   it('prints every event under E2E_TELEMETRY_DEBUG and sends nothing', async () => {

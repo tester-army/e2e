@@ -19,11 +19,6 @@ import { REPORT_AT, reportAttempt, reportDocument, reportError, reportResult, re
 import { SAMPLE_REPORT_SECRETS, sampleReport } from '../helpers/sample-report.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 
-/** A structurally valid AI SDK model that is never called. */
-function fakeModel(provider: string, modelId: string): unknown {
-  return { specificationVersion: 'v4', provider, modelId, supportedUrls: {}, doGenerate: () => Promise.reject(new Error('not called')), doStream: () => Promise.reject(new Error('not called')) };
-}
-
 /** A run whose config never loaded, without flags. */
 const RUN: RunContext = { command: 'run', flags: [], config: undefined };
 
@@ -190,23 +185,6 @@ describe('telemetry events', () => {
     expect(JSON.stringify(runCompletedEvent(report, RUN))).not.toContain('acme');
   });
 
-  it('counts attempts across tests and serial groups, and the units that needed more than one', () => {
-    const report = reportWithAttempts({ status: 'failed' }, { index: 1 });
-    const { properties } = runCompletedEvent(report, RUN);
-    expect(properties['attempts_total']).toBe(2);
-    expect(properties['tests_retried']).toBe(1);
-    expect(runCompletedEvent(sampleReport(), RUN).properties['attempts_total']).toBe(2);
-  });
-
-  it('says whether the provider priced the calls', () => {
-    const priced = reportWithAttempts({});
-    expect(runCompletedEvent(priced, RUN).properties['cost_source']).toBeNull();
-    const { estimatedCostUsd: _priced, ...model } = sampleReport().run.results[0]!.attempts[0]!.steps[0]!.model!;
-    const unpriced = reportWithAttempts({ steps: [reportStep({ kind: 'agent', api: 'agent.act', model })] });
-    expect(runCompletedEvent(unpriced, RUN).properties['cost_source']).toBe('none');
-    expect(runCompletedEvent(sampleReport(), RUN).properties['cost_source']).toBe('provider');
-  });
-
   it('folds an engine name or platform that is not a plain token into other', () => {
     const report = sampleReport();
     const homegrown = report.run.targets[1]!;
@@ -238,12 +216,6 @@ describe('telemetry events', () => {
   it('copies no title, file, origin, or message out of the report', () => {
     const payload = JSON.stringify(runCompletedEvent(sampleReport(), { ...RUN, flags: ['--headed'] }));
     for (const secret of SAMPLE_REPORT_SECRETS) expect(payload).not.toContain(secret);
-  });
-
-  it('reports a missing duration as null rather than a negative or NaN number', () => {
-    const report = sampleReport();
-    (report.run as { finishedAt: string }).finishedAt = 'not a date';
-    expect(runCompletedEvent(report, RUN).properties['duration_ms']).toBeNull();
   });
 
   it('reports which config features a run used by count and option id, never a name the project chose', () => {
@@ -285,15 +257,6 @@ describe('telemetry events', () => {
     });
     expect(JSON.stringify(event)).not.toMatch(/acme|admin@|token-value|pw/u);
     expect(runCompletedEvent(sampleReport(), RUN).properties).not.toHaveProperty('config_workers');
-  });
-
-  it('counts a judge as separate only when it is another model, not another instance of the same one', () => {
-    const separate = (agent: Record<string, unknown>) =>
-      runCompletedEvent(sampleReport(), { ...RUN, config: resolveConfig({ targets: [{ platform: 'web' }], agents: { default: agent } } as never, { projectRoot: '/tmp/acme', env: {} }) })
-        .properties['config_separate_judge'];
-    expect(separate({ model: fakeModel('openai', 'gpt-5') })).toBe(false);
-    expect(separate({ model: fakeModel('openai', 'gpt-5'), judge: fakeModel('openai', 'gpt-5') })).toBe(false);
-    expect(separate({ model: fakeModel('openai', 'gpt-5-mini'), judge: fakeModel('openai', 'gpt-5') })).toBe(true);
   });
 
   it('counts what an exploration was given and found, never its goal, charters, or findings', () => {

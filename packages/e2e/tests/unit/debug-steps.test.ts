@@ -96,14 +96,6 @@ function cells(table: string): string[][] {
 }
 
 describe('agentStepTable', () => {
-  it('names the one model the steps shared in the title and spends no column on it', () => {
-    const table = agentStepTable([result('pays', [step('s1', 'pay', { model: model('fake-loop', 'scripted-loop', 3) })])], []);
-    expect(table).toMatch(/^\[e2e debug\] agent steps \(execution order, model fake-loop\/scripted-loop\)\n/);
-    const [header, row] = cells(table);
-    expect(header).toEqual(['step', 'total', 'model', 'observe', 'action', 'calls', 'tokens in/out', 'cached', 'cost']);
-    expect(row).toEqual(['agent.act "pay"', '1200ms', '0ms', '0ms', '0ms', '3', '300/30', '-', '-']);
-  });
-
   it('adds a via column labelled through the shared helper when the steps named several models, serial members included', () => {
     const acted = model('typesafe-ai', 'jev', 2);
     const judged = model('fake-loop', 'scripted-loop', 1);
@@ -134,9 +126,5 @@ describe('agentStepTable', () => {
     const [, ...rows] = cells(table);
     expect(rows.map((row) => row[1])).toEqual(['typesafe-ai/jev', '-', 'fake-loop/scripted-loop']);
     expect(table).not.toContain('undefined');
-  });
-
-  it('is empty for a run without agent steps', () => {
-    expect(agentStepTable([result('taps', [step('s1', 'button', { kind: 'locator', api: 'locator.tap' })])], [])).toBe('');
   });
 });

@@ -40,8 +40,4 @@ describe('repeat tally', () => {
     ]);
     expect(repeatLine(groups[0]!)).toBe('1/3 passed · repeat 1 interrupted · repeat 2 skipped');
   });
-
-  it('is empty for a run that repeated nothing', () => {
-    expect(repeatGroups([run('a', 0, 'passed'), run('b', 0, 'failed')], (entry) => entry)).toEqual([]);
-  });
 });

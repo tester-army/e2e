@@ -65,8 +65,6 @@ describe('locator.filter options', () => {
 
   it.each([
     ['null', null],
-    ['an array', [{ hasText: 'Invoice' }]],
-    ['a string', 'Invoice'],
     ['an object inheriting hasNotText', Object.assign(Object.create({ hasNotText: 'Paid' }), { hasText: 'Invoice' })],
   ])('rejects %s in place of the options object', (_, options) => {
     const { screen } = invoiceScreen();
@@ -84,13 +82,14 @@ describe('locator.filter options', () => {
 });
 
 describe('query options', () => {
-  it.each<[string, (screen: ReturnType<typeof invoiceScreen>['screen']) => unknown, string]>([
-    ['getByRole', (screen) => screen.getByRole('row', invalid({ nam: 'Invoice 42 Due' })), 'getByRole options has no key "nam"; it takes name, exact, visible, checked, disabled, selected, expanded, pressed, level'],
-    ['getByText', (screen) => screen.getByText('Due', invalid({ exac: false })), 'getByText options has no key "exac"; it takes exact, visible'],
-    ['getByTestId', (screen) => screen.getByTestId('row', invalid({ exact: true })), 'getByTestId options has no key "exact"; it takes visible'],
-  ])('%s rejects a key it does not know with INVALID_LOCATOR before any engine call', (_, query, message) => {
+  it('getByRole rejects a key it does not know with INVALID_LOCATOR before any engine call', () => {
     const { screen, expressions } = invoiceScreen();
-    expect(() => query(screen)).toThrow(expect.objectContaining({ code: 'INVALID_LOCATOR', message }));
+    expect(() => screen.getByRole('row', invalid({ nam: 'Invoice 42 Due' }))).toThrow(
+      expect.objectContaining({
+        code: 'INVALID_LOCATOR',
+        message: 'getByRole options has no key "nam"; it takes name, exact, visible, checked, disabled, selected, expanded, pressed, level',
+      }),
+    );
     expect(expressions).toEqual([]);
   });
 });

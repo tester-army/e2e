@@ -152,15 +152,41 @@ describe('defineEngine', () => {
     ).toThrow(/state.restore must be a function/);
   });
 
-  it('binds validateApp', () => {
-    let bound = false;
+  it('binds validateApp, prepare, finish, and fixture factories to the spec', async () => {
+    const bound: string[] = [];
     const spec: Engine = observingEngine({
       validateApp(this: unknown) {
-        bound = this === spec;
+        if (this === spec) bound.push('validateApp');
       },
+      async prepare(this: unknown) {
+        if (this === spec) bound.push('prepare');
+      },
+      async finish(this: unknown) {
+        if (this === spec) bound.push('finish');
+      },
+      fixtures: {
+        hello(this: unknown) {
+          if (this === spec) bound.push('fixture');
+        },
+      } as never,
     });
-    defineEngine(spec).validateApp!({}, { targetName: 'toy' });
-    expect(bound).toBe(true);
+    const handle = defineEngine(spec);
+    handle.validateApp!({}, { targetName: 'toy' });
+    await handle.prepare!({
+      runId: 'run',
+      targetName: 'toy',
+      projectRoot: '/project',
+      app: {},
+      slots: 1,
+      env: {},
+      signal: new AbortController().signal,
+      headed: false,
+      log: () => {},
+    });
+    await handle.finish!({ runId: 'run', targetName: 'toy', env: {}, signal: new AbortController().signal, timeoutMs: 1000, log: () => {} });
+    (handle.fixtures!['hello'] as () => unknown)();
+    expect(bound).toEqual(['validateApp', 'prepare', 'finish', 'fixture']);
+    expect(Object.isFrozen(handle.fixtures)).toBe(true);
     expect(() => defineEngine(observingEngine({ validateApp: true } as never))).toThrow('validateApp must be a function');
   });
 
@@ -183,40 +209,6 @@ describe('defineEngine', () => {
     expect(() => defineEngine({ ...observingEngine(), spiVersion: 2 as never })).toThrow(
       /spiVersion 2/,
     );
-  });
-
-  it('binds finish like every other lifecycle hook', async () => {
-    let boundToSpec = false;
-    const spec: Engine = observingEngine({
-      async finish(this: unknown) {
-        boundToSpec = this === spec;
-      },
-    });
-    const handle = defineEngine(spec);
-    await handle.finish?.({ runId: 'run', targetName: 'toy', env: {}, signal: new AbortController().signal, timeoutMs: 1000, log: () => {} });
-    expect(boundToSpec).toBe(true);
-  });
-
-  it('binds prepare like every other lifecycle hook', async () => {
-    let boundToSpec = false;
-    const spec: Engine = observingEngine({
-      async prepare(this: unknown) {
-        boundToSpec = this === spec;
-      },
-    });
-    const handle = defineEngine(spec);
-    await handle.prepare?.({
-      runId: 'run',
-      targetName: 'toy',
-      projectRoot: '/project',
-      app: {},
-      slots: 1,
-      env: {},
-      signal: new AbortController().signal,
-      headed: false,
-      log: () => {},
-    });
-    expect(boundToSpec).toBe(true);
   });
 
   it('accepts a class instance: prototype methods are found and bound to the body', async () => {

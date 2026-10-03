@@ -2,7 +2,13 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { addDevDependencyCommand, detectPackageManager, execCommand, runScriptCommand } from '../../src/internal/package-manager.ts';
+import {
+  addDevDependencyCommand,
+  detectPackageManager,
+  execCommand,
+  runScriptCommand,
+  type PackageManager,
+} from '../../src/internal/package-manager.ts';
 
 let dir: string;
 
@@ -27,29 +33,17 @@ describe('detectPackageManager', () => {
   });
 });
 
-describe('runScriptCommand', () => {
-  it('spells the script run for each manager', () => {
-    expect(runScriptCommand('npm', 'test:e2e')).toBe('npm run test:e2e');
-    expect(runScriptCommand('pnpm', 'test:e2e')).toBe('pnpm test:e2e');
-    expect(runScriptCommand('yarn', 'test:e2e')).toBe('yarn test:e2e');
-    expect(runScriptCommand('bun', 'test:e2e')).toBe('bun run test:e2e');
-  });
-});
-
-describe('execCommand', () => {
-  it('runs the installed binary with each manager', () => {
-    expect(execCommand('npm', 'e2e guide')).toBe('npm exec -- e2e guide');
-    expect(execCommand('pnpm', 'e2e guide')).toBe('pnpm exec e2e guide');
-    expect(execCommand('yarn', 'e2e guide')).toBe('yarn e2e guide');
-    expect(execCommand('bun', 'e2e guide')).toBe('bun run e2e guide');
-  });
-});
-
-describe('addDevDependencyCommand', () => {
-  it('spells the add command for each manager', () => {
-    expect(addDevDependencyCommand('npm', 'ai')).toBe('npm install --save-dev ai');
-    expect(addDevDependencyCommand('pnpm', 'ai')).toBe('pnpm add -D ai');
-    expect(addDevDependencyCommand('yarn', 'ai')).toBe('yarn add -D ai');
-    expect(addDevDependencyCommand('bun', 'ai')).toBe('bun add -d ai');
+describe('manager commands', () => {
+  it('spells the script run, the binary exec, and the dev dependency add for each manager', () => {
+    expect((['npm', 'pnpm', 'yarn', 'bun'] as const satisfies readonly PackageManager[]).map((manager) => [
+      runScriptCommand(manager, 'test:e2e'),
+      execCommand(manager, 'e2e guide'),
+      addDevDependencyCommand(manager, 'ai'),
+    ])).toEqual([
+      ['npm run test:e2e', 'npm exec -- e2e guide', 'npm install --save-dev ai'],
+      ['pnpm test:e2e', 'pnpm exec e2e guide', 'pnpm add -D ai'],
+      ['yarn test:e2e', 'yarn e2e guide', 'yarn add -D ai'],
+      ['bun run test:e2e', 'bun run e2e guide', 'bun add -d ai'],
+    ]);
   });
 });

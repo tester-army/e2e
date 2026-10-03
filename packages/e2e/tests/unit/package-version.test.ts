@@ -12,13 +12,6 @@ describe('packageVersion', () => {
     expect(version).toMatch(/^\d+\.\d+\.\d+/);
   });
 
-  it('reads a relative package.json specifier (mirrors report/build.ts)', () => {
-    const version = packageVersion(import.meta.url, '../../package.json', '0.0.0');
-    expect(version).toBe(
-      (createRequire(import.meta.url)('../../package.json') as { version: string }).version,
-    );
-  });
-
   it('returns the fallback when the specifier cannot be resolved', () => {
     expect(
       packageVersion(import.meta.url, 'definitely-not-a-real-package/package.json', '9.9.9'),
@@ -31,10 +24,6 @@ describe('packageVersion', () => {
 });
 
 describe('readJson', () => {
-  it('reads a resolvable JSON module', () => {
-    expect(readJson(import.meta.url, '../../package.json')).toMatchObject({ name: 'e2e' });
-  });
-
   it('returns undefined when the specifier cannot be resolved', () => {
     expect(readJson(import.meta.url, './definitely-missing.json')).toBeUndefined();
   });

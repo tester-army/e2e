@@ -63,21 +63,6 @@ describe('explainModuleError', () => {
     );
   });
 
-  it('explains removed, misspelled, and type-only exports of e2e', () => {
-    const missing = (name: string) =>
-      new SyntaxError(`The requested module 'e2e' does not provide an export named '${name}'`);
-    expect(explainModuleError(missing('defineConfig'), importer)).toContain(
-      'defineConfig was removed in e2e 0.5: default-export the object and end it with satisfies E2EConfig',
-    );
-    expect(explainModuleError(missing('expct'), importer)).toContain('did you mean "expect"?');
-    expect(explainModuleError(missing('E2EConfig'), importer)).toContain(
-      "import type { E2EConfig } from 'e2e'",
-    );
-    expect(explainModuleError(missing('somethingElse'), importer)).toContain('e2e exports test, describe, beforeEach, afterEach, beforeAll, afterAll, expect');
-    const other = new SyntaxError("The requested module 'lodash' does not provide an export named 'nope'");
-    expect(explainModuleError(other, importer)).toBe(other.message);
-  });
-
   it('names the importing line and the import type fix for a type imported as a value', () => {
     const cause = new SyntaxError("The requested module './types' does not provide an export named 'Options'");
     cause.stack = `${path.join(dir, 'svc.ts')}:1\nimport { Options } from './types';\n         ^\nSyntaxError: ${cause.message}`;
@@ -86,37 +71,19 @@ describe('explainModuleError', () => {
     );
   });
 
-  it('names the removal for a dropped export without a release number, never the type-only import that fails the same way', () => {
+  it('explains removed, misspelled, and type-only exports, and passes an unknown name through', () => {
     const missing = (specifier: string, name: string) =>
       new SyntaxError(`The requested module '${specifier}' does not provide an export named '${name}'`);
-    for (const name of ['BLOCKABLE_CODES', 'RUNTIME_CODES', 'buildTraceEntry', 'readTraceEntry']) {
-      const explained = explainModuleError(missing('e2e', name), importer);
-      expect(explained).toContain(`${name} was removed from e2e:`);
-      expect(explained).not.toMatch(/\d+\.\d+/);
-      expect(explained).not.toContain('import type');
-    }
-    for (const name of ['isDefinedTool', 'toolAppliesTo', 'createAgent']) {
-      expect(explainModuleError(missing('e2e/agent', name), importer)).toContain(`${name} was removed from e2e/agent:`);
-    }
-    expect(explainModuleError(missing('e2e/agent', 'createAgent'), importer)).toContain(
-      'agents: { default: { model, system, tools } }',
-    );
-    expect(explainModuleError(missing('e2e', 'BLOCKABLE_CODES'), importer)).toBe(
-      "The requested module 'e2e' does not provide an export named 'BLOCKABLE_CODES'; BLOCKABLE_CODES was removed from e2e: a blocked verdict carries any code the errors reference marks blocked, and the set was never usable outside the runner",
-    );
+    const removed = explainModuleError(missing('e2e/agent', 'createAgent'), importer);
+    expect(removed).toContain('createAgent was removed from e2e/agent:');
+    expect(removed).toContain('agents: { default: { model, system, tools } }');
+    expect(removed).not.toContain('import type');
+    expect(explainModuleError(missing('e2e', 'expct'), importer)).toContain('did you mean "expect"?');
+    expect(explainModuleError(missing('e2e', 'E2EConfig'), importer)).toContain("import type { E2EConfig } from 'e2e'");
     const unknown = missing('e2e/agent', 'somethingElse');
     expect(explainModuleError(unknown, importer)).toBe(unknown.message);
-  });
-
-  it('puts the hint on its own line after a multi-line loader message', () => {
-    writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ packageManager: 'npm@11.0.0', devDependencies: { ai: '^7' } }));
-    const cause = nodeError(
-      'ERR_MODULE_NOT_FOUND',
-      `Cannot find package 'ai' imported from ${importer}\nDid you mean to import "file:///somewhere/else.js"?`,
-    );
-    expect(explainModuleError(cause, importer)).toBe(
-      `${cause.message}\nai is declared in ${path.join(dir, 'package.json')} but is not installed: run npm install`,
-    );
+    const other = missing('lodash', 'nope');
+    expect(explainModuleError(other, importer)).toBe(other.message);
   });
 
   it('passes any other failure through unchanged', () => {

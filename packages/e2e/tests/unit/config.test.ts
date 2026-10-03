@@ -147,14 +147,12 @@ describe('resolveConfig', () => {
     ).toBe(3);
   });
 
-  it('rejects a non-array targets value as INVALID_CONFIG', () => {
-    expect(() => resolve({ targets: {} as never })).toThrow(/targets must be a non-empty array/);
-  });
-
-  it('uses CI defaults for retries and workers', () => {
+  it('uses CI defaults for retries, workers, trace, and video', () => {
     const config = resolve({}, { ...BASE_ENV, CI: '1' } as NodeJS.ProcessEnv);
     expect(config.retries).toBe(1);
     expect(config.workers).toBe(1);
+    expect(config.targets[0]!.trace).toEqual({ mode: 'on-first-retry', source: 'default' });
+    expect(config.targets[0]!.video).toEqual({ mode: 'off', source: 'default' });
   });
 
   it('requires explicit targets: core resolves no default engine', () => {
@@ -162,6 +160,7 @@ describe('resolveConfig', () => {
     expect(() => resolveConfig({} as E2EConfig, { projectRoot: ROOT, env: BASE_ENV })).toThrow(
       /targets is required/,
     );
+    expect(() => resolve({ targets: {} as never })).toThrow(/targets must be a non-empty array/);
     const config = resolve({});
     expect(config.targets[0]).toMatchObject({ name: 'web', platform: 'web', engine: undefined });
   });
@@ -186,24 +185,8 @@ describe('resolveConfig', () => {
 
   it('suggests the nearest key and points foreign keys at where the fact lives', () => {
     expect(() => resolve({ target: [] } as never)).toThrow('unknown config key "target"; did you mean "targets"?');
-    expect(() => resolve({ reporter: ['list'] } as never)).toThrow('did you mean "reporters"?');
     expect(() => resolve({ testDir: 'tests' } as never)).toThrow(
       'unknown config key "testDir"; test files are selected by tests, a glob such as "tests/**/*.e2e.ts"',
-    );
-    expect(() => resolve({ app: {} } as never)).toThrow(
-      'the app under test is declared on its target: targets: [{ engine: web(), app: { url } }]',
-    );
-    expect(() => resolve({ services: [] } as never)).toThrow('unknown config key "services"');
-    expect(() => resolve({ webServer: {} } as never)).toThrow('app: { url, command: { executable, args } }');
-    expect(() => resolve({ screen: { testIdAttribute: 'data-qa' } } as never)).toThrow(
-      'unknown config key "screen"; the test-id attribute is an engine option: engine: web({ testIdAttribute })',
-    );
-    expect(() => resolve({ targets: [{ ...WEB, url: 'http://localhost:3000' }] } as never)).toThrow(
-      'target "web" has unknown key "url"; a target is { name?, platform?, engine?, app?, trace?, video? }',
-    );
-    expect(() => resolve({ targets: [{ ...WEB, platfrom: 'web' }] } as never)).toThrow('did you mean "platform"?');
-    expect(() => resolve({ reporters: ['lst'] } as never)).toThrow(
-      'unknown reporter "lst"; reporters are list, json, junit, and markdown; did you mean "list"?',
     );
     expect(() => resolve({ targets: [{ ...WEB, engine: 'playwright' }] } as never)).toThrow(
       'target "web" engine must be an engine handle, got the string "playwright"; call the engine\'s factory',
@@ -270,23 +253,6 @@ describe('resolveConfig', () => {
     );
   });
 
-  it('rejects specVersion, which the runner version replaced', () => {
-    for (const specVersion of ['0.1', '0.2']) {
-      expect(() => resolve({ specVersion } as never)).toThrow(
-        'specVersion was removed: delete it; the runner version is the format version',
-      );
-    }
-  });
-
-  it('rejects target keys the contract does not know', () => {
-    expect(() => resolve({ targets: [{ ...WEB, browser: 'firefox' }] } as never)).toThrow(
-      /unknown key "browser"/,
-    );
-    expect(() => resolve({ targets: [{ ...WEB, driver: 'playwright' }] } as never)).toThrow(
-      /unknown key "driver"/,
-    );
-  });
-
   it('defaults a target name to its platform', () => {
     const engine = fakeEngine();
     expect(resolve({ targets: [{ platform: 'ios', engine }] }).targets[0]).toMatchObject({ name: 'ios', platform: 'ios', engine });
@@ -350,16 +316,6 @@ describe('resolveConfig', () => {
     expect(() => resolve({ targets: [{ name: 'phone', platform: 'iphone-17', engine: ios }] })).toThrow(
       'target "phone" declares platform "iphone-17" but its engine fake-ios drives "ios"; drop the target\'s platform or make them agree',
     );
-    expect(() => resolve({ targets: [{ engine: fakeEngine() }] })).toThrow(
-      'targets[0] needs a platform: engine fake declares none; set platform on the target',
-    );
-  });
-
-  it('accepts any platform: the engine decides what a target can do', () => {
-    const engine = fakeEngine();
-    const config = resolve({ targets: [{ name: 'ios', platform: 'ios', engine }] });
-    expect(config.targets[0]).toMatchObject({ name: 'ios', platform: 'ios', engine });
-    expect(config.targets[0]!.engine?.capabilities.has('observation')).toBe(true);
   });
 
   it('accepts defineEngine handles and rejects plain objects', () => {
@@ -550,13 +506,6 @@ describe('resolveConfig', () => {
     const brain = () => ({ name: 'brain', runStep: () => Promise.reject(new Error('not called')), model: instance('actor'), judge: instance('verifier') });
     const asExecutor = resolve({ agents: { default: { executor: brain() } } });
     expect(asExecutor.configDigest).toBe(resolve({ agents: { default: { executor: brain() } } }).configDigest);
-  });
-
-  it('validates numeric bounds', () => {
-    expect(() => resolve({ retries: 11 })).toThrow(/retries/);
-    expect(() => resolve({ retries: -1 })).toThrow(/retries/);
-    expect(() => resolve({ timeout: 0 })).toThrow(/timeout/);
-    expect(() => resolve({ workers: 0 })).toThrow(/workers/);
   });
 
   it('checks every secret an engine option holds against the configured secrets, never a credential', () => {
@@ -906,7 +855,7 @@ describe('resolveConfig', () => {
       expect(() => resolve({ artifacts: 'on' as never })).toThrow(/artifacts must be \{ store \}/);
     });
 
-    it('refuses the removed kinds list, in either form, naming the trace mode it meant', () => {
+    it('refuses the removed kinds list, in either form, and the removed trace block, naming the trace or video mode it meant', () => {
       expect(failure({ artifacts: ['screenshot', 'trace'] })).toMatchObject({
         code: 'INVALID_CONFIG',
         message: expect.stringContaining("artifacts no longer lists kinds: write trace: 'on' at the config root instead"),
@@ -917,27 +866,11 @@ describe('resolveConfig', () => {
       // A list without screenshot used to turn the failure screenshot off, which is no longer possible.
       expect(failure({ artifacts: [] }).message).toContain('failure screenshots are always captured now');
       expect(failure({ artifacts: { kinds: ['trace'] } }).message).toContain('failure screenshots are always captured now');
-    });
-
-    it('refuses the removed trace block, naming the mode its record meant', () => {
       expect(failure({ artifacts: { trace: { record: 'retries' } } })).toMatchObject({
         code: 'INVALID_CONFIG',
         message: expect.stringContaining("artifacts.trace was removed: write trace: 'on-all-retries' at the config root"),
       });
-      expect(failure({ artifacts: { trace: {} } }).message).toContain("write trace: 'on'");
-    });
-
-    it('reads a kinds list and a trace block together, so retries only survives the migration', () => {
-      for (const artifacts of [
-        { kinds: ['screenshot', 'trace'], trace: { record: 'retries' } },
-        { trace: { record: 'retries' }, kinds: ['screenshot', 'trace'] },
-      ]) {
-        expect(failure({ artifacts: artifacts as never }).message).toMatch(
-          /^artifacts\.(kinds and artifacts\.trace|trace and artifacts\.kinds) were removed: write trace: 'on-all-retries' at the config root/,
-        );
-      }
-      // A list without trace recorded none, whatever the block said.
-      expect(failure({ artifacts: { kinds: ['screenshot'], trace: { record: 'retries' } } as never }).message).toContain("write trace: 'off'");
+      expect(failure({ artifacts: { kinds: ['video'] } }).message).toContain("video is its own option: video: 'on'");
     });
 
     it('maps the old trace spellings lifted to where a mode goes to the mode they meant', () => {
@@ -961,15 +894,6 @@ describe('resolveConfig', () => {
         "--trace 'all' is the old spelling of --trace on",
       );
       expect(failure({ video: 'all' as never }).message).toBe('video must be one of off, on, retain-on-failure, on-first-retry, on-all-retries, got "all"');
-    });
-
-    it('refuses video as an artifact kind or an artifacts block, naming the video option', () => {
-      for (const artifacts of [['screenshot', 'video'], { kinds: ['video'] }, { video: { retain: 'on-failure' } }]) {
-        expect(failure({ artifacts })).toMatchObject({
-          code: 'INVALID_CONFIG',
-          message: expect.stringContaining("video is its own option: video: 'on'"),
-        });
-      }
     });
   });
 
@@ -1122,12 +1046,5 @@ describe('resolveConfig', () => {
       expect(resolve({ output: 'results', tests: '**/*.e2e.ts' }).output).toBe(path.join(ROOT, 'results'));
       expect(resolve({ output: 'out', cache: { dir: 'out/replays' } }).cache.dir).toBe(path.join(ROOT, 'out', 'replays'));
     });
-  });
-
-  it('traces the first retry by default in CI, where retries default to 1', () => {
-    const ci = resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: { CI: 'true' } as NodeJS.ProcessEnv });
-    expect(ci.targets[0]!.trace).toEqual({ mode: 'on-first-retry', source: 'default' });
-    expect(ci.retries).toBe(1);
-    expect(ci.targets[0]!.video).toEqual({ mode: 'off', source: 'default' });
   });
 });

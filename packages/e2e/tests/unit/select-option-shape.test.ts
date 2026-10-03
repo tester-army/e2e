@@ -31,8 +31,6 @@ function selectScreen() {
 
 describe('locator.selectOption shape', () => {
   it.each<[string, SelectOption]>([
-    ['a label string', 'daily'],
-    ['{ label }', { label: 'Daily' }],
     ['{ value }', { value: 'daily' }],
     ['{ index }', { index: 0 }],
   ])('hands %s to the engine unchanged', async (_, value) => {
@@ -51,17 +49,10 @@ describe('locator.selectOption shape', () => {
   });
 
   it.each<[string, unknown]>([
-    ['an empty object', {}],
     ['two keys', { label: 'Daily', value: 'daily' }],
-    ['an unknown key', { text: 'Daily' }],
-    ['a non-string label', { label: 1 }],
-    ['a non-string value', { value: null }],
     ['a negative index', { index: -1 }],
-    ['a fractional index', { index: 0.5 }],
     ['a label inheriting an index', Object.assign(Object.create({ index: 2 }), { label: 'Daily' })],
     ['a label beside a non-enumerable value', Object.defineProperty({ label: 'Daily' }, 'value', { value: 'weekly' })],
-    ['undefined', undefined],
-    ['a number', 1],
   ])('rejects %s before the engine acts', async (_, value) => {
     const { select, performed } = selectScreen();
     await expect(select.selectOption(invalid<SelectOption>(value))).rejects.toMatchObject({

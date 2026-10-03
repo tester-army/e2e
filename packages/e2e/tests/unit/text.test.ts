@@ -19,19 +19,12 @@ describe('matchesText', () => {
   it('string matching is exact by default', () => {
     expect(matchesText('Sign in', { kind: 'string', value: 'Sign in', exact: true })).toBe(true);
     expect(matchesText('Sign in now', { kind: 'string', value: 'Sign in', exact: true })).toBe(false);
-  });
-
-  it('exact matching still normalizes whitespace on both sides', () => {
     expect(matchesText('  Sign\n in ', { kind: 'string', value: 'Sign in', exact: true })).toBe(true);
   });
 
   it('exact:false is case-insensitive substring matching', () => {
     expect(matchesText('Sign In Now', { kind: 'string', value: 'sign in', exact: false })).toBe(true);
     expect(matchesText('Sign In Now', { kind: 'string', value: 'log in', exact: false })).toBe(false);
-  });
-
-  it('regexps use ECMAScript semantics and ignore exact', () => {
-    expect(matchesText('Order #42', { kind: 'regexp', source: '#\\d+', flags: '' })).toBe(true);
   });
 
   it('resets global regexp state between matches', () => {

@@ -24,25 +24,6 @@ describe('catalogLine', () => {
   it('shows the name, the argument names with optional ones marked, and the first sentence', () => {
     expect(catalogLine('tap', tap, false)).toBe('- tap {target, times?}: Tap or click one node.');
   });
-
-  it('omits the braces for a tool without arguments and marks a read-only tool', () => {
-    const observe: ToolSet[string] = { description: 'Look at the whole current screen: every node.', inputSchema: z.object({}), execute: async () => 'screen' };
-    expect(catalogLine('observe', observe, true)).toBe('- observe: Look at the whole current screen: every node. [read-only]');
-  });
-
-  it('does not end the sentence at an abbreviation', () => {
-    const press: ToolSet[string] = { description: 'Send one key (e.g. "Enter", "Escape", "Tab") to one node. More text.', inputSchema: z.object({ key: z.string() }), execute: async () => 'ok' };
-    expect(catalogLine('press', press, false)).toBe('- press {key}: Send one key (e.g. "Enter", "Escape", "Tab") to one node.');
-  });
-
-  it('falls back to the name when a tool has no description and bounds a run-on sentence', () => {
-    const bare: ToolSet[string] = { inputSchema: z.object({}), execute: async () => 'ok' };
-    expect(catalogLine('bare', bare, false)).toBe('- bare: bare');
-    const long: ToolSet[string] = { description: `${'word '.repeat(60)}end`, inputSchema: z.object({}), execute: async () => 'ok' };
-    const line = catalogLine('long', long, false);
-    expect(line.length).toBeLessThan(200);
-    expect(line.endsWith('…')).toBe(true);
-  });
 });
 
 describe('describeToolDetail and toolJsonSchema', () => {

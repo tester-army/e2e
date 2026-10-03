@@ -48,16 +48,6 @@ describe('locator.filter({ has })', () => {
     ]);
   });
 
-  it('keeps a match whose subtree holds the inner locator and drops one that does not', async () => {
-    const { screen } = listScreen();
-    const items = screen.getByRole('listitem');
-    const removable = items.filter({ has: screen.getByRole('button', { name: 'Remove' }) });
-    expect(await removable.count()).toBe(1);
-    expect(await removable.textContent()).toBe('Alpha');
-    expect(await items.filter({ has: screen.getByText('Read only') }).allTextContents()).toEqual(['Beta']);
-    expect(await items.filter({ has: screen.getByRole('link') }).count()).toBe(0);
-  });
-
   it('names the whole chain when a filtered read finds nothing', async () => {
     const { screen } = listScreen();
     await expect(

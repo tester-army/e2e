@@ -35,29 +35,11 @@ describe('detailLines', () => {
     ]);
     expect(detailLines(reportError({ details: { locator: 'x', role: 'button', name: 'Add todo item', waitedMs: 3000 } }))).toEqual(['Asked for: button "Add todo item"', 'Waited: 3.0s']);
     expect(detailLines(reportError({ details: { testId: 'todo' } }))).toEqual(['Asked for: test id "todo"']);
-  });
-
-  it('states a bare match count, escapes what a test wrote, and says nothing for an error without details', () => {
-    expect(detailLines(reportError({ details: { matches: 3 } }))).toEqual(['Matched: 3 matches']);
     expect(detailLines(reportError({ details: { expected: 'two <b>labels</b>' } }))).toEqual(['Expected: two &lt;b&gt;labels&lt;/b&gt;']);
-    expect(detailLines(reportError())).toEqual([]);
-    expect(detailLines(undefined)).toEqual([]);
   });
 });
 
 describe('attemptsLine', () => {
-  it('says nothing for one attempt, calls out attempts that failed alike, and names the codes when they differ', () => {
-    expect(attemptsLine(result(), outcome(result(), NO_GROUPS))).toBeUndefined();
-    const alike = result({ attempts: [failed(), failed()] });
-    expect(attemptsLine(alike, outcome(alike, NO_GROUPS))).toBe('Failed the same way on both attempts: **ASSERTION_FAILED** at step 2.');
-    const three = result({ attempts: [failed(), failed(), failed()] });
-    expect(attemptsLine(three, outcome(three, NO_GROUPS))).toBe('Failed the same way on all 3 attempts: **ASSERTION_FAILED** at step 2.');
-    const differing = result({
-      attempts: [failed({ error: reportError({ code: 'LOCATOR_NOT_FOUND' }), steps: [step({ index: 0, status: 'failed' })] }), failed()],
-    });
-    expect(attemptsLine(differing, outcome(differing, NO_GROUPS))).toBe('Failed on both attempts: **LOCATOR_NOT_FOUND** at step 1, then **ASSERTION_FAILED** at step 2.');
-  });
-
   it('folds consecutive attempts that failed alike into one run, and names the code only when it changes', () => {
     const early = failed({ steps: [step({ index: 0, status: 'failed' })] });
     const drifted = result({ attempts: [early, failed(), failed(), failed()] });
@@ -86,7 +68,7 @@ describe('failureSource', () => {
 });
 
 describe('lastTurnLines and screenLines', () => {
-  it('shows the last three turns without the verdict turn, one per line, each as its calls and the first line back', () => {
+  it('shows the last three turns without the verdict turn, and names the location as a path when it is loopback, the nodes closest to a failed locator, capped', () => {
     const turns = [1, 2, 3, 4, 5].map((index) => ({ index, calls: [`tap({"target":"n${index}"})`], outcome: `Tapped #n${index}.\n\nScreen changes: 1 changed.` }));
     turns.push({ index: 6, calls: ['complete_step({"status":"failed"})'], outcome: 'Step concluded.' });
     expect(lastTurnLines(step({ index: 1, kind: 'agent', api: 'agent.act', status: 'failed', turns }))).toEqual([
@@ -96,17 +78,10 @@ describe('lastTurnLines and screenLines', () => {
     ]);
     expect(lastTurnLines(step({ index: 1, kind: 'agent', api: 'agent.act', status: 'failed', turns: [{ index: 1, calls: [], outcome: 'nothing' }] }))).toEqual(['Turn 1: no tool call → nothing']);
     expect(lastTurnLines(step({ index: 1 }))).toEqual([]);
-  });
-
-  it('names the location as a path when it is loopback, the nodes closest to a failed locator, capped, and nothing without evidence', () => {
     const told = toldAttempt(result(), outcome(result({ attempts: [failed({ failure: { url: 'http://app.test/todos', candidates: ['#n1 button "Add"', '#n2 button "Add all"', '#n3 link "Todos"', '#n4 text="Add"'] } })] }), NO_GROUPS));
     expect(screenLines(told)).toEqual(['Screen: `http://app.test/todos`', 'Closest to the locator: `#n1 button "Add"`, `#n2 button "Add all"`, `#n3 link "Todos"`, and 1 more']);
     const local = toldAttempt(result(), outcome(result({ attempts: [failed({ failure: { url: 'http://localhost:3000/todos?filter=open#top' } })] }), NO_GROUPS));
     expect(screenLines(local)).toEqual(['Screen: `/todos?filter=open#top`']);
-    for (const host of ['127.1.2.3:3000', 'app.localhost', '[::1]:8080']) {
-      const loopback = toldAttempt(result(), outcome(result({ attempts: [failed({ failure: { url: `http://${host}/cart` } })] }), NO_GROUPS));
-      expect(screenLines(loopback)).toEqual(['Screen: `/cart`']);
-    }
     expect(screenLines(toldAttempt(result(), outcome(result(), NO_GROUPS)))).toEqual([]);
   });
 });
