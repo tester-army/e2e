@@ -119,11 +119,11 @@ assertions for visible UI so tests depend less on the DOM structure.
 ## Run a script before the page
 
 An init script runs in every document before any of the page's own scripts,
-in every tab and frame: stub a wallet, freeze `Math.random`, or set a flag the
+in every tab and frame: mock a browser API, seed `Math.random`, or set a flag the
 app reads at boot. Configure scripts for every test on the engine:
 
 ```ts
-web({ initScripts: [{ path: 'tests/wallet-shim.js' }] })
+web({ initScripts: [{ path: 'tests/init.js' }] })
 ```
 
 Add one for a single test with `browser.addInitScript`, before the page
@@ -131,11 +131,8 @@ opens. A function is serialized like `evaluate`'s; pass data as the second
 argument:
 
 ```ts
-await browser.addInitScript(
-  (wallet) => { Object.assign(window, { ethereum: { selectedAddress: wallet.address } }); },
-  { address: '0x1234' },
-);
-await app.open('/console');
+await browser.addInitScript((value) => { Math.random = () => value; }, 0.5);
+await app.open('/raffle');
 ```
 
 Scripts stay in force across `app.restart()` and `app.clearState()`. See

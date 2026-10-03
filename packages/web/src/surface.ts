@@ -234,7 +234,7 @@ export interface WebOptions {
   /**
    * Scripts every document of every attempt runs after it is created and
    * before any of its own scripts, in every tab and frame, as Playwright's
-   * `browserContext.addInitScript` runs them: to stub a wallet, seed
+   * `browserContext.addInitScript` runs them: to mock a browser API, seed
    * `Math.random`, or set a flag the app reads at boot. Each is a string of
    * JavaScript source, a `{ path }` to a file relative to the project root,
    * or a function serialized into the page, which can close over nothing

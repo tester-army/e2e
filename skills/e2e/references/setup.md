@@ -186,7 +186,7 @@ start a script that brings them up and serves the app.
 | `basicAuth` | `{ username, password }` for a `401` challenge; `password` may be `secrets.get('name')`, resolved per attempt and redacted like any secret, the base64 `Authorization` credential too. |
 | `userAgent` | The `User-Agent` every attempt sends and `navigator.userAgent` reports. |
 | `locale`, `timezoneId` | The language (`'de-DE'`: `navigator.language`, `Intl`, `Accept-Language`) and IANA time zone (`'Europe/Berlin'`) every attempt runs in. |
-| `initScripts` | Scripts every document runs before its own, in every tab and frame (a wallet stub, a seeded `Math.random`): source, `{ path }` relative to the project root, or a function with no closures. `browser.addInitScript` adds one per test. |
+| `initScripts` | Scripts every document runs before its own, in every tab and frame (a mocked browser API, a seeded `Math.random`): source, `{ path }` relative to the project root, or a function with no closures. `browser.addInitScript` adds one per test. |
 | `testIdAttribute` | What `getByTestId` reads; default `data-testid`. |
 | `screencast` | `{ size?, quality? }` for the engine's own video: frame size (default the viewport's), JPEG quality 0 to 100. |
 
