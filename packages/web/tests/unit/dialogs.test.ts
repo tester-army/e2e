@@ -3,7 +3,7 @@
  * go, and how a failure on the unawaited dialog path reaches the next step.
  */
 
-import type { Dialog as PwDialog } from 'playwright';
+import type { Dialog as PwDialog } from 'playwright-core';
 import { TestError } from 'e2e/engine';
 import { describe, expect, it, vi } from 'vitest';
 import { DialogRouter } from '../../src/dialogs.ts';

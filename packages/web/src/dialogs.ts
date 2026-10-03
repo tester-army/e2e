@@ -4,7 +4,7 @@
  * ever touches `web` is still accounted for instead of silently dismissed.
  */
 
-import type { Dialog as PwDialog } from 'playwright';
+import type { Dialog as PwDialog } from 'playwright-core';
 import { EngineError } from 'e2e/engine';
 import { ErrorLatch, isClassified, message } from './support.ts';
 

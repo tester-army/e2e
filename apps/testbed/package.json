@@ -24,7 +24,6 @@
     "@ai-sdk/devtools": "1.0.22",
     "@types/node": "26.6.2",
     "ai": "7.0.107",
-    "playwright": "1.63.0",
     "typescript": "7.0.2",
     "zod": "4.6.1"
   }

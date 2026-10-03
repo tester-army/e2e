@@ -146,8 +146,23 @@ export default {
 } satisfies E2EConfig;
 ```
 
-`npx playwright install webkit --with-deps` provisions the extra browser in
-CI. `connect` attaches to a remote Chromium over CDP instead of launching
+In CI, provision the extra browser with the [install command](/reference/web#installing-browsers):
+
+<CodeGroup>
+```bash npm
+npx @e2e-dev/web install webkit --with-deps
+```
+
+```bash pnpm
+pnpm exec e2e-web install webkit --with-deps
+```
+
+```bash bun
+bunx @e2e-dev/web install webkit --with-deps
+```
+</CodeGroup>
+
+`connect` attaches to a remote Chromium over CDP instead of launching
 one; a [browser provider](#hosted-browsers) does the same and also leases
 and releases the browser. [Testing viewports](/viewports) covers sizes.
 

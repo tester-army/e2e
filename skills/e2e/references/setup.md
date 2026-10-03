@@ -6,13 +6,11 @@
 - ES modules: `.ts` config, tests, helpers, and workspace packages exporting
   `.ts` source load as ESM regardless of the nearest `package.json` `type`
   (CommonJS packages need no change); never `require` or `module.exports`.
-- Browser tests: `@e2e-dev/web` plus `playwright` (`>=1.63.0 <2`), a peer the
-  engine does not install: an existing Playwright keeps its version and
-  browser cache, one out of range fails install as an unmet peer (npm's
-  `ERESOLVE`): upgrade `playwright` within the range. Missing
-  browsers download on first boot; in CI run `npx playwright install chromium
-  --with-deps`. Mobile tests: `@e2e-dev/mobile`, pinning `agent-device`
-  exactly; the pin moves with each engine release.
+- Browser tests: `@e2e-dev/web`, pinning `playwright-core` exactly; do not
+  add `playwright` for it. Missing browsers download on first boot; in CI run
+  `npx @e2e-dev/web install chromium --with-deps` (pnpm: `pnpm exec e2e-web
+  install chromium --with-deps`). Mobile tests: `@e2e-dev/mobile`, pinning
+  `agent-device` exactly; each pin moves with its engine release.
 
 ## Scaffold
 
@@ -41,7 +39,7 @@ MCP entries.
 Without the wizard (`ai`, Vercel AI SDK v7, only for `agent.*` steps):
 
 ```bash
-npm install --save-dev e2e @e2e-dev/web playwright ai@^7
+npm install --save-dev e2e @e2e-dev/web ai@^7
 ```
 
 ## Subscriptions and API keys

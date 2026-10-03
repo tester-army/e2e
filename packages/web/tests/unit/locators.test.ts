@@ -4,7 +4,7 @@
  * are read, and which ones the engine cannot express at all.
  */
 
-import type { Locator as PwLocator, Page } from 'playwright';
+import type { Locator as PwLocator, Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import type { LocatorExpression, TextPattern } from 'e2e/engine';
 import { applyPostSteps, projectExpression as projectWith, type PostStep } from '../../src/locators.ts';

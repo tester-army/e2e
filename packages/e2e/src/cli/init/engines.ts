@@ -1,7 +1,7 @@
 /** CLI scaffold presets. Engine packages are referenced as generated source, never imported. */
 
 import os from 'node:os';
-import { playwrightRange, siblingDependency, SIBLING_VERSIONS } from './versions.ts';
+import { siblingDependency } from './versions.ts';
 
 export interface EnginePreset {
   readonly id: string;
@@ -24,7 +24,7 @@ export function getEnginePresets() {
       id: 'web',
       label: 'Web',
       hint: 'Playwright',
-      dependencies: { ...siblingDependency('@e2e-dev/web'), playwright: playwrightRange(SIBLING_VERSIONS?.['playwright']) },
+      dependencies: siblingDependency('@e2e-dev/web'),
       imports: ["import { web } from '@e2e-dev/web';"],
       config: `  targets: [{
     engine: web(),

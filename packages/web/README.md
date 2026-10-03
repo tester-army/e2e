@@ -11,14 +11,13 @@ seam with no privilege either way.
 ## Install
 
 ```bash
-npm install --save-dev e2e @e2e-dev/web playwright
+npm install --save-dev e2e @e2e-dev/web
 ```
 
-Bring your own Playwright: `playwright` is a peer dependency (`>=1.63.0 <2`),
-not something this package installs. An app that already depends on Playwright
-keeps its version, one copy in `node_modules`, and one browser cache. A version
-outside the range may be rejected by your package manager as an unmet peer
-(npm's `ERESOLVE`), so upgrade `playwright` within the range.
+This package depends on `playwright-core` pinned to an exact version, so the
+engine always runs the Playwright it was tested against. An app that depends
+on Playwright itself keeps its own copy; the two share a browser cache only
+when their versions match.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -133,8 +132,12 @@ In CI, install browsers as their own step instead, so the cost is visible and
 cacheable:
 
 ```bash
-npx playwright install chromium --with-deps
+npx @e2e-dev/web install chromium --with-deps
 ```
+
+It downloads the browsers for the Playwright version this package pins, the
+ones the engine launches. Under pnpm, run the bin by name:
+`pnpm exec e2e-web install chromium --with-deps`.
 
 `--with-deps` also installs the system libraries a slim container image lacks.
 

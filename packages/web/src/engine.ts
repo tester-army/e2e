@@ -6,7 +6,7 @@
  * fixture the way a device engine contributes `device`.
  */
 
-import type { BrowserContext, Page } from 'playwright';
+import type { BrowserContext, Page } from 'playwright-core';
 import {
   ConfigurationError,
   defineEngine,

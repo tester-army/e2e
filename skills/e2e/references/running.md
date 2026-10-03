@@ -179,7 +179,7 @@ jobs:
           node-version: 26 # any Node >= 22.12
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: npx playwright install chromium --with-deps
+      - run: pnpm exec e2e-web install chromium --with-deps
       - run: npx e2e run --reporter list,junit
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}

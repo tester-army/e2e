@@ -96,7 +96,7 @@ describe('e2e init', () => {
     expect(JSON.parse(read('package.json'))).toEqual({
       private: true,
       type: 'module',
-      devDependencies: { 'e2e': dependencyRange(runnerVersion), '@e2e-dev/web': '0.x', playwright: '^1', ai: '^7.0.0', zod: '^4.1.8' },
+      devDependencies: { 'e2e': dependencyRange(runnerVersion), '@e2e-dev/web': '0.x', ai: '^7.0.0', zod: '^4.1.8' },
       scripts: { 'test:e2e': 'e2e run' },
     });
     expect(read('e2e.config.ts')).toContain('agents: {\n    default: {\n      model: ');
@@ -201,7 +201,7 @@ describe('e2e init', () => {
     const device = engine === 'mobile';
     expect(Object.keys(manifest.devDependencies)).toEqual([
       'e2e',
-      ...(engine === 'web' ? ['@e2e-dev/web', 'playwright'] : []),
+      ...(engine === 'web' ? ['@e2e-dev/web'] : []),
       ...(device ? ['@e2e-dev/mobile'] : []),
       ...(ai ? ['ai', 'zod', '@openrouter/ai-sdk-provider'] : []),
     ]);
@@ -357,7 +357,7 @@ describe('e2e init', () => {
     async (type) => {
       const manifest = `${JSON.stringify({
         name: 'existing-app', type, scripts: { 'test:e2e': 'e2e run --workers 1' },
-        dependencies: { 'e2e': 'workspace:*', '@e2e-dev/web': 'workspace:*', playwright: '1.59.0-alpha-2026-01-01', ai: '^7.0.12', zod: '^4.0.0' },
+        dependencies: { 'e2e': 'workspace:*', '@e2e-dev/web': 'workspace:*', ai: '^7.0.12', zod: '^4.0.0' },
       }, null, 4)}\n`;
       writeFileSync(path.join(dir, 'package.json'), manifest);
       for (let run = 0; run < 2; run += 1) {
@@ -396,12 +396,12 @@ describe('e2e init', () => {
     expect(JSON.parse(read('package.json'))).toEqual({
       ...manifest,
       scripts: { dev: 'vite', 'test:e2e': 'e2e run' },
-      devDependencies: { ...manifest.devDependencies, 'e2e': expect.any(String), playwright: '^1', zod: '^4.1.8' },
+      devDependencies: { ...manifest.devDependencies, 'e2e': expect.any(String), zod: '^4.1.8' },
     });
     expect(read('package.json')).toContain('\r\n    "name"');
     const written = JSON.parse(read('package.json'));
     expect(Object.keys(written)).toEqual(Object.keys(manifest));
-    expect(Object.keys(written.devDependencies)).toEqual(['@e2e-dev/web', 'e2e', 'playwright', 'vite', 'zod']);
+    expect(Object.keys(written.devDependencies)).toEqual(['@e2e-dev/web', 'e2e', 'vite', 'zod']);
     expect(Object.keys(written.scripts)).toEqual(['dev', 'test:e2e']);
   });
 
@@ -412,20 +412,6 @@ describe('e2e init', () => {
     const written = JSON.parse(read('package.json'));
     expect(Object.keys(written.scripts)).toEqual(['lint', 'typecheck', 'test:e2e']);
     expect(Object.keys(written.devDependencies).slice(0, 2)).toEqual(['vite', '@types/node']);
-  });
-
-  it("keeps the app's own playwright and adds only the engine next to it", async () => {
-    const manifest = {
-      name: 'existing-app',
-      dependencies: { playwright: '1.59.0-alpha-2026-01-01' },
-    };
-    writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-    vi.mocked(clack.select).mockResolvedValueOnce('web').mockResolvedValueOnce('none');
-    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
-    await init(dir);
-    const written = JSON.parse(read('package.json'));
-    expect(written.dependencies).toEqual(manifest.dependencies);
-    expect(Object.keys(written.devDependencies)).toEqual(['e2e', '@e2e-dev/web']);
   });
 
   it.each([

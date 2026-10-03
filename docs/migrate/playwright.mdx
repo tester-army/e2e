@@ -3,8 +3,8 @@ title: From Playwright
 description: Run e2e alongside Playwright and migrate tests one file at a time.
 ---
 
-`@e2e-dev/web` uses your installed Playwright when its version satisfies
-the engine's peer dependency (`>=1.63.0 <2`). Both runners can stay in one
+`@e2e-dev/web` brings its own pinned `playwright-core`, so your
+`@playwright/test` version is yours to keep. Both runners can stay in one
 project. e2e reads `e2e.config.ts` and finds `tests/**/*.e2e.ts` by default,
 so keep the two file patterns apart.
 
@@ -286,9 +286,9 @@ what to do today.
 | `--update-snapshots` | no equivalent; there is no pixel assertion | missing |
 | `--list` | `npx e2e list`, with the same selection flags | renamed |
 | `npx playwright codegen` | `npx e2e explore` walks the app from a goal and reports what it found; `npx e2e mcp` gives a coding agent a live session so it writes the test while driving the app, see [Coding agents](/coding-agents) | renamed |
-| `npx playwright show-trace` | the same, on `trace/<name>.zip` under the attempt's artifact directory | same |
+| `npx playwright show-trace` | `npx playwright-core@1.63.0 show-trace` (`pnpm dlx` under pnpm), on `trace/<name>.zip` under the attempt's artifact directory | renamed |
 | `npx playwright show-report` | not yet; `.e2e/summary.md` from the `markdown` reporter | missing |
-| `npx playwright install` | still works; the engine also installs a missing browser once per run, before the run's clock starts | same |
+| `npx playwright install` | `npx @e2e-dev/web install`, for the Playwright version the engine pins; the engine also installs a missing browser once per run, before the run's clock starts | renamed |
 
 ## Page objects
 

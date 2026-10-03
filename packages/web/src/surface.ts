@@ -9,7 +9,7 @@
 
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type { Browser, BrowserContext, ElementHandle, FrameLocator, Page, Route } from 'playwright';
+import type { Browser, BrowserContext, ElementHandle, FrameLocator, Page, Route } from 'playwright-core';
 import {
   EngineError,
   raceAbort,

@@ -8,7 +8,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { BrowserContext, Page } from 'playwright';
+import type { BrowserContext, Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type {
   VideoFile,

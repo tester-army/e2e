@@ -1,6 +1,6 @@
 /** The real reader names unlabeled text controls by placeholder, controls by their descendants, and reports a cut walk. */
 
-import { chromium, type Browser, type ElementHandle, type Page } from 'playwright';
+import { chromium, type Browser, type ElementHandle, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SemanticNode } from 'e2e/engine';
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/closed-shadow.ts';

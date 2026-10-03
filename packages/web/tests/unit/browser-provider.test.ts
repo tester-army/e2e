@@ -8,7 +8,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { Browser, Page } from 'playwright';
+import type { Browser, Page } from 'playwright-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EngineAttemptContext, EngineCleanupContext, EngineFinishInfo, EngineInitInfo, EnginePrepareInfo, OperationContext, ProviderRecordContext, ProviderRecording } from 'e2e/engine';
 import { connectCdp } from '../../src/browser-connection.ts';

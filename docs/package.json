@@ -16,7 +16,6 @@
     "agent-device": "0.21.20",
     "ai": "7.0.107",
     "mint": "4.2.909",
-    "playwright": "1.63.0",
     "typescript": "7.0.2"
   },
   "engines": {

@@ -1,6 +1,6 @@
 /** The real reader reports the text selected inside the focused field, and only there. */
 
-import { chromium, type Browser, type ElementHandle, type Page } from 'playwright';
+import { chromium, type Browser, type ElementHandle, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SemanticNode } from 'e2e/engine';
 import { captureDocument } from '../../src/observation.ts';

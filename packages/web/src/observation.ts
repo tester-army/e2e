@@ -3,7 +3,7 @@
  * stitching, and element-handle bookkeeping the surface keeps per generation.
  */
 
-import type { ElementHandle, Frame, JSHandle } from 'playwright';
+import type { ElementHandle, Frame, JSHandle } from 'playwright-core';
 import {
   EngineError,
   sameSite,

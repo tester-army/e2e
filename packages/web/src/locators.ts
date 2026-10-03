@@ -1,6 +1,6 @@
 /** LocatorExpression -> Playwright locator projection. */
 
-import type { FrameLocator, Locator as PwLocator, Page } from 'playwright';
+import type { FrameLocator, Locator as PwLocator, Page } from 'playwright-core';
 import { EngineError, type LocatorExpression, type SemanticQuery, type TextPattern } from 'e2e/engine';
 import { SEARCH_ROOTS_SELECTOR_ENGINE } from './closed-shadow.ts';
 import { exactLabelSelector } from './label-selector.ts';
