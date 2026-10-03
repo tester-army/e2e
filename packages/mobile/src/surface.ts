@@ -15,6 +15,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import type { AppDeployResult, CaptureSnapshotResult } from 'agent-device';
 import {
   EngineError,
   KEY_NAMES,
@@ -54,7 +55,6 @@ import {
   screenTitle,
   type ProjectedNode,
   type ProjectedSnapshot,
-  type RawNode,
 } from './nodes.ts';
 import { DEVICE_PERMISSIONS, type AgentDeviceClient, type ClientFactory, type DevicePermission, type LaunchPermissions, type MobileOptions, type PermissionState } from './options.ts';
 import { maskPng } from './png.ts';
@@ -105,11 +105,7 @@ const UNINSTALLED_BUILD = "the build the target's `app.appPath` names installed 
  * `app` is left out: it echoes the `app` passed in, else the identity, else
  * the build's path, so it cannot tell an id from a file.
  */
-interface RawInstallResult {
-  readonly appId?: string;
-  readonly bundleId?: string;
-  readonly package?: string;
-}
+type InstallIdentity = Pick<AppDeployResult, 'appId' | 'bundleId' | 'package'>;
 
 /** How `device.openApp` launches an app. */
 export interface OpenAppOptions {
@@ -129,16 +125,12 @@ export interface OpenAppOptions {
   readonly permissions?: LaunchPermissions;
 }
 
-/** The snapshot fields this engine reads off agent-device's response. */
-interface RawSnapshot {
-  readonly nodes?: readonly RawNode[];
-  readonly truncated?: boolean;
-  readonly appName?: string;
-  readonly appBundleId?: string;
-  readonly snapshotQuality?: { readonly state?: string };
-  /** The keyboard band the capture's producer measured: `visible` with its frame, `absent`, or that it could not look. */
-  readonly keyboard?: { readonly kind: string; readonly frame?: Rect };
-}
+/**
+ * The snapshot fields this engine reads off agent-device's response. `keyboard`
+ * is the band the capture's producer measured: `visible` with its frame,
+ * `absent`, or that it could not look.
+ */
+type RawSnapshot = Partial<Pick<CaptureSnapshotResult, 'nodes' | 'truncated' | 'appName' | 'appBundleId' | 'snapshotQuality' | 'keyboard'>>;
 
 /** Platform element types that are the soft keyboard or one of its keys, as agent-device names them. */
 const KEYBOARD_TYPES: ReadonlySet<string> = new Set(['keyboard', 'key']);
@@ -849,14 +841,14 @@ export class AgentDeviceSurface {
     if (options.reinstall === true && app === undefined) {
       throw invalidState("reinstall needs an app: pass `app`, or pin one with the target's app.bundleId or app.appPath");
     }
-    const result = (await this.command(
+    const result: InstallIdentity = await this.command(
       `install ${resolved}`,
       (client) =>
         options.reinstall === true && app !== undefined
           ? client.apps.reinstall({ ...selection, app, appPath: resolved })
           : client.apps.install({ ...selection, ...(app === undefined ? {} : { app }), appPath: resolved }),
       signal,
-    )) as RawInstallResult;
+    );
     const identity = result.bundleId ?? result.package ?? result.appId;
     const opensBy = identity ?? app;
     if (opensBy === undefined) {
@@ -894,7 +886,7 @@ export class AgentDeviceSurface {
    */
   private async capture(signal: AbortSignal, interactiveOnly: boolean): Promise<RawSnapshot> {
     const take = (): Promise<RawSnapshot> =>
-      this.command('snapshot', (client) => client.capture.snapshot({ interactiveOnly }), signal) as Promise<RawSnapshot>;
+      this.command('snapshot', (client) => client.capture.snapshot({ interactiveOnly }), signal);
     try {
       return await take();
     } catch (cause) {
@@ -1452,7 +1444,7 @@ export class AgentDeviceSurface {
       const directory = mkdtempSync(path.join(tmpdir(), 'e2e-agent-device-'));
       const file = path.join(directory, 'screenshot.png');
       try {
-        return await read((await client.capture.screenshot({ path: file })) as RawScreenshotResult, file);
+        return await read(await client.capture.screenshot({ path: file }), file);
       } finally {
         rmSync(directory, { recursive: true, force: true });
       }

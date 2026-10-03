@@ -1,5 +1,6 @@
 /** Shared helpers for the agent-device engine: error constructors, filenames, PNG headers, gestures, the screen location and size. */
 
+import type { CaptureScreenshotResult } from 'agent-device';
 import { EngineError, type Momentum, type ScrollDirection, type ViewportSize } from 'e2e/engine';
 
 export interface Point {
@@ -95,14 +96,7 @@ export function screenLocation(app: string | undefined, title: string | undefine
 }
 
 /** The screenshot fields a viewport probe reads off agent-device's response. */
-export interface RawScreenshotResult {
-  readonly path?: string;
-  readonly width?: number;
-  readonly height?: number;
-  readonly logicalWidth?: number;
-  readonly logicalHeight?: number;
-  readonly pixelDensity?: number;
-}
+export type RawScreenshotResult = Partial<Pick<CaptureScreenshotResult, 'path' | 'width' | 'height' | 'logicalWidth' | 'logicalHeight' | 'pixelDensity'>>;
 
 /**
  * The device's logical screen size as its screenshot reports it, in points:

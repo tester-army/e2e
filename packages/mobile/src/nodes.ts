@@ -7,49 +7,15 @@
  * ids the surface owns.
  */
 
+import type { SnapshotNode } from 'agent-device';
 import type { SemanticNode, ViewportSize } from 'e2e/engine';
-import type { Rect } from './support.ts';
 
-/** The subset of an agent-device snapshot node this engine reads. */
-export interface RawNode {
-  readonly ref?: string;
-  readonly index?: number;
-  readonly parentIndex?: number;
-  readonly depth?: number;
-  readonly type?: string;
-  readonly role?: string;
-  readonly label?: string;
-  readonly value?: string;
-  /** True while a text field shows its placeholder; the runner then reports the placeholder as the value. */
-  readonly hintShowing?: boolean;
-  /**
-   * Android's content description when it differs from `label`: the
-   * accessible name an app set beside visible text (agent-device 0.21.14+).
-   */
-  readonly contentDescription?: string;
-  /** The field's placeholder text, showing or not (agent-device 0.21.16+). */
-  readonly placeholder?: string;
-  /** The checked state of a checkable control; absent for one that cannot be checked or an older helper. */
-  readonly checked?: boolean;
-  /** The accessibility heading flag an app set on the node (Android). */
-  readonly heading?: boolean;
-  /** The localized role description an app set beside the native class, verbatim (`Tab`, `Tab List`). */
-  readonly roleDescription?: string;
-  readonly identifier?: string;
-  readonly rect?: Rect;
-  readonly enabled?: boolean;
-  readonly selected?: boolean;
-  readonly focused?: boolean;
-  /** Native accessibility facts; absent means unavailable, not false. */
-  readonly editable?: boolean;
-  readonly password?: boolean;
-  readonly visibleToUser?: boolean;
-  readonly hittable?: boolean;
-  readonly appName?: string;
-  readonly windowTitle?: string;
-  /** The package (Android) or bundle id (iOS) of the window the node belongs to, when agent-device reports it. */
-  readonly bundleId?: string;
-}
+/**
+ * One agent-device snapshot node as this engine reads it: agent-device's own
+ * node type, every field optional, since the projection tolerates each one
+ * missing (a fixture, a producer that does not read it).
+ */
+export type RawNode = Readonly<Partial<SnapshotNode>>;
 
 /** One projected node with what the surface needs to act on it and to answer selector terms. */
 export interface ProjectedNode {
