@@ -45,7 +45,7 @@ import { lastFailedIds, readLastRun } from './last-run.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setSecretRegistry } from '../secrets.ts';
 import { withAbort } from '../internal/time.ts';
-import type { BuiltinReporter, E2EConfig, FinishedRun, RecordingMode, Reporter, ReporterSummary } from '../types.ts';
+import type { BuiltinReporter, E2EConfig, FinishedRun, RecordingMode, Reporter, ReporterSummary, ScreenshotMode } from '../types.ts';
 import { modelLabel } from '../config/agent.ts';
 import { positiveInt } from '../config/validate.ts';
 import { detectVcs, type VcsInfo } from '../internal/vcs.ts';
@@ -123,6 +123,8 @@ export interface RunOptions {
   trace?: RecordingMode | undefined;
   /** Which attempts record a video (`--video [mode]`), on the same terms as `trace`. */
   video?: RecordingMode | undefined;
+  /** Which steps the runner screenshots (`--screenshot <mode>`), over the config's and every target's `screenshot`. */
+  screenshot?: ScreenshotMode | undefined;
   /**
    * A config value instead of a discovered file, for the test harness. May
    * hold live values (executors, engine handles, model instances, cache
@@ -321,6 +323,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   if (options.output !== undefined) cli.output = options.output;
   if (options.trace !== undefined) cli.trace = options.trace;
   if (options.video !== undefined) cli.video = options.video;
+  if (options.screenshot !== undefined) cli.screenshot = options.screenshot;
   if (options.agent !== undefined) cli.agents = typeof options.agent === 'string' ? [options.agent] : options.agent;
 
   // Config resolves before anything is emitted, and its failure is kept rather

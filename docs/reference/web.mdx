@@ -406,7 +406,9 @@ browser could not read (a connection reset short of the declared
 browser never keeps) rejects `text()` and `json()` with `ACTION_FAILED`
 instead of an empty string. A genuinely empty body reads as `''`. A handler
 that throws (a failed `expect` on the request, say) fails the next step with
-that error, or the attempt at its end when no step follows; a handler still
+that error, or the attempt at its end when no step follows. A screenshot
+only looks and never surfaces it, so neither `app.screenshot()` nor an
+[`every-step`](/reference/config#screenshot) frame can absorb the failure; a handler still
 running then gets the cleanup budget to finish. One that outlives the budget
 fails the attempt with `CLEANUP_TIMEOUT`, and whatever it throws afterwards is
 dropped.

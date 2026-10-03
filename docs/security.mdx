@@ -103,7 +103,8 @@ redaction and disables pixels for the rest of the attempt.
 
 After any secret fill, for the rest of the attempt, screenshot and pixel
 tools are unavailable, `app.screenshot()` is denied, and the runner omits
-assertion and failure screenshots. The app could display the value anywhere,
+assertion, failure, and [every-step](/reference/config#screenshot)
+screenshots. The app could display the value anywhere,
 beyond the field's masked rectangle.
 
 A test that restores a [session](#sessions) whose setup filled a secret keeps

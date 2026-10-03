@@ -170,6 +170,21 @@ describe('resolveOptions', () => {
     expect(inherits.timeout).toBe(20_000);
   });
 
+  it("resolves a test's screenshot innermost first, and leaves it unset for a test that sets none", async () => {
+    const col = await collection(() => {
+      test('unset', noop);
+      test.describe('outer', { screenshot: 'every-step' }, () => {
+        test('inherits', noop);
+        test('opted out', { screenshot: 'off' }, noop);
+      });
+    });
+    const [unset, inherits, optedOut] = col.tests;
+    const plain = config();
+    expect(resolveOptions(unset!, plain).screenshot).toBeUndefined();
+    expect(resolveOptions(inherits!, plain).screenshot).toBe('every-step');
+    expect(resolveOptions(optedOut!, plain).screenshot).toBe('off');
+  });
+
   it("resolves a test's video innermost first, and leaves a test that sets none to its target", async () => {
     const col = await collection(() => {
       test('unset', noop);

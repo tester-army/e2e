@@ -268,6 +268,13 @@ export interface StepRecorderOptions {
   readonly projectRoot?: string;
   /** Replaces secret values in a step's label, and in its error's message and details, before the record keeps them. */
   readonly redact?: (text: string) => string;
+  /**
+   * Runs once a top-level step has passed, inside its scope and before its
+   * end is published, so what it attaches or records lands on that step
+   * (the every-step screenshot). What it throws is dropped: it never
+   * changes the step's verdict.
+   */
+  readonly afterStep?: (record: StepRecord) => Promise<void>;
 }
 
 /** Frames kept when a step captures where it was called from; the user's line is a few frames up. */
@@ -337,6 +344,7 @@ export class StepRecorder {
   private readonly onProgress: ((progress: StepProgress) => void) | undefined;
   private readonly projectRoot: string | undefined;
   private readonly redact: ((text: string) => string) | undefined;
+  private readonly afterStep: ((record: StepRecord) => Promise<void>) | undefined;
 
   constructor(
     private readonly attemptId: string,
@@ -347,6 +355,7 @@ export class StepRecorder {
     this.onProgress = options.onProgress;
     this.projectRoot = options.projectRoot;
     this.redact = options.redact;
+    this.afterStep = options.afterStep;
   }
 
   /** The step currently executing, when inside StepRecorder.run. */
@@ -376,6 +385,8 @@ export class StepRecorder {
     // spelled into an instruction or a locator stops here, once.
     const label = this.redact?.(rawLabel) ?? rawLabel;
     const index = this.steps.length;
+    // A step called while another runs is part of it; only the outer one is the test's.
+    const nested = this.current() !== undefined;
     const startedAt = timestamp();
     const stack = stepStack(this.projectRoot);
     const source = sourceLocation(stack, this.projectRoot);
@@ -397,12 +408,12 @@ export class StepRecorder {
     this.running.add(record.id);
     if (stack !== undefined) this.stacks.set(record.id, stack);
     this.publish(record, { phase: 'start', kind, api, label });
-    const promise = this.execute(record, body, options);
+    const promise = this.execute(record, body, options, nested);
     this.pending.set(record.id, promise);
     return promise;
   }
 
-  private async execute<T>(record: StepRecord, body: () => Promise<T>, options: StepRunOptions): Promise<T> {
+  private async execute<T>(record: StepRecord, body: () => Promise<T>, options: StepRunOptions, nested: boolean): Promise<T> {
     const startedMs = Date.now();
     try {
       // Model calls made inside the body are attributed to this step.
@@ -410,6 +421,14 @@ export class StepRecorder {
       if (this.abandoned.has(record.id)) return result;
       record.durationMs = Date.now() - startedMs;
       if (options.verifies === true) this.lastVerified = Math.max(this.lastVerified, record.index);
+      const afterStep = this.afterStep;
+      if (!nested && afterStep !== undefined) {
+        try {
+          await this.scope.run(record, () => afterStep(record));
+        } catch {
+          // The hook never decides the step: a throw, sync or async, is dropped.
+        }
+      }
       return result;
     } catch (cause) {
       if (this.abandoned.has(record.id)) {

@@ -33,6 +33,7 @@ const defaultOptions: ResolvedTestOptions = {
   serial: false,
   trace: undefined,
   video: undefined,
+  screenshot: undefined,
 };
 
 const EMPTY_APP: ResolvedTarget['app'] = {
@@ -69,6 +70,7 @@ function makeTarget(name: string, index: number, engine?: EngineHandle): Resolve
     declaredApp: EMPTY_DECLARED,
     trace: { mode: 'off', source: 'default' },
     video: { mode: 'off', source: 'default' },
+    screenshot: 'on-failure',
   };
 }
 

@@ -627,6 +627,12 @@ export interface TestOptions {
    * records as one unit. A mode set here is required of the target's engine.
    */
   video?: RecordingMode;
+  /**
+   * Which of the test's steps the runner screenshots, in place of the run's:
+   * the same modes as the config's `screenshot`. Innermost wins, over
+   * `--screenshot` too.
+   */
+  screenshot?: ScreenshotMode;
 }
 
 export interface DescribeOptions extends Omit<TestOptions, 'only'> {
@@ -1104,6 +1110,12 @@ export interface Target {
    * `UNSUPPORTED_ARTIFACT`.
    */
   video?: RecordingMode;
+  /**
+   * Which steps the runner screenshots on this target, in place of the
+   * config's `screenshot`; `--screenshot` and a test's own `screenshot` win
+   * over it.
+   */
+  screenshot?: ScreenshotMode;
 }
 
 /**
@@ -1115,6 +1127,15 @@ export interface Target {
  * recording of the retry. `on-all-retries`: every attempt after the first.
  */
 export type RecordingMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry' | 'on-all-retries';
+
+/**
+ * The screenshots the runner takes on its own, beside the ones a test asks
+ * for with `app.screenshot()` and the one `agent.assert` keeps.
+ * `on-failure`: one when an attempt fails. `every-step`: one after every
+ * top-level step that passes, as well. `off`: none. No mode takes one after
+ * a secret fill.
+ */
+export type ScreenshotMode = 'on-failure' | 'every-step' | 'off';
 
 /**
  * A live AI SDK language model instance: `gateway('openai/gpt-6-luna-fast')`
@@ -1430,6 +1451,12 @@ export interface E2EConfig {
    * Applies to the targets whose engine can record.
    */
   video?: RecordingMode;
+  /**
+   * Which steps the runner screenshots; default `on-failure`. A target's
+   * `screenshot` wins over it, `--screenshot <mode>` over both, and a test's
+   * own `screenshot` over all.
+   */
+  screenshot?: ScreenshotMode;
   /**
    * The directory a run writes its results to, relative to the project root;
    * default `.e2e`. It holds `report.json`, `junit.xml`, `summary.md`,

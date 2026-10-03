@@ -8,6 +8,7 @@ import { ConfigurationError } from '../internal/errors.ts';
 import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
 import { realpathOfExisting } from '../internal/paths.ts';
 import { didYouMean } from '../internal/suggest.ts';
+import { isScreenshotMode, SCREENSHOT_MODES } from '../internal/screenshot-mode.ts';
 import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
 import { BUILTIN_REPORTER_LIST, BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { isStepExecutor } from '../agent/executor.ts';
@@ -24,6 +25,7 @@ import type {
   SecretProvider,
   SecretPurpose,
   RecordingMode,
+  ScreenshotMode,
   CacheStore,
 } from '../types.ts';
 import { isModelInstance, resolveAgentConfig, runLimits, type ResolvedAgentConfig, type ResolvedLimits } from './agent.ts';
@@ -140,6 +142,8 @@ export interface CliOverrides {
   trace?: RecordingMode;
   /** `--video [mode]`: which attempts record a video, over the config's and every target's `video`. */
   video?: RecordingMode;
+  /** `--screenshot <mode>`: which steps the runner screenshots, over the config's and every target's `screenshot`. */
+  screenshot?: ScreenshotMode;
   /** `--agent`: the configured agents unpinned tests run as, instead of `default` alone. */
   agents?: readonly string[];
 }
@@ -159,6 +163,7 @@ const TOP_LEVEL_KEYS = new Set([
   'output',
   'trace',
   'video',
+  'screenshot',
   'reporters',
   'agents',
   'cache',
@@ -243,9 +248,11 @@ export function resolveConfig(
   }
 
   const recordings = runRecordings(raw, cli, ci);
+  const screenshot = runScreenshot(raw, cli);
   const targets = resolveTargets(raw.targets, options.projectRoot, (target, where) => ({
     trace: targetRecording(recordings.trace, target.trace, `${where} trace`, 'trace'),
     video: targetRecording(recordings.video, target.video, `${where} video`, 'video'),
+    screenshot: targetScreenshot(screenshot, target.screenshot, `${where} screenshot`),
   }));
   const tests = normalizeTests(raw.tests, options.projectRoot);
 
@@ -597,6 +604,41 @@ function targetRecording(run: RunRecording, own: unknown, where: string, kind: R
 }
 
 
+/** Checks one `screenshot` value: a mode, or undefined when the key is unset. */
+function screenshotMode(value: unknown, where: string): ScreenshotMode | undefined {
+  if (value === undefined) return undefined;
+  if (!isScreenshotMode(value)) {
+    throw new ConfigurationError('INVALID_CONFIG', `${where} must be one of ${SCREENSHOT_MODES.join(', ')}, got ${describeValue(value)}`);
+  }
+  return value;
+}
+
+/** The run's screenshot mode before any target speaks: the flag, the config root, and the default under both. */
+interface RunScreenshot {
+  readonly cli: ScreenshotMode | undefined;
+  readonly config: ScreenshotMode | undefined;
+  readonly fallback: ScreenshotMode;
+}
+
+/** The run's screenshot mode before any target speaks, from the flag and the config root. */
+function runScreenshot(raw: E2EConfig, cli: CliOverrides): RunScreenshot {
+  return {
+    cli: screenshotMode(cli.screenshot, '--screenshot'),
+    config: screenshotMode(raw.screenshot, 'screenshot'),
+    fallback: 'on-failure',
+  };
+}
+
+/**
+ * A target's effective screenshot mode: the flag, else the target's own,
+ * else the config root's, else the default. The target's own is checked
+ * whether or not the flag wins over it, so a flag never hides a config mistake.
+ */
+function targetScreenshot(run: RunScreenshot, own: unknown, where: string): ScreenshotMode {
+  const target = screenshotMode(own, where);
+  return run.cli ?? target ?? run.config ?? run.fallback;
+}
+
 /**
  * Splits `reporters` into the built-in ids and the reporter objects.
  * `--reporter` replaces the ids only: an object has no id to name on the
@@ -895,7 +937,7 @@ function computeConfigDigest(
   // and secrets are reduced below.
   //
   // `artifacts` holds only a host store, a live value, so it never enters the
-  // digest. Nor does `output`, where results land, nor `trace` and `video`, at the top or on a target: recording
+  // digest. Nor does `output`, where results land, nor `trace`, `video`, and `screenshot`, at the top or on a target: recording
   // a run must never invalidate the replays it would otherwise make. A
   // reporter object changes nothing about what a run records, so it never
   // enters the digest either; the built-in ids digest as they always have,
@@ -907,6 +949,7 @@ function computeConfigDigest(
     output: _output,
     trace: _trace,
     video: _video,
+    screenshot: _screenshot,
     targets: _targets,
     credentials: _credentials,
     secrets: _secrets,

@@ -113,6 +113,12 @@ export interface E2EConfig {
    */
   video?: RecordingMode;
   /**
+   * Which steps the runner screenshots; default `on-failure`. A target's
+   * `screenshot` wins over it, `--screenshot <mode>` over both, and a test's
+   * own `screenshot` over all.
+   */
+  screenshot?: ScreenshotMode;
+  /**
    * The results directory, relative to the project root; default `.e2e`.
    * `--output <dir>` overrides it for one run.
    */
@@ -191,6 +197,12 @@ export interface Target {
    * `UNSUPPORTED_ARTIFACT`.
    */
   video?: RecordingMode;
+  /**
+   * Which steps the runner screenshots on this target, in place of the
+   * config's `screenshot`; `--screenshot` and a test's own `screenshot` win
+   * over it.
+   */
+  screenshot?: ScreenshotMode;
 }
 ```
 
@@ -422,9 +434,10 @@ artifacts: {
 ```
 
 `artifacts` says where artifacts go, not which are made: [`trace` and
-`video`](#recording) choose the recordings, and a failure's screenshot and
-screen text are captured whenever the engine can (never after a secret
-fill, see [Security](/security)). The removed forms fail with
+`video`](#recording) choose the recordings, [`screenshot`](#screenshot)
+chooses the runner's own screenshots, and a failure's screen text is
+captured whenever the engine can. No screenshot is taken after a secret
+fill (see [Security](/security)). The removed forms fail with
 `INVALID_CONFIG` naming what replaced them: a kinds list (`artifacts:
 ['screenshot', 'trace']` or `artifacts.kinds`) names the `trace` mode it
 meant, `artifacts.trace` names `trace: 'on-all-retries'` for `record:
@@ -621,6 +634,53 @@ a step's offset into it.
 A recording masks nothing and is recorded with `redaction: 'incomplete'`.
 Under `retain-on-failure` a link is left out of the report of a passed
 attempt, but the service still holds the recording.
+
+## screenshot
+
+```ts
+screenshot: 'every-step',
+targets: [
+  { name: 'chromium', engine: web(), app: { url } },
+  { name: 'phone', engine: mobile(), screenshot: 'on-failure' },
+],
+```
+
+`screenshot` chooses the screenshots the runner takes on its own, beside the
+ones a test asks for with `app.screenshot()` and the one `agent.assert` keeps:
+
+```ts
+export type ScreenshotMode = 'on-failure' | 'every-step' | 'off';
+```
+
+| Mode | Screenshots |
+| --- | --- |
+| `on-failure` (default) | one when an attempt fails, as `failure.screenshot` in the report |
+| `every-step` | also one after every top-level step that passes, attached to that step |
+| `off` | none from the runner; the failure screen text is still kept |
+
+Under `every-step` the frame is taken once the step's work is done, so a
+step's screenshot is the screen it left. `app.screenshot` and `agent.assert`
+keep their own frame and get no second one (an `agent.assert` with
+`screenshot: false` has none). A step that fails gets none either; when its
+failure fails the attempt, the failure screenshot shows that screen. A step
+called inside another step is part of it and gets no frame of its own. An
+engine that cannot take screenshots is asked for none.
+
+Each capture is bounded by `actionTimeout` and counts toward the test's
+`timeout`, but not toward the step's reported `durationMs`, which stays the
+step's own work so timings compare across modes. One that fails or times out is
+recorded on the step as an `engine` event named `step.screenshot` and never
+fails the step. After a secret fill no screenshot is taken for the rest of
+the attempt: each later step records a `policy` event with `PIXEL_TAINTED`
+instead, and a frame whose capture overlapped a fill is deleted unseen.
+
+The mode is set like `trace` and `video`, lowest first: the top of the
+config, a target's `screenshot`, `--screenshot <mode>` on
+[`e2e run`](/reference/cli#e2e-run), and a test's or describe's own
+[`screenshot` option](/reference/test#options), innermost wins. It never
+enters the config digest, so changing it never invalidates cached replays.
+
+A frame after every step costs one engine screenshot per step.
 
 ## agents
 

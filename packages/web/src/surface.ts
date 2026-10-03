@@ -509,6 +509,11 @@ export class PlaywrightSurface {
 
   requirePage(): Page {
     this.latch.throwPending();
+    return this.currentPage();
+  }
+
+  /** The open app page, without rethrowing a latched handler error: for capture that only looks. */
+  private currentPage(): Page {
     const page = this.requireSession().current().page;
     if (page === null || page.isClosed()) throw invalidState('no app page is open; call app.open() or browser.goto() first');
     return page;
@@ -559,6 +564,16 @@ export class PlaywrightSurface {
     translate: (cause: unknown, label: string) => Error = translatePwError,
   ): Promise<T> {
     this.latch.throwPending();
+    return this.unlatched(operation, label, fn, translate);
+  }
+
+  /** `guard` without rethrowing a latched handler error first: for capture that only looks. */
+  private async unlatched<T>(
+    operation: OperationContext,
+    label: string,
+    fn: (operation: OperationContext) => Promise<T>,
+    translate: (cause: unknown, label: string) => Error = translatePwError,
+  ): Promise<T> {
     try {
       return this.session === undefined
         ? await raceAbort(() => fn(operation), operation.signal, label)
@@ -859,9 +874,14 @@ export class PlaywrightSurface {
   }
 
   /** Redacted at the source: secure fields in every frame are masked, as in observation pixels. */
+  /**
+   * A screenshot only looks: it never rethrows what a route or dialog handler
+   * latched, which belongs to the next step or the attempt's end. Otherwise a
+   * frame the runner takes between steps would swallow the test's failure.
+   */
   screenshot(label: string | undefined, operation: OperationContext): Promise<string> {
-    return this.guard(operation, 'screenshot', async (currentOperation) => {
-      const page = this.requirePage();
+    return this.unlatched(operation, 'screenshot', async (currentOperation) => {
+      const page = this.currentPage();
       const { relative, absolute } = this.artifactPath('screenshots', label, '.png');
       await page.screenshot({
         path: absolute,

@@ -5,7 +5,7 @@ import { resultId } from '../internal/ids.ts';
 import { didYouMean, suggestionNote } from '../internal/suggest.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import { attemptRecording, type AttemptRecordings, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
-import type { Capability, RecordingMode, TestOptions } from '../types.ts';
+import type { Capability, RecordingMode, ScreenshotMode, TestOptions } from '../types.ts';
 import { excludingEntry, type Collection, type CollectedTest, type UncollectedFile } from './collect.ts';
 import { groupChain } from './registry.ts';
 
@@ -33,6 +33,8 @@ export interface ResolvedTestOptions {
   readonly trace: RecordingMode | undefined;
   /** The test's own `video`, on the same terms as `trace`. */
   readonly video: RecordingMode | undefined;
+  /** The test's own `screenshot`, innermost layer first; undefined leaves it to the target. */
+  readonly screenshot: ScreenshotMode | undefined;
 }
 
 export interface SkipInfo {
@@ -142,6 +144,7 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
   let skipReason: string | undefined;
   let trace: TestOptions['trace'];
   let video: TestOptions['video'];
+  let screenshot: TestOptions['screenshot'];
   const agentContextParts: string[] = [];
 
   for (const layer of layers) {
@@ -149,6 +152,7 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
     if (layer.retries !== undefined) retries = layer.retries;
     if (layer.trace !== undefined) trace = layer.trace;
     if (layer.video !== undefined) video = layer.video;
+    if (layer.screenshot !== undefined) screenshot = layer.screenshot;
     if (layer.platforms !== undefined) platforms = layer.platforms;
     if (layer.requires !== undefined) requires = layer.requires;
     if (layer.session !== undefined) session = layer.session;
@@ -198,6 +202,7 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
     serial: serialRoot !== undefined,
     trace,
     video,
+    screenshot,
   };
 }
 

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { testCaseBrand } from '../internal/brands.ts';
 import { describeValue } from '../config/validate.ts';
+import { isScreenshotMode, SCREENSHOT_MODES } from '../internal/screenshot-mode.ts';
 import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES } from '../internal/recording-modes.ts';
 import { CollectionError } from '../internal/errors.ts';
 import { validateTitle } from '../internal/ids.ts';
@@ -287,6 +288,7 @@ const TEST_OPTION_KEYS: readonly string[] = Object.keys({
   agent: true,
   trace: true,
   video: true,
+  screenshot: true,
 } satisfies Record<keyof TestOptions, true>);
 
 /** The keys `test.setup()` takes beside `sessions`, which registration lifts out first. */
@@ -300,6 +302,7 @@ const SETUP_OPTION_KEYS: readonly string[] = Object.keys({
   agent: true,
   trace: true,
   video: true,
+  screenshot: true,
 } satisfies Record<Exclude<keyof SetupOptions, 'sessions'>, true>);
 
 /** The keys `test.describe()` takes. */
@@ -315,6 +318,7 @@ const DESCRIBE_OPTION_KEYS: readonly string[] = Object.keys({
   agent: true,
   trace: true,
   video: true,
+  screenshot: true,
   serial: true,
 } satisfies Record<keyof DescribeOptions, true>);
 
@@ -338,6 +342,9 @@ function validateCommonOptions(options: TestOptions | DescribeOptions, label: st
   }
   if (options.agent !== undefined) validateAgentOption(options.agent, label);
   if (options.tags !== undefined) validateTagsOption(options.tags, label);
+  if (options.screenshot !== undefined && !isScreenshotMode(options.screenshot)) {
+    throw new CollectionError(`${label}: screenshot must be one of ${SCREENSHOT_MODES.join(', ')}, got ${describeValue(options.screenshot)}`);
+  }
   for (const kind of ['trace', 'video'] as const) {
     const mode = options[kind];
     if (mode !== undefined && !isRecordingMode(mode)) {
