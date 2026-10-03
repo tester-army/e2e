@@ -143,6 +143,8 @@ describe('web({ initScripts })', () => {
       [['ok', null], /\[1\] must be a string of source.*got null/],
       [[{ path: '' }], /\[0\] path must be a non-empty string/],
       [[{ content: 'x' }], /\[0\] takes only path, got content/],
+      // oxlint-disable-next-line no-sparse-arrays -- the hole is the case
+      [['ok', , 'ok'], /\[1\] must be a string of source.*got undefined/],
     ];
     for (const [initScripts, message] of cases) {
       expect(() => web({ initScripts: initScripts as NonNullable<WebOptions['initScripts']> })).toThrow(refused(message));
