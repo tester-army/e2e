@@ -40,6 +40,23 @@ describe('value matchers', () => {
     failsWith(() => e2eExpect(null).not.toBeDefined(), /not to be defined/);
   });
 
+  it('truthy/falsy/null/undefined fail on the wrong value, and pass negated', () => {
+    failsWith(() => e2eExpect(undefined).toBeTruthy(), /^expected undefined to be truthy/);
+    failsWith(() => e2eExpect(0).toBeTruthy(), /^expected 0 to be truthy/);
+    failsWith(() => e2eExpect(1).not.toBeTruthy(), /^expected 1 not to be truthy/);
+    failsWith(() => e2eExpect(1).toBeFalsy(), /^expected 1 to be falsy/);
+    failsWith(() => e2eExpect('').not.toBeFalsy(), /^expected "" not to be falsy/);
+    failsWith(() => e2eExpect(0).toBeNull(), /^expected 0 to be null/);
+    failsWith(() => e2eExpect(undefined).toBeNull(), /^expected undefined to be null/);
+    failsWith(() => e2eExpect(null).not.toBeNull(), /^expected value not to be null/);
+    failsWith(() => e2eExpect(null).toBeUndefined(), /^expected null to be undefined/);
+    failsWith(() => e2eExpect(undefined).not.toBeUndefined(), /^expected value not to be undefined/);
+    e2eExpect(0).not.toBeTruthy();
+    e2eExpect(1).not.toBeFalsy();
+    e2eExpect(undefined).not.toBeNull();
+    e2eExpect(null).not.toBeUndefined();
+  });
+
   it('toContain works on strings, arrays, sets, and iterables', () => {
     e2eExpect('hello world').toContain('world');
     e2eExpect([1, 2, 3]).toContain(2);

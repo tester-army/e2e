@@ -9,7 +9,8 @@ import { resolveConfig, type ResolvedConfig, type ResolvedTarget } from '../../s
 import type { SerializedError } from '../../src/internal/errors.ts';
 import { uuidv7 } from '../../src/internal/ids.ts';
 import { buildReport, type BuildReportOptions } from '../../src/report/build.ts';
-import type { AttemptRecord, ResultRecord } from '../../src/run/records.ts';
+import type { AttemptRecord, ResultRecord, SerialAttemptRecord, SerialGroupRecord } from '../../src/run/records.ts';
+import type { StepRecord } from '../../src/run/steps.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 
 const AT = '2026-01-01T00:00:00.000Z';
@@ -159,6 +160,108 @@ describe('run status derivation', () => {
     });
     expect(document.run.status).toBe('error');
     expect(document.run.errors.map((error) => error.code)).toEqual(['REPORT_WRITE_FAILED']);
+  });
+});
+
+/** One attempt of serial group `g1`: `first` passed, `second` failed with `error`. */
+function serialAttempt(index: number, error: SerializedError): SerialAttemptRecord {
+  const member = (memberIndex: number, testId: string) => ({
+    id: uuidv7(),
+    index: memberIndex,
+    testId,
+    startedAt: AT,
+    durationMs: 5,
+    steps: [],
+    secondaryErrors: [],
+  });
+  return {
+    id: uuidv7(),
+    index,
+    status: 'failed',
+    startedAt: AT,
+    durationMs: 10,
+    members: [
+      { ...member(0, 'tests/case.e2e.ts::suite::first'), status: 'passed' },
+      { ...member(1, 'tests/case.e2e.ts::suite::second'), status: 'failed', error },
+    ],
+    artifacts: [],
+    secondaryErrors: [],
+    cleanup: 'complete',
+  };
+}
+
+/** The member results and the group record of serial group `g1`, which failed on its last attempt with the errors given, one per attempt. */
+function failedSerialGroup(...errors: SerializedError[]): Pick<BuildReportOptions, 'results' | 'serialGroups'> {
+  const member = (title: string, index: number, status: ResultRecord['status']): ResultRecord => {
+    const plain = failedResult(productFailure, title);
+    return { ...plain, test: { ...plain.test, declarationIndex: index, serialId: 'suite' }, status, attempts: [], serialGroupId: 'g1' };
+  };
+  const group: SerialGroupRecord = {
+    id: 'g1',
+    serialId: 'suite',
+    declarationIndex: 0,
+    file: 'tests/case.e2e.ts',
+    titlePath: ['suite'],
+    targetId: 'web',
+    platform: 'web',
+    agent: 'default',
+    repeat: 0,
+    memberTestIds: ['tests/case.e2e.ts::suite::first', 'tests/case.e2e.ts::suite::second'],
+    status: 'failed',
+    attempts: errors.map((error, index) => serialAttempt(index, error)),
+  };
+  return { results: [member('first', 0, 'passed'), member('second', 1, 'failed')], serialGroups: [group] };
+}
+
+describe('run status derivation for a serial group', () => {
+  it('is blocked when the failing member of the last attempt carries a blockable code', () => {
+    expect(build(failedSerialGroup(blocked)).run.status).toBe('blocked');
+  });
+
+  it('stays failed when the failing member of the last attempt failed on the product', () => {
+    expect(build(failedSerialGroup(productFailure)).run.status).toBe('failed');
+  });
+
+  it('reads the last attempt, not an earlier blocked one', () => {
+    expect(build(failedSerialGroup(blocked, productFailure)).run.status).toBe('failed');
+    expect(build(failedSerialGroup(productFailure, blocked)).run.status).toBe('blocked');
+  });
+});
+
+describe('error stacks', () => {
+  it('never carries a stack into the report, from a step, an attempt, a serial member, or the run', () => {
+    const stack = 'Error: boom\n    at /Users/someone/project/tests/case.e2e.ts:3:9';
+    const withStack: SerializedError = { ...productFailure, stack };
+    const plain = failedResult(withStack, 'plain');
+    const step: StepRecord = {
+      id: uuidv7(),
+      index: 0,
+      kind: 'assertion',
+      api: 'expect.toBe',
+      label: 'toBe',
+      status: 'failed',
+      startedAt: AT,
+      durationMs: 1,
+      events: [],
+      error: withStack,
+      artifacts: [],
+    };
+    const result: ResultRecord = {
+      ...plain,
+      attempts: [{ ...plain.attempts[0]!, secondaryErrors: [withStack], steps: [step] }],
+    };
+    const serial = failedSerialGroup(withStack);
+    const document = build({
+      status: 'error',
+      exitCode: 3,
+      results: [result, ...serial.results],
+      serialGroups: serial.serialGroups,
+      runErrors: [{ error: { ...reportWriteFailure, stack } }],
+    });
+    const json = JSON.stringify(document);
+    expect(json).toContain('expected the dashboard');
+    expect(json).not.toContain('"stack"');
+    expect(json).not.toContain('/Users/someone');
   });
 });
 
