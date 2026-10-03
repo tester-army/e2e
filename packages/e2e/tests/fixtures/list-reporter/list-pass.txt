@@ -1,0 +1,18 @@
+
+ RUN  e2e v<version> /project
+      run run-1 · targets: chromium, firefox · agents: buyer, admin · CI
+      model openai/gpt-5.6-luna-fast
+
+ ✓ service "compose" ready 43.00s
+   ✓ checkout > pays > agent.act "pay for the cart" 4.20s · 3 model calls
+ ✓ |chromium| tests/checkout.e2e.ts (2 tests) 4.42s ai 12.4k tokens · $0.0123
+ ✓ |chromium| tests/home.e2e.ts (1 test) 120ms
+
+ Test Files  2 passed (2)
+      Tests  3 passed (3)
+         AI  12.4k tokens · $0.0123 · 3 model calls · openai/gpt-5.6-luna-fast
+      Cache  1 missed
+   Start at  10:00:00
+   Duration  119.50s (2m 0s, startup 43.00s)
+     Report  .e2e/report.json
+   AI trace  .e2e/ai-trace.json (open with: npx unbox-ai .e2e/ai-trace.json)

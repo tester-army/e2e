@@ -1,0 +1,46 @@
+
+ RUN  e2e v<version> /project
+      run run-1 · targets: chromium
+
+ ❯ |chromium| tests/login.e2e.ts (5 tests | 2 failed | 1 interrupted | 1 skipped) 30.48s
+   ✓ login > opens 120ms
+   × login > welcomes 120ms
+     → expect.toContainText failed
+   × login > slow (timed-out) 30.00s
+   × login > cut (interrupted) 120ms
+   ↓ login > signs in with SSO [no SSO in test]
+ ↓ |chromium| tests/later.e2e.ts (1 test | 1 skipped)
+ ✓ |chromium| tests/retry.e2e.ts (1 test | 1 flaky) 170ms ai 1.0k tokens
+   ✓ retries (flaky) 170ms ai 1.0k tokens
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests/login.e2e.ts > login > welcomes
+ASSERTION_FAILED: expect.toContainText failed
+expected "Welcome", got "Sign in"
+ ❯ tests/login.e2e.ts:4:22
+      2|
+      3| await app.open();
+      4| await expect(status).toContainText("Welcome");
+       |                      ^
+      5| await done();
+      6|
+ ❯ at https://app.test/login
+ ❯ on screen heading "Sign in"
+ ❯ screen .e2e/artifacts/chromium/login/attempt-0/screen.txt
+ ❯ video .e2e/artifacts/chromium/login/attempt-0/video/video.webm
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |chromium| tests/login.e2e.ts > login > slow
+timed-out: no error was recorded
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed | 1 passed | 1 skipped (3)
+      Tests  2 failed | 1 interrupted | 1 passed | 1 flaky | 2 skipped (7)
+         AI  1.0k tokens · 2 model calls · typesafe-ai/jev
+   Start at  10:00:00
+   Duration  0ms
+     Report  .e2e/report.json

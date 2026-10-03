@@ -1,0 +1,38 @@
+
+ RUN  e2e v<version> /project
+      run run-1 · targets: web
+
+ ❯ |web| Exploring  Explore checkout like a first-time buyer
+   ⚑ high issue  Cart total shows $0.00 with two items (/cart)
+   ✓ 1  Cart 32.00s · 2 actions · 1 finding
+   ⚑ trivial warning  Footer misspells Receive (/)
+   × 2  Checkout 91.00s · 1 finding failed
+        The Pay button stayed disabled with every field filled
+   ended: the agent covered the goal
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯ Findings 2 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+ 1. high issue       Cart total shows $0.00 with two items
+    /cart · step 1
+    expected  The total equals the sum of the two line items
+    actual    The cart shows "Total: $0.00" under two items priced $12.00 and
+              $8.00 each
+    steps     1. Open the catalog
+              2. Add two books to the cart
+              3. Open the cart
+    evidence  .e2e/artifacts/web/explore-checkout-like-a-first-time-buyer-1ec1fbacae1eaff1/default/attempt-0/finding-1.png
+
+ 2. trivial warning  Footer misspells Receive
+    / · step 2
+    expected  Receive
+    actual    Recieve
+    steps     1. Scroll to the footer
+
+ Assessment
+   Checkout cannot be completed. Script the cart total.
+
+   Findings  1 issue | 1 warning
+      Steps  2 of 4 · 1 passed · 1 failed · the agent covered the goal
+   Start at  10:00:00
+   Duration  0ms
+     Report  .e2e/report.json

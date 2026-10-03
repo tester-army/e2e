@@ -1,0 +1,13 @@
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯ Run Errors 1 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+ ERROR  configuration error INVALID_CONFIG (config)
+unknown config key "nope"
+
+
+ Test Files  no test files
+      Tests  no tests executed
+     Errors  1 error
+   Start at  10:00:00
+   Duration  0ms
+     Report  (not written)

@@ -1,0 +1,14 @@
+
+ RUN  e2e v<version> /project
+      run run-1 · targets: chromium · agent: ux
+      model gateway/openai/gpt-5.6-luna
+
+interrupted while starting service "postgres": tearing down (interrupt again to force)
+interrupted again: tearing every worker down now
+stopped after 3 failures (--max-failures 3): the running tests end as interrupted, the rest are skipped
+
+ Test Files  none started (interrupted)
+      Tests  none executed (interrupted)
+   Start at  10:00:00
+   Duration  0ms
+     Report  .e2e/report.json
