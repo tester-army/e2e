@@ -10,8 +10,23 @@ import { SHOWN_SELECTOR } from './shown-selector.ts';
 type PwScope = Page | FrameLocator | PwLocator;
 
 function patternToPw(pattern: TextPattern): string | RegExp {
-  if (pattern.kind === 'regexp') return new RegExp(pattern.source, pattern.flags);
+  if (pattern.kind === 'regexp') return selectorSafeRegExp(new RegExp(pattern.source, pattern.flags));
   return pattern.value;
+}
+
+/**
+ * A RegExp Playwright can write into a selector as is. Playwright escapes the
+ * quotes and `>>` of a RegExp it writes into a selector, except under the `u`
+ * or `v` flag, where `\'` is a syntax error: a bare quote there opens a
+ * string that swallows every part chained after it. A quote or the second `>`
+ * of `>>` becomes the hex escape the flag accepts, matching the same text.
+ */
+function selectorSafeRegExp(re: RegExp): RegExp {
+  if (!/[uv]/.test(re.flags)) return re;
+  const source = re.source
+    .replace(/["'`]/g, (quote) => `\\x${quote.charCodeAt(0).toString(16)}`)
+    .replace(/>>/g, '>\\x3e');
+  return source === re.source ? re : new RegExp(source, re.flags);
 }
 
 function patternExact(pattern: TextPattern): boolean {
@@ -29,7 +44,7 @@ function testIdSelector(attribute: string, pattern: TextPattern): string {
   const name = attribute.includes(',') ? JSON.stringify(attribute) : attribute;
   const value =
     pattern.kind === 'regexp'
-      ? escapeRegexForSelector(new RegExp(pattern.source, pattern.flags))
+      ? escapeRegexForSelector(selectorSafeRegExp(new RegExp(pattern.source, pattern.flags)))
       : `"${pattern.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"s`;
   return `internal:testid=[${name}=${value}]`;
 }
@@ -92,7 +107,7 @@ function glyphTolerantName(name: string, exact: boolean): RegExp {
     .split(/\s+/)
     .map((word) => word.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'))
     .join(`${GLYPH_OR_SPACE}+`);
-  return exact ? new RegExp(`^${GLYPH_OR_SPACE}*${body}${GLYPH_OR_SPACE}*$`, 'u') : new RegExp(body, 'iu');
+  return selectorSafeRegExp(exact ? new RegExp(`^${GLYPH_OR_SPACE}*${body}${GLYPH_OR_SPACE}*$`, 'u') : new RegExp(body, 'iu'));
 }
 
 /**

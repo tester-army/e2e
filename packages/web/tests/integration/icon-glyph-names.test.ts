@@ -30,6 +30,7 @@ const PAGE = `
   <button>Log<i class="glyph"></i>out</button>
   <label class="next">Email <input></label>
   <label><i class="glyph"></i> Phone <input></label>
+  <h2 data-testid="don't">Don't "quote" a &gt;&gt; b</h2>
 `;
 
 function cleanup(): EngineCleanupContext {
@@ -110,6 +111,21 @@ describe('names with CSS generated content', () => {
     expect(await names(byRole('button', 'Sign'))).toEqual([]);
     expect(await names(byRole('button', 'Next'))).toEqual([]);
     expect(await names(byRole('link', 'new', false))).toEqual(['Inbox3 new']);
+  });
+
+  it('matches a name with quotes and >> however the query is chained', async () => {
+    const quoted = `Don't "quote" a >> b`;
+    const first = (source: LocatorExpression): LocatorExpression => ({ kind: 'index', source, index: 'first' });
+    const unicode = (kind: 'text' | 'testId', source: string, flags = 'u'): LocatorExpression => ({
+      kind: 'query',
+      query: { kind, value: { kind: 'regexp', source, flags } },
+    });
+    expect(await names(first(byRole('heading', quoted)))).toEqual([quoted]);
+    expect(await names(first(byRole('heading', `don't "QUOTE"`, false)))).toEqual([quoted]);
+    expect(await names({ kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'heading', exact: true }, name: { kind: 'string', value: "Don't", exact: false }, visible: true } })).toEqual([quoted]);
+    expect(await names(first(unicode('text', quoted)))).toEqual([quoted]);
+    expect(await names(first(unicode('text', `[']t "quote" a >>`, 'v')))).toEqual([quoted]);
+    expect(await names(first(unicode('testId', "^don't$")))).toEqual([quoted]);
   });
 
   it('keeps generated content out of label text, as getByLabel reads it, and drops a glyph from it', async () => {
