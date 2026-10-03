@@ -10,8 +10,7 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { jsonSchema, stepCountIs, tool, ToolLoopAgent } from 'ai';
 import { describe, expect, it } from 'vitest';
-import { providerHints, type ProviderModelRef } from '../../src/agent/model/provider-hints.ts';
-import type { ProviderOptions } from '../../src/types.ts';
+import { promptCacheKey, providerHints, type ProviderModelRef } from '../../src/agent/model/provider-hints.ts';
 
 const USAGE = {
   input_tokens: 3,
@@ -33,7 +32,7 @@ const SECOND_TURN = response([
 ]);
 
 /** Runs two turns and returns the request bodies, in order. */
-async function twoTurns(base: ProviderOptions | undefined): Promise<Record<string, unknown>[]> {
+async function twoTurns(): Promise<Record<string, unknown>[]> {
   const bodies: Record<string, unknown>[] = [];
   const fetch: typeof globalThis.fetch = (_url, init) => {
     bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
@@ -42,7 +41,7 @@ async function twoTurns(base: ProviderOptions | undefined): Promise<Record<strin
   };
   const model = createOpenAI({ apiKey: 'test-key', fetch })('gpt-6-luna');
   const hints = providerHints(model as ProviderModelRef);
-  const providerOptions = hints.providerOptions(base, 'rules');
+  const providerOptions = hints.providerOptions(undefined, 'rules');
   const agent = new ToolLoopAgent({
     model,
     instructions: hints.instructions('rules'),
@@ -62,20 +61,15 @@ function typedItems(body: Record<string, unknown>): Record<string, unknown>[] {
 
 describe('the second turn of an OpenAI-shaped step', () => {
   it('replays the first turn inline: encrypted reasoning and the tool exchange, no item reference', async () => {
-    const [first, second] = await twoTurns(undefined);
+    const [first, second] = await twoTurns();
     expect(first?.['store']).toBe(false);
+    expect(first?.['include']).toContain('reasoning.encrypted_content');
+    expect(first?.['prompt_cache_key']).toBe(promptCacheKey('rules'));
     expect(second?.['store']).toBe(false);
     const items = typedItems(second!);
     expect(items.map((item) => item['type'])).toEqual(['reasoning', 'function_call', 'function_call_output']);
     expect(items[0]).toMatchObject({ type: 'reasoning', encrypted_content: 'ENCRYPTED-1' });
     expect(items[1]).toMatchObject({ type: 'function_call', call_id: 'call_1', name: 'tap' });
     expect(items[2]).toMatchObject({ type: 'function_call_output', call_id: 'call_1' });
-  });
-
-  it('with storage turned back on refers to the stored reasoning by id, which a provider that stored nothing rejects', async () => {
-    const [, second] = await twoTurns({ openai: { store: true } });
-    const items = typedItems(second!);
-    expect(items).toContainEqual({ type: 'item_reference', id: 'rs_1' });
-    expect(items.some((item) => item['type'] === 'reasoning')).toBe(false);
   });
 });

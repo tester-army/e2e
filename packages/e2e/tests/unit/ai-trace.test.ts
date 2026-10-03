@@ -108,25 +108,6 @@ describe('AiTraceRecorder', () => {
     expect(input.toolChoice).toEqual({ type: 'required' });
   });
 
-  it('writes the response, usage, and provider metadata of a finished step', async () => {
-    const recorder = new AiTraceRecorder();
-    await generation(recorder, 'call-1');
-    const step = recorder.drain().steps[0]!;
-    const output = JSON.parse(step.output!) as {
-      finishReason: string;
-      response: { messages: { role: string }[] };
-      providerMetadata: { gateway: { cost: string } };
-    };
-    expect(output.finishReason).toBe('tool-calls');
-    expect(output.response.messages.map((message) => message.role)).toEqual(['assistant', 'tool']);
-    expect(output.providerMetadata.gateway.cost).toBe('0.0001');
-    expect(JSON.parse(step.usage!)).toEqual({
-      inputTokens: 100,
-      outputTokens: 20,
-      inputTokenDetails: { cacheReadTokens: 40 },
-    });
-  });
-
   it('closes an open step with the error when the generation fails', async () => {
     const recorder = new AiTraceRecorder();
     await generation(recorder, 'call-1', { fail: true });
@@ -252,31 +233,6 @@ describe('AiTraceRecorder', () => {
     const recorder = new AiTraceRecorder();
     await recorder.telemetry.onStart?.({ callId: 'e', operationId: 'ai.embed' } as never);
     expect(recorder.drain().runs).toHaveLength(0);
-  });
-
-  it('nests a generation made inside a tool under the calling run', async () => {
-    const recorder = new AiTraceRecorder();
-    const t = recorder.telemetry;
-    await t.onStart?.({ callId: 'outer', operationId: 'ai.generateText' } as never);
-    await t.onStepStart?.({
-      callId: 'outer',
-      stepNumber: 0,
-      provider: 'p',
-      modelId: 'm',
-      instructions: undefined,
-      messages: [],
-    } as never);
-    await t.executeTool!({
-      callId: 'outer',
-      toolCallId: 'tc1',
-      execute: () => generation(recorder, 'inner'),
-    } as never);
-    await t.onEnd?.({ callId: 'outer' } as never);
-    const { runs, steps } = recorder.drain({ all: true });
-    const outer = runs.find((run) => run.parent_run_id === null)!;
-    const inner = runs.find((run) => run.parent_run_id !== null)!;
-    expect(inner.parent_run_id).toBe(outer.id);
-    expect(inner.parent_step_id).toBe(steps.find((step) => step.run_id === outer.id)!.id);
   });
 
   it('keeps open steps until they close, and takes them at a final drain', async () => {

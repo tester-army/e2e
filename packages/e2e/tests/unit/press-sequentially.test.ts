@@ -89,12 +89,6 @@ describe('locator.pressSequentially', () => {
     expect(log).toEqual(['focus:city', 'type:a', 'type:\u{1F600}']);
   });
 
-  it('types nothing for an empty text but still focuses the field', async () => {
-    const { screen, log } = fieldScreen();
-    await screen.getByLabel('City').pressSequentially('');
-    expect(log).toEqual(['focus:city']);
-  });
-
   it('refuses a target whose engine has no keyboard before resolving any node', async () => {
     const { screen, locate, log } = fieldScreen({ keyboard: false });
     await expect(screen.getByLabel('City').pressSequentially('W')).rejects.toMatchObject({

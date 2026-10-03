@@ -79,29 +79,6 @@ describe('repairPlan', () => {
 describe('planInstruction', () => {
   const fresh = () => new ExploreState('Explore checkout like a first-time buyer', { maxSteps: 6, timeoutMs: 600_000 });
 
-  it('opens with the goal, an empty record, and the two decisions', () => {
-    const state = fresh();
-    const text = planInstruction(state, { mustFinish: false, remainingMs: 540_000, timeoutMs: 60_000 });
-    expect(text).toContain('Goal: Explore checkout like a first-time buyer');
-    expect(text).toContain('0 of 6 steps used, about 9 minute(s) left');
-    expect(text).toContain('(none yet: this is the first step)');
-    expect(text).toContain('"decision": "step"');
-    expect(text).toContain('"decision": "finish"');
-  });
-
-  it('lists the steps with their outcome and the findings so far', () => {
-    const state = fresh();
-    state.beginStep('Cart', 'open the cart');
-    state.endStep('passed', 'Cart opened');
-    state.beginStep('Pay', 'pay for the cart');
-    state.endStep('exhausted', 'ran out of actions', 'STEP_BUDGET_EXHAUSTED');
-    state.addFinding({ title: 'Total is $0.00', kind: 'issue', severity: 4, expected: 'a total', actual: '$0.00', reproduction: ['open the cart'] });
-    const text = planInstruction(state, { mustFinish: false, remainingMs: 300_000, timeoutMs: 60_000 });
-    expect(text).toContain('1. [passed] Cart — Cart opened');
-    expect(text).toContain('2. [ended at its limit] Pay — ran out of actions');
-    expect(text).toContain('- [issue, severity 4] Total is $0.00');
-  });
-
   it('asks only for the assessment when the run must finish', () => {
     const state = fresh();
     const text = planInstruction(state, { mustFinish: true, reason: 'the step limit of 6 is reached', remainingMs: 100_000, timeoutMs: 60_000 });

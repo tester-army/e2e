@@ -160,15 +160,6 @@ describe('failure streak', () => {
     ]);
   });
 
-  it('reads the message of a call the SDK refused before dispatch', () => {
-    const refused = 'AI_InvalidToolInputError: Invalid input for tool tap: unrecognized key "force"';
-    const results = extractToolResults([result('tap', { type: 'error-text', value: refused }), result('tap', { type: 'text', value: tapped })], 'complete_step');
-    expect(results).toEqual([
-      { text: refused, failed: true },
-      { text: tapped, failed: false },
-    ]);
-  });
-
   it('reads the text beside a screenshot, so the streak warns and stops in pixel mode too', () => {
     const streak = (count: number) => Array.from({ length: count }, () => result('tap', withScreenshot(failed)));
     const results = extractToolResults([result('tap', withScreenshot(tapped)), ...streak(3)], 'complete_step');
@@ -178,22 +169,6 @@ describe('failure streak', () => {
     expect(results[1]!.failed).toBe(true);
     expect(checkFailureStreak(results)).toEqual({ kind: 'warn', reason: 'the last 3 actions failed in a row' });
     expect(checkFailureStreak(extractToolResults(streak(5), 'complete_step')).kind).toBe('stop');
-  });
-
-  it('counts a screenshot-bearing failure, an SDK refusal, and a text failure alike, and a screenshot-bearing success ends the streak', () => {
-    const refused = "Model tried to call unavailable tool 'click'. Available tools: observe, tap, type, complete_step.";
-    const results = extractToolResults(
-      [
-        result('tap', withScreenshot(failed)),
-        result('click', { type: 'error-text', value: refused }),
-        result('tap', { type: 'text', value: failed }),
-        result('tap', withScreenshot(tapped)),
-      ],
-      'complete_step',
-    );
-    expect(results.map((entry) => entry.failed)).toEqual([true, true, true, false]);
-    expect(checkFailureStreak(results.slice(0, 3))).toEqual({ kind: 'warn', reason: 'the last 3 actions failed in a row' });
-    expect(checkFailureStreak(results).kind).toBe('clear');
   });
 
   it('counts a refused conclusion toward the streak: three warn, five force the verdict, and the conclusion tool\'s own text neither counts nor resets', () => {

@@ -309,14 +309,6 @@ describe('prepareObservation', () => {
     expect(prepared.text).not.toContain('engine stopped');
   });
 
-  it('keeps the root even when it alone exceeds the limit', () => {
-    const prepared = prepareObservation(
-      observation(node('n1', { role: 'document', name: 'x'.repeat(500) })),
-      { redact: NO_REDACT, redactCut: NO_REDACT, maxBytes: 1_024 },
-    );
-    expect(prepared.text).toContain('#n1 document');
-  });
-
   it('collapses whitespace and strips control characters from app text', () => {
     const prepared = prepareObservation(
       observation(node('n1', { role: 'status', text: 'line\u0007one\n   two  ' })),

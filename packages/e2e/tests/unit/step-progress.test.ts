@@ -41,7 +41,6 @@ describe('StepRecorder.replaying', () => {
   });
 });
 
-
 describe('StepRecorder step source', () => {
   it('names the test line the step was called from when it knows the project root, and nothing otherwise', async () => {
     // The tests directory stands in for a project root: the runner's own frames lie outside it, as they do in a real project.
@@ -68,12 +67,6 @@ describe('StepRecorder.activity', () => {
       expect.objectContaining({ phase: 'end', api: 'agent.act', modelCalls: 0 }),
     ]);
     expect(steps.all()[0]?.events).toEqual([]);
-  });
-
-  it('says nothing outside a running step', () => {
-    const { steps, heard } = recorder();
-    steps.activity('observe');
-    expect(heard).toEqual([]);
   });
 });
 

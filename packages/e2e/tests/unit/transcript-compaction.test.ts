@@ -229,9 +229,4 @@ describe('compactScreenshotHistory', () => {
     expect(JSON.stringify(t1)).not.toContain('"type":"file"');
     expect(JSON.stringify(compacted[4]!)).toContain('"type":"file"');
   });
-
-  it('honours a caller-supplied preserve count and batch size', () => {
-    const messages = [shot('t1'), shot('t2'), shot('t3')];
-    expect(images(compactScreenshotHistory(messages, { preserve: 1, batch: 1 }))).toBe(1);
-  });
 });

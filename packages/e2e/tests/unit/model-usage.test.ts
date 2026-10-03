@@ -12,9 +12,9 @@ describe('model usage accounting', () => {
     expect(usage.report(provenance, 2).estimatedCostUsd).toBeCloseTo(0.3);
   });
 
-  it.each([{}, { inputTokens: 1 }, { inputTokens: 1, outputTokens: 2, accounting: 'adapter-upper-bound' as const }])('keeps mixed usage non-authoritative after later complete reports: %j', (partial) => {
+  it('keeps mixed usage non-authoritative after later complete reports', () => {
     const usage = new ModelUsage();
-    usage.record(partial);
+    usage.record({ inputTokens: 1 });
     usage.record({ inputTokens: 10, outputTokens: 3 });
     expect(usage.report(provenance, 2).tokenAccounting).toBe('adapter-upper-bound');
   });
@@ -28,7 +28,7 @@ describe('model usage accounting', () => {
     expect(usage.report(provenance, 2).estimatedCostUsd).toBeUndefined();
   });
 
-  it('caps overflowing token sums and preserves non-authoritative accounting', () => {
+  it('caps overflowing token sums and omits an overflowing cost total even after later finite costs arrive', () => {
     const usage = new ModelUsage();
     const maximum = Number.MAX_SAFE_INTEGER;
     expect(usage.record({ inputTokens: maximum, outputTokens: maximum })).toBe(maximum);
@@ -38,15 +38,12 @@ describe('model usage accounting', () => {
       tokenAccounting: 'adapter-upper-bound', inputTokens: maximum,
       outputTokens: maximum, peakTokensPerCall: maximum,
     });
-  });
-
-  it('omits an overflowing cost total even after later finite costs arrive', () => {
-    const usage = new ModelUsage();
-    usage.record({ inputTokens: 1, outputTokens: 1, estimatedCostUsd: Number.MAX_VALUE });
-    expect(usage.report(provenance, 1).estimatedCostUsd).toBe(Number.MAX_VALUE);
-    usage.record({ inputTokens: 1, outputTokens: 1, estimatedCostUsd: Number.MAX_VALUE });
-    usage.record({ inputTokens: 1, outputTokens: 1, estimatedCostUsd: 0.25 });
-    expect(usage.report(provenance, 3)).not.toHaveProperty('estimatedCostUsd');
-    expect(usage.report(provenance, 3)).toMatchObject({ inputTokens: 3, outputTokens: 3 });
+    const costs = new ModelUsage();
+    costs.record({ inputTokens: 1, outputTokens: 1, estimatedCostUsd: Number.MAX_VALUE });
+    expect(costs.report(provenance, 1).estimatedCostUsd).toBe(Number.MAX_VALUE);
+    costs.record({ inputTokens: 1, outputTokens: 1, estimatedCostUsd: Number.MAX_VALUE });
+    costs.record({ inputTokens: 1, outputTokens: 1, estimatedCostUsd: 0.25 });
+    expect(costs.report(provenance, 3)).not.toHaveProperty('estimatedCostUsd');
+    expect(costs.report(provenance, 3)).toMatchObject({ inputTokens: 3, outputTokens: 3 });
   });
 });

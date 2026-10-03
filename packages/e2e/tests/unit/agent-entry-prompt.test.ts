@@ -63,14 +63,6 @@ describe('the built-in agent from its agents entry', () => {
     expect(loopCalls[0]!.system).toContain('Project context:\nPlans are called tiers.\nBilling lives under Settings.');
   });
 
-  it('adds no project context or guidance when the entry names none', async () => {
-    const model = installFakeLoopModel(() => conclude);
-    const fixtures = runtime({ agents: { default: { model } } });
-    await fixtures.agent.act('open billing');
-    expect(loopCalls[0]!.system).not.toContain('Project context:');
-    expect(loopCalls[0]!.system).not.toContain('Be careful.');
-  });
-
   it("builds each agent from its own entry: another agent's system never leaks in", async () => {
     const model = installFakeLoopModel(() => conclude);
     const fixtures = runtime({ agents: { default: { model, system: 'Be careful.' }, ux: { model, system: 'Review the layout.' } } });

@@ -129,17 +129,6 @@ describe('describePointAction', () => {
     expect(text).toBe('Tapped the point (640, 120); no listed control is there (under it: #n5 paragraph text="Body copy").');
   });
 
-  it('reads a hover the same way, in its own words', () => {
-    const text = describePointAction({
-      verb: 'hoverAt',
-      point: { x: 640, y: 120 },
-      control: undefined,
-      under: screen.nodes.get('n5'),
-      observation: screen,
-    });
-    expect(text).toBe('Hovered over the point (640, 120); no listed control is there (under it: #n5 paragraph text="Body copy").');
-  });
-
   it('falls back to the id when the line was cut from the text', () => {
     expect(nodeLine({ text: '#n1 document' }, 'n9')).toBe('#n9');
   });

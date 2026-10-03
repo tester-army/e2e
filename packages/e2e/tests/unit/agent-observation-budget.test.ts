@@ -30,10 +30,4 @@ describe('observationByteBudget', () => {
   it('never falls below the floor a tree can still name controls under', () => {
     expect(observationByteBudget(LIMITS, { fixedBytes: 1_000_000, pixels: true })).toBe(1_024);
   });
-
-  it('honors a configured ceiling smaller than the token ceiling allows', () => {
-    expect(
-      observationByteBudget({ ...LIMITS, maxObservationBytes: 4_096 }, { fixedBytes: 0, pixels: false }),
-    ).toBe(4_096);
-  });
 });

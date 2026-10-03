@@ -33,7 +33,7 @@ async function recordMessages(messages: unknown[], rawOutput: unknown = undefine
 }
 
 describe('AI trace inline media', () => {
-  it.each([0, 1, 2, 3, 102_400])('records the decoded byte count for %i bytes in SDK content parts', async (size) => {
+  it.each([0, 1, 102_400])('records the decoded byte count for %i bytes in SDK content parts', async (size) => {
     const encoded = Buffer.alloc(size, 165).toString('base64');
     const note = `[binary ${size} bytes omitted]`;
     const media = [

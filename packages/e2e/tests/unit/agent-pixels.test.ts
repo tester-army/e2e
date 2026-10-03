@@ -39,10 +39,10 @@ describe('downscalePixels', () => {
     expect(small.scale).toBeCloseTo(0.5);
     expect(small.data.byteLength).toBeLessThan(shot.data.byteLength);
     // A device capture at 3x keeps its ratio meaning: image pixels per CSS pixel.
-    const device = { ...picture(1170, 2532, { x: 0, y: 0, w: 10, h: 10 }), scale: 3 };
-    const capped = downscalePixels(device, 1024);
-    expect(capped.height).toBe(1024);
-    expect(capped.scale).toBeCloseTo(3 * (capped.width / 1170));
+    const device = { ...picture(390, 844, { x: 0, y: 0, w: 10, h: 10 }), scale: 3 };
+    const capped = downscalePixels(device, 422);
+    expect(capped.height).toBe(422);
+    expect(capped.scale).toBeCloseTo(3 * (capped.width / 390));
   });
 
   it('keeps a masked region black after resampling, and the surroundings white', () => {

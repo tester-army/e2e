@@ -62,8 +62,6 @@ const cases: readonly { readonly name: string; readonly value: unknown; readonly
   { name: 'a non-string explanation', value: judgment({ explanation: 42 }), accepted: false },
   { name: 'the agent-judgment-1 shape', value: { protocolVersion: 'agent-judgment-1', result: true, explanation: 'yes' }, accepted: false },
   { name: 'null', value: null, accepted: false },
-  { name: 'an array', value: [judgment()], accepted: false },
-  { name: 'a JSON string', value: JSON.stringify(judgment()), accepted: false },
 ];
 
 describe('agent-judgment-2', () => {

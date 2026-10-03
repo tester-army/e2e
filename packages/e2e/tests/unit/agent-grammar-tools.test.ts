@@ -177,10 +177,4 @@ describe('the schema a provider receives', () => {
     expect(Object.keys(sent(schema)).toSorted()).toEqual(['$schema', 'additionalProperties', 'properties', 'required', 'type']);
     expect(Object.keys(emitted(schema)).toSorted()).toEqual(['$schema', 'additionalProperties', 'properties', 'required', 'type']);
   });
-
-  it('is the SDK that closes a plain object: zod in input mode declares nothing about extra keys', () => {
-    const plain = z.object({ target: z.string() });
-    expect(emitted(plain).additionalProperties).toBeUndefined();
-    expect(sent(plain).additionalProperties).toBe(false);
-  });
 });

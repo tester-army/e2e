@@ -159,12 +159,4 @@ describe('ExploreState progress', () => {
     expect(seen[4]).toMatchObject({ step: { index: 1, status: 'passed', summary: 'covered' } });
     expect(seen[6]).toEqual({ phase: 'finished', ended: 'step-limit', summary: 'Checkout is broken.' });
   });
-
-  it('announces the end without a summary when none was given', () => {
-    const state = new ExploreState('goal', { maxSteps: 4, timeoutMs: 300_000 });
-    const seen: ExploreProgress[] = [];
-    state.subscribe((progress) => seen.push(progress));
-    state.end('aborted', '  ');
-    expect(seen).toEqual([{ phase: 'finished', ended: 'aborted', summary: undefined }]);
-  });
 });

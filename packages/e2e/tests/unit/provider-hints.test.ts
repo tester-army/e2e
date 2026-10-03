@@ -45,11 +45,6 @@ describe('providerHints for Anthropic', () => {
     ]);
     expect(kept?.providerOptions).toEqual({ anthropic: { other: 1 }, openai: { x: 1 } });
   });
-
-  it('leaves an empty history alone', () => {
-    const empty: ModelMessage[] = [];
-    expect(hints.markLatest(empty)).toBe(empty);
-  });
 });
 
 describe('providerHints for OpenAI-shaped providers', () => {

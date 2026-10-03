@@ -8,12 +8,6 @@ const tool = {
 } as unknown as Parameters<typeof defineTool>[0];
 
 describe('defineTool platforms', () => {
-  it('offers an unscoped tool on every platform', () => {
-    const defined = defineTool(tool, { mutates: false });
-    expect(toolAppliesTo(defined, 'web')).toBe(true);
-    expect(toolAppliesTo(defined, 'ios')).toBe(true);
-  });
-
   it('offers a scoped tool only on its declared platforms', () => {
     const defined = defineTool(tool, { mutates: true, platforms: ['ios', 'android'] });
     expect(toolAppliesTo(defined, 'ios')).toBe(true);

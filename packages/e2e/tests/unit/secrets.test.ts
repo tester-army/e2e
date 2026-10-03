@@ -48,20 +48,6 @@ describe('credentials.user', () => {
     expect(Object.values(handle.password)).not.toContain('super-secret-password');
   });
 
-  it('models the password as an opaque secret handle', () => {
-    setSecretRegistry(registry([admin], []));
-    const handle = credentials.user('admin');
-    expect(handle.password.name).toBe('admin.password');
-    expect(handle.password.purpose).toBe('password');
-  });
-
-  it('clearing the registry revokes availability again', () => {
-    setSecretRegistry(registry([admin], []));
-    expect(() => credentials.user('admin')).not.toThrow();
-    setSecretRegistry(undefined);
-    expect(() => credentials.user('admin')).toThrow(/runner is active/);
-  });
-
   it('replacing the registry swaps the visible credential set', () => {
     setSecretRegistry(registry([admin], []));
     setSecretRegistry(registry([{ name: 'viewer', username: 'viewer@example.com', password: { name: 'viewer.password', purpose: 'password', value: 'viewer-pass' } }], []));

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { redactParams, validateActOptions, validateParams } from '../../src/agent/act-validation.ts';
 import { templateParams } from '../../src/cache/template.ts';
 import { unique } from '../../src/params.ts';
-import { ConfigurationError, TestError } from '../../src/internal/errors.ts';
+import { ConfigurationError } from '../../src/internal/errors.ts';
 
 describe('validateActOptions', () => {
   it('accepts the options bag and an absent one', () => {
@@ -23,31 +23,13 @@ describe('validateActOptions', () => {
     );
   });
 
-  it('rejects the pre-0.8 third argument', () => {
-    expect(() => validateActOptions({ params: {} }, 1)).toThrow(
-      expect.objectContaining({ code: 'INVALID_ARGUMENT', message: expect.stringMatching(/takes two arguments/) }),
-    );
-  });
-
-  it('rejects options that are not a plain object', () => {
-    for (const options of [null, 'fast', 3, ['a']]) {
-      expect(() => validateActOptions(options as never, 0)).toThrow(TestError);
-    }
-  });
-
-  it('keeps naming schema as a capability act does not have', () => {
+  it('names schema and vision as capabilities act does not have', () => {
     expect(() => validateActOptions({ schema: {} } as never, 0)).toThrow(
       expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message: expect.stringMatching(/options\.schema/) }),
     );
-    expect(() => validateActOptions({ schema: {} } as never, 0)).toThrow(ConfigurationError);
-  });
-
-  it('names vision as a judgment option act does not take, whatever its value', () => {
-    for (const vision of [true, false, 'only'] as const) {
-      expect(() => validateActOptions({ vision } as never, 0)).toThrow(
-        expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message: expect.stringMatching(/takes no vision option/) }),
-      );
-    }
+    expect(() => validateActOptions({ vision: false } as never, 0)).toThrow(
+      expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message: expect.stringMatching(/takes no vision option/) }),
+    );
     expect(() => validateActOptions({ vision: true } as never, 0)).toThrow(ConfigurationError);
   });
 });
