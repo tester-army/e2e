@@ -44,8 +44,7 @@ target, so a test can `requires: ['browser']`. Browser options:
 (the `User-Agent` every attempt sends and `navigator.userAgent` reports),
 `locale` and `timezoneId` (the language and time zone every attempt runs in,
 such as `de-DE` and `Europe/Berlin`), `initScripts` (scripts every document
-runs before its own: source, a `{ path }`, or a function; a test adds more
-with `browser.addInitScript`), and
+runs before the page's own), and
 `connect` — attach to a remote browser over CDP instead of launching a local
 one.
 

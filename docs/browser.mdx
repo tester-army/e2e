@@ -118,25 +118,22 @@ assertions for visible UI so tests depend less on the DOM structure.
 
 ## Run a script before the page
 
-An init script runs in every document before any of the page's own scripts,
-in every tab and frame: mock a browser API, seed `Math.random`, or set a flag the
-app reads at boot. Configure scripts for every test on the engine:
+An init script runs in every document before the page's own scripts: mock a
+browser API, seed `Math.random`, or set a flag the app reads at boot. For every
+test:
 
 ```ts
 web({ initScripts: [{ path: 'tests/init.js' }] })
 ```
 
-Add one for a single test with `browser.addInitScript`, before the page
-opens. A function is serialized like `evaluate`'s; pass data as the second
-argument:
+For one test, before the page opens:
 
 ```ts
 await browser.addInitScript((value) => { Math.random = () => value; }, 0.5);
 await app.open('/raffle');
 ```
 
-Scripts stay in force across `app.restart()` and `app.clearState()`. See
-[init scripts](/reference/web#init-scripts) for the details.
+See [init scripts](/reference/web#init-scripts).
 
 ## Cookies
 

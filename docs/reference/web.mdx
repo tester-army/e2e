@@ -96,17 +96,11 @@ export interface WebOptions {
    * Defaults to the machine's. A persistent context is `INVALID_CONFIG`.
    */
   readonly timezoneId?: string;
-  /**
-   * Scripts every document of every attempt runs after it is created and
-   * before any of its own scripts, in every tab and frame: a string of
-   * JavaScript source, a `{ path }` to a file relative to the project root,
-   * or a function serialized into the page. They run in order, before any
-   * `browser.addInitScript` adds. See [Init scripts](#init-scripts).
-   */
+  /** Scripts every document runs before the page's own. See [Init scripts](#init-scripts). */
   readonly initScripts?: readonly WebInitScript[];
 }
 
-/** One init script: JavaScript source, a file of it, or a function that takes no argument. */
+/** JavaScript source, a file relative to the project root, or a function. */
 export type WebInitScript = string | { readonly path: string } | (() => unknown);
 
 /** The engine's screencast of the page: the frame size and the JPEG quality of the frames it encodes. */
@@ -278,14 +272,9 @@ export interface Browser extends Expectable<BrowserExpectation> {
     fn: string | ((arg: Arg) => T | Promise<T>),
     arg: Arg,
   ): Promise<T>;
-  /**
-   * Adds an attempt-scoped init script: every document created from now on
-   * runs it before any of its own scripts, in every tab and frame, after the
-   * configured `initScripts`. The open document runs it at its next
-   * navigation or reload.
-   */
+  /** Adds a script every document runs before the page's own, from the next navigation on. */
   addInitScript(script: string | { path: string } | (() => unknown)): Promise<void>;
-  /** Adds an attempt-scoped init script function called with one JSON-safe argument. */
+  /** Adds an init script function called with one JSON argument. */
   addInitScript<Arg extends JsonValue>(script: (arg: Arg) => unknown, arg: Arg): Promise<void>;
   /** Adds an attempt-scoped network route. */
   route(
@@ -427,31 +416,20 @@ const flag = await browser.evaluate(
 
 ### Init scripts
 
-An init script runs in every document after it is created and before any of
-its own scripts, in every tab and frame, as Playwright's `addInitScript` runs
-it: to mock a browser API, seed `Math.random`, or set a flag the app reads
-at boot. `web({ initScripts })` applies to every attempt;
-`browser.addInitScript` adds one for the rest of the attempt, after the
-configured ones. Both are re-applied to each context the attempt replaces
-(`app.clearState()`, a session restore) and after a CDP reconnect.
+An init script runs in every document before the page's own scripts, in every
+tab and frame. `web({ initScripts })` applies to every test;
+`browser.addInitScript` adds one for the rest of the test.
 
-A script is a string of JavaScript source, a `{ path }` to a file relative to
-the project root, or a function. A function is serialized like `evaluate`'s,
-so it cannot close over test variables; `browser.addInitScript` passes a
-JSON-safe `arg` to it, and a secret there is `POLICY_DENIED`. A configured
-file is read when the run starts, and one that cannot be read fails the run
-with `INVALID_CONFIG` before any test; for `browser.addInitScript`, an unreadable file or an
-argument beside a string or `{ path }` is `INVALID_ARGUMENT`. The step label
-names the file, else `source` or `function`, never the code.
+A script is JavaScript source, a `{ path }` relative to the project root, or a
+function. A function cannot close over test variables; pass a JSON `arg`
+instead.
 
 ```ts
 await browser.addInitScript((value) => { Math.random = () => value; }, 0.5);
 await app.open('/raffle');
 ```
 
-The document already open runs a script added later only at its next
-navigation or reload. An exception in a script surfaces in the page's console,
-not the test. There is no way to remove one before the attempt ends.
+A script added after the page opened runs from the next navigation or reload.
 
 ### Routing
 

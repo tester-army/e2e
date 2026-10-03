@@ -219,15 +219,12 @@ export interface Browser extends Expectable<BrowserExpectation> {
     arg: Arg,
   ): Promise<T>;
   /**
-   * Adds an attempt-scoped init script: every document created from now on
-   * runs it before any of its own scripts, in every tab and frame, after the
-   * configured `initScripts`. The open document runs it at its next
-   * navigation or reload. A string is JavaScript source, `{ path }` a file
-   * relative to the project root, and a function is serialized into the
-   * page, called with `arg`, which must be JSON-safe.
+   * Adds a script every document runs before the page's own, from the next
+   * navigation on: JavaScript source, a `{ path }` relative to the project
+   * root, or a function.
    */
   addInitScript(script: string | { path: string } | (() => unknown)): Promise<void>;
-  /** Adds an attempt-scoped init script function called with one JSON-safe argument. */
+  /** Adds an init script function called with one JSON argument. */
   addInitScript<Arg extends JsonValue>(script: (arg: Arg) => unknown, arg: Arg): Promise<void>;
   /** Adds an attempt-scoped network route. */
   route(
