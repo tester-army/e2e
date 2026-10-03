@@ -143,7 +143,7 @@ describe('init scripts', () => {
   it('fails the run, and a worker, with INVALID_CONFIG when a configured file cannot be read', async () => {
     const surface = new PlaywrightSurface({ initScripts: [{ path: 'nope.js' }] });
     await expect(surface.prepare({ runId: 'init-scripts', targetName: 'web', projectRoot, app: {}, slots: 1, env: {},
-      signal, log: () => undefined })).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: expect.stringMatching(/nope\.js \(ENOENT\)/) });
+      signal, headed: false, log: () => undefined })).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: expect.stringMatching(/nope\.js \(ENOENT\)/) });
     await expect(surface.init({ runId: 'init-scripts', targetName: 'web', projectRoot, app: {}, env: {}, headed: false,
       workerSlot: 0, signal, log: () => undefined })).rejects.toMatchObject({
       code: 'INVALID_CONFIG',

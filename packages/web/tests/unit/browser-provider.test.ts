@@ -108,6 +108,7 @@ const prepareInfo = (slots: number, log: (line: string) => void = () => undefine
   slots,
   env,
   signal: new AbortController().signal,
+  headed: false,
   log,
 });
 const finishInfo = (log: (line: string) => void = () => undefined): EngineFinishInfo => ({

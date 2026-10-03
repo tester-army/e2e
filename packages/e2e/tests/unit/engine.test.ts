@@ -213,6 +213,7 @@ describe('defineEngine', () => {
       slots: 1,
       env: {},
       signal: new AbortController().signal,
+      headed: false,
       log: () => {},
     });
     expect(boundToSpec).toBe(true);

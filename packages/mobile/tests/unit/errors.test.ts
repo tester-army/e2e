@@ -236,6 +236,7 @@ describe('automation runner failures through the engine', () => {
       slots: 1,
       env: {},
       signal: new AbortController().signal,
+      headed: false,
       log: (line: string) => lines.push(line),
     };
   }

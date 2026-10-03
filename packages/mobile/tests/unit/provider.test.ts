@@ -46,6 +46,7 @@ const prepareInfo = (env: NodeJS.ProcessEnv, slots: number, log: (line: string) 
   slots,
   env,
   signal: new AbortController().signal,
+  headed: false,
   log,
 });
 const finishInfo = (log: (line: string) => void = () => undefined) => ({
@@ -53,6 +54,7 @@ const finishInfo = (log: (line: string) => void = () => undefined) => ({
   targetName: 'ios',
   env: {},
   signal: new AbortController().signal,
+  headed: false,
   timeoutMs: 5_000,
   log,
 });

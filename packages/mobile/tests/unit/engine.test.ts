@@ -207,6 +207,7 @@ describe('lifecycle', () => {
       slots: 2,
       env: {},
       signal: new AbortController().signal,
+      headed: false,
       log: (line) => lines.push(line),
     });
     expect(h.sessions).toEqual(['e2e-ios-0', 'e2e-ios-1']);
@@ -223,14 +224,14 @@ describe('lifecycle', () => {
     // `device.installApp()` comes later. A pinned `app` whose build is not on
     // yet is not opened either, and the log says why.
     const bare = harness({ device: 'iPhone 16e' }, false);
-    await bare.prepare({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
+    await bare.prepare({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, headed: false, log: () => undefined });
     expect(bare.fake.methods()).toEqual(['devices.boot', 'command.prepare']);
     const build = harness({ device: 'iPhone 16e', appPath: 'build/App.app' }, false);
-    await build.prepare({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
+    await build.prepare({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, headed: false, log: () => undefined });
     expect(build.fake.methods()).toEqual(['devices.boot', 'command.prepare']);
     const pinnedBuild = harness({ device: 'iPhone 16e', appPath: 'build/App.app' });
     const pinnedLines: string[] = [];
-    await pinnedBuild.prepare({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: (line) => pinnedLines.push(line) });
+    await pinnedBuild.prepare({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, headed: false, log: (line) => pinnedLines.push(line) });
     expect(pinnedBuild.fake.methods()).toEqual(['devices.boot', 'command.prepare']);
     expect(pinnedLines[1]).toMatch(/Settings awaits the suite's device.installApp\(\)/);
 
@@ -243,6 +244,7 @@ describe('lifecycle', () => {
       slots: 1,
       env: {},
       signal: new AbortController().signal,
+      headed: false,
       log: () => undefined,
     });
     expect(single.sessions).toEqual(['qa-0']);
@@ -251,7 +253,7 @@ describe('lifecycle', () => {
 
   it('warms each device with a plain open, no launch arguments, and hands the worker the app its session is on', async () => {
     const h = harness({ device: 'iPhone 16e', launchArguments: ['-e2e', 'YES'], permissions: { camera: 'grant' } });
-    const result = await h.prepare({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
+    const result = await h.prepare({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, headed: false, log: () => undefined });
     expect(h.fake.methods()).toEqual(['devices.boot', 'command.prepare', 'apps.open']);
     expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'Settings', platform: 'ios', device: 'iPhone 16e' });
     const handed = result?.env ?? {};
@@ -275,7 +277,7 @@ describe('lifecycle', () => {
       throw new Error('runner still installing');
     });
     const lines: string[] = [];
-    const info = { runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: (line: string) => lines.push(line) };
+    const info = { runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, headed: false, log: (line: string) => lines.push(line) };
     const result = await h.prepare(info);
     expect(lines[1]).toMatch(/Settings did not open.*runner still installing/);
     // Nothing put the session on the app, and the binding says so: the worker's first launch binds it itself.
@@ -289,7 +291,7 @@ describe('lifecycle', () => {
       throw new Error('runner still building');
     });
     const lines: string[] = [];
-    const info = { runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: (line: string) => lines.push(line) };
+    const info = { runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, headed: false, log: (line: string) => lines.push(line) };
     await h.prepare(info);
     expect(lines[1]).toMatch(/runner not prepared.*runner still building/);
     // The warm-up open would start the runner again under open's shorter budget, so the slot is left unopened.
@@ -325,6 +327,7 @@ describe('lifecycle', () => {
       slots: 4,
       env,
       signal: new AbortController().signal,
+      headed: false,
       log: (line) => lines.push(line),
     });
     expect(result).toMatchObject({ workers: 2 });
@@ -361,7 +364,7 @@ describe('lifecycle', () => {
       { platform: 'ios', id: 'B', name: 'B', booted: true },
     ]);
     const env: NodeJS.ProcessEnv = {};
-    const info = { runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env, signal: new AbortController().signal, log: () => undefined };
+    const info = { runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env, signal: new AbortController().signal, headed: false, log: () => undefined };
     const first = await h.prepare(info);
     expect(first?.workers).toBe(1);
     const firstEnv = first?.env ?? {};
@@ -401,6 +404,7 @@ describe('lifecycle', () => {
       slots: 1,
       env: {},
       signal: new AbortController().signal,
+      headed: false,
       log: (line) => lines.push(line),
     });
     // The inventory names the device; the boot selects it by the id agent-device lists it under, an adb serial.
@@ -1122,6 +1126,7 @@ describe('device fixture', () => {
         return value;
       },
       signal: new AbortController().signal,
+      headed: false,
       locator: (expression: unknown) => {
         minted.push(expression);
         return { minted: true };
@@ -1411,7 +1416,7 @@ describe('device fixture', () => {
 
   it('opens the app before a permission change when the warmed session is gone, as after a worker retired on a failing test', async () => {
     const h = harness({ device: 'iPhone 16e' });
-    await h.prepare({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
+    await h.prepare({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, headed: false, log: () => undefined });
     // The retired worker's dispose closed the slot's session, so agent-device no longer lists it.
     h.fake.respond('sessions.list', () => [{ name: 'e2e-ios-1', address: 'e2e-ios-1' }]);
     await boot(h, 'ios', 0);

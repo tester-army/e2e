@@ -71,7 +71,7 @@ describe.each<BrowserProviderScope>(['worker', 'attempt'])('downloads through a 
       },
     };
     engine = webEngine({ browser: provider });
-    const prepared = await engine.prepare!({ runId: 'run-downloads', targetName: 'web', projectRoot: process.cwd(), app: { site: new URL(app.url).hostname }, slots: 1, env: {}, signal: signal(), log: () => undefined });
+    const prepared = await engine.prepare!({ runId: 'run-downloads', targetName: 'web', projectRoot: process.cwd(), app: { site: new URL(app.url).hostname }, slots: 1, env: {}, signal: signal(), headed: false, log: () => undefined });
     await engine.init!({
       runId: 'run-downloads', targetName: 'web', projectRoot: process.cwd(),
       app: { site: new URL(app.url).hostname }, env: { ...prepared?.env }, headed: false,
