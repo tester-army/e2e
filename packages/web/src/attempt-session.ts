@@ -1,7 +1,7 @@
 /** Owns one attempt's live binding, recovery, references, and recordings. */
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type { Browser, BrowserContext, BrowserContextOptions, Page } from 'playwright';
+import type { Browser, BrowserContext, BrowserContextOptions, Page } from 'playwright-core';
 import { EngineError, raceAbort, withinCleanupBudget, type EngineCleanupContext, type OperationContext, type VideoSegment, type ViewportSize } from 'e2e/engine';
 import { attachPersistent, recoveryFailed, targetIdentity, type CdpEndpointResolver, type SessionBinding } from './cdp-recovery.ts';
 import { connectionAbort, withConnectionBudget, type ConnectionBudget } from './operation-budget.ts';

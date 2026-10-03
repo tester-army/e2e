@@ -4,7 +4,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { chromium } from 'playwright';
+import { chromium } from 'playwright-core';
 
 /** A live Chrome with a random remote-debugging port; the host the engine attaches to. */
 export interface RemoteChrome {

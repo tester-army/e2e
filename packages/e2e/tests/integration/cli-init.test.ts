@@ -141,11 +141,11 @@ describe('initializing standalone projects', () => {
       const { stdout } = await execFileAsync(process.execPath, [CLI, 'run', '--workers', '1', '--no-cache'], { cwd: dir, env });
       expect(stdout).toContain('1 passed');
       const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
-      const playwrightVersion = (JSON.parse(readFileSync(path.resolve(PACKAGE_ROOT, '..', 'web', 'package.json'), 'utf8')) as { version: string }).version;
-      expect(manifest.devDependencies['@e2e-dev/web']).toBe(dependencyRange(playwrightVersion));
+      const webVersion = (JSON.parse(readFileSync(path.resolve(PACKAGE_ROOT, '..', 'web', 'package.json'), 'utf8')) as { version: string }).version;
+      expect(manifest.devDependencies['@e2e-dev/web']).toBe(dependencyRange(webVersion));
       const recorded = JSON.parse(readFileSync(path.join(PACKAGE_ROOT, 'dist', 'cli', 'init', 'sibling-versions.json'), 'utf8')) as Record<string, string>;
-      expect(Object.keys(recorded).toSorted()).toEqual(['@e2e-dev/mobile', '@e2e-dev/web', 'playwright']);
-      expect(manifest.devDependencies.playwright).toBe(`^${recorded.playwright}`);
+      expect(Object.keys(recorded).toSorted()).toEqual(['@e2e-dev/mobile', '@e2e-dev/web']);
+      expect(manifest.devDependencies).not.toHaveProperty('playwright');
       expect(manifest.devDependencies.ai).toBe('^7.0.0');
       expect(manifest.scripts).toEqual({ 'test:e2e': 'e2e run' });
     } finally {

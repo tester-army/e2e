@@ -1,5 +1,5 @@
 import { tmpdir } from 'node:os';
-import type { Browser, Page } from 'playwright';
+import type { Browser, Page } from 'playwright-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OperationContext } from 'e2e/engine';
 import type { RawObservedNode } from '../../src/read-node.ts';

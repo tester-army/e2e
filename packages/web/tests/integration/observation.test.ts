@@ -1,6 +1,6 @@
 /** Observation metadata must not retain earlier captures in the browser. */
 
-import { chromium, type ElementHandle } from 'playwright';
+import { chromium, type ElementHandle } from 'playwright-core';
 import { expect, it } from 'vitest';
 import { captureDocument, type DocumentHost } from '../../src/observation.ts';
 import type { readDocumentSemanticsFunction } from '../../src/read-node.ts';

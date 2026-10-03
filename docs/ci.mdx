@@ -35,7 +35,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Install browsers
-        run: npx playwright install chromium --with-deps
+        run: pnpm exec e2e-web install chromium --with-deps
 
       - name: Run e2e
         run: npx e2e run --reporter list,junit
@@ -66,7 +66,9 @@ jobs:
 ```
 
 The workflow pins actions to commit SHAs and installs dependencies from the
-lockfile. `npx e2e` runs the installed version.
+lockfile. `npx e2e` runs the installed version. The
+[install command](/reference/web#installing-browsers) downloads the browsers
+for the Playwright version the engine pins, with their system libraries.
 
 Artifacts upload on every run that is not cancelled, so a test that failed
 and then passed on retry still has its evidence.

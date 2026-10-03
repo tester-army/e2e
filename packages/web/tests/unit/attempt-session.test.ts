@@ -2,7 +2,7 @@
 import { tmpdir } from 'node:os';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import type { Browser, Page } from 'playwright';
+import type { Browser, Page } from 'playwright-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { connectCdp } from '../../src/browser-connection.ts';
 import { AttemptSession } from '../../src/attempt-session.ts';

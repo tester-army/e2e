@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { chromium } from 'playwright';
+import { chromium } from 'playwright-core';
 import type { EngineFixtureContext, EngineHandle, OperationContext } from 'e2e/engine';
 import { web as webEngine, surfaceOf, type WebConnectOptions, type Browser } from '../../src/index.ts';
 import { closeRemoteChrome, launchRemoteChrome, type RemoteChrome } from '../helpers/cdp-host.ts';

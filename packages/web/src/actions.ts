@@ -1,6 +1,6 @@
 /** Locator action dispatch for the Playwright engine. */
 
-import type { ElementHandle, Page } from 'playwright';
+import type { ElementHandle, Page } from 'playwright-core';
 import { EngineError, type KeyModifier, type LocatorAction, type NodeRef, type PointerAction, type ViewportPoint } from 'e2e/engine';
 import {
   asActionable,

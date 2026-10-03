@@ -5,7 +5,7 @@
  * support.ts).
  */
 
-import type { Locator as PwLocator, Page } from 'playwright';
+import type { Locator as PwLocator, Page } from 'playwright-core';
 import { describe, expect, it, vi } from 'vitest';
 import { EngineError, type LocatorAction } from 'e2e/engine';
 import { TestError } from 'e2e/engine';

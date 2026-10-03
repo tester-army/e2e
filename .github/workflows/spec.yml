@@ -43,7 +43,7 @@ jobs:
           pnpm exec tsc -p .claude/skills/babysit/scripts
           node --test .claude/skills/babysit/scripts/pr-status.test.ts
       - name: Install browsers
-        run: pnpm --filter @e2e-dev/web exec playwright install chromium --with-deps
+        run: node packages/web/dist/bin.js install chromium --with-deps
       - name: Testbed
         run: pnpm --filter @e2e-dev/testbed test
 
@@ -63,6 +63,6 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Install browsers
-        run: pnpm --filter @e2e-dev/web exec playwright install chromium --with-deps
+        run: pnpm --filter @e2e-dev/web exec playwright-core install chromium --with-deps
       - name: Unit and integration tests
         run: pnpm test

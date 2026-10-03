@@ -12,7 +12,7 @@
  * says which URLs a test may open.
  */
 
-import type { Download, Response, Route } from 'playwright';
+import type { Download, Response, Route } from 'playwright-core';
 import type { ActionOptions, Expectable, JsonValue, Locator, Screen, TextMatch } from 'e2e';
 import {
   ConfigurationError,

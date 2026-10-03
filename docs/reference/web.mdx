@@ -7,9 +7,10 @@ description: The browser engine, its options, and the browser fixture it contrib
 A web target names it as its engine, and it contributes the `browser` fixture for
 browser-only work. Import `test` from the package to have `browser` typed.
 
-The package declares `playwright` as a peer dependency (`>=1.63.0 <2`) and
-does not install it. An app that already depends on Playwright keeps its
-version; `e2e init` adds `playwright` only to a project that has none.
+The package depends on `playwright-core` pinned to an exact version, so the
+engine always runs the Playwright it was tested against. An app that depends
+on Playwright itself keeps its own copy; the two share a browser cache only
+when their versions match.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -19,6 +20,31 @@ export default {
   targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
 } satisfies E2EConfig;
 ```
+
+## Installing browsers
+
+A missing browser downloads once per run, before the run's clock starts. To
+install browsers as their own step, in CI or a container image, run the
+package's command. It installs the browsers for the Playwright version the
+engine pins:
+
+<CodeGroup>
+```bash npm
+npx @e2e-dev/web install chromium --with-deps
+```
+
+```bash pnpm
+pnpm exec e2e-web install chromium --with-deps
+```
+
+```bash bun
+bunx @e2e-dev/web install chromium --with-deps
+```
+</CodeGroup>
+
+Name any of `chromium`, `firefox`, and `webkit`; with none named it installs
+`chromium`. `--with-deps` also installs the system libraries the browsers need
+on Linux. The command exits with the installer's exit code.
 
 ## Options
 

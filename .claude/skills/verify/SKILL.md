@@ -16,7 +16,7 @@ repeat.
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm --filter @e2e-dev/web exec playwright install chromium
+pnpm --filter @e2e-dev/web exec playwright-core install chromium
 pnpm build                    # every consumer below runs dist; rebuild after each change
 ```
 

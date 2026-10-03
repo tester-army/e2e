@@ -1,6 +1,6 @@
 /** Shared error translation, filename, and swipe helpers for the Playwright engine. */
 
-import type { ElementHandle, Locator as PwLocator, Mouse, Page } from 'playwright';
+import type { ElementHandle, Locator as PwLocator, Mouse, Page } from 'playwright-core';
 import { EngineError, withinCleanupBudget, type EngineCleanupContext, type Momentum, type ScrollDirection, type ViewportPoint, type ViewportSize } from 'e2e/engine';
 import { ConfigurationError, InfrastructureError, TestError } from 'e2e/engine';
 
