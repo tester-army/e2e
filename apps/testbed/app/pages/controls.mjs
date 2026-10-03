@@ -219,7 +219,7 @@ const pages = {
        <output aria-label="Viewport"></output>
        <output aria-label="Cookies"></output>
        <output aria-label="Loads"></output>
-       <output aria-label="Wallet"></output>
+       <output aria-label="Random"></output>
        <script>
          document.getElementById('go-about').addEventListener('click', () => {
            setTimeout(() => {
@@ -236,7 +236,7 @@ const pages = {
          const loads = Number(sessionStorage.getItem('loads') ?? '0') + 1;
          sessionStorage.setItem('loads', String(loads));
          document.querySelector('output[aria-label="Loads"]').textContent = 'loads: ' + loads;
-         document.querySelector('output[aria-label="Wallet"]').textContent = 'wallet: ' + (window.ethereum?.selectedAddress ?? 'none');
+         document.querySelector('output[aria-label="Random"]').textContent = 'random: ' + (Math.random() === 0.5 ? 'seeded' : 'unseeded');
        </script>`,
   }),
 

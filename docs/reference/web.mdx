@@ -429,7 +429,7 @@ const flag = await browser.evaluate(
 
 An init script runs in every document after it is created and before any of
 its own scripts, in every tab and frame, as Playwright's `addInitScript` runs
-it: to stub a wallet provider, seed `Math.random`, or set a flag the app reads
+it: to mock a browser API, seed `Math.random`, or set a flag the app reads
 at boot. `web({ initScripts })` applies to every attempt;
 `browser.addInitScript` adds one for the rest of the attempt, after the
 configured ones. Both are re-applied to each context the attempt replaces
@@ -445,11 +445,8 @@ argument beside a string or `{ path }` is `INVALID_ARGUMENT`. The step label
 names the file, else `source` or `function`, never the code.
 
 ```ts
-await browser.addInitScript(
-  (wallet) => { Object.assign(window, { ethereum: { selectedAddress: wallet.address } }); },
-  { address: '0x1234' },
-);
-await app.open('/console');
+await browser.addInitScript((value) => { Math.random = () => value; }, 0.5);
+await app.open('/raffle');
 ```
 
 The document already open runs a script added later only at its next
