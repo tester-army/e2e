@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:28:25.086Z",
+  "createdAt": "2026-10-03T17:50:31.245Z",
   "payload": {
     "actions": [
       {
@@ -33,7 +33,10 @@
     "recordedFor": {
       "testId": "tests-agent/control-inventory.e2e.ts::control%20inventory::upload%20attaches%20the%20named%20project%20files",
       "targetId": "web",
-      "instructionDigest": "6eb8c4cb34d6623811808727d85db0d55946be5724f0cdc01b3c633db3d6f44d"
+      "instructionDigest": "6eb8c4cb34d6623811808727d85db0d55946be5724f0cdc01b3c633db3d6f44d",
+      "paramsDigest": "38fc51716f1b76431a49c2fd70d8a6d11405fa9b9451a1d96cb9e357e70321ce",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Attached both requested files. The Attachments state now shows “attachment.txt, second.txt,” and the input indicates 2 files.",
     "startPath": "/e/control-inventory",

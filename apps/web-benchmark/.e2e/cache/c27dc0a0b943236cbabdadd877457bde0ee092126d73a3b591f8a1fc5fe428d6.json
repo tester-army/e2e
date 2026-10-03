@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:32:23.257Z",
+  "createdAt": "2026-10-03T17:52:42.144Z",
   "payload": {
     "actions": [
       {
@@ -22,7 +22,10 @@
     "recordedFor": {
       "testId": "tests-agent/scenarios.e2e.ts::act%20filters%20the%20list%20and%20the%20URL%20carries%20the%20filter",
       "targetId": "web",
-      "instructionDigest": "c54ac6f470b19c027dd580aa19d24ab48c4f0612b3930178028f20eb76cdd216"
+      "instructionDigest": "c54ac6f470b19c027dd580aa19d24ab48c4f0612b3930178028f20eb76cdd216",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Entered “mug” in the product filter. The list is filtered to Titanium Mug, and the page URL now includes ?q=mug.",
     "startPath": "/e/filter-deep-link",

@@ -13,11 +13,11 @@
  */
 
 import { deltaEvidenced, deltaHolds, describeDelta } from '../cache/anchors.ts';
-import type { AgentCacheContext } from '../cache/context.ts';
+import type { AgentCacheContext, ClaimedKey } from '../cache/context.ts';
 import { decideTraceReplay, opensWithNavigate, type TraceReplayMissReason } from '../cache/decide.ts';
 import { sameRoute } from '../cache/route.ts';
-import { instructionDigest, type CacheAgentIdentity } from '../cache/identity.ts';
-import { TraceRecorder } from '../cache/recorder.ts';
+import type { CacheAgentIdentity } from '../cache/identity.ts';
+import { recordedProvenance, TraceRecorder } from '../cache/recorder.ts';
 import { expandTrace, templateParams, templatesCollide, templateTrace, type ParamTemplate } from '../cache/template.ts';
 import { readTraceEntry, type ActionTrace, type DerivedReason, type TraceEntry, type TraceTargetDescriptor } from '../cache/trace.ts';
 import { sleep } from '../internal/time.ts';
@@ -138,6 +138,8 @@ export class StepTraceSession {
   private readonly host: StepCacheHost;
   private readonly cache: AgentCacheContext;
   private readonly keyHash: string;
+  /** The claimed key and the step it names, which an entry records as its provenance. */
+  private readonly claim: ClaimedKey;
   private readonly recorder: TraceRecorder | undefined;
   private readonly options: StepCacheOptions;
   private readonly redaction: NodeRedaction;
@@ -178,12 +180,8 @@ export class StepTraceSession {
     this.cache = options.cache;
     // The key digests the params as the recording spells them, a placeholder
     // where each `unique()` value was, so every run's value finds one entry.
-    this.keyHash = options.cache.claimKeyHash(
-      'act',
-      options.instruction,
-      templateParams(options.params, options.templates),
-      options.agent,
-    );
+    this.claim = options.cache.claimKey('act', options.instruction, templateParams(options.params, options.templates), options.agent);
+    this.keyHash = this.claim.keyHash;
     if (options.cache.mode === 'read-write') {
       this.recorder = new TraceRecorder({
         ...this.redaction,
@@ -237,6 +235,7 @@ export class StepTraceSession {
       await this.captureStart(this.recorder === undefined ? 'path-only' : 'baseline');
       this.info = this.missed(read.reason, 0);
       if (read.unavailable !== true) this.failIfStale();
+      if (read.reason === 'no-entry') await this.failIfRekeyed();
       return undefined;
     }
     // With an entry in hand the step is the cache's from its first moment: the
@@ -268,6 +267,25 @@ export class StepTraceSession {
     throw new AgentError(
       'REPLAY_STALE',
       `the recording of this step no longer replays (${reason}), and cache.strict hands no step to the agent; ${strict.advice}`,
+    );
+  }
+
+  /**
+   * Under `cache.strict`, ends a step whose key found no entry while the
+   * store holds a recording made for the same step under another key: the
+   * runner, the engine, the app, or the agent's context changed since, and
+   * the recording no longer replays as surely as one that diverged. A step
+   * whose instruction or params changed is a new step and still runs live.
+   */
+  private async failIfRekeyed(): Promise<void> {
+    const { strict } = this.cache;
+    if (strict === false || strict.recordings === undefined) return;
+    const previous = await strict.recordings.underAnotherKey(this.keyHash, recordedProvenance(this.claim.step, this.options.redact));
+    if (previous === undefined) return;
+    this.failedStale = true;
+    throw new AgentError(
+      'REPLAY_STALE',
+      `the recording of this step no longer replays: the store holds it under another cache key (${previous}.json), since the runner, the engine, the app, or the agent's context changed after it was recorded, and cache.strict hands no step to the agent; ${strict.advice}`,
     );
   }
 
@@ -318,7 +336,12 @@ export class StepTraceSession {
       case 'passed':
         if (this.repairedAfterEndMismatch(recorder)) await this.evict();
         else if (this.replayedWhole) {
-          this.cache.staged.push({ kind: 'keep', keyHash: this.keyHash, stepIndex: this.options.stepIndex });
+          this.cache.staged.push({
+            kind: 'keep',
+            keyHash: this.keyHash,
+            stepIndex: this.options.stepIndex,
+            recordedFor: recordedProvenance(this.claim.step, this.options.redact),
+          });
         } else if (!(await this.stage(recorder, verdictSummary)) && this.readEntryHit) await this.evict();
         return;
     }
@@ -543,11 +566,7 @@ export class StepTraceSession {
     if (delta.appeared.length === 0 && delta.gone.length === 0 && !routeMoved) return false;
     const trace = recorder.finalize({
       executor: this.options.executor,
-      recordedFor: {
-        testId: this.cache.identity.testId,
-        targetId: this.cache.identity.targetId,
-        instructionDigest: instructionDigest(this.options.instruction),
-      },
+      recordedFor: this.claim.step,
       summary: verdictSummary ?? 'step passed',
       ...(this.startPath === undefined ? {} : { startPath: this.startPath }),
       ...(endPath === undefined ? {} : { endPath }),

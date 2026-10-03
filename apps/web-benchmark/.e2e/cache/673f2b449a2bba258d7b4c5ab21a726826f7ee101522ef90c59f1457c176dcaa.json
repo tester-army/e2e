@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:28:29.525Z",
+  "createdAt": "2026-10-03T17:50:31.502Z",
   "payload": {
     "actions": [
       {
@@ -24,7 +24,10 @@
     "recordedFor": {
       "testId": "tests-agent/control-inventory.e2e.ts::control%20inventory::back%20returns%20from%20the%20details%20view%20to%20the%20inventory",
       "targetId": "web",
-      "instructionDigest": "b654f62f1b06969b737e6bc5900524da39b012965a0d82aef45fce7af099ba6c"
+      "instructionDigest": "b654f62f1b06969b737e6bc5900524da39b012965a0d82aef45fce7af099ba6c",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Opened the details view, then used browser history to return to /e/control-inventory. The Navigation state confirms “back on the inventory.”",
     "startPath": "/e/control-inventory",

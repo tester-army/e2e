@@ -14,7 +14,7 @@
  * replace the filesystem without the harness noticing.
  */
 
-import { mkdir, readFile, stat, unlink } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { writeFileAtomic } from '../internal/atomic-write.ts';
 import { errorMessage } from '../internal/errors.ts';
@@ -114,6 +114,25 @@ export class FileCacheStore implements CacheStore {
     const path = this.entryPath(keyHash);
     if (path === undefined) return;
     await unlink(path).catch(() => undefined);
+  }
+
+  /**
+   * The key hashes of the digest-named files in the directory, readable or
+   * not; none when the directory does not exist. Not part of `CacheStore`:
+   * only `cache.strict` lists a store, and only this one.
+   */
+  async keyHashes(): Promise<string[]> {
+    let names: string[];
+    try {
+      names = await readdir(this.directory);
+    } catch (cause) {
+      if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw cause;
+    }
+    return names.flatMap((name) => {
+      const keyHash = name.endsWith('.json') ? name.slice(0, -'.json'.length) : undefined;
+      return keyHash !== undefined && KEY_HASH.test(keyHash) ? [keyHash] : [];
+    });
   }
 
   /**

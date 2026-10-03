@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:32:08.304Z",
+  "createdAt": "2026-10-03T17:52:39.436Z",
   "payload": {
     "actions": [
       {
@@ -21,7 +21,10 @@
     "recordedFor": {
       "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20promo-storefront",
       "targetId": "web",
-      "instructionDigest": "1bf3aabb828b9b084d447df3a78d1fa700b5b28b8d5847dcc5ffcb9b0ce3bd45"
+      "instructionDigest": "1bf3aabb828b9b084d447df3a78d1fa700b5b28b8d5847dcc5ffcb9b0ce3bd45",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Bought the Wireless Headphones. The page now shows “Order confirmed.”",
     "startPath": "/e/promo-storefront",

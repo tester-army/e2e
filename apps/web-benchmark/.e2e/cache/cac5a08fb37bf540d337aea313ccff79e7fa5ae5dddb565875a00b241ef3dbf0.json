@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:30:53.932Z",
+  "createdAt": "2026-10-03T17:52:28.101Z",
   "payload": {
     "actions": [
       {
@@ -33,7 +33,10 @@
     "recordedFor": {
       "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20hover-menu",
       "targetId": "web",
-      "instructionDigest": "4d2bd092cafaf0bdc40c9442fb592d58283fd7a946e7efb98e1142cffe3c07a3"
+      "instructionDigest": "4d2bd092cafaf0bdc40c9442fb592d58283fd7a946e7efb98e1142cffe3c07a3",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Hovered over Account, then Billing, and selected Redeem voucher. The page displays “Voucher redeemed.”",
     "startPath": "/e/hover-menu",

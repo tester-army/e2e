@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:31:24.557Z",
+  "createdAt": "2026-10-03T17:52:32.285Z",
   "payload": {
     "actions": [
       {
@@ -38,7 +38,10 @@
     "recordedFor": {
       "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20stale-dom",
       "targetId": "web",
-      "instructionDigest": "c7958b2326b3f2b42541d8b8261d04bb3d18d3fbbf439d754e64d72856a74ba4"
+      "instructionDigest": "c7958b2326b3f2b42541d8b8261d04bb3d18d3fbbf439d754e64d72856a74ba4",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Clicked Tap me three times. The page shows Progress: 3 / 3 and “Target clicked 3 times.”",
     "startPath": "/e/stale-dom",

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:27:56.360Z",
+  "createdAt": "2026-10-03T17:50:24.975Z",
   "payload": {
     "actions": [
       {
@@ -31,7 +31,10 @@
     "recordedFor": {
       "testId": "tests-agent/control-inventory.e2e.ts::control%20inventory::check%20sets%20the%20checkbox%20and%20the%20radio",
       "targetId": "web",
-      "instructionDigest": "31e69bd3b8b58acb08fa60eaea2976e3271b633b840b8ffca9440e21488961fc"
+      "instructionDigest": "31e69bd3b8b58acb08fa60eaea2976e3271b633b840b8ffca9440e21488961fc",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Agreed to the terms and selected Medium. The state now shows “terms agreed, size Medium.”",
     "startPath": "/e/control-inventory",

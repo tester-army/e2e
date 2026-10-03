@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:30:33.757Z",
+  "createdAt": "2026-10-03T17:52:22.869Z",
   "payload": {
     "actions": [
       {
@@ -29,7 +29,10 @@
     "recordedFor": {
       "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20sticky-chrome",
       "targetId": "web",
-      "instructionDigest": "507883318a8655d47afe9f680ee91cde1ae64055fbef530129cc289101a30c23"
+      "instructionDigest": "507883318a8655d47afe9f680ee91cde1ae64055fbef530129cc289101a30c23",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Scrolled until the Accept terms button was clear of the sticky footer, clicked it, and verified the page displayed “Terms accepted.”",
     "startPath": "/e/sticky-chrome",

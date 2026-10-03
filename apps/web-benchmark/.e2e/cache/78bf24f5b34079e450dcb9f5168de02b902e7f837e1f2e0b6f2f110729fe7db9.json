@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:28:16.226Z",
+  "createdAt": "2026-10-03T17:50:28.780Z",
   "payload": {
     "actions": [
       {
@@ -36,7 +36,10 @@
     "recordedFor": {
       "testId": "tests-agent/control-inventory.e2e.ts::control%20inventory::a%20right-click%20opens%20the%20file%20menu%20and%20Rename%20renames%20the%20file",
       "targetId": "web",
-      "instructionDigest": "cb3da13c69639f87ac80d3bd6fa2b908c9df0bbbda211433bdc779611d4909fe"
+      "instructionDigest": "cb3da13c69639f87ac80d3bd6fa2b908c9df0bbbda211433bdc779611d4909fe",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Right-clicked report.pdf, chose Rename, and verified the file is now summary.pdf.",
     "startPath": "/e/control-inventory",

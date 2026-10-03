@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:32:19.842Z",
+  "createdAt": "2026-10-03T17:52:41.944Z",
   "payload": {
     "actions": [
       {
@@ -52,7 +52,10 @@
     "recordedFor": {
       "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20gift-card-purchase",
       "targetId": "web",
-      "instructionDigest": "58b82e08250d41e942c183d1c49b7e031fb5754f62c785c3f064c404c6b44851"
+      "instructionDigest": "58b82e08250d41e942c183d1c49b7e031fb5754f62c785c3f064c404c6b44851",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Selected the $25 gift card, entered friend@example.com, and completed the purchase. The page confirms the gift card was sent and that the $25.00 gift card is on its way.",
     "startPath": "/e/gift-card-purchase",

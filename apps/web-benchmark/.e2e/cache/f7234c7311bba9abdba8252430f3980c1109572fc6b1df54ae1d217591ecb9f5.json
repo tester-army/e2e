@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:31:41.146Z",
+  "createdAt": "2026-10-03T17:52:33.795Z",
   "payload": {
     "actions": [
       {
@@ -66,7 +66,10 @@
     "recordedFor": {
       "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20date-picker",
       "targetId": "web",
-      "instructionDigest": "dcf88f9a5a9a284823967721c9316e3541f960b36032c247343f678217019dde"
+      "instructionDigest": "dcf88f9a5a9a284823967721c9316e3541f960b36032c247343f678217019dde",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Navigated the calendar from June to September 2026, selected September 17, and confirmed the booking. The page displays “Appointment booked for September 17, 2026.”",
     "startPath": "/e/date-picker",

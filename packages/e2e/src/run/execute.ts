@@ -25,6 +25,7 @@ import { timestamp, uuidv7 } from '../internal/ids.ts';
 import { engineAppInfo } from '../config/app.ts';
 import { Deadline, NEVER_ABORTS, withAbort, withScopedBudget, withTimeout } from '../internal/time.ts';
 import { createAgentCacheContext, flushStagedTraces } from '../cache/context.ts';
+import { storedRecordingsFor, type StoredRecordings } from '../cache/rekeyed.ts';
 import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
 import { pairRecordings, type TestTargetPair } from '../collect/select.ts';
 import type { AttemptRecording, AttemptRecordings, RecordingKind } from '../internal/recording-modes.ts';
@@ -175,6 +176,8 @@ export class TargetExecutor implements SerialHost {
   private lastAttemptTestId: string | undefined;
   private readonly models: WorkerModels;
   private readonly sessionIdentity: SessionIdentity;
+  /** The file store's listing under `cache.strict`, read once for every attempt here. */
+  private readonly storedRecordings: StoredRecordings | undefined;
   /** Resolves once the engine's init hook completed for this worker. */
   private engineReady: Promise<void> | undefined;
 
@@ -197,6 +200,7 @@ export class TargetExecutor implements SerialHost {
       debug: this.debug,
     });
     this.sessionIdentity = targetIdentity(options.target);
+    this.storedRecordings = storedRecordingsFor(options.config.cache);
   }
 
   private get config(): ResolvedConfig {
@@ -945,6 +949,7 @@ export class TargetExecutor implements SerialHost {
             testId: pair.test.id,
             target: this.sessionIdentity,
             attemptIndex,
+            recordings: this.storedRecordings,
           })
         : undefined;
 

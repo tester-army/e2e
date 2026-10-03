@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:30:26.550Z",
+  "createdAt": "2026-10-03T17:52:21.931Z",
   "payload": {
     "actions": [
       {
@@ -37,7 +37,10 @@
     "recordedFor": {
       "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20overlay-trap",
       "targetId": "web",
-      "instructionDigest": "6705af9140f936652f275b785be7e42b157ba15b3fa16eefba2c51d6f3fdcd1b"
+      "instructionDigest": "6705af9140f936652f275b785be7e42b157ba15b3fa16eefba2c51d6f3fdcd1b",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Dismissed the cookie banner, closed the overlay, and pressed Continue. The page now shows “You made it past the overlay.”",
     "startPath": "/e/overlay-trap",

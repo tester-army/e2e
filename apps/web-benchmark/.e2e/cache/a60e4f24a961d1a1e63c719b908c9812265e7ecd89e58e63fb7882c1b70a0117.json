@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:31:57.951Z",
+  "createdAt": "2026-10-03T17:52:36.573Z",
   "payload": {
     "actions": [
       {
@@ -148,7 +148,10 @@
     "recordedFor": {
       "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20rich-text-editor",
       "targetId": "web",
-      "instructionDigest": "e37ad9ac878deebe5c840d23fded9589f67228d8229a059b855347ab5e49ab96"
+      "instructionDigest": "e37ad9ac878deebe5c840d23fded9589f67228d8229a059b855347ab5e49ab96",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Entered “release approved,” selected only “approved,” applied bold, and checked the document. The page confirms “Document approved.”",
     "startPath": "/e/rich-text-editor",

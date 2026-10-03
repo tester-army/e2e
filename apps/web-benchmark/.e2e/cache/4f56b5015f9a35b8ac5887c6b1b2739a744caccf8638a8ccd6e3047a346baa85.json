@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:30:58.343Z",
+  "createdAt": "2026-10-03T17:52:28.541Z",
   "payload": {
     "actions": [
       {
@@ -33,7 +33,10 @@
     "recordedFor": {
       "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20drag-and-drop",
       "targetId": "web",
-      "instructionDigest": "24ea40459eba1c0e7841d174c9d6b29255cc71346083add2a38c39491aff758c"
+      "instructionDigest": "24ea40459eba1c0e7841d174c9d6b29255cc71346083add2a38c39491aff758c",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Dragged Banana and then Cherry into the dropzone, leaving Apple alone. The page confirms: “Items dropped in the right order.”",
     "startPath": "/e/drag-and-drop",

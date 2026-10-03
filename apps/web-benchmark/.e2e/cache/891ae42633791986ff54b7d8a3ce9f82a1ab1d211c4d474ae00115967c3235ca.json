@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:30:20.853Z",
+  "createdAt": "2026-10-03T17:52:21.048Z",
   "payload": {
     "actions": [
       {
@@ -30,7 +30,10 @@
     "recordedFor": {
       "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20virtualized-table",
       "targetId": "web",
-      "instructionDigest": "3e0bdeec3c893eadd972848c89ef841ec7722fd896ed12998ef945cf20af30ec"
+      "instructionDigest": "3e0bdeec3c893eadd972848c89ef841ec7722fd896ed12998ef945cf20af30ec",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Scrolled the virtualized table until Row 4322 — Golden Row was rendered, then clicked Claim. The page displayed “Golden Row claimed.”",
     "startPath": "/e/virtualized-table",
