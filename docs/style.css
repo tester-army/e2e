@@ -348,6 +348,126 @@ html.dark body .code-block-fade-overlay {
   outline-offset: 3px;
 }
 
+/* The provider walkthrough on the Models page: separate boxes sharing one
+   selection (snippets/model-provider.jsx). */
+#content .provider-part {
+  margin-block: 1.25rem;
+  border: 1px solid var(--e2e-hairline);
+  color: var(--e2e-ink);
+}
+
+#content .provider-part-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 44px;
+  padding: 0.375rem 1rem;
+  color: var(--e2e-muted);
+  font-size: 0.8125rem;
+}
+
+#content .provider-part:not(.provider-part-select) .provider-part-header {
+  border-bottom: 1px solid var(--e2e-hairline);
+}
+
+#content .provider-part-select .provider-part-header {
+  padding-block: 0.75rem;
+}
+
+#content .provider-part-provider {
+  color: var(--e2e-ink);
+}
+
+#content .provider-part-header select {
+  flex: 1;
+  min-width: 12rem;
+  height: 2.25rem;
+  padding: 0 2rem 0 0.75rem;
+  border: 1px solid var(--e2e-hairline);
+  border-radius: 0;
+  background: var(--e2e-surface)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='rgb(115 115 115)' stroke-width='1.5'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E")
+    right 0.625rem center / 14px no-repeat;
+  color: var(--e2e-ink);
+  font: inherit;
+  font-size: 0.875rem;
+  appearance: none;
+  cursor: pointer;
+}
+
+#content .provider-part-header select:hover {
+  border-color: var(--e2e-ink);
+}
+
+#content .provider-part-header option,
+#content .provider-part-header optgroup {
+  background: var(--e2e-surface);
+  color: var(--e2e-ink);
+}
+
+#content .provider-part-header a {
+  color: var(--e2e-muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+#content .provider-part-header a:hover {
+  color: var(--e2e-ink);
+}
+
+#content .provider-part-tabs {
+  display: flex;
+}
+
+#content .provider-part-tabs button {
+  padding: 0.125rem 0.5rem;
+  border: 1px solid var(--e2e-hairline);
+  color: var(--e2e-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+#content .provider-part-tabs button + button {
+  border-left: 0;
+}
+
+#content .provider-part-tabs button[aria-pressed='true'] {
+  background: var(--e2e-ink);
+  border-color: var(--e2e-ink);
+  color: var(--e2e-surface);
+}
+
+/* Mintlify's CodeBlock inside a part: the part draws the frame and the
+   header, so the block drops its own margins and border. */
+#content .provider-part .code-block {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+#content .provider-part-text {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+}
+
+#content .provider-part-note {
+  color: var(--e2e-muted);
+}
+
+#content .provider-part .code-block + .provider-part-note {
+  border-top: 1px solid var(--e2e-hairline);
+}
+
+#content .provider-part button:focus-visible,
+#content .provider-part select:focus-visible,
+#content .provider-part a:focus-visible {
+  outline: 2px solid var(--e2e-ink);
+  outline-offset: 2px;
+}
+
 #content .video-card {
   display: flex;
   align-items: stretch;

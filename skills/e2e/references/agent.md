@@ -6,8 +6,13 @@ model-call budget, no shared transcript. No agent step, no model calls.
 
 ## Configure a model
 
-Put an AI SDK model under `agents.default`. Vercel AI Gateway reads
-`AI_GATEWAY_API_KEY` or, without it, a Vercel OIDC token:
+Put an AI SDK model under `agents.default`. You can use all AI SDK providers
+that support tool calls and the language model specification v2 or later
+(https://ai-sdk.dev/providers). Examples: `@ai-sdk/openai`,
+`@ai-sdk/anthropic`, `@ai-sdk/google`, `@ai-sdk/amazon-bedrock`,
+`@openrouter/ai-sdk-provider`, `ollama-ai-provider-v2`. For a server with
+`/v1/chat/completions`, use `@ai-sdk/openai-compatible`. Vercel AI Gateway
+reads `AI_GATEWAY_API_KEY` or, without it, a Vercel OIDC token:
 
 ```ts
 import type { E2EConfig } from 'e2e';
@@ -32,7 +37,8 @@ any provider.
 - `model` drives `agent.act`. Judgments use `judge` when set, else `model`.
 - A missing model for the built-in agent raises one run-level
   `MODEL_UNAVAILABLE` when the first test acquires `agent`, exit 2; auth
-  failures surface on the first model call as `MODEL_PROVIDER_FAILED`.
+  failures surface on the first model call as `MODEL_PROVIDER_FAILED`, or as
+  `CONFIG_LOAD_FAILED` for a provider that reads its key when the config loads.
 - `context` is what the app calls things, sent to every model call, judges
   included; `system` is how the acting agent works, read only by the act
   loop. Both live on the agents entry; `agentContext` on a test or group

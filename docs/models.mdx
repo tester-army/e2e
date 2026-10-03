@@ -3,8 +3,12 @@ title: Models
 description: Configure a model with your own subscription, an API key, or a local server.
 ---
 
+import { ModelProvider } from './snippets/model-provider.jsx';
+
 Agent steps use the model configured in `e2e.config.ts`. You can use an
 [existing subscription](/subscriptions), an API key, or a local server.
+e2e uses the [AI SDK](https://ai-sdk.dev/providers). You can use
+[all AI SDK providers that support tool calls](#ai-sdk-providers).
 `e2e init` offers these choices and writes the config for you. For the first
 setup, follow the [quickstart](/quickstart#use-a-subscription-or-api-key).
 
@@ -77,7 +81,8 @@ const agent = { model: openai('gpt-6-luna') };
 ```
 
 Use `agent` as `agents.default`. Other AI SDK providers work the same way,
-with their own package, model IDs, and authentication settings.
+with their own package, model IDs, and authentication settings. See
+[AI SDK providers](#ai-sdk-providers).
   </Tab>
   <Tab title="Local or self-hosted">
 
@@ -102,11 +107,6 @@ Use `agent` as `agents.default`. Add `apiKey` if the server requires one.
 
 Model IDs depend on the provider. Gateways usually use `provider/model`;
 direct providers use their own model IDs.
-
-DeepSeek's V4 models (`@ai-sdk/deepseek`) think by default, and in that mode
-they refuse the forced tool choice agent steps ask for. The step is sent again
-with `auto` and an instruction to reply with tool calls only, and later steps
-on that model start that way, so thinking can stay on.
 
 ### Vercel OIDC instead of a key
 
@@ -144,6 +144,46 @@ the config loads the file with
 An OIDC failure is the same `MODEL_PROVIDER_FAILED` as a bad key, and the AI
 SDK's message names only `AI_GATEWAY_API_KEY`. With no key set, check that the
 Vercel CLI is signed in and that `.vercel/project.json` exists.
+
+## AI SDK providers
+
+Select a provider. The three steps below show the setup for that provider.
+
+<ModelProvider show="select" />
+
+The list shows the AI SDK providers that support tool calls. A provider that
+is not in the list also works if it uses the AI SDK language model
+specification v2 or later.
+
+### Install the provider package
+
+Install `ai` and the provider package.
+
+<ModelProvider show="install" />
+
+### Set the credentials
+
+The provider reads its credentials from the environment. e2e does not load
+`.env` files. Export the variables in your shell or CI, or load the file in
+the config with [`process.loadEnvFile()`](/reference/config#loading).
+
+<ModelProvider show="env" />
+
+If a key is missing or wrong, the first agent step fails with
+`MODEL_PROVIDER_FAILED`. Some providers read the key when the config loads.
+For these providers, a missing key stops all runs with `CONFIG_LOAD_FAILED`.
+
+### Add the model to the config
+
+Set the model in `agents.default`. The model ID is an example. Use a model
+that supports tool calls and images.
+
+<ModelProvider show="config" />
+
+DeepSeek's V4 models (`@ai-sdk/deepseek`) think by default, and in that mode
+they refuse the forced tool choice agent steps ask for. The step is sent again
+with `auto` and an instruction to reply with tool calls only, and later steps
+on that model start that way, so thinking can stay on.
 
 ## Several models in one config
 
