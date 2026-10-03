@@ -116,6 +116,25 @@ const flag = await browser.evaluate((name: string) => window.localStorage.getIte
 Use `evaluate` for state that `screen` cannot read. Prefer locators and
 assertions for visible UI so tests depend less on the DOM structure.
 
+## Run a script before the page
+
+An init script runs in every document before the page's own scripts: mock a
+browser API, seed `Math.random`, or set a flag the app reads at boot. For every
+test:
+
+```ts
+web({ initScripts: [{ path: 'tests/init.js' }] })
+```
+
+For one test, before the page opens:
+
+```ts
+await browser.addInitScript((value) => { Math.random = () => value; }, 0.5);
+await app.open('/raffle');
+```
+
+See [init scripts](/reference/web#init-scripts).
+
 ## Cookies
 
 ```ts

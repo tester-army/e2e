@@ -50,6 +50,7 @@ import { captureObservation } from './observation-capture.ts';
 import { maskOptions, secureFieldMasks } from './observe.ts';
 import { connectionAbort } from './operation-budget.ts';
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from './closed-shadow.ts';
+import { ConfiguredInitScripts, type WebInitScript } from './init-scripts.ts';
 import { SECURE_FIELD_SELECTOR, type RawNodeData } from './read-node.ts';
 import { readSelector, takeReadsFunction } from './read-selector.ts';
 import { httpCredentials, installSiteHeaders, lowercaseNames, siteHeadersFor } from './protected-app.ts';
@@ -230,6 +231,12 @@ export interface WebOptions {
    * provider with `scope: 'attempt'`) is `INVALID_CONFIG`.
    */
   readonly timezoneId?: string;
+  /**
+   * Scripts every document runs before the page's own, in every tab and
+   * frame: JavaScript source, a `{ path }` relative to the project root, or a
+   * function, which cannot close over test variables.
+   */
+  readonly initScripts?: readonly WebInitScript[];
 }
 
 /** The test-id attribute when the options name none. */
@@ -259,6 +266,9 @@ export class PlaywrightSurface {
   private readonly userAgent: string | undefined;
   private readonly locale: string | undefined;
   private readonly timezoneId: string | undefined;
+  private readonly configuredInitScripts: ConfiguredInitScripts;
+  /** The attempt's init scripts, configured then added, applied to each context the attempt opens. */
+  private initScripts: string[] = [];
   private app: EngineAppInfo = {};
   private projectRoot = '';
   private headed = false;
@@ -284,6 +294,7 @@ export class PlaywrightSurface {
     this.userAgent = options.userAgent;
     this.locale = options.locale;
     this.timezoneId = options.timezoneId;
+    this.configuredInitScripts = new ConfiguredInitScripts(options.initScripts ?? []);
   }
 
   // --- lifecycle ---
@@ -293,9 +304,11 @@ export class PlaywrightSurface {
    * leases the run's browsers from a provider. A CDP attach uses the
    * remote's browser, so only a local launch needs the browser here. The
    * download narrates through `info.log` and is bounded by the run's
-   * interrupt alone, never by a launch budget.
+   * interrupt alone, never by a launch budget. Init scripts are read first
+   * so a missing file fails the run before any worker starts.
    */
   async prepare(info: EnginePrepareInfo): Promise<EnginePrepareResult | void> {
+    await this.configuredInitScripts.load(info.projectRoot);
     if (this.leases !== undefined) return this.leases.prepare(info);
     if (this.connect !== undefined) return;
     await ensureBrowsersInstalled([this.browserName], { env: info.env, signal: info.signal, log: info.log });
@@ -314,8 +327,13 @@ export class PlaywrightSurface {
     this.leases?.init(info);
     // The browser was installed in `prepare`; a launch or attach is the one
     // boot step left that can outlive a launch budget, and it honours the
-    // init signal.
-    if (!this.persistent) await this.acquireBrowser(info.signal);
+    // init signal. A failed init-script read throws only after the launch
+    // settles, so `dispose` owns the browser.
+    const settled = await Promise.allSettled([
+      this.configuredInitScripts.load(info.projectRoot),
+      this.persistent ? undefined : this.acquireBrowser(info.signal),
+    ]);
+    for (const outcome of settled) if (outcome.status === 'rejected') throw outcome.reason;
   }
 
   /** Whether attempts ride a persistent remote context, provisioned per attempt, instead of contexts on one shared browser. */
@@ -424,9 +442,11 @@ export class PlaywrightSurface {
     this.artifactsDir = context.artifactsDir;
     this.artifactCounter = 0;
     const routes: StoredRoute[] = [];
+    const initScripts = this.configuredInitScripts.forAttempt();
     this.latch = new ErrorLatch();
     const dialogs = new DialogRouter(this.latch);
     this.routes = routes;
+    this.initScripts = initScripts;
     this.dialogs = dialogs;
     const session = new AttemptSession({
       artifactsDir: context.artifactsDir,
@@ -444,6 +464,7 @@ export class PlaywrightSurface {
       },
       configure: async (target) => {
         await target.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
+        for (const script of initScripts) await target.addInitScript(script);
         target.setDefaultTimeout(CONTEXT_DEFAULT_TIMEOUT_MS);
         target.on('dialog', (dialog) => { void dialogs.dispatch(dialog); });
         await installSiteHeaders(target, this.app.site, this.headers);
@@ -509,6 +530,13 @@ export class PlaywrightSurface {
   private requireSession(): AttemptSession {
     if (this.session === undefined) throw invalidState('no attempt is running');
     return this.session;
+  }
+
+  /** Adds one attempt-scoped init script to the current context, for every document it creates from now on. */
+  async addInitScript(source: string): Promise<void> {
+    const context = this.requireContext();
+    this.initScripts.push(source);
+    await context.addInitScript(source);
   }
 
   // --- network routes shared with the browser fixture ---

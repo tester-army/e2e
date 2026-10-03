@@ -234,7 +234,8 @@ what to do today.
 | `page.waitForEvent('popup')`, `context.on('page')` | not yet; a window the app opens is not driven | missing |
 | `page.on('console')`, `page.on('pageerror')` | not yet; assert on what the page shows | missing |
 | `page.evaluate(fn, arg)` | `browser.evaluate(fn, arg)`; JSON in and out, no handles | web only |
-| `page.exposeFunction()`, `addInitScript()`, `addStyleTag()`, `setExtraHTTPHeaders()`, `emulateMedia()`, `clock` | not yet; `browser.evaluate` appends a `<style>` once the page is open, and returns `null` since its result must be JSON | missing |
+| `page.addInitScript(script, arg)`, `context.addInitScript()` | `browser.addInitScript(script, arg)`, or `web({ initScripts })` for every test; pass `{ content }` as a plain string | web only |
+| `page.exposeFunction()`, `addStyleTag()`, `setExtraHTTPHeaders()`, `emulateMedia()`, `clock` | not yet; `browser.evaluate` appends a `<style>` once the page is open, and returns `null` since its result must be JSON | missing |
 | `context.addCookies()`, `context.cookies()` | `browser.setCookies()`, `browser.cookies()` | web only |
 | `context.clearCookies()` | not yet; `app.clearState()` also clears other persisted state and recreates the context | missing |
 | `request` fixture | Node `fetch`, see [Testing APIs](/api-testing) | by design |

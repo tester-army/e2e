@@ -39,6 +39,7 @@ import type { DialogHandler } from './dialogs.ts';
 import { saveDownloadsTo, saveFromBrowser, saveLocally } from './downloads.ts';
 import { isTestErrorCode, message as causeMessage, translatePwError } from './support.ts';
 import { compileEvaluation } from './evaluation.ts';
+import { initScriptLabel, testInitScriptSource } from './init-scripts.ts';
 import { lowercaseNames } from './protected-app.ts';
 import { parseContinue, parseFulfill, requireNoArguments } from './route-options.ts';
 import { routePatternMatches, routePatternsEqual } from './route-pattern.ts';
@@ -217,6 +218,14 @@ export interface Browser extends Expectable<BrowserExpectation> {
     fn: string | ((arg: Arg) => T | Promise<T>),
     arg: Arg,
   ): Promise<T>;
+  /**
+   * Adds a script every document runs before the page's own, from the next
+   * navigation on: JavaScript source, a `{ path }` relative to the project
+   * root, or a function.
+   */
+  addInitScript(script: string | { path: string } | (() => unknown)): Promise<void>;
+  /** Adds an init script function called with one JSON argument. */
+  addInitScript<Arg extends JsonValue>(script: (arg: Arg) => unknown, arg: Arg): Promise<void>;
   /** Adds an attempt-scoped network route. */
   route(
     pattern: string | RegExp,
@@ -353,6 +362,10 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       if (!result.ok) throw new TestError('EVALUATE_FAILED', result.message);
       validateJsonValue(result.value, 'evaluate result');
       return result.value as T;
+    },
+    async addInitScript(script: unknown, ...rest: unknown[]) {
+      const source = await testInitScriptSource(script, rest.length === 0 ? undefined : { arg: rest[0] }, (file) => surface.projectPath(file));
+      await surface.guard(context.operation(), 'addInitScript', () => surface.addInitScript(source));
     },
     route(pattern, handler) {
       const wirePattern = toTextPattern(pattern);
@@ -627,6 +640,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
     title: action,
     waitForURL: { ...navigationCall, verifies: true, label: (url) => String(url) },
     evaluate: action,
+    addInitScript: { ...action, label: (script) => initScriptLabel(script) },
     route: { ...action, label: (pattern) => String(pattern) },
     unroute: { ...action, label: (pattern) => String(pattern) },
     waitForResponse: { ...action, timeout: (_pattern, options) => options?.timeout, label: (pattern) => String(pattern) },

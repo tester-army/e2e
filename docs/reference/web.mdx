@@ -96,7 +96,12 @@ export interface WebOptions {
    * Defaults to the machine's. A persistent context is `INVALID_CONFIG`.
    */
   readonly timezoneId?: string;
+  /** Scripts every document runs before the page's own. See [Init scripts](#init-scripts). */
+  readonly initScripts?: readonly WebInitScript[];
 }
+
+/** JavaScript source, a file relative to the project root, or a function. */
+export type WebInitScript = string | { readonly path: string } | (() => unknown);
 
 /** The engine's screencast of the page: the frame size and the JPEG quality of the frames it encodes. */
 export interface WebScreencastOptions {
@@ -216,7 +221,7 @@ a page acts on that tab: `goto`, `reload`, `back`, `forward`, `url`, `title`,
 `waitForURL`, `locator`, `frameLocator`, `evaluate`, `waitForResponse`,
 `waitForDownload`, `keyboard`, `mouse`, the `expect(browser)` matchers, and
 every `screen` query. What belongs to the browser covers every tab:
-`cookies`, `setCookies`, `route`, `unroute`, and `onDialog`. `setViewport`
+`cookies`, `setCookies`, `route`, `unroute`, `onDialog`, and `addInitScript`. `setViewport`
 sizes the active tab and every tab opened after it.
 
 A tab the app opens itself, from a `target="_blank"` link or `window.open`,
@@ -267,6 +272,10 @@ export interface Browser extends Expectable<BrowserExpectation> {
     fn: string | ((arg: Arg) => T | Promise<T>),
     arg: Arg,
   ): Promise<T>;
+  /** Adds a script every document runs before the page's own, from the next navigation on. */
+  addInitScript(script: string | { path: string } | (() => unknown)): Promise<void>;
+  /** Adds an init script function called with one JSON argument. */
+  addInitScript<Arg extends JsonValue>(script: (arg: Arg) => unknown, arg: Arg): Promise<void>;
   /** Adds an attempt-scoped network route. */
   route(
     pattern: string | RegExp,
@@ -322,7 +331,7 @@ export interface Browser extends Expectable<BrowserExpectation> {
 | `goto`, `reload`, `back`, `forward` | `config.timeout`, 120000 ms, the same budget `app.open()` uses; `{ timeout }` overrides, capped by the test deadline |
 | `waitForResponse`, `waitForDownload` | `config.actionTimeout`, 30000 ms; `{ timeout }` overrides, capped by the test deadline |
 | `waitForURL` | `config.assertionTimeout`, 5000 ms |
-| `url`, `title`, `evaluate`, `route`, `unroute`, `cookies`, `setCookies`, `setViewport`, `onDialog`, `keyboard.*`, `mouse.*` | `config.actionTimeout`, 30000 ms, not overridable |
+| `url`, `title`, `evaluate`, `addInitScript`, `route`, `unroute`, `cookies`, `setCookies`, `setViewport`, `onDialog`, `keyboard.*`, `mouse.*` | `config.actionTimeout`, 30000 ms, not overridable |
 
 Every `browser` call is a recorded `browser.<method>` step, except `locator` and
 `frameLocator`: they build a locator without touching the page, and the
@@ -404,6 +413,23 @@ const flag = await browser.evaluate(
   'featureFlags',
 );
 ```
+
+### Init scripts
+
+An init script runs in every document before the page's own scripts, in every
+tab and frame. `web({ initScripts })` applies to every test;
+`browser.addInitScript` adds one for the rest of the test.
+
+A script is JavaScript source, a `{ path }` relative to the project root, or a
+function. A function cannot close over test variables; pass a JSON `arg`
+instead.
+
+```ts
+await browser.addInitScript((value) => { Math.random = () => value; }, 0.5);
+await app.open('/raffle');
+```
+
+A script added after the page opened runs from the next navigation or reload.
 
 ### Routing
 

@@ -1,6 +1,6 @@
 /** Compile-time assertions for endpoint provisioning, transport recovery, and the browser provider seam. */
 import { secrets } from 'e2e';
-import type { BrowserLease, BrowserProvider, WebConnectOptions, WebOptions } from '../../src/index.ts';
+import type { BrowserLease, BrowserProvider, WebConnectOptions, WebInitScript, WebOptions } from '../../src/index.ts';
 
 ({ cdpEndpoint: () => 'ws://localhost:9222', reconnectEndpoint: async (signal) => {
   signal.throwIfAborted();
@@ -59,6 +59,13 @@ import type { BrowserLease, BrowserProvider, WebConnectOptions, WebOptions } fro
 ({ locale: 'de-DE', timezoneId: 'Europe/Berlin' }) satisfies WebOptions;
 // @ts-expect-error a locale is one tag; Playwright takes no fallback list.
 ({ locale: ['de-DE', 'en-US'] }) satisfies WebOptions;
+// Init scripts: source, a file, or a function that takes no argument.
+({ initScripts: ['window.x = 1', { path: 'shim.js' }, () => undefined] }) satisfies WebOptions;
+({ path: 'shim.js' }) satisfies WebInitScript;
+// @ts-expect-error a configured script takes no argument; inline the value or use browser.addInitScript.
+({ initScripts: [(arg: { a: number }) => arg.a] }) satisfies WebOptions;
+// @ts-expect-error Playwright's { content } is a plain string here.
+({ initScripts: [{ content: 'window.x = 1' }] }) satisfies WebOptions;
 // The page screencast's frame size and quality; which attempts record is the config's video.
 ({ screencast: { size: { width: 1280, height: 720 }, quality: 80 } }) satisfies WebOptions;
 // @ts-expect-error web({ video }) was renamed web({ screencast }).

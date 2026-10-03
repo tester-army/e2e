@@ -33,6 +33,13 @@ test.describe('browser fixture', { requires: ['browser'], tags: ['browser'] }, (
     await expect(screen.getByLabel('Loads')).toHaveText('loads: 2');
   });
 
+  test('an init script runs before the page reads it, from the next load on', async ({ screen, browser }) => {
+    await expect(screen.getByLabel('Random')).toHaveText('random: unseeded');
+    await browser.addInitScript((value) => { Math.random = () => value; }, 0.5);
+    await browser.reload();
+    await expect(screen.getByLabel('Random')).toHaveText('random: seeded');
+  });
+
   test('the viewport size is what the page measures', async ({ screen, browser }) => {
     await browser.setViewport({ width: 500, height: 700 });
     await expect(screen.getByLabel('Viewport')).toHaveText('500x700');
