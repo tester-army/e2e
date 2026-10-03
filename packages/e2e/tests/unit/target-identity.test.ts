@@ -5,6 +5,9 @@
  * the same app declared the new way must keep every recording it made.
  */
 
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { assignPorts, resolveConfig } from '../../src/config/resolve.ts';
 import { defineEngine } from '../../src/engine/index.ts';
@@ -16,6 +19,12 @@ const ROOT = '/tmp/e2e-target-identity';
 /** An engine standing in for web() or mobile(): only its name, version, and platform reach the identity. */
 function engine(name: string, platform: string) {
   return defineEngine({ name, version: '1.2.3', spiVersion: 1, platform });
+}
+
+/** The project id `resolveConfig` gives a project at `projectRoot` declaring `projectId`. */
+function projectIdOf(projectRoot: string, projectId?: string): string {
+  const raw = { targets: [{ name: 'web', platform: 'web' }], ...(projectId === undefined ? {} : { projectId }) };
+  return resolveConfig(raw, { projectRoot, env: {} }).projectId;
 }
 
 /** The identity of the one target, resolved and then given the port a run would assign. */
@@ -50,5 +59,22 @@ describe('target identity', () => {
       platform: target.engine.platform,
       appIdentity,
     });
+  });
+});
+
+describe('project id', () => {
+  it('is the explicit projectId, else the package name, else a hash of the root: the replay cache keys on it', () => {
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-project-id-'));
+    try {
+      fs.writeFileSync(path.join(project, 'package.json'), JSON.stringify({ name: 'shop' }));
+      expect(projectIdOf(project)).toBe('shop');
+      expect(projectIdOf(project, 'storefront')).toBe('storefront');
+      fs.writeFileSync(path.join(project, 'package.json'), '{}');
+      expect(projectIdOf(project)).toMatch(/^unportable-[0-9a-f]{32}$/);
+    } finally {
+      fs.rmSync(project, { recursive: true, force: true });
+    }
+    expect(projectIdOf(ROOT)).toBe('unportable-66fbb7139eea721c50ae7e4574c29c33');
+    expect(() => projectIdOf(ROOT, '')).toThrow(expect.objectContaining({ code: 'INVALID_CONFIG' }));
   });
 });

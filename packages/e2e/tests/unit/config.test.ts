@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { discoverConfig } from '../../src/config/load.ts';
 import { isCiMode, resolveConfig } from '../../src/config/resolve.ts';
 import { ConfigurationError, defineEngine } from '../../src/engine/index.ts';
 import { secrets } from '../../src/secrets.ts';
@@ -1045,6 +1046,59 @@ describe('resolveConfig', () => {
       expect(resolve({ output: 'results', tests: ['tests/**/*.e2e.ts', '!results/**'] }).output).toBe(path.join(ROOT, 'results'));
       expect(resolve({ output: 'results', tests: '**/*.e2e.ts' }).output).toBe(path.join(ROOT, 'results'));
       expect(resolve({ output: 'out', cache: { dir: 'out/replays' } }).cache.dir).toBe(path.join(ROOT, 'out', 'replays'));
+    });
+  });
+});
+
+describe('discoverConfig', () => {
+  /** A temp tree with the given files (a trailing slash makes a directory), removed after `body`. */
+  function inTree(files: readonly string[], body: (root: string) => void): void {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-discover-'));
+    try {
+      for (const file of files) {
+        const target = path.join(root, file);
+        if (file.endsWith('/')) fs.mkdirSync(target, { recursive: true });
+        else {
+          fs.mkdirSync(path.dirname(target), { recursive: true });
+          fs.writeFileSync(target, '');
+        }
+      }
+      body(root);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  it('walks up from cwd to the nearest config and roots the project there', () => {
+    inTree(['repo/.git/', 'repo/e2e.config.ts', 'repo/apps/web/e2e.config.mts', 'repo/apps/web/src/'], (root) => {
+      expect(discoverConfig(path.join(root, 'repo/apps/web/src'))).toEqual({
+        configPath: path.join(root, 'repo/apps/web/e2e.config.mts'),
+        projectRoot: path.join(root, 'repo/apps/web'),
+      });
+      expect(discoverConfig(path.join(root, 'repo/apps'))).toEqual({
+        configPath: path.join(root, 'repo/e2e.config.ts'),
+        projectRoot: path.join(root, 'repo'),
+      });
+    });
+  });
+
+  it('stops at the repository root and never picks a config above it', () => {
+    inTree(['e2e.config.ts', 'repo/.git', 'repo/a/b/'], (root) => {
+      const cwd = path.join(root, 'repo/a/b');
+      expect(discoverConfig(cwd)).toEqual({ configPath: undefined, projectRoot: cwd });
+    });
+  });
+
+  it('refuses both spellings side by side, and an explicit path that does not exist', () => {
+    inTree(['.git/', 'e2e.config.ts', 'e2e.config.mts', 'custom/my.config.ts'], (root) => {
+      expect(() => discoverConfig(root)).toThrow(expect.objectContaining({ code: 'CONFIG_AMBIGUOUS' }));
+      expect(discoverConfig(root, 'custom/my.config.ts')).toEqual({
+        configPath: path.join(root, 'custom/my.config.ts'),
+        projectRoot: path.join(root, 'custom'),
+      });
+      expect(() => discoverConfig(root, 'missing.config.ts')).toThrow(
+        expect.objectContaining({ code: 'CONFIG_NOT_FOUND', message: 'config file not found: missing.config.ts' }),
+      );
     });
   });
 });
