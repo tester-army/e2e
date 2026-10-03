@@ -247,6 +247,28 @@ describe('browser.route decisions', () => {
     expect(await nextStepFailure()).toMatchObject({ code: 'INVALID_ARGUMENT', message });
   });
 
+  it('aborts the request when the handler returns without deciding, and fails the next step', async () => {
+    await browser.route('**/api/quote', () => undefined);
+    expect(await fetchText(`${origin}/api/quote`)).toBe('failed');
+    expect(hits.get('/api/quote')).toBeUndefined();
+    expect(await nextStepFailure()).toMatchObject({
+      code: 'ACTION_FAILED',
+      message: 'route handler returned without calling fulfill, continue, fallback, or abort',
+    });
+  });
+
+  it('keeps the first decision when the handler decides twice, and fails the next step', async () => {
+    await browser.route('**/api/quote', (route) => {
+      void route.fulfill({ body: 'first' });
+      return route.fulfill({ body: 'second' });
+    });
+    expect(await fetchText(`${origin}/api/quote`)).toBe('first');
+    expect(await nextStepFailure()).toMatchObject({
+      code: 'ACTION_FAILED',
+      message: 'route handler already decided; fulfill called twice',
+    });
+  });
+
   it('takes the decision the moment fulfill is called, awaited or not', async () => {
     await browser.route('**/api/quote', (route) => { void route.fulfill({ path: 'quote.json' }); });
     expect(await fetchText(`${origin}/api/quote`)).toBe('{"cents":4200}\n');

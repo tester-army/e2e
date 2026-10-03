@@ -824,6 +824,34 @@ describe('web engine lifecycle', () => {
       }
     });
 
+    it('masks a password inside an iframe in artifact screenshots and observed pixels', async () => {
+      const shotDir = mkdtempSync(path.join(tmpdir(), 'e2e-shot-'));
+      const field = 'position:absolute;left:20px;width:160px;height:40px;border:0;padding:0;background:#f00;color:#f00';
+      const frame = `<body style="margin:0"><input type="password" value="hunter2" style="${field};top:20px"><input value="plain" style="${field};top:100px"></body>`;
+      try {
+        await engine.startAttempt!(attempt('fm1', shotDir));
+        await engine.session!.open!(`${app.url}/`, operation('fm1'));
+        const page = surfaceOf(engine)!.page();
+        await page.setContent(
+          `<body style="margin:0"><iframe srcdoc='${frame}' style="position:absolute;left:0;top:0;width:400px;height:200px;border:0"></iframe></body>`,
+        );
+        await page.frameLocator('iframe').locator('input[type=password]').waitFor();
+
+        const relative = await engine.artifacts!.screenshot('framed', operation('fm1'));
+        const shot = decodePng(new Uint8Array(readFileSync(path.join(shotDir, relative))));
+        expect(shot.pixelAt(100, 40).slice(0, 3)).toEqual([0, 0, 0]);
+        expect(shot.pixelAt(100, 120).slice(0, 3)).toEqual([255, 0, 0]);
+
+        const observed = await engine.observe!(operation('fm1'), { pixels: true });
+        expect(observed.maskedRegionCount).toBeGreaterThanOrEqual(1);
+        const pixels = decodePng(observed.pixels!.data);
+        expect(pixels.pixelAt(100, 40).slice(0, 3)).toEqual([0, 0, 0]);
+        expect(pixels.pixelAt(100, 120).slice(0, 3)).toEqual([255, 0, 0]);
+      } finally {
+        await engine.endAttempt!(cleanup());
+        rmSync(shotDir, { recursive: true, force: true });
+      }
+    });
   });
 
   it('reports an unopened page as INVALID_STATE, never as a missing node', async () => {
