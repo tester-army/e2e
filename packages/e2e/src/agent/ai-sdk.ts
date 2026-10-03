@@ -36,10 +36,11 @@ export function asSdkLanguageModel(instance: ModelInstance): SdkLanguageModel {
 
 /**
  * The cache lives on `globalThis`, not in module state: config and test
- * modules load in an isolated tsx realm, so an executor constructed in config
- * code and the runner's own model plumbing would otherwise hold two separate
- * caches — and two separate `ai` module instances whose error classes fail
- * each other's instanceof checks. One slot, one SDK instance, every realm.
+ * modules may import a copy of e2e other than the runner's, so an executor
+ * constructed in config code and the runner's own model plumbing would
+ * otherwise hold two separate caches, and two separate `ai` module instances
+ * whose error classes fail each other's instanceof checks. One slot, one SDK
+ * instance, every copy.
  */
 const cacheSlot = realmSlot<{ loaded?: AiSdk; failure?: Error }>('e2e.ai-sdk.v1');
 

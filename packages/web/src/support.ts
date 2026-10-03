@@ -262,11 +262,12 @@ export class ErrorLatch {
 }
 
 /**
- * The runner error classes as their `name` reads. A project loads this engine
- * from its config file in one module realm (tsx) while the runner's core runs
- * in another, so a runner error reaching the engine is often a `TestError`
- * from a copy of `e2e` this module never imported: `instanceof` says no while
- * `name` and `code` still tell the truth.
+ * The runner error classes as their `name` reads. A project can load this
+ * engine against a copy of `e2e` other than the one the runner's core runs
+ * from (and e2e before 0.17 always loaded config in a module realm of its
+ * own), so a runner error reaching the engine can be a `TestError` this
+ * module never imported: `instanceof` says no while `name` and `code` still
+ * tell the truth.
  */
 const CLASSIFIED_NAMES: ReadonlySet<string> = new Set([
   'EngineError',

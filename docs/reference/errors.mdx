@@ -122,6 +122,7 @@ These appear in terminal output and in the report as plain string codes.
 | `WORKER_EXIT` | A worker exited unexpectedly while running a file: the test in flight fails with `WORKER_CRASH` and the file's other tests are skipped. An unhandled rejection is charged to the test running when it surfaces, or recorded as `UNHANDLED_REJECTION` between tests; before any test has finished there it ends the worker, and the rejection itself is the run error, not this one | infrastructure | 3 |
 | `WORKER_CRASH` | A worker exited during a specific test | infrastructure | 3 |
 | `WORKER_ENTRY_MISSING` | The worker entry module could not be resolved. Packaging fault. | infrastructure | 3 |
+| `NODE_UNSUPPORTED` | The running Node.js is outside `^22.22.3 \|\| >=24.8.0`, where e2e's TypeScript loader cannot rely on Node.js's module hooks. The CLI checks this before it starts and exits 2 with the same sentence; the loader checks it again where it registers its hooks, for a host that runs e2e's runner without the CLI | infrastructure | 3 |
 | `ENGINE_FAILURE` | Any engine fault with no more specific mapping | infrastructure | 3 |
 | `WORKER_PROTOCOL` | A worker reported a unit other than the one it was running, or started an attempt while another was still running | infrastructure | 3 |
 | `SESSION_KEY_INVALID` | A worker received a session key that is not 32 bytes. Packaging or IPC fault. | infrastructure | 3 |

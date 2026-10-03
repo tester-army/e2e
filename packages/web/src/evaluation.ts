@@ -10,9 +10,10 @@ type EvaluationResult =
  * Compiles the page-side error boundary without evaluating the caller's source in this process.
  *
  * A function serialized with `toString()` carries whatever the loader compiled
- * it to. tsx runs esbuild with `keepNames`, which wraps every nested named
- * binding in a module-scoped `__name(target, name)` helper; the page has no
- * such helper, so the same one is declared next to the inlined source.
+ * it to. e2e before 0.17 loaded tests through tsx, whose esbuild `keepNames`
+ * wraps every nested named binding in a module-scoped `__name(target, name)`
+ * helper; the page has no such helper, so the same one is declared next to
+ * the inlined source for as long as this engine supports those runners.
  */
 export function compileEvaluation(source: string, hasArgument: boolean): (arg: unknown) => Promise<EvaluationResult> {
   try {

@@ -447,8 +447,9 @@ function validateDescribeOptions(options: DescribeOptions, parent: GroupNode | u
 }
 
 /**
- * The active collector lives on globalThis because test modules load in an
- * isolated module realm (tsx) and must reach the runner's collector instance.
+ * The active collector lives on globalThis because a test module may import a
+ * copy of e2e other than the runner's and must still reach the runner's
+ * collector instance.
  */
 const collectorSlot = realmSlot<Collector>('e2e.activeCollector.v1');
 
@@ -492,12 +493,10 @@ function requireCollector(api: string): Collector {
 const PACKAGE_ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 /**
  * The runner's own source roots, whose frames are never a test's location.
- * `dist/` is where the published module runs; `src/` is where tsx's source maps
- * relocate those very frames (and where the module runs in this repository).
+ * `dist/` is where the published module runs; `src/` is where it runs in this
+ * repository.
  */
 const RUNNER_ROOTS = ['src', 'dist'].map((dir) => `${path.join(PACKAGE_ROOT, dir)}${path.sep}`);
-/** `at name (file:line:column)` or `at file:line:column`, with or without a `file://` scheme. */
-const STACK_FRAME = /\(?(?:file:\/\/)?([^()\s]+?):(\d+):(\d+)\)?$/;
 const NODE_MODULES_SEGMENT = /[\\/]node_modules[\\/]/;
 
 /** The path with symlinks resolved, or the path itself when it cannot be resolved. */
@@ -507,6 +506,27 @@ function realPath(file: string): string {
   } catch {
     return file;
   }
+}
+
+/** `at name (location:line:column)` or `at location:line:column`, either one after `async` for an awaiting caller. */
+const STACK_FRAME = /^at (?:async )?(?:[^(]*? \()?(.+?):(\d+):(\d+)\)?$/;
+
+/**
+ * Every frame of the current stack as a source location, the async frames
+ * of awaiting callers included (a test file that awaits a helper declaring
+ * tests is one), at the source positions Node.js's source maps give them.
+ * Read from the stack text: `util.getCallSites` leaves the async frames out,
+ * and with source maps on Node.js does not hand `Error.prepareStackTrace`
+ * the call sites at all.
+ */
+function stackLocations(): SourceLocation[] {
+  return (new Error().stack ?? '').split('\n').slice(1).flatMap((line) => {
+    const match = STACK_FRAME.exec(line.trim());
+    if (match === null) return [];
+    // An ES module names itself by URL, the loader's cache-busting query included; a mapped frame or CommonJS by path.
+    const file = match[1]!.startsWith('file:') ? fileURLToPath(match[1]!) : match[1]!;
+    return [{ file, line: Number(match[2]), column: Number(match[3]) }];
+  });
 }
 
 /**
@@ -520,16 +540,10 @@ function realPath(file: string): string {
  * package's frames are never a test's location.
  */
 function captureSource(moduleFile: string | undefined): SourceLocation | undefined {
-  const stack = new Error().stack;
-  if (stack === undefined) return undefined;
   let outsideModule: SourceLocation | undefined;
-  for (const line of stack.split('\n').slice(1)) {
-    const match = STACK_FRAME.exec(line.trim());
-    if (match === null) continue;
-    // The loader imports every module with a cache-busting query, which is not part of the file.
-    const file = decodeURIComponent(match[1]!).replace(/[?#].*$/, '');
+  for (const location of stackLocations()) {
+    const { file } = location;
     if (RUNNER_ROOTS.some((root) => file.startsWith(root)) || file.startsWith('node:')) continue;
-    const location = { file, line: Number(match[2]), column: Number(match[3]) };
     if (moduleFile !== undefined && (file === moduleFile || realPath(file) === moduleFile)) {
       return location;
     }

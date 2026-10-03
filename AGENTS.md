@@ -132,7 +132,7 @@ suites that consume the built packages the way a user would.
 Build first — nearly everything downstream consumes `dist`.
 
 ```bash
-pnpm check          # lint -> check:dead-code -> typecheck -> docs:check-errors -> check:peer-ranges -> docs:check (full gate)
+pnpm check          # lint -> check:dead-code -> typecheck -> docs:check-errors -> check:peer-ranges -> check:install-scripts -> docs:check (full gate)
 pnpm test           # builds, then vitest unit + integration
 pnpm test:testbed   # builds, then runs the real CLI against the playground app
 pnpm test:web-benchmark   # builds, then runs the real CLI against the benchmark scenarios
@@ -432,7 +432,9 @@ trees, on both platforms, without a device.
     sandbox with no secrets or write tokens.
 
 - CI: `.github/workflows/spec.yml` runs lint, typecheck, and the testbed on
-  Node 26 and `pnpm test` on Node 22, 24, and 26; `benchmark.yml` runs the
+  Node 26, `pnpm test` on the newest Node 22, 24, and 26 and on the
+  `engines.node` floors (22.22.3, 24.8.0), and `scripts/install-smoke.ts`, a
+  fresh install of the packed packages with pnpm 11 and 12; `benchmark.yml` runs the
   web benchmark's two suites; `mobile.yml` runs the mobile benchmark's on an
   iOS simulator and an Android emulator (KVM on x64 Linux). The two
   benchmark workflows gate on paths: a `changes` job (dorny/paths-filter

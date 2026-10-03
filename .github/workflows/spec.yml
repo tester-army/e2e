@@ -38,6 +38,8 @@ jobs:
         run: pnpm docs:check-errors
       - name: Peer ranges on the runner
         run: pnpm check:peer-ranges
+      - name: No install scripts in published dependency trees
+        run: pnpm check:install-scripts
       - name: Agent skill scripts
         run: |
           pnpm exec tsc -p .claude/skills/babysit/scripts
@@ -53,16 +55,41 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [22, 24, 26]
+        # The newest release of each line, and the floors in engines.node.
+        node: [22, 24, 26, 22.22.3, 24.8.0]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node }}
+          # A major alone resolves to the runner's cached release, which can
+          # sit below the patch floor in engines.node (22.22.3).
+          check-latest: true
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Install browsers
         run: pnpm --filter @e2e-dev/web exec playwright install chromium --with-deps
       - name: Unit and integration tests
         run: pnpm test
+
+  # A new user's first install of the packed packages, which pnpm 11 and
+  # later fail on any dependency build script (scripts/install-smoke.ts).
+  install:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        pnpm: [11, 12]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - name: Fresh install with pnpm ${{ matrix.pnpm }}
+        run: node scripts/install-smoke.ts ${{ matrix.pnpm }}

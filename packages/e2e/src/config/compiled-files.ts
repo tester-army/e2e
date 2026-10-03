@@ -1,0 +1,69 @@
+/**
+ * The files e2e's loader compiles, and the one policy both of its hooks
+ * follow: TypeScript and JSX are compiled wherever they are; the project's
+ * tsconfig.json governs a file the project owns (outside `node_modules`),
+ * while an installed package's source compiles with defaults, as its author
+ * shipped it without the project's settings.
+ */
+
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/** The module system a compiled file runs under. */
+export type ModuleFormat = 'module' | 'commonjs';
+
+/** What the loader knows about one compiled extension. */
+export interface CompiledExtension {
+  /** The syntax oxc parses. */
+  readonly lang: 'ts' | 'tsx' | 'jsx';
+  readonly format: ModuleFormat;
+  /** The extension an import of the file writes under TypeScript's rules (`./x.js` for `x.ts`). */
+  readonly written: '.js' | '.mjs' | '.cjs';
+}
+
+/** Every extension the loader compiles, in the order TypeScript tries them for one written extension. */
+const COMPILED: Readonly<Record<string, CompiledExtension>> = {
+  '.ts': { lang: 'ts', format: 'module', written: '.js' },
+  '.tsx': { lang: 'tsx', format: 'module', written: '.js' },
+  '.jsx': { lang: 'jsx', format: 'module', written: '.js' },
+  '.mts': { lang: 'ts', format: 'module', written: '.mjs' },
+  '.cts': { lang: 'ts', format: 'commonjs', written: '.cjs' },
+};
+
+/** A file inside an installed package. */
+const INSTALLED = /\/node_modules\//;
+
+/** Whether the `file:` URL `url` is the project's own, outside `node_modules`. */
+export function isProjectFile(url: URL): boolean {
+  return url.protocol === 'file:' && !INSTALLED.test(url.pathname);
+}
+
+/** A file the loader compiles. */
+export interface CompiledSource {
+  readonly file: string;
+  readonly kind: CompiledExtension;
+  /** Whether the project's tsconfig.json governs it; false for an installed package's source. */
+  readonly project: boolean;
+}
+
+/** The compiled file `url` names, or undefined for any other module. */
+export function compiledSource(url: string | undefined): CompiledSource | undefined {
+  if (url?.startsWith('file:') !== true) return undefined;
+  const parsed = new URL(url);
+  const kind = COMPILED[path.extname(parsed.pathname)];
+  return kind === undefined ? undefined : { file: fileURLToPath(parsed), kind, project: isProjectFile(parsed) };
+}
+
+/**
+ * The files TypeScript tries, in order, for an import that wrote
+ * `extension`: the compiled files that emit it (`x.ts`, `x.tsx`, `x.jsx` for
+ * `./x.js`), then the file as written. Empty for an extension no compiled
+ * file emits.
+ */
+export function writtenCandidates(extension: string): readonly string[] {
+  const emitting = Object.keys(COMPILED).filter((compiled) => COMPILED[compiled]!.written === extension);
+  return emitting.length === 0 ? [] : [...emitting, extension];
+}
+
+/** Tried, in order, after an extensionless path and after a directory's `index`: what `./x.js` would find, then JSON. */
+export const IMPLIED_EXTENSIONS: readonly string[] = [...writtenCandidates('.js'), '.json'];

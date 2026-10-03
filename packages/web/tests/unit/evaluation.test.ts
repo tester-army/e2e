@@ -1,7 +1,8 @@
 /**
  * The page-side evaluation boundary: the caller's source is inlined into a
- * fresh function, so it must run whatever the loader compiled it to. tsx's
- * esbuild `keepNames` output references a module-scoped `__name` helper.
+ * fresh function, so it must run whatever the loader compiled it to. The tsx
+ * loader of e2e before 0.17 emits esbuild `keepNames` output, which
+ * references a module-scoped `__name` helper.
  */
 
 import { describe, expect, it } from 'vitest';
