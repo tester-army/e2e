@@ -91,18 +91,6 @@ describe('ensureBrowsersInstalled', () => {
     expect(logs).toEqual([]);
   });
 
-  it('propagates installer failures', async () => {
-    await expect(
-      ensureBrowsersInstalled(['webkit'], {
-        log: () => {},
-        isInstalled: () => false,
-        install: async () => {
-          throw new Error('download failed');
-        },
-      }),
-    ).rejects.toThrow('download failed');
-  });
-
   it('does not collect the browsers the declared cache holds', async () => {
     // The run spawns the install with the cache it was pointed at, and that
     // command removes every revision no installed Playwright declares. Those

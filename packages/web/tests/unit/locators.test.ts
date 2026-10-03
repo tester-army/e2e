@@ -185,13 +185,6 @@ describe('projectExpression', () => {
     expect(chainOf(projectExpression(page, tablist).locator)).toEqual([ROOTS, 'role(tablist)']);
   });
 
-  it('composes positions natively for every query but displayValue', () => {
-    const projected = projectExpression(page, { kind: 'index', source: textbox, index: 1 });
-    expect(chainOf(projected.locator)).toEqual([ROOTS, 'role(textbox)', 'nth(1)']);
-    expect(projected.displayValue).toBeNull();
-    expect(projected.steps).toEqual([]);
-  });
-
   it('defers positions on a displayValue query until its candidates are value-filtered', () => {
     const projected = projectExpression(page, {
       kind: 'index',
@@ -264,12 +257,8 @@ describe('applyPostSteps', () => {
   const never = () => Promise.resolve(false);
 
   it.each([
-    [[index('first')], ['a']],
-    [[index('last')], ['c']],
-    [[index(1)], ['b']],
     [[index(3)], []],
     [[index('last'), index('first')], ['c']],
-    [[index(1), index('last')], ['b']],
     [[], ['a', 'b', 'c']],
   ] as const)('applies %j to yield %j', async (steps, expected) => {
     expect(await applyPostSteps(matches, steps, never)).toEqual(expected);

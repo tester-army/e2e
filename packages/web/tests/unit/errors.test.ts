@@ -24,9 +24,8 @@ function foreignTestError(code: string): Error {
 }
 
 const NAVIGATION_RACES = [
-  'jsHandle.getProperties: Execution context was destroyed, most likely because of a navigation',
-  'locator.evaluate: Frame was detached',
   'Execution context was destroyed, most likely because of a navigation.',
+  'locator.evaluate: Frame was detached',
 ];
 
 describe('translatePwError', () => {
@@ -82,10 +81,12 @@ describe('isTestErrorCode', () => {
 });
 
 describe('navigationStaleOr', () => {
-  it.each(NAVIGATION_RACES)('reports a capture that lost its document as retryable: %s', (text) => {
-    const error = navigationStaleOr(new Error(text), 'observe');
-    expect(error).toMatchObject({ code: 'NODE_STALE', retryable: true });
-    expect(error.message).toContain('observe:');
+  it('reports a capture that lost its document as retryable', () => {
+    for (const text of NAVIGATION_RACES) {
+      const error = navigationStaleOr(new Error(text), 'observe');
+      expect(error).toMatchObject({ code: 'NODE_STALE', retryable: true });
+      expect(error.message).toContain('observe:');
+    }
   });
 
   it('keeps a timeout a timeout: a capture that ran out of budget is not a race', () => {
@@ -107,9 +108,10 @@ describe('navigationStaleOr', () => {
 });
 
 describe('staleOr', () => {
-  it.each(NAVIGATION_RACES)('treats a navigation race like a stale node: %s', (text) => {
-    const error = staleOr(new Error(text), 'read');
-    expect(error).toMatchObject({ code: 'NODE_STALE', retryable: true });
+  it('treats a navigation race like a stale node', () => {
+    for (const text of NAVIGATION_RACES) {
+      expect(staleOr(new Error(text), 'read')).toMatchObject({ code: 'NODE_STALE', retryable: true });
+    }
   });
 
   it('still reports detachment and misses as stale', () => {

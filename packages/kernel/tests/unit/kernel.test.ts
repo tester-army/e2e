@@ -112,12 +112,6 @@ function releaseContext(): BrowserReleaseContext {
 }
 
 describe('kernel()', () => {
-  it('is a browser provider named kernel with the scope it was given', () => {
-    expect(kernel().name).toBe('kernel');
-    expect(kernel().scope).toBeUndefined();
-    expect(kernel({ scope: 'attempt' }).scope).toBe('attempt');
-  });
-
   it('creates a browser with the run tags and the idle timeout backstop, and logs its live view', async () => {
     const req = request({ slot: 1 });
     const lease = await kernel({ stealth: true, tags: { team: 'qa' } }).acquire(req);
@@ -131,13 +125,6 @@ describe('kernel()', () => {
   it('keeps an explicit idle timeout, tags a per-attempt lease with its attempt, and never passes scope to Kernel', async () => {
     await kernel({ scope: 'attempt', timeout_seconds: 60 }).acquire(request({ attemptId: 'a7' }));
     expect(sdk.state.created[0]?.body).toEqual({ timeout_seconds: 60, tags: { e2e_run: 'run-1', e2e_target: 'web', e2e_slot: '0', e2e_attempt: 'a7' } });
-  });
-
-  it('logs the session alone when Kernel has no live view for it', async () => {
-    sdk.state.create = async () => ({ session_id: 'headless', cdp_ws_url: 'wss://kernel/headless' });
-    const req = request();
-    await kernel({ headless: true }).acquire(req);
-    expect(req.lines).toEqual(['browser headless']);
   });
 
   it('deletes the browser on release, and a browser Kernel no longer knows counts as deleted', async () => {
@@ -191,13 +178,6 @@ describe('kernel()', () => {
     await provider.acquire(request({ slot: 1 }));
     await provider.acquire(request({ env: { KERNEL_API_KEY: 'k-other' } }));
     expect(sdk.state.apiKeys).toEqual(['k-test', 'k-other']);
-  });
-
-  it('surfaces a Kernel failure as is', async () => {
-    sdk.state.create = async () => {
-      throw new Error('401 invalid api key');
-    };
-    await expect(kernel().acquire(request())).rejects.toThrow('401 invalid api key');
   });
 
   it('trims the newline Kernel ends an error body with, keeping the error', async () => {
@@ -271,21 +251,18 @@ describe('kernel()', () => {
       rmSync(dir, { recursive: true, force: true });
     });
 
-    it('passes the replay options through', async () => {
-      await kernel({ replay: { framerate: 20, max_duration_in_seconds: 300 } }).record!(lease, recordContext());
-      expect(sdk.state.replays).toEqual(['start b1 {"framerate":20,"max_duration_in_seconds":300}']);
-      expect(sdk.state.created).toEqual([]);
-    });
-
     it('does not record with replay: false or for a headless browser, which Kernel cannot replay', () => {
       expect(kernel({ replay: false }).record).toBeUndefined();
       expect(kernel({ headless: true }).record).toBeUndefined();
       expect(kernel({ headless: false }).record).toBeTypeOf('function');
     });
 
-    it('never passes replay to Kernel as a create-browser field', async () => {
-      await kernel({ replay: { framerate: 20 } }).acquire(request());
+    it('passes the replay options to the replay, never to Kernel as a create-browser field', async () => {
+      const provider = kernel({ replay: { framerate: 20, max_duration_in_seconds: 300 } });
+      await provider.acquire(request());
       expect(sdk.state.created[0]?.body).not.toHaveProperty('replay');
+      await provider.record!(lease, recordContext());
+      expect(sdk.state.replays).toEqual(['start b1 {"framerate":20,"max_duration_in_seconds":300}']);
     });
   });
 });

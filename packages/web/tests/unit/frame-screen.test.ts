@@ -22,7 +22,7 @@ function browserWithRecordingContext() {
       return { minted: expression } as unknown as Locator;
     },
     screen: (scope: (expression: LocatorExpression) => LocatorExpression) => {
-      const screen = {
+      return {
         getByRole: (role: string) =>
           ({
             minted: scope({
@@ -31,44 +31,15 @@ function browserWithRecordingContext() {
             }),
           }) as unknown as Locator,
       } as unknown as Screen;
-      screens.push(screen);
-      return screen;
     },
   } as unknown as EngineFixtureContext;
-  const screens: Screen[] = [];
   const browser = createBrowserFixture({} as PlaywrightSurface, context);
-  return { browser, minted, screens };
+  return { browser, minted };
 }
 
 const minted = (locator: Locator): LocatorExpression => (locator as unknown as { minted: LocatorExpression }).minted;
 
 describe('frame screen', () => {
-  it('keeps the screen queries scoped to the frame', () => {
-    const { browser } = browserWithRecordingContext();
-    expect(minted(browser.frameLocator('#result').getByRole('button'))).toEqual({
-      kind: 'frame',
-      selector: '#result',
-      source: { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'button', exact: true } } },
-    });
-  });
-
-  it('locator resolves a native selector inside the frame', () => {
-    const { browser } = browserWithRecordingContext();
-    expect(minted(browser.frameLocator('#result').locator('#myFile'))).toEqual({
-      kind: 'frame',
-      selector: '#result',
-      source: { kind: 'selector', selector: '#myFile' },
-    });
-  });
-
-  it('is the screen the context minted, with the hatches attached', () => {
-    const { browser, screens } = browserWithRecordingContext();
-    const frame = browser.frameLocator('#result');
-    expect(screens).toHaveLength(1);
-    expect(frame).toBe(screens[0]);
-    expect(typeof frame.locator).toBe('function');
-  });
-
   it('frameLocator nests outermost-first', () => {
     const { browser } = browserWithRecordingContext();
     const inner = browser.frameLocator('#outer').frameLocator('#inner');

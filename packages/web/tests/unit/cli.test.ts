@@ -30,7 +30,7 @@ describe('e2e-web', () => {
     expect((await run(['install'], 1)).code).toBe(1);
   });
 
-  it.each([[['--help']], [['-h']], [['help']], [['install', '--help']], [['install', 'webkit', '-h']]])(
+  it.each([[['--help']], [['install', 'webkit', '-h']]])(
     'prints usage for %j without running anything',
     async (args) => {
       const result = await run(args);

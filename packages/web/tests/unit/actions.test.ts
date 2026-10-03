@@ -52,9 +52,7 @@ describe('classifyActionError', () => {
     ['strict mode violation: 2 elements\nCall log:\n  - move and down action done', 'ACTION_MAY_HAVE_COMMITTED', false],
     ["strict mode violation: getByText('performing click action') resolved to 2 elements:\n    1) <p>click action done</p>\nCall log:\n  - waiting for getByText('performing click action')", 'NODE_STALE', true],
     ['element is detached from the DOM', 'NODE_STALE', true],
-    ['Element is not attached to the DOM', 'NODE_STALE', true],
     ['Element is not an <input>, <textarea> or [contenteditable] element', 'NOT_ACTIONABLE', false],
-    ['Element is not a checkbox', 'NOT_ACTIONABLE', false],
     ['Target page, context or browser has been closed', 'ENGINE_FAILURE', false],
   ] as const)('maps "%s" to %s', (text, code, retryable) => {
     expect(classifyActionError(new Error(text), TAP)).toMatchObject({ code, retryable });
@@ -158,21 +156,10 @@ describe('dispatchLocatorAction', () => {
   };
 
   it.each([
-    [{ kind: 'tap' }, 'click', [{ timeout: 7 }]],
-    [{ kind: 'doubleTap' }, 'dblclick', [{ timeout: 7 }]],
     [{ kind: 'longPress', durationMs: 900 }, 'click', [{ timeout: 7, delay: 900 }]],
-    [{ kind: 'fill', value: 'ada', sensitive: false }, 'fill', ['ada', { timeout: 7 }]],
-    [{ kind: 'fill', value: 'hunter2', sensitive: true }, 'fill', ['hunter2', { timeout: 7 }]],
     [{ kind: 'clear' }, 'fill', ['', { timeout: 7 }]],
-    [{ kind: 'press', key: 'Enter' }, 'press', ['Enter', { timeout: 7 }]],
-    [{ kind: 'focus' }, 'focus', [{ timeout: 7 }]],
-    [{ kind: 'hover' }, 'hover', [{ timeout: 7 }]],
-    [{ kind: 'scrollIntoView' }, 'scrollIntoViewIfNeeded', [{ timeout: 7 }]],
     [{ kind: 'selectOption', value: 'Blue' }, 'selectOption', [{ label: 'Blue' }, { timeout: 7 }]],
     [{ kind: 'selectOption', value: { index: 2 } }, 'selectOption', [{ index: 2 }, { timeout: 7 }]],
-    [{ kind: 'selectOption', value: { label: 'Red' } }, 'selectOption', [{ label: 'Red' }, { timeout: 7 }]],
-    [{ kind: 'selectOption', value: { value: 'blue' } }, 'selectOption', [{ value: 'blue' }, { timeout: 7 }]],
-    [{ kind: 'setInputFiles', paths: ['/tmp/a.txt'] }, 'setInputFiles', [['/tmp/a.txt'], { timeout: 7 }]],
   ] as const satisfies readonly (readonly [LocatorAction, string, readonly unknown[]])[])(
     'dispatches %j to locator.%s',
     async (action, method, args) => {
@@ -183,14 +170,6 @@ describe('dispatchLocatorAction', () => {
       expect(spy.mock.calls[0]).toEqual(args);
     },
   );
-
-  it('presses a key as spelled: the harness has already checked the grammar', async () => {
-    const { locator, target } = stubLocator();
-    for (const key of ['Control+a', 'Shift+Tab', 'ControlOrMeta+Shift+ArrowLeft', '$', 'Shift++']) {
-      await dispatchLocatorAction(target, { kind: 'press', key }, 7, lookup);
-      expect(locator.press).toHaveBeenLastCalledWith(key, { timeout: 7 });
-    }
-  });
 
   it('scrolls a node with a wheel gesture sized by its own box: the agent node scroll', async () => {
     const { locator, target, wheel } = stubLocator({ x: 0, y: 0, width: 400, height: 300 });

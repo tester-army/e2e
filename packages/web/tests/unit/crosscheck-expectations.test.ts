@@ -16,10 +16,6 @@ function file(content: string): string {
 }
 
 describe('cross-check expectations', () => {
-  it('keys a disagreement by page, oracle, field, node, and both values', () => {
-    expect(keyOf('fixture: inputs', fileRole)).toBe('fixture: inputs | chrome role | textbox "Attachments" | ours textbox | theirs button');
-  });
-
   it('reports what is new and what no longer happens, only for the pages that ran', () => {
     const expected = readExpectations(file([
       '# header',

@@ -165,17 +165,14 @@ describe('web({ browser: provider })', () => {
     expect(() => web({ browser: provider({ scope: 'attempt' }).impl })).not.toThrow();
   });
 
-  it('rejects downloads that are not a directory and a read()', () => {
-    for (const downloads of [null, { dir: '', read: async () => new Uint8Array() }, { dir: '/downloads' }]) {
+  it('rejects downloads that are not a directory and a read() or whose dir is relative, and takes an absolute POSIX or Windows dir', () => {
+    const read = async () => new Uint8Array();
+    for (const downloads of [null, { dir: '', read }, { dir: '/downloads' }]) {
       expect(() => web({ browser: { ...provider().impl, downloads } as unknown as BrowserProvider })).toThrow(
         /provider "toy-cloud" has downloads that are not \{ dir, read\(\) \}/,
       );
     }
-    expect(() => web({ browser: { ...provider().impl, downloads: { dir: '/downloads', read: async () => new Uint8Array() } } })).not.toThrow();
-  });
-
-  it("rejects a relative downloads.dir, and takes an absolute one in either the POSIX or the Windows form", () => {
-    const read = async () => new Uint8Array();
+    expect(() => web({ browser: { ...provider().impl, downloads: { dir: '/downloads', read } } })).not.toThrow();
     expect(() => web({ browser: { ...provider().impl, downloads: { dir: 'downloads', read } } })).toThrow(
       /provider "toy-cloud" has downloads.dir "downloads"; name an absolute path on the browser's machine/,
     );

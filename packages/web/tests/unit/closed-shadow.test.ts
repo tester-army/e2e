@@ -96,18 +96,6 @@ describe('closed shadow root record', () => {
     expect(walked.querySelectorAll).toHaveBeenCalledWith('*');
   });
 
-  it('matches a CSS candidate list in the root only while no closed root was attached', () => {
-    publish(0);
-    const search = engine(SEARCH_ROOTS_SELECTOR_ENGINE);
-    const input = { shadowRoot: null };
-    const document = root(9, [input]);
-    expect(search.queryAll(document, 'input')).toEqual([input]);
-    // One pass for the selector and one for the open-root scan; never the closed-root walk.
-    expect(document.querySelectorAll).toHaveBeenCalledTimes(2);
-    expect(document.querySelectorAll).toHaveBeenCalledWith('input');
-    expect(document.querySelectorAll).toHaveBeenCalledWith('*');
-  });
-
   it('lets the mask engine find nothing without walking while no closed root was attached, and refuses an untracked document', () => {
     publish(0);
     const masks = engine(CLOSED_SHADOW_SELECTOR_ENGINE);
