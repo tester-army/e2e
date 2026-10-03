@@ -152,6 +152,24 @@ describe('the grammar tools have closed schemas', () => {
     expect(failed.verdict()).toEqual({ status: 'failed', summary: 'done', errorCode: 'ACTION_FAILED' });
     expect(schema.safeParse({ status: 'blocked', summary: 'done', errorCode: 'ENVIRONMENT_UNAVAILABLE' }).success).toBe(true);
   });
+
+  it('keeps the first verdict: a later complete_step in the same turn cannot turn a failure into a pass', async () => {
+    const conclusion = createVerdictTool();
+    const options = { toolCallId: 'verdict', messages: [], context: undefined };
+    expect(await conclusion.tool.execute!({ status: 'failed', summary: 'total is wrong', errorCode: 'ASSERTION_FAILED' }, options)).toBe('Step concluded.');
+    expect(await conclusion.tool.execute!({ status: 'passed', summary: 'looks fine' }, options)).toBe('The step already concluded.');
+    expect(conclusion.verdict()).toEqual({ status: 'failed', summary: 'total is wrong', errorCode: 'ASSERTION_FAILED' });
+  });
+
+  it('refuses a blocked verdict without a blocking error code and leaves the step open for a real one', async () => {
+    const conclusion = createVerdictTool();
+    const options = { toolCallId: 'verdict', messages: [], context: undefined };
+    expect(await conclusion.tool.execute!({ status: 'blocked', summary: 'could not tell' }, options)).toMatch(/^Rejected: a blocked verdict requires errorCode/);
+    expect(await conclusion.tool.execute!({ status: 'blocked', summary: 'the total is wrong', errorCode: 'ASSERTION_FAILED' }, options)).toMatch(/^Rejected: /);
+    expect(conclusion.concluded()).toBe(false);
+    expect(await conclusion.tool.execute!({ status: 'blocked', summary: 'no login', errorCode: 'AUTH_CREDENTIAL_UNAVAILABLE' }, options)).toBe('Step concluded.');
+    expect(conclusion.verdict()).toEqual({ status: 'blocked', summary: 'no login', errorCode: 'AUTH_CREDENTIAL_UNAVAILABLE' });
+  });
 });
 
 describe('the schema a provider receives', () => {

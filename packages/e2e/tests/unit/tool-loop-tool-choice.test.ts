@@ -230,6 +230,21 @@ describe('tool loop downgraded tool choice', () => {
   });
 });
 
+describe('tool loop conclusion', () => {
+  it('ends the step on the first verdict of a turn that sends two', async () => {
+    const model = installFakeLoopModel(() => [
+      { toolName: 'complete_step', input: { status: 'failed', summary: 'the total is wrong', errorCode: 'ASSERTION_FAILED' } },
+      conclude,
+    ]);
+    const { fixtures, steps } = runtime({ agents: { default: { model } } });
+
+    await expect(fixtures.agent.act('check the total')).rejects.toMatchObject({ code: 'ASSERTION_FAILED' });
+
+    expect(loopCalls).toHaveLength(1);
+    expect(steps.all()[0]!.status).toBe('failed');
+  });
+});
+
 describe('isForcedToolChoiceRejected', () => {
   it('reads the provider message through a gateway wrapper and a spent retry chain', () => {
     expect(isForcedToolChoiceRejected(REJECTION)).toBe(true);
