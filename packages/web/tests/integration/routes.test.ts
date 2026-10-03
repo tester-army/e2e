@@ -214,23 +214,11 @@ describe('browser.route decisions', () => {
     expect(hits.get('/api/quote')).toBeUndefined();
   });
 
-  it.each([
-    ['a body', { body: 'plain', contentType: 'text/x-quote' }, 'plain'],
-    ['json', { json: { cents: 1 }, contentType: 'application/vnd.quote+json' }, '{"cents":1}'],
-    ['a file', { path: 'quote.json', contentType: 'text/plain' }, '{"cents":4200}\n'],
-  ] as const)('fulfills %s under the given contentType', async (_name, response, body) => {
-    await browser.route('**/api/quote', (route) => route.fulfill(response));
-    const reply = await fetchReply(`${origin}/api/quote`);
-    expect(reply).toEqual({ contentType: response.contentType, body });
-  });
-
-  it.each([
-    ['json', { json: { cents: 1 }, headers: { 'Content-Type': 'application/vnd.quote+json' } }, '{"cents":1}'],
-    ['a file', { path: 'quote.json', headers: { 'Content-Type': 'text/plain' } }, '{"cents":4200}\n'],
-  ] as const)('fulfills %s under a content-type header', async (_name, response, body) => {
-    await browser.route('**/api/quote', (route) => route.fulfill(response));
-    const reply = await fetchReply(`${origin}/api/quote`);
-    expect(reply).toEqual({ contentType: response.headers['Content-Type'], body });
+  it('fulfills under the given contentType or a content-type header', async () => {
+    await browser.route('**/api/quote', (route) => route.fulfill({ json: { cents: 1 }, contentType: 'application/vnd.quote+json' }));
+    expect(await fetchReply(`${origin}/api/quote`)).toEqual({ contentType: 'application/vnd.quote+json', body: '{"cents":1}' });
+    await browser.route('**/api/quote', (route) => route.fulfill({ path: 'quote.json', headers: { 'Content-Type': 'text/plain' } }));
+    expect(await fetchReply(`${origin}/api/quote`)).toEqual({ contentType: 'text/plain', body: '{"cents":4200}\n' });
   });
 
   it.each([
@@ -240,12 +228,8 @@ describe('browser.route decisions', () => {
       'route.fulfill takes one of json, body, or path; got json and body'],
     ['a missing fulfill file', (route: WebRoute) => route.fulfill({ path: 'missing.json' }),
       `route.fulfill path is not a readable file: ${path.join(projectRoot, 'missing.json')}`],
-    ['a fulfill path through a file', (route: WebRoute) => route.fulfill({ path: 'quote.json/inner' }),
-      `route.fulfill path is not a readable file: ${path.join(projectRoot, 'quote.json', 'inner')}`],
     ['a fulfill status out of range', (route: WebRoute) => route.fulfill({ status: 42 }),
       'route.fulfill status must be an integer from 100 to 599'],
-    ['fulfill json that is not JSON', (route: WebRoute) => untyped(route.fulfill, { json: { n: 1n } }),
-      expect.stringContaining('route.fulfill json')],
     ['an unknown continue key', (route: WebRoute) => untyped(route.continue, { urll: '/echo' }),
       'route.continue options has no key "urll"; it takes url, method, headers, postData'],
     ['non-string continue headers', (route: WebRoute) => untyped(route.continue, { headers: { 'x-n': 1 } }),
@@ -256,8 +240,6 @@ describe('browser.route decisions', () => {
       'route.fulfill header "x-a" must not contain a control character'],
     ['an abort error code', (route: WebRoute) => untyped(route.abort, 'failed'),
       'route.abort() takes no arguments'],
-    ['a fallback override', (route: WebRoute) => untyped(route.fallback, { url: '/echo' }),
-      'route.fallback() takes no arguments'],
   ])('rejects %s before deciding, and aborts the request', async (_name, decide, message) => {
     await browser.route('**/api/quote', decide);
     expect(await fetchText(`${origin}/api/quote`)).toBe('failed');

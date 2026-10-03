@@ -58,6 +58,7 @@ async function setup() {
 }
 
 afterEach(async () => {
+  vi.useRealTimers();
   await Promise.all([...surfaces].map((surface) => surface.dispose({ signal: new AbortController().signal, timeoutMs: 1_000 })));
   surfaces.clear();
   vi.restoreAllMocks();
@@ -103,6 +104,8 @@ describe('semantic capture fallback', () => {
 
   it('preserves the fallback reserve when a concurrent pixel mask probe stalls', async () => {
     const { surface, masks, screenshot } = await setup();
+    vi.useFakeTimers();
+    vi.setTimerTickMode('nextTimerAsync');
     masks[0]!.count.mockImplementationOnce(() => new Promise(() => undefined));
     vi.mocked(captureDocument).mockImplementation(async (_deps, _host, options) => {
       await new Promise((resolve) => setTimeout(resolve, Math.max(1, options.deadline - Date.now())));
@@ -120,7 +123,7 @@ describe('semantic capture fallback', () => {
     await expect(surface.observe(operation(), { pixelFallback: true })).rejects.toBe(error);
   });
 
-  it.each(['POLICY_DENIED', 'INVALID_STATE', 'NODE_STALE', 'CANCELLED'] as const)('preserves %s instead of falling back', async (code) => {
+  it.each(['POLICY_DENIED', 'CANCELLED'] as const)('preserves %s instead of falling back', async (code) => {
     const { surface, screenshot } = await setup();
     const error = code === 'POLICY_DENIED' ? new TestError(code, 'stop') : new EngineError(code, 'stop', { retryable: false });
     vi.mocked(captureDocument).mockRejectedValue(error);

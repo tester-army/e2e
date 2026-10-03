@@ -311,14 +311,14 @@ describe('CDP session recovery', () => {
     const engine = await start({
       cdpEndpoint: () => remote.endpoint,
       reconnectEndpoint: async () => {
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        await new Promise((resolve) => setTimeout(resolve, 300));
         return remote.endpoint;
       },
     });
     await surfaceOf(engine)!.context().browser()!.close();
-    await expect(fixtureOf(engine, 500).evaluate(async () => {
+    await expect(fixtureOf(engine, 1_000).evaluate(async () => {
       document.body.dataset['started'] = 'true';
-      await new Promise((resolve) => setTimeout(resolve, 350));
+      await new Promise((resolve) => setTimeout(resolve, 800));
       return 'too late';
     })).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
     expect(await surfaceOf(engine)!.page().getAttribute('body', 'data-started')).toBe('true');

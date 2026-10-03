@@ -15,7 +15,7 @@ import { noSecrets } from '../helpers/secrets.ts';
  * JSON body, a genuinely empty body under 200 and 204, a redirect whose body
  * the browser drops, and a body cut short by a connection reset before the
  * declared `Content-Length` was sent, one whose body follows its headers
- * 1200ms later, and one that never finishes. The fragment is flushed before the
+ * 800ms later, and one that never finishes. The fragment is flushed before the
  * reset so the browser has seen the headers and reports the response rather
  * than an empty reply.
  */
@@ -45,7 +45,7 @@ function startBodyServer(): Promise<{ server: Server; url: string }> {
       case '/api/slow':
         response.writeHead(200, { 'content-type': 'text/plain' });
         response.flushHeaders();
-        setTimeout(() => response.end('slow-body'), 1_200);
+        setTimeout(() => response.end('slow-body'), 800);
         return;
       case '/api/endless':
         response.writeHead(200, { 'content-type': 'text/plain' });
@@ -78,6 +78,7 @@ describe('browser.waitForResponse bodies', () => {
   let origin: string;
   let page: Page;
   let browser: Browser;
+  let operationBudgetMs: number;
 
   beforeAll(async () => {
     ({ server, url: origin } = await startBodyServer());
@@ -89,8 +90,9 @@ describe('browser.waitForResponse bodies', () => {
     await surface.startAttempt({ attemptId: 'responses', artifactsDir, signal, resolveSecret: noSecrets });
     page = await surface.ensurePage();
     await page.goto(`${origin}/`);
+    operationBudgetMs = 2_000;
     browser = createBrowserFixture(surface, {
-      operation: (timeoutMs = 2_000) => ({ signal, timeoutMs, runId: 'responses', attemptId: 'responses', origin: 'test' }),
+      operation: (timeoutMs = operationBudgetMs) => ({ signal, timeoutMs, runId: 'responses', attemptId: 'responses', origin: 'test' }),
       expectable: (target: object) => target,
       fixture: (_name: string, target: object) => target,
     } as unknown as EngineFixtureContext);
@@ -160,9 +162,10 @@ describe('browser.waitForResponse bodies', () => {
   it('rejects reading a body that never finishes once the action budget runs out', async () => {
     const response = await observe('/api/endless', { timeout: 500 });
     expect(response.status).toBe(200);
+    operationBudgetMs = 300;
     await expect(response.text()).rejects.toMatchObject({
       code: 'ACTION_FAILED',
-      message: 'waitForResponse: response body did not finish within 2000ms',
+      message: 'waitForResponse: response body did not finish within 300ms',
     });
   });
 

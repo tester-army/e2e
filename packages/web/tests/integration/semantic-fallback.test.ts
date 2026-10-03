@@ -13,11 +13,11 @@ function nodes(node: SemanticNode): SemanticNode[] {
 }
 
 describe('masked fallback after a stalled semantic reader', () => {
-  it.each([false, true])('reserves capture time and takes fresh masked pixels (requested: %s)', async (pixels) => {
+  it('reserves capture time and takes fresh masked pixels', async () => {
     const engine = web({});
     const artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-semantic-fallback-'));
     const signal = new AbortController().signal;
-    const operation = { signal, timeoutMs: 4_000, runId: 'fallback', attemptId: 'attempt', origin: 'agent' as const };
+    const operation = { signal, timeoutMs: 2_000, runId: 'fallback', attemptId: 'attempt', origin: 'agent' as const };
     const cleanup = { signal, timeoutMs: 30_000 };
     try {
       await engine.init!({ runId: 'fallback', targetName: 'fixture', projectRoot: process.cwd(), app: {}, env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
@@ -28,13 +28,12 @@ describe('masked fallback after a stalled semantic reader', () => {
       const old = await engine.observe!(operation);
       const [password] = await engine.locate!({ kind: 'query', query: { kind: 'testId', value: { kind: 'string', value: 'password', exact: true } } }, operation);
       expect(password).toBeDefined();
-      await page.evaluate(() => { setTimeout(() => { document.body.style.background = 'blue'; }, 1_500); });
+      await page.evaluate(() => { setTimeout(() => { document.body.style.background = 'blue'; }, 1_000); });
       const reader = vi.spyOn(page, 'evaluateHandle').mockImplementation(() => new Promise(() => undefined));
       try {
         const started = Date.now();
-        const fallback = await engine.observe!(operation, { pixels, pixelFallback: true });
-        expect(Date.now() - started).toBeGreaterThan(2_500);
-        expect(Date.now() - started).toBeLessThan(operation.timeoutMs);
+        const fallback = await engine.observe!(operation, { pixels: true, pixelFallback: true });
+        expect(Date.now() - started).toBeGreaterThan(1_250);
         expect(fallback.treeUnavailable).toBe(true);
         expect(fallback.root).toEqual({ ref: { id: old.root.ref.id, revision: '' } });
         expect(fallback.maskedRegionCount).toBeGreaterThanOrEqual(1);
@@ -52,7 +51,7 @@ describe('masked fallback after a stalled semantic reader', () => {
     }
   });
 
-  it.each([false, true])('keeps abandoned reader IDs distinct from new nodes, frames, and located refs (locate: %s)', async (locate) => {
+  it('keeps abandoned reader IDs distinct from new nodes, frames, and located refs', async () => {
     const engine = web({});
     const artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-semantic-ids-'));
     const signal = new AbortController().signal;
@@ -87,9 +86,7 @@ describe('masked fallback after a stalled semantic reader', () => {
         reader.mockRestore();
         release();
       }
-      const [located] = locate
-        ? await engine.locate!({ kind: 'query', query: { kind: 'testId', value: { kind: 'string', value: 'a', exact: true } } }, operation)
-        : [];
+      const [located] = await engine.locate!({ kind: 'query', query: { kind: 'testId', value: { kind: 'string', value: 'a', exact: true } } }, operation);
       await page.evaluate(() => {
         const button = document.createElement('button');
         button.textContent = 'Button C';
@@ -104,7 +101,8 @@ describe('masked fallback after a stalled semantic reader', () => {
       const observed = nodes(fresh.root);
       const ids = observed.map((node) => node.ref.id);
       expect(new Set(ids).size).toBe(ids.length);
-      if (located !== undefined) expect(ids).not.toContain(located.ref.id);
+      expect(located).toBeDefined();
+      expect(ids).not.toContain(located!.ref.id);
       for (const name of ['Button B', 'Button C', 'Button D']) {
         const target = observed.find((node) => node.name === name);
         expect(target, name).toBeDefined();

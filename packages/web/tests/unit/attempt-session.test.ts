@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Browser, Page } from 'playwright-core';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { connectCdp } from '../../src/browser-connection.ts';
 import { AttemptSession } from '../../src/attempt-session.ts';
 
@@ -69,6 +69,7 @@ const operation = (timeoutMs = 1_000, signal = new AbortController().signal) => 
 
 describe('AttemptSession', () => {
   beforeEach(() => vi.mocked(connectCdp).mockReset());
+  afterEach(() => vi.useRealTimers());
 
   it('detaches an unresolved identity before its response arrives and cannot overwrite the next attempt', async () => {
     const response = deferred<Contexts>();
@@ -278,11 +279,12 @@ describe('AttemptSession', () => {
     } });
     await first.start(new AbortController().signal);
     original.disconnect();
+    vi.useFakeTimers();
+    vi.setTimerTickMode('nextTimerAsync');
     const dispatch = vi.fn(async (current) => current.timeoutMs as number);
     const remaining = await first.run(operation(200), 'read', dispatch);
-    expect(vi.mocked(connectCdp).mock.calls[1]![1]).toBeLessThan(180);
-    expect(remaining).toBeLessThan(180);
-    expect(remaining).toBeGreaterThan(0);
+    expect(vi.mocked(connectCdp).mock.calls[1]![1]).toBe(160);
+    expect(remaining).toBe(160);
     await first.close(cleanup());
   });
 
