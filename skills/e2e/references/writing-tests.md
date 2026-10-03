@@ -355,7 +355,7 @@ credentials: {
 
 Prefer `app` and `screen`; `browser` is for what only a browser has, and a
 portable suite declares `requires: ['browser']`. Page methods act on the one
-active tab; cookies, routes, and `onDialog` cover the whole browser. A tab
+active tab; cookies, routes, `onDialog`, and init scripts cover the whole browser. A tab
 the app opens itself (`target="_blank"`, `window.open`) is not followed:
 `browser.goto` its URL instead.
 
@@ -371,6 +371,10 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
 - `evaluate(fn | source, arg?)`: runs a function or source string in the
   page, JSON in and out, no closures; a throw in the page is
   `EVALUATE_FAILED`.
+- `addInitScript(source | { path } | fn, arg?)`: runs before the page's own
+  scripts in every document from the next navigation on, after
+  `web({ initScripts })`; call it before `app.open`. `arg` is JSON, for a
+  function only.
 - `route(pattern, handler)`, `unroute(pattern)`: intercept requests, newest
   route first; `route.request` has `url`, `method`, `headers`, `postData`.
   The handler calls exactly one of
