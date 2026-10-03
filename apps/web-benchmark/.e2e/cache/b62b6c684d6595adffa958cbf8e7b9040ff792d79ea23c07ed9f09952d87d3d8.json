@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:31:18.092Z",
+  "createdAt": "2026-10-03T17:52:31.827Z",
   "payload": {
     "actions": [
       {
@@ -52,7 +52,10 @@
     "recordedFor": {
       "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20context-menu-trap",
       "targetId": "web",
-      "instructionDigest": "63530e281eafd2d07743a56500bfed3eae14e1ab7a4c0ad00e838e8b51912917"
+      "instructionDigest": "63530e281eafd2d07743a56500bfed3eae14e1ab7a4c0ad00e838e8b51912917",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Renamed report.pdf to summary.pdf. The file manager now lists summary.pdf and confirms “File renamed to summary.pdf.”",
     "startPath": "/e/context-menu-trap",

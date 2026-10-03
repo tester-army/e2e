@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:27:59.612Z",
+  "createdAt": "2026-10-03T17:50:25.093Z",
   "payload": {
     "actions": [
       {
@@ -43,7 +43,10 @@
     "recordedFor": {
       "testId": "tests-agent/login-form.e2e.ts::act%20signs%20in%20with%20the%20benchmark%20account",
       "targetId": "web",
-      "instructionDigest": "c26456300e1d572e5598b0d8d2584171681d80d8a20bef86bdda6e9d2c7f976e"
+      "instructionDigest": "c26456300e1d572e5598b0d8d2584171681d80d8a20bef86bdda6e9d2c7f976e",
+      "paramsDigest": "10cf8df51d5b30096b97501956aa95d056885035f7bc67d093d076b7c4caecf0",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Logged in with the provided credentials. The page displays “Logged in successfully” and a Log out button.",
     "startPath": "/e/login-form",

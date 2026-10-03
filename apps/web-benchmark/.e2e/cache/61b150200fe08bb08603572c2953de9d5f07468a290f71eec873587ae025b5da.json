@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:32:05.439Z",
+  "createdAt": "2026-10-03T17:52:37.132Z",
   "payload": {
     "actions": [
       {
@@ -49,7 +49,10 @@
     "recordedFor": {
       "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20playbook-cleanup",
       "targetId": "web",
-      "instructionDigest": "423676dde62142adee61619b5958db96013371bf84519c7e0441aaa32d6f9fce"
+      "instructionDigest": "423676dde62142adee61619b5958db96013371bf84519c7e0441aaa32d6f9fce",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Deleted the playbook “Launch Approval Draft,” confirmed the removal, and searched its exact name. The page shows: “No playbooks match ‘Launch Approval Draft’.”",
     "startPath": "/e/playbook-cleanup",

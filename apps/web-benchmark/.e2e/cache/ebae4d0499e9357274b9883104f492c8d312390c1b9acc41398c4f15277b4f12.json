@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:27:58.590Z",
+  "createdAt": "2026-10-03T17:50:24.820Z",
   "payload": {
     "actions": [
       {
@@ -42,7 +42,10 @@
     "recordedFor": {
       "testId": "tests-agent/unique-cache.e2e.ts::act%20adds%20an%20address%20with%20a%20run-unique%20label",
       "targetId": "web",
-      "instructionDigest": "7e6f99066c5bc180c1e5188150277917670b918eb0a9646ac967ef798648b455"
+      "instructionDigest": "7e6f99066c5bc180c1e5188150277917670b918eb0a9646ac967ef798648b455",
+      "paramsDigest": "49ed432ec36207f5728e4da6da98006ed0d126739d72fdcdb919e032bfd6a511",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Added the address labelled “Cabin muslvgnm” with line “7 Pine Way, Bend.” The new address appears in the saved-address list and the app displayed “Address saved.”",
     "startPath": "/e/saved-addresses",

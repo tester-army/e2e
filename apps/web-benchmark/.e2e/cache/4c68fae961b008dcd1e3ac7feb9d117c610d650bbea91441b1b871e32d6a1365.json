@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:28:05.153Z",
+  "createdAt": "2026-10-03T17:50:26.230Z",
   "payload": {
     "actions": [
       {
@@ -29,7 +29,10 @@
     "recordedFor": {
       "testId": "tests-agent/control-inventory.e2e.ts::control%20inventory::a%20long%20press%20and%20a%20double%20click%20are%20chosen%20over%20a%20plain%20tap",
       "targetId": "web",
-      "instructionDigest": "9fe8b7fcfeb1bd36e8d003d5c7e5feb16042211ec61970b63314a6c7bac345b0"
+      "instructionDigest": "9fe8b7fcfeb1bd36e8d003d5c7e5feb16042211ec61970b63314a6c7bac345b0",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Long-pressed Hold me; Hold state reads “long-pressed.” Double-clicked Double-click me; Double-click state reads “double-clicked.”",
     "startPath": "/e/control-inventory",
