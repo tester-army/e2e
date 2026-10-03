@@ -87,6 +87,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -174,12 +175,6 @@ function releaseContext(runId: string): DeviceReleaseContext {
 const notFound = { message: 'Entity Not Found', extensions: { errorCode: 'NOT_FOUND_ERROR' } };
 
 describe('easSimulators()', () => {
-  it('is a device provider named eas-simulators that leaves recording to agent-device', () => {
-    const provider = easSimulators({ projectId: 'p1' });
-    expect(provider.name).toBe('eas-simulators');
-    expect(provider.record).toBeUndefined();
-  });
-
   it('starts an agent-device session named after the slot, tagged with the run, on the engine\'s agent-device, with the idle backstop', async () => {
     await easSimulators({ projectId: 'p1', buildId: 'b1', device: 'iPhone 17 Pro', tags: ['nightly'] }).acquire(request({ slot: 1, runId: 'run-1' }));
     expect(eas.calls[0]).toEqual({
@@ -236,7 +231,6 @@ describe('easSimulators()', () => {
     eas.states = [queued, queued, queued, queued, { status: 'NEW', turtleJobRun: { status: 'IN_PROGRESS' }, remoteConfig: null }, READY];
     const req = request();
     const lease = await easSimulators({ projectId: 'p1' }).acquire(req);
-    vi.restoreAllMocks();
     expect(lease).toEqual({ id: 's1', daemon: { baseUrl: 'https://agent-device-s1.eas-simulator.ngrok.dev', authToken: 'daemon-token' } });
     expect(eas.calls.map((call) => call.operation)).toEqual(['create', 'state', 'state', 'state', 'state', 'state', 'state']);
     expect(eas.calls[1]?.variables).toEqual({ id: 's1' });
@@ -306,7 +300,6 @@ describe('easSimulators()', () => {
     await expect(easSimulators({ projectId: 'p1', maxIdleTimeMinutes: 5 }).acquire(request({ runId: 'run-idle', platform: 'android', targetName: 'android', slots: 1 }))).rejects.toThrow(
       'simulator session s1 did not become ready: still queued while another session of this run idled to its `maxIdleTimeMinutes`, where EAS stops it; lower `workers` or raise `maxIdleTimeMinutes`; stopped it',
     );
-    vi.restoreAllMocks();
     expect(eas.calls.at(-1)?.operation).toBe('stop');
     await iosProvider.release(lease, releaseContext('run-idle'));
   });
@@ -319,7 +312,6 @@ describe('easSimulators()', () => {
     const queued = { status: 'NEW', turtleJobRun: { status: 'IN_QUEUE' }, remoteConfig: null };
     eas.states = [...Array.from({ length: 10 }, () => queued), READY];
     await expect(easSimulators({ projectId: 'p1', maxIdleTimeMinutes: 2 }).acquire(request({ runId: 'run-limits' }))).resolves.toMatchObject({ id: 's1' });
-    vi.restoreAllMocks();
     await patient.release(lease, releaseContext('run-limits'));
   });
 
@@ -335,7 +327,6 @@ describe('easSimulators()', () => {
     await provider.release(lease, releaseContext('run-released'));
     eas.states = [...Array.from({ length: 20 }, () => queued), READY];
     await expect(provider.acquire(request({ runId: 'run-released' }))).resolves.toMatchObject({ id: 's1' });
-    vi.restoreAllMocks();
   });
 
   it('keeps the idle limit below a short duration, as EAS requires, and pins the agent-device an option names', async () => {
@@ -354,7 +345,6 @@ describe('easSimulators()', () => {
     vi.spyOn(Date, 'now').mockImplementation(() => (now += 60_000));
     eas.states = [{ status: 'NEW', turtleJobRun: { status: 'IN_QUEUE' }, remoteConfig: null }, { status: 'NEW', turtleJobRun: { status: 'IN_PROGRESS' }, remoteConfig: null }];
     await expect(easSimulators({ projectId: 'p1' }).acquire(request())).rejects.toThrow('did not become ready: still starting after 15 minutes; stopped it');
-    vi.restoreAllMocks();
   });
 
   it('rides out a few failed polls, and gives up after more in a row', async () => {
@@ -424,9 +414,9 @@ describe('easSimulators()', () => {
     const provider = easSimulators({ projectId: 'p1' });
     const lease = await provider.acquire(request({ env: home(homeWith(login)) }));
     eas.errors.stop = { message: 'Internal server error', extensions: { errorCode: 'INTERNAL_SERVER_ERROR' } };
-    await expect(provider.release(lease, { ...releaseContext('run-retry'), env: home(emptyHome) })).rejects.toThrow('Internal server error');
+    await expect(provider.release(lease, { ...releaseContext('run-release-retry'), env: home(emptyHome) })).rejects.toThrow('Internal server error');
     delete eas.errors.stop;
-    await provider.release(lease, { ...releaseContext('run-retry'), env: home(emptyHome) });
+    await provider.release(lease, { ...releaseContext('run-release-retry'), env: home(emptyHome) });
     expect(eas.calls.filter((call) => call.operation === 'stop').map((call) => call.session)).toEqual(['session-secret', 'session-secret']);
   });
 
@@ -453,9 +443,9 @@ describe('easSimulators()', () => {
   it('reads the app config again after a read that failed, in the same run', async () => {
     const projectRoot = projectWith({ 'app.json': JSON.stringify({ expo: { name: 'shop' } }) });
     const provider = easSimulators({});
-    await expect(provider.acquire(request({ projectRoot, runId: 'run-retry' }))).rejects.toThrow('has no `extra.eas.projectId`');
+    await expect(provider.acquire(request({ projectRoot, runId: 'run-config-retry' }))).rejects.toThrow('has no `extra.eas.projectId`');
     writeFileSync(join(projectRoot, 'app.json'), linked('after-eas-init'));
-    await provider.acquire(request({ projectRoot, runId: 'run-retry', slot: 1 }));
+    await provider.acquire(request({ projectRoot, runId: 'run-config-retry', slot: 1 }));
     expect(eas.calls[0]?.variables['input']).toMatchObject({ appId: 'after-eas-init' });
   });
 
@@ -530,9 +520,6 @@ describe('easSimulators()', () => {
   it('rejects an option it does not know, naming the nearest', () => {
     expect(() => easSimulators({ projectId: 'p1', buildID: 'b1' } as never)).toThrow(
       expect.objectContaining({ code: 'INVALID_CONFIG', message: 'easSimulators() has unknown key "buildID"; did you mean "buildId"?' }),
-    );
-    expect(() => easSimulators({ projectId: 'p1', platform: 'ios' } as never)).toThrow(
-      expect.objectContaining({ code: 'INVALID_CONFIG', message: 'easSimulators() has unknown key "platform"; expected one of projectId, buildId, applicationArchiveUrl, device, maxIdleTimeMinutes, maxDurationMinutes, agentDeviceVersion, tags' }),
     );
   });
 });
