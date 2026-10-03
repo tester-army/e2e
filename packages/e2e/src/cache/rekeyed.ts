@@ -10,9 +10,10 @@
  * (`TraceProvenance`), and a step whose own key misses while the store holds
  * a recording made for it is stale, not new.
  *
- * Only the file store can be listed. The listing is read once per run, on
- * the first strict miss that asks, and kept: every entry written since has a
- * key the run derives, so it is a hit rather than a candidate here.
+ * Only the file store can be listed. The listing is read once per worker
+ * and target, on the first strict miss that asks, and kept: every entry
+ * written since has a key the run derives, so it is a hit rather than a
+ * candidate here.
  */
 
 import type { ResolvedCacheConfig } from '../config/resolve.ts';
@@ -34,15 +35,17 @@ export class StoredRecordings {
   }
 
   /**
-   * The key hash of an entry recorded for `step` under another key, or
-   * undefined when there is none or the store cannot be listed. `step` is in
-   * the form an entry stores it (`recordedProvenance`). A field an older
-   * entry did not record matches any value, so an entry from before the
-   * occurrence fields were recorded is found by test, target, and
-   * instruction. A truncated entry never replays under any key, so it is
-   * never the reason a step is stale.
+   * The key hash of an entry recorded for `step` under a key the attempt has
+   * not claimed (`claimed`, this step's own included), or undefined when
+   * there is none or the store cannot be listed. `step` is in the form an
+   * entry stores it (`recordedProvenance`). A field an older entry did not
+   * record matches any value, so an entry from before the occurrence fields
+   * were recorded is found by test, target, and instruction; an earlier
+   * occurrence of the same instruction has claimed its own entry by then, so
+   * a repeat with nothing recorded is not taken for it. A truncated entry
+   * never replays under any key, so it is never the reason a step is stale.
    */
-  async underAnotherKey(keyHash: string, step: TraceProvenance): Promise<string | undefined> {
+  async underAnotherKey(step: TraceProvenance, claimed: ReadonlySet<string>): Promise<string | undefined> {
     let listing: ReadonlyMap<string, readonly ListedRecording[]>;
     try {
       this.listing ??= this.list();
@@ -51,7 +54,7 @@ export class StoredRecordings {
       return undefined;
     }
     for (const candidate of listing.get(stepGroup(step)) ?? []) {
-      if (candidate.keyHash === keyHash || !sameStep(candidate.recordedFor, step)) continue;
+      if (claimed.has(candidate.keyHash) || !sameStep(candidate.recordedFor, step)) continue;
       // Listed once per run: an entry evicted since is no evidence.
       const read = await this.store.read(candidate.keyHash).catch(() => undefined);
       if (read?.status === 'hit') return candidate.keyHash;

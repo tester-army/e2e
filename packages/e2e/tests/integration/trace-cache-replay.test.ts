@@ -277,6 +277,7 @@ describe('trace cache: --strict-cache fails a step whose key changed under its r
     expectPassed(await runExisting(project, { appUrl: app.url, config: cacheConfig(flowsModel()) }));
     const entries = readEntries(project);
     expect(entries).toHaveLength(1);
+    expect(entries[0]!.entry.payload.recordedFor).toMatchObject({ paramsDigest: expect.stringMatching(/^[a-f0-9]{64}$/u), callIndex: 0, agent: 'default' });
     oldEntry = path.basename(entries[0]!.file);
   }, 120_000);
 
@@ -291,8 +292,8 @@ describe('trace cache: --strict-cache fails a step whose key changed under its r
     expect(loopCalls).toHaveLength(0);
     const step = onlyActStep(outcome, 'increments the counter');
     expect(step.error?.code).toBe('REPLAY_STALE');
-    expect(step.error?.message).toContain(`stored under another cache key (${oldEntry})`);
-    expect(step.error?.message).toContain('commit the changed entry under .e2e/cache, then delete the old one');
+    expect(step.error?.message).toContain(`the store holds it under another cache key (${oldEntry})`);
+    expect(step.error?.message).toMatch(/commit the changed entry under \.e2e\/cache$/u);
     expect(step.cache?.reason).toBe('no-entry');
   }, 120_000);
 

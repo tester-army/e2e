@@ -50,6 +50,8 @@ export interface ClaimedKey {
   readonly keyHash: string;
   /** The step's identity before redaction; the recorder redacts it on the way to disk. */
   readonly step: TraceProvenance;
+  /** Every key hash the attempt has claimed so far, this one included: entries other steps of the attempt own. */
+  readonly claimed: ReadonlySet<string>;
 }
 
 export interface AgentCacheContext {
@@ -179,7 +181,7 @@ export function createAgentCacheContext(options: {
   readonly testId: string;
   readonly target: CacheTargetIdentity;
   readonly attemptIndex: number;
-  /** The run's listing of the file store under `cache.strict`, shared by its attempts (`storedRecordingsFor`). */
+  /** The file store's listing under `cache.strict`, shared by the attempts of one worker and target (`storedRecordingsFor`). */
   readonly recordings?: StoredRecordings | undefined;
 }): AgentCacheContext | undefined {
   const mode = options.cache.mode;
@@ -202,6 +204,7 @@ export function createAgentCacheContext(options: {
     indexers.set(agentKey, indexer);
     return indexer(signature);
   };
+  const claimed = new Set<string>();
   return {
     mode,
     store,
@@ -227,6 +230,7 @@ export function createAgentCacheContext(options: {
           policyVersion: REPLAY_POLICY_VERSION,
         }),
       );
+      claimed.add(keyHash);
       return {
         keyHash,
         step: {
@@ -237,6 +241,7 @@ export function createAgentCacheContext(options: {
           callIndex,
           agent: agent.name,
         },
+        claimed,
       };
     },
     staged: [],
