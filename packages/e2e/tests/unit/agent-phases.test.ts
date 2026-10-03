@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { checkStepClock, instrumentPhase, retryingObserve } from '../../src/agent/phases.ts';
 import type { Observation } from '../../src/engine/surface.ts';
 import { Deadline } from '../../src/internal/time.ts';
@@ -30,7 +30,13 @@ const OBSERVATION: Observation = {
 const operation = () => ({ runId: 'run', attemptId: 'attempt', timeoutMs: 1_000, signal: new AbortController().signal, origin: 'agent' as const });
 
 describe('retryingObserve', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('re-reads after a retryable race reported by an engine from another module registry', async () => {
+    vi.useFakeTimers();
+    vi.setTimerTickMode('nextTimerAsync');
     let attempts = 0;
     const observation = await retryingObserve({
       observe: () => {
