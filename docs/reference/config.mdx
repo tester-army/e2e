@@ -78,8 +78,9 @@ format its package declares.
 
 e2e compiles TypeScript itself and resolves the import forms TypeScript
 accepts: `./helper.js` and `./helper` load `helper.ts`, `./lib` loads
-`lib/index.ts`, and a bare import that the nearest `tsconfig.json` maps through
-`paths` or `baseUrl` loads the mapped file. From that `tsconfig.json` it reads
+`lib/index.ts`, a bare import that the nearest `tsconfig.json` maps through
+`paths` or `baseUrl` loads the mapped file, and a `#` import or package export
+that names a missing `./x.js` loads `x.ts`. From that `tsconfig.json` it reads
 `jsx`, `jsxFactory`, `jsxFragmentFactory`, `jsxImportSource`,
 `experimentalDecorators`, `emitDecoratorMetadata`, `useDefineForClassFields`
 (and `target`, which sets its default), and `verbatimModuleSyntax`. Decorators

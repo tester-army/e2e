@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { forgetTsconfigs } from '../../src/config/tsconfig.ts';
 import { compileTypeScript } from '../../src/config/typescript.ts';
@@ -66,13 +67,15 @@ describe('compileTypeScript', () => {
 
   it('compiles .cts to CommonJS, with no module marker for its type-only imports', () => {
     const compiled = code(compile("import type { Stats } from 'node:fs';\nimport path = require('node:path');\nexport = { ext: path.extname('a.cts') as string, stats: null as Stats | null };\n", {}, 'helper.cts'));
-    expect(compiled).toBe('const path = require("node:path");\nmodule.exports = {\n\text: path.extname("a.cts"),\n\tstats: null\n};\n');
+    expect(compiled).toBe(
+      'require = require("node:module").createRequire(__filename);\nconst path = require("node:path");\nmodule.exports = {\n\text: path.extname("a.cts"),\n\tstats: null\n};\n',
+    );
   });
 
-  it('maps the output to the file by name, so a frame names the file without the loader query', () => {
-    const compiled = compile('export const a: number = 1;\n');
+  it('maps the output to the file by its URL, so a frame names the file without the loader query', () => {
+    const compiled = compile('export const a: number = 1;\n', undefined, '50% off #1.ts');
     const map = JSON.parse(Buffer.from(compiled.slice(compiled.lastIndexOf('base64,') + 7), 'base64').toString('utf8')) as { sources: string[]; sourcesContent?: unknown };
-    expect(map.sources).toEqual(['file.ts']);
+    expect(map.sources).toEqual([pathToFileURL(path.join(dir, '50% off #1.ts')).href]);
     expect(map).not.toHaveProperty('sourcesContent');
   });
 

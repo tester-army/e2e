@@ -22,6 +22,16 @@ const execFileAsync = promisify(execFile);
 const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const CLI = path.join(PACKAGE_ROOT, 'dist', 'cli', 'bin.js');
 
+const FAILING = `import { expect, test } from 'e2e';
+
+interface Shape { readonly n: number }
+
+test('fails at a known line', () => {
+  const shape: Shape = { n: 1 };
+  expect(shape.n).toBe(2);
+});
+`;
+
 const FILES: Readonly<Record<string, string>> = {
   'tsconfig.json': `{
   // tsc reads JSONC, and so does the loader.
@@ -48,8 +58,17 @@ export default { targets: [{ name: targetName, platform: 'test' }] } satisfies E
   'lib/esm.mts': "export const mts: string = 'mts';\n",
   'lib/cjs.cts': `import type { Stats } from 'node:fs';
 import path = require('node:path');
+import plain = require('./plain');
+import alias = require('@lib/alias');
+import helper = require('./cjs-helper.cjs');
 const kind: string = path.extname('x.cts');
-export = { cts: kind, stats: null as Stats | null };
+export = { cts: kind, stats: null as Stats | null, required: [plain.plain, alias.alias, helper.decorated()] };
+`,
+  'lib/cjs-helper.cts': `const seen: string[] = [];
+function track(target: Function): void { seen.push(target.name); }
+@track
+class Decorated {}
+export = { decorated: (): string[] => [...seen, Decorated.name] };
 `,
   'lib/view.tsx': `export const h = (tag: string, _props: unknown, ...children: unknown[]): string => \`<\${tag}>\${children.join('')}</\${tag}>\`;
 export const view = (): string => <b>jsx</b>;
@@ -68,6 +87,8 @@ export const size = Size.M;
 `,
   'lib/data.json': '{ "answer": 42 }\n',
   'internal/sub.ts': "export const sub = 'hash-import';\n",
+  // With baseUrl ".", a root index a mangled # import would land on.
+  'index.ts': "export const root = 'wrong file';\n",
   'packages/core/package.json': JSON.stringify({ name: '@scope/core', exports: { '.': './src/index.ts' } }),
   'packages/core/src/index.ts': "import { pad } from './pad.js';\n\nexport const month = (n: number): string => pad(n);\n",
   'packages/core/src/pad.ts': "export const pad = (n: number): string => String(n).padStart(2, '0');\n",
@@ -83,6 +104,7 @@ import cjs from '../lib/cjs.cts';
 import { view } from '../lib/view.tsx';
 import { Box, Color, Shapes, decorated, size } from '../lib/features';
 import { sub } from '#internal/sub';
+import { sub as viaJs } from '#js/sub';
 import data from '../lib/data.json';
 import attributed from '../lib/data.json' with { type: 'json' };
 import { month } from '@scope/core';
@@ -91,26 +113,21 @@ const awaited = await Promise.resolve('top-level await');
 const typed: E2EConfig | undefined = undefined;
 
 test('imports resolve', () => {
-  expect([alias, base, plain, suffixed, index, sub, month(7)]).toEqual(['paths', 'baseUrl', 'extensionless', 'js-suffix', 'dir-index', 'hash-import', '07']);
+  expect([alias, base, plain, suffixed, index, sub, viaJs, month(7)]).toEqual(['paths', 'baseUrl', 'extensionless', 'js-suffix', 'dir-index', 'hash-import', 'hash-import', '07']);
 });
 
 test('module formats load', () => {
   expect([mts, cjs.cts, data.answer, attributed.answer]).toEqual(['mts', '.cts', 42, 42]);
+  expect(cjs.required).toEqual(['extensionless', 'paths', ['Decorated', 'Decorated']]);
 });
 
 test('TypeScript compiles', () => {
   expect([Color.Green, Shapes.sides, new Box(3).width, decorated(), size, view(), awaited, typed]).toEqual(['green', 4, 3, ['Box'], 2, '<b>jsx</b>', 'top-level await', undefined]);
 });
 `,
-  'tests/failing/fails.e2e.ts': `import { expect, test } from 'e2e';
-
-interface Shape { readonly n: number }
-
-test('fails at a known line', () => {
-  const shape: Shape = { n: 1 };
-  expect(shape.n).toBe(2);
-});
-`,
+  'tests/failing/fails.e2e.ts': FAILING,
+  // URL syntax and a space in a file name, which a stack frame names as a path.
+  'tests/failing/50% off #1.e2e.ts': FAILING,
 };
 
 let dir: string;
@@ -126,7 +143,7 @@ function write(files: Readonly<Record<string, string>>): void {
 
 /** A project whose package.json is `manifest`, with e2e and a workspace package linked into node_modules. */
 function createProject(manifest: Record<string, unknown>): void {
-  write({ ...FILES, 'package.json': JSON.stringify({ name: 'loader-fixture', imports: { '#internal/*': './internal/*.ts' }, ...manifest }) });
+  write({ ...FILES, 'package.json': JSON.stringify({ name: 'loader-fixture', imports: { '#internal/*': './internal/*.ts', '#js/*': './internal/*.js' }, ...manifest }) });
   mkdirSync(path.join(dir, 'node_modules', '@scope'), { recursive: true });
   symlinkSync(PACKAGE_ROOT, path.join(dir, 'node_modules', 'e2e'), 'junction');
   symlinkSync(path.join(dir, 'packages', 'core'), path.join(dir, 'node_modules', '@scope', 'core'), 'junction');
@@ -167,11 +184,13 @@ describe('the TypeScript loader', () => {
     createProject({ type: 'module' });
     const { code, stdout } = await runCli('tests/failing');
     expect(code).toBe(1);
-    expect(stdout).toContain('❯ tests/failing/fails.e2e.ts:7:19');
     expect(stdout).toContain('   7|   expect(shape.n).toBe(2);');
     const report = JSON.stringify(JSON.parse(readFileSync(path.join(dir, '.e2e', 'report.json'), 'utf8')));
-    expect(report).toContain('"source":{"file":"tests/failing/fails.e2e.ts","line":5,"column":1}');
-    expect(report).toContain('"source":{"file":"tests/failing/fails.e2e.ts","line":7,"column":19}');
+    for (const file of ['tests/failing/fails.e2e.ts', 'tests/failing/50% off #1.e2e.ts']) {
+      expect(stdout).toContain(`❯ ${file}:7:19`);
+      expect(report).toContain(`"source":{"file":"${file}","line":5,"column":1}`);
+      expect(report).toContain(`"source":{"file":"${file}","line":7,"column":19}`);
+    }
   });
 
   it('names the file, line, and column of a syntax error in the config', async () => {

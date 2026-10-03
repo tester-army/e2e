@@ -8,7 +8,7 @@
  * runs: JSX, legacy decorators, class field semantics, and import elision.
  */
 
-import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { transformSync, type JsxOptions, type OxcError, type TransformOptions } from 'oxc-transform';
 import { tsconfigFor, type CompilerOptions } from './tsconfig.ts';
 
@@ -72,6 +72,15 @@ function withoutModuleMarker(code: string): string {
   return code.replace(/(^|\n)export \{\};\n$/, '$1');
 }
 
+/**
+ * The first line of compiled CommonJS. The `require` Node.js hands a
+ * CommonJS module an ES module imports resolves without module hooks (on
+ * Node.js 22, and on 24 before 24.18), so `require('./helper')` would miss
+ * `helper.ts`, a tsconfig alias, and the helpers compiled code requires from
+ * e2e's install. A `require` from `createRequire` resolves through them.
+ */
+const HOOKED_REQUIRE = 'require = require("node:module").createRequire(__filename);';
+
 /** `source`, the TypeScript in `file`, compiled to JavaScript for `format`, with an inline source map. */
 export function compileTypeScript(file: string, source: string, format: ModuleFormat): string {
   const result = transformSync(file, source, {
@@ -86,8 +95,14 @@ export function compileTypeScript(file: string, source: string, format: ModuleFo
     const bytes = Buffer.from(source, 'utf8');
     throw new SyntaxError(errors.map((error) => describeError(file, bytes, error)).join('\n'));
   }
-  const code = format === 'commonjs' ? withoutModuleMarker(result.code) : result.code;
-  // Resolved against the module's URL, so a frame names the file without the loader's query.
-  const map = { ...result.map, sources: [path.basename(file)], sourcesContent: undefined };
+  const code = format === 'commonjs' ? `${HOOKED_REQUIRE}\n${withoutModuleMarker(result.code)}` : result.code;
+  const map = {
+    ...result.map,
+    // One line down for the CommonJS banner.
+    mappings: format === 'commonjs' ? `;${result.map!.mappings}` : result.map!.mappings,
+    // Absolute, so a frame names the file without the loader's query, whatever characters its name holds.
+    sources: [pathToFileURL(file).href],
+    sourcesContent: undefined,
+  };
   return `${code}\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(JSON.stringify(map)).toString('base64')}\n`;
 }

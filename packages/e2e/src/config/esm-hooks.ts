@@ -11,7 +11,9 @@
  * - a bare specifier the nearest tsconfig.json maps through `paths` or
  *   `baseUrl` resolves to the mapped file, before any package of that name.
  * Everything else, `#` imports and packages included, resolves as Node.js
- * resolves it.
+ * resolves it; when the file Node.js names is missing, the TypeScript file
+ * behind it is tried the same way (`#x` mapped to `./x.js`, `./x` from
+ * JavaScript).
  *
  * Format: `.ts`, `.mts`, and `.tsx` are ES modules wherever they are and
  * whatever the nearest package.json says, so a Next.js app, or any package
@@ -28,7 +30,7 @@
  */
 
 import { readFileSync, statSync } from 'node:fs';
-import nodeModule, { type LoadHookSync, type ResolveHookContext, type ResolveHookSync } from 'node:module';
+import nodeModule, { createRequire, type LoadHookSync, type ResolveHookContext, type ResolveHookSync } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { realmSlot } from '../internal/realm-slot.ts';
@@ -36,6 +38,7 @@ import { tsconfigFor } from './tsconfig.ts';
 import { compileTypeScript, type ModuleFormat } from './typescript.ts';
 
 type Resolution = ReturnType<ResolveHookSync>;
+type NextResolve = Parameters<ResolveHookSync>[2];
 
 const TYPESCRIPT = /\.(?:ts|mts|cts|tsx)$/;
 const PATH_SPECIFIER = /^(?:\.{1,2}\/|\/|file:)/;
@@ -119,31 +122,46 @@ function typeScriptFile(target: string): string | undefined {
   return undefined;
 }
 
+/** A file a specifier names, with the query and hash its URL carried. */
+interface Target {
+  readonly file: string;
+  readonly suffix: string;
+}
+
 /**
- * The `file:` URL a project file's import names under TypeScript's rules, or
+ * The file a project file's import names under TypeScript's rules, or
  * undefined to resolve `specifier` as Node.js does: a path imported from
  * TypeScript (`./x.js`, `./x`, `./dir`), or a bare specifier the importer's
  * tsconfig maps. Installed packages resolve as they were published.
  */
-function typeScriptSpecifier(specifier: string, parentURL: string | undefined): string | undefined {
+function typeScriptTarget(specifier: string, parentURL: string | undefined): Target | undefined {
   if (parentURL === undefined || projectFile(parentURL) === undefined) return undefined;
-  const cut = specifier.search(/[?#]/);
-  const request = cut === -1 ? specifier : specifier.slice(0, cut);
-  const suffix = cut === -1 ? '' : specifier.slice(cut);
-  let file: string | undefined;
-  if (PATH_SPECIFIER.test(request)) {
+  if (PATH_SPECIFIER.test(specifier)) {
     if (!TYPESCRIPT.test(new URL(parentURL).pathname)) return undefined;
-    const target = fileURLToPath(new URL(request, parentURL));
-    file = typeScriptFile(target);
-    if (file === target) return undefined;
-  } else if (!request.startsWith('#') && !URL_SCHEME.test(request) && !nodeModule.isBuiltin(request)) {
-    const candidates = tsconfigFor(fileURLToPath(parentURL))?.paths?.(request) ?? [];
-    for (const candidate of candidates) {
-      file = typeScriptFile(candidate);
-      if (file !== undefined) break;
-    }
+    const url = new URL(specifier, parentURL);
+    const suffix = `${url.search}${url.hash}`;
+    url.search = '';
+    url.hash = '';
+    const target = fileURLToPath(url);
+    const file = typeScriptFile(target);
+    return file === undefined || file === target ? undefined : { file, suffix };
   }
-  return file === undefined ? undefined : `${pathToFileURL(file).href}${suffix}`;
+  if (specifier.startsWith('#') || URL_SCHEME.test(specifier) || nodeModule.isBuiltin(specifier)) return undefined;
+  for (const candidate of tsconfigFor(fileURLToPath(parentURL))?.paths?.(specifier) ?? []) {
+    const file = typeScriptFile(candidate);
+    if (file !== undefined) return { file, suffix: '' };
+  }
+  return undefined;
+}
+
+/** Whether `context` resolves a `require()`, whose resolver takes paths where `import` takes `file:` URLs. */
+function requires(context: Pick<ResolveHookContext, 'conditions'>): boolean {
+  return context.conditions.includes('require');
+}
+
+/** `target` as a specifier the resolver behind `context` accepts. */
+function targetSpecifier(target: Target, context: ResolveHookContext): string {
+  return requires(context) ? target.file : `${pathToFileURL(target.file).href}${target.suffix}`;
 }
 
 /** The format a TypeScript file runs as, or undefined for any other file. */
@@ -175,11 +193,50 @@ export function inGraph(specifier: string, context: Pick<ResolveHookContext, 'pa
   return { ...resolution, url: file.href };
 }
 
+/** Node.js errors for a target that is not there, which carry the target's URL. */
+const MISSING_TARGET = new Set(['ERR_MODULE_NOT_FOUND', 'ERR_UNSUPPORTED_DIR_IMPORT']);
+
+/**
+ * Node.js's resolution of `request`, retried on the TypeScript file behind a
+ * target it did not find, for a project file's import: a `#` import or
+ * package export naming `./x.js` where `x.ts` is, or an extensionless or
+ * directory import from JavaScript.
+ */
+function resolveOrTypeScript(request: string, context: ResolveHookContext, nextResolve: NextResolve): Resolution {
+  try {
+    return nextResolve(request, context);
+  } catch (error) {
+    const { code, url } = error as { code?: unknown; url?: unknown };
+    const recoverable =
+      typeof code === 'string' && MISSING_TARGET.has(code) && typeof url === 'string' && url.startsWith('file:') &&
+      context.parentURL !== undefined && projectFile(context.parentURL) !== undefined;
+    const file = recoverable ? typeScriptFile(fileURLToPath(url)) : undefined;
+    if (file === undefined) throw error;
+    return nextResolve(targetSpecifier({ file, suffix: '' }, context), context);
+  }
+}
+
+const ownRequire = createRequire(import.meta.url);
+
+/** A helper compiled code imports or requires, resolved from e2e's own install rather than the project's. */
+function resolveHelper(specifier: string, context: ResolveHookContext, nextResolve: NextResolve): Resolution {
+  if (!requires(context)) return nextResolve(specifier, { ...context, parentURL: import.meta.url });
+  // The CommonJS resolver looks up from the requiring module, never from a
+  // parentURL, so e2e requires the helper itself; that lookup comes back
+  // through this hook as a require from this very module.
+  if (context.parentURL === import.meta.url) return nextResolve(specifier, context);
+  return nextResolve(ownRequire.resolve(specifier), context);
+}
+
 export const resolve: ResolveHookSync = (specifier, context, nextResolve) => {
-  if (specifier.startsWith(RUNTIME_HELPERS)) return nextResolve(specifier, { ...context, parentURL: import.meta.url });
-  // A tsconfig alias maps to a file: URL, so it joins a fresh graph like any path.
-  const request = typeScriptSpecifier(specifier, context.parentURL) ?? specifier;
-  return inGraph(request, context, withFormat(nextResolve(request, context)));
+  if (specifier.startsWith(RUNTIME_HELPERS)) return resolveHelper(specifier, context, nextResolve);
+  const target = typeScriptTarget(specifier, context.parentURL);
+  const request = target === undefined ? specifier : targetSpecifier(target, context);
+  const resolution = withFormat(resolveOrTypeScript(request, context, nextResolve));
+  // CommonJS caches modules by file, with no query to make one fresh.
+  if (requires(context)) return resolution;
+  // A file the loader mapped, a tsconfig alias included, joins a fresh graph like any path.
+  return inGraph(target === undefined ? specifier : pathToFileURL(target.file).href, context, resolution);
 };
 
 export const load: LoadHookSync = (url, context, nextLoad) => {
@@ -192,7 +249,7 @@ export const load: LoadHookSync = (url, context, nextLoad) => {
   }
   // A require() has no import attributes, whatever the hook types say.
   if (pathname.endsWith('.json') && !context.conditions.includes('require') && context.importAttributes?.type === undefined) {
-    const text = readFileSync(fileURLToPath(url), 'utf8').replace(/^﻿/, '');
+    const text = readFileSync(fileURLToPath(url), 'utf8').replace(/^\uFEFF/, '');
     return { format: 'module', source: `export default JSON.parse(${JSON.stringify(text)});\n`, shortCircuit: true };
   }
   return nextLoad(url, context);
