@@ -85,6 +85,12 @@ const ALERT_ROLES: ReadonlySet<string> = new Set(['alert', 'alertdialog']);
  * the one status line that names the effect out of the cap. `routeMoved`
  * says the step ended on another route than it began on, whose counts are
  * that screen's data rather than the step's result (`COUNT_TEXT`).
+ *
+ * A node counts as gone only when no end node matches its anchor the way
+ * `deltaHolds` checks one, on the recorded fields alone: a radio label
+ * "Express" the pick replaced with a status reading "Express" vanished, but
+ * an anchor of that text would still match the status, and the recording
+ * would fail its own check on every replay.
  */
 export function describeDelta(
   startNodes: ReadonlyMap<string, RedactedNode>,
@@ -93,7 +99,12 @@ export function describeDelta(
 ): StepDelta {
   const start = projectAnchors(startNodes);
   const end = projectAnchors(endNodes);
-  return { appeared: deltaSide(end, start, routeMoved), gone: deltaSide(start, end, routeMoved) };
+  const startKeys = new Set(start.map((anchor) => anchor.key));
+  const endKeys = new Set(end.map((anchor) => anchor.key));
+  return {
+    appeared: deltaSide(end, start, (anchor) => startKeys.has(anchor.key), routeMoved),
+    gone: deltaSide(start, end, (anchor) => endKeys.has(anchor.key) || anchorIn(anchor.descriptor, end), routeMoved),
+  };
 }
 
 /** One projected anchor with the node it came from. */
@@ -103,9 +114,13 @@ interface AnchorNode {
   readonly leaf: boolean;
 }
 
-/** The side of the delta `nodes` holds and `other` does not, ordered and capped. */
-function deltaSide(nodes: readonly AnchorNode[], other: readonly AnchorNode[], routeMoved: boolean): TraceTargetDescriptor[] {
-  const otherKeys = new Set(other.map((anchor) => anchor.key));
+/** The side of the delta `nodes` holds and `other` does not (`inOther`), ordered and capped. */
+function deltaSide(
+  nodes: readonly AnchorNode[],
+  other: readonly AnchorNode[],
+  inOther: (anchor: AnchorNode) => boolean,
+  routeMoved: boolean,
+): TraceTargetDescriptor[] {
   const otherShapes = new Set(other.map((anchor) => countShape(anchor.descriptor)));
   const volatile = (anchor: TraceTargetDescriptor) => isVolatileAnchor(anchor, (count) => routeMoved || otherShapes.has(countShape(count)));
   const seen = new Set<string>();
@@ -113,7 +128,7 @@ function deltaSide(nodes: readonly AnchorNode[], other: readonly AnchorNode[], r
   const leaves: AnchorNode[] = [];
   const containers: AnchorNode[] = [];
   for (const anchor of nodes) {
-    if (otherKeys.has(anchor.key) || seen.has(anchor.key)) continue;
+    if (seen.has(anchor.key) || inOther(anchor)) continue;
     seen.add(anchor.key);
     const role = anchor.descriptor.role ?? '';
     (ANNOUNCEMENT_ROLES.has(role) ? announcements : anchor.leaf ? leaves : containers).push(anchor);

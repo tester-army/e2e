@@ -201,6 +201,34 @@ describe('describeDelta', () => {
     expect(describeDelta(before, after, false)).toEqual({ appeared: [{ text: 'Item added' }], gone: [{ text: '41 items' }] });
   });
 
+  describe('a radio the pick replaces with its summary', () => {
+    const radio = (id: string, name: string) => node(id, { role: 'radio', name });
+    const label = (id: string, text: string) => node(id, { text });
+    const deliveryState = (text: string) => node(`state-${text}`, { role: 'status', name: 'Delivery state', text });
+    const picker = [radio('r1', 'Standard'), label('l1', 'Standard'), radio('r2', 'Express'), label('l2', 'Express')];
+    const start = nodes([heading, ...picker, deliveryState('unset')]);
+    const summary = [node('summary', { text: 'Express delivery selected' }), node('change', { role: 'button', name: 'Change delivery' })];
+    const end = nodes([heading, ...summary, deliveryState('Express')]);
+    const delta = describeDelta(start, end, false);
+    const recorded = { endAnchors: delta.appeared, goneAnchors: delta.gone };
+
+    it('holds on the screen it was recorded on, so a faithful replay passes', () => {
+      expect(deltaHolds(recorded, end, start)).toBe(true);
+    });
+
+    it('records no vanished label that a node left on screen still reads as', () => {
+      // The status reads "Express" too: the label is gone, but an anchor of its text alone is not.
+      expect(delta.gone).not.toContainEqual({ text: 'Express' });
+      expect(delta.gone).toContainEqual({ role: 'radio', name: 'Express' });
+      expect(delta.gone).toContainEqual({ text: 'Standard' });
+    });
+
+    it('still fails a replay whose pick left the radios on screen', () => {
+      expect(deltaHolds(recorded, start, start)).toBe(false);
+      expect(deltaHolds(recorded, nodes([heading, ...picker, ...summary, deliveryState('Express')]), start)).toBe(false);
+    });
+  });
+
   it('is empty when nothing changed', () => {
     expect(describeDelta(nodes([heading, emptyMarker]), nodes([heading, emptyMarker]), false)).toEqual({ appeared: [], gone: [] });
   });
