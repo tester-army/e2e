@@ -8,7 +8,7 @@
  * | no active session / session not found / requires a session  | INVALID_STATE                |
  * | UNSUPPORTED_OPERATION, NOT_IMPLEMENTED, UNSUPPORTED_PLATFORM | UNSUPPORTED_CAPABILITY      |
  * | "not supported on this device" under any code                | UNSUPPORTED_CAPABILITY       |
- * | a ref the daemon no longer knows (action paths only)        | NODE_STALE (retryable)       |
+ * | a stale-ref refusal, by `details.reason` (action paths only) | NODE_STALE (retryable)      |
  * | the iOS runner busy, wedged, or past its watchdog           | ENGINE_FAILURE, naming the   |
  * | a snapshot the iOS runner acquired but could not present    |   runner and the recovery    |
  * | anything else, agent-device's own timeouts included         | ENGINE_FAILURE with the text |
@@ -66,8 +66,21 @@ const NO_SESSION_PATTERN =
   /no active (?:app )?session|requires an active session|session\b.*\bnot found|open an app first|no app (?:is )?open/i;
 const UNSUPPORTED_CODES = new Set(['UNSUPPORTED_OPERATION', 'NOT_IMPLEMENTED', 'UNSUPPORTED_PLATFORM']);
 const UNSUPPORTED_PATTERN = /\b(?:is )?not supported\b|\bunsupported\b/i;
-const STALE_PATTERN =
-  /\bref\b.*\b(?:not found|unknown|stale|no longer|expired|invalid|missing)|\b(?:not found|unknown|stale|no longer|expired|invalid|missing)\b.*\bref\b|refs?generation/i;
+
+/**
+ * The `details.reason` values agent-device refuses an `@ref` with: the ref
+ * names no node of the session's tree, or belongs to a capture the session
+ * has since moved past (a newer snapshot, or an action that expired its refs).
+ * agent-device raises each one while resolving or admitting the ref, before
+ * the action reaches the device.
+ */
+const STALE_REF_REASONS: ReadonlySet<string> = new Set([
+  'ref_not_found',
+  'ref_frame_expired',
+  'ref_generation_mismatch',
+  'plain_ref_requires_complete_frame',
+  'ref_not_issued',
+]);
 
 /**
  * What the iOS automation runner reported about itself, by the code
@@ -227,15 +240,17 @@ export async function runCommand<T>(label: string, work: () => Promise<T>, signa
 }
 
 /**
- * Like translateError, but a ref the daemon no longer binds becomes retryable
- * `NODE_STALE`: nothing was dispatched, so the harness may re-observe and
- * re-resolve the node instead of failing the action.
+ * Like translateError, but a ref agent-device refused as stale becomes
+ * retryable `NODE_STALE`: nothing was dispatched, so the harness may
+ * re-observe and re-resolve the node instead of failing the action. Keyed on
+ * the reason alone: agent-device marks a drag's stale ref `dispatched:
+ * 'unknown'` although it refuses it before the gesture.
  */
 export function staleOr(cause: unknown, operation: string, where?: string): Error {
   if (isClassified(cause)) return cause;
-  const normalized = normalizeAgentDeviceError(cause);
-  if (STALE_PATTERN.test(normalized.message)) {
-    return new EngineError('NODE_STALE', `${operation}: ${normalized.message}`, { retryable: true, cause });
+  const { reason } = details(cause);
+  if (typeof reason === 'string' && STALE_REF_REASONS.has(reason)) {
+    return new EngineError('NODE_STALE', `${operation}: ${message(cause)}`, { retryable: true, cause });
   }
   return translateError(cause, operation, where);
 }

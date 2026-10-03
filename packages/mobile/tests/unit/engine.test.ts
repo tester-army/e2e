@@ -932,7 +932,7 @@ describe('perform', () => {
     });
     expect(h.fake.methods().filter((method) => method === 'interactions.press')).toHaveLength(0);
     h.fake.respond('interactions.press', () => {
-      throw new AppError('INVALID_ARGS', 'ref @e4 not found; take a new snapshot');
+      throw new AppError('COMMAND_FAILED', 'Ref @e4 not found', { reason: 'ref_not_found', dispatched: 'no' });
     });
     await expect(h.engine.perform!(about.ref, { kind: 'tap' }, operation())).rejects.toMatchObject({
       code: 'NODE_STALE',
