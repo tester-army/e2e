@@ -245,10 +245,8 @@ class ActDispatch {
               name: agent.executor.name,
               ...(agent.executor.version === undefined ? {} : { version: agent.executor.version }),
             },
-            agent: {
-              name: agent.name,
-              context: agent.agentContext === undefined ? undefined : runtime.redact(agent.agentContext),
-            },
+            // Redacted already (`dispatchAgentStep`): the key digests the context the executor reads.
+            agent: { name: agent.name, context: agent.agentContext },
             redact: runtime.redact,
             redactCut: runtime.redactCut,
             maxActions: this.accounting.maxActions,
