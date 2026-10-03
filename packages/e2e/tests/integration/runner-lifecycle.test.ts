@@ -599,6 +599,8 @@ test.describe('wizard', { serial: true }, () => {
         'failed',
         'skipped',
       ]);
+      expect(outcome.exitCode).toBe(1);
+      expect(outcome.report.run.status).toBe('failed');
       project.cleanup();
     },
     120_000,

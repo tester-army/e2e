@@ -128,6 +128,8 @@ class SchedulerWorker {
   readonly reported = new Set<string>();
   /** The pair (`pairKey`) executing now, when one is. */
   inFlightPair: string | undefined;
+  /** Pairs (`pairKey`) that started in `unit`; a serial member reports only once its whole group is done. */
+  readonly started = new Set<string>();
   sawFailure = false;
   becameReady = false;
   /** Told to tear down at once by a forced interrupt; its exit is then the one asked for. */
@@ -157,6 +159,7 @@ class SchedulerWorker {
     this.state = 'busy';
     this.unit = unit;
     this.reported.clear();
+    this.started.clear();
     this.inFlightPair = undefined;
     this.sawFailure = false;
     const pairs: WirePair[] = unit.pairs.map((pair) => ({
@@ -581,6 +584,7 @@ class Scheduler {
       }
       case 'pair-start': {
         worker.inFlightPair = pairKey(message.testId, message.agent, message.repeat);
+        worker.started.add(worker.inFlightPair);
         const { type: _type, ...start } = message;
         this.options.events.onTestStart?.(start, worker.targetName);
         break;
@@ -740,12 +744,13 @@ class Scheduler {
           state.failedSessions.set(session, pair.test.id);
         }
       }
-      const wasRunning = key === worker.inFlightPair && pair.test.serialId === undefined;
-      if (!wasRunning) {
+      if (key !== worker.inFlightPair) {
         this.report(
           unstartedResult(pair, {
             cause: 'infrastructure-unavailable',
-            reason: 'worker process exited before this test started',
+            reason: worker.started.has(key)
+              ? 'worker process exited before this serial group finished'
+              : 'worker process exited before this test started',
           }),
         );
         continue;

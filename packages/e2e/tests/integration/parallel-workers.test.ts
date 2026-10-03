@@ -213,6 +213,43 @@ test('survivor passes', async ({ app }) => {
   );
 
   it(
+    'fails the serial member a worker crash interrupts, not only the ones after it',
+    async () => {
+      const file = `import { test } from 'e2e';
+
+test.describe('wizard', { serial: true }, () => {
+  test('step 1 passes', async ({ app }) => {
+    await app.open();
+  });
+  test('step 2 crashes the worker', async ({ app }) => {
+    await app.open();
+    process.exit(7);
+  });
+  test('step 3 never starts', async () => {});
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/serial-crash.e2e.ts': file },
+        { appUrl: app.url, configSource: workerConfigSource(1) },
+      );
+      const crashed = resultByTitle(outcome, 'step 2 crashes the worker');
+      expect(crashed.status).toBe('failed');
+      expect(crashed.attempts[0]?.error?.code).toBe('WORKER_CRASH');
+      const finished = resultByTitle(outcome, 'step 1 passes');
+      expect(finished.status).toBe('skipped');
+      expect(finished.skip?.reason).toBe('worker process exited before this serial group finished');
+      const unreached = resultByTitle(outcome, 'step 3 never starts');
+      expect(unreached.status).toBe('skipped');
+      expect(unreached.skip?.reason).toBe('worker process exited before this test started');
+      expect(outcome.exitCode).toBe(3);
+      expect(outcome.report.run.summary.failed).toBe(1);
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
     'interrupts workers, reports 130, and lists the file the one worker never reached',
     async () => {
       const slowFile = `import { test } from 'e2e';

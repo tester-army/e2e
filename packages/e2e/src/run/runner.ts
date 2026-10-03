@@ -394,7 +394,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   };
 
   /**
-   * The exit code is a fold over run state — every result, every run error,
+   * The exit code is a fold over run state — every result and serial group, every run error,
    * the interrupt — never threaded through by hand. A run error recorded
    * anywhere, including during teardown or the report write, reaches the exit
    * code the same way.
@@ -402,7 +402,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const currentExitCode = (): RunExitCode =>
     combineExitCodes(
       [
-        ...resultExitCodes(results),
+        ...verdictExitCodes(results, serialGroups),
         ...(loaded.config?.failOnSkippedFailure === true && someSkippedAfterFailure(results, serialGroups) ? [1] : []),
         ...runErrors.map((runError) => exitCodeForCategory(runError.error.category)),
         ...(interruptController.signal.aborted ? [130] : []),
@@ -1046,14 +1046,20 @@ function statusOf(exitCode: RunExitCode): Exclude<RunStatus, 'blocked'> {
   return exitCode === 0 ? 'passed' : exitCode === 1 ? 'failed' : exitCode === 130 ? 'interrupted' : 'error';
 }
 
-function resultExitCodes(results: readonly ResultRecord[]): number[] {
+/**
+ * The exit codes the verdicts imply: a failed test or serial group exits 1,
+ * or its attempts' error category when that is worse. A serial group answers
+ * for its members, whose results carry no attempts, and for a group attempt
+ * that failed before any member ran (a launch), whose members are skipped.
+ */
+function verdictExitCodes(results: readonly ResultRecord[], serialGroups: readonly SerialGroupRecord[]): number[] {
   const codes: number[] = [0];
-  for (const result of results) {
-    switch (result.status) {
+  for (const verdict of [...results, ...serialGroups]) {
+    switch (verdict.status) {
       case 'failed':
       case 'timed-out':
         codes.push(1);
-        for (const attempt of result.attempts) {
+        for (const attempt of verdict.attempts) {
           if (attempt.error !== undefined) codes.push(exitCodeForCategory(attempt.error.category));
         }
         break;

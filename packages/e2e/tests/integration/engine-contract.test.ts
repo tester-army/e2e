@@ -241,6 +241,148 @@ test('flaky against engine', { retries: 1 }, async ({ app }) => {
   );
 
   it(
+    'fails the run as infrastructure when a serial group startAttempt throws',
+    async () => {
+      const fake = createFakeEngine({
+        onStartAttempt() {
+          throw engineFailure('ENGINE_FAILURE', 'engine exploded');
+        },
+      });
+      const file = `import { test } from 'e2e';
+
+test.describe('wizard', { serial: true, retries: 2 }, () => {
+  test('step 1', async () => {});
+  test('step 2', async () => {});
+});
+`;
+      const { outcome, project } = await runProject(
+        { 'tests/serial-launch-fail.e2e.ts': file },
+        { appUrl: APP_URL, config: engineConfig(fake.engine) },
+      );
+      // The first member fails with the launch error, as an ordinary test would; the rest skip behind it.
+      expect(resultByTitle(outcome, 'step 1').status).toBe('failed');
+      expect(resultByTitle(outcome, 'step 2').skip?.cause).toBe('serial-predecessor-failed');
+      const group = outcome.report.run.serialGroups[0]!;
+      expect(group.status).toBe('failed');
+      // Infrastructure failures are not retry-eligible: one attempt despite retries: 2.
+      expect(group.attempts).toHaveLength(1);
+      const attempt = group.attempts[0]!;
+      expect(attempt.error?.phase).toBe('launch');
+      expect(attempt.error?.category).toBe('infrastructure');
+      expect(attempt.members.map((member) => [member.status, member.error?.code])).toEqual([
+        ['failed', 'ENGINE_FAILURE'],
+        ['skipped', undefined],
+      ]);
+      expect(outcome.report.run.summary.failed).toBe(1);
+      expect(outcome.exitCode).toBe(3);
+      expect(outcome.status).toBe('error');
+      expect(outcome.report.run.status).toBe('error');
+      expect(outcome.report.run.exitCode).toBe(3);
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'exits 3 when a serial member fails on an infrastructure error',
+    async () => {
+      const fake = createFakeEngine({
+        onNavigate() {
+          throw engineFailure('ENGINE_FAILURE', 'renderer crashed');
+        },
+      });
+      const file = `import { test } from 'e2e';
+
+test.describe('wizard', { serial: true }, () => {
+  test('step 1', async ({ app }) => {
+    await app.open('/');
+  });
+  test('step 2', async () => {});
+});
+`;
+      const { outcome, project } = await runProject(
+        { 'tests/serial-member-infra.e2e.ts': file },
+        { appUrl: APP_URL, config: engineConfig(fake.engine) },
+      );
+      expect(resultByTitle(outcome, 'step 1').status).toBe('failed');
+      expect(resultByTitle(outcome, 'step 2').skip?.cause).toBe('serial-predecessor-failed');
+      expect(outcome.report.run.serialGroups[0]!.attempts[0]!.error?.category).toBe('infrastructure');
+      expect(outcome.exitCode).toBe(3);
+      expect(outcome.report.run.status).toBe('error');
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'skips a serial group whose launch the run interrupted instead of failing it',
+    async () => {
+      const controller = new AbortController();
+      const fake = createFakeEngine({
+        onStartAttempt() {
+          controller.abort();
+          throw engineFailure('ENGINE_FAILURE', 'launch cancelled');
+        },
+      });
+      const file = `import { test } from 'e2e';
+
+test.describe('wizard', { serial: true }, () => {
+  test('step 1', async () => {});
+  test('step 2', async () => {});
+});
+`;
+      const { outcome, project } = await runProject(
+        { 'tests/serial-launch-interrupted.e2e.ts': file },
+        { appUrl: APP_URL, config: engineConfig(fake.engine), runOptions: { interruptSignal: controller.signal } },
+      );
+      expect(resultByTitle(outcome, 'step 1').status).toBe('skipped');
+      expect(resultByTitle(outcome, 'step 2').status).toBe('skipped');
+      const group = outcome.report.run.serialGroups[0]!;
+      expect(group.status).toBe('interrupted');
+      expect(group.attempts[0]!.members.map((member) => member.status)).toEqual(['skipped', 'skipped']);
+      expect(outcome.report.run.summary.failed).toBe(0);
+      expect(outcome.exitCode).toBe(130);
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'keeps the members verdicts of the attempt before a serial retry whose launch failed',
+    async () => {
+      const fake = createFakeEngine({
+        onStartAttempt(_context, index) {
+          if (index === 1) throw engineFailure('ENGINE_FAILURE', 'device lost on retry');
+        },
+      });
+      const file = `import { test } from 'e2e';
+
+test.describe('wizard', { serial: true, retries: 1 }, () => {
+  test('step 1', async () => {});
+  test('step 2', async () => {
+    throw new Error('step 2 assertion');
+  });
+});
+`;
+      const { outcome, project } = await runProject(
+        { 'tests/serial-retry-launch-fail.e2e.ts': file },
+        { appUrl: APP_URL, config: engineConfig(fake.engine) },
+      );
+      const group = outcome.report.run.serialGroups[0]!;
+      expect(group.status).toBe('failed');
+      expect(group.attempts.map((attempt) => attempt.error?.code)).toEqual(['ERROR', 'ENGINE_FAILURE']);
+      expect(resultByTitle(outcome, 'step 1').status).toBe('passed');
+      expect(resultByTitle(outcome, 'step 2').status).toBe('failed');
+      expect(outcome.exitCode).toBe(3);
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
     'classifies EngineErrors from fixture surfaces (app.open) with the canonical mapping',
     async () => {
       const failure = createFakeEngine({

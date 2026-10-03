@@ -119,7 +119,7 @@ These appear in terminal output and in the report as plain string codes.
 | `TRACE_WITHHELD` | A trace from an attempt a secret reached (filled, or held by the engine) could not be rewritten, so it was deleted. Recorded in the attempt's `secondaryErrors`; never fails the attempt. | infrastructure | 3 |
 | `BROWSER_INSTALL_FAILED` | Browser provisioning failed | infrastructure | 3 |
 | `WORKER_INIT_FAILED` | A worker process never became ready | infrastructure | 3 |
-| `WORKER_EXIT` | A worker exited unexpectedly while running a file: the test in flight fails with `WORKER_CRASH` and the file's other tests are skipped. An unhandled rejection is charged to the test running when it surfaces, or recorded as `UNHANDLED_REJECTION` between tests; before any test has finished there it ends the worker, and the rejection itself is the run error, not this one | infrastructure | 3 |
+| `WORKER_EXIT` | A worker exited unexpectedly while running a file: the test in flight fails with `WORKER_CRASH` and the file's other tests are skipped, a serial group's finished members included, since their results wait for the whole group. An unhandled rejection is charged to the test running when it surfaces, or recorded as `UNHANDLED_REJECTION` between tests; before any test has finished there it ends the worker, and the rejection itself is the run error, not this one | infrastructure | 3 |
 | `WORKER_CRASH` | A worker exited during a specific test | infrastructure | 3 |
 | `WORKER_ENTRY_MISSING` | The worker entry module could not be resolved. Packaging fault. | infrastructure | 3 |
 | `ENGINE_FAILURE` | Any engine fault with no more specific mapping | infrastructure | 3 |

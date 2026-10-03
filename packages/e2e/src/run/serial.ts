@@ -125,10 +125,11 @@ export async function runSerialUnit(
     first.options.retries + 1,
     host.interruptSignal,
     async (attemptIndex) => {
-      const attempt = await runSerialAttempt(host, members, file, attemptIndex);
+      const { record: attempt, reachedMembers } = await runSerialAttempt(host, members, file, attemptIndex);
       group.attempts.push(attempt);
-      // A retry the run interrupted keeps the verdict before it, so each member keeps what that attempt said.
-      const cutRetry = attemptIndex > 0 && attempt.status === 'interrupted';
+      // A retry the run interrupted, or one that never reached its members,
+      // keeps the verdict before it, so each member keeps what that attempt said.
+      const cutRetry = attemptIndex > 0 && (attempt.status === 'interrupted' || !reachedMembers);
       if (!cutRetry) for (const member of attempt.members) memberFinalStatus.set(member.testId, member);
       // A beforeAll failure is not retry-eligible: the
       // attempt stands as recorded and the retry loop stops here.
@@ -176,12 +177,18 @@ export async function runSerialUnit(
   return group;
 }
 
+/** One group attempt as it ended, and whether it got as far as its members. */
+interface SerialAttemptRun {
+  readonly record: SerialAttemptRecord;
+  readonly reachedMembers: boolean;
+}
+
 async function runSerialAttempt(
   host: SerialHost,
   members: readonly TestTargetPair[],
   file: FileRef,
   attemptIndex: number,
-): Promise<SerialAttemptRecord> {
+): Promise<SerialAttemptRun> {
   const attemptId = uuidv7();
   const startedAt = timestamp();
   const startedMs = Date.now();
@@ -220,10 +227,9 @@ async function runSerialAttempt(
   try {
     realm = await host.realms.create(file);
   } catch (cause) {
-    record.status = 'failed';
-    record.error = serializeError(classifyError(cause), { phase: 'collection' });
+    endBeforeMembers(record, members, serializeError(classifyError(cause), { phase: 'collection' }), host.interruptSignal);
     record.durationMs = Date.now() - startedMs;
-    return record;
+    return { record, reachedMembers: false };
   }
 
   let shared: SharedSerialSession;
@@ -237,20 +243,10 @@ async function runSerialAttempt(
       memory: new Map(),
     };
   } catch (cause) {
-    const error = classifyError(cause);
-    record.status = 'failed';
-    record.error = serializeError(error, { phase: 'launch' });
-    for (let memberIndex = 0; memberIndex < members.length; memberIndex += 1) {
-      memberRecords.push(
-        skippedMember(attemptId, memberIndex, members[memberIndex]!.test.id, {
-          cause: 'infrastructure-unavailable',
-          reason: error.message,
-        }),
-      );
-    }
+    endBeforeMembers(record, members, serializeError(classifyError(cause), { phase: 'launch' }), host.interruptSignal);
     record.durationMs = Date.now() - startedMs;
     await host.realms.leave(realm);
-    return record;
+    return { record, reachedMembers: false };
   }
 
   let skipRemaining: SkipInfo | undefined;
@@ -259,10 +255,7 @@ async function runSerialAttempt(
     const member = members[memberIndex]!;
     const memberId = `${attemptId}:member:${memberIndex}`;
     if (skipRemaining === undefined && host.interruptSignal.aborted) {
-      skipRemaining = interruptedSkip(host.interruptSignal, {
-        cause: 'infrastructure-unavailable',
-        reason: 'run interrupted during this group attempt',
-      });
+      skipRemaining = interruptedMemberSkip(host.interruptSignal);
     }
     if (skipRemaining !== undefined) {
       memberRecords.push(skippedMember(attemptId, memberIndex, member.test.id, skipRemaining));
@@ -347,11 +340,59 @@ async function runSerialAttempt(
   await host.closeSession(shared.session, { attemptId, recordings }, record, artifacts.sink, record.secondaryErrors);
   await artifacts.settle();
   record.durationMs = Date.now() - startedMs;
-  return record;
+  return { record, reachedMembers: true };
+}
+
+/**
+ * Ends a group attempt that stopped before any member ran (its file would not
+ * load, its session would not launch). The first member fails with the
+ * attempt's error, as an ordinary test whose attempt failed the same way
+ * would, and the rest skip behind it. When the run's interrupt is what
+ * stopped it, the attempt is interrupted and every member skips.
+ */
+function endBeforeMembers(
+  record: SerialAttemptRecord,
+  members: readonly TestTargetPair[],
+  error: SerializedError,
+  interruptSignal: AbortSignal,
+): void {
+  record.error = error;
+  if (interruptSignal.aborted) {
+    record.status = 'interrupted';
+    const skip = interruptedMemberSkip(interruptSignal);
+    members.forEach((member, memberIndex) => record.members.push(skippedMember(record.id, memberIndex, member.test.id, skip)));
+    return;
+  }
+  record.status = 'failed';
+  members.forEach((member, memberIndex) => {
+    record.members.push(
+      memberIndex === 0
+        ? {
+            id: `${record.id}:member:0`,
+            index: 0,
+            testId: member.test.id,
+            status: 'failed',
+            startedAt: record.startedAt,
+            durationMs: 0,
+            steps: [],
+            error,
+            secondaryErrors: [],
+          }
+        : skippedMember(record.id, memberIndex, member.test.id, predecessorFailed(0)),
+    );
+  });
 }
 
 function isFailedMember(member: SerialMemberRecord): member is SerialMemberRecord & { status: FailedStatus } {
   return isFailedStatus(member.status);
+}
+
+/** Why a member the run's interrupt kept from running in this group attempt skipped. */
+function interruptedMemberSkip(interruptSignal: AbortSignal): SkipInfo {
+  return interruptedSkip(interruptSignal, {
+    cause: 'infrastructure-unavailable',
+    reason: 'run interrupted during this group attempt',
+  });
 }
 
 function predecessorFailed(memberIndex: number): SkipInfo {
