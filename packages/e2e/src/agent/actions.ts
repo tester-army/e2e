@@ -249,7 +249,7 @@ function describePlaced(
   if (described === undefined) return undefined;
   return {
     ...described,
-    ...(placement.within === undefined ? {} : { within: bound(placement.within, MAX_WITHIN_CHARS) }),
+    ...(placement.within === undefined ? {} : { within: bound(redaction.redact(placement.within), MAX_WITHIN_CHARS) }),
     ...(placement.position === undefined ? {} : { position: placement.position }),
   };
 }

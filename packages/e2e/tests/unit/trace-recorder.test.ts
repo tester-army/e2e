@@ -99,6 +99,16 @@ describe('TraceRecorder', () => {
     expect(serialized).toContain('Code <secret:token>');
   });
 
+  it('masks a secret resolved after capture in the container the node sat within', () => {
+    const ledger = new SecretLedger();
+    const recorder = new TraceRecorder({ redact: ledger.redact, redactCut: ledger.redactCut });
+    ledger.register('token', 'token-2718-value');
+    recorder.record({ name: 'tap', node: upgradeButton, within: 'Row token-2718-value' });
+    const serialized = JSON.stringify(recorder.finalize(conclusion));
+    expect(serialized).not.toContain('token-2718-value');
+    expect(serialized).toContain('Row <secret:token>');
+  });
+
   it('poisons the trace instead of bending a replay input', () => {
     const secrets = new Map([['pw', 'hunter2']]);
     // A typed value carrying a registered secret would be altered by
