@@ -16,7 +16,7 @@
 
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type { Page } from 'playwright';
+import type { Page } from 'playwright-core';
 import { EngineError, type VideoFile, type VideoSegment } from 'e2e/engine';
 import type { WebScreencastOptions } from './surface.ts';
 import { currentViewport, message } from './support.ts';

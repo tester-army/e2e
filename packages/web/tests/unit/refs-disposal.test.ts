@@ -1,6 +1,6 @@
 /** Element-backed located refs release their handles when pruned or cleared, like observation refs. */
 
-import type { ElementHandle } from 'playwright';
+import type { ElementHandle } from 'playwright-core';
 import { describe, expect, it, vi } from 'vitest';
 import { RefRegistry } from '../../src/refs.ts';
 

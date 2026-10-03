@@ -6,7 +6,7 @@
 
 import { readJson } from '../../internal/package-version.ts';
 
-export const SIBLING_VERSIONS = readJson(import.meta.url, './sibling-versions.json') as Readonly<Record<string, string>> | undefined;
+const SIBLING_VERSIONS = readJson(import.meta.url, './sibling-versions.json') as Readonly<Record<string, string>> | undefined;
 
 /**
  * The range init writes for the runner and for an engine. Engines version
@@ -29,15 +29,5 @@ export function dependencyRange(version: string | undefined): string {
 /** The range init writes for a sibling `@e2e-dev/*` package released alongside this runner. */
 export function siblingDependency(name: string): Readonly<Record<string, string>> {
   return { [name]: dependencyRange(SIBLING_VERSIONS?.[name]) };
-}
-
-/**
- * The range init writes for `playwright`, which `@e2e-dev/web` peers on
- * rather than installs, so an app that already ships Playwright keeps one copy
- * and one browser cache. The build records the version the engine was built
- * and tested against; from source, where nothing is recorded, any 1.x will do.
- */
-export function playwrightRange(version: string | undefined): string {
-  return version === undefined ? '^1' : `^${version}`;
 }
 

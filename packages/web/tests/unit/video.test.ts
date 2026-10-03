@@ -8,7 +8,7 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { Page } from 'playwright';
+import type { Page } from 'playwright-core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EngineError } from 'e2e/engine';
 import { VideoRecorder } from '../../src/video.ts';

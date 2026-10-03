@@ -10,7 +10,7 @@
  * run (`expectations.ts`).
  */
 
-import type { ElementHandle, Page } from 'playwright';
+import type { ElementHandle, Page } from 'playwright-core';
 import type { SemanticNode } from 'e2e/engine';
 import { captureDocument } from '../../src/observation.ts';
 

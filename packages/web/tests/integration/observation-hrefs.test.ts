@@ -1,4 +1,4 @@
-import { chromium, type Browser } from 'playwright';
+import { chromium, type Browser } from 'playwright-core';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { captureDocument } from '../../src/observation.ts';
 

@@ -71,7 +71,7 @@ pnpm test    # unit + integration
 Integration tests need Chromium:
 
 ```sh
-pnpm --filter @e2e-dev/web exec playwright install chromium
+pnpm --filter @e2e-dev/web exec playwright-core install chromium
 ```
 
 Docs are part of the change, not a follow-up. A behavior change updates its

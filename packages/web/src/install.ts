@@ -3,6 +3,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import os from 'node:os';
 import path from 'node:path';
 import { EngineError, InfrastructureError } from 'e2e/engine';
 import { browserType, type BrowserName } from './browser-connection.ts';
@@ -24,10 +25,37 @@ function isBrowserInstalled(name: BrowserName, env: NodeJS.ProcessEnv): boolean 
   }
 }
 
-/** Resolves the `playwright` CLI entry point relative to this package. */
-function playwrightCliPath(): string {
+/** The `node` arguments that run the pinned `playwright-core` CLI with `args`. */
+function playwrightCliArgs(args: readonly string[]): string[] {
   const require = createRequire(import.meta.url);
-  return path.join(path.dirname(require.resolve('playwright/package.json')), 'cli.js');
+  return [path.join(path.dirname(require.resolve('playwright-core/package.json')), 'cli.js'), ...args];
+}
+
+/**
+ * Runs the pinned Playwright CLI with `args`, sharing this process's terminal,
+ * and resolves to its exit code, 128 plus the signal number when a signal
+ * ended it. SIGINT and SIGTERM sent to this process reach the child, so a
+ * cancelled CI job does not leave a download running. Backs the `e2e-web` command.
+ */
+export function runPlaywrightCli(args: readonly string[]): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, playwrightCliArgs(args), { stdio: 'inherit' });
+    const forward = (signal: NodeJS.Signals) => child.kill(signal);
+    process.on('SIGINT', forward);
+    process.on('SIGTERM', forward);
+    const settle = () => {
+      process.off('SIGINT', forward);
+      process.off('SIGTERM', forward);
+    };
+    child.on('error', (error) => {
+      settle();
+      reject(error);
+    });
+    child.on('exit', (code, signal) => {
+      settle();
+      resolve(code ?? (signal === null ? 1 : 128 + os.constants.signals[signal]));
+    });
+  });
 }
 
 /** What an installer receives besides the browser names. */
@@ -62,7 +90,7 @@ export interface EnsureBrowsersOptions {
 
 /**
  * Ensures the given Playwright browsers are installed, downloading any
- * missing ones via `playwright install`. Called from the engine's `prepare`,
+ * missing ones via `playwright-core install`. Called from the engine's `prepare`,
  * once per run before any worker starts, so a download is never charged
  * against a launch timeout and never runs once per worker. Concurrent
  * installs (two runs at once) are still safe: the Playwright CLI serializes
@@ -113,7 +141,7 @@ function forwardLines(stream: NodeJS.ReadableStream, log: (line: string) => void
   stream.on('end', () => flush(pending));
 }
 
-/** Spawns `node <playwright>/cli.js install <names>`, narrating its output through `log`. */
+/** Spawns `node <playwright-core>/cli.js install <names>`, narrating its output through `log`. */
 function runPlaywrightInstall(
   names: readonly BrowserName[],
   { log, signal, env }: InstallContext,
@@ -123,7 +151,7 @@ function runPlaywrightInstall(
       reject(new EngineError('CANCELLED', 'browser install cancelled', { retryable: false }));
       return;
     }
-    const child = spawn(process.execPath, [playwrightCliPath(), 'install', ...names], {
+    const child = spawn(process.execPath, playwrightCliArgs(['install', ...names]), {
       stdio: ['ignore', 'pipe', 'pipe'],
       env,
     });
@@ -137,7 +165,7 @@ function runPlaywrightInstall(
     child.on('exit', () => signal?.removeEventListener('abort', onAbort));
     child.on('error', (cause) => {
       reject(
-        new InfrastructureError('BROWSER_INSTALL_FAILED', `failed to run playwright install: ${cause.message}`, {
+        new InfrastructureError('BROWSER_INSTALL_FAILED', `failed to run playwright-core install: ${cause.message}`, {
           cause,
         }),
       );
@@ -150,7 +178,7 @@ function runPlaywrightInstall(
       reject(
         new InfrastructureError(
           'BROWSER_INSTALL_FAILED',
-          `playwright install ${names.join(' ')} exited with code ${String(code)}; run "npx playwright install ${names.join(' ')}" manually`,
+          `playwright-core install ${names.join(' ')} exited with code ${String(code)}; run "npx @e2e-dev/web install ${names.join(' ')}" (pnpm: "pnpm exec e2e-web install ${names.join(' ')}") manually`,
         ),
       );
     });

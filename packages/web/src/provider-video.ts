@@ -5,7 +5,7 @@
  * its `video` directory or a link.
  */
 
-import type { Page } from 'playwright';
+import type { Page } from 'playwright-core';
 import { stopProviderRecording, type VideoSegment } from 'e2e/engine';
 import { connectionAbort } from './operation-budget.ts';
 import type { LeaseRecording } from './provider.ts';

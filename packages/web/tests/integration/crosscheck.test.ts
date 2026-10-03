@@ -7,7 +7,7 @@
  */
 
 import path from 'node:path';
-import { chromium, type Browser, type Page } from 'playwright';
+import { chromium, type Browser, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/closed-shadow.ts';
 import { crossCheck } from '../crosscheck/crosscheck.ts';

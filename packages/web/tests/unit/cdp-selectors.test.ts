@@ -1,5 +1,5 @@
 /** The CDP compatibility boundary must support Playwright's proxy channel and fail closed otherwise. */
-import type { BrowserContext } from 'playwright';
+import type { BrowserContext } from 'playwright-core';
 import { expect, it, vi } from 'vitest';
 import { registerCdpSelectors } from '../../src/cdp-selectors.ts';
 import { SELECTOR_ENGINES } from '../../src/selector-engines.ts';

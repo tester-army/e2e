@@ -235,9 +235,6 @@ importers:
       ai:
         specifier: 7.0.107
         version: 7.0.107(zod@4.6.1)
-      playwright:
-        specifier: 1.63.0
-        version: 1.63.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -278,9 +275,6 @@ importers:
       ai:
         specifier: 7.0.107
         version: 7.0.107(zod@4.6.1)
-      playwright:
-        specifier: 1.63.0
-        version: 1.63.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -308,9 +302,6 @@ importers:
       mint:
         specifier: 4.2.909
         version: 4.2.909(@base-ui/react@1.8.0(@types/react@19.3.0)(react-dom@19.3.0(react@19.2.3))(react@19.2.3))(@types/node@26.6.2)(@types/react@19.3.0)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.2.3))(supports-color@8.1.1)(typescript@7.0.2)
-      playwright:
-        specifier: 1.63.0
-        version: 1.63.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -384,9 +375,6 @@ importers:
       ajv-formats:
         specifier: 3.0.1
         version: 3.0.1(ajv@8.20.0)
-      playwright:
-        specifier: 1.63.0
-        version: 1.63.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -480,6 +468,10 @@ importers:
         version: 5.0.1(@types/node@26.6.2)(vite@8.1.5(@types/node@26.6.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
 
   packages/web:
+    dependencies:
+      playwright-core:
+        specifier: 1.63.0
+        version: 1.63.0
     devDependencies:
       '@types/node':
         specifier: 26.6.2
@@ -490,9 +482,6 @@ importers:
       e2e:
         specifier: workspace:*
         version: link:../e2e
-      playwright:
-        specifier: 1.63.0
-        version: 1.63.0
       pngjs:
         specifier: 7.0.0
         version: 7.0.0
@@ -5845,11 +5834,6 @@ packages:
 
   playwright-core@1.63.0:
     resolution: {integrity: sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg==}
-    engines: {node: '>=20'}
-    hasBin: true
-
-  playwright@1.63.0:
-    resolution: {integrity: sha512-+7ziBLidS4NaNCdt57SUDT+wYmmd5fmiQejUic/kb+YsYSCPyOOE9sebzMjNmQrsnNpDJqd4WHvV/8lfKfUDUg==}
     engines: {node: '>=20'}
     hasBin: true
 
@@ -13965,10 +13949,6 @@ snapshots:
   pkce-challenge@5.0.1: {}
 
   playwright-core@1.63.0: {}
-
-  playwright@1.63.0:
-    dependencies:
-      playwright-core: 1.63.0
 
   plist@3.1.1:
     dependencies:

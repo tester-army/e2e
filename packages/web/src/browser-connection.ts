@@ -1,10 +1,18 @@
 /** Shares one browser process connection across a worker's attempts. */
 
-import type { Browser } from 'playwright';
-import { chromium, firefox, selectors, webkit } from 'playwright';
+import type { Browser } from 'playwright-core';
+import { chromium, firefox, selectors, webkit } from 'playwright-core';
 import { SELECTOR_ENGINES } from './selector-engines.ts';
 
-export type BrowserName = 'chromium' | 'firefox' | 'webkit';
+/** Every browser the engine launches, in the order the CLI lists them. */
+export const BROWSER_NAMES = ['chromium', 'firefox', 'webkit'] as const;
+
+export type BrowserName = (typeof BROWSER_NAMES)[number];
+
+/** Whether `name` is a browser the engine launches. */
+export function isBrowserName(name: string): name is BrowserName {
+  return (BROWSER_NAMES as readonly string[]).includes(name);
+}
 
 /**
  * Playwright's default SIGINT handler closes the browser and exits the
