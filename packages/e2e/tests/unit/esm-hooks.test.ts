@@ -111,6 +111,12 @@ describe('resolve', () => {
     expect(() => resolveFrom(url('tests/plain.js'), specifier)).toThrow('Cannot find module');
   });
 
+  it('sees a file added since an earlier lookup outside a fresh graph', () => {
+    expect(() => resolveFrom(url('tests/example.e2e.ts'), '../lib/later')).toThrow('Cannot find module');
+    write({ 'lib/later.ts': '' });
+    expect(resolveFrom(url('tests/example.e2e.ts'), '../lib/later').asked).toEqual([url('lib/later.ts')]);
+  });
+
   it('keeps the query and hash of the specifier', () => {
     expect(resolveFrom(url('tests/example.e2e.ts'), '../lib/helper?v=1#x').asked).toEqual([`${url('lib/helper.ts')}?v=1#x`]);
   });

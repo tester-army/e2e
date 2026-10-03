@@ -3,12 +3,14 @@
  * the tsconfig.json that governs a file (the nearest one above it, the way
  * `tsc` finds it, with `extends` applied) and which candidate files exist.
  *
- * Both are read once per module graph and kept with it, the way the graph's
+ * Both are kept with the module graph that read them, the way the graph's
  * modules are: a fresh graph (a config loaded with `graph: true`, which
- * carries `e2e-graph` on every project file) sees the files as they are when
- * it loads, and every other load in the process shares one view. So an edited
- * tsconfig.json reaches the next graph load, and collecting fifty test files
- * reads the `extends` chain once.
+ * carries `e2e-graph` on every project file) reads its tsconfig.json and
+ * file lookups once, as they are when it loads. Every other load in the
+ * process shares one view, whose tsconfig.json is read once (collecting
+ * fifty test files reads the `extends` chain once) and whose file lookups
+ * ask the disk each time, as Node.js's own resolution does, so a test file
+ * imported again sees files added or removed since.
  */
 
 import { statSync } from 'node:fs';
@@ -31,7 +33,12 @@ export class ProjectView {
   private readonly byFile = new Map<string, ProjectTsconfig>();
   /** get-tsconfig's own cache of the files it read. */
   private readonly reads = new Map<string, unknown>();
-  private readonly files = new Map<string, boolean>();
+  /** File lookups answered so far, for a graph's view; undefined where the disk is asked each time. */
+  private readonly files: Map<string, boolean> | undefined;
+
+  constructor(memoizeFiles: boolean) {
+    this.files = memoizeFiles ? new Map() : undefined;
+  }
 
   /** The tsconfig that governs `file`, or undefined when no tsconfig.json is above it. */
   tsconfigFor(file: string): ProjectTsconfig | undefined {
@@ -52,10 +59,10 @@ export class ProjectView {
 
   /** Whether `file` is a regular file. */
   isFile(file: string): boolean {
-    let known = this.files.get(file);
+    let known = this.files?.get(file);
     if (known === undefined) {
       known = statSync(file, { throwIfNoEntry: false })?.isFile() === true;
-      this.files.set(file, known);
+      this.files?.set(file, known);
     }
     return known;
   }
@@ -69,7 +76,7 @@ export function projectView(graph: string | null): ProjectView {
   const key = graph ?? '';
   let view = views.get(key);
   if (view === undefined) {
-    view = new ProjectView();
+    view = new ProjectView(graph !== null);
     views.set(key, view);
   }
   return view;

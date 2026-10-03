@@ -123,6 +123,8 @@ describe('compileTypeScript', () => {
       'export = { ext: path.extname("a.cts"), strict: sloppy, stats: null as Stats | null };',
     ].join('\n');
     expect(run('helper.cts', source)).toEqual({ value: { ext: '.cts', strict: true, stats: null } });
+    const licensed = ['/**', ' * License header.', ' */', '// eslint-disable', "'use strict';", 'module.exports = (function (this: unknown) { return this === undefined; })();'].join('\n');
+    expect(run('licensed.cts', licensed)).toEqual({ value: true });
   });
 
   it.each([

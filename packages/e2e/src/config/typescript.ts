@@ -98,27 +98,40 @@ function withoutModuleMarker(code: string): string {
  */
 const HOOKED_REQUIRE = 'require = require("node:module").createRequire(__filename);';
 
-/** A directive as oxc prints the prologue, one per line: `"use strict";`. */
-const DIRECTIVE = /^"(?:[^"\\]|\\.)*";$/;
+/** What may come before and between directives: whitespace and comments. */
+const TRIVIA = /(?:\s+|\/\/[^\n]*|\/\*[\s\S]*?\*\/)*/y;
+/** One directive: a string literal statement, `"use strict";`. */
+const DIRECTIVE = /"(?:[^"\\\n]|\\.)*";|'(?:[^'\\\n]|\\.)*';/y;
+
+/** Where the directive prologue of compiled `code` ends, past its last `;`, or undefined when it has none. */
+function prologueEnd(code: string): number | undefined {
+  let at = code.startsWith('#!') ? code.indexOf('\n') + 1 || code.length : 0;
+  let end: number | undefined;
+  for (;;) {
+    TRIVIA.lastIndex = at;
+    TRIVIA.exec(code);
+    DIRECTIVE.lastIndex = TRIVIA.lastIndex;
+    if (DIRECTIVE.exec(code) === null) return end;
+    at = DIRECTIVE.lastIndex;
+    end = at;
+  }
+}
 
 /**
- * Compiled CommonJS whose `require` runs resolve hooks. The statement joins
- * the end of the last directive, so the prologue stays first and no line
- * moves. With no directive it takes a line of its own, after a hashbang,
- * and the source map gains an unmapped line there.
+ * Compiled CommonJS whose `require` runs resolve hooks. The statement
+ * follows the last directive on its line, so the prologue stays first and
+ * no mapped position moves. With no directive it takes a line of its own at
+ * the top (after a hashbang), and the source map gains an unmapped line
+ * there.
  */
 function withHookedRequire(code: string, mappings: string): { code: string; mappings: string } {
+  const end = prologueEnd(code);
+  if (end !== undefined) return { code: `${code.slice(0, end)} ${HOOKED_REQUIRE}${code.slice(end)}`, mappings };
+  const line = code.startsWith('#!') ? 1 : 0;
   const lines = code.split('\n');
-  const first = lines[0]?.startsWith('#!') === true ? 1 : 0;
-  let last = first - 1;
-  while (last + 1 < lines.length && DIRECTIVE.test(lines[last + 1]!)) last += 1;
-  if (last >= first) {
-    lines[last] = `${lines[last]!} ${HOOKED_REQUIRE}`;
-    return { code: lines.join('\n'), mappings };
-  }
-  lines.splice(first, 0, HOOKED_REQUIRE);
+  lines.splice(line, 0, HOOKED_REQUIRE);
   const mappedLines = mappings.split(';');
-  mappedLines.splice(first, 0, '');
+  mappedLines.splice(line, 0, '');
   return { code: lines.join('\n'), mappings: mappedLines.join(';') };
 }
 

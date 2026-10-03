@@ -74,7 +74,7 @@ export = { decorated: (): string[] => [...seen, Decorated.name], strict: (functi
 `,
   'lib/comp.jsx': "export const comp = () => 'jsx file';\n",
   // CommonJS throwing from a known line, with and without a directive prologue.
-  'lib/thrower.cts': "'use strict';\nfunction boom(): never {\n  throw new Error('cts');\n}\nexport = { boom };\n",
+  'lib/thrower.cts': "/** A header comment. */\n'use strict';\nfunction boom(): never {\n  throw new Error('cts');\n}\nexport = { boom, strict: (function (this: unknown) { return this === undefined; })() };\n",
   'lib/thrower-sloppy.cts': "function boom(): never {\n  throw new Error('cts');\n}\nexport = { boom };\n",
   'lib/view.tsx': `export const h = (tag: string, _props: unknown, ...children: unknown[]): string => \`<\${tag}>\${children.join('')}</\${tag}>\`;
 export const view = (): string => <b>jsx</b>;
@@ -136,7 +136,8 @@ test('module formats load', () => {
       return (error as Error).stack ?? '';
     }
   };
-  expect(stackOf(thrower.boom)).toContain('lib/thrower.cts:3:9');
+  expect(stackOf(thrower.boom)).toContain('lib/thrower.cts:4:9');
+  expect(thrower.strict).toBe(true);
   expect(stackOf(sloppyThrower.boom)).toContain('lib/thrower-sloppy.cts:2:9');
 });
 

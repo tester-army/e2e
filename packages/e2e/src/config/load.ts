@@ -116,6 +116,8 @@ async function importFresh(absolutePath: string, cacheKey: string, graph: boolea
 
 /** Loads and returns the raw default export of a config module. */
 export async function loadConfigModule(configPath: string, options: ConfigLoadOptions = {}): Promise<E2EConfig> {
+  // Outside the try: an unsupported Node.js is that, not a config that failed to load.
+  registerLoader();
   let moduleValue: unknown;
   try {
     moduleValue = await importFresh(configPath, 'module', options.graph === true);
