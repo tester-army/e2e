@@ -60,7 +60,7 @@
     "test:simulator": "E2E_AGENT_DEVICE_SIMULATOR=1 vitest run tests/integration"
   },
   "dependencies": {
-    "agent-device": "0.21.18",
+    "agent-device": "0.21.20",
     "pngjs": "7.0.0",
     "zod": "4.6.1"
   },
