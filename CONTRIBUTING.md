@@ -43,6 +43,7 @@ This project is a pnpm monorepo. `packages/` holds what publishes to npm,
 - `packages/e2e`: the published `e2e` package (SDK, runner, CLI, engine contract)
 - `packages/web`: the published `@e2e-dev/web` browser engine
 - `packages/mobile`: the published `@e2e-dev/mobile` mobile engine
+- `packages/decision`: the decision-model executor on the public `StepExecutor` contract
 - `apps/testbed`: private dogfood suite that consumes the built packages
 - `apps/web-benchmark`: private Next.js app of hard-surface scenarios plus the e2e suites written against them
 - `apps/mobile-benchmark`: private Expo app of hard mobile surfaces plus the e2e suites written against them
@@ -117,8 +118,8 @@ We use [changesets](https://github.com/changesets/changesets) to publish new
 versions. It handles bumping the version based on semver, writing the
 changelog, and creating tags and GitHub releases.
 
-If your change affects `e2e`, `@e2e-dev/web`, or
-`@e2e-dev/mobile`, add a changeset:
+If your change affects `e2e`, `@e2e-dev/web`, `@e2e-dev/mobile`, or
+`@e2e-dev/decision`, add a changeset:
 
 ```sh
 pnpm changeset

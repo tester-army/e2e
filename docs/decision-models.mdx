@@ -1,0 +1,135 @@
+---
+title: Decision models
+description: Run bounded actions with a decision model and a small text model instead of a full LLM agent.
+---
+
+`@e2e-dev/decision` runs `agent.act` and `agent.assert` through a decision
+model instead of an LLM. A decision model answers one question per action —
+which operation, then which element — from choices the executor builds out
+of the latest semantic tree. It never generates free text: when the choice
+is `type`, a small language model writes the field value. Both models are
+plain AI SDK models, so any evaluation provider that answers `choice`
+questions with probability distributions (Jev) and any language-model
+provider works; the runner still authorizes every dispatched action.
+
+## Install and configure
+
+<CodeGroup>
+```bash npm
+npm install -D @e2e-dev/decision
+```
+
+```bash pnpm
+pnpm add -D @e2e-dev/decision
+```
+
+```bash bun
+bun add -d @e2e-dev/decision
+```
+</CodeGroup>
+
+The decision model answers `choice` questions with probability
+distributions; the text model writes field values. Each installs as its
+own package:
+
+<CodeGroup>
+```bash npm
+npm install -D @ai-sdk/typesafe-ai @openrouter/ai-sdk-provider
+```
+
+```bash pnpm
+pnpm add -D @ai-sdk/typesafe-ai @openrouter/ai-sdk-provider
+```
+
+```bash bun
+bun add -d @ai-sdk/typesafe-ai @openrouter/ai-sdk-provider
+```
+</CodeGroup>
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { decisionExecutor } from '@e2e-dev/decision';
+import { typeSafeAi } from '@ai-sdk/typesafe-ai';
+import { openrouter } from '@openrouter/ai-sdk-provider';
+
+export default {
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
+  agents: {
+    default: {
+      executor: decisionExecutor({
+        model: typeSafeAi.evaluationModel('jev-latest'),
+        textModel: openrouter('inception/mercury-2.5'),
+      }),
+    },
+  },
+} satisfies E2EConfig;
+```
+
+Tests stay plain natural language, with no params needed:
+
+```ts title="tests/todos.e2e.ts"
+import { test, expect } from 'e2e';
+
+test('adds a todo', async ({ app, screen, agent }) => {
+  await app.open('/todos');
+  await agent.act('Add a todo named Buy coffee, and verify it is listed.');
+  await expect(screen.getByTestId('todo')).toContainText('Buy coffee');
+  await agent.assert('The todo list contains Buy coffee.');
+});
+```
+
+## How text gets typed
+
+The decision model only ever names an element index. When it picks `type`,
+the text model writes the value from the goal, the field's label, and the
+page text, and the executor types exactly that string. Model output never
+becomes a selector, a URL, or a key. When the goal supplies no value,
+nothing is typed and the decision model picks another action. Password
+fields never reach the text model; secrets stay declared handles that only
+`typeSecret` fills.
+
+The text model is also the agent's judgment tier: it is exposed as the
+executor's `model`, so `waitFor` and `extract` use it too. It can come
+from the agents entry's `model` instead. Without either, `type` is never
+offered.
+
+## Finishing a step
+
+When the decision model answers `done` or `failed`, the executor checks
+the claim on a fresh screen with one verdict question that sees the actions
+taken in the step and no model reasoning. A confirmed `done` passes the
+step and a confirmed `failed` fails it with `ACTION_FAILED`. An
+unconfirmed claim goes back to the decision model as history; the second one
+ends the step, as `ACTION_FAILED` when the screen contradicts the goal and
+as `blocked` (`AUTOMATION_UNSUPPORTED`) otherwise.
+
+## Gates
+
+Both gates are off by default: the executor follows the most probable
+choice. Set `minProbability` or `minConfidence` to block weaker actions,
+reject weaker completion checks, and fail weaker assertions as
+inconclusive instead:
+
+```ts title="Executor setup"
+const executor = decisionExecutor({ model, minProbability: 0.9, minConfidence: 0.8 });
+```
+
+Probability and confidence are different provider fields: probability is the
+selected option's share of the answer distribution, confidence is the
+provider's separate statistic. A threshold is a policy choice; measure
+accuracy on your own tests before changing it.
+
+## Limits
+
+- No vision: screenshots never reach the model; canvas-only controls and
+  image-based targets are not implemented.
+- No `navigate`: in-app navigation is a `tap` on a link. URLs belong in
+  test code (`browser.goto`, `app.open`).
+- No multi-select `listbox` in v1.
+- The choice cap is 255 options per question (TypeSafe's limit). Larger
+  screens list viewport nodes first and count the rest as omitted, so the
+  model can scroll; the step never blocks just for being large.
+- Drag, upload, and hover are not offered in v1.
+- `waitFor` and `extract` use the text model through the runner's
+  built-in judgment tier.

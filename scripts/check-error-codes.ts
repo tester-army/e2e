@@ -22,6 +22,7 @@ const SOURCE_ROOTS = [
   'packages/web/src',
   'packages/mobile/src',
   'packages/github/src',
+  'packages/decision/src',
 ];
 const TYPES_FILE = 'packages/e2e/src/types.ts';
 const CONTRACT_FILE = 'packages/e2e/src/engine/contract.ts';

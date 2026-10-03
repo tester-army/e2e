@@ -9,7 +9,7 @@
   ],
   "type": "module",
   "scripts": {
-    "build": "pnpm --filter e2e run build && pnpm --filter @e2e-dev/web run build && pnpm --filter @e2e-dev/mobile run build && pnpm --filter @e2e-dev/github run build && pnpm --filter @e2e-dev/kernel run build && pnpm --filter @e2e-dev/eas run build",
+    "build": "pnpm --filter e2e run build && pnpm --filter @e2e-dev/web run build && pnpm --filter @e2e-dev/mobile run build && pnpm --filter @e2e-dev/github run build && pnpm --filter @e2e-dev/kernel run build && pnpm --filter @e2e-dev/eas run build && pnpm --filter @e2e-dev/decision run build",
     "check": "pnpm run lint && pnpm run check:dead-code && pnpm run typecheck && pnpm run docs:check-errors && pnpm run check:peer-ranges && pnpm run docs:check",
     "check:dead-code": "fallow dead-code",
     "check:peer-ranges": "node scripts/check-peer-ranges.ts",
@@ -24,7 +24,7 @@
     "canary": "node scripts/canary-changeset.ts && changeset version --snapshot canary && pnpm run build",
     "canary:publish": "changeset publish --tag canary --no-git-tag && node scripts/restore-peer-ranges.ts",
     "typecheck": "pnpm run build && pnpm -r run typecheck && tsc -p scripts",
-    "test": "pnpm run build && pnpm --filter e2e run test && pnpm --filter @e2e-dev/web run test && pnpm --filter @e2e-dev/mobile run test && pnpm --filter @e2e-dev/github run test && pnpm --filter @e2e-dev/kernel run test && pnpm --filter @e2e-dev/eas run test && pnpm run test:scripts",
+    "test": "pnpm run build && pnpm --filter e2e run test && pnpm --filter @e2e-dev/web run test && pnpm --filter @e2e-dev/mobile run test && pnpm --filter @e2e-dev/github run test && pnpm --filter @e2e-dev/kernel run test && pnpm --filter @e2e-dev/eas run test && pnpm --filter @e2e-dev/decision run test && pnpm run test:scripts",
     "test:testbed": "pnpm run build && pnpm --filter @e2e-dev/testbed test",
     "test:web-benchmark": "pnpm run build && pnpm --filter @e2e-dev/web-benchmark test",
     "test:mobile-benchmark": "pnpm run build && pnpm --filter @e2e-dev/mobile-benchmark test",

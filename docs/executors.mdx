@@ -14,6 +14,8 @@ not enough. There are two options:
    `ai` package installed.
 
 Both receive a deadline, redacted observations, and checked action methods.
+For a provider that returns bounded choices instead of generated text, see
+the [Clef and Jev decision executor](/decision-models).
 The runner records their verdicts. Either goes under `executor` in an agents
 entry, beside the options that still apply: `model`, `judge`, `context`, and
 the budgets. An entry with `executor` rejects `system` and `tools`; pass
