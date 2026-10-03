@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T13:30:33.632Z",
+  "createdAt": "2026-10-03T16:31:41.146Z",
   "payload": {
     "actions": [
       {
@@ -68,7 +68,7 @@
       "targetId": "web",
       "instructionDigest": "dcf88f9a5a9a284823967721c9316e3541f960b36032c247343f678217019dde"
     },
-    "summary": "Navigated the calendar from June to September 2026, selected September 17, 2026, and confirmed the booking. The page displays “Appointment booked for September 17, 2026.”",
+    "summary": "Navigated the calendar from June to September 2026, selected September 17, and confirmed the booking. The page displays “Appointment booked for September 17, 2026.”",
     "startPath": "/e/date-picker",
     "endPath": "/e/date-picker",
     "endAnchors": [
@@ -77,6 +77,19 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 10099
+    "goneAnchors": [
+      {
+        "role": "textbox",
+        "name": "Select date",
+        "testId": "date-input",
+        "placeholder": "Select date"
+      },
+      {
+        "role": "button",
+        "name": "Confirm booking",
+        "testId": "confirm-button"
+      }
+    ],
+    "endWaitMs": 11567
   }
 }

@@ -1,17 +1,16 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T13:30:18.310Z",
+  "createdAt": "2026-10-03T16:30:33.757Z",
   "payload": {
     "actions": [
       {
-        "name": "scroll",
-        "summary": "scroll down on node \"scroll-container\"",
-        "direction": "down",
+        "name": "scrollTo",
+        "summary": "scroll button \"Accept terms\" into view",
         "target": {
-          "testId": "scroll-container"
-        },
-        "times": 10,
-        "spans": 0.3083
+          "role": "button",
+          "name": "Accept terms",
+          "testId": "accept-button"
+        }
       },
       {
         "name": "tap",
@@ -32,7 +31,7 @@
       "targetId": "web",
       "instructionDigest": "507883318a8655d47afe9f680ee91cde1ae64055fbef530129cc289101a30c23"
     },
-    "summary": "Scrolled the terms container until the Accept terms button was clear of the sticky footer, then clicked it. The page now shows “Terms accepted.”",
+    "summary": "Scrolled until the Accept terms button was clear of the sticky footer, clicked it, and verified the page displayed “Terms accepted.”",
     "startPath": "/e/sticky-chrome",
     "endPath": "/e/sticky-chrome",
     "endAnchors": [
@@ -41,6 +40,6 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 10124
+    "endWaitMs": 11844
   }
 }

@@ -1,8 +1,17 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-26T20:48:22.536Z",
+  "createdAt": "2026-10-03T16:28:25.086Z",
   "payload": {
     "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Attachments\" in \"Files\"",
+        "target": {
+          "role": "button",
+          "name": "Attachments",
+          "within": "Files"
+        }
+      },
       {
         "name": "upload",
         "summary": "upload \"fixtures/attachment.txt\", \"fixtures/second.txt\" to button \"Attachments\" in \"Files\"",
@@ -26,7 +35,7 @@
       "targetId": "web",
       "instructionDigest": "6eb8c4cb34d6623811808727d85db0d55946be5724f0cdc01b3c633db3d6f44d"
     },
-    "summary": "Attached both fixtures/attachment.txt and fixtures/second.txt. The Attachments state now lists attachment.txt and second.txt.",
+    "summary": "Attached both requested files. The Attachments state now shows “attachment.txt, second.txt,” and the input indicates 2 files.",
     "startPath": "/e/control-inventory",
     "endPath": "/e/control-inventory",
     "endAnchors": [
@@ -34,8 +43,24 @@
         "role": "status",
         "name": "Attachments state",
         "text": "attachment.txt, second.txt"
+      },
+      {
+        "role": "button",
+        "name": "Attachments",
+        "value": "C:\\fakepath\\attachment.txt"
       }
     ],
-    "endWaitMs": 11392
+    "goneAnchors": [
+      {
+        "role": "status",
+        "name": "Attachments state",
+        "text": "none"
+      },
+      {
+        "role": "button",
+        "name": "Attachments"
+      }
+    ],
+    "endWaitMs": 12106
   }
 }

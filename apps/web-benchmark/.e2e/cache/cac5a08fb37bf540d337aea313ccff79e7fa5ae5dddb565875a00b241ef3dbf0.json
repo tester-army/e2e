@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T18:02:51.969Z",
+  "createdAt": "2026-10-03T16:30:53.932Z",
   "payload": {
     "actions": [
       {
@@ -35,7 +35,7 @@
       "targetId": "web",
       "instructionDigest": "4d2bd092cafaf0bdc40c9442fb592d58283fd7a946e7efb98e1142cffe3c07a3"
     },
-    "summary": "Hovered over Account, then Billing, and selected Redeem voucher. The page now displays “Voucher redeemed.”.",
+    "summary": "Hovered over Account, then Billing, and selected Redeem voucher. The page displays “Voucher redeemed.”",
     "startPath": "/e/hover-menu",
     "endPath": "/e/hover-menu",
     "endAnchors": [
@@ -44,6 +44,23 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 11764
+    "goneAnchors": [
+      {
+        "text": "Using hover only, find Redeem voucher under Account."
+      },
+      {
+        "text": "Products",
+        "testId": "menu-products"
+      },
+      {
+        "text": "Settings",
+        "testId": "menu-settings"
+      },
+      {
+        "text": "Account",
+        "testId": "menu-account"
+      }
+    ],
+    "endWaitMs": 11484
   }
 }

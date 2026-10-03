@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T18:03:08.643Z",
+  "createdAt": "2026-10-03T16:30:58.343Z",
   "payload": {
     "actions": [
       {
@@ -35,7 +35,7 @@
       "targetId": "web",
       "instructionDigest": "24ea40459eba1c0e7841d174c9d6b29255cc71346083add2a38c39491aff758c"
     },
-    "summary": "Dragged Banana into the dropzone, then Cherry, and the page displayed “Items dropped in the right order.” Apple was left alone.",
+    "summary": "Dragged Banana and then Cherry into the dropzone, leaving Apple alone. The page confirms: “Items dropped in the right order.”",
     "startPath": "/e/drag-and-drop",
     "endPath": "/e/drag-and-drop",
     "endAnchors": [
@@ -44,6 +44,11 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 12698
+    "goneAnchors": [
+      {
+        "text": "Drop items here"
+      }
+    ],
+    "endWaitMs": 11526
   }
 }

@@ -1,8 +1,17 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-25T18:09:48.642Z",
+  "createdAt": "2026-10-03T16:28:16.226Z",
   "payload": {
     "actions": [
+      {
+        "name": "secondaryTap",
+        "summary": "secondary-tap listitem \"report.pdf\" in \"Files\"",
+        "target": {
+          "role": "listitem",
+          "name": "report.pdf",
+          "within": "Files"
+        }
+      },
       {
         "name": "secondaryTap",
         "summary": "secondary-tap node \"report.pdf\"",
@@ -21,15 +30,15 @@
       }
     ],
     "executor": {
-      "name": "web-benchmark-inventory-recorder",
-      "version": "1"
+      "name": "e2e-default-agent",
+      "version": "2"
     },
     "recordedFor": {
       "testId": "tests-agent/control-inventory.e2e.ts::control%20inventory::a%20right-click%20opens%20the%20file%20menu%20and%20Rename%20renames%20the%20file",
       "targetId": "web",
       "instructionDigest": "cb3da13c69639f87ac80d3bd6fa2b908c9df0bbbda211433bdc779611d4909fe"
     },
-    "summary": "Opened the report.pdf context menu and chose Rename. File state reads \"report.pdf renamed to summary.pdf\", and the file list contains summary.pdf.",
+    "summary": "Right-clicked report.pdf, chose Rename, and verified the file is now summary.pdf.",
     "startPath": "/e/control-inventory",
     "endPath": "/e/control-inventory",
     "endAnchors": [
@@ -46,6 +55,20 @@
         "name": "summary.pdf"
       }
     ],
-    "endWaitMs": 10222
+    "goneAnchors": [
+      {
+        "role": "status",
+        "name": "File state",
+        "text": "no menu open"
+      },
+      {
+        "text": "report.pdf"
+      },
+      {
+        "role": "listitem",
+        "name": "report.pdf"
+      }
+    ],
+    "endWaitMs": 11616
   }
 }

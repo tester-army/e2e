@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-24T19:35:19.528Z",
+  "createdAt": "2026-10-03T16:28:32.560Z",
   "payload": {
     "actions": [
       {
@@ -20,7 +20,7 @@
       "targetId": "web",
       "instructionDigest": "60d7d1c1109f3844ed7b5cd3f6f351e1b297af10aa7e4371ed45de087cce0df3"
     },
-    "summary": "Scrolled the Footnote paragraph into view; the Footnote state now shows “in view.”",
+    "summary": "Scrolled the Footnote paragraph into view; the Footnote state now reads “in view.”",
     "startPath": "/e/control-inventory",
     "endPath": "/e/control-inventory",
     "endAnchors": [
@@ -30,6 +30,13 @@
         "text": "in view"
       }
     ],
-    "endWaitMs": 12064
+    "goneAnchors": [
+      {
+        "role": "status",
+        "name": "Footnote state",
+        "text": "out of view"
+      }
+    ],
+    "endWaitMs": 11591
   }
 }

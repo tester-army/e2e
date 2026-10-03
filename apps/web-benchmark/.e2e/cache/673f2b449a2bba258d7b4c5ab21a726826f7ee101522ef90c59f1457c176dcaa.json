@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-24T19:35:15.679Z",
+  "createdAt": "2026-10-03T16:28:29.525Z",
   "payload": {
     "actions": [
       {
@@ -26,7 +26,7 @@
       "targetId": "web",
       "instructionDigest": "b654f62f1b06969b737e6bc5900524da39b012965a0d82aef45fce7af099ba6c"
     },
-    "summary": "Opened the Details view, then used browser history to return to the inventory. The inventory is back on screen and Navigation state reads “back on the inventory.”.",
+    "summary": "Opened the details view, then used browser history to return to /e/control-inventory. The Navigation state confirms “back on the inventory.”",
     "startPath": "/e/control-inventory",
     "endPath": "/e/control-inventory",
     "endAnchors": [
@@ -36,6 +36,13 @@
         "text": "back on the inventory"
       }
     ],
-    "endWaitMs": 12026
+    "goneAnchors": [
+      {
+        "role": "status",
+        "name": "Navigation state",
+        "text": "not opened"
+      }
+    ],
+    "endWaitMs": 11768
   }
 }

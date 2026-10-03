@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T13:30:32.475Z",
+  "createdAt": "2026-10-03T16:31:31.131Z",
   "payload": {
     "actions": [
       {
@@ -73,7 +73,7 @@
       "targetId": "web",
       "instructionDigest": "c878aa968fdbc93d377500f8aecb2f3b0ab701c37b7f9757f8d993f0fc87e109"
     },
-    "summary": "Entered the displayed code 493027 into the six segmented inputs. The page now shows “Code verified.”",
+    "summary": "Entered code 493027 into the six segmented OTP inputs. The page now displays “Code verified.”",
     "startPath": "/e/otp-auto-advance",
     "endPath": "/e/otp-auto-advance",
     "endAnchors": [
@@ -82,6 +82,41 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 10521
+    "goneAnchors": [
+      {
+        "text": "Enter code 493027."
+      },
+      {
+        "role": "textbox",
+        "testId": "otp-input-0",
+        "inputPurpose": "one-time-code"
+      },
+      {
+        "role": "textbox",
+        "testId": "otp-input-1",
+        "inputPurpose": "one-time-code"
+      },
+      {
+        "role": "textbox",
+        "testId": "otp-input-2",
+        "inputPurpose": "one-time-code"
+      },
+      {
+        "role": "textbox",
+        "testId": "otp-input-3",
+        "inputPurpose": "one-time-code"
+      },
+      {
+        "role": "textbox",
+        "testId": "otp-input-4",
+        "inputPurpose": "one-time-code"
+      },
+      {
+        "role": "textbox",
+        "testId": "otp-input-5",
+        "inputPurpose": "one-time-code"
+      }
+    ],
+    "endWaitMs": 13208
   }
 }

@@ -1,11 +1,11 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-24T23:04:31.378Z",
+  "createdAt": "2026-10-03T16:30:20.853Z",
   "payload": {
     "actions": [
       {
         "name": "scrollUntil",
-        "summary": "scroll down on node \"table-viewport\" until \"Row 4322\" shows (432 screens)",
+        "summary": "scroll down on node \"table-viewport\" until \"Row 4322\" shows (431 screens)",
         "text": "Row 4322",
         "direction": "down",
         "target": {
@@ -32,7 +32,7 @@
       "targetId": "web",
       "instructionDigest": "3e0bdeec3c893eadd972848c89ef841ec7722fd896ed12998ef945cf20af30ec"
     },
-    "summary": "The current screen shows “Golden Row claimed” while Row 4322 — Golden Row is rendered in the table, confirming the claim succeeded.",
+    "summary": "Scrolled the virtualized table until Row 4322 — Golden Row was rendered, then clicked Claim. The page displayed “Golden Row claimed.”",
     "startPath": "/e/virtualized-table",
     "endPath": "/e/virtualized-table",
     "endAnchors": [
@@ -41,27 +41,53 @@
         "testId": "success-message"
       },
       {
-        "text": "Row 4316"
+        "text": "Row 4306"
       },
       {
-        "text": "Row 4317"
+        "text": "Row 4307"
       },
       {
-        "text": "Row 4318"
+        "text": "Row 4308"
       },
       {
-        "text": "Row 4319"
+        "text": "Row 4309"
       },
       {
-        "text": "Row 4320"
+        "text": "Row 4310"
       },
       {
-        "text": "Row 4321"
+        "text": "Row 4311"
       },
       {
-        "text": "Row 4322 — Golden Row"
+        "text": "Row 4312"
       }
     ],
-    "endWaitMs": 27632
+    "goneAnchors": [
+      {
+        "text": "Row 1"
+      },
+      {
+        "text": "Row 2"
+      },
+      {
+        "text": "Row 3"
+      },
+      {
+        "text": "Row 4"
+      },
+      {
+        "text": "Row 5"
+      },
+      {
+        "text": "Row 6"
+      },
+      {
+        "text": "Row 7"
+      },
+      {
+        "text": "Row 8"
+      }
+    ],
+    "endWaitMs": 11810
   }
 }

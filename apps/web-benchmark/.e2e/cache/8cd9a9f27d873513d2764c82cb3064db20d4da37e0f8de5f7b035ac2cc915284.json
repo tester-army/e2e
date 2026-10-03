@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T18:03:17.359Z",
+  "createdAt": "2026-10-03T16:31:05.716Z",
   "payload": {
     "actions": [
       {
@@ -44,7 +44,7 @@
       "targetId": "web",
       "instructionDigest": "79f28df979547ae9abe14bba1c341873d1aa9d74dccc07d1e76bf46c279b8cb5"
     },
-    "summary": "Moved Fix payment bug to Done and Refactor onboarding to In Progress, then submitted the board. The page confirmed “Board matches the goal.”.",
+    "summary": "Moved Fix payment bug to Done and Refactor onboarding to In Progress, then submitted the board. The page confirmed: “Board matches the goal.”",
     "startPath": "/e/kanban-board",
     "endPath": "/e/kanban-board",
     "endAnchors": [
@@ -53,6 +53,11 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 12168
+    "goneAnchors": [
+      {
+        "text": "Empty"
+      }
+    ],
+    "endWaitMs": 11603
   }
 }

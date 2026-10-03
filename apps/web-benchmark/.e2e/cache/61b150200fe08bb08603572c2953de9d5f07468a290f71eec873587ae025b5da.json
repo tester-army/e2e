@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T13:30:34.492Z",
+  "createdAt": "2026-10-03T16:32:05.439Z",
   "payload": {
     "actions": [
       {
@@ -51,15 +51,56 @@
       "targetId": "web",
       "instructionDigest": "423676dde62142adee61619b5958db96013371bf84519c7e0441aaa32d6f9fce"
     },
-    "summary": "Deleted the playbook \"Launch Approval Draft,\" confirmed its removal, and searched the exact name. The page shows: No playbooks match \"Launch Approval Draft.\"",
+    "summary": "Deleted the playbook “Launch Approval Draft,” confirmed the removal, and searched its exact name. The page shows: “No playbooks match ‘Launch Approval Draft’.”",
     "startPath": "/e/playbook-cleanup",
     "endPath": "/e/playbook-cleanup",
     "endAnchors": [
+      {
+        "role": "searchbox",
+        "name": "Search playbooks",
+        "placeholder": "Search",
+        "value": "Launch Approval Draft"
+      },
       {
         "text": "No playbooks match \"Launch Approval Draft\".",
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 10103
+    "goneAnchors": [
+      {
+        "role": "searchbox",
+        "name": "Search playbooks",
+        "placeholder": "Search"
+      },
+      {
+        "role": "heading",
+        "name": "NDA Review"
+      },
+      {
+        "text": "8 rules"
+      },
+      {
+        "role": "button",
+        "name": "More actions for NDA Review",
+        "text": "⋯"
+      },
+      {
+        "role": "heading",
+        "name": "Launch Approval Draft"
+      },
+      {
+        "text": "4 rules"
+      },
+      {
+        "role": "button",
+        "name": "More actions for Launch Approval Draft",
+        "text": "⋯"
+      },
+      {
+        "role": "heading",
+        "name": "Vendor Onboarding"
+      }
+    ],
+    "endWaitMs": 11599
   }
 }

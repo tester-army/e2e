@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T13:30:26.359Z",
+  "createdAt": "2026-10-03T16:30:42.122Z",
   "payload": {
     "actions": [
       {
@@ -14,7 +14,8 @@
       },
       {
         "name": "tool",
-        "summary": "tool type (run-time value)"
+        "summary": "tool type (run-time value)",
+        "derived": "minted-token"
       },
       {
         "name": "tap",
@@ -35,7 +36,7 @@
       "targetId": "web",
       "instructionDigest": "3d8730745312e1ce478b253dcad7910775eb76246846228b0ca02a78e514aa88"
     },
-    "summary": "Read verification code 4407 from the toast, entered it, and submitted Verify. The page displays “Code verified successfully.”.",
+    "summary": "Waited for the page to finish loading, read code 4407 from the toast, entered it, and submitted when Verify was enabled. The page shows “Code verified successfully.”",
     "startPath": "/e/async-states",
     "endPath": "/e/async-states",
     "endAnchors": [
@@ -44,6 +45,11 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 12049
+    "goneAnchors": [
+      {
+        "testId": "initial-loading"
+      }
+    ],
+    "endWaitMs": 11469
   }
 }

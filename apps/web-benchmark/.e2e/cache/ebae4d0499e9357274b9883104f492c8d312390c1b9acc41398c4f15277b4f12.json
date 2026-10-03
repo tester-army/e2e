@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T13:29:31.865Z",
+  "createdAt": "2026-10-03T16:27:58.590Z",
   "payload": {
     "actions": [
       {
@@ -44,7 +44,7 @@
       "targetId": "web",
       "instructionDigest": "7e6f99066c5bc180c1e5188150277917670b918eb0a9646ac967ef798648b455"
     },
-    "summary": "The address was saved successfully. The list now includes “{{param:/label}}” at “7 Pine Way, Bend,” and the screen shows an “Address saved” confirmation.",
+    "summary": "Added the address labelled “Cabin muslvgnm” with line “7 Pine Way, Bend.” The new address appears in the saved-address list and the app displayed “Address saved.”",
     "startPath": "/e/saved-addresses",
     "endPath": "/e/saved-addresses",
     "endAnchors": [
@@ -64,6 +64,6 @@
         "text": "7 Pine Way, Bend"
       }
     ],
-    "endWaitMs": 10129
+    "endWaitMs": 11535
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-24T19:34:48.350Z",
+  "createdAt": "2026-10-03T16:27:56.360Z",
   "payload": {
     "actions": [
       {
@@ -33,7 +33,7 @@
       "targetId": "web",
       "instructionDigest": "31e69bd3b8b58acb08fa60eaea2976e3271b633b840b8ffca9440e21488961fc"
     },
-    "summary": "Agreed to the terms and selected Medium. The Toggles state now shows “terms agreed, size Medium.”",
+    "summary": "Agreed to the terms and selected Medium. The state now shows “terms agreed, size Medium.”",
     "startPath": "/e/control-inventory",
     "endPath": "/e/control-inventory",
     "endAnchors": [
@@ -41,8 +41,37 @@
         "role": "status",
         "name": "Toggles state",
         "text": "terms agreed, size Medium"
+      },
+      {
+        "role": "checkbox",
+        "name": "Agree to terms",
+        "states": [
+          "checked"
+        ]
+      },
+      {
+        "role": "radio",
+        "name": "Medium",
+        "states": [
+          "checked"
+        ]
       }
     ],
-    "endWaitMs": 12023
+    "goneAnchors": [
+      {
+        "role": "status",
+        "name": "Toggles state",
+        "text": "terms not agreed, size unset"
+      },
+      {
+        "role": "checkbox",
+        "name": "Agree to terms"
+      },
+      {
+        "role": "radio",
+        "name": "Medium"
+      }
+    ],
+    "endWaitMs": 11495
   }
 }

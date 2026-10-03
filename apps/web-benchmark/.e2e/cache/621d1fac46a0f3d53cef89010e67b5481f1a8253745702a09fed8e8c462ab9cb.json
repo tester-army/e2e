@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T13:30:28.966Z",
+  "createdAt": "2026-10-03T16:30:48.112Z",
   "payload": {
     "actions": [
       {
@@ -33,7 +33,7 @@
       "targetId": "web",
       "instructionDigest": "e5044d8a420a21763ff0ba6ba21266a9cf45e9607dd3496c435089c8d757d4e8"
     },
-    "summary": "Searched for “trail mix,” selected exactly “Trail Mix 500 g,” and verified the page shows “Added Trail Mix 500 g to the cart.”",
+    "summary": "Searched for “trail mix,” selected exactly “Trail Mix 500 g,” and verified the page confirmed it was added to the cart.",
     "startPath": "/e/debounced-search",
     "endPath": "/e/debounced-search",
     "endAnchors": [
@@ -42,6 +42,17 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 10121
+    "goneAnchors": [
+      {
+        "text": "Search for trail mix and pick exactly Trail Mix 500 g."
+      },
+      {
+        "role": "combobox",
+        "name": "Search snacks",
+        "testId": "search-input",
+        "placeholder": "Search snacks"
+      }
+    ],
+    "endWaitMs": 11630
   }
 }

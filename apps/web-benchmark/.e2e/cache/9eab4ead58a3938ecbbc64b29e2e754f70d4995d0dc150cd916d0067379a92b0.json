@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T13:30:38.861Z",
+  "createdAt": "2026-10-03T16:32:19.842Z",
   "payload": {
     "actions": [
       {
@@ -11,6 +11,16 @@
           "name": "gift_card_amount_option_undefined",
           "text": "$25",
           "testId": "amount-25"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"btn_purchase_label\"",
+        "target": {
+          "role": "button",
+          "name": "btn_purchase_label",
+          "text": "Buy gift card",
+          "testId": "buy-button"
         }
       },
       {
@@ -44,7 +54,7 @@
       "targetId": "web",
       "instructionDigest": "58b82e08250d41e942c183d1c49b7e031fb5754f62c785c3f064c404c6b44851"
     },
-    "summary": "Selected a $25 gift card, entered friend@example.com, and completed the purchase. The page confirms the gift card was sent and is on its way.",
+    "summary": "Selected the $25 gift card, entered friend@example.com, and completed the purchase. The page confirms the gift card was sent and that the $25.00 gift card is on its way.",
     "startPath": "/e/gift-card-purchase",
     "endPath": "/e/gift-card-purchase",
     "endAnchors": [
@@ -56,6 +66,47 @@
         "text": "A $25.00 gift card is on its way."
       }
     ],
-    "endWaitMs": 10101
+    "goneAnchors": [
+      {
+        "text": "Send a digital gift card. Delivered by email within minutes."
+      },
+      {
+        "role": "button",
+        "name": "gift_card_amount_option_undefined",
+        "text": "$10",
+        "testId": "amount-10"
+      },
+      {
+        "role": "button",
+        "name": "gift_card_amount_option_undefined",
+        "text": "$25",
+        "testId": "amount-25"
+      },
+      {
+        "role": "button",
+        "name": "gift_card_amount_option_undefined",
+        "text": "$50",
+        "testId": "amount-50"
+      },
+      {
+        "role": "textbox",
+        "name": "{{recipient_email_label}}",
+        "testId": "recipient-input",
+        "placeholder": "friend@example.com"
+      },
+      {
+        "text": "Total"
+      },
+      {
+        "text": "Total: $NaN"
+      },
+      {
+        "role": "button",
+        "name": "btn_purchase_label",
+        "text": "Buy gift card",
+        "testId": "buy-button"
+      }
+    ],
+    "endWaitMs": 11845
   }
 }

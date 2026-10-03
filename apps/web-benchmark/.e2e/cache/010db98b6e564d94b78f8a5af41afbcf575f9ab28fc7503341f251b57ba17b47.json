@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T13:29:40.106Z",
+  "createdAt": "2026-10-03T16:28:12.875Z",
   "payload": {
     "actions": [
       {
@@ -14,7 +14,8 @@
       },
       {
         "name": "tool",
-        "summary": "tool type (run-time value)"
+        "summary": "tool type (run-time value)",
+        "derived": "pixels"
       },
       {
         "name": "tap",
@@ -35,7 +36,7 @@
       "targetId": "web",
       "instructionDigest": "75cac33ad209d332c191820f8b966e11e3b86f06d25432d913adf93fe369052d"
     },
-    "summary": "Entered 42.50 in the textbox visibly labeled Amount, left the field visibly labeled Reference empty, and submitted via the control visibly labeled Submit payment. The page now shows “Payment sent.”.",
+    "summary": "Followed the visible labels: selected the button showing “Pay now,” entered 42.50 in the field visibly labeled Amount, left Reference empty, and submitted. The page confirms “Payment sent.”",
     "startPath": "/e/lying-labels",
     "endPath": "/e/lying-labels",
     "endAnchors": [
@@ -44,6 +45,32 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 11664
+    "goneAnchors": [
+      {
+        "text": "Click the button that visibly says Pay now."
+      },
+      {
+        "text": "Do not press this button"
+      },
+      {
+        "text": "Pay now safely"
+      },
+      {
+        "role": "button",
+        "name": "Confirm payment",
+        "text": "Contact support"
+      },
+      {
+        "role": "button",
+        "name": "Cancel order",
+        "text": "Pay now"
+      },
+      {
+        "role": "button",
+        "name": "Pay now",
+        "text": "Cancel order"
+      }
+    ],
+    "endWaitMs": 11712
   }
 }

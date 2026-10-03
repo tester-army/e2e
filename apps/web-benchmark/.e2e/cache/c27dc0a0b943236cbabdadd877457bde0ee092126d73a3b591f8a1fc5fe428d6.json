@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-03T16:32:23.257Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"mug\" into textbox \"Filter products\"",
+        "target": {
+          "role": "textbox",
+          "name": "Filter products",
+          "testId": "filter-input",
+          "placeholder": "Filter products"
+        },
+        "value": "mug"
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20filters%20the%20list%20and%20the%20URL%20carries%20the%20filter",
+      "targetId": "web",
+      "instructionDigest": "c54ac6f470b19c027dd580aa19d24ab48c4f0612b3930178028f20eb76cdd216"
+    },
+    "summary": "Entered “mug” in the product filter. The list is filtered to Titanium Mug, and the page URL now includes ?q=mug.",
+    "startPath": "/e/filter-deep-link",
+    "endPath": "/e/filter-deep-link?q=mug",
+    "endAnchors": [
+      {
+        "role": "textbox",
+        "name": "Filter products",
+        "testId": "filter-input",
+        "placeholder": "Filter products",
+        "value": "mug"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "textbox",
+        "name": "Filter products",
+        "testId": "filter-input",
+        "placeholder": "Filter products"
+      },
+      {
+        "role": "listitem",
+        "name": "Trail Backpack"
+      },
+      {
+        "role": "listitem",
+        "name": "Steel Water Bottle"
+      },
+      {
+        "role": "listitem",
+        "name": "Merino Hiking Socks"
+      },
+      {
+        "role": "listitem",
+        "name": "Camp Lantern"
+      }
+    ],
+    "endWaitMs": 12149
+  }
+}

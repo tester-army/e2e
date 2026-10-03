@@ -1,17 +1,8 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T13:30:36.184Z",
+  "createdAt": "2026-10-03T16:32:08.304Z",
   "payload": {
     "actions": [
-      {
-        "name": "tap",
-        "summary": "tap button \"Accept\"",
-        "target": {
-          "role": "button",
-          "name": "Accept",
-          "testId": "accept-cookies"
-        }
-      },
       {
         "name": "tap",
         "summary": "tap button \"Buy now\" in \"Wireless Headphones\"",
@@ -32,7 +23,7 @@
       "targetId": "web",
       "instructionDigest": "1bf3aabb828b9b084d447df3a78d1fa700b5b28b8d5847dcc5ffcb9b0ce3bd45"
     },
-    "summary": "The Wireless Headphones purchase is confirmed; the page displays “Order confirmed” for that product.",
+    "summary": "Bought the Wireless Headphones. The page now shows “Order confirmed.”",
     "startPath": "/e/promo-storefront",
     "endPath": "/e/promo-storefront",
     "endAnchors": [
@@ -58,6 +49,13 @@
         "text": "★★★★ Comfortable fit, pairing was instant."
       }
     ],
-    "endWaitMs": 11175
+    "goneAnchors": [
+      {
+        "role": "listitem",
+        "name": "Wireless Headphones $80.00 $40.00 50% OFF Buy now",
+        "testId": "deal-headphones"
+      }
+    ],
+    "endWaitMs": 11356
   }
 }

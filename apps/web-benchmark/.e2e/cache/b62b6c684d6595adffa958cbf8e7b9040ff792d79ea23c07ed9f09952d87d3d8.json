@@ -1,8 +1,15 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T13:30:30.518Z",
+  "createdAt": "2026-10-03T16:31:18.092Z",
   "payload": {
     "actions": [
+      {
+        "name": "secondaryTap",
+        "summary": "secondary-tap node \"report.pdf\"",
+        "target": {
+          "text": "report.pdf"
+        }
+      },
       {
         "name": "tap",
         "summary": "tap button \"More actions for report.pdf\"",
@@ -47,7 +54,7 @@
       "targetId": "web",
       "instructionDigest": "63530e281eafd2d07743a56500bfed3eae14e1ab7a4c0ad00e838e8b51912917"
     },
-    "summary": "Renamed report.pdf to summary.pdf using the file's More actions menu; the file list now shows summary.pdf and a success message confirms the rename.",
+    "summary": "Renamed report.pdf to summary.pdf. The file manager now lists summary.pdf and confirms “File renamed to summary.pdf.”",
     "startPath": "/e/context-menu-trap",
     "endPath": "/e/context-menu-trap",
     "endAnchors": [
@@ -64,6 +71,16 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 10102
+    "goneAnchors": [
+      {
+        "text": "report.pdf"
+      },
+      {
+        "role": "button",
+        "name": "More actions for report.pdf",
+        "text": "⋯"
+      }
+    ],
+    "endWaitMs": 11569
   }
 }

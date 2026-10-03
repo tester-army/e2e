@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-24T19:34:54.319Z",
+  "createdAt": "2026-10-03T16:28:05.153Z",
   "payload": {
     "actions": [
       {
@@ -31,7 +31,7 @@
       "targetId": "web",
       "instructionDigest": "9fe8b7fcfeb1bd36e8d003d5c7e5feb16042211ec61970b63314a6c7bac345b0"
     },
-    "summary": "Long-pressed the Hold me button; its state reads “long-pressed.” Double-clicked the Double-click me button; its state reads “double-clicked.”",
+    "summary": "Long-pressed Hold me; Hold state reads “long-pressed.” Double-clicked Double-click me; Double-click state reads “double-clicked.”",
     "startPath": "/e/control-inventory",
     "endPath": "/e/control-inventory",
     "endAnchors": [
@@ -46,6 +46,18 @@
         "text": "double-clicked"
       }
     ],
-    "endWaitMs": 11922
+    "goneAnchors": [
+      {
+        "role": "status",
+        "name": "Hold state",
+        "text": "none"
+      },
+      {
+        "role": "status",
+        "name": "Double-click state",
+        "text": "none"
+      }
+    ],
+    "endWaitMs": 11652
   }
 }

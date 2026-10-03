@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T10:41:22.965Z",
+  "createdAt": "2026-10-03T16:28:02.870Z",
   "payload": {
     "actions": [
       {
@@ -26,7 +26,7 @@
       "targetId": "web",
       "instructionDigest": "c6884af43cef64f928cde4eaa3be0cbc128893f01611d32236baf514a915c0a6"
     },
-    "summary": "Entered SHADOW-42 into the nested-shadow-root form and submitted it. The page now displays “Access granted.”.",
+    "summary": "Entered SHADOW-42 and submitted the form. The page now shows “Access granted.”",
     "startPath": "/e/shadow-dom-form",
     "endPath": "/e/shadow-dom-form",
     "endAnchors": [
@@ -35,6 +35,23 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 11941
+    "goneAnchors": [
+      {
+        "text": "The form below lives inside a closed shadow root. Enter SHADOW-42 and press Submit."
+      },
+      {
+        "text": "Access code hint: SHADOW-42"
+      },
+      {
+        "role": "textbox",
+        "name": "Access code",
+        "placeholder": "Access code"
+      },
+      {
+        "role": "button",
+        "name": "Submit"
+      }
+    ],
+    "endWaitMs": 16951
   }
 }

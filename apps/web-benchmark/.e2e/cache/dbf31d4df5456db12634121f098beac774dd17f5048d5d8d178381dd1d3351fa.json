@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T13:30:09.534Z",
+  "createdAt": "2026-10-03T16:30:26.550Z",
   "payload": {
     "actions": [
       {
@@ -39,7 +39,7 @@
       "targetId": "web",
       "instructionDigest": "6705af9140f936652f275b785be7e42b157ba15b3fa16eefba2c51d6f3fdcd1b"
     },
-    "summary": "Accepted the cookie banner, closed the overlay, and pressed Continue. The page now shows the success message “You made it past the overlay.”",
+    "summary": "Dismissed the cookie banner, closed the overlay, and pressed Continue. The page now shows “You made it past the overlay.”",
     "startPath": "/e/overlay-trap",
     "endPath": "/e/overlay-trap",
     "endAnchors": [
@@ -48,6 +48,28 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 10096
+    "goneAnchors": [
+      {
+        "text": "Accept cookies, close whatever is blocking clicks, then press Continue."
+      },
+      {
+        "text": "Blocked clicks: 0",
+        "testId": "blocked-count"
+      },
+      {
+        "role": "button",
+        "name": "Continue",
+        "testId": "continue-button"
+      },
+      {
+        "text": "We use cookies to run this benchmark."
+      },
+      {
+        "role": "button",
+        "name": "Accept cookies",
+        "testId": "accept-cookies-button"
+      }
+    ],
+    "endWaitMs": 11538
   }
 }
