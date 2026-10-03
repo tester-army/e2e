@@ -198,12 +198,6 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
 
   const artifacts: SessionArtifacts = {
     screenshot: guard('screenshots', engine?.artifacts?.screenshot),
-    ...(engine?.artifacts?.startTrace === undefined || engine.artifacts.stopTrace === undefined
-      ? {}
-      : {
-          startTrace: guard('traces', engine.artifacts.startTrace),
-          stopTrace: guard('traces', engine.artifacts.stopTrace),
-        }),
     ...(engine?.artifacts?.startVideo === undefined || engine.artifacts.stopVideo === undefined
       ? {}
       : {

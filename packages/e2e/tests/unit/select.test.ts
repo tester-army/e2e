@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { collectFromRegistration, type Collection } from '../../src/collect/collect.ts';
 import { collectModule, test } from '../../src/collect/registry.ts';
-import { pairRecording, pairRecordings, repeatEach, resolveOptions, select } from '../../src/collect/select.ts';
+import { pairVideo, repeatEach, resolveOptions, select } from '../../src/collect/select.ts';
+import { attemptRecording } from '../../src/internal/recording-modes.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
 import { defineEngine } from '../../src/engine/index.ts';
 import { resultId } from '../../src/internal/ids.ts';
@@ -187,33 +188,31 @@ describe('resolveOptions', () => {
     expect(resolveOptions(onFailure!, plain).video).toBe('retain-on-failure');
     expect(resolveOptions(optedOut!, plain).video).toBe('off');
     const target = { ...plain.targets[0]!, video: { mode: 'on-first-retry', source: 'run' } as const };
-    expect(pairRecording({ options: resolveOptions(unset!, plain), target }, 'video')).toEqual({ mode: 'on-first-retry', source: 'run' });
-    expect(pairRecording({ options: resolveOptions(off!, plain), target }, 'video')).toEqual({ mode: 'off', source: 'test' });
+    expect(pairVideo({ options: resolveOptions(unset!, plain), target })).toEqual({ mode: 'on-first-retry', source: 'run' });
+    expect(pairVideo({ options: resolveOptions(off!, plain), target })).toEqual({ mode: 'off', source: 'test' });
   });
 
-  it("resolves a test's trace on the same terms as its video, the test over its target", async () => {
+  it("resolves a test's video over its target's, and the attempts a retry mode records", async () => {
     const col = await collection(() => {
       test('unset', noop);
-      test.describe('outer', { trace: 'on-all-retries' }, () => {
+      test.describe('outer', { video: 'on-all-retries' }, () => {
         test('inherits', noop);
-        test('own', { trace: 'off' }, noop);
+        test('own', { video: 'off' }, noop);
       });
     });
     const [unset, inherits, own] = col.tests;
     const plain = config();
-    const target = { ...plain.targets[0]!, trace: { mode: 'retain-on-failure', source: 'target' } as const };
-    expect(resolveOptions(unset!, plain).trace).toBeUndefined();
-    expect(pairRecording({ options: resolveOptions(unset!, plain), target }, 'trace')).toEqual({ mode: 'retain-on-failure', source: 'target' });
-    expect(pairRecording({ options: resolveOptions(inherits!, plain), target }, 'trace')).toEqual({ mode: 'on-all-retries', source: 'test' });
-    expect(pairRecording({ options: resolveOptions(own!, plain), target }, 'trace')).toEqual({ mode: 'off', source: 'test' });
-    const pair = { options: resolveOptions(inherits!, plain), target };
-    expect([0, 1, 2].map((index) => pairRecordings(pair, index).trace?.keep)).toEqual([undefined, 'always', 'always']);
-    expect(pairRecordings(pair, 0).video).toBeUndefined();
+    const target = { ...plain.targets[0]!, video: { mode: 'retain-on-failure', source: 'target' } as const };
+    expect(pairVideo({ options: resolveOptions(unset!, plain), target })).toEqual({ mode: 'retain-on-failure', source: 'target' });
+    expect(pairVideo({ options: resolveOptions(inherits!, plain), target })).toEqual({ mode: 'on-all-retries', source: 'test' });
+    expect(pairVideo({ options: resolveOptions(own!, plain), target })).toEqual({ mode: 'off', source: 'test' });
+    const recording = pairVideo({ options: resolveOptions(inherits!, plain), target });
+    expect([0, 1, 2].map((index) => attemptRecording(recording, index)?.keep)).toEqual([undefined, 'always', 'always']);
   });
 
-  it('gives serial members the video and trace of the chain up to the serial root, like retries', async () => {
+  it('gives serial members the video of the chain up to the serial root, like retries', async () => {
     const col = await collection(() => {
-      test.describe('outer', { video: 'retain-on-failure', trace: 'on-first-retry', retries: 2 }, () => {
+      test.describe('outer', { video: 'retain-on-failure', retries: 2 }, () => {
         test.describe('wizard', { serial: true }, () => {
           test.describe('nested', { retries: 0 }, () => {
             test('step', noop);
@@ -228,7 +227,6 @@ describe('resolveOptions', () => {
     const inherited = resolveOptions(nested!, config());
     expect(inherited.retries).toBe(2);
     expect(inherited.video).toBe('retain-on-failure');
-    expect(inherited.trace).toBe('on-first-retry');
     expect(resolveOptions(recorded!, config()).video).toBe('on');
   });
 

@@ -225,7 +225,7 @@ export interface EngineFixtureContext {
   operation(timeoutMs?: number): OperationContext;
   /** Registers a file the current step produced under the attempt artifact directory. */
   attachArtifact(
-    kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log',
+    kind: 'screenshot' | 'video' | 'download' | 'log',
     relativePath: string,
   ): void;
   /** Records the viewport the current step established. */
@@ -297,16 +297,6 @@ export interface EngineStateCapability {
 export interface EngineArtifacts {
   /** Captures a redacted screenshot; secure fields are masked at the source. */
   screenshot(label: string | undefined, context: OperationContext): Promise<string>;
-  /** Starts recording an execution trace for the attempt. */
-  startTrace?(context: OperationContext): Promise<void>;
-  /**
-   * Stops the trace and returns its relative path, or every archive written,
-   * in order, when the trace had to be cut: a trace bound to one context
-   * closes as a segment when a restart or a state reset replaces the
-   * context, and a new one records on from there. The harness registers and
-   * redacts each returned archive.
-   */
-  stopTrace?(context: OperationContext): Promise<string | readonly string[]>;
   /**
    * Starts recording the surface for the attempt. Declared together with
    * `stopVideo`. A surface that has nothing to show yet (no page open) may
@@ -513,7 +503,7 @@ export interface EngineAttemptContext {
    * provider runs again on every call. The value, and every value
    * `options.derived` computes from it, join the attempt's redaction before
    * this resolves, so reports, logs, and every observation redact them, and
-   * the attempt's trace and text downloads are rewritten. The protection is
+   * the attempt's text downloads are rewritten. The protection is
    * text only: unlike a fill, it withholds no screenshot or model pixels.
    * A secret the engine did not declare is `SECRET_UNAVAILABLE`.
    */
@@ -716,7 +706,7 @@ export interface Engine {
   readonly fixtures?: Readonly<Record<string, EngineFixtureFactory>>;
   /** capability: state - opaque snapshot capture/restore for session reuse. */
   readonly state?: EngineStateCapability;
-  /** capability: artifacts - screenshots and traces under the attempt directory. */
+  /** capability: artifacts - screenshots and video under the attempt directory. */
   readonly artifacts?: EngineArtifacts;
   /**
    * Checks the app a target declares against what this engine can drive, at

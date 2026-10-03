@@ -196,15 +196,8 @@ describe('near misses', () => {
   });
 });
 
-describe('appearsIn', () => {
+describe('path forms', () => {
   const ledger = new SecretLedger([['member', 'p@ss word']]);
-
-  it('finds a registered value, in any of its forms, inside bytes that are not text', () => {
-    const frame = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.from('p%40ss+word'), Buffer.from([0x80])]);
-    expect(ledger.appearsIn(frame)).toBe(true);
-    expect(ledger.appearsIn(Buffer.from([0xff, 0xd8, 0xff, 0x80, 0x00]))).toBe(false);
-    expect(new SecretLedger().appearsIn(Buffer.from('p@ss word'))).toBe(false);
-  });
 
   it('redacts the value as encodeURI spells it in a path', () => {
     expect(ledger.redact('/reset/p@ss%20word/done')).toBe('/reset/<secret:member>/done');

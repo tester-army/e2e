@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ResolvedConfig } from '../../src/config/resolve.ts';
 import type { TargetSession } from '../../src/engine/surface.ts';
 import { serializeError, TestError } from '../../src/internal/errors.ts';
-import { adoptSecrecy, carriedSecrecy, processSecrets, redactForSession, registerStaticSecrets, redactsRecordings, sessionSecrecy, staticSecretLedger } from '../../src/run/secrecy.ts';
+import { adoptSecrecy, carriedSecrecy, processSecrets, redactForSession, registerStaticSecrets, redactsDownloads, sessionSecrecy, staticSecretLedger } from '../../src/run/secrecy.ts';
 
 const STATIC_VALUE = 'static-config-password-5521';
 const PROVIDER_VALUE = 'provider-minted-token-8804';
@@ -54,11 +54,11 @@ describe('session exposure', () => {
   });
 
   it('rewrites recordings whenever the ledger holds a value, filled or not', () => {
-    expect(redactsRecordings(sessionSecrecy(newSession(), secrets))).toBe(true);
+    expect(redactsDownloads(sessionSecrecy(newSession(), secrets))).toBe(true);
     const unsecret = sessionSecrecy(newSession(), new Map());
-    expect(redactsRecordings(unsecret)).toBe(false);
+    expect(redactsDownloads(unsecret)).toBe(false);
     unsecret.ledger.register('token', PROVIDER_VALUE);
-    expect(redactsRecordings(unsecret)).toBe(true);
+    expect(redactsDownloads(unsecret)).toBe(true);
   });
 });
 

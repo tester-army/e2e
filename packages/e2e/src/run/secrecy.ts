@@ -25,12 +25,12 @@ export type SecretExposureLevel = 'none' | 'filled';
 /**
  * One session's exposure level, and the one place that maps it to what each
  * consumer withholds. Only a fill withholds pixels (failure screenshots,
- * `app.screenshot()`, assert evidence, model input, and a trace's
- * screencast frames): a value that reached the app otherwise (an engine
- * option, a URL or a `fill` the test spelled it into) is protected as text
- * only, so a page that renders it on screen is not masked. Only a fill
+ * `app.screenshot()`, assert evidence, and model input): a value that
+ * reached the app otherwise (an engine option, a URL or a `fill` the test
+ * spelled it into) is protected as text only, so a page that renders it on
+ * screen is not masked. Only a fill
  * carries into a saved session too: the value then lives in the app's
- * state. Text is not decided here: see `redactsRecordings`.
+ * state. Text is not decided here: see `redactsDownloads`.
  */
 export class SecretExposure {
   private current: SecretExposureLevel = 'none';
@@ -52,14 +52,13 @@ export class SecretExposure {
 }
 
 /**
- * Whether a text recording of the session (a trace, a text-like download) is
- * rewritten through its ledger before it is kept: whenever the ledger holds
- * a value, filled or not. A value reaches the app in ways the runner never
- * sees (a URL or a `fill` the test spelled it into, the app's own config),
- * so recordings are redacted like every report and observation, not only
- * after a fill.
+ * Whether a text-like download of the session is rewritten through its
+ * ledger before it is kept: whenever the ledger holds a value, filled or
+ * not. A value reaches the app in ways the runner never sees (a URL or a
+ * `fill` the test spelled it into, the app's own config), so downloads are
+ * redacted like every report and observation, not only after a fill.
  */
-export function redactsRecordings(secrecy: SessionSecrecy): boolean {
+export function redactsDownloads(secrecy: SessionSecrecy): boolean {
   return !secrecy.ledger.isEmpty;
 }
 

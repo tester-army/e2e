@@ -4,7 +4,7 @@ import { ConfigurationError, CollectionError } from '../internal/errors.ts';
 import { resultId } from '../internal/ids.ts';
 import { didYouMean, suggestionNote } from '../internal/suggest.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import { attemptRecording, type AttemptRecordings, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
+import type { ResolvedRecording } from '../internal/recording-modes.ts';
 import type { Capability, RecordingMode, TestOptions } from '../types.ts';
 import { excludingEntry, type Collection, type CollectedTest, type UncollectedFile } from './collect.ts';
 import { groupChain } from './registry.ts';
@@ -26,12 +26,10 @@ export interface ResolvedTestOptions {
   readonly skipReason: string | undefined;
   readonly serial: boolean;
   /**
-   * The test's own `trace`, innermost layer first; undefined leaves it to
-   * the target (`pairRecording`). A serial group records one trace per group
+   * The test's own `video`, innermost layer first; undefined leaves it to
+   * the target (`pairVideo`). A serial group records one video per group
    * attempt, so its members share the group's value.
    */
-  readonly trace: RecordingMode | undefined;
-  /** The test's own `video`, on the same terms as `trace`. */
   readonly video: RecordingMode | undefined;
 }
 
@@ -140,14 +138,12 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
   let session: string | undefined;
   let pin: readonly string[] | undefined;
   let skipReason: string | undefined;
-  let trace: TestOptions['trace'];
   let video: TestOptions['video'];
   const agentContextParts: string[] = [];
 
   for (const layer of layers) {
     if (layer.timeout !== undefined) timeout = layer.timeout;
     if (layer.retries !== undefined) retries = layer.retries;
-    if (layer.trace !== undefined) trace = layer.trace;
     if (layer.video !== undefined) video = layer.video;
     if (layer.platforms !== undefined) platforms = layer.platforms;
     if (layer.requires !== undefined) requires = layer.requires;
@@ -160,20 +156,17 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
   }
 
   // Retries and recordings belong to the serial unit: one retry loop and one
-  // shared session, so one trace and one video, per group attempt.
+  // shared session, so one video, per group attempt.
   const serialRoot = test.serialRoot;
   if (serialRoot !== undefined) {
     let serialRetries = config.retries;
-    let serialTrace: TestOptions['trace'];
     let serialVideo: TestOptions['video'];
     for (const group of chain) {
       if (group.options.retries !== undefined) serialRetries = group.options.retries;
-      if (group.options.trace !== undefined) serialTrace = group.options.trace;
       if (group.options.video !== undefined) serialVideo = group.options.video;
       if (group === serialRoot) break;
     }
     retries = serialRetries;
-    trace = serialTrace;
     video = serialVideo;
   }
 
@@ -196,28 +189,18 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
     agentContext: agentContextParts.length === 0 ? undefined : agentContextParts.join('\n'),
     skipReason,
     serial: serialRoot !== undefined,
-    trace,
     video,
   };
 }
 
 /**
- * Which attempts of a pair record `kind`, and where the mode came from: the
+ * Which attempts of a pair record a video, and where the mode came from: the
  * test's own, else its target's (which the flag and the config already
- * decided). One resolver for both recordings, so `trace` and `video` can
- * never disagree about precedence.
+ * decided).
  */
-export function pairRecording(pair: Pick<TestTargetPair, 'options' | 'target'>, kind: RecordingKind): ResolvedRecording {
-  const own = pair.options[kind];
-  return own === undefined ? pair.target[kind] : { mode: own, source: 'test' };
-}
-
-/** What an attempt of a pair at `attemptIndex` records: one decision for the trace and the video alike. */
-export function pairRecordings(pair: Pick<TestTargetPair, 'options' | 'target'>, attemptIndex: number): AttemptRecordings {
-  return {
-    trace: attemptRecording(pairRecording(pair, 'trace'), attemptIndex),
-    video: attemptRecording(pairRecording(pair, 'video'), attemptIndex),
-  };
+export function pairVideo(pair: Pick<TestTargetPair, 'options' | 'target'>): ResolvedRecording {
+  const own = pair.options.video;
+  return own === undefined ? pair.target.video : { mode: own, source: 'test' };
 }
 
 /**

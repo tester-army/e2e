@@ -266,8 +266,7 @@ export class SessionHost {
       attempt = await openStandaloneAttempt({
         // A session records video only between start_recording and
         // stop_recording: the configured video mode is for runs, and would
-        // record everything. The trace keeps the target's mode: a session is
-        // one attempt that closes as passed, so it traces under `on` only.
+        // record everything.
         config,
         target: { ...target, video: { mode: 'off', source: 'default' } },
         headed,

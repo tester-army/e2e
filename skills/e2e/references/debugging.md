@@ -27,8 +27,7 @@ jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
    failed agent step has `turns`; `selected` drops filtered-out tests
    (recorded as `skipped`).
 4. Artifacts, under `.e2e/artifacts/`: `failure/screen.txt`
-   and the engine's screenshot per failed attempt; a Playwright trace per
-   traced attempt (`npx playwright-core@1.63.0 show-trace <file>`; `pnpm dlx` under pnpm); downloads; with
+   and the engine's screenshot per failed attempt; downloads; with
    `--video` the recording (`video/video.webm` in a local browser, each
    later page `video/video-part<n>.webm` with its own `startedAt`;
    `video/video.mp4` on a device; a provider's file or link); with
@@ -45,7 +44,7 @@ jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
 | `NO_LAST_RUN` | `--last-failed` found no `.e2e/report.json` | Run once without it |
 | `COLLECTION_ERROR` | `async` describe body, `test.setup` inside `describe`, an option forbidden in a serial group, registration outside collection | Restructure per `writing-tests` |
 | `HOOK_FAILED` | `beforeAll` or `afterAll` threw; its scope's tests skip | Fix the hook; the report carries its error |
-| `UNSUPPORTED_ARTIFACT` | A test's or target's `trace` or `video` on an engine that cannot record | Drop it there, or set it at the config root or CLI (such targets skip with a notice) |
+| `UNSUPPORTED_ARTIFACT` | A test's or target's `video` on an engine that cannot record | Drop it there, or set it at the config root or CLI (such targets skip with a notice) |
 | `BROWSER_INSTALL_FAILED`, `LAUNCH_TIMEOUT` | Browser download failed; engine init or attempt start exceeded `launchTimeout` | Run the quoted `npx @e2e-dev/web install <names>` or `pnpm exec e2e-web install <names>` (`--with-deps` on bare Linux); raise the root `launchTimeout` (60 s default) |
 | `APP_UNREACHABLE` | `app.command` never answered `readyUrl` within `startupTimeout`; on a device, a message naming the iOS automation runner: the runner failed, not the app | Read the quoted log lines; check the port, `app.url`, `app.command.env`, `app.command.startupTimeout`. Runner: rerun, else `npx agent-device daemon stop` and reboot the simulator |
 | `APP_ALREADY_RUNNING` | Something already serves `url` when `command` should start | Stop it, or `reuseExisting: true` locally |

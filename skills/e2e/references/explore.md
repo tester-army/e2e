@@ -64,7 +64,7 @@ configured secrets are redacted (topic `writing-tests`).
 | `--session <name>` | none | Run the setup that saves this session, then explore with it restored. |
 | `--max-steps <n>` | 8 (1 to 12) | Exploration steps at most. |
 | `--timeout <ms>` | 600000 (180000 to 900000) | Wall clock; the last minute is for the assessment. |
-| `--headed`, `--reporter`, `--output`, `--debug`, `--ai-trace`, `--trace [mode]`, `--video [mode]` | as `run` | Same meaning as for `e2e run`. One attempt, so a retry mode (`on-first-retry`, `on-all-retries`, the CI trace default) records nothing (`CI=1 e2e explore` needs `--trace on`; the run's notice says so); put the goal before a bare `--trace` or `--video`. |
+| `--headed`, `--reporter`, `--output`, `--debug`, `--ai-trace`, `--video [mode]` | as `run` | Same meaning as for `e2e run`. One attempt, so a retry mode (`on-first-retry`, `on-all-retries`) records nothing; put the goal before a bare `--video`. |
 
 Per-step action and model-call budgets default to 40 each;
 `agents.<name>.maxSteps` and `agents.<name>.maxModelCalls` in the config

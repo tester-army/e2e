@@ -144,9 +144,7 @@ describe('a secret value passed as a plain string', () => {
     expect(names).toContain('summary.md');
     expect(names.some((name) => name.startsWith('failures'))).toBe(true);
     for (const name of names) expect(name.includes(SECRET), name).toBe(false);
-    const contents = contentsUnder(root);
-    expect(contents.filter(([file]) => file.includes('.zip!')).length).toBeGreaterThan(0);
-    for (const [file, text] of contents) {
+    for (const [file, text] of contentsUnder(root)) {
       for (const form of SECRET_FORMS) expect(text.toLowerCase().includes(form), file).toBe(false);
     }
     expect(readFileSync(path.join(root, 'junit.xml'), 'utf8')).toContain('title holds &lt;secret:probe&gt;');

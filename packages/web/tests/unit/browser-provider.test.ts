@@ -39,7 +39,6 @@ function fakeBrowser(contextId: string) {
     route: async () => undefined,
     close: async () => undefined,
     pages: () => [],
-    tracing: { start: async () => undefined, stop: async () => undefined },
     _channel: { registerSelectorEngine: async () => undefined },
   };
   const browser = {
@@ -421,8 +420,8 @@ describe('worker scope', () => {
     fake.drop();
     await worker.startAttempt(attempt('a1'));
     expect(cloud.acquired).toHaveLength(2);
-    vi.spyOn(worker, 'endAttempt').mockRejectedValueOnce(new Error('trace flush failed'));
-    await expect(worker.dispose(cleanup())).rejects.toThrow(/trace flush failed/);
+    vi.spyOn(worker, 'endAttempt').mockRejectedValueOnce(new Error('video flush failed'));
+    await expect(worker.dispose(cleanup())).rejects.toThrow(/video flush failed/);
     expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-1']);
   });
 

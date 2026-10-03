@@ -89,7 +89,7 @@ describe('lastTurnLines and screenLines', () => {
 describe('evidenceOf', () => {
   it("puts the failure's own screenshot and screen text first, then one artifact per kind, and never a log the failure did not capture", () => {
     const artifacts: ReportAttempt['artifacts'] = [
-      { id: 'a:0', kind: 'trace', mediaType: 'application/zip', path: 't/trace.zip', redaction: 'not-required', producer: { kind: 'attempt' } },
+      { id: 'a:0', kind: 'video', mediaType: 'video/webm', path: 't/video.webm', redaction: 'incomplete', producer: { kind: 'attempt' } },
       { id: 'a:1', kind: 'log', mediaType: 'text/plain', path: 't/transcript.txt', redaction: 'complete', producer: { kind: 'attempt' } },
       { id: 'a:2', kind: 'screenshot', mediaType: 'image/png', path: 't/001-assert.png', redaction: 'complete', producer: { kind: 'attempt' } },
       { id: 'a:3', kind: 'screenshot', mediaType: 'image/png', path: 't/002-failure.png', redaction: 'complete', producer: { kind: 'attempt' } },

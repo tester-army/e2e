@@ -17,8 +17,6 @@ const LATE_STOP_MS = 10_000;
 export class ProviderVideo implements AttemptVideo {
   /** The recording covers the browser, so no page starts a segment of its own. */
   readonly isArmed = false;
-  /** The provider records the browser from outside; the page's screencast stays the trace's. */
-  readonly startsScreencast = false;
   private started: LeaseRecording | undefined;
   /** The stop in flight, shared: a close that retries while a timed-out stop is still running waits for it instead of stopping twice. */
   private stopping: Promise<readonly VideoSegment[]> | undefined;

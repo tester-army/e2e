@@ -610,7 +610,8 @@ test('other', { tags: ['smoke'] }, async () => {});
 import { test } from 'e2e';
 const marker = new URL('./ran-once', import.meta.url);
 test('steady', async () => {});
-test('breaks the second time', async () => {
+test('breaks the second time', async ({ app }) => {
+  await app.open();
   if (existsSync(marker)) throw new Error('second run breaks');
   writeFileSync(marker, '');
 });

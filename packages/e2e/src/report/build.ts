@@ -44,8 +44,8 @@ export interface ReportSource {
 export interface TargetProvenance {
   engine: { name: string; version: string; spiVersion: EngineSpiVersion };
   capabilities: string[];
-  /** What the engine can capture: screenshots (a failure's among them), a trace, a video. */
-  artifactCapabilities: ('screenshot' | 'trace' | 'video')[];
+  /** What the engine can capture: screenshots (a failure's among them), a video. */
+  artifactCapabilities: ('screenshot' | 'video')[];
   stateCapability: boolean;
 }
 
@@ -59,7 +59,6 @@ export function describeTarget(target: ResolvedTarget): TargetProvenance {
   const artifactCapabilities: TargetProvenance['artifactCapabilities'] = [];
   if (engine?.artifacts !== undefined) {
     artifactCapabilities.push('screenshot');
-    if (engine.artifacts.startTrace !== undefined) artifactCapabilities.push('trace');
     if (engine.artifacts.startVideo !== undefined) artifactCapabilities.push('video');
   }
   return {

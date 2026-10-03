@@ -272,7 +272,6 @@ describe('telemetry events', () => {
       config_reporters: ['junit', 'list'],
       config_custom_reporters: 0,
       config_artifact_store: false,
-      config_trace_modes: ['on'],
       config_video_modes: ['off', 'retain-on-failure'],
       config_app_commands: 1,
       config_environments: ['production', 'staging'],

@@ -977,30 +977,6 @@ describe('web engine lifecycle', () => {
     });
   });
 
-  it('keeps tracing across reset: the earlier segment is kept and the trace still stops', async () => {
-    const engine = web();
-    const traceDir = mkdtempSync(path.join(tmpdir(), 'e2e-trace-'));
-    try {
-      await withAttempt(engine, app, traceDir, 't1', async () => {
-        await engine.artifacts!.startTrace!(operation('t1'));
-        await engine.session!.open!(`${app.url}/`, operation('t1'));
-        await engine.session!.reset!(operation('t1'));
-        await engine.session!.open!(`${app.url}/form`, operation('t1'));
-        const archives = await engine.artifacts!.stopTrace!(operation('t1'));
-        // The segment closed at reset comes first, then the final archive.
-        expect(archives).toEqual(['trace/trace-part1.zip', 'trace/trace.zip']);
-        for (const file of archives as readonly string[]) {
-          const absolute = path.join(traceDir, file);
-          expect(existsSync(absolute), file).toBe(true);
-          expect(statSync(absolute).size).toBeGreaterThan(0);
-          expect(readFileSync(absolute).subarray(0, 2).toString('latin1')).toBe('PK');
-        }
-      });
-    } finally {
-      rmSync(traceDir, { recursive: true, force: true });
-    }
-  });
-
   it('records a video per page at the viewport size: a restart and a state reset each continue in a new segment', async () => {
     const engine = web();
     const videoDir = mkdtempSync(path.join(tmpdir(), 'e2e-video-'));
@@ -1020,10 +996,7 @@ describe('web engine lifecycle', () => {
           return next;
         });
         restores.push(() => contextSpy.mockRestore());
-        // Video before trace, as the harness orders them: a page's first
-        // screencast client sizes it, and the trace's would cap it at 800px.
         await engine.artifacts!.startVideo!(operation('v1'));
-        await engine.artifacts!.startTrace!(operation('v1'));
         const page = surfaceOf(engine)!.page();
         const viewport = page.viewportSize()!;
         // Observations, actions, and captures run as they would without a recording.
@@ -1045,12 +1018,6 @@ describe('web engine lifecycle', () => {
         await engine.session!.open!(`${app.url}/`, operation('v1'));
         await paint.settle(surfaceOf(engine)!.page());
         const segments = videoFiles(await engine.artifacts!.stopVideo!(operation('v1')));
-        // The restart and the state reset each closed a trace segment before the final archive.
-        expect(await engine.artifacts!.stopTrace!(operation('v1'))).toEqual([
-          'trace/trace-part1.zip',
-          'trace/trace-part2.zip',
-          'trace/trace.zip',
-        ]);
         expect(segments.map((segment) => segment.path)).toEqual([
           'video/video.webm',
           'video/video-part2.webm',
@@ -1080,14 +1047,13 @@ describe('web engine lifecycle', () => {
     }
   });
 
-  it('splits a running trace around a video started mid-attempt, so every recording fills the viewport', async () => {
+  it('records a video started mid-attempt at the viewport size, each time it starts', async () => {
     const engine = web();
     const videoDir = mkdtempSync(path.join(tmpdir(), 'e2e-video-'));
     const paint = watchPaint();
     try {
       await withAttempt(engine, app, videoDir, 'v3', async () => {
-        // A host that records on demand: the trace already sized the screencast when the video starts.
-        await engine.artifacts!.startTrace!(operation('v3'));
+        // A host that records on demand, after the page is open.
         await engine.session!.open!(`${app.url}/`, operation('v3'));
         paint.watchContext(surfaceOf(engine)!.context());
         const viewer = surfaceOf(engine)!.page();
@@ -1106,12 +1072,6 @@ describe('web engine lifecycle', () => {
           expect(frame.padded, `${segment.path} padded`).toBeLessThan(0.01);
           expect(frame.inked, `${segment.path} inked`).toBeGreaterThan(0.0005);
         }
-        // Each start closed the trace segment before it; the trace kept running around both.
-        expect(await engine.artifacts!.stopTrace!(operation('v3'))).toEqual([
-          'trace/trace-part1.zip',
-          'trace/trace-part2.zip',
-          'trace/trace.zip',
-        ]);
       });
     } finally {
       paint.restore();
@@ -1119,30 +1079,7 @@ describe('web engine lifecycle', () => {
     }
   });
 
-  it('resumes the trace a mid-attempt video start split, even when the video cannot start', async () => {
-    const engine = web();
-    const videoDir = mkdtempSync(path.join(tmpdir(), 'e2e-video-'));
-    try {
-      await withAttempt(engine, app, videoDir, 'v4', async () => {
-        await engine.artifacts!.startTrace!(operation('v4'));
-        await engine.session!.open!(`${app.url}/`, operation('v4'));
-        const page = surfaceOf(engine)!.page();
-        const spy = vi.spyOn(page.screencast, 'start').mockRejectedValueOnce(new Error('screencast unavailable'));
-        try {
-          await expect(engine.artifacts!.startVideo!(operation('v4'))).rejects.toThrow('screencast unavailable');
-        } finally {
-          spy.mockRestore();
-        }
-        await engine.session!.open!(`${app.url}/form`, operation('v4'));
-        // The segment before the failed start, then the one that kept tracing after it.
-        expect(await engine.artifacts!.stopTrace!(operation('v4'))).toEqual(['trace/trace-part1.zip', 'trace/trace.zip']);
-      });
-    } finally {
-      rmSync(videoDir, { recursive: true, force: true });
-    }
-  });
-
-  it('opens the attempt page when the video starts, so a trace started after it records at the video size', async () => {
+  it('opens the attempt page when the video starts', async () => {
     const engine = web();
     const videoDir = mkdtempSync(path.join(tmpdir(), 'e2e-video-'));
     try {
@@ -1150,11 +1087,9 @@ describe('web engine lifecycle', () => {
         await engine.artifacts!.startVideo!(operation('v2'));
         // The page exists before any navigation: the recording owns its screencast.
         expect(surfaceOf(engine)!.page().url()).toBe('about:blank');
-        await engine.artifacts!.startTrace!(operation('v2'));
         await engine.session!.open!(`${app.url}/`, operation('v2'));
         const segments = videoFiles(await engine.artifacts!.stopVideo!(operation('v2')));
         expect(segments.map((segment) => segment.path)).toEqual(['video/video.webm']);
-        expect(await engine.artifacts!.stopTrace!(operation('v2'))).toBe('trace/trace.zip');
         expect(statSync(path.join(videoDir, 'video/video.webm')).size).toBeGreaterThan(0);
       });
     } finally {

@@ -98,7 +98,7 @@
       "required": ["id", "kind", "mediaType", "redaction", "producer"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "kind": { "enum": ["screenshot", "trace", "video", "download", "log", "other"] },
+        "kind": { "enum": ["screenshot", "video", "download", "log", "other"] },
         "mediaType": { "type": "string", "minLength": 1 },
         "path": { "$ref": "#/$defs/relativePath" },
         "url": { "type": "string", "maxLength": 2048, "pattern": "^https?://[^\\s/]+[^\\s]*$" },
@@ -106,7 +106,7 @@
         "sha256": { "$ref": "#/$defs/sha256" },
         "ref": { "type": "string", "minLength": 1 },
         "startedAt": { "$ref": "#/$defs/timestamp" },
-        "redaction": { "enum": ["complete", "not-required", "incomplete"] },
+        "redaction": { "enum": ["complete", "incomplete"] },
         "producer": {
           "oneOf": [
             {
@@ -560,7 +560,7 @@
         "capabilities": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
         "artifactCapabilities": {
           "type": "array",
-          "items": { "enum": ["screenshot", "trace", "video"] },
+          "items": { "enum": ["screenshot", "video"] },
           "uniqueItems": true
         },
         "stateCapability": { "type": "boolean" },

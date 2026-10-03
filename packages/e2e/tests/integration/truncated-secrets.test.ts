@@ -3,9 +3,8 @@
  * Through the real Playwright engine: a filled credential echoed after filler
  * so the text (512) and name (256) limits keep all but its last character,
  * as typed or upper-cased by CSS, reaches neither the model, the failure
- * screen, the report, nor any file under `.e2e` (the entries of the
- * Playwright trace included), while a plain value placed the same way is
- * still cut and shown as it is.
+ * screen, the report, nor any file under `.e2e`, while a plain value
+ * placed the same way is still cut and shown as it is.
  */
 
 import { readFileSync } from 'node:fs';
@@ -69,7 +68,7 @@ describe('secrets cut short by observation limits', () => {
     expect(observation.match(/<secret:member.password>"/g)?.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('keeps the cut fragment out of the failure screen, the report, the trace, and every file under .e2e', () => {
+  it('keeps the cut fragment out of the failure screen, the report, and every file under .e2e', () => {
     const attempt = resultByTitle(outcome, 'echoes a secret across the observation limits').attempts.at(-1)!;
     expect(attempt.error?.code).toBe('LOCATOR_NOT_FOUND');
     const screen = attempt.artifacts.find((artifact) => artifact.id === attempt.failure?.screen)!;
@@ -82,8 +81,5 @@ describe('secrets cut short by observation limits', () => {
       expect(report).not.toContain(fragment);
       for (const [file, text] of contents) expect(text.includes(fragment), file).toBe(false);
     }
-    // The trace was scanned inside, and its plain text survived the rewrite.
-    const trace = contents.filter(([file]) => file.includes('.zip!'));
-    expect(trace.some(([, text]) => text.includes(CONTROL_KEPT))).toBe(true);
   });
 });

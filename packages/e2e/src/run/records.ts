@@ -10,7 +10,7 @@ export type ArtifactProducer = { kind: 'step'; stepId: string } | { kind: 'attem
 
 export interface ArtifactRecord {
   id: string;
-  kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log';
+  kind: 'screenshot' | 'video' | 'download' | 'log';
   mediaType: string;
   path?: string;
   /** A video a hosted service keeps: the `http(s)` URL the report links to, in place of a local `path`. */
@@ -27,9 +27,7 @@ export interface ArtifactRecord {
   startedAt?: string;
   /**
    * Mirrors report-1: how much of the file the runner masked. A screenshot is
-   * `complete`; a trace is `complete` once every registered secret value was
-   * rewritten out of its text, and `not-required` when the run has no
-   * secret value to rewrite; a video is `incomplete`, since a recording masks nothing
+   * `complete`; a video is `incomplete`, since a recording masks nothing
    * (a secure field renders its own dots, but anything else the screen
    * showed is in the frames), and is kept as it is; a download is
    * `incomplete` too, bytes the app served and the runner did not rewrite,
@@ -39,7 +37,7 @@ export interface ArtifactRecord {
    * recorded by `url`, or one its producer withheld, which this runner never
    * writes.
    */
-  redaction: 'complete' | 'not-required' | 'incomplete';
+  redaction: 'complete' | 'incomplete';
   producer: ArtifactProducer;
 }
 

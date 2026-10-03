@@ -50,7 +50,8 @@ describe('reporter objects', () => {
     };
     const outcome = await runExisting(project, {
       config: {
-        ...engineConfig(createFakeEngine({ trace: true }).engine),
+        ...engineConfig(createFakeEngine({ video: true }).engine),
+        video: 'on' as const,
         tests: 'tests/**/*.e2e.ts',
         reporters: [recording],
         cache: 'off' as const,
@@ -119,7 +120,8 @@ describe('reporter objects', () => {
     };
     const outcome = await runExisting(project, {
       config: {
-        ...engineConfig(createFakeEngine({ trace: true }).engine),
+        ...engineConfig(createFakeEngine({ video: true }).engine),
+        video: 'on' as const,
         tests: 'tests/**/*.e2e.ts',
         reporters: [throwing, hanging, malformed, scalar, loud, quiet],
         cache: 'off' as const,
@@ -163,7 +165,8 @@ describe('reporter objects', () => {
     };
     const outcome = await runExisting(project, {
       config: {
-        ...engineConfig(createFakeEngine({ trace: true }).engine),
+        ...engineConfig(createFakeEngine({ video: true }).engine),
+        video: 'on' as const,
         tests: 'tests/**/*.e2e.ts',
         reporters: [uploading],
         cache: 'off' as const,

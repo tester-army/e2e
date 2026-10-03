@@ -10,7 +10,8 @@ import {
 import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.ts';
 import type { CollectedTest } from '../collect/collect.ts';
 import { groupTitles, type RegisteredTest } from '../collect/registry.ts';
-import { pairRecordings, type SkipInfo, type TestTargetPair } from '../collect/select.ts';
+import { pairVideo, type SkipInfo, type TestTargetPair } from '../collect/select.ts';
+import { attemptRecording } from '../internal/recording-modes.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
 import type { ArtifactStore } from '../types.ts';
 import { attemptSegments, createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
@@ -54,7 +55,7 @@ export interface SerialHost {
   /** See `TargetExecutorOptions.rerunDir`. */
   readonly rerunDir: string | undefined;
   readonly runId: string;
-  /** The configured artifact store, so group-owned artifacts (the shared trace) upload like any other. */
+  /** The configured artifact store, so group-owned artifacts (the shared video) upload like any other. */
   readonly artifactStore: ArtifactStore | undefined;
   readonly interruptSignal: AbortSignal;
   readonly realms: RealmManager;
@@ -377,7 +378,7 @@ async function runSerialAttempt(
   const startedMs = Date.now();
   const memberRecords: SerialMemberRecord[] = [];
   const first = members[0]!;
-  const recordings = pairRecordings(first, attemptIndex);
+  const video = attemptRecording(pairVideo(first), attemptIndex);
   const artifactSegments = attemptSegments(host.rerunDir, [
     host.target.name,
     sanitizePathSegment(first.test.serialId ?? first.test.id),
@@ -390,7 +391,7 @@ async function runSerialAttempt(
     segments: artifactSegments,
     attemptId,
     ...(host.artifactStore === undefined ? {} : { store: host.artifactStore }),
-    // A group-owned artifact (the shared trace) is identified by the group,
+    // A group-owned artifact (the shared video) is identified by the group,
     // the same identity its report path uses.
     identity: { runId: host.runId, testId: first.test.serialId ?? first.test.id, attemptId },
   });
@@ -424,8 +425,8 @@ async function runSerialAttempt(
   let shared: SharedSerialSession;
   try {
     shared = {
-      // Members share the group's session and recordings, which selection resolved alike for each.
-      session: await host.launchSession({ session: first.options.session, recordings }, attemptId, artifacts.dir, host.interruptSignal),
+      // Members share the group's session and video, which selection resolved alike for each.
+      session: await host.launchSession({ session: first.options.session, video }, attemptId, artifacts.dir, host.interruptSignal),
       attemptId,
       artifactSegments,
       priorSteps: [],
@@ -526,7 +527,7 @@ async function runSerialAttempt(
     record.status = failedMember.status;
     if (failedMember.error !== undefined) record.error = failedMember.error;
   }
-  await host.closeSession(shared.session, { attemptId, recordings }, record, artifacts.sink, record.secondaryErrors);
+  await host.closeSession(shared.session, { attemptId, video }, record, artifacts.sink, record.secondaryErrors);
   await artifacts.settle();
   record.durationMs = Date.now() - startedMs;
   return { record, reachedMembers: true };

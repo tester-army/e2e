@@ -8,7 +8,7 @@ import { ConfigurationError } from '../internal/errors.ts';
 import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
 import { realpathOfExisting } from '../internal/paths.ts';
 import { didYouMean } from '../internal/suggest.ts';
-import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
+import { isRecordingMode, RECORDING_MODES, TRACE_REMOVED, TRACE_REPLACEMENT, type ResolvedRecording } from '../internal/recording-modes.ts';
 import { BUILTIN_REPORTER_LIST, BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { isStepExecutor } from '../agent/executor.ts';
 import { compileGlob, compileGlobList, literalPrefix } from '../internal/globs.ts';
@@ -138,8 +138,6 @@ export interface CliOverrides {
   cacheStrict?: boolean;
   /** `--output <dir>`: the results directory for this run, over the config's `output`. */
   output?: string;
-  /** `--trace [mode]`: which attempts record a trace, over the config's and every target's `trace`. */
-  trace?: RecordingMode;
   /** `--video [mode]`: which attempts record a video, over the config's and every target's `video`. */
   video?: RecordingMode;
   /** `--agent`: the configured agents unpinned tests run as, instead of `default` alone. */
@@ -160,7 +158,6 @@ const TOP_LEVEL_KEYS = new Set([
   'workers',
   'artifacts',
   'output',
-  'trace',
   'video',
   'reporters',
   'agents',
@@ -178,6 +175,7 @@ const APP_BELONGS_TO_TARGET =
 /** Keys this runner used to accept, each mapped to what replaces it. */
 const REMOVED_TOP_LEVEL_KEYS: ReadonlyMap<string, string> = new Map([
   ['specVersion', 'delete it; the runner version is the format version'],
+  ['trace', TRACE_REPLACEMENT],
   [
     'limits',
     'set maxInputTokens on each agent (it was limits.maxModelTokensPerCall); the runner fixes maxAgentContextBytes, maxLedgerBytes, and maxEventsPerStep',
@@ -245,10 +243,9 @@ export function resolveConfig(
     }
   }
 
-  const recordings = runRecordings(raw, cli, ci);
+  const video = runVideo(raw, cli);
   const targets = resolveTargets(raw.targets, options.projectRoot, (target, where) => ({
-    trace: targetRecording(recordings.trace, target.trace, `${where} trace`, 'trace'),
-    video: targetRecording(recordings.video, target.video, `${where} video`, 'video'),
+    video: targetVideo(video, target.video, `${where} video`),
   }));
   const tests = normalizeTests(raw.tests, options.projectRoot);
 
@@ -496,35 +493,32 @@ const VIDEO_MOVED =
 const MODES_LIST = RECORDING_MODES.join(', ');
 
 /**
- * What replaces the removed recording facts of `artifacts`, read together:
- * the kinds list (bare or as `kinds`, absent when the config had none) and
- * the `trace` block. A list holding `trace` beside `trace: { record:
- * 'retries' }` meant retries only, so the two name one mode between them,
- * and a list without `trace` recorded none whatever the block said. Then the
- * video option for a `video` kind, and the failure screenshot a list without
- * `screenshot` used to turn off.
+ * What replaces the removed recording facts of `artifacts`: the kinds list
+ * (bare or as `kinds`, absent when the config had none) and the `trace`
+ * block. Trace recording is gone, the video option replaces a `video` kind,
+ * and a list without `screenshot` no longer turns off failure screenshots.
  */
-function removedRecordingReplacement(kinds: readonly unknown[] | undefined, trace: unknown): string {
-  const traced = kinds === undefined || kinds.includes('trace');
-  const mode = traced ? (legacyTraceSpelling(trace)?.mode ?? 'on') : 'off';
-  const parts = [`write trace: '${mode}' at the config root instead (the modes are ${MODES_LIST})`];
+function removedRecordingReplacement(kinds: readonly unknown[] | undefined, trace: boolean): string {
+  const parts: string[] = [];
+  if (trace) parts.push(TRACE_REPLACEMENT);
+  else if (kinds?.includes('trace') === true) parts.push(TRACE_REMOVED);
   if (kinds?.includes('video') === true) parts.push(VIDEO_MOVED);
   if (kinds !== undefined && !kinds.includes('screenshot')) parts.push('failure screenshots are always captured now');
-  return parts.join('; ');
+  return parts.length === 0 ? 'delete it; artifacts is { store }' : parts.join('; ');
 }
 
 /**
  * Resolves the `artifacts` key, `{ store }`: the host seam every produced
  * artifact is handed to, a live value validated structurally like
  * `cache.store`. What is recorded is not an artifacts fact: the old kinds
- * list (bare or as `kinds`) and the `trace` block are refused with the
- * `trace` mode they meant, and `video` with the option that replaced it.
+ * list (bare or as `kinds`) and the `trace` block are refused with what
+ * replaced them, and `video` with the option that replaced it.
  */
 function resolveArtifactStore(raw: E2EConfig): ArtifactStore | undefined {
   const value: unknown = raw.artifacts;
   if (value === undefined) return undefined;
   if (Array.isArray(value)) {
-    throw new ConfigurationError('INVALID_CONFIG', `artifacts no longer lists kinds: ${removedRecordingReplacement(value, undefined)}`);
+    throw new ConfigurationError('INVALID_CONFIG', `artifacts no longer lists kinds: ${removedRecordingReplacement(value, false)}`);
   }
   if (typeof value !== 'object' || value === null) {
     throw new ConfigurationError('INVALID_CONFIG', 'artifacts must be { store }');
@@ -536,7 +530,7 @@ function resolveArtifactStore(raw: E2EConfig): ArtifactStore | undefined {
     const keys = removed.map((key) => `artifacts.${key}`).join(' and ');
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      `${keys} ${removed.length === 1 ? 'was' : 'were'} removed: ${removedRecordingReplacement(kinds, block['trace'])}`,
+      `${keys} ${removed.length === 1 ? 'was' : 'were'} removed: ${removedRecordingReplacement(kinds, 'trace' in block)}`,
     );
   }
   for (const key of Object.keys(block)) {
@@ -558,53 +552,39 @@ function resolveArtifactStore(raw: E2EConfig): ArtifactStore | undefined {
   return store;
 }
 
-/** Checks one `trace` or `video` value: a mode, or undefined when the key is unset. */
-function recordingMode(value: unknown, where: string, kind: RecordingKind): RecordingMode | undefined {
+/** Checks one `video` value: a mode, or undefined when the key is unset. */
+function recordingMode(value: unknown, where: string): RecordingMode | undefined {
   if (value === undefined) return undefined;
   if (!isRecordingMode(value)) {
-    const legacy = kind === 'trace' ? legacyTraceSpelling(value) : undefined;
-    if (legacy !== undefined) {
-      const spelled = where.startsWith('--') ? `${where} ${legacy.mode}` : `trace: '${legacy.mode}'`;
-      throw new ConfigurationError('INVALID_CONFIG', `${where} ${legacy.was} is the old spelling of ${spelled}; the modes are ${MODES_LIST}`);
-    }
     throw new ConfigurationError('INVALID_CONFIG', `${where} must be one of ${MODES_LIST}, got ${describeValue(value)}`);
   }
   return value;
 }
 
-/** One kind's modes before any target speaks: the flag, the config root, and the default under both. */
-interface RunRecording {
+/** The run's `video` modes before any target speaks: the flag and the config root. */
+interface RunVideo {
   readonly cli: RecordingMode | undefined;
   readonly config: RecordingMode | undefined;
-  readonly fallback: RecordingMode;
+}
+
+/** Reads the run's `video` modes from `--video` and the config root. */
+function runVideo(raw: E2EConfig, cli: CliOverrides): RunVideo {
+  return { cli: recordingMode(cli.video, '--video'), config: recordingMode(raw.video, 'video') };
 }
 
 /**
- * The run's `trace` and `video` modes before any target speaks. A trace is
- * on by default locally and recorded on the first retry in CI, where a
- * trace of every attempt is the cost of a large share of the run.
+ * A target's effective video mode, with where it came from: the flag, else
+ * the target's own, else the config root's, else `off`. The target's own is
+ * checked whether or not the flag wins over it, so a flag never hides a
+ * config mistake.
  */
-function runRecordings(raw: E2EConfig, cli: CliOverrides, ci: boolean): Readonly<Record<RecordingKind, RunRecording>> {
-  return {
-    trace: { cli: recordingMode(cli.trace, '--trace', 'trace'), config: recordingMode(raw.trace, 'trace', 'trace'), fallback: ci ? 'on-first-retry' : 'on' },
-    video: { cli: recordingMode(cli.video, '--video', 'video'), config: recordingMode(raw.video, 'video', 'video'), fallback: 'off' },
-  };
-}
-
-/**
- * A target's effective mode of one kind, with where it came from: the flag,
- * else the target's own, else the config root's, else the default. The
- * target's own is checked whether or not the flag wins over it, so a flag
- * never hides a config mistake.
- */
-function targetRecording(run: RunRecording, own: unknown, where: string, kind: RecordingKind): ResolvedRecording {
-  const target = recordingMode(own, where, kind);
+function targetVideo(run: RunVideo, own: unknown, where: string): ResolvedRecording {
+  const target = recordingMode(own, where);
   if (run.cli !== undefined) return { mode: run.cli, source: 'run' };
   if (target !== undefined) return { mode: target, source: 'target' };
   if (run.config !== undefined) return { mode: run.config, source: 'run' };
-  return { mode: run.fallback, source: 'default' };
+  return { mode: 'off', source: 'default' };
 }
-
 
 /**
  * Splits `reporters` into the built-in ids and the reporter objects.
@@ -970,7 +950,7 @@ function computeConfigDigest(
   // and secrets are reduced below.
   //
   // `artifacts` holds only a host store, a live value, so it never enters the
-  // digest. Nor does `output`, where results land, nor `trace` and `video`, at the top or on a target: recording
+  // digest. Nor does `output`, where results land, nor `video`, at the top or on a target: recording
   // a run must never invalidate the replays it would otherwise make. A
   // reporter object changes nothing about what a run records, so it never
   // enters the digest either; the built-in ids digest as they always have,
@@ -982,7 +962,6 @@ function computeConfigDigest(
     failOnSkippedFailure: _failOnSkippedFailure,
     artifacts: _artifacts,
     output: _output,
-    trace: _trace,
     video: _video,
     targets: _targets,
     credentials: _credentials,

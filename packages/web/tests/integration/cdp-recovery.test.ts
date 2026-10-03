@@ -324,11 +324,10 @@ describe('CDP session recovery', () => {
     expect(await surfaceOf(engine)!.page().getAttribute('body', 'data-started')).toBe('true');
   });
 
-  it('resumes video and trace recording on the recovered page', async () => {
+  it('resumes video recording on the recovered page', async () => {
     const remote = await host();
     const engine = await start({ cdpEndpoint: () => remote.endpoint, reconnectEndpoint: () => remote.endpoint });
     await engine.artifacts!.startVideo!(operation());
-    await engine.artifacts!.startTrace!(operation());
     await surfaceOf(engine)!.page().screenshot();
     await surfaceOf(engine)!.context().browser()!.close();
     await engine.observe!(operation());
@@ -339,11 +338,9 @@ describe('CDP session recovery', () => {
     await engine.artifacts!.stopVideo!(operation()).catch((cause: unknown) => {
       expect(cause).toMatchObject({ code: 'ENGINE_FAILURE' });
     });
-    await engine.artifacts!.stopTrace!(operation());
     const video = path.join(artifactsDir, 'video/video-part2.webm');
     expect(existsSync(video)).toBe(true);
     expect(statSync(video).size).toBeGreaterThan(0);
-    expect(existsSync(path.join(artifactsDir, 'trace/trace.zip'))).toBe(true);
   }, 60_000);
 
   it('recovers before arming a download waiter and runs its trigger once', async () => {

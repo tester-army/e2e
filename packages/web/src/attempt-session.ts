@@ -1,6 +1,4 @@
 /** Owns one attempt's live binding, recovery, references, and recordings. */
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
 import type { Browser, BrowserContext, BrowserContextOptions, Page } from 'playwright-core';
 import { EngineError, raceAbort, withinCleanupBudget, type EngineCleanupContext, type OperationContext, type VideoSegment, type ViewportSize } from 'e2e/engine';
 import { attachPersistent, recoveryFailed, targetIdentity, type CdpEndpointResolver, type SessionBinding } from './cdp-recovery.ts';
@@ -45,8 +43,6 @@ type SessionState =
   | { readonly kind: 'failed'; readonly binding: SessionBinding | undefined; readonly error: Error }
   | { readonly kind: 'closed' };
 
-const TRACE_OPTIONS = { screenshots: true, snapshots: true } as const;
-
 export class AttemptSession {
   readonly refs = new RefRegistry();
   private readonly lifetime = new AbortController();
@@ -56,9 +52,6 @@ export class AttemptSession {
   private observed = true;
   /** Until the attempt's first page opens: a persistent browser's own first tab can serve as that page. */
   private firstPage = true;
-  private tracing = false;
-  private traceSegments = 0;
-  private traceParts: string[] = [];
   private requestedViewport: { readonly width: number; readonly height: number } | undefined;
 
   constructor(private readonly options: SessionOptions) {
@@ -169,8 +162,6 @@ export class AttemptSession {
   ): Promise<void> {
     if (budget.signal.aborted) throw connectionAbort(budget.signal, 'connection');
     this.invalidate();
-    const resumeTrace = recover && this.tracing;
-    if (recover) this.tracing = false;
     const running = Promise.resolve().then(async () => {
       if (budget.signal.aborted) throw connectionAbort(budget.signal, 'connection');
       const candidate = await open();
@@ -184,10 +175,8 @@ export class AttemptSession {
           if (size !== null) await candidate.page.setViewportSize(size);
           await this.video.pageOpened(candidate.page);
         }
-        if (resumeTrace) await candidate.context.tracing.start(TRACE_OPTIONS);
         if (budget.signal.aborted) throw connectionAbort(budget.signal, 'connection');
         if (this.state !== pending) throw connectionAbort(this.lifetime.signal, 'connection');
-        this.tracing = resumeTrace;
         this.state = { kind: 'ready', binding: candidate };
       } catch (cause) {
         await this.release(candidate).catch(() => undefined);
@@ -267,18 +256,15 @@ export class AttemptSession {
     this.invalidate();
     const token = this.token();
     await this.video.pageClosing();
-    const resume = this.video.isArmed ? await this.closeTraceSegment(binding.context) : false;
     for (const page of binding.context.pages()) await page.close();
     this.check(token);
     this.state = { kind: 'ready', binding: { ...binding, page: null } };
     await this.ensurePage();
-    if (resume) await this.startTrace();
   }
 
   /** Replaces an ordinary context; persistent recovery never advertises this capability. */
   async replace(storageState: StorageState | undefined, operation: OperationContext): Promise<void> {
     const previous = this.current();
-    const resume = await this.closeTraceSegment(previous.context);
     await this.video.pageClosing();
     await this.transition(previous, operation, async () => {
       await previous.context.close();
@@ -286,7 +272,6 @@ export class AttemptSession {
       return { browser: previous.browser, context, page: null };
     });
     if (this.video.isArmed) await this.ensurePage();
-    if (resume) await this.startTrace();
   }
 
   /** Ends this attempt immediately; late work can only access this retired owner. */
@@ -299,7 +284,6 @@ export class AttemptSession {
     const binding = 'binding' in state ? state.binding : undefined;
     if (binding === undefined) return;
     await withinCleanupBudget(this.video.abandon(budget.signal), budget);
-    if (this.tracing) await withinCleanupBudget(binding.context.tracing.stop(), budget);
     await withinCleanupBudget(this.release(binding), budget);
   }
 
@@ -308,66 +292,12 @@ export class AttemptSession {
     return this.options.persistent === undefined ? binding.context.close() : binding.browser.close();
   }
 
-  /** Allocates trace paths inside this attempt's immutable artifact directory. */
-  private tracePath(name: string): { relative: string; absolute: string } {
-    const relative = path.posix.join('trace', `${name}.zip`);
-    const absolute = path.join(this.options.artifactsDir, relative);
-    mkdirSync(path.dirname(absolute), { recursive: true });
-    return { relative, absolute };
-  }
-
-  /** Saves a replaced context's trace when it can still flush it. */
-  private async closeTraceSegment(context: BrowserContext): Promise<boolean> {
-    if (!this.tracing) return false;
-    this.tracing = false;
-    this.traceSegments += 1;
-    const { relative, absolute } = this.tracePath(`trace-part${this.traceSegments}`);
-    try {
-      await context.tracing.stop({ path: absolute });
-      this.traceParts.push(relative);
-    } catch { /* A disconnected context may have lost its final trace segment. */ }
-    return true;
-  }
-
-  /** Begins tracing the currently committed context. */
-  async startTrace(): Promise<void> {
-    const token = this.token();
-    await this.current().context.tracing.start(TRACE_OPTIONS);
-    this.check(token);
-    this.tracing = true;
-  }
-
-  /** Returns finalized segments, including any retained before context replacement failed. */
-  private async stopTrace(): Promise<string | readonly string[]> {
-    const parts = this.traceParts;
-    this.traceParts = [];
-    if (parts.length > 0 && !this.tracing) return parts;
-    const { relative, absolute } = this.tracePath('trace');
-    await this.current().context.tracing.stop({ path: absolute });
-    this.tracing = false;
-    return parts.length === 0 ? relative : [...parts, relative];
-  }
-
   /**
    * Starts video once the page is open, so a provider's recording of the
-   * browser starts on the attempt's own tab. A screencast is shared with the
-   * trace, which sizes it for itself, so a trace already running (a host
-   * that starts the video mid-attempt) is split around a screencast's start:
-   * its segment so far is saved, and it resumes on the video's screencast.
+   * browser starts on the attempt's own tab.
    */
   async startVideo(signal: AbortSignal): Promise<void> {
-    const page = await this.ensurePage();
-    const resume = this.video.startsScreencast ? await this.closeTraceSegment(this.current().context) : false;
-    try {
-      await this.video.arm(page, signal);
-    } finally {
-      if (resume) await this.startTrace();
-    }
-  }
-
-  /** Collects finalized trace segments even when connection replacement failed. */
-  collectTrace(operation: OperationContext): Promise<string | readonly string[]> {
-    return this.finalize(operation, 'trace', () => this.stopTrace());
+    await this.video.arm(await this.ensurePage(), signal);
   }
 
   /** Collects this attempt's video independently of a failed connection. */

@@ -188,8 +188,7 @@ export interface WebOptions {
    * page, deterministic and agent-driven alike. Injecting headers routes
    * every request of the attempt, which turns the browser's HTTP cache off
    * and blocks service workers (a worker's requests bypass routing, so a
-   * page it controlled would reach the gate bare), and a Playwright trace
-   * records request headers.
+   * page it controlled would reach the gate bare).
    */
   readonly headers?: Readonly<Record<string, string>>;
   /**
@@ -506,8 +505,8 @@ export class PlaywrightSurface {
    * Releases attempt resources, the worker's shared browser process, and a
    * lease the worker acquired for itself: three independent tasks, in that
    * order, every one attempted whatever the earlier ones did, and the first
-   * failure reported once all ran. A billed browser outlives a failed trace
-   * flush otherwise.
+   * failure reported once all ran. A billed browser outlives a failed
+   * recording flush otherwise.
    */
   async dispose(context: EngineCleanupContext): Promise<void> {
     const tasks = [
@@ -938,17 +937,7 @@ export class PlaywrightSurface {
     });
   }
 
-  /** Starts tracing the current attempt. */
-  startTrace(operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'trace', () => this.requireSession().startTrace());
-  }
-
-  /** Returns every trace segment finalized by the current attempt. */
-  stopTrace(operation: OperationContext): Promise<string | readonly string[]> {
-    return this.requireSession().collectTrace(operation);
-  }
-
-  /** Starts the attempt's video before a trace chooses its screencast dimensions. */
+  /** Starts the attempt's video. */
   startVideo(operation: OperationContext): Promise<void> {
     return this.guard(operation, 'video', (current) => this.requireSession().startVideo(current.signal));
   }

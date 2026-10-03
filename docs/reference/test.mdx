@@ -241,13 +241,6 @@ export interface TestOptions {
    */
   agent?: string | readonly string[];
   /**
-   * Which of the test's attempts record a trace, in place of the run's: the
-   * same modes as the config's `trace`. Innermost wins, over `--trace` too;
-   * inside a serial group the group's value applies, since the group
-   * records as one unit. A mode set here is required of the target's engine.
-   */
-  trace?: RecordingMode;
-  /**
    * Which of the test's attempts record a video, in place of the run's:
    * the same modes as the config's `video`. Innermost wins, over `--video`
    * too; inside a serial group the group's value applies, since the group
@@ -295,12 +288,12 @@ test('onboarding asks for the camera', { requires: ['native-app'] }, async ({ ap
 An `agent` name that `agents` does not define is a `COLLECTION_ERROR` at
 selection, before any test runs.
 
-`trace` and `video` take a [recording mode](/reference/config#recording):
+`video` takes a [recording mode](/reference/config#recording):
 `off`, `on`, `retain-on-failure`, `on-first-retry`, or `on-all-retries`. A
-test's or group's own value wins over `--trace` / `--video`, the target's,
+test's or group's own value wins over `--video`, the target's,
 and the config's, so one test can record on a run that records nothing, or
 opt out of one that records everything. A mode set here is required: when it
-records on some attempt and the target's engine cannot record that kind, the
+records on some attempt and the target's engine cannot record video, the
 run fails with `UNSUPPORTED_ARTIFACT` before any test starts, naming the
 test:
 
@@ -310,15 +303,19 @@ test('checkout', { video: 'on' }, async ({ agent }) => {
 });
 ```
 
+A `trace` option is a `COLLECTION_ERROR`: Playwright traces were removed. A
+failed test's page under `<output>/failures/` tells its steps, cache
+decisions, and screen.
+
 `serial: true` makes the group one ordered retry unit with shared app state
 and shared secret state: a secret fill withholds pixels for the rest of the
-group's attempt. A retry starts fresh. Inside it, `retries`, `trace`,
+group's attempt. A retry starts fresh. Inside it, `retries`,
 `video`, `session`, `platforms`, `requires`, `skip`, `only`, and a nested
 `serial` on a member are collection errors. Set them on the group. The group
-records one trace and one video per group attempt, from the `trace` and
-`video` on the serial `describe` or a group around it. A group attempt that
-cannot start, because its file fails to load or its session fails to launch,
-fails the first member with that error and skips the rest with cause
+records one video per group attempt, from the `video` on the serial
+`describe` or a group around it. A group attempt that cannot start, because
+its file fails to load or its session fails to launch, fails the first
+member with that error and skips the rest with cause
 `serial-predecessor-failed`. When the run is interrupted during the launch,
 every member skips instead. On a retry, the members keep the verdicts of
 the attempt before it. The exit code follows the error's category, as for any

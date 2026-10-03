@@ -119,12 +119,10 @@ export interface RunOptions {
   /** Records every model call to `<output>/ai-trace.json` (`--ai-trace`). */
   aiTrace?: boolean | undefined;
   /**
-   * Which attempts record a trace (`--trace [mode]`), over the config's and
-   * every target's `trace`; a test's own `trace` still wins. Applies to the
-   * targets whose engine can trace; the run names the others in a notice.
+   * Which attempts record a video (`--video [mode]`), over the config's and
+   * every target's `video`; a test's own `video` still wins. Applies to the
+   * targets whose engine can record video; the run names the others in a notice.
    */
-  trace?: RecordingMode | undefined;
-  /** Which attempts record a video (`--video [mode]`), on the same terms as `trace`. */
   video?: RecordingMode | undefined;
   /**
    * A config value instead of a discovered file, for the test harness. May
@@ -329,7 +327,6 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   if (options.noCache === true) cli.cache = 'off';
   if (options.strictCache === true) cli.cacheStrict = true;
   if (options.output !== undefined) cli.output = options.output;
-  if (options.trace !== undefined) cli.trace = options.trace;
   if (options.video !== undefined) cli.video = options.video;
   if (options.agent !== undefined) cli.agents = typeof options.agent === 'string' ? [options.agent] : options.agent;
 

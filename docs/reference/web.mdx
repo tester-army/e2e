@@ -87,7 +87,7 @@ export interface WebOptions {
    * Useful for preview-protection tokens. Other sites never receive them.
    * Names are case-insensitive and replace existing headers of the same name.
    * This enables request routing, disables the browser's HTTP cache, and
-   * blocks service workers. Playwright traces record request headers.
+   * blocks service workers.
    */
   readonly headers?: Readonly<Record<string, string>>;
   /**
@@ -221,8 +221,8 @@ geometry and focus with `browser.evaluate` before acting.
 
 Recovery preserves the page's unsaved state, storage, the attempt's secret
 taint, and the agent ledger. Operations already dispatched
-are never retried. Dialog and route handlers are reattached. Video and trace
-recording resume, but a segment lost during the disconnect cannot be recovered.
+are never retried. Dialog and route handlers are reattached. Video recording
+resumes, but a segment lost during the disconnect cannot be recovered.
 Code using `surfaceOf(engine)` must read its accessors again after recovery;
 previously retained Playwright objects belong to the disconnected transport.
 

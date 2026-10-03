@@ -1,21 +1,18 @@
 /**
- * The recording modes `trace` and `video` share, in one place for every
- * check that reads one (the config, a target, a test, `--trace`, `--video`),
- * and the one per-attempt decision both recordings follow: which attempts
- * record, which recordings are kept, and how firmly the engine is asked.
+ * The `video` recording modes, in one place for every check that reads one
+ * (the config, a target, a test, `--video`), and the one per-attempt
+ * decision: which attempts record, which recordings are kept, and how firmly
+ * the engine is asked.
  */
 
 import type { RecordingMode } from '../types.ts';
 
 export const RECORDING_MODES: readonly RecordingMode[] = ['off', 'on', 'retain-on-failure', 'on-first-retry', 'on-all-retries'];
 
-/** The recordings a mode chooses attempts for. */
-export type RecordingKind = 'trace' | 'video';
-
 /**
  * Where an effective mode was set. `default`: nobody set it. `run`: the
  * config root or the CLI flag, which apply to every target whose engine can
- * record the kind. `target` and `test`: set for that target or test, so the
+ * record video. `target` and `test`: set for that target or test, so the
  * engine must be able to record it.
  */
 export type RecordingSource = 'default' | 'run' | 'target' | 'test';
@@ -27,7 +24,7 @@ export interface ResolvedRecording {
 }
 
 /**
- * What one attempt records of one kind. `keep` says which recordings survive
+ * What one attempt records. `keep` says which recordings survive
  * the verdict. `policy` says what a recording that fails to start or finalize
  * does: `best-effort` (a default mode) drops it quietly, `required` (a mode
  * someone set) fails the attempt's launch or cleanup.
@@ -37,30 +34,15 @@ export interface AttemptRecording {
   readonly policy: 'best-effort' | 'required';
 }
 
-/** Both recordings of one attempt; undefined records nothing of that kind. */
-export interface AttemptRecordings {
-  readonly trace: AttemptRecording | undefined;
-  readonly video: AttemptRecording | undefined;
-}
+/** What replaces the removed trace recording, for every place that refuses `trace` (the config, a target, a test, `--trace`). */
+export const TRACE_REPLACEMENT = "a failed test's page under <output>/failures/ tells its steps, cache decisions, and screen; set video for a recording";
+
+/** The refusal of a `trace` key or flag, one message wherever it is read. */
+export const TRACE_REMOVED = `trace was removed: ${TRACE_REPLACEMENT}`;
 
 /** Whether `value` is one of `RECORDING_MODES`. */
 export function isRecordingMode(value: unknown): value is RecordingMode {
   return (RECORDING_MODES as readonly unknown[]).includes(value);
-}
-
-/**
- * An old trace spelling and the mode it meant, for the message that refuses
- * it: `'all'` (every attempt, the removed `artifacts.trace.record: 'all'`)
- * is `'on'`, and `'retries'` is `'on-all-retries'`, bare or as the block
- * `{ record }` lifted to where a mode goes now. `was` spells the value as
- * written. Undefined for anything else.
- */
-export function legacyTraceSpelling(value: unknown): { readonly was: string; readonly mode: RecordingMode } | undefined {
-  const block = typeof value === 'object' && value !== null && !Array.isArray(value);
-  const record = block ? (value as { record?: unknown }).record : value;
-  const mode = record === 'retries' ? 'on-all-retries' : record === 'all' ? 'on' : undefined;
-  if (mode === undefined) return undefined;
-  return { was: block ? `{ record: '${record}' }` : `'${record}'`, mode };
 }
 
 /** Whether a mode records retries only, so a test with no retries records nothing under it. */

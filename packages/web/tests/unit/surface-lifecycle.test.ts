@@ -53,10 +53,6 @@ beforeEach(async () => {
       route: async (_predicate: unknown, handler: (route: Route) => Promise<void>) => { registered = handler; },
       close: async () => undefined,
       newPage: async () => page,
-      tracing: {
-        start: async () => undefined,
-        stop: async (options?: { path: string }) => { if (options !== undefined) writeFileSync(options.path, 'trace'); },
-      },
     })),
   } as unknown as Browser;
   acquire.mockResolvedValue(browser);
@@ -99,16 +95,13 @@ it.each(['dialog', 'route'] as const)('keeps a late %s failure on the attempt th
   await expect(surface.guard(operation(), 'next attempt', async () => 'clean')).resolves.toBe('clean');
 });
 
-it('collects saved trace and video segments after ordinary context replacement fails', async () => {
+it('collects saved video segments after ordinary context replacement fails', async () => {
   await surface.startVideo(operation());
-  await surface.startTrace(operation());
   vi.mocked(browser.newContext).mockRejectedValueOnce(new Error('replacement failed'));
   await expect(surface.reset(operation())).rejects.toThrow(/replacement failed/);
-  await expect(surface.stopTrace(operation())).resolves.toEqual(['trace/trace-part1.zip']);
   const videos = await surface.stopVideo(operation());
   expect(videos).toHaveLength(1);
   expect(videos[0]).toMatchObject({ path: 'video/video.webm' });
-  expect(readFileSync(path.join(artifactsDir, 'trace/trace-part1.zip'), 'utf8')).toBe('trace');
   expect(readFileSync(path.join(artifactsDir, 'video/video.webm'), 'utf8')).toBe('recording');
   await expect(surface.open('https://example.test/', operation())).rejects.toThrow(/replacement failed/);
 });

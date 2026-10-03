@@ -21,7 +21,7 @@ name: mobile
 # emulator) and committed with the scenario change.
 #
 # A job uploads its report from every run, and its artifacts (screens,
-# traces, video) only when it fails: the quota is shared with every workflow
+# video) only when it fails: the quota is shared with every workflow
 # here, and the report alone says what the first attempt of a flaky test met.
 #
 # Each job posts its run to the pull request as one comment through
@@ -202,8 +202,8 @@ jobs:
             echo "::endgroup::"
           done
       # The report is small and says what the first attempt of a flaky test
-      # met, so it is kept from every run; the artifacts (screens, traces,
-      # video) only from a red one, since the quota is shared.
+      # met, so it is kept from every run; the artifacts (screens, video)
+      # only from a red one, since the quota is shared.
       - name: Upload report
         if: ${{ !cancelled() }}
         continue-on-error: true

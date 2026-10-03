@@ -56,7 +56,6 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     readonly idleMs?: number;
     readonly ttlMs?: number;
     readonly maxSessions?: number;
-    readonly trace?: RecordingMode;
     readonly video?: RecordingMode;
     /** The target's app; the fake's own URL by default. */
     readonly app?: TargetApp;
@@ -87,7 +86,6 @@ describe('SessionHost', { timeout: 60_000 }, () => {
             targets: [{ name: 'kiosk', platform: 'kiosk', engine: engine().engine, app: options.app ?? FAKE_APP }],
             credentials: { admin: { username: 'admin', password: 'kiosk-pw' } },
             ...(options.secrets === undefined ? {} : { secrets: options.secrets }),
-            ...(options.trace === undefined ? {} : { trace: options.trace }),
             ...(options.video === undefined ? {} : { video: options.video }),
             ...(options.tools === undefined ? {} : { agents: { default: { tools: options.tools } } }),
           } as never,
@@ -464,29 +462,6 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     expect(closed.endsWith(`- ${path.join(recordings, '2.webm')}`)).toBe(true);
     expect(readdirSync(recordings).toSorted()).toEqual(['1-demo.webm', '2.webm']);
     expect(existsSync(path.join(fake.attempts[0]!.artifactsDir, 'video', 'fake.webm'))).toBe(false);
-  });
-
-  it('traces the one attempt under on, and records no trace under a retry or retain-on-failure mode', async () => {
-    /** The trace operations one session with the config's `trace` ran. */
-    const traced = async (trace: RecordingMode | undefined) => {
-      const fake = createFakeEngine({ trace: true });
-      const session = host(() => fake, trace === undefined ? {} : { trace });
-      await session.open({});
-      await session.close('done');
-      return fake.operations.map((operation) => operation.method).filter((method) => method.includes('Trace'));
-    };
-    expect(await traced(undefined)).toEqual(['artifacts.startTrace', 'artifacts.stopTrace']);
-    expect(await traced('on')).toEqual(['artifacts.startTrace', 'artifacts.stopTrace']);
-    for (const mode of ['off', 'on-first-retry', 'on-all-retries', 'retain-on-failure'] as const) expect(await traced(mode)).toEqual([]);
-  });
-
-  it('says once that a trace the config asks for is not recorded on an engine that cannot trace', async () => {
-    const session = host(engines().next, { trace: 'on' });
-    await session.open({});
-    await session.close('done');
-    expect(logs.filter((line) => line.includes('records no trace'))).toEqual([
-      'info: kiosk: trace records only on targets whose engine can record it; target "kiosk" (engine fake) records no trace',
-    ]);
   });
 
   it('lists no recording tools when the engine records no video', async () => {

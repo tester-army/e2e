@@ -163,12 +163,8 @@ name fails with `UNKNOWN_TOOL` and the list of names.
 
 A session records video only between `start_recording` and
 `stop_recording`, as many times as needed; the configured
-[`video`](/reference/config#video) mode applies to runs, not sessions. The
-configured [`trace`](/reference/config#trace) mode does apply: a session is
-one attempt that closes as passed, so it keeps a trace under `on` (the local
-default) and records none under a retry mode (the CI default) or
-`retain-on-failure`. A `trace` the config sets on an engine that cannot
-trace is skipped with a notice in the server log, as a run skips it. Each recording is saved to
+[`video`](/reference/config#video) mode applies to runs, not sessions. Each
+recording is saved to
 `<output>/videos/<session>/<n>[-<name>].webm` (`.mp4` on mobile, and
 [`output`](/reference/config#output) is `.e2e` by default), where `n`
 counts the session's recordings. A web recording that spans a restart or a

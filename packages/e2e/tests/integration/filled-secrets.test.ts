@@ -1,21 +1,16 @@
 /**
- * A filled secret never leaves the runner in a trace or in the cache. Through
- * the real Playwright engine: a credential filled by `screen.fill()` and one
- * filled by an executor's `typeSecret` each produce a trace whose every text
- * entry is redacted, labelled `complete`, and handed to the store already
- * clean; an attempt that filled no secret has its trace and text download
- * scanned too, labelled `complete`, its text and frames kept as recorded. A
- * secret filled into a visible ordinary field denies screenshots and leaves
- * no screencast frame in the trace, while the untainted trace keeps its
- * frames. The executor's fill is recorded in the
- * trace cache by the secret's name alone. Nothing under the project's `.e2e`
+ * A filled secret never leaves the runner in an artifact or in the cache.
+ * Through the real web engine: a text download is rewritten, labelled
+ * `complete`, and handed to the store already clean whenever the session
+ * knows the secret, filled or not. A secret filled into a visible ordinary
+ * field denies screenshots. The executor's fill is recorded in the trace
+ * cache by the secret's name alone. Nothing under the project's `.e2e`
  * directory holds the plaintext afterwards.
  */
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { inflateEntry, readZip } from '../../src/internal/zip.ts';
 import type { ExecutorNode } from '../../src/agent/executor.ts';
 import type { ArtifactStore, StoredArtifact } from '../../src/types.ts';
 import type { RunOutcome } from '../../src/run/runner.ts';
@@ -23,7 +18,7 @@ import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { contentsUnder, createProject, resultByTitle, runExisting, type FixtureProject } from '../helpers/run-project.ts';
 import { entriesFor, readEntries } from '../helpers/trace-cache.ts';
 
-const SECRET = 'trace-secret-Qx7#"&=2718';
+const SECRET = 'filled-secret-Qx7#"&=2718';
 
 const SUITE = `import { test } from '@e2e-dev/web';
 import { expect, credentials } from 'e2e';
@@ -74,30 +69,7 @@ function capturing(): ArtifactStore & { puts: StoredArtifact[] } {
   };
 }
 
-/** The archive's text entries by name, decoded. */
-function textEntries(bytes: Uint8Array): Map<string, string> {
-  return new Map(
-    readZip(bytes).flatMap((entry) => {
-      try {
-        return [[entry.name, new TextDecoder('utf-8', { fatal: true }).decode(inflateEntry(entry))] as const];
-      } catch {
-        return [];
-      }
-    }),
-  );
-}
-
-/** Names of the archive's JPEG and PNG entries, told by their magic bytes. */
-function imageEntries(bytes: Uint8Array): string[] {
-  return readZip(bytes).flatMap((entry) => {
-    const head = Buffer.from(inflateEntry(entry).subarray(0, 4));
-    const jpeg = head.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]));
-    const png = head.equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
-    return jpeg || png ? [entry.name] : [];
-  });
-}
-
-describe('trace secrecy', () => {
+describe('filled secrets', () => {
   let app: FixtureApp;
   let project: FixtureProject;
   let outcome: RunOutcome;
@@ -112,7 +84,6 @@ describe('trace secrecy', () => {
         tests: 'tests/**/*.e2e.ts',
         reporters: ['json'] as const,
         cache: 'read-write' as const,
-        trace: 'on',
         artifacts: { store },
         credentials: { member: { username: 'ada', password: SECRET } },
         agents: {
@@ -154,55 +125,6 @@ describe('trace secrecy', () => {
       .flatMap((result) => result.attempts)
       .flatMap((attempt) => (attempt.error === undefined ? [] : [attempt.error]));
     expect(outcome.status, JSON.stringify({ runErrors: outcome.report.run.errors, failures }, null, 2)).toBe('passed');
-  });
-
-  it.each(['fills through screen', 'fills through the executor'])(
-    '%s: the trace is rewritten, labelled complete, and stored clean',
-    (title) => {
-      const attempt = resultByTitle(outcome, title).attempts[0]!;
-      const trace = attempt.artifacts.find((artifact) => artifact.kind === 'trace')!;
-      expect(trace).toMatchObject({ redaction: 'complete', mediaType: 'application/zip' });
-      expect(trace.path).toBeDefined();
-      expect(attempt.secondaryErrors).toEqual([]);
-
-      const onDisk = readFileSync(path.join(project.dir, '.e2e', 'artifacts', trace.path!));
-      const entries = textEntries(onDisk);
-      // A real trace: the actions and the network are there, and the fill is recorded, redacted.
-      expect([...entries.keys()]).toEqual(expect.arrayContaining(['trace.trace', 'trace.network']));
-      expect(entries.get('trace.trace')).toContain('"fill"');
-      expect(entries.get('trace.trace')).toContain('<secret:member.password>');
-      for (const [name, text] of entries) expect(text, name).not.toContain(SECRET);
-
-      const put = store.puts.find((stored) => stored.path === trace.path)!;
-      expect(put.sha256).toBe(trace.sha256);
-      expect(Buffer.from(put.bytes).equals(onDisk)).toBe(true);
-    },
-  );
-
-  it('fills nothing: the trace is scanned, kept as recorded, and labelled complete', () => {
-    const attempt = resultByTitle(outcome, 'fills nothing').attempts[0]!;
-    const trace = attempt.artifacts.find((artifact) => artifact.kind === 'trace')!;
-    expect(trace).toMatchObject({ redaction: 'complete' });
-    expect(trace.path).toBeDefined();
-    const onDisk = readFileSync(path.join(project.dir, '.e2e', 'artifacts', trace.path!));
-    const entries = textEntries(onDisk);
-    expect(entries.get('trace.trace')).toContain('plain text');
-    expect(entries.get('trace.trace')).toContain('"screencast-frame"');
-    expect(imageEntries(onDisk)).toEqual(expect.arrayContaining([expect.stringMatching(/^screencast\/.+\.jpeg$/)]));
-  });
-
-  it('fills a visible field: screenshots are denied and the trace keeps no screencast frame', () => {
-    const attempt = resultByTitle(outcome, 'fills a visible field').attempts[0]!;
-    const trace = attempt.artifacts.find((artifact) => artifact.kind === 'trace')!;
-    expect(trace).toMatchObject({ redaction: 'complete' });
-    const onDisk = readFileSync(path.join(project.dir, '.e2e', 'artifacts', trace.path!));
-    const entries = textEntries(onDisk);
-    expect(entries.get('trace.trace')).toContain('<secret:member.password>');
-    expect(entries.get('trace.trace')).toContain('"frame-snapshot"');
-    expect(entries.get('trace.trace')).not.toContain('"screencast-frame"');
-    expect(imageEntries(onDisk)).toEqual([]);
-    const put = store.puts.find((stored) => stored.path === trace.path)!;
-    expect(Buffer.from(put.bytes).equals(onDisk)).toBe(true);
   });
 
   it('downloads after a fill: a text download is rewritten, labelled complete, and stored clean', () => {

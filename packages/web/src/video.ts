@@ -31,8 +31,6 @@ import { currentViewport, message } from './support.ts';
 export interface AttemptVideo {
   /** True while pages the attempt opens start segments of their own. */
   readonly isArmed: boolean;
-  /** True when `arm` would start a screencast on the page, which a running trace sized for itself. */
-  readonly startsScreencast: boolean;
   arm(page: Page, signal: AbortSignal): Promise<void>;
   pageOpened(page: Page): Promise<void>;
   pageClosing(): Promise<void>;
@@ -68,11 +66,6 @@ export class VideoRecorder implements AttemptVideo {
   /** True between `arm` and `stop`: a page the attempt opens then starts a segment. */
   get isArmed(): boolean {
     return this.armed;
-  }
-
-  /** True while no segment records: `arm` then starts one on the page it is given. */
-  get startsScreencast(): boolean {
-    return this.current === null;
   }
 
   /** Starts the recording on `page`, unless a segment already records, and arms it. */

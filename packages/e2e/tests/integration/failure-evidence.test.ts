@@ -214,7 +214,7 @@ describe('failure evidence', () => {
       const fake = createFakeEngine({ artifacts: true });
       const { outcome, project } = await runProject(
         { 'tests/count.e2e.ts': WRONG_EXPECTATION_TEST },
-        { appUrl: FAKE_APP_URL, config: fakeConfig(fake, { trace: 'off' }) },
+        { appUrl: FAKE_APP_URL, config: fakeConfig(fake) },
       );
       try {
         assertValidReport(outcome.report);

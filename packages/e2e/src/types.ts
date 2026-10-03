@@ -617,13 +617,6 @@ export interface TestOptions {
    */
   agent?: string | readonly string[];
   /**
-   * Which of the test's attempts record a trace, in place of the run's: the
-   * same modes as the config's `trace`. Innermost wins, over `--trace` too;
-   * inside a serial group the group's value applies, since the group records
-   * as one unit. A mode set here is required of the target's engine.
-   */
-  trace?: RecordingMode;
-  /**
    * Which of the test's attempts record a video, in place of the run's:
    * the same modes as the config's `video`. Innermost wins, over `--video`
    * too; inside a serial group the group's value applies, since the group
@@ -1094,13 +1087,6 @@ export interface Target {
   /** The app under test: what it is, where it is served, and the command that starts it. */
   app?: TargetApp;
   /**
-   * Which attempts on this target record a trace, in place of the config's
-   * `trace`; `--trace` and a test's own `trace` win over it. A mode set here
-   * is required of the engine: one that cannot trace fails the run with
-   * `UNSUPPORTED_ARTIFACT`.
-   */
-  trace?: RecordingMode;
-  /**
    * Which attempts on this target record a video, in place of the config's
    * `video`; `--video` and a test's own `video` win over it. A mode set here
    * is required of the engine: one that cannot record fails the run with
@@ -1110,7 +1096,7 @@ export interface Target {
 }
 
 /**
- * Which attempts record a trace or a video, and which recordings are kept.
+ * Which attempts record a video, and which recordings are kept.
  * `off`: none. `on`: every attempt, every recording kept.
  * `retain-on-failure`: every attempt records, only the recordings of attempts
  * that did not pass are kept. `on-first-retry`: only the first retry records,
@@ -1175,7 +1161,7 @@ export interface CacheConfig {
  * test, so a host may use it as its own key.
  */
 export interface StoredArtifact {
-  readonly kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log';
+  readonly kind: 'screenshot' | 'video' | 'download' | 'log';
   readonly mediaType: string;
   readonly bytes: Uint8Array;
   readonly size: number;
@@ -1188,7 +1174,7 @@ export interface StoredArtifact {
    * session's secret values; a store that exports only what the runner
    * vouches for reads this rather than the kind.
    */
-  readonly redaction: 'complete' | 'not-required' | 'incomplete';
+  readonly redaction: 'complete' | 'incomplete';
   readonly runId: string;
   readonly testId: string;
   readonly attemptId: string;
@@ -1242,8 +1228,8 @@ export interface StoredArtifactLink {
 }
 
 /**
- * Where artifacts go. What is recorded is not configured here: `trace` and
- * `video` choose the recordings, and a failure's screenshot and screen text
+ * Where artifacts go. What is recorded is not configured here: `video`
+ * chooses the recordings, and a failure's screenshot and screen text
  * are captured whenever the engine can.
  */
 export interface ArtifactsConfig {
@@ -1424,12 +1410,6 @@ export interface E2EConfig {
   /** `{ store }` hands every artifact to a host store as it is produced. */
   artifacts?: ArtifactsConfig;
   /**
-   * Which attempts record a trace; default `on`, `on-first-retry` in CI. A
-   * target's `trace` wins over it, `--trace [mode]` over both, and a test's
-   * own `trace` over all. Applies to the targets whose engine can trace.
-   */
-  trace?: RecordingMode;
-  /**
    * Which attempts record a video; default `off`. A target's `video` wins
    * over it, `--video [mode]` over both, and a test's own `video` over all.
    * Applies to the targets whose engine can record.
@@ -1481,7 +1461,7 @@ export interface E2EConfig {
    * Named values the model must never see: API keys, tokens, anything sourced
    * from the environment. `secrets.get(name)` hands a test the opaque handle;
    * the value is filled by the runner, masked in every observation, and
-   * redacted from logs, traces, and the report.
+   * redacted from logs and the report.
    */
   secrets?: Readonly<Record<string, SecretConfig>>;
 }

@@ -133,12 +133,12 @@ describe('createAttemptArtifacts with an ArtifactStore', () => {
         },
       },
     });
-    writeFileSync(path.join(artifacts.dir, 'trace.zip'), 'zip');
-    artifacts.sink.register('trace', 'trace.zip');
+    writeFileSync(path.join(artifacts.dir, 'video.webm'), 'webm');
+    artifacts.sink.register('video', 'video.webm');
     await expect(artifacts.settle()).resolves.toBeUndefined();
     const record = artifacts.records[0]!;
     expect(record.ref).toBeUndefined();
-    expect(record.path).toBe('web/t/attempt-0/trace.zip');
+    expect(record.path).toBe('web/t/attempt-0/video.webm');
     expect(record.sha256).toBeDefined();
   });
 
@@ -178,21 +178,23 @@ describe('createAttemptArtifacts with an ArtifactStore', () => {
 });
 
 describe('artifact redaction labels', () => {
-  it('marks a trace registered without a verdict as incomplete, and takes the verdict when given', async () => {
+  it('labels each kind by what the runner masked: a screenshot and a log complete, a video incomplete', async () => {
     const artifacts = createAttemptArtifacts({
       artifactsRoot: root(),
       segments: ['web', 'test-1', 'attempt-0'],
       attemptId: 'att-1',
     });
-    mkdirSync(path.join(artifacts.dir, 'trace'));
-    writeFileSync(path.join(artifacts.dir, 'trace', 'trace.zip'), 'zip bytes');
-    artifacts.sink.register('trace', 'trace/trace.zip');
-    artifacts.sink.register('trace', 'trace/trace.zip', { redaction: 'not-required' });
-    artifacts.sink.register('trace', 'trace/trace.zip', { redaction: 'complete' });
+    mkdirSync(path.join(artifacts.dir, 'video'));
+    writeFileSync(path.join(artifacts.dir, 'shot.png'), 'x');
+    writeFileSync(path.join(artifacts.dir, 'video', 'video.webm'), 'webm bytes');
+    writeFileSync(path.join(artifacts.dir, 'screen.txt'), 'text');
+    artifacts.sink.register('screenshot', 'shot.png');
+    artifacts.sink.register('video', 'video/video.webm');
+    artifacts.sink.register('log', 'screen.txt');
     await artifacts.settle();
-    expect(artifacts.records.map((record) => record.redaction)).toEqual(['incomplete', 'not-required', 'complete']);
-    // A labelled trace still carries its file.
-    expect(artifacts.records[2]).toMatchObject({ path: 'web/test-1/attempt-0/trace/trace.zip', size: 9 });
+    expect(artifacts.records.map((record) => record.redaction)).toEqual(['complete', 'incomplete', 'complete']);
+    // An unmasked video still carries its file.
+    expect(artifacts.records[1]).toMatchObject({ path: 'web/test-1/attempt-0/video/video.webm', size: 10 });
   });
 
   it('hands the store the redaction the record carries', async () => {
@@ -204,13 +206,13 @@ describe('artifact redaction labels', () => {
       store,
     });
     writeFileSync(path.join(artifacts.dir, 'shot.png'), 'x');
-    writeFileSync(path.join(artifacts.dir, 'trace.zip'), 'zip');
+    writeFileSync(path.join(artifacts.dir, 'video.webm'), 'webm');
     artifacts.sink.register('screenshot', 'shot.png');
-    artifacts.sink.register('trace', 'trace.zip', { redaction: 'not-required' });
+    artifacts.sink.register('video', 'video.webm');
     await artifacts.settle();
     // Puts land as each file's read finishes, in no fixed order.
     expect(store.puts.find((put) => put.kind === 'screenshot')).toMatchObject({ redaction: 'complete' });
-    expect(store.puts.find((put) => put.kind === 'trace')).toMatchObject({ redaction: 'not-required' });
+    expect(store.puts.find((put) => put.kind === 'video')).toMatchObject({ redaction: 'incomplete' });
   });
 });
 
@@ -347,14 +349,5 @@ describe('download redaction', () => {
     expect(tainted.records.map((record) => record.redaction)).toEqual(['incomplete', 'incomplete']);
     expect(readFileSync(path.join(tainted.dir, 'downloads', 'blob.bin')).equals(binary)).toBe(true);
     expect(readFileSync(path.join(tainted.dir, 'downloads', 'broken.txt')).equals(binary)).toBe(true);
-  });
-
-  it('keeps a redaction the registration decided, whatever the session filled', async () => {
-    const artifacts = downloads('filled');
-    writeFileSync(path.join(artifacts.dir, 'downloads', 'export.csv'), SECRET);
-    artifacts.sink.register('download', 'downloads/export.csv', { redaction: 'not-required' });
-    await artifacts.settle();
-    expect(artifacts.records[0]).toMatchObject({ redaction: 'not-required' });
-    expect(readFileSync(path.join(artifacts.dir, 'downloads', 'export.csv'), 'utf8')).toBe(SECRET);
   });
 });

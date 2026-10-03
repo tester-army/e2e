@@ -820,12 +820,12 @@ test('asserts after a degraded pixel request', async ({ app, agent }) => {
       const fake = createFakeEngine();
       const { outcome, project } = await runProject(
         { 'tests/artifact.e2e.ts': PASSING_TEST },
-        { appUrl: APP_URL, config: { targets: [{ name: 'fake', platform: 'fake', engine: fake.engine, trace: 'on' }] } },
+        { appUrl: APP_URL, config: { targets: [{ name: 'fake', platform: 'fake', engine: fake.engine, video: 'on' }] } },
       );
       expect(outcome.status).toBe('error');
       expect(fake.stats().attemptsStarted).toBe(0);
       expect(outcome.report.run.errors.find((error) => error.code === 'UNSUPPORTED_ARTIFACT')?.message).toBe(
-        "target \"fake\" (engine fake) cannot record a trace, and the target sets trace: 'on'",
+        "target \"fake\" (engine fake) cannot record video, and the target sets video: 'on'",
       );
       project.cleanup();
     },
@@ -1061,7 +1061,6 @@ test('fails on purpose', async ({ app }) => {
       const fake = createFakeEngine({ video: true });
       const { outcome, project } = await runProject(
         { 'tests/video.e2e.ts': PASSING_TEST },
-        // The default trace is best-effort: the fake has no trace, and the run does not mind.
         { appUrl: APP_URL, config: plainConfig(fake), runOptions: { video: 'on' } },
       );
       expect(outcome.status).toBe('passed');
@@ -1225,7 +1224,7 @@ test.describe('checkout', () => {
   );
 });
 
-describe('trace capability and plan notices', () => {
+describe('video capability and plan notices', () => {
   /** Runs `files` on `fake` with `config` and returns the outcome with the run's notices. */
   const runWithNotices = async (fake: FakeEngineHandle, files: Record<string, string>, config: Partial<E2EConfig> = {}) => {
     const notices: string[] = [];
@@ -1239,11 +1238,11 @@ describe('trace capability and plan notices', () => {
   };
 
   it(
-    'applies a config trace best-effort, naming the targets that cannot trace, and says nothing for the default',
+    'applies a config video best-effort, naming the targets that cannot record it, and says nothing for the default',
     async () => {
-      const set = await runWithNotices(createFakeEngine({ artifacts: true }), { 'tests/a.e2e.ts': PASSING_TEST }, { trace: 'on' });
+      const set = await runWithNotices(createFakeEngine({ artifacts: true }), { 'tests/a.e2e.ts': PASSING_TEST }, { video: 'on' });
       expect(set.outcome.status).toBe('passed');
-      expect(set.notices).toEqual(['trace records only on targets whose engine can record it; target "fake" (engine fake) records no trace']);
+      expect(set.notices).toEqual(['video records only on targets whose engine can record it; target "fake" (engine fake) records no video']);
       const fallback = await runWithNotices(createFakeEngine({ artifacts: true }), { 'tests/a.e2e.ts': PASSING_TEST });
       expect(fallback.outcome.status).toBe('passed');
       expect(fallback.notices).toEqual([]);
@@ -1252,37 +1251,23 @@ describe('trace capability and plan notices', () => {
   );
 
   it(
-    "refuses a test's trace on an engine that cannot trace, naming the test",
+    "refuses a test's video on an engine that cannot record it, naming the test",
     async () => {
       const fake = createFakeEngine({ artifacts: true });
       const { outcome } = await runWithNotices(fake, {
-        'tests/a.e2e.ts': PASSING_TEST.replace("test('taps a node', async", "test('taps a node', { trace: 'retain-on-failure' }, async"),
+        'tests/a.e2e.ts': PASSING_TEST.replace("test('taps a node', async", "test('taps a node', { video: 'retain-on-failure' }, async"),
       });
       expect(outcome.status).toBe('error');
       expect(fake.stats().attemptsStarted).toBe(0);
       expect(outcome.report.run.errors.find((error) => error.code === 'UNSUPPORTED_ARTIFACT')?.message).toBe(
-        "target \"fake\" (engine fake) cannot record a trace, and test \"taps a node\" in tests/a.e2e.ts sets trace: 'retain-on-failure'",
+        "target \"fake\" (engine fake) cannot record video, and test \"taps a node\" in tests/a.e2e.ts sets video: 'retain-on-failure'",
       );
     },
     60_000,
   );
 
   it(
-    'warns at plan time that a retry mode with no retries records no traces',
-    async () => {
-      const fake = createFakeEngine({ trace: true });
-      const { outcome, notices } = await runWithNotices(fake, { 'tests/a.e2e.ts': PASSING_TEST }, { trace: 'on-first-retry', retries: 0 });
-      expect(outcome.status).toBe('passed');
-      expect(notices).toEqual([
-        "trace: 'on-first-retry' records retries only, and 1 test runs with retries: 0, so no traces will be recorded for it; set retries, or trace: 'on'",
-      ]);
-      expect(fake.operations.some((operation) => operation.method === 'artifacts.startTrace')).toBe(false);
-    },
-    60_000,
-  );
-
-  it(
-    'warns at plan time that a retry mode with no retries records no videos, as for traces',
+    'warns at plan time that a retry mode with no retries records no videos',
     async () => {
       const fake = createFakeEngine({ video: true });
       const { outcome, notices } = await runWithNotices(fake, { 'tests/a.e2e.ts': PASSING_TEST }, { video: 'on-all-retries', retries: 0 });
@@ -1291,20 +1276,6 @@ describe('trace capability and plan notices', () => {
         "video: 'on-all-retries' records retries only, and 1 test runs with retries: 0, so no videos will be recorded for it; set retries, or video: 'on'",
       ]);
       expect(fake.operations.some((operation) => operation.method === 'artifacts.startVideo')).toBe(false);
-    },
-    60_000,
-  );
-
-  it(
-    'traces with the fake engine, keeping a passed attempt out of the report under retain-on-failure',
-    async () => {
-      const fake = createFakeEngine({ trace: true });
-      const { outcome } = await runWithNotices(fake, { 'tests/a.e2e.ts': PASSING_TEST }, { trace: 'retain-on-failure' });
-      expect(outcome.status).toBe('passed');
-      const attempt = resultByTitle(outcome, 'taps a node').attempts[0]!;
-      expect(attempt.artifacts.filter((artifact) => artifact.kind === 'trace')).toEqual([]);
-      expect(existsSync(path.join(fake.attempts[0]!.artifactsDir, 'trace', 'fake.zip'))).toBe(false);
-      expect(fake.operations.map((operation) => operation.method)).toEqual(expect.arrayContaining(['artifacts.startTrace', 'artifacts.stopTrace']));
     },
     60_000,
   );

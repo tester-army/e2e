@@ -98,8 +98,8 @@ interface Entry {
   readonly final: Outcome;
 }
 
-/** Screenshots first, then the recording, then the trace; the compiler fails when a kind is missing here. */
-const KIND_RANK: Record<ArtifactKind, number> = { screenshot: 0, video: 1, trace: 2, download: 3, log: 4 };
+/** Screenshots first, then the recording; the compiler fails when a kind is missing here. */
+const KIND_RANK: Record<ArtifactKind, number> = { screenshot: 0, video: 1, download: 2, log: 3 };
 
 const ICON: Record<Bucket, string> = { failed: '🔴', interrupted: '⏹️', flaky: '⚠️', skipped: '⏭️', passed: '🟢' };
 /** Worst first: the order failures are listed, files are sorted, and a file's glyph is chosen in. */
@@ -265,8 +265,8 @@ function runErrorLine(error: ReportError): string {
  * quoted; the facts as a list (expected and observed, whether every attempt
  * failed alike, the last turns, the screen); and the evidence. The file is
  * named once, in the source link. The steps before the failed one are not
- * retold: the lead says where in the flow it was, and the trace has the
- * rest. A flaky test's story is its last failed attempt, not the retry that
+ * retold: the lead says where in the flow it was, and the failure page has
+ * the rest. A flaky test's story is its last failed attempt, not the retry that
  * passed.
  */
 function failureBlock({ result, final }: Entry, manyTargets: boolean, options: MarkdownReportOptions): string {

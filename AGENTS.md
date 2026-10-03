@@ -301,9 +301,9 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   directory, then `E2E_DEVTOOLS=1 ... test:agent -- --workers 1` (the testbed
   agent config registers `@ai-sdk/devtools`; that recorder is one database
   per process, hence one worker). Prefer `--ai-trace` for anything to keep.
-- "Trace" means three things here: the recorded actions the replay cache
-  keeps (`trace-1` entries under `.e2e/cache/`), the Playwright trace
-  artifact, and this AI trace. Say which.
+- "Trace" means two things here: the recorded actions the replay cache
+  keeps (`trace-1` entries under `.e2e/cache/`) and this AI trace. Say
+  which.
 
 ## Cross-checking the web engine's tree
 
@@ -437,9 +437,9 @@ trees, on both platforms, without a device.
     secret an engine resolves for an option the app sees (basic auth) is
     protected as text only: redacted everywhere text goes, pixels untouched.
     One exposure level per session (`SecretExposure` in `run/secrecy.ts`)
-    decides pixels and the taint a saved session carries; traces and text
-    downloads are rewritten whenever the session's ledger holds a value
-    (`redactsRecordings`), since a plain string reaches the app unseen. What
+    decides pixels and the taint a saved session carries; text downloads are
+    rewritten whenever the session's ledger holds a value
+    (`redactsDownloads`), since a plain string reaches the app unseen. What
     an executor keeps in `attempt.memory` is its own; the harness never
     reports it.
   - An agent's secret fill is authorized by the runner, not the model.

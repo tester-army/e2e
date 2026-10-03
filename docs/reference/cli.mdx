@@ -384,14 +384,17 @@ or every test was filtered out.
 | `--pass-with-no-tests` | boolean | `false` | Exit 0 instead of `NO_TESTS` when nothing is selected. |
 | `--debug` | boolean | `false` | Phase timings and an agent step table on stderr after the run. |
 | `--ai-trace` | boolean | `false` | Records every model call to `<output>/ai-trace.json`, an AI SDK devtools database. Open it with [unbox-ai](https://github.com/tester-army/unbox-ai). |
-| `--trace [mode]` | `off`, `on`, `retain-on-failure`, `on-first-retry`, or `on-all-retries` | config | Which attempts record a trace, over the config's and every target's `trace`; a test's own `trace` still wins. A bare `--trace` is `on`, `--trace off` skips the cost for one run. It applies to the targets whose engine can trace; the run names the others in one notice. The value is optional and greedy, so `--trace tests/a.e2e.ts` reads the file as a mode and fails: write `--trace=<mode>`, or put test files before `--trace`. See [trace](/reference/config#trace). |
-| `--video [mode]` | a recording mode, as `--trace` | config | Which attempts record a video (WebM on a browser engine, MP4 on a device engine), over the config's and every target's `video`; a test's own `video` still wins. A bare `--video` is `on`. It applies to the targets whose engine can record; the run names the others in one notice. Greedy like `--trace`: write `--video=<mode>`, or put test files before `--video`. See [video](/reference/config#video). |
+| `--video [mode]` | `off`, `on`, `retain-on-failure`, `on-first-retry`, or `on-all-retries` | config | Which attempts record a video (WebM on a browser engine, MP4 on a device engine), over the config's and every target's `video`; a test's own `video` still wins. A bare `--video` is `on`. It applies to the targets whose engine can record; the run names the others in one notice. The value is optional and greedy, so `--video tests/a.e2e.ts` reads the file as a mode and fails: write `--video=<mode>`, or put test files before `--video`. See [video](/reference/config#video). |
 
 Out-of-range `--retries` and `--workers` fail with `INVALID_CONFIG` before
 anything starts, the same as the config value would. `--target`, `--tag`,
 `--exclude-tag`, and `--agent` take each name once; an empty value (`--tag ''`,
 or `--tag "$TAGS"` with the variable unset) is a usage error, exit 2, never a
 wider selection.
+
+The removed `--trace` flag, on `run` and `explore`, fails naming what
+replaced Playwright traces: a failed test's page under `<output>/failures/`,
+or `--video` for a recording.
 
 Filters only narrow, and each applies after the one before: positionals, then
 `.only`, `--tag`, `--exclude-tag`, `--grep`, `--grep-invert`, `--last-failed`,
@@ -565,7 +568,6 @@ assessment. The default goal is `Explore the app and find bugs`. See
 | `--output <dir>` | string | config, else `.e2e` | As for `run`; a finding's evidence screenshot is one of the attempt's artifacts under `<output>/artifacts`. |
 | `--debug` | boolean | `false` | As for `run`: phase timings and the agent step table. |
 | `--ai-trace` | boolean | `false` | As for `run`. |
-| `--trace [mode]` | a recording mode | config | As for `run`: one trace of the whole exploration. A bare `--trace` is `on`; `retain-on-failure` keeps it only when the exploration did not pass. The exploration is one attempt, so `on-first-retry` and `on-all-retries` record nothing, and neither does the CI default: `CI=1 e2e explore` needs `--trace on` for a trace, and its plan-time notice says so. Put the goal before `--trace`, or write `--trace=<mode>`. |
 | `--video [mode]` | a recording mode | config | As for `run`: one video of the whole exploration (WebM on a browser engine, MP4 on a device engine). A bare `--video` is `on`; `retain-on-failure` keeps it only when the exploration did not pass. The exploration is one attempt, so a retry mode records nothing. Put the goal before `--video`, or write `--video=<mode>`. |
 
 The run has one result, under the virtual file `explore`, titled by the goal.

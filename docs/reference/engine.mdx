@@ -39,7 +39,7 @@ Validation fails with `INVALID_CONFIG` for:
 - a `keyboard`, `state`, `artifacts`, or `session` manifest with an unknown
   key or a non-function member. `keyboard` needs `type` and `press`; `state`
   needs both `capture` and `restore`; `artifacts` needs `screenshot`;
-  `startTrace`/`stopTrace` and `startVideo`/`stopVideo` come in pairs;
+  `startVideo` and `stopVideo` come as a pair;
 - a `secrets` that is not an array of `secrets.get()` handles;
 - an `app` member: the app under test is declared on the target, and an
   engine checks what it needs in `validateApp`;
@@ -151,7 +151,7 @@ export interface Engine {
   readonly fixtures?: Readonly<Record<string, EngineFixtureFactory>>;
   /** capability: state - opaque snapshot capture/restore for session reuse. */
   readonly state?: EngineStateCapability;
-  /** capability: artifacts - screenshots and traces under the attempt directory. */
+  /** capability: artifacts - screenshots and videos under the attempt directory. */
   readonly artifacts?: EngineArtifacts;
   /**
    * Checks the app a target declares against what this engine can drive, at
@@ -253,7 +253,7 @@ export interface OperationContext {
 | `keyboard.{type,press,dismiss?}` | `keyboard` | `observe` | the agent's `type` and `press` without a target, the keyboard fallback of `type_at` and `press_at` on a point the tree lists nothing at, and `dismiss_keyboard` when `dismiss` exists: input to whatever holds focus, for a field drawn on a canvas or flattened out of a platform's tree; with the `focus` action, `locator.pressSequentially`, which the harness composes as `focus` then `keyboard.type` |
 | `fixtures.<name>` | `<name>` | - | a contributed fixture; `requires: ['<name>']` gates at selection |
 | `state` | `state` | - | `test.setup` sessions and the `session:` option |
-| `artifacts` | `artifacts` | - | `app.screenshot()`, assertion evidence, the failure screenshot, and every [`trace` and `video` mode](/reference/config#recording) but `off`, from the config, a target, a test, `--trace`, or `--video` |
+| `artifacts` | `artifacts` | - | `app.screenshot()`, assertion evidence, the failure screenshot, and every [`video` mode](/reference/config#recording) but `off`, from the config, a target, a test, or `--video` |
 | `validateApp` | - | - | a config-load check of the target's `app` |
 | `session` | - | - | `app.open()` and the agent's `navigate` verb (`open`), `app.back()` and the agent's `back` verb (`back`), `app.restart()` (`restart`), `app.clearState()` (`reset`) |
 
@@ -503,7 +503,7 @@ export interface EngineAttemptContext {
    * provider runs again on every call. The value, and every value
    * `options.derived` computes from it, join the attempt's redaction before
    * this resolves, so reports, logs, and every observation redact them, and
-   * the attempt's trace and text downloads are rewritten. The protection is
+   * the attempt's text downloads are rewritten. The protection is
    * text only: unlike a fill, it withholds no screenshot or model pixels.
    * A secret the engine did not declare is `SECRET_UNAVAILABLE`.
    */
@@ -1036,16 +1036,6 @@ export interface EngineStateCapability {
 export interface EngineArtifacts {
   /** Captures a redacted screenshot; secure fields are masked at the source. */
   screenshot(label: string | undefined, context: OperationContext): Promise<string>;
-  /** Starts recording an execution trace for the attempt. */
-  startTrace?(context: OperationContext): Promise<void>;
-  /**
-   * Stops the trace and returns its relative path, or every archive written,
-   * in order, when the trace had to be cut: a trace bound to one context
-   * closes as a segment when a restart or a state reset replaces the
-   * context, and a new one records on from there. The harness registers and
-   * redacts each returned archive.
-   */
-  stopTrace?(context: OperationContext): Promise<string | readonly string[]>;
   /**
    * Starts recording the surface for the attempt. Declared together with
    * `stopVideo`. A surface that has nothing to show yet (no page open) may
@@ -1088,12 +1078,10 @@ export interface VideoLink {
 ```
 
 The runner calls `startVideo` only for an attempt whose
-[video mode](/reference/config#video) records, then `startTrace` for one whose
-[trace mode](/reference/config#trace) records, after
-`startAttempt` and any session restore. Both use the launch budget and stop
-before `endAttempt`, within the cleanup budget; a `startVideo` that fails
-fails the launch. Return segments in recording order from `stopVideo` and
-`stopTrace`. The runner decides which recordings are kept and deletes a file an
+[video mode](/reference/config#video) records, after `startAttempt` and any
+session restore. It uses the launch budget and stops before `endAttempt`,
+within the cleanup budget; a `startVideo` that fails fails the launch. Return
+segments in recording order from `stopVideo`. The runner decides which recordings are kept and deletes a file an
 attempt does not keep.
 
 ### Provider recordings
@@ -1164,14 +1152,7 @@ startedAt }` for `stopVideo` to hand back. A `stop` that throws or returns
 anything else is `ENGINE_FAILURE`, naming the provider and the lease. The
 target argument's type is exported as `ProviderRecordingTarget`.
 
-When the session knows a secret value, the runner redacts every text entry in
-each trace archive, so a value a test spelled into a URL or the options the
-engine opened the attempt with (`resolveSecret`) never stay in it. After a
-secret fill it also drops the screencast frames: every `screencast/` entry,
-each `screencast-frame` record in a `.trace` entry, and any image a record
-names.
-If redaction fails, it deletes the archives and records
-`TRACE_WITHHELD`. Videos are unmasked and carry `redaction: 'incomplete'`.
+Videos are unmasked and carry `redaction: 'incomplete'`.
 A `download` an engine attaches is the app's bytes: when the session knows
 a secret value, the runner rewrites a text one (`.txt`,
 `.csv`, `.json`, `.html`) through the ledger and labels it `complete`; every
@@ -1220,7 +1201,7 @@ export interface EngineFixtureContext {
   operation(timeoutMs?: number): OperationContext;
   /** Registers a file the current step produced under the attempt artifact directory. */
   attachArtifact(
-    kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log',
+    kind: 'screenshot' | 'video' | 'download' | 'log',
     relativePath: string,
   ): void;
   /** Records the viewport the current step established. */

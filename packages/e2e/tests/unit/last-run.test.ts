@@ -280,7 +280,7 @@ describe('carryForward', () => {
   });
 
   it("carries a serial member's group, where its attempts live", () => {
-    const group = { id: 'group', attempts: [{ artifacts: [{ path: 'web/group/attempt-0/trace.zip' }] }] };
+    const group = { id: 'group', attempts: [{ artifacts: [{ path: 'web/group/attempt-0/video.webm' }] }] };
     const before = document([failed('member', { serialGroupId: 'group', attempts: [] }), failed('other')], [], { serialGroups: [group] });
     const carried = carry(before, document([leftOut('member'), passed('other')]));
     expect(carriedIds(carried)).toEqual(['member']);
@@ -288,10 +288,10 @@ describe('carryForward', () => {
   });
 
   it('names every artifact file a report points at, its carried ones included', () => {
-    const group = { id: 'group', attempts: [{ artifacts: [{ path: 'web/group/attempt-0/trace.zip' }, { url: 'https://hosted.example/v.mp4' }] }] };
+    const group = { id: 'group', attempts: [{ artifacts: [{ path: 'web/group/attempt-0/video.webm' }, { url: 'https://hosted.example/v.mp4' }] }] };
     const carried = { results: [failed('old')], serialGroups: [group] };
     const paths = reportArtifactPaths(document([failed('new'), passed('fine')], [], { carried }));
-    expect([...paths].toSorted()).toEqual(['web/group/attempt-0/trace.zip', 'web/new/attempt-0/failure.png', 'web/old/attempt-0/failure.png']);
+    expect([...paths].toSorted()).toEqual(['web/group/attempt-0/video.webm', 'web/new/attempt-0/failure.png', 'web/old/attempt-0/failure.png']);
   });
 
   it('reads the tests a report carries back as ones to run again', async () => {

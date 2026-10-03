@@ -9,15 +9,13 @@ import { writeFileAtomic } from '../internal/atomic-write.ts';
 import type { ArtifactStore } from '../types.ts';
 import type { ArtifactRegistration, ArtifactSink } from './fixtures.ts';
 import type { ArtifactRecord } from './records.ts';
-import { redactsRecordings, type SessionSecrecy } from './secrecy.ts';
+import { redactsDownloads, type SessionSecrecy } from './secrecy.ts';
 
 /**
- * How much of each kind the runner masked, unless the registration says. A
+ * How much of each kind the runner masked. A
  * screenshot masks secure fields at the source; a log passes through the
  * secret redactor. A recording masks nothing: a secure field renders its own
- * dots, but anything else the screen showed is in the frames. A trace is
- * decided per attempt by whoever stops it (see `redactTraceArchives`): one
- * registered without that verdict was not rewritten, and says so. A download
+ * dots, but anything else the screen showed is in the frames. A download
  * is whatever the app served, bytes the runner did not write and does not
  * rewrite: it is `incomplete` unless the sink scanned it (see
  * `redactDownload`), so a store exporting only vouched-for artifacts holds it
@@ -25,7 +23,6 @@ import { redactsRecordings, type SessionSecrecy } from './secrecy.ts';
  */
 const REDACTION_BY_KIND: Readonly<Record<ArtifactRecord['kind'], ArtifactRecord['redaction']>> = {
   screenshot: 'complete',
-  trace: 'incomplete',
   video: 'incomplete',
   download: 'incomplete',
   log: 'complete',
@@ -45,7 +42,7 @@ export interface AttemptArtifacts {
   /**
    * Resolves once every registered file has been measured and hashed.
    * Registration itself is synchronous and cheap; the size and digest of a
-   * file (a trace zip can be tens of megabytes) are filled in off the event
+   * file (a video can be tens of megabytes) are filled in off the event
    * loop, so awaiting this before the record is read is what makes them
    * complete.
    */
@@ -72,7 +69,7 @@ export function createAttemptArtifacts(options: {
   /**
    * The secrecy of the session the attempt runs on, read when a download is
    * registered; undefined (no session open yet) leaves every download as
-   * served. While its ledger holds a value (`redactsRecordings`), a
+   * served. While its ledger holds a value (`redactsDownloads`), a
    * text-like download is rewritten through it before it is hashed or
    * stored.
    */
@@ -103,15 +100,15 @@ export function createAttemptArtifacts(options: {
         kind,
         mediaType: mediaTypeFor(relativePath),
         ...(startedAt === undefined ? {} : { startedAt }),
-        redaction: registration?.redaction ?? REDACTION_BY_KIND[kind],
+        redaction: REDACTION_BY_KIND[kind],
         producer: stepId === undefined ? { kind: 'attempt' } : { kind: 'step', stepId },
       };
       records.push(record);
       const reportPath = path.posix.join(...options.segments, relativePath);
-      const secrecy: SessionSecrecy | undefined = kind === 'download' && registration?.redaction === undefined ? options.secrecy?.() : undefined;
+      const secrecy: SessionSecrecy | undefined = kind === 'download' ? options.secrecy?.() : undefined;
       pending.push(
         (async () => {
-          if (secrecy !== undefined && redactsRecordings(secrecy) && isTextLike(record.mediaType)) {
+          if (secrecy !== undefined && redactsDownloads(secrecy) && isTextLike(record.mediaType)) {
             record.redaction = await redactDownload(absolute, secrecy);
           }
           // Without a store the file is streamed for its size and digest only;
@@ -270,8 +267,7 @@ export function attemptSegments(rerunDir: string | undefined, segments: readonly
 }
 
 /**
- * Rewrites a text-like download through the session's ledger, the way a
- * trace's text entries are, and returns the redaction the record can claim:
+ * Rewrites a text-like download through the session's ledger, and returns the redaction the record can claim:
  * `complete` once every registered value is gone from it, changed or not, and
  * `incomplete` when the file is not UTF-8 text or cannot be read or written,
  * in which case it is left as served. A leading byte order mark is kept as

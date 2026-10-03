@@ -189,7 +189,7 @@ describe('output', () => {
         }
         const unrecordable = await runExisting(project, {
           appUrl: FAKE_APP_URL,
-          config: { targets: [{ name: 'fake', platform: 'fake', engine: fake.engine, app: FAKE_APP, trace: 'on' }] },
+          config: { targets: [{ name: 'fake', platform: 'fake', engine: fake.engine, app: FAKE_APP, video: 'on' }] },
           runOptions: { files },
         });
         expect(unrecordable.report.run.errors.map((error) => error.code)).toEqual(['UNSUPPORTED_ARTIFACT']);

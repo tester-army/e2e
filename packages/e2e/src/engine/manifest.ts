@@ -47,7 +47,7 @@ const KNOWN_KEYS = [
 const NESTED_HOOKS = {
   keyboard: ['type', 'press', 'dismiss'],
   state: ['capture', 'restore'],
-  artifacts: ['screenshot', 'startTrace', 'stopTrace', 'startVideo', 'stopVideo'],
+  artifacts: ['screenshot', 'startVideo', 'stopVideo'],
   session: ['open', 'back', 'restart', 'reset'],
 } as const;
 
@@ -282,9 +282,6 @@ export function defineEngine(spec: Engine): EngineHandle {
   }
   if (spec.artifacts !== undefined) {
     const artifacts = hookManifest(name, 'artifacts', spec.artifacts, ['screenshot']);
-    if ((artifacts['startTrace'] === undefined) !== (artifacts['stopTrace'] === undefined)) {
-      throw invalid(name, 'artifacts.startTrace and stopTrace must be declared together');
-    }
     if ((artifacts['startVideo'] === undefined) !== (artifacts['stopVideo'] === undefined)) {
       throw invalid(name, 'artifacts.startVideo and stopVideo must be declared together');
     }

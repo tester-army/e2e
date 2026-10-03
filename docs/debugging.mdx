@@ -5,7 +5,7 @@ icon: "magnifying-glass"
 ---
 
 Start with the failure in the terminal. Every run also writes
-`.e2e/report.json`, with links to the screenshots, traces, downloads, and
+`.e2e/report.json`, with links to the screenshots, downloads, and
 recordings captured by the selected engine.
 
 ## Read the failure
@@ -102,11 +102,6 @@ reruns names, and writes its own under `rerun-<n>/`:
   pixels are allowed. The built-in `agent.assert` also captures one after
   either verdict unless `screenshot: false` disables it. Capture can fail or
   be withheld. Use `app.screenshot('label')` to capture one explicitly.
-- **Playwright traces** on the attempts the [`trace`](/reference/config#trace)
-  mode records: every attempt locally, the first retry in CI. Open one with
-  `npx playwright-core@1.63.0 show-trace <file>` (`pnpm dlx` under pnpm);
-  `--trace off` skips the cost for one run, `--trace` records every attempt
-  of a CI run.
 - **Downloads** saved through `browser.waitForDownload`, recorded with kind
   `download`. They are the app's bytes: `redaction: "incomplete"` unless the
   session knows a secret value and the file is text, which the runner rewrites and
@@ -116,15 +111,7 @@ reruns names, and writes its own under `rerun-<n>/`:
 After a secret fill, no screenshots are taken for the rest of the attempt; see
 [screenshots after a secret fill](/security#screenshots-after-a-secret-fill).
 
-Playwright traces and videos need separate care. Trace redaction replaces
-secret text with `<secret:name>` and drops the trace's screencast frames, so
-the viewer shows actions, DOM snapshots, and network, but no filmstrip. An
-image the app served itself stays, even one that draws the secret. Videos
-mask nothing and are marked `redaction: "incomplete"`.
-
-If trace rewriting fails, the runner deletes the trace from the attempt's
-artifact directory. For a path outside that directory, it withholds the
-artifact with `TRACE_WITHHELD` and leaves the file untouched. See the
+Videos mask nothing and are marked `redaction: "incomplete"`. See the
 [security model](/security#where-redaction-stops) for all redaction limits.
 
 ## Watch it happen
@@ -172,8 +159,7 @@ export default {
 
 A target's `video` wins over the config's, `--video` over both. A test's own
 option wins over all of them, which records one flow you are chasing
-without recording the suite. `trace` takes the same modes and follows the
-same order:
+without recording the suite:
 
 ```ts
 test('checkout', { video: 'on' }, async ({ agent }) => {

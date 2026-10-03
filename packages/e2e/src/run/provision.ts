@@ -6,7 +6,7 @@
  * provision differently.
  */
 
-import { pairRecording, type TestTargetPair } from '../collect/select.ts';
+import { pairVideo, type TestTargetPair } from '../collect/select.ts';
 import { engineAppInfo } from '../config/app.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
@@ -14,67 +14,60 @@ import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError, InfrastructureError, translateProvisioningError } from '../internal/errors.ts';
 import { Deadline, NEVER_ABORTS, withScopedBudget } from '../internal/time.ts';
 import { describeTarget, type TargetProvenance } from '../report/build.ts';
-import { isRetryMode, recordsOnSomeAttempt, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
+import { isRetryMode, recordsOnSomeAttempt, type ResolvedRecording } from '../internal/recording-modes.ts';
 import { declaredCommands } from './declared-processes.ts';
 import { ManagedProcess, type AppProcesses, type ManagedProcessHooks } from './managed-process.ts';
 import { UNSHARED, type ProcessPool } from './process-pool.ts';
-
-const RECORDING_KINDS: readonly RecordingKind[] = ['trace', 'video'];
 
 /** A target graded against its engine declaration, before any test starts. */
 export interface EngineGrade {
   readonly provenance: TargetProvenance;
   /**
-   * The recordings a run-wide mode (the config root, `--trace`, `--video`)
-   * asks of this target that its engine cannot make. They are skipped, and
-   * the run says so once (`unrecordedNotices`).
+   * Whether a run-wide mode (the config root, `--video`) asks this target
+   * for video its engine cannot record. It is skipped, and the run says so
+   * once (`recordingNotices`).
    */
-  readonly unrecorded: readonly RecordingKind[];
+  readonly unrecorded: boolean;
 }
 
 /**
- * Grades one target from its engine declaration and validates the recordings
- * against it. A recording is graded from what will record: with the target's
- * `pairs` (a run), every test that runs and whose mode records on some
- * attempt; without them (a standalone attempt), the target's own mode. A mode
- * a target or a test set is required, so an engine that cannot record it
- * fails here, before any test starts; a run-wide mode applies where the
- * engine can record and is reported as `unrecorded` elsewhere, and a default
- * one is skipped quietly.
+ * Grades one target from its engine declaration and validates video against
+ * it. Video is graded from what will record: with the target's `pairs` (a
+ * run), every test that runs and whose mode records on some attempt; without
+ * them (a standalone attempt), the target's own mode. A mode a target or a
+ * test set is required, so an engine that cannot record it fails here,
+ * before any test starts; a run-wide mode applies where the engine can
+ * record and is reported as `unrecorded` elsewhere, and a default one is
+ * skipped quietly.
  */
 export function validateEngine(target: ResolvedTarget, pairs?: readonly TestTargetPair[]): EngineGrade {
   const provenance = describeTarget(target);
-  const unrecorded: RecordingKind[] = [];
-  for (const kind of RECORDING_KINDS) {
-    if (provenance.artifactCapabilities.includes(kind)) continue;
-    const asked: { readonly recording: ResolvedRecording; readonly pair?: TestTargetPair }[] =
-      pairs === undefined
-        ? recordsOnSomeAttempt(target[kind].mode, 0) ? [{ recording: target[kind] }] : []
-        : pairs.flatMap((pair) => {
-            const recording = pairRecording(pair, kind);
-            return pair.disposition === 'run' && recordsOnSomeAttempt(recording.mode, pair.options.retries) ? [{ recording, pair }] : [];
-          });
-    const required = asked.find(({ recording }) => recording.source === 'target' || recording.source === 'test');
-    if (required !== undefined) {
-      const where = `target "${target.name}" (engine ${provenance.engine.name}) cannot record ${kind === 'trace' ? 'a trace' : 'video'}`;
-      const setBy =
-        required.recording.source === 'test' && required.pair !== undefined
-          ? `test "${required.pair.test.titlePath.join(' > ')}" in ${required.pair.test.file} sets`
-          : 'the target sets';
-      throw new ConfigurationError('UNSUPPORTED_ARTIFACT', `${where}, and ${setBy} ${kind}: '${required.recording.mode}'`);
-    }
-    if (asked.some(({ recording }) => recording.source === 'run')) unrecorded.push(kind);
+  if (provenance.artifactCapabilities.includes('video')) return { provenance, unrecorded: false };
+  const asked: { readonly recording: ResolvedRecording; readonly pair?: TestTargetPair }[] =
+    pairs === undefined
+      ? recordsOnSomeAttempt(target.video.mode, 0) ? [{ recording: target.video }] : []
+      : pairs.flatMap((pair) => {
+          const recording = pairVideo(pair);
+          return pair.disposition === 'run' && recordsOnSomeAttempt(recording.mode, pair.options.retries) ? [{ recording, pair }] : [];
+        });
+  const required = asked.find(({ recording }) => recording.source === 'target' || recording.source === 'test');
+  if (required !== undefined) {
+    const where = `target "${target.name}" (engine ${provenance.engine.name}) cannot record video`;
+    const setBy =
+      required.recording.source === 'test' && required.pair !== undefined
+        ? `test "${required.pair.test.titlePath.join(' > ')}" in ${required.pair.test.file} sets`
+        : 'the target sets';
+    throw new ConfigurationError('UNSUPPORTED_ARTIFACT', `${where}, and ${setBy} video: '${required.recording.mode}'`);
   }
-  return { provenance, unrecorded };
+  return { provenance, unrecorded: asked.some(({ recording }) => recording.source === 'run') };
 }
 
 /**
- * The plan-time notices about recordings the run asked for and will not
- * make: one per kind naming every target whose engine cannot record what a
- * run-wide mode asked of it, and one per kind when tests that would record it
- * run under a retry mode with no retries, so no attempt of theirs records.
- * `explore` is a run of one attempt no config can retry, so its notice says
- * to pass the flag instead of setting retries.
+ * The plan-time notices about video the run asked for and will not make: one
+ * naming every target whose engine cannot record what a run-wide mode asked
+ * of it, and one when tests run under a retry mode with no retries, so no
+ * attempt of theirs records. `explore` is a run of one attempt no config can
+ * retry, so its notice says to pass the flag instead of setting retries.
  */
 export function recordingNotices(
   perTarget: readonly { readonly target: ResolvedTarget; readonly pairs: readonly TestTargetPair[] }[],
@@ -82,28 +75,24 @@ export function recordingNotices(
   options: { readonly explore?: boolean } = {},
 ): string[] {
   const notices: string[] = [];
-  for (const kind of RECORDING_KINDS) {
-    const skipped = perTarget.filter(({ target }) => grades.get(target.name)?.unrecorded.includes(kind));
-    if (skipped.length === 0) continue;
+  const skipped = perTarget.filter(({ target }) => grades.get(target.name)?.unrecorded === true);
+  if (skipped.length > 0) {
     const names = skipped.map(({ target }) => `"${target.name}" (engine ${grades.get(target.name)!.provenance.engine.name})`);
     notices.push(
-      `${kind} records only on targets whose engine can record it; ${names.length === 1 ? 'target' : 'targets'} ${names.join(', ')} record${names.length === 1 ? 's' : ''} no ${kind}`,
+      `video records only on targets whose engine can record it; ${names.length === 1 ? 'target' : 'targets'} ${names.join(', ')} record${names.length === 1 ? 's' : ''} no video`,
     );
   }
-  for (const kind of RECORDING_KINDS) {
-    const notice = retryOnlyNotice(kind, perTarget, grades, options.explore === true);
-    if (notice !== undefined) notices.push(notice);
-  }
+  const notice = retryOnlyNotice(perTarget, grades, options.explore === true);
+  if (notice !== undefined) notices.push(notice);
   return notices;
 }
 
 /**
- * The notice for one kind when tests whose engine can record it run under a
- * retry mode with `retries: 0`: no attempt of theirs records one. Undefined
- * when no such test runs.
+ * The notice when tests whose engine can record video run under a retry
+ * mode with `retries: 0`: no attempt of theirs records one. Undefined when
+ * no such test runs.
  */
 function retryOnlyNotice(
-  kind: RecordingKind,
   perTarget: readonly { readonly target: ResolvedTarget; readonly pairs: readonly TestTargetPair[] }[],
   grades: ReadonlyMap<string, EngineGrade>,
   explore: boolean,
@@ -111,20 +100,19 @@ function retryOnlyNotice(
   const modes = new Set<string>();
   let unrecorded = 0;
   for (const { target, pairs } of perTarget) {
-    if (!grades.get(target.name)?.provenance.artifactCapabilities.includes(kind)) continue;
+    if (!grades.get(target.name)?.provenance.artifactCapabilities.includes('video')) continue;
     for (const pair of pairs) {
-      const { mode } = pairRecording(pair, kind);
+      const { mode } = pairVideo(pair);
       if (pair.disposition !== 'run' || !isRetryMode(mode) || pair.options.retries > 0) continue;
       modes.add(`'${mode}'`);
       unrecorded += 1;
     }
   }
   if (unrecorded === 0) return undefined;
-  const plural = kind === 'trace' ? 'traces' : 'videos';
-  const asked = `${kind}: ${[...modes].join(' and ')} records retries only`;
-  if (explore) return `${asked}, and explore runs its goal once, so no ${plural} will be recorded; pass --${kind} on`;
+  const asked = `video: ${[...modes].join(' and ')} records retries only`;
+  if (explore) return `${asked}, and explore runs its goal once, so no videos will be recorded; pass --video on`;
   const tests = unrecorded === 1 ? 'test runs' : 'tests run';
-  return `${asked}, and ${unrecorded} ${tests} with retries: 0, so no ${plural} will be recorded for ${unrecorded === 1 ? 'it' : 'them'}; set retries, or ${kind}: 'on'`;
+  return `${asked}, and ${unrecorded} ${tests} with retries: 0, so no videos will be recorded for ${unrecorded === 1 ? 'it' : 'them'}; set retries, or video: 'on'`;
 }
 
 export interface PrepareScope {

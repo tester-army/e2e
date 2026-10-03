@@ -67,7 +67,7 @@ export interface StandaloneAttempt {
   /** Absolute artifact directory of this attempt. */
   readonly artifactsDir: string;
   /**
-   * Ends the attempt: stops any trace, closes the session, disposes the
+   * Ends the attempt: stops any video, closes the session, disposes the
    * engine, stops the app processes, and returns the cleanup failures instead
    * of throwing them, so a host can always finish tearing down.
    */
@@ -89,7 +89,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
   // A session says what it will not record, as a run does at plan time.
   const grade = validateEngine(target);
   for (const message of recordingNotices([{ target, pairs: [] }], new Map([[target.name, grade]]))) notice(target.name, message);
-  const recordings = { trace: sessionRecording(target.trace), video: sessionRecording(target.video) };
+  const video = sessionRecording(target.video);
   // The secret registry is process-wide, as in a run: `credentials.user()` and `secrets.get()`
   // resolve while the attempt is open.
   const releaseRegistry = holdSecretRegistry(config);
@@ -169,7 +169,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
   };
 
   try {
-    session = await executor.launchSession({ session: undefined, recordings }, attemptId, artifacts.dir, signal);
+    session = await executor.launchSession({ session: undefined, video }, attemptId, artifacts.dir, signal);
   } catch (cause) {
     await executor.dispose();
     await teardownProcesses();
@@ -220,7 +220,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
         attemptEnd.abort();
         const record: ClosingRecord = { status: 'passed', cleanup: 'complete' };
         try {
-          await executor.closeSession(session, { attemptId, recordings }, record, artifacts.sink, cleanupErrors);
+          await executor.closeSession(session, { attemptId, video }, record, artifacts.sink, cleanupErrors);
           await executor.dispose();
           cleanupErrors.push(...executor.collectedRunErrors().map((runError) => runError.error));
           await artifacts.settle();
@@ -236,7 +236,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
 }
 
 /**
- * What the standalone attempt records of one kind: what the mode says a first
+ * What the standalone attempt records: what the mode says a first
  * attempt does, since there is no retry loop. The attempt always closes as
  * passed, so a recording kept only on failure would be made and deleted, and
  * is not made at all.

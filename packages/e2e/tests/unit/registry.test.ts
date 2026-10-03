@@ -60,7 +60,7 @@ describe('registration', () => {
       'test options has unknown key "timout"; did you mean "timeout"?',
     );
     await expect(register(() => test('x', { retry: 2 } as never, noop))).rejects.toThrow(
-      'test options has unknown key "retry"; expected one of timeout, retries, tags, skip, only, platforms, requires, session, agentContext, agent, trace, video',
+      'test options has unknown key "retry"; expected one of timeout, retries, tags, skip, only, platforms, requires, session, agentContext, agent, video',
     );
     await expect(register(() => test.describe('group', { searial: true } as never, () => {}))).rejects.toThrow(
       'describe options has unknown key "searial"; did you mean "serial"?',
@@ -154,7 +154,8 @@ describe('registration', () => {
     ).rejects.toThrow(/0 through 10/);
   });
 
-  it.each(['trace', 'video'] as const)('accepts a %s mode on tests, groups, and setups, and rejects anything else', async (kind) => {
+  it('accepts a video mode on tests, groups, and setups, and rejects anything else', async () => {
+    const kind = 'video';
     const registration = await collectModule(async () => {
       test.setup('auth', { sessions: ['a'], [kind]: 'off' }, noop);
       test.describe('group', { [kind]: 'on' }, () => {
@@ -179,15 +180,19 @@ describe('registration', () => {
   });
 });
 
-describe('old trace spellings on a test', () => {
-  it('name the mode they meant', async () => {
-    const register = (trace: unknown) =>
-      collectModule(async () => {
-        test('x', { trace } as never, noop);
-      });
-    await expect(register('retries')).rejects.toThrow("test options: trace 'retries' is the old spelling of trace: 'on-all-retries'");
-    await expect(register({ record: 'retries' })).rejects.toThrow("trace { record: 'retries' } is the old spelling of trace: 'on-all-retries'");
-    await expect(register('all')).rejects.toThrow("trace 'all' is the old spelling of trace: 'on'");
+describe('trace on a test', () => {
+  it('is refused on a test, a group, and a setup, naming the failure pages and video', async () => {
+    const message = "trace was removed: a failed test's page under <output>/failures/ tells its steps, cache decisions, and screen; set video for a recording";
+    await expect(collectModule(async () => test('x', { trace: 'on' } as never, noop))).rejects.toMatchObject({
+      code: 'COLLECTION_ERROR',
+      message: `test options: ${message}`,
+    });
+    await expect(collectModule(async () => test.describe('group', { trace: 'off' } as never, () => test('x', noop)))).rejects.toThrow(
+      `describe options: ${message}`,
+    );
+    await expect(collectModule(async () => test.setup('auth', { sessions: ['a'], trace: 'retries' } as never, noop))).rejects.toThrow(
+      `setup options: ${message}`,
+    );
   });
 });
 
@@ -229,7 +234,8 @@ describe('serial groups', () => {
     ).rejects.toThrow(/nested serial/);
   });
 
-  it.each(['trace', 'video'] as const)('rejects a %s on a describe nested in a serial group, which records as one unit', async (kind) => {
+  it('rejects a video on a describe nested in a serial group, which records as one unit', async () => {
+    const kind = 'video';
     await expect(
       collectModule(async () => {
         test.describe('unit', { serial: true }, () => {
@@ -242,7 +248,7 @@ describe('serial groups', () => {
   });
 
   it('rejects member overrides of unit-owned options', async () => {
-    for (const options of [{ retries: 1 }, { trace: 'on' }, { video: 'on' }, { session: 's' }, { skip: true }, { only: true }]) {
+    for (const options of [{ retries: 1 }, { video: 'on' }, { session: 's' }, { skip: true }, { only: true }]) {
       await expect(
         collectModule(async () => {
           test.describe('unit', { serial: true }, () => {

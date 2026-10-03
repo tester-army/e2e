@@ -98,7 +98,7 @@ const failing = named({
     attempt({
       status: 'failed',
       error: { code: 'ASSERTION_FAILED', message: 'expected heading "Welcome, Ada" to be visible' },
-      artifacts: ['trace', 'screenshot', 'video'],
+      artifacts: ['screenshot', 'video'],
       steps: [
         step({ index: 0, kind: 'app', api: 'app.open', label: 'open /' }),
         step({ index: 1, kind: 'agent', api: 'agent.act', label: 'Sign in as the owner', metrics: metrics(4), cache: { mode: 'self-finalized', replayedActions: 3, totalActions: 3 } }),
@@ -166,7 +166,7 @@ describe('renderMarkdownReport', () => {
           '**🔴 members › an email invitation is accepted by the invited account only**  \n[tests/members.e2e.ts:41](https://github.com/o/r/blob/abc/tests/members.e2e.ts#L41)',
           '**ASSERTION_FAILED** at step 4 of 6: `agent.act` "Accept the invitation from the email", after 38.0s and 12 model calls',
           '> expected heading "Welcome, Ada" to be visible\n> The Accept button opened a page that still shows Sign in.',
-          'Evidence: [screenshot](https://github.com/o/r/actions/runs/9), [video](https://github.com/o/r/actions/runs/9), [trace](https://github.com/o/r/actions/runs/9)',
+          'Evidence: [screenshot](https://github.com/o/r/actions/runs/9), [video](https://github.com/o/r/actions/runs/9)',
         ].join('\n\n'),
         '',
         // A flaky test is folded: the run is green, and its story is the attempt that failed, not the retry that passed.
@@ -470,7 +470,7 @@ describe('renderMarkdownReport', () => {
       memberTestIds: [member.testId],
       status: 'failed',
       attempts: [
-        { ...attempt({ status: 'failed', artifacts: ['trace'] }), members: [] },
+        { ...attempt({ status: 'failed', artifacts: ['video'] }), members: [] },
         {
           ...attempt({ status: 'failed', artifacts: ['screenshot'] }),
           members: [
@@ -720,11 +720,11 @@ describe('renderMarkdownReport for an exploration', () => {
 
 describe('renderMarkdownReport evidence paths', () => {
   it('lists one artifact path per kind under artifactsDir when there is no run page, in kind order, and names kinds when no path was kept', () => {
-    const evidence = attempt({ status: 'failed', error: { code: 'E', message: 'm' }, artifacts: ['trace', 'screenshot', 'video', 'log', 'download'] });
+    const evidence = attempt({ status: 'failed', error: { code: 'E', message: 'm' }, artifacts: ['download', 'screenshot', 'video', 'log'] });
     const body = renderMarkdownReport(page({ status: 'failed', results: [named({ title: 't', status: 'failed', attempts: [evidence] })] }), { artifactsDir: '.e2e/artifacts' });
     // One artifact per kind of the attempt the block tells, named by kind; a log is not evidence unless the failure captured it.
     expect(body).toContain(
-      '\n\nEvidence: screenshot `.e2e/artifacts/t/attempt-0/screenshot-1.bin`, video `.e2e/artifacts/t/attempt-0/video-2.bin`, trace `.e2e/artifacts/t/attempt-0/trace-0.bin`, download `.e2e/artifacts/t/attempt-0/download-4.bin`\n',
+      '\n\nEvidence: screenshot `.e2e/artifacts/t/attempt-0/screenshot-1.bin`, video `.e2e/artifacts/t/attempt-0/video-2.bin`, download `.e2e/artifacts/t/attempt-0/download-0.bin`\n',
     );
     const withheld = attempt({ status: 'failed', error: { code: 'E', message: 'm' }, artifacts: ['screenshot'] });
     withheld.artifacts = withheld.artifacts.map(({ path: _path, ...artifact }) => artifact);
@@ -841,7 +841,7 @@ describe('markdownReporter', () => {
     const text = readFileSync(path.join(root, '.e2e', 'failures', name!), 'utf8');
     expect(text.startsWith('# ✗ members › an email invitation is accepted by the invited account only\n')).toBe(true);
     expect(text).toContain('## Steps');
-    expect(text).toContain('- screenshot `.e2e/artifacts/t/attempt-0/screenshot-1.bin`');
+    expect(text).toContain('- screenshot `.e2e/artifacts/t/attempt-0/screenshot-0.bin`');
   });
 
   it('writes no page for an interrupted test, which reached no verdict', async () => {

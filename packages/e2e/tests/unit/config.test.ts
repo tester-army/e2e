@@ -7,6 +7,7 @@ import { isCiMode, resolveConfig } from '../../src/config/resolve.ts';
 import { ConfigurationError, defineEngine } from '../../src/engine/index.ts';
 import { secrets } from '../../src/secrets.ts';
 import type { CommandConfig, E2EConfig, Target, TargetApp } from '../../src/types.ts';
+import { TRACE_REMOVED, TRACE_REPLACEMENT } from '../../src/internal/recording-modes.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 import { invalid } from '../helpers/invalid.ts';
 
@@ -72,7 +73,6 @@ describe('resolveConfig', () => {
     expect(config.cleanupTimeout).toBe(30_000);
     expect(config.retries).toBe(0);
     expect(config.tests).toEqual(['tests/**/*.e2e.ts']);
-    expect(config.targets[0]!.trace).toEqual({ mode: 'on', source: 'default' });
     expect(config.targets[0]!.video).toEqual({ mode: 'off', source: 'default' });
     expect(config.reporters).toEqual(['list']);
   });
@@ -148,11 +148,10 @@ describe('resolveConfig', () => {
     ).toBe(3);
   });
 
-  it('uses CI defaults for retries, workers, trace, and video', () => {
+  it('uses CI defaults for retries, workers, and video', () => {
     const config = resolve({}, { ...BASE_ENV, CI: '1' } as NodeJS.ProcessEnv);
     expect(config.retries).toBe(1);
     expect(config.workers).toBe(1);
-    expect(config.targets[0]!.trace).toEqual({ mode: 'on-first-retry', source: 'default' });
     expect(config.targets[0]!.video).toEqual({ mode: 'off', source: 'default' });
   });
 
@@ -883,58 +882,55 @@ describe('resolveConfig', () => {
       expect(() => resolve({ artifacts: 'on' as never })).toThrow(/artifacts must be \{ store \}/);
     });
 
-    it('refuses the removed kinds list, in either form, and the removed trace block, naming the trace or video mode it meant', () => {
+    it('refuses the removed kinds list, in either form, naming what replaced it', () => {
       expect(failure({ artifacts: ['screenshot', 'trace'] })).toMatchObject({
         code: 'INVALID_CONFIG',
-        message: expect.stringContaining("artifacts no longer lists kinds: write trace: 'on' at the config root instead"),
+        message: `artifacts no longer lists kinds: ${TRACE_REMOVED}`,
       });
-      const screenshotOnly = failure({ artifacts: { kinds: ['screenshot'] } });
-      expect(screenshotOnly.message).toMatch(/^artifacts.kinds was removed: write trace: 'off'/);
-      expect(screenshotOnly.message).not.toContain('failure screenshots');
+      expect(failure({ artifacts: { kinds: ['screenshot'] } }).message).toBe('artifacts.kinds was removed: delete it; artifacts is { store }');
       // A list without screenshot used to turn the failure screenshot off, which is no longer possible.
-      expect(failure({ artifacts: [] }).message).toContain('failure screenshots are always captured now');
-      expect(failure({ artifacts: { kinds: ['trace'] } }).message).toContain('failure screenshots are always captured now');
-      expect(failure({ artifacts: { trace: { record: 'retries' } } })).toMatchObject({
-        code: 'INVALID_CONFIG',
-        message: expect.stringContaining("artifacts.trace was removed: write trace: 'on-all-retries' at the config root"),
-      });
-      expect(failure({ artifacts: { kinds: ['video'] } }).message).toContain("video is its own option: video: 'on'");
-      expect(failure({ artifacts: { kinds: ['screenshot', 'trace'], trace: { record: 'retries' } } as never }).message).toContain(
-        "artifacts.kinds and artifacts.trace were removed: write trace: 'on-all-retries'",
+      expect(failure({ artifacts: [] }).message).toBe('artifacts no longer lists kinds: failure screenshots are always captured now');
+      expect(failure({ artifacts: { kinds: ['trace'] } }).message).toBe(
+        `artifacts.kinds was removed: ${TRACE_REMOVED}; failure screenshots are always captured now`,
       );
-      expect(failure({ artifacts: { kinds: ['screenshot'], trace: { record: 'retries' } } as never }).message).toContain("write trace: 'off'");
+      expect(failure({ artifacts: { kinds: ['video'] } }).message).toContain("video is its own option: video: 'on'");
       expect(failure({ artifacts: { video: { retain: 'on-failure' } } as never }).message).toContain(
         'artifacts.video was removed: video is its own option',
       );
     });
 
-    it('maps the old trace spellings lifted to where a mode goes to the mode they meant', () => {
-      const cases: [unknown, string][] = [
-        [{ record: 'retries' }, "trace { record: 'retries' } is the old spelling of trace: 'on-all-retries'"],
-        [{ record: 'all' }, "trace { record: 'all' } is the old spelling of trace: 'on'"],
-        ['retries', "trace 'retries' is the old spelling of trace: 'on-all-retries'"],
-        ['all', "trace 'all' is the old spelling of trace: 'on'"],
-      ];
-      for (const [trace, message] of cases) {
-        expect(failure({ trace: trace as never })).toMatchObject({ code: 'INVALID_CONFIG', message: expect.stringContaining(message) });
+    it('refuses the removed trace block, alone or beside a kinds list', () => {
+      expect(failure({ artifacts: { trace: { record: 'retries' } } })).toMatchObject({
+        code: 'INVALID_CONFIG',
+        message: `artifacts.trace was removed: ${TRACE_REPLACEMENT}`,
+      });
+      for (const artifacts of [
+        { kinds: ['screenshot', 'trace'], trace: { record: 'retries' } },
+        { trace: { record: 'retries' }, kinds: ['screenshot', 'trace'] },
+      ]) {
+        expect(failure({ artifacts: artifacts as never }).message).toMatch(
+          /^artifacts\.(kinds and artifacts\.trace|trace and artifacts\.kinds) were removed: a failed test's page under <output>\/failures\//,
+        );
       }
-      // A block without `record` is no old spelling: the message quotes nothing the config did not say.
-      const unspelled = failure({ trace: {} as never }).message;
-      expect(unspelled).toMatch(/^trace must be one of off, on, /);
-      expect(unspelled).not.toContain('record');
-      expect(failure({ targets: [{ ...WEB, trace: 'retries' as never }] }).message).toContain(
-        `target "web" trace 'retries' is the old spelling of trace: 'on-all-retries'`,
-      );
-      expect(() => resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV, cli: { trace: 'all' as never } })).toThrow(
-        "--trace 'all' is the old spelling of --trace on",
-      );
+    });
+
+    it('refuses trace at the config root and on a target, naming the failure pages and video', () => {
+      for (const trace of ['on', 'off', 'retries', { record: 'all' }, true]) {
+        expect(failure({ trace } as never)).toMatchObject({ code: 'INVALID_CONFIG', message: TRACE_REMOVED });
+      }
+      expect(failure({ targets: [{ ...WEB, trace: 'on' } as never] })).toMatchObject({
+        code: 'INVALID_CONFIG',
+        message: `target "web": ${TRACE_REMOVED}`,
+      });
+      expect(failure({ targets: [{ platform: 'web', trace: 'off' } as never] }).message).toBe(`targets[0]: ${TRACE_REMOVED}`);
       expect(failure({ video: 'all' as never }).message).toBe('video must be one of off, on, retain-on-failure, on-first-retry, on-all-retries, got "all"');
     });
   });
 
-  describe.each(['trace', 'video'] as const)('%s', (kind) => {
+  describe('video', () => {
+    const kind = 'video';
     const web = (mode: string) => ({ ...WEB, [kind]: mode }) as unknown as Target;
-    const fallback = kind === 'trace' ? 'on' : 'off';
+    const fallback = 'off';
 
     it('defaults, and a target inherits the config mode as a run-wide one', () => {
       expect(resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV }).targets[0]![kind]).toEqual({ mode: fallback, source: 'default' });

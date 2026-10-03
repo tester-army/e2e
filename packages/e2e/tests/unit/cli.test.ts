@@ -303,22 +303,36 @@ describe('e2e run argument parsing', () => {
     expect(options.output).toBe('out');
   });
 
-  it('parses --trace and --video modes, a bare flag as on', async () => {
-    await invoke('run', '--trace=on-all-retries', '--video');
-    expect(lastRunOptions()).toMatchObject({ trace: 'on-all-retries', video: 'on' });
+  it('parses --video modes, a bare flag as on', async () => {
+    await invoke('run', '--video');
+    expect(lastRunOptions()).toMatchObject({ video: 'on' });
     runMock.mockClear();
-    await invoke('run', '--trace', '--video=retain-on-failure');
-    expect(lastRunOptions()).toMatchObject({ trace: 'on', video: 'retain-on-failure' });
+    await invoke('run', '--video=retain-on-failure');
+    expect(lastRunOptions()).toMatchObject({ video: 'retain-on-failure' });
     runMock.mockClear();
     await invoke('run', 'tests/a.e2e.ts');
-    expect(lastRunOptions()).toMatchObject({ trace: undefined, video: undefined });
+    expect(lastRunOptions()).toMatchObject({ video: undefined });
   });
 
-  it('refuses a --trace value that is not a mode, with the way to write one', async () => {
-    await invoke('run', '--trace', 'tests/a.e2e.ts');
+  it('refuses a --video value that is not a mode, with the way to write one', async () => {
+    await invoke('run', '--video', 'tests/a.e2e.ts');
     expect(runMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
-    expect(written(stderrSpy)).toContain('write --trace=<mode>, or put test files before --trace');
+    expect(written(stderrSpy)).toContain('write --video=<mode>, or put test files before --video');
+  });
+
+  it('refuses the removed --trace, bare or with a mode, naming the failure pages and video', async () => {
+    for (const args of [['run', '--trace'], ['run', '--trace=on'], ['run', 'tests/a.e2e.ts', '--trace', 'off'], ['explore', 'find bugs', '--trace']]) {
+      runMock.mockClear();
+      process.exitCode = undefined;
+      stderrSpy.mockClear();
+      await invoke(...args);
+      expect(runMock, args.join(' ')).not.toHaveBeenCalled();
+      expect(process.exitCode, args.join(' ')).toBe(2);
+      expect(written(stderrSpy), args.join(' ')).toContain(
+        "trace was removed: a failed test's page under <output>/failures/ tells its steps, cache decisions, and screen; set video for a recording",
+      );
+    }
   });
 
   it('refuses the removed --artifacts, mapping it to --output of its parent', async () => {
@@ -534,7 +548,6 @@ describe('e2e --version and --help', () => {
       '--output',
       '--debug',
       '--ai-trace',
-      '--trace',
       '--video',
       '-h',
     ]);

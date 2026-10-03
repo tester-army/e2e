@@ -124,10 +124,8 @@ is resolved on the host when each attempt starts and registered for redaction
 then, together with what the engine derives from it (for basic auth, the
 base64 `user:password` the `Authorization` header carries). It is not a fill
 and is protected as text only: reports, `screen.txt`, failure pages, what the
-model and an `e2e mcp` session read, text downloads, and the Playwright
-trace's text (the options the browser opened with, and the `Authorization:
-Basic` header of every request) are redacted, while screenshots, the trace's
-screencast frames, and the model's pixels are kept. A page that renders the
+model and an `e2e mcp` session read, and text downloads are redacted, while
+screenshots and the model's pixels are kept. A page that renders the
 password on screen is not masked in pixels.
 
 ### Redaction
@@ -135,7 +133,7 @@ password on screen is not masked in pixels.
 The runner replaces every occurrence of a registered secret value with
 `<secret:name>` in model input, reports, what your code prints during
 `e2e run` (tests, the config's and test files' top-level code, reporters),
-trace text, and text downloads. That includes a value the test passes as a
+and text downloads. That includes a value the test passes as a
 plain string rather than a `secrets.get()` handle: test and `describe`
 titles, step labels (an `app.open` URL, a locator's text), a `fill`, an
 `agent.act` or `agent.assert` instruction, the strings in `agent.act`
@@ -186,29 +184,19 @@ ordinary text with it.
 - When tests run in the runner's own process, with the config or tests
   passed in memory by an embedding host, their console output is not
   redacted.
-- A Playwright trace is rewritten before it is kept whenever its session
-  knows a secret value, filled or not: every static one, and a provider's
-  once the session resolved it. Any run of 8 or more characters of a value,
-  its whitespace collapsed or not, becomes `<secret:name>`, so unrelated
-  text that shares 8 characters with a value is masked too. A base64 or
-  base64url run that decodes to a value or such a fragment (a basic-auth
-  header, a cookie, a token segment) is replaced whole. After a fill,
-  screencast frames are dropped; otherwise they are kept. An image the app
-  served that draws the secret survives. A trace the runner cannot rewrite is deleted and
-  the attempt records `TRACE_WITHHELD`.
 - A video masks nothing and is labeled `redaction: "incomplete"`. It is
   never recorded unless you ask. A recording a hosted browser or
   device service keeps stays with that service; the report holds only its
   URL.
 - A download is what the app served. When the session knows a secret
-  value, every whole occurrence of it in a text download (`text/*` or JSON
-  by file extension) is replaced, as in reports, and the download is labeled
-  `redaction: "complete"`. Fragments and base64 runs are matched in traces
-  only. Any other download, a binary, one that is not valid UTF-8 or cannot
-  be rewritten, or one from a session that knows no secret value, is kept
-  as served and labeled `redaction: "incomplete"`.
-- The `headers` a protected preview needs are recorded in the trace as
-  request headers. Share that trace as you would the bypass secret.
+  value, a text download (`text/*` or JSON by file extension) is rewritten
+  and labeled `redaction: "complete"`: every whole occurrence of a value,
+  any run of 8 or more of its characters (whitespace collapsed or not, so
+  unrelated text sharing 8 characters with a value is masked too), and a
+  base64 or base64url run that decodes to either, becomes `<secret:name>`.
+  Any other download, a binary, one that is not valid UTF-8 or cannot be
+  rewritten, or one from a session that knows no secret value, is kept as
+  served and labeled `redaction: "incomplete"`.
 - `command.log` is captured as the process writes it.
   The runner does not redact them. Keep secrets out of your app's stdout.
 
@@ -264,7 +252,6 @@ project-relative path you configure.
 | --- | --- | --- |
 | `report.json` | The run record. Errors, reasoning excerpts, and action summaries pass the redactor. | complete |
 | `artifacts/.../*.png` | Screenshots. Secure fields are masked before screenshots are returned or saved as artifacts. | complete |
-| `artifacts/.../trace.zip` | Playwright trace, rewritten whenever its session knows a secret value; screencast frames are dropped after a fill only. | not-required (no secret value), complete, or deleted |
 | `artifacts/.../*.webm`, `*.mp4` | Video, opt-in through `video` or `--video`; `retain-on-failure` keeps only the attempts that did not pass. | incomplete |
 | `artifacts/.../downloads/*` | Files the app served through a download. Text ones are rewritten whenever the session knows a secret value; the rest are kept as served. | complete or incomplete |
 | `artifacts/.../failure/screen.txt` | The redacted tree at the moment of failure. | complete |
@@ -275,7 +262,7 @@ project-relative path you configure.
 | The path in `command.log` | Your app's stdout and stderr, verbatim. Must be inside the project root. | none |
 
 An `artifacts.store` receives each artifact's bytes as they are produced,
-after trace and download redaction, with the `redaction` label the report
+after download redaction, with the `redaction` label the report
 records, so a store can export only what the runner vouches for. A
 `cache.store` receives every recorded entry and supplies every replayed one;
 what comes back is validated again before use.

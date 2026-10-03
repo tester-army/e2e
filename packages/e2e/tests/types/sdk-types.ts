@@ -173,25 +173,25 @@ unique(7);
 // @ts-expect-error cache mode is a closed union
 ({ targets, cache: 'sometimes' }) satisfies E2EConfig;
 ({ targets, artifacts: { store: artifactStore } }) satisfies E2EConfig;
-// @ts-expect-error artifacts no longer lists kinds; trace and video choose the recordings
-({ targets, artifacts: ['screenshot', 'trace'] }) satisfies E2EConfig;
+// @ts-expect-error artifacts no longer lists kinds; video chooses the recordings
+({ targets, artifacts: ['screenshot', 'video'] }) satisfies E2EConfig;
 // @ts-expect-error artifacts.kinds was removed
-({ targets, artifacts: { kinds: ['trace'], store: artifactStore } }) satisfies E2EConfig;
-// @ts-expect-error artifacts.trace was removed; trace is a mode at the config root
-({ targets, artifacts: { trace: { record: 'retries' } } }) satisfies E2EConfig;
+({ targets, artifacts: { kinds: ['video'], store: artifactStore } }) satisfies E2EConfig;
 // @ts-expect-error video retention moved to the video mode
 ({ targets, artifacts: { video: { retain: 'on-failure' } } }) satisfies E2EConfig;
-({ targets, trace: 'on-all-retries', video: 'retain-on-failure' }) satisfies E2EConfig;
-({ targets: [{ name: 'phone', engine, trace: 'off', video: 'on-first-retry' }], trace: 'on', video: 'off' }) satisfies E2EConfig;
+({ targets, video: 'retain-on-failure' }) satisfies E2EConfig;
+({ targets: [{ name: 'phone', engine, video: 'on-first-retry' }], video: 'off' }) satisfies E2EConfig;
 'on-all-retries' satisfies RecordingMode;
-// @ts-expect-error trace is a closed set of modes; record: 'retries' is on-all-retries
-({ targets, trace: 'retries' }) satisfies E2EConfig;
+// @ts-expect-error trace was removed from the config
+({ targets, trace: 'on' }) satisfies E2EConfig;
+// @ts-expect-error trace was removed from a target
+({ targets: [{ name: 'phone', engine, trace: 'on' }] }) satisfies E2EConfig;
 // @ts-expect-error video is a closed set of modes
 ({ targets, video: 'sometimes' }) satisfies E2EConfig;
 // @ts-expect-error video is a mode, not a boolean
 ({ targets, video: true }) satisfies E2EConfig;
-// @ts-expect-error trace is a mode, not a boolean
-({ targets: [{ name: 'phone', engine, trace: true }] }) satisfies E2EConfig;
+// @ts-expect-error a target's video is a mode, not a boolean
+({ targets: [{ name: 'phone', engine, video: true }] }) satisfies E2EConfig;
 ({ put: async (artifact) => ({ ref: artifact.startedAt ?? artifact.sha256 }) }) satisfies ArtifactStore;
 ({
   put: async (artifact) => ({ ref: artifact.sha256 }),
@@ -199,7 +199,7 @@ unique(7);
 }) satisfies ArtifactStore;
 ({ kind: 'video', url: 'https://r.example/a.mp4', mediaType: 'video/mp4', redaction: 'incomplete', runId: 'r', testId: 't', attemptId: 'a', startedAt: '2026-01-01T00:00:00.000Z' }) satisfies StoredArtifactLink;
 // @ts-expect-error a link has no bytes, and only video links exist
-({ kind: 'trace', url: 'https://r.example/a.zip', mediaType: 'application/zip', redaction: 'incomplete', runId: 'r', testId: 't', attemptId: 'a', startedAt: '2026-01-01T00:00:00.000Z' }) satisfies StoredArtifactLink;
+({ kind: 'screenshot', url: 'https://r.example/a.png', mediaType: 'image/png', redaction: 'incomplete', runId: 'r', testId: 't', attemptId: 'a', startedAt: '2026-01-01T00:00:00.000Z' }) satisfies StoredArtifactLink;
 ({ targets, output: 'results/e2e' }) satisfies E2EConfig;
 // @ts-expect-error output is one directory
 ({ targets, output: ['a', 'b'] }) satisfies E2EConfig;
@@ -476,10 +476,12 @@ test.extend<{ device: unknown }>()('types a device', async ({ device }) => { dev
 
 // A test, a group, and a call each pin a configured agent by name.
 test('as the buyer', { agent: 'buyer' }, async () => {});
-test('traced on retries', { trace: 'on-all-retries', video: 'retain-on-failure' }, async () => {});
-test.describe('untraced', { trace: 'off' }, () => {});
-// @ts-expect-error a test's trace is a mode
-test('traced', { trace: 'all' }, async () => {});
+test('recorded on failure', { video: 'retain-on-failure' }, async () => {});
+test.describe('unrecorded', { video: 'off' }, () => {});
+// @ts-expect-error trace was removed from test options
+test('traced', { trace: 'on' }, async () => {});
+// @ts-expect-error trace was removed from describe options
+test.describe('traced group', { trace: 'on' }, () => {});
 test.describe('admin flows', { agent: 'admin' }, () => {});
 await agent.act('approve it', { agent: 'admin' });
 await agent.assert('it is approved', { agent: 'buyer' });

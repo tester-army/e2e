@@ -37,8 +37,8 @@ function tree(): string[] {
 
 describe('pruneArtifacts', () => {
   it('keeps exactly the files the report names, untouched, and removes the rest and the directories left empty', async () => {
-    const kept = ['web/a/default/attempt-0/screenshots/001-landing.png', 'web/b/default/attempt-0/trace/trace.zip', 'rerun-1/web/b/default/attempt-0/failure/screen.txt'];
-    const dropped = ['web/a/default/attempt-0/stray.log', 'web/c/default/attempt-0/trace/trace.zip', 'web/sessions/0192/screen.png', 'top-level.txt'];
+    const kept = ['web/a/default/attempt-0/screenshots/001-landing.png', 'web/b/default/attempt-0/video/video.webm', 'rerun-1/web/b/default/attempt-0/failure/screen.txt'];
+    const dropped = ['web/a/default/attempt-0/stray.log', 'web/c/default/attempt-0/video/video.webm', 'web/sessions/0192/screen.png', 'top-level.txt'];
     for (const file of [...kept, ...dropped]) plant(file);
 
     await pruneArtifacts(root, new Set(kept));

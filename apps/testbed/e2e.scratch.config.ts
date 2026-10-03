@@ -29,7 +29,6 @@ if (process.env.E2E_DEVTOOLS !== undefined && process.env.E2E_DEVTOOLS !== '') {
  */
 export default {
   projectId: 'dev.e2e.testbed-agent',
-  trace: 'off',
   tests: 'tests-scratch/**/*.e2e.ts',
   targets: [
     {

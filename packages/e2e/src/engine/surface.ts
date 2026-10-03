@@ -111,10 +111,6 @@ export interface SessionApp {
 export interface SessionArtifacts {
   /** Captures a redacted screenshot and returns an artifact-relative path. */
   screenshot(label: string | undefined, operation: OperationContext): Promise<string>;
-  /** Starts trace recording. */
-  startTrace?(operation: OperationContext): Promise<void>;
-  /** Stops trace recording and returns the artifact-relative path, or every segment written, in order. */
-  stopTrace?(operation: OperationContext): Promise<string | readonly string[]>;
   /** Starts video recording. */
   startVideo?(operation: OperationContext): Promise<void>;
   /** Stops video recording and returns the segments written, in order. */

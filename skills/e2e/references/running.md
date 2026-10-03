@@ -41,7 +41,7 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status or switch
 | `--pass-with-no-tests` | Exit 0, not `NO_TESTS`, when nothing matches. |
 | `--debug` | Phase timings and an agent step table on stderr; transcripts as artifacts. |
 | `--ai-trace` | Every model call, to `<output>/ai-trace.json`. |
-| `--trace [mode]`, `--video [mode]` | Which attempts record a trace, or a video (WebM on browsers, MP4 on devices), over the config and every target: bare is `on`; `--trace off` skips the cost; `retain-on-failure` (video) keeps only failed attempts; `on-first-retry` records first retries, `on-all-retries` every retry. A test's own `trace` or `video` still wins; targets whose engine cannot record are skipped with a notice. Both are greedy: write `--video=<mode>` or put test files first. The failure recap names the video. |
+| `--video [mode]` | Which attempts record a video (WebM on browsers, MP4 on devices), over the config and every target: bare is `on`; `retain-on-failure` keeps only failed attempts; `on-first-retry` records first retries, `on-all-retries` every retry. A test's own `video` still wins; targets whose engine cannot record are skipped with a notice. Greedy: write `--video=<mode>` or put test files first. The failure recap names the video. |
 
 ```bash
 npx e2e run tests/signup.e2e.ts
@@ -86,7 +86,7 @@ its own tools.
 
 `<output>` (`.e2e` by default) holds `report.json`, `junit.xml`,
 `summary.md`, `failures/`, `ai-trace.json`, `sessions/`, and `artifacts/`
-(screenshots, Playwright traces, videos, `--debug` transcripts, downloads).
+(screenshots, videos, `--debug` transcripts, downloads).
 `artifacts/` is cleared once a run's tests start; a run stopping before
 leaves the last run's files, and a `--last-failed` rerun keeps the files
 the report it reruns names and writes its own under `artifacts/rerun-<n>/`. The report records every artifact path, a
@@ -154,7 +154,7 @@ third kills the app process groups and exits 130 at once.
 ## Continuous integration
 
 CI mode is on when `CI` is set (not `0` or `false`): `retries` 1,
-`workers` 1, `trace` `on-first-retry`, `test.only` rejected with
+`workers` 1, `test.only` rejected with
 `ONLY_IN_CI`, the replay cache `read-only` unless the config sets a mode explicitly
 (`cache: 'read-write'` or `cache.mode`), `reuseExisting` ignored.
 

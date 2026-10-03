@@ -44,7 +44,6 @@
         ],
         "artifactCapabilities": [
           "screenshot",
-          "trace",
           "video"
         ],
         "stateCapability": true

@@ -264,22 +264,19 @@ describe('e2e explore', () => {
     ).rejects.toThrow('the goal must be at most 2000 characters with its secret values redacted, got 2009');
   }, 120_000);
 
-  it('says to pass --trace on and --video on when a retry mode would record nothing, explore running once', async () => {
+  it('says to pass --video on when a retry mode would record nothing, explore running once', async () => {
     const model = installExploreModel({
       plan: () => ({ decision: 'finish', summary: 'Nothing here.' }),
       loop: () => [{ toolName: 'complete_step', input: { status: 'passed', summary: 'unused' } }],
     });
     const runNotices: string[] = [];
     await runExplore(project, app, model, {
-      // CI's default trace mode records the first retry, and explore has none.
-      env: { ...process.env, CI: '1' },
       video: 'on-first-retry',
       onEvent: (event) => {
         if (event.type === 'notice' && event.target === 'run') runNotices.push(event.message);
       },
     });
     expect(runNotices).toEqual([
-      "trace: 'on-first-retry' records retries only, and explore runs its goal once, so no traces will be recorded; pass --trace on",
       "video: 'on-first-retry' records retries only, and explore runs its goal once, so no videos will be recorded; pass --video on",
     ]);
   }, 120_000);
