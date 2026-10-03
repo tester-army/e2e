@@ -232,14 +232,9 @@ export interface WebOptions {
    */
   readonly timezoneId?: string;
   /**
-   * Scripts every document of every attempt runs after it is created and
-   * before any of its own scripts, in every tab and frame, as Playwright's
-   * `browserContext.addInitScript` runs them: to mock a browser API, seed
-   * `Math.random`, or set a flag the app reads at boot. Each is a string of
-   * JavaScript source, a `{ path }` to a file relative to the project root,
-   * or a function serialized into the page, which can close over nothing
-   * from the test process. They run in order, before any
-   * `browser.addInitScript` adds.
+   * Scripts every document runs before the page's own, in every tab and
+   * frame: JavaScript source, a `{ path }` relative to the project root, or a
+   * function, which cannot close over test variables.
    */
   readonly initScripts?: readonly WebInitScript[];
 }
@@ -309,10 +304,8 @@ export class PlaywrightSurface {
    * leases the run's browsers from a provider. A CDP attach uses the
    * remote's browser, so only a local launch needs the browser here. The
    * download narrates through `info.log` and is bounded by the run's
-   * interrupt alone, never by a launch budget. The configured init scripts
-   * are read here first, so a file that cannot be read fails the run as
-   * `INVALID_CONFIG` before any worker starts; each worker reads them again
-   * in `init`.
+   * interrupt alone, never by a launch budget. Init scripts are read first
+   * so a missing file fails the run before any worker starts.
    */
   async prepare(info: EnginePrepareInfo): Promise<EnginePrepareResult | void> {
     await this.configuredInitScripts.load(info.projectRoot);
@@ -334,9 +327,8 @@ export class PlaywrightSurface {
     this.leases?.init(info);
     // The browser was installed in `prepare`; a launch or attach is the one
     // boot step left that can outlive a launch budget, and it honours the
-    // init signal. Reading the init scripts runs beside it, and a failed
-    // read is thrown only once the launch settled, so `dispose` owns the
-    // browser it may have started.
+    // init signal. A failed init-script read throws only after the launch
+    // settles, so `dispose` owns the browser.
     const settled = await Promise.allSettled([
       this.configuredInitScripts.load(info.projectRoot),
       this.persistent ? undefined : this.acquireBrowser(info.signal),
