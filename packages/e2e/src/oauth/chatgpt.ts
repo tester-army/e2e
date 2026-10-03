@@ -8,7 +8,8 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import type { LanguageModelV4 } from '@ai-sdk/provider';
 import { createOAuthFetch } from './fetch.ts';
-import { USER_AGENT, loginHint } from './providers.ts';
+import { USER_AGENT } from '../internal/client-identity.ts';
+import { loginHint } from './providers.ts';
 import { createCodexProvider } from './providers/openai.ts';
 import { withoutServerStorage } from './responses.ts';
 import { defaultCredentialStore } from './store.ts';

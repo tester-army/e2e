@@ -238,6 +238,12 @@ Model input is the redacted screen, the step instruction, and the
 screenshots the agent asks for. e2e reads nothing back from the provider
 after a response, so a run needs no state kept on the provider's side.
 
+Every model request names e2e: the `User-Agent` starts with
+`e2e/<version> (<platform>; <arch>)`, and `HTTP-Referer:
+https://tester.army/e2e` with `X-Title: e2e` attribute the traffic to e2e on
+the Vercel AI Gateway and OpenRouter. These replace the same headers set on
+the provider instance.
+
 **OpenAI and Azure OpenAI.** Every request carries `store: false` and a
 prompt cache key. The provider keeps no copy of the conversation, a
 reasoning model's earlier turns travel inline as encrypted content, and the

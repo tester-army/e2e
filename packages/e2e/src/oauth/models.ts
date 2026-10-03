@@ -2,7 +2,8 @@
 
 import { OAuthError } from './errors.ts';
 import { createOAuthFetch } from './fetch.ts';
-import { USER_AGENT, getProvider, loginHint, type ProviderId } from './providers.ts';
+import { USER_AGENT } from '../internal/client-identity.ts';
+import { getProvider, loginHint, type ProviderId } from './providers.ts';
 import { defaultCredentialStore } from './store.ts';
 import type { CredentialStore, SubscriptionModel } from './types.ts';
 

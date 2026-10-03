@@ -1,6 +1,5 @@
 /** The built-in providers by id, and the login options each one takes. */
 
-import { packageVersion } from '../internal/package-version.ts';
 import { createCodexProvider, type CodexLoginOptions } from './providers/openai.ts';
 import { createCopilotProvider, type CopilotLoginOptions } from './providers/github-copilot.ts';
 import { createXaiProvider } from './providers/xai.ts';
@@ -30,12 +29,6 @@ export function isProviderId(id: string): id is ProviderId {
 export function getProvider(id: ProviderId): OAuthProvider {
   return PROVIDERS[id];
 }
-
-/**
- * How requests identify this harness to a vendor: `e2e/<version> (<platform>; <arch>)`,
- * alongside the `originator` (ChatGPT) and `referrer` (SpaceXAI) the flows send. Never another client's name.
- */
-export const USER_AGENT = `e2e/${packageVersion(import.meta.url, '../../package.json', '0.0.0')} (${process.platform}; ${process.arch})`;
 
 /** How a missing login is described to the user: the CLI command that fixes it. */
 export function loginHint(id: ProviderId): string {

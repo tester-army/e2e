@@ -7,7 +7,8 @@
 import type { LanguageModelV4 } from '@ai-sdk/provider';
 import { createXai } from '@ai-sdk/xai';
 import { createOAuthFetch } from './fetch.ts';
-import { USER_AGENT, loginHint } from './providers.ts';
+import { USER_AGENT } from '../internal/client-identity.ts';
+import { loginHint } from './providers.ts';
 import { createXaiProvider } from './providers/xai.ts';
 import { defaultCredentialStore } from './store.ts';
 

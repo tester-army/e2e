@@ -14,6 +14,7 @@
 import type { StepTurn } from '../run/steps.ts';
 import type { ModelMessage, StepResult, ToolSet } from 'ai';
 import { asSdkLanguageModel, loadAiSdk, type AiSdk, type SdkLanguageModel } from './ai-sdk.ts';
+import { MODEL_REQUEST_HEADERS } from '../internal/client-identity.ts';
 import { ConfigurationError, withHint } from '../internal/errors.ts';
 import type { ProviderOptions } from '../types.ts';
 import { failureHint, isAbort, TRANSPORT_RETRIES } from './model/sdk.ts';
@@ -361,6 +362,7 @@ class LoopRun {
       toolChoice: this.toolChoice,
       ...(providerOptions === undefined ? {} : { providerOptions: providerOptions as never }),
       maxRetries: TRANSPORT_RETRIES,
+      headers: MODEL_REQUEST_HEADERS,
       stopWhen: [
         () => this.conclusion.concluded() || this.hardStop !== undefined,
         // Counted across every generate call of the step, so a retry after an
