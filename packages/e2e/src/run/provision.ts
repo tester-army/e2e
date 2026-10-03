@@ -134,6 +134,8 @@ export interface PrepareScope {
   /** The same `env` the workers are started with: what prepare provisions must be where a launch will look for it. */
   readonly env: NodeJS.ProcessEnv;
   readonly signal: AbortSignal;
+  /** Whether the run asked for a visible surface, so a hook provisions for the browser it will launch. */
+  readonly headed: boolean;
   /** Where a hook's progress lines go, under the target they concern. */
   readonly notice: (targetName: string, line: string) => void;
 }
@@ -175,6 +177,7 @@ export class PreparedEngines {
         runId: scope.runId,
         targetName: target.name,
         projectRoot: scope.projectRoot,
+        headed: scope.headed,
         app: engineAppInfo(target.app),
         slots,
         env: scope.env,

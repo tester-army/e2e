@@ -101,7 +101,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     engines.finish({ runId, env: options.env, timeoutMs: config.cleanupTimeout, notice, onFailure });
   try {
     // One worker on one target: one slot to provision.
-    prepared = await engines.prepare(target, 1, { runId, projectRoot: config.projectRoot, env: options.env, signal, notice });
+    prepared = await engines.prepare(target, 1, { runId, projectRoot: config.projectRoot, env: options.env, signal, headed: options.headed, notice });
     const hooks = { ci: config.ci, notice: (message: string) => notice('app', message) };
     processes = await startDeclaredProcesses([target], config.projectRoot, () => hooks, signal, debug, options.processes);
     if (signal.aborted) {

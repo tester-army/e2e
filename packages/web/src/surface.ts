@@ -311,7 +311,7 @@ export class PlaywrightSurface {
     await this.configuredInitScripts.load(info.projectRoot);
     if (this.leases !== undefined) return this.leases.prepare(info);
     if (this.connect !== undefined) return;
-    await ensureBrowsersInstalled([this.browserName], { env: info.env, signal: info.signal, log: info.log });
+    await ensureBrowsersInstalled([this.browserName], { env: info.env, signal: info.signal, log: info.log, headed: info.headed });
   }
 
   /** Releases the browsers `prepare` leased; a local launch or a `connect` has nothing to release. */
