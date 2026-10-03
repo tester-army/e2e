@@ -239,7 +239,7 @@ The attempt runs in the browser's persistent default context, on the
 browser's own first tab, so the remote must contain only that context, and
 the limits of
 [`connect.reconnectEndpoint`](/reference/web#recovering-a-cdp-transport)
-apply: no `headers`, `basicAuth`, or `userAgent` (each is `INVALID_CONFIG`), no
+apply: no `headers`, `basicAuth`, `userAgent`, `locale`, or `timezoneId` (each is `INVALID_CONFIG`), no
 `app.clearState()` (`UNSUPPORTED_CAPABILITY` naming the scope), and no session
 state capture or restore, so a run whose tests consume a
 [session](/authentication) on the target fails with `COLLECTION_ERROR`

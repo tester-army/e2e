@@ -120,7 +120,7 @@ export interface WebConnectOptions {
    * same browser after a transport drop. Called once before the next
    * operation, within its budget. The original browser and page must survive.
    * Dispatched operations are never retried. The host owns browser cleanup.
-   * Context replacement, headers, basicAuth, and userAgent are unavailable in this mode.
+   * Context replacement, headers, basicAuth, userAgent, locale, and timezoneId are unavailable in this mode.
    */
   readonly reconnectEndpoint?: (signal: AbortSignal) => string | Promise<string>;
 }
@@ -213,6 +213,23 @@ export interface WebOptions {
    * (`connect.reconnectEndpoint`, or a provider with `scope: 'attempt'`).
    */
   readonly userAgent?: string;
+  /**
+   * The locale every attempt's context runs in, a BCP 47 tag such as
+   * `de-DE`, as Playwright's own `locale` context option sets it: what
+   * `navigator.language`, `Intl` formatting, and the `Accept-Language` header
+   * report. Defaults to the browser's own. An `accept-language` entry in
+   * `headers` beside it is `INVALID_CONFIG`, and so is a persistent context
+   * (`connect.reconnectEndpoint`, or a provider with `scope: 'attempt'`).
+   */
+  readonly locale?: string;
+  /**
+   * The IANA time zone every attempt's context runs in, such as
+   * `Europe/Berlin`, as Playwright's own `timezoneId` context option sets it:
+   * what `Date` and `Intl` resolve local time against. Defaults to the
+   * machine's. A persistent context (`connect.reconnectEndpoint`, or a
+   * provider with `scope: 'attempt'`) is `INVALID_CONFIG`.
+   */
+  readonly timezoneId?: string;
 }
 
 /** The test-id attribute when the options name none. */
@@ -240,6 +257,8 @@ export class PlaywrightSurface {
   private readonly basicAuth: WebBasicAuth | undefined;
   private readonly testIdAttribute: string;
   private readonly userAgent: string | undefined;
+  private readonly locale: string | undefined;
+  private readonly timezoneId: string | undefined;
   private app: EngineAppInfo = {};
   private projectRoot = '';
   private headed = false;
@@ -263,6 +282,8 @@ export class PlaywrightSurface {
     this.basicAuth = options.basicAuth;
     this.testIdAttribute = options.testIdAttribute ?? DEFAULT_TEST_ID_ATTRIBUTE;
     this.userAgent = options.userAgent;
+    this.locale = options.locale;
+    this.timezoneId = options.timezoneId;
   }
 
   // --- lifecycle ---
@@ -417,6 +438,8 @@ export class PlaywrightSurface {
         acceptDownloads: true,
         ...(credentials === undefined ? {} : { httpCredentials: credentials }),
         ...(this.userAgent === undefined ? {} : { userAgent: this.userAgent }),
+        ...(this.locale === undefined ? {} : { locale: this.locale }),
+        ...(this.timezoneId === undefined ? {} : { timezoneId: this.timezoneId }),
         ...(this.headers === undefined ? {} : { serviceWorkers: 'block' as const }),
       },
       configure: async (target) => {

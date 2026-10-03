@@ -185,11 +185,13 @@ describe('web({ browser: provider })', () => {
     expect(() => web({ browser: provider().impl, connect: { cdpEndpoint: () => 'ws://x' } })).toThrow(/two browser sources/);
   });
 
-  it('rejects creation-time headers, credentials, and user agent with an attempt-scoped provider, as persistent connect does', () => {
+  it('rejects creation-time headers, credentials, user agent, locale, and time zone with an attempt-scoped provider, as persistent connect does', () => {
     const cloud = provider({ scope: 'attempt' }).impl;
     expect(() => web({ browser: cloud, headers: { 'x-preview': 'synthetic' } })).toThrow(/persistent context/);
     expect(() => web({ browser: cloud, basicAuth: { username: 'user', password: 'synthetic' } })).toThrow(/persistent context/);
     expect(() => web({ browser: cloud, userAgent: 'synthetic playwright' })).toThrow(/persistent context/);
+    expect(() => web({ browser: cloud, locale: 'de-DE' })).toThrow(/persistent context; locale requires/);
+    expect(() => web({ browser: cloud, timezoneId: 'Europe/Berlin' })).toThrow(/persistent context; timezoneId requires/);
     expect(() => web({ browser: provider().impl, headers: { 'x-preview': 'synthetic' } })).not.toThrow();
   });
 

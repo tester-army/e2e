@@ -41,7 +41,9 @@ target, so a test can `requires: ['browser']`. Browser options:
 `BrowserProvider` that leases hosted browsers, see below), `viewport`
 (`{ width, height }`; default 1280x720), `testIdAttribute` (the attribute
 `getByTestId` and a node's `testId` read; default `data-testid`), `userAgent`
-(the `User-Agent` every attempt sends and `navigator.userAgent` reports), and
+(the `User-Agent` every attempt sends and `navigator.userAgent` reports),
+`locale` and `timezoneId` (the language and time zone every attempt runs in,
+such as `de-DE` and `Europe/Berlin`), and
 `connect` — attach to a remote browser over CDP instead of launching a local
 one.
 
@@ -71,7 +73,7 @@ engine verifies the default context ID and active page target ID, clears stale
 references, and never repeats a dispatched operation. A missing target fails
 the attempt. The host owns deleting the remote browser after cleanup.
 
-This mode does not support `headers`, `basicAuth`, `userAgent`, context reset, or session
+This mode does not support `headers`, `basicAuth`, `userAgent`, `locale`, `timezoneId`, context reset, or session
 state capture and restore. Recording resumes after reconnect, but a segment
 lost during the disconnect remains unavailable. See the
 [Playwright reference](../../docs/reference/web.mdx#recovering-a-cdp-transport)

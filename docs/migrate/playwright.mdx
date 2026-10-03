@@ -59,7 +59,8 @@ A Playwright key the runner recognizes (`testDir`, `baseURL`, `webServer`,
 | `use.trace` | `trace` with the same modes (`'off'`, `'on'`, `'retain-on-failure'`, `'on-first-retry'`, `'on-all-retries'`), at the top of the config, per target, `test('x', { trace }, ...)`, or `--trace [mode]` for one run; the default differs, see [below](#defaults-that-differ) | same |
 | `use.video` | `video` with the same modes as `trace`, at the top of the config, per target in place of a project, `test('x', { video }, ...)` in place of `test.use`, or `--video [mode]` for one run | same |
 | `use.headless: false` | `--headed` on the CLI | renamed |
-| `use.locale`, `timezoneId`, `colorScheme`, `geolocation`, `permissions` | not yet | missing |
+| `use.locale`, `use.timezoneId` | `web({ locale, timezoneId })` | renamed |
+| `colorScheme`, `geolocation`, `permissions` | not yet | missing |
 | `use.userAgent` | `web({ userAgent })` | renamed |
 | `devices['iPhone 15']`, `deviceScaleFactor`, `isMobile`, `hasTouch` | not yet; `web({ viewport })` sets the size only | missing |
 | `ignoreHTTPSErrors`, `bypassCSP`, `offline`, `launchOptions`, `proxy` | not yet | missing |

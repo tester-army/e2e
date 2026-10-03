@@ -184,4 +184,25 @@ describe('web({ headers, basicAuth })', () => {
       await shutdown(engine);
     }
   });
+
+  it('runs the page in the configured locale and time zone, after a context reset too', async () => {
+    const engine = web({ locale: 'de-DE', timezoneId: 'Asia/Tokyo' });
+    const read = () =>
+      surfaceOf(engine)!.page().evaluate(() => ({
+        language: navigator.language,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        offset: new Date('2026-01-01T00:00:00Z').getTimezoneOffset(),
+      }));
+    const expected = { language: 'de-DE', timeZone: 'Asia/Tokyo', offset: -540 };
+    try {
+      await boot(engine, app, artifactsDir, 'l0');
+      await engine.session!.open!(app.url, operation('l0'));
+      expect(await read()).toEqual(expected);
+      await engine.session!.reset!(operation('l0'));
+      await engine.session!.open!(app.url, operation('l0'));
+      expect(await read()).toEqual(expected);
+    } finally {
+      await shutdown(engine);
+    }
+  });
 });

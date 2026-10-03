@@ -82,6 +82,8 @@ export function web(options: WebOptions = {}): EngineHandle {
   if (options.basicAuth !== undefined) validateBasicAuth(options.basicAuth);
   if (options.testIdAttribute !== undefined) validateTestIdAttribute(options.testIdAttribute);
   if (options.userAgent !== undefined) validateUserAgent(options.userAgent, options.headers);
+  if (options.locale !== undefined) validateLocale(options.locale, options.headers);
+  if (options.timezoneId !== undefined) validateTimezoneId(options.timezoneId);
   if (options.screencast !== undefined) validateScreencast(options.screencast);
   const reconnecting = options.connect?.reconnectEndpoint !== undefined;
   if (reconnecting && typeof options.connect?.reconnectEndpoint !== 'function') {
@@ -90,10 +92,11 @@ export function web(options: WebOptions = {}): EngineHandle {
   // A per-attempt lease rides the same persistent context as `reconnectEndpoint`, with the same limits.
   const recoverable = reconnecting || provider?.scope === 'attempt';
   const mode = provider === undefined ? 'connect.reconnectEndpoint' : `browser provider "${provider.name}" with scope "attempt"`;
-  if (recoverable && (options.headers !== undefined || options.basicAuth !== undefined || options.userAgent !== undefined)) {
+  const creationOptions = CREATION_OPTION_KEYS.filter((key) => options[key] !== undefined);
+  if (recoverable && creationOptions.length > 0) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      `${mode} uses a persistent context; headers, basicAuth, and userAgent require a newly created context`,
+      `${mode} uses a persistent context; ${creationOptions.join(', ')} ${creationOptions.length === 1 ? 'requires' : 'require'} a newly created context`,
     );
   }
   const surface = new PlaywrightSurface(options);
@@ -164,7 +167,12 @@ const WEB_OPTION_KEYS: readonly string[] = Object.keys({
   basicAuth: true,
   testIdAttribute: true,
   userAgent: true,
+  locale: true,
+  timezoneId: true,
 } satisfies Record<keyof WebOptions, true>);
+
+/** The options applied when the engine creates a browser context, which a persistent context never is. */
+const CREATION_OPTION_KEYS = ['headers', 'basicAuth', 'userAgent', 'locale', 'timezoneId'] as const satisfies readonly (keyof WebOptions)[];
 
 /**
  * What a persistent context rules out, named with its cause: `what` replaces
@@ -232,6 +240,57 @@ function validateUserAgent(userAgent: unknown, headers: Readonly<Record<string, 
   }
   if (headers !== undefined && Object.keys(headers).some((name) => name.toLowerCase() === 'user-agent')) {
     throw new ConfigurationError('INVALID_CONFIG', 'web({ userAgent }) and a user-agent header in web({ headers }) conflict; set userAgent only');
+  }
+}
+
+/**
+ * Refuses a locale that is not a BCP 47 tag, and one an `accept-language`
+ * header would override on the app's site while `navigator.language` kept
+ * reporting it.
+ */
+function validateLocale(locale: unknown, headers: Readonly<Record<string, string>> | undefined): void {
+  if (typeof locale !== 'string' || locale === '' || !isLanguageTag(locale)) {
+    throw new ConfigurationError('INVALID_CONFIG', `web({ locale }) must be a BCP 47 language tag such as "de-DE", got ${JSON.stringify(locale)}`);
+  }
+  if (headers !== undefined && Object.keys(headers).some((name) => name.toLowerCase() === 'accept-language')) {
+    throw new ConfigurationError('INVALID_CONFIG', 'web({ locale }) and an accept-language header in web({ headers }) conflict; set locale only');
+  }
+}
+
+/**
+ * True when `tag` names a language the browser can run in: a Unicode locale
+ * `Intl.Locale` parses, other than the undetermined `und`, which Chromium
+ * refuses at context creation as it does a private-use-only tag.
+ */
+function isLanguageTag(tag: string): boolean {
+  try {
+    const { language } = new Intl.Locale(tag);
+    return language !== undefined && language !== 'und';
+  } catch {
+    return false;
+  }
+}
+
+/** Refuses a time zone the browser would refuse only when the first context opens. */
+function validateTimezoneId(timezoneId: unknown): void {
+  if (typeof timezoneId !== 'string' || timezoneId === '' || !isTimeZone(timezoneId)) {
+    throw new ConfigurationError('INVALID_CONFIG', `web({ timezoneId }) must be an IANA time zone such as "Europe/Berlin", got ${JSON.stringify(timezoneId)}`);
+  }
+}
+
+/**
+ * True when `timeZone` is an IANA name `Intl` resolves, spelled with its own
+ * case. Node also takes an offset (`+01:00`) and any casing (`europe/berlin`),
+ * both of which Chromium refuses; an alias resolving to another name
+ * (`US/Eastern`) is fine.
+ */
+function isTimeZone(timeZone: string): boolean {
+  if (/^[+-]/.test(timeZone)) return false;
+  try {
+    const resolved = new Intl.DateTimeFormat('en-US', { timeZone }).resolvedOptions().timeZone;
+    return resolved === timeZone || resolved.toLowerCase() !== timeZone.toLowerCase();
+  } catch {
+    return false;
   }
 }
 

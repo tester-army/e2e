@@ -176,6 +176,7 @@ start a script that brings them up and serves the app.
 | `headers` | Sent to the app's site only (Vercel's `x-vercel-protection-bypass`, ngrok's `ngrok-skip-browser-warning`), `agent.act` included; disables the browser HTTP cache and service workers. |
 | `basicAuth` | `{ username, password }` for a `401` challenge; `password` may be `secrets.get('name')`, resolved per attempt and redacted like any secret, the base64 `Authorization` credential too. |
 | `userAgent` | The `User-Agent` every attempt sends and `navigator.userAgent` reports. |
+| `locale`, `timezoneId` | The language (`'de-DE'`: `navigator.language`, `Intl`, `Accept-Language`) and IANA time zone (`'Europe/Berlin'`) every attempt runs in. |
 | `testIdAttribute` | What `getByTestId` reads; default `data-testid`. |
 | `screencast` | `{ size?, quality? }` for the engine's own video: frame size (default the viewport's), JPEG quality 0 to 100. |
 
@@ -184,7 +185,7 @@ start a script that brings them up and serves the app.
   the handle (a reference, not the value) in `app.command.env`, a template
   literal, or `context`; read those from `process.env`.
 - `reconnectEndpoint` or an attempt-scoped provider rides one persistent
-  context without `headers`, `basicAuth`, `userAgent`, `app.clearState()`, or
+  context without `headers`, `basicAuth`, `userAgent`, `locale`, `timezoneId`, `app.clearState()`, or
   session state. Recovery never repeats a dispatched operation; exhausting
   the budget is `OPERATION_TIMEOUT`. Without `reconnectEndpoint` a dropped
   connection is reacquired at the next attempt.

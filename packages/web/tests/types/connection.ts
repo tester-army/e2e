@@ -55,6 +55,10 @@ import type { BrowserLease, BrowserProvider, WebConnectOptions, WebOptions } fro
 ({ testIdAttribute: ['data-qa', 'data-test'] }) satisfies WebOptions;
 // @ts-expect-error a user agent is one string.
 ({ userAgent: 3 }) satisfies WebOptions;
+// The locale and time zone every context runs in.
+({ locale: 'de-DE', timezoneId: 'Europe/Berlin' }) satisfies WebOptions;
+// @ts-expect-error a locale is one tag; Playwright takes no fallback list.
+({ locale: ['de-DE', 'en-US'] }) satisfies WebOptions;
 // The page screencast's frame size and quality; which attempts record is the config's video.
 ({ screencast: { size: { width: 1280, height: 720 }, quality: 80 } }) satisfies WebOptions;
 // @ts-expect-error web({ video }) was renamed web({ screencast }).

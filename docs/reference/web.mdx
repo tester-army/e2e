@@ -82,6 +82,20 @@ export interface WebOptions {
    * (`connect.reconnectEndpoint`, or a provider with `scope: 'attempt'`).
    */
   readonly userAgent?: string;
+  /**
+   * The locale every attempt's context runs in, a BCP 47 tag such as
+   * `de-DE`: what `navigator.language`, `Intl` formatting, and the
+   * `Accept-Language` header report. Defaults to the browser's own. An
+   * `accept-language` entry in `headers` beside it is `INVALID_CONFIG`, and
+   * so is a persistent context.
+   */
+  readonly locale?: string;
+  /**
+   * The IANA time zone every attempt's context runs in, such as
+   * `Europe/Berlin`: what `Date` and `Intl` resolve local time against.
+   * Defaults to the machine's. A persistent context is `INVALID_CONFIG`.
+   */
+  readonly timezoneId?: string;
 }
 
 /** The engine's screencast of the page: the frame size and the JPEG quality of the frames it encodes. */
@@ -180,7 +194,7 @@ recording resume, but a segment lost during the disconnect cannot be recovered.
 Code using `surfaceOf(engine)` must read its accessors again after recovery;
 previously retained Playwright objects belong to the disconnected transport.
 
-Persistent recovery does not support `headers`, `basicAuth`, `userAgent`, `app.clearState`,
+Persistent recovery does not support `headers`, `basicAuth`, `userAgent`, `locale`, `timezoneId`, `app.clearState`,
 or session state capture and restore. `app.restart` remains available. Omit
 `reconnectEndpoint` to keep ordinary isolated contexts and the existing behavior.
 A `browser` provider with `scope: 'attempt'` rides the same persistent
