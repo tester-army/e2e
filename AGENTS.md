@@ -213,7 +213,7 @@ thread handled, and labeled `Ready for Human Review`. "It compiles" and
 
 ## Testing quirks
 
-- Vitest 4, `pool: 'forks'`, two projects. `integration` is capped at
+- Vitest 5, `pool: 'forks'`, two projects. `integration` is capped at
   `maxWorkers: 3` and runs in a later group — do not raise it; CPU starvation
   produces timeouts indistinguishable from real failures.
 - Integration tests write throwaway projects into
