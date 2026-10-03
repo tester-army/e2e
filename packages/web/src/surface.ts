@@ -50,7 +50,7 @@ import { captureObservation } from './observation-capture.ts';
 import { maskOptions, secureFieldMasks } from './observe.ts';
 import { connectionAbort } from './operation-budget.ts';
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from './closed-shadow.ts';
-import { loadConfiguredInitScripts, type WebInitScript } from './init-scripts.ts';
+import { ConfiguredInitScripts, type WebInitScript } from './init-scripts.ts';
 import { SECURE_FIELD_SELECTOR, type RawNodeData } from './read-node.ts';
 import { readSelector, takeReadsFunction } from './read-selector.ts';
 import { httpCredentials, installSiteHeaders, lowercaseNames, siteHeadersFor } from './protected-app.ts';
@@ -271,11 +271,9 @@ export class PlaywrightSurface {
   private readonly userAgent: string | undefined;
   private readonly locale: string | undefined;
   private readonly timezoneId: string | undefined;
-  private readonly initScripts: readonly WebInitScript[];
-  /** The configured init scripts as page source, read in `init`. */
-  private configuredInitScripts: readonly string[] = [];
-  /** Init scripts this attempt added, re-applied with the configured ones to each context the attempt replaces. */
-  private attemptInitScripts: string[] = [];
+  private readonly configuredInitScripts: ConfiguredInitScripts;
+  /** The attempt's init scripts, configured then added, applied to each context the attempt opens. */
+  private initScripts: string[] = [];
   private app: EngineAppInfo = {};
   private projectRoot = '';
   private headed = false;
@@ -301,7 +299,7 @@ export class PlaywrightSurface {
     this.userAgent = options.userAgent;
     this.locale = options.locale;
     this.timezoneId = options.timezoneId;
-    this.initScripts = options.initScripts ?? [];
+    this.configuredInitScripts = new ConfiguredInitScripts(options.initScripts ?? []);
   }
 
   // --- lifecycle ---
@@ -317,7 +315,7 @@ export class PlaywrightSurface {
    * in `init`.
    */
   async prepare(info: EnginePrepareInfo): Promise<EnginePrepareResult | void> {
-    if (this.initScripts.length > 0) await loadConfiguredInitScripts(this.initScripts, info.projectRoot);
+    await this.configuredInitScripts.load(info.projectRoot);
     if (this.leases !== undefined) return this.leases.prepare(info);
     if (this.connect !== undefined) return;
     await ensureBrowsersInstalled([this.browserName], { env: info.env, signal: info.signal, log: info.log });
@@ -333,12 +331,14 @@ export class PlaywrightSurface {
     this.app = info.app;
     this.projectRoot = info.projectRoot;
     this.headed = info.headed;
-    if (this.initScripts.length > 0) this.configuredInitScripts = await loadConfiguredInitScripts(this.initScripts, info.projectRoot);
     this.leases?.init(info);
     // The browser was installed in `prepare`; a launch or attach is the one
     // boot step left that can outlive a launch budget, and it honours the
-    // init signal.
-    if (!this.persistent) await this.acquireBrowser(info.signal);
+    // init signal. Reading the init scripts does not wait on it.
+    await Promise.all([
+      this.configuredInitScripts.load(info.projectRoot),
+      this.persistent ? undefined : this.acquireBrowser(info.signal),
+    ]);
   }
 
   /** Whether attempts ride a persistent remote context, provisioned per attempt, instead of contexts on one shared browser. */
@@ -447,11 +447,11 @@ export class PlaywrightSurface {
     this.artifactsDir = context.artifactsDir;
     this.artifactCounter = 0;
     const routes: StoredRoute[] = [];
-    const initScripts: string[] = [];
+    const initScripts = this.configuredInitScripts.forAttempt();
     this.latch = new ErrorLatch();
     const dialogs = new DialogRouter(this.latch);
     this.routes = routes;
-    this.attemptInitScripts = initScripts;
+    this.initScripts = initScripts;
     this.dialogs = dialogs;
     const session = new AttemptSession({
       artifactsDir: context.artifactsDir,
@@ -469,7 +469,7 @@ export class PlaywrightSurface {
       },
       configure: async (target) => {
         await target.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
-        for (const script of [...this.configuredInitScripts, ...initScripts]) await target.addInitScript(script);
+        for (const script of initScripts) await target.addInitScript(script);
         target.setDefaultTimeout(CONTEXT_DEFAULT_TIMEOUT_MS);
         target.on('dialog', (dialog) => { void dialogs.dispatch(dialog); });
         await installSiteHeaders(target, this.app.site, this.headers);
@@ -540,7 +540,7 @@ export class PlaywrightSurface {
   /** Adds one attempt-scoped init script to the current context, for every document it creates from now on. */
   async addInitScript(source: string): Promise<void> {
     const context = this.requireContext();
-    this.attemptInitScripts.push(source);
+    this.initScripts.push(source);
     await context.addInitScript(source);
   }
 
