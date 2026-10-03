@@ -283,7 +283,9 @@ describe('trace cache: --strict-cache fails a step whose key changed under its r
     // An entry from before the occurrence fields: a read-write replay completes it.
     const { testId, targetId, instructionDigest } = recordedFor;
     writeFileSync(file, JSON.stringify({ ...entry, payload: { ...entry.payload, recordedFor: { testId, targetId, instructionDigest } } }), 'utf8');
-    expectPassed(await runExisting(project, { appUrl: app.url, config: cacheConfig(flowsModel()) }));
+    const replayed = await runExisting(project, { appUrl: app.url, config: cacheConfig(flowsModel()) });
+    expectPassed(replayed);
+    expectReplayed(onlyActStep(replayed, 'increments the counter'), 2);
     expect(readEntries(project)[0]!.entry.payload.recordedFor).toEqual(recordedFor);
     oldEntry = path.basename(file);
   }, 120_000);
