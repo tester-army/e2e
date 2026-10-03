@@ -275,13 +275,12 @@ export class StepTraceSession {
    * store holds a recording made for the same step under another key: the
    * runner, the engine, the app, or the agent's context changed since, and
    * the recording no longer replays as surely as one that diverged. A step
-   * whose instruction changed is a new step and still runs live, and so is
-   * one whose params changed once its entry recorded them.
+   * whose instruction or params changed is a new step and still runs live.
    */
   private async failIfRekeyed(): Promise<void> {
     const { strict } = this.cache;
     if (strict === false || strict.recordings === undefined) return;
-    const previous = await strict.recordings.underAnotherKey(recordedProvenance(this.claim.step, this.options.redact), this.claim.claimed);
+    const previous = await strict.recordings.underAnotherKey(this.keyHash, recordedProvenance(this.claim.step, this.options.redact));
     if (previous === undefined) return;
     this.failedStale = true;
     throw new AgentError(
@@ -337,7 +336,12 @@ export class StepTraceSession {
       case 'passed':
         if (this.repairedAfterEndMismatch(recorder)) await this.evict();
         else if (this.replayedWhole) {
-          this.cache.staged.push({ kind: 'keep', keyHash: this.keyHash, stepIndex: this.options.stepIndex });
+          this.cache.staged.push({
+            kind: 'keep',
+            keyHash: this.keyHash,
+            stepIndex: this.options.stepIndex,
+            recordedFor: recordedProvenance(this.claim.step, this.options.redact),
+          });
         } else if (!(await this.stage(recorder, verdictSummary)) && this.readEntryHit) await this.evict();
         return;
     }

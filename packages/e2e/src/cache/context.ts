@@ -34,7 +34,9 @@ import type { JsonValue } from '../types.ts';
  * stands. A kept entry carries no payload, so the replay's expansion of it
  * (every `unique()` slot filled with this run's value) can never be written;
  * confirmed, the file keeps its bytes and `createdAt`, and a committed cache
- * directory stays clean. Unconfirmed, both kinds are evicted alike.
+ * directory stays clean, unless its provenance predates the step's
+ * occurrence fields (`recordedFor`, as stored), which the replay proved and
+ * are then written in. Unconfirmed, both kinds are evicted alike.
  */
 export type StagedTrace = {
   readonly keyHash: string;
@@ -42,7 +44,7 @@ export type StagedTrace = {
   readonly stepIndex: number;
 } & (
   | { readonly kind: 'write'; readonly trace: ActionTrace }
-  | { readonly kind: 'keep' }
+  | { readonly kind: 'keep'; readonly recordedFor: TraceProvenance }
 );
 
 /** One step's claimed key: its hash, and the step it names as an entry records it. */
@@ -50,8 +52,6 @@ export interface ClaimedKey {
   readonly keyHash: string;
   /** The step's identity before redaction; the recorder redacts it on the way to disk. */
   readonly step: TraceProvenance;
-  /** Every key hash the attempt has claimed so far, this one included: entries other steps of the attempt own. */
-  readonly claimed: ReadonlySet<string>;
 }
 
 export interface AgentCacheContext {
@@ -118,6 +118,18 @@ function flowOf(trace: ActionTrace): string {
   });
 }
 
+/**
+ * Writes the step's full provenance into a kept entry recorded before the
+ * occurrence fields were, leaving every other entry untouched. Its replay
+ * proved which step it belongs to, and `cache.strict` matches only entries
+ * that say so exactly (`rekeyed.ts`).
+ */
+async function completeProvenance(store: CacheStore, keyHash: string, recordedFor: TraceProvenance): Promise<void> {
+  const existing = await store.read(keyHash);
+  if (existing.status !== 'hit' || existing.entry.payload.recordedFor?.callIndex !== undefined) return;
+  await store.write(keyHash, { ...existing.entry.payload, recordedFor });
+}
+
 /** How an attempt ended, as the settlement of its staged entries reads it. */
 export interface AttemptSettlement {
   /** Entries staged before this step index were verified, and are confirmed. */
@@ -147,7 +159,7 @@ export interface AttemptSettlement {
  * for an interrupted attempt: interruption implicates nothing, so it writes
  * nothing and evicts nothing. An entry a step replayed whole is staged too,
  * so the same rule evicts it when nothing confirmed it; when something did,
- * it is left exactly as it was found.
+ * it is left exactly as it was found, but for provenance it lacked.
  */
 export async function flushStagedTraces(context: AgentCacheContext, settlement: AttemptSettlement): Promise<void> {
   const staged = context.staged.splice(0);
@@ -159,7 +171,11 @@ export async function flushStagedTraces(context: AgentCacheContext, settlement: 
         if (settlement.implicatesUnconfirmed) await context.store.delete?.(entry.keyHash);
         continue;
       }
-      if (entry.kind === 'keep' || (await holdsSameFlow(context.store, entry.keyHash, entry.trace))) continue;
+      if (entry.kind === 'keep') {
+        await completeProvenance(context.store, entry.keyHash, entry.recordedFor);
+        continue;
+      }
+      if (await holdsSameFlow(context.store, entry.keyHash, entry.trace)) continue;
       await context.store.write(entry.keyHash, entry.trace);
     } catch {
       // The cache is disposable; a failed flush is a slower next run only.
@@ -204,7 +220,6 @@ export function createAgentCacheContext(options: {
     indexers.set(agentKey, indexer);
     return indexer(signature);
   };
-  const claimed = new Set<string>();
   return {
     mode,
     store,
@@ -230,7 +245,6 @@ export function createAgentCacheContext(options: {
           policyVersion: REPLAY_POLICY_VERSION,
         }),
       );
-      claimed.add(keyHash);
       return {
         keyHash,
         step: {
@@ -241,7 +255,6 @@ export function createAgentCacheContext(options: {
           callIndex,
           agent: agent.name,
         },
-        claimed,
       };
     },
     staged: [],

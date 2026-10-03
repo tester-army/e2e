@@ -8,7 +8,7 @@
  * live, so without this it would let a whole committed cache go quietly
  * unused. The entries say which step they were recorded for
  * (`TraceProvenance`), and a step whose own key misses while the store holds
- * a recording made for it is stale, not new.
+ * a recording made for exactly that step is stale, not new.
  *
  * Only the file store can be listed. The listing is read once per worker
  * and target, on the first strict miss that asks, and kept: every entry
@@ -20,84 +20,71 @@ import type { ResolvedCacheConfig } from '../config/resolve.ts';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from './store.ts';
 import type { TraceProvenance } from './trace.ts';
 
-/** One listed entry: its key hash and the step it was recorded for. */
-interface ListedRecording {
-  readonly keyHash: string;
-  readonly recordedFor: TraceProvenance;
-}
-
 export class StoredRecordings {
   private readonly store: FileCacheStore;
-  private listing: Promise<ReadonlyMap<string, readonly ListedRecording[]>> | undefined;
+  /** Key hashes by `stepKey` of the step each entry was recorded for. */
+  private listing: Promise<ReadonlyMap<string, readonly string[]>> | undefined;
 
   constructor(store: FileCacheStore) {
     this.store = store;
   }
 
   /**
-   * The key hash of an entry recorded for `step` under a key the attempt has
-   * not claimed (`claimed`, this step's own included), or undefined when
-   * there is none or the store cannot be listed. `step` is in the form an
-   * entry stores it (`recordedProvenance`). A field an older entry did not
-   * record matches any value, so an entry from before the occurrence fields
-   * were recorded is found by test, target, and instruction; an earlier
-   * occurrence of the same instruction has claimed its own entry by then, so
-   * a repeat with nothing recorded is not taken for it. A truncated entry
-   * never replays under any key, so it is never the reason a step is stale.
+   * The key hash of an entry recorded for `step` under a key other than
+   * `keyHash`, or undefined when there is none or the store cannot be
+   * listed. `step` is in the form an entry stores it (`recordedProvenance`).
+   * Only an entry that records the whole step counts: one written before the
+   * params, occurrence, and agent were recorded could belong to another call
+   * of the same instruction, and a read-write run that replays it completes
+   * it (`flushStagedTraces`). A truncated entry never replays under any key,
+   * so it is never the reason a step is stale.
    */
-  async underAnotherKey(step: TraceProvenance, claimed: ReadonlySet<string>): Promise<string | undefined> {
-    let listing: ReadonlyMap<string, readonly ListedRecording[]>;
+  async underAnotherKey(keyHash: string, step: TraceProvenance): Promise<string | undefined> {
+    const key = stepKey(step);
+    if (key === undefined) return undefined;
+    let listing: ReadonlyMap<string, readonly string[]>;
     try {
       this.listing ??= this.list();
       listing = await this.listing;
     } catch {
       return undefined;
     }
-    for (const candidate of listing.get(stepGroup(step)) ?? []) {
-      if (claimed.has(candidate.keyHash) || !sameStep(candidate.recordedFor, step)) continue;
-      // Listed once per run: an entry evicted since is no evidence.
-      const read = await this.store.read(candidate.keyHash).catch(() => undefined);
-      if (read?.status === 'hit') return candidate.keyHash;
+    for (const candidate of listing.get(key) ?? []) {
+      if (candidate === keyHash) continue;
+      // Listed once: an entry evicted since is no evidence.
+      const read = await this.store.read(candidate).catch(() => undefined);
+      if (read?.status === 'hit') return candidate;
     }
     return undefined;
   }
 
-  /** Every replayable entry that records its step, grouped by `stepGroup`. */
-  private async list(): Promise<ReadonlyMap<string, readonly ListedRecording[]>> {
-    const groups = new Map<string, ListedRecording[]>();
+  /** Every replayable entry that records its whole step, by `stepKey`. */
+  private async list(): Promise<ReadonlyMap<string, readonly string[]>> {
+    const steps = new Map<string, string[]>();
     for (const keyHash of await this.store.keyHashes()) {
       const read = await this.store.read(keyHash);
-      if (read.status !== 'hit') continue;
-      const { recordedFor, truncated } = read.entry.payload;
-      if (recordedFor === undefined || truncated === true) continue;
-      const group = stepGroup(recordedFor);
-      groups.set(group, [...(groups.get(group) ?? []), { keyHash, recordedFor }]);
+      if (read.status !== 'hit' || read.entry.payload.truncated === true) continue;
+      const key = read.entry.payload.recordedFor === undefined ? undefined : stepKey(read.entry.payload.recordedFor);
+      if (key !== undefined) steps.set(key, [...(steps.get(key) ?? []), keyHash]);
     }
-    return groups;
+    return steps;
   }
 }
 
 /**
- * The listing `cache.strict` checks a run's misses against: one per run,
- * shared by its attempts, for the file store only. Undefined when strict is
- * off, the cache is off, or a custom `cache.store` replaced the file store,
- * which `CacheStore` gives no way to list.
+ * The listing `cache.strict` checks a run's misses against, for the file
+ * store only. Undefined when strict is off, the cache is off, or a custom
+ * `cache.store` replaced the file store, which `CacheStore` gives no way to
+ * list.
  */
 export function storedRecordingsFor(cache: ResolvedCacheConfig): StoredRecordings | undefined {
   if (cache.strict === false || cache.mode === 'off' || cache.store !== undefined) return undefined;
   return new StoredRecordings(new FileCacheStore({ directory: cache.dir, maxBytes: MAX_CACHE_WIRE_BYTES, writable: false }));
 }
 
-/** The fields every recorded provenance carries, as one map key. */
-function stepGroup(step: TraceProvenance): string {
-  return JSON.stringify([step.testId, step.targetId, step.instructionDigest]);
-}
-
-/** Whether `recorded` names `step`, a field the entry did not record matching anything. */
-function sameStep(recorded: TraceProvenance, step: TraceProvenance): boolean {
-  return (
-    (recorded.paramsDigest === undefined || recorded.paramsDigest === step.paramsDigest) &&
-    (recorded.callIndex === undefined || recorded.callIndex === step.callIndex) &&
-    (recorded.agent === undefined || recorded.agent === step.agent)
-  );
+/** The whole step as one map key, or undefined when the provenance does not record all of it. */
+function stepKey(step: TraceProvenance): string | undefined {
+  const { testId, targetId, instructionDigest, paramsDigest, callIndex, agent } = step;
+  if (paramsDigest === undefined || callIndex === undefined || agent === undefined) return undefined;
+  return JSON.stringify([testId, targetId, instructionDigest, paramsDigest, callIndex, agent]);
 }

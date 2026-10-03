@@ -277,8 +277,15 @@ describe('trace cache: --strict-cache fails a step whose key changed under its r
     expectPassed(await runExisting(project, { appUrl: app.url, config: cacheConfig(flowsModel()) }));
     const entries = readEntries(project);
     expect(entries).toHaveLength(1);
-    expect(entries[0]!.entry.payload.recordedFor).toMatchObject({ paramsDigest: expect.stringMatching(/^[a-f0-9]{64}$/u), callIndex: 0, agent: 'default' });
-    oldEntry = path.basename(entries[0]!.file);
+    const { file, entry } = entries[0]!;
+    const recordedFor = entry.payload.recordedFor!;
+    expect(recordedFor).toMatchObject({ paramsDigest: expect.stringMatching(/^[a-f0-9]{64}$/u), callIndex: 0, agent: 'default' });
+    // An entry from before the occurrence fields: a read-write replay completes it.
+    const { testId, targetId, instructionDigest } = recordedFor;
+    writeFileSync(file, JSON.stringify({ ...entry, payload: { ...entry.payload, recordedFor: { testId, targetId, instructionDigest } } }), 'utf8');
+    expectPassed(await runExisting(project, { appUrl: app.url, config: cacheConfig(flowsModel()) }));
+    expect(readEntries(project)[0]!.entry.payload.recordedFor).toEqual(recordedFor);
+    oldEntry = path.basename(file);
   }, 120_000);
 
   afterAll(async () => {

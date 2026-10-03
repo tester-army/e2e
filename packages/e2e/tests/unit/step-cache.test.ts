@@ -43,7 +43,7 @@ const exampleStep = {
 
 /** A claim of `keyHash` for the example step. */
 function claimedKey(keyHash: string): ClaimedKey {
-  return { keyHash, step: exampleStep, claimed: new Set([keyHash]) };
+  return { keyHash, step: exampleStep };
 }
 
 function fakeContext(read: AgentCacheContext['store']['read']): AgentCacheContext {
@@ -782,7 +782,7 @@ describe('StepTraceSession', () => {
     // A kept entry carries no payload, so the replay's expansion of it can
     // never be written: confirmed, the file stands as it is; unconfirmed, it
     // is evicted. The passing screen is never captured for it.
-    expect(context.staged).toEqual([{ kind: 'keep', keyHash: 'a'.repeat(64), stepIndex: 1 }]);
+    expect(context.staged).toEqual([{ kind: 'keep', keyHash: 'a'.repeat(64), stepIndex: 1, recordedFor: exampleStep }]);
     expect(captures).toBe(2);
   });
 
@@ -1123,17 +1123,9 @@ describe('cache.strict and a step whose key changed under its recording', () => 
     expect(session.cacheInfo).toMatchObject({ mode: 'missed', reason: 'no-entry' });
   });
 
-  it('finds an entry recorded before the occurrence fields were, by test, target, and instruction', async () => {
+  it('runs live against an entry recorded before the occurrence fields were, which could be another call of the instruction', async () => {
     const { testId, targetId, instructionDigest: digest } = exampleStep;
     const session = makeSession(await rekeyedContext(recordedPayload({ testId, targetId, instructionDigest: digest })), makeHost(['/']));
-    await expect(session.begin()).rejects.toMatchObject({ code: 'REPLAY_STALE' });
-  });
-
-  it('never takes the entry an earlier step of the attempt claimed for a repeat with no recording', async () => {
-    const { testId, targetId, instructionDigest: digest } = exampleStep;
-    const context = await rekeyedContext(recordedPayload({ testId, targetId, instructionDigest: digest }));
-    const repeat = { keyHash: OWN_KEY, step: { ...exampleStep, callIndex: 1 }, claimed: new Set([OLD_KEY, OWN_KEY]) };
-    const session = makeSession({ ...context, claimKey: () => repeat }, makeHost(['/']));
     await expect(session.begin()).resolves.toBeUndefined();
   });
 
@@ -1170,7 +1162,7 @@ describe('cache.strict and a step whose key changed under its recording', () => 
     secrets.register('password', 'hunter2');
     const step = { ...exampleStep, testId: 'tests/example.e2e.ts::logs in with hunter2' };
     const context = await rekeyedContext(recordedPayload({ ...step, testId: secrets.redact(step.testId) }));
-    const session = makeSession({ ...context, claimKey: () => ({ keyHash: OWN_KEY, step, claimed: new Set([OWN_KEY]) }) }, makeHost(['/']), { redact: secrets.redact });
+    const session = makeSession({ ...context, claimKey: () => ({ keyHash: OWN_KEY, step }) }, makeHost(['/']), { redact: secrets.redact });
     const failure = session.begin();
     await expect(failure).rejects.toMatchObject({ code: 'REPLAY_STALE' });
     await expect(failure).rejects.not.toThrow('hunter2');
