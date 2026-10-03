@@ -1,6 +1,6 @@
 /** Compile-time assertions for endpoint provisioning, transport recovery, and the browser provider seam. */
 import { secrets } from 'e2e';
-import type { BrowserLease, BrowserProvider, WebConnectOptions, WebOptions } from '../../src/index.ts';
+import type { BrowserLease, BrowserProvider, WebConnectOptions, WebInitScript, WebOptions } from '../../src/index.ts';
 
 ({ cdpEndpoint: () => 'ws://localhost:9222', reconnectEndpoint: async (signal) => {
   signal.throwIfAborted();
@@ -61,6 +61,7 @@ import type { BrowserLease, BrowserProvider, WebConnectOptions, WebOptions } fro
 ({ locale: ['de-DE', 'en-US'] }) satisfies WebOptions;
 // Init scripts: source, a file, or a function that takes no argument.
 ({ initScripts: ['window.x = 1', { path: 'shim.js' }, () => undefined] }) satisfies WebOptions;
+({ path: 'shim.js' }) satisfies WebInitScript;
 // @ts-expect-error a configured script takes no argument; inline the value or use browser.addInitScript.
 ({ initScripts: [(arg: { a: number }) => arg.a] }) satisfies WebOptions;
 // @ts-expect-error Playwright's { content } is a plain string here.
