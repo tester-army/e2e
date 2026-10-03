@@ -191,6 +191,13 @@ describe('foldLastRun', () => {
     expect(folded.run.summary).toMatchObject({ selected: 2, passed: 1, failed: 0, interrupted: 1, flaky: 0, skipped: 0 });
     expect(folded.run.status).toBe('passed');
     expect(renderMarkdownReport(folded)).toContain('### ⏹️ e2e: 1 interrupted, 1 passed');
+
+    // The runner carries B, still owed; a carried interrupted test reached no verdict, so it does not red the page.
+    const carryingB = report({ results: onlyA.run.results, carried: { results: [before.run.results[1]!], serialGroups: [], errors: [] } });
+    const foldedCarried = foldLastRun(carryingB, before);
+    expect(byTitle(foldedCarried).get('B#0')).toMatchObject({ status: 'interrupted', selected: true });
+    expect(foldedCarried.run).toMatchObject({ status: 'passed', exitCode: 0 });
+    expect(renderMarkdownReport(foldedCarried)).toContain('### ⏹️ e2e: 1 interrupted, 1 passed');
   });
 
   it('keeps the first pass\'s failure when the rerun of that test is interrupted', () => {

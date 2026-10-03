@@ -80,10 +80,12 @@ function summarize(results: readonly ReportResult[], base: ReportSummary): Repor
  * rerun left the test out. A run before of another project leaves the rerun
  * as it is. The outcome is the rerun's unless a carried result failed, as a
  * test another filter kept out of the rerun can have, or the rerun carries
- * anything (`run.carried`): a test it owed and never ran, a failure limit's
- * skip among them, or a suite hook failure whose scope it did not run again.
- * Then the page is red, since the suite is not known to pass. The start is
- * the run before's, so the footer's duration spans both.
+ * a test it owed and never ran, a failure limit's skip among them, or a
+ * suite hook failure whose scope it did not run again (`run.carried`). Then
+ * the page is red, since the suite is not known to pass. A carried test the
+ * first pass interrupted reached no verdict: it leaves the outcome alone and
+ * the page reads interrupted, not green. The start is the run before's, so
+ * the footer's duration spans both.
  */
 export function foldLastRun(current: Report, lastRun: Report): Report {
   if (lastRun.run.project.id !== current.run.project.id) return current;
@@ -128,7 +130,10 @@ export function foldLastRun(current: Report, lastRun: Report): Report {
   ];
 
   const carriedErrors = carried?.errors ?? [];
-  const carriedFailure = carriedById.size > 0 || carriedErrors.length > 0 || results.some((result) => result.selected && FAILED_STATUSES.has(result.status));
+  const carriedFailure =
+    carriedErrors.length > 0 ||
+    [...carriedById.values()].some((result) => result.status !== 'interrupted') ||
+    results.some((result) => result.selected && FAILED_STATUSES.has(result.status));
   return {
     ...current,
     run: {
