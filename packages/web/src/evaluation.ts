@@ -6,6 +6,9 @@ type EvaluationResult =
   | { ok: true; value: unknown }
   | { ok: false; message: string };
 
+/** The `__name` helper tsx's `keepNames` output calls, declared beside test code serialized into the page. */
+export const KEEP_NAMES_HELPER = "const __name = (target, value) => Object.defineProperty(target, 'name', { value, configurable: true });";
+
 /**
  * Compiles the page-side error boundary without evaluating the caller's source in this process.
  *
@@ -18,7 +21,7 @@ export function compileEvaluation(source: string, hasArgument: boolean): (arg: u
   try {
     return new Function('arg', `
       return (async () => {
-        const __name = (target, value) => Object.defineProperty(target, 'name', { value, configurable: true });
+        ${KEEP_NAMES_HELPER}
         try {
           return { ok: true, value: await (${source}\n)(${hasArgument ? 'arg' : ''}) };
         } catch (cause) {

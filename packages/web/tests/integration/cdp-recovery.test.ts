@@ -6,7 +6,7 @@ import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { chromium } from 'playwright';
 import type { EngineFixtureContext, EngineHandle, OperationContext } from 'e2e/engine';
-import { web as webEngine, surfaceOf, type WebConnectOptions, type Browser } from '../../src/index.ts';
+import { web as webEngine, surfaceOf, type WebConnectOptions, type WebOptions, type Browser } from '../../src/index.ts';
 import { closeRemoteChrome, launchRemoteChrome, type RemoteChrome } from '../helpers/cdp-host.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { decodePng } from '../helpers/png.ts';
@@ -66,8 +66,8 @@ describe('CDP session recovery', () => {
   }
 
   /** Starts the engine's attempt against a host-provisioned browser. */
-  async function start(connect: WebConnectOptions): Promise<EngineHandle> {
-    const engine = webEngine({ connect });
+  async function start(connect: WebConnectOptions, options: Omit<WebOptions, 'connect'> = {}): Promise<EngineHandle> {
+    const engine = webEngine({ ...options, connect });
     activeEngines.add(engine);
     await engine.init!({
       runId: 'run-recovery', targetName: 'web', projectRoot: process.cwd(),
@@ -132,6 +132,29 @@ describe('CDP session recovery', () => {
       expect(browser.isConnected()).toBe(false);
       expect(remote.proc.exitCode).toBeNull();
       expect(remote.proc.signalCode).toBeNull();
+      await closeRemoteChrome(remote);
+    }
+  }, 60_000);
+
+  it('runs configured and test init scripts once per document, after reconnect too', async () => {
+    const remote = await host();
+    const engine = await start(
+      { cdpEndpoint: () => remote.endpoint, reconnectEndpoint: () => remote.endpoint },
+      { initScripts: ["(window.trail ??= []).push('config');"] },
+    );
+    const trail = () => surfaceOf(engine)!.page().evaluate(() => (window as { trail?: string[] }).trail ?? null);
+    try {
+      expect(await trail()).toEqual(['config']);
+      const fixture = fixtureOf(engine);
+      await fixture.addInitScript(() => { ((window as { trail?: string[] }).trail ??= []).push('test'); });
+      await engine.session!.open!(`${app.url}/login`, operation());
+      expect(await trail()).toEqual(['config', 'test']);
+
+      await surfaceOf(engine)!.context().browser()!.close();
+      await engine.session!.open!(`${app.url}/login`, operation());
+      expect(await trail()).toEqual(['config', 'test']);
+    } finally {
+      await engine.dispose!(cleanup());
       await closeRemoteChrome(remote);
     }
   }, 60_000);

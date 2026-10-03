@@ -33,6 +33,15 @@ test.describe('browser fixture', { requires: ['browser'], tags: ['browser'] }, (
     await expect(screen.getByLabel('Loads')).toHaveText('loads: 2');
   });
 
+  test('an init script runs before the page reads it, from the next load on', async ({ screen, browser }) => {
+    await expect(screen.getByLabel('Wallet')).toHaveText('wallet: none');
+    await browser.addInitScript((address) => {
+      Object.assign(window, { ethereum: { selectedAddress: address } });
+    }, '0x1234');
+    await browser.reload();
+    await expect(screen.getByLabel('Wallet')).toHaveText('wallet: 0x1234');
+  });
+
   test('the viewport size is what the page measures', async ({ screen, browser }) => {
     await browser.setViewport({ width: 500, height: 700 });
     await expect(screen.getByLabel('Viewport')).toHaveText('500x700');
