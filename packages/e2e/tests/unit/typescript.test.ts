@@ -72,6 +72,20 @@ describe('compileTypeScript', () => {
     );
   });
 
+  it('requires through module hooks from the first statement of .cts, after a hashbang and the directive prologue', () => {
+    const compiled = compile("#!/usr/bin/env node\n'use strict';\nconst a: number = require('./b');\nthrow new Error(String(a));\n", {}, 'bin.cts');
+    expect(code(compiled)).toBe(
+      '#!/usr/bin/env node\n"use strict";\nrequire = require("node:module").createRequire(__filename);\nconst a = require("./b");\nthrow new Error(String(a));\n',
+    );
+    const map = JSON.parse(Buffer.from(compiled.slice(compiled.lastIndexOf('base64,') + 7), 'base64').toString('utf8')) as { mappings: string };
+    // Generated lines 3 (the added require) and 1 (the hashbang) map nowhere; line 4 maps to source line 3.
+    expect(map.mappings.split(';').map((line) => line === '')).toEqual([true, false, true, false, false]);
+  });
+
+  it('compiles JSX in a .jsx file', () => {
+    expect(code(compile('export const a = <b />;\n', { jsx: 'react', jsxFactory: 'h' }, 'view.jsx'))).toContain('h("b"');
+  });
+
   it('maps the output to the file by its URL, so a frame names the file without the loader query', () => {
     const compiled = compile('export const a: number = 1;\n', undefined, '50% off #1.ts');
     const map = JSON.parse(Buffer.from(compiled.slice(compiled.lastIndexOf('base64,') + 7), 'base64').toString('utf8')) as { sources: string[]; sourcesContent?: unknown };

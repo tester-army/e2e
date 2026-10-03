@@ -1,5 +1,5 @@
 /**
- * Compiles a TypeScript file to JavaScript this Node.js runs, with oxc. The
+ * Compiles a TypeScript or JSX file to JavaScript this Node.js runs, with oxc. The
  * output carries an inline source map, so stack traces, a test's location,
  * and failure code frames point at the TypeScript source. Syntax the running
  * Node.js lacks (`using`, for one) is lowered for it; the helpers that needs
@@ -73,7 +73,7 @@ function withoutModuleMarker(code: string): string {
 }
 
 /**
- * The first line of compiled CommonJS. The `require` Node.js hands a
+ * The first statement of compiled CommonJS. The `require` Node.js hands a
  * CommonJS module an ES module imports resolves without module hooks (on
  * Node.js 22, and on 24 before 24.18), so `require('./helper')` would miss
  * `helper.ts`, a tsconfig alias, and the helpers compiled code requires from
@@ -81,11 +81,30 @@ function withoutModuleMarker(code: string): string {
  */
 const HOOKED_REQUIRE = 'require = require("node:module").createRequire(__filename);';
 
-/** `source`, the TypeScript in `file`, compiled to JavaScript for `format`, with an inline source map. */
+/** A directive on a line of its own, as oxc prints the prologue: `"use strict";`. */
+const DIRECTIVE = /^(["'])[^"'\\]*\1;$/;
+
+/**
+ * Compiled CommonJS with `HOOKED_REQUIRE` as its first statement: after a
+ * hashbang and the directive prologue, which have to stay first, with the
+ * source map moved down the line it adds.
+ */
+function withHookedRequire(code: string, mappings: string): { code: string; mappings: string } {
+  const lines = code.split('\n');
+  let at = lines[0]?.startsWith('#!') === true ? 1 : 0;
+  while (at < lines.length && DIRECTIVE.test(lines[at]!)) at += 1;
+  lines.splice(at, 0, HOOKED_REQUIRE);
+  const lineMappings = mappings.split(';');
+  while (lineMappings.length < at) lineMappings.push('');
+  lineMappings.splice(at, 0, '');
+  return { code: lines.join('\n'), mappings: lineMappings.join(';') };
+}
+
+/** `source`, the TypeScript or JSX in `file`, compiled to JavaScript for `format`, with an inline source map. */
 export function compileTypeScript(file: string, source: string, format: ModuleFormat): string {
   const result = transformSync(file, source, {
     ...transformOptions(tsconfigFor(file)?.compilerOptions ?? {}),
-    lang: file.endsWith('.tsx') ? 'tsx' : 'ts',
+    lang: file.endsWith('.tsx') ? 'tsx' : file.endsWith('.jsx') ? 'jsx' : 'ts',
     sourceType: format,
     target: `node${process.versions.node}`,
     sourcemap: true,
@@ -95,11 +114,11 @@ export function compileTypeScript(file: string, source: string, format: ModuleFo
     const bytes = Buffer.from(source, 'utf8');
     throw new SyntaxError(errors.map((error) => describeError(file, bytes, error)).join('\n'));
   }
-  const code = format === 'commonjs' ? `${HOOKED_REQUIRE}\n${withoutModuleMarker(result.code)}` : result.code;
+  const compiled = { code: result.code, mappings: result.map?.mappings ?? '' };
+  const { code, mappings } = format === 'commonjs' ? withHookedRequire(withoutModuleMarker(compiled.code), compiled.mappings) : compiled;
   const map = {
     ...result.map,
-    // One line down for the CommonJS banner.
-    mappings: format === 'commonjs' ? `;${result.map!.mappings}` : result.map!.mappings,
+    mappings,
     // Absolute, so a frame names the file without the loader's query, whatever characters its name holds.
     sources: [pathToFileURL(file).href],
     sourcesContent: undefined,

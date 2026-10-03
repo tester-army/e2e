@@ -65,6 +65,7 @@ beforeAll(() => {
     'lib/cjs.cts': '',
     'lib/only.js': '',
     'lib/data.json': '{}',
+    'lib/comp.jsx': '',
     'lib/dir/index.ts': '',
     'node_modules/dep/index.ts': '',
     'node_modules/dep/helper.ts': '',
@@ -86,6 +87,7 @@ describe('resolve', () => {
     ['an extensionless import', '../lib/helper', 'lib/helper.ts'],
     ['an extensionless JSON import', '../lib/data', 'lib/data.json'],
     ['a directory to its index', '../lib/dir', 'lib/dir/index.ts'],
+    ['an extensionless import to x.jsx', '../lib/comp', 'lib/comp.jsx'],
     ['a tsconfig paths alias', '@lib/helper', 'lib/helper.ts'],
     ['a tsconfig baseUrl import', 'lib/view', 'lib/view.tsx'],
   ])('resolves %s from TypeScript', (_case, specifier, file) => {
@@ -139,6 +141,7 @@ describe('resolve', () => {
     ['.tsx', 'lib/view.tsx', null, 'module'],
     ['.mts', 'lib/esm.mts', 'module-typescript', 'module'],
     ['.cts', 'lib/cjs.cts', 'commonjs-typescript', 'commonjs'],
+    ['.jsx', 'lib/comp.jsx', null, 'module'],
     ['installed .ts', 'node_modules/dep/index.ts', 'commonjs', 'module'],
   ])('runs %s as %s whatever the package scope says', (_case, file, format, expected) => {
     expect(resolveFrom(undefined, url(file), { format }).resolution).toEqual({ url: url(file), format: expected });
@@ -165,6 +168,18 @@ describe('resolve', () => {
     const { asked } = resolveFrom(url('lib/cjs.cts'), '@oxc-project/runtime/helpers/decorate', { conditions: REQUIRE });
     expect(asked).toHaveLength(1);
     expect(asked[0]).toMatch(/[\\/]@oxc-project[\\/]runtime[\\/]src[\\/]helpers[\\/]decorate\.js$/);
+  });
+
+  it('types TypeScript a require() reaches by its extension, from JavaScript too', () => {
+    expect(resolveFrom(url('tests/plain.js'), '../lib/helper.ts', { conditions: REQUIRE, format: 'commonjs-typescript' }).resolution).toEqual({
+      url: url('lib/helper.ts'),
+      format: 'module',
+    });
+    expect(resolveFrom(url('tests/plain.js'), '../lib/cjs.cts', { conditions: REQUIRE }).resolution.format).toBe('commonjs');
+  });
+
+  it('leaves the runtime helpers JavaScript imports to the project', () => {
+    expect(resolveFrom(url('tests/plain.js'), '@oxc-project/runtime/helpers/decorate').asked).toEqual(['@oxc-project/runtime/helpers/decorate']);
   });
 
   it('leaves a require() out of fresh graphs, which CommonJS cannot load twice', () => {

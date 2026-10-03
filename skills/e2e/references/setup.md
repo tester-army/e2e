@@ -8,7 +8,7 @@
   (CommonJS packages need no change); never `require` or `module.exports`.
   Imports follow TypeScript: `./x.js` or `./x` loads `x.ts`, and the nearest
   `tsconfig.json` `paths` and `baseUrl` apply. Decorators need
-  `experimentalDecorators`.
+  `experimentalDecorators`; CommonJS TypeScript goes in `.cts`.
 - Browser tests: `@e2e-dev/web` plus `playwright` (`>=1.63.0 <2`), a peer the
   engine does not install: an existing Playwright keeps its version and
   browser cache, one out of range fails install as an unmet peer (npm's

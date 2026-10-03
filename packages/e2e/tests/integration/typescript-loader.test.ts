@@ -62,14 +62,17 @@ import plain = require('./plain');
 import alias = require('@lib/alias');
 import helper = require('./cjs-helper.cjs');
 const kind: string = path.extname('x.cts');
-export = { cts: kind, stats: null as Stats | null, required: [plain.plain, alias.alias, helper.decorated()] };
+export = { cts: kind, stats: null as Stats | null, required: [plain.plain, alias.alias, helper.decorated(), helper.strict] };
 `,
-  'lib/cjs-helper.cts': `const seen: string[] = [];
+  'lib/cjs-helper.cts': `#!/usr/bin/env node
+'use strict';
+const seen: string[] = [];
 function track(target: Function): void { seen.push(target.name); }
 @track
 class Decorated {}
-export = { decorated: (): string[] => [...seen, Decorated.name] };
+export = { decorated: (): string[] => [...seen, Decorated.name], strict: (function (this: unknown) { return this === undefined; })() };
 `,
+  'lib/comp.jsx': "export const comp = () => 'jsx file';\n",
   'lib/view.tsx': `export const h = (tag: string, _props: unknown, ...children: unknown[]): string => \`<\${tag}>\${children.join('')}</\${tag}>\`;
 export const view = (): string => <b>jsx</b>;
 `,
@@ -102,6 +105,7 @@ import { index } from '../lib/dir';
 import { mts } from '../lib/esm.mts';
 import cjs from '../lib/cjs.cts';
 import { view } from '../lib/view.tsx';
+import { comp } from '../lib/comp';
 import { Box, Color, Shapes, decorated, size } from '../lib/features';
 import { sub } from '#internal/sub';
 import { sub as viaJs } from '#js/sub';
@@ -118,7 +122,8 @@ test('imports resolve', () => {
 
 test('module formats load', () => {
   expect([mts, cjs.cts, data.answer, attributed.answer]).toEqual(['mts', '.cts', 42, 42]);
-  expect(cjs.required).toEqual(['extensionless', 'paths', ['Decorated', 'Decorated']]);
+  expect(cjs.required).toEqual(['extensionless', 'paths', ['Decorated', 'Decorated'], true]);
+  expect(comp()).toBe('jsx file');
 });
 
 test('TypeScript compiles', () => {

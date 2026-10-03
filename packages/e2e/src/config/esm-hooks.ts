@@ -1,26 +1,26 @@
 /**
  * e2e's TypeScript loader: synchronous module customization hooks
- * (`module.registerHooks`) that run config, test, and helper TypeScript on
- * Node.js, for `import` and `require` alike.
+ * (`module.registerHooks`) that run config, test, and helper TypeScript and
+ * JSX on Node.js, for `import` and `require` alike.
  *
  * Resolve, for a project file (outside `node_modules`):
- * - a relative or absolute import from TypeScript resolves the way
+ * - a relative or absolute import from TypeScript or JSX resolves the way
  *   TypeScript does: `./x.js` to `x.ts` or `x.tsx` (`.mjs` to `.mts`, `.cjs`
  *   to `.cts`), an extensionless `./x` to `x.ts`, `x.tsx`, `x.jsx`, `x.js`,
  *   or `x.json`, and a directory to its index;
  * - a bare specifier the nearest tsconfig.json maps through `paths` or
  *   `baseUrl` resolves to the mapped file, before any package of that name.
  * Everything else, `#` imports and packages included, resolves as Node.js
- * resolves it; when the file Node.js names is missing, the TypeScript file
- * behind it is tried the same way (`#x` mapped to `./x.js`, `./x` from
+ * resolves it; when the file an `import` names is missing, the TypeScript
+ * file behind it is tried the same way (`#x` mapped to `./x.js`, `./x` from
  * JavaScript).
  *
- * Format: `.ts`, `.mts`, and `.tsx` are ES modules wherever they are and
- * whatever the nearest package.json says, so a Next.js app, or any package
- * without `"type": "module"`, keeps its module type and still runs its
- * TypeScript tests; `.cts` is CommonJS. A JSON file imported without
- * `with { type: 'json' }` loads as a module whose default export is the
- * parsed file.
+ * Format: `.ts`, `.mts`, `.tsx`, and `.jsx` are ES modules wherever they are
+ * and whatever the nearest package.json says, so a Next.js app, or any
+ * package without `"type": "module"`, keeps its module type and still runs
+ * its TypeScript tests, whether it is imported or a CommonJS file requires it;
+ * `.cts` is CommonJS. A JSON file imported without `with { type: 'json' }`
+ * loads as a module whose default export is the parsed file.
  *
  * Freshness: a module imported with the `e2e-graph` query parameter hands it
  * on to every file it reaches by path or `#` import outside `node_modules`,
@@ -40,7 +40,8 @@ import { compileTypeScript, type ModuleFormat } from './typescript.ts';
 type Resolution = ReturnType<ResolveHookSync>;
 type NextResolve = Parameters<ResolveHookSync>[2];
 
-const TYPESCRIPT = /\.(?:ts|mts|cts|tsx)$/;
+/** TypeScript and JSX, which the loader compiles. */
+const COMPILED = /\.(?:[cm]?ts|[jt]sx)$/;
 const PATH_SPECIFIER = /^(?:\.{1,2}\/|\/|file:)/;
 /** A URL scheme other than `file:` (`node:`, `data:`, `https:`); never a tsconfig alias. */
 const URL_SCHEME = /^[a-z][\d+.a-z-]*:/i;
@@ -137,7 +138,7 @@ interface Target {
 function typeScriptTarget(specifier: string, parentURL: string | undefined): Target | undefined {
   if (parentURL === undefined || projectFile(parentURL) === undefined) return undefined;
   if (PATH_SPECIFIER.test(specifier)) {
-    if (!TYPESCRIPT.test(new URL(parentURL).pathname)) return undefined;
+    if (!compiled(parentURL)) return undefined;
     const url = new URL(specifier, parentURL);
     const suffix = `${url.search}${url.hash}`;
     url.search = '';
@@ -164,18 +165,24 @@ function targetSpecifier(target: Target, context: ResolveHookContext): string {
   return requires(context) ? target.file : `${pathToFileURL(target.file).href}${target.suffix}`;
 }
 
-/** The format a TypeScript file runs as, or undefined for any other file. */
-function typeScriptFormat(pathname: string): ModuleFormat | undefined {
-  if (!TYPESCRIPT.test(pathname)) return undefined;
+/** Whether `url` is a file the loader compiles. */
+function compiled(url: string | undefined): boolean {
+  return url?.startsWith('file:') === true && COMPILED.test(new URL(url).pathname);
+}
+
+/** The format a compiled file runs as, or undefined for any other file. */
+function compiledFormat(pathname: string): ModuleFormat | undefined {
+  if (!COMPILED.test(pathname)) return undefined;
   return pathname.endsWith('.cts') ? 'commonjs' : 'module';
 }
 
-/** The resolution, with a TypeScript file's format set to the one the loader compiles it for. */
+/** The resolution, with a compiled file's format set to the one the loader compiles it for. */
 function withFormat(resolution: Resolution): Resolution {
   if (!resolution.url.startsWith('file:')) return resolution;
-  const format = typeScriptFormat(new URL(resolution.url).pathname);
+  const format = compiledFormat(new URL(resolution.url).pathname);
   return format === undefined || resolution.format === format ? resolution : { ...resolution, format };
 }
+
 
 /**
  * The resolution, joined to its importer's fresh graph: a project file
@@ -223,18 +230,20 @@ function resolveHelper(specifier: string, context: ResolveHookContext, nextResol
   if (!requires(context)) return nextResolve(specifier, { ...context, parentURL: import.meta.url });
   // The CommonJS resolver looks up from the requiring module, never from a
   // parentURL, so e2e requires the helper itself; that lookup comes back
-  // through this hook as a require from this very module.
-  if (context.parentURL === import.meta.url) return nextResolve(specifier, context);
+  // through this hook from this module, which is not compiled code.
   return nextResolve(ownRequire.resolve(specifier), context);
 }
 
 export const resolve: ResolveHookSync = (specifier, context, nextResolve) => {
-  if (specifier.startsWith(RUNTIME_HELPERS)) return resolveHelper(specifier, context, nextResolve);
+  if (specifier.startsWith(RUNTIME_HELPERS) && compiled(context.parentURL)) return resolveHelper(specifier, context, nextResolve);
   const target = typeScriptTarget(specifier, context.parentURL);
   const request = target === undefined ? specifier : targetSpecifier(target, context);
-  const resolution = withFormat(resolveOrTypeScript(request, context, nextResolve));
-  // CommonJS caches modules by file, with no query to make one fresh.
-  if (requires(context)) return resolution;
+  const found = resolveOrTypeScript(request, context, nextResolve);
+  if (requires(context)) {
+    // CommonJS caches modules by file, with no query to make one fresh.
+    return withFormat(found);
+  }
+  const resolution = withFormat(found);
   // A file the loader mapped, a tsconfig alias included, joins a fresh graph like any path.
   return inGraph(target === undefined ? specifier : pathToFileURL(target.file).href, context, resolution);
 };
@@ -242,7 +251,7 @@ export const resolve: ResolveHookSync = (specifier, context, nextResolve) => {
 export const load: LoadHookSync = (url, context, nextLoad) => {
   if (!url.startsWith('file:')) return nextLoad(url, context);
   const { pathname } = new URL(url);
-  const format = typeScriptFormat(pathname);
+  const format = compiledFormat(pathname);
   if (format !== undefined) {
     const file = fileURLToPath(url);
     return { format, source: compileTypeScript(file, readFileSync(file, 'utf8'), format), shortCircuit: true };

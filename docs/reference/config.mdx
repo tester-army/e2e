@@ -69,18 +69,20 @@ It throws when the file is missing; guard it with `existsSync` from
 `node:fs` when only some machines have one.
 
 Config and test files run as ESM whatever the nearest `package.json` `type`
-says, and so does every `.ts`, `.mts`, and `.tsx` file they import: a helper
-by path, or a package that exports its `.ts` source by name. A `.cts` file is
-CommonJS, written with `require`, `import x = require()`, and `export =`; its
-`import` statements are not turned into `require` calls. A config or test
-written with `require` or `module.exports` fails to load. JavaScript keeps the
-format its package declares.
+says, and so does every `.ts`, `.mts`, `.tsx`, and `.jsx` file they reach: a
+helper by path, a package that exports its `.ts` source by name, or a `.ts`
+file a CommonJS file requires. A `.cts` file is CommonJS, written with
+`require`, `import x = require()`, and `export =`; its `import` statements are
+not turned into `require` calls. A `.ts` file written with `require` or
+`module.exports` fails to load: name it `.cts`. JavaScript keeps the format
+its package declares.
 
 e2e compiles TypeScript itself and resolves the import forms TypeScript
 accepts: `./helper.js` and `./helper` load `helper.ts`, `./lib` loads
 `lib/index.ts`, a bare import that the nearest `tsconfig.json` maps through
 `paths` or `baseUrl` loads the mapped file, and a `#` import or package export
-that names a missing `./x.js` loads `x.ts`. From that `tsconfig.json` it reads
+that names a missing `./x.js` loads `x.ts` when imported (a `require()` of it
+fails as Node.js reports it). From that `tsconfig.json` it reads
 `jsx`, `jsxFactory`, `jsxFragmentFactory`, `jsxImportSource`,
 `experimentalDecorators`, `emitDecoratorMetadata`, `useDefineForClassFields`
 (and `target`, which sets its default), and `verbatimModuleSyntax`. Decorators
