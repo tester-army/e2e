@@ -1,7 +1,7 @@
 /**
- * The `e2e-web` command as a user runs it: a real process spawning the pinned
- * Playwright CLI. The download host is a local server that accepts and never
- * answers, so a cancelled install is observable without the network.
+ * The built `e2e-web` command as a user runs it: a real process spawning the
+ * pinned Playwright CLI. The download host is a local server that accepts and
+ * never answers, so a cancelled install is observable without the network.
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-const BIN = path.resolve(import.meta.dirname, '../../src/bin.ts');
+const BIN = path.resolve(import.meta.dirname, '../../dist/bin.js');
 
 /** Spawns the command with `args` and the given extra environment. */
 function runBin(args: readonly string[], env: NodeJS.ProcessEnv = {}): ChildProcess {
