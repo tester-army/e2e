@@ -134,7 +134,9 @@
             "pages": [
               "index",
               "quickstart",
-              "writing-tests"
+              "goals",
+              "assertions",
+              "locators"
             ]
           },
           {
@@ -340,6 +342,10 @@
     {
       "source": "/reference/app-web",
       "destination": "/reference/web"
+    },
+    {
+      "source": "/writing-tests",
+      "destination": "/goals"
     }
   ]
 }

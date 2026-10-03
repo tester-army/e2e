@@ -1,0 +1,94 @@
+---
+title: Assertions
+description: Check the screen with agent.assert, wait for a condition, and extract data.
+---
+
+An assertion checks what is on screen. The agent has three judgment calls:
+`assert` checks the screen now, `waitFor` waits until a condition holds, and
+`extract` reads structured data. When you know the exact value, use an
+`expect` [locator assertion](#locator-assertions) instead, with no model call.
+
+```ts
+await agent.assert('the dashboard shows a trial badge');
+```
+
+## `agent.assert`
+
+`assert` checks a statement against the current screen. A false statement
+fails with `ASSERTION_FAILED`. If the screen does not provide enough evidence,
+it fails with `ASSERTION_INCONCLUSIVE`.
+
+The judging model sees the statement and the current screen. It does not see
+earlier steps or the acting agent's summaries.
+
+## `agent.waitFor`
+
+`assert` checks the screen now. Use `waitFor` when the condition may become true
+later. It polls the screen and only calls the model when the observation changes.
+
+```ts
+await agent.waitFor('the export finishes and a download link appears', {
+  interval: 500,
+  timeout: 120_000,
+});
+```
+
+## `agent.extract`
+
+`extract` reads structured data from the screen. Provide a
+[Standard Schema](https://standardschema.dev) validator, such as Zod, to define
+the result.
+
+```ts
+import { expect } from 'e2e';
+import { z } from 'zod';
+
+const data = await agent.extract('every todo title and how many remain', {
+  schema: z.object({ titles: z.array(z.string()), remaining: z.number().int() }),
+});
+expect(data.titles).toContain('Buy milk');
+```
+
+<Tip>
+For model-generated descriptions, check the relevant meaning rather than the
+entire sentence. Use a [locator assertion](/locators) when the exact text matters.
+</Tip>
+
+## Judging pixels
+
+By default, judgments read a redacted text snapshot of the screen. Add
+`vision: true` for visual checks, such as charts or layout. Use
+`vision: 'only'` to judge the screenshot alone.
+
+```ts
+await agent.assert('the chart trends upward', { vision: true });
+await agent.assert('the search form is not covered by a banner', { vision: 'only' });
+```
+
+Images add input tokens. Screenshots are withheld for the rest of an attempt
+after a secret is filled. The [agent reference](/reference/agent#vision)
+lists the modes and restrictions.
+
+## Locator assertions
+
+`expect` on a locator checks an exact value and calls no model. It retries
+until the check passes or the assertion timeout runs out.
+
+```ts
+await expect(screen.getByRole('status')).toHaveText('2 remaining');
+await expect(screen.getByRole('heading', 'Dashboard')).toBeVisible();
+```
+
+[Locators](/locators) covers queries and actions. The
+[expect reference](/reference/expect#locator-matchers) lists every matcher.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Locators" icon="crosshairs" href="/locators">
+    Exact actions and checks with `screen` and `expect`.
+  </Card>
+  <Card title="How agent steps work" icon="list-check" href="/agent-steps">
+    Verdicts, exit codes, and what the model sees.
+  </Card>
+</CardGroup>
