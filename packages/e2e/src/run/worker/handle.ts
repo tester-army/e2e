@@ -2,7 +2,6 @@
 
 import { fork, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { InfrastructureError } from '../../internal/errors.ts';
 import type { SpawnUnitRunner, UnitRunner, UnitRunnerEvents } from '../unit-runner.ts';
@@ -13,14 +12,18 @@ import type {
   WorkerToMain,
 } from './protocol.ts';
 
-/** Resolves the worker entry for both src (vitest, .ts) and dist (.js) layouts. */
+/**
+ * Resolves the worker entry for both src (vitest, .ts) and dist (.js)
+ * layouts. From source, e2e's own loader is registered before the entry
+ * loads: Node.js strips types but does not compile the rest of TypeScript.
+ */
 function resolveEntry(): { path: string; execArgv: string[] } {
   const js = fileURLToPath(new URL('./entry.js', import.meta.url));
   if (existsSync(js)) return { path: js, execArgv: [] };
   const ts = fileURLToPath(new URL('./entry.ts', import.meta.url));
   if (existsSync(ts)) {
-    const require = createRequire(import.meta.url);
-    return { path: ts, execArgv: ['--import', require.resolve('tsx')] };
+    const hooks = JSON.stringify(new URL('../../config/esm-hooks.ts', import.meta.url).href);
+    return { path: ts, execArgv: ['--import', `data:text/javascript,import { registerLoader } from ${hooks}; registerLoader();`] };
   }
   throw new InfrastructureError('WORKER_ENTRY_MISSING', 'e2e worker entry module not found');
 }

@@ -11,24 +11,19 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import { childProcessSpawner } from '../../src/run/worker/handle.ts';
 
-/** The worker runs from the package like the runner's own do: tsx reads its tsconfig from there. */
+/** The worker runs from the package like the runner's own do. */
 const PACKAGE_ROOT = path.resolve(fileURLToPath(import.meta.url), '..', '..', '..');
 
 /**
  * Preloaded into the worker ahead of its entry: drops the channel at once and
  * holds the process open for a second, past the exit the entry itself asks
  * for on `disconnect`. The runner then sees a child whose channel is gone but
- * whose process is not. Main thread only: from Node 24 a preload also runs in
- * the module-hooks thread tsx registers, which has no channel to drop and
- * whose exit the main thread's own exit waits on.
+ * whose process is not.
  */
-const SEVER_CHANNEL = `import { isMainThread } from 'node:worker_threads';
-if (isMainThread) {
-  const exit = process.exit.bind(process);
-  process.exit = () => undefined;
-  setTimeout(() => exit(0), 1000);
-  process.disconnect();
-}
+const SEVER_CHANNEL = `const exit = process.exit.bind(process);
+process.exit = () => undefined;
+setTimeout(() => exit(0), 1000);
+process.disconnect();
 `;
 
 /** Longer than the second the preload holds the worker open, shorter than the test budget. */

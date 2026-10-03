@@ -31,7 +31,8 @@
     "@e2e-dev/web",
     "@openrouter/ai-sdk-provider",
     "@expo/fingerprint",
-    "@expo/repack-app"
+    "@expo/repack-app",
+    "@oxc-project/runtime"
   ],
   "rules": {
     "unused-class-member": "warn",

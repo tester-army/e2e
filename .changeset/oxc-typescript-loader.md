@@ -1,0 +1,5 @@
+---
+'e2e': minor
+---
+
+e2e now loads TypeScript with its own loader, built on oxc, instead of tsx. tsx brought in esbuild, whose postinstall script made every `pnpm install` on pnpm 11 and later fail with `ERR_PNPM_IGNORED_BUILDS` until the project approved the build; nothing e2e installs runs an install script now. Config and tests load as before: ESM whatever `package.json` says, `./x.js` and `./x` resolve to `x.ts`, directory index imports, tsconfig `paths` and `baseUrl`, workspace packages exporting `.ts` source, JSX, enums, namespaces, `experimentalDecorators`, and source-mapped stack traces. JSON imported without `with { type: 'json' }` still loads. Each file reads its nearest `tsconfig.json` rather than the one in the working directory. Two things tsx did that the new loader does not: compile `import` statements in a `.cts` file into `require` calls (write `import x = require()`), and compile standard decorators without `experimentalDecorators`. The loader runs on `module.registerHooks`, so e2e now needs Node.js 22.22.3 or newer on Node.js 22, or 24.11.0 or newer: earlier releases fail when a CommonJS file a test imports requires TypeScript.

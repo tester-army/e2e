@@ -38,6 +38,8 @@ jobs:
         run: pnpm docs:check-errors
       - name: Peer ranges on the runner
         run: pnpm check:peer-ranges
+      - name: No install scripts in published dependency trees
+        run: pnpm check:install-scripts
       - name: Agent skill scripts
         run: |
           pnpm exec tsc -p .claude/skills/babysit/scripts

@@ -55,18 +55,6 @@ const REMOVED_EXPORTS: Readonly<Record<string, Readonly<Record<string, string>>>
   },
 };
 
-/**
- * The hint for TypeScript an installed package ships under a CommonJS scope:
- * the file is there, but it loads through `require`, which the TypeScript
- * loader does not hook, so Node reports it missing under the loader's query.
- */
-function commonJsTypeScriptHint(file: string): string {
-  let dir = path.dirname(file);
-  while (!existsSync(path.join(dir, 'package.json')) && path.dirname(dir) !== dir) dir = path.dirname(dir);
-  const manifest = path.join(dir, 'package.json');
-  return `${file} exists: ${manifest} declares no "type": "module", so the file loads as CommonJS, which e2e's TypeScript loader does not transform; import the package's compiled JavaScript, or have the package declare "type": "module"`;
-}
-
 interface Manifest {
   readonly path: string;
   readonly dir: string;
@@ -85,10 +73,6 @@ export function explainModuleError(cause: unknown, importer: string): string {
 }
 
 function moduleErrorHint(message: string, code: unknown, importer: string): string {
-  if (code === 'MODULE_NOT_FOUND') {
-    const loaded = /Cannot find module '([^']+)\?namespace=[^']*'/.exec(message)?.[1];
-    return loaded !== undefined && existsSync(loaded) ? commonJsTypeScriptHint(loaded) : '';
-  }
   if (code === 'ERR_MODULE_NOT_FOUND') {
     const missing = /Cannot find (?:package|module) '([^']+)'/.exec(message)?.[1];
     if (missing !== undefined && !missing.startsWith('.') && !path.isAbsolute(missing)) {

@@ -1,68 +1,124 @@
-import { describe, expect, it } from 'vitest';
-import { asModule, inGraph, resolve, resolveSync } from '../../src/config/esm-hooks.ts';
-import { tsxUsesSyncHooks } from '../../src/config/load.ts';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import type { LoadHookContext, ResolveHookContext } from 'node:module';
+import os from 'node:os';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { inGraph, load, resolve } from '../../src/config/esm-hooks.ts';
+import { forgetTsconfigs } from '../../src/config/tsconfig.ts';
 
-const context = { conditions: [], importAttributes: {}, parentURL: undefined };
-const underTsx = { parentURL: 'file:///app/tests/example.e2e.ts?e2e=collect-1&tsx-namespace=e2e' };
+type Resolution = { url: string; format?: string | null | undefined };
 
-describe('asModule', () => {
+/** Resolves `specifier` from `parentURL` through the hook, with Node's own resolution standing in as `nextResolve`. */
+function resolveFrom(parentURL: string | undefined, specifier: string, format: string | null = null): { resolution: Resolution; asked: string[] } {
+  const asked: string[] = [];
+  const context: ResolveHookContext = { conditions: ['node', 'import'], importAttributes: {}, parentURL };
+  const resolution = resolve(specifier, context, (next, nextContext) => {
+    asked.push(next);
+    const url = /^(?:file|node|data):/.test(next) ? next : new URL(next, nextContext?.parentURL ?? 'file:///').href;
+    return { url, format };
+  });
+  return { resolution, asked };
+}
+
+let dir: string;
+let project: string;
+
+/** Writes `files` under the project directory. */
+function write(files: Readonly<Record<string, string>>): void {
+  for (const [relative, content] of Object.entries(files)) {
+    const file = path.join(project, relative);
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, content);
+  }
+}
+
+const url = (relative: string): string => pathToFileURL(path.join(project, relative)).href;
+
+beforeAll(() => {
+  dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-esm-hooks-'));
+  project = path.join(dir, 'app');
+  write({
+    'tsconfig.json': '{\n  // JSONC, as tsc reads it\n  "compilerOptions": { "baseUrl": ".", "paths": { "@lib/*": ["lib/*"] } },\n}\n',
+    'tests/example.e2e.ts': '',
+    'tests/plain.js': '',
+    'lib/helper.ts': '',
+    'lib/view.tsx': '',
+    'lib/esm.mts': '',
+    'lib/cjs.cts': '',
+    'lib/only.js': '',
+    'lib/data.json': '{}',
+    'lib/dir/index.ts': '',
+    'node_modules/dep/index.ts': '',
+    'node_modules/dep/helper.ts': '',
+  });
+  forgetTsconfigs();
+});
+
+afterAll(() => {
+  rmSync(dir, { recursive: true, force: true });
+});
+
+describe('resolve', () => {
   it.each([
-    ['the config entry in a typeless package', 'file:///app/e2e.config.ts?e2e=module-1', undefined],
-    ['a CommonJS-scoped test', 'file:///app/tests/example.e2e.ts', 'commonjs-typescript'],
-    ['a .tsx helper', 'file:///app/tests/helper.tsx', 'commonjs'],
-    ['an .mts file Node left untyped', 'file:///app/e2e.config.mts', null],
-  ])('marks %s as an ES module', (_case, url, format) => {
-    expect(asModule(url, context, { url, format })).toEqual({ url, format: 'module' });
+    ['./x.js to x.ts', '../lib/helper.js', 'lib/helper.ts'],
+    ['./x.js to x.tsx', '../lib/view.js', 'lib/view.tsx'],
+    ['./x.jsx to x.tsx', '../lib/view.jsx', 'lib/view.tsx'],
+    ['./x.mjs to x.mts', '../lib/esm.mjs', 'lib/esm.mts'],
+    ['./x.cjs to x.cts', '../lib/cjs.cjs', 'lib/cjs.cts'],
+    ['an extensionless import', '../lib/helper', 'lib/helper.ts'],
+    ['an extensionless JSON import', '../lib/data', 'lib/data.json'],
+    ['a directory to its index', '../lib/dir', 'lib/dir/index.ts'],
+    ['a tsconfig paths alias', '@lib/helper', 'lib/helper.ts'],
+    ['a tsconfig baseUrl import', 'lib/view', 'lib/view.tsx'],
+  ])('resolves %s from TypeScript', (_case, specifier, file) => {
+    const { asked } = resolveFrom(url('tests/example.e2e.ts'), specifier);
+    expect(asked).toEqual([url(file)]);
+  });
+
+  it('keeps the query and hash of the specifier', () => {
+    const { asked } = resolveFrom(url('tests/example.e2e.ts'), '../lib/helper?v=1#x');
+    expect(asked).toEqual([`${url('lib/helper.ts')}?v=1#x`]);
   });
 
   it.each([
-    ['./helper.ts', 'file:///app/tests/helper.ts'],
-    ['../shared/seed.ts', 'file:///app/shared/seed.ts'],
-    ['/app/tests/helper.ts', 'file:///app/tests/helper.ts'],
-    // A tsconfig paths alias, as tsx passes it on Windows: pathToFileURL of the mapped path.
-    ['file:///C:/app/src/lib/seed.ts', 'file:///C:/app/src/lib/seed.ts'],
-  ])('marks a file reached by the path %s as an ES module', (specifier, url) => {
-    const resolution = { url, format: 'commonjs-typescript' };
-    expect(asModule(specifier, context, resolution)).toEqual({ ...resolution, format: 'module' });
+    ['a file that exists as written', 'tests/example.e2e.ts', '../lib/only.js'],
+    ['a missing file, for Node.js to report', 'tests/example.e2e.ts', '../lib/missing.js'],
+    ['a relative import from JavaScript', 'tests/plain.js', '../lib/helper'],
+    ['a # import', 'tests/example.e2e.ts', '#lib/helper'],
+    ['a builtin a paths pattern could match', 'tests/example.e2e.ts', 'fs'],
+    ['a package no alias names', 'tests/example.e2e.ts', 'dep'],
+    ['a path inside an installed package', 'node_modules/dep/index.ts', './helper'],
+    ['an alias from an installed package', 'node_modules/dep/index.ts', '@lib/helper'],
+  ])('leaves %s to Node.js', (_case, parent, specifier) => {
+    expect(resolveFrom(url(parent), specifier).asked).toEqual([specifier]);
   });
 
   it.each([
-    ['a linked package shipping TypeScript source', 'cjs-helper', { url: 'file:///work/cjs-helper/index.ts', format: 'commonjs-typescript' }],
-    ['a workspace package export', '@scope/core/shared/months', { url: 'file:///work/core/src/shared/months.ts', format: 'commonjs' }],
-    ['a subpath import', '#internal/helper', { url: 'file:///app/src/helper.ts', format: 'commonjs' }],
-  ])('marks TypeScript outside node_modules reached through %s as an ES module', (_case, specifier, resolution) => {
-    expect(asModule(specifier, underTsx, resolution)).toEqual({ ...resolution, format: 'module' });
+    ['.ts', 'lib/helper.ts', 'commonjs-typescript', 'module'],
+    ['.tsx', 'lib/view.tsx', null, 'module'],
+    ['.mts', 'lib/esm.mts', 'module-typescript', 'module'],
+    ['.cts', 'lib/cjs.cts', 'commonjs-typescript', 'commonjs'],
+    ['installed .ts', 'node_modules/dep/index.ts', 'commonjs', 'module'],
+  ])('runs %s as %s whatever the package scope says', (_case, file, format, expected) => {
+    expect(resolveFrom(undefined, url(file), format).resolution).toEqual({ url: url(file), format: expected });
   });
 
   it.each([
-    ['an ES module', './a.ts', { url: 'file:///app/a.ts', format: 'module' }],
-    ['module-typescript', './a.ts', { url: 'file:///app/a.ts', format: 'module-typescript' }],
-    ['a .cts file', './a.cts', { url: 'file:///app/a.cts', format: 'commonjs' }],
-    ['JavaScript', './a.js', { url: 'file:///app/a.js', format: 'commonjs' }],
-    ['an installed package', 'dep', { url: 'file:///app/node_modules/dep/index.ts', format: 'commonjs' }],
-    ['a scoped installed package', '@scope/dep', { url: 'file:///app/node_modules/@scope/dep/src/index.ts', format: 'commonjs' }],
-    ['a builtin', 'node:path', { url: 'node:path', format: 'builtin' }],
-    ['a data: URL', 'data:text/javascript,export%20{}', { url: 'data:text/javascript,export%20{}', format: undefined }],
-  ])('leaves %s alone', (_case, specifier, resolution) => {
-    expect(asModule(specifier, underTsx, resolution)).toBe(resolution);
+    ['JavaScript', 'file:///app/a.js', 'commonjs'],
+    ['a builtin', 'node:path', 'builtin'],
+    ['a data: URL', 'data:text/javascript,export%20{}', null],
+  ])('leaves the format of %s alone', (_case, specifier, format) => {
+    expect(resolveFrom(undefined, specifier, format).resolution).toEqual({ url: specifier, format });
   });
 
-  it.each([
-    ['a .cjs helper', 'file:///app/tests/required.cjs'],
-    ['a module Node loaded itself', 'file:///work/core/src/shared/months.ts'],
-    ['another tsx namespace', 'file:///app/tests/example.ts?tsx-namespace=other'],
-  ])('leaves a workspace package that %s reaches alone, so Node strips its types', (_case, parentURL) => {
-    const resolution = { url: 'file:///work/core/src/shared/pad.ts', format: 'commonjs-typescript' };
-    expect(asModule('#shared/pad', { parentURL }, resolution)).toBe(resolution);
-  });
-
-  it('serves both hook kinds', async () => {
-    const next = (specifier: string) => ({ url: `file:///app/${specifier.slice(2)}`, format: 'commonjs-typescript' });
-    expect(resolveSync('./a.ts', context, next)).toEqual({ url: 'file:///app/a.ts', format: 'module' });
-    await expect(resolve('./a.ts', context, async (specifier) => next(specifier))).resolves.toEqual({
-      url: 'file:///app/a.ts',
-      format: 'module',
+  it('resolves the helpers compiled code imports from e2e itself', () => {
+    let parent: string | undefined;
+    resolve('@oxc-project/runtime/helpers/decorate', { conditions: [], importAttributes: {}, parentURL: url('tests/example.e2e.ts') }, (specifier, context) => {
+      parent = context?.parentURL;
+      return { url: `file:///e2e/node_modules/${specifier}.js` };
     });
+    expect(parent).toMatch(/\/src\/config\/esm-hooks\.ts$/);
   });
 });
 
@@ -73,15 +129,18 @@ describe('inGraph', () => {
     ['a relative import', './e2e.config.ts', 'file:///app/e2e.config.ts'],
     ['a parent-relative import', '../shared/targets.ts', 'file:///shared/targets.ts'],
     ['an absolute path', '/app/targets.ts', 'file:///app/targets.ts'],
-    ['a file: URL, as tsx passes a paths alias', 'file:///app/src/targets.ts', 'file:///app/src/targets.ts'],
+    ['a file: URL', 'file:///app/src/targets.ts', 'file:///app/src/targets.ts'],
     ['a # subpath import', '#targets', 'file:///app/src/targets.ts'],
-  ])('hands the graph on to %s', (_case, specifier, url) => {
-    expect(inGraph(specifier, { parentURL: parent }, { url, format: 'module' })).toEqual({ url: `${url}?e2e-graph=module-3`, format: 'module' });
+  ])('hands the graph on to %s', (_case, specifier, target) => {
+    expect(inGraph(specifier, { parentURL: parent }, { url: target, format: 'module' })).toEqual({
+      url: `${target}?e2e-graph=module-3`,
+      format: 'module',
+    });
   });
 
   it('keeps the query a resolution already carries', () => {
-    expect(inGraph('./a.ts', { parentURL: parent }, { url: 'file:///app/a.ts?tsx-namespace=e2e', format: 'module' }).url).toBe(
-      'file:///app/a.ts?tsx-namespace=e2e&e2e-graph=module-3',
+    expect(inGraph('./a.ts', { parentURL: parent }, { url: 'file:///app/a.ts?v=1', format: 'module' }).url).toBe(
+      'file:///app/a.ts?v=1&e2e-graph=module-3',
     );
   });
 
@@ -91,48 +150,57 @@ describe('inGraph', () => {
     ['an importer outside any graph', './e2e.config.ts', 'file:///app/e2e.agent.config.ts?e2e=module-1', 'file:///app/e2e.config.ts'],
     ['the entry, which has no importer', 'file:///app/e2e.config.ts', undefined, 'file:///app/e2e.config.ts'],
     ['a builtin', 'node:path', parent, 'node:path'],
-  ])('leaves %s alone', (_case, specifier, parentURL, url) => {
-    const resolution = { url, format: 'module' };
+  ])('leaves %s alone', (_case, specifier, parentURL, target) => {
+    const resolution = { url: target, format: 'module' };
     expect(inGraph(specifier, { parentURL }, resolution)).toBe(resolution);
   });
 
-  it('runs in both hook kinds', async () => {
-    const fromGraph = { ...context, parentURL: parent };
-    const next = () => ({ url: 'file:///app/e2e.config.ts', format: 'module' });
-    const expected = { url: 'file:///app/e2e.config.ts?e2e-graph=module-3', format: 'module' };
-    expect(resolveSync('./e2e.config.ts', fromGraph, next)).toEqual(expected);
-    await expect(resolve('./e2e.config.ts', fromGraph, async () => next())).resolves.toEqual(expected);
+  it('hands the graph on to a tsconfig alias the loader maps', () => {
+    const fromGraph = `${url('e2e.config.ts')}?e2e=module-3&e2e-graph=module-3`;
+    expect(resolveFrom(fromGraph, '@lib/helper', 'module').resolution.url).toBe(`${url('lib/helper.ts')}?e2e-graph=module-3`);
+  });
+
+  it('runs inside the resolve hook', () => {
+    expect(resolveFrom(parent, './e2e.config.ts', 'module').resolution).toEqual({
+      url: 'file:///app/e2e.config.ts?e2e-graph=module-3',
+      format: 'module',
+    });
   });
 });
 
-describe('tsxUsesSyncHooks', () => {
+describe('load', () => {
+  const context = (overrides: Partial<LoadHookContext> = {}): LoadHookContext => ({
+    conditions: ['node', 'import'],
+    format: undefined,
+    importAttributes: {},
+    ...overrides,
+  });
+  const passThrough = () => ({ format: 'next', source: 'next' });
+
+  it('compiles TypeScript for the format its extension calls for', () => {
+    write({ 'lib/typed.ts': 'export const n: number = 1;\n', 'lib/typed.cts': 'const n: number = 1;\nmodule.exports = n;\n' });
+    const esm = load(`${url('lib/typed.ts')}?e2e=collect-1`, context(), passThrough);
+    expect(esm).toMatchObject({ format: 'module', shortCircuit: true });
+    expect(String(esm.source)).toMatch(/^export const n = 1;\n/);
+    const cjs = load(url('lib/typed.cts'), context({ conditions: ['node', 'require'] }), passThrough);
+    expect(cjs).toMatchObject({ format: 'commonjs' });
+    expect(String(cjs.source)).toMatch(/^const n = 1;\nmodule\.exports = n;\n/);
+  });
+
+  it('loads JSON imported without a type attribute as a module exporting the parsed file', async () => {
+    write({ 'lib/settings.json': '﻿{ "__proto__": { "polluted": true }, "answer": 42 }' });
+    const loaded = load(url('lib/settings.json'), context(), passThrough);
+    expect(loaded.format).toBe('module');
+    const module = (await import(`data:text/javascript,${encodeURIComponent(String(loaded.source))}`)) as { default: Record<string, unknown> };
+    expect(module.default['answer']).toBe(42);
+    expect(Object.getPrototypeOf(module.default)).toBe(Object.prototype);
+  });
+
   it.each([
-    ['22.12.0', false],
-    ['22.22.2', false],
-    ['22.22.3', true],
-    ['23.11.0', false],
-    ['24.11.0', false],
-    ['24.11.1', true],
-    ['25.0.0', false],
-    ['25.1.0', true],
-    ['26.0.0', true],
-    ['27.2.0', true],
-  ])('on Node.js %s registers like tsx: sync=%s', (version, expected) => {
-    expect(tsxUsesSyncHooks(version, true, '')).toBe(expected);
-  });
-
-  it('needs module.registerHooks', () => {
-    expect(tsxUsesSyncHooks('26.4.0', false, '')).toBe(false);
-  });
-
-  it.each(['--import ./setup.ts', '--import=./setup.mts', '--require x --import tsx/esm --import ./a.tsx?x=1'])(
-    'follows tsx to async hooks with %s in NODE_OPTIONS',
-    (nodeOptions) => {
-      expect(tsxUsesSyncHooks('26.4.0', true, nodeOptions)).toBe(false);
-    },
-  );
-
-  it('keeps sync hooks with a JavaScript --import', () => {
-    expect(tsxUsesSyncHooks('26.4.0', true, '--import ./setup.mjs --import tsx/esm')).toBe(true);
+    ['JSON with a type attribute', 'lib/data.json', context({ importAttributes: { type: 'json' } })],
+    ['JSON a require() reads', 'lib/data.json', context({ conditions: ['node', 'require'] })],
+    ['JavaScript', 'lib/only.js', context()],
+  ])('hands %s to Node.js', (_case, file, loadContext) => {
+    expect(load(url(file), loadContext, passThrough)).toEqual({ format: 'next', source: 'next' });
   });
 });

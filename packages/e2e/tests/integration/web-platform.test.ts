@@ -374,8 +374,8 @@ test('evaluate runs trusted code with JSON arguments', async ({ app, browser }) 
   expect(result).toBe(42);
   const href = await browser.evaluate(() => document.location.pathname);
   expect(href).toBe('/');
-  // tsx compiles this file with esbuild keepNames, which wraps the nested
-  // const in a \`__name\` helper the serialized source must find in the page.
+  // A nested named binding survives serialization whatever the loader
+  // compiled it to (esbuild keepNames once wrapped it in a \`__name\` helper).
   const total = await browser.evaluate((input: { a: number; b: number }) => {
     const pick = (key: 'a' | 'b') => input[key];
     return pick('a') + pick('b');

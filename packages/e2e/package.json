@@ -86,11 +86,13 @@
     "@ai-sdk/provider": "4.0.18",
     "@clack/prompts": "1.8.1",
     "@modelcontextprotocol/server": "2.2.0",
+    "@oxc-project/runtime": "0.152.0",
     "@vitest/expect": "5.0.2",
     "commander": "15.0.0",
+    "get-tsconfig": "4.14.3",
+    "oxc-transform": "0.152.0",
     "picocolors": "1.1.1",
     "pngjs": "7.0.0",
-    "tsx": "4.23.14",
     "zod": "4.6.1"
   },
   "peerDependencies": {
@@ -130,6 +132,6 @@
     "vitest": "5.0.1"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": "^22.22.3 || >=24.11.0"
   }
 }

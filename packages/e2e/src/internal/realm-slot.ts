@@ -1,8 +1,9 @@
 /**
- * Typed accessor for a `Symbol.for` slot on a host object. Test modules load
- * in isolated module realms (tsx), so runner-owned instances are shared
- * through registry symbols instead of module state. All unsafe reads live
- * here; call sites stay fully typed.
+ * Typed accessor for a `Symbol.for` slot on a host object. A project can load
+ * a copy of e2e other than the runner's (a second install, a linked checkout,
+ * a fresh module registry under a test runner), so runner-owned instances are
+ * shared through registry symbols instead of module state. All unsafe reads
+ * live here; call sites stay fully typed.
  */
 export interface RealmSlot<T> {
   set(host: object, value: T): void;

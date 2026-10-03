@@ -14,6 +14,9 @@ const env = { E2E_TELEMETRY_DISABLED: '1' };
  */
 export default defineConfig({
   test: {
+    // Built packages load natively, as in a project: their dynamic imports
+    // reach e2e's own module hooks instead of Vite's module runner.
+    server: { deps: { external: [/\/dist\//] } },
     testTimeout: 30_000,
     hookTimeout: 30_000,
     pool: 'forks',

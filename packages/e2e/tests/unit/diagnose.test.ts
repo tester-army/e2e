@@ -46,20 +46,6 @@ describe('explainModuleError', () => {
     expect(explainModuleError(cause, importer)).toBe(cause.message);
   });
 
-  it('says an existing CommonJS-scoped TypeScript file the loader could not transform is there, and why it failed', () => {
-    const pkg = path.join(dir, 'node_modules', 'dep');
-    mkdirSync(path.join(pkg, 'src'), { recursive: true });
-    writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: 'dep' }));
-    const file = path.join(pkg, 'src', 'a.ts');
-    writeFileSync(file, 'export const v = 1;');
-    const cause = nodeError('MODULE_NOT_FOUND', `Cannot find module '${file}?namespace=e2e'\nRequire stack:\n- ${importer}`);
-    expect(explainModuleError(cause, importer)).toContain(
-      `\n${file} exists: ${path.join(pkg, 'package.json')} declares no "type": "module", so the file loads as CommonJS`,
-    );
-    const gone = nodeError('MODULE_NOT_FOUND', `Cannot find module '${path.join(pkg, 'src', 'b.ts')}?namespace=e2e'`);
-    expect(explainModuleError(gone, importer)).toBe(gone.message);
-  });
-
   it('lists the subpaths a package exports and suggests the closest one', () => {
     const manifestDir = path.join(dir, 'node_modules', 'e2e');
     mkdirSync(manifestDir, { recursive: true });

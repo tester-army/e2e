@@ -447,8 +447,9 @@ function validateDescribeOptions(options: DescribeOptions, parent: GroupNode | u
 }
 
 /**
- * The active collector lives on globalThis because test modules load in an
- * isolated module realm (tsx) and must reach the runner's collector instance.
+ * The active collector lives on globalThis because a test module may import a
+ * copy of e2e other than the runner's and must still reach the runner's
+ * collector instance.
  */
 const collectorSlot = realmSlot<Collector>('e2e.activeCollector.v1');
 
@@ -492,8 +493,8 @@ function requireCollector(api: string): Collector {
 const PACKAGE_ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 /**
  * The runner's own source roots, whose frames are never a test's location.
- * `dist/` is where the published module runs; `src/` is where tsx's source maps
- * relocate those very frames (and where the module runs in this repository).
+ * `dist/` is where the published module runs; `src/` is where it runs in this
+ * repository.
  */
 const RUNNER_ROOTS = ['src', 'dist'].map((dir) => `${path.join(PACKAGE_ROOT, dir)}${path.sep}`);
 /** `at name (file:line:column)` or `at file:line:column`, with or without a `file://` scheme. */

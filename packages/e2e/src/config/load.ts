@@ -1,13 +1,12 @@
 /** Config discovery and ESM/TypeScript loading. */
 
 import { existsSync } from 'node:fs';
-import nodeModule from 'node:module';
 import path from 'node:path';
-import { register, type NamespacedUnregister } from 'tsx/esm/api';
 import { ConfigurationError, isForeignE2EError } from '../internal/errors.ts';
 import type { E2EConfig } from '../types.ts';
 import { explainModuleError } from './diagnose.ts';
-import { freshModuleURL, resolveSync, TSX_NAMESPACE } from './esm-hooks.ts';
+import { freshModuleURL, registerLoader } from './esm-hooks.ts';
+import { forgetTsconfigs } from './tsconfig.ts';
 
 const CONFIG_NAMES = ['e2e.config.ts', 'e2e.config.mts'] as const;
 
@@ -81,65 +80,6 @@ export function missingConfigError(cwd: string): ConfigurationError {
   return new ConfigurationError('CONFIG_NOT_FOUND', `${searched}; ${remedy}`);
 }
 
-/**
- * The process-wide TypeScript loader, registered on first use. `tsImport`
- * would register a fresh, never-removed loader hook per call - once per
- * collected file and once per realm, so every import would slow every later
- * one. One namespaced registration serves them all.
- */
-let loader: NamespacedUnregister | undefined;
-let imports = 0;
-
-/**
- * Node.js floors per major above which tsx registers synchronous hooks,
- * mirroring tsx 4.23.13's `supportsRegisterHooks`: `module.registerHooks`
- * exists and CommonJS can reload from a sync hook. Earlier releases, and
- * Node 23, get asynchronous hooks.
- */
-const TSX_SYNC_HOOK_FLOORS: ReadonlyArray<readonly [number, number, number]> = [
-  [22, 22, 3],
-  [24, 11, 1],
-  [25, 1, 0],
-  [26, 0, 0],
-];
-
-/**
- * Whether tsx registers synchronous hooks on this Node.js. Hook chains only
- * compose within a kind, so e2e's hook has to be registered the same way.
- * A TypeScript `--import` in NODE_OPTIONS makes tsx fall back to async hooks.
- */
-export function tsxUsesSyncHooks(
-  version = process.versions.node,
-  hasRegisterHooks = typeof nodeModule.registerHooks === 'function',
-  nodeOptions = process.env.NODE_OPTIONS ?? '',
-): boolean {
-  if (!hasRegisterHooks) return false;
-  if (/(?:^|\s)--import(?:=|\s+)\S+\.(?:[cm]?ts|tsx)(?:[?#]\S*)?(?=\s|$)/.test(nodeOptions)) return false;
-  const [major = 0, minor = 0, patch = 0] = version.split('.').map(Number);
-  const last = TSX_SYNC_HOOK_FLOORS.length - 1;
-  const floor = TSX_SYNC_HOOK_FLOORS.find((entry, index) => index === last || entry[0] === major);
-  if (floor === undefined) return false;
-  if (major !== floor[0]) return major > floor[0];
-  if (minor !== floor[1]) return minor > floor[1];
-  return patch >= floor[2];
-}
-
-/**
- * Registers e2e's ESM hook, then tsx. The last registered hook runs first, so
- * tsx's resolve calls e2e's and receives `format: 'module'` for project
- * TypeScript; see esm-hooks.ts.
- */
-function registerLoader(): NamespacedUnregister {
-  if (tsxUsesSyncHooks()) {
-    nodeModule.registerHooks({ resolve: resolveSync });
-  } else {
-    // The sibling module with this module's own extension: .js in dist, .ts when
-    // tests run from source (tsc rewrites import specifiers, not URLs).
-    nodeModule.register(import.meta.url.replace(/load(\.[jt]s)$/, 'esm-hooks$1'));
-  }
-  return register({ namespace: TSX_NAMESPACE });
-}
-
 export interface ConfigLoadOptions {
   /**
    * Evaluates every project file the config reaches by path or `#` import
@@ -155,7 +95,7 @@ export interface ConfigLoadOptions {
 }
 
 /**
- * Imports a TypeScript/ESM module with erasable-syntax support. Every call
+ * Imports a TypeScript or JavaScript module through e2e's loader. Every call
  * evaluates the module file afresh: the query carries the caller's key (what
  * the instance is for) plus a process-unique sequence, so a realm never
  * receives another realm's instance of it and a second `run()` in one
@@ -166,10 +106,15 @@ export async function importModule(absolutePath: string, cacheKey = 'module'): P
   return importFresh(absolutePath, cacheKey, false);
 }
 
+/** Process-unique sequence that keeps every fresh import's URL distinct. */
+let imports = 0;
+
 async function importFresh(absolutePath: string, cacheKey: string, graph: boolean): Promise<unknown> {
   imports += 1;
-  loader ??= registerLoader();
-  return loader.import(freshModuleURL(absolutePath, `${cacheKey}-${imports}`, graph), import.meta.url);
+  registerLoader();
+  // A tsconfig.json edited since the last import applies to this one.
+  forgetTsconfigs();
+  return import(freshModuleURL(absolutePath, `${cacheKey}-${imports}`, graph));
 }
 
 /** Loads and returns the raw default export of a config module. */
