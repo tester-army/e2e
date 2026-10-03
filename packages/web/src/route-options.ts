@@ -38,7 +38,9 @@ const CONTINUE_KEYS = ['url', 'method', 'headers', 'postData'];
  * taken the moment `fulfill` is called. `path` resolves with `resolvePath`
  * (the project root, never `process.cwd()`) and must name a file now, so a
  * missing fixture fails the step with its own message, and `json` follows
- * the JSON-value rules `evaluate` does.
+ * the JSON-value rules `evaluate` does. A `content-type` header becomes
+ * `contentType` when none is given, since Playwright overwrites the header
+ * with the type it derives for `json` and `path`.
  */
 export function parseFulfill(
   response: unknown,
@@ -56,10 +58,14 @@ export function parseFulfill(
   if (json !== undefined) validateJsonValue(json, 'route.fulfill json');
   const file = path === undefined ? undefined : resolvePath(requireString('route.fulfill', 'path', path, true));
   if (file !== undefined) requireFile(file);
+  const replied = requireHeaders('route.fulfill', headers) ?? {};
+  const type = contentType === undefined
+    ? Object.entries(replied).find(([name]) => name.toLowerCase() === 'content-type')?.[1]
+    : requireString('route.fulfill', 'contentType', contentType, true);
   return {
     status: (status as number | undefined) ?? 200,
-    headers: requireHeaders('route.fulfill', headers) ?? {},
-    ...(contentType === undefined ? {} : { contentType: requireString('route.fulfill', 'contentType', contentType, true) }),
+    headers: replied,
+    ...(type === undefined ? {} : { contentType: type }),
     ...(json === undefined ? {} : { json: json as JsonValue }),
     ...(body === undefined ? {} : { body: requireString('route.fulfill', 'body', body, false) }),
     ...(file === undefined ? {} : { path: file }),

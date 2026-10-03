@@ -225,6 +225,15 @@ describe('browser.route decisions', () => {
   });
 
   it.each([
+    ['json', { json: { cents: 1 }, headers: { 'Content-Type': 'application/vnd.quote+json' } }, '{"cents":1}'],
+    ['a file', { path: 'quote.json', headers: { 'Content-Type': 'text/plain' } }, '{"cents":4200}\n'],
+  ] as const)('fulfills %s under a content-type header', async (_name, response, body) => {
+    await browser.route('**/api/quote', (route) => route.fulfill(response));
+    const reply = await fetchReply(`${origin}/api/quote`);
+    expect(reply).toEqual({ contentType: response.headers['Content-Type'], body });
+  });
+
+  it.each([
     ['an unknown fulfill key', (route: WebRoute) => untyped(route.fulfill, { bodyy: 'typo' }),
       'route.fulfill options has no key "bodyy"; it takes status, headers, contentType, json, body, path'],
     ['two fulfill sources', (route: WebRoute) => untyped(route.fulfill, { body: 'a', json: { b: 1 } }),
