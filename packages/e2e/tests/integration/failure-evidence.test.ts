@@ -187,6 +187,28 @@ describe('failure evidence', () => {
   );
 
   it(
+    'looks once when the look sees nothing, instead of spending the evidence budget again before the session closes',
+    async () => {
+      const fake = createFakeEngine({
+        locate: () => [],
+        observe: () => {
+          throw new Error('the page stopped answering');
+        },
+      });
+      const { outcome, project } = await runProject({ 'tests/missing.e2e.ts': MISSING_LOCATOR_TEST }, { appUrl: FAKE_APP_URL, config: fakeConfig(fake) });
+      try {
+        const attempt = reported(outcome, 'taps a button that is not there').attempts.at(-1)!;
+        expect(attempt.error?.code).toBe('LOCATOR_NOT_FOUND');
+        expect(attempt.failure).toBeUndefined();
+        expect(fake.operations.filter((operation) => operation.method === 'observe')).toHaveLength(1);
+      } finally {
+        project.cleanup();
+      }
+    },
+    30_000,
+  );
+
+  it(
     'records what an assertion expected and observed as details, and always captures the screen and a screenshot',
     async () => {
       const fake = createFakeEngine({ artifacts: true });
