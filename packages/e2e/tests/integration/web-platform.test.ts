@@ -250,11 +250,11 @@ test('forbidden URL schemes are refused', async ({ app }) => {
 });
 
 test('a route handler assertion that no step follows', async ({ app, browser }) => {
-  await browser.route('**/api/flags', async (route) => {
-    await route.fulfill({ json: { betaBoard: true } });
+  await browser.route('**/api/flags.js', async (route) => {
+    await route.fulfill({ body: '', contentType: 'text/javascript' });
     expect(route.request.method).toBe('POST');
   });
-  await app.open('/flags');
+  await app.open('/script-flags');
 });
 
 test('a dialog handler assertion that no step follows', async ({ app, browser, screen }) => {
@@ -276,11 +276,11 @@ test.afterEach(async ({ app }) => {
 });
 
 test('a route handler assertion that no step follows, then a teardown that navigates', async ({ app, browser }) => {
-  await browser.route('**/api/flags', async (route) => {
-    await route.fulfill({ json: { betaBoard: true } });
+  await browser.route('**/api/flags.js', async (route) => {
+    await route.fulfill({ body: '', contentType: 'text/javascript' });
     expect(route.request.method).toBe('POST');
   });
-  await app.open('/flags');
+  await app.open('/script-flags');
 });
 `;
 
@@ -558,7 +558,7 @@ describe('web platform integration', () => {
     expect(attempt.error).toMatchObject({ code: 'ASSERTION_FAILED', phase: 'body' });
     expect(attempt.steps.map((step) => step.api)).toEqual(['browser.route', 'app.open', 'app.open']);
     const failure = attempt.failure!;
-    expect(failure.url).toMatch(/\/flags$/);
+    expect(failure.url).toMatch(/\/script-flags$/);
     const screen = attempt.artifacts.find((artifact) => artifact.id === failure.screen)!;
     const text = readFileSync(path.join(project.dir, '.e2e', 'artifacts', screen.path!), 'utf8');
     expect(text).toContain('heading "Flags"');

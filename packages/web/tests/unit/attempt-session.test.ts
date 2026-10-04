@@ -299,11 +299,11 @@ describe('AttemptSession', () => {
     const nextPage = target('next-page').page;
     const nextStop = vi.fn(async () => undefined);
     Object.assign(firstPage, { screencast: {
-      start: async ({ path: file }: { path: string }) => { writeFileSync(file, 'old'); started.resolve(); await resume.promise; },
+      start: async ({ path: file, onFrame }: { path: string; onFrame?: () => void }) => { writeFileSync(file, 'old'); onFrame?.(); started.resolve(); await resume.promise; },
       stop: async () => undefined,
     } });
     Object.assign(nextPage, { screencast: {
-      start: async ({ path: file }: { path: string }) => { writeFileSync(file, 'next'); },
+      start: async ({ path: file, onFrame }: { path: string; onFrame?: () => void }) => { writeFileSync(file, 'next'); onFrame?.(); },
       stop: nextStop,
     } });
     old.pages.push(firstPage);

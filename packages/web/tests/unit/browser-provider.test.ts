@@ -29,7 +29,7 @@ function fakeBrowser(contextId: string) {
     isClosed: () => false,
     close: async () => undefined,
     viewportSize: () => ({ width: 1280, height: 720 }),
-    screencast: { start: vi.fn(async ({ path: file }: { path: string }) => { writeFileSync(file, 'webm'); }), stop: async () => undefined },
+    screencast: { start: vi.fn(async ({ path: file, onFrame }: { path: string; onFrame?: () => void }) => { writeFileSync(file, 'webm'); onFrame?.(); }), stop: async () => undefined },
   } as unknown as Page;
   const context = {
     newPage: async () => page,

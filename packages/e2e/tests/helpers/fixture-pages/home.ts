@@ -252,6 +252,15 @@ line2  </textarea>
   <output id="answer" aria-label="Answer"></output>
 </body>
 </html>`),
+  // The flags as a script the document waits for: a route on it is invoked
+  // before the page's load event, so before the navigation returns.
+  '/script-flags': constant(`<!doctype html>
+<html>
+<head><title>Flags</title><script src="/api/flags.js"></script></head>
+<body>
+  <h1>Flags</h1>
+</body>
+</html>`),
   '/flags': constant(`<!doctype html>
 <html>
 <head><title>Flags</title></head>

@@ -15,24 +15,31 @@ import { VideoRecorder } from '../../src/video.ts';
 
 const VIEWPORT = { width: 320, height: 200 };
 
-/** A page whose screencast writes its file on start unless told not to, and fails to stop when told to. */
-function fakePage(options: { writes?: boolean; stopError?: Error; startError?: Error; viewport?: { width: number; height: number } } = {}) {
+/**
+ * A page whose screencast writes its file on start unless told not to, sends
+ * its first frame at once (or after `firstFrameMs`, or never with `null`),
+ * and fails to stop when told to.
+ */
+function fakePage(options: { writes?: boolean; stopError?: Error; startError?: Error; viewport?: { width: number; height: number }; firstFrameMs?: number | null } = {}) {
   const started: string[] = [];
   const sizes: { width: number; height: number }[] = [];
   const startOptions: Record<string, unknown>[] = [];
-  const stopped = { count: 0 };
+  const stopped = { count: 0, at: [] as number[] };
   const page = {
     viewportSize: () => options.viewport ?? VIEWPORT,
     screencast: {
-      start: async (start: { path: string; size: { width: number; height: number } }) => {
-        const { path: file, size } = start;
+      start: async (start: { path: string; size: { width: number; height: number }; onFrame?: () => void }) => {
+        const { path: file, size, onFrame: _onFrame, ...rest } = start;
         if (options.startError !== undefined) throw options.startError;
         started.push(file);
         sizes.push(size);
-        startOptions.push({ ...start });
+        startOptions.push({ path: file, size, ...rest });
         if (options.writes !== false) writeFileSync(file, 'webm');
+        const firstFrameMs = options.firstFrameMs === undefined ? 0 : options.firstFrameMs;
+        if (firstFrameMs !== null) setTimeout(() => start.onFrame?.(), firstFrameMs);
       },
       stop: async () => {
+        stopped.at.push(Date.now());
         stopped.count += 1;
         if (options.stopError !== undefined) throw options.stopError;
       },
@@ -49,6 +56,23 @@ describe('VideoRecorder', () => {
   };
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('waits for a segment\'s first frame before ending it, within a bound, so a recording stopped right after a paint is not blank', async () => {
+    const video = recorder();
+    const late = fakePage({ firstFrameMs: 150 });
+    await video.arm(late.page);
+    const stopping = Date.now();
+    await video.stop();
+    expect(late.stopped.at[0]! - stopping).toBeGreaterThanOrEqual(140);
+
+    const silent = fakePage({ firstFrameMs: null });
+    await video.arm(silent.page);
+    const started = Date.now();
+    await video.stop();
+    // A page that never repaints ends after the bound, not never.
+    expect(silent.stopped.at[0]! - started).toBeGreaterThanOrEqual(990);
+    expect(silent.stopped.at[0]! - started).toBeLessThan(3_000);
   });
 
   it('records one segment per page, in order, each with its start instant', async () => {

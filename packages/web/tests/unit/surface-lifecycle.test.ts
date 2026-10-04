@@ -40,7 +40,7 @@ beforeEach(async () => {
     frames: () => [{ evaluate: focus }],
     keyboard: { press, type },
     screencast: {
-      start: async ({ path: file }: { path: string }) => { writeFileSync(file, 'recording'); },
+      start: async ({ path: file, onFrame }: { path: string; onFrame?: () => void }) => { writeFileSync(file, 'recording'); onFrame?.(); },
       stop: async () => undefined,
     },
   };
