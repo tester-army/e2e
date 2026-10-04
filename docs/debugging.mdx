@@ -4,15 +4,26 @@ description: Read the report, open the evidence, watch the browser, and see what
 icon: "magnifying-glass"
 ---
 
-Start with the failure in the terminal. Every run also writes
-`.e2e/report.json`, with links to the screenshots, downloads, and
-recordings captured by the selected engine.
+Start with the failure in the terminal, then open the failure page it names.
+Every run also writes `.e2e/report.json`, with links to the screenshots,
+downloads, and recordings captured by the selected engine.
 
 ## Read the failure
 
-The `list` reporter's `Failed Tests` section shows the error, failing line,
-and screen at failure. For a failed locator, it also lists nearby matches
-that may explain the problem. The exit code identifies the failure type:
+The `list` reporter's `Failed Tests` section shows the error, the failing
+line, nearby matches for a failed locator, how many errors the app logged, and
+the failure page:
+
+```text
+ FAIL  |web| tests/todos.e2e.ts > shows the remaining count
+LOCATOR_NOT_FOUND: locator did not become visible: getByRole("heading", name: "Todos")
+ ❯ tests/todos.e2e.ts:31:3
+ ❯ at http://127.0.0.1:4271/nope
+ ❯ app 2 errors, 2 warnings logged
+ ❯ details .e2e/failures/todos-shows-the-remaining-count-796fac5f.md
+```
+
+The exit code identifies the failure type:
 
 | Exit | Meaning | Retry the job? |
 | ---: | --- | --- |
@@ -24,49 +35,58 @@ that may explain the problem. The exit code identifies the failure type:
 
 ## The failure pages
 
-Use `--reporter list,markdown` to write `.e2e/summary.md` and a page for each
-failed or flaky test under `.e2e/failures/`. A failure page includes the
-source line, steps, recent model turns, and screen text:
+Every run writes a page for each failed or flaky test under `.e2e/failures/`,
+and removes the previous run's pages. Each step lists what it did: the node an
+action landed on, the values an assertion read while it waited, the replay
+cache's decision, and what the app logged meanwhile (console errors and
+warnings, uncaught exceptions, failed requests, 4xx and 5xx responses). Then
+come the agent's last turns and the screen at failure:
 
 ````markdown
-# ✗ todos › archives a todo
+# ✗ todos › shows the remaining count
 
-`tests/todos.e2e.ts` · failed · 16.2s
+`tests/todos.e2e.ts` · failed · 2.2s
 
 **ASSERTION_FAILED**
 
 ```text
-agent.act failed: the todo exposes only a "Delete" button; no "Archive" button is present.
+expect.toHaveText failed
+locator: getByRole("status", name: "Remaining")
+expected: text "1 remaining"
+observed: text "0 remaining" (match count 1)
 ```
 
-Look at: `tests/todos.e2e.ts:8`
-Failed the same way on both attempts: **ASSERTION_FAILED** at step 2.
+Look at: `tests/todos.e2e.ts:15`
 
 ## Steps
-1. ✓ `app.open` "/todos" (35ms) — `tests/todos.e2e.ts:4`
-2. ✗ `agent.act` "Archive the todo" (16.1s, 6 model calls) — **ASSERTION_FAILED** — `tests/todos.e2e.ts:8`
 
-## Agent turns of step 2
-**Turn 2** `tap({"target":"n19"})`
-> Tapped #n19.
-> Screen changes since revision b4 (now revision b6, path /todos, 29 nodes): 4 added, 2 changed.
-> added #n29 button "Delete Groceries"
+1. ✓ `app.open` `/todos` (37ms in beforeEach) — `tests/todos.e2e.ts:4`
+2. ✓ `agent.act` "Add a todo named Milk." (429ms, 2 model calls) — `tests/todos.e2e.ts:12`
+   - cache: no replay: nothing recorded for this step yet; recording saved (`.e2e/cache/1227d5a6….json`)
+   - type "Milk" into textbox "New todo" (17ms)
+   - press "Enter" on the focused field (5ms)
+   - ✗ network error: `POST /api/todos 500 Internal Server Error`
+3. ✓ `locator.check` `getByLabel("Milk")` (13ms) — `tests/todos.e2e.ts:14`
+   - check checkbox "Milk" (13ms)
+4. ✗ `expect.toHaveText` `getByRole("status", name: "Remaining")` (1.6s) — **ASSERTION_FAILED** — `tests/todos.e2e.ts:15`
+   - expect gave up after 16 reads in 1.6s: text "0 remaining" (1 match) x16
 
 ## Screen at failure
-URL: `http://127.0.0.1:3000/todos`
+URL: `http://127.0.0.1:4271/todos`
 ```text
-#n18 textbox "New todo"
-#n19 button "Add"
- #n34 listitem "Groceries" testid="todo"
-  #n37 button "Delete Groceries"
+#n29 textbox "New todo"
+#n30 button "Add"
+ #n35 listitem "Milk Delete Milk" testid="todo"
+  #n36 checkbox "Milk" [checked]
+#n40 status "Remaining" text="0 remaining"
 ```
 ````
 
-`Look at` points to the failing call. Assertion failures include expected
-and observed values; locator failures include the requested locator and
-nearby matches. Repeated failure details help you compare attempts. The
-runner spends at most 5 s capturing the screen and screenshot once per failed
-attempt; an app that does not answer in time gets no screen section.
+An assertion that read one value the whole time is a wrong expectation; one
+whose readings changed (`"2 remaining" x3 -> at 410ms "1 remaining"`) raced
+the app. The runner spends at most 5 s capturing the screen and screenshot
+once per failed attempt; an app that does not answer in time gets no screen
+section. CI uploads the pages with the report; see [CI](/ci).
 
 ## The report
 
@@ -86,8 +106,9 @@ failed result:
 - `error` contains the code, message, source line, and assertion details.
 - `failure` identifies the screen and screenshot artifacts and any locator
   candidates.
-- `steps` shows the calls leading to the failure. Failed agent steps include
-  recent model turns.
+- `steps` shows the calls leading to the failure. Each step's `events` hold
+  what it did (`engine`), what it polled (`poll`), and what the app logged
+  (`app`); agent steps add `cache` and recent model turns.
 - `artifacts` lists the captured files.
 
 ## Artifacts

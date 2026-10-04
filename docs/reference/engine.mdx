@@ -516,6 +516,28 @@ export interface EngineAttemptContext {
    * harness ends the attempt's isolation right behind it and may retry.
    */
   readonly signal: AbortSignal;
+  /**
+   * Reports something the app did on its own while the attempt ran: a
+   * console error, an uncaught exception, a request that failed. The harness
+   * redacts the text, files it under the step that started last (an entry
+   * before the first step waits for it), and shows it on the failure page.
+   * Call it from the moment
+   * `startAttempt` begins until `endAttempt`; entries past a per-attempt cap
+   * are dropped.
+   */
+  readonly appLog: (entry: AppLogEntry) => void;
+}
+
+/** One line of what the app did during an attempt, as `EngineAttemptContext.appLog` takes it. */
+export interface AppLogEntry {
+  /**
+   * Where it came from: the app's `console`, an `error` nothing caught, the
+   * `network`, or the `system` the app runs on (a crash, an OS log).
+   */
+  readonly source: 'console' | 'error' | 'network' | 'system';
+  readonly level: 'error' | 'warning' | 'info';
+  /** One line, such as `GET /api/todos 500` or `TypeError: x is undefined`; the harness clips it. */
+  readonly text: string;
 }
 
 /** How `EngineAttemptContext.resolveSecret` treats what the engine makes of the value. */

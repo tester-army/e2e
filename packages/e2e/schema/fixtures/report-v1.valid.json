@@ -115,6 +115,24 @@
                     "status": "passed",
                     "name": "tap",
                     "detail": "tap button \"Close\""
+                  },
+                  {
+                    "kind": "app",
+                    "startedAt": "2026-07-24T12:00:03.100Z",
+                    "durationMs": 0,
+                    "status": "failed",
+                    "name": "network",
+                    "level": "error",
+                    "detail": "POST /api/cart 500 Internal Server Error"
+                  },
+                  {
+                    "kind": "poll",
+                    "startedAt": "2026-07-24T12:00:03.200Z",
+                    "durationMs": 400,
+                    "status": "passed",
+                    "name": "expect",
+                    "count": 4,
+                    "detail": "text \"0 items\" (1 match) x3 -> at 300ms text \"1 item\" (1 match)"
                   }
                 ],
                 "metrics": {
@@ -129,7 +147,10 @@
                   "reason": "gap",
                   "derived": "minted-token",
                   "replayedActions": 0,
-                  "totalActions": 2
+                  "totalActions": 2,
+                  "entry": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                  "detail": "at action 1 of 2, type a value read off the screen",
+                  "write": "saved"
                 },
                 "artifacts": [],
                 "turns": [
@@ -153,6 +174,7 @@
                   "line": 3,
                   "column": 1
                 },
+                "phase": "afterEach",
                 "status": "failed",
                 "startedAt": "2026-07-24T12:00:00.000Z",
                 "durationMs": 1000,

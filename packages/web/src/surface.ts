@@ -42,6 +42,7 @@ import { BrowserConnection, connectCdp, type BrowserName } from './browser-conne
 import { AttemptSession, type StorageState } from './attempt-session.ts';
 import type { CdpEndpointResolver } from './cdp-recovery.ts';
 import { LeasedBrowsers, type BrowserProvider, type LeaseDownloads } from './provider.ts';
+import { installAppLog } from './app-log.ts';
 import { DialogRouter } from './dialogs.ts';
 import { ensureBrowsersInstalled } from './install.ts';
 import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts';
@@ -466,6 +467,7 @@ export class PlaywrightSurface {
         for (const script of initScripts) await target.addInitScript(script);
         target.setDefaultTimeout(CONTEXT_DEFAULT_TIMEOUT_MS);
         target.on('dialog', (dialog) => { void dialogs.dispatch(dialog); });
+        installAppLog(target, context.appLog);
         await installSiteHeaders(target, this.app.site, this.headers);
         for (const stored of routes) await target.route(stored.predicate, stored.handler);
       },

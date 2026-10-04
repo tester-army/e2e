@@ -3,10 +3,11 @@
  * failed with the step it went wrong at, the flaky tests folded, every test
  * folded as one table with a row per file above its tests, an exploration rendered as its
  * findings, untrusted text escaped, and a body that never outgrows a pull
- * request comment. The `markdown` reporter writes it beside the report.
+ * request comment. The `markdown` reporter writes it beside the report and
+ * links each failure to the page the runner wrote for it.
  */
 
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -803,6 +804,7 @@ describe('markdownReporter', () => {
       reportPath: path.join(root, '.e2e', 'report.json'),
       artifactsRoot,
       aiTracePath: undefined,
+      failurePages: new Map(),
     };
   }
 
@@ -819,37 +821,15 @@ describe('markdownReporter', () => {
     expect(readFileSync(path.join(root, '.e2e', 'summary.md'), 'utf8')).toContain('   Evidence: screenshot `web/explore-checkout-d287e8aead677d36/default/attempt-0/finding-0.png`');
   });
 
-  it('writes one page per failed test under failures/, links each block to its page, and clears what an earlier run left there', async () => {
+  it('links each failure block to the page the runner wrote for it', async () => {
     const root = mkdtempSync(path.join(tmpdir(), 'e2e-markdown-'));
     dirs.push(root);
-    const stale = path.join(root, '.e2e', 'failures', 'stale.md');
-    mkdirSync(path.dirname(stale), { recursive: true });
-    writeFileSync(stale, 'old');
     const document = page({ status: 'failed', results: [passing, failing] });
-    const rows = await markdownReporter.onRunFinished!(finished(document, root), new AbortController().signal);
-    expect(rows).toEqual([
-      { label: 'Markdown', text: path.join('.e2e', 'summary.md') },
-      { label: 'Failures', text: `${path.join('.e2e', 'failures')}/ (1 page)` },
-    ]);
-    const pages = readdirSync(path.join(root, '.e2e', 'failures'));
-    expect(pages).toHaveLength(1);
-    const [name] = pages;
-    // The file and title as one path segment (rewritten into the safe alphabet, so it ends in the segment digest), then the result id's first characters.
-    expect(name).toMatch(/^tests_members\.e2e\.ts-members-an_email_invitation_is_accepted_by_the_invited_account_only-[0-9a-f]{8}-[A-Za-z0-9-]{1,8}\.md$/);
-    const summary = readFileSync(path.join(root, '.e2e', 'summary.md'), 'utf8');
-    expect(summary).toContain(`Details: \`.e2e/failures/${name}\``);
-    const text = readFileSync(path.join(root, '.e2e', 'failures', name!), 'utf8');
-    expect(text.startsWith('# ✗ members › an email invitation is accepted by the invited account only\n')).toBe(true);
-    expect(text).toContain('## Steps');
-    expect(text).toContain('- screenshot `.e2e/artifacts/t/attempt-0/screenshot-0.bin`');
-  });
-
-  it('writes no page for an interrupted test, which reached no verdict', async () => {
-    const root = mkdtempSync(path.join(tmpdir(), 'e2e-markdown-'));
-    dirs.push(root);
-    const cut = named({ title: 'cut short', status: 'interrupted', attempts: [attempt({ status: 'interrupted' })] });
-    const rows = await markdownReporter.onRunFinished!(finished(page({ status: 'interrupted', results: [passing, cut] }), root), new AbortController().signal);
+    const pages = new Map([[failing.id, '.e2e/failures/members-an-email-invitation-1a2b3c4d.md']]);
+    const rows = await markdownReporter.onRunFinished!({ ...finished(document, root), failurePages: pages }, new AbortController().signal);
     expect(rows).toEqual([{ label: 'Markdown', text: path.join('.e2e', 'summary.md') }]);
+    const summary = readFileSync(path.join(root, '.e2e', 'summary.md'), 'utf8');
+    expect(summary).toContain('Details: `.e2e/failures/members-an-email-invitation-1a2b3c4d.md`');
     expect(readdirSync(path.join(root, '.e2e'))).toEqual(['summary.md']);
   });
 

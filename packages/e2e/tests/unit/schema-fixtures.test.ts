@@ -35,6 +35,28 @@ describe.each(schemas)('%s schema', (name) => {
   });
 
   if (name === 'report-v1') {
+    it('bounds what a step tells: an app event level, a hook phase, and the cache detail, entry, and write', () => {
+      const report = readJson('fixtures', 'report-v1.valid.json') as {
+        run: { results: { attempts: { steps: Record<string, unknown>[] }[] }[] };
+      };
+      const step = report.run.results[0]!.attempts[0]!.steps[0]!;
+      const cache = step['cache'] as Record<string, unknown>;
+      const app = (step['events'] as Record<string, unknown>[]).find((event) => event['kind'] === 'app')!;
+      const cases: [() => void, () => void][] = [
+        [() => (app['level'] = 'fatal'), () => (app['level'] = 'error')],
+        [() => (step['phase'] = 'body'), () => delete step['phase']],
+        [() => (cache['detail'] = 'x'.repeat(601)), () => (cache['detail'] = 'x'.repeat(600))],
+        [() => (cache['entry'] = 'not-a-digest'), () => (cache['entry'] = 'a'.repeat(64))],
+        [() => (cache['write'] = 'written'), () => (cache['write'] = 'kept')],
+      ];
+      for (const [breakIt, fixIt] of cases) {
+        breakIt();
+        expect(validate(report)).toBe(false);
+        fixIt();
+        expect(validate(report)).toBe(true);
+      }
+    });
+
     it('constrains result tags to distinct names --tag can spell back', () => {
       const report = readJson('fixtures', 'report-v1.valid.json') as { run: { results: { tags?: string[] }[] } };
       const result = report.run.results[0]!;

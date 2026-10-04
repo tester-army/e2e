@@ -30,6 +30,7 @@ import { timestamp, uuidv7 } from '../internal/ids.ts';
 import type { ExploreProgress } from '../explore/progress.ts';
 import { buildReport, type Report1Document, type ReportExplore, type TargetProvenance } from '../report/build.ts';
 import { agentStepTable } from '../report/debug-steps.ts';
+import { writeFailurePages, type FailurePages } from '../report/failure-pages.ts';
 import { STATELESS_REPORTERS } from '../report/builtin.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport } from '../report/write.ts';
@@ -519,6 +520,27 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   };
 
   /**
+   * Writes the failure pages beside the report, on the same terms as the AI
+   * trace: a lost page is a recorded run error, never a crash.
+   */
+  const writeFailures = async (config: ResolvedConfig, document: Report1Document): Promise<FailurePages> => {
+    try {
+      return await writeFailurePages(document, {
+        dir: outputLayout(config.output).failures,
+        projectRoot: config.projectRoot,
+        artifactsRoot: outputLayout(config.output).artifacts,
+        cacheDir: config.cache.store === undefined ? config.cache.dir : undefined,
+      });
+    } catch (cause) {
+      recordFailure(
+        new E2EError('infrastructure', 'REPORT_WRITE_FAILED', `the failure pages could not be written: ${errorMessage(cause)}`, { cause }),
+        'report',
+      );
+      return new Map();
+    }
+  };
+
+  /**
    * Whether the run got as far as its tests. Only such a run writes into the
    * output directory: one that stopped before leaves the previous run's
    * report, AI trace, and artifacts where they are.
@@ -534,6 +556,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     const document = buildRunReport(currentExitCode());
     const recorded = runErrors.length;
     const reportPath = written === undefined ? undefined : await writeCanonicalReport(written, document);
+    const failurePages = written === undefined ? new Map<string, string>() : await writeFailures(written, document);
     const exitCode = currentExitCode();
     const report = runErrors.length === recorded ? document : buildRunReport(exitCode);
     // Read back from the report rather than recomputed: the report derives
@@ -547,6 +570,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       exitCode,
       ...(reportPath === undefined ? {} : { reportPath }),
       ...(aiTracePath === undefined ? {} : { aiTracePath }),
+      ...(failurePages.size === 0 ? {} : { failurePages: Object.fromEntries(failurePages) }),
     });
     // The list reporter has printed its summary and stopped its window; a
     // line another reporter left unfinished on `run-finished` prints too.
@@ -569,6 +593,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         reportPath,
         artifactsRoot: outputLayout(loaded.config?.output ?? path.resolve(cwd, options.output ?? '.e2e')).artifacts,
         aiTracePath,
+        failurePages,
         ...(lastRun === undefined ? {} : { lastRun }),
       },
       options.reporterTimeout ?? REPORTER_TIMEOUT_MS,

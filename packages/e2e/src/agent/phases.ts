@@ -107,6 +107,8 @@ export async function instrumentPhase<Value>(
       status: error.code === 'CANCELLED' ? 'cancelled' : 'failed',
       ...(spec.name === undefined ? {} : { name: spec.name }),
       code: phaseErrorCode(cause),
+      // What went wrong, not only its code: the tool result the model read said it too.
+      ...(error.message.trim() === '' ? {} : { detail: `${spec.name === undefined ? '' : `${spec.name}: `}${error.message.split('\n')[0]!.trim()}` }),
     });
     throw error;
   } finally {

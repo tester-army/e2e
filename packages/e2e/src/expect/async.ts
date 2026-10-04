@@ -15,6 +15,7 @@ import {
 } from '../internal/text.ts';
 import { isValueControl } from '../internal/roles.ts';
 import { Deadline, pollCondition } from '../internal/time.ts';
+import { SampleHistory } from './samples.ts';
 import { attributeOf, denySecureRead, isNodeVisible } from '../locator/engine.ts';
 import { describeExpression } from '../locator/expression.ts';
 import type { LocatorInternals } from '../locator/screen.ts';
@@ -169,38 +170,46 @@ class AsyncExpectationImpl implements AsyncExpectation {
     await this.internals.context.steps.run('assertion', api, this.label, async () => {
       const deadline = engine.deadline(timeout ?? engine.assertionTimeout);
       let lastSample: Sample = { count: 0, node: null, nodes: [] };
-      await pollCondition({
-        deadline,
-        signal: engine.signal,
-        negated: this.negated,
-        evaluate: async () => {
-          const sample = await this.sample(spec, deadline);
-          lastSample = sample;
-          if (spec.readsWithheld === true) {
-            denySecureRead(sample.node === null ? sample.nodes : [sample.node], this.label);
-          }
-          if (!this.conditionEvaluable(spec, sample)) return undefined;
-          return spec.predicate(sample);
-        },
-        onTimeout: (cause) => {
-          const expected = `${this.negated ? 'not ' : ''}${spec.describeExpected}`;
-          const observed = spec.observed(lastSample);
-          return new TestError(
-            'ASSERTION_FAILED',
-            [
-              `${api} failed`,
-              `locator: ${this.label}`,
-              `expected: ${expected}`,
-              `observed: ${observed} (match count ${lastSample.count})`,
-            ].join('\n'),
-            {
-              // The same facts, one per field, for a reporter that lays them out.
-              details: { locator: this.label, expected, observed, matches: lastSample.count },
-              ...(cause === undefined ? {} : { cause }),
-            },
-          );
-        },
-      });
+      const samples = new SampleHistory('expect', (text) => engine.redact(text));
+      let status: 'passed' | 'failed' = 'failed';
+      try {
+        await pollCondition({
+          deadline,
+          signal: engine.signal,
+          negated: this.negated,
+          evaluate: async () => {
+            const sample = await this.sample(spec, deadline);
+            lastSample = sample;
+            if (spec.readsWithheld === true) {
+              denySecureRead(sample.node === null ? sample.nodes : [sample.node], this.label);
+            }
+            samples.add(`${spec.observed(sample)} (${sample.count} ${sample.count === 1 ? 'match' : 'matches'})`);
+            if (!this.conditionEvaluable(spec, sample)) return undefined;
+            return spec.predicate(sample);
+          },
+          onTimeout: (cause) => {
+            const expected = `${this.negated ? 'not ' : ''}${spec.describeExpected}`;
+            const observed = spec.observed(lastSample);
+            return new TestError(
+              'ASSERTION_FAILED',
+              [
+                `${api} failed`,
+                `locator: ${this.label}`,
+                `expected: ${expected}`,
+                `observed: ${observed} (match count ${lastSample.count})`,
+              ].join('\n'),
+              {
+                // The same facts, one per field, for a reporter that lays them out.
+                details: { locator: this.label, expected, observed, matches: lastSample.count },
+                ...(cause === undefined ? {} : { cause }),
+              },
+            );
+          },
+        });
+        status = 'passed';
+      } finally {
+        engine.recordEvent(samples.event(status === 'failed' && engine.signal.aborted ? 'cancelled' : status));
+      }
     }, { verifies: true });
   }
 

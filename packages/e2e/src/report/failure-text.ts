@@ -9,7 +9,7 @@
  */
 
 import { isLoopbackHost } from '../internal/urls.ts';
-import type { StepTurn } from '../run/steps.ts';
+import type { StepCacheInfo, StepEvent, StepTurn } from '../run/steps.ts';
 import type { Report1Document, ReportError, ReportResult, ReportSource, ReportStep } from './build.ts';
 import { cell, code, formatDuration, link, MAX_CELL_CHARS, MAX_ID_CHARS, MAX_LABEL_CHARS, MAX_PATH_CHARS, MAX_TITLE_CHARS, plural } from './markdown-text.ts';
 import { repeatSuffix } from './format.ts';
@@ -35,6 +35,8 @@ export interface FailurePageOptions {
   readonly artifactsDir?: string | undefined;
   /** Reads one artifact by its report path, for inlining the screen text; absent when the files are not at hand. */
   readonly readArtifact?: ((reportPath: string) => string | undefined) | undefined;
+  /** The replay cache directory as the reader should see it; a step's entry is named as a file there. */
+  readonly cacheDir?: string | undefined;
 }
 
 // --- facts shared with the run page ---
@@ -69,6 +71,7 @@ export function detailLines(error: ReportError | undefined): string[] {
  * called with, which reads as code.
  */
 export function stepLabel(step: ReportStep, max = MAX_LABEL_CHARS): string {
+  if (step.label === '') return '';
   return step.kind === 'agent' ? `"${cell(step.label, max)}"` : code(step.label, max);
 }
 
@@ -209,6 +212,138 @@ export function evidenceOf(told: AttemptView): ReportArtifact[] {
   return [...own, ...rest];
 }
 
+/** Result lines of one turn a page quotes; the loop's own notes are quoted past them. */
+const MAX_TURN_LINES = 12;
+/** How the agent loop marks a note it wrote onto a turn: a loop guard, a wind-down, a retry. */
+const LOOP_NOTE_PREFIX = '[loop] ';
+
+/** A turn's outcome as the page quotes it: the first result lines, then every loop note, which come last and say why the step ended. */
+function turnOutcomeLines(outcome: string): string[] {
+  const lines = outcome.split('\n');
+  const notes = lines.filter((line) => line.startsWith(LOOP_NOTE_PREFIX));
+  const results = lines.filter((line) => !line.startsWith(LOOP_NOTE_PREFIX));
+  return [...results.slice(0, MAX_TURN_LINES), ...(results.length > MAX_TURN_LINES ? ['…'] : []), ...notes];
+}
+
+// --- what each step did ---
+
+/** Events a page lists under one step before saying how many more there were. */
+const MAX_STEP_EVENTS = 20;
+
+/** Why a step's replay missed or handed off, in words. */
+const CACHE_REASON_TEXT: Readonly<Record<NonNullable<StepCacheInfo['reason']>, string>> = {
+  retry: 'a retry never replays',
+  'no-entry': 'nothing recorded for this step yet',
+  'invalid-entry': 'the entry could not be read',
+  truncated: 'the recording is incomplete',
+  'wrong-context': 'the recording started on another screen',
+  gap: 'the recording reached an action it cannot replay',
+  'target-not-found': 'a recorded target is not on the screen',
+  'target-ambiguous': 'a recorded target matches several nodes',
+  'viewport-changed': 'the viewport changed size',
+  'action-failed': 'a recorded action failed',
+  'action-uncertain': 'a recorded action may or may not have landed',
+  'end-mismatch': 'the recorded end state did not show',
+};
+
+/** What became of a step's recording, in words. */
+const CACHE_WRITE_TEXT: Readonly<Record<NonNullable<StepCacheInfo['write']>, string>> = {
+  saved: 'recording saved',
+  kept: 'recording kept',
+  unconfirmed: 'recording not saved: no check passed after this step',
+  evicted: 'recording deleted',
+  'no-change': 'nothing recorded: the step changed nothing a replay could check',
+};
+
+/** Where an app log line came from, as the page names it. */
+const APP_SOURCE_TEXT: Readonly<Record<string, string>> = {
+  console: 'console',
+  error: 'uncaught',
+  network: 'network',
+  system: 'system',
+};
+
+/**
+ * The lines under one step on the page, oldest first: the cache's decision
+ * for an agent step, then each action it took (the node it landed on), each
+ * poll that waited or failed (the values it read in order), and every line
+ * the app logged while it ran.
+ */
+function stepDetailLines(step: ReportStep, options: Pick<FailurePageOptions, 'cacheDir'> = {}): string[] {
+  const lines: string[] = [];
+  if (step.cache !== undefined) lines.push(cacheLine(step.cache, options.cacheDir));
+  const told = step.events
+    .filter((event) => event.kind === 'app' || event.kind === 'engine' || (event.kind === 'poll' && ((event.count ?? 0) > 1 || event.status !== 'passed')))
+    .toSorted((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
+  const shown = closestToTheEnd(told);
+  if (shown.length < told.length) lines.push(`${told.length - shown.length} earlier ${told.length - shown.length === 1 ? 'event' : 'events'} left out`);
+  for (const event of shown) lines.push(eventLine(event));
+  return lines;
+}
+
+/**
+ * The events a page lists for a step with more than it has room for: every
+ * one that failed or logged an error, then the latest of the rest, in the
+ * order they happened. The end of a step is where it went wrong.
+ */
+function closestToTheEnd(events: readonly StepEvent[]): readonly StepEvent[] {
+  if (events.length <= MAX_STEP_EVENTS) return events;
+  const kept = new Set(events.filter((event) => event.status !== 'passed').slice(-MAX_STEP_EVENTS));
+  for (const event of events.toReversed()) {
+    if (kept.size >= MAX_STEP_EVENTS) break;
+    kept.add(event);
+  }
+  return events.filter((event) => kept.has(event));
+}
+
+function cacheLine(cache: StepCacheInfo, cacheDir: string | undefined): string {
+  const how =
+    cache.mode === 'self-finalized'
+      ? `replayed all ${plural(cache.totalActions, 'recorded action')}, no model call`
+      : cache.mode === 'agent-concluded'
+        ? `replayed ${cache.replayedActions} of ${plural(cache.totalActions, 'recorded action')}, then the agent took over: ${CACHE_REASON_TEXT[cache.reason ?? 'action-failed']}`
+        : `no replay: ${CACHE_REASON_TEXT[cache.reason ?? 'no-entry']}`;
+  const parts = [
+    `cache: ${how}`,
+    ...(cache.detail === undefined ? [] : [cell(cache.detail, MAX_DETAIL_CHARS)]),
+    ...(cache.write === undefined ? [] : [CACHE_WRITE_TEXT[cache.write]]),
+    ...(cache.notRecorded === 'param-collision' ? ['nothing recorded: a unique() value collides with another param'] : []),
+  ];
+  const entry = cache.entry === undefined || cacheDir === undefined ? '' : ` (${code(`${cacheDir}/${cache.entry}.json`, MAX_PATH_CHARS)})`;
+  return `${parts.join('; ')}${entry}`;
+}
+
+function eventLine(event: StepEvent): string {
+  const detail = event.detail === undefined ? undefined : cell(shortenLoopback(event.detail), MAX_DETAIL_CHARS);
+  switch (event.kind) {
+    case 'app': {
+      const glyph = event.level === 'error' ? '✗' : event.level === 'warning' ? '⚠' : 'ℹ';
+      const text = event.detail === undefined ? '' : code(shortenLoopback(event.detail), MAX_DETAIL_CHARS);
+      return `${glyph} ${APP_SOURCE_TEXT[event.name ?? ''] ?? cell(event.name ?? 'app', MAX_ID_CHARS)} ${event.level ?? 'info'}: ${text}`;
+    }
+    case 'poll': {
+      const verb = event.status === 'passed' ? 'passed after' : 'gave up after';
+      return `${event.name === undefined ? 'poll' : cell(event.name, MAX_ID_CHARS)} ${verb} ${plural(event.count ?? 1, 'read')} in ${formatDuration(event.durationMs)}${detail === undefined ? '' : `: ${detail}`}`;
+    }
+    default: {
+      const what = detail ?? cell(event.name ?? event.kind, MAX_ID_CHARS);
+      if (event.status === 'passed') return `${what} (${formatDuration(event.durationMs)})`;
+      return `✗ ${what}${event.code === undefined ? '' : `: **${cell(event.code, 128)}**`}`;
+    }
+  }
+}
+
+/** Drops a loopback origin from the URLs in a line: nobody reading the page can open it, and the path says the rest. */
+function shortenLoopback(text: string): string {
+  return text.replaceAll(/https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(?=\/)/g, '');
+}
+
+/** `, video 0:12`: where the step starts in the attempt's recording. */
+function videoOffset(step: ReportStep, video: ReportArtifact): string {
+  const seconds = Math.max(0, Math.floor((Date.parse(step.startedAt) - Date.parse(video.startedAt!)) / 1000));
+  return `, video ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
 // --- the page ---
 
 const STATUS_WORD: Record<ReportResult['status'], string> = {
@@ -268,15 +403,20 @@ export function renderFailurePage(report: Report1Document, result: ReportResult,
 
   const at = failedStepOf(told.steps);
   if (told.steps.length > 0) {
+    const video = told.artifacts.find((artifact) => artifact.kind === 'video' && artifact.startedAt !== undefined);
     lines.push('## Steps', '');
     told.steps.forEach((step, index) => {
       const own = step.source.file === 'unknown' ? '' : ` — ${code(`${step.source.file}:${step.source.line}`, MAX_PATH_CHARS)}`;
       const calls = step.metrics === undefined || step.metrics.modelCalls === 0 ? '' : `, ${plural(step.metrics.modelCalls, 'model call')}`;
       const failed = step.status === 'passed' ? '' : ` — **${cell(step.error?.code ?? step.status, 128)}**`;
-      lines.push(`${index + 1}. ${STEP_GLYPH[step.status]} ${code(step.api, MAX_ID_CHARS)} ${stepLabel(step, MAX_CELL_CHARS)} (${formatDuration(step.durationMs)}${calls})${failed}${own}`);
+      const offset = video === undefined ? '' : videoOffset(step, video);
+      const hook = step.phase === undefined ? '' : ` in ${step.phase}`;
+      const label = stepLabel(step, MAX_CELL_CHARS);
+      lines.push(`${index + 1}. ${STEP_GLYPH[step.status]} ${code(step.api, MAX_ID_CHARS)}${label === '' ? '' : ` ${label}`} (${formatDuration(step.durationMs)}${calls}${offset}${hook})${failed}${own}`);
       if (step.status !== 'passed' && step.explanation !== undefined && step.explanation.trim() !== '') {
         lines.push(`   > ${cell(step.explanation, MAX_DETAIL_CHARS)}`);
       }
+      for (const line of stepDetailLines(step, options)) lines.push(`   - ${line}`);
     });
     lines.push('');
   }
@@ -288,7 +428,7 @@ export function renderFailurePage(report: Report1Document, result: ReportResult,
     for (const turn of turns) {
       const calls = turn.calls.length === 0 ? '_no tool call_' : turn.calls.map((call) => code(call, MAX_CELL_CHARS)).join(', ');
       lines.push(`**Turn ${turn.index}** ${calls}  `);
-      for (const line of turn.outcome.split('\n').slice(0, 12)) lines.push(`> ${cell(line, MAX_CELL_CHARS)}`);
+      for (const line of turnOutcomeLines(turn.outcome)) lines.push(`> ${cell(line, MAX_CELL_CHARS)}`);
       lines.push('');
     }
   }
@@ -308,6 +448,15 @@ export function renderFailurePage(report: Report1Document, result: ReportResult,
       lines.push('', 'The screen as the agent reads it, one node per line: `#id role "name" text="…" [states]`.', '', '```text', body.replaceAll('```', "'''").trimEnd(), '```');
     } else if (screen !== undefined) {
       lines.push(`Screen text: ${artifactPath(screen, options)}  `);
+    }
+    lines.push('');
+  }
+
+  if (told.secondaryErrors.length > 0) {
+    lines.push('## Also failed', '');
+    for (const secondary of told.secondaryErrors) {
+      const phase = secondary.phase === undefined ? '' : ` in ${cell(secondary.phase, MAX_ID_CHARS)}`;
+      lines.push(`- **${cell(secondary.code, 128)}**${phase}: ${cell(secondary.message, MAX_DETAIL_CHARS)}`);
     }
     lines.push('');
   }

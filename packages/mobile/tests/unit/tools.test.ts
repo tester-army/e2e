@@ -4,7 +4,7 @@ import { buildEngine } from '../../src/engine.ts';
 import { AgentDeviceSurface } from '../../src/surface.ts';
 import { mobileTools } from '../../src/tools.ts';
 import { createFakeClient } from '../helpers/fake-client.ts';
-import { noSecrets } from '../helpers/secrets.ts';
+import { ignoreAppLog, noSecrets } from '../helpers/secrets.ts';
 
 describe('agent tool pack', () => {
   it('scopes every tool to the platforms of its engines and rejects a foreign handle', () => {
@@ -51,7 +51,7 @@ describe('agent tool pack', () => {
 
     await expect(run('alert', { action: 'dismiss' })).rejects.toMatchObject({ code: 'INVALID_STATE' });
 
-    const attempt = (attemptId: string) => ({ attemptId, artifactsDir: '/tmp', signal: new AbortController().signal, resolveSecret: noSecrets });
+    const attempt = (attemptId: string) => ({ attemptId, artifactsDir: '/tmp', signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     await android.startAttempt!(attempt('a1'));
     expect(await run('open_app', { app: 'Clock', relaunch: true })).toBe('Opened Clock.');
     expect(await run('swipe', { from: { x: 300, y: 200 }, to: { x: 20, y: 200 } })).toMatch(/Swiped/);
@@ -84,7 +84,7 @@ describe('agent tool pack', () => {
       env: {},
       signal: new AbortController().signal,
     });
-    await ios.startAttempt!({ attemptId: 'a1', artifactsDir: '/tmp', signal: new AbortController().signal, resolveSecret: noSecrets });
+    await ios.startAttempt!({ attemptId: 'a1', artifactsDir: '/tmp', signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     const tools = mobileTools(ios);
     const open = (app: string) =>
       (tools.open_app!.tool.execute as (input: unknown, options: object) => Promise<unknown>)({ app }, {

@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { EngineCleanupContext, EngineHandle, LocatorExpression, OperationContext, TextPattern } from 'e2e/engine';
 import { web } from '../../src/index.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
-import { noSecrets } from '../helpers/secrets.ts';
+import { ignoreAppLog, noSecrets } from '../helpers/secrets.ts';
 
 function cleanup(): EngineCleanupContext {
   return { signal: new AbortController().signal, timeoutMs: 30_000 };
@@ -68,7 +68,7 @@ describe('an exact label query composed as a has filter', () => {
     app = await startFixtureApp();
     artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-rows-'));
     await boot(engine, app);
-    await engine.startAttempt!({ attemptId: 'rows-1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await engine.startAttempt!({ attemptId: 'rows-1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     await engine.session!.open!(`${app.url}/rows`, op);
   });
 

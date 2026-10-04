@@ -21,7 +21,9 @@ import {
 import { requireKey } from '../internal/keys.ts';
 import { describeExpression, expressionHints } from './expression.ts';
 import { cutOffAtDeadline, Deadline, POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
+import { timestamp } from '../internal/ids.ts';
 import type { AttemptBudget } from '../run/budget.ts';
+import type { StepEvent } from '../run/steps.ts';
 
 /** Canonical visibility predicate over a semantic node snapshot. */
 export function isNodeVisible(node: SemanticNode | null): node is SemanticNode {
@@ -65,6 +67,16 @@ interface LocatorEngineOptions {
   readonly attemptId: string;
   readonly actionTimeout: number;
   readonly assertionTimeout: number;
+  /** Records what an action did under the running step; omitted where no step records (`e2e mcp`). */
+  readonly recordEvent?: (event: StepEvent) => void;
+  /** Replaces secret values in text an event quotes from the screen, before it is clipped; identity when omitted. */
+  readonly redact?: (text: string) => string;
+}
+
+/** A resolve that found its one match, and how many rounds it took. */
+interface Resolved {
+  readonly ref: NodeRef;
+  readonly rounds: number;
 }
 
 /** Per-attempt locator execution engine. */
@@ -82,6 +94,16 @@ export class LocatorEngine {
 
   get assertionTimeout(): number {
     return this.options.assertionTimeout;
+  }
+
+  /** Records an event under the running step; a no-op where no step records. */
+  recordEvent(event: StepEvent): void {
+    this.options.recordEvent?.(event);
+  }
+
+  /** Text an event quotes from the screen, its secrets replaced: run before any clip, so no cut leaves a secret's head behind. */
+  redact(text: string): string {
+    return this.options.redact?.(text) ?? text;
   }
 
   /** Builds an operation context capped by the remaining test timeout. */
@@ -185,6 +207,11 @@ export class LocatorEngine {
    * multiple matches fail immediately with LOCATOR_AMBIGUOUS.
    */
   async resolveExactlyOne(expression: LocatorExpression, deadline: Deadline): Promise<NodeRef> {
+    return (await this.resolveCounted(expression, deadline)).ref;
+  }
+
+  /** `resolveExactlyOne`, counting the rounds it polled before the match appeared. */
+  private async resolveCounted(expression: LocatorExpression, deadline: Deadline): Promise<Resolved> {
     const startedMs = Date.now();
     // The wait as it happened: a deadline capped by the test's remaining
     // budget waited less than the action timeout, and the report says so.
@@ -194,7 +221,7 @@ export class LocatorEngine {
         ...(cause === undefined ? {} : { cause }),
       });
     let sampled = false;
-    for (;;) {
+    for (let rounds = 1; ; rounds += 1) {
       const startedWithMs = deadline.remaining();
       let refs: readonly NodeRef[];
       try {
@@ -206,7 +233,7 @@ export class LocatorEngine {
       }
       sampled = true;
       const ref = assertSingle(refs, expression);
-      if (ref !== null) return ref;
+      if (ref !== null) return { ref, rounds };
       if (deadline.expired()) throw notFound();
       await sleep(POLL_INTERVAL_MS, this.signal);
     }
@@ -475,12 +502,20 @@ export class LocatorEngine {
     deadline: Deadline,
   ): Promise<void> {
     if (typeof action !== 'function') this.checkAction(action);
+    const startedAt = timestamp();
+    const startedMs = Date.now();
+    let stale = 0;
     for (;;) {
-      const ref = await this.resolveExactlyOne(expression, deadline);
+      const { ref, rounds } = await this.resolveCounted(expression, deadline);
+      // Read now, from the resolve's own cache: a dragTo's target resolve
+      // below supersedes this ref, and the node it named would be gone.
+      const node = this.options.recordEvent === undefined ? undefined : await this.session.read(ref, this.operationWithin(deadline)).catch(() => undefined);
+      const waitedMs = rounds > 1 ? Date.now() - startedMs : 0;
       const resolved = typeof action === 'function' ? await action(deadline) : action;
+      const record = (status: StepEvent['status'], code?: string): void =>
+        this.recordAction({ node, kind: resolved.kind, startedAt, startedMs, waitedMs, stale, status, code });
       try {
         await this.session.perform(ref, resolved, this.operationWithin(deadline));
-        return;
       } catch (cause) {
         const engineError = asEngineError(cause);
         if (
@@ -488,12 +523,62 @@ export class LocatorEngine {
           engineError.retryable &&
           !deadline.expired()
         ) {
+          stale += 1;
           continue;
         }
-        throw translateLocatorError(cause, expression);
+        const failure = translateLocatorError(cause, expression);
+        record(this.signal.aborted ? 'cancelled' : 'failed', failure.code);
+        throw failure;
       }
+      record('passed');
+      return;
     }
   }
+
+  /**
+   * Records one performed action as an `engine` event: the node it landed
+   * on as the resolve read it (no engine call), how long the node took to
+   * appear, and how many times it went stale under the action. A node the
+   * read could not answer leaves the event without a target.
+   */
+  private recordAction(action: {
+    readonly node: SemanticNode | undefined;
+    readonly kind: string;
+    readonly startedAt: string;
+    readonly startedMs: number;
+    readonly waitedMs: number;
+    readonly stale: number;
+    readonly status: StepEvent['status'];
+    readonly code: string | undefined;
+  }): void {
+    if (this.options.recordEvent === undefined) return;
+    const notes = [
+      ...(action.waitedMs > 0 ? [`appeared after ${action.waitedMs}ms`] : []),
+      ...(action.stale > 0 ? [`went stale ${action.stale}x`] : []),
+    ];
+    const target = action.node === undefined ? undefined : describeNode(action.node, (text) => this.redact(text));
+    const detail = [action.kind, target, notes.length === 0 ? undefined : `(${notes.join(', ')})`].filter((part) => part !== undefined).join(' ');
+    this.recordEvent({
+      kind: 'engine',
+      name: action.kind,
+      startedAt: action.startedAt,
+      durationMs: Date.now() - action.startedMs,
+      status: action.status,
+      ...(action.code === undefined ? {} : { code: action.code }),
+      detail,
+    });
+  }
+}
+
+/** A node the way the screen lists it, short: `button "Add"`, `textbox "Email"`, `testid=save`; its text redacted before it is cut. */
+function describeNode(node: SemanticNode, redact: (text: string) => string): string {
+  const label = node.name ?? node.text;
+  const parts = [
+    node.role ?? 'node',
+    ...(label === undefined || label.trim() === '' ? [] : [JSON.stringify(redact(label.trim().replace(/\s+/g, ' ')).slice(0, 80))]),
+    ...(node.testId === undefined ? [] : [`testid=${redact(node.testId)}`]),
+  ];
+  return parts.join(' ');
 }
 
 /** Zero matches -> null; one -> the ref; many -> LOCATOR_AMBIGUOUS. */

@@ -16,7 +16,7 @@ import { deltaEvidenced, deltaHolds, describeDelta } from '../cache/anchors.ts';
 import type { AgentCacheContext, ClaimedKey } from '../cache/context.ts';
 import { decideTraceReplay, opensWithNavigate, type TraceReplayMissReason } from '../cache/decide.ts';
 import { sameRoute } from '../cache/route.ts';
-import type { CacheAgentIdentity } from '../cache/identity.ts';
+import { keyContextChanges, type CacheAgentIdentity } from '../cache/identity.ts';
 import { recordedProvenance, TraceRecorder } from '../cache/recorder.ts';
 import { expandTrace, templateParams, templatesCollide, templateTrace, type ParamTemplate } from '../cache/template.ts';
 import { readTraceEntry, type ActionTrace, type DerivedReason, type TraceEntry, type TraceTargetDescriptor } from '../cache/trace.ts';
@@ -111,6 +111,17 @@ type StartPurpose = 'path-only' | 'baseline' | 'replay-start';
  * the screen, a flow too long to record), the attempt (a retry), or the
  * absence of a recording, and run live under `cache.strict` too.
  */
+/**
+ * What staging a passed step's recording came to: `staged` for attempt-end
+ * settlement, `no-change` when the step changed nothing a replay could check,
+ * or `skipped` for any other reason it could not be recorded (no semantic
+ * screen, no start anchor, a param collision, a value it could not template).
+ */
+type StageOutcome = 'staged' | 'no-change' | 'skipped';
+
+/** Characters of a step's cache detail the report admits. */
+const MAX_CACHE_DETAIL_CHARS = 600;
+
 const STALE_REASONS: ReadonlySet<StepCacheInfo['reason']> = new Set<StepCacheInfo['reason']>([
   'invalid-entry',
   'wrong-context',
@@ -284,9 +295,11 @@ export class StepTraceSession {
     const previous = await strict.recordings.underAnotherKey(this.keyHash, recordedProvenance(this.claim.step, this.options.redact));
     if (previous === undefined) return;
     this.failedStale = true;
+    const changes = keyContextChanges(previous.keyedBy, this.claim.context);
+    const why = changes.length === 0 ? "the runner, the engine, the app, or the agent's context changed after it was recorded" : `${changes.join(', ')} changed after it was recorded`;
     throw new AgentError(
       'REPLAY_STALE',
-      `the recording of this step no longer replays: the store holds it under another cache key (${previous}.json), since the runner, the engine, the app, or the agent's context changed after it was recorded, and cache.strict hands no step to the agent; ${strict.advice}`,
+      `the recording of this step no longer replays: the store holds it under another cache key (${previous.keyHash}.json), since ${why}, and cache.strict hands no step to the agent; ${strict.advice}`,
     );
   }
 
@@ -342,8 +355,13 @@ export class StepTraceSession {
             keyHash: this.keyHash,
             stepIndex: this.options.stepIndex,
             recordedFor: recordedProvenance(this.claim.step, this.options.redact),
+            keyedBy: this.claim.context,
           });
-        } else if (!(await this.stage(recorder, verdictSummary)) && this.readEntryHit) await this.evict();
+        } else {
+          const staged = await this.stage(recorder, verdictSummary);
+          if (staged !== 'staged' && this.readEntryHit) await this.evict();
+          else if (staged === 'no-change') this.cache.writes.set(this.options.stepIndex, 'no-change');
+        }
         return;
     }
   }
@@ -404,7 +422,8 @@ export class StepTraceSession {
     }
     const decision = decideTraceReplay(entry, this.startPath);
     if (decision.action === 'miss') {
-      this.info = this.missed(decision.reason, trace.actions.length);
+      const detail = decision.reason === 'wrong-context' ? `recorded starting on ${trace.startPath ?? 'an unknown screen'}, the step began on ${this.startPath ?? 'an unknown screen'}` : undefined;
+      this.info = this.missed(decision.reason, trace.actions.length, undefined, detail);
       return undefined;
     }
     // Every screen the replay looks at, in order, from the start: the end
@@ -439,13 +458,14 @@ export class StepTraceSession {
         : 'end-mismatch'
       : (outcome.stopReason ?? 'action-failed');
     if (stopReason === undefined) return this.selfFinalize(trace, outcome);
+    const detail = stopDetail(outcome, stopReason, trace);
     if (outcome.executed === 0) {
       // A prefix that performed nothing is a miss with a name, not a hand-off:
       // the executor starts from the top and owes the notice nothing.
-      this.info = this.missed(stopReason, outcome.total, outcome.derived);
+      this.info = this.missed(stopReason, outcome.total, outcome.derived, detail);
       return undefined;
     }
-    this.handOff(outcome, stopReason);
+    this.handOff(outcome, stopReason, detail);
     return undefined;
   }
 
@@ -514,11 +534,12 @@ export class StepTraceSession {
       mode: 'self-finalized',
       replayedActions: outcome.executed,
       totalActions: outcome.total,
+      entry: this.keyHash,
     };
     return { status: 'passed', summary: replaySummary(outcome.executed, trace.summary) };
   }
 
-  private handOff(outcome: ReplayOutcome, stopReason: HandOffReason): void {
+  private handOff(outcome: ReplayOutcome, stopReason: HandOffReason, detail: string | undefined): void {
     if (stopReason === 'end-mismatch') this.actionsAtEndMismatch = this.recorder?.recordedCount ?? 0;
     this.prefix = {
       replayedActions: outcome.summaries,
@@ -532,6 +553,8 @@ export class StepTraceSession {
       ...(outcome.derived === undefined ? {} : { derived: outcome.derived }),
       replayedActions: outcome.executed,
       totalActions: outcome.total,
+      entry: this.keyHash,
+      ...(detail === undefined ? {} : { detail: this.reportable(detail) }),
     };
   }
 
@@ -554,17 +577,17 @@ export class StepTraceSession {
    * does a step that changed nothing a replay could check, no node and no
    * route: a trace without its check would replay on mechanics alone.
    */
-  private async stage(recorder: TraceRecorder, verdictSummary: string | undefined): Promise<boolean> {
-    if (!this.host.traceEligible || this.startNodes === undefined || recorder.recordedCount === 0) return false;
+  private async stage(recorder: TraceRecorder, verdictSummary: string | undefined): Promise<StageOutcome> {
+    if (!this.host.traceEligible || this.startNodes === undefined || recorder.recordedCount === 0) return 'skipped';
     const observation = await probeScreen(this.host, 'held-still');
-    if (!this.host.traceEligible || observation?.kind !== 'semantic') return false;
+    if (!this.host.traceEligible || observation?.kind !== 'semantic') return 'skipped';
     const { nodes: endNodes, path: endPath } = observation;
     // The start capture may predate a secret this step resolved; read with
     // the ledger as it is now, an unchanged node is no delta.
     const startNodes = redactNodesAgain(this.startNodes, this.redaction);
     const routeMoved = this.startPath !== undefined && endPath !== undefined && !sameRoute(this.startPath, endPath);
     const delta = describeDelta(startNodes, endNodes, routeMoved);
-    if (delta.appeared.length === 0 && delta.gone.length === 0 && !routeMoved) return false;
+    if (delta.appeared.length === 0 && delta.gone.length === 0 && !routeMoved) return 'no-change';
     const trace = recorder.finalize({
       executor: this.options.executor,
       recordedFor: this.claim.step,
@@ -579,24 +602,25 @@ export class StepTraceSession {
       // model's thinking time before that action is no reason for a replay,
       // which does not think, to wait.
       endWaitMs: Date.now() - (recorder.lastActionAtMs ?? this.startedMs) + END_WAIT_MARGIN_MS,
+      keyedBy: this.claim.context,
     });
-    if (trace === undefined) return false;
+    if (trace === undefined) return 'skipped';
     // A trace with no start anchor — no recorded path (a surface without a URL)
     // and no opening navigate — could never replay: `wrong-context` forever.
     // Writing it would be pure store traffic, so it is not written at all.
-    if (trace.startPath === undefined && !opensWithNavigate(trace)) return false;
+    if (trace.startPath === undefined && !opensWithNavigate(trace)) return 'skipped';
     // Stored with a slot where each `unique()` value appeared, so the next
     // run's values — a fresh timestamped name — replay the same flow. A
     // recording that cannot be templated safely is not written at all; when
     // the reason is the params themselves, the report says so.
     if (templatesCollide(this.options.params, this.options.templates)) {
       if (this.info !== undefined) this.info = { ...this.info, notRecorded: 'param-collision' };
-      return false;
+      return 'skipped';
     }
     const templated = templateTrace(trace, this.options.templates);
-    if (templated === undefined) return false;
+    if (templated === undefined) return 'skipped';
     this.cache.staged.push({ kind: 'write', keyHash: this.keyHash, trace: templated, stepIndex: this.options.stepIndex });
-    return true;
+    return 'staged';
   }
 
   /**
@@ -605,6 +629,7 @@ export class StepTraceSession {
    * disposable; a failed eviction is a slower next run only.
    */
   private async evict(): Promise<void> {
+    this.cache.writes.set(this.options.stepIndex, 'evicted');
     await this.cache.store.delete?.(this.keyHash).catch(() => undefined);
   }
 
@@ -612,15 +637,45 @@ export class StepTraceSession {
     return this.actionsAtEndMismatch !== undefined && recorder.recordedCount > this.actionsAtEndMismatch;
   }
 
-  private missed(reason: TraceReplayMissReason | HandOffReason, totalActions: number, derived?: DerivedReason): StepCacheInfo {
+  /** Cache detail as the report keeps it: redacted, then cut to the schema's bound. */
+  private reportable(detail: string): string {
+    const redacted = this.options.redact(detail);
+    return redacted.length > MAX_CACHE_DETAIL_CHARS ? `${redacted.slice(0, MAX_CACHE_DETAIL_CHARS - 1)}…` : redacted;
+  }
+
+  private missed(reason: TraceReplayMissReason | HandOffReason, totalActions: number, derived?: DerivedReason, detail?: string): StepCacheInfo {
     return {
       mode: 'missed',
       reason,
       ...(derived === undefined ? {} : { derived }),
       replayedActions: 0,
       totalActions,
+      entry: this.keyHash,
+      ...(detail === undefined ? {} : { detail: this.reportable(detail) }),
     };
   }
+}
+
+/**
+ * Where and why a replay handed the step back, for the report: the
+ * recorded action it stopped at and what was wrong there, or for an end
+ * state that never showed, what the recording expected to see.
+ */
+function stopDetail(outcome: ReplayOutcome, reason: HandOffReason, trace: ActionTrace): string | undefined {
+  if (reason === 'end-mismatch') {
+    const expected = (trace.endAnchors ?? []).slice(0, 2).map(describeAnchor);
+    const where = trace.endPath === undefined ? '' : ` on ${trace.endPath}`;
+    return `every recorded action ran, but the recorded end state did not show${where}${expected.length === 0 ? '' : `: expected ${expected.join(', ')}`}`;
+  }
+  const at = outcome.stoppedAt;
+  if (at === undefined) return undefined;
+  return `at action ${at.index} of ${outcome.total}, ${at.summary}${at.why === undefined ? '' : `: ${at.why}`}`;
+}
+
+/** A recorded anchor as the screen would list it: `status "Saved"`. */
+function describeAnchor(anchor: TraceTargetDescriptor): string {
+  const label = anchor.name ?? anchor.text;
+  return [anchor.role ?? 'node', ...(label === undefined ? [] : [JSON.stringify(label)]), ...(anchor.text !== undefined && anchor.text !== label ? [`text=${JSON.stringify(anchor.text)}`] : [])].join(' ');
 }
 
 /** The controls a trace's input actions set a value or a state on: their changed anchors echo the input. */

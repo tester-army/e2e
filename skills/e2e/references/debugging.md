@@ -5,15 +5,28 @@ default.
 
 ## Read the failure
 
-1. Run with `--reporter list,markdown`: `list` ends with a `Failed Tests`
-   section, the markdown reporter's `Failures` line names `.e2e/failures/`.
-2. Open the failed test's page under `.e2e/failures/` and grep `Expected:`
-   / `Observed:` (an `expect`), `Asked for:` and `Waited:` (a locator),
-   `Look at:` (the line it unwound through), whether every attempt
-   failed alike (a bug, not a flake), the steps, the last model turns of a
-   failed agent step, and the accessibility tree at failure, one node per
-   line. Fix from what was there.
-3. `.e2e/report.json` backs the pages:
+1. Every failure in the `list` output ends with `❯ details
+   .e2e/failures/<test>.md`. Open that page: `Look at:` (the line it unwound
+   through), `Expected:` / `Observed:` (an `expect`), `Asked for:` and
+   `Waited:` (a locator), whether every attempt failed alike (a bug, not a
+   flake), then every step with what it did under it:
+   - the node an action landed on (`tap button "Save" (12ms)`), or `✗` and
+     its code;
+   - what an assertion read while it waited (`expect gave up after 16 reads
+     in 1.6s: text "0 remaining" (1 match) x16`); one value throughout is a
+     wrong expectation or a broken app, changing values are a race;
+   - what the app logged meanwhile (`✗ network error: POST /api/save 500`,
+     `✗ uncaught error: ...`, `⚠ console warning: ...`); `❯ app 2 errors`
+     in the terminal says there are some;
+   - the cache's decision for an agent step: replayed, handed off and where
+     (`at action 2 of 3, tap button "Apply": ...`), what became of the
+     recording, and the entry file;
+   - the agent's last turns, loop-guard notes included, and the
+     accessibility tree at failure, one node per line.
+   Fix from what was there.
+2. `.e2e/report.json` backs the pages; each step's `events` hold the same
+   lines (`engine`, `poll`, `app`).
+3. To query the report:
 
 ```bash
 jq '.run | {status, exitCode, errors}' .e2e/report.json

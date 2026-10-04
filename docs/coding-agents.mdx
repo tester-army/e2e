@@ -129,26 +129,12 @@ retrying a run.
 
 ## How an agent reads the result
 
-Every run that gets to its tests writes `.e2e/report.json`. For a report that is easier to read,
-run:
-
-<CodeGroup>
-```bash npm
-npx e2e run tests/checkout.e2e.ts --reporter list,markdown
-```
-
-```bash pnpm
-pnpm exec e2e run tests/checkout.e2e.ts --reporter list,markdown
-```
-
-```bash bun
-bunx e2e run tests/checkout.e2e.ts --reporter list,markdown
-```
-</CodeGroup>
-
-This writes `.e2e/summary.md` and a page for each failed or flaky test under
-`.e2e/failures/`. Start with the failure page. It includes the failing line,
-steps, recent model turns, and the screen at failure.
+Every run that gets to its tests writes `.e2e/report.json`, and a page for
+each failed or flaky test under `.e2e/failures/`. The terminal names the page
+under each failed test (`❯ details .e2e/failures/<test>.md`). Start there: it has
+the failing line, every step with what it did (the node an action hit, the
+values an assertion read, the cache's decision, console errors and failed
+requests), the agent's last turns, and the screen at failure.
 
 When reading JSON, check `run.errors` for run-level failures, then the last
 attempt of each failed result. Its `error`, `steps`, and `artifacts` show

@@ -7,7 +7,7 @@ import { EngineError, TestError, type OperationContext, type SemanticNode } from
 import { isRunnerFailure, isSnapshotPresentationFailure, staleOr, translateError } from '../../src/errors.ts';
 import { SETTINGS_SNAPSHOT } from '../helpers/fake-client.ts';
 import { boot, harness, PROJECT_ROOT, type Harness } from '../helpers/harness.ts';
-import { noSecrets } from '../helpers/secrets.ts';
+import { ignoreAppLog, noSecrets } from '../helpers/secrets.ts';
 
 describe('error translation', () => {
   it('passes classified errors through untouched', () => {
@@ -248,7 +248,7 @@ describe('automation runner failures through the engine', () => {
   async function openAttempt(h: Harness): Promise<void> {
     artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-mobile-errors-'));
     await boot(h, 'ios');
-    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
   }
 
   /** Every node under the root, the root excluded. */

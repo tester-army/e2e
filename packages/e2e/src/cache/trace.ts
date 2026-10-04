@@ -404,6 +404,44 @@ export interface ActionTrace {
   readonly endWaitMs?: number;
   /** Set when recording overflowed a cap; the trace documents, never replays. */
   readonly truncated?: boolean;
+  /**
+   * The parts of the key that are not the step itself, as they were when it
+   * was recorded: provenance, never read by a replay. When a step's key no
+   * longer finds this entry, comparing them with the run's says what changed
+   * (an engine minor, the replay policy, the app's identity); absent on older
+   * entries.
+   */
+  readonly keyedBy?: TraceKeyContext;
+}
+
+/** The parts of a cache key outside the step's own identity: the runner, the engine, the app, and the agent's context. */
+export interface TraceKeyContext {
+  readonly cacheSchema: string;
+  readonly policyVersion: string;
+  readonly project: string;
+  readonly platform: string;
+  readonly engineName: string;
+  readonly engineVersion: string;
+  readonly engineSpiVersion: number;
+  readonly appIdentity: string;
+  readonly agentContextDigest: string;
+}
+
+const KEY_CONTEXT_TEXT_FIELDS = ['cacheSchema', 'policyVersion', 'project', 'platform', 'engineName', 'engineVersion', 'appIdentity', 'agentContextDigest'] as const;
+
+/** A stored `keyedBy`, or undefined for anything else; a malformed one is dropped, never failing the entry. */
+function readKeyContext(document: unknown): TraceKeyContext | undefined {
+  if (typeof document !== 'object' || document === null || Array.isArray(document)) return undefined;
+  const raw = document as Record<string, unknown>;
+  const text: Partial<Record<(typeof KEY_CONTEXT_TEXT_FIELDS)[number], string>> = {};
+  for (const field of KEY_CONTEXT_TEXT_FIELDS) {
+    const value = readBoundedText(raw[field], MAX_TRACE_DESCRIPTOR_CHARS);
+    if (value === undefined) return undefined;
+    text[field] = value;
+  }
+  const spi = raw['engineSpiVersion'];
+  if (typeof spi !== 'number' || !Number.isSafeInteger(spi)) return undefined;
+  return { ...(text as Record<(typeof KEY_CONTEXT_TEXT_FIELDS)[number], string>), engineSpiVersion: spi };
 }
 
 export interface TraceEntry {
@@ -488,6 +526,7 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
   }
   const actions = each(actionsRaw, readRecordedAction);
   if (actions === undefined) return undefined;
+  const keyedBy = readKeyContext(raw['keyedBy']);
 
   return {
     actions,
@@ -503,6 +542,7 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
     ...(goneAnchors.length === 0 ? {} : { goneAnchors }),
     ...(endWaitMs === undefined ? {} : { endWaitMs }),
     ...(truncated === undefined ? {} : { truncated }),
+    ...(keyedBy === undefined ? {} : { keyedBy }),
   };
 }
 

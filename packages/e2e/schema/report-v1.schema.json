@@ -167,7 +167,7 @@
       "required": ["kind", "startedAt", "durationMs", "status"],
       "properties": {
         "kind": {
-          "enum": ["poll", "observation", "model", "tool-proposal", "policy", "engine", "schema"]
+          "enum": ["poll", "observation", "model", "tool-proposal", "policy", "engine", "schema", "app"]
         },
         "startedAt": { "$ref": "#/$defs/timestamp" },
         "durationMs": { "type": "integer", "minimum": 0 },
@@ -177,6 +177,7 @@
         "inputTokens": { "type": "integer", "minimum": 0 },
         "outputTokens": { "type": "integer", "minimum": 0 },
         "bytes": { "type": "integer", "minimum": 0 },
+        "level": { "enum": ["error", "warning", "info"] },
         "decision": { "enum": ["allowed", "denied"] },
         "code": { "type": "string", "maxLength": 128 },
         "detail": { "type": "string", "maxLength": 300 },
@@ -222,7 +223,10 @@
         "derived": { "enum": ["pixels", "whole-node", "minted-token", "date"] },
         "notRecorded": { "enum": ["param-collision"] },
         "replayedActions": { "type": "integer", "minimum": 0 },
-        "totalActions": { "type": "integer", "minimum": 0 }
+        "totalActions": { "type": "integer", "minimum": 0 },
+        "entry": { "$ref": "#/$defs/sha256" },
+        "detail": { "type": "string", "maxLength": 600 },
+        "write": { "enum": ["saved", "kept", "unconfirmed", "evicted", "no-change"] }
       },
       "allOf": [
         {
@@ -298,6 +302,7 @@
         "turns": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/turn" } },
         "model": { "$ref": "#/$defs/model" },
         "agent": { "type": "string", "minLength": 1 },
+        "phase": { "enum": ["beforeEach", "afterEach"] },
         "error": { "$ref": "#/$defs/error" },
         "artifacts": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "extensions": { "$ref": "#/$defs/extensions" }

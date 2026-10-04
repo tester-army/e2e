@@ -18,7 +18,7 @@
 
 import type { ResolvedCacheConfig } from '../config/resolve.ts';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from './store.ts';
-import type { TraceProvenance } from './trace.ts';
+import type { TraceKeyContext, TraceProvenance } from './trace.ts';
 
 export class StoredRecordings {
   private readonly store: FileCacheStore;
@@ -31,7 +31,7 @@ export class StoredRecordings {
 
   /**
    * The key hash of an entry recorded for `step` under a key other than
-   * `keyHash`, or undefined when there is none or the store cannot be
+   * `keyHash`, with the key context it recorded, or undefined when there is none or the store cannot be
    * listed. `step` is in the form an entry stores it (`recordedProvenance`).
    * Only an entry that records the whole step counts: one written before the
    * params, occurrence, and agent were recorded could belong to another call
@@ -39,7 +39,7 @@ export class StoredRecordings {
    * it (`flushStagedTraces`). A truncated entry never replays under any key,
    * so it is never the reason a step is stale.
    */
-  async underAnotherKey(keyHash: string, step: TraceProvenance): Promise<string | undefined> {
+  async underAnotherKey(keyHash: string, step: TraceProvenance): Promise<{ readonly keyHash: string; readonly keyedBy?: TraceKeyContext } | undefined> {
     const key = stepKey(step);
     if (key === undefined) return undefined;
     let listing: ReadonlyMap<string, readonly string[]>;
@@ -53,7 +53,10 @@ export class StoredRecordings {
       if (candidate === keyHash) continue;
       // Listed once: an entry evicted since is no evidence.
       const read = await this.store.read(candidate).catch(() => undefined);
-      if (read?.status === 'hit') return candidate;
+      if (read?.status === 'hit') {
+        const keyedBy = read.entry.payload.keyedBy;
+        return { keyHash: candidate, ...(keyedBy === undefined ? {} : { keyedBy }) };
+      }
     }
     return undefined;
   }

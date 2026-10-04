@@ -612,6 +612,7 @@ export class TargetExecutor implements SerialHost {
               artifactsDir,
               signal: launchSignal,
               resolveSecret: (secret, options) => this.resolveEngineSecret(session, secret, options),
+              appLog: (entry) => session.appLog.push(entry),
             }),
           ),
         );
@@ -962,6 +963,9 @@ export class TargetExecutor implements SerialHost {
         shared?.session ??
         (await this.launchSession({ session: pair.options.session, video }, attemptId, artifacts.dir, attemptAbort.signal));
       openSession = session;
+      // A serial group's session serves one member at a time; what the app
+      // logs from here is this attempt's.
+      session.appLog.route((entry, at) => steps.recordAppLog(entry, at));
 
       const testDeadline = new Deadline(pair.options.timeout);
       this.options.events?.onAttemptDeadline?.(pair, { index: attemptIndex, id: attemptId, startedAt });
@@ -1048,11 +1052,13 @@ export class TargetExecutor implements SerialHost {
       const mainWork = async (): Promise<void> => {
         try {
           phase = 'beforeEach';
+          steps.phase = 'beforeEach';
           await extended.setUp();
           for (const hook of beforeEachHooks) {
             await hook.fn(fixtures);
           }
           phase = 'body';
+          steps.phase = undefined;
           await (registered.fn as SetupFn)(fixtures);
         } catch (cause) {
           // The body's own failure stays the verdict; the step it abandoned
@@ -1151,6 +1157,7 @@ export class TargetExecutor implements SerialHost {
       }
 
       phase = 'afterEach';
+      steps.phase = 'afterEach';
       // Each teardown gets its own cleanup budget: a body that timed out or
       // was cancelled must not leave the hook with dead fixtures, and a hook
       // that overruns has its own operations cancelled, not the next hook's.
@@ -1199,6 +1206,8 @@ export class TargetExecutor implements SerialHost {
       if (openSession !== null && shared === undefined) {
         await this.closeSession(openSession, { attemptId, video }, record, artifacts.sink, secondaryErrors);
       }
+      // What a shared session's app logs from here waits for the next member.
+      openSession?.appLog.route(undefined);
     }
 
     // Size and digest land asynchronously; the record is read right after.
@@ -1218,6 +1227,12 @@ export class TargetExecutor implements SerialHost {
         lastVerifiedStepIndex: failure === undefined ? steps.lastVerifiedStepIndex : lastVerifiedAtFailure,
         implicatesUnconfirmed: failure === undefined || implicatesUnconfirmed,
       });
+    }
+    if (cache !== undefined) {
+      for (const step of record.steps) {
+        const write = cache.writes.get(step.index);
+        if (step.cache !== undefined && write !== undefined) step.cache.write = write;
+      }
     }
     return record;
   }

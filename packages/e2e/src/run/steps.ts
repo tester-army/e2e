@@ -3,6 +3,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { isAgentError } from '../agent/error.ts';
 import type { ReplayHandOffReason } from '../agent/executor.ts';
+import type { CacheWrite } from '../cache/context.ts';
 import type { TraceReplayMissReason } from '../cache/decide.ts';
 import type { DerivedReason } from '../cache/trace.ts';
 import { markAbandonedRejection, relocateStack } from '../internal/abandoned.ts';
@@ -10,6 +11,7 @@ import { withAiTraceStep } from '../internal/ai-trace.ts';
 import { classifyError, serializeError, TestError, withHint, type SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import { sourceLocation, type SourceLocation } from '../internal/source.ts';
+import type { AppLogEntry } from '../engine/index.ts';
 
 /** The closed step kind set; the type is derived from it, so the two cannot drift. */
 export const STEP_KINDS = ['agent', 'locator', 'assertion', 'screen', 'app', 'session', 'resource'] as const;
@@ -22,7 +24,12 @@ export type StepKind = (typeof STEP_KINDS)[number];
  * by this milestone.
  */
 export interface StepEvent {
-  kind: 'poll' | 'observation' | 'model' | 'policy' | 'engine' | 'schema';
+  /**
+   * `app` is something the app did on its own (a console error, an
+   * uncaught exception, a failed request), as its engine reported it; `name`
+   * says where it came from and `level` how bad it was.
+   */
+  kind: 'poll' | 'observation' | 'model' | 'policy' | 'engine' | 'schema' | 'app';
   /**
    * When the event began, not when it was recorded. A `model` event carries
    * the moment the request went out even when the executor reports the turn
@@ -41,6 +48,8 @@ export interface StepEvent {
   inputTokens?: number;
   outputTokens?: number;
   bytes?: number;
+  /** How serious an `app` event is. */
+  level?: AppLogEntry['level'];
   decision?: 'allowed' | 'denied';
   code?: string;
   /**
@@ -123,6 +132,16 @@ export interface StepCacheInfo {
   notRecorded?: 'param-collision';
   replayedActions: number;
   totalActions: number;
+  /** The step's cache key, which names its entry file (`<cache.dir>/<entry>.json` in the file store). */
+  entry?: string;
+  /**
+   * Why the replay missed or handed off, past what the reason token says:
+   * the recorded action it stopped at and what went wrong there, or the
+   * screen the recording started on against the one the step did.
+   */
+  detail?: string;
+  /** What became of the step's recording once the attempt settled; see `CacheWrite`. */
+  write?: CacheWrite;
 }
 
 /** Agent-specific step detail attached while the step is still running. */
@@ -186,9 +205,14 @@ export interface StepRecord {
   model?: StepModelInfo;
   /** The configured agent an agent step ran with, by name. */
   agent?: string;
+  /** The hook the step ran in; absent for a step of the test body. */
+  phase?: StepPhase;
   error?: SerializedError;
   artifacts: string[];
 }
+
+/** The hooks a step can run in outside the test body. */
+export type StepPhase = 'beforeEach' | 'afterEach';
 
 /**
  * Live progress notification for one step, streamed to reporters as the step
@@ -292,6 +316,11 @@ function stepStack(projectRoot: string | undefined): string | undefined {
   }
 }
 
+/** App log entries one attempt keeps; a page logging in a loop must not swell the report. */
+const MAX_APP_LOG_ENTRIES = 200;
+/** Characters of an event's detail the report admits. */
+const MAX_DETAIL_CHARS = 300;
+
 /** Characters of a step label an error message quotes before clipping it. */
 const MAX_QUOTED_LABEL_CHARS = 80;
 
@@ -303,6 +332,8 @@ export class StepRecorder {
   private readonly attempt: { readonly id: string; readonly index: number };
   private readonly steps: StepRecord[] = [];
   private readonly scope = new AsyncLocalStorage<StepRecord>();
+  /** The hook steps run in from now on; undefined while the test body runs. */
+  phase: StepPhase | undefined = undefined;
   /** IDs of steps whose bodies are still executing. */
   private readonly running = new Set<string>();
   /** The promise each running step returned to its caller, to observe when the caller did not. */
@@ -315,6 +346,10 @@ export class StepRecorder {
   private readonly abandonedPromises: Promise<unknown>[] = [];
   /** Highest timeline index among passed verification steps, or -1 when none has. */
   private lastVerified = -1;
+  /** App log entries filed so far this attempt, against `MAX_APP_LOG_ENTRIES`. */
+  private appLogEntries = 0;
+  /** App log entries that arrived before the attempt's first step, filed under it once it starts. */
+  private readonly earlyAppLog: { entry: AppLogEntry; at: string }[] = [];
   private readonly maxEventsPerStep: number;
   private readonly onProgress: ((progress: StepProgress) => void) | undefined;
   private readonly projectRoot: string | undefined;
@@ -329,6 +364,11 @@ export class StepRecorder {
     this.onProgress = options.onProgress;
     this.projectRoot = options.projectRoot;
     this.redact = options.redact;
+  }
+
+  /** Replaces secret values in text the way every record is redacted; identity without a redactor. */
+  redactText(text: string): string {
+    return this.redact?.(text) ?? text;
   }
 
   /** The step currently executing, when inside StepRecorder.run. */
@@ -373,10 +413,12 @@ export class StepRecorder {
       durationMs: 0,
       events: [],
       ...(options.agent === undefined ? {} : { agent: options.agent }),
+      ...(this.phase === undefined ? {} : { phase: this.phase }),
       artifacts: [],
     };
     this.steps.push(record);
     this.running.add(record.id);
+    for (const { entry, at } of this.earlyAppLog.splice(0)) this.fileAppLog(record, entry, at);
     if (stack !== undefined) this.stacks.set(record.id, stack);
     this.publish(record, { phase: 'start', kind, api, label });
     const promise = this.execute(record, body, options);
@@ -489,9 +531,48 @@ export class StepRecorder {
   recordEvent(event: StepEvent): void {
     const current = this.current();
     if (current === undefined) return;
-    if (current.events.length >= this.maxEventsPerStep) return;
-    current.events.push(event);
-    this.publish(current, { phase: 'event', api: current.api, event });
+    this.push(current, event);
+  }
+
+  /**
+   * Files one app log entry under the step running in this async context,
+   * else the step that started last: an engine reports from its own event
+   * callbacks, outside any step's context, so a request that fails after a
+   * tap resolved lands with the tap. One that arrives before the first step
+   * waits for it; past the per-attempt cap, entries are dropped.
+   */
+  recordAppLog(entry: AppLogEntry, at: string = timestamp()): void {
+    if (this.appLogEntries >= MAX_APP_LOG_ENTRIES) return;
+    this.appLogEntries += 1;
+    const target = this.current() ?? this.steps.at(-1);
+    if (target === undefined) {
+      this.earlyAppLog.push({ entry, at });
+      return;
+    }
+    this.fileAppLog(target, entry, at);
+  }
+
+  private fileAppLog(target: StepRecord, entry: AppLogEntry, at: string): void {
+    const text = entry.text.replace(/\s+/g, ' ').trim();
+    this.push(target, {
+      kind: 'app',
+      name: entry.source,
+      level: entry.level,
+      startedAt: at,
+      durationMs: 0,
+      status: entry.level === 'error' ? 'failed' : 'passed',
+      detail: text,
+    });
+  }
+
+  /** Appends an event to a step, its prose redacted, within the per-step cap. */
+  private push(step: StepRecord, event: StepEvent): void {
+    if (step.events.length >= this.maxEventsPerStep) return;
+    // Redacted before it is cut, so no cut leaves the head of a secret behind.
+    const detail = event.detail === undefined ? undefined : (this.redact?.(event.detail) ?? event.detail);
+    const redacted = detail === undefined ? event : { ...event, detail: detail.length > MAX_DETAIL_CHARS ? `${detail.slice(0, MAX_DETAIL_CHARS - 1)}…` : detail };
+    step.events.push(redacted);
+    this.publish(step, { phase: 'event', api: step.api, event: redacted });
   }
 
   /**

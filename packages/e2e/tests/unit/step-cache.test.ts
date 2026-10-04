@@ -41,9 +41,22 @@ const exampleStep = {
   agent: 'default',
 } as const;
 
+/** The key context the example step's claims carry. */
+const exampleContext = {
+  cacheSchema: 'trace-1',
+  policyVersion: 'conservative/6',
+  project: 'p'.repeat(64),
+  platform: 'web',
+  engineName: 'web',
+  engineVersion: '0.11',
+  engineSpiVersion: 1,
+  appIdentity: 'a'.repeat(64),
+  agentContextDigest: 'c'.repeat(64),
+} as const;
+
 /** A claim of `keyHash` for the example step. */
 function claimedKey(keyHash: string): ClaimedKey {
-  return { keyHash, step: exampleStep };
+  return { keyHash, context: exampleContext, step: exampleStep };
 }
 
 function fakeContext(read: AgentCacheContext['store']['read']): AgentCacheContext {
@@ -58,6 +71,7 @@ function fakeContext(read: AgentCacheContext['store']['read']): AgentCacheContex
     strict: false,
     claimKey: () => claimedKey('a'.repeat(64)),
     staged: [],
+    writes: new Map(),
   };
 }
 
@@ -235,6 +249,7 @@ describe('StepTraceSession', () => {
       reason: 'invalid-entry',
       replayedActions: 0,
       totalActions: 0,
+      entry: 'a'.repeat(64),
     });
     expect(session.replayedPrefix).toBeUndefined();
   });
@@ -253,7 +268,7 @@ describe('StepTraceSession', () => {
     );
     await expect(session.begin()).resolves.toBeUndefined();
     expect(reads).toBe(0);
-    expect(session.cacheInfo).toEqual({ mode: 'missed', reason: 'retry', replayedActions: 0, totalActions: 0 });
+    expect(session.cacheInfo).toEqual({ mode: 'missed', reason: 'retry', replayedActions: 0, totalActions: 0, entry: 'a'.repeat(64) });
     expect(session.replayedPrefix).toBeUndefined();
   });
 
@@ -272,7 +287,7 @@ describe('StepTraceSession', () => {
     await expect(session.begin()).resolves.toBeUndefined();
     expect(taps).toBe(0);
     expect(session.replayedPrefix).toBeUndefined();
-    expect(session.cacheInfo).toEqual({ mode: 'missed', reason: 'truncated', replayedActions: 0, totalActions: 50 });
+    expect(session.cacheInfo).toEqual({ mode: 'missed', reason: 'truncated', replayedActions: 0, totalActions: 50, entry: 'a'.repeat(64) });
   });
 
   it('degrades a hit that is not a trace-1 entry to a miss, whichever store returned it', async () => {
@@ -287,6 +302,7 @@ describe('StepTraceSession', () => {
       reason: 'invalid-entry',
       replayedActions: 0,
       totalActions: 0,
+      entry: 'a'.repeat(64),
     });
   });
 
@@ -473,6 +489,8 @@ describe('StepTraceSession', () => {
       reason: 'end-mismatch',
       replayedActions: 1,
       totalActions: 1,
+      entry: 'a'.repeat(64),
+      detail: 'every recorded action ran, but the recorded end state did not show on /customers: expected status "Marker" text="saved"',
     });
   });
 
@@ -796,7 +814,7 @@ describe('StepTraceSession', () => {
     // A kept entry carries no payload, so the replay's expansion of it can
     // never be written: confirmed, the file stands as it is; unconfirmed, it
     // is evicted. The passing screen is never captured for it.
-    expect(context.staged).toEqual([{ kind: 'keep', keyHash: 'a'.repeat(64), stepIndex: 1, recordedFor: exampleStep }]);
+    expect(context.staged).toEqual([{ kind: 'keep', keyHash: 'a'.repeat(64), stepIndex: 1, recordedFor: exampleStep, keyedBy: exampleContext }]);
     expect(captures).toBe(2);
   });
 
@@ -831,6 +849,7 @@ describe('StepTraceSession', () => {
       strict: false,
       claimKey: () => claimedKey('a'.repeat(64)),
       staged: [],
+      writes: new Map(),
     });
     const file = join(directory, `${'a'.repeat(64)}.json`);
     const snapshot = async () => ({ bytes: await readFile(file, 'utf8'), mtimeMs: (await stat(file)).mtimeMs });
@@ -936,6 +955,7 @@ function entryContext(overrides: Partial<ActionTrace>): AgentCacheContext {
     strict: false,
     claimKey: () => claimedKey('a'.repeat(64)),
     staged: [],
+    writes: new Map(),
   };
 }
 
@@ -971,6 +991,7 @@ describe('flushStagedTraces and a re-recorded flow', () => {
       strict: false,
       claimKey: () => claimedKey('c'.repeat(64)),
       staged: [],
+      writes: new Map(),
     });
     const file = join(directory, `${'c'.repeat(64)}.json`);
     const snapshot = async () => ({ bytes: await readFile(file, 'utf8'), mtimeMs: (await stat(file)).mtimeMs });
@@ -1033,6 +1054,7 @@ describe('flushStagedTraces and a re-recorded flow', () => {
         strict: false,
         claimKey: () => claimedKey('d'.repeat(64)),
         staged: [{ kind: 'write', keyHash: 'd'.repeat(64), stepIndex: 0, trace: staged }],
+        writes: new Map(),
       };
       await flushStagedTraces(context, { lastVerifiedStepIndex: 1, implicatesUnconfirmed: true });
     };
@@ -1125,6 +1147,7 @@ describe('cache.strict and a step whose key changed under its recording', () => 
       strict: strict ? { advice: 're-record it', recordings: new StoredRecordings(store) } : false,
       claimKey: () => claimedKey(OWN_KEY),
       staged: [],
+      writes: new Map(),
     };
   }
 
@@ -1176,7 +1199,7 @@ describe('cache.strict and a step whose key changed under its recording', () => 
     secrets.register('password', 'hunter2');
     const step = { ...exampleStep, testId: 'tests/example.e2e.ts::logs in with hunter2' };
     const context = await rekeyedContext(recordedPayload({ ...step, testId: secrets.redact(step.testId) }));
-    const session = makeSession({ ...context, claimKey: () => ({ keyHash: OWN_KEY, step }) }, makeHost(['/']), { redact: secrets.redact });
+    const session = makeSession({ ...context, claimKey: () => ({ keyHash: OWN_KEY, context: exampleContext, step }) }, makeHost(['/']), { redact: secrets.redact });
     const failure = session.begin();
     await expect(failure).rejects.toMatchObject({ code: 'REPLAY_STALE' });
     await expect(failure).rejects.not.toThrow('hunter2');

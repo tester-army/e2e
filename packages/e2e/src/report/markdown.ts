@@ -33,7 +33,6 @@ import {
   failureSource,
   lastTurnLines,
   MAX_DETAIL_CHARS,
-  renderFailurePage,
   screenLines,
   sourceText,
   stepLabel,
@@ -41,10 +40,9 @@ import {
 } from './failure-text.ts';
 import { cell, code, formatDuration, link, MAX_ID_CHARS, MAX_PATH_CHARS, MAX_TITLE_CHARS, plural } from './markdown-text.ts';
 import { outcome, type Outcome } from './outcome.ts';
-import { sanitizePathSegment } from '../run/artifacts.ts';
+import { isExploreVerdict } from './failure-pages.ts';
 import { toPosixPath, writeTextReport } from './write.ts';
 import type { Reporter, ReporterSummary } from '../types.ts';
-import { readFileSync, rmSync } from 'node:fs';
 
 type ReportRun = Report1Document['run'];
 type ReportArtifact = ReportResult['attempts'][number]['artifacts'][number];
@@ -493,14 +491,6 @@ function findingsSection(run: ReportRun, explore: ReportExplore, options: Markdo
 }
 
 /**
- * Whether a result's failure is the exploration's verdict, which the findings
- * already express; only a failure that is not gets a block of its own.
- */
-function isVerdict(entry: Entry, explore: ReportExplore): boolean {
-  return entry.final.final.error?.code === 'ASSERTION_FAILED' && explore.findings.some((finding) => finding.kind === 'issue');
-}
-
-/**
  * Greedy fit: keeps whole parts in order while they fit under the budget,
  * then says what was cut. `parts` are lines or indivisible blocks, already
  * separated by blank lines.
@@ -539,7 +529,7 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
   if (run.errors.length > errors.length) errors.push(`> and ${run.errors.length - errors.length} more`);
   // An exploration is the run's one test and its failure is the verdict the
   // findings express, so that block gives way to them; any other failure stays.
-  const notPassed = entries.filter((entry) => explore === undefined || !isVerdict(entry, explore));
+  const notPassed = entries.filter((entry) => explore === undefined || !isExploreVerdict(entry.final, explore));
   const failed = notPassed.filter(({ result }) => statusBucket(result.status) === 'failed');
   const failures = failed.slice(0, MAX_FAILURE_BLOCKS).map((entry) => [failureBlock(entry, manyTargets, options)]);
   if (failed.length > failures.length) failures.push([`and ${failed.length - failures.length} more failed`]);
@@ -567,65 +557,21 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
   return fit(head, body.length === 0 ? [] : [...body, ''], footer(run, targets, options));
 }
 
-/** Where a result's page goes under `failures/`: the file and title, made a path segment, made unique by the result id. */
-function failurePageName(result: ReportResult): string {
-  return `${sanitizePathSegment(`${result.file}-${result.titlePath.join('-')}`)}-${result.id.slice(0, 8)}.md`;
-}
-
-/**
- * The results that get a page: every one that failed, timed out, or was
- * flaky, except an exploration's own verdict, which its findings already
- * tell. An interrupted test reached no verdict, so it has no failure to tell.
- */
-function pagedResults(report: Report1Document): ReportResult[] {
-  const explore = report.run.explore;
-  const serialGroups = new Map(report.run.serialGroups.map((group) => [group.id, group]));
-  return report.run.results.filter((result) => {
-    const bucket = statusBucket(result.status);
-    if (bucket !== 'failed' && bucket !== 'flaky') return false;
-    return explore === undefined || !isVerdict({ result, final: outcome(result, serialGroups) }, explore);
-  });
-}
-
 /**
  * The built-in `markdown` reporter: the report as one markdown page in
  * `summary.md` beside `report.json`, with evidence listed as paths from the
  * project root, for a reader with the checkout in front of it: a pull
- * request description, a coding agent's handoff, a wiki page. Every test
- * that failed or was flaky gets a page of its own under `failures/`, with the
- * screen at failure inline; the run page links each block to its page. The
- * directory is the reporter's: what an earlier run left there is removed
- * first, so a stale page never describes a failure this run did not have.
+ * request description, a coding agent's handoff, a wiki page. Each failure
+ * block links to the failure page the runner wrote for it under `failures/`.
  */
 export const markdownReporter: Reporter = {
   name: 'markdown',
   async onRunFinished(run) {
     if (run.reportPath === undefined) return;
-    const reportDir = path.dirname(run.reportPath);
     const artifactsDir = toPosixPath(path.relative(run.projectRoot, run.artifactsRoot)) || '.';
-    const failuresDir = path.join(reportDir, 'failures');
-    rmSync(failuresDir, { recursive: true, force: true });
-    const serialGroups = new Map(run.report.run.serialGroups.map((group) => [group.id, group]));
-    const readArtifact = (reportPath: string): string | undefined => {
-      try {
-        return readFileSync(path.join(run.artifactsRoot, reportPath), 'utf8');
-      } catch {
-        return undefined;
-      }
-    };
-    const pages = new Map<string, string>();
-    for (const result of pagedResults(run.report)) {
-      const file = path.join(failuresDir, failurePageName(result));
-      const page = renderFailurePage(run.report, result, outcome(result, serialGroups), { artifactsDir, readArtifact });
-      await writeTextReport(file, page);
-      pages.set(result.id, toPosixPath(path.relative(run.projectRoot, file)));
-    }
-    const summary = path.join(reportDir, 'summary.md');
-    await writeTextReport(summary, renderMarkdownReport(run.report, { artifactsDir, failurePages: pages }));
-    const rows: ReporterSummary = [
-      { label: 'Markdown', text: path.relative(run.projectRoot, summary) || summary },
-      ...(pages.size === 0 ? [] : [{ label: 'Failures', text: `${path.relative(run.projectRoot, failuresDir) || failuresDir}/ (${plural(pages.size, 'page')})` }]),
-    ];
+    const summary = path.join(path.dirname(run.reportPath), 'summary.md');
+    await writeTextReport(summary, renderMarkdownReport(run.report, { artifactsDir, failurePages: run.failurePages }));
+    const rows: ReporterSummary = [{ label: 'Markdown', text: path.relative(run.projectRoot, summary) || summary }];
     return rows;
   },
 };

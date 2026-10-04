@@ -92,6 +92,8 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     attemptId: environment.attemptId,
     actionTimeout: environment.config.actionTimeout,
     assertionTimeout: environment.config.assertionTimeout,
+    recordEvent: (event) => environment.steps.recordEvent(event),
+    redact: (text) => environment.steps.redactText(text),
   });
 
   const { ledger, exposure } = sessionSecrecy(environment.session, environment.config.allSecrets);

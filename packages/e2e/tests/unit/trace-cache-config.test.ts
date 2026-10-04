@@ -59,6 +59,19 @@ const STEP = {
   agent: 'default',
 };
 
+/** The key context a kept entry is written with, when it does not record one yet. */
+const KEYED = {
+  cacheSchema: 'trace-1',
+  policyVersion: 'conservative/6',
+  project: 'p'.repeat(64),
+  platform: 'web',
+  engineName: 'web',
+  engineVersion: '0.11',
+  engineSpiVersion: 1,
+  appIdentity: 'a'.repeat(64),
+  agentContextDigest: 'c'.repeat(64),
+} as const;
+
 const trace = (summary: string): ActionTrace => ({
   actions: [{ name: 'tap', summary: 'tap button "X"', target: { role: 'button', name: 'X' } }],
   executor: { name: 'test' },
@@ -211,16 +224,17 @@ describe('flushStagedTraces', () => {
 
   it('leaves a confirmed kept entry exactly as stored and evicts an unconfirmed one', async () => {
     const store = memoryStore();
-    const stored = JSON.stringify(buildTraceEntry(trace('replayed flow')));
+    const stored = JSON.stringify(buildTraceEntry({ ...trace('replayed flow'), recordedFor: STEP, keyedBy: KEYED }));
     store.entries.set(KEY_A, stored);
     store.entries.set(KEY_B, stored);
     const context = contextWith(store);
-    context.staged.push({ kind: 'keep', keyHash: KEY_A, stepIndex: 1, recordedFor: STEP });
-    context.staged.push({ kind: 'keep', keyHash: KEY_B, stepIndex: 3, recordedFor: STEP });
+    context.staged.push({ kind: 'keep', keyHash: KEY_A, stepIndex: 1, recordedFor: STEP, keyedBy: KEYED });
+    context.staged.push({ kind: 'keep', keyHash: KEY_B, stepIndex: 3, recordedFor: STEP, keyedBy: KEYED });
     await flushStagedTraces(context, { lastVerifiedStepIndex: 2, implicatesUnconfirmed: true });
     // The same bytes, createdAt included: a replay is not a rewrite.
     expect(store.entries.get(KEY_A)).toBe(stored);
     expect(store.entries.has(KEY_B)).toBe(false);
+    expect([...context.writes]).toEqual([[1, 'kept'], [3, 'evicted']]);
   });
 
   it('completes the provenance of a confirmed kept entry recorded before the occurrence fields, and nothing else', async () => {
@@ -229,9 +243,9 @@ describe('flushStagedTraces', () => {
     const recorded = { ...trace('replayed flow'), recordedFor: legacy };
     store.entries.set(KEY_A, JSON.stringify(buildTraceEntry(recorded)));
     const context = contextWith(store);
-    context.staged.push({ kind: 'keep', keyHash: KEY_A, stepIndex: 1, recordedFor: STEP });
+    context.staged.push({ kind: 'keep', keyHash: KEY_A, stepIndex: 1, recordedFor: STEP, keyedBy: KEYED });
     await flushStagedTraces(context, { lastVerifiedStepIndex: 2, implicatesUnconfirmed: true });
-    expect(readTraceEntry(JSON.parse(store.entries.get(KEY_A)!))?.payload).toEqual({ ...recorded, recordedFor: STEP });
+    expect(readTraceEntry(JSON.parse(store.entries.get(KEY_A)!))?.payload).toEqual({ ...recorded, recordedFor: STEP, keyedBy: KEYED });
   });
 
   it('writes what was confirmed and leaves every unconfirmed entry as stored when the failure implicates nothing', async () => {
@@ -243,11 +257,12 @@ describe('flushStagedTraces', () => {
     const context = contextWith(store);
     context.staged.push({ kind: 'write', keyHash: KEY_A, trace: trace('confirmed'), stepIndex: 1 });
     context.staged.push({ kind: 'write', keyHash: KEY_B, trace: trace('re-recorded, unconfirmed'), stepIndex: 3 });
-    context.staged.push({ kind: 'keep', keyHash: KEY_C, stepIndex: 4, recordedFor: STEP });
+    context.staged.push({ kind: 'keep', keyHash: KEY_C, stepIndex: 4, recordedFor: STEP, keyedBy: KEYED });
     await flushStagedTraces(context, { lastVerifiedStepIndex: 2, implicatesUnconfirmed: false });
     expect(store.entries.has(KEY_A)).toBe(true);
     expect(store.entries.get(KEY_B)).toBe(stored);
     expect(store.entries.get(KEY_C)).toBe(stored);
+    expect([...context.writes]).toEqual([[1, 'saved'], [3, 'unconfirmed'], [4, 'unconfirmed']]);
   });
 
   it('claims a key per agent and per agent context, so one agent never replays another\'s recording', () => {

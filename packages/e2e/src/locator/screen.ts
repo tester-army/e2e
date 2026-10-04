@@ -44,6 +44,7 @@ import {
   textQuery,
 } from './expression.ts';
 import { cutOffAtDeadline, type Deadline, POLL_INTERVAL_MS, pollCondition, sleep } from '../internal/time.ts';
+import { SampleHistory } from '../expect/samples.ts';
 
 export interface SecretResolver {
   /**
@@ -585,20 +586,28 @@ class LocatorImpl extends ScreenImpl implements Locator {
       const { engine } = this.context;
       const deadline = engine.deadline(options?.timeout);
       const startedMs = Date.now();
-      await pollCondition({
-        deadline,
-        signal: engine.signal,
-        negated: false,
-        evaluate: async () => {
-          const { node } = await engine.tryRead(this.expression, deadline, ABSENCE_STATES.has(state) ? 'empty' : 'wait');
-          return inWaitForState(node, state);
-        },
-        onTimeout: (cause) =>
-          new TestError('LOCATOR_NOT_FOUND', `locator did not become ${state}: ${this.label}`, {
-            details: locatorDetails(this.expression, Date.now() - startedMs),
-            ...(cause === undefined ? {} : { cause }),
-          }),
-      });
+      const samples = new SampleHistory('waitFor', (text) => engine.redact(text));
+      let status: 'passed' | 'failed' = 'failed';
+      try {
+        await pollCondition({
+          deadline,
+          signal: engine.signal,
+          negated: false,
+          evaluate: async () => {
+            const { node } = await engine.tryRead(this.expression, deadline, ABSENCE_STATES.has(state) ? 'empty' : 'wait');
+            samples.add(node === null ? 'absent' : isNodeVisible(node) ? 'visible' : 'hidden');
+            return inWaitForState(node, state);
+          },
+          onTimeout: (cause) =>
+            new TestError('LOCATOR_NOT_FOUND', `locator did not become ${state}: ${this.label}`, {
+              details: locatorDetails(this.expression, Date.now() - startedMs),
+              ...(cause === undefined ? {} : { cause }),
+            }),
+        });
+        status = 'passed';
+      } finally {
+        engine.recordEvent(samples.event(status === 'failed' && engine.signal.aborted ? 'cancelled' : status));
+      }
     }, { verifies: true });
   }
 

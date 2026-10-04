@@ -185,6 +185,8 @@ export interface ReportStep {
   model?: StepModelInfo | undefined;
   /** The configured agent an agent step ran with, by name. */
   agent?: string | undefined;
+  /** The hook the step ran in; absent for a step of the test body. */
+  phase?: StepRecord['phase'];
   error?: ReportError | undefined;
   artifacts: readonly string[];
 }

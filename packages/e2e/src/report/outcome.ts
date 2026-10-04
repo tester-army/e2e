@@ -20,6 +20,8 @@ export interface AttemptView {
   readonly failure: FailureEvidence | undefined;
   /** The attempt's own artifacts; for a serial member, the group attempt's. */
   readonly artifacts: readonly ReportArtifact[];
+  /** What else failed after the error: a teardown hook, the engine's cleanup. */
+  readonly secondaryErrors: readonly ReportError[];
 }
 
 export interface Outcome {
@@ -36,7 +38,7 @@ export interface Outcome {
 }
 
 /** What a result that never ran an attempt reads as. */
-const NO_ATTEMPT: AttemptView = { status: 'skipped', error: undefined, steps: [], failure: undefined, artifacts: [] };
+const NO_ATTEMPT: AttemptView = { status: 'skipped', error: undefined, steps: [], failure: undefined, artifacts: [], secondaryErrors: [] };
 
 export function outcome(result: ReportResult, groups: ReadonlyMap<string, ReportSerialGroup>): Outcome {
   const views = attemptViews(result, groups);
@@ -59,6 +61,7 @@ function attemptViews(result: ReportResult, groups: ReadonlyMap<string, ReportSe
       steps: attempt.steps,
       failure: attempt.failure,
       artifacts: attempt.artifacts,
+      secondaryErrors: attempt.secondaryErrors,
     }));
   }
   const attempts = groups.get(result.serialGroupId)?.attempts ?? [];
@@ -70,6 +73,7 @@ function attemptViews(result: ReportResult, groups: ReadonlyMap<string, ReportSe
       steps: member?.steps ?? [],
       failure: member?.failure,
       artifacts: attempt.artifacts,
+      secondaryErrors: member?.secondaryErrors ?? attempt.secondaryErrors,
     };
   });
 }

@@ -577,6 +577,7 @@ class LoopRun {
     const lowClock = stepNumber > 0 && this.context.budgets.remainingMs() < this.clockWindDownMs;
     if (lowClock && this.noticedLowClock !== true) {
       this.noticedLowClock = true;
+      this.note(`before turn ${String(stepNumber + 1)}: the step is nearly out of time, asking for a verdict`);
       prepared = appendNotice(
         prepared,
         '[SYSTEM] The step is nearly out of time. Call complete_step now with your best ' +
@@ -595,6 +596,7 @@ class LoopRun {
         this.guardStop = guard.reason;
       } else if (guard.kind === 'warn' && guard.reason !== this.noticedGuardReason) {
         this.noticedGuardReason = guard.reason;
+        this.note(`loop guard warned before turn ${String(stepNumber + 1)}: ${guard.reason}`);
         prepared = appendNotice(
           prepared,
           `[SYSTEM NOTICE] You appear to be going in circles: ${guard.reason}. ` +
@@ -613,6 +615,7 @@ class LoopRun {
         this.guardStop = streak.reason;
       } else if (streak.kind === 'warn' && streak.reason !== this.noticedGuardReason) {
         this.noticedGuardReason = streak.reason;
+        this.note(`loop guard warned before turn ${String(stepNumber + 1)}: ${streak.reason}`);
         prepared = appendNotice(
           prepared,
           `[SYSTEM NOTICE] ${streak.reason}. Read the failure text and the current screen and change approach; ` +
@@ -622,6 +625,7 @@ class LoopRun {
     }
     if (this.guardStop !== undefined && this.guardStop !== this.noticedGuardReason) {
       this.noticedGuardReason = this.guardStop;
+      this.note(`loop guard stopped the step before turn ${String(stepNumber + 1)}: ${this.guardStop}`);
       prepared = appendNotice(
         prepared,
         `[SYSTEM] Loop guard: ${this.guardStop}. Repeating it further will not make progress. ` +
@@ -630,6 +634,7 @@ class LoopRun {
       );
     }
     if (turnsLeft === WIND_DOWN_TURNS && this.guardStop === undefined) {
+      this.note(`before turn ${String(stepNumber + 1)}: only ${String(turnsLeft)} turns remain, asking to wrap up`);
       prepared = appendNotice(
         prepared,
         `[SYSTEM NOTICE] Only ${turnsLeft} turns remain for this step. ` +

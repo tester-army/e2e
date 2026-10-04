@@ -18,7 +18,7 @@ import type { Page } from 'playwright-core';
 import { TestError, type EngineFixtureContext } from 'e2e/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { createBrowserFixture, type Browser, type WebRoute } from '../../src/browser.ts';
-import { noSecrets } from '../helpers/secrets.ts';
+import { ignoreAppLog, noSecrets } from '../helpers/secrets.ts';
 
 interface Echo {
   readonly path: string;
@@ -90,7 +90,7 @@ describe('browser.route decisions', () => {
 
   beforeEach(async () => {
     hits.clear();
-    await surface.startAttempt({ attemptId: 'routes', artifactsDir: projectRoot, signal, resolveSecret: noSecrets });
+    await surface.startAttempt({ attemptId: 'routes', artifactsDir: projectRoot, signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     page = await surface.ensurePage();
     await page.goto(`${origin}/`);
     browser = createBrowserFixture(surface, {

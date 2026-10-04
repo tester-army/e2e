@@ -23,7 +23,7 @@ import type {
   ViewportPoint,
   ViewportSize,
 } from './contract.ts';
-import type { EngineObserveOptions, EngineState, VideoSegment } from './index.ts';
+import type { AppLogEntry, EngineObserveOptions, EngineState, VideoSegment } from './index.ts';
 
 export type * from './contract.ts';
 export { EngineError } from './contract.ts';
@@ -117,6 +117,18 @@ export interface SessionArtifacts {
   stopVideo?(operation: OperationContext): Promise<readonly VideoSegment[]>;
 }
 
+/**
+ * Where the engine's app log goes. The engine reports from `startAttempt`
+ * on, before any step records; what arrives before a sink is set waits, up
+ * to a bound, and a serial group's members each point it at their own steps.
+ */
+export interface AppLogRoute {
+  /** Takes one entry from the engine, checked: a malformed one is dropped. */
+  push(entry: AppLogEntry): void;
+  /** Sends every entry from now on, and every one still waiting, to `sink`; undefined holds them again. */
+  route(sink: ((entry: AppLogEntry, at: string) => void) | undefined): void;
+}
+
 export interface TargetSession {
   /** Grammar verbs the engine can honor, derived from its declared action kinds and hooks. */
   readonly verbs: ReadonlySet<GrammarVerb>;
@@ -153,6 +165,7 @@ export interface TargetSession {
   };
   readonly app: SessionApp;
   readonly artifacts: SessionArtifacts;
+  readonly appLog: AppLogRoute;
   /** Captures immutable app state for a session envelope. */
   captureState?(operation: OperationContext): Promise<EngineState>;
   /** Replaces current app state with an immutable captured state. */

@@ -17,7 +17,7 @@ import type { Device } from '../../src/device.ts';
 import { mobile } from '../../src/engine.ts';
 import { SETTINGS_NODES, SETTINGS_SNAPSHOT } from '../helpers/fake-client.ts';
 import { boot, harness, poolVariableIn, PROJECT_ROOT, type Harness } from '../helpers/harness.ts';
-import { noSecrets } from '../helpers/secrets.ts';
+import { ignoreAppLog, noSecrets } from '../helpers/secrets.ts';
 
 /** An agent's operation: the agent reads the screen right after acting, so its actions settle. */
 function operation(signal = new AbortController().signal): OperationContext {
@@ -50,7 +50,7 @@ function autoAdvanceTimers(): void {
 /** Boots, starts an attempt, and launches the pinned app the way a test's `app.open()` does. */
 async function openAttempt(h: Harness, attemptId = 'a1'): Promise<void> {
   await boot(h);
-  await h.engine.startAttempt!({ attemptId, artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+  await h.engine.startAttempt!({ attemptId, artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
   const { app } = h;
   if (app.bundleId !== undefined || app.appPath !== undefined) await h.engine.session!.restart!(operation());
 }
@@ -151,7 +151,7 @@ describe('lifecycle', () => {
     await h.engine.endAttempt!(cleanup());
     await h.engine.endAttempt!(cleanup());
     // An attempt launches nothing on its own: the app is where the last test left it.
-    await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     expect(h.fake.methods().filter((m) => m === 'apps.open')).toHaveLength(1);
 
     await h.engine.dispose!(cleanup());
@@ -178,7 +178,7 @@ describe('lifecycle', () => {
     await boot(first, 'ios', 0);
     expect(first.sessions).toEqual(['e2e-ios-0']);
     expect(first.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', device: 'iPhone 17' });
-    await first.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await first.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     await first.engine.session!.restart!(operation());
     expect(first.fake.lastArgs('apps.open')).toEqual({ app: 'Settings', platform: 'ios', device: 'iPhone 17', relaunch: true });
 
@@ -262,7 +262,7 @@ describe('lifecycle', () => {
     // The worker resumes a session that is on the app: its first fresh launch presets the permissions without an open to bind it.
     h.fake.respond('sessions.list', () => [{ name: 'e2e-ios-0', address: 'e2e-ios-0' }]);
     await boot(h, 'ios', 0);
-    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     const before = h.fake.calls.length;
     await h.engine.session!.restart!(operation());
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
@@ -500,7 +500,7 @@ describe('lifecycle', () => {
     }));
     expect(Object.keys(h.engine.session!).toSorted()).toEqual(['back', 'reset', 'restart']);
     await boot(h);
-    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     expect(h.fake.methods()).toEqual(['devices.boot']);
 
     const signal = new AbortController().signal;
@@ -533,7 +533,7 @@ describe('lifecycle', () => {
       identifiers: {},
     }));
     await boot(h);
-    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal, resolveSecret: noSecrets });
+    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     expect(await h.surface.installApp(undefined, {}, signal)).toEqual({ app: 'dev.example.app', bundleId: 'dev.example.app' });
     await h.engine.session!.restart!(operation());
     expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'dev.example.app', platform: 'android', relaunch: true });
@@ -543,7 +543,7 @@ describe('lifecycle', () => {
     const unnamed = harness({ appPath: './build/app.apk', platform: 'android' }, false);
     unnamed.fake.respond('apps.install', () => ({ app: '/project/build/app.apk', appPath: '/project/build/app.apk', platform: 'android', identifiers: {} }));
     await boot(unnamed);
-    await unnamed.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal, resolveSecret: noSecrets });
+    await unnamed.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     await expect(unnamed.surface.installApp(undefined, {}, signal)).rejects.toMatchObject({
       code: 'ENGINE_FAILURE',
       message: expect.stringContaining('reported no bundle id or package'),
@@ -594,7 +594,7 @@ describe('lifecycle', () => {
     await expect(h.engine.dispose!(cleanup())).resolves.toBeUndefined();
     await openAttempt(h);
     await expect(
-      h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets }),
+      h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog }),
     ).rejects.toMatchObject({ code: 'INVALID_STATE' });
   });
 
@@ -984,7 +984,7 @@ describe('session hooks, viewport swipe, location, artifacts', () => {
     expect(at(33, 80)).toEqual([200, 200, 200]);
 
     await h.engine.endAttempt!(cleanup());
-    await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     expect(await h.engine.artifacts!.screenshot('again', operation())).toBe('screenshots/001-again.png');
 
     h.fake.respond('capture.snapshot', () => ({
@@ -1049,7 +1049,7 @@ describe('session hooks, viewport swipe, location, artifacts', () => {
         temporaryFilesRemoved = !existsSync(file) && !existsSync(path.dirname(file));
         return { appName: 'Settings', appBundleId: 'com.apple.Preferences' };
       });
-      const next = h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+      const next = h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
       await new Promise((resolve) => setImmediate(resolve));
       expect(opened).toBe(false);
       finishCapture!();
@@ -1087,7 +1087,7 @@ describe('session hooks, viewport swipe, location, artifacts', () => {
     await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
     await h.engine.endAttempt!(cleanup());
 
-    const next = h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    const next = h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     let nextDone = false;
     void next.then(() => {
       nextDone = true;
@@ -1108,7 +1108,7 @@ describe('session hooks, viewport swipe, location, artifacts', () => {
     await expect(hung).rejects.toMatchObject({ code: 'CANCELLED' });
     await h.engine.endAttempt!(cleanup());
     const launch = new AbortController();
-    const launching = h.engine.startAttempt!({ attemptId: 'a3', artifactsDir, signal: launch.signal, resolveSecret: noSecrets });
+    const launching = h.engine.startAttempt!({ attemptId: 'a3', artifactsDir, signal: launch.signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     launch.abort();
     await expect(launching).rejects.toMatchObject({ code: 'CANCELLED' });
   });
@@ -1420,7 +1420,7 @@ describe('device fixture', () => {
     // The retired worker's dispose closed the slot's session, so agent-device no longer lists it.
     h.fake.respond('sessions.list', () => [{ name: 'e2e-ios-1', address: 'e2e-ios-1' }]);
     await boot(h, 'ios', 0);
-    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     const before = h.fake.calls.length;
     await fixture(h).setPermission('microphone', 'reset');
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
@@ -1433,7 +1433,7 @@ describe('device fixture', () => {
     // Nothing opened in this worker yet: the open goes first, as a foreground open, then the change.
     const h = harness();
     await boot(h);
-    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     const before = h.fake.calls.length;
     await fixture(h).setPermission('microphone', 'reset');
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
@@ -1542,7 +1542,7 @@ describe('device fixture', () => {
     const h = harness({ bundleId: 'com.example.app', launchArguments: ['-e2e', 'YES'], permissions: { camera: 'grant', location: 'deny' } });
     h.fake.respond('apps.open', () => ({ session: 's', appName: 'Example', appBundleId: 'com.example.app', identifiers: {} }));
     await boot(h);
-    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     const device = fixture(h);
     const before = h.fake.calls.length;
     await h.engine.session!.restart!(operation());
@@ -1784,7 +1784,7 @@ describe('video', () => {
     await h.engine.artifacts!.startVideo!(operation());
     await expect(h.engine.artifacts!.stopVideo!(operation())).rejects.toThrow();
     await h.engine.endAttempt!(cleanup());
-    await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     const before = h.fake.calls.length;
     await h.engine.session!.restart!(operation());
     expect(h.fake.calls.slice(before).map((call) => call.method)).toEqual(['apps.open', 'settings.update', 'apps.open']);
@@ -1802,7 +1802,7 @@ describe('video', () => {
     expect(existsSync(elsewhere)).toBe(false);
     await h.engine.endAttempt!(cleanup());
     // A recording still running when the attempt ends is stopped, best-effort.
-    await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     await h.engine.artifacts!.startVideo!(operation());
     const before = records(h).length;
     await h.engine.endAttempt!(cleanup());
@@ -1842,7 +1842,7 @@ describe('video', () => {
     expect(stops).toBe(1);
 
     // A stop that fails keeps the recording marked, so ending the attempt stops it again.
-    await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     const started = h.engine.artifacts!.startVideo!(operation());
     await new Promise((resolve) => setTimeout(resolve, 0));
     releaseStart!();

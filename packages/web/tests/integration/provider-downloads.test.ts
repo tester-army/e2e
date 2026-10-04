@@ -16,7 +16,7 @@ import type { EngineFixtureContext, EngineHandle, OperationContext } from 'e2e/e
 import { web as webEngine, surfaceOf, type BrowserProvider, type BrowserProviderScope, type Browser } from '../../src/index.ts';
 import { closeRemoteChrome, launchRemoteChrome, type RemoteChrome } from '../helpers/cdp-host.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
-import { noSecrets } from '../helpers/secrets.ts';
+import { ignoreAppLog, noSecrets } from '../helpers/secrets.ts';
 
 function operation(): OperationContext {
   return { timeoutMs: 15_000, signal: new AbortController().signal, runId: 'run-downloads', attemptId: 'a1', origin: 'test' };
@@ -77,7 +77,7 @@ describe.each<BrowserProviderScope>(['worker', 'attempt'])('downloads through a 
       app: { site: new URL(app.url).hostname }, env: { ...prepared?.env }, headed: false,
       workerSlot: 0, signal: signal(), log: () => undefined,
     });
-    await engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: signal(), resolveSecret: noSecrets });
+    await engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: signal(), resolveSecret: noSecrets, appLog: ignoreAppLog });
     await engine.session!.open!(`${app.url}/login`, operation());
     const page = surfaceOf(engine)!.page();
     await page.evaluate(() => {

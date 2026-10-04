@@ -691,7 +691,7 @@ describe('ListReporter', () => {
       const { lines, output } = capture();
       const reporter = plainReporter(output);
       reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 2 }]));
-      const step = { model: { provider: 'typesafe-ai', model: 'jev', calls: 1, inputTokens: 600, outputTokens: 400 } } as never;
+      const step = { events: [], model: { provider: 'typesafe-ai', model: 'jev', calls: 1, inputTokens: 600, outputTokens: 400 } } as never;
       reporter.handle(serialGroup('g1', [
         { members: [serialMember('m1', { durationMs: 300, steps: [step] }), serialMember('m2', { status: 'failed', durationMs: 200, error: memberError })], error: memberError },
         { members: [serialMember('m1', { durationMs: 100 }), serialMember('m2', { status: 'failed', durationMs: 50, error: memberError })], error: memberError },
@@ -718,7 +718,7 @@ describe('ListReporter', () => {
       reporter.handle(runStarted({ model: 'openai/gpt-5.6-luna-fast' }));
       reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 3 }]));
       const step = (provider: string, model: string, calls: number) =>
-        ({ model: { provider, model, calls, inputTokens: 500, outputTokens: 100 } }) as never;
+        ({ events: [], model: { provider, model, calls, inputTokens: 500, outputTokens: 100 } }) as never;
       reporter.handle(serialGroup('g1', [
         { members: [serialMember('m1', { steps: [step('typesafe-ai', 'jev', 2)] }), serialMember('m2', { steps: [step('openai', 'gpt-5.6-luna-fast', 1)] })] },
       ]));

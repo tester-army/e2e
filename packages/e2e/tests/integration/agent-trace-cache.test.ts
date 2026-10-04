@@ -142,11 +142,13 @@ describe('trace cache: divergence hands the step over mid-step', () => {
     expect(prefix!.totalActions).toBe(2);
     expect(prefix!.stopReason).toBe('target-not-found');
     const step = actStep(secondRun);
-    expect(step.cache).toEqual({
+    expect(step.cache).toMatchObject({
       mode: 'agent-concluded',
       reason: 'target-not-found',
       replayedActions: 1,
       totalActions: 2,
+      detail: expect.stringMatching(/^at action 2 of 2, /u),
+      write: 'saved',
     });
   });
 
@@ -702,7 +704,7 @@ describe('trace cache: a replayed typed value is the flow\'s data on an app that
       expect(outcome.exitCode).toBe(0);
       expect(records.at(-1)!.calls, `run ${String(run)}`).toBe(0);
       const step = cacheOf(outcome);
-      expect(step.cache, `run ${String(run)}`).toEqual({ mode: 'self-finalized', replayedActions: 2, totalActions: 2 });
+      expect(step.cache, `run ${String(run)}`).toMatchObject({ mode: 'self-finalized', replayedActions: 2, totalActions: 2 });
       expect(step.metrics!.modelCalls).toBe(0);
       const restaged = readOnlyEntry(project).entry.payload.actions;
       expect(restaged, `run ${String(run)}`).toEqual(recorded);
@@ -813,6 +815,6 @@ describe('trace cache: a composed word that appears on screen is not a run-time 
     expect(second.exitCode).toBe(0);
     expect(records.at(-1)!.calls).toBe(0);
     const step = resultByTitle(second, 'fills both row fields').attempts.at(-1)!.steps.find((s) => s.api === 'agent.act')!;
-    expect(step.cache).toEqual({ mode: 'self-finalized', replayedActions: 2, totalActions: 2 });
+    expect(step.cache).toMatchObject({ mode: 'self-finalized', replayedActions: 2, totalActions: 2 });
   }, 240_000);
 });

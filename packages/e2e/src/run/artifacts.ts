@@ -338,9 +338,10 @@ const LATIN_LETTERS: Readonly<Record<string, string>> = {
  * of the whole label, e.g. `explore-check-the-cart-totals-1a2b3c4d5e6f7a8b`. A
  * first word equal to the prefix is left out rather than said twice. The
  * slug is for reading only; the digest keeps two labels with the same first
- * words apart, and one label always maps to the same segment.
+ * words apart, and one label always maps to the same segment. A caller with
+ * an identity of its own passes it as `digest` in place of the label's.
  */
-export function labelSegment(prefix: string, label: string): string {
+export function labelSegment(prefix: string, label: string, digest?: string): string {
   // Accents come off first, so `café` reads `cafe` and `żółć` reads `zolc`, not words split at each accent.
   const ascii = label
     .normalize('NFKD')
@@ -354,8 +355,8 @@ export function labelSegment(prefix: string, label: string): string {
     if (slug.length + 1 + word.length > LABEL_SLUG_CHARS) break;
     slug = `${slug}-${word}`;
   }
-  const digest = createHash('sha256').update(label).digest('hex').slice(0, LABEL_DIGEST_CHARS);
-  return [prefix, slug, digest].filter((part) => part !== '').join('-');
+  const suffix = digest ?? createHash('sha256').update(label).digest('hex').slice(0, LABEL_DIGEST_CHARS);
+  return [prefix, slug, suffix].filter((part) => part !== '').join('-');
 }
 
 function mediaTypeFor(relativePath: string): string {

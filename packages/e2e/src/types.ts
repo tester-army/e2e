@@ -1349,6 +1349,12 @@ export interface FinishedRun {
   /** Where `--ai-trace` wrote the run's model calls, when it was requested. */
   readonly aiTracePath: string | undefined;
   /**
+   * The failure page the runner wrote for each test that failed, timed out,
+   * or was flaky, by report result id, as a path from the project root
+   * (`.e2e/failures/checkout-applies-the-coupon-1a2b3c4d.md`).
+   */
+  readonly failurePages: ReadonlyMap<string, string>;
+  /**
    * The report `--last-failed` selected from, when the run was given that
    * flag: the run before this one, whose tests that did not fail were left
    * out here. A reporter that keeps one place current folds this run into it.

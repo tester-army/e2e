@@ -20,8 +20,10 @@ import {
   TestError,
 } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
-import type { EngineHandle } from './index.ts';
+import { timestamp } from '../internal/ids.ts';
+import type { AppLogEntry, EngineHandle } from './index.ts';
 import {
+  type AppLogRoute,
   EngineError,
   type GrammarVerb,
   type LocatorActionKind,
@@ -36,6 +38,37 @@ import {
 export interface EngineSessionOptions {
   readonly engine: EngineHandle | undefined;
   readonly targetName: string;
+}
+
+/** App log entries held while no step recorder takes them, the launch's own. */
+const MAX_WAITING_APP_LOG = 50;
+const APP_LOG_SOURCES: ReadonlySet<unknown> = new Set(['console', 'error', 'network', 'system']);
+const APP_LOG_LEVELS: ReadonlySet<unknown> = new Set(['error', 'warning', 'info']);
+
+/** Whether an engine handed `appLog` an entry of the contract's shape. */
+function isAppLogEntry(value: unknown): value is AppLogEntry {
+  if (typeof value !== 'object' || value === null) return false;
+  const { source, level, text } = value as Partial<Record<keyof AppLogEntry, unknown>>;
+  return APP_LOG_SOURCES.has(source) && APP_LOG_LEVELS.has(level) && typeof text === 'string' && text.trim() !== '';
+}
+
+/** The session's app log route; see `AppLogRoute`. */
+function createAppLogRoute(): AppLogRoute {
+  let sink: ((entry: AppLogEntry, at: string) => void) | undefined;
+  const waiting: { entry: AppLogEntry; at: string }[] = [];
+  return {
+    push(entry) {
+      if (!isAppLogEntry(entry)) return;
+      const copy: AppLogEntry = { source: entry.source, level: entry.level, text: entry.text };
+      if (sink !== undefined) sink(copy, timestamp());
+      else if (waiting.length < MAX_WAITING_APP_LOG) waiting.push({ entry: copy, at: timestamp() });
+    },
+    route(next) {
+      sink = next;
+      if (sink === undefined) return;
+      for (const { entry, at } of waiting.splice(0)) sink(entry, at);
+    },
+  };
 }
 
 /** Located refs are pruned oldest-first past this bound so the map cannot grow unboundedly. */
@@ -215,6 +248,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
     tapModifiers,
     app,
     artifacts,
+    appLog: createAppLogRoute(),
     ...(engine?.state === undefined
       ? {}
       : {

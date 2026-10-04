@@ -110,15 +110,15 @@ hosted service's video by URL.
   to `selected`; `discovered - selected` were left out.
 - `junit`: `junit.xml` for CI summaries; `--reporter list,junit` keeps the
   terminal output.
-- `markdown` (`--reporter list,markdown`): `summary.md` plus one page per
-  failed or flaky test under `failures/` (an interrupted test gets none). The summary holds counts and
-  spend, a block per failed test (error, facts, failing step, whether every
-  attempt failed alike, last model turns, screen location and closest
-  nodes, the line to look at, evidence paths), the flaky tests folded
-  alike, and every test as one folded table, a row per file (or an
-  exploration's findings and assessment); a failure page adds every step,
-  every kept turn, and the screen at failure inline. Read the page first;
-  paste the summary into a pull request or handoff.
+- Every run that reaches its tests also writes one page per failed or flaky
+  test under `failures/` (an interrupted test gets none): every step with
+  what it did, the cache's decisions, what the app logged, the last model
+  turns, and the screen at failure. The `list` output names it under each
+  failure. Read it first.
+- `markdown` (`--reporter list,markdown`): `summary.md` with counts and
+  spend, a block per failed test linked to its page, the flaky tests folded
+  alike, and every test as one folded table (or an exploration's findings
+  and assessment). Paste it into a pull request or handoff.
 - `json`: the report on stdout.
 - Custom reporters get step progress with `identity` (`attemptId`,
   `attemptIndex`, `stepId`, `stepIndex`: report IDs, zero-based indexes;
@@ -193,6 +193,7 @@ jobs:
           path: |
             .e2e/report.json
             .e2e/junit.xml
+            .e2e/failures
           if-no-files-found: warn
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
