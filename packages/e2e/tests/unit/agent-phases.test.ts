@@ -73,19 +73,30 @@ describe('retryingObserve', () => {
     expect(attempts).toBe(1);
   });
 
-  it('leaves a cancelled capture to the guard when a secret fill withheld its fallback', async () => {
-    const controller = new AbortController();
-    controller.abort();
+  it('denies a capture timeout that only fallback pixels withheld after a secret fill could have answered', async () => {
     await expect(
       retryingObserve({
         observe: () => Promise.reject(foreignEngineError('OPERATION_TIMEOUT', false)),
         operation,
         guard: () => undefined,
-        signal: controller.signal,
+        signal: new AbortController().signal,
         api: 'agent.act',
         fallbackTainted: true,
       }),
-    ).rejects.toThrow('OPERATION_TIMEOUT');
+    ).rejects.toMatchObject({ code: 'POLICY_DENIED', message: expect.stringContaining('a secret was filled in this attempt') });
+  });
+
+  it('reports the step clock, not the denial, when the capture timed out at the deadline', async () => {
+    await expect(
+      retryingObserve({
+        observe: () => Promise.reject(foreignEngineError('OPERATION_TIMEOUT', false)),
+        operation,
+        guard: (cause) => checkStepClock({ signal: new AbortController().signal, deadline: new Deadline(50), api: 'agent.act', timeoutMs: 3_000, cause }),
+        signal: new AbortController().signal,
+        api: 'agent.act',
+        fallbackTainted: true,
+      }),
+    ).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
   });
 });
 

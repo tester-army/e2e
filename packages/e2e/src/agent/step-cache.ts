@@ -222,7 +222,8 @@ export class StepTraceSession {
    * self-finalized verdict on a full replay whose postcondition holds;
    * undefined dispatches the executor — after a miss from the top, after a
    * divergence mid-step with `replayedPrefix` set. Every failure to replay is
-   * a miss, never an error; only runtime hard stops propagate.
+   * a miss, never an error; only runtime hard stops and a policy denial on
+   * the opening look propagate.
    */
   async begin(): Promise<StepVerdict | undefined> {
     this.startedMs = Date.now();
