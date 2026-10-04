@@ -49,7 +49,8 @@ describe('retryingObserve', () => {
       guard: () => undefined,
       signal: new AbortController().signal,
       api: 'agent.act',
-      fallbackTainted: false,
+      fallback: false,
+      tainted: () => false,
     });
     expect(observation).toBe(OBSERVATION);
     expect(attempts).toBe(3);
@@ -67,7 +68,8 @@ describe('retryingObserve', () => {
         guard: () => undefined,
         signal: new AbortController().signal,
         api: 'agent.act',
-        fallbackTainted: false,
+        fallback: false,
+      tainted: () => false,
       }),
     ).rejects.toThrow('OPERATION_TIMEOUT');
     expect(attempts).toBe(1);
@@ -81,9 +83,31 @@ describe('retryingObserve', () => {
         guard: () => undefined,
         signal: new AbortController().signal,
         api: 'agent.act',
-        fallbackTainted: true,
+        fallback: true,
+        tainted: () => true,
       }),
     ).rejects.toMatchObject({ code: 'POLICY_DENIED', message: expect.stringContaining('a secret was filled in this attempt') });
+  });
+
+  it('reads the taint per capture, so a retry after a secret fill asks for no fallback and is denied', async () => {
+    let tainted = false;
+    const requested: boolean[] = [];
+    await expect(
+      retryingObserve({
+        observe: (_operation, pixelFallback) => {
+          requested.push(pixelFallback);
+          tainted = true;
+          return Promise.reject(foreignEngineError(requested.length === 1 ? 'NODE_STALE' : 'OPERATION_TIMEOUT', requested.length === 1));
+        },
+        operation,
+        guard: () => undefined,
+        signal: new AbortController().signal,
+        api: 'agent.act',
+        fallback: true,
+        tainted: () => tainted,
+      }),
+    ).rejects.toMatchObject({ code: 'POLICY_DENIED' });
+    expect(requested).toEqual([true, false]);
   });
 
   it('reports the step clock, not the denial, when the capture timed out at the deadline', async () => {
@@ -94,7 +118,8 @@ describe('retryingObserve', () => {
         guard: (cause) => checkStepClock({ signal: new AbortController().signal, deadline: new Deadline(50), api: 'agent.act', timeoutMs: 3_000, cause }),
         signal: new AbortController().signal,
         api: 'agent.act',
-        fallbackTainted: true,
+        fallback: true,
+        tainted: () => true,
       }),
     ).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
   });

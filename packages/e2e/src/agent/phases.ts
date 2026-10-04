@@ -160,25 +160,27 @@ function timedOutAtDeadline(cause: unknown, deadline: Deadline): boolean {
  * re-read rather than surfaced as a failed call. `guard` is the caller's
  * clock check, so a capture that outlives the deadline reports the step's own
  * timeout rather than whichever transport error the truncated budget produced.
- * `fallbackTainted` marks a step that would accept fallback pixels but for a
- * secret fill: its semantic capture timing out before the step clock does is
- * the policy denial it is, not an engine timeout, since only those pixels
- * could have answered.
+ * `fallback` asks the engine for fallback pixels, which a secret fill
+ * (`tainted`, read per capture) withholds; a capture that then times out
+ * before the step clock does is the policy denial it is, not an engine
+ * timeout, since only those pixels could have answered.
  */
 export async function retryingObserve(options: {
-  readonly observe: (operation: OperationContext) => Promise<Observation>;
+  readonly observe: (operation: OperationContext, pixelFallback: boolean) => Promise<Observation>;
   readonly operation: () => OperationContext;
   readonly guard: (cause?: unknown) => void;
   readonly signal: AbortSignal;
   readonly api: string;
-  readonly fallbackTainted: boolean;
+  readonly fallback: boolean;
+  readonly tainted: () => boolean;
 }): Promise<Observation> {
   for (;;) {
+    const withheld = options.fallback && options.tainted();
     try {
-      return await options.observe(options.operation());
+      return await options.observe(options.operation(), options.fallback && !withheld);
     } catch (cause) {
       options.guard(cause);
-      if (options.fallbackTainted && asEngineError(cause)?.code === 'OPERATION_TIMEOUT') {
+      if (withheld && asEngineError(cause)?.code === 'OPERATION_TIMEOUT') {
         throw new AgentError(
           'POLICY_DENIED',
           `${options.api} could not read the semantic tree, and its screenshot fallback is denied: ` +
