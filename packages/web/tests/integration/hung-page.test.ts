@@ -1,9 +1,11 @@
 /**
  * Every operation ends at its budget, whatever the page does: a server that
- * never answers a navigation, and a renderer stuck in a script a button
- * started. Playwright cannot answer an evaluate there at all, and while a
- * trace is recording it cannot answer an action or a navigation either, so
- * the engine's own deadline is what ends the call, as `OPERATION_TIMEOUT`.
+ * never answers a navigation, which Playwright's own timeout ends, and a
+ * renderer stuck in a script a button started. Playwright cannot answer an
+ * evaluate or a point tap there at all, and while a trace is recording it
+ * cannot answer a locator action or a navigation either, so the engine's own
+ * deadline ends the call: `OPERATION_TIMEOUT`, or `ACTION_MAY_HAVE_COMMITTED`
+ * for input, which may have reached the page.
  */
 
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -108,12 +110,13 @@ describe('operations on a hung page', () => {
     if (trace) await engine.artifacts!.startTrace!(operation());
   }
 
-  /** Opens the busy page and taps the button that starts the endless script. */
+  /** Opens the busy page, observes it, and taps the button that starts the endless script. */
   async function freeze(): Promise<void> {
     await engine.session!.open!(`${origin}/`, operation());
+    await engine.observe!(operation());
     const [target] = await engine.locate!(button('Freeze'), operation());
     const tap = await bounded(() => engine.perform!(target!.ref as NodeRef, { kind: 'tap' }, operation()));
-    expect(tap.error).toMatchObject({ code: expect.stringMatching(/^(OPERATION_TIMEOUT|ACTION_MAY_HAVE_COMMITTED)$/) });
+    expect(tap.error).toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED' });
   }
 
   it('times out a navigation to a server that never answers', async () => {
@@ -122,11 +125,13 @@ describe('operations on a hung page', () => {
     expect(open.error).toMatchObject({ code: 'OPERATION_TIMEOUT' });
   });
 
-  it('times out a locate on a page whose renderer is stuck in a script', async () => {
+  it('times out a locate and a point tap on a page whose renderer is stuck in a script', async () => {
     await start(false);
     await freeze();
     const locate = await bounded(() => engine.locate!(button('Next'), operation()));
     expect(locate.error).toMatchObject({ code: 'OPERATION_TIMEOUT' });
+    const tap = await bounded(() => engine.performAt!({ x: 10, y: 10 }, { kind: 'tap' }, operation()));
+    expect(tap.error).toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED' });
   });
 
   it('times out the tap, a locate, and a navigation on a stuck page while a trace records', async () => {

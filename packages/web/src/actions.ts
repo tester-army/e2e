@@ -14,6 +14,7 @@ import {
   performPointerDrag,
   performViewportSwipe,
   POST_DISPATCH_PATTERN,
+  translatePwError,
   type ActionTarget,
 } from './support.ts';
 
@@ -202,6 +203,24 @@ export async function dispatchPointerAction(page: Page, at: ViewportPoint, actio
 }
 
 /**
+ * An input operation the operation deadline cut off: Playwright never
+ * answered, so whether the input reached the page is unknown, and it must not
+ * be repeated blindly.
+ */
+function inputCutOff(cause: unknown, label: string): EngineError | undefined {
+  if (!(cause instanceof EngineError) || cause.code !== 'OPERATION_TIMEOUT') return undefined;
+  return new EngineError('ACTION_MAY_HAVE_COMMITTED', `${label} timed out before the page answered; its input may have been dispatched`, {
+    retryable: false,
+    cause,
+  });
+}
+
+/** Translates the failure of an input operation with no element behind it: a pointer action at a point, or a keystroke. */
+export function classifyInputError(cause: unknown, label: string): Error {
+  return inputCutOff(cause, label) ?? translatePwError(cause, label);
+}
+
+/**
  * Whether a failure of this action may carry the value it was given. A
  * sensitive fill's plaintext must never leave the engine: its message is
  * scrubbed and the raw Playwright error - whose stack the report would
@@ -245,6 +264,8 @@ function actionabilitySummary(text: string): string {
  * resolves after the press.
  */
 export function classifyActionError(rawCause: unknown, action: LocatorAction): Error {
+  const cut = inputCutOff(rawCause, action.kind);
+  if (cut !== undefined) return cut;
   if (isClassified(rawCause)) return rawCause;
   const text = redactSensitive(message(rawCause), action);
   const cause = isSensitive(action) ? undefined : rawCause;

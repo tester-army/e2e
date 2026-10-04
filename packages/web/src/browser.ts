@@ -35,6 +35,7 @@ import {
   type OperationContext,
   type TextPattern,
 } from 'e2e/engine';
+import { classifyInputError } from './actions.ts';
 import type { DialogHandler } from './dialogs.ts';
 import { saveDownloadsTo, saveFromBrowser, saveLocally } from './downloads.ts';
 import { isTestErrorCode, message as causeMessage, translatePwError } from './support.ts';
@@ -607,19 +608,17 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
     },
     keyboard: {
       press: (key) =>
-        surface.guard(context.operation(), 'keyboard.press', () => surface.requirePage().keyboard.press(key)),
+        surface.guard(context.operation(), 'keyboard.press', () => surface.requirePage().keyboard.press(key), classifyInputError),
       type: (text) =>
-        surface.guard(context.operation(), 'keyboard.type', () => surface.requirePage().keyboard.type(text)),
+        surface.guard(context.operation(), 'keyboard.type', () => surface.requirePage().keyboard.type(text), classifyInputError),
     },
     mouse: {
       move: (x, y) =>
-        surface.guard(context.operation(), 'mouse.move', () => surface.requirePage().mouse.move(x, y)),
+        surface.guard(context.operation(), 'mouse.move', () => surface.requirePage().mouse.move(x, y), classifyInputError),
       wheel: (deltaX, deltaY) =>
-        surface.guard(context.operation(), 'mouse.wheel', () =>
-          surface.requirePage().mouse.wheel(deltaX, deltaY),
-        ),
-      down: () => surface.guard(context.operation(), 'mouse.down', () => surface.requirePage().mouse.down()),
-      up: () => surface.guard(context.operation(), 'mouse.up', () => surface.requirePage().mouse.up()),
+        surface.guard(context.operation(), 'mouse.wheel', () => surface.requirePage().mouse.wheel(deltaX, deltaY), classifyInputError),
+      down: () => surface.guard(context.operation(), 'mouse.down', () => surface.requirePage().mouse.down(), classifyInputError),
+      up: () => surface.guard(context.operation(), 'mouse.up', () => surface.requirePage().mouse.up(), classifyInputError),
     },
   };
 

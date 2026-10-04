@@ -106,6 +106,11 @@ describe('classifyActionError', () => {
     expect(classifyActionError(pwTimeout(inFlight), TAP)).toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED' });
   });
 
+  it('treats an action the operation deadline cut off as uncertain: Playwright never said whether the input landed', () => {
+    const cut = new EngineError('OPERATION_TIMEOUT', 'tap timed out', { retryable: false });
+    expect(classifyActionError(cut, TAP)).toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED', retryable: false, cause: cut });
+  });
+
   it('keeps a bare timeout without a call log a plain actionability miss', () => {
     const error = new Error('Timeout 5000ms exceeded');
     error.name = 'TimeoutError';

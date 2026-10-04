@@ -37,7 +37,7 @@ import {
   type ViewportSize,
 } from 'e2e/engine';
 import { matchesText } from 'e2e/engine';
-import { classifyActionError, dispatchLocatorAction, dispatchPointerAction } from './actions.ts';
+import { classifyActionError, classifyInputError, dispatchLocatorAction, dispatchPointerAction } from './actions.ts';
 import { BrowserConnection, connectCdp, type BrowserName } from './browser-connection.ts';
 import { AttemptSession, type StorageState } from './attempt-session.ts';
 import type { CdpEndpointResolver } from './cdp-recovery.ts';
@@ -799,7 +799,7 @@ export class PlaywrightSurface {
     return this.guard(operation, `${action.kind} at point`, () => {
       this.requireSession().requireObservation();
       return dispatchPointerAction(this.requirePage(), point, action);
-    });
+    }, classifyInputError);
   }
 
   /**
@@ -829,7 +829,7 @@ export class PlaywrightSurface {
         checkpoint();
       }
       await page.keyboard.type(text);
-    });
+    }, classifyInputError);
   }
 
   /** Sends one key to whatever holds focus, in the contract's key grammar Playwright shares. */
@@ -837,7 +837,7 @@ export class PlaywrightSurface {
     return this.guard(operation, 'keyboard.press', () => {
       this.requireSession().requireObservation();
       return this.requirePage().keyboard.press(key);
-    });
+    }, classifyInputError);
   }
 
   /**

@@ -307,6 +307,7 @@ export function isTestErrorCode(cause: unknown, code: string): cause is Error & 
  * | `TimeoutError` on a read, navigation, or artifact call          | OPERATION_TIMEOUT         |
  * | `TimeoutError` on an action, log ends before the input dispatch | NOT_ACTIONABLE            |
  * | `TimeoutError` on an action, log shows the dispatch started     | ACTION_MAY_HAVE_COMMITTED |
+ * | operation deadline cut off an action, pointer, or keyboard call | ACTION_MAY_HAVE_COMMITTED |
  * | element detached / not attached / no element / resolved hidden  | NODE_STALE (retryable)    |
  * | execution context destroyed / frame detached by a navigation    | NODE_STALE (retryable)    |
  * | strict mode violation, log ends before the input dispatch       | NODE_STALE (retryable)    |
