@@ -19,12 +19,11 @@ import { inflateEntry, readZip, writeZip, zipEntry, type ZipEntry } from '../int
  * returned from `stopTrace`, relative to `dir`; one that resolves outside
  * `dir` is refused before anything is touched. An archive that cannot be
  * rewritten is deleted together with the rest of the trace, and the failure
- * is thrown: the runner keeps no trace it cannot vouch for. A trace comes
- * here from a session a secret was filled on, whose pixels are withheld, so
- * its screencast frames are dropped as a screenshot would be denied; or from
- * one whose engine holds a secret in its options and where nothing was
- * filled, which the caller passes `keepFrames` for: an engine-held secret is
- * protected as text only.
+ * is thrown: the runner keeps no trace it cannot vouch for. After a secret
+ * fill the session's pixels are withheld, so its screencast frames are
+ * dropped as a screenshot would be denied; with nothing filled the caller
+ * passes `keepFrames`: a value that reached the app otherwise (an engine
+ * option, a URL the test spelled it into) is protected as text only.
  */
 export async function redactTraceArchives(
   dir: string,

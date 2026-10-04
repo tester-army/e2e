@@ -247,8 +247,8 @@ describe('download redaction', () => {
     expect(Buffer.from(store.puts[0]!.bytes).toString('utf8')).toBe(body);
   });
 
-  it('rewrites a text download held by the engine as after a fill: the app has the value and may serve it', async () => {
-    const artifacts = downloads('engine');
+  it('rewrites a text download with nothing filled: a value can reach the app without a fill', async () => {
+    const artifacts = downloads('none');
     writeFileSync(path.join(artifacts.dir, 'downloads', 'headers.txt'), `authorization: ${SECRET}\n`);
     artifacts.sink.register('download', 'downloads/headers.txt');
     await artifacts.settle();
@@ -308,8 +308,14 @@ describe('download redaction', () => {
     expect(artifacts.records[0]).toMatchObject({ redaction: 'complete', size: 19 });
   });
 
-  it('leaves a download as served without a fill, and a binary one with a fill, both incomplete', async () => {
-    const untainted = downloads('none');
+  it('leaves a download as served with no secret value, and a binary one with a fill, both incomplete', async () => {
+    const untainted = createAttemptArtifacts({
+      artifactsRoot: root(),
+      segments: ['web', 'test-1', 'attempt-0'],
+      attemptId: 'att-1',
+      secrecy: () => secrecy('none', new SecretLedger()),
+    });
+    mkdirSync(path.join(untainted.dir, 'downloads'));
     const body = `key=${SECRET}`;
     writeFileSync(path.join(untainted.dir, 'downloads', 'env.txt'), body);
     untainted.sink.register('download', 'downloads/env.txt');

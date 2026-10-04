@@ -131,12 +131,12 @@ password on screen is not masked in pixels.
 
 The runner replaces every occurrence of a registered secret value with
 `<secret:name>` in model input, reports, a worker process's console output,
-and the trace text of a session a secret was filled on or an engine option
-holds. That includes a value the test passes as a plain string rather than
-a `secrets.get()` handle: test and `describe` titles, step labels (an
-`app.open` URL, a locator's text), an `agent.act` or `agent.assert`
-instruction, the strings in `agent.act` params, `agentContext`, and an
-`e2e explore` goal. Titles are redacted as the test file is collected, so
+trace text, and text downloads. That includes a value the test passes as a
+plain string rather than a `secrets.get()` handle: test and `describe`
+titles, step labels (an `app.open` URL, a locator's text), a `fill`, an
+`agent.act` or `agent.assert` instruction, the strings in `agent.act`
+params, `agentContext`, and an `e2e explore` goal. A plain string is not a
+secret fill: it is protected as text only, and screenshots stay available. Titles are redacted as the test file is collected, so
 the test id, `--grep`, the reporters, and the artifact and failure-page file
 names all see `<secret:name>`, and two titles in one file that differ only
 in a secret value are a duplicate title path. A custom executor's
@@ -176,30 +176,26 @@ ordinary text with it.
   rule for text cut at a length limit.
 - A title is redacted when its file is collected, before any provider
   runs, so a value a secret provider returns is not redacted from titles.
-- A Playwright trace from a session no secret reached is kept as recorded,
-  so a value the test only spelled into a URL or a locator stays in its
-  text.
 - When tests run in the runner's own process, with the config or tests
   passed in memory by an embedding host, their console output is not
   redacted.
-- A Playwright trace from a session a secret reached, filled or held by the
-  engine, is rewritten before it is kept: any run of 8 or more characters of
+- A Playwright trace is rewritten before it is kept whenever the run has a
+  secret value, filled or not: any run of 8 or more characters of
   a value, its whitespace collapsed or not, becomes `<secret:name>`, so unrelated text that shares 8 characters
   with a value is masked too. A base64 or base64url run that decodes to a
   value or such a fragment (a basic-auth header, a cookie, a token segment)
-  is replaced whole. After a fill, screencast frames are dropped; with only
-  an engine-held secret they are kept. An image the app served that
+  is replaced whole. After a fill, screencast frames are dropped; otherwise
+  they are kept. An image the app served that
   draws the secret survives. A trace the runner cannot rewrite is deleted and
   the attempt records `TRACE_WITHHELD`.
 - A video masks nothing and is labeled `redaction: "incomplete"`. It is
   never recorded unless you ask. A recording a hosted browser or
   device service keeps stays with that service; the report holds only its
   URL.
-- A download is what the app served. Once a secret reached the session,
-  filled or held by the engine, a text download (`text/*` or JSON by file
-  extension) is rewritten the way trace text is and labeled
-  `redaction: "complete"`. Any other download, a binary or one from a
-  session no secret reached, is kept as served and labeled
+- A download is what the app served. When the run has a secret value, a
+  text download (`text/*` or JSON by file extension) is rewritten the way
+  trace text is and labeled `redaction: "complete"`. Any other download, a
+  binary or one from a run with no secret, is kept as served and labeled
   `redaction: "incomplete"`.
 - The `headers` a protected preview needs are recorded in the trace as
   request headers. Share that trace as you would the bypass secret.
@@ -258,9 +254,9 @@ project-relative path you configure.
 | --- | --- | --- |
 | `report.json` | The run record. Errors, reasoning excerpts, and action summaries pass the redactor. | complete |
 | `artifacts/.../*.png` | Screenshots. Secure fields are masked before screenshots are returned or saved as artifacts. | complete |
-| `artifacts/.../trace.zip` | Playwright trace, rewritten after a secret fill or when an engine option holds a secret; screencast frames are dropped after a fill only. | not-required, complete, or deleted |
+| `artifacts/.../trace.zip` | Playwright trace, rewritten whenever the run has a secret value; screencast frames are dropped after a fill only. | not-required (no secret), complete, or deleted |
 | `artifacts/.../*.webm`, `*.mp4` | Video, opt-in through `video` or `--video`; `retain-on-failure` keeps only the attempts that did not pass. | incomplete |
-| `artifacts/.../downloads/*` | Files the app served through a download. Text ones are rewritten after a secret fill or when an engine option holds a secret; the rest are kept as served. | complete or incomplete |
+| `artifacts/.../downloads/*` | Files the app served through a download. Text ones are rewritten whenever the run has a secret value; the rest are kept as served. | complete or incomplete |
 | `artifacts/.../failure/screen.txt` | The redacted tree at the moment of failure. | complete |
 | `ai-trace.json` | Every model call, opt-in via `--ai-trace`. Prompts are the redacted ones the model saw; inline image bytes are replaced by their size. | as the prompt |
 | `sessions/<runId>/` | Encrypted sessions, deleted at cleanup. | encrypted |

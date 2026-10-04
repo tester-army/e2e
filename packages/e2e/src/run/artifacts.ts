@@ -9,7 +9,7 @@ import { writeFileAtomic } from '../internal/atomic-write.ts';
 import type { ArtifactStore } from '../types.ts';
 import type { ArtifactRegistration, ArtifactSink } from './fixtures.ts';
 import type { ArtifactRecord } from './records.ts';
-import type { SessionSecrecy } from './secrecy.ts';
+import { redactsRecordings, type SessionSecrecy } from './secrecy.ts';
 
 /**
  * How much of each kind the runner masked, unless the registration says. A
@@ -72,9 +72,9 @@ export function createAttemptArtifacts(options: {
   /**
    * The secrecy of the session the attempt runs on, read when a download is
    * registered; undefined (no session open yet) leaves every download as
-   * served. Once a secret reached the session (filled, or held by the
-   * engine), a text-like download is rewritten through its ledger before it
-   * is hashed or stored.
+   * served. While its ledger holds a value (`redactsRecordings`), a
+   * text-like download is rewritten through it before it is hashed or
+   * stored.
    */
   secrecy?: () => SessionSecrecy | undefined;
   /**
@@ -111,7 +111,7 @@ export function createAttemptArtifacts(options: {
       const secrecy: SessionSecrecy | undefined = kind === 'download' && registration?.redaction === undefined ? options.secrecy?.() : undefined;
       pending.push(
         (async () => {
-          if (secrecy !== undefined && secrecy.exposure.redactsRecordings && isTextLike(record.mediaType)) {
+          if (secrecy !== undefined && redactsRecordings(secrecy) && isTextLike(record.mediaType)) {
             record.redaction = await redactDownload(absolute, secrecy);
           }
           // Without a store the file is streamed for its size and digest only;

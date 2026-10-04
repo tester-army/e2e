@@ -11,39 +11,33 @@ import type { Secret } from '../types.ts';
 export interface SessionSecrecy {
   /** Every secret value the session may have seen; live, so a provider's value joins the moment it exists. */
   readonly ledger: SecretLedger;
-  /** How far a secret reached the session, and what that withholds and rewrites. */
+  /** Whether a secret was filled into the session, and what that withholds. */
   readonly exposure: SecretExposure;
 }
 
 /**
- * How far a secret reached one session. It only rises, and is never cleared:
- * `none`, no secret reached it; `engine`, the engine resolved one for an
- * option it hands the app (basic-auth credentials), so the app has the value
- * and a page can render it (an echo of the `Authorization` header) though
- * nothing was typed; `filled`, a secret was typed into the app.
+ * Whether a secret was typed into one session's app. It only rises, and is
+ * never cleared: `none`, nothing was filled; `filled`, a secret was typed
+ * into the app.
  */
-export type SecretExposureLevel = 'none' | 'engine' | 'filled';
-
-const EXPOSURE_RANK: Readonly<Record<SecretExposureLevel, number>> = { none: 0, engine: 1, filled: 2 };
+export type SecretExposureLevel = 'none' | 'filled';
 
 /**
  * One session's exposure level, and the one place that maps it to what each
- * consumer does. Either level above `none` rewrites what text can carry the
- * value (a trace's text entries, a text-like download) through the ledger,
- * as every report and observation already is. Only a fill withholds pixels
- * (failure screenshots, `app.screenshot()`, assert evidence, model input,
- * and a trace's screencast frames): an engine-held secret is protected as
- * text only, so a page that renders it on screen is not masked. Only a fill
+ * consumer withholds. Only a fill withholds pixels (failure screenshots,
+ * `app.screenshot()`, assert evidence, model input, and a trace's
+ * screencast frames): a value that reached the app otherwise (an engine
+ * option, a URL or a `fill` the test spelled it into) is protected as text
+ * only, so a page that renders it on screen is not masked. Only a fill
  * carries into a saved session too: the value then lives in the app's
- * state, while an engine-held one is resolved again by whatever engine opens
- * the restoring session.
+ * state. Text is not decided here: see `redactsRecordings`.
  */
 export class SecretExposure {
   private current: SecretExposureLevel = 'none';
 
-  /** Records that a secret reached the session at `level`; a lower level never replaces a higher one. */
+  /** Records that a secret was filled into the session. */
   raise(level: Exclude<SecretExposureLevel, 'none'>): void {
-    if (EXPOSURE_RANK[level] > EXPOSURE_RANK[this.current]) this.current = level;
+    this.current = level;
   }
 
   /** Whether no pixels may leave the session: no screenshot or screencast frame is taken, kept, or handed to a model. */
@@ -51,15 +45,22 @@ export class SecretExposure {
     return this.current === 'filled';
   }
 
-  /** Whether a text recording of the session (a trace, a text-like download) is rewritten through the ledger before it is kept. */
-  get redactsRecordings(): boolean {
-    return this.current !== 'none';
-  }
-
   /** Whether a session saved from this one carries the taint to the sessions that restore it. */
   get carriesTaint(): boolean {
     return this.current === 'filled';
   }
+}
+
+/**
+ * Whether a text recording of the session (a trace, a text-like download) is
+ * rewritten through its ledger before it is kept: whenever the ledger holds
+ * a value, filled or not. A value reaches the app in ways the runner never
+ * sees (a URL or a `fill` the test spelled it into, the app's own config),
+ * so recordings are redacted like every report and observation, not only
+ * after a fill.
+ */
+export function redactsRecordings(secrecy: SessionSecrecy): boolean {
+  return !secrecy.ledger.isEmpty;
 }
 
 /**

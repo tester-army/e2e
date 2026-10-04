@@ -51,7 +51,7 @@ import { isFailedStatus } from './records.ts';
 import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialHost, type SharedSerialSession } from './serial.ts';
 import { interruptedSkip, pairKey, pairResult, repeatSegment, unstartedResult } from './units.ts';
-import { adoptSecrecy, carriedSecrecy, processSecrets, registerDerivedSecrets, redactForSession, resolveSecretValue, sessionSecrecy, staticSecretLedger } from './secrecy.ts';
+import { adoptSecrecy, carriedSecrecy, processSecrets, registerDerivedSecrets, redactForSession, redactsRecordings, resolveSecretValue, sessionSecrecy, staticSecretLedger } from './secrecy.ts';
 import { isSecret } from '../secrets.ts';
 import { SessionStaging, SessionStore, targetIdentity, type SessionIdentity } from './sessions.ts';
 import { redactTraceArchives } from './trace-redaction.ts';
@@ -634,9 +634,9 @@ export class TargetExecutor implements SerialHost {
    * hands the app (basic-auth credentials). Registered for the session's and
    * the process's redaction by `resolveSecretValue`, with every value the
    * engine derives from it (the base64 credential an `Authorization` header
-   * carries) under the same name. The session's exposure rises to `engine`:
-   * its text is redacted and its trace and text downloads rewritten, while
-   * its pixels stay as they are, since nothing was typed.
+   * carries) under the same name, so its text, trace, and text downloads
+   * are redacted of them. Its pixels stay as they are, since nothing was
+   * typed.
    */
   private async resolveEngineSecret(session: TargetSession, secret: Secret, options?: ResolveSecretOptions): Promise<string> {
     const engine = this.target.engine;
@@ -650,7 +650,6 @@ export class TargetExecutor implements SerialHost {
     const secrecy = sessionSecrecy(session, this.config.allSecrets);
     const plaintext = await resolveSecretValue(secret, this.config.allSecrets, secrecy.ledger);
     registerDerivedSecrets(secret.name, options?.derived?.(plaintext) ?? [], secrecy.ledger);
-    secrecy.exposure.raise('engine');
     return plaintext;
   }
 
@@ -719,14 +718,13 @@ export class TargetExecutor implements SerialHost {
         }
         // An engine records what happened, filled secrets included, so the
         // trace is the runner's to redact before anything hashes or stores
-        // it. Only a session a secret reached (filled, or held by the engine
-        // for an option, which a trace records the attempt opening with) can
-        // have recorded one: an unexposed trace needs no rewriting, and an
-        // exposed one is kept only once rewritten. Its screencast frames go
-        // only where pixels are withheld, after a fill.
+        // it. Any value the ledger holds may be in it, filled or not (a URL
+        // the test spelled it into, an engine option), so a trace is kept
+        // only once rewritten; only a run with no secret skips it. Its
+        // screencast frames go only where pixels are withheld, after a fill.
         const secrecy = sessionSecrecy(session, this.config.allSecrets);
         let redaction: 'complete' | 'not-required' = 'not-required';
-        if (secrecy.exposure.redactsRecordings) {
+        if (redactsRecordings(secrecy)) {
           try {
             await redactTraceArchives(artifactSink.dir, archives, secrecy.ledger, { keepFrames: !secrecy.exposure.withholdsPixels });
           } catch (cause) {

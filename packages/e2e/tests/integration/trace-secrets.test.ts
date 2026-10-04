@@ -3,10 +3,11 @@
  * the real Playwright engine: a credential filled by `screen.fill()` and one
  * filled by an executor's `typeSecret` each produce a trace whose every text
  * entry is redacted, labelled `complete`, and handed to the store already
- * clean; an attempt that filled no secret keeps its trace as recorded,
- * labelled `not-required`. A secret filled into a visible ordinary field
- * denies screenshots and leaves no screencast frame in the trace, while the
- * untainted trace keeps its frames. The executor's fill is recorded in the
+ * clean; an attempt that filled no secret has its trace and text download
+ * scanned too, labelled `complete`, its text and frames kept as recorded. A
+ * secret filled into a visible ordinary field denies screenshots and leaves
+ * no screencast frame in the trace, while the untainted trace keeps its
+ * frames. The executor's fill is recorded in the
  * trace cache by the secret's name alone. Nothing under the project's `.e2e`
  * directory holds the plaintext afterwards.
  */
@@ -178,10 +179,10 @@ describe('trace secrecy', () => {
     },
   );
 
-  it('fills nothing: the trace is kept as recorded and labelled not-required', () => {
+  it('fills nothing: the trace is scanned, kept as recorded, and labelled complete', () => {
     const attempt = resultByTitle(outcome, 'fills nothing').attempts[0]!;
     const trace = attempt.artifacts.find((artifact) => artifact.kind === 'trace')!;
-    expect(trace).toMatchObject({ redaction: 'not-required' });
+    expect(trace).toMatchObject({ redaction: 'complete' });
     expect(trace.path).toBeDefined();
     const onDisk = readFileSync(path.join(project.dir, '.e2e', 'artifacts', trace.path!));
     const entries = textEntries(onDisk);
@@ -215,12 +216,12 @@ describe('trace secrecy', () => {
     expect(Buffer.from(put.bytes).toString('utf8')).toBe(onDisk);
   });
 
-  it('downloads without a fill: the file is kept as served and labelled incomplete', () => {
+  it('downloads without a fill: the text file is scanned, kept as served, and labelled complete', () => {
     const attempt = resultByTitle(outcome, 'downloads without a fill').attempts[0]!;
     const download = attempt.artifacts.find((artifact) => artifact.kind === 'download')!;
-    expect(download).toMatchObject({ redaction: 'incomplete', mediaType: 'text/csv' });
+    expect(download).toMatchObject({ redaction: 'complete', mediaType: 'text/csv' });
     expect(readFileSync(path.join(project.dir, '.e2e', 'artifacts', download.path!), 'utf8')).toBe('id,total\n1,42\n');
-    expect(store.puts.find((stored) => stored.path === download.path)).toMatchObject({ redaction: 'incomplete' });
+    expect(store.puts.find((stored) => stored.path === download.path)).toMatchObject({ redaction: 'complete' });
   });
 
   it('records the executor fill in the cache by the secret name alone, with no value', () => {

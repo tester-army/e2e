@@ -1,13 +1,14 @@
 /**
  * A registered secret value the test passes as a plain string, not as a
  * `secrets.get()` handle: spelled into test and describe titles, an
- * `app.open` URL, a locator, an `agent.act` instruction and its params, and
- * the test's agent context, and logged by the test itself. Through the
- * worker path, so the runner's collection and the worker's agree on the
- * redacted ids: it reaches no executor input, no step label, no report,
- * reporter file, or file name under `.e2e`, and no output event. A secret
- * handle in the same run still types the real value. Through the built-in
- * agent in process: neither the act loop's prompt nor a judgment's carries it.
+ * `app.open` URL, a locator, a `fill`, an `agent.act` instruction and its
+ * params, and the test's agent context, and logged by the test itself.
+ * Through the worker path, so the runner's collection and the worker's agree
+ * on the redacted ids: it reaches no executor input, no step label, no
+ * report, reporter file, trace entry, or file name under `.e2e`, and no
+ * output event. A secret handle in the same run still types the real value.
+ * Through the built-in agent in process: neither the act loop's prompt nor a
+ * judgment's carries it.
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -22,6 +23,8 @@ import { contentsUnder, resultByTitle, runProject, runProjectWithConfigFile, typ
 
 const SECRET = 'plain-Zr8Kq2Wm5Tx9';
 const MARKER = '<secret:probe>';
+/** The value as written and base64 encoded, lowercased: a trace spells it in a URL, a DOM snapshot, and the fill's params. */
+const SECRET_FORMS = [SECRET, Buffer.from(SECRET).toString('base64'), Buffer.from(SECRET).toString('base64url')].map((form) => form.toLowerCase());
 
 const CONFIG = `import type { E2EConfig, StepExecutor } from 'e2e';
 import { appendFileSync } from 'node:fs';
@@ -47,6 +50,7 @@ const recording: StepExecutor = {
 export default {
   targets: [{ name: 'web', engine: web(), app: { url: process.env.APP_URL! } }],
   workers: 1,
+  trace: 'on',
   reporters: ['markdown', 'junit'],
   secrets: { probe: ${JSON.stringify(SECRET)} },
   agents: { default: { executor: recording } },
@@ -139,9 +143,10 @@ describe('a secret value passed as a plain string', () => {
     expect(names).toContain('summary.md');
     expect(names.some((name) => name.startsWith('failures'))).toBe(true);
     for (const name of names) expect(name.includes(SECRET), name).toBe(false);
-    // A trace of a session no secret reached is kept as recorded; the URL the test opened is in it.
-    for (const [file, text] of contentsUnder(root)) {
-      if (!file.includes('.zip!')) expect(text.includes(SECRET), file).toBe(false);
+    const contents = contentsUnder(root);
+    expect(contents.filter(([file]) => file.includes('.zip!')).length).toBeGreaterThan(0);
+    for (const [file, text] of contents) {
+      for (const form of SECRET_FORMS) expect(text.toLowerCase().includes(form), file).toBe(false);
     }
     expect(readFileSync(path.join(root, 'junit.xml'), 'utf8')).toContain('title holds &lt;secret:probe&gt;');
   });

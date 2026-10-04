@@ -397,8 +397,9 @@ trees, on both platforms, without a device.
     secret an engine resolves for an option the app sees (basic auth) is
     protected as text only: redacted everywhere text goes, pixels untouched.
     One exposure level per session (`SecretExposure` in `run/secrecy.ts`)
-    decides pixels, trace and download rewriting, and the taint a saved
-    session carries. What
+    decides pixels and the taint a saved session carries; traces and text
+    downloads are rewritten whenever the session's ledger holds a value
+    (`redactsRecordings`), since a plain string reaches the app unseen. What
     an executor keeps in `attempt.memory` is its own; the harness never
     reports it.
   - An agent's secret fill is authorized by the runner, not the model.

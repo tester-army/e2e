@@ -583,6 +583,11 @@ export class SecretLedger {
   /** Bound so it can be handed out as a plain function. */
   readonly redact = (text: string): string => this.compile().redact(text);
 
+  /** Whether no value is registered, so there is nothing to redact. */
+  get isEmpty(): boolean {
+    return this.values.length === 0;
+  }
+
   /** Every registered name and value, in registration order. */
   entries(): readonly (readonly [string, string])[] {
     return this.values.map(([name, value]) => [name, value] as const);
