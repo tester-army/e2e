@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { runsFromCheckout } from '../../src/telemetry/checkout.ts';
 import { EVENT_CLI_SESSION, EVENT_RUN_COMPLETED, runCompletedEvent, type RunContext } from '../../src/telemetry/events.ts';
 import { POSTHOG_HOST, POSTHOG_PROJECT_KEY } from '../../src/telemetry/posthog.ts';
-import { fleetName, statedIdentity } from '../../src/telemetry/environment.ts';
+import { collectEnvironment, fleetName, statedIdentity } from '../../src/telemetry/environment.ts';
 import { preferencesPath, TelemetryStore } from '../../src/telemetry/store.ts';
 import { NOTICE_VERSION, Telemetry, type TelemetryOptions } from '../../src/telemetry/telemetry.ts';
 import { sampleReport } from '../helpers/sample-report.ts';
@@ -400,6 +400,18 @@ describe('Telemetry', () => {
     telemetry.session('run', []);
     await telemetry.flush();
     expect(sent.calls).toEqual([]);
+  });
+
+  it('names the sandbox the kernel announces and the runtime the CLI runs under', () => {
+    const cwd = tempDir();
+    const sandboxed = collectEnvironment({
+      env: {},
+      cwd,
+      version: '1.2.3',
+      host: { release: '6.18.36-cloudflare-firecracker-2026.6.17', versions: { ...process.versions, bun: '1.3.9', node: '24.20.0' } },
+    });
+    expect(sandboxed).toMatchObject({ sandbox: 'firecracker', runtime: 'bun', runtime_version: '1.3.9', node_version: '24.20.0' });
+    expect(collectEnvironment({ env: {}, cwd, version: '1.2.3', host: { release: '25.6.0', versions: process.versions } }).sandbox).toBeNull();
   });
 
   it('prints every event under E2E_TELEMETRY_DEBUG and sends nothing', async () => {

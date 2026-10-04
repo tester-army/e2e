@@ -245,7 +245,7 @@ describe('e2e init', () => {
       message: expect.stringContaining('Which model gateway'),
       initialValue: 'vercel',
       options: [
-        expect.objectContaining({ value: 'vercel' }),
+        expect.objectContaining({ value: 'vercel', label: 'Vercel AI Gateway' }),
         expect.objectContaining({ value: 'openrouter' }),
         expect.objectContaining({ value: 'openai-compatible' }),
         expect.objectContaining({ value: 'chatgpt' }),

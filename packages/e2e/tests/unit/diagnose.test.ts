@@ -77,9 +77,12 @@ describe('explainModuleError', () => {
     const removed = explainModuleError(missing('e2e/agent', 'createAgent'), importer);
     expect(removed).toContain('createAgent was removed from e2e/agent:');
     expect(removed).toContain('agents: { default: { model, system, tools } }');
-    expect(removed).not.toContain('import type');
+    const removedFromRoot = explainModuleError(missing('e2e', 'BLOCKABLE_CODES'), importer);
+    expect(removedFromRoot).toContain('BLOCKABLE_CODES was removed from e2e:');
+    expect(removedFromRoot).not.toContain('import type');
     expect(explainModuleError(missing('e2e', 'expct'), importer)).toContain('did you mean "expect"?');
     expect(explainModuleError(missing('e2e', 'E2EConfig'), importer)).toContain("import type { E2EConfig } from 'e2e'");
+    expect(explainModuleError(missing('e2e', 'somethingElse'), importer)).toContain('e2e exports test, describe, beforeEach');
     const unknown = missing('e2e/agent', 'somethingElse');
     expect(explainModuleError(unknown, importer)).toBe(unknown.message);
     const other = missing('lodash', 'nope');

@@ -24,6 +24,15 @@ describe('catalogLine', () => {
   it('shows the name, the argument names with optional ones marked, and the first sentence', () => {
     expect(catalogLine('tap', tap, false)).toBe('- tap {target, times?}: Tap or click one node.');
   });
+
+  it('does not end the sentence at an abbreviation and bounds a run-on sentence', () => {
+    const press: ToolSet[string] = { description: 'Send one key (e.g. "Enter", "Escape", "Tab") to one node. More text.', inputSchema: z.object({ key: z.string() }), execute: async () => 'ok' };
+    expect(catalogLine('press', press, false)).toBe('- press {key}: Send one key (e.g. "Enter", "Escape", "Tab") to one node.');
+    const long: ToolSet[string] = { description: `${'word '.repeat(60)}end`, inputSchema: z.object({}), execute: async () => 'ok' };
+    const line = catalogLine('long', long, false);
+    expect(line.length).toBeLessThan(200);
+    expect(line.endsWith('…')).toBe(true);
+  });
 });
 
 describe('describeToolDetail and toolJsonSchema', () => {

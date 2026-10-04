@@ -872,6 +872,13 @@ describe('resolveConfig', () => {
         message: expect.stringContaining("artifacts.trace was removed: write trace: 'on-all-retries' at the config root"),
       });
       expect(failure({ artifacts: { kinds: ['video'] } }).message).toContain("video is its own option: video: 'on'");
+      expect(failure({ artifacts: { kinds: ['screenshot', 'trace'], trace: { record: 'retries' } } as never }).message).toContain(
+        "artifacts.kinds and artifacts.trace were removed: write trace: 'on-all-retries'",
+      );
+      expect(failure({ artifacts: { kinds: ['screenshot'], trace: { record: 'retries' } } as never }).message).toContain("write trace: 'off'");
+      expect(failure({ artifacts: { video: { retain: 'on-failure' } } as never }).message).toContain(
+        'artifacts.video was removed: video is its own option',
+      );
     });
 
     it('maps the old trace spellings lifted to where a mode goes to the mode they meant', () => {
