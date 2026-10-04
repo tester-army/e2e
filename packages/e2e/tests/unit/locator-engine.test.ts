@@ -154,6 +154,25 @@ describe('LocatorEngine resolve retry contract', () => {
     expect(calls.resolve).toBe(1);
   });
 
+  it('reports a resolve the deadline cut off, after one that matched nothing, as LOCATOR_NOT_FOUND', async () => {
+    const deadline = new Deadline(350);
+    const cut = () => {
+      throw new EngineError('OPERATION_TIMEOUT', 'locate timed out', { retryable: false });
+    };
+    const empty = () => [] as readonly NodeRef[];
+    const { engine } = makeEngine({
+      resolve: Array.from({ length: 50 }, () => () => (deadline.remaining() < 50 ? cut() : empty())),
+    });
+    await expect(engine.resolveExactlyOne(EXPRESSION, deadline)).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND' });
+  });
+
+  it('keeps a first resolve the deadline cut off a timeout: nothing was ever seen missing', async () => {
+    const { engine } = makeEngine({
+      resolve: [() => { throw new EngineError('OPERATION_TIMEOUT', 'locate timed out', { retryable: false }); }],
+    });
+    await expect(engine.resolveExactlyOne(EXPRESSION, new Deadline(0))).rejects.toMatchObject({ code: 'ACTION_FAILED' });
+  });
+
   it('polls zero matches until the deadline, then LOCATOR_NOT_FOUND', async () => {
     const { engine, calls } = makeEngine({
       resolve: Array.from({ length: 50 }, () => () => [] as readonly NodeRef[]),

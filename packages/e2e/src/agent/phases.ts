@@ -9,7 +9,7 @@ import type { Observation, OperationContext } from '../engine/surface.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { asEngineError, isE2EError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
-import { POLL_INTERVAL_MS, sleep, type Deadline } from '../internal/time.ts';
+import { POLL_INTERVAL_MS, sleep, timedOutAtDeadline, type Deadline } from '../internal/time.ts';
 import type { LocatorEngine } from '../locator/engine.ts';
 import type { StepActivity, StepEvent, StepRecorder } from '../run/steps.ts';
 import { AgentError, toAgentError } from './error.ts';
@@ -145,11 +145,6 @@ export function checkStepClock(options: {
       detail,
     );
   }
-}
-
-/** True when `cause` is an operation timeout and the deadline is less than one poll tick away. */
-function timedOutAtDeadline(cause: unknown, deadline: Deadline): boolean {
-  return deadline.remaining() < POLL_INTERVAL_MS && asEngineError(cause)?.code === 'OPERATION_TIMEOUT';
 }
 
 /**

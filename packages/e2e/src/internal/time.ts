@@ -1,6 +1,6 @@
 /** Deadline and cancellation helpers. */
 
-import { E2EError } from './errors.ts';
+import { asEngineError, E2EError } from './errors.ts';
 
 export class Deadline {
   readonly endsAt: number;
@@ -50,6 +50,18 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 /** Canonical polling cadence for locator and assertion loops. */
 export const POLL_INTERVAL_MS = 100;
 
+/**
+ * Whether `cause` is an operation that ran out of its budget less than one
+ * poll tick before `deadline`: the wait's own deadline, whichever timer fired
+ * first, not a failure of the operation. Reads the engine error a locator
+ * failure wraps as well as a bare one.
+ */
+export function timedOutAtDeadline(cause: unknown, deadline: Deadline): boolean {
+  if (deadline.remaining() >= POLL_INTERVAL_MS) return false;
+  const engineError = asEngineError(cause) ?? asEngineError(cause instanceof Error ? cause.cause : undefined);
+  return engineError?.code === 'OPERATION_TIMEOUT';
+}
+
 /** How long a negated assertion must hold before it passes. */
 export const NEGATION_GRACE_MS = 1000;
 
@@ -84,8 +96,16 @@ export async function pollCondition(options: PollConditionOptions): Promise<void
   let readAt = startedAt;
   let holdingSince: number | undefined;
   const holds = (now: number): boolean => holdingSince !== undefined && now - holdingSince >= grace;
+  let sampled = false;
+  let value: boolean | undefined;
   for (;;) {
-    const value = await options.evaluate();
+    try {
+      value = await options.evaluate();
+      sampled = true;
+    } catch (cause) {
+      // A read the deadline cut off saw nothing new: the poll ends on what it last saw.
+      if (!sampled || !timedOutAtDeadline(cause, deadline)) throw cause;
+    }
     if (!negated) {
       if (value === true) return;
     } else {
