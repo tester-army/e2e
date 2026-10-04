@@ -113,7 +113,7 @@ export async function pollCondition(options: PollConditionOptions): Promise<void
       sampled = true;
     } catch (cause) {
       if (!sampled || !cutOffAtDeadline(cause, startedWithMs)) throw cause;
-      if (negated && holds(Date.now())) return;
+      if (negated && holds(Math.min(Date.now(), deadline.endsAt))) return;
       throw await options.onTimeout(cause);
     }
     if (!negated) {
