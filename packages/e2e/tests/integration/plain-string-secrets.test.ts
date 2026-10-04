@@ -5,7 +5,7 @@
  * params, and the test's agent context, and logged by the test itself.
  * Through the worker path, so the runner's collection and the worker's agree
  * on the redacted ids: it reaches no executor input, no step label, no
- * report, reporter file, trace entry, or file name under `.e2e`, and no
+ * report, reporter file, artifact, or file name under `.e2e`, and no
  * output event. A secret handle in the same run still types the real value.
  * Through the built-in agent in process: neither the act loop's prompt nor a
  * judgment's carries it.
@@ -23,7 +23,7 @@ import { contentsUnder, resultByTitle, runProject, runProjectWithConfigFile, typ
 
 const SECRET = 'plain-Zr8Kq2Wm5Tx9';
 const MARKER = '<secret:probe>';
-/** The value as written and base64 encoded, lowercased: a trace spells it in a URL, a DOM snapshot, and the fill's params. */
+/** The value as written and base64 encoded, lowercased: any form a file under `.e2e` could spell it in. */
 const SECRET_FORMS = [SECRET, Buffer.from(SECRET).toString('base64'), Buffer.from(SECRET).toString('base64url')].map((form) => form.toLowerCase());
 
 const CONFIG = `import type { E2EConfig, StepExecutor } from 'e2e';
@@ -50,7 +50,6 @@ const recording: StepExecutor = {
 export default {
   targets: [{ name: 'web', engine: web(), app: { url: process.env.APP_URL! } }],
   workers: 1,
-  trace: 'on',
   reporters: ['markdown', 'junit'],
   secrets: { probe: ${JSON.stringify(SECRET)} },
   agents: { default: { executor: recording } },

@@ -1445,7 +1445,7 @@ describe('ListReporter goldens', () => {
       failed.failure = { url: 'https://app.test/login', candidates: ['heading "Sign in"'], screen: 'attempt-1:artifact:2' };
       failed.artifacts = [
         { id: 'attempt-1:artifact:0', kind: 'video', mediaType: 'video/webm', path: 'chromium/login/attempt-0/video/video.webm', startedAt: new Date(0).toISOString(), redaction: 'incomplete', producer: { kind: 'attempt' } },
-        { id: 'attempt-1:artifact:1', kind: 'trace', mediaType: 'application/zip', path: 'chromium/login/attempt-0/trace/trace.zip', redaction: 'complete', producer: { kind: 'attempt' } },
+        { id: 'attempt-1:artifact:1', kind: 'download', mediaType: 'text/csv', path: 'chromium/login/attempt-0/downloads/export.csv', redaction: 'complete', producer: { kind: 'attempt' } },
         { id: 'attempt-1:artifact:2', kind: 'log', mediaType: 'text/plain', path: 'chromium/login/attempt-0/screen.txt', redaction: 'complete', producer: { kind: 'attempt' } },
       ];
       reporter.handle(finished(result({ status: 'passed', id: 'opens', file: 'tests/login.e2e.ts', title: ['login', 'opens'] })));

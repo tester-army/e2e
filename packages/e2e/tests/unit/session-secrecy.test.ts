@@ -44,11 +44,7 @@ describe('session secrecy carried across save and restore', () => {
 });
 
 describe('session exposure', () => {
-<<<<<<< HEAD
   it('withholds pixels and carries the taint into a saved session only after a fill', () => {
-=======
-  it('rewrites downloads once the engine holds a secret, and withholds pixels only after a fill', () => {
->>>>>>> df8bf037 (fix: accept retired trace hooks from published engines, and word the replacement for this commit)
     const secrecy = sessionSecrecy(newSession(), secrets);
     expect(secrecy.exposure).toMatchObject({ withholdsPixels: false, carriesTaint: false });
     expect(carriedSecrecy(secrecy, secrets).tainted).toBe(false);
