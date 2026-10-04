@@ -41,8 +41,8 @@ export interface ServeOptions {
   readonly stdout: Writable;
   /** Diagnostics for the operator, normally stderr. */
   readonly log: (line: string) => void;
-  /** What user code in this process prints: held while a config loads, and its unfinished lines released as each tool call ends. */
-  readonly output?: Pick<McpOutput, 'withholdDuring' | 'releaseTails'> | undefined;
+  /** What user code in this process prints: held while a config loads, and its unfinished lines released once no tool call is in flight. */
+  readonly output?: Pick<McpOutput, 'withholdDuring' | 'duringCall'> | undefined;
   /** Ends the server from outside: a process signal. */
   readonly signal?: AbortSignal | undefined;
   /** Told once per `open_session`, when its session closes or its open fails, with the client that asked; undefined before `initialize`. */
@@ -92,12 +92,9 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
         inputSchema: spec.inputSchema,
         annotations: { readOnlyHint: spec.readOnly, openWorldHint: false },
       },
-      async (args, ctx) => {
-        try {
-          return await spec.call(args, { signal: ctx.mcpReq.signal });
-        } finally {
-          output?.releaseTails();
-        }
+      (args, ctx) => {
+        const call = () => spec.call(args, { signal: ctx.mcpReq.signal });
+        return output === undefined ? call() : output.duringCall(call);
       },
     );
   }

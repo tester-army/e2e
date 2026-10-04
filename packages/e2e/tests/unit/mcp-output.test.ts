@@ -45,25 +45,39 @@ describe('McpOutput', () => {
     expect(text()).toContain('after the loads\n');
   });
 
-  it('withholds output held for a load still in flight at shutdown', () => {
+  it('withholds output held for a load still in flight at shutdown, a report of an uncaught error included', () => {
     const { out, text } = output();
     void out.withholdDuring(() => new Promise<void>(() => undefined));
     out.write('stdout', `mid-load: ${TOKEN}\n`);
-    out.releaseTails();
+    out.report(`e2e mcp: [error] uncaught: Error: ${TOKEN}`);
     expect(text()).toBe('');
     out.end();
     expect(text()).not.toContain(TOKEN);
     expect(text()).toContain('withheld');
   });
 
-  it('releases a held tail redacted at a call boundary, and keeps redacting across later writes', () => {
+  it('releases a held tail redacted once no tool call is in flight', async () => {
     const { out, ledger, text } = output();
     ledger.register('apiToken', TOKEN);
-    out.write('stdout', `tail: ${TOKEN.slice(0, 6)}`);
+    let finishOther!: () => void;
+    const other = out.duringCall(() => new Promise<void>((resolve) => (finishOther = resolve)));
+    await out.duringCall(async () => {
+      out.write('stdout', `tail: ${TOKEN.slice(0, 6)}`);
+    });
     expect(text()).not.toContain(TOKEN.slice(0, 6));
-    out.write('stdout', `${TOKEN.slice(6)}`);
-    out.releaseTails();
+    out.write('stdout', TOKEN.slice(6));
+    finishOther();
+    await other;
     expect(text()).toBe('tail: <secret:apiToken>');
+  });
+
+  it('redacts a value split across stdout and stderr, which land on one stream', () => {
+    const { out, ledger, text } = output();
+    ledger.register('apiToken', TOKEN);
+    out.write('stdout', Buffer.from(TOKEN.slice(0, 6)));
+    out.write('stderr', `${TOKEN.slice(6)}\n`);
+    out.end();
+    expect(text()).toBe('<secret:apiToken>\n');
   });
 
   it('puts its own lines on a line of their own after an unfinished user line', () => {

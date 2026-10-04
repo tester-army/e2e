@@ -85,13 +85,14 @@ export async function mcp(version: string, options: McpCommandOptions, telemetry
   const onSignal = (): void => stop.abort();
   // Node would print an error nobody caught (a project tool's unawaited
   // promise) straight to the stderr descriptor, past the redaction, and
-  // exit with every session's app still running. It is logged redacted and
-  // the server shuts down as on a signal.
+  // exit with every session's app still running. It is logged redacted, and
+  // held like user output while a config loads, and the server shuts down as
+  // on a signal.
   let crashed = false;
   const onUncaught = (cause: unknown): void => {
     crashed = true;
     const text = cause instanceof Error ? (cause.stack ?? errorMessage(cause)) : errorMessage(cause);
-    output.log(`e2e mcp: [error] uncaught: ${processSecrets.redact(text)}`);
+    output.report(`e2e mcp: [error] uncaught: ${text}`);
     stop.abort();
   };
   process.once('SIGINT', onSignal);
