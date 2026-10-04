@@ -1596,7 +1596,7 @@ describe('device fixture', () => {
     ]);
   });
 
-  it('refuses an openApp permission name or state it does not know before any device command', async () => {
+  it('refuses an openApp permission name it does not know before any device command', async () => {
     const h = harness();
     await openAttempt(h);
     const device = fixture(h);
