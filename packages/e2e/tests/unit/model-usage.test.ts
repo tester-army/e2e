@@ -12,9 +12,9 @@ describe('model usage accounting', () => {
     expect(usage.report(provenance, 2).estimatedCostUsd).toBeCloseTo(0.3);
   });
 
-  it('keeps mixed usage non-authoritative after later complete reports', () => {
+  it.each([{ inputTokens: 1 }, { inputTokens: 1, outputTokens: 2, accounting: 'adapter-upper-bound' as const }])('keeps mixed usage non-authoritative after later complete reports: %j', (partial) => {
     const usage = new ModelUsage();
-    usage.record({ inputTokens: 1 });
+    usage.record(partial);
     usage.record({ inputTokens: 10, outputTokens: 3 });
     expect(usage.report(provenance, 2).tokenAccounting).toBe('adapter-upper-bound');
   });

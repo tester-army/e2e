@@ -246,6 +246,11 @@ describe('ScreenPresenter and the on-screen keyboard', () => {
     expect(text).toContain('removed #n20 keyboard "Padding-Left"');
     expect(text).toContain('The on-screen keyboard closed with this action.');
     expect(text).toContain('act on it again now that the keyboard is down');
+    const keys = Array.from({ length: 40 }, (_, i) => `  #k${String(i)} key "${String(i)}"`);
+    presenter.initial(screen('b3', [...FORM, ' #n20 keyboard "Padding-Left"', ...keys]));
+    const whole = presenter.update(screen('b4', FORM), { lead: 'Tapped #n3.', expectChange: true });
+    expect(whole).toContain('changed substantially');
+    expect(whole).toContain('The on-screen keyboard closed with this action.');
   });
 
   it('stays quiet on a truncated listing, an explicit dismissal, or a keyboard that stays or appears, through update and present', () => {

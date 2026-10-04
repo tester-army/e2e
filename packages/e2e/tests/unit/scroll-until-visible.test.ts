@@ -95,7 +95,10 @@ describe('screen.scrollUntilVisible', () => {
     ]);
   });
 
-  it('takes a direction and a momentum for the stride of each step', async () => {
+  it('takes a direction and a momentum for the stride of each step, on the screen and on a locator', async () => {
+    const viewport = scrollScreen({ screens: [[], [TARGET]] });
+    await viewport.screen.scrollUntilVisible(viewport.screen.getByText('Accept'), { direction: 'up', momentum: 'none' });
+    expect(viewport.swipes).toEqual([{ ref: 'root', direction: 'up', momentum: 'none' }]);
     const { screen, swipes } = scrollScreen({ screens: [[feed()], [feed(TARGET)]] });
     await screen.getByRole('list', { name: 'Feed' }).scrollUntilVisible(screen.getByText('Accept'), { direction: 'right', momentum: 'none' });
     expect(swipes).toEqual([{ ref: 'feed', direction: 'right', momentum: 'none' }]);

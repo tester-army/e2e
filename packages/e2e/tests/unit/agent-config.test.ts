@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { resolveConfig, type CliOverrides } from '../../src/config/resolve.ts';
 import { z } from 'zod';
 import { defineTool } from '../../src/agent/tool.ts';
+import { createToolLoopExecutor } from '../../src/agent/tool-loop.ts';
+import { TRANSPORT_RETRIES } from '../../src/agent/model/sdk.ts';
 import type { SdkLanguageModel } from '../../src/agent/ai-sdk.ts';
 import type { E2EConfig } from '../../src/types.ts';
 import { HARNESS_TOOL_NAMES } from '../../src/agent/action-names.ts';
@@ -109,6 +111,10 @@ describe('agent config defaults', () => {
 describe('the agents entry shape', () => {
   it('rejects a bare StepExecutor, pointing at { executor }', () => {
     expect(() => resolve({ agents: { default: brain() } } as never)).toThrow(/^agents\.default is a StepExecutor \("custom-brain"\).*agents\.default: \{ executor/);
+  });
+
+  it('rejects maxTurns on createToolLoopExecutor, naming maxModelCalls', () => {
+    expect(() => createToolLoopExecutor({ name: 'brain', tools: () => ({}), buildPrompt: () => 'go', maxTurns: 3 } as never)).toThrow(/^createToolLoopExecutor\(\{ maxTurns \}\) was removed: set maxModelCalls/);
   });
 
   it('rejects an entry that is not an options object', () => {
@@ -404,7 +410,7 @@ describe('model error classification', () => {
     } finally {
       vi.useRealTimers();
     }
-    expect(failing.attempts()).toBeGreaterThan(1);
+    expect(failing.attempts()).toBe(TRANSPORT_RETRIES + 1);
   });
 });
 
