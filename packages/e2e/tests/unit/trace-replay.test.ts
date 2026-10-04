@@ -1,6 +1,6 @@
 /** Zero-turn replay: typed dispatch, relocation backoff, divergence. */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AgentError } from '../../src/agent/error.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
 import { replayTrace, verifyEndState, type ObservedScreen, type ReplayHost } from '../../src/agent/replay.ts';
@@ -582,6 +582,28 @@ describe('replayTrace: bare-point taps', () => {
     const outcome = await replayTrace(host, trace([{ name: 'scroll', summary: 'scroll down x2', direction: 'down', target: list, times: 2, spans: 0.92 }]));
     expect(outcome).toMatchObject({ completed: true, executed: 1 });
     expect(targets).toEqual([{ direction: 'down', t: undefined }, { direction: 'down', t: undefined }]);
+  });
+
+  it('waits for a lost list that filled the screen once per folded scroll, not once per repeat', async () => {
+    vi.useFakeTimers();
+    vi.setTimerTickMode('nextTimerAsync');
+    try {
+      const targets: unknown[] = [];
+      const host = makeHost({ nodes: [email], onAction: (name, detail) => void (name === 'scroll' && targets.push(detail)) });
+      const startedMs = Date.now();
+      const outcome = await replayTrace(
+        host,
+        trace([{ name: 'scroll', summary: 'scroll down x4', direction: 'down', target: { role: 'group', name: 'Rows 1 to 12' }, times: 4, spans: 0.92 }]),
+      );
+      expect(outcome).toMatchObject({ completed: true, executed: 1 });
+      expect(targets).toEqual(Array.from({ length: 4 }, () => ({ direction: 'down', t: undefined })));
+      // One relocation backoff (the first look and eight raw ones over 14s),
+      // then one settled look before each later repeat, as a viewport scroll takes.
+      expect(Date.now() - startedMs).toBe(14_000);
+      expect(host.looks).toEqual(['held-still', ...Array.from({ length: 8 }, () => 'raw'), 'held-still', 'held-still', 'held-still']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('counts the repeats of a folded scroll that ran before a later one lost the list', async () => {

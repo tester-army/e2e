@@ -110,7 +110,8 @@ type PlannedCall =
    * every repeat, because a device renumbers its tree on each look and names
    * a scroll view after its first visible row. A list that filled the screen
    * when recorded (`spans`) and cannot be re-found scrolls as the viewport,
-   * which is what scrolling the main list does; a smaller region hands off.
+   * which is what scrolling the main list does, for that repeat and every
+   * later one; a smaller region hands off.
    * Without a list, the viewport itself is scrolled.
    */
   | {
@@ -302,9 +303,19 @@ export async function replayTrace(
             break;
           }
           // A scroll on a list is paced by the relocation before each repeat.
+          // A list judged lost stays lost for the rest of the scroll: the
+          // repeats after it scroll the viewport with a settled look between
+          // them, instead of waiting out the relocation backoff again.
+          let onList = true;
           for (let index = 0; index < planned.times; index += 1) {
-            const lost = await scrollOnce(host, planned.direction, planned.list, index === 0 ? look : HELD_STILL);
-            if (lost !== undefined) return stop(lost, partial());
+            if (onList) {
+              const scrolled = await scrollOnce(host, planned.direction, planned.list, index === 0 ? look : HELD_STILL);
+              if (scrolled.kind === 'failed') return stop(scrolled.failure, partial());
+              onList = scrolled.kind === 'list';
+            } else {
+              await host.observe('held-still');
+              await host.actions.scroll(planned.direction);
+            }
             repeated += 1;
           }
           break;
@@ -528,15 +539,20 @@ function usableBox(rect: SemanticNode['rect']): Box | undefined {
  * viewport for a lost list that filled the screen, or the failure to hand
  * the step off on.
  */
-async function scrollOnce(host: ReplayHost, direction: ScrollDirection, list: ScrolledList, look: Look): Promise<RelocationFailure | undefined> {
+async function scrollOnce(
+  host: ReplayHost,
+  direction: ScrollDirection,
+  list: ScrolledList,
+  look: Look,
+): Promise<{ readonly kind: 'list' | 'viewport' } | { readonly kind: 'failed'; readonly failure: RelocationFailure }> {
   const relocated = await relocate(host, list.descriptor, look);
   if (relocated.kind === 'found') {
     await host.actions.scroll(direction, { id: relocated.id });
-    return undefined;
+    return { kind: 'list' };
   }
-  if ((list.spans ?? 0) < MAIN_LIST_SHARE) return relocated.failure;
+  if ((list.spans ?? 0) < MAIN_LIST_SHARE) return { kind: 'failed', failure: relocated.failure };
   await host.actions.scroll(direction);
-  return undefined;
+  return { kind: 'viewport' };
 }
 
 /**
