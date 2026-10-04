@@ -263,6 +263,7 @@ describe('kernel()', () => {
       expect(sdk.state.created[0]?.body).not.toHaveProperty('replay');
       await provider.record!(lease, recordContext());
       expect(sdk.state.replays).toEqual(['start b1 {"framerate":20,"max_duration_in_seconds":300}']);
+      expect(sdk.state.created).toHaveLength(1);
     });
   });
 });
