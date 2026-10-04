@@ -13,6 +13,37 @@ export function connectionAbort(signal: AbortSignal, label: string): EngineError
     : new EngineError('CANCELLED', `${label} cancelled`, { retryable: false });
 }
 
+/**
+ * How much sooner than an operation's deadline Playwright's own timeout
+ * fires: its error names what blocked an action, or that the input was
+ * already dispatched, and this lead lets that answer arrive before the
+ * deadline does. The deadline is for the calls Playwright never answers: an
+ * evaluate, which takes no timeout, and every call while a trace snapshots a
+ * page whose renderer is stuck in a script. A budget shorter than twice the
+ * lead splits in half.
+ */
+const PLAYWRIGHT_TIMEOUT_LEAD_MS = 250;
+
+/**
+ * Bounds one operation by its budget: a call still pending at the deadline
+ * is abandoned as `OPERATION_TIMEOUT` instead of holding the test until its
+ * own timeout. `remaining` hands `work` the time left before Playwright's
+ * own timeout, the one to pass Playwright.
+ */
+export function withOperationDeadline<T>(
+  budget: ConnectionBudget,
+  label: string,
+  work: (remaining: () => ConnectionBudget) => Promise<T>,
+): Promise<T> {
+  return withConnectionBudget(budget, label, (remaining) =>
+    work(() => {
+      const current = remaining();
+      const lead = Math.min(PLAYWRIGHT_TIMEOUT_LEAD_MS, current.timeoutMs / 2);
+      return { signal: current.signal, timeoutMs: Math.ceil(current.timeoutMs - lead) };
+    }),
+  );
+}
+
 /** Bounds the entire transition, aborts abandoned work, and never grants a fresh dispatch budget. */
 export async function withConnectionBudget<T>(
   budget: ConnectionBudget,

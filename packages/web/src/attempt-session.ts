@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { Browser, BrowserContext, BrowserContextOptions, Page } from 'playwright-core';
 import { EngineError, raceAbort, withinCleanupBudget, type EngineCleanupContext, type OperationContext, type VideoSegment, type ViewportSize } from 'e2e/engine';
 import { attachPersistent, recoveryFailed, targetIdentity, type CdpEndpointResolver, type SessionBinding } from './cdp-recovery.ts';
-import { connectionAbort, withConnectionBudget, type ConnectionBudget } from './operation-budget.ts';
+import { connectionAbort, withConnectionBudget, withOperationDeadline, type ConnectionBudget } from './operation-budget.ts';
 import { RefRegistry } from './refs.ts';
 import type { LeaseRecording } from './provider.ts';
 import { ProviderVideo } from './provider-video.ts';
@@ -125,7 +125,7 @@ export class AttemptSession {
       }));
   }
 
-  /** Shares one reconnect, then dispatches once with the time that remains. */
+  /** Shares one reconnect, then dispatches once with the time that remains, bounded by the operation's budget. */
   async run<T>(operation: OperationContext, label: string, work: (operation: OperationContext) => Promise<T>): Promise<T> {
     const signal = AbortSignal.any([operation.signal, this.lifetime.signal]);
     if (signal.aborted) throw connectionAbort(signal, label);
@@ -134,20 +134,20 @@ export class AttemptSession {
     const reconnect = (
       this.state.kind === 'pending' || (this.state.kind === 'ready' && !this.state.binding.browser.isConnected())
     );
-    if (persistent === undefined || !reconnect) return raceAbort(() => work({ ...operation, signal }), signal, label);
-    return withConnectionBudget({ ...operation, signal }, label, async (remaining) => {
-      if (this.state.kind === 'pending') {
-        await raceAbort(this.state.work, remaining().signal, 'CDP recovery');
-      } else {
-        const previous = this.current();
-        this.observed = false;
-        await this.transition(previous, remaining(), async () => {
-          await this.video.pageClosing();
-          return attachPersistent(persistent.reconnect, remaining(), previous.identity);
-        }, true);
+    return withOperationDeadline({ signal, timeoutMs: operation.timeoutMs }, label, async (remaining) => {
+      if (persistent !== undefined && reconnect) {
+        if (this.state.kind === 'pending') {
+          await raceAbort(this.state.work, remaining().signal, 'CDP recovery');
+        } else {
+          const previous = this.current();
+          this.observed = false;
+          await this.transition(previous, remaining(), async () => {
+            await this.video.pageClosing();
+            return attachPersistent(persistent.reconnect, remaining(), previous.identity);
+          }, true);
+        }
       }
-      const current = remaining();
-      return raceAbort(() => work({ ...operation, ...current }), current.signal, label);
+      return work({ ...operation, ...remaining() });
     });
   }
 

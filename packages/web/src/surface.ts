@@ -48,7 +48,7 @@ import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts
 import { ROOT_NODE_ID, toSemanticNode } from './observation.ts';
 import { captureObservation } from './observation-capture.ts';
 import { maskOptions, secureFieldMasks } from './observe.ts';
-import { connectionAbort } from './operation-budget.ts';
+import { connectionAbort, withOperationDeadline } from './operation-budget.ts';
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from './closed-shadow.ts';
 import { ConfiguredInitScripts, type WebInitScript } from './init-scripts.ts';
 import { SECURE_FIELD_SELECTOR, type RawNodeData } from './read-node.ts';
@@ -611,7 +611,8 @@ export class PlaywrightSurface {
    * The single entry of every operation: rethrows an error latched on an
    * unawaited path, refuses a cancelled operation, races `fn` against the
    * operation signal so an abort mid-call surfaces as `CANCELLED` instead of
-   * waiting out Playwright, and translates raw errors at the contract
+   * waiting out Playwright, bounds it by the operation's budget so a call a
+   * hung page never answers is `OPERATION_TIMEOUT`, and translates raw errors at the contract
    * boundary. `translate` overrides the default translation for operations
    * with a documented retryable failure mode.
    */
@@ -624,7 +625,7 @@ export class PlaywrightSurface {
     this.latch.throwPending();
     try {
       return this.session === undefined
-        ? await raceAbort(() => fn(operation), operation.signal, label)
+        ? await withOperationDeadline(operation, label, (remaining) => fn({ ...operation, ...remaining() }))
         : await this.session.run(operation, label, fn);
     } catch (cause) {
       throw translate(cause, label);
