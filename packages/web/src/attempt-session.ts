@@ -139,21 +139,25 @@ export class AttemptSession {
     const reconnect = (
       this.state.kind === 'pending' || (this.state.kind === 'ready' && !this.state.binding.browser.isConnected())
     );
-    return withOperationDeadline({ signal, timeoutMs: operation.timeoutMs }, label, async (remaining) => {
-      if (persistent !== undefined && reconnect) {
+    const endsAt = Date.now() + operation.timeoutMs;
+    // Recovery is the engine's own work, so the deadline bounds it whatever the operation runs.
+    if (persistent !== undefined && reconnect) {
+      await withConnectionBudget({ signal, timeoutMs: operation.timeoutMs }, label, async (remaining) => {
         if (this.state.kind === 'pending') {
           await raceAbort(this.state.work, remaining().signal, 'CDP recovery');
-        } else {
-          const previous = this.current();
-          this.observed = false;
-          await this.transition(previous, remaining(), async () => {
-            await this.video.pageClosing();
-            return attachPersistent(persistent.reconnect, remaining(), previous.identity);
-          }, true);
+          return;
         }
-      }
-      return work({ ...operation, ...remaining() });
-    }, bound);
+        const previous = this.current();
+        this.observed = false;
+        await this.transition(previous, remaining(), async () => {
+          await this.video.pageClosing();
+          return attachPersistent(persistent.reconnect, remaining(), previous.identity);
+        }, true);
+      });
+    }
+    const left = endsAt - Date.now();
+    if (left <= 0) throw new EngineError('OPERATION_TIMEOUT', `${label} timed out`, { retryable: false });
+    return withOperationDeadline({ signal, timeoutMs: left }, label, (remaining) => work({ ...operation, ...remaining() }), bound);
   }
 
   /** Owns a candidate through configuration and recording setup, then publishes it once. */

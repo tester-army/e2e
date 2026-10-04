@@ -926,7 +926,9 @@ export const RETRYABLE_ENGINE_ERROR_CODES: ReadonlySet<EngineErrorCode> = new Se
 An `OPERATION_TIMEOUT` on a locate or read that started with under 100 ms of
 a waiting call's deadline left, after one that completed, ends the wait
 instead: an action's or `waitFor`'s `LOCATOR_NOT_FOUND`, or an assertion's
-`ASSERTION_FAILED`, with the timeout as its cause.
+`ASSERTION_FAILED`, with the timeout as its cause. A negated assertion passes
+there if its negation had held long enough when that read began, as
+`pollCondition` below describes.
 
 An `EngineError` a contributed fixture method throws is mapped by the table
 above, so a fixture over a session that ended reports `APP_NOT_OPEN` the way
