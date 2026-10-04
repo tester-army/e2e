@@ -969,6 +969,11 @@ describe('web engine lifecycle', () => {
     };
     const settle = async (): Promise<void> => {
       const page = surfaceOf(engine)!.page();
+      // Forget what earlier segments painted, so the wait below is on a frame this
+      // one received. A page that painted once would otherwise satisfy every later
+      // segment from that first frame, and a segment that never painted would be
+      // recorded as though it had.
+      painted.delete(page);
       // A static page may not repaint after navigation overtakes its first screencast frame.
       await page.screenshot();
       await expect.poll(() => painted.has(page), { timeout: 5_000, message: 'the recorder received a painted frame' }).toBe(true);
@@ -1040,7 +1045,62 @@ describe('web engine lifecycle', () => {
         }
       });
     } finally {
-      for (const restore of restores) restore();
+      // Restore and forget, so a spy from a failed test cannot reach the next one.
+      while (restores.length > 0) restores.pop()?.();
+      rmSync(videoDir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not let a frame from an earlier segment pass for the one being closed', async () => {
+    // The observer remembers every page it saw paint, so a wait that does not forget is
+    // satisfied by the first frame that page ever delivered. A segment that painted
+    // nothing would then be recorded as though it had, which is the failure the video
+    // assertions above guard against on the pages they cannot see the timing of.
+    const engine = web();
+    const videoDir = mkdtempSync(path.join(tmpdir(), 'e2e-video-'));
+    const painted = new WeakSet<Page>();
+    const restores: (() => void)[] = [];
+    /** Observe the frames the recorder writes, and drop every one after the first. */
+    const watchOnce = (page: Page): void => {
+      const start = page.screencast.start.bind(page.screencast);
+      const spy = vi.spyOn(page.screencast, 'start').mockImplementation((options) => start({
+        ...options,
+        onFrame: async (frame) => {
+          if (delivered === 0) {
+            await options?.onFrame?.(frame);
+            painted.add(page);
+          }
+          delivered += 1;
+        },
+      }));
+      restores.push(() => spy.mockRestore());
+    };
+    let delivered = 0;
+    const settle = async (timeout: number): Promise<void> => {
+      const page = surfaceOf(engine)!.page();
+      painted.delete(page);
+      await page.screenshot();
+      await expect.poll(() => painted.has(page), { timeout, message: 'the recorder received a painted frame' }).toBe(true);
+    };
+    try {
+      await withAttempt(engine, app, videoDir, 'v-settled', async () => {
+        await engine.session!.open!(`${app.url}/`, operation('v-settled'));
+        const context = surfaceOf(engine)!.context();
+        context.on('page', watchOnce);
+        for (const page of context.pages()) watchOnce(page);
+        await engine.artifacts!.startVideo!(operation('v-settled'));
+        await surfaceOf(engine)!.page().screenshot();
+        await expect.poll(() => delivered > 0, { timeout: 5_000, message: 'the recorder received a frame' }).toBe(true);
+        // Close the segment that did paint, then open another on the same page and try
+        // to close that one too. Nothing paints after the first frame, so the wait has
+        // to run out rather than pass on the memory of the earlier segment.
+        await engine.artifacts!.stopVideo!(operation('v-settled'));
+        await engine.artifacts!.startVideo!(operation('v-settled-b'));
+        await expect(settle(300)).rejects.toThrow(/painted frame/);
+        await engine.artifacts!.stopVideo!(operation('v-settled-b'));
+      });
+    } finally {
+      while (restores.length > 0) restores.pop()?.();
       rmSync(videoDir, { recursive: true, force: true });
     }
   });
