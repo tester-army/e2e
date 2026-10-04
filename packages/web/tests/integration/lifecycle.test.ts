@@ -261,8 +261,8 @@ describe('web engine lifecycle', () => {
     const engine = web();
 
     /** Runs one attempt on the shared engine and always ends it. */
-    async function inAttempt(attemptId: string, body: () => Promise<void>): Promise<void> {
-      await engine.startAttempt!(attempt(attemptId, artifactsDir));
+    async function inAttempt(attemptId: string, body: () => Promise<void>, dir = artifactsDir): Promise<void> {
+      await engine.startAttempt!(attempt(attemptId, dir));
       try {
         await body();
       } finally {
@@ -279,8 +279,7 @@ describe('web engine lifecycle', () => {
     });
 
     it('observes a semantic tree and locates by display value in one round trip', async () => {
-      try {
-        await engine.startAttempt!({ attemptId: 'd1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+      await inAttempt('d1', async () => {
         await engine.session!.open!(`${app.url}/form`, operation('d1'));
 
         const snapshot = await engine.observe!(operation('d1'));
@@ -309,14 +308,11 @@ describe('web engine lifecycle', () => {
           operation('d1'),
         );
         expect(gammas.map((node) => node.name)).toEqual(['Second']);
-      } finally {
-        await engine.endAttempt!(cleanup());
-      }
+      });
     });
 
     it('reports pressed and heading level, queries by them, and performs pointer actions on nodes and at points', async () => {
-      try {
-        await engine.startAttempt!({ attemptId: 'pointer1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+      await inAttempt('pointer1', async () => {
         const op = () => operation('pointer1');
         await engine.session!.open!(`${app.url}/pointer`, op());
 
@@ -375,14 +371,11 @@ describe('web engine lifecycle', () => {
         expect(lines.some((line) => line.startsWith('wheel:210,410:') && Number(line.split(':')[2]) > 0)).toBe(true);
         expect(lines).toContain('mousedown:221,420');
         expect(lines).toContain('mouseup:321,461');
-      } finally {
-        await engine.endAttempt!(cleanup());
-      }
+      });
     });
 
     it('keeps tree attributes bounded while node reads expose every attribute', async () => {
-      try {
-        await engine.startAttempt!({ attemptId: 'attributes1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+      await inAttempt('attributes1', async () => {
         await engine.session!.open!(`${app.url}/`, operation('attributes1'));
 
         const snapshot = await engine.observe!(operation('attributes1'));
@@ -405,9 +398,7 @@ describe('web engine lifecycle', () => {
           operation('attributes1'),
         );
         expect(readonly?.attributes?.readonly).toBe('');
-      } finally {
-        await engine.endAttempt!(cleanup());
-      }
+      });
     });
 
     it('selects positionally among display-value matches and keeps composition honest', async () => {
@@ -416,8 +407,7 @@ describe('web engine lifecycle', () => {
         query: { kind: 'displayValue', value: { kind: 'string', value: 'shared', exact: true } },
       };
       const names = (nodes: readonly SemanticNode[]) => nodes.map((node) => node.name);
-      try {
-        await engine.startAttempt!({ attemptId: 'dv1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+      await inAttempt('dv1', async () => {
         await engine.session!.open!(`${app.url}/values`, operation('dv1'));
 
         // Positions are relative to the value-filtered matches, not to every
@@ -505,9 +495,7 @@ describe('web engine lifecycle', () => {
         await expect(
           engine.locate!({ kind: 'filter', source: byRole('main'), has: shared }, operation('dv1')),
         ).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
-      } finally {
-        await engine.endAttempt!(cleanup());
-      }
+      });
     });
 
     it('excludes hidden twins from a visible query, for every query kind and under an index', async () => {
@@ -519,8 +507,7 @@ describe('web engine lifecycle', () => {
         kind: 'query',
         query: { kind, value: { kind: 'string', value, exact: true }, ...(visible ? { visible: true } : {}) },
       });
-      try {
-        await engine.startAttempt!({ attemptId: 'v1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+      await inAttempt('v1', async () => {
         await engine.session!.open!(`${app.url}/twins`, operation('v1'));
 
         const twins: Array<[Parameters<typeof query>[0], string]> = [
@@ -602,9 +589,7 @@ describe('web engine lifecycle', () => {
         await engine.perform!(search!.ref, { kind: 'fill', value: 'launch', sensitive: false }, operation('v1'));
         const filled = await engine.locate!(query('displayValue', 'launch', false), operation('v1'));
         expect(filled.map((node) => node.states?.hidden)).toEqual([undefined]);
-      } finally {
-        await engine.endAttempt!(cleanup());
-      }
+      });
     });
 
     it('applies visible before an index, filter, or scope, so a hidden twin is never selected', async () => {
@@ -613,8 +598,7 @@ describe('web engine lifecycle', () => {
         query: { kind: 'text', value: { kind: 'string', value, exact: true }, ...(visible ? { visible: true } : {}) },
       });
       const hidden = (nodes: readonly SemanticNode[]) => nodes.map((node) => node.states?.hidden);
-      try {
-        await engine.startAttempt!({ attemptId: 'v2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+      await inAttempt('v2', async () => {
         await engine.session!.open!(`${app.url}/twins`, operation('v2'));
         const locate = (expression: LocatorExpression) => engine.locate!(expression, operation('v2'));
 
@@ -654,9 +638,7 @@ describe('web engine lifecycle', () => {
         const panels = await locate(panel(true));
         expect(hidden(panels)).toEqual([undefined]);
         await engine.perform!(scoped[0]!.ref, { kind: 'tap' }, operation('v2'));
-      } finally {
-        await engine.endAttempt!(cleanup());
-      }
+      });
     });
 
     it('takes a display-value position among shown matches when the query is visible', async () => {
@@ -665,8 +647,7 @@ describe('web engine lifecycle', () => {
         query: { kind: 'displayValue', value: { kind: 'string', value: 'alpha', exact: true }, ...(visible ? { visible: true } : {}) },
       });
       const hidden = (nodes: readonly SemanticNode[]) => nodes.map((node) => node.states?.hidden);
-      try {
-        await engine.startAttempt!({ attemptId: 'dv2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+      await inAttempt('dv2', async () => {
         await engine.session!.open!(`${app.url}/twins`, operation('dv2'));
         const locate = (expression: LocatorExpression) => engine.locate!(expression, operation('dv2'));
 
@@ -697,9 +678,7 @@ describe('web engine lifecycle', () => {
         expect(
           hidden(await locate({ kind: 'query', query: { kind: 'displayValue', value: { kind: 'string', value: 'launch', exact: true } } })),
         ).toEqual([undefined]);
-      } finally {
-        await engine.endAttempt!(cleanup());
-      }
+      });
     });
 
     it('keeps a node id across observations while its element lives, and reports it stale once it is gone', async () => {
@@ -800,26 +779,26 @@ describe('web engine lifecycle', () => {
     it('masks a password inside a closed shadow root in artifact screenshots', async () => {
       const shotDir = mkdtempSync(path.join(tmpdir(), 'e2e-shot-'));
       try {
-        await engine.startAttempt!(attempt('cm1', shotDir));
-        await engine.session!.open!(`${app.url}/closed-login`, operation('cm1'));
-        const snapshot = await engine.observe!(operation('cm1'));
-        const nodes = [...walk(snapshot.root)];
-        const user = nodes.find((node) => node.role === 'textbox' && node.name === 'User');
-        const password = nodes.find((node) => node.states?.secure === true);
-        expect(user?.rect).toBeDefined();
-        expect(password?.rect).toBeDefined();
-        await engine.perform!(password!.ref, { kind: 'fill', value: 'hunter2', sensitive: true }, operation('cm1'));
+        await inAttempt('cm1', async () => {
+          await engine.session!.open!(`${app.url}/closed-login`, operation('cm1'));
+          const snapshot = await engine.observe!(operation('cm1'));
+          const nodes = [...walk(snapshot.root)];
+          const user = nodes.find((node) => node.role === 'textbox' && node.name === 'User');
+          const password = nodes.find((node) => node.states?.secure === true);
+          expect(user?.rect).toBeDefined();
+          expect(password?.rect).toBeDefined();
+          await engine.perform!(password!.ref, { kind: 'fill', value: 'hunter2', sensitive: true }, operation('cm1'));
 
-        const relative = await engine.artifacts!.screenshot('closed', operation('cm1'));
-        const image = decodePng(new Uint8Array(readFileSync(path.join(shotDir, relative))));
-        const centre = (rect: NonNullable<SemanticNode['rect']>) =>
-          [Math.round(rect.x + rect.width / 2), Math.round(rect.y + rect.height / 2)] as const;
-        const [px, py] = centre(password!.rect!);
-        const [ux, uy] = centre(user!.rect!);
-        expect(image.pixelAt(px, py).slice(0, 3)).toEqual([0, 0, 0]);
-        expect(image.pixelAt(ux, uy).slice(0, 3)).toEqual([255, 255, 255]);
+          const relative = await engine.artifacts!.screenshot('closed', operation('cm1'));
+          const image = decodePng(new Uint8Array(readFileSync(path.join(shotDir, relative))));
+          const centre = (rect: NonNullable<SemanticNode['rect']>) =>
+            [Math.round(rect.x + rect.width / 2), Math.round(rect.y + rect.height / 2)] as const;
+          const [px, py] = centre(password!.rect!);
+          const [ux, uy] = centre(user!.rect!);
+          expect(image.pixelAt(px, py).slice(0, 3)).toEqual([0, 0, 0]);
+          expect(image.pixelAt(ux, uy).slice(0, 3)).toEqual([255, 255, 255]);
+        }, shotDir);
       } finally {
-        await engine.endAttempt!(cleanup());
         rmSync(shotDir, { recursive: true, force: true });
       }
     });
@@ -829,26 +808,26 @@ describe('web engine lifecycle', () => {
       const field = 'position:absolute;left:20px;width:160px;height:40px;border:0;padding:0;background:#f00;color:#f00';
       const frame = `<body style="margin:0"><input type="password" value="hunter2" style="${field};top:20px"><input value="plain" style="${field};top:100px"></body>`;
       try {
-        await engine.startAttempt!(attempt('fm1', shotDir));
-        await engine.session!.open!(`${app.url}/`, operation('fm1'));
-        const page = surfaceOf(engine)!.page();
-        await page.setContent(
-          `<body style="margin:0"><iframe srcdoc='${frame}' style="position:absolute;left:0;top:0;width:400px;height:200px;border:0"></iframe></body>`,
-        );
-        await page.frameLocator('iframe').locator('input[type=password]').waitFor();
+        await inAttempt('fm1', async () => {
+          await engine.session!.open!(`${app.url}/`, operation('fm1'));
+          const page = surfaceOf(engine)!.page();
+          await page.setContent(
+            `<body style="margin:0"><iframe srcdoc='${frame}' style="position:absolute;left:0;top:0;width:400px;height:200px;border:0"></iframe></body>`,
+          );
+          await page.frameLocator('iframe').locator('input[type=password]').waitFor();
 
-        const relative = await engine.artifacts!.screenshot('framed', operation('fm1'));
-        const shot = decodePng(new Uint8Array(readFileSync(path.join(shotDir, relative))));
-        expect(shot.pixelAt(100, 40).slice(0, 3)).toEqual([0, 0, 0]);
-        expect(shot.pixelAt(100, 120).slice(0, 3)).toEqual([255, 0, 0]);
+          const relative = await engine.artifacts!.screenshot('framed', operation('fm1'));
+          const shot = decodePng(new Uint8Array(readFileSync(path.join(shotDir, relative))));
+          expect(shot.pixelAt(100, 40).slice(0, 3)).toEqual([0, 0, 0]);
+          expect(shot.pixelAt(100, 120).slice(0, 3)).toEqual([255, 0, 0]);
 
-        const observed = await engine.observe!(operation('fm1'), { pixels: true });
-        expect(observed.maskedRegionCount).toBeGreaterThanOrEqual(1);
-        const pixels = decodePng(observed.pixels!.data);
-        expect(pixels.pixelAt(100, 40).slice(0, 3)).toEqual([0, 0, 0]);
-        expect(pixels.pixelAt(100, 120).slice(0, 3)).toEqual([255, 0, 0]);
+          const observed = await engine.observe!(operation('fm1'), { pixels: true });
+          expect(observed.maskedRegionCount).toBeGreaterThanOrEqual(1);
+          const pixels = decodePng(observed.pixels!.data);
+          expect(pixels.pixelAt(100, 40).slice(0, 3)).toEqual([0, 0, 0]);
+          expect(pixels.pixelAt(100, 120).slice(0, 3)).toEqual([255, 0, 0]);
+        }, shotDir);
       } finally {
-        await engine.endAttempt!(cleanup());
         rmSync(shotDir, { recursive: true, force: true });
       }
     });

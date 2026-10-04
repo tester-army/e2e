@@ -46,6 +46,7 @@ describe('browser.evaluate error boundaries', () => {
     ['() => { throw "cart is empty"; }', 'cart is empty'],
     ['() => { throw { message: "cart is empty" }; }', 'cart is empty'],
     ['() => { throw Object.create(null); }', 'Page evaluation threw an unprintable value'],
+    ['() => { throw null; }', 'null'],
     ['() => { throw new Error("page.evaluate: Target closed"); }', 'page.evaluate: Target closed'],
   ])('preserves the message of a page exception: %s', async (source, message) => {
     await expect(browser.evaluate(source)).rejects.toMatchObject({ code: 'EVALUATE_FAILED', message });

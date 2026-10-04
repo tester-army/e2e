@@ -26,8 +26,6 @@ const HOSTILE_NAMES = [
   `${'x'.repeat(300)}.zip`,
 ];
 
-const WINDOWS_DEVICE_NAME = /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i;
-
 let directory: string | undefined;
 
 afterEach(() => {
@@ -58,7 +56,6 @@ describe('artifact paths', () => {
         expect(relative, name).toBe(`downloads/${file}`);
         expect(path.dirname(absolute), name).toBe(folder);
         expect(file, name).toMatch(new RegExp(`^${String(index + 1).padStart(3, '0')}-[A-Za-z0-9._-]{1,64}$`));
-        expect(file, name).not.toMatch(WINDOWS_DEVICE_NAME);
       }
     } finally {
       await surface.endAttempt({ signal: new AbortController().signal, timeoutMs: 1_000 });

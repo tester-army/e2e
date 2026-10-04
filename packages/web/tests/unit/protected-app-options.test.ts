@@ -90,11 +90,15 @@ describe('web({ userAgent })', () => {
 });
 
 describe('web({ locale, timezoneId })', () => {
+  it('accepts a time zone alias', () => {
+    expect(() => web({ timezoneId: 'US/Eastern' })).not.toThrow();
+  });
+
   it('rejects a value that is no language tag or time zone', () => {
     for (const locale of ['', 'de_DE', 'und']) {
       expect(() => web({ locale })).toThrow(expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringMatching(/BCP 47/) }));
     }
-    for (const timezoneId of ['', 'Mars/Olympus_Mons', 'utc']) {
+    for (const timezoneId of ['', 'Mars/Olympus_Mons', '+01:00', 'utc']) {
       expect(() => web({ timezoneId })).toThrow(expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringMatching(/IANA time zone/) }));
     }
   });

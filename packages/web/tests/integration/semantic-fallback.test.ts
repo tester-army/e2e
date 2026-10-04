@@ -34,6 +34,7 @@ describe('masked fallback after a stalled semantic reader', () => {
         const started = Date.now();
         const fallback = await engine.observe!(operation, { pixels: true, pixelFallback: true });
         expect(Date.now() - started).toBeGreaterThan(1_250);
+        expect(Date.now() - started).toBeLessThan(operation.timeoutMs);
         expect(fallback.treeUnavailable).toBe(true);
         expect(fallback.root).toEqual({ ref: { id: old.root.ref.id, revision: '' } });
         expect(fallback.maskedRegionCount).toBeGreaterThanOrEqual(1);
