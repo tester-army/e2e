@@ -119,8 +119,8 @@ interface TargetState {
 /** The attempts of one pair heard ahead of its result. */
 interface PairAttempts {
   readonly finished: AttemptRecord[];
-  /** An attempt started and has not finished: a crash now is that attempt's. */
-  running: boolean;
+  /** The index of the attempt that started and has not finished: a crash now is that attempt's. */
+  running: number | undefined;
 }
 
 /** The result of a pair from the attempts it finished, with the verdict they reach. */
@@ -232,7 +232,7 @@ class SchedulerWorker {
   pairAttempts(key: string): PairAttempts {
     let attempts = this.attempts.get(key);
     if (attempts === undefined) {
-      attempts = { finished: [], running: false };
+      attempts = { finished: [], running: undefined };
       this.attempts.set(key, attempts);
     }
     return attempts;
@@ -672,13 +672,13 @@ class Scheduler {
         break;
       }
       case 'attempt-start': {
-        worker.pairAttempts(pairKey(message.testId, message.agent, message.repeat)).running = true;
+        worker.pairAttempts(pairKey(message.testId, message.agent, message.repeat)).running = message.index;
         break;
       }
       case 'attempt': {
         const attempts = worker.pairAttempts(pairKey(message.testId, message.agent, message.repeat));
         attempts.finished.push(message.attempt);
-        attempts.running = false;
+        attempts.running = undefined;
         break;
       }
       case 'serial-member': {
@@ -830,7 +830,7 @@ class Scheduler {
           continue;
         }
       }
-      const { finished, running } = worker.attempts.get(key) ?? { finished: [], running: false };
+      const { finished, running } = worker.attempts.get(key) ?? { finished: [], running: undefined };
       if (interrupted) {
         this.report(
           finished.length === 0
@@ -855,7 +855,7 @@ class Scheduler {
         continue;
       }
       const last = finished.at(-1);
-      if (last !== undefined && !running) {
+      if (last !== undefined && running === undefined) {
         this.report(
           finishedResult(pair, [
             ...finished.slice(0, -1),
@@ -872,7 +872,7 @@ class Scheduler {
             ...finished,
             {
               id: uuidv7(),
-              index: finished.length,
+              index: running ?? finished.length,
               status: 'failed',
               startedAt: timestamp(),
               durationMs: 0,

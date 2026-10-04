@@ -401,6 +401,39 @@ test('always fails', { retries: 1 }, async () => {
   );
 
   it(
+    'charges a crash in a retry beforeAll to the retry, not to the attempt before it',
+    async () => {
+      const marker = path.join(mkdtempSync(path.join(tmpdir(), 'e2e-retry-hook-crash-')), 'failed-once');
+      const file = `import { existsSync, writeFileSync } from 'node:fs';
+import { test } from 'e2e';
+
+test.beforeAll(() => {
+  if (existsSync(${JSON.stringify(marker)})) process.exit(7);
+});
+
+test('fails once', { retries: 1 }, async () => {
+  writeFileSync(${JSON.stringify(marker)}, '');
+  throw new Error('first attempt fails');
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/retry-hook-crash.e2e.ts': file },
+        { appUrl: app.url, configSource: workerConfigSource(1) },
+      );
+      const result = resultByTitle(outcome, 'fails once');
+      expect(result.status).toBe('failed');
+      expect(result.attempts.map((attempt) => [attempt.index, attempt.error?.code, attempt.secondaryErrors.length])).toEqual([
+        [0, 'ERROR', 0],
+        [1, 'WORKER_CRASH', 0],
+      ]);
+      expect(outcome.exitCode).toBe(3);
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
     'fails the first member when a serial retry crashes the worker before any member runs',
     async () => {
       const marker = path.join(mkdtempSync(path.join(tmpdir(), 'e2e-serial-retry-hook-crash-')), 'failed-once');

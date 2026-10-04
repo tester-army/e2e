@@ -65,7 +65,7 @@ import type { SetupFn } from '../types.ts';
 export interface ExecutionEvents {
   onResult?(result: ResultRecord): void;
   onSerialGroup?(group: SerialGroupRecord): void;
-  /** An attempt of an ordinary or setup pair is about to run its body. */
+  /** An attempt of an ordinary or setup pair begins, its realm and `beforeAll` hooks included. */
   onAttemptStart?(pair: TestTargetPair, attemptIndex: number): void;
   /** One finished attempt of an ordinary or setup pair, ahead of the pair's result. */
   onAttempt?(pair: TestTargetPair, attempt: AttemptRecord): void;
@@ -442,6 +442,7 @@ export class TargetExecutor implements SerialHost {
       pair.options.retries + 1,
       this.interruptSignal,
       async (attemptIndex) => {
+        this.options.events?.onAttemptStart?.(pair, attemptIndex);
         if (realm === null) realm = await this.realms.create(file);
         const registered = findRegistered(realm, pair.test);
         if (registered === undefined) {
@@ -452,7 +453,6 @@ export class TargetExecutor implements SerialHost {
         }
         hookFailure = await this.realms.enterScopes(realm, registered);
         if (hookFailure !== undefined) return undefined;
-        this.options.events?.onAttemptStart?.(pair, attemptIndex);
         const attempt = await this.runAttempt(pair, registered, realm, attemptIndex, {
           kind: 'ordinary',
         });
@@ -522,6 +522,7 @@ export class TargetExecutor implements SerialHost {
       pair.options.retries + 1,
       this.interruptSignal,
       async (attemptIndex) => {
+        this.options.events?.onAttemptStart?.(pair, attemptIndex);
         const realm =
           attemptIndex === 0 && freshRegistration !== undefined
             ? this.realms.adopt(freshRegistration, file)
@@ -537,7 +538,6 @@ export class TargetExecutor implements SerialHost {
           return undefined;
         }
         const staging = new SessionStaging(pair.test.sessions);
-        this.options.events?.onAttemptStart?.(pair, attemptIndex);
         const attempt = await this.runAttempt(pair, registered, realm, attemptIndex, {
           kind: 'setup',
           staging,

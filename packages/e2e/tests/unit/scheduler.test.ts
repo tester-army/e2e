@@ -145,6 +145,8 @@ interface FakeBehaviour {
   readonly hangOn?: readonly string[];
   /** Attempts the unit's first pair finishes before the worker hangs: a test caught between attempts. */
   readonly attemptsBeforeHang?: readonly AttemptRecord[];
+  /** The hung pair starts its next attempt after `attemptsBeforeHang`, and the worker exits on its own once interrupted. */
+  readonly exitDuringNextAttemptOnInterrupt?: boolean;
   /** Serial group attempts the unit's pairs (one group) finish before the worker hangs. */
   readonly serialRunsBeforeHang?: readonly SerialAttemptRun[];
   /** Workers ignore `terminate` and have to be killed. */
@@ -251,6 +253,10 @@ class FakeRunner implements UnitRunner {
     if (this.exited) return;
     if (message.type !== 'run-unit') this.fleet.controlMessages.push(message.type);
     if (message.type === 'interrupt') this.fleet.interruptSkips.push(message.skip);
+    if (message.type === 'interrupt' && this.behaviour.exitDuringNextAttemptOnInterrupt === true) {
+      setTimeout(() => this.end('code 7, signal null'), 0);
+      return;
+    }
     if (message.type === 'shutdown') {
       setTimeout(() => this.end('shut down'), 0);
       return;
@@ -273,13 +279,15 @@ class FakeRunner implements UnitRunner {
         this.events.onMessage({ type: 'serial-attempt', groupId, run: groupRun });
       }
       const attempts = this.behaviour.attemptsBeforeHang ?? [];
-      if (attempts.length > 0 && first !== undefined) {
+      const nextAttempt = this.behaviour.exitDuringNextAttemptOnInterrupt === true;
+      if ((attempts.length > 0 || nextAttempt) && first !== undefined) {
         const pair = { testId: first.test.id, agent: first.agent, repeat: first.repeat };
         this.events.onMessage({ type: 'pair-start', ...pair, title: first.test.id, file: first.test.file, serialId: undefined });
         for (const attempt of attempts) {
           this.events.onMessage({ type: 'attempt-start', ...pair, index: attempt.index });
           this.events.onMessage({ type: 'attempt', ...pair, attempt });
         }
+        if (nextAttempt) this.events.onMessage({ type: 'attempt-start', ...pair, index: attempts.length });
       }
       return;
     }
@@ -870,6 +878,34 @@ describe('scheduler fault handling', () => {
     expect(collected.serialGroups[0]!.status).toBe(verdict);
     expect(collected.serialGroups[0]!.attempts).toEqual(runs.map((entry) => entry.record));
     expect(collected.results.map((result) => result.status)).toEqual(results);
+  });
+
+  it('a worker that exits on its own during the interrupt grace crashes the test it was running', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = [makePair(makeTest('tests/a.e2e.ts', 'a'), target)];
+    const fleet = new FakeFleet({
+      hangOn: ['file::web::tests/a.e2e.ts'],
+      attemptsBeforeHang: [FAILED_ATTEMPT],
+      exitDuringNextAttemptOnInterrupt: true,
+    });
+    const interrupt = new AbortController();
+    const timer = setTimeout(() => interrupt.abort(), 20);
+
+    const collected = await run(
+      makeSelection([{ target, pairs }]),
+      makeCollection(['tests/a.e2e.ts'], pairs),
+      fleet,
+      { workers: 1, interruptSignal: interrupt.signal, interruptGraceMs: 30_000 },
+    );
+    clearTimeout(timer);
+
+    expect(collected.runErrors.map((runError) => runError.error.code)).toEqual(['WORKER_EXIT']);
+    expect(collected.results).toHaveLength(1);
+    expect(collected.results[0]!.status).toBe('failed');
+    expect(collected.results[0]!.attempts.map((attempt) => [attempt.index, attempt.error?.code])).toEqual([
+      [0, FAILED_ATTEMPT.error!.code],
+      [1, 'WORKER_CRASH'],
+    ]);
   });
 
   it('kills a worker that ignores a forced interrupt once the force budget is spent', async () => {

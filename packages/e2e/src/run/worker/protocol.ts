@@ -192,10 +192,10 @@ export interface SerialGroupMessage {
 }
 
 /**
- * An attempt of an ordinary or setup pair is about to run its body. With
- * `attempt`, it tells a crash during an attempt from one between attempts
- * (an `afterAll` after the last one): only the first is charged a new
- * attempt.
+ * An attempt of an ordinary or setup pair begins, its realm and `beforeAll`
+ * hooks included. With `attempt`, it tells a crash during an attempt from
+ * one between attempts (an `afterAll` after the last one): only the first
+ * is charged a new attempt, with this index.
  */
 export interface AttemptStartMessage {
   readonly type: 'attempt-start';
