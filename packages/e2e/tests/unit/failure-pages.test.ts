@@ -27,7 +27,7 @@ function project(): string {
 const ENTRY = 'e'.repeat(64);
 
 const failing = reportResult({
-  id: '1a2b3c4d5e6f',
+  id: '1a2b3c4d5e6f7a8b9c0d',
   file: 'tests/checkout.e2e.ts',
   titlePath: ['checkout', 'applies the coupon'],
   status: 'failed',
@@ -71,9 +71,9 @@ describe('writeFailurePages', () => {
     writeFileSync(path.join(dir, 'stale.md'), 'old');
     const document = reportDocument({ status: 'failed', results: [passing, failing, interrupted] });
     const pages = await writeFailurePages(document, { dir, projectRoot: root, artifactsRoot: path.join(root, '.e2e', 'artifacts'), cacheDir: path.join(root, '.e2e', 'cache') });
-    expect(readdirSync(dir)).toEqual(['checkout-applies-the-coupon-1a2b3c4d.md']);
-    expect([...pages]).toEqual([[failing.id, '.e2e/failures/checkout-applies-the-coupon-1a2b3c4d.md']]);
-    const text = readFileSync(path.join(dir, 'checkout-applies-the-coupon-1a2b3c4d.md'), 'utf8');
+    expect(readdirSync(dir)).toEqual(['checkout-applies-the-coupon-1a2b3c4d5e6f7a8b.md']);
+    expect([...pages]).toEqual([[failing.id, '.e2e/failures/checkout-applies-the-coupon-1a2b3c4d5e6f7a8b.md']]);
+    const text = readFileSync(path.join(dir, 'checkout-applies-the-coupon-1a2b3c4d5e6f7a8b.md'), 'utf8');
     expect(text).toContain(`(\`.e2e/cache/${ENTRY}.json\`)`);
     expect(text).toContain('## Also failed');
     expect(text).toContain('**ENGINE_FAILURE** in cleanup: the browser closed early');
@@ -103,11 +103,11 @@ function stepLines(text: string, index: number): string[] {
 describe('failure page names', () => {
   it('read as the file and the title, keep two results with the same words apart by their id, and bound a long file name', async () => {
     const named = (id: string, file: string) => reportResult({ id, file, titlePath: ['signs up', 'with Google'], status: 'failed', attempts: [reportAttempt({ status: 'failed' })] });
-    const pages = await pagesOf(named('abcdef0123', 'tests/Sign Up.e2e.ts'), named('0123abcdef', 'tests/sign-up.e2e.ts'), named('99999999aa', `tests/${'very-long-name-'.repeat(20)}.e2e.ts`));
+    const pages = await pagesOf(named('abcdef0123456789ff', 'tests/Sign Up.e2e.ts'), named('0123456789abcdefff', 'tests/sign-up.e2e.ts'), named('99999999aaaaaaaaff', `tests/${'very-long-name-'.repeat(20)}.e2e.ts`));
     expect(pages.map((page) => page.name).toSorted()).toEqual([
-      'sign-up-signs-up-with-google-0123abcd.md',
-      'sign-up-signs-up-with-google-abcdef01.md',
-      `${'very-long-name-'.repeat(3).slice(0, 40)}-signs-up-with-google-99999999.md`,
+      'sign-up-signs-up-with-google-0123456789abcdef.md',
+      'sign-up-signs-up-with-google-abcdef0123456789.md',
+      `${'very-long-name-'.repeat(3).slice(0, 40)}-signs-up-with-google-99999999aaaaaaaa.md`,
     ]);
   });
 });

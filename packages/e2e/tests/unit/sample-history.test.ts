@@ -41,6 +41,15 @@ describe('SampleHistory', () => {
   it('redacts a reading before it is clipped, so no cut leaves the head of a secret', () => {
     const history = new SampleHistory('expect', (text) => text.replaceAll('eyJsecret-token-value', '[secret]'));
     history.add(`value "${'x'.repeat(70)}eyJsecret-token-value"`);
-    expect(history.event('failed').detail).not.toContain('eyJ');
+    const detail = history.event('failed').detail!;
+    expect(detail).toBe(`value "${'x'.repeat(70)}[s…`);
+  });
+
+  it('folds two long readings apart when they differ only past the clip', () => {
+    const history = new SampleHistory('expect', (text) => text);
+    const head = 'y'.repeat(100);
+    history.add(`${head}a`);
+    history.add(`${head}b`);
+    expect(history.event('failed').detail).toMatch(/^y+… -> at \d+ms y+…$/u);
   });
 });

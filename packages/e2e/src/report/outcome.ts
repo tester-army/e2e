@@ -73,7 +73,8 @@ function attemptViews(result: ReportResult, groups: ReadonlyMap<string, ReportSe
       steps: member?.steps ?? [],
       failure: member?.failure,
       artifacts: attempt.artifacts,
-      secondaryErrors: member?.secondaryErrors ?? attempt.secondaryErrors,
+      // The member's own, then the shared session's: its cleanup errors land on the group attempt.
+      secondaryErrors: [...(member?.secondaryErrors ?? []), ...attempt.secondaryErrors],
     };
   });
 }

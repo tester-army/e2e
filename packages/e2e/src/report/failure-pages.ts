@@ -60,7 +60,7 @@ function failurePageName(result: Pick<ReportResult, 'id' | 'file' | 'titlePath'>
     .replaceAll(/[^a-z0-9]+/g, '-')
     .replaceAll(/^-+|-+$/g, '')
     .slice(0, MAX_FILE_SLUG_CHARS);
-  return `${labelSegment(file, result.titlePath.join(' '), result.id.slice(0, 8))}.md`;
+  return `${labelSegment(file, result.titlePath.join(' '), result.id.slice(0, 16))}.md`;
 }
 
 export interface WriteFailurePagesOptions {

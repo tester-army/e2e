@@ -26,7 +26,7 @@ The run summary reports the outcomes:
 
 Misses and hand-offs also include `step.cache.reason`, and `step.cache.detail`
 says where the replay stopped and why (`at action 2 of 3, tap button "Apply":
-...`). `step.cache.entry` is the entry's file name under the cache directory,
+...`). `step.cache.entry` is the entry's key (its file name, `<entry>.json`, in the file store),
 and `step.cache.write`, in the report only, says what became of the recording
 once the attempt ended:
 
@@ -34,8 +34,8 @@ once the attempt ended:
 | --- | --- |
 | `saved` | Recorded for the next run. |
 | `kept` | The entry stays as it is. |
-| `unconfirmed` | Not saved: no check passed after the step. Add an `expect` after it. |
-| `evicted` | The entry was deleted: it replayed into a failure or a repair. |
+| `unconfirmed` | Not saved: no check passed after the step. Follow it with a locator assertion or `agent.assert`. |
+| `evicted` | The entry was deleted: its replay ended in a failure or a repair, or no check confirmed it before the attempt failed. |
 | `no-change` | Nothing recorded: the step changed nothing a replay could check. |
 
 The [failure page](/debugging) shows all of it under the step. `agent.act()`

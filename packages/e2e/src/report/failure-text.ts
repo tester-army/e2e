@@ -328,7 +328,7 @@ function eventLine(event: StepEvent): string {
     default: {
       const what = detail ?? cell(event.name ?? event.kind, MAX_ID_CHARS);
       if (event.status === 'passed') return `${what} (${formatDuration(event.durationMs)})`;
-      return `✗ ${what}${event.code === undefined ? '' : `: **${cell(event.code, 128)}**`}`;
+      return `${event.status === 'cancelled' ? '–' : '✗'} ${what}${event.code === undefined ? '' : `: **${cell(event.code, 128)}**`}`;
     }
   }
 }
@@ -338,10 +338,19 @@ function shortenLoopback(text: string): string {
   return text.replaceAll(/https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(?=\/)/g, '');
 }
 
-/** `, video 0:12`: where the step starts in the attempt's recording. */
-function videoOffset(step: ReportStep, video: ReportArtifact): string {
-  const seconds = Math.max(0, Math.floor((Date.parse(step.startedAt) - Date.parse(video.startedAt!)) / 1000));
-  return `, video ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+/**
+ * `, video 0:12`: where the step starts in the recording that was running
+ * then, the last segment that began before it. An attempt cut into several
+ * segments (a restart opens a new page) names the segment too:
+ * `, video-part2 0:03`. Nothing without a recording.
+ */
+function videoOffset(step: ReportStep, videos: readonly ReportArtifact[]): string {
+  const at = Date.parse(step.startedAt);
+  const video = videos.findLast((candidate) => Date.parse(candidate.startedAt!) <= at) ?? videos[0];
+  if (video === undefined) return '';
+  const seconds = Math.max(0, Math.floor((at - Date.parse(video.startedAt!)) / 1000));
+  const name = videos.length > 1 && video.path !== undefined ? (video.path.split('/').at(-1) ?? 'video').replace(/\.[^.]+$/u, '') : 'video';
+  return `, ${name} ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
 // --- the page ---
@@ -403,13 +412,15 @@ export function renderFailurePage(report: Report1Document, result: ReportResult,
 
   const at = failedStepOf(told.steps);
   if (told.steps.length > 0) {
-    const video = told.artifacts.find((artifact) => artifact.kind === 'video' && artifact.startedAt !== undefined);
+    const videos = told.artifacts
+      .filter((artifact) => artifact.kind === 'video' && artifact.startedAt !== undefined)
+      .toSorted((a, b) => Date.parse(a.startedAt!) - Date.parse(b.startedAt!));
     lines.push('## Steps', '');
     told.steps.forEach((step, index) => {
       const own = step.source.file === 'unknown' ? '' : ` — ${code(`${step.source.file}:${step.source.line}`, MAX_PATH_CHARS)}`;
       const calls = step.metrics === undefined || step.metrics.modelCalls === 0 ? '' : `, ${plural(step.metrics.modelCalls, 'model call')}`;
       const failed = step.status === 'passed' ? '' : ` — **${cell(step.error?.code ?? step.status, 128)}**`;
-      const offset = video === undefined ? '' : videoOffset(step, video);
+      const offset = videoOffset(step, videos);
       const hook = step.phase === undefined ? '' : ` in ${step.phase}`;
       const label = stepLabel(step, MAX_CELL_CHARS);
       lines.push(`${index + 1}. ${STEP_GLYPH[step.status]} ${code(step.api, MAX_ID_CHARS)}${label === '' ? '' : ` ${label}`} (${formatDuration(step.durationMs)}${calls}${offset}${hook})${failed}${own}`);

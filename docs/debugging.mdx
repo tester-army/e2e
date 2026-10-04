@@ -35,8 +35,9 @@ The exit code identifies the failure type:
 
 ## The failure pages
 
-Every run writes a page for each failed or flaky test under `.e2e/failures/`,
-and removes the previous run's pages. Each step lists what it did: the node an
+Every run that reaches its tests writes a page for each failed or flaky test
+under `.e2e/failures/` (`<output>/failures/` when the output is moved), and
+removes the previous run's pages. Each step lists what it did: the node an
 action landed on, the values an assertion read while it waited, the replay
 cache's decision, and what the app logged meanwhile (console errors and
 warnings, uncaught exceptions, failed requests, 4xx and 5xx responses). Then

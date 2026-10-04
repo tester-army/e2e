@@ -27,6 +27,23 @@ describe('StepRecorder.recordAppLog', () => {
     ]);
   });
 
+  it('files an entry made inside a running step under that step, though a later one started since', async () => {
+    const steps = new StepRecorder('attempt');
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const first = steps.run('app', 'app.open', '/', async () => {
+      await held;
+      steps.recordAppLog(ERROR);
+    });
+    const second = steps.run('screen', 'screen.tap', 'Save', async () => undefined);
+    await second;
+    release();
+    await first;
+    const [open, tap] = steps.all();
+    expect(open!.events.map((event) => event.detail)).toEqual(['boom']);
+    expect(tap!.events).toEqual([]);
+  });
+
   it('redacts an entry before cutting it to the report bound, and stops at the per-attempt cap', async () => {
     const steps = new StepRecorder('attempt', { redact: (text) => text.replaceAll('hunter2', '[secret]') });
     await steps.run('app', 'app.open', '/', async () => {
@@ -35,8 +52,7 @@ describe('StepRecorder.recordAppLog', () => {
     });
     const events = steps.all()[0]!.events;
     expect(events).toHaveLength(200);
-    expect(events[0]!.detail).toHaveLength(300);
-    expect(events[0]!.detail).not.toContain('hunter');
+    expect(events[0]!.detail).toBe(`${'x'.repeat(295)}[sec…`);
   });
 });
 

@@ -75,10 +75,10 @@ interface LocatorEngineOptions {
   readonly redact?: (text: string) => string;
 }
 
-/** A resolve that found its one match, and how many rounds it took. */
+/** A resolve that found its one match, and how long it polled for it: 0 when the first round found it. */
 interface Resolved {
   readonly ref: NodeRef;
-  readonly rounds: number;
+  readonly waitedMs: number;
 }
 
 /** Per-attempt locator execution engine. */
@@ -212,7 +212,7 @@ export class LocatorEngine {
     return (await this.resolveCounted(expression, deadline)).ref;
   }
 
-  /** `resolveExactlyOne`, counting the rounds it polled before the match appeared. */
+  /** `resolveExactlyOne`, timing how long it polled before the match appeared. */
   private async resolveCounted(expression: LocatorExpression, deadline: Deadline): Promise<Resolved> {
     const startedMs = Date.now();
     // The wait as it happened: a deadline capped by the test's remaining
@@ -235,7 +235,7 @@ export class LocatorEngine {
       }
       sampled = true;
       const ref = assertSingle(refs, expression);
-      if (ref !== null) return { ref, rounds };
+      if (ref !== null) return { ref, waitedMs: rounds > 1 ? Date.now() - startedMs : 0 };
       if (deadline.expired()) throw notFound();
       await sleep(POLL_INTERVAL_MS, this.signal);
     }
@@ -440,11 +440,26 @@ export class LocatorEngine {
 
   /** One pointer dispatch within a deadline, its engine error translated to the public taxonomy. */
   private async dispatchAt(point: ViewportPoint, action: PointerAction, deadline: Deadline): Promise<void> {
+    const startedAt = timestamp();
+    const startedMs = Date.now();
+    const record = (status: StepEvent['status'], code?: string): void =>
+      this.recordEvent({
+        kind: 'engine',
+        name: action.kind,
+        startedAt,
+        durationMs: Date.now() - startedMs,
+        status,
+        ...(code === undefined ? {} : { code }),
+        detail: `${action.kind} at (${Math.round(point.x)}, ${Math.round(point.y)})`,
+      });
     try {
       await this.session.performAt(point, action, this.operationWithin(deadline));
     } catch (cause) {
-      throw translateLocatorError(cause);
+      const failure = translateLocatorError(cause);
+      record(this.signal.aborted ? 'cancelled' : 'failed', failure.code);
+      throw failure;
     }
+    record('passed');
   }
 
   /**
@@ -508,11 +523,10 @@ export class LocatorEngine {
     const startedMs = Date.now();
     let stale = 0;
     for (;;) {
-      const { ref, rounds } = await this.resolveCounted(expression, deadline);
+      const { ref, waitedMs } = await this.resolveCounted(expression, deadline);
       // Read now, from the resolve's own cache: a dragTo's target resolve
       // below supersedes this ref, and the node it named would be gone.
       const node = this.options.recordEvent === undefined ? undefined : await this.session.read(ref, this.operationWithin(deadline)).catch(() => undefined);
-      const waitedMs = rounds > 1 ? Date.now() - startedMs : 0;
       const resolved = typeof action === 'function' ? await action(deadline) : action;
       const record = (status: StepEvent['status'], code?: string): void =>
         this.recordAction({ node, kind: resolved.kind, startedAt, startedMs, waitedMs, stale, status, code });

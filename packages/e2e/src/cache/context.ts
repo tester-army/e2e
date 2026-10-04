@@ -190,8 +190,9 @@ export async function flushStagedTraces(context: AgentCacheContext, settlement: 
       if (!confirmed) {
         // A kept entry existed for certain, so deleting it is an eviction; a
         // new recording's delete only clears what an earlier run may have left.
-        context.writes.set(entry.stepIndex, entry.kind === 'keep' && settlement.implicatesUnconfirmed ? 'evicted' : 'unconfirmed');
-        if (settlement.implicatesUnconfirmed) await context.store.delete?.(entry.keyHash);
+        const deletes = settlement.implicatesUnconfirmed && context.store.delete !== undefined;
+        context.writes.set(entry.stepIndex, entry.kind === 'keep' && deletes ? 'evicted' : 'unconfirmed');
+        if (deletes) await context.store.delete?.(entry.keyHash);
         continue;
       }
       if (entry.kind === 'keep') {

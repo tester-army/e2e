@@ -3,7 +3,7 @@
  * harness as one line each, from a real browser: console errors and
  * warnings, exceptions nothing caught, requests that failed, and responses
  * with an error status. A console echo of a failed load and a request the
- * page abandoned are left out.
+ * page abandoned are left out, so each event is one line.
  */
 
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -23,6 +23,7 @@ const PAGE = `<!doctype html><html><body><h1>Todos</h1><script>
   console.error('failed to load todos');
   fetch('/api/todos');
   fetch('/api/missing');
+  fetch('/api/reset').catch(() => undefined);
   setTimeout(() => { throw new RangeError('render loop exceeded'); }, 0);
 </script></body></html>`;
 
@@ -39,6 +40,8 @@ describe('app log', () => {
       if (request.url === '/') {
         response.writeHead(200, { 'content-type': 'text/html' });
         response.end(PAGE);
+      } else if (request.url === '/api/reset') {
+        request.socket.destroy();
       } else if (request.url === '/api/todos') {
         response.writeHead(500, { 'content-type': 'application/json' });
         response.end('{}');
@@ -71,14 +74,16 @@ describe('app log', () => {
         fixture: (_name: string, target: object) => target,
       } as unknown as EngineFixtureContext);
       await browser.goto('/');
-      await expect.poll(() => entries.length, { timeout: 5_000 }).toBeGreaterThanOrEqual(5);
+      await expect.poll(() => entries.length, { timeout: 5_000 }).toBeGreaterThanOrEqual(6);
       expect(entries).toEqual(expect.arrayContaining([
         { source: 'console', level: 'warning', text: expect.stringMatching(/^deprecated prop \(at http:\/\/127\.0\.0\.1:\d+\/:\d+\)$/) },
         { source: 'console', level: 'error', text: expect.stringMatching(/^failed to load todos /) },
         { source: 'network', level: 'error', text: `GET ${url}/api/todos 500 Internal Server Error` },
         { source: 'network', level: 'warning', text: `GET ${url}/api/missing 404 Not Found` },
         { source: 'error', level: 'error', text: expect.stringMatching(/^RangeError: render loop exceeded/) },
+        { source: 'network', level: 'error', text: expect.stringMatching(new RegExp(`^GET ${url}/api/reset net::ERR_`)) },
       ]));
+      expect(entries).toHaveLength(6);
       expect(entries.some((entry) => entry.text.startsWith('ready'))).toBe(false);
       expect(entries.some((entry) => entry.text.startsWith('Failed to load resource'))).toBe(false);
     } finally {

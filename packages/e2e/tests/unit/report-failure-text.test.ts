@@ -230,3 +230,50 @@ describe('renderFailurePage', () => {
     expect(hook).toContain("cleanup '''broke'''");
   });
 });
+
+describe('a serial member on its page', () => {
+  it("tells the member's own secondary errors and the shared session's cleanup errors", () => {
+    const member = reportResult({ testId: 'member', serialGroupId: 'g1', status: 'failed', attempts: [] });
+    const group: ReportSerialGroup = {
+      id: 'g1',
+      serialId: 'serial',
+      declarationIndex: 0,
+      file: 'tests/a.e2e.ts',
+      source: { file: 'tests/a.e2e.ts', line: 1, column: 1 },
+      titlePath: ['group'],
+      targetId: 'web',
+      platform: 'web',
+      agent: 'default',
+      repeat: 0,
+      memberTestIds: ['member'],
+      status: 'failed',
+      attempts: [
+        {
+          id: 'attempt',
+          index: 0,
+          status: 'failed',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          durationMs: 1,
+          artifacts: [],
+          secondaryErrors: [reportError({ code: 'ENGINE_FAILURE', message: 'the browser closed early', phase: 'cleanup' })],
+          cleanup: 'failed',
+          members: [
+            {
+              id: 'attempt:member:0',
+              index: 0,
+              testId: 'member',
+              status: 'failed',
+              startedAt: '2026-01-01T00:00:00.000Z',
+              durationMs: 1,
+              steps: [],
+              error: reportError(),
+              secondaryErrors: [reportError({ code: 'STEP_NOT_AWAITED', message: 'not awaited' })],
+            },
+          ],
+        },
+      ],
+    } as ReportSerialGroup;
+    const told = toldAttempt(member, outcome(member, new Map([['g1', group]])));
+    expect(told.secondaryErrors.map((error) => error.code)).toEqual(['STEP_NOT_AWAITED', 'ENGINE_FAILURE']);
+  });
+});

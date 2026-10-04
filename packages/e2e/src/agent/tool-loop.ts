@@ -625,7 +625,7 @@ class LoopRun {
     }
     if (this.guardStop !== undefined && this.guardStop !== this.noticedGuardReason) {
       this.noticedGuardReason = this.guardStop;
-      this.note(`loop guard stopped the step before turn ${String(stepNumber + 1)}: ${this.guardStop}`);
+      this.note(`the step was stopped before turn ${String(stepNumber + 1)}: ${this.guardStop}`);
       prepared = appendNotice(
         prepared,
         `[SYSTEM] Loop guard: ${this.guardStop}. Repeating it further will not make progress. ` +

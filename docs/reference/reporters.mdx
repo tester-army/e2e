@@ -62,7 +62,7 @@ The built-in `junit` reporter is the smallest complete example: it reads
 naming the file. `markdown` does the same with `summary.md` through
 `renderMarkdownReport(report, options)`, also exported, so your own reporter
 can post the same page elsewhere; `failurePages` links each block to a page
-by result id. The runner writes those pages itself, one per failed or flaky
+by result id. The runner writes those pages itself, one per failed, timed-out, or flaky
 test under `failures/`, before `onRunFinished` is called. [`@e2e-dev/github`](/github) is that
 reporter for GitHub Actions.
 

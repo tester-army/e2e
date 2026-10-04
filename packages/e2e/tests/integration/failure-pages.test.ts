@@ -67,7 +67,7 @@ describe('failure pages', () => {
 
         const finished = events.find((event) => event.type === 'run-finished');
         const pages = finished?.type === 'run-finished' ? Object.values(finished.failurePages ?? {}) : [];
-        expect(pages).toEqual([expect.stringMatching(/^\.e2e\/failures\/save-saves-then-expects-two-buttons-[0-9a-f]{8}\.md$/)]);
+        expect(pages).toEqual([expect.stringMatching(/^\.e2e\/failures\/save-saves-then-expects-two-buttons-[0-9a-f]{16}\.md$/)]);
         const page = readFileSync(path.join(project.dir, pages[0]!), 'utf8');
         expect(page).toContain('1. ✓ `app.open` `/` (');
         expect(page).toContain('in beforeEach)');

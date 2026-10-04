@@ -43,11 +43,11 @@ export class SampleHistory {
   /** Adds one round's reading. */
   add(value: string): void {
     this.reads += 1;
+    // Folded whole, so two long readings that differ past the clip stay two.
     const redacted = this.redact(value);
-    const clipped = bound(redacted, MAX_VALUE_CHARS);
     const last = this.runs.at(-1);
-    if (last?.value === clipped) last.count += 1;
-    else this.runs.push({ value: clipped, count: 1, atMs: Date.now() - this.startedMs });
+    if (last?.value === redacted) last.count += 1;
+    else this.runs.push({ value: redacted, count: 1, atMs: Date.now() - this.startedMs });
   }
 
   /**
@@ -73,7 +73,7 @@ export class SampleHistory {
     const parts = shown.map((run, index) => {
       const skipped = index === 1 && shown.length < this.runs.length ? '… -> ' : '';
       const at = index === 0 ? '' : `at ${run.atMs}ms `;
-      return `${skipped}${at}${run.value}${run.count > 1 ? ` x${run.count}` : ''}`;
+      return `${skipped}${at}${bound(run.value, MAX_VALUE_CHARS)}${run.count > 1 ? ` x${run.count}` : ''}`;
     });
     const text = parts.join(' -> ');
     return bound(text, MAX_DETAIL_CHARS);

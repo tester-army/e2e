@@ -206,6 +206,6 @@ describe('tool loop step timeout', () => {
     expect(outcome.length).toBeLessThanOrEqual(2048);
     // The tool's lookalike lines are clipped with its output; the loop's own
     // note stopping the repeated calls comes after the clip, whole.
-    expect(outcome).toMatch(/…\[truncated\]\n\[loop\] loop guard stopped the step before turn 2: [^\n]+$/u);
+    expect(outcome).toMatch(/…\[truncated\]\n\[loop\] the step was stopped before turn 2: [^\n]+$/u);
   });
 });

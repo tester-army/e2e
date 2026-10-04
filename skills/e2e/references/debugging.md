@@ -13,8 +13,9 @@ default.
    - the node an action landed on (`tap button "Save" (12ms)`), or `✗` and
      its code;
    - what an assertion read while it waited (`expect gave up after 16 reads
-     in 1.6s: text "0 remaining" (1 match) x16`); one value throughout is a
-     wrong expectation or a broken app, changing values are a race;
+     in 1.6s: text "0 remaining" (1 match) x16`); one value throughout
+     points at a wrong expectation, a broken app, or one slower than the
+     timeout, changing values at a race;
    - what the app logged meanwhile (`✗ network error: POST /api/save 500`,
      `✗ uncaught error: ...`, `⚠ console warning: ...`); `❯ app 2 errors`
      in the terminal says there are some;
