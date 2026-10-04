@@ -799,9 +799,9 @@ class Scheduler {
    * attempt; one between attempts (an `afterAll` after the last) is recorded
    * on the last attempt instead, whose cleanup it forced. A serial group in
    * flight gets a failed group attempt after its finished ones. A worker the
-   * run's interrupt stopped gets nothing appended: a test or group keeps the
-   * attempts it finished and the verdict they reach, as a retry the
-   * interrupt cut short does.
+   * run's interrupt stopped charges no crash: a test keeps the attempts it
+   * finished and the verdict they reach, as a retry the interrupt cut short
+   * does, and a serial group's attempt in flight is recorded interrupted.
    */
   private synthesizeCrashResults(
     state: TargetState,
@@ -822,7 +822,9 @@ class Scheduler {
           (member) => member.test.serialId === serialId && member.agent === pair.agent && member.repeat === pair.repeat,
         );
         const progress = worker.serialGroups.get(groupId);
-        const settled = interrupted ? progress?.interrupted(members, state.target) : progress?.crashed(members, state.target, crash);
+        const settled = interrupted
+          ? progress?.interrupted(members, state.target, this.stopSkip ?? INTERRUPTED_BEFORE_START)
+          : progress?.crashed(members, state.target, crash);
         if (settled !== undefined) {
           settledGroups.add(groupId);
           this.options.events.onSerialGroup(settled.group);

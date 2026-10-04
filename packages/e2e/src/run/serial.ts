@@ -20,7 +20,7 @@ import type { StepRecord } from './steps.ts';
 import { findRegistered, type FileRef, type Realm, RealmManager } from './realm.ts';
 import type { AttemptRecord, ResultRecord, ResultStatus, SerialAttemptRecord, SerialGroupRecord, SerialMemberRecord, FailedStatus } from './records.ts';
 import { isFailedStatus } from './records.ts';
-import { retryVerdict, runWithRetries } from './retry.ts';
+import { isRetryEligible, retryVerdict, runWithRetries } from './retry.ts';
 import { interruptedSkip, pairResult, repeatSegment } from './units.ts';
 
 /**
@@ -263,52 +263,77 @@ export class SerialGroupProgress {
    * attempt in flight fails: the member whose body was running fails with
    * `error` and the ones after it skip. A crash between members (a hook,
    * the session closing) fails the attempt and leaves its finished members
-   * as they were; one before any member ran fails the first, as a launch
-   * failure does.
+   * as they were; one in a retry before any member ran fails the first, as a
+   * launch failure does. A crash after the last attempt, when no retry
+   * follows it, is recorded on that attempt.
    */
   crashed(members: readonly TestTargetPair[], target: ResolvedTarget, error: SerializedError): SettledSerialGroup | undefined {
-    const reachedMembers = this.currentMembers.length > 0 || this.running !== undefined;
-    if (!reachedMembers && this.finished.length === 0) return undefined;
-    const record: SerialAttemptRecord = {
+    const last = this.finished.at(-1);
+    if (!this.inFlight) {
+      if (last === undefined) return undefined;
+      if (!retryFollows(last.record, this.finished.length, members)) {
+        const closed: SerialAttemptRun = {
+          ...last,
+          record: { ...last.record, secondaryErrors: [...last.record.secondaryErrors, error], cleanup: 'forced' },
+        };
+        return this.settled([...this.finished.slice(0, -1), closed], members, target);
+      }
+      const record = this.attemptInFlight('failed', error);
+      endBeforeMembers(record, members, error, NEVER_INTERRUPTED);
+      return this.settled([...this.finished, { record, reachedMembers: false }], members, target);
+    }
+    const record = this.attemptInFlight('failed', error);
+    const next = this.currentMembers.length;
+    const wasRunning = this.running !== undefined && this.running === members[next]?.test.id;
+    const skip: SkipInfo = wasRunning
+      ? predecessorFailed(next)
+      : { cause: 'infrastructure-unavailable', reason: 'worker process exited during this group attempt' };
+    for (const [memberIndex, member] of members.entries()) {
+      if (memberIndex < next) continue;
+      record.members.push(
+        wasRunning && memberIndex === next
+          ? memberFailedWith(record, memberIndex, member.test.id, error)
+          : skippedMember(record.id, memberIndex, member.test.id, skip),
+      );
+    }
+    return this.settled([...this.finished, { record, reachedMembers: true }], members, target);
+  }
+
+  /**
+   * The group after the run's interrupt stopped its worker, or undefined
+   * when the runner heard nothing of it running. The finished attempts
+   * stand, and an attempt in flight is interrupted: the members it finished
+   * keep their records and the rest skip with `skip`. The verdict is the one
+   * those attempts reach, as for a retry the interrupt cut short.
+   */
+  interrupted(members: readonly TestTargetPair[], target: ResolvedTarget, skip: SkipInfo): SettledSerialGroup | undefined {
+    if (!this.inFlight) return this.finished.length === 0 ? undefined : this.settled(this.finished, members, target);
+    const record = this.attemptInFlight('interrupted', undefined);
+    for (const [memberIndex, member] of members.entries()) {
+      if (memberIndex >= this.currentMembers.length) record.members.push(skippedMember(record.id, memberIndex, member.test.id, skip));
+    }
+    return this.settled([...this.finished, { record, reachedMembers: true }], members, target);
+  }
+
+  /** Whether a member of the attempt in flight started or finished. */
+  private get inFlight(): boolean {
+    return this.currentMembers.length > 0 || this.running !== undefined;
+  }
+
+  /** The record of the attempt in flight as it stood, with the members it finished. */
+  private attemptInFlight(status: SerialAttemptRecord['status'], error: SerializedError | undefined): SerialAttemptRecord {
+    return {
       id: this.current?.id ?? uuidv7(),
       index: this.finished.length,
-      status: 'failed',
+      status,
       startedAt: this.current?.startedAt ?? timestamp(),
       durationMs: 0,
       members: [...this.currentMembers],
       artifacts: [],
-      error,
+      ...(error === undefined ? {} : { error }),
       secondaryErrors: [],
       cleanup: 'forced',
     };
-    if (reachedMembers) {
-      const next = this.currentMembers.length;
-      const wasRunning = this.running !== undefined && this.running === members[next]?.test.id;
-      const skip: SkipInfo = wasRunning
-        ? predecessorFailed(next)
-        : { cause: 'infrastructure-unavailable', reason: 'worker process exited during this group attempt' };
-      for (const [memberIndex, member] of members.entries()) {
-        if (memberIndex < next) continue;
-        record.members.push(
-          wasRunning && memberIndex === next
-            ? memberFailedWith(record, memberIndex, member.test.id, error)
-            : skippedMember(record.id, memberIndex, member.test.id, skip),
-        );
-      }
-    } else {
-      endBeforeMembers(record, members, error, NEVER_INTERRUPTED);
-    }
-    return this.settled([...this.finished, { record, reachedMembers }], members, target);
-  }
-
-  /**
-   * The group after the run's interrupt stopped its worker. A group that
-   * finished an attempt keeps those attempts and the verdict they reach, as
-   * a retry the interrupt cut short does; undefined when none finished.
-   */
-  interrupted(members: readonly TestTargetPair[], target: ResolvedTarget): SettledSerialGroup | undefined {
-    if (this.finished.length === 0) return undefined;
-    return this.settled(this.finished, members, target);
   }
 
   private settled(
@@ -321,6 +346,14 @@ export class SerialGroupProgress {
     group.attempts = runs.map((run) => run.record);
     return { group, results: memberResults(group, members, runs) };
   }
+}
+
+/**
+ * Whether the group retries after `record`, its attempt number `attempts`:
+ * the retry policy allows it, and a hook failure never retries.
+ */
+function retryFollows(record: SerialAttemptRecord, attempts: number, members: readonly TestTargetPair[]): boolean {
+  return attempts < members[0]!.options.retries + 1 && isRetryEligible(record) && record.error?.code !== 'HOOK_FAILED';
 }
 
 /** An abort signal that never fires. */
