@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { isLoopbackHost } from '../../src/internal/hosts.ts';
 import {
-  isLoopbackHost,
   normalizeBaseUrl,
   portOf,
   requestsFreePort,

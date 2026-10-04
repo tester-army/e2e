@@ -19,7 +19,7 @@ import {
   splitSkillDirs,
   type SkillInstall,
 } from './init/agent-skill.ts';
-import { isLoopbackHost } from '../internal/urls.ts';
+import { isLoopbackHost } from '../internal/hosts.ts';
 import { getEnginePresets, DEFAULT_ENGINE_ID, type EngineId } from './init/engines.ts';
 import { GATEWAYS, getGatewayPreset, type GatewayId } from './init/gateways.ts';
 import { findRegisteredMcpFiles, MCP_LOCATIONS, planMcpRegistration } from './init/mcp-config.ts';

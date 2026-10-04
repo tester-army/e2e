@@ -3,6 +3,7 @@
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { ConfigurationError } from './errors.ts';
+import { compareCodePoints } from './compare.ts';
 import { escapeRegexpChar } from './regexp.ts';
 
 interface CompiledGlob {
@@ -259,16 +260,4 @@ export function discoverFiles(root: string, patterns: readonly string[]): string
     exclude.map((glob) => initialStates(glob.segments)),
   );
   return matched.toSorted(compareCodePoints);
-}
-
-/** Sorts strings by Unicode code point, the order collection is defined in. */
-export function compareCodePoints(a: string, b: string): number {
-  const aPoints = [...a];
-  const bPoints = [...b];
-  const length = Math.min(aPoints.length, bPoints.length);
-  for (let i = 0; i < length; i += 1) {
-    const diff = aPoints[i]!.codePointAt(0)! - bPoints[i]!.codePointAt(0)!;
-    if (diff !== 0) return diff;
-  }
-  return aPoints.length - bPoints.length;
 }

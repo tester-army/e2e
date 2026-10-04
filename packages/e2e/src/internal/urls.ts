@@ -1,6 +1,7 @@
 /** URL normalization and origin policy helpers. */
 
 import { ConfigurationError } from './errors.ts';
+import { isLoopbackHost } from './hosts.ts';
 import { testPattern } from './regexp.ts';
 import { toTextPattern, withIgnoreCase } from './text.ts';
 
@@ -95,14 +96,6 @@ function withScheme(raw: string): string {
     return raw;
   }
   return `${isLoopbackHost(probe.hostname) ? 'http' : 'https'}://${raw}`;
-}
-
-/** True for loopback hosts where plain HTTP is allowed. */
-export function isLoopbackHost(hostname: string): boolean {
-  if (hostname === 'localhost' || hostname.endsWith('.localhost')) return true;
-  if (hostname === '::1' || hostname === '[::1]') return true;
-  if (/^127(\.\d{1,3}){3}$/.test(hostname)) return true;
-  return false;
 }
 
 /** True when environment may default to `test` (loopback, .localhost, .test hosts). */

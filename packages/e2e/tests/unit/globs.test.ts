@@ -2,8 +2,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { compareCodePoints } from '../../src/internal/compare.ts';
 import {
-  compareCodePoints,
   compileGlob,
   compileGlobList,
   discoverFiles,

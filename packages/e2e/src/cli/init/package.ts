@@ -3,8 +3,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { compareCodePoints } from '../../internal/globs.ts';
-import { isPlainObject } from '../../internal/options.ts';
+import { compareCodePoints } from '../../internal/compare.ts';
+import { isPlainObject } from '../../internal/objects.ts';
 
 const dependencyBlock = z.record(z.string(), z.string()).optional();
 const packageSchema = z.looseObject({

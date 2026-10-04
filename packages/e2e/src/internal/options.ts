@@ -6,18 +6,8 @@
  */
 
 import { ConfigurationError, TestError } from './errors.ts';
+import { isPlainObject } from './objects.ts';
 import { didYouMean } from './suggest.ts';
-
-/**
- * Whether `value` is a plain object: not null, an array, or a class instance.
- * Its prototype is `Object.prototype` or null, so every key a later property
- * read sees is an own key a validator can enumerate.
- */
-export function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null) return false;
-  const prototype: unknown = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
 
 /** Rejects an options bag carrying a key `api` does not take. */
 export function rejectUnknownOptions(

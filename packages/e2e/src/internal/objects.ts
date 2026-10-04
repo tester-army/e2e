@@ -24,3 +24,14 @@ export function obj<T extends object>(value: PlainObject<T>): WithoutUndefined<T
     Object.entries(value).filter(([, entry]) => entry !== undefined),
   ) as WithoutUndefined<T>;
 }
+
+/**
+ * Whether `value` is a plain object: not null, an array, or a class instance.
+ * Its prototype is `Object.prototype` or null, so every key a later property
+ * read sees is an own key a validator can enumerate.
+ */
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null) return false;
+  const prototype: unknown = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}

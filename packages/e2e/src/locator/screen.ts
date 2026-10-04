@@ -8,9 +8,9 @@ import { locatorBrand } from '../internal/brands.ts';
 import { isSecret } from '../secrets.ts';
 import { asEngineError, TestError } from '../internal/errors.ts';
 import { requireFinitePoint } from '../internal/geometry.ts';
-import { isPlainObject, rejectUnknownOptions } from '../internal/options.ts';
+import { rejectUnknownOptions } from '../internal/options.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
-import { obj } from '../internal/objects.ts';
+import { isPlainObject, obj } from '../internal/objects.ts';
 import { isTextMatch, normalizeText } from '../internal/text.ts';
 import type {
   ActionOptions,
