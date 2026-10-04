@@ -63,7 +63,9 @@ URL: `http://127.0.0.1:3000/todos`
 
 `Look at` points to the failing call. Assertion failures include expected
 and observed values; locator failures include the requested locator and
-nearby matches. Repeated failure details help you compare attempts.
+nearby matches. Repeated failure details help you compare attempts. The
+runner spends at most 5 s capturing the screen and screenshot once per failed
+attempt; an app that does not answer in time gets no screen section.
 
 ## The report
 

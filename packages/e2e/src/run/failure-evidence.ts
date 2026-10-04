@@ -17,6 +17,7 @@ import type { ResolvedConfig } from '../config/resolve.ts';
 import type { OperationContext, TargetSession } from '../engine/surface.ts';
 import { truncateUtf8, type E2EError } from '../internal/errors.ts';
 import { isTypoOf } from '../internal/suggest.ts';
+import { withAbort } from '../internal/time.ts';
 import type { ArtifactSink } from './fixtures.ts';
 import type { FailureEvidence } from './records.ts';
 import type { SessionSecrecy } from './secrecy.ts';
@@ -58,9 +59,13 @@ export async function captureFailureEvidence(options: FailureEvidenceOptions): P
   const operation = options.operation(signal, EVIDENCE_TIMEOUT_MS);
   const { redact, redactCut } = options.secrecy.ledger;
 
+  // The engine is handed the budget, and the wait is abandoned at its end
+  // either way: an engine stuck on a hung app may never honor it.
+  const bounded = <T>(work: () => Promise<T>): Promise<T> => withAbort(work, signal, () => new Error('failure evidence ran out of budget'));
+
   let observation: AgentObservation | undefined;
   try {
-    const raw = await options.session.observe(operation);
+    const raw = await bounded(() => options.session.observe(operation));
     observation = prepareObservation(raw, {
       redact,
       redactCut,
@@ -93,7 +98,7 @@ export async function captureFailureEvidence(options: FailureEvidenceOptions): P
   // prove a tainted viewport redacted.
   if (!options.secrecy.exposure.withholdsPixels && !signal.aborted) {
     try {
-      const relative = await options.session.artifacts.screenshot('failure', operation);
+      const relative = await bounded(() => options.session.artifacts.screenshot('failure', operation));
       evidence.screenshot = options.artifacts.register('screenshot', relative);
     } catch {
       // A screenshot the engine could not take is not evidence the report claims.

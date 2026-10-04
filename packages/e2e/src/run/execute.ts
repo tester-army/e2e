@@ -925,8 +925,12 @@ export class TargetExecutor implements SerialHost {
     // One more look at the app the moment the failure lands: what the screen
     // held then is the evidence the message lacks. Taken before teardown, so
     // an `afterEach` that navigates away or resets state cannot replace it.
+    // Once per attempt: a screen that yielded nothing within the budget is
+    // not asked again, so a hung app costs the budget once.
+    let evidenceTried = false;
     const captureEvidence = async (): Promise<void> => {
-      if (failure === undefined || record.failure !== undefined || openSession === null || this.interruptSignal.aborted) return;
+      if (failure === undefined || evidenceTried || openSession === null || this.interruptSignal.aborted) return;
+      evidenceTried = true;
       const evidence = await captureFailureEvidence({
         session: openSession,
         error: failure,

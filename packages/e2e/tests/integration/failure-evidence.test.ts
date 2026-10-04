@@ -12,7 +12,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { SemanticNode } from '../../src/engine/contract.ts';
+import type { OperationContext, SemanticNode } from '../../src/engine/contract.ts';
 import type { E2EConfig } from '../../src/index.ts';
 import { createFakeEngine, FAKE_APP, FAKE_APP_URL, type FakeEngineHandle } from '../helpers/fake-engine.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
@@ -206,6 +206,33 @@ describe('failure evidence', () => {
         expect(attempt.failure?.screenshot).toBeDefined();
         expect(attempt.failure?.candidates).toBeUndefined();
         expect(fake.operations.some((operation) => operation.method.startsWith('artifacts.screenshot('))).toBe(true);
+      } finally {
+        project.cleanup();
+      }
+    },
+    30_000,
+  );
+
+  it.each([
+    [
+      'honors its cancellation',
+      (operation: OperationContext) =>
+        new Promise<void>((_, reject) => operation.signal.addEventListener('abort', () => reject(new Error('observe cancelled')))),
+    ],
+    ['ignores its cancellation', () => new Promise<void>(() => undefined)],
+  ])(
+    'looks once and gives up at the evidence budget when the screen never answers and the engine %s, keeping the original failure',
+    async (_, observe) => {
+      const fake = createFakeEngine({ artifacts: true, locate: () => [], observe });
+      const { outcome, project } = await runProject({ 'tests/teardown.e2e.ts': TEARDOWN_TEST }, { appUrl: FAKE_APP_URL, config: fakeConfig(fake) });
+      try {
+        assertValidReport(outcome.report);
+        const attempt = reported(outcome, 'fails, then tears down').attempts.at(-1)!;
+        expect(attempt.error?.code).toBe('LOCATOR_NOT_FOUND');
+        expect(attempt.failure).toBeUndefined();
+        expect(fake.operations.filter((operation) => operation.method === 'observe')).toHaveLength(1);
+        // The 5 s budget once, not once per capture point.
+        expect(attempt.durationMs).toBeLessThan(8_000);
       } finally {
         project.cleanup();
       }
