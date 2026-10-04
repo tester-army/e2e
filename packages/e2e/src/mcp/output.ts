@@ -103,6 +103,8 @@ export class McpOutput {
 
   /** Releases what is still held, redacted; nothing more will follow. Output held for a load still in flight is withheld. */
   end(): void {
+    this.write('stdout', this.decoders.stdout.end());
+    this.write('stderr', this.decoders.stderr.end());
     if (this.loading > 0) this.withhold();
     this.emit(this.redactor.flush());
   }

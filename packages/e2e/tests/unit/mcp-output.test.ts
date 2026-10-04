@@ -71,6 +71,13 @@ describe('McpOutput', () => {
     expect(text()).toBe('tail: <secret:apiToken>');
   });
 
+  it('releases a character cut short at shutdown as a replacement character', () => {
+    const { out, text } = output();
+    out.write('stdout', Buffer.from('é').subarray(0, 1));
+    out.end();
+    expect(text()).toBe('�');
+  });
+
   it('redacts a value split across stdout and stderr, which land on one stream', () => {
     const { out, ledger, text } = output();
     ledger.register('apiToken', TOKEN);
