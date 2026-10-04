@@ -204,6 +204,22 @@ export const FLOWS: readonly Flow[] = [
     actions: [1],
   },
   {
+    title: 'clears a field',
+    open: () => '/clear-field',
+    body: `  await agent.act('type a draft, then clear it');
+  await expect(screen.getByRole('status', { name: 'Draft state' })).toHaveText('cleared');`,
+    script: {
+      'type a draft, then clear it': {
+        act: (call) => {
+          const draft = nodeIdFor(call.prompt, /textbox "Draft"/u);
+          return [type(draft, 'draft'), type(draft, '')];
+        },
+        done: /"Draft state" text="cleared"/u,
+      },
+    },
+    actions: [2],
+  },
+  {
     title: 'mixes deterministic and agent steps',
     open: () => undefined,
     body: `  await agent.act('increment the counter once');

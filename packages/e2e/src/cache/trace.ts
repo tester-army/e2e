@@ -529,7 +529,7 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
   switch (name) {
     case 'type': {
       const target = readDescriptor(raw['target']);
-      const value = readInputText(raw['value']);
+      const value = readTypedValue(raw['value']);
       if (target === undefined || value === undefined) return undefined;
       return { name: 'type', summary, target, value };
     }
@@ -620,7 +620,7 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
     case 'back':
       return { name: 'back', summary };
     case 'typeText': {
-      const value = readInputText(raw['value']);
+      const value = readTypedValue(raw['value']);
       if (value === undefined || typeof raw['replace'] !== 'boolean') return undefined;
       return { name: 'typeText', summary, value, replace: raw['replace'] };
     }
@@ -908,4 +908,9 @@ function readInputText(value: unknown): string | undefined {
     return undefined;
   }
   return value;
+}
+
+/** A typed value: `readInputText`, except that `''` is valid, since typing it clears a field. */
+function readTypedValue(value: unknown): string | undefined {
+  return value === '' ? value : readInputText(value);
 }

@@ -69,6 +69,15 @@ describe('trace-1 entry', () => {
     expect(entry.payload.startPath).toBe('/settings');
   });
 
+  it('round-trips an empty typed value: clearing a field is a recordable action', () => {
+    const target = { role: 'textbox', name: 'Name' };
+    const actions: RecordedAction[] = [
+      { name: 'type', summary: 'clear textbox', target, value: '' },
+      { name: 'typeText', summary: 'clear the focused field', value: '', replace: true },
+    ];
+    expect(entryOf(trace({ actions })).payload.actions).toEqual(actions);
+  });
+
   it('round-trips the postcondition: end path and end anchors', () => {
     const endAnchors = [
       { role: 'status', name: 'Marker', text: 'saved' },
@@ -112,6 +121,7 @@ describe('trace-1 entry', () => {
     ['unknown action name', withPayload({ actions: [{ ...tap, name: 'click' }] })],
     ['tap without a target', withPayload({ actions: [{ name: 'tap', summary: 'tap' }] })],
     ['type without a value', withPayload({ actions: [{ ...tap, name: 'type' }] })],
+    ['select with an empty value', withPayload({ actions: [{ name: 'select', summary: 's', target: { role: 'x' }, value: '' }] })],
     [
       'oversized input value',
       withPayload({

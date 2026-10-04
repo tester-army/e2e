@@ -126,6 +126,17 @@ ${rows}
 }
 
 export const FORM_PAGES: Record<string, PageRenderer> = {
+  // Clearing a field is a typed value too: the status reads `cleared` only
+  // once the input emptied after holding text.
+  '/clear-field': constant(`<!doctype html>
+<html>
+<head><title>Clear field</title></head>
+<body>
+  <h1>Clear field</h1>
+  <input placeholder="Draft" oninput="document.getElementById('state').textContent = this.value === '' ? 'cleared' : 'typed'" />
+  <output id="state" role="status" aria-label="Draft state">untouched</output>
+</body>
+</html>`),
   // Repeated cross-sell rows: several buttons share role, name, and test id, so
   // every derived query is ambiguous and nothing in the query vocabulary can
   // separate them. Only the reference the model selected can.
