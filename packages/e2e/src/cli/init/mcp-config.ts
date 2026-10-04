@@ -5,8 +5,8 @@
  * exactly as it was.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { readIfPresent } from './read-if-present.ts';
 
 interface McpLocation {
   /** Project-relative config file with `/` separators. */
@@ -40,9 +40,9 @@ interface McpConfigDocument {
   [key: string]: unknown;
 }
 
-function readDocument(absolute: string): McpConfigDocument | undefined {
-  if (!existsSync(absolute)) return undefined;
-  const text = readFileSync(absolute, 'utf8');
+function readDocument(absolute: string): { document: McpConfigDocument; text: string } | undefined {
+  const text = readIfPresent(absolute);
+  if (text === undefined) return undefined;
   let parsed: unknown;
   try {
     parsed = text.trim() === '' ? {} : JSON.parse(text);
@@ -52,14 +52,14 @@ function readDocument(absolute: string): McpConfigDocument | undefined {
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new Error(`${absolute} must hold a JSON object with a "mcpServers" map`);
   }
-  return parsed as McpConfigDocument;
+  return { document: parsed as McpConfigDocument, text };
 }
 
 /** Known config files that already register the e2e server. */
 export function findRegisteredMcpFiles(cwd: string): string[] {
   return MCP_LOCATIONS.map((location) => location.file).filter((file) => {
     try {
-      const servers = readDocument(path.join(cwd, file))?.mcpServers;
+      const servers = readDocument(path.join(cwd, file))?.document.mcpServers;
       return typeof servers === 'object' && servers !== null && MCP_SERVER_NAME in servers;
     } catch {
       return false;
@@ -76,18 +76,18 @@ export function planMcpRegistration(cwd: string, files: readonly string[]): McpR
   const registrations: McpRegistration[] = [];
   for (const file of files) {
     const absolute = path.join(cwd, file);
-    const document = readDocument(absolute) ?? {};
+    const read = readDocument(absolute);
+    const document = read?.document ?? {};
     const servers =
       typeof document.mcpServers === 'object' && document.mcpServers !== null && !Array.isArray(document.mcpServers)
         ? document.mcpServers
         : {};
     if (JSON.stringify(servers[MCP_SERVER_NAME]) === JSON.stringify(SERVER_ENTRY)) continue;
     const merged: McpConfigDocument = { ...document, mcpServers: { ...servers, [MCP_SERVER_NAME]: SERVER_ENTRY } };
-    const original = existsSync(absolute) ? readFileSync(absolute, 'utf8') : undefined;
-    const indent = original?.match(/\n([\t ]+)"/)?.[1] ?? '  ';
+    const indent = read?.text.match(/\n([\t ]+)"/)?.[1] ?? '  ';
     registrations.push({
       relative: file,
-      existing: original !== undefined,
+      existing: read !== undefined,
       absolute,
       content: `${JSON.stringify(merged, null, indent)}\n`,
     });

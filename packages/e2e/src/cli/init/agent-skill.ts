@@ -2,7 +2,7 @@
 
 import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, type Stats } from 'node:fs';
 import path from 'node:path';
-import { insideProjectRoot, realpathOfExisting } from '../../internal/paths.ts';
+import { realpathOfExisting, relativeBelow } from '../../internal/paths.ts';
 import { MISSING_SKILL_MESSAGE, SKILL_NAME, type SkillFile } from '../skill.ts';
 
 interface SkillLocation {
@@ -102,11 +102,14 @@ export function planSkillInstall(cwd: string, dirs: readonly string[], bundled: 
   for (const dir of dirs) {
     const root = path.join(cwd, dir, SKILL_NAME);
     const files = bundled.map((file) => ({ absolute: path.join(root, file.relative), content: file.content }));
-    const { links, obstacles } = findBlockers(cwd, root, files.map((file) => file.absolute));
-    const current = links.length === 0 && obstacles.length === 0
+    // Nothing below a missing root exists, so there are no blockers to walk or contents to compare.
+    const rootEntry = lstatOrUndefined(root);
+    const { links, obstacles } = findBlockers(cwd, root, files.map((file) => file.absolute), rootEntry);
+    const current = rootEntry !== undefined && links.length === 0 && obstacles.length === 0
       && files.every((file) => currentContent(file.absolute) === file.content);
     if (current) continue;
-    installs.push({ kind: 'copy', relative: `${dir}/${SKILL_NAME}`, existing: existsSync(root), files, links, obstacles });
+    // A symlinked root still needs existsSync to tell live from dangling.
+    installs.push({ kind: 'copy', relative: `${dir}/${SKILL_NAME}`, existing: rootEntry !== undefined && (!rootEntry.isSymbolicLink() || existsSync(root)), files, links, obstacles });
   }
   return installs;
 }
@@ -139,12 +142,27 @@ export function planSkillLink(
 ): SkillInstall | undefined {
   const link = path.join(cwd, dir, SKILL_NAME);
   const canonical = path.join(cwd, canonicalDir, SKILL_NAME);
-  if (ready && leadsTo(link, canonical)) return undefined;
   const entry = lstatOrUndefined(link);
+  const stat = statMemo([link, entry]);
+  // The parent walk also tells leadsThere whether a symlink is on the way.
+  const blocker = firstBlocker(cwd, path.dirname(link), 'directory', stat)
+    ?? (entry?.isSymbolicLink() ? { kind: 'link' as const, absolute: link } : undefined);
+  // Whether `link` already leads to `canonical`. Paths with no symlink on the
+  // way resolve to themselves, so comparing them lexically is exact and skips
+  // the realpath walk.
+  const leadsThere = (): boolean => {
+    if (link === canonical) return true;
+    const linkResolved = blocker === undefined;
+    const canonicalEntry = linkResolved ? stat(canonical) : undefined;
+    const canonicalResolved = canonicalEntry === undefined
+      ? firstBlocker(cwd, canonical, 'directory', stat) === undefined
+      : !canonicalEntry.isSymbolicLink() && firstBlocker(cwd, path.dirname(canonical), 'directory', stat) === undefined;
+    if (linkResolved && canonicalResolved) return path.relative(cwd, link) === path.relative(cwd, canonical);
+    return realpathOfExisting(link) === realpathOfExisting(canonical);
+  };
+  if (ready && leadsThere()) return undefined;
   const linkable = entry === undefined || entry.isSymbolicLink() || (entry.isDirectory() && holdsOnlyBundled(link, bundled));
   if (!ready || !linkable) return planSkillInstall(cwd, [dir], bundled)[0];
-  const blocker = firstBlocker(cwd, path.dirname(link), 'directory')
-    ?? (entry?.isSymbolicLink() ? { kind: 'link' as const, absolute: link } : undefined);
   const found = describeBlocker(cwd, link, link, blocker);
   return {
     kind: 'link',
@@ -190,16 +208,6 @@ function currentContent(absolute: string): string | undefined {
     return undefined;
   }
 }
-
-/**
- * Whether `link` already leads to `canonical`: it resolves there through the
- * filesystem, a linked parent included, or it is a symlink written to point
- * there whose target does not exist yet.
- */
-function leadsTo(link: string, canonical: string): boolean {
-  return realpathOfExisting(link) === realpathOfExisting(canonical);
-}
-
 /**
  * Whether the directory holds nothing but regular files the bundle ships, so a
  * link to another copy loses nothing. A symlink inside is a link to respect
@@ -221,11 +229,14 @@ type Blocker = { readonly kind: 'link' | SkillObstacle['kind']; readonly absolut
  * not inspected), a file that resolves outside the project without one, and
  * the entries a write cannot pass.
  */
-function findBlockers(cwd: string, root: string, files: readonly string[]): Pick<SkillInstallBase, 'links' | 'obstacles'> {
+function findBlockers(cwd: string, root: string, files: readonly string[], rootEntry: Stats | undefined): Pick<SkillInstallBase, 'links' | 'obstacles'> {
   const links = new Map<string, SkillLink>();
   const obstacles = new Map<string, SkillObstacle>();
+  // The walk down to the root is the same for every file; only the part below it is per file.
+  const stat = statMemo([root, rootEntry]);
+  const shared = firstBlocker(cwd, root, 'directory', stat);
   for (const file of files) {
-    const found = describeBlocker(cwd, root, file, firstBlocker(cwd, file, 'file'));
+    const found = describeBlocker(cwd, root, file, shared ?? (rootEntry === undefined ? undefined : firstBlocker(root, file, 'file', stat)));
     if (found === undefined) continue;
     if ('link' in found) links.set(found.link.relative, found.link);
     else obstacles.set(found.obstacle.relative, found.obstacle);
@@ -245,8 +256,11 @@ function describeBlocker(
   blocker: Blocker | undefined,
 ): { link: SkillLink } | { obstacle: SkillObstacle } | undefined {
   if (blocker === undefined) {
-    if (insideProjectRoot(cwd, file)) return undefined;
-    return { link: { relative: posixRelative(cwd, file), target: realpathOfExisting(file) } };
+    // No symlink on the way, so the lexical path decides; resolve only when it escapes.
+    if (relativeBelow(cwd, file) !== undefined) return undefined;
+    const target = realpathOfExisting(file);
+    if (relativeBelow(realpathOfExisting(cwd), target) !== undefined) return undefined;
+    return { link: { relative: posixRelative(cwd, file), target } };
   }
   if (blocker.kind === 'link') return { link: { relative: posixRelative(cwd, blocker.absolute), target: linkTarget(blocker.absolute) } };
   return { obstacle: { relative: posixRelative(root, blocker.absolute), kind: blocker.kind } };
@@ -256,12 +270,12 @@ function describeBlocker(
  * The first entry from the project root down to `target`, wanted as a file
  * or as a directory, that a write cannot go through as planned.
  */
-function firstBlocker(cwd: string, target: string, wants: 'file' | 'directory'): Blocker | undefined {
+function firstBlocker(cwd: string, target: string, wants: 'file' | 'directory', stat = lstatOrUndefined): Blocker | undefined {
   const segments = path.relative(cwd, target).split(path.sep);
   let current = cwd;
   for (const [index, segment] of segments.entries()) {
     current = path.join(current, segment);
-    const entry = lstatOrUndefined(current);
+    const entry = stat(current);
     if (entry === undefined) return undefined;
     if (entry.isSymbolicLink()) return { kind: 'link', absolute: current };
     const wantsFile = wants === 'file' && index === segments.length - 1;
@@ -278,6 +292,15 @@ function lstatOrUndefined(target: string): Stats | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** `lstatOrUndefined` memoized for one planning pass, seeded with entries already known. */
+function statMemo(...seed: readonly (readonly [string, Stats | undefined])[]): (target: string) => Stats | undefined {
+  const seen = new Map<string, Stats | undefined>(seed);
+  return (target: string): Stats | undefined => {
+    if (!seen.has(target)) seen.set(target, lstatOrUndefined(target));
+    return seen.get(target);
+  };
 }
 
 /** Where a symlink leads: its real path, or the path as written when it dangles. */

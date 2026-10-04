@@ -32,8 +32,16 @@ export interface SkillFile {
   readonly content: string;
 }
 
+let cached: readonly SkillFile[] | undefined;
+
 /** Every file of the skill, `SKILL.md` first, or none when the installation lacks it. */
 export function readSkillFiles(): readonly SkillFile[] {
+  // Package files do not change while the process runs.
+  return cached ??= loadSkillFiles();
+}
+
+/** Walks the installed skill directory. */
+function loadSkillFiles(): readonly SkillFile[] {
   const root = skillDirectory();
   if (root === undefined) return [];
   const files: SkillFile[] = [];

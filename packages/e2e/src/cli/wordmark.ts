@@ -142,12 +142,21 @@ interface Letter {
   readonly duration: number;
 }
 
+interface Layout {
+  readonly PIXELS: readonly InkPixel[];
+  readonly LETTERS: readonly Letter[];
+  readonly DURATION_MS: number;
+}
+let cachedLayout: Layout | undefined;
+
 /**
  * Every lit pixel with the moment its letter's pen reaches it: the nearest
  * point of the path, by distance along the path. Letters are written in
- * order, each starting as the previous one nears its end.
+ * order, each starting as the previous one nears its end. Computed on first
+ * use, since the CLI entry imports this module for every command.
  */
-const { PIXELS, LETTERS, DURATION_MS } = (() => {
+function layout(): Layout {
+  if (cachedLayout !== undefined) return cachedLayout;
   const pixels: InkPixel[] = [];
   const letters: Letter[] = [];
   let start = 0;
@@ -173,8 +182,9 @@ const { PIXELS, LETTERS, DURATION_MS } = (() => {
     start += duration * NEXT_LETTER_AT;
   }
   const last = letters[letters.length - 1]!;
-  return { PIXELS: pixels as readonly InkPixel[], LETTERS: letters as readonly Letter[], DURATION_MS: last.start + last.duration };
-})();
+  cachedLayout = { PIXELS: pixels, LETTERS: letters, DURATION_MS: last.start + last.duration };
+  return cachedLayout;
+}
 
 /** A lit pixel: solid ink, or dim while it is still wet just behind the pen. */
 type Cell = 'solid' | 'dim';
@@ -225,6 +235,7 @@ function cells(grid: readonly (readonly (Cell | undefined)[])[], styled: boolean
  */
 function frame(elapsed: number, styled: boolean): string[] {
   const grid: (Cell | undefined)[][] = Array.from({ length: WORDMARK_PX }, () => Array.from({ length: BITMAP_WIDTH_PX }, () => undefined));
+  const { PIXELS, LETTERS } = layout();
   const progress = new Map(LETTERS.map((letter) => [letter.glyph, (elapsed - letter.start) / letter.duration]));
   for (const pixel of PIXELS) {
     const pen = progress.get(pixel.glyph)!;
@@ -236,7 +247,7 @@ function frame(elapsed: number, styled: boolean): string[] {
 
 /** The wordmark at rest: the word rows, plain. */
 function rest(): string[] {
-  return frame(DURATION_MS, false);
+  return frame(layout().DURATION_MS, false);
 }
 
 /** Whether the stream shows styling at all; `NO_COLOR` and a dumb terminal report a depth of one. */
@@ -307,7 +318,7 @@ export async function playWordmark(stream: WordmarkStream, options: PlayWordmark
   stream.write(HIDE_CURSOR);
   try {
     const started = performance.now();
-    for (let elapsed = 0; elapsed < DURATION_MS; elapsed = performance.now() - started) {
+    for (let elapsed = 0; elapsed < layout().DURATION_MS; elapsed = performance.now() - started) {
       paint(frame(elapsed, styled));
       await sleep(FRAME_MS);
     }

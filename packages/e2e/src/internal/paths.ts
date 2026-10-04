@@ -56,7 +56,12 @@ function danglingLinkTarget(entry: string): string | undefined {
  * (`..logs/out.log`) is an ordinary entry.
  */
 export function relativeToProjectRoot(projectRoot: string, target: string): string | undefined {
-  const relative = path.relative(realpathOfExisting(projectRoot), realpathOfExisting(target));
+  return relativeBelow(realpathOfExisting(projectRoot), realpathOfExisting(target));
+}
+
+/** `target` relative to `root` when strictly below it, compared as written; no symlink is resolved. */
+export function relativeBelow(root: string, target: string): string | undefined {
+  const relative = path.relative(root, target);
   const inside = relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
   return inside ? relative : undefined;
 }

@@ -2,7 +2,7 @@
 
 import * as clack from '@clack/prompts';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { detectPackageManager, execCommand, runScriptCommand } from '../internal/package-manager.ts';
@@ -19,6 +19,7 @@ import {
   splitSkillDirs,
   type SkillInstall,
 } from './init/agent-skill.ts';
+import { readIfPresent } from './init/read-if-present.ts';
 import { isLoopbackHost } from '../internal/hosts.ts';
 import { getEnginePresets, DEFAULT_ENGINE_ID, type EngineId } from './init/engines.ts';
 import { GATEWAYS, getGatewayPreset, type GatewayId } from './init/gateways.ts';
@@ -26,7 +27,6 @@ import { findRegisteredMcpFiles, MCP_LOCATIONS, planMcpRegistration } from './in
 import { addDependencies, addScripts, describeManifestError, readPackage, serializePackage } from './init/package.ts';
 import { createScaffold, type ScaffoldModel } from './init/scaffold.ts';
 import { MISSING_SKILL_MESSAGE, readSkillFiles } from './skill.ts';
-import { playWordmark } from './wordmark.ts';
 import type { InitOutcome, InitResult } from '../telemetry/events.ts';
 
 export interface InitOptions {
@@ -77,7 +77,10 @@ type GatewayChoice = GatewayId | 'none';
  */
 export async function init(cwd: string, options: InitOptions = {}): Promise<InitOutcome & { readonly exitCode: number }> {
   // The wordmark drops in above the wizard, at rest when --yes asked for no questions; a terminal is the one place it shows.
-  if (options.interactive !== false) await playWordmark(process.stdout, { motion: options.yes !== true });
+  if (options.interactive !== false && process.stdout.isTTY === true) {
+    const { playWordmark } = await import('./wordmark.ts');
+    await playWordmark(process.stdout, { motion: options.yes !== true });
+  }
   clack.intro(options.directory === undefined ? 'e2e init' : `e2e init ${options.directory}`);
   // Filled in as the choices are made; every return hands them back with how the run ended.
   const facts: { -readonly [Key in keyof Omit<InitOutcome, 'result'>]: InitOutcome[Key] } = {
@@ -102,9 +105,13 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
     );
     return done('not-interactive', 2);
   }
-  if (existsSync(cwd) && !statSync(cwd).isDirectory()) {
-    clack.log.error(`${options.directory ?? cwd} is a file, not a directory`);
-    return done('invalid-project', 2);
+  try {
+    if (!statSync(cwd).isDirectory()) {
+      clack.log.error(`${options.directory ?? cwd} is a file, not a directory`);
+      return done('invalid-project', 2);
+    }
+  } catch {
+    // A missing directory is created by the first write.
   }
 
   let pkg: ReturnType<typeof readPackage>;
@@ -128,7 +135,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
   if (exampleExists) clack.log.warn(`Exists, not touching: ${examplePath}`);
 
   const gitignorePath = path.join(cwd, '.gitignore');
-  const existingIgnore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
+  const existingIgnore = readIfPresent(gitignorePath) ?? '';
   const ignoreLines = existingIgnore.split(/\r?\n/);
   const missingIgnore = GITIGNORE_ENTRIES.filter((entry) => !ignoreLines.includes(entry));
 
@@ -263,9 +270,16 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
 
   // The first write; a directory named on the command line comes into being here.
   mkdirSync(cwd, { recursive: true });
+  const madeDirs = new Set<string>();
+  const ensureParent = (file: string): void => {
+    const parent = path.dirname(file);
+    if (madeDirs.has(parent)) return;
+    mkdirSync(parent, { recursive: true });
+    madeDirs.add(parent);
+  };
   for (const file of files) {
     const absolute = path.join(cwd, file.relative);
-    mkdirSync(path.dirname(absolute), { recursive: true });
+    ensureParent(absolute);
     writeFileSync(absolute, file.content, 'utf8');
     clack.log.success(`${file.existing ? 'Updated' : 'Created'} ${file.relative}`);
   }
@@ -274,13 +288,13 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
     if (skill.kind === 'link') {
       const absolute = path.join(cwd, skill.relative);
       if (skill.existing) rmSync(absolute, { recursive: true });
-      mkdirSync(path.dirname(absolute), { recursive: true });
+      ensureParent(absolute);
       symlinkSync(skill.target, absolute, process.platform === 'win32' ? 'junction' : 'dir');
       clack.log.success(`Linked ${skill.relative} -> ${skill.target}${linkReplaces(skill, 'replaced')}`);
       continue;
     }
     for (const file of skill.files) {
-      mkdirSync(path.dirname(file.absolute), { recursive: true });
+      ensureParent(file.absolute);
       writeFileSync(file.absolute, file.content, 'utf8');
     }
     const verb = skill.links.length > 0 ? 'Replaced' : skill.existing ? 'Updated' : 'Created';
@@ -290,7 +304,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
     clack.log.info(`Skipped the agent skill; agents can still print it with ${execCommand(manager, 'e2e guide')}`);
   }
   for (const registration of mcpRegistrations) {
-    mkdirSync(path.dirname(registration.absolute), { recursive: true });
+    ensureParent(registration.absolute);
     writeFileSync(registration.absolute, registration.content, 'utf8');
     clack.log.success(`${registration.existing ? 'Updated' : 'Created'} ${registration.relative} (e2e mcp server)`);
   }

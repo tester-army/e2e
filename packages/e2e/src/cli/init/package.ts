@@ -1,39 +1,63 @@
 /** package.json reading and dependency additions for `e2e init`. */
 
-import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { z } from 'zod';
 import { compareCodePoints } from '../../internal/compare.ts';
 import { isPlainObject } from '../../internal/objects.ts';
+import { readIfPresent } from './read-if-present.ts';
 
-const dependencyBlock = z.record(z.string(), z.string()).optional();
-const packageSchema = z.looseObject({
-  dependencies: dependencyBlock,
-  devDependencies: dependencyBlock,
-  peerDependencies: dependencyBlock,
-  optionalDependencies: dependencyBlock,
-  packageManager: z.string().optional(),
-  scripts: z.record(z.string(), z.string()).optional(),
-});
-type PackageManifest = z.infer<typeof packageSchema>;
+/** A manifest field with the wrong shape; `describeManifestError` names the field. */
+class ManifestError extends Error {
+  constructor(
+    /** Keys from the manifest down to the field, empty for the manifest itself. */
+    readonly fieldPath: readonly string[],
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ManifestError';
+  }
+}
+
+interface PackageManifest extends Record<string, unknown> {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+  packageManager?: string;
+  scripts?: Record<string, string>;
+}
+
+/** Parses the fields init reads into the manifest; every other key passes through untouched. */
+function parseManifest(value: unknown): PackageManifest {
+  if (!isPlainObject(value)) throw new ManifestError([], 'expected a JSON object');
+  const manifest: PackageManifest = value;
+  for (const field of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies', 'scripts'] as const) {
+    const block = manifest[field];
+    if (block === undefined) continue;
+    if (!isPlainObject(block)) throw new ManifestError([field], 'expected an object of strings');
+    for (const [name, entry] of Object.entries(block)) {
+      if (typeof entry !== 'string') throw new ManifestError([field, name], 'expected a string');
+    }
+  }
+  if (manifest.packageManager !== undefined && typeof manifest.packageManager !== 'string') {
+    throw new ManifestError(['packageManager'], 'expected a string');
+  }
+  return manifest;
+}
 
 /**
  * Reads and validates the manifest, keeping its original text so edits can
  * preserve formatting. A missing manifest starts as a private ESM package.
  */
 export function readPackage(cwd: string) {
-  const manifestPath = path.join(cwd, 'package.json');
-  const original = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf8') : undefined;
-  const manifest = packageSchema.parse(original === undefined ? { private: true, type: 'module' } : JSON.parse(original));
+  const original = readIfPresent(path.join(cwd, 'package.json'));
+  const manifest = parseManifest(original === undefined ? { private: true, type: 'module' } : JSON.parse(original));
   return { original, manifest };
 }
 
 /** Why a manifest failed to read: the JSON parser's own position, or the field that has the wrong shape. */
 export function describeManifestError(cause: unknown): string {
-  if (cause instanceof z.ZodError) {
-    return cause.issues
-      .map((issue) => `${issue.path.length === 0 ? 'package.json' : issue.path.join('.')}: ${issue.message}`)
-      .join('; ');
+  if (cause instanceof ManifestError) {
+    return `${cause.fieldPath.length === 0 ? 'package.json' : cause.fieldPath.join('.')}: ${cause.message}`;
   }
   return cause instanceof Error ? cause.message : String(cause);
 }
@@ -66,8 +90,7 @@ export function addScripts(manifest: PackageManifest, scripts: Readonly<Record<s
 
 /**
  * Serializes with the original manifest's indentation, newline convention,
- * and key order: parsing puts the schema's keys first, so without this an
- * existing project's `package.json` would come back reshuffled.
+ * and key order, so an existing project's `package.json` keeps its layout.
  */
 export function serializePackage(manifest: PackageManifest, original: string | undefined): string {
   const indent = original?.match(/\n([\t ]+)"/)?.[1] ?? '  ';
