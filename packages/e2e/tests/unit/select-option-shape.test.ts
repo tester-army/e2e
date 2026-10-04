@@ -50,7 +50,11 @@ describe('locator.selectOption shape', () => {
 
   it.each<[string, unknown]>([
     ['two keys', { label: 'Daily', value: 'daily' }],
+    ['an unknown key', { text: 'Daily' }],
+    ['a non-string label', { label: 1 }],
+    ['a non-string value', { value: null }],
     ['a negative index', { index: -1 }],
+    ['a fractional index', { index: 0.5 }],
     ['a label inheriting an index', Object.assign(Object.create({ index: 2 }), { label: 'Daily' })],
     ['a label beside a non-enumerable value', Object.defineProperty({ label: 'Daily' }, 'value', { value: 'weekly' })],
   ])('rejects %s before the engine acts', async (_, value) => {
