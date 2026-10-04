@@ -675,10 +675,14 @@ function createBrowserExpectation(deps: ExpectationDeps, negated = false): Brows
       signal: deps.context.signal,
       negated,
       evaluate: condition,
-      onTimeout: async () =>
+      // A read the deadline cut off means the page stopped answering: reading it again for the message would hang too.
+      onTimeout: async (cause) =>
         new TestError(
           'ASSERTION_FAILED',
-          `expect.${negated ? 'not.' : ''}${api} failed\nexpected: ${negated ? 'not ' : ''}${label}\nobserved: ${await observed()}`,
+          `expect.${negated ? 'not.' : ''}${api} failed\nexpected: ${negated ? 'not ' : ''}${label}\nobserved: ${
+            cause === undefined ? await observed() : 'nothing, the page stopped answering'
+          }`,
+          cause === undefined ? undefined : { cause },
         ),
     });
   };

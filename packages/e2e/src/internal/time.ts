@@ -51,13 +51,15 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 export const POLL_INTERVAL_MS = 100;
 
 /**
- * Whether `cause` is an operation that ran out of its budget less than one
- * poll tick before `deadline`: the wait's own deadline, whichever timer fired
- * first, not a failure of the operation. Reads the engine error a locator
- * failure wraps as well as a bare one.
+ * Whether `cause` is a read a wait's deadline cut off: an operation timeout
+ * of a read that started with less than one poll tick of the wait left, so
+ * it timed out because the wait did, not because the app stopped answering.
+ * A read that started with more and still timed out hung, and its timeout is
+ * the failure. Reads the engine error a locator failure wraps as well as a
+ * bare one.
  */
-export function timedOutAtDeadline(cause: unknown, deadline: Deadline): boolean {
-  if (deadline.remaining() >= POLL_INTERVAL_MS) return false;
+export function cutOffAtDeadline(cause: unknown, startedWithMs: number): boolean {
+  if (startedWithMs >= POLL_INTERVAL_MS) return false;
   const engineError = asEngineError(cause) ?? asEngineError(cause instanceof Error ? cause.cause : undefined);
   return engineError?.code === 'OPERATION_TIMEOUT';
 }
@@ -75,7 +77,8 @@ export interface PollConditionOptions {
    * the negation grace window resets.
    */
   evaluate(): Promise<boolean | undefined>;
-  onTimeout(): Error | Promise<Error>;
+  /** Builds the poll's failure; `cause` is the read the deadline cut off, when one did. */
+  onTimeout(cause?: unknown): Error | Promise<Error>;
 }
 
 /**
@@ -87,7 +90,9 @@ export interface PollConditionOptions {
  * a slow read counts toward the window. A budget shorter than the window
  * still has to be satisfiable: the negation then only needs to hold for the
  * whole budget, and passes at the deadline on what it has seen, since a read
- * past the deadline has no budget left.
+ * past the deadline has no budget left. A read the deadline cut off (see
+ * `cutOffAtDeadline`) after an earlier one completed saw nothing: the poll
+ * ends there, a negation on what it held when that read began.
  */
 export async function pollCondition(options: PollConditionOptions): Promise<void> {
   const { deadline, negated } = options;
@@ -97,14 +102,16 @@ export async function pollCondition(options: PollConditionOptions): Promise<void
   let holdingSince: number | undefined;
   const holds = (now: number): boolean => holdingSince !== undefined && now - holdingSince >= grace;
   let sampled = false;
-  let value: boolean | undefined;
   for (;;) {
+    const startedWithMs = deadline.remaining(readAt);
+    let value: boolean | undefined;
     try {
       value = await options.evaluate();
       sampled = true;
     } catch (cause) {
-      // A read the deadline cut off saw nothing new: the poll ends on what it last saw.
-      if (!sampled || !timedOutAtDeadline(cause, deadline)) throw cause;
+      if (!sampled || !cutOffAtDeadline(cause, startedWithMs)) throw cause;
+      if (negated && holds(readAt)) return;
+      throw await options.onTimeout(cause);
     }
     if (!negated) {
       if (value === true) return;

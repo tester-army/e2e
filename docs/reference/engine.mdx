@@ -923,6 +923,11 @@ export const RETRYABLE_ENGINE_ERROR_CODES: ReadonlySet<EngineErrorCode> = new Se
 | `INVALID_STATE` | `APP_NOT_OPEN` | no |
 | `ENGINE_FAILURE`, any non-`EngineError` | infrastructure `ENGINE_FAILURE` | no |
 
+An `OPERATION_TIMEOUT` on a locate or read that started with under 100 ms of
+a waiting call's deadline left, after one that completed, ends the wait
+instead: an action's or `waitFor`'s `LOCATOR_NOT_FOUND`, or an assertion's
+`ASSERTION_FAILED`, with the timeout as its cause.
+
 An `EngineError` a contributed fixture method throws is mapped by the table
 above, so a fixture over a session that ended reports `APP_NOT_OPEN` the way
 an observation would. A method can also fail a step with the runner's own
@@ -961,7 +966,7 @@ Use these helpers to keep behavior consistent across engines:
 | `matchesText(actual, pattern)`, `toTextPattern(match, { exact? })`, `describePattern(pattern)` | `TextPattern` matching for `locate` and text matchers; `toTextPattern` throws `INVALID_ARGUMENT` for a `match` that is neither a string nor a `RegExp` |
 | `resolveExpression(expression, nodes, { selector? })` | The reference `locate`. Resolves one `LocatorExpression` over a semantic tree in document order, with `text` and `label` answering the innermost match when a container echoes a descendant's text. An engine whose tree is the whole truth (a device) calls it; a browser engine reproduces it. A `selector` needs the hook, a `frame` is `FRAME_NOT_FOUND` |
 | `urlMatches(current, expected, baseHref, ignoreCase?)` | `toHaveURL`-style comparison, `ignoreCase` as on the locator matchers; an `expected` that is neither a string nor a `RegExp` throws `INVALID_ARGUMENT`, as in `toTextPattern` |
-| `pollCondition({ deadline, signal, negated, evaluate, onTimeout })`, `Deadline` | Assertion polling and the negation grace window |
+| `pollCondition({ deadline, signal, negated, evaluate, onTimeout })`, `Deadline` | Assertion polling and the negation grace window. An `OPERATION_TIMEOUT` from an `evaluate` that started with under 100 ms of the deadline left, after one that completed, ends the poll: `onTimeout(cause)` builds the failure with it, and a negation passes if it had held long enough when that read began |
 | `validateJsonValue(value, label, rules?)` | Checks a value is plain JSON: a top-level `undefined` passes; a non-finite number, a cycle, an object that is not a plain object or array, or a function, symbol, bigint, or `undefined` inside is `INVALID_ARGUMENT` naming `label`. A `Secret` is `POLICY_DENIED` unless `rules.onSecret` throws its own; `rules.maxDepth` caps the nesting |
 | `rejectUnknownKeys(label, value, keys, code?)` | Throws `INVALID_CONFIG` for the first own key of `value` outside `keys`, naming the nearest known key when one is a plausible typo (`web() has unknown key "viewprt"; did you mean "viewport"?`) and the known keys otherwise: the check the runner runs on its own config objects, for an engine factory's options. Pass `'INVALID_ARGUMENT'` as `code` for an object a test passes to a fixture method |
 | `rejectUnknownOptions(api, options, known, code?)` | `INVALID_ARGUMENT` (or `code`, `INVALID_LOCATOR` for a locator option) for an option key a fixture method or matcher does not take, so a JavaScript caller's unsupported option fails instead of running on the default. `options` must be a plain object or `undefined`; a class instance or array is refused, and non-enumerable own keys count as keys |
