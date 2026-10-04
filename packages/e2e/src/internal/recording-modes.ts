@@ -35,7 +35,7 @@ export interface AttemptRecording {
 }
 
 /** What replaces the removed trace recording, for every place that refuses `trace` (the config, a target, a test, `--trace`). */
-export const TRACE_REPLACEMENT = "a failed test's page under <output>/failures/ tells its steps, cache decisions, and screen; set video for a recording";
+export const TRACE_REPLACEMENT = "--reporter markdown writes a page per failed test under <output>/failures/ with its steps and screen; set video for a recording";
 
 /** The refusal of a `trace` key or flag, one message wherever it is read. */
 export const TRACE_REMOVED = `trace was removed: ${TRACE_REPLACEMENT}`;

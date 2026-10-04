@@ -330,7 +330,7 @@ describe('e2e run argument parsing', () => {
       expect(runMock, args.join(' ')).not.toHaveBeenCalled();
       expect(process.exitCode, args.join(' ')).toBe(2);
       expect(written(stderrSpy), args.join(' ')).toContain(
-        "trace was removed: a failed test's page under <output>/failures/ tells its steps, cache decisions, and screen; set video for a recording",
+        "trace was removed: --reporter markdown writes a page per failed test under <output>/failures/ with its steps and screen; set video for a recording",
       );
     }
   });

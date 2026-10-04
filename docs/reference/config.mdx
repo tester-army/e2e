@@ -565,7 +565,8 @@ export type RecordingMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry
 | `on-first-retry` | the first retry only, the second attempt | that recording. A test that passes first time records nothing |
 | `on-all-retries` | every attempt after the first | every recording. A test that passes first time records nothing |
 
-The names are Playwright's `use.video` modes. Under a retry mode a test with
+The names are Playwright's `use.trace` and `use.video` modes; Playwright's
+video has no `on-all-retries`. Under a retry mode a test with
 `retries: 0` records nothing, and neither does a failure the runner does not
 retry, such as `LAUNCH_TIMEOUT`. When a test whose engine can record runs
 that way, the run prints one notice at plan time saying no videos will be
@@ -603,8 +604,9 @@ secrets included, so it is always asked for.
 
 Playwright trace recording was removed: `trace` at the top or on a target
 fails with `INVALID_CONFIG`, on a test or describe with `COLLECTION_ERROR`.
-A failed test's page under [`<output>/failures/`](/debugging) tells its
-steps, cache decisions, and screen; set `video` for a recording.
+`--reporter markdown` writes a page per failed test under
+[`<output>/failures/`](/debugging) with its steps and screen; set `video` for
+a recording.
 
 ### Engines that cannot record
 

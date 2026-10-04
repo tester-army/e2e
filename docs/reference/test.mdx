@@ -303,9 +303,9 @@ test('checkout', { video: 'on' }, async ({ agent }) => {
 });
 ```
 
-A `trace` option is a `COLLECTION_ERROR`: Playwright traces were removed. A
-failed test's page under `<output>/failures/` tells its steps, cache
-decisions, and screen.
+A `trace` option is a `COLLECTION_ERROR`: Playwright traces were removed.
+`--reporter markdown` writes a page per failed test under
+`<output>/failures/` with its steps and screen.
 
 `serial: true` makes the group one ordered retry unit with shared app state
 and shared secret state: a secret fill withholds pixels for the rest of the

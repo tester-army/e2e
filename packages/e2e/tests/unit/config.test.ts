@@ -909,7 +909,7 @@ describe('resolveConfig', () => {
         { trace: { record: 'retries' }, kinds: ['screenshot', 'trace'] },
       ]) {
         expect(failure({ artifacts: artifacts as never }).message).toMatch(
-          /^artifacts\.(kinds and artifacts\.trace|trace and artifacts\.kinds) were removed: a failed test's page under <output>\/failures\//,
+          /^artifacts\.(kinds and artifacts\.trace|trace and artifacts\.kinds) were removed: --reporter markdown writes a page per failed test under <output>\/failures\//,
         );
       }
     });
@@ -928,45 +928,43 @@ describe('resolveConfig', () => {
   });
 
   describe('video', () => {
-    const kind = 'video';
-    const web = (mode: string) => ({ ...WEB, [kind]: mode }) as unknown as Target;
-    const fallback = 'off';
+    const web = (mode: string) => ({ ...WEB, video: mode }) as unknown as Target;
 
     it('defaults, and a target inherits the config mode as a run-wide one', () => {
-      expect(resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV }).targets[0]![kind]).toEqual({ mode: fallback, source: 'default' });
-      const inherited = resolveConfig({ targets: TARGETS, [kind]: 'retain-on-failure' }, { projectRoot: ROOT, env: BASE_ENV });
-      expect(inherited.targets[0]![kind]).toEqual({ mode: 'retain-on-failure', source: 'run' });
+      expect(resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV }).targets[0]!.video).toEqual({ mode: 'off', source: 'default' });
+      const inherited = resolveConfig({ targets: TARGETS, video: 'retain-on-failure' }, { projectRoot: ROOT, env: BASE_ENV });
+      expect(inherited.targets[0]!.video).toEqual({ mode: 'retain-on-failure', source: 'run' });
     });
 
     it('lets a target override the config, and the flag override both', () => {
-      const own = resolveConfig({ targets: [web('on-all-retries')], [kind]: 'on' }, { projectRoot: ROOT, env: BASE_ENV });
-      expect(own.targets[0]![kind]).toEqual({ mode: 'on-all-retries', source: 'target' });
-      const flagged = resolveConfig({ targets: [web('off')], [kind]: 'off' }, { projectRoot: ROOT, env: BASE_ENV, cli: { [kind]: 'on' } });
-      expect(flagged.targets[0]![kind]).toEqual({ mode: 'on', source: 'run' });
-      const off = resolveConfig({ targets: TARGETS, [kind]: 'on' }, { projectRoot: ROOT, env: BASE_ENV, cli: { [kind]: 'off' } });
-      expect(off.targets[0]![kind]).toEqual({ mode: 'off', source: 'run' });
+      const own = resolveConfig({ targets: [web('on-all-retries')], video: 'on' }, { projectRoot: ROOT, env: BASE_ENV });
+      expect(own.targets[0]!.video).toEqual({ mode: 'on-all-retries', source: 'target' });
+      const flagged = resolveConfig({ targets: [web('off')], video: 'off' }, { projectRoot: ROOT, env: BASE_ENV, cli: { video: 'on' } });
+      expect(flagged.targets[0]!.video).toEqual({ mode: 'on', source: 'run' });
+      const off = resolveConfig({ targets: TARGETS, video: 'on' }, { projectRoot: ROOT, env: BASE_ENV, cli: { video: 'off' } });
+      expect(off.targets[0]!.video).toEqual({ mode: 'off', source: 'run' });
     });
 
     it('keeps the mode, at the top and on a target, out of the digest', () => {
       const plain = resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV }).configDigest;
-      expect(resolveConfig({ targets: [web('on')], [kind]: 'retain-on-failure' }, { projectRoot: ROOT, env: BASE_ENV }).configDigest).toBe(plain);
-      expect(resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV, cli: { [kind]: 'on' } }).configDigest).toBe(plain);
+      expect(resolveConfig({ targets: [web('on')], video: 'retain-on-failure' }, { projectRoot: ROOT, env: BASE_ENV }).configDigest).toBe(plain);
+      expect(resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV, cli: { video: 'on' } }).configDigest).toBe(plain);
     });
 
     it('refuses a mode it does not know, wherever it is set', () => {
       const modes = 'off, on, retain-on-failure, on-first-retry, on-all-retries';
-      expect(() => resolveConfig({ targets: TARGETS, [kind]: true } as never, { projectRoot: ROOT, env: BASE_ENV })).toThrow(
-        `${kind} must be one of ${modes}, got true`,
+      expect(() => resolveConfig({ targets: TARGETS, video: true } as never, { projectRoot: ROOT, env: BASE_ENV })).toThrow(
+        `video must be one of ${modes}, got true`,
       );
       expect(() => resolveConfig({ targets: [web('sometimes')] } as never, { projectRoot: ROOT, env: BASE_ENV })).toThrow(
-        `target "web" ${kind} must be one of ${modes}`,
+        `target "web" video must be one of ${modes}`,
       );
       // The flag wins over a target's mode, but never hides a mistake in it.
-      expect(() => resolveConfig({ targets: [web('retain_on_failure')] } as never, { projectRoot: ROOT, env: BASE_ENV, cli: { [kind]: 'on' } })).toThrow(
-        `target "web" ${kind} must be one of`,
+      expect(() => resolveConfig({ targets: [web('retain_on_failure')] } as never, { projectRoot: ROOT, env: BASE_ENV, cli: { video: 'on' } })).toThrow(
+        `target "web" video must be one of`,
       );
-      expect(() => resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV, cli: { [kind]: 'every' as never } })).toThrow(
-        `--${kind} must be one of`,
+      expect(() => resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV, cli: { video: 'every' as never } })).toThrow(
+        `--video must be one of`,
       );
     });
   });

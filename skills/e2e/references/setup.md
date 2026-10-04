@@ -147,8 +147,8 @@ or `E2E_USER_ADMIN_PASSWORD` first, or defer to fill time with
   a retry mode with `retries: 0` prints a notice; it never invalidates the
   replay cache.
 - `trace` is refused (`INVALID_CONFIG`; `COLLECTION_ERROR` on a test):
-  Playwright traces were removed. Read `.e2e/failures/<test>.md`; set
-  `video` for a recording.
+  Playwright traces were removed. `--reporter markdown` writes
+  `.e2e/failures/<test>.md`; set `video` for a recording.
 
 ## The app under test
 

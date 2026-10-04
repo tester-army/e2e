@@ -51,6 +51,15 @@ const NESTED_HOOKS = {
   session: ['open', 'back', 'restart', 'reset'],
 } as const;
 
+/**
+ * Hooks the contract no longer has, which an engine published before their
+ * removal still declares: accepted and never called, so updating `e2e` alone
+ * keeps such an engine working inside its peer range.
+ */
+const RETIRED_HOOKS: Readonly<Partial<Record<keyof typeof NESTED_HOOKS, readonly string[]>>> = {
+  artifacts: ['startTrace', 'stopTrace'],
+};
+
 const FUNCTION_MEMBERS = [
   'observe',
   'locate',
@@ -92,8 +101,9 @@ function hookManifest<K extends keyof typeof NESTED_HOOKS>(
 ): Record<string, unknown> {
   if (!isRecord(value)) throw invalid(name, `${key} must be an object`);
   const hooks: readonly string[] = NESTED_HOOKS[key];
+  const retired: readonly string[] = RETIRED_HOOKS[key] ?? [];
   for (const member of Object.keys(value)) {
-    if (!hooks.includes(member)) {
+    if (!hooks.includes(member) && !retired.includes(member)) {
       throw invalid(name, `${key} has unknown key "${member}"; expected one of ${hooks.join(', ')}`);
     }
   }

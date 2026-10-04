@@ -137,6 +137,16 @@ describe('defineEngine', () => {
     ).toThrow(/tools belong on the agent/);
   });
 
+  it('accepts the trace hooks an engine published before their removal declares, and never offers them', () => {
+    const startTrace = async (): Promise<void> => {
+      throw new Error('never called');
+    };
+    const engine = defineEngine(
+      observingEngine({ artifacts: { screenshot: async () => 'x', startTrace, stopTrace: async () => 'trace.zip' } as never }),
+    );
+    expect(Object.keys(engine.artifacts!)).toEqual(['screenshot']);
+  });
+
   it('rejects unknown keys inside nested manifests: the grammar is closed', () => {
     expect(() =>
       defineEngine(observingEngine({ session: { tap: async () => undefined } as never })),

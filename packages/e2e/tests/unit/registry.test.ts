@@ -155,34 +155,33 @@ describe('registration', () => {
   });
 
   it('accepts a video mode on tests, groups, and setups, and rejects anything else', async () => {
-    const kind = 'video';
     const registration = await collectModule(async () => {
-      test.setup('auth', { sessions: ['a'], [kind]: 'off' }, noop);
-      test.describe('group', { [kind]: 'on' }, () => {
-        test('x', { [kind]: 'on-all-retries' }, noop);
+      test.setup('auth', { sessions: ['a'], video: 'off' }, noop);
+      test.describe('group', { video: 'on' }, () => {
+        test('x', { video: 'on-all-retries' }, noop);
       });
     });
-    expect(registration.tests.map((item) => item.options[kind])).toEqual(['off', 'on-all-retries']);
+    expect(registration.tests.map((item) => item.options.video)).toEqual(['off', 'on-all-retries']);
     const register = (mode: unknown) =>
       collectModule(async () => {
-        test('x', { [kind]: mode } as never, noop);
+        test('x', { video: mode } as never, noop);
       });
     const modes = 'off, on, retain-on-failure, on-first-retry, on-all-retries';
-    await expect(register(true)).rejects.toThrow(`test options: ${kind} must be one of ${modes}, got true`);
+    await expect(register(true)).rejects.toThrow(`test options: video must be one of ${modes}, got true`);
     await expect(register('on-failure')).rejects.toThrow('got "on-failure"');
     await expect(
       collectModule(async () => {
-        test.describe('group', { [kind]: 'yes' } as never, () => {
+        test.describe('group', { video: 'yes' } as never, () => {
           test('x', noop);
         });
       }),
-    ).rejects.toThrow(`describe options: ${kind} must be one of ${modes}, got "yes"`);
+    ).rejects.toThrow(`describe options: video must be one of ${modes}, got "yes"`);
   });
 });
 
 describe('trace on a test', () => {
   it('is refused on a test, a group, and a setup, naming the failure pages and video', async () => {
-    const message = "trace was removed: a failed test's page under <output>/failures/ tells its steps, cache decisions, and screen; set video for a recording";
+    const message = "trace was removed: --reporter markdown writes a page per failed test under <output>/failures/ with its steps and screen; set video for a recording";
     await expect(collectModule(async () => test('x', { trace: 'on' } as never, noop))).rejects.toMatchObject({
       code: 'COLLECTION_ERROR',
       message: `test options: ${message}`,
@@ -235,16 +234,15 @@ describe('serial groups', () => {
   });
 
   it('rejects a video on a describe nested in a serial group, which records as one unit', async () => {
-    const kind = 'video';
     await expect(
       collectModule(async () => {
         test.describe('unit', { serial: true }, () => {
-          test.describe('inner', { [kind]: 'off' }, () => {
+          test.describe('inner', { video: 'off' }, () => {
             test('x', noop);
           });
         });
       }),
-    ).rejects.toThrow(`describe option "${kind}" cannot be set inside a serial group`);
+    ).rejects.toThrow(`describe option "video" cannot be set inside a serial group`);
   });
 
   it('rejects member overrides of unit-owned options', async () => {
