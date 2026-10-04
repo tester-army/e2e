@@ -9,7 +9,7 @@
  */
 
 import { isLoopbackHost } from '../internal/urls.ts';
-import type { StepCacheInfo, StepEvent, StepTurn } from '../run/steps.ts';
+import type { StepCacheInfo, StepCacheRecord, StepEvent, StepTurn } from '../run/steps.ts';
 import type { Report1Document, ReportError, ReportResult, ReportSource, ReportStep } from './build.ts';
 import { cell, code, formatDuration, link, MAX_CELL_CHARS, MAX_ID_CHARS, MAX_LABEL_CHARS, MAX_PATH_CHARS, MAX_TITLE_CHARS, plural } from './markdown-text.ts';
 import { repeatSuffix } from './format.ts';
@@ -247,7 +247,7 @@ const CACHE_REASON_TEXT: Readonly<Record<NonNullable<StepCacheInfo['reason']>, s
 };
 
 /** What became of a step's recording, in words. */
-const CACHE_WRITE_TEXT: Readonly<Record<NonNullable<StepCacheInfo['write']>, string>> = {
+const CACHE_WRITE_TEXT: Readonly<Record<NonNullable<StepCacheRecord['write']>, string>> = {
   saved: 'recording saved',
   kept: 'recording kept',
   unconfirmed: 'recording not saved: no check passed after this step',
@@ -296,7 +296,7 @@ function closestToTheEnd(events: readonly StepEvent[]): readonly StepEvent[] {
   return events.filter((event) => kept.has(event));
 }
 
-function cacheLine(cache: StepCacheInfo, cacheDir: string | undefined): string {
+function cacheLine(cache: StepCacheRecord, cacheDir: string | undefined): string {
   const how =
     cache.mode === 'self-finalized'
       ? `replayed all ${plural(cache.totalActions, 'recorded action')}, no model call`

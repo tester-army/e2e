@@ -22,6 +22,8 @@ import { requireKey } from '../internal/keys.ts';
 import { describeExpression, expressionHints } from './expression.ts';
 import { cutOffAtDeadline, Deadline, POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
 import { timestamp } from '../internal/ids.ts';
+import { obj } from '../internal/objects.ts';
+import { targetLabel } from '../cache/trace.ts';
 import type { AttemptBudget } from '../run/budget.ts';
 import type { StepEvent } from '../run/steps.ts';
 
@@ -570,15 +572,19 @@ export class LocatorEngine {
   }
 }
 
-/** A node the way the screen lists it, short: `button "Add"`, `textbox "Email"`, `testid=save`; its text redacted before it is cut. */
+/** A located node as a report line names it, `button "Add"`, each label redacted before it is bounded. */
 function describeNode(node: SemanticNode, redact: (text: string) => string): string {
-  const label = node.name ?? node.text;
-  const parts = [
-    node.role ?? 'node',
-    ...(label === undefined || label.trim() === '' ? [] : [JSON.stringify(redact(label.trim().replace(/\s+/g, ' ')).slice(0, 80))]),
-    ...(node.testId === undefined ? [] : [`testid=${redact(node.testId)}`]),
-  ];
-  return parts.join(' ');
+  const field = (value: string | undefined): string | undefined => {
+    const text = value === undefined ? '' : redact(value.replace(/\s+/g, ' ').trim());
+    return text === '' ? undefined : text;
+  };
+  return targetLabel(obj({
+    role: node.role,
+    name: field(node.name),
+    text: field(node.text),
+    placeholder: field(node.attributes?.['placeholder']),
+    testId: field(node.testId),
+  }));
 }
 
 /** Zero matches -> null; one -> the ref; many -> LOCATOR_AMBIGUOUS. */

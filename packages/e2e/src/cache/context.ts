@@ -45,7 +45,7 @@ export type StagedTrace = {
   readonly stepIndex: number;
 } & (
   | { readonly kind: 'write'; readonly trace: ActionTrace }
-  | { readonly kind: 'keep'; readonly recordedFor: TraceProvenance; readonly keyedBy: TraceKeyContext }
+  | { readonly kind: 'keep'; readonly recordedFor: TraceProvenance }
 );
 
 /** One step's claimed key: its hash, and the step it names as an entry records it. */
@@ -140,24 +140,14 @@ function flowOf(trace: ActionTrace): string {
 
 /**
  * Writes the step's full provenance into a kept entry recorded before the
- * occurrence fields or the key context were, leaving every other entry
- * untouched. Its replay proved which step it belongs to, and `cache.strict`
- * matches only entries that say so exactly (`rekeyed.ts`); the key context
- * lets a later key change be named.
+ * occurrence fields were, leaving every other entry untouched. Its replay
+ * proved which step it belongs to, and `cache.strict` matches only entries
+ * that say so exactly (`rekeyed.ts`).
  */
-async function completeProvenance(
-  store: CacheStore,
-  keyHash: string,
-  recordedFor: TraceProvenance | undefined,
-  keyedBy: TraceKeyContext,
-): Promise<void> {
+async function completeProvenance(store: CacheStore, keyHash: string, recordedFor: TraceProvenance): Promise<void> {
   const existing = await store.read(keyHash);
-  if (existing.status !== 'hit') return;
-  const { payload } = existing.entry;
-  const owesStep = recordedFor !== undefined && payload.recordedFor?.callIndex === undefined;
-  const owesKey = payload.keyedBy === undefined;
-  if (!owesStep && !owesKey) return;
-  await store.write(keyHash, { ...payload, ...(owesStep ? { recordedFor } : {}), ...(owesKey ? { keyedBy } : {}) });
+  if (existing.status !== 'hit' || existing.entry.payload.recordedFor?.callIndex !== undefined) return;
+  await store.write(keyHash, { ...existing.entry.payload, recordedFor });
 }
 
 /** How an attempt ended, as the settlement of its staged entries reads it. */
@@ -206,12 +196,11 @@ export async function flushStagedTraces(context: AgentCacheContext, settlement: 
       }
       if (entry.kind === 'keep') {
         context.writes.set(entry.stepIndex, 'kept');
-        await completeProvenance(context.store, entry.keyHash, entry.recordedFor, entry.keyedBy);
+        await completeProvenance(context.store, entry.keyHash, entry.recordedFor);
         continue;
       }
       if (await holdsSameFlow(context.store, entry.keyHash, entry.trace)) {
         context.writes.set(entry.stepIndex, 'kept');
-        if (entry.trace.keyedBy !== undefined) await completeProvenance(context.store, entry.keyHash, entry.trace.recordedFor, entry.trace.keyedBy);
         continue;
       }
       await context.store.write(entry.keyHash, entry.trace);

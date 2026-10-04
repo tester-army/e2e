@@ -5,7 +5,7 @@ import { isAgentError } from '../agent/error.ts';
 import type { ReplayHandOffReason } from '../agent/executor.ts';
 import type { CacheWrite } from '../cache/context.ts';
 import type { TraceReplayMissReason } from '../cache/decide.ts';
-import type { DerivedReason } from '../cache/trace.ts';
+import { bound, type DerivedReason } from '../cache/trace.ts';
 import { markAbandonedRejection, relocateStack } from '../internal/abandoned.ts';
 import { withAiTraceStep } from '../internal/ai-trace.ts';
 import { classifyError, serializeError, TestError, withHint, type SerializedError } from '../internal/errors.ts';
@@ -140,9 +140,13 @@ export interface StepCacheInfo {
    * screen the recording started on against the one the step did.
    */
   detail?: string;
-  /** What became of the step's recording once the attempt settled; see `CacheWrite`. */
-  write?: CacheWrite;
 }
+
+/** The cache detail as the report keeps it: what `agent.act()` returns, and what became of the recording once the attempt settled. */
+export type StepCacheRecord = StepCacheInfo & {
+  /** Set when the attempt ends, so a step's own `result.cache` never has it; see `CacheWrite`. */
+  write?: CacheWrite;
+};
 
 /** Agent-specific step detail attached while the step is still running. */
 export interface StepAgentDetails {
@@ -198,7 +202,7 @@ export interface StepRecord {
   visionOnly?: boolean;
   viewport?: { width: number; height: number; scale: number };
   metrics?: StepMetrics;
-  cache?: StepCacheInfo;
+  cache?: StepCacheRecord;
   events: StepEvent[];
   /** The model turns of an agent step, most recent last, bounded. */
   turns?: StepTurn[];
@@ -570,7 +574,7 @@ export class StepRecorder {
     if (step.events.length >= this.maxEventsPerStep) return;
     // Redacted before it is cut, so no cut leaves the head of a secret behind.
     const detail = event.detail === undefined ? undefined : (this.redact?.(event.detail) ?? event.detail);
-    const redacted = detail === undefined ? event : { ...event, detail: detail.length > MAX_DETAIL_CHARS ? `${detail.slice(0, MAX_DETAIL_CHARS - 1)}…` : detail };
+    const redacted = detail === undefined ? event : { ...event, detail: bound(detail, MAX_DETAIL_CHARS) };
     step.events.push(redacted);
     this.publish(step, { phase: 'event', api: step.api, event: redacted });
   }

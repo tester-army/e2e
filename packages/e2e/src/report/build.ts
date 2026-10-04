@@ -26,7 +26,7 @@ import type {
   SerialMemberRecord,
 } from '../run/records.ts';
 import type {
-  StepCacheInfo,
+  StepCacheRecord,
   StepEvent,
   StepMetrics,
   StepModelInfo,
@@ -178,7 +178,7 @@ export interface ReportStep {
   visionOnly?: boolean | undefined;
   viewport?: { width: number; height: number; scale: number } | undefined;
   metrics?: StepMetrics | undefined;
-  cache?: StepCacheInfo | undefined;
+  cache?: StepCacheRecord | undefined;
   events: readonly StepEvent[];
   /** The last model turns of an agent step, oldest first. */
   turns?: readonly StepTurn[] | undefined;

@@ -181,7 +181,7 @@ describe('registration', () => {
 
 describe('trace on a test', () => {
   it('is refused on a test, a group, and a setup, naming the failure pages and video', async () => {
-    const message = "trace was removed: --reporter markdown writes a page per failed test under <output>/failures/ with its steps and screen; set video for a recording";
+    const message = "trace was removed: a failed test's page under <output>/failures/ tells its steps, cache decisions, app log, and screen; set video for a recording";
     await expect(collectModule(async () => test('x', { trace: 'on' } as never, noop))).rejects.toMatchObject({
       code: 'COLLECTION_ERROR',
       message: `test options: ${message}`,

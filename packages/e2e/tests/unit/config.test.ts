@@ -909,7 +909,7 @@ describe('resolveConfig', () => {
         { trace: { record: 'retries' }, kinds: ['screenshot', 'trace'] },
       ]) {
         expect(failure({ artifacts: artifacts as never }).message).toMatch(
-          /^artifacts\.(kinds and artifacts\.trace|trace and artifacts\.kinds) were removed: --reporter markdown writes a page per failed test under <output>\/failures\//,
+          /^artifacts\.(kinds and artifacts\.trace|trace and artifacts\.kinds) were removed: a failed test's page under <output>\/failures\//,
         );
       }
     });

@@ -520,8 +520,10 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   };
 
   /**
-   * Writes the failure pages beside the report, on the same terms as the AI
-   * trace: a lost page is a recorded run error, never a crash.
+   * Writes the failure pages beside the report. Like `junit.xml` and
+   * `summary.md`, they read the report and add to it nothing it lacks, so a
+   * page that could not be written is a line on stderr, never a run error
+   * that would disagree with the report already on disk.
    */
   const writeFailures = async (config: ResolvedConfig, document: Report1Document): Promise<FailurePages> => {
     try {
@@ -532,10 +534,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         cacheDir: config.cache.store === undefined ? config.cache.dir : undefined,
       });
     } catch (cause) {
-      recordFailure(
-        new E2EError('infrastructure', 'REPORT_WRITE_FAILED', `the failure pages could not be written: ${errorMessage(cause)}`, { cause }),
-        'report',
-      );
+      process.stderr.write(`e2e: the failure pages could not be written: ${errorMessage(cause)}\n`);
       return new Map();
     }
   };

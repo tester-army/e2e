@@ -5,6 +5,7 @@
  * expectation from a race.
  */
 
+import { bound } from '../cache/trace.ts';
 import { timestamp } from '../internal/ids.ts';
 import type { StepEvent } from '../run/steps.ts';
 
@@ -43,7 +44,7 @@ export class SampleHistory {
   add(value: string): void {
     this.reads += 1;
     const redacted = this.redact(value);
-    const clipped = redacted.length > MAX_VALUE_CHARS ? `${redacted.slice(0, MAX_VALUE_CHARS - 1)}…` : redacted;
+    const clipped = bound(redacted, MAX_VALUE_CHARS);
     const last = this.runs.at(-1);
     if (last?.value === clipped) last.count += 1;
     else this.runs.push({ value: clipped, count: 1, atMs: Date.now() - this.startedMs });
@@ -75,6 +76,6 @@ export class SampleHistory {
       return `${skipped}${at}${run.value}${run.count > 1 ? ` x${run.count}` : ''}`;
     });
     const text = parts.join(' -> ');
-    return text.length > MAX_DETAIL_CHARS ? `${text.slice(0, MAX_DETAIL_CHARS - 1)}…` : text;
+    return bound(text, MAX_DETAIL_CHARS);
   }
 }

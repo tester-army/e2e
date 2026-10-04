@@ -27,8 +27,8 @@ The run summary reports the outcomes:
 Misses and hand-offs also include `step.cache.reason`, and `step.cache.detail`
 says where the replay stopped and why (`at action 2 of 3, tap button "Apply":
 ...`). `step.cache.entry` is the entry's file name under the cache directory,
-and `step.cache.write` says what became of the recording once the attempt
-ended:
+and `step.cache.write`, in the report only, says what became of the recording
+once the attempt ended:
 
 | `step.cache.write` | Meaning |
 | --- | --- |
@@ -39,8 +39,8 @@ ended:
 | `no-change` | Nothing recorded: the step changed nothing a replay could check. |
 
 The [failure page](/debugging) shows all of it under the step. `agent.act()`
-returns the same cache object as `result.cache`. The cache object is absent
-when caching is off for the step.
+returns the cache object as `result.cache`, without `write`. The cache object
+is absent when caching is off for the step.
 
 To rule the cache out of a failure, run once without it:
 
@@ -317,8 +317,9 @@ The reasons that fail are the ones that mean the app or the entry changed:
 A `no-entry` miss fails too when the cache directory holds a recording of the
 same step under another key, from before an `e2e` upgrade that re-keyed
 entries or a change to the project id, the app's identity, or the agent's
-context. The message names that file and what changed (`the agent's
-context`); delete it once nothing replays it. A custom
+context. The message names that file and, for a recording made by this
+version or later, what changed (`the agent's context`); delete it once
+nothing replays it. A custom
 `cache.store` is not checked this way. Entries recorded before this check
 existed are covered once a `read-write` run replays or re-records them. A
 step never recorded (a new or edited instruction or params), a retry, a

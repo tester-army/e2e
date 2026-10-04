@@ -42,6 +42,18 @@ export function bound(text: string, maxChars: number): string {
 }
 
 /**
+ * A node as one line of prose names it, `button "Save"`: its role and its
+ * best label (name, text, placeholder, then test id), the label bounded.
+ * Every report line that names a node an action or a recording points at
+ * reads it this way.
+ */
+export function targetLabel(target: Pick<TraceTargetDescriptor, 'role' | 'name' | 'text' | 'placeholder' | 'testId'>): string {
+  const label = target.name ?? target.text ?? target.placeholder ?? target.testId ?? '';
+  const role = target.role ?? 'node';
+  return label === '' ? role : `${role} ${JSON.stringify(bound(label, 40))}`;
+}
+
+/**
  * Cap on recorded anchors, per side of the delta. Anchors are the step's own
  * delta, what appeared on screen between the first observation and the
  * passing one and what vanished, so a same-screen mutation rarely has more

@@ -79,7 +79,7 @@ A Playwright key the runner recognizes (`testDir`, `baseURL`, `webServer`,
 | `use.actionTimeout` | `actionTimeout` | renamed |
 | `use.navigationTimeout` | `timeout`, the test budget; `browser.goto(url, { timeout })` overrides one call | renamed |
 | `use.storageState` | `test.setup` and `{ session }`; no file import, see [By design](#by-design) | by design |
-| `use.trace` | no trace; `--reporter markdown` writes a page per failed test under `.e2e/failures/` with its steps and screen, and `video` records the screen | by design |
+| `use.trace` | no trace; a failed test's page under `.e2e/failures/` tells its steps, cache decisions, app log, and screen, and `video` records the screen | by design |
 | `use.video` | `video` with the same modes (`'off'`, `'on'`, `'retain-on-failure'`, `'on-first-retry'`), plus `'on-all-retries'`, at the top of the config, per target in place of a project, `test('x', { video }, ...)` in place of `test.use`, or `--video [mode]` for one run | same |
 | `use.headless: false` | `--headed` on the CLI | renamed |
 | `use.locale`, `use.timezoneId` | `web({ locale, timezoneId })` | renamed |

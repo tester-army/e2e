@@ -19,7 +19,7 @@ import { sameRoute } from '../cache/route.ts';
 import { keyContextChanges, type CacheAgentIdentity } from '../cache/identity.ts';
 import { recordedProvenance, TraceRecorder } from '../cache/recorder.ts';
 import { expandTrace, templateParams, templatesCollide, templateTrace, type ParamTemplate } from '../cache/template.ts';
-import { readTraceEntry, type ActionTrace, type DerivedReason, type TraceEntry, type TraceTargetDescriptor } from '../cache/trace.ts';
+import { bound, readTraceEntry, targetLabel, type ActionTrace, type DerivedReason, type TraceEntry, type TraceTargetDescriptor } from '../cache/trace.ts';
 import { sleep } from '../internal/time.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
@@ -355,7 +355,6 @@ export class StepTraceSession {
             keyHash: this.keyHash,
             stepIndex: this.options.stepIndex,
             recordedFor: recordedProvenance(this.claim.step, this.options.redact),
-            keyedBy: this.claim.context,
           });
         } else {
           const staged = await this.stage(recorder, verdictSummary);
@@ -629,8 +628,9 @@ export class StepTraceSession {
    * disposable; a failed eviction is a slower next run only.
    */
   private async evict(): Promise<void> {
+    if (this.cache.store.delete === undefined) return;
     this.cache.writes.set(this.options.stepIndex, 'evicted');
-    await this.cache.store.delete?.(this.keyHash).catch(() => undefined);
+    await this.cache.store.delete(this.keyHash).catch(() => undefined);
   }
 
   private repairedAfterEndMismatch(recorder: TraceRecorder): boolean {
@@ -640,7 +640,7 @@ export class StepTraceSession {
   /** Cache detail as the report keeps it: redacted, then cut to the schema's bound. */
   private reportable(detail: string): string {
     const redacted = this.options.redact(detail);
-    return redacted.length > MAX_CACHE_DETAIL_CHARS ? `${redacted.slice(0, MAX_CACHE_DETAIL_CHARS - 1)}…` : redacted;
+    return bound(redacted, MAX_CACHE_DETAIL_CHARS);
   }
 
   private missed(reason: TraceReplayMissReason | HandOffReason, totalActions: number, derived?: DerivedReason, detail?: string): StepCacheInfo {
@@ -672,10 +672,14 @@ function stopDetail(outcome: ReplayOutcome, reason: HandOffReason, trace: Action
   return `at action ${at.index} of ${outcome.total}, ${at.summary}${at.why === undefined ? '' : `: ${at.why}`}`;
 }
 
-/** A recorded anchor as the screen would list it: `status "Saved"`. */
+/**
+ * A recorded anchor as the detail names it: the node, then its text when the
+ * name alone would hide the state the recording expects (`status "Marker"
+ * text="saved"`).
+ */
 function describeAnchor(anchor: TraceTargetDescriptor): string {
-  const label = anchor.name ?? anchor.text;
-  return [anchor.role ?? 'node', ...(label === undefined ? [] : [JSON.stringify(label)]), ...(anchor.text !== undefined && anchor.text !== label ? [`text=${JSON.stringify(anchor.text)}`] : [])].join(' ');
+  const { name, text } = anchor;
+  return text !== undefined && name !== undefined && text !== name ? `${targetLabel(anchor)} text=${JSON.stringify(bound(text, 40))}` : targetLabel(anchor);
 }
 
 /** The controls a trace's input actions set a value or a state on: their changed anchors echo the input. */

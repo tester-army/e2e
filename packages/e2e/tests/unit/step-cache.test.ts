@@ -814,7 +814,7 @@ describe('StepTraceSession', () => {
     // A kept entry carries no payload, so the replay's expansion of it can
     // never be written: confirmed, the file stands as it is; unconfirmed, it
     // is evicted. The passing screen is never captured for it.
-    expect(context.staged).toEqual([{ kind: 'keep', keyHash: 'a'.repeat(64), stepIndex: 1, recordedFor: exampleStep, keyedBy: exampleContext }]);
+    expect(context.staged).toEqual([{ kind: 'keep', keyHash: 'a'.repeat(64), stepIndex: 1, recordedFor: exampleStep }]);
     expect(captures).toBe(2);
   });
 
