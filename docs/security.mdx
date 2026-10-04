@@ -197,9 +197,9 @@ ordinary text with it.
   value, every whole occurrence of it in a text download (`text/*` or JSON
   by file extension) is replaced, as in reports, and the download is labeled
   `redaction: "complete"`. Fragments and base64 runs are matched in traces
-  only. Any other
-  download, a binary or one from a session that knows no secret value, is
-  kept as served and labeled `redaction: "incomplete"`.
+  only. Any other download, a binary, one that is not valid UTF-8 or cannot
+  be rewritten, or one from a session that knows no secret value, is kept
+  as served and labeled `redaction: "incomplete"`.
 - The `headers` a protected preview needs are recorded in the trace as
   request headers. Share that trace as you would the bypass secret.
 - `command.log` is captured as the process writes it.
