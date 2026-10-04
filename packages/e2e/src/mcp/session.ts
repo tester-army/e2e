@@ -159,7 +159,7 @@ export class SessionHost {
     if (value.outcome.error !== undefined) lines.push(`The session step ended with: ${errorMessage(value.outcome.error)}`);
     for (const error of cleanupErrors) lines.push(`Cleanup: ${error.code}: ${error.message}`);
     // Redacted here, not only at the tool boundary: closeAll writes it to stderr.
-    return live.attempt.agentRuntime.redact(lines.join('\n'));
+    return processSecrets.redact(lines.join('\n'));
   }
 
   /**

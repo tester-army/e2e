@@ -120,7 +120,7 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
   } catch (cause) {
     options.log(`session teardown failed: ${processSecrets.redact(errorMessage(cause))}`);
   }
-  await server.close().catch((cause: unknown) => options.log(`server close failed: ${errorMessage(cause)}`));
+  await server.close().catch((cause: unknown) => options.log(`server close failed: ${processSecrets.redact(errorMessage(cause))}`));
   return 0;
 }
 
