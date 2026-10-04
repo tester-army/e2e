@@ -179,24 +179,25 @@ ordinary text with it.
 - When tests run in the runner's own process, with the config or tests
   passed in memory by an embedding host, their console output is not
   redacted.
-- A Playwright trace is rewritten before it is kept whenever the run has a
-  secret value, filled or not: any run of 8 or more characters of
-  a value, its whitespace collapsed or not, becomes `<secret:name>`, so unrelated text that shares 8 characters
-  with a value is masked too. A base64 or base64url run that decodes to a
-  value or such a fragment (a basic-auth header, a cookie, a token segment)
-  is replaced whole. After a fill, screencast frames are dropped; otherwise
-  they are kept. An image the app served that
-  draws the secret survives. A trace the runner cannot rewrite is deleted and
+- A Playwright trace is rewritten before it is kept whenever its session
+  knows a secret value, filled or not: every static one, and a provider's
+  once the session resolved it. Any run of 8 or more characters of a value,
+  its whitespace collapsed or not, becomes `<secret:name>`, so unrelated
+  text that shares 8 characters with a value is masked too. A base64 or
+  base64url run that decodes to a value or such a fragment (a basic-auth
+  header, a cookie, a token segment) is replaced whole. After a fill,
+  screencast frames are dropped; otherwise they are kept. An image the app
+  served that draws the secret survives. A trace the runner cannot rewrite is deleted and
   the attempt records `TRACE_WITHHELD`.
 - A video masks nothing and is labeled `redaction: "incomplete"`. It is
   never recorded unless you ask. A recording a hosted browser or
   device service keeps stays with that service; the report holds only its
   URL.
-- A download is what the app served. When the run has a secret value, a
-  text download (`text/*` or JSON by file extension) is rewritten the way
-  trace text is and labeled `redaction: "complete"`. Any other download, a
-  binary or one from a run with no secret, is kept as served and labeled
-  `redaction: "incomplete"`.
+- A download is what the app served. When the session knows a secret
+  value, a text download (`text/*` or JSON by file extension) is rewritten
+  the way trace text is and labeled `redaction: "complete"`. Any other
+  download, a binary or one from a session that knows no secret value, is
+  kept as served and labeled `redaction: "incomplete"`.
 - The `headers` a protected preview needs are recorded in the trace as
   request headers. Share that trace as you would the bypass secret.
 - `command.log` is captured as the process writes it.
@@ -254,9 +255,9 @@ project-relative path you configure.
 | --- | --- | --- |
 | `report.json` | The run record. Errors, reasoning excerpts, and action summaries pass the redactor. | complete |
 | `artifacts/.../*.png` | Screenshots. Secure fields are masked before screenshots are returned or saved as artifacts. | complete |
-| `artifacts/.../trace.zip` | Playwright trace, rewritten whenever the run has a secret value; screencast frames are dropped after a fill only. | not-required (no secret), complete, or deleted |
+| `artifacts/.../trace.zip` | Playwright trace, rewritten whenever its session knows a secret value; screencast frames are dropped after a fill only. | not-required (no secret value), complete, or deleted |
 | `artifacts/.../*.webm`, `*.mp4` | Video, opt-in through `video` or `--video`; `retain-on-failure` keeps only the attempts that did not pass. | incomplete |
-| `artifacts/.../downloads/*` | Files the app served through a download. Text ones are rewritten whenever the run has a secret value; the rest are kept as served. | complete or incomplete |
+| `artifacts/.../downloads/*` | Files the app served through a download. Text ones are rewritten whenever the session knows a secret value; the rest are kept as served. | complete or incomplete |
 | `artifacts/.../failure/screen.txt` | The redacted tree at the moment of failure. | complete |
 | `ai-trace.json` | Every model call, opt-in via `--ai-trace`. Prompts are the redacted ones the model saw; inline image bytes are replaced by their size. | as the prompt |
 | `sessions/<runId>/` | Encrypted sessions, deleted at cleanup. | encrypted |

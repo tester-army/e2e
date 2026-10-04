@@ -106,7 +106,7 @@ reruns names, and writes its own under `rerun-<n>/`:
   of a CI run.
 - **Downloads** saved through `browser.waitForDownload`, recorded with kind
   `download`. They are the app's bytes: `redaction: "incomplete"` unless the
-  run has a secret value and the file is text, which the runner rewrites and
+  session knows a secret value and the file is text, which the runner rewrites and
   marks `complete`.
 - **Videos** and **agent transcripts** when you ask for them; see below.
 

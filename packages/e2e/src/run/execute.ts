@@ -720,8 +720,9 @@ export class TargetExecutor implements SerialHost {
         // trace is the runner's to redact before anything hashes or stores
         // it. Any value the ledger holds may be in it, filled or not (a URL
         // the test spelled it into, an engine option), so a trace is kept
-        // only once rewritten; only a run with no secret skips it. Its
-        // screencast frames go only where pixels are withheld, after a fill.
+        // only once rewritten; only a session that knows no value skips it.
+        // Its screencast frames go only where pixels are withheld, after a
+        // fill.
         const secrecy = sessionSecrecy(session, this.config.allSecrets);
         let redaction: 'complete' | 'not-required' = 'not-required';
         if (redactsRecordings(secrecy)) {

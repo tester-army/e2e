@@ -65,6 +65,7 @@ describe(\`suite \${S}\`, () => {
     console.log(\`stdout carries \${S}\`);
     console.error(\`stderr carries \${S}\`);
     await app.open(\`/?token=\${S}\`);
+    await screen.getByLabel('Focus target').fill(S);
     await agent.act(\`inspect \${S} with {note}\`, { params: { note: S, [\`key \${S}\`]: [S] } });
     await expect(screen.getByText(\`missing \${S}\`)).toBeVisible({ timeout: 500 });
   });

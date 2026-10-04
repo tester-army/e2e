@@ -1181,9 +1181,9 @@ export interface StoredArtifact {
   readonly path: string;
   /**
    * How much of the file the runner masked, as the report records it. A
-   * `download` is `incomplete` unless the runner rewrote it as text after a
-   * secret fill; a store that exports only what the runner vouches for reads
-   * this rather than the kind.
+   * `download` is `incomplete` unless the runner ran it as text through the
+   * session's secret values; a store that exports only what the runner
+   * vouches for reads this rather than the kind.
    */
   readonly redaction: 'complete' | 'not-required' | 'incomplete';
   readonly runId: string;

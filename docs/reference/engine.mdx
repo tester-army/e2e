@@ -1151,7 +1151,7 @@ startedAt }` for `stopVideo` to hand back. A `stop` that throws or returns
 anything else is `ENGINE_FAILURE`, naming the provider and the lease. The
 target argument's type is exported as `ProviderRecordingTarget`.
 
-When the run has a secret value, the runner redacts every text entry in
+When the session knows a secret value, the runner redacts every text entry in
 each trace archive, so a value a test spelled into a URL or the options the
 engine opened the attempt with (`resolveSecret`) never stay in it. After a
 secret fill it also drops the screencast frames: every `screencast/` entry,
@@ -1159,8 +1159,8 @@ each `screencast-frame` record in a `.trace` entry, and any image a record
 names.
 If redaction fails, it deletes the archives and records
 `TRACE_WITHHELD`. Videos are unmasked and carry `redaction: 'incomplete'`.
-A `download` an engine attaches is the app's bytes: when the run has a
-secret value, the runner rewrites a text one (`.txt`,
+A `download` an engine attaches is the app's bytes: when the session knows
+a secret value, the runner rewrites a text one (`.txt`,
 `.csv`, `.json`, `.html`) through the ledger and labels it `complete`; every
 other download keeps its bytes and carries `redaction: 'incomplete'`.
 
