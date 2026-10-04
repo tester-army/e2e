@@ -11,8 +11,8 @@ import { StreamRedactor, type SecretLedger } from '../internal/redact.ts';
 
 export type OutputStream = 'stdout' | 'stderr';
 
-/** Writes text to the operator's stderr; the callback fires once the stream took it. */
-export type OutputSink = (text: string, callback?: () => void) => void;
+/** Writes text to the operator's stderr; the callback fires once the stream took it. Answers false while the stream is backed up, like `Writable.write`. */
+export type OutputSink = (text: string, callback?: () => void) => boolean;
 
 export class McpOutput {
   private readonly redactors: Readonly<Record<OutputStream, StreamRedactor>>;
@@ -33,16 +33,16 @@ export class McpOutput {
 
   /**
    * One write of user code to `stream`, redacted across writes: the tail a
-   * later write could complete into a value waits for it. Held while a
-   * config loads.
+   * later write could complete into a value waits for it, or for
+   * `releaseTails`. Held while a config loads. Answers what the sink did.
    */
-  write(stream: OutputStream, chunk: string | Uint8Array, callback?: () => void): void {
+  write(stream: OutputStream, chunk: string | Uint8Array, callback?: () => void): boolean {
     if (this.loading > 0) {
       this.held.push({ stream, chunk });
       if (callback !== undefined) process.nextTick(callback);
-      return;
+      return true;
     }
-    this.emit(this.redactors[stream].push(chunk), callback);
+    return this.emit(this.redactors[stream].push(chunk), callback);
   }
 
   /** One line of the server's own, already redacted where it was written; on a line of its own even when user code left one unfinished. */
@@ -66,17 +66,28 @@ export class McpOutput {
       throw cause;
     } finally {
       this.loading -= 1;
-      if (this.loading === 0) this.release();
+      if (this.loading === 0) this.releaseHeld();
     }
   }
 
+  /**
+   * Releases, redacted, the tails each stream holds for a later write to
+   * complete, at the end of a tool call: user code that printed without a
+   * newline is seen when its call ends, not when the server exits. Waits
+   * while a config loads.
+   */
+  releaseTails(): void {
+    if (this.loading > 0) return;
+    for (const redactor of Object.values(this.redactors)) this.emit(redactor.flush());
+  }
+
   /** Releases what each stream still holds, redacted; nothing more will follow. Output held for a load still in flight is withheld. */
-  flush(): void {
+  end(): void {
     if (this.loading > 0) this.withhold();
     for (const redactor of Object.values(this.redactors)) this.emit(redactor.flush());
   }
 
-  private release(): void {
+  private releaseHeld(): void {
     if (this.loadFailed) {
       this.withhold();
       return;
@@ -93,12 +104,12 @@ export class McpOutput {
     if (bytes > 0) this.log(`e2e mcp: [warning] withheld ${bytes} bytes of output printed while a config failed to load: its secrets are unknown, so the output cannot be redacted`);
   }
 
-  private emit(text: string, callback?: () => void): void {
+  private emit(text: string, callback?: () => void): boolean {
     if (text === '') {
       if (callback !== undefined) process.nextTick(callback);
-      return;
+      return true;
     }
     this.atLineStart = text.endsWith('\n');
-    this.sink(text, callback);
+    return this.sink(text, callback);
   }
 }

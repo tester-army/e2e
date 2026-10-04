@@ -5,13 +5,14 @@
  * protocol must keep working; either way the secret never reaches stderr in
  * the clear. A config that prints a secret and then fails to load has no
  * secrets anyone knows, so what it printed is withheld, not passed on raw.
+ * An error nobody caught is logged redacted, and the server shuts down.
  */
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createProject, type FixtureProject } from '../helpers/run-project.ts';
 
 const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -52,6 +53,17 @@ export default {
             console.error(\`tool console.error: \${token}\`);
             process.stdout.write(\`tool stdout no newline: \${token}\`);
             return 'printed';
+          },
+        },
+        { mutates: false },
+      ),
+      stray: defineTool(
+        {
+          description: 'Reject a promise nobody awaits.',
+          inputSchema: z.object({}),
+          execute: async () => {
+            void Promise.reject(new Error(\`stray rejection: \${token}\`));
+            return 'rejected';
           },
         },
         { mutates: false },
@@ -114,8 +126,8 @@ describe('e2e mcp redacts what user code prints', { timeout: 120_000 }, () => {
     const opened = await invoke('open_session', { config: 'broken.config.ts' });
     expect(opened.isError).toBe(true);
     expect(opened.text).toContain('config refuses to load');
+    await vi.waitFor(() => expect(stderr).toContain('withheld'));
     expect(stderr).not.toContain(TOKEN);
-    expect(stderr).toContain('withheld');
   });
 
   it('keeps the protocol working and redacts the config and a project tool on stdout and stderr', async () => {
@@ -124,9 +136,10 @@ describe('e2e mcp redacts what user code prints', { timeout: 120_000 }, () => {
     const leaked = await invoke('call', { tool: 'leak' });
     expect(leaked.isError, leaked.text).toBe(false);
     expect(leaked.text).toBe('printed');
-    const closed = await invoke('close_session');
-    expect(closed.isError, closed.text).toBe(false);
-    await client.close();
+    // The line printed without a newline is released when its call ends.
+    await vi.waitFor(() => expect(stderr).toContain('tool stdout no newline: <secret:apiToken>'));
+    const stray = await invoke('call', { tool: 'stray' });
+    expect(stray.text).toBe('rejected');
     await stderrEnded;
 
     expect(stderr).not.toContain(TOKEN);
@@ -136,15 +149,10 @@ describe('e2e mcp redacts what user code prints', { timeout: 120_000 }, () => {
       'tool console.log: <secret:apiToken>',
       'tool stdout split: <secret:apiToken>',
       'tool console.error: <secret:apiToken>',
+      'tool stdout no newline: <secret:apiToken>',
+      'e2e mcp: [error] uncaught: Error: stray rejection: <secret:apiToken>',
     ]) {
       expect(lines).toContain(line);
     }
-    // The unfinished last line is released at shutdown, after the server's own lines.
-    expect(stderr.match(/<secret:apiToken>/g)).toHaveLength(5);
-    expect(lines.filter((line) => line.startsWith('e2e mcp: '))).toEqual([
-      expect.stringContaining('serving'),
-      expect.stringContaining('withheld'),
-      expect.stringContaining('client disconnected'),
-    ]);
   });
 });

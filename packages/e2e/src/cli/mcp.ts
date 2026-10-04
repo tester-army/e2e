@@ -37,7 +37,7 @@ function claimStdio(): { protocol: Writable; output: McpOutput } {
   const stderr = process.stderr;
   const writeStdout = stdout.write.bind(stdout) as (chunk: Buffer, callback: (error?: Error | null) => void) => boolean;
   const writeStderr = stderr.write.bind(stderr) as (chunk: string, callback?: () => void) => boolean;
-  const output = new McpOutput((text, callback) => void writeStderr(text, callback), processSecrets);
+  const output = new McpOutput(writeStderr, processSecrets);
   for (const [stream, name] of [
     [stdout, 'stdout'],
     [stderr, 'stderr'],
@@ -45,8 +45,10 @@ function claimStdio(): { protocol: Writable; output: McpOutput } {
     stream.write = ((chunk: string | Uint8Array, encoding?: BufferEncoding | (() => void), callback?: () => void): boolean => {
       const done = typeof encoding === 'function' ? encoding : callback;
       const text = typeof chunk === 'string' && typeof encoding === 'string' ? Buffer.from(chunk, encoding) : chunk;
-      output.write(name, text, done);
-      return true;
+      const accepted = output.write(name, text, done);
+      // stderr drains on its own; a writer waiting on stdout is told when stderr has.
+      if (!accepted && stream === stdout) stderr.once('drain', () => stdout.emit('drain'));
+      return accepted;
     }) as typeof stream.write;
   }
   const protocol = new Writable({
@@ -81,10 +83,23 @@ export async function mcp(version: string, options: McpCommandOptions, telemetry
   const { protocol, output } = claimStdio();
   const stop = new AbortController();
   const onSignal = (): void => stop.abort();
+  // Node would print an error nobody caught (a project tool's unawaited
+  // promise) straight to the stderr descriptor, past the redaction, and
+  // exit with every session's app still running. It is logged redacted and
+  // the server shuts down as on a signal.
+  let crashed = false;
+  const onUncaught = (cause: unknown): void => {
+    crashed = true;
+    const text = cause instanceof Error ? (cause.stack ?? errorMessage(cause)) : errorMessage(cause);
+    output.log(`e2e mcp: [error] uncaught: ${processSecrets.redact(text)}`);
+    stop.abort();
+  };
   process.once('SIGINT', onSignal);
   process.once('SIGTERM', onSignal);
+  // A rejection nobody handled arrives here too: with no `unhandledRejection` listener, Node raises it as uncaught.
+  process.on('uncaughtException', onUncaught);
   try {
-    return await serveMcp({
+    const code = await serveMcp({
       cwd: process.cwd(),
       configPath: options.config,
       target: options.target,
@@ -95,17 +110,19 @@ export async function mcp(version: string, options: McpCommandOptions, telemetry
       stdin: process.stdin,
       stdout: protocol,
       log: (line) => output.log(`e2e mcp: ${line}`),
-      withholdOutput: (load) => output.withholdDuring(load),
+      output,
       signal: stop.signal,
       onSessionEnd: sessionTelemetry(telemetry),
     });
+    return crashed ? 1 : code;
   } catch (cause) {
     const error = classifyError(cause);
     output.log(`e2e mcp: ${error.code}: ${processSecrets.redact(errorMessage(cause))}`);
     return exitCodeForCategory(error.category);
   } finally {
-    output.flush();
+    output.end();
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);
+    process.off('uncaughtException', onUncaught);
   }
 }

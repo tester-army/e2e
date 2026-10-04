@@ -7,7 +7,11 @@ const TOKEN = 'mcp-output-token-1';
 function output(): { out: McpOutput; ledger: SecretLedger; text: () => string } {
   const ledger = new SecretLedger();
   const written: string[] = [];
-  return { out: new McpOutput((text) => written.push(text), ledger), ledger, text: () => written.join('') };
+  const sink = (text: string): boolean => {
+    written.push(text);
+    return true;
+  };
+  return { out: new McpOutput(sink, ledger), ledger, text: () => written.join('') };
 }
 
 describe('McpOutput', () => {
@@ -45,16 +49,28 @@ describe('McpOutput', () => {
     const { out, text } = output();
     void out.withholdDuring(() => new Promise<void>(() => undefined));
     out.write('stdout', `mid-load: ${TOKEN}\n`);
-    out.flush();
+    out.releaseTails();
+    expect(text()).toBe('');
+    out.end();
     expect(text()).not.toContain(TOKEN);
     expect(text()).toContain('withheld');
+  });
+
+  it('releases a held tail redacted at a call boundary, and keeps redacting across later writes', () => {
+    const { out, ledger, text } = output();
+    ledger.register('apiToken', TOKEN);
+    out.write('stdout', `tail: ${TOKEN.slice(0, 6)}`);
+    expect(text()).not.toContain(TOKEN.slice(0, 6));
+    out.write('stdout', `${TOKEN.slice(6)}`);
+    out.releaseTails();
+    expect(text()).toBe('tail: <secret:apiToken>');
   });
 
   it('puts its own lines on a line of their own after an unfinished user line', () => {
     const { out, text } = output();
     out.write('stdout', 'progress');
     out.log('e2e mcp: [info] closing');
-    out.flush();
+    out.end();
     expect(text()).toMatch(/^progress\ne2e mcp: \[info\] closing\n$/);
   });
 });
