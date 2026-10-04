@@ -32,6 +32,7 @@ export default {
     name: 'chatty',
     onEvent(event) {
       if (event.type === 'plan') console.log(\`reporter onEvent: \${token}\`);
+      if (event.type === 'run-finished') process.stdout.write(\`reporter unfinished: \${token}\`);
     },
     onRunFinished() {
       console.error(\`reporter onRunFinished: \${token}\`);
@@ -86,6 +87,7 @@ describe('e2e run redacts what user code prints outside a test', () => {
       'test file top level: <secret:apiToken>',
       'reporter onEvent: <secret:apiToken>',
       'reporter onRunFinished: <secret:apiToken>',
+      'reporter unfinished: <secret:apiToken>',
       'test body: <secret:apiToken>',
     ]) {
       expect(lines).toContain(line);

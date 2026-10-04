@@ -386,6 +386,11 @@ export class ListReporter implements Reporter {
     this.sourcedOutput(stream, this.pc.dim('runner'), undefined, text);
   }
 
+  /** Prints what `processOutput` left unfinished: the runner hands nothing more once the run's events are all dispatched. */
+  endProcessOutput(): void {
+    this.flushOutput();
+  }
+
   /** Prints the lines `text` ends under the heading of `stream` and `source`, holding the unfinished rest. */
   private sourcedOutput(stream: 'stdout' | 'stderr', source: string, pair: string | undefined, text: string): void {
     const { pc } = this;

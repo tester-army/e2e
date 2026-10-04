@@ -9,6 +9,13 @@
 import { RunnerOutput, type OutputStream } from '../run/process-output.ts';
 import { processSecrets } from '../run/secrecy.ts';
 
+/**
+ * Encodings in which a string spells bytes rather than text: the write puts
+ * those bytes on the terminal, so they are what is redacted. A string in any
+ * other encoding is the text itself, redacted and written as UTF-8.
+ */
+const BYTE_ENCODINGS: ReadonlySet<BufferEncoding> = new Set(['hex', 'base64', 'base64url']);
+
 /** Takes over `process.stdout` and `process.stderr` until the returned `release`, which flushes what is held and gives the streams back. */
 export function claimRunnerOutput(): { output: RunnerOutput; release: () => void } {
   const streams = { stdout: process.stdout, stderr: process.stderr } as const;
@@ -21,8 +28,8 @@ export function claimRunnerOutput(): { output: RunnerOutput; release: () => void
   for (const name of ['stdout', 'stderr'] as const satisfies readonly OutputStream[]) {
     streams[name].write = ((chunk: string | Uint8Array, encoding?: BufferEncoding | (() => void), callback?: () => void): boolean => {
       const done = typeof encoding === 'function' ? encoding : callback;
-      const text = typeof chunk === 'string' && typeof encoding === 'string' ? Buffer.from(chunk, encoding) : chunk;
-      return output.write(name, text, done);
+      const bytes = typeof chunk === 'string' && typeof encoding === 'string' && BYTE_ENCODINGS.has(encoding);
+      return output.write(name, bytes ? Buffer.from(chunk, encoding) : chunk, done);
     }) as typeof process.stdout.write;
   }
   return {

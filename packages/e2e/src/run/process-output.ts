@@ -15,6 +15,14 @@ export type OutputStream = 'stdout' | 'stderr';
 /** Writes text to one stream of the terminal; the callback fires once the stream took it. Answers false while the stream is backed up, like `Writable.write`. */
 export type TerminalWrite = (text: string, callback?: () => void) => boolean;
 
+/** Where runner output goes instead of the terminal while the list reporter shows the run. */
+export interface OutputView {
+  /** Prints redacted text from `stream`. */
+  show(stream: OutputStream, text: string): void;
+  /** Prints what `show` left unfinished; nothing more follows. */
+  end(): void;
+}
+
 /** The warning that stands in for what a config printed before it failed to load. */
 function withheldWarning(bytes: number): string {
   return `withheld ${bytes} bytes of output printed while the config failed to load: its secrets are unknown, so the output cannot be redacted`;
@@ -73,7 +81,7 @@ export class RunnerOutput {
   /** Each stream redacted on its own, across writes: a value split over two writes is still caught. */
   private readonly redactors: Readonly<Record<OutputStream, StreamRedactor>>;
   private readonly loadHold = new ConfigLoadHold();
-  private show: ((stream: OutputStream, text: string) => void) | undefined;
+  private view: OutputView | undefined;
   /** The terminal's stdout for the list reporter: its own lines and live window go straight there. */
   readonly listOutput: ListReporterOutput;
 
@@ -115,20 +123,33 @@ export class RunnerOutput {
     );
   }
 
-  /** Passes what is printed to `show` from now on, or to the terminal again when undefined. */
-  showThrough(show: ((stream: OutputStream, text: string) => void) | undefined): void {
-    this.show = show;
+  /**
+   * Passes what is printed to `view` from now on, or to the terminal again
+   * when undefined. What the previous view was given is released to it
+   * first, unfinished lines included, and that view ended.
+   */
+  showThrough(view: OutputView | undefined): void {
+    if (this.view !== undefined) {
+      this.release();
+      this.view.end();
+    }
+    this.view = view;
   }
 
   /** Releases what is still held, redacted; nothing more will follow. */
   end(): void {
+    this.showThrough(undefined);
+    this.release();
+  }
+
+  private release(): void {
     this.emit('stdout', this.redactors.stdout.flush());
     this.emit('stderr', this.redactors.stderr.flush());
   }
 
   private emit(stream: OutputStream, text: string, callback?: () => void): boolean {
-    if (text === '' || this.show !== undefined) {
-      if (text !== '') this.show?.(stream, text);
+    if (text === '' || this.view !== undefined) {
+      if (text !== '') this.view?.show(stream, text);
       if (callback !== undefined) process.nextTick(callback);
       return true;
     }

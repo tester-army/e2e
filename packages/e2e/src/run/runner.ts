@@ -364,7 +364,11 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const listReporter =
     options.quiet === true || !reporterIds.includes('list') ? undefined : new ListReporter(processOutput?.listOutput);
   // Until the run is over, what user code prints lands above the live window.
-  processOutput?.showThrough(listReporter === undefined ? undefined : (stream, text) => listReporter.processOutput(stream, text));
+  processOutput?.showThrough(
+    listReporter === undefined
+      ? undefined
+      : { show: (stream, text) => listReporter.processOutput(stream, text), end: () => listReporter.endProcessOutput() },
+  );
   const activeReporters: readonly Reporter[] = [
     ...(listReporter === undefined ? [] : [listReporter]),
     ...reporterIds.filter((id) => id !== 'list').map((id) => STATELESS_REPORTERS[id]),
@@ -547,7 +551,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       ...(reportPath === undefined ? {} : { reportPath }),
       ...(aiTracePath === undefined ? {} : { aiTracePath }),
     });
-    // The list reporter has printed its summary and stopped its window.
+    // The list reporter has printed its summary and stopped its window; a
+    // line another reporter left unfinished on `run-finished` prints too.
     processOutput?.showThrough(undefined);
     if (debug.enabled) {
       process.stderr.write(debug.summary());
