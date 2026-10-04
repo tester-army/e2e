@@ -628,6 +628,13 @@ describe('observation', () => {
     });
   });
 
+  it('asks for interactive-only snapshots when configured', async () => {
+    const h = harness({ snapshot: 'interactive' });
+    await openAttempt(h);
+    await h.engine.observe!(operation());
+    expect(h.fake.lastArgs('capture.snapshot')).toEqual({ interactiveOnly: true });
+  });
+
   it('retries a sparse snapshot device-side before returning it', async () => {
     autoAdvanceTimers();
     const h = harness();
@@ -1718,6 +1725,20 @@ describe('video', () => {
     expect(existsSync(path.join(artifactsDir, 'video', 'video.mp4'))).toBe(true);
     await h.engine.endAttempt!(cleanup());
     expect(records(h)).toHaveLength(2);
+  });
+
+  it('records without the touch indicator when videoTouches is false', async () => {
+    const h = harness({ videoTouches: false });
+    recorder(h);
+    await openAttempt(h);
+    await h.engine.artifacts!.startVideo!(operation());
+    expect(h.fake.lastArgs('recording.record')).toEqual({
+      action: 'start',
+      path: path.join(artifactsDir, 'video', 'video.mp4'),
+      quality: 'medium',
+      recordingScope: 'device',
+      hideTouches: true,
+    });
   });
 
   it('forgets the session app when stopping ends the session the recording made for itself', async () => {
