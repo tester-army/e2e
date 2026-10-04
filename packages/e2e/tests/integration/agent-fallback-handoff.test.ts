@@ -331,6 +331,10 @@ test('act cannot recover pixels after a secret fill', async ({ agent, screen }) 
 test('judgment cannot recover pixels after a secret fill', async ({ agent, screen }) => {
   await screen.getByRole('textbox').fill(credentials.user('member').password);
   await agent.assert('read the tainted result', { vision: true });
+});
+test('tree-only judgment after a secret fill keeps the engine timeout', async ({ agent, screen }) => {
+  await screen.getByRole('textbox').fill(credentials.user('member').password);
+  await agent.assert('the tainted result is listed', { vision: false });
 });`;
 
 describe('agent semantic fallback through the engine contract', () => {
@@ -387,13 +391,18 @@ describe('agent semantic fallback through the engine contract', () => {
   });
 
   it('stops tree-only and tainted judgments before a model call', () => {
-    for (const title of ['tree-only judgment cannot infer absence', 'act cannot recover pixels after a secret fill', 'judgment cannot recover pixels after a secret fill']) {
+    for (const title of ['tree-only judgment cannot infer absence', 'tree-only judgment after a secret fill keeps the engine timeout']) {
       const result = resultByTitle(outcome, title);
       expect(result.status).toBe('failed');
       expect(result.attempts[0]!.error?.message).toContain('timed out');
     }
+    for (const title of ['act cannot recover pixels after a secret fill', 'judgment cannot recover pixels after a secret fill']) {
+      const error = resultByTitle(outcome, title).attempts[0]!.error;
+      expect(error?.code).toBe('POLICY_DENIED');
+      expect(error?.message).toContain('a secret was filled in this attempt');
+    }
     const tainted = captures.filter((capture) => capture.filled);
-    expect(tainted.length).toBeGreaterThanOrEqual(2);
+    expect(tainted.length).toBeGreaterThanOrEqual(3);
     expect(tainted.every((capture) => capture.options?.pixelFallback !== true && capture.options?.pixels !== true)).toBe(true);
     expect(loopCalls).toEqual([]);
     assertValidReport(outcome.report);

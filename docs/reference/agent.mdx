@@ -191,7 +191,9 @@ Every `act` observation with unavailable semantics includes that image and
 warning automatically. Earlier node ids are invalid, and the next successful
 semantic capture presents the whole tree again. The screenshot shows the
 current viewport; an unavailable tree does not prove that a control or
-message is absent.
+message is absent. After a secret fill there is no fallback: `act`, and a
+judgment with `vision: true` or `'only'`, fails with `POLICY_DENIED` when
+semantic capture times out.
 
 If semantic capture fails, trace replay stops and the step cannot record a
 new trace entry, even if the tree later recovers.

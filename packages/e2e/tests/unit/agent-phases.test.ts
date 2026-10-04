@@ -49,6 +49,7 @@ describe('retryingObserve', () => {
       guard: () => undefined,
       signal: new AbortController().signal,
       api: 'agent.act',
+      fallbackTainted: false,
     });
     expect(observation).toBe(OBSERVATION);
     expect(attempts).toBe(3);
@@ -66,9 +67,25 @@ describe('retryingObserve', () => {
         guard: () => undefined,
         signal: new AbortController().signal,
         api: 'agent.act',
+        fallbackTainted: false,
       }),
     ).rejects.toThrow('OPERATION_TIMEOUT');
     expect(attempts).toBe(1);
+  });
+
+  it('leaves a cancelled capture to the guard when a secret fill withheld its fallback', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      retryingObserve({
+        observe: () => Promise.reject(foreignEngineError('OPERATION_TIMEOUT', false)),
+        operation,
+        guard: () => undefined,
+        signal: controller.signal,
+        api: 'agent.act',
+        fallbackTainted: true,
+      }),
+    ).rejects.toThrow('OPERATION_TIMEOUT');
   });
 });
 
