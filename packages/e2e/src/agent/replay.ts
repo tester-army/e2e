@@ -292,29 +292,20 @@ export async function replayTrace(
           await planned.invoke();
           break;
         case 'scroll': {
-          if (planned.list === undefined) {
-            // A viewport scroll relocates nothing, so each later repeat takes
-            // a settled look of its own, as the live loop did between them.
-            for (let index = 0; index < planned.times; index += 1) {
+          // A scroll on a list is paced by the relocation before each repeat.
+          // A viewport scroll relocates nothing, so each later repeat takes a
+          // settled look of its own, as the live loop did between them. A
+          // list judged lost scrolls as the viewport from then on, instead of
+          // waiting out the relocation backoff again on every repeat.
+          let list = planned.list;
+          for (let index = 0; index < planned.times; index += 1) {
+            if (list === undefined) {
               if (index > 0) await host.observe('held-still');
               await host.actions.scroll(planned.direction);
-              repeated += 1;
-            }
-            break;
-          }
-          // A scroll on a list is paced by the relocation before each repeat.
-          // A list judged lost stays lost for the rest of the scroll: the
-          // repeats after it scroll the viewport with a settled look between
-          // them, instead of waiting out the relocation backoff again.
-          let onList = true;
-          for (let index = 0; index < planned.times; index += 1) {
-            if (onList) {
-              const scrolled = await scrollOnce(host, planned.direction, planned.list, index === 0 ? look : HELD_STILL);
-              if (scrolled.kind === 'failed') return stop(scrolled.failure, partial());
-              onList = scrolled.kind === 'list';
             } else {
-              await host.observe('held-still');
-              await host.actions.scroll(planned.direction);
+              const scrolled = await scrollOnce(host, planned.direction, list, index === 0 ? look : HELD_STILL);
+              if (scrolled.kind === 'failed') return stop(scrolled.failure, partial());
+              if (scrolled.kind === 'viewport') list = undefined;
             }
             repeated += 1;
           }
