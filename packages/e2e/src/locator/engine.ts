@@ -158,14 +158,18 @@ export class LocatorEngine {
     deadline: Deadline,
     missingFrame: MissingFrame = 'wait',
   ): Promise<readonly NodeRef[]> {
+    let retried: unknown;
     for (;;) {
       try {
         return await this.session.locate(expression, this.operationWithin(deadline));
       } catch (cause) {
+        // A retry the deadline cut off saw nothing new: the wait ends on the failure it was retrying.
+        if (retried !== undefined && timedOutAtDeadline(cause, deadline)) throw translateLocatorError(retried, expression);
         const engineError = asEngineError(cause);
         if (engineError?.retryable === true) {
           if (missingFrame === 'empty' && engineError.code === 'FRAME_NOT_FOUND') return [];
           if (!deadline.expired()) {
+            retried = cause;
             await sleep(POLL_INTERVAL_MS, this.signal);
             continue;
           }

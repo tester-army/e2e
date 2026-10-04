@@ -604,7 +604,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           );
         }
         return translated;
-      });
+      }, 'test-code');
     },
     keyboard: {
       press: (key) =>

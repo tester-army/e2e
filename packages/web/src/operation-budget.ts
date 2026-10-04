@@ -25,6 +25,14 @@ export function connectionAbort(signal: AbortSignal, label: string): EngineError
 const PLAYWRIGHT_TIMEOUT_LEAD_MS = 250;
 
 /**
+ * Whether the operation's deadline may end it. `test-code` is for an
+ * operation that runs the test's own code (a download trigger): that code
+ * keeps its own steps and their budgets, so the operation is not cut under
+ * it, and only cancellation ends the wait.
+ */
+export type OperationBound = 'deadline' | 'test-code';
+
+/**
  * Bounds one operation by its budget: a call still pending at the deadline
  * is abandoned as `OPERATION_TIMEOUT` instead of holding the test until its
  * own timeout. `remaining` hands `work` the time left before Playwright's
@@ -34,7 +42,19 @@ export function withOperationDeadline<T>(
   budget: ConnectionBudget,
   label: string,
   work: (remaining: () => ConnectionBudget) => Promise<T>,
+  bound: OperationBound = 'deadline',
 ): Promise<T> {
+  if (bound === 'test-code') {
+    const endsAt = Date.now() + budget.timeoutMs;
+    return raceAbort(
+      () => work(() => {
+        if (budget.signal.aborted) throw connectionAbort(budget.signal, label);
+        return { signal: budget.signal, timeoutMs: Math.max(1, endsAt - Date.now()) };
+      }),
+      budget.signal,
+      label,
+    );
+  }
   return withConnectionBudget(budget, label, (remaining) =>
     work(() => {
       const current = remaining();

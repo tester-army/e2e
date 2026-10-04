@@ -21,6 +21,8 @@ import { noSecrets } from '../helpers/secrets.ts';
 const BUDGET_MS = 1_000;
 /** How long past its budget a call may still be pending before the test calls it unbounded. */
 const SLACK_MS = 1_000;
+/** How much sooner than the budget a call may fail: Playwright's own timeout is set 250 ms short of it. */
+const EARLY_MS = 300;
 
 const BUSY_PAGE = `<!doctype html><title>Busy</title>
 <button onclick="while (true) {}">Freeze</button>
@@ -48,9 +50,11 @@ function button(name: string): LocatorExpression {
 /**
  * Settles one call, or gives up on it a while after its budget: a call
  * still pending then is reported as such, so an unbounded one fails the test
- * at once instead of holding it to the vitest timeout.
+ * at once instead of holding it to the vitest timeout. A call that failed
+ * well before its budget fails the test too: the budget must bound it, not
+ * cut it short.
  */
-async function bounded(call: () => Promise<unknown>): Promise<{ error: unknown; elapsedMs: number }> {
+async function bounded(call: () => Promise<unknown>): Promise<{ error: unknown }> {
   const started = Date.now();
   const pending = Symbol('pending');
   let timer: NodeJS.Timeout | undefined;
@@ -60,7 +64,8 @@ async function bounded(call: () => Promise<unknown>): Promise<{ error: unknown; 
   ]);
   clearTimeout(timer);
   if (outcome === pending) throw new Error(`still pending ${BUDGET_MS + SLACK_MS}ms into a ${BUDGET_MS}ms budget`);
-  return { error: outcome, elapsedMs: Date.now() - started };
+  expect(Date.now() - started).toBeGreaterThanOrEqual(BUDGET_MS - EARLY_MS);
+  return { error: outcome };
 }
 
 describe('operations on a hung page', () => {

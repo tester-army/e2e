@@ -48,7 +48,7 @@ import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts
 import { ROOT_NODE_ID, toSemanticNode } from './observation.ts';
 import { captureObservation } from './observation-capture.ts';
 import { maskOptions, secureFieldMasks } from './observe.ts';
-import { connectionAbort, withOperationDeadline } from './operation-budget.ts';
+import { connectionAbort, withOperationDeadline, type OperationBound } from './operation-budget.ts';
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from './closed-shadow.ts';
 import { ConfiguredInitScripts, type WebInitScript } from './init-scripts.ts';
 import { SECURE_FIELD_SELECTOR, type RawNodeData } from './read-node.ts';
@@ -614,19 +614,21 @@ export class PlaywrightSurface {
    * waiting out Playwright, bounds it by the operation's budget so a call a
    * hung page never answers is `OPERATION_TIMEOUT`, and translates raw errors at the contract
    * boundary. `translate` overrides the default translation for operations
-   * with a documented retryable failure mode.
+   * with a documented retryable failure mode; `bound` is `test-code` for an
+   * operation that runs the test's own code, which the deadline never cuts.
    */
   async guard<T>(
     operation: OperationContext,
     label: string,
     fn: (operation: OperationContext) => Promise<T>,
     translate: (cause: unknown, label: string) => Error = translatePwError,
+    bound: OperationBound = 'deadline',
   ): Promise<T> {
     this.latch.throwPending();
     try {
       return this.session === undefined
-        ? await withOperationDeadline(operation, label, (remaining) => fn({ ...operation, ...remaining() }))
-        : await this.session.run(operation, label, fn);
+        ? await withOperationDeadline(operation, label, (remaining) => fn({ ...operation, ...remaining() }), bound)
+        : await this.session.run(operation, label, fn, bound);
     } catch (cause) {
       throw translate(cause, label);
     }

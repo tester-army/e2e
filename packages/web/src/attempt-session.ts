@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { Browser, BrowserContext, BrowserContextOptions, Page } from 'playwright-core';
 import { EngineError, raceAbort, withinCleanupBudget, type EngineCleanupContext, type OperationContext, type VideoSegment, type ViewportSize } from 'e2e/engine';
 import { attachPersistent, recoveryFailed, targetIdentity, type CdpEndpointResolver, type SessionBinding } from './cdp-recovery.ts';
-import { connectionAbort, withConnectionBudget, withOperationDeadline, type ConnectionBudget } from './operation-budget.ts';
+import { connectionAbort, withConnectionBudget, withOperationDeadline, type ConnectionBudget, type OperationBound } from './operation-budget.ts';
 import { RefRegistry } from './refs.ts';
 import type { LeaseRecording } from './provider.ts';
 import { ProviderVideo } from './provider-video.ts';
@@ -125,8 +125,13 @@ export class AttemptSession {
       }));
   }
 
-  /** Shares one reconnect, then dispatches once with the time that remains, bounded by the operation's budget. */
-  async run<T>(operation: OperationContext, label: string, work: (operation: OperationContext) => Promise<T>): Promise<T> {
+  /** Shares one reconnect, then dispatches once with the time that remains, bounded by the operation's budget unless it runs test code. */
+  async run<T>(
+    operation: OperationContext,
+    label: string,
+    work: (operation: OperationContext) => Promise<T>,
+    bound: OperationBound = 'deadline',
+  ): Promise<T> {
     const signal = AbortSignal.any([operation.signal, this.lifetime.signal]);
     if (signal.aborted) throw connectionAbort(signal, label);
     if (this.state.kind === 'failed') throw this.state.error;
@@ -148,7 +153,7 @@ export class AttemptSession {
         }
       }
       return work({ ...operation, ...remaining() });
-    });
+    }, bound);
   }
 
   /** Owns a candidate through configuration and recording setup, then publishes it once. */
