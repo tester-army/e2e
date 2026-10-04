@@ -75,6 +75,8 @@ export interface SessionHostOptions {
   readonly locateConfig: (configPath: string | undefined) => string;
   /** Loads the config at an absolute path fresh for each session, so an edited config applies without a restart. */
   readonly loadConfig: (configPath: string) => Promise<LoadedConfig>;
+  /** Holds what the process prints while `load` evaluates a config and registers its secrets; by default nothing is held. */
+  readonly withholdOutput?: (<T>(load: () => Promise<T>) => Promise<T>) | undefined;
   readonly env: NodeJS.ProcessEnv;
   /** Whether a session shows its UI when `open_session` does not say, from `--headed`. */
   readonly headed: boolean;
@@ -236,11 +238,16 @@ export class SessionHost {
     // knows that session's config.
     const configPath = this.options.locateConfig(options.config);
     this.sessions.claimConfig(id, configPath);
-    const loaded = await this.options.loadConfig(configPath);
-    // Known to the process before anything can fail with one, so an open
-    // failure is redacted like any other text; a session registers them only
-    // once its engine has launched.
-    registerStaticSecrets(loaded.allSecrets);
+    const withhold = this.options.withholdOutput ?? ((load) => load());
+    const loaded = await withhold(async () => {
+      const fresh = await this.options.loadConfig(configPath);
+      // Known to the process before anything can fail with one, so an open
+      // failure and what the config printed while it loaded are redacted
+      // like any other text; a session registers them only once its engine
+      // has launched.
+      registerStaticSecrets(fresh.allSecrets);
+      return fresh;
+    });
     // A session is its own run: a URL declared with port 0 gets a port here.
     const config = await allocateAppPorts(loaded);
     const target = this.resolveTarget(config, options.target);

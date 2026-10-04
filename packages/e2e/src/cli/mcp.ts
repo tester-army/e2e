@@ -3,12 +3,15 @@
  * stdio, stdout is the JSON-RPC stream, so anything else that writes there
  * (a stray console.log, a library banner) would corrupt the handshake. The
  * transport keeps the process's own stdout writer, and everything else that
- * reaches process.stdout is redirected to stderr for the whole process.
+ * reaches process.stdout or process.stderr goes to stderr, redacted, for the
+ * whole process: user code runs here and may print a secret.
  */
 
 import { Writable } from 'node:stream';
 import { errorMessage, exitCodeForCategory, classifyError } from '../internal/errors.ts';
+import { McpOutput } from '../mcp/output.ts';
 import { serveMcp, type ServeOptions } from '../mcp/server.ts';
+import { processSecrets } from '../run/secrecy.ts';
 import { mcpSessionEvent } from '../telemetry/events.ts';
 import type { Telemetry } from '../telemetry/telemetry.ts';
 
@@ -20,23 +23,35 @@ export interface McpCommandOptions {
 }
 
 /**
- * Diverts every later `process.stdout` write to stderr and returns a stream
- * that still reaches the real stdout. The protocol stream wraps the original
- * writer rather than opening file descriptor 1 again: once Node has set up
+ * Takes over the process's stdout and stderr: the returned protocol stream
+ * still reaches the real stdout, and every other write to either stream goes
+ * through `output` to stderr. The protocol stream wraps the original writer
+ * rather than opening file descriptor 1 again: once Node has set up
  * `process.stdout` on a pipe, the descriptor is non-blocking, and a plain
  * `fs` write to it fails with EAGAIN as soon as the client reads slower than
  * the server writes (a screenshot result), killing the server. The socket
  * writer queues and retries instead.
  */
-function claimStdout(): Writable {
+function claimStdio(): { protocol: Writable; output: McpOutput } {
   const stdout = process.stdout;
   const stderr = process.stderr;
-  const write = stdout.write.bind(stdout) as (chunk: Buffer, callback: (error?: Error | null) => void) => boolean;
-  stdout.write = ((chunk: unknown, encoding?: unknown, callback?: unknown) =>
-    (stderr.write as (...args: unknown[]) => boolean)(chunk, encoding, callback)) as typeof process.stdout.write;
+  const writeStdout = stdout.write.bind(stdout) as (chunk: Buffer, callback: (error?: Error | null) => void) => boolean;
+  const writeStderr = stderr.write.bind(stderr) as (chunk: string, callback?: () => void) => boolean;
+  const output = new McpOutput((text, callback) => void writeStderr(text, callback), processSecrets);
+  for (const [stream, name] of [
+    [stdout, 'stdout'],
+    [stderr, 'stderr'],
+  ] as const) {
+    stream.write = ((chunk: string | Uint8Array, encoding?: BufferEncoding | (() => void), callback?: () => void): boolean => {
+      const done = typeof encoding === 'function' ? encoding : callback;
+      const text = typeof chunk === 'string' && typeof encoding === 'string' ? Buffer.from(chunk, encoding) : chunk;
+      output.write(name, text, done);
+      return true;
+    }) as typeof stream.write;
+  }
   const protocol = new Writable({
     write(chunk: Buffer, _encoding, callback) {
-      write(chunk, callback);
+      writeStdout(chunk, callback);
     },
   });
   // A client that went away fails the pipe with EPIPE; the protocol stream
@@ -46,7 +61,7 @@ function claimStdout(): Writable {
   // before its app processes stop.
   stdout.on('error', (error) => protocol.destroy(error));
   stderr.on('error', () => undefined);
-  return protocol;
+  return { protocol, output };
 }
 
 /**
@@ -63,7 +78,7 @@ export function sessionTelemetry(telemetry: Telemetry): NonNullable<ServeOptions
 
 /** Runs the server until the client disconnects or a signal arrives; returns the exit code. */
 export async function mcp(version: string, options: McpCommandOptions, telemetry: Telemetry): Promise<number> {
-  const stdout = claimStdout();
+  const { protocol, output } = claimStdio();
   const stop = new AbortController();
   const onSignal = (): void => stop.abort();
   process.once('SIGINT', onSignal);
@@ -78,16 +93,18 @@ export async function mcp(version: string, options: McpCommandOptions, telemetry
       env: process.env,
       version,
       stdin: process.stdin,
-      stdout,
-      log: (line) => process.stderr.write(`e2e mcp: ${line}\n`),
+      stdout: protocol,
+      log: (line) => output.log(`e2e mcp: ${line}`),
+      withholdOutput: (load) => output.withholdDuring(load),
       signal: stop.signal,
       onSessionEnd: sessionTelemetry(telemetry),
     });
   } catch (cause) {
     const error = classifyError(cause);
-    process.stderr.write(`e2e mcp: ${error.code}: ${errorMessage(cause)}\n`);
+    output.log(`e2e mcp: ${error.code}: ${processSecrets.redact(errorMessage(cause))}`);
     return exitCodeForCategory(error.category);
   } finally {
+    output.flush();
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);
   }

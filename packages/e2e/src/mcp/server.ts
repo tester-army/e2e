@@ -14,7 +14,7 @@ import { readGuide, skillTopics } from '../cli/skill.ts';
 import { ConfigurationError, errorMessage } from '../internal/errors.ts';
 import { processSecrets } from '../run/secrecy.ts';
 import { loadProjectConfig, locateProjectConfig } from './config.ts';
-import { SessionHost } from './session.ts';
+import { SessionHost, type SessionHostOptions } from './session.ts';
 import type { McpSessionSummary } from './usage.ts';
 
 /** The client as it named itself in `initialize`. */
@@ -40,6 +40,8 @@ export interface ServeOptions {
   readonly stdout: Writable;
   /** Diagnostics for the operator, normally stderr. */
   readonly log: (line: string) => void;
+  /** Holds what the process prints while a config loads, until its secrets are known. */
+  readonly withholdOutput?: SessionHostOptions['withholdOutput'];
   /** Ends the server from outside: a process signal. */
   readonly signal?: AbortSignal | undefined;
   /** Told once per `open_session`, when its session closes or its open fails, with the client that asked; undefined before `initialize`. */
@@ -68,6 +70,7 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
   const host = new SessionHost({
     locateConfig: (configPath) => locateProjectConfig({ cwd: options.cwd, configPath: configPath ?? options.configPath }),
     loadConfig: (configPath) => loadProjectConfig(configPath, options.env),
+    withholdOutput: options.withholdOutput,
     env: options.env,
     headed: options.headed,
     maxSessions: options.maxSessions,

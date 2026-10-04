@@ -68,7 +68,10 @@ Start the server in the project directory. Config discovery works like
 | `--max-sessions <n>` | How many sessions may be open at once, 1 through 16; default 4. Each session is its own browser or device. |
 
 Operator output goes to stderr, prefixed `e2e mcp:`. Stdout carries only the
-protocol; anything a config module writes to stdout is redirected.
+protocol. What your code prints (the config's top-level code, project tools)
+goes to stderr with secret values redacted, from stdout as well. Output printed while a
+config loads appears once it has loaded; if the load fails, that output is
+withheld, since the config's secrets are unknown.
 
 ## Tools
 
