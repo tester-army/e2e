@@ -22,11 +22,16 @@ afterEach(() => {
   setSecretRegistry(undefined);
 });
 
-/** The two members `authorizeSecretFill` reads off the runtime, over one registered credential. */
-function runtime(): AgentContext {
+/** The two members `authorizeSecretFill` reads off the runtime, over one registered credential; `resolved` hears each plaintext read. */
+function runtime(resolved: string[] = []): AgentContext {
   return {
     config: { allSecrets: new Map([[adminPassword.name, adminPassword]]) },
-    secrets: { resolve: async () => adminPassword.value },
+    secrets: {
+      resolve: async (secret: Secret) => {
+        resolved.push(secret.name);
+        return adminPassword.value;
+      },
+    },
   } as unknown as AgentContext;
 }
 
@@ -92,10 +97,27 @@ describe('authorizeSecretFill', () => {
   it('judges the purpose by the config, not by what a handle claims', async () => {
     const claimsGeneric: Secret = Object.freeze({ name: adminPassword.name, purpose: 'generic-secret', [secretBrand]: true as const });
     const recorder = host();
-    await expect(authorizeSecretFill(recorder, runtime(), claimsGeneric, asPlainTextbox)).rejects.toMatchObject({
+    const resolved: string[] = [];
+    await expect(authorizeSecretFill(recorder, runtime(resolved), claimsGeneric, asPlainTextbox)).rejects.toMatchObject({
       code: 'POLICY_DENIED',
       message: 'field purpose none is incompatible with secret purpose password',
     });
     expect(recorder.decisions).toEqual(['secret.purpose:denied:POLICY_DENIED']);
+    expect(resolved).toEqual([]);
+  });
+
+  it.each([
+    { sink: 'a disabled password field', node: { ...androidPasswordField, states: { secure: true, disabled: true } }, message: 'the target field is disabled' },
+    { sink: 'a button', node: { ...androidPasswordField, role: 'button', states: {} }, message: 'the target is not an editable input (role button)' },
+  ])('refuses $sink before reading the plaintext', async ({ node, message }) => {
+    setSecretRegistry({ credentials: new Map([[admin.name, admin]]), secrets: new Map(), allSecrets: new Map([[adminPassword.name, adminPassword]]) });
+    const recorder = host();
+    const resolved: string[] = [];
+    await expect(authorizeSecretFill(recorder, runtime(resolved), credentials.user('admin').password, node)).rejects.toMatchObject({
+      code: 'POLICY_DENIED',
+      message,
+    });
+    expect(recorder.decisions).toEqual(['secret.sink:denied:POLICY_DENIED']);
+    expect(resolved).toEqual([]);
   });
 });
