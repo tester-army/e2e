@@ -250,9 +250,11 @@ describe('the TypeScript loader', () => {
     const { code, stdout, stderr } = await runCli(['tests/plain.e2e.ts', 'tests/other.e2e.ts', '--workers', '2']);
     expect(stdout).toContain('2 passed');
     expect(code).toBe(0);
-    expect(stderr.split('e2e ignores').length - 1).toBe(1);
-    expect(stderr).toContain(`e2e ignores ${path.join(realpathSync(dir), 'tsconfig.json')}, which it cannot read`);
-    expect(stderr).toContain('@tsconfig/node22/tsconfig.json');
+    // Reached by the runner while it collects, so the reporter shows it under `stderr | runner`.
+    const output = `${stdout}${stderr}`;
+    expect(output.split('e2e ignores').length - 1).toBe(1);
+    expect(output).toContain(`e2e ignores ${path.join(realpathSync(dir), 'tsconfig.json')}, which it cannot read`);
+    expect(output).toContain('@tsconfig/node22/tsconfig.json');
   });
 
   it('warns about an unreadable tsconfig.json only a worker reaches', async () => {
