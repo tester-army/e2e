@@ -9,6 +9,7 @@ import { packageVersion } from '../internal/package-version.ts';
 import { classifyError, exitCodeForCategory } from '../internal/errors.ts';
 import type { Shard, TagMode } from '../collect/select.ts';
 import { list, run, type ListedPair, type RunOptions, type RunOutcome } from '../run/runner.ts';
+import { claimRunnerOutput } from './run-output.ts';
 import { explore, STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/index.ts';
 import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { bounded } from '../report/format.ts';
@@ -603,30 +604,36 @@ function createProgram(version: string, telemetry: Telemetry): Command {
         command: Command,
       ) => {
         rejectForwardedFlags(command, files);
-        return runToOutcome(telemetry, command, (signals) =>
-          run({
-            files,
-            configPath: options.config,
-            targetIds: options.target,
-            ...selectionRunOptions(options),
-            headed: options.headed,
-            agent: options.agent,
-            retries: options.retries,
-            workers: options.workers,
-            maxFailures: options.maxFailures,
-            repeatEach: options.repeatEach,
-            reporters: options.reporter,
-            output: options.output,
-            noCache: options.cache === false,
-            strictCache: options.strictCache,
-            debug: options.debug,
-            aiTrace: options.aiTrace,
-            trace: recordingOption(options.trace),
-            video: recordingOption(options.video),
-            interruptSignal: signals.interruptSignal,
-            forceSignal: signals.forceSignal,
-          }),
-        );
+        const { output, release } = claimRunnerOutput();
+        try {
+          await runToOutcome(telemetry, command, (signals) =>
+            run({
+              files,
+              configPath: options.config,
+              targetIds: options.target,
+              ...selectionRunOptions(options),
+              headed: options.headed,
+              agent: options.agent,
+              retries: options.retries,
+              workers: options.workers,
+              maxFailures: options.maxFailures,
+              repeatEach: options.repeatEach,
+              reporters: options.reporter,
+              output: options.output,
+              noCache: options.cache === false,
+              strictCache: options.strictCache,
+              debug: options.debug,
+              aiTrace: options.aiTrace,
+              trace: recordingOption(options.trace),
+              video: recordingOption(options.video),
+              interruptSignal: signals.interruptSignal,
+              forceSignal: signals.forceSignal,
+              processOutput: output,
+            }),
+          );
+        } finally {
+          release();
+        }
       },
     );
 

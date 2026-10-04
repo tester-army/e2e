@@ -130,7 +130,8 @@ password on screen is not masked in pixels.
 ### Redaction
 
 The runner replaces every occurrence of a registered secret value with
-`<secret:name>` in model input, reports, a worker process's console output,
+`<secret:name>` in model input, reports, what your code prints during
+`e2e run` (tests, the config's and test files' top-level code, reporters),
 trace text, and text downloads. That includes a value the test passes as a
 plain string rather than a `secrets.get()` handle: test and `describe`
 titles, step labels (an `app.open` URL, a locator's text), a `fill`, an
@@ -154,6 +155,9 @@ paths alike, is redacted once, before the model, an executor's tree, a
 replay cache descriptor, or an end anchor reads it. Redaction rewrites only
 what the runner reports; assertions still compare the text the page shows.
 Secret values and their cut parts never enter cache entries.
+
+Output printed while the config loads appears once it has loaded. If the
+load fails, that output is withheld, since the config's secrets are unknown.
 
 A static value shorter than 6 characters is `INVALID_CONFIG`, and a provider
 returning one fails the fill: every occurrence of so short a value would take

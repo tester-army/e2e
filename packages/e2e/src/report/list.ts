@@ -370,19 +370,34 @@ export class ListReporter implements Reporter {
    * the test's result, or the end of the run.
    */
   private testOutput(event: RunEventOf<'output'>): void {
-    const { pc } = this;
-    if (event.text === '') return;
     const pair = event.pair === undefined ? undefined : pairKey(event.pair.testId, event.pair.agent, event.target, event.pair.repeat);
     const running = pair === undefined ? undefined : this.pairs.get(pair);
     const source = running === undefined ? this.badge(event.target) : `${this.badge(running.group.target)} ${bounded(running.group.file)}${this.separator}${running.title}`;
-    const key = `${event.stream}\u0000${source}`;
+    this.sourcedOutput(event.stream, source, pair, event.text);
+  }
+
+  /**
+   * Text user code wrote in the runner's own process (the config's top
+   * level, a test file's while it is collected, a reporter), printed like a
+   * test's output under a `stdout | runner` heading. The runner hands it
+   * here already redacted, only while this reporter shows the run.
+   */
+  processOutput(stream: 'stdout' | 'stderr', text: string): void {
+    this.sourcedOutput(stream, this.pc.dim('runner'), undefined, text);
+  }
+
+  /** Prints the lines `text` ends under the heading of `stream` and `source`, holding the unfinished rest. */
+  private sourcedOutput(stream: 'stdout' | 'stderr', source: string, pair: string | undefined, text: string): void {
+    const { pc } = this;
+    if (text === '') return;
+    const key = `${stream}\u0000${source}`;
     let entry = this.pendingOutput.get(key);
     if (entry === undefined) {
-      const label = event.stream === 'stderr' ? pc.yellow(event.stream) : pc.dim(event.stream);
+      const label = stream === 'stderr' ? pc.yellow(stream) : pc.dim(stream);
       entry = { heading: `${label} ${pc.dim('|')} ${source}`, pair, fragment: '' };
       this.pendingOutput.set(key, entry);
     }
-    const lines = (entry.fragment + event.text).split('\n');
+    const lines = (entry.fragment + text).split('\n');
     entry.fragment = lines.pop() ?? '';
     if (entry.fragment === '') this.pendingOutput.delete(key);
     this.printOutput(key, entry.heading, lines);

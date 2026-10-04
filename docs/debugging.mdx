@@ -198,6 +198,9 @@ stdout | web tests/todos.e2e.ts > adds a todo
 hello from the test
 ```
 
+Output from outside a test, such as the config's top-level code or a
+reporter, prints under `stdout | runner`.
+
 Nothing is buffered or dropped: every line appears when it is written, in a
 pipe or a CI log as much as in a terminal. The output is not part of the
 report; use `expect` or an artifact for anything a later reader needs.

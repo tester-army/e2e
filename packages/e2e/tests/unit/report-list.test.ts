@@ -1172,6 +1172,28 @@ describe('ListReporter', () => {
       expect(lines.at(-1)).toBe('two');
     });
 
+    it('prints what the runner process printed above the window under a runner heading', () => {
+      const { lines, output } = liveCapture();
+      const reporter = plainReporter(output, true);
+      reporter.handle(runStarted());
+      reporter.processOutput('stdout', 'from the ');
+      reporter.processOutput('stdout', 'config\n');
+      reporter.processOutput('stderr', 'a warning\n');
+      reporter.handle({ type: 'output', target: 'chromium', pair: undefined, stream: 'stdout', text: 'from a worker\n' });
+      reporter.processOutput('stdout', 'unfinished');
+      reporter.handle(runFinished({ reportPath: 'r.json' }));
+      expect(lines.slice(lines.indexOf('stdout | runner'), lines.indexOf('stdout | runner') + 8)).toEqual([
+        'stdout | runner',
+        'from the config',
+        'stderr | runner',
+        'a warning',
+        'stdout | |chromium|',
+        'from a worker',
+        'stdout | runner',
+        'unfinished',
+      ]);
+    });
+
     it('pads the block to the bottom of a tall terminal and shrinks it as the log grows', () => {
       const restore = withTerminalSize({ rows: 60, columns: 120 });
       try {
