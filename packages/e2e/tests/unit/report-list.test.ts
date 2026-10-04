@@ -356,6 +356,8 @@ describe('ListReporter', () => {
       expect(blocks).toHaveLength(2);
       expect(blocks[0]).toContain(' firefox ');
       expect(blocks[1]).toContain(' chromium ');
+      expect(blocks[1]).toContain('\u001b[103m');
+      expect(blocks[0]).toContain('\u001b[106m');
     });
     it('clips the first error line to the terminal width; the failure section keeps it whole', () => {
       const restore = withTerminalSize({ columns: 40 });
@@ -985,6 +987,26 @@ describe('ListReporter', () => {
       // The window above the result line is erased before the block prints.
       expect(chunks.some((chunk) => chunk.includes('\u001b[0J'))).toBe(true);
       expect(chunks.at(-1)).not.toContain('└──');
+    });
+
+    it('clips a finished step label so the row keeps its tail at the terminal width', () => {
+      const restore = withTerminalSize({ columns: 80, rows: 40 });
+      try {
+        const { chunks, output } = liveCapture();
+        const reporter = plainReporter(output, true);
+        reporter.handle(runStarted());
+        reporter.handle(plan([{ file: 'tests/flow.e2e.ts', tests: 1 }]));
+        reporter.handle(testStarted('t1', 'checkout', 'chromium', 'tests/flow.e2e.ts'));
+        const label = 'add two todos named "Buy milk" and "Walk the dog", then mark the first one as done';
+        const step = (progress: object) => reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress } as never);
+        step({ phase: 'start', kind: 'agent', api: 'agent.act', label });
+        step({ phase: 'end', kind: 'agent', api: 'agent.act', label, status: 'passed', durationMs: 4_200, modelCalls: 3 });
+        const row = chunks.at(-1)!.replace(ANSI_PATTERN, '').split('\n').find((line) => line.includes('agent.act'))!;
+        expect([...row].length).toBeLessThanOrEqual(78);
+        expect(row).toMatch(/^ {7}✓ agent\.act "add two todos .*…" 4\.20s · 3 model calls$/);
+      } finally {
+        restore();
+      }
     });
 
     it('clamps a wide-glyph AI row to the window by column and prints it whole in the final summary', () => {
