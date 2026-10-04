@@ -116,7 +116,7 @@ These appear in terminal output and in the report as plain string codes.
 | `HOOK_FAILED` | `beforeAll` or `afterAll` threw. Skips the suite's tests. | test | 1 |
 | `LAUNCH_TIMEOUT` | Engine init or attempt start exceeded `config.launchTimeout` | infrastructure | 3 |
 | `CLEANUP_TIMEOUT` | Engine attempt end exceeded `config.cleanupTimeout`, or a route or dialog handler the engine ran for the test was still running when the attempt settled | infrastructure | 3 |
-| `TRACE_WITHHELD` | A trace from a session that knows a secret value could not be rewritten, so it was deleted. Recorded in the attempt's `secondaryErrors`; never fails the attempt. | infrastructure | 3 |
+| `TRACE_WITHHELD` | A trace from a session that knows a secret value could not be rewritten, so it was deleted, or the engine returned an archive path outside the attempt's artifact directory, so nothing was registered. Recorded in the attempt's `secondaryErrors`; never fails the attempt. | infrastructure | 3 |
 | `BROWSER_INSTALL_FAILED` | Browser provisioning failed | infrastructure | 3 |
 | `WORKER_INIT_FAILED` | A worker process never became ready | infrastructure | 3 |
 | `WORKER_EXIT` | A worker exited unexpectedly while running a file: the test in flight fails with `WORKER_CRASH` and the file's other tests are skipped. An unhandled rejection is charged to the test running when it surfaces, or recorded as `UNHANDLED_REJECTION` between tests; before any test has finished there it ends the worker, and the rejection itself is the run error, not this one | infrastructure | 3 |

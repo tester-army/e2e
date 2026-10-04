@@ -194,8 +194,10 @@ ordinary text with it.
   device service keeps stays with that service; the report holds only its
   URL.
 - A download is what the app served. When the session knows a secret
-  value, a text download (`text/*` or JSON by file extension) is rewritten
-  the way trace text is and labeled `redaction: "complete"`. Any other
+  value, every whole occurrence of it in a text download (`text/*` or JSON
+  by file extension) is replaced, as in reports, and the download is labeled
+  `redaction: "complete"`. Fragments and base64 runs are matched in traces
+  only. Any other
   download, a binary or one from a session that knows no secret value, is
   kept as served and labeled `redaction: "incomplete"`.
 - The `headers` a protected preview needs are recorded in the trace as
