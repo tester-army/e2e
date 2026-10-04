@@ -355,7 +355,7 @@ describe('pollCondition', () => {
     await assertion;
   });
 
-  it('negated: a read the deadline cut off ends the poll on what held when it began', async () => {
+  it('negated: a read the deadline cut off ends the poll on what held until it was cut', async () => {
     vi.useFakeTimers();
     const cut = new EngineError('OPERATION_TIMEOUT', 'locate timed out', { retryable: false });
     const run = (cutAfterMs: number) => {
@@ -373,7 +373,7 @@ describe('pollCondition', () => {
         onTimeout: (cause) => Object.assign(new Error('poll timed out'), { cause }),
       });
     };
-    // Gone from 900 ms: the grace window had run when the cut-off read began at 1900 ms.
+    // Gone from 900 ms: the grace window had run when the read was cut off at 1900 ms.
     const passing = run(900);
     await vi.advanceTimersByTimeAsync(3_000);
     await expect(passing).resolves.toBeUndefined();
@@ -382,6 +382,27 @@ describe('pollCondition', () => {
     const assertion = expect(failing).rejects.toMatchObject({ message: 'poll timed out', cause: cut });
     await vi.advanceTimersByTimeAsync(3_000);
     await assertion;
+  });
+
+  it('negated: a budget shorter than the grace window still passes when its last read is cut off', async () => {
+    vi.useFakeTimers();
+    const cut = new EngineError('OPERATION_TIMEOUT', 'locate timed out', { retryable: false });
+    const deadline = new Deadline(350);
+    const promise = pollCondition({
+      deadline,
+      signal: new AbortController().signal,
+      negated: true,
+      evaluate: async () => {
+        if (deadline.remaining() < POLL_INTERVAL_MS) {
+          await sleep(deadline.remaining());
+          throw cut;
+        }
+        return false;
+      },
+      onTimeout: () => new Error('poll timed out'),
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(promise).resolves.toBeUndefined();
   });
 
 });
