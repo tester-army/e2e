@@ -260,14 +260,20 @@ export class SerialGroupProgress {
   /**
    * The group after its worker died with `error`, or undefined when the
    * runner heard nothing of it running. The finished attempts stand, and the
-   * attempt in flight fails: the member whose body was running fails with
-   * `error` and the ones after it skip. A crash between members (a hook,
+   * attempt in flight fails: the member whose body was running ends `status`
+   * with `error` (`timed-out` when the watchdog killed a worker that hung in
+   * it) and the ones after it skip. A crash between members (a hook,
    * the session closing) fails the attempt and leaves its finished members
    * as they were; one in a retry before any member ran fails the first, as a
    * launch failure does. A crash after the last attempt, when no retry
    * follows it, is recorded on that attempt.
    */
-  crashed(members: readonly TestTargetPair[], target: ResolvedTarget, error: SerializedError): SettledSerialGroup | undefined {
+  crashed(
+    members: readonly TestTargetPair[],
+    target: ResolvedTarget,
+    error: SerializedError,
+    status: 'failed' | 'timed-out',
+  ): SettledSerialGroup | undefined {
     const last = this.finished.at(-1);
     if (!this.inFlight) {
       if (last === undefined) return undefined;
@@ -282,9 +288,9 @@ export class SerialGroupProgress {
       endBeforeMembers(record, members, error, NEVER_INTERRUPTED);
       return this.settled([...this.finished, { record, reachedMembers: false }], members, target);
     }
-    const record = this.attemptInFlight('failed', error);
     const next = this.currentMembers.length;
     const wasRunning = this.running !== undefined && this.running === members[next]?.test.id;
+    const record = this.attemptInFlight(wasRunning ? status : 'failed', error);
     const skip: SkipInfo = wasRunning
       ? predecessorFailed(next)
       : { cause: 'infrastructure-unavailable', reason: 'worker process exited during this group attempt' };
@@ -292,7 +298,7 @@ export class SerialGroupProgress {
       if (memberIndex < next) continue;
       record.members.push(
         wasRunning && memberIndex === next
-          ? memberFailedWith(record, memberIndex, member.test.id, error)
+          ? memberFailedWith(record, memberIndex, member.test.id, error, status)
           : skippedMember(record.id, memberIndex, member.test.id, skip),
       );
     }
@@ -550,19 +556,25 @@ function endBeforeMembers(
   members.forEach((member, memberIndex) => {
     record.members.push(
       memberIndex === 0
-        ? memberFailedWith(record, 0, member.test.id, error)
+        ? memberFailedWith(record, 0, member.test.id, error, 'failed')
         : skippedMember(record.id, memberIndex, member.test.id, predecessorFailed(0)),
     );
   });
 }
 
 /** A member that failed with an error of its group attempt's, having run no step of its own. */
-function memberFailedWith(record: SerialAttemptRecord, index: number, testId: string, error: SerializedError): SerialMemberRecord {
+function memberFailedWith(
+  record: SerialAttemptRecord,
+  index: number,
+  testId: string,
+  error: SerializedError,
+  status: 'failed' | 'timed-out',
+): SerialMemberRecord {
   return {
     id: `${record.id}:member:${index}`,
     index,
     testId,
-    status: 'failed',
+    status,
     startedAt: record.startedAt,
     durationMs: 0,
     steps: [],

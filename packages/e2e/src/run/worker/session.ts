@@ -5,6 +5,7 @@
  * run-error forwarding exist exactly once.
  */
 
+import inspector from 'node:inspector';
 import type { ModuleRegistration } from '../../collect/registry.ts';
 import type { TestTargetPair } from '../../collect/select.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../../config/resolve.ts';
@@ -141,6 +142,20 @@ export class TargetWorker {
               serialId: pair.test.serialId,
             });
           },
+          onAttemptDeadline: (pair, attempt) => {
+            // A worker paused at a breakpoint looks blocked; under a debugger nothing watches its attempts.
+            if (inspector.url() !== undefined) return;
+            this.host.emit({
+              type: 'attempt-deadline',
+              testId: pair.test.id,
+              agent: pair.agent,
+              repeat: pair.repeat,
+              attempt,
+              timeoutMs: pair.options.timeout,
+              graceMs: deps.config.cleanupTimeout,
+            });
+          },
+          onAttemptEnd: () => this.host.emit({ type: 'attempt-end' }),
           onProgress: (pair, progress) =>
             this.host.emit({ type: 'progress', testId: pair.test.id, agent: pair.agent, repeat: pair.repeat, progress }),
           onNotice: (message) => this.host.emit({ type: 'notice', message }),
@@ -179,6 +194,12 @@ export class TargetWorker {
       case 'terminate':
         this.terminate();
         return;
+      case 'ping':
+        // Answered now, not queued behind the running unit: the answer is the proof the event loop turns.
+        this.host.emit({ type: 'pong' });
+        return;
+      default:
+        message satisfies never;
     }
   }
 

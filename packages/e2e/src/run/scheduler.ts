@@ -12,7 +12,7 @@ import type { SkipInfo, TestTargetPair } from '../collect/select.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
 import type { AiTraceSnapshot } from '../internal/ai-trace.ts';
 import type { DebugSnapshot } from '../internal/debug.ts';
-import { InfrastructureError, serializeError } from '../internal/errors.ts';
+import { InfrastructureError, type SerializedError, TestTimeoutError, serializeError } from '../internal/errors.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
 import type { AttemptRecord, ResultRecord, RunError, SerialGroupRecord } from './records.ts';
 import { retryVerdict } from './retry.ts';
@@ -32,6 +32,7 @@ import {
   pairKey,
 } from './units.ts';
 import {
+  type AttemptDeadlineMessage,
   type FailureLimit,
   type OutputMessage,
   type PairStart,
@@ -94,6 +95,9 @@ const MAX_INIT_FAILURES = 2;
 /** How long a retiring or draining worker gets before it is force-killed. */
 const SHUTDOWN_GRACE_MS = 10_000;
 
+/** The least time a worker past an attempt deadline gets to answer a ping, however small `cleanupTimeout` is. */
+const MIN_PING_REPLY_MS = 5_000;
+
 /** Whether a worker process died of a signal that interrupts the run, as a Ctrl-C to its process group does. */
 function isInterruptSignal(signal: NodeJS.Signals | null): boolean {
   return signal === 'SIGINT' || signal === 'SIGTERM' || signal === 'SIGHUP';
@@ -134,6 +138,16 @@ function finishedResult(pair: TestTargetPair, attempts: AttemptRecord[]): Result
   });
 }
 
+/** The attempt a worker announced the deadline of, as the watchdog keeps it. */
+interface WatchedAttempt {
+  /** The pair (`pairKey`) the attempt belongs to. */
+  readonly pair: string;
+  readonly index: number;
+  readonly timeoutMs: number;
+  readonly startedAt: string;
+  readonly startedMs: number;
+}
+
 /**
  * One worker and the unit it is executing. Owns its own lifecycle so the
  * scheduler never has to keep a separate record in sync with the transport.
@@ -158,7 +172,12 @@ class SchedulerWorker {
   terminated = false;
   /** Killed by the scheduler, once a grace budget ran out or over a fatal it reported; its exit is then the one asked for too. */
   killed = false;
+  /** The attempt whose worker stopped answering past its deadline, once the watchdog killed the worker over it. */
+  hung: WatchedAttempt | undefined;
   private killTimer: NodeJS.Timeout | undefined;
+  private watched: WatchedAttempt | undefined;
+  private watchTimer: NodeJS.Timeout | undefined;
+  private awaitingPong = false;
 
   constructor(
     readonly targetName: string,
@@ -171,6 +190,7 @@ class SchedulerWorker {
       onMessage: (message) => onMessage(this, message),
       onExit: (detail, signal) => {
         this.clearKillTimer();
+        this.unwatch();
         onExit(this, detail, signal ?? null);
       },
     });
@@ -252,6 +272,57 @@ class SchedulerWorker {
     if (this.killTimer === undefined) return;
     clearTimeout(this.killTimer);
     this.killTimer = undefined;
+  }
+
+  /**
+   * The watchdog over one attempt. The worker enforces the test timeout with
+   * timers in its own process, which a body that blocks the event loop
+   * (`while (true) {}`) never lets fire. From the deadline on, the worker is
+   * pinged once per cleanup budget (at least `MIN_PING_REPLY_MS`) for as
+   * long as the attempt lasts, teardown included: one still tearing it down
+   * answers and goes on, one that has not answered by the next ping is
+   * killed, and the attempt is the one it hung in.
+   */
+  watch(message: AttemptDeadlineMessage): void {
+    this.unwatch();
+    this.watched = {
+      pair: pairKey(message.testId, message.agent, message.repeat),
+      index: message.attempt,
+      timeoutMs: message.timeoutMs,
+      startedAt: timestamp(),
+      startedMs: Date.now(),
+    };
+    const check = (): void => {
+      if (this.watched === undefined || !this.runner.alive) return;
+      if (this.awaitingPong) {
+        this.hung = this.watched;
+        this.killed = true;
+        this.runner.kill();
+        return;
+      }
+      this.awaitingPong = true;
+      this.watchAfter(Math.max(message.graceMs, MIN_PING_REPLY_MS), check);
+      this.runner.send({ type: 'ping' });
+    };
+    this.watchAfter(message.timeoutMs, check);
+  }
+
+  /** The worker answered a ping: its event loop turns. */
+  pong(): void {
+    this.awaitingPong = false;
+  }
+
+  /** Stops watching the attempt: it ended, or the worker is gone. */
+  unwatch(): void {
+    if (this.watchTimer !== undefined) clearTimeout(this.watchTimer);
+    this.watchTimer = undefined;
+    this.watched = undefined;
+    this.awaitingPong = false;
+  }
+
+  private watchAfter(delayMs: number, check: () => void): void {
+    this.watchTimer = setTimeout(check, delayMs);
+    this.watchTimer.unref();
   }
 }
 
@@ -636,6 +707,18 @@ class Scheduler {
         this.options.events.onTestStart?.(start, worker.targetName);
         break;
       }
+      case 'attempt-deadline': {
+        worker.watch(message);
+        break;
+      }
+      case 'attempt-end': {
+        worker.unwatch();
+        break;
+      }
+      case 'pong': {
+        worker.pong();
+        break;
+      }
       case 'progress': {
         this.options.events.onProgress?.(
           { testId: message.testId, agent: message.agent, repeat: message.repeat },
@@ -802,6 +885,12 @@ class Scheduler {
    * run's interrupt stopped charges no crash: a test keeps the attempts it
    * finished and the verdict they reach, as a retry the interrupt cut short
    * does, and a serial group's attempt in flight is recorded interrupted.
+   *
+   * A worker the watchdog killed hung in one attempt: that attempt timed out
+   * (`TEST_TIMEOUT`, after the attempts before it, never retried), and the
+   * unit's tests it never reached run on a fresh worker, as they would have
+   * after a timeout the worker enforced itself. Only the rest of a serial
+   * group it hung in is lost with it.
    */
   private synthesizeCrashResults(
     state: TargetState,
@@ -810,21 +899,29 @@ class Scheduler {
   ): void {
     const interrupted = this.interrupting && (worker.terminated || worker.killed);
     const crash = serializeError(new InfrastructureError('WORKER_CRASH', 'worker process exited during this test'));
+    const hung = worker.hung;
+    const hungPair = hung === undefined ? undefined : unit.pairs.find((pair) => pairKey(pair.test.id, pair.agent, pair.repeat) === hung.pair);
+    const hungGroupId =
+      hungPair?.test.serialId === undefined
+        ? undefined
+        : serialGroupId(hungPair.test.serialId, worker.targetName, hungPair.agent, hungPair.repeat);
     const settledGroups = new Set<string>();
+    const rescheduled: TestTargetPair[] = [];
     for (const pair of unit.pairs) {
       const key = pairKey(pair.test.id, pair.agent, pair.repeat);
       if (worker.reported.has(key)) continue;
       const { serialId } = pair.test;
-      if (serialId !== undefined) {
-        const groupId = serialGroupId(serialId, worker.targetName, pair.agent, pair.repeat);
+      const groupId = serialId === undefined ? undefined : serialGroupId(serialId, worker.targetName, pair.agent, pair.repeat);
+      if (groupId !== undefined) {
         if (settledGroups.has(groupId)) continue;
         const members = unit.pairs.filter(
           (member) => member.test.serialId === serialId && member.agent === pair.agent && member.repeat === pair.repeat,
         );
         const progress = worker.serialGroups.get(groupId);
-        const settled = interrupted
-          ? progress?.interrupted(members, state.target, this.stopSkip ?? INTERRUPTED_BEFORE_START)
-          : progress?.crashed(members, state.target, crash);
+        let settled: ReturnType<SerialGroupProgress['crashed']>;
+        if (hung !== undefined && groupId === hungGroupId) settled = progress?.crashed(members, state.target, hangError(hung), 'timed-out');
+        else if (interrupted) settled = progress?.interrupted(members, state.target, this.stopSkip ?? INTERRUPTED_BEFORE_START);
+        else settled = progress?.crashed(members, state.target, crash, 'failed');
         if (settled !== undefined) {
           settledGroups.add(groupId);
           this.options.events.onSerialGroup(settled.group);
@@ -833,6 +930,11 @@ class Scheduler {
         }
       }
       const { finished, running } = worker.attempts.get(key) ?? { finished: [], running: undefined };
+      if (hung !== undefined && key === hung.pair) {
+        this.markSessionsFailed(state, pair);
+        this.report(finishedResult(pair, [...finished, hungAttempt(hung)]));
+        continue;
+      }
       if (interrupted) {
         this.report(
           finished.length === 0
@@ -841,12 +943,11 @@ class Scheduler {
         );
         continue;
       }
-      // A crashed setup never persisted its sessions; dependents must skip.
-      if (pair.test.kind === 'setup') {
-        for (const session of pair.test.sessions) {
-          state.failedSessions.set(session, pair.test.id);
-        }
+      if (hung !== undefined && (hungGroupId === undefined || groupId !== hungGroupId)) {
+        rescheduled.push(pair);
+        continue;
       }
+      this.markSessionsFailed(state, pair);
       if (key !== worker.inFlightPair) {
         this.report(
           unstartedResult(pair, {
@@ -888,6 +989,15 @@ class Scheduler {
         }),
       );
     }
+    if (rescheduled.length > 0) this.returnUnit(state, { ...unit, pairs: rescheduled });
+  }
+
+  /** A crashed setup never persisted its sessions; dependents must skip. */
+  private markSessionsFailed(state: TargetState, pair: TestTargetPair): void {
+    if (pair.test.kind !== 'setup') return;
+    for (const session of pair.test.sessions) {
+      state.failedSessions.set(session, pair.test.id);
+    }
   }
 
   /**
@@ -921,4 +1031,33 @@ class Scheduler {
     }
     await Promise.all(remaining.map((worker) => worker.runner.exit));
   }
+}
+
+/** Why the watchdog killed a worker that hung in `hung`. */
+function hangError(hung: WatchedAttempt): SerializedError {
+  return serializeError(
+    new TestTimeoutError(
+      `test ran past its ${hung.timeoutMs} ms timeout and its worker stopped responding, so the worker was killed`,
+    ),
+  );
+}
+
+/**
+ * The attempt a worker the watchdog killed hung in. It ends the pair's
+ * attempts: a body that blocked the event loop once does so again, so it is
+ * not retried.
+ */
+function hungAttempt(hung: WatchedAttempt): AttemptRecord {
+  return {
+    id: uuidv7(),
+    index: hung.index,
+    status: 'timed-out',
+    startedAt: hung.startedAt,
+    durationMs: Date.now() - hung.startedMs,
+    steps: [],
+    artifacts: [],
+    error: hangError(hung),
+    secondaryErrors: [],
+    cleanup: 'forced',
+  };
 }

@@ -46,8 +46,10 @@ const FLUSH_GRACE_MS = 2_000;
 /**
  * Hands one message to the channel at once; resolves once the channel has
  * taken it and every message before it (or is gone). The channel keeps the
- * order. Handing it over synchronously is what lets a `pair-start` reach the
- * runner when the test body exits the process right after it.
+ * order. Waiting for the previous message's ack would take an event-loop
+ * turn: a `pair-start` sent right before a body that exits the process, or an
+ * `attempt-deadline` sent right before one that blocks the loop, would never
+ * leave.
  */
 function send(message: WorkerToMain): Promise<void> {
   const taken = new Promise<void>((resolve) => {

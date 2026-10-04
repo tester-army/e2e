@@ -579,6 +579,151 @@ test.describe('wizard', { serial: true }, () => {
   );
 
   it(
+    'times out a test that blocks its worker, kills the worker, and runs the rest of the file on a fresh one',
+    async () => {
+      const file = `import { test } from 'e2e';
+
+test('blocks the event loop at once', { timeout: 1000 }, () => {
+  while (true) {}
+});
+
+test('blocks the event loop after a step', { timeout: 1000 }, async ({ app }) => {
+  await app.open();
+  while (true) {}
+});
+
+test('runs after the blocked tests', async ({ app }) => {
+  await app.open();
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/busy.e2e.ts': file },
+        { appUrl: app.url, configSource: workerConfigSource(1, '\n  cleanupTimeout: 1000,') },
+      );
+      for (const title of ['blocks the event loop at once', 'blocks the event loop after a step']) {
+        const blocked = resultByTitle(outcome, title);
+        expect(blocked.status).toBe('timed-out');
+        expect(blocked.attempts).toHaveLength(1);
+        expect(blocked.attempts[0]?.status).toBe('timed-out');
+        expect(blocked.attempts[0]?.error?.code).toBe('TEST_TIMEOUT');
+      }
+      expect(resultByTitle(outcome, 'runs after the blocked tests').status).toBe('passed');
+      expect(outcome.exitCode).toBe(1);
+      expect(outcome.report.run.errors).toEqual([]);
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'keeps the failed attempt before a retry that blocked its worker, and runs the next test',
+    async () => {
+      const marker = path.join(mkdtempSync(path.join(tmpdir(), 'e2e-retry-hang-')), 'failed-once');
+      const file = `import { existsSync, writeFileSync } from 'node:fs';
+import { test } from 'e2e';
+
+test('fails, then blocks on retry', { retries: 1, timeout: 1000 }, () => {
+  if (!existsSync(${JSON.stringify(marker)})) {
+    writeFileSync(${JSON.stringify(marker)}, '');
+    throw new Error('first attempt fails');
+  }
+  while (true) {}
+});
+
+test('runs after the blocked retry', async () => {});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/retry-hang.e2e.ts': file },
+        { appUrl: app.url, configSource: workerConfigSource(1, '\n  cleanupTimeout: 1000,') },
+      );
+      const result = resultByTitle(outcome, 'fails, then blocks on retry');
+      expect(result.status).toBe('timed-out');
+      expect(result.attempts.map((attempt) => [attempt.index, attempt.status, attempt.error?.code])).toEqual([
+        [0, 'failed', 'ERROR'],
+        [1, 'timed-out', 'TEST_TIMEOUT'],
+      ]);
+      expect(result.attempts[0]!.error?.message).toBe('first attempt fails');
+      expect(resultByTitle(outcome, 'runs after the blocked retry').status).toBe('passed');
+      expect(outcome.exitCode).toBe(1);
+      expect(outcome.report.run.errors).toEqual([]);
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'leaves a worker that still answers alone while a timed-out test tears down past the watchdog window',
+    async () => {
+      // Seven teardowns of 900 ms each keep the attempt going about 6 s past
+      // its timeout, longer than the 5 s the worker gets to answer a ping.
+      const file = `import { test } from 'e2e';
+
+for (let hook = 0; hook < 7; hook += 1) {
+  test.afterEach(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 900));
+  });
+}
+
+test('times out and tears down slowly', { timeout: 1000 }, async ({ app }) => {
+  await app.open();
+  await new Promise((resolve) => setTimeout(resolve, 5_000));
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/slow-teardown.e2e.ts': file },
+        { appUrl: app.url, configSource: workerConfigSource(1, '\n  cleanupTimeout: 1000,') },
+      );
+      const result = resultByTitle(outcome, 'times out and tears down slowly');
+      expect(result.status).toBe('timed-out');
+      const attempt = result.attempts[0]!;
+      expect(attempt.error?.message).toBe('test timed out after 1000 ms in phase body');
+      expect(attempt.cleanup).toBe('complete');
+      expect(attempt.steps.map((step) => step.api)).toContain('app.open');
+      expect(attempt.durationMs).toBeGreaterThan(6_000);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'times out a serial member that blocks its worker right after the member before it, skipping the rest of its group',
+    async () => {
+      const file = `import { test } from 'e2e';
+
+test.describe('group', { serial: true }, () => {
+  test('first member', async () => {});
+  test('second member blocks', { timeout: 1000 }, () => {
+    while (true) {}
+  });
+  test('third member', async () => {});
+});
+
+test('outside the group', async () => {});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/serial-busy.e2e.ts': file },
+        { appUrl: app.url, configSource: workerConfigSource(1, '\n  cleanupTimeout: 1000,') },
+      );
+      const group = outcome.report.run.serialGroups[0]!;
+      expect(group.status).toBe('timed-out');
+      expect(
+        group.attempts.map((attempt) => [attempt.status, attempt.members.map((member) => [member.status, member.error?.code])]),
+      ).toEqual([['timed-out', [['passed', undefined], ['timed-out', 'TEST_TIMEOUT'], ['skipped', undefined]]]]);
+      expect(resultByTitle(outcome, 'first member').status).toBe('passed');
+      expect(resultByTitle(outcome, 'second member blocks').status).toBe('timed-out');
+      expect(resultByTitle(outcome, 'third member').skip?.cause).toBe('serial-predecessor-failed');
+      expect(resultByTitle(outcome, 'outside the group').status).toBe('passed');
+      expect(outcome.report.run.errors).toEqual([]);
+      expect(outcome.exitCode).toBe(1);
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
     'interrupts workers, reports 130, and lists the file the one worker never reached',
     async () => {
       const slowFile = `import { test } from 'e2e';

@@ -192,6 +192,17 @@ for every scope whose `beforeAll` started.
 its own `cleanupTimeout` budget with working fixtures, so teardown can still
 drive the app after the body timed out.
 
+A test that blocks its worker's event loop (`while (true) {}`, in the body or
+a teardown) stops every timer in that worker, so the worker cannot time it
+out. When the worker has not responded `cleanupTimeout` (at least 5 s) after
+the test timeout, the runner kills it. The test is reported `timed-out` with
+`TEST_TIMEOUT`, without retries, artifacts, or the attempts before it. The
+rest of its file runs on a new worker; a serial group it belonged to is
+skipped. A worker started under a debugger (`--inspect`) is never killed
+this way, so a breakpoint can stay paused. A programmatic run with an inline
+config or in-memory tests runs in the runner's own process and has no worker
+to kill: a blocked event loop hangs it.
+
 A throw inside `beforeAll` or `afterAll` is `HOOK_FAILED` and skips the
 suite's tests with cause `hook-failed`. Inside a serial group it skips every
 remaining member and fails the group without a retry.

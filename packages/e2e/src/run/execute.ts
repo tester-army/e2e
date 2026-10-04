@@ -77,6 +77,10 @@ export interface ExecutionEvents {
   onPairStart?(pair: TestTargetPair): void;
   /** Live step progress of one running attempt, for reporters. */
   onProgress?(pair: TestTargetPair, progress: StepProgress): void;
+  /** An attempt's test timeout started, as its `beforeEach` hooks and body begin. */
+  onAttemptDeadline?(pair: TestTargetPair, attemptIndex: number): void;
+  /** The attempt `onAttemptDeadline` announced has ended, or one that never got that far has. */
+  onAttemptEnd?(): void;
   /** One line of progress the engine's `init` reported, already naming the target and worker slot. */
   onNotice?(message: string): void;
   /**
@@ -819,7 +823,13 @@ export class TargetExecutor implements SerialHost {
         agent: pair.agent,
         attempt: attemptIndex,
       },
-      () => this.executeAttempt(pair, registered, realm, attemptIndex, context),
+      async () => {
+        try {
+          return await this.executeAttempt(pair, registered, realm, attemptIndex, context);
+        } finally {
+          this.options.events?.onAttemptEnd?.();
+        }
+      },
     );
   }
 
@@ -1000,6 +1010,7 @@ export class TargetExecutor implements SerialHost {
       openSession = session;
 
       const testDeadline = new Deadline(pair.options.timeout);
+      this.options.events?.onAttemptDeadline?.(pair, attemptIndex);
       const budget = new AttemptBudget(attemptAbort.signal, testDeadline);
       const saveSession =
         context.kind !== 'setup'

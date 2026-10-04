@@ -4,7 +4,7 @@
  * without spawning processes or browsers.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CollectedFile, CollectedTest, Collection } from '../../src/collect/collect.ts';
 import type {
   ResolvedTestOptions,
@@ -156,6 +156,15 @@ interface FakeBehaviour {
   /** Workers ignore `terminate` and have to be killed. */
   readonly ignoreTerminate?: boolean;
   /**
+   * Test ids whose attempt passes its deadline (`WATCHDOG_MS` timeout and
+   * cleanup budget). `blocked` never answers a ping again, as a body spinning
+   * on the event loop; `slow-teardown` answers every ping and reports the
+   * attempt timed out after `SLOW_TEARDOWN_MS`, as a teardown still running.
+   */
+  readonly overrun?: Record<string, 'blocked' | 'slow-teardown'>;
+  /** Attempts an `overrun` pair finishes before the attempt that overruns, which comes next. */
+  readonly attemptsBeforeOverrun?: readonly AttemptRecord[];
+  /**
    * The first `workers` spawned die of `signal` before becoming ready, as
    * workers still loading do when a terminal Ctrl-C reaches the process
    * group; the ones after them hang in startup.
@@ -187,6 +196,11 @@ const PASSED_RETRY: AttemptRecord = {
   secondaryErrors: [],
   cleanup: 'complete',
 };
+
+/** Test timeout and cleanup budget of an `overrun` attempt. */
+const WATCHDOG_MS = 20;
+/** Long enough for several pings, each at least 5 s apart whatever the cleanup budget. */
+const SLOW_TEARDOWN_MS = 12_000;
 
 class FakeFleet {
   readonly spawned: { targetName: string; workerSlot: number }[] = [];
@@ -225,6 +239,7 @@ class FakeRunner implements UnitRunner {
   readonly exit: Promise<void>;
   private finish!: () => void;
   private exited = false;
+  private blocked = false;
 
   constructor(
     private readonly index: number,
@@ -267,6 +282,10 @@ class FakeRunner implements UnitRunner {
     }
     if (message.type === 'terminate') {
       if (this.behaviour.ignoreTerminate !== true) setTimeout(() => this.end('terminated'), 0);
+      return;
+    }
+    if (message.type === 'ping') {
+      if (!this.blocked) setTimeout(() => this.events.onMessage({ type: 'pong' }), 0);
       return;
     }
     if (message.type !== 'run-unit') return;
@@ -313,7 +332,7 @@ class FakeRunner implements UnitRunner {
     this.end('killed');
   }
 
-  private completeUnit(message: RunUnitMessage): void {
+  private async completeUnit(message: RunUnitMessage): Promise<void> {
     if (this.exited) return;
     if (this.behaviour.fatalOn?.includes(message.unitId) === true) {
       this.events.onMessage({ type: 'fatal', error: serializeError(classifyError(new Error('engine exploded'))) });
@@ -333,6 +352,24 @@ class FakeRunner implements UnitRunner {
         });
         this.end('crashed');
         return;
+      }
+      const overrun = this.behaviour.overrun?.[pair.test.id];
+      if (overrun !== undefined) {
+        const key = { testId: pair.test.id, agent: pair.agent, repeat: pair.repeat };
+        const finished = this.behaviour.attemptsBeforeOverrun ?? [];
+        for (const attempt of finished) {
+          this.events.onMessage({ type: 'attempt-start', ...key, index: attempt.index });
+          this.events.onMessage({ type: 'attempt', ...key, attempt });
+        }
+        this.events.onMessage({ type: 'attempt-start', ...key, index: finished.length });
+        this.events.onMessage({ type: 'attempt-deadline', ...key, attempt: finished.length, timeoutMs: WATCHDOG_MS, graceMs: WATCHDOG_MS });
+        if (overrun === 'blocked') {
+          this.blocked = true;
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, SLOW_TEARDOWN_MS));
+        if (this.exited) return;
+        this.events.onMessage({ type: 'attempt-end' });
       }
       const status = this.behaviour.status?.[pair.test.id] ?? 'passed';
       this.events.onMessage({
@@ -719,6 +756,10 @@ async function runForcedInterrupt(pairs: TestTargetPair[], target: ResolvedTarge
 }
 
 describe('scheduler fault handling', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('synthesizes results and a run error when a worker dies mid-unit', async () => {
     const target = makeTarget('web', 0);
     const pairs = ['first', 'second'].map((name, index) =>
@@ -741,6 +782,94 @@ describe('scheduler fault handling', () => {
     const notStarted = collected.results.find((result) => result.test.title === 'second')!;
     expect(notStarted.status).toBe('skipped');
     expect(notStarted.skip?.cause).toBe('infrastructure-unavailable');
+  });
+
+  it('kills a worker that stops answering past an attempt deadline, times the test out, and runs the rest of its file on a fresh worker', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = ['spins', 'next', 'last'].map((name, index) =>
+      makePair(makeTest('tests/a.e2e.ts', name, { declarationIndex: index }), target),
+    );
+    const fleet = new FakeFleet({ overrun: { 'tests/a.e2e.ts::spins': 'blocked' } });
+
+    vi.useFakeTimers();
+    const running = run(
+      makeSelection([{ target, pairs }]),
+      makeCollection(['tests/a.e2e.ts'], pairs),
+      fleet,
+      { workers: 1 },
+    );
+    await vi.runAllTimersAsync();
+    const collected = await running;
+
+    expect(collected.runErrors).toEqual([]);
+    expect(collected.results.map((result) => [result.test.title, result.status])).toEqual([
+      ['spins', 'timed-out'],
+      ['next', 'passed'],
+      ['last', 'passed'],
+    ]);
+    const attempt = collected.results[0]!.attempts[0]!;
+    expect([attempt.status, attempt.error?.code, attempt.cleanup]).toEqual(['timed-out', 'TEST_TIMEOUT', 'forced']);
+    expect(fleet.controlMessages).toContain('ping');
+    expect(fleet.unitsByWorker.map((units) => units.flatMap((unit) => unit.pairs.map((pair) => pair.test.title)))).toEqual([
+      ['spins', 'next', 'last'],
+      ['next', 'last'],
+    ]);
+  });
+
+  it('keeps the attempts before the one a killed worker hung in, which times out at the next index', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = ['spins on retry', 'next'].map((name, index) =>
+      makePair(makeTest('tests/a.e2e.ts', name, { declarationIndex: index }), target),
+    );
+    const fleet = new FakeFleet({ overrun: { 'tests/a.e2e.ts::spins on retry': 'blocked' }, attemptsBeforeOverrun: [FAILED_ATTEMPT] });
+
+    vi.useFakeTimers();
+    const running = run(
+      makeSelection([{ target, pairs }]),
+      makeCollection(['tests/a.e2e.ts'], pairs),
+      fleet,
+      { workers: 1 },
+    );
+    await vi.runAllTimersAsync();
+    const collected = await running;
+
+    expect(collected.runErrors).toEqual([]);
+    expect(collected.results.map((result) => [result.test.title, result.status])).toEqual([
+      ['spins on retry', 'timed-out'],
+      ['next', 'passed'],
+    ]);
+    expect(collected.results[0]!.attempts.map((attempt) => [attempt.index, attempt.status, attempt.error?.code])).toEqual([
+      [0, 'failed', 'ERROR'],
+      [1, 'timed-out', 'TEST_TIMEOUT'],
+    ]);
+  });
+
+  it('leaves a worker that answers its pings to finish an attempt past its deadline', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = ['tears down slowly', 'next'].map((name, index) =>
+      makePair(makeTest('tests/a.e2e.ts', name, { declarationIndex: index }), target),
+    );
+    const fleet = new FakeFleet({
+      overrun: { 'tests/a.e2e.ts::tears down slowly': 'slow-teardown' },
+      status: { 'tests/a.e2e.ts::tears down slowly': 'timed-out' },
+    });
+
+    vi.useFakeTimers();
+    const running = run(
+      makeSelection([{ target, pairs }]),
+      makeCollection(['tests/a.e2e.ts'], pairs),
+      fleet,
+      { workers: 1 },
+    );
+    await vi.runAllTimersAsync();
+    const collected = await running;
+
+    expect(collected.results.map((result) => [result.test.title, result.status])).toEqual([
+      ['tears down slowly', 'timed-out'],
+      ['next', 'passed'],
+    ]);
+    expect(fleet.controlMessages.filter((type) => type === 'ping').length).toBeGreaterThan(1);
+    expect(fleet.spawned).toHaveLength(1);
   });
 
   it('reports a fatal error once and not the kill that follows it', async () => {

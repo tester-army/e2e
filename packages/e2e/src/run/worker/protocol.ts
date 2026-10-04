@@ -119,7 +119,16 @@ export interface TerminateMessage {
   readonly type: 'terminate';
 }
 
-export type MainToWorker = RunUnitMessage | InterruptMessage | ShutdownMessage | TerminateMessage;
+/**
+ * Asks the worker to answer with `pong` from its event loop. The scheduler
+ * sends it only once an attempt is past its test timeout, to tell a worker
+ * still tearing the attempt down from one whose event loop is blocked.
+ */
+export interface PingMessage {
+  readonly type: 'ping';
+}
+
+export type MainToWorker = RunUnitMessage | InterruptMessage | ShutdownMessage | TerminateMessage | PingMessage;
 
 export interface ReadyMessage {
   readonly type: 'ready';
@@ -179,6 +188,35 @@ export interface OutputMessage {
 export interface NoticeMessage {
   readonly type: 'notice';
   readonly message: string;
+}
+
+/**
+ * An attempt's test timeout started: its `beforeEach` hooks and body run
+ * now. The worker enforces the timeout with its own timers, which a body
+ * that blocks the event loop never lets fire, so the scheduler keeps the
+ * deadline too; see `SchedulerWorker.watch`.
+ */
+export interface AttemptDeadlineMessage {
+  readonly type: 'attempt-deadline';
+  readonly testId: string;
+  readonly agent: string;
+  readonly repeat: number;
+  /** The attempt's index among the pair's attempts. */
+  readonly attempt: number;
+  /** The test's resolved `timeout`. */
+  readonly timeoutMs: number;
+  /** How long past the timeout the worker may go without answering a `ping`: the cleanup budget. */
+  readonly graceMs: number;
+}
+
+/** The attempt the last `attempt-deadline` announced has ended, verdict and cleanup included. */
+export interface AttemptEndMessage {
+  readonly type: 'attempt-end';
+}
+
+/** The answer to `ping`. */
+export interface PongMessage {
+  readonly type: 'pong';
 }
 
 export interface ResultMessage {
@@ -279,6 +317,9 @@ export type WorkerToMain =
   | ReadyMessage
   | PairStartMessage
   | ProgressMessage
+  | AttemptDeadlineMessage
+  | AttemptEndMessage
+  | PongMessage
   | OutputMessage
   | NoticeMessage
   | ResultMessage
