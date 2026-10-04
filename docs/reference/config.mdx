@@ -459,7 +459,7 @@ artifacts: {
 ```
 
 `artifacts` says where artifacts go, not which are made: [`video`](#recording)
-chooses the recordings, and a failure's screenshot and screen text are
+chooses the recordings (`artifacts.video` is `INVALID_CONFIG` naming it), and a failure's screenshot and screen text are
 captured whenever the engine can (never after a secret fill, see
 [Security](/security)).
 

@@ -706,7 +706,7 @@ export interface Engine {
   readonly fixtures?: Readonly<Record<string, EngineFixtureFactory>>;
   /** capability: state - opaque snapshot capture/restore for session reuse. */
   readonly state?: EngineStateCapability;
-  /** capability: artifacts - screenshots and video under the attempt directory. */
+  /** capability: artifacts - screenshots under the attempt directory, and videos there or at a provider. */
   readonly artifacts?: EngineArtifacts;
   /**
    * Checks the app a target declares against what this engine can drive, at

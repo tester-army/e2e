@@ -145,6 +145,9 @@ describe('defineEngine', () => {
       observingEngine({ artifacts: { screenshot: async () => 'x', startTrace, stopTrace: async () => 'trace.zip' } as never }),
     );
     expect(Object.keys(engine.artifacts!)).toEqual(['screenshot']);
+    expect(() => defineEngine(observingEngine({ artifacts: { screenshot: async () => 'x', startTrace: 'on' } as never }))).toThrow(
+      /artifacts\.startTrace must be a function/,
+    );
   });
 
   it('rejects unknown keys inside nested manifests: the grammar is closed', () => {

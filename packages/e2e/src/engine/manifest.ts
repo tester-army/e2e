@@ -106,6 +106,7 @@ function hookManifest<K extends keyof typeof NESTED_HOOKS>(
     if (!hooks.includes(member) && !retired.includes(member)) {
       throw invalid(name, `${key} has unknown key "${member}"; expected one of ${hooks.join(', ')}`);
     }
+    if (retired.includes(member) && typeof value[member] !== 'function') throw invalid(name, `${key}.${member} must be a function`);
   }
   const bound: Record<string, unknown> = {};
   for (const member of hooks) {

@@ -1,11 +1,12 @@
 /**
- * A filled secret never leaves the runner in an artifact or in the cache.
- * Through the real web engine: a text download is rewritten, labelled
- * `complete`, and handed to the store already clean whenever the session
- * knows the secret, filled or not. A secret filled into a visible ordinary
- * field denies screenshots. The executor's fill is recorded in the trace
- * cache by the secret's name alone. Nothing under the project's `.e2e`
- * directory holds the plaintext afterwards.
+ * A filled secret never leaves the runner in a screenshot, a download, or
+ * the cache (this run records no video, which masks nothing). Through the
+ * real web engine: a text download is rewritten, labelled `complete`, and
+ * handed to the store already clean whenever the session knows the secret,
+ * filled or not. A secret filled into a visible ordinary field denies
+ * screenshots. The executor's fill is recorded in the trace cache by the
+ * secret's name alone. Nothing under the project's `.e2e` directory holds
+ * the plaintext afterwards.
  */
 
 import { readFileSync } from 'node:fs';

@@ -491,7 +491,7 @@ describe('renderMarkdownReport', () => {
       ],
     };
     const body = renderMarkdownReport(page({ status: 'failed', results: [member], serialGroups: [group] }));
-    // The evidence is the failing group attempt's own, not an earlier attempt's trace.
+    // The evidence is the failing group attempt's own, not an earlier attempt's video.
     expect(body).toContain(
       '**ASSERTION_FAILED** at step 1 of 1: `screen.tap tap Next`, after 900ms\n\n> nope\n\n- Screen: `http://app.test/wizard`\n- Closest to the locator: `#n3 button "Next step"`\n\nEvidence: screenshot',
     );

@@ -39,7 +39,9 @@ Validation fails with `INVALID_CONFIG` for:
 - a `keyboard`, `state`, `artifacts`, or `session` manifest with an unknown
   key or a non-function member. `keyboard` needs `type` and `press`; `state`
   needs both `capture` and `restore`; `artifacts` needs `screenshot`;
-  `startVideo` and `stopVideo` come as a pair;
+  `startVideo` and `stopVideo` come as a pair (the removed `startTrace` and
+  `stopTrace` an engine published before their removal declares are
+  accepted and never called);
 - a `secrets` that is not an array of `secrets.get()` handles;
 - an `app` member: the app under test is declared on the target, and an
   engine checks what it needs in `validateApp`;
@@ -151,7 +153,7 @@ export interface Engine {
   readonly fixtures?: Readonly<Record<string, EngineFixtureFactory>>;
   /** capability: state - opaque snapshot capture/restore for session reuse. */
   readonly state?: EngineStateCapability;
-  /** capability: artifacts - screenshots and videos under the attempt directory. */
+  /** capability: artifacts - screenshots under the attempt directory, and videos there or at a provider. */
   readonly artifacts?: EngineArtifacts;
   /**
    * Checks the app a target declares against what this engine can drive, at

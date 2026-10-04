@@ -1079,6 +1079,27 @@ describe('web engine lifecycle', () => {
     }
   });
 
+  it('rejects a video that cannot start and leaves the session working', async () => {
+    const engine = web();
+    const videoDir = mkdtempSync(path.join(tmpdir(), 'e2e-video-'));
+    try {
+      await withAttempt(engine, app, videoDir, 'v4', async () => {
+        await engine.session!.open!(`${app.url}/`, operation('v4'));
+        const page = surfaceOf(engine)!.page();
+        const spy = vi.spyOn(page.screencast, 'start').mockRejectedValueOnce(new Error('screencast unavailable'));
+        try {
+          await expect(engine.artifacts!.startVideo!(operation('v4'))).rejects.toThrow('screencast unavailable');
+        } finally {
+          spy.mockRestore();
+        }
+        await engine.session!.open!(`${app.url}/form`, operation('v4'));
+        expect(surfaceOf(engine)!.page().url()).toBe(`${app.url}/form`);
+      });
+    } finally {
+      rmSync(videoDir, { recursive: true, force: true });
+    }
+  });
+
   it('opens the attempt page when the video starts', async () => {
     const engine = web();
     const videoDir = mkdtempSync(path.join(tmpdir(), 'e2e-video-'));
