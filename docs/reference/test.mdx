@@ -305,7 +305,8 @@ records one trace and one video per group attempt, from the `trace` and
 `video` on the serial `describe` or a group around it. A group attempt that
 cannot start, because its file fails to load or its session fails to launch,
 fails the first member with that error and skips the rest with cause
-`serial-predecessor-failed`. On a retry, the members keep the verdicts of
+`serial-predecessor-failed`. When the run is interrupted during the launch,
+every member skips instead. On a retry, the members keep the verdicts of
 the attempt before it. The exit code follows the error's category, as for any
 other test.
 
