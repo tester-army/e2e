@@ -183,8 +183,9 @@ Sessions enforce what tests enforce. Node ids are valid only against the
 newest observation. A secret fills only through `type_secret`; once one has
 been filled, `screenshot` and the point tools (`tap_at`, `hover_at`,
 `type_at`, `press_at`, `select_at`) stay in the catalog but answer
-`PIXEL_TAINTED` for the rest of the session. Every text a `call` returns, a node `locate` found,
-an action's result, or an error, passes the attempt's secret ledger. Nothing a
+`PIXEL_TAINTED` for the rest of the session. Every text a tool returns, a node `locate` found,
+an action's result, an `open_session` or `close_session` failure, or a cleanup line, has the
+config's secret values redacted, as do the server's own log lines. Nothing a
 session does is recorded as a test result or into the replay cache; its
 artifacts land under `<output>/artifacts/<target>/sessions/`, its videos under
 `<output>/videos/`. A later `e2e run` clears `<output>/artifacts`; the

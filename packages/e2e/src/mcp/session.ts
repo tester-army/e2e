@@ -23,7 +23,7 @@ import { LocatorEngine } from '../locator/engine.ts';
 import { allocateAppPorts } from '../run/app-ports.ts';
 import { SharedAppProcesses } from '../run/process-pool.ts';
 import { outputLayout } from '../run/output.ts';
-import { sessionSecrecy } from '../run/secrecy.ts';
+import { processSecrets, registerStaticSecrets, sessionSecrecy } from '../run/secrecy.ts';
 import { openStandaloneAttempt, type StandaloneAttempt } from '../run/standalone.ts';
 import type { AgentParams } from '../types.ts';
 import { createSessionCatalog, isGrammarVerb, type SessionCatalog } from './catalog.ts';
@@ -109,9 +109,14 @@ export class SessionHost {
     return this.options.maxSessions ?? SESSION_BOUNDS.default;
   }
 
-  /** The server's tools: the same four whatever the project, the config, or the target. */
+  /** The server's tools: the same four whatever the project, the config, or the target, each redacting what it returns. */
   toolSpecs(): readonly McpToolSpec[] {
-    return [this.openSpec(), this.catalogSpec(), this.callSpec(), this.closeSpec()];
+    return [this.openSpec(), this.catalogSpec(), this.callSpec(), this.closeSpec()].map(redacting);
+  }
+
+  /** Logs a line for the operator and the client, redacted with every secret value the process knows. */
+  private log(level: 'info' | 'warning' | 'error', message: string): void {
+    this.options.log(level, processSecrets.redact(message));
   }
 
   /**
@@ -153,7 +158,8 @@ export class SessionHost {
     if (value.saved !== undefined) lines.push(value.saved);
     if (value.outcome.error !== undefined) lines.push(`The session step ended with: ${errorMessage(value.outcome.error)}`);
     for (const error of cleanupErrors) lines.push(`Cleanup: ${error.code}: ${error.message}`);
-    return lines.join('\n');
+    // Redacted here, not only at the tool boundary: closeAll writes it to stderr.
+    return live.attempt.agentRuntime.redact(lines.join('\n'));
   }
 
   /**
@@ -231,6 +237,10 @@ export class SessionHost {
     const configPath = this.options.locateConfig(options.config);
     this.sessions.claimConfig(id, configPath);
     const loaded = await this.options.loadConfig(configPath);
+    // Known to the process before anything can fail with one, so an open
+    // failure is redacted like any other text; a session registers them only
+    // once its engine has launched.
+    registerStaticSecrets(loaded.allSecrets);
     // A session is its own run: a URL declared with port 0 gets a port here.
     const config = await allocateAppPorts(loaded);
     const target = this.resolveTarget(config, options.target);
@@ -258,7 +268,7 @@ export class SessionHost {
         signal: abort.signal,
         timeoutMs: ttlMs + CLOSE_GRACE_MS,
         processes: this.apps,
-        notice: (scope, message) => this.options.log('info', `${scope}: ${message}`),
+        notice: (scope, message) => this.log('info', `${scope}: ${message}`),
       });
       // The coding agent is the brain: the step is driven from here, and the
       // configured model stays out of the way.
@@ -286,7 +296,7 @@ export class SessionHost {
           actionTimeout: config.actionTimeout,
           assertionTimeout: config.assertionTimeout,
         }),
-        warn: (message) => this.options.log('warning', message),
+        warn: (message) => this.log('warning', message),
         onActionFailed: (cause) => usage.failed(classifyError(cause).code),
       });
       const live: LiveSession = {
@@ -325,8 +335,8 @@ export class SessionHost {
   /** Closes a live session that ended without a close_session: its step concluded, or it sat idle. */
   private endOnItsOwn(live: LiveSession, why: string, endedBy: SessionEndedBy): void {
     if (!this.sessions.isLive(live.id)) return;
-    this.options.log('warning', `session ${live.id} ended: ${why}`);
-    this.close(why, live.id, endedBy).catch((cause: unknown) => this.options.log('error', `closing session ${live.id} failed: ${errorMessage(cause)}`));
+    this.log('warning', `session ${live.id} ended: ${why}`);
+    this.close(why, live.id, endedBy).catch((cause: unknown) => this.log('error', `closing session ${live.id} failed: ${errorMessage(cause)}`));
   }
 
   /** A recorder writing to `<output>/videos/<session>/`, when the engine records video. */
@@ -520,4 +530,25 @@ export class SessionHost {
       call: async (args) => textResult(await this.close('closed by the agent', args.session)),
     });
   }
+}
+
+/**
+ * The tool with what it returns redacted with every secret value the process
+ * knows: the static values of each config a session loaded, and every value
+ * a session resolved or derived. A failure becomes a result the agent can
+ * react to, never a protocol error, and is redacted the same way.
+ */
+function redacting(spec: McpToolSpec): McpToolSpec {
+  return {
+    ...spec,
+    call: async (args, extra) => {
+      let result: McpToolResult;
+      try {
+        result = await spec.call(args, extra);
+      } catch (cause) {
+        result = errorResult(cause);
+      }
+      return redactResult(result, (text) => processSecrets.redact(text));
+    },
+  };
 }

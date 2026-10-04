@@ -12,9 +12,9 @@ import { McpServer, ResourceTemplate } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { readGuide, skillTopics } from '../cli/skill.ts';
 import { ConfigurationError, errorMessage } from '../internal/errors.ts';
+import { processSecrets } from '../run/secrecy.ts';
 import { loadProjectConfig, locateProjectConfig } from './config.ts';
 import { SessionHost } from './session.ts';
-import { errorResult } from './tools.ts';
 import type { McpSessionSummary } from './usage.ts';
 
 /** The client as it named itself in `initialize`. */
@@ -87,14 +87,7 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
         inputSchema: spec.inputSchema,
         annotations: { readOnlyHint: spec.readOnly, openWorldHint: false },
       },
-      async (args, ctx) => {
-        // A failure is a result the agent can react to, never a protocol error.
-        try {
-          return await spec.call(args, { signal: ctx.mcpReq.signal });
-        } catch (cause) {
-          return errorResult(cause);
-        }
-      },
+      (args, ctx) => spec.call(args, { signal: ctx.mcpReq.signal }),
     );
   }
   registerGuide(server);
@@ -125,7 +118,7 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
     const summary = await host.closeAll(reason);
     if (summary !== undefined) options.log(summary);
   } catch (cause) {
-    options.log(`session teardown failed: ${errorMessage(cause)}`);
+    options.log(`session teardown failed: ${processSecrets.redact(errorMessage(cause))}`);
   }
   await server.close().catch((cause: unknown) => options.log(`server close failed: ${errorMessage(cause)}`));
   return 0;
