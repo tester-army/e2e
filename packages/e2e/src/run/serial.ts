@@ -20,7 +20,7 @@ import type { StepRecord } from './steps.ts';
 import { findRegistered, type FileRef, type Realm, RealmManager } from './realm.ts';
 import type { AttemptRecord, ResultRecord, ResultStatus, SerialAttemptRecord, SerialGroupRecord, SerialMemberRecord, FailedStatus } from './records.ts';
 import { isFailedStatus } from './records.ts';
-import { runWithRetries } from './retry.ts';
+import { retryVerdict, runWithRetries } from './retry.ts';
 import { interruptedSkip, pairResult, repeatSegment } from './units.ts';
 
 /**
@@ -87,6 +87,34 @@ export interface SerialHost {
    * steps, duration, and error from the group it has already seen.
    */
   emitSerialGroup(group: SerialGroupRecord): void;
+  /**
+   * Streams one member that finished in the group attempt running now, so a
+   * worker that dies before the group ends does not take it along.
+   */
+  serialMemberFinished(groupId: string, attempt: SerialAttemptStart, member: SerialMemberRecord): void;
+  /** Streams one finished group attempt, for the same reason. */
+  serialAttemptFinished(groupId: string, run: SerialAttemptRun): void;
+}
+
+/** The identity of a group attempt, known from its start. */
+export type SerialAttemptStart = Pick<SerialAttemptRecord, 'id' | 'index' | 'startedAt'>;
+
+/** One group attempt as it ended, and whether it got as far as its members. */
+export interface SerialAttemptRun {
+  readonly record: SerialAttemptRecord;
+  /**
+   * False when the attempt stopped before any member ran (its file would not
+   * load, its session would not launch). Such a retry keeps the members'
+   * verdicts from the attempt before it.
+   */
+  readonly reachedMembers: boolean;
+}
+
+/** The report id of one serial group variant: a group runs once per agent and per repeat. */
+export function serialGroupId(serialId: string, targetName: string, agent: string, repeat: number): string {
+  return canonicalDigest(
+    repeat === 0 ? { serialId, targetId: targetName, agent } : { serialId, targetId: targetName, agent, repeat },
+  );
 }
 
 /** Runs one serial unit to completion and emits every member result. */
@@ -95,46 +123,20 @@ export async function runSerialUnit(
   members: readonly TestTargetPair[],
   file: FileRef,
 ): Promise<SerialGroupRecord> {
-  const first = members[0]!;
-  const serialId = first.test.serialId!;
-  // Every member of a unit runs as the same agent (selection guarantees it),
-  // so the group is one variant of the flow and is identified as such.
-  const agent = first.agent;
-  const { repeat } = first;
-  const groupRecordId = canonicalDigest(
-    repeat === 0 ? { serialId, targetId: host.target.name, agent } : { serialId, targetId: host.target.name, agent, repeat },
-  );
-
-  const group: SerialGroupRecord = {
-    id: groupRecordId,
-    serialId,
-    declarationIndex: first.test.declarationIndex,
-    file: first.test.file,
-    titlePath: serialTitlePath(first.test),
-    targetId: host.target.name,
-    platform: host.target.platform,
-    agent,
-    repeat,
-    memberTestIds: members.map((member) => member.test.id),
-    status: 'failed',
-    attempts: [],
-  };
-
-  const memberFinalStatus = new Map<string, SerialMemberRecord>();
+  const group = newSerialGroup(members, host.target);
+  const runs: SerialAttemptRun[] = [];
   const finalStatus = await runWithRetries(
-    first.options.retries + 1,
+    members[0]!.options.retries + 1,
     host.interruptSignal,
     async (attemptIndex) => {
-      const { record: attempt, reachedMembers } = await runSerialAttempt(host, members, file, attemptIndex);
-      group.attempts.push(attempt);
-      // A retry the run interrupted, or one that never reached its members,
-      // keeps the verdict before it, so each member keeps what that attempt said.
-      const cutRetry = attemptIndex > 0 && (attempt.status === 'interrupted' || !reachedMembers);
-      if (!cutRetry) for (const member of attempt.members) memberFinalStatus.set(member.testId, member);
+      const run = await runSerialAttempt(host, group.id, members, file, attemptIndex);
+      runs.push(run);
+      group.attempts.push(run.record);
+      host.serialAttemptFinished(group.id, run);
       // A beforeAll failure is not retry-eligible: the
       // attempt stands as recorded and the retry loop stops here.
-      if (attempt.error?.code === 'HOOK_FAILED') return undefined;
-      return attempt;
+      if (run.record.error?.code === 'HOOK_FAILED') return undefined;
+      return run.record;
     },
   );
 
@@ -146,8 +148,51 @@ export async function runSerialUnit(
   }
 
   host.emitSerialGroup(group);
-  for (const member of members) {
-    const memberRecord = memberFinalStatus.get(member.test.id);
+  for (const result of memberResults(group, members, runs)) host.emit(result);
+  return group;
+}
+
+/** A group record with no attempts yet. */
+function newSerialGroup(members: readonly TestTargetPair[], target: ResolvedTarget): SerialGroupRecord {
+  const first = members[0]!;
+  const serialId = first.test.serialId!;
+  // Every member of a unit runs as the same agent (selection guarantees it),
+  // so the group is one variant of the flow and is identified as such.
+  const { agent, repeat } = first;
+  return {
+    id: serialGroupId(serialId, target.name, agent, repeat),
+    serialId,
+    declarationIndex: first.test.declarationIndex,
+    file: first.test.file,
+    titlePath: serialTitlePath(first.test),
+    targetId: target.name,
+    platform: target.platform,
+    agent,
+    repeat,
+    memberTestIds: members.map((member) => member.test.id),
+    status: 'failed',
+    attempts: [],
+  };
+}
+
+/**
+ * Each member's result once its group is decided. Members carry no attempts
+ * of their own; the verdict is the member's record in the last attempt that
+ * counts. A retry the run interrupted, or one that never reached its
+ * members, keeps the verdict before it.
+ */
+function memberResults(
+  group: SerialGroupRecord,
+  members: readonly TestTargetPair[],
+  runs: readonly SerialAttemptRun[],
+): ResultRecord[] {
+  const verdicts = new Map<string, SerialMemberRecord>();
+  for (const [attemptIndex, run] of runs.entries()) {
+    const cutRetry = attemptIndex > 0 && (run.record.status === 'interrupted' || !run.reachedMembers);
+    if (!cutRetry) for (const member of run.record.members) verdicts.set(member.testId, member);
+  }
+  return members.map((member) => {
+    const memberRecord = verdicts.get(member.test.id);
     let status: ResultStatus;
     let skip: SkipInfo | undefined;
     // A member that skipped itself stays skipped whatever the group did: a
@@ -163,28 +208,127 @@ export async function runSerialUnit(
     } else {
       status = memberRecord.status;
     }
-    host.emit(
-      pairResult(member, {
-        status,
-        selected: true,
-        ...(skip !== undefined ? { skip } : {}),
-        attempts: [],
-        serialGroupId: groupRecordId,
-      }),
-    );
+    return pairResult(member, {
+      status,
+      selected: true,
+      ...(skip !== undefined ? { skip } : {}),
+      attempts: [],
+      serialGroupId: group.id,
+    });
+  });
+}
+
+/** A serial group decided without its worker's word: the record and its members' results. */
+interface SettledSerialGroup {
+  readonly group: SerialGroupRecord;
+  readonly results: readonly ResultRecord[];
+}
+
+/**
+ * What the runner heard of one serial group a worker is running: the
+ * attempts it finished, and the members finished so far in the attempt
+ * running now. When the worker dies before reporting the group, this is
+ * what the report keeps.
+ */
+export class SerialGroupProgress {
+  private readonly finished: SerialAttemptRun[] = [];
+  private current: SerialAttemptStart | undefined;
+  private currentMembers: SerialMemberRecord[] = [];
+  /** The member whose body is running now, by test id, until its record arrives. */
+  private running: string | undefined;
+
+  /** A member of the group announced its start. */
+  memberStarted(testId: string): void {
+    this.running = testId;
   }
 
-  return group;
+  /** A member finished in the attempt running now. */
+  memberFinished(attempt: SerialAttemptStart, member: SerialMemberRecord): void {
+    this.current = attempt;
+    this.currentMembers.push(member);
+    if (this.running === member.testId) this.running = undefined;
+  }
+
+  /** A group attempt finished; the next one starts empty. */
+  attemptFinished(run: SerialAttemptRun): void {
+    this.finished.push(run);
+    this.current = undefined;
+    this.currentMembers = [];
+    this.running = undefined;
+  }
+
+  /**
+   * The group after its worker died with `error`, or undefined when the
+   * runner heard nothing of it running. The finished attempts stand, and the
+   * attempt in flight fails: the member whose body was running fails with
+   * `error` and the ones after it skip. A crash between members (a hook,
+   * the session closing) fails the attempt and leaves its finished members
+   * as they were; one before any member ran fails the first, as a launch
+   * failure does.
+   */
+  crashed(members: readonly TestTargetPair[], target: ResolvedTarget, error: SerializedError): SettledSerialGroup | undefined {
+    const reachedMembers = this.currentMembers.length > 0 || this.running !== undefined;
+    if (!reachedMembers && this.finished.length === 0) return undefined;
+    const record: SerialAttemptRecord = {
+      id: this.current?.id ?? uuidv7(),
+      index: this.finished.length,
+      status: 'failed',
+      startedAt: this.current?.startedAt ?? timestamp(),
+      durationMs: 0,
+      members: [...this.currentMembers],
+      artifacts: [],
+      error,
+      secondaryErrors: [],
+      cleanup: 'forced',
+    };
+    if (reachedMembers) {
+      const next = this.currentMembers.length;
+      const wasRunning = this.running !== undefined && this.running === members[next]?.test.id;
+      const skip: SkipInfo = wasRunning
+        ? predecessorFailed(next)
+        : { cause: 'infrastructure-unavailable', reason: 'worker process exited during this group attempt' };
+      for (const [memberIndex, member] of members.entries()) {
+        if (memberIndex < next) continue;
+        record.members.push(
+          wasRunning && memberIndex === next
+            ? memberFailedWith(record, memberIndex, member.test.id, error)
+            : skippedMember(record.id, memberIndex, member.test.id, skip),
+        );
+      }
+    } else {
+      endBeforeMembers(record, members, error, NEVER_INTERRUPTED);
+    }
+    return this.settled([...this.finished, { record, reachedMembers }], members, target);
+  }
+
+  /**
+   * The group after the run's interrupt stopped its worker. A group that
+   * finished an attempt keeps those attempts and the verdict they reach, as
+   * a retry the interrupt cut short does; undefined when none finished.
+   */
+  interrupted(members: readonly TestTargetPair[], target: ResolvedTarget): SettledSerialGroup | undefined {
+    if (this.finished.length === 0) return undefined;
+    return this.settled(this.finished, members, target);
+  }
+
+  private settled(
+    runs: readonly SerialAttemptRun[],
+    members: readonly TestTargetPair[],
+    target: ResolvedTarget,
+  ): SettledSerialGroup {
+    const group = newSerialGroup(members, target);
+    group.status = retryVerdict(runs.map((run) => run.record));
+    group.attempts = runs.map((run) => run.record);
+    return { group, results: memberResults(group, members, runs) };
+  }
 }
 
-/** One group attempt as it ended, and whether it got as far as its members. */
-interface SerialAttemptRun {
-  readonly record: SerialAttemptRecord;
-  readonly reachedMembers: boolean;
-}
+/** An abort signal that never fires. */
+const NEVER_INTERRUPTED = new AbortController().signal;
 
 async function runSerialAttempt(
   host: SerialHost,
+  groupId: string,
   members: readonly TestTargetPair[],
   file: FileRef,
   attemptIndex: number,
@@ -222,6 +366,12 @@ async function runSerialAttempt(
     secondaryErrors: [],
     cleanup: 'complete',
   };
+  const start: SerialAttemptStart = { id: attemptId, index: attemptIndex, startedAt };
+  /** Records one member and streams it, so a worker that dies later in the attempt does not take it along. */
+  const finishMember = (member: SerialMemberRecord): void => {
+    memberRecords.push(member);
+    host.serialMemberFinished(groupId, start, member);
+  };
 
   let realm: Realm;
   try {
@@ -258,12 +408,12 @@ async function runSerialAttempt(
       skipRemaining = interruptedMemberSkip(host.interruptSignal);
     }
     if (skipRemaining !== undefined) {
-      memberRecords.push(skippedMember(attemptId, memberIndex, member.test.id, skipRemaining));
+      finishMember(skippedMember(attemptId, memberIndex, member.test.id, skipRemaining));
       continue;
     }
     const registered = findRegistered(realm, member.test);
     if (registered === undefined) {
-      memberRecords.push({
+      finishMember({
         id: memberId,
         index: memberIndex,
         testId: member.test.id,
@@ -285,7 +435,7 @@ async function runSerialAttempt(
     hookFailure = await host.realms.enterScopes(realm, registered);
     if (hookFailure !== undefined) {
       skipRemaining = { cause: 'hook-failed', reason: hookFailure.message };
-      memberRecords.push(skippedMember(attemptId, memberIndex, member.test.id, skipRemaining));
+      finishMember(skippedMember(attemptId, memberIndex, member.test.id, skipRemaining));
       continue;
     }
     host.pairStarted(member);
@@ -294,7 +444,7 @@ async function runSerialAttempt(
       shared,
     });
     shared.priorSteps.push(...memberAttempt.steps);
-    memberRecords.push({
+    finishMember({
       id: memberId,
       index: memberIndex,
       testId: member.test.id,
@@ -367,20 +517,25 @@ function endBeforeMembers(
   members.forEach((member, memberIndex) => {
     record.members.push(
       memberIndex === 0
-        ? {
-            id: `${record.id}:member:0`,
-            index: 0,
-            testId: member.test.id,
-            status: 'failed',
-            startedAt: record.startedAt,
-            durationMs: 0,
-            steps: [],
-            error,
-            secondaryErrors: [],
-          }
+        ? memberFailedWith(record, 0, member.test.id, error)
         : skippedMember(record.id, memberIndex, member.test.id, predecessorFailed(0)),
     );
   });
+}
+
+/** A member that failed with an error of its group attempt's, having run no step of its own. */
+function memberFailedWith(record: SerialAttemptRecord, index: number, testId: string, error: SerializedError): SerialMemberRecord {
+  return {
+    id: `${record.id}:member:${index}`,
+    index,
+    testId,
+    status: 'failed',
+    startedAt: record.startedAt,
+    durationMs: 0,
+    steps: [],
+    error,
+    secondaryErrors: [],
+  };
 }
 
 function isFailedMember(member: SerialMemberRecord): member is SerialMemberRecord & { status: FailedStatus } {

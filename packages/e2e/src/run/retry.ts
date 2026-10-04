@@ -30,19 +30,38 @@ export async function runWithRetries(
   interruptSignal: AbortSignal,
   runOnce: (attemptIndex: number) => Promise<RetryAttempt | undefined>,
 ): Promise<ResultStatus> {
-  let finalStatus: ResultStatus = 'failed';
-  let attemptCount = 0;
+  const attempts: RetryAttempt[] = [];
   for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
     if (interruptSignal.aborted) break;
     const attempt = await runOnce(attemptIndex);
     if (attempt === undefined) break;
-    attemptCount += 1;
-    if (attempt.status === 'passed') return attemptCount > 1 ? 'flaky' : 'passed';
-    if (attempt.status === 'interrupted') return attemptCount > 1 ? finalStatus : 'interrupted';
+    attempts.push(attempt);
     // A body that skipped itself has decided; a retry would only ask again.
-    if (attempt.status === 'skipped') return 'skipped';
-    finalStatus = attempt.status;
+    if (attempt.status === 'passed' || attempt.status === 'interrupted' || attempt.status === 'skipped') break;
     if (!isRetryEligible(attempt)) break;
   }
-  return finalStatus;
+  return retryVerdict(attempts);
+}
+
+/**
+ * The verdict a sequence of finished attempts reaches: a pass is `flaky`
+ * after a failure, an interrupt during a retry keeps the verdict before it,
+ * and a self-skip decides. Also the verdict of attempts a worker finished
+ * before the run's interrupt stopped it, so both read alike.
+ */
+export function retryVerdict(attempts: readonly RetryAttempt[]): ResultStatus {
+  let verdict: ResultStatus = 'failed';
+  for (const [index, attempt] of attempts.entries()) {
+    switch (attempt.status) {
+      case 'passed':
+        return index > 0 ? 'flaky' : 'passed';
+      case 'interrupted':
+        return index > 0 ? verdict : 'interrupted';
+      case 'skipped':
+        return 'skipped';
+      default:
+        verdict = attempt.status;
+    }
+  }
+  return verdict;
 }

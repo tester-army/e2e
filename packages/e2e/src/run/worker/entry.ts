@@ -39,20 +39,23 @@ let outbox: Promise<void> = Promise.resolve();
 /** How long an exit waits for the outbox: a channel whose runner is gone may never acknowledge. */
 const FLUSH_GRACE_MS = 2_000;
 
-/** Queues one message; resolves once the channel has taken it (or is gone). */
+/**
+ * Hands one message to the channel at once; resolves once the channel has
+ * taken it and every message before it (or is gone). The channel keeps the
+ * order. Handing it over synchronously is what lets a `pair-start` reach the
+ * runner when the test body exits the process right after it.
+ */
 function send(message: WorkerToMain): Promise<void> {
-  outbox = outbox.then(
-    () =>
-      new Promise<void>((resolve) => {
-        try {
-          if (process.send === undefined || !process.connected) resolve();
-          else process.send(message, undefined, undefined, () => resolve());
-        } catch {
-          // channel already closed; nothing left to deliver
-          resolve();
-        }
-      }),
-  );
+  const taken = new Promise<void>((resolve) => {
+    try {
+      if (process.send === undefined || !process.connected) resolve();
+      else process.send(message, undefined, undefined, () => resolve());
+    } catch {
+      // channel already closed; nothing left to deliver
+      resolve();
+    }
+  });
+  outbox = outbox.then(() => taken);
   return outbox;
 }
 

@@ -46,10 +46,11 @@ import type {
   ResultStatus,
   RunError,
   SerialGroupRecord,
+  SerialMemberRecord,
 } from './records.ts';
 import { isFailedStatus } from './records.ts';
 import { runWithRetries } from './retry.ts';
-import { runSerialUnit, type SerialHost, type SharedSerialSession } from './serial.ts';
+import { runSerialUnit, type SerialAttemptRun, type SerialAttemptStart, type SerialHost, type SharedSerialSession } from './serial.ts';
 import { interruptedSkip, pairKey, pairResult, repeatSegment, unstartedResult } from './units.ts';
 import { adoptSecrecy, carriedSecrecy, processSecrets, registerDerivedSecrets, redactForSession, redactsRecordings, resolveSecretValue, sessionSecrecy, staticSecretLedger } from './secrecy.ts';
 import { isSecret } from '../secrets.ts';
@@ -64,6 +65,14 @@ import type { SetupFn } from '../types.ts';
 export interface ExecutionEvents {
   onResult?(result: ResultRecord): void;
   onSerialGroup?(group: SerialGroupRecord): void;
+  /** An attempt of an ordinary or setup pair is about to run its body. */
+  onAttemptStart?(pair: TestTargetPair, attemptIndex: number): void;
+  /** One finished attempt of an ordinary or setup pair, ahead of the pair's result. */
+  onAttempt?(pair: TestTargetPair, attempt: AttemptRecord): void;
+  /** One member that finished in a serial group attempt, ahead of the group. */
+  onSerialMember?(groupId: string, attempt: SerialAttemptStart, member: SerialMemberRecord): void;
+  /** One finished serial group attempt, ahead of the group. */
+  onSerialAttempt?(groupId: string, run: SerialAttemptRun): void;
   /** Fires before a runnable pair starts; a serial unit announces each member as it begins. */
   onPairStart?(pair: TestTargetPair): void;
   /** Live step progress of one running attempt, for reporters. */
@@ -220,6 +229,16 @@ export class TargetExecutor implements SerialHost {
   /** Emits one finished serial group, ahead of its members' results (SerialHost). */
   emitSerialGroup(group: SerialGroupRecord): void {
     this.options.events?.onSerialGroup?.(group);
+  }
+
+  /** Streams one member finished in a serial group attempt (SerialHost). */
+  serialMemberFinished(groupId: string, attempt: SerialAttemptStart, member: SerialMemberRecord): void {
+    this.options.events?.onSerialMember?.(groupId, attempt, member);
+  }
+
+  /** Streams one finished serial group attempt (SerialHost). */
+  serialAttemptFinished(groupId: string, run: SerialAttemptRun): void {
+    this.options.events?.onSerialAttempt?.(groupId, run);
   }
 
   /** Builds one engine operation context. */
@@ -433,10 +452,12 @@ export class TargetExecutor implements SerialHost {
         }
         hookFailure = await this.realms.enterScopes(realm, registered);
         if (hookFailure !== undefined) return undefined;
+        this.options.events?.onAttemptStart?.(pair, attemptIndex);
         const attempt = await this.runAttempt(pair, registered, realm, attemptIndex, {
           kind: 'ordinary',
         });
         attempts.push(attempt);
+        this.options.events?.onAttempt?.(pair, attempt);
         if (isFailedStatus(attempt.status)) {
           // A failed realm is never reused, but afterAll still runs for every
           // scope whose beforeAll started in it. A body that skipped itself
@@ -516,6 +537,7 @@ export class TargetExecutor implements SerialHost {
           return undefined;
         }
         const staging = new SessionStaging(pair.test.sessions);
+        this.options.events?.onAttemptStart?.(pair, attemptIndex);
         const attempt = await this.runAttempt(pair, registered, realm, attemptIndex, {
           kind: 'setup',
           staging,
@@ -535,12 +557,14 @@ export class TargetExecutor implements SerialHost {
               ),
               { phase: 'body' },
             );
+            this.options.events?.onAttempt?.(pair, attempt);
             return attempt;
           }
           for (const [name, saved] of staging.entries()) {
             await this.options.sessionStore.save(name, this.sessionIdentity, saved);
           }
         }
+        this.options.events?.onAttempt?.(pair, attempt);
         return attempt;
       },
     );

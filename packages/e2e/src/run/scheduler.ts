@@ -14,7 +14,9 @@ import type { AiTraceSnapshot } from '../internal/ai-trace.ts';
 import type { DebugSnapshot } from '../internal/debug.ts';
 import { InfrastructureError, serializeError } from '../internal/errors.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
-import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
+import type { AttemptRecord, ResultRecord, RunError, SerialGroupRecord } from './records.ts';
+import { retryVerdict } from './retry.ts';
+import { SerialGroupProgress, serialGroupId } from './serial.ts';
 import type { StepProgress } from './steps.ts';
 import type { SpawnUnitRunner, UnitRunner } from './unit-runner.ts';
 import {
@@ -114,6 +116,24 @@ interface TargetState {
   failed: boolean;
 }
 
+/** The attempts of one pair heard ahead of its result. */
+interface PairAttempts {
+  readonly finished: AttemptRecord[];
+  /** An attempt started and has not finished: a crash now is that attempt's. */
+  running: boolean;
+}
+
+/** The result of a pair from the attempts it finished, with the verdict they reach. */
+function finishedResult(pair: TestTargetPair, attempts: AttemptRecord[]): ResultRecord {
+  const last = attempts.at(-1);
+  return pairResult(pair, {
+    status: retryVerdict(attempts),
+    selected: true,
+    attempts,
+    ...(last?.status === 'skipped' ? { skip: last.skip } : {}),
+  });
+}
+
 /**
  * One worker and the unit it is executing. Owns its own lifecycle so the
  * scheduler never has to keep a separate record in sync with the transport.
@@ -128,8 +148,10 @@ class SchedulerWorker {
   readonly reported = new Set<string>();
   /** The pair (`pairKey`) executing now, when one is. */
   inFlightPair: string | undefined;
-  /** Pairs (`pairKey`) that started in `unit`; a serial member reports only once its whole group is done. */
-  readonly started = new Set<string>();
+  /** Attempts of `unit`'s pairs heard ahead of the pair's result, by `pairKey`: what a crash keeps. */
+  readonly attempts = new Map<string, PairAttempts>();
+  /** What was heard of `unit`'s serial groups still running, by group report id: what a crash keeps. */
+  readonly serialGroups = new Map<string, SerialGroupProgress>();
   sawFailure = false;
   becameReady = false;
   /** Told to tear down at once by a forced interrupt; its exit is then the one asked for. */
@@ -159,7 +181,8 @@ class SchedulerWorker {
     this.state = 'busy';
     this.unit = unit;
     this.reported.clear();
-    this.started.clear();
+    this.attempts.clear();
+    this.serialGroups.clear();
     this.inFlightPair = undefined;
     this.sawFailure = false;
     const pairs: WirePair[] = unit.pairs.map((pair) => ({
@@ -203,6 +226,26 @@ class SchedulerWorker {
       this.runner.kill();
     }, graceMs);
     this.killTimer.unref();
+  }
+
+  /** The attempts heard of one of `unit`'s pairs, started on first word of them. */
+  pairAttempts(key: string): PairAttempts {
+    let attempts = this.attempts.get(key);
+    if (attempts === undefined) {
+      attempts = { finished: [], running: false };
+      this.attempts.set(key, attempts);
+    }
+    return attempts;
+  }
+
+  /** The progress of one of `unit`'s serial groups, started on first word of it. */
+  serialGroup(groupId: string): SerialGroupProgress {
+    let progress = this.serialGroups.get(groupId);
+    if (progress === undefined) {
+      progress = new SerialGroupProgress();
+      this.serialGroups.set(groupId, progress);
+    }
+    return progress;
   }
 
   clearKillTimer(): void {
@@ -584,7 +627,11 @@ class Scheduler {
       }
       case 'pair-start': {
         worker.inFlightPair = pairKey(message.testId, message.agent, message.repeat);
-        worker.started.add(worker.inFlightPair);
+        if (message.serialId !== undefined) {
+          worker
+            .serialGroup(serialGroupId(message.serialId, worker.targetName, message.agent, message.repeat))
+            .memberStarted(message.testId);
+        }
         const { type: _type, ...start } = message;
         this.options.events.onTestStart?.(start, worker.targetName);
         break;
@@ -609,7 +656,9 @@ class Scheduler {
       case 'result': {
         const state = this.targetState(worker);
         const result = decodeResult(message.result, state.target);
-        worker.reported.add(pairKey(result.test.id, result.agent, result.repeat));
+        const key = pairKey(result.test.id, result.agent, result.repeat);
+        worker.reported.add(key);
+        worker.attempts.delete(key);
         if (result.status !== 'passed' && result.status !== 'flaky' && result.status !== 'skipped') {
           worker.sawFailure = true;
         }
@@ -618,7 +667,26 @@ class Scheduler {
         break;
       }
       case 'serial-group': {
+        worker.serialGroups.delete(message.group.id);
         this.options.events.onSerialGroup(message.group);
+        break;
+      }
+      case 'attempt-start': {
+        worker.pairAttempts(pairKey(message.testId, message.agent, message.repeat)).running = true;
+        break;
+      }
+      case 'attempt': {
+        const attempts = worker.pairAttempts(pairKey(message.testId, message.agent, message.repeat));
+        attempts.finished.push(message.attempt);
+        attempts.running = false;
+        break;
+      }
+      case 'serial-member': {
+        worker.serialGroup(message.groupId).memberFinished(message.attempt, message.member);
+        break;
+      }
+      case 'serial-attempt': {
+        worker.serialGroup(message.groupId).attemptFinished(message.run);
         break;
       }
       case 'unit-done': {
@@ -724,18 +792,51 @@ class Scheduler {
     return this.signalledWave.has(worker);
   }
 
-  /** Emits records for a unit whose worker died before reporting it done. */
+  /**
+   * Emits records for a unit whose worker died before reporting it done.
+   * Attempts the worker finished stand. The test in flight gets a
+   * `WORKER_CRASH` attempt after them when the crash landed during an
+   * attempt; one between attempts (an `afterAll` after the last) is recorded
+   * on the last attempt instead, whose cleanup it forced. A serial group in
+   * flight gets a failed group attempt after its finished ones. A worker the
+   * run's interrupt stopped gets nothing appended: a test or group keeps the
+   * attempts it finished and the verdict they reach, as a retry the
+   * interrupt cut short does.
+   */
   private synthesizeCrashResults(
     state: TargetState,
     worker: SchedulerWorker,
     unit: WorkUnit,
   ): void {
-    const interrupted = this.interrupting;
+    const interrupted = this.interrupting && (worker.terminated || worker.killed);
+    const crash = serializeError(new InfrastructureError('WORKER_CRASH', 'worker process exited during this test'));
+    const settledGroups = new Set<string>();
     for (const pair of unit.pairs) {
       const key = pairKey(pair.test.id, pair.agent, pair.repeat);
       if (worker.reported.has(key)) continue;
+      const { serialId } = pair.test;
+      if (serialId !== undefined) {
+        const groupId = serialGroupId(serialId, worker.targetName, pair.agent, pair.repeat);
+        if (settledGroups.has(groupId)) continue;
+        const members = unit.pairs.filter(
+          (member) => member.test.serialId === serialId && member.agent === pair.agent && member.repeat === pair.repeat,
+        );
+        const progress = worker.serialGroups.get(groupId);
+        const settled = interrupted ? progress?.interrupted(members, state.target) : progress?.crashed(members, state.target, crash);
+        if (settled !== undefined) {
+          settledGroups.add(groupId);
+          this.options.events.onSerialGroup(settled.group);
+          for (const result of settled.results) this.report(result);
+          continue;
+        }
+      }
+      const { finished, running } = worker.attempts.get(key) ?? { finished: [], running: false };
       if (interrupted) {
-        this.report(unstartedResult(pair, this.stopSkip ?? INTERRUPTED_BEFORE_START));
+        this.report(
+          finished.length === 0
+            ? unstartedResult(pair, this.stopSkip ?? INTERRUPTED_BEFORE_START)
+            : finishedResult(pair, finished),
+        );
         continue;
       }
       // A crashed setup never persisted its sessions; dependents must skip.
@@ -748,10 +849,18 @@ class Scheduler {
         this.report(
           unstartedResult(pair, {
             cause: 'infrastructure-unavailable',
-            reason: worker.started.has(key)
-              ? 'worker process exited before this serial group finished'
-              : 'worker process exited before this test started',
+            reason: 'worker process exited before this test started',
           }),
+        );
+        continue;
+      }
+      const last = finished.at(-1);
+      if (last !== undefined && !running) {
+        this.report(
+          finishedResult(pair, [
+            ...finished.slice(0, -1),
+            { ...last, secondaryErrors: [...last.secondaryErrors, crash], cleanup: 'forced' },
+          ]),
         );
         continue;
       }
@@ -760,17 +869,16 @@ class Scheduler {
           status: 'failed',
           selected: true,
           attempts: [
+            ...finished,
             {
               id: uuidv7(),
-              index: 0,
+              index: finished.length,
               status: 'failed',
               startedAt: timestamp(),
               durationMs: 0,
               steps: [],
               artifacts: [],
-              error: serializeError(
-                new InfrastructureError('WORKER_CRASH', 'worker process exited during this test'),
-              ),
+              error: crash,
               secondaryErrors: [],
               cleanup: 'forced',
             },

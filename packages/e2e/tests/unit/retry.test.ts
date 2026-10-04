@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isRetryEligible, runWithRetries, type RetryAttempt } from '../../src/run/retry.ts';
+import { isRetryEligible, retryVerdict, runWithRetries, type RetryAttempt } from '../../src/run/retry.ts';
 import type { SerializedError } from '../../src/internal/errors.ts';
 
 function error(category: SerializedError['category']): SerializedError {
@@ -126,5 +126,21 @@ describe('runWithRetries', () => {
       index === 1 ? { status: 'passed' } : { status: 'failed', error: error('test') },
     );
     expect(status).toBe('flaky');
+  });
+});
+
+describe('retryVerdict', () => {
+  const failed: RetryAttempt = { status: 'failed', error: error('test') };
+
+  it.each<[readonly RetryAttempt[], string]>([
+    [[], 'failed'],
+    [[{ status: 'passed' }], 'passed'],
+    [[failed, { status: 'passed' }], 'flaky'],
+    [[failed, { status: 'timed-out' }], 'timed-out'],
+    [[{ status: 'interrupted' }], 'interrupted'],
+    [[{ status: 'timed-out' }, { status: 'interrupted' }], 'timed-out'],
+    [[failed, { status: 'skipped' }], 'skipped'],
+  ])('reads %j as %s', (attempts, verdict) => {
+    expect(retryVerdict(attempts)).toBe(verdict);
   });
 });

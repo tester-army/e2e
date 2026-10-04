@@ -123,6 +123,12 @@ export class TargetWorker {
             if (countsTowardFailureLimit(result.status)) this.countFailure();
           },
           onSerialGroup: (group) => this.host.emit({ type: 'serial-group', group }),
+          onAttemptStart: (pair, index) =>
+            this.host.emit({ type: 'attempt-start', testId: pair.test.id, agent: pair.agent, repeat: pair.repeat, index }),
+          onAttempt: (pair, attempt) =>
+            this.host.emit({ type: 'attempt', testId: pair.test.id, agent: pair.agent, repeat: pair.repeat, attempt }),
+          onSerialMember: (groupId, attempt, member) => this.host.emit({ type: 'serial-member', groupId, attempt, member }),
+          onSerialAttempt: (groupId, run) => this.host.emit({ type: 'serial-attempt', groupId, run }),
           onPairStart: (pair) => {
             this.inFlight = { testId: pair.test.id, agent: pair.agent, repeat: pair.repeat };
             this.host.emit({

@@ -270,17 +270,201 @@ test.describe('wizard', { serial: true }, () => {
         { 'tests/serial-crash.e2e.ts': file },
         { appUrl: app.url, configSource: workerConfigSource(1) },
       );
+      const group = outcome.report.run.serialGroups[0]!;
+      expect(group.status).toBe('failed');
+      expect(group.attempts[0]!.members.map((member) => [member.status, member.error?.code])).toEqual([
+        ['passed', undefined],
+        ['failed', 'WORKER_CRASH'],
+        ['skipped', undefined],
+      ]);
+      expect(resultByTitle(outcome, 'step 1 passes').status).toBe('passed');
       const crashed = resultByTitle(outcome, 'step 2 crashes the worker');
       expect(crashed.status).toBe('failed');
-      expect(crashed.attempts[0]?.error?.code).toBe('WORKER_CRASH');
-      const finished = resultByTitle(outcome, 'step 1 passes');
-      expect(finished.status).toBe('skipped');
-      expect(finished.skip?.reason).toBe('worker process exited before this serial group finished');
+      expect(crashed.serialGroupId).toBe(group.id);
       const unreached = resultByTitle(outcome, 'step 3 never starts');
       expect(unreached.status).toBe('skipped');
-      expect(unreached.skip?.reason).toBe('worker process exited before this test started');
+      expect(unreached.skip?.cause).toBe('serial-predecessor-failed');
       expect(outcome.exitCode).toBe(3);
       expect(outcome.report.run.summary.failed).toBe(1);
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'keeps the failed attempt before a retry that crashed the worker',
+    async () => {
+      const marker = path.join(mkdtempSync(path.join(tmpdir(), 'e2e-retry-crash-')), 'failed-once');
+      const file = `import { existsSync, writeFileSync } from 'node:fs';
+import { test } from 'e2e';
+
+test('fails, then crashes on retry', { retries: 1 }, async () => {
+  if (!existsSync(${JSON.stringify(marker)})) {
+    writeFileSync(${JSON.stringify(marker)}, '');
+    throw new Error('first attempt fails');
+  }
+  process.exit(7);
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/retry-crash.e2e.ts': file },
+        { appUrl: app.url, configSource: workerConfigSource(1) },
+      );
+      const result = resultByTitle(outcome, 'fails, then crashes on retry');
+      expect(result.status).toBe('failed');
+      expect(result.attempts.map((attempt) => [attempt.index, attempt.status, attempt.error?.message])).toEqual([
+        [0, 'failed', 'first attempt fails'],
+        [1, 'failed', 'worker process exited during this test'],
+      ]);
+      expect(result.attempts[1]!.error?.code).toBe('WORKER_CRASH');
+      expect(outcome.exitCode).toBe(3);
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'keeps the failed group attempt before a serial retry that crashed the worker',
+    async () => {
+      const marker = path.join(mkdtempSync(path.join(tmpdir(), 'e2e-serial-retry-crash-')), 'failed-once');
+      const file = `import { existsSync, writeFileSync } from 'node:fs';
+import { test } from 'e2e';
+
+test.describe('wizard', { serial: true, retries: 1 }, () => {
+  test('step 1 passes', async () => {});
+  test('step 2 fails, then crashes on retry', async () => {
+    if (!existsSync(${JSON.stringify(marker)})) {
+      writeFileSync(${JSON.stringify(marker)}, '');
+      throw new Error('first attempt fails');
+    }
+    process.exit(7);
+  });
+  test('step 3 never passes', async () => {});
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/serial-retry-crash.e2e.ts': file },
+        { appUrl: app.url, configSource: workerConfigSource(1) },
+      );
+      const group = outcome.report.run.serialGroups[0]!;
+      expect(group.status).toBe('failed');
+      expect(
+        group.attempts.map((attempt) => [attempt.index, attempt.members.map((member) => [member.status, member.error?.code])]),
+      ).toEqual([
+        [0, [['passed', undefined], ['failed', 'ERROR'], ['skipped', undefined]]],
+        [1, [['passed', undefined], ['failed', 'WORKER_CRASH'], ['skipped', undefined]]],
+      ]);
+      expect(group.attempts[0]!.members[1]!.error?.message).toBe('first attempt fails');
+      expect(group.attempts[1]!.error?.code).toBe('WORKER_CRASH');
+      expect(resultByTitle(outcome, 'step 1 passes').status).toBe('passed');
+      const crashed = resultByTitle(outcome, 'step 2 fails, then crashes on retry');
+      expect(crashed.status).toBe('failed');
+      expect(crashed.serialGroupId).toBe(group.id);
+      expect(resultByTitle(outcome, 'step 3 never passes').skip?.cause).toBe('serial-predecessor-failed');
+      expect(outcome.exitCode).toBe(3);
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'records a crash in afterAll after a failed attempt on that attempt, not as a retry',
+    async () => {
+      const file = `import { test } from 'e2e';
+
+test.afterAll(() => {
+  process.exit(7);
+});
+
+test('always fails', { retries: 1 }, async () => {
+  throw new Error('fails every time');
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/teardown-crash.e2e.ts': file },
+        { appUrl: app.url, configSource: workerConfigSource(1) },
+      );
+      const result = resultByTitle(outcome, 'always fails');
+      expect(result.status).toBe('failed');
+      expect(result.attempts.map((attempt) => [attempt.index, attempt.error?.message, attempt.cleanup])).toEqual([
+        [0, 'fails every time', 'forced'],
+      ]);
+      expect(result.attempts[0]!.secondaryErrors.map((error) => error.code)).toEqual(['WORKER_CRASH']);
+      expect(outcome.exitCode).toBe(3);
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'fails the first member when a serial retry crashes the worker before any member runs',
+    async () => {
+      const marker = path.join(mkdtempSync(path.join(tmpdir(), 'e2e-serial-retry-hook-crash-')), 'failed-once');
+      const file = `import { existsSync, writeFileSync } from 'node:fs';
+import { test } from 'e2e';
+
+test.describe('wizard', { serial: true, retries: 1 }, () => {
+  test.beforeAll(() => {
+    if (existsSync(${JSON.stringify(marker)})) process.exit(7);
+  });
+  test('step 1 passes', async () => {});
+  test('step 2 fails once', async () => {
+    writeFileSync(${JSON.stringify(marker)}, '');
+    throw new Error('first attempt fails');
+  });
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/serial-retry-hook-crash.e2e.ts': file },
+        { appUrl: app.url, configSource: workerConfigSource(1) },
+      );
+      const group = outcome.report.run.serialGroups[0]!;
+      expect(group.status).toBe('failed');
+      expect(
+        group.attempts.map((attempt) => [attempt.index, attempt.error?.code, attempt.members.map((member) => [member.status, member.error?.code])]),
+      ).toEqual([
+        [0, 'ERROR', [['passed', undefined], ['failed', 'ERROR']]],
+        [1, 'WORKER_CRASH', [['failed', 'WORKER_CRASH'], ['skipped', undefined]]],
+      ]);
+      // The retry never reached its members, so they keep attempt 0's verdicts.
+      expect(resultByTitle(outcome, 'step 1 passes').status).toBe('passed');
+      expect(resultByTitle(outcome, 'step 2 fails once').status).toBe('failed');
+      expect(outcome.exitCode).toBe(3);
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'charges a crash after the last serial member to the group attempt, not to a member',
+    async () => {
+      const file = `import { test } from 'e2e';
+
+test.describe('wizard', { serial: true }, () => {
+  test.afterAll(() => {
+    process.exit(7);
+  });
+  test('step 1 passes', async () => {});
+  test('step 2 passes', async () => {});
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/serial-teardown-crash.e2e.ts': file },
+        { appUrl: app.url, configSource: workerConfigSource(1) },
+      );
+      const group = outcome.report.run.serialGroups[0]!;
+      expect(group.status).toBe('failed');
+      expect(group.attempts).toHaveLength(1);
+      expect(group.attempts[0]!.error?.code).toBe('WORKER_CRASH');
+      expect(group.attempts[0]!.members.map((member) => member.status)).toEqual(['passed', 'passed']);
+      expect(resultByTitle(outcome, 'step 1 passes').status).toBe('passed');
+      expect(resultByTitle(outcome, 'step 2 passes').status).toBe('passed');
+      expect(outcome.exitCode).toBe(3);
       assertValidReport(outcome.report);
       project.cleanup();
     },
