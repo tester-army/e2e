@@ -199,11 +199,14 @@ hello from the test
 ```
 
 Output from outside a test, such as the config's top-level code or a
-reporter, prints under `stdout | runner`.
+reporter, prints under `stdout | runner` or `stderr | runner`. Both
+streams print on stdout, in a pipe or a CI log too.
 
-Nothing is buffered or dropped: every line appears when it is written, in a
-pipe or a CI log as much as in a terminal. The output is not part of the
-report; use `expect` or an artifact for anything a later reader needs.
+Every line appears when it is written, with secret values
+[redacted](/security#redaction). Output printed while the config loads
+appears once it has loaded, and is dropped for a warning if the load fails.
+The output is not part of the report; use `expect` or an artifact for
+anything a later reader needs.
 
 ## Agent steps
 
