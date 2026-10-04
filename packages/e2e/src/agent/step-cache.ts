@@ -379,7 +379,7 @@ export class StepTraceSession {
    * when this step may write. Settled as far as the capture's purpose asks.
    */
   private async captureStart(purpose: StartPurpose): Promise<ObservedScreen | undefined> {
-    const observation = await probeScreen(this.host, purpose === 'path-only' ? 'raw' : 'held-still');
+    const observation = await probeScreen(this.host, purpose === 'path-only' ? 'raw' : 'held-still', true);
     this.startPath = observation?.path;
     if (this.recorder !== undefined && observation?.kind === 'semantic') this.startNodes = observation.nodes;
     return observation;
@@ -646,13 +646,16 @@ function baselineScreen(screens: readonly ObservedScreen[], endPath: string | un
  * One cache capture, settled as far as `mode` asks, or undefined when the
  * surface cannot be observed right now, which is the executor's business,
  * not the cache's. Runtime hard stops (timeout, cancellation) are the step's
- * truth even when they land during cache bookkeeping, and propagate.
+ * truth even when they land during cache bookkeeping, and propagate. So does
+ * a policy denial on the step's opening look (`opening`): the executor's
+ * first look reads the same screen under the same policy, and would spend
+ * another operation budget to be denied again.
  */
-async function probeScreen(host: StepCacheHost, mode: SettleMode): Promise<ObservedScreen | undefined> {
+async function probeScreen(host: StepCacheHost, mode: SettleMode, opening = false): Promise<ObservedScreen | undefined> {
   try {
     return await host.observe(mode);
   } catch (cause) {
-    if (isRuntimeHardStop(cause)) throw cause;
+    if (isRuntimeHardStop(cause) || (opening && isAgentError(cause) && cause.code === 'POLICY_DENIED')) throw cause;
     return undefined;
   }
 }

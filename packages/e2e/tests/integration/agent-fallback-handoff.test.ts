@@ -401,6 +401,8 @@ describe('agent semantic fallback through the engine contract', () => {
       expect(error?.code).toBe('POLICY_DENIED');
       expect(error?.message).toContain('a secret was filled in this attempt');
     }
+    const act = resultByTitle(outcome, 'act cannot recover pixels after a secret fill').attempts[0]!.steps.find((step) => step.api === 'agent.act');
+    expect(act?.events?.filter((event) => event.kind === 'observation')).toEqual([expect.objectContaining({ status: 'failed', code: 'POLICY_DENIED' })]);
     const tainted = captures.filter((capture) => capture.filled);
     expect(tainted.length).toBeGreaterThanOrEqual(3);
     expect(tainted.every((capture) => capture.options?.pixelFallback !== true && capture.options?.pixels !== true)).toBe(true);
