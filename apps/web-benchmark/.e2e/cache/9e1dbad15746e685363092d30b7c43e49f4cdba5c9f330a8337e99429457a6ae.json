@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:28:12.875Z",
+  "createdAt": "2026-10-04T08:29:03.146Z",
   "payload": {
     "actions": [
       {
@@ -15,7 +15,7 @@
       {
         "name": "tool",
         "summary": "tool type (run-time value)",
-        "derived": "pixels"
+        "derived": "minted-token"
       },
       {
         "name": "tap",
@@ -34,9 +34,12 @@
     "recordedFor": {
       "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20lying-labels",
       "targetId": "web",
-      "instructionDigest": "75cac33ad209d332c191820f8b966e11e3b86f06d25432d913adf93fe369052d"
+      "instructionDigest": "75cac33ad209d332c191820f8b966e11e3b86f06d25432d913adf93fe369052d",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
-    "summary": "Followed the visible labels: selected the button showing “Pay now,” entered 42.50 in the field visibly labeled Amount, left Reference empty, and submitted. The page confirms “Payment sent.”",
+    "summary": "Followed the visible labels and page instructions: entered 42.50 in the field beside “Amount,” left the visibly labeled Reference field empty, and submitted. The page now shows “Payment sent.”",
     "startPath": "/e/lying-labels",
     "endPath": "/e/lying-labels",
     "endAnchors": [
@@ -71,6 +74,6 @@
         "text": "Cancel order"
       }
     ],
-    "endWaitMs": 11712
+    "endWaitMs": 11896
   }
 }

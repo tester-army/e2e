@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T17:50:24.975Z",
+  "createdAt": "2026-10-04T08:28:55.544Z",
   "payload": {
     "actions": [
       {
@@ -36,7 +36,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Agreed to the terms and selected Medium. The state now shows “terms agreed, size Medium.”",
+    "summary": "Agreed to the terms and selected Medium. The Toggles state confirms “terms agreed, size Medium.”",
     "startPath": "/e/control-inventory",
     "endPath": "/e/control-inventory",
     "endAnchors": [
@@ -75,6 +75,6 @@
         "name": "Medium"
       }
     ],
-    "endWaitMs": 11495
+    "endWaitMs": 11356
   }
 }

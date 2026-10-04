@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:28:02.870Z",
+  "createdAt": "2026-10-04T08:28:56.187Z",
   "payload": {
     "actions": [
       {
@@ -24,7 +24,10 @@
     "recordedFor": {
       "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20shadow-dom-form",
       "targetId": "web",
-      "instructionDigest": "c6884af43cef64f928cde4eaa3be0cbc128893f01611d32236baf514a915c0a6"
+      "instructionDigest": "c6884af43cef64f928cde4eaa3be0cbc128893f01611d32236baf514a915c0a6",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Entered SHADOW-42 and submitted the form. The page now shows “Access granted.”",
     "startPath": "/e/shadow-dom-form",
@@ -52,6 +55,6 @@
         "name": "Submit"
       }
     ],
-    "endWaitMs": 16951
+    "endWaitMs": 11646
   }
 }

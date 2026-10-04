@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T17:50:25.093Z",
+  "createdAt": "2026-10-04T08:28:57.613Z",
   "payload": {
     "actions": [
       {
@@ -48,7 +48,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Logged in with the provided credentials. The page displays “Logged in successfully” and a Log out button.",
+    "summary": "Logged in with tester@tester.army and the supplied password. The page shows “Logged in successfully” and a Log out button.",
     "startPath": "/e/login-form",
     "endPath": "/e/login-form",
     "endAnchors": [
@@ -85,6 +85,6 @@
         "testId": "login-button"
       }
     ],
-    "endWaitMs": 11866
+    "endWaitMs": 11548
   }
 }

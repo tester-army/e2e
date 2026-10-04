@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T17:50:30.921Z",
+  "createdAt": "2026-10-04T08:29:16.739Z",
   "payload": {
     "actions": [
       {
@@ -35,7 +35,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Scrolled the feed to the Golden Ticket and clicked Claim. The page confirms “Golden Ticket claimed.”",
+    "summary": "Scrolled the feed until the Golden Ticket appeared and clicked Claim. The page now shows “Golden Ticket claimed.”",
     "startPath": "/e/infinite-scroll",
     "endPath": "/e/infinite-scroll",
     "endAnchors": [
@@ -65,6 +65,6 @@
         "text": "Item 44"
       }
     ],
-    "endWaitMs": 11762
+    "endWaitMs": 11656
   }
 }

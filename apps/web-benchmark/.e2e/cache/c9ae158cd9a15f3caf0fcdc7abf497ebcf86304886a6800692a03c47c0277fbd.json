@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T17:52:37.132Z",
+  "createdAt": "2026-10-04T08:33:52.251Z",
   "payload": {
     "actions": [
       {
@@ -54,7 +54,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Deleted the playbook “Launch Approval Draft,” confirmed the removal, and searched its exact name. The page shows: “No playbooks match ‘Launch Approval Draft’.”",
+    "summary": "Deleted the playbook “Launch Approval Draft” and confirmed the removal. Searching for its exact name shows: “No playbooks match ‘Launch Approval Draft’.”",
     "startPath": "/e/playbook-cleanup",
     "endPath": "/e/playbook-cleanup",
     "endAnchors": [
@@ -104,6 +104,6 @@
         "name": "Vendor Onboarding"
       }
     ],
-    "endWaitMs": 11599
+    "endWaitMs": 11698
   }
 }

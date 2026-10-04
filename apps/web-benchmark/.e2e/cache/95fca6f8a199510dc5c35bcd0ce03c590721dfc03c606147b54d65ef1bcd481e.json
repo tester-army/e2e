@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T17:52:28.101Z",
+  "createdAt": "2026-10-04T08:31:38.993Z",
   "payload": {
     "actions": [
       {
@@ -38,7 +38,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Hovered over Account, then Billing, and selected Redeem voucher. The page displays “Voucher redeemed.”",
+    "summary": "Hovered Account, then Billing, and selected Redeem voucher. The page confirms “Voucher redeemed.”",
     "startPath": "/e/hover-menu",
     "endPath": "/e/hover-menu",
     "endAnchors": [
@@ -64,6 +64,6 @@
         "testId": "menu-account"
       }
     ],
-    "endWaitMs": 11484
+    "endWaitMs": 11468
   }
 }

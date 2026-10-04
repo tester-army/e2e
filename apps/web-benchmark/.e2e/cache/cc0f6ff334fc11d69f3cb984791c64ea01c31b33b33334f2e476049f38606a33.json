@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T17:50:28.780Z",
+  "createdAt": "2026-10-04T08:29:14.465Z",
   "payload": {
     "actions": [
       {
@@ -41,7 +41,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Right-clicked report.pdf, chose Rename, and verified the file is now summary.pdf.",
+    "summary": "Right-clicked report.pdf to open its actions menu, selected Rename, and verified the file list now shows summary.pdf with the status “report.pdf renamed to summary.pdf.”",
     "startPath": "/e/control-inventory",
     "endPath": "/e/control-inventory",
     "endAnchors": [
@@ -72,6 +72,6 @@
         "name": "report.pdf"
       }
     ],
-    "endWaitMs": 11616
+    "endWaitMs": 11535
   }
 }

@@ -1,17 +1,16 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T17:12:02.675Z",
+  "createdAt": "2026-10-04T08:28:59.224Z",
   "payload": {
     "actions": [
       {
-        "name": "check",
-        "summary": "check radio \"Express\" in \"Delivery\"",
+        "name": "tap",
+        "summary": "tap radio \"Express\" in \"Delivery\"",
         "target": {
           "role": "radio",
           "name": "Express",
           "within": "Delivery"
-        },
-        "checked": true
+        }
       }
     ],
     "executor": {
@@ -21,7 +20,10 @@
     "recordedFor": {
       "testId": "tests-agent/control-inventory.e2e.ts::control%20inventory::check%20picks%20a%20radio%20the%20pick%20replaces%20with%20its%20summary",
       "targetId": "web",
-      "instructionDigest": "df853ab2fc826564b99c9b044a65fd7ee21cdc2b487273cebcd32bcbe3607c66"
+      "instructionDigest": "df853ab2fc826564b99c9b044a65fd7ee21cdc2b487273cebcd32bcbe3607c66",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
     "summary": "Selected Express delivery; the delivery state now reads “Express” and the page confirms “Express delivery selected.”",
     "startPath": "/e/control-inventory",
@@ -62,6 +64,6 @@
         "text": "Standard"
       }
     ],
-    "endWaitMs": 11856
+    "endWaitMs": 11721
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T17:52:27.627Z",
+  "createdAt": "2026-10-04T08:31:33.402Z",
   "payload": {
     "actions": [
       {
@@ -36,7 +36,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Searched for “trail mix,” selected exactly “Trail Mix 500 g,” and verified the page confirmed it was added to the cart.",
+    "summary": "Searched for trail mix and selected exactly Trail Mix 500 g. The page confirms it was added to the cart.",
     "startPath": "/e/debounced-search",
     "endPath": "/e/debounced-search",
     "endAnchors": [
@@ -56,6 +56,6 @@
         "placeholder": "Search snacks"
       }
     ],
-    "endWaitMs": 11630
+    "endWaitMs": 11449
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T17:52:32.285Z",
+  "createdAt": "2026-10-04T08:32:08.612Z",
   "payload": {
     "actions": [
       {
@@ -87,6 +87,6 @@
         "text": "Slot 5"
       }
     ],
-    "endWaitMs": 11629
+    "endWaitMs": 11441
   }
 }

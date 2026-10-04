@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T17:50:31.502Z",
+  "createdAt": "2026-10-04T08:29:27.731Z",
   "payload": {
     "actions": [
       {
@@ -29,7 +29,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Opened the details view, then used browser history to return to /e/control-inventory. The Navigation state confirms “back on the inventory.”",
+    "summary": "Opened Details, then used browser history to return to /e/control-inventory. The Navigation state now reads “back on the inventory.”",
     "startPath": "/e/control-inventory",
     "endPath": "/e/control-inventory",
     "endAnchors": [
@@ -46,6 +46,6 @@
         "text": "not opened"
       }
     ],
-    "endWaitMs": 11768
+    "endWaitMs": 12570
   }
 }

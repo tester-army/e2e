@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:28:17.421Z",
+  "createdAt": "2026-10-04T08:29:07.236Z",
   "payload": {
     "actions": [
       {
@@ -24,9 +24,12 @@
     "recordedFor": {
       "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20iframe-form",
       "targetId": "web",
-      "instructionDigest": "5ea16155d5cd3ee4fc67e7511534964bca91116fa0412e4523428844f9f85c15"
+      "instructionDigest": "5ea16155d5cd3ee4fc67e7511534964bca91116fa0412e4523428844f9f85c15",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
-    "summary": "Read coupon code SAVE-1234 from the first frame, entered it in the checkout form, and applied it. The page now shows “Coupon applied.”",
+    "summary": "Read coupon SAVE-1234 from the first frame, entered it in the checkout form, and applied it. The page now shows “Coupon applied.”",
     "startPath": "/e/iframe-form",
     "endPath": "/e/iframe-form",
     "endAnchors": [
@@ -66,6 +69,6 @@
         "name": "checkout-frame"
       }
     ],
-    "endWaitMs": 11518
+    "endWaitMs": 11742
   }
 }

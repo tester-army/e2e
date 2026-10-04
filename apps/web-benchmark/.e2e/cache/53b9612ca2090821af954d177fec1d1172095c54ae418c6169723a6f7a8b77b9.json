@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T16:30:42.122Z",
+  "createdAt": "2026-10-04T08:31:27.021Z",
   "payload": {
     "actions": [
       {
@@ -34,9 +34,12 @@
     "recordedFor": {
       "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20async-states",
       "targetId": "web",
-      "instructionDigest": "3d8730745312e1ce478b253dcad7910775eb76246846228b0ca02a78e514aa88"
+      "instructionDigest": "3d8730745312e1ce478b253dcad7910775eb76246846228b0ca02a78e514aa88",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
     },
-    "summary": "Waited for the page to finish loading, read code 4407 from the toast, entered it, and submitted when Verify was enabled. The page shows “Code verified successfully.”",
+    "summary": "Waited for the page to load, sent the code, read 4407 from the toast, entered it, and submitted once Verify was enabled. The page shows “Code verified successfully.”",
     "startPath": "/e/async-states",
     "endPath": "/e/async-states",
     "endAnchors": [
@@ -50,6 +53,6 @@
         "testId": "initial-loading"
       }
     ],
-    "endWaitMs": 11469
+    "endWaitMs": 11512
   }
 }

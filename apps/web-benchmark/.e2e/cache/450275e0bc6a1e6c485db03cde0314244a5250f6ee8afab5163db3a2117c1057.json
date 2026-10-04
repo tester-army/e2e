@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T17:52:21.048Z",
+  "createdAt": "2026-10-04T08:31:06.435Z",
   "payload": {
     "actions": [
       {
@@ -35,7 +35,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Scrolled the virtualized table until Row 4322 — Golden Row was rendered, then clicked Claim. The page displayed “Golden Row claimed.”",
+    "summary": "Scrolled the windowed table until Row 4322 — Golden Row was rendered, clicked Claim, and verified the “Golden Row claimed” success message.",
     "startPath": "/e/virtualized-table",
     "endPath": "/e/virtualized-table",
     "endAnchors": [
@@ -91,6 +91,6 @@
         "text": "Row 8"
       }
     ],
-    "endWaitMs": 11810
+    "endWaitMs": 11397
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T17:52:41.944Z",
+  "createdAt": "2026-10-04T08:34:05.073Z",
   "payload": {
     "actions": [
       {
@@ -11,16 +11,6 @@
           "name": "gift_card_amount_option_undefined",
           "text": "$25",
           "testId": "amount-25"
-        }
-      },
-      {
-        "name": "tap",
-        "summary": "tap button \"btn_purchase_label\"",
-        "target": {
-          "role": "button",
-          "name": "btn_purchase_label",
-          "text": "Buy gift card",
-          "testId": "buy-button"
         }
       },
       {
@@ -57,7 +47,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Selected the $25 gift card, entered friend@example.com, and completed the purchase. The page confirms the gift card was sent and that the $25.00 gift card is on its way.",
+    "summary": "Selected a $25 gift card, entered friend@example.com, and completed the purchase. The page confirms the gift card was sent and says a $25.00 gift card is on its way.",
     "startPath": "/e/gift-card-purchase",
     "endPath": "/e/gift-card-purchase",
     "endAnchors": [
@@ -110,6 +100,6 @@
         "testId": "buy-button"
       }
     ],
-    "endWaitMs": 11845
+    "endWaitMs": 11710
   }
 }

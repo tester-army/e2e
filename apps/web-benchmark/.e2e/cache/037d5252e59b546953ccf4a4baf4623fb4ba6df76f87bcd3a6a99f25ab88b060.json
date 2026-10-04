@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T17:52:22.869Z",
+  "createdAt": "2026-10-04T08:31:18.423Z",
   "payload": {
     "actions": [
       {
@@ -34,7 +34,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Scrolled until the Accept terms button was clear of the sticky footer, clicked it, and verified the page displayed “Terms accepted.”",
+    "summary": "Scrolled until the Accept terms button was clear above the sticky footer, clicked it once, and verified the “Terms accepted” confirmation.",
     "startPath": "/e/sticky-chrome",
     "endPath": "/e/sticky-chrome",
     "endAnchors": [
@@ -43,6 +43,6 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 11844
+    "endWaitMs": 11764
   }
 }

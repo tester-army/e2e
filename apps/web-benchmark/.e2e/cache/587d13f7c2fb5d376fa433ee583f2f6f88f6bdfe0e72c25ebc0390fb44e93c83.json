@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T17:50:31.245Z",
+  "createdAt": "2026-10-04T08:29:22.846Z",
   "payload": {
     "actions": [
       {
@@ -38,7 +38,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Attached both requested files. The Attachments state now shows “attachment.txt, second.txt,” and the input indicates 2 files.",
+    "summary": "Attached both fixtures/attachment.txt and fixtures/second.txt to the Attachments input. The state now shows “attachment.txt, second.txt” and the control indicates 2 files.",
     "startPath": "/e/control-inventory",
     "endPath": "/e/control-inventory",
     "endAnchors": [
@@ -64,6 +64,6 @@
         "name": "Attachments"
       }
     ],
-    "endWaitMs": 12106
+    "endWaitMs": 12311
   }
 }

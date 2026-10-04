@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-03T17:52:28.541Z",
+  "createdAt": "2026-10-04T08:31:43.811Z",
   "payload": {
     "actions": [
       {
@@ -38,7 +38,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Dragged Banana and then Cherry into the dropzone, leaving Apple alone. The page confirms: “Items dropped in the right order.”",
+    "summary": "Dragged Banana and then Cherry into the dropzone, leaving Apple alone. The page displays “Items dropped in the right order.”",
     "startPath": "/e/drag-and-drop",
     "endPath": "/e/drag-and-drop",
     "endAnchors": [
@@ -52,6 +52,6 @@
         "text": "Drop items here"
       }
     ],
-    "endWaitMs": 11526
+    "endWaitMs": 11777
   }
 }
