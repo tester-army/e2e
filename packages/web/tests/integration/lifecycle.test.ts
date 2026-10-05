@@ -828,6 +828,42 @@ describe('web engine lifecycle', () => {
     });
   });
 
+  it('reports a located ref stale once a second element matches it, and acts on neither', async () => {
+    const engine = web();
+    await withAttempt(engine, app, artifactsDir, 'amb1', async () => {
+      await engine.session!.open!(`${app.url}/`, operation('amb1'));
+      const page = surfaceOf(engine)!.page();
+      await page.setContent('<script>window.taps = 0</script><button onclick="taps++">Go</button>');
+      const [go] = await engine.locate!(byRole('button'), operation('amb1'));
+      await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<button onclick="taps++">Go</button>'));
+
+      await expect(engine.perform!(go!.ref, { kind: 'tap' }, operation('amb1'))).rejects.toMatchObject({
+        code: 'NODE_STALE',
+        retryable: true,
+      });
+      expect(await page.evaluate(() => (window as unknown as { taps: number }).taps)).toBe(0);
+    });
+  });
+
+  it('reports a drag whose drop target turns ambiguous after the press as possibly committed', async () => {
+    const engine = web();
+    await withAttempt(engine, app, artifactsDir, 'amb2', async () => {
+      await engine.session!.open!(`${app.url}/`, operation('amb2'));
+      const page = surfaceOf(engine)!.page();
+      await page.setContent(`
+        <script>window.downs = 0</script>
+        <button onmousedown="downs++; document.body.insertAdjacentHTML('beforeend', '<div role=region>Drop</div>')">Card</button>
+        <div role="region">Drop</div>`);
+      const [card] = await engine.locate!(byRole('button'), operation('amb2'));
+      const [zone] = await engine.locate!(byRole('region'), operation('amb2'));
+
+      await expect(
+        engine.perform!(card!.ref, { kind: 'dragTo', target: zone!.ref }, operation('amb2')),
+      ).rejects.toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED', retryable: false });
+      expect(await page.evaluate(() => (window as unknown as { downs: number }).downs)).toBe(1);
+    });
+  });
+
   it('mints one root id that survives navigation, and swipes the viewport when it is the target', async () => {
     const engine = web();
     await withAttempt(engine, app, artifactsDir, 'r1', async () => {

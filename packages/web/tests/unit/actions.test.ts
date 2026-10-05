@@ -48,7 +48,8 @@ describe('classifyActionError', () => {
   });
 
   it.each([
-    ['strict mode violation: 2 elements', 'ENGINE_FAILURE', false],
+    ['strict mode violation: 2 elements', 'NODE_STALE', true],
+    ['strict mode violation: 2 elements\nCall log:\n  - move and down action done', 'ACTION_MAY_HAVE_COMMITTED', false],
     ['element is detached from the DOM', 'NODE_STALE', true],
     ['Element is not attached to the DOM', 'NODE_STALE', true],
     ['Element is not an <input>, <textarea> or [contenteditable] element', 'NOT_ACTIONABLE', false],

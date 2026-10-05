@@ -238,14 +238,25 @@ function actionabilitySummary(text: string): string {
 /**
  * Classifies a failed action onto the error contract (see the table above
  * `POST_DISPATCH_PATTERN` in support.ts): stale, not actionable, possibly
- * committed, or an engine fault.
+ * committed, or an engine fault. A strict mode violation is a located match
+ * that turned ambiguous: stale like a detached one before any input, so the
+ * runner locates again and reports the ambiguity or acts on the one match
+ * left; possibly committed once input went out, as the second side of a drag
+ * resolves after the press.
  */
 export function classifyActionError(rawCause: unknown, action: LocatorAction): Error {
   if (isClassified(rawCause)) return rawCause;
   const text = redactSensitive(message(rawCause), action);
   const cause = isSensitive(action) ? undefined : rawCause;
   if (/strict mode violation/i.test(text)) {
-    return new EngineError('ENGINE_FAILURE', text, { retryable: false, cause });
+    if (POST_DISPATCH_PATTERN.test(text)) {
+      return new EngineError(
+        'ACTION_MAY_HAVE_COMMITTED',
+        `${action.kind} matched more than one element after its input was dispatched: ${text}`,
+        { retryable: false, cause },
+      );
+    }
+    return new EngineError('NODE_STALE', text, { retryable: true, cause });
   }
   if (DETACHED_PATTERN.test(text)) {
     return new EngineError('NODE_STALE', text, { retryable: true, cause });
