@@ -54,7 +54,7 @@ export function runScriptCommand(manager: PackageManager, name: string): string 
 export function execCommand(manager: PackageManager, command: string): string {
   switch (manager) {
     case 'npm':
-      return `npm exec ${command}`;
+      return `npm exec -- ${command}`;
     case 'pnpm':
       return `pnpm exec ${command}`;
     case 'yarn':

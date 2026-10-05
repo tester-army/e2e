@@ -67,6 +67,7 @@ npx e2e list tests/signup.e2e.ts --tag smoke --reporter json
 With a `package.json` script `"test:e2e": "e2e run"`, pnpm forwards `--`
 literally: `pnpm test:e2e -- --headed` reaches e2e as `run -- --headed` and
 exits 2. Write `pnpm test:e2e --headed` or `pnpm exec e2e run --headed`.
+With npm, use `npm exec -- e2e run --headed` to pass flags to e2e.
 
 ## The replay cache
 

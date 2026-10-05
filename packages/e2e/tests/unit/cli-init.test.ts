@@ -379,8 +379,8 @@ describe('e2e init', () => {
 
   it.each([
     ['e2e run --workers 1', 'npm run test:e2e'],
-    ['e2e runner --ci', 'npm exec e2e run'],
-    ['vitest', 'npm exec e2e run'],
+    ['e2e runner --ci', 'npm exec -- e2e run'],
+    ['vitest', 'npm exec -- e2e run'],
   ])('keeps an existing test:e2e script (%s) and points the run step at %s', async (script, step) => {
     writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({ name: 'existing-app', scripts: { 'test:e2e': script } })}\n`);
     vi.mocked(clack.select).mockResolvedValueOnce('web').mockResolvedValueOnce('none');
@@ -667,7 +667,7 @@ describe('e2e init', () => {
     expect(existsSync(path.join(dir, '.agents'))).toBe(false);
     expect(existsSync(path.join(dir, '.claude'))).toBe(false);
     expect(existsSync(path.join(dir, '.mcp.json'))).toBe(false);
-    expect(output()).toContain('npm exec e2e guide');
+    expect(output()).toContain('npm exec -- e2e guide');
     expect(output()).toContain('claude mcp add e2e -- npx e2e mcp');
   });
 

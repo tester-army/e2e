@@ -38,7 +38,7 @@ describe('runScriptCommand', () => {
 
 describe('execCommand', () => {
   it('runs the installed binary with each manager', () => {
-    expect(execCommand('npm', 'e2e guide')).toBe('npm exec e2e guide');
+    expect(execCommand('npm', 'e2e guide')).toBe('npm exec -- e2e guide');
     expect(execCommand('pnpm', 'e2e guide')).toBe('pnpm exec e2e guide');
     expect(execCommand('yarn', 'e2e guide')).toBe('yarn e2e guide');
     expect(execCommand('bun', 'e2e guide')).toBe('bun run e2e guide');

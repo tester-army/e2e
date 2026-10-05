@@ -346,6 +346,8 @@ A positional starting with `-` that names no file is a usage error, exit 2.
 This is what `pnpm test:e2e -- --headed` produces: the `--` reaches e2e and
 `--headed` would otherwise be taken for a file. The message names the direct
 form, `pnpm exec e2e run --headed`.
+For npm, the direct form is `npm exec -- e2e run --headed`; npm needs the
+separator before the binary to pass its flags through.
 
 When nothing is left to run, `NO_TESTS` names the cause: no file matched the
 globs (with look-alike files such as `tests/login.test.ts`), a positional
