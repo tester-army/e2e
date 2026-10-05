@@ -46,7 +46,7 @@ config and an example test. The
 
 To see a finished setup in your stack, open
 [`examples/`](https://github.com/tester-army/e2e/tree/main/examples):
-Vite, each a standalone project with a passing
+The Vite example is a standalone project with a passing
 suite.
 
 ## Packages

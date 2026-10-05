@@ -17,7 +17,7 @@ export default {
       app: {
         url: 'http://localhost:5173',
         // The runner starts the Vite dev server and waits for the URL to answer.
-        // A server you already started on that port is reused.
+        // Outside CI, a server you already started on that port is reused.
         command: { executable: 'npm', args: ['run', 'dev'], reuseExisting: true },
       },
     },
