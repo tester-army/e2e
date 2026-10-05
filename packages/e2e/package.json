@@ -87,7 +87,7 @@
     "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
-    "@ai-sdk/provider": "4.0.18",
+    "@ai-sdk/provider": "4.0.21",
     "@clack/prompts": "1.8.1",
     "@jridgewell/remapping": "2.3.5",
     "@modelcontextprotocol/server": "2.2.0",
