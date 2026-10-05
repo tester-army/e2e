@@ -6,6 +6,7 @@ Every app uses the same demo: enter a name and press Greet.
 | Example | Technology | Runs on |
 | --- | --- | --- |
 | [with-vite](with-vite) | Vite + React | Chromium |
+| [with-next](with-next) | Next.js App Router | Chromium |
 
 Each folder installs published packages from npm and works outside this
 repository. See its README for run commands. Agent tests need
