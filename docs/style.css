@@ -263,6 +263,57 @@ html.dark body .code-block-fade-overlay {
   background-image: linear-gradient(to right, transparent, var(--e2e-surface) 50%) !important;
 }
 
+/* A long code block carries `expandable` and reads like the setup prompt on the
+   Quickstart page: a few lines fading out over a centered "Show more" that
+   turns into "Show less". Mintlify renders the toggle as a footer button whose
+   own text ("See all N lines", "Collapse") stays the accessible name; the
+   visible label is an ::after with empty alt text. base-ui marks the code root
+   with data-overflow-y-end while lines remain hidden below, which is the
+   collapsed state. */
+#content .code-block:has(> [data-component-part='code-block-footer']) {
+  & [data-component-part='code-block-root'][data-overflow-y-end] {
+    mask-image: linear-gradient(to bottom, black 45%, transparent);
+  }
+
+  & [data-component-part='code-block-footer'] {
+    justify-content: center;
+    padding: 0;
+  }
+
+  & [data-component-part='code-block-footer-button'] {
+    flex: 1;
+    justify-content: center;
+    padding: 0.5rem 1rem 0.75rem;
+    color: var(--e2e-muted);
+    font-size: 0;
+    cursor: pointer;
+
+    & > svg {
+      display: none;
+    }
+
+    &::after {
+      content: 'Show less' / '';
+      font-size: 0.8125rem;
+      font-weight: 400;
+    }
+
+    &:hover {
+      color: var(--e2e-ink);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--e2e-ink) !important;
+      outline-offset: -2px;
+    }
+  }
+
+  &:has([data-component-part='code-block-root'][data-overflow-y-end])
+    [data-component-part='code-block-footer-button']::after {
+    content: 'Show more' / '';
+  }
+}
+
 /* Callouts are a hairline box in the foreground color; the icon tells a note
    from a warning, not a hue. */
 #content .callout {

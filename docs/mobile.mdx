@@ -270,7 +270,7 @@ record leaves `record` out, and the engine records with agent-device.
 A provider against a typical session API has three requests: create a
 session, poll it until the daemon is reachable, stop it.
 
-```ts title="device-provider.ts"
+```ts title="device-provider.ts" expandable
 import type { DeviceProvider } from '@e2e-dev/mobile';
 
 /**
@@ -350,7 +350,7 @@ A device cloud agent-device speaks to itself needs no session API of your
 own: the provider allocates a lease through a daemon it starts for the run and
 hands the worker the lease scope as `client`.
 
-```ts title="device-cloud-provider.ts"
+```ts title="device-cloud-provider.ts" expandable
 import { createAgentDeviceClient } from 'agent-device';
 import type { DeviceProvider } from '@e2e-dev/mobile';
 

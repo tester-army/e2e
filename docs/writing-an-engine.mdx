@@ -40,7 +40,7 @@ the engine's capabilities when the config loads.
 This skeleton assumes a `createClient` adapter for your platform. Its nodes
 must follow the semantic tree contract described below.
 
-```ts title="src/index.ts"
+```ts title="src/index.ts" expandable
 import { ConfigurationError, defineEngine, resolveExpression, type EngineHandle } from 'e2e/engine';
 
 export function hyperdrive(options: { device: string }): EngineHandle {

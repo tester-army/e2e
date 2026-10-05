@@ -115,7 +115,7 @@ simulator; swap in your own build command as long as it writes a simulator
 Release --device generic --no-bundler --output build/ios` builds without
 booting a simulator and writes the `.app` under `build/ios`.
 
-```yaml title=".github/workflows/e2e-mobile.yml"
+```yaml title=".github/workflows/e2e-mobile.yml" expandable
 name: e2e mobile
 
 on:
@@ -247,7 +247,7 @@ The iOS job runs on a macOS runner; the Android one needs a
 `nested-virtualization` Linux runner, the only EAS machines that can run the
 emulator:
 
-```yaml title=".eas/workflows/e2e.yml"
+```yaml title=".eas/workflows/e2e.yml" expandable
 name: e2e
 
 on:
@@ -357,7 +357,7 @@ booting both devices: `xcode-start-simulator` on macOS, and `avd-manager`
 with `wait-for-android-emulator` on Linux. Start the emulator before the
 Gradle build so it boots while the APK compiles.
 
-```yaml title="bitrise.yml"
+```yaml title="bitrise.yml" expandable
 format_version: '25'
 default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
 
@@ -482,7 +482,7 @@ workflows:
 Android runs on a Linux instance. The Ubuntu image comes with AVDs named `emulator` (API 34),
 `emulator-35`, and `emulator-36`.
 
-```yaml title="codemagic.yaml"
+```yaml title="codemagic.yaml" expandable
 workflows:
   e2e-ios:
     name: e2e iOS
