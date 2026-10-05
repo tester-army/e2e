@@ -542,29 +542,28 @@ export class TargetExecutor implements SerialHost {
           kind: 'setup',
           staging,
         });
+        const missing = attempt.status === 'passed' ? staging.missing() : [];
+        if (missing.length > 0) {
+          attempt.status = 'failed';
+          attempt.error = serializeError(
+            new E2EError(
+              'test',
+              'SESSION_CONTRACT',
+              `setup must save each declared session exactly once; missing: [${missing.join(', ')}]`,
+            ),
+            { phase: 'body' },
+          );
+        }
         attempts.push(attempt);
+        // Sent before teardown and the session saves, as in runOrdinaryPair:
+        // a crash in either then lands on this attempt instead of erasing it.
+        this.options.events?.onAttempt?.(pair, attempt);
         await this.realms.leave(realm);
-
         if (attempt.status === 'passed') {
-          const missing = staging.missing();
-          if (missing.length > 0) {
-            attempt.status = 'failed';
-            attempt.error = serializeError(
-              new E2EError(
-                'test',
-                'SESSION_CONTRACT',
-                `setup must save each declared session exactly once; missing: [${missing.join(', ')}]`,
-              ),
-              { phase: 'body' },
-            );
-            this.options.events?.onAttempt?.(pair, attempt);
-            return attempt;
-          }
           for (const [name, saved] of staging.entries()) {
             await this.options.sessionStore.save(name, this.sessionIdentity, saved);
           }
         }
-        this.options.events?.onAttempt?.(pair, attempt);
         return attempt;
       },
     );

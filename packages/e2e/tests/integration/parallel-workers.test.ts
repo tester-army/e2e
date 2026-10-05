@@ -401,6 +401,80 @@ test('always fails', { retries: 1 }, async () => {
   );
 
   it(
+    'keeps a passed setup attempt when afterAll crashes the worker, and skips its dependents',
+    async () => {
+      const setupFile = `import { test } from 'e2e';
+
+test.afterAll(() => {
+  process.exit(7);
+});
+
+test.setup('seed storage', { sessions: ['seeded'] }, async ({ app, session }) => {
+  await app.open('/storage');
+  await session.save('seeded');
+});
+`;
+      const consumerFile = `import { test } from 'e2e';
+
+test('starts with the seeded state', { session: 'seeded' }, async ({ app }) => {
+  await app.open('/storage');
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/auth.setup.e2e.ts': setupFile, 'tests/consumer.e2e.ts': consumerFile },
+        { appUrl: app.url, configSource: workerConfigSource(1) },
+      );
+      const setup = resultByTitle(outcome, 'seed storage');
+      expect(setup.status).toBe('passed');
+      expect(setup.attempts.map((attempt) => [attempt.index, attempt.status, attempt.cleanup])).toEqual([
+        [0, 'passed', 'forced'],
+      ]);
+      expect(setup.attempts[0]!.secondaryErrors.map((error) => error.code)).toEqual(['WORKER_CRASH']);
+      expect(resultByTitle(outcome, 'starts with the seeded state').skip?.cause).toBe('setup-failed');
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'keeps the SESSION_CONTRACT failure of a setup attempt when afterAll crashes the worker',
+    async () => {
+      const setupFile = `import { test } from 'e2e';
+
+test.afterAll(() => {
+  process.exit(7);
+});
+
+test.setup('never saves', { sessions: ['seeded'] }, async ({ app }) => {
+  await app.open('/storage');
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        {
+          'tests/auth.setup.e2e.ts': setupFile,
+          'tests/consumer.e2e.ts': `import { test } from 'e2e';
+
+test('starts with the seeded state', { session: 'seeded' }, async ({ app }) => {
+  await app.open('/storage');
+});
+`,
+        },
+        { appUrl: app.url, configSource: workerConfigSource(1) },
+      );
+      const setup = resultByTitle(outcome, 'never saves');
+      expect(setup.status).toBe('failed');
+      expect(setup.attempts.map((attempt) => [attempt.index, attempt.error?.code, attempt.cleanup])).toEqual([
+        [0, 'SESSION_CONTRACT', 'forced'],
+      ]);
+      expect(setup.attempts[0]!.secondaryErrors.map((error) => error.code)).toEqual(['WORKER_CRASH']);
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
     'charges a crash in a retry beforeAll to the retry, not to the attempt before it',
     async () => {
       const marker = path.join(mkdtempSync(path.join(tmpdir(), 'e2e-retry-hook-crash-')), 'failed-once');
