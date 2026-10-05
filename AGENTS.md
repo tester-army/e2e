@@ -108,7 +108,7 @@ suites that consume the built packages the way a user would.
   diffs against the source minimal, and name no company a scenario was
   distilled from.
 - `examples/` — standalone user-facing projects, one per technology
-  (`with-vite`, `with-next`, `with-expo`), each the same
+  (`with-vite`, `with-next`, `with-expo`, `with-swiftui`), each the same
   one-screen greeter demo with deterministic and agent tests. They install
   the published packages from npm, sit outside the pnpm workspace, commit no
   lockfile, and run in no CI; oxlint and fallow ignore them. A change runs
