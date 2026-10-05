@@ -287,13 +287,8 @@
       {
         "tab": "Examples",
         "icon": "folder-open",
-        "groups": [
-          {
-            "group": "Example projects",
-            "pages": [
-              "example-projects"
-            ]
-          }
+        "pages": [
+          "example-projects"
         ]
       }
     ]
