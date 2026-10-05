@@ -97,6 +97,14 @@ describe('browser.evaluate error boundaries', () => {
     await expect(browser.evaluate('function () { return arguments.length; }', null)).resolves.toBe(1);
   });
 
+  it('evaluates a string as an expression and calls a function it evaluates to', async () => {
+    await page.setContent('<title>Cart</title>');
+    await expect(browser.evaluate('document.title')).resolves.toBe('Cart');
+    await expect(browser.evaluate('(() => document.title)()')).resolves.toBe('Cart');
+    await expect(browser.evaluate('fetch("data:text/plain,ok").then((response) => response.text())')).resolves.toBe('ok');
+    await expect(browser.evaluate('(name) => document[name]', 'title')).resolves.toBe('Cart');
+  });
+
   it('rejects invalid JSON results and syntax as test errors', async () => {
     await expect(browser.evaluate('() => Infinity')).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     await expect(browser.evaluate('() => {')).rejects.toMatchObject({ code: 'EVALUATE_FAILED' });

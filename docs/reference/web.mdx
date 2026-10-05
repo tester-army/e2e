@@ -291,7 +291,7 @@ export interface Browser extends Expectable<BrowserExpectation> {
   locator(selector: string): Locator;
   /** Creates a screen query scope inside one iframe. */
   frameLocator(selector: string): FrameScreen;
-  /** Evaluates trusted test code in the page. */
+  /** Evaluates trusted test code in the page: a function, or a string expression whose function value is called. */
   evaluate<T extends JsonValue>(fn: string | (() => T | Promise<T>)): Promise<T>;
   /** Evaluates trusted test code with one required JSON-safe argument. */
   evaluate<T extends JsonValue, Arg extends JsonValue>(
@@ -428,6 +428,10 @@ close over anything outside its own body; helpers declared inside the body
 work. Pass outside values through `arg`. Both `arg` and the return value
 must be `JsonValue`, otherwise the call fails with `INVALID_ARGUMENT`.
 
+A string is evaluated as a single expression, not as statements. If it
+evaluates to a function, that function is called with `arg`; otherwise its
+value is the result.
+
 An exception in the evaluated code is `EVALUATE_FAILED` with its message. A
 Playwright timeout is `ACTION_FAILED`; a closed page or lost context is
 `ENGINE_FAILURE`.
@@ -438,6 +442,7 @@ const flag = await browser.evaluate(
   (name: string) => window.localStorage.getItem(name),
   'featureFlags',
 );
+const title = await browser.evaluate<string>('document.title');
 ```
 
 ### Init scripts

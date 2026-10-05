@@ -11,6 +11,8 @@ export const KEEP_NAMES_HELPER = "const __name = (target, value) => Object.defin
 
 /**
  * Compiles the page-side error boundary without evaluating the caller's source in this process.
+ * The source is one expression: a function it evaluates to is called with the argument, any
+ * other value is the result.
  *
  * A function serialized with `toString()` carries whatever the loader compiled
  * it to. e2e before 0.17 loaded tests through tsx, whose esbuild `keepNames`
@@ -24,7 +26,7 @@ export function compileEvaluation(source: string, hasArgument: boolean): (arg: u
       return (async () => {
         ${KEEP_NAMES_HELPER}
         try {
-          return { ok: true, value: await (${source}\n)(${hasArgument ? 'arg' : ''}) };
+          return { ok: true, value: await ((result) => typeof result === 'function' ? result(${hasArgument ? 'arg' : ''}) : result)((${source}\n)) };
         } catch (cause) {
           let message;
           try {
