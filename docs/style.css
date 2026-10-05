@@ -665,3 +665,14 @@ html.dark body .code-block-fade-overlay {
 .dark img[src*='/images/integrations/expo.svg'] {
   filter: invert(1);
 }
+
+/* The Next.js wordmark needs the same contrast in dark mode. */
+.dark img[src*='/images/examples/nextjs.svg'] {
+  filter: invert(1);
+}
+
+/* Keep the wide Next.js wordmark legible alongside the square marks. */
+#content [data-component-part='card-icon']:has(> img[src*='/images/examples/nextjs.svg']),
+#content img[src*='/images/examples/nextjs.svg'] {
+  width: 80px;
+}

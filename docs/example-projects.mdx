@@ -1,0 +1,31 @@
+---
+title: Example projects
+description: Run standalone e2e examples with Vite, Next.js, Expo, and SwiftUI.
+---
+
+Each example is a standalone greeting app with three locator tests and two
+agent tests. Enter a name, press Greet, and check the result. The projects
+install published e2e packages from npm and work outside this repository.
+
+<CardGroup cols={2}>
+  <Card title="Vite" icon="/images/examples/vite.svg" href="https://github.com/tester-army/e2e/tree/main/examples/with-vite" cta="View example" arrow>
+    React with Vite. Run locator and agent tests in Chromium.
+  </Card>
+  <Card title="Next.js" icon="/images/examples/nextjs.svg" href="https://github.com/tester-army/e2e/tree/main/examples/with-next" cta="View example" arrow>
+    Next.js App Router. The runner starts the app and tests it in Chromium.
+  </Card>
+  <Card title="Expo" icon="/images/integrations/expo.svg" href="https://github.com/tester-army/e2e/tree/main/examples/with-expo" cta="View example" arrow>
+    React Native with Expo. Run the same tests on web, an iOS simulator, or an Android emulator.
+  </Card>
+  <Card title="SwiftUI" icon="/images/examples/swiftui.png" href="https://github.com/tester-army/e2e/tree/main/examples/with-swiftui" cta="View example" arrow>
+    A native iOS app with an Xcode project. Run tests on an iPhone simulator.
+  </Card>
+</CardGroup>
+
+Follow each project's README for installation, builds, and run commands.
+The config and tests live beside the app. The SwiftUI project keeps them
+in its `e2e/` folder.
+
+Locator tests need no model. Set `AI_GATEWAY_API_KEY` to run the agent
+tests; without it, those tests skip. See [Models](/models) for model setup
+and the [Quickstart](/quickstart) to add e2e to your own app.
