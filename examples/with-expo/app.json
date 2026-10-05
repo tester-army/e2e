@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "with-expo",
+    "slug": "with-expo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#111111",
+    "ios": {
+      "bundleIdentifier": "dev.e2e.examples.expo",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "dev.e2e.examples.expo",
+      "adaptiveIcon": {
+        "backgroundColor": "#111111",
+        "foregroundImage": "./assets/icon.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-font",
+      ["expo-build-properties", { "ios": { "enableSceneSupport": true } }]
+    ]
+  }
+}

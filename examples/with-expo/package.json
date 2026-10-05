@@ -1,0 +1,40 @@
+{
+  "name": "e2e-example-with-expo",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "web": "expo start --web --port 8081",
+    "build:web": "expo export --platform web",
+    "ios:release": "expo run:ios --configuration Release --no-bundler",
+    "android:release": "expo run:android --variant release --no-bundler",
+    "test:e2e:ios": "e2e run --target ios",
+    "test:e2e:android": "e2e run --target android",
+    "test:e2e:web": "e2e run --target web"
+  },
+  "dependencies": {
+    "@expo-google-fonts/dm-mono": "^0.4.2",
+    "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/stack-sans-notch": "^0.4.0",
+    "@expo/metro-runtime": "~57.0.16",
+    "expo": "~57.0.26",
+    "expo-build-properties": "~57.0.22",
+    "expo-font": "~57.0.4",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-web": "~0.21.0"
+  },
+  "devDependencies": {
+    "@e2e-dev/mobile": "^0.9.0",
+    "@e2e-dev/web": "^0.11.1",
+    "@types/node": "^26.6.4",
+    "@types/react": "~19.2.2",
+    "ai": "^7.0.0",
+    "e2e": "^0.16.0",
+    "playwright": "^1.63.0",
+    "typescript": "~6.0.3",
+    "zod": "^4.1.8"
+  }
+}
