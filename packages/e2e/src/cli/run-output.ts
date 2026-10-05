@@ -2,8 +2,8 @@
  * The `e2e run` process's stdout and stderr. User code runs in this process
  * too (the config's top-level code, test files while they are collected,
  * reporters) and may print a secret, so every write to either stream goes
- * through a `RunnerOutput`, redacted; only the list reporter writes to the
- * terminal past it.
+ * through a `RunnerOutput`, redacted, until the process exits; only the list
+ * reporter writes to the terminal past it.
  */
 
 import { RunnerOutput, type OutputStream } from '../run/process-output.ts';
@@ -16,13 +16,23 @@ import { processSecrets } from '../run/secrecy.ts';
  */
 const BYTE_ENCODINGS: ReadonlySet<BufferEncoding> = new Set(['hex', 'base64', 'base64url']);
 
-/** Takes over `process.stdout` and `process.stderr` until the returned `release`, which flushes what is held and gives the streams back. */
-export function claimRunnerOutput(): { output: RunnerOutput; release: () => void } {
+/** The process's claimed output, once claimed: the wrappers stay for the rest of the process. */
+let claimed: RunnerOutput | undefined;
+
+/**
+ * Takes over `process.stdout` and `process.stderr` for the rest of the
+ * process, once: a reporter the run stopped waiting for, or a timer the
+ * config or a test file set, can still print after the run. The caller ends
+ * the run's output with `end()`, which flushes what is held and stops
+ * showing output through the list reporter; later writes stay redacted, and
+ * their last unfinished piece prints at exit.
+ */
+export function claimRunnerOutput(): RunnerOutput {
+  if (claimed !== undefined) return claimed;
   const streams = { stdout: process.stdout, stderr: process.stderr } as const;
-  const originals = { stdout: streams.stdout.write, stderr: streams.stderr.write };
   const terminal = {
-    stdout: originals.stdout.bind(streams.stdout) as (text: string, callback?: () => void) => boolean,
-    stderr: originals.stderr.bind(streams.stderr) as (text: string, callback?: () => void) => boolean,
+    stdout: streams.stdout.write.bind(streams.stdout) as (text: string, callback?: () => void) => boolean,
+    stderr: streams.stderr.write.bind(streams.stderr) as (text: string, callback?: () => void) => boolean,
   };
   const output = new RunnerOutput(terminal, processSecrets);
   for (const name of ['stdout', 'stderr'] as const satisfies readonly OutputStream[]) {
@@ -32,12 +42,7 @@ export function claimRunnerOutput(): { output: RunnerOutput; release: () => void
       return output.write(name, bytes ? Buffer.from(chunk, encoding) : chunk, done);
     }) as typeof process.stdout.write;
   }
-  return {
-    output,
-    release: () => {
-      output.end();
-      streams.stdout.write = originals.stdout;
-      streams.stderr.write = originals.stderr;
-    },
-  };
+  process.once('exit', () => output.end());
+  claimed = output;
+  return output;
 }

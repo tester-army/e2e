@@ -1,8 +1,9 @@
 /**
  * `e2e run` with user code that prints a configured secret outside any test
  * body: the config's top-level code (in the runner and again in each
- * worker), a test file's top level while the runner collects it, and a custom
- * reporter. What each prints reaches the terminal redacted, as a test's
+ * worker), a test file's top level while the runner collects it, a custom
+ * reporter, and timers or exit hooks any of them leave to print after the
+ * run. What each prints reaches the terminal redacted, as a test's
  * output does. A config that prints a secret and then fails to load has no
  * secrets anyone knows, so what it printed is withheld, not passed on raw.
  */
@@ -23,6 +24,10 @@ console.log(\`config console.log: \${token}\`);
 console.error(\`config console.error: \${token}\`);
 process.stdout.write(\`config split: \${token.slice(0, 9)}\`);
 process.stdout.write(\`\${token.slice(9)}\\n\`);
+process.once('beforeExit', () => {
+  console.log(\`after the run: \${token}\`);
+  process.stdout.write(\`after the run, unfinished: \${token.slice(0, 9)}\`);
+});
 
 export default {
   targets: [{ name: 'headless', platform: 'test', engine: defineEngine({ name: 'noop', version: '1', spiVersion: 1 }) }],
@@ -36,6 +41,7 @@ export default {
     },
     onRunFinished() {
       console.error(\`reporter onRunFinished: \${token}\`);
+      setTimeout(() => console.error(\`reporter timer: \${token}\`), 50);
     },
   }],
 };
@@ -79,6 +85,7 @@ describe('e2e run redacts what user code prints outside a test', () => {
     expect(cli.status, cli.stdout + cli.stderr).toBe(0);
     const output = `${cli.stdout}\n${cli.stderr}`;
     expect(output).not.toContain(TOKEN);
+    expect(cli.stdout).toContain(`after the run, unfinished: ${TOKEN.slice(0, 9)}`);
     const lines = output.split('\n');
     for (const line of [
       'config console.log: <secret:apiToken>',
@@ -89,6 +96,8 @@ describe('e2e run redacts what user code prints outside a test', () => {
       'reporter onRunFinished: <secret:apiToken>',
       'reporter unfinished: <secret:apiToken>',
       'test body: <secret:apiToken>',
+      'reporter timer: <secret:apiToken>',
+      'after the run: <secret:apiToken>',
     ]) {
       expect(lines).toContain(line);
     }

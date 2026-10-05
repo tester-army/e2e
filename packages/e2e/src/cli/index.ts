@@ -604,7 +604,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
         command: Command,
       ) => {
         rejectForwardedFlags(command, files);
-        const { output, release } = claimRunnerOutput();
+        const output = claimRunnerOutput();
         try {
           await runToOutcome(telemetry, command, (signals) =>
             run({
@@ -632,7 +632,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             }),
           );
         } finally {
-          release();
+          output.end();
         }
       },
     );
