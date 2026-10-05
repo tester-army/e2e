@@ -16,7 +16,9 @@
     "packages/*/tests/fixtures/**",
     // Vendored conformance data, kept byte for byte.
     "packages/*/tests/conformance/*/**",
-    "packages/*/tests/tmp-projects/**"
+    "packages/*/tests/tmp-projects/**",
+    // Standalone user-facing projects with their own installs; nothing here builds them.
+    "examples/**"
   ],
   "rules": {
     // Sequential execution is the contract of a test runner, not a perf bug.
