@@ -284,7 +284,8 @@ describe('AttemptSession', () => {
     const dispatch = vi.fn(async (current) => current.timeoutMs as number);
     const remaining = await first.run(operation(200), 'read', dispatch);
     expect(vi.mocked(connectCdp).mock.calls[1]![1]).toBe(160);
-    expect(remaining).toBe(160);
+    // 160 ms left, less Playwright's timeout lead: half of a budget this short.
+    expect(remaining).toBe(80);
     await first.close(cleanup());
   });
 
