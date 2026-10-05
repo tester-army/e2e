@@ -92,7 +92,7 @@
     "@jridgewell/remapping": "2.3.5",
     "@modelcontextprotocol/server": "2.2.0",
     "@oxc-project/runtime": "0.152.0",
-    "@vitest/expect": "5.0.2",
+    "@vitest/expect": "5.0.3",
     "commander": "15.0.0",
     "get-tsconfig": "4.14.3",
     "oxc-parser": "0.152.0",
