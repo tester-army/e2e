@@ -196,10 +196,10 @@ A test that blocks its worker's event loop (`while (true) {}` in a fixture,
 `beforeEach`, the body, or `afterEach`) stops every timer in that worker, so
 the worker cannot time it out. A `beforeAll` or `afterAll` that blocks still
 hangs the run. When the worker has not responded `cleanupTimeout` (at least 5 s) after
-the test timeout, the runner kills it. The test is reported `timed-out` with
-`TEST_TIMEOUT`, without retries, artifacts, or the attempts before it. The
-rest of its file runs on a new worker; a serial group it belonged to is
-skipped. A worker started under a debugger (`--inspect`) is never killed
+the test timeout, the runner kills it. That attempt is reported `timed-out`
+with `TEST_TIMEOUT` and no artifacts, after the attempts before it, and is
+not retried. The rest of its file runs on a new worker. In a serial group,
+the members after it are skipped. A worker started under a debugger (`--inspect`) is never killed
 this way, so a breakpoint can stay paused. A programmatic run with an inline
 config or in-memory tests runs in the runner's own process and has no worker
 to kill: a blocked event loop hangs it.
