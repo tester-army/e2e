@@ -137,18 +137,16 @@ or `E2E_USER_ADMIN_PASSWORD` first, or defer to fill time with
 | `secrets` | `{}` | Named values the model never sees (API keys, tokens), same value rule. A separate namespace: a credential's password is `credentials.user(name).password` (named `<name>.password`), never `secrets.get()`, so a name may be both. |
 | `output` | `'.e2e'` | Results directory; `--output <dir>` for one run. Inside the project root, not the root, not a tests glob's directory, never the cache dir (`cache.dir` stays `.e2e/cache`). |
 | `artifacts` | none | `{ store }`: artifacts go to the host `ArtifactStore` (`{ put(artifact), putLink?(link) }`); `putLink` gets provider-hosted video links (never a passed `retain-on-failure` attempt's). Failure screenshots are always captured when the engine can. |
-| `video` | `'off'` | Attempts that record: `'off'`, `'on'`, `'retain-on-failure'`, `'on-first-retry'`, `'on-all-retries'`; `'retain-on-failure'` records all, keeps those that did not pass. Precedence: the test's `video`, `--video [mode]`, the target's (`{ engine, video }`), the config's. |
+| `trace` | `'retain-on-failure'` | Tests that keep a trace page under `<output>/traces/`: `'off'`, `'on'` (every test), `'retain-on-failure'` (failed, timed-out, flaky), `'on-first-retry'`, `'on-all-retries'`; precedence as `video`. Works on every engine. |
+| `video` | `'off'` | Attempts that record, same modes; `'retain-on-failure'` records all, keeps those that did not pass. Precedence: the test's `video`, `--video [mode]`, the target's (`{ engine, video }`), the config's. |
 | `projectId` | the package name | Report and cache identity. |
 
 - `tests` discovery enters only directories a glob can match; symlinks are
   not followed.
 - `video`: a config or flag mode skips targets whose engine cannot record
-  (one notice), a target or test mode requires it (`UNSUPPORTED_ARTIFACT`);
-  a retry mode with `retries: 0` prints a notice; it never invalidates the
-  replay cache.
-- `trace` is refused (`INVALID_CONFIG`; `COLLECTION_ERROR` on a test):
-  Playwright traces were removed. Read `.e2e/failures/<test>.md`; set
-  `video` for a recording.
+  (one notice), a target or test mode requires it (`UNSUPPORTED_ARTIFACT`).
+- `trace` and `video`: a retry mode with `retries: 0` prints a notice;
+  neither invalidates the replay cache.
 
 ## The app under test
 

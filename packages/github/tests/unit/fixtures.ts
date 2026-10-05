@@ -133,7 +133,7 @@ export function finished(document: Report, lastRun?: Report): FinishedRun {
     reportPath: '/work/app/.e2e/report.json',
     artifactsRoot: '/work/app/.e2e/artifacts',
     aiTracePath: undefined,
-    failurePages: new Map(),
+    traces: new Map(),
     ...(lastRun === undefined ? {} : { lastRun }),
   };
 }

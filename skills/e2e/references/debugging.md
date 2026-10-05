@@ -5,8 +5,8 @@ default.
 
 ## Read the failure
 
-1. Every failure in the `list` output ends with `❯ details
-   .e2e/failures/<test>.md`. Open that page: `Look at:` (the line it unwound
+1. Every failure in the `list` output ends with `❯ trace
+   .e2e/traces/<test>.md`. Open that trace page: `Look at:` (the line it unwound
    through), `Expected:` / `Observed:` (an `expect`), `Asked for:` and
    `Waited:` (a locator), whether every attempt failed alike (a bug, not a
    flake), then every step with what it did under it:
@@ -24,7 +24,8 @@ default.
      recording, and the entry file;
    - the agent's last turns, loop-guard notes included, and the
      accessibility tree at failure, one node per line.
-   Fix from what was there.
+   Fix from what was there. `trace` (default `retain-on-failure`) chooses
+   which tests keep a page; `--trace` keeps one for every test of a run.
 2. `.e2e/report.json` backs the pages; each step's `events` hold the same
    lines (`engine`, `poll`, `app`).
 3. To query the report:

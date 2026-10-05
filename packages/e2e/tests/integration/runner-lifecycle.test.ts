@@ -864,7 +864,7 @@ test('sleeps until interrupted', async () => {
       expect(outcome.report.run.summary).toMatchObject({ failed: 0, interrupted: 1 });
       expect(readFileSync(path.join(output, 'summary.md'), 'utf8')).toMatch(/^### ⏹️ e2e: 1 interrupted\n/u);
       expect(readFileSync(path.join(output, 'junit.xml'), 'utf8')).toContain('<skipped message="interrupted: ');
-      expect(existsSync(path.join(output, 'failures'))).toBe(false);
+      expect(existsSync(path.join(output, 'traces'))).toBe(false);
       project.cleanup();
     },
     120_000,

@@ -41,7 +41,7 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status or switch
 | `--pass-with-no-tests` | Exit 0, not `NO_TESTS`, when nothing matches. |
 | `--debug` | Phase timings and an agent step table on stderr; transcripts as artifacts. |
 | `--ai-trace` | Every model call, to `<output>/ai-trace.json`. |
-| `--video [mode]` | Which attempts record a video (WebM on browsers, MP4 on devices), over the config and every target: bare is `on`; `retain-on-failure` keeps only failed attempts; `on-first-retry` records first retries, `on-all-retries` every retry. A test's own `video` still wins; targets whose engine cannot record are skipped with a notice. Greedy: write `--video=<mode>` or put test files first. The failure recap names the video. |
+| `--trace [mode]`, `--video [mode]` | Which tests keep a trace page under `<output>/traces/`, or which attempts record a video (WebM on browsers, MP4 on devices), over the config and every target: bare is `on` (`--trace` then pages every test, passing ones too); `--trace off` writes none; `retain-on-failure` keeps only failures; `on-first-retry` keeps first retries, `on-all-retries` every retry. A test's own `trace` or `video` still wins; targets whose engine cannot record video are skipped with a notice. Both are greedy: write `--video=<mode>` or put test files first. The failure recap names the trace page and the video. |
 
 ```bash
 npx e2e run tests/signup.e2e.ts
@@ -85,7 +85,7 @@ its own tools.
 ## Output
 
 `<output>` (`.e2e` by default) holds `report.json`, `junit.xml`,
-`summary.md`, `failures/`, `ai-trace.json`, `sessions/`, and `artifacts/`
+`summary.md`, `traces/`, `ai-trace.json`, `sessions/`, and `artifacts/`
 (screenshots, videos, `--debug` transcripts, downloads).
 `artifacts/` is cleared once a run's tests start; a run stopping before
 leaves the last run's files, and a `--last-failed` rerun keeps the files
@@ -110,11 +110,12 @@ hosted service's video by URL.
   to `selected`; `discovered - selected` were left out.
 - `junit`: `junit.xml` for CI summaries; `--reporter list,junit` keeps the
   terminal output.
-- Every run that reaches its tests also writes one page per failed or flaky
-  test under `failures/` (an interrupted test gets none): every step with
-  what it did, the cache's decisions, what the app logged, the last model
-  turns, and the screen at failure. The `list` output names it under each
-  failure. Read it first.
+- Every run that reaches its tests also writes a trace page per failed,
+  timed-out, or flaky test under `traces/` (the `trace` mode, default
+  `retain-on-failure`; an interrupted test gets none): every step with what
+  it did, the cache's decisions, what the app logged, the last model turns,
+  and the screen at failure. The `list` output names it under each failure
+  (`❯ trace <path>`). Read it first.
 - `markdown` (`--reporter list,markdown`): `summary.md` with counts and
   spend, a block per failed test linked to its page, the flaky tests folded
   alike, and every test as one folded table (or an exploration's findings
@@ -193,7 +194,7 @@ jobs:
           path: |
             .e2e/report.json
             .e2e/junit.xml
-            .e2e/failures
+            .e2e/traces
           if-no-files-found: warn
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

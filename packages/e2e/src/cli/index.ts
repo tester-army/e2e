@@ -14,7 +14,7 @@ import { explore, STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/index.ts';
 import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { bounded } from '../report/format.ts';
 import type { BuiltinReporter, RecordingMode } from '../types.ts';
-import { isRecordingMode, RECORDING_MODES, TRACE_REMOVED } from '../internal/recording-modes.ts';
+import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES } from '../internal/recording-modes.ts';
 import { runsFromCheckout } from '../telemetry/checkout.ts';
 import { initCompletedEvent, runCompletedEvent, USAGE_ERROR_CODE } from '../telemetry/events.ts';
 import { Telemetry } from '../telemetry/telemetry.ts';
@@ -162,27 +162,22 @@ function parseReporters(value: string): Reporter[] {
 }
 
 /**
- * The parser of `--video [mode]`: a bare flag is `on`. An optional value is
- * greedy, so a test file after the flag would be read as the mode; one that
- * is not a mode is refused with the way to write it.
+ * The parser of `--trace [mode]` or `--video [mode]`: a bare flag is `on`.
+ * An optional value is greedy, so a test file after the flag would be read
+ * as the mode; one that is not a mode is refused with the way to write it.
  */
-function parseVideoMode(value: string): RecordingMode {
-  if (!isRecordingMode(value)) {
-    throw new InvalidArgumentError(
-      `expected a mode (${RECORDING_MODES.join(', ')}), got "${value}"; write --video=<mode>, or put test files before --video`,
-    );
-  }
-  return value;
-}
-
-/**
- * Refuses the removed `--trace [mode]`, kept as a hidden option so a script
- * that still passes it, bare or with a mode, fails with what replaced it.
- * Listens on `option:trace` rather than parsing the value, which a bare
- * flag never reaches.
- */
-function refuseRemovedTrace(this: Command): never {
-  this.error(`error: ${TRACE_REMOVED}`, { exitCode: 2 });
+function parseRecordingMode(flag: '--trace' | '--video'): (value: string) => RecordingMode {
+  return (value) => {
+    if (!isRecordingMode(value)) {
+      const legacy = flag === '--trace' ? legacyTraceSpelling(value) : undefined;
+      throw new InvalidArgumentError(
+        legacy === undefined
+          ? `expected a mode (${RECORDING_MODES.join(', ')}), got "${value}"; write ${flag}=<mode>, or put test files before ${flag}`
+          : `"${value}" is the old spelling of ${flag} ${legacy.mode}; the modes are ${RECORDING_MODES.join(', ')}`,
+      );
+    }
+    return value;
+  };
 }
 
 /**
@@ -200,7 +195,7 @@ function removedArtifactsFlag(value: string): never {
   );
 }
 
-/** The mode `--video [mode]` parsed to: `on` for the bare flag, undefined when it was not given. */
+/** The mode `--trace [mode]` or `--video [mode]` parsed to: `on` for the bare flag, undefined when it was not given. */
 function recordingOption(value: RecordingMode | true | undefined): RecordingMode | undefined {
   return value === true ? 'on' : value;
 }
@@ -554,9 +549,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .addOption(new Option('--artifacts <dir>').hideHelp().argParser(removedArtifactsFlag))
     .option('--debug', 'print phase timings and the agent step table to stderr')
     .option('--ai-trace', 'record every model call to <output>/ai-trace.json (unbox-ai)')
-    .addOption(new Option('--trace [mode]').hideHelp())
-    .on('option:trace', refuseRemovedTrace)
-    .option('--video [mode]', `which attempts record a video: ${RECORDING_MODES.join(', ')} (bare: on), over the config and every target`, parseVideoMode)
+    .option('--trace [mode]', `which attempts keep a trace page under <output>/traces/: ${RECORDING_MODES.join(', ')} (bare: on), over the config and every target`, parseRecordingMode('--trace'))
+    .option('--video [mode]', `which attempts record a video: ${RECORDING_MODES.join(', ')} (bare: on), over the config and every target`, parseRecordingMode('--video'))
     .addHelpText(
       'after',
       [
@@ -604,6 +598,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           strictCache?: boolean;
           debug?: boolean;
           aiTrace?: boolean;
+          trace?: RecordingMode | true;
           video?: RecordingMode | true;
         },
         command: Command,
@@ -629,6 +624,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
               strictCache: options.strictCache,
               debug: options.debug,
               aiTrace: options.aiTrace,
+              trace: recordingOption(options.trace),
               video: recordingOption(options.video),
               interruptSignal: signals.interruptSignal,
               forceSignal: signals.forceSignal,
@@ -672,9 +668,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .addOption(new Option('--artifacts <dir>').hideHelp().argParser(removedArtifactsFlag))
     .option('--debug', 'print phase timings and the agent step table to stderr')
     .option('--ai-trace', 'record every model call to <output>/ai-trace.json (unbox-ai)')
-    .addOption(new Option('--trace [mode]').hideHelp())
-    .on('option:trace', refuseRemovedTrace)
-    .option('--video [mode]', 'record a video of the exploration (bare: on), when the engine supports it; one attempt, so retry modes record none', parseVideoMode)
+    .option('--trace [mode]', 'keep a trace page of the exploration (bare: on); one attempt, so retry modes keep none', parseRecordingMode('--trace'))
+    .option('--video [mode]', 'record a video of the exploration (bare: on), when the engine supports it; one attempt, so retry modes record none', parseRecordingMode('--video'))
     .addHelpText(
       'after',
       [
@@ -708,6 +703,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           output?: string;
           debug?: boolean;
           aiTrace?: boolean;
+          trace?: RecordingMode | true;
           video?: RecordingMode | true;
         },
         command: Command,
@@ -726,6 +722,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             output: options.output,
             debug: options.debug,
             aiTrace: options.aiTrace,
+            trace: recordingOption(options.trace),
             video: recordingOption(options.video),
             interruptSignal: signals.interruptSignal,
             forceSignal: signals.forceSignal,

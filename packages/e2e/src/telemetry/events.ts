@@ -236,6 +236,7 @@ function configFeatures(config: ResolvedConfig): Record<string, JsonValue> {
     config_reporters: unique(config.reporters),
     config_custom_reporters: config.customReporters.length,
     config_artifact_store: config.artifactStore !== undefined,
+    config_trace_modes: unique(config.targets.map((target) => target.trace.mode)),
     config_video_modes: unique(config.targets.map((target) => target.video.mode)),
     config_app_commands: config.targets.filter((target) => target.app.command !== undefined).length,
     config_environments: unique(config.targets.map((target) => target.app.environment)),

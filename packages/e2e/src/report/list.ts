@@ -205,7 +205,7 @@ function serialMemberDetails(group: SerialGroupRecord, testId: string): ResultDe
 
 /** One failed pair, held for the `Failed Tests` section, or a skipped one for `Skipped After Failure`. */
 interface Failure {
-  /** The report result id, which keys the result's failure page. */
+  /** The report result id, which keys the result's trace page. */
   readonly id: string;
   readonly group: FileGroup;
   readonly title: string;
@@ -1007,7 +1007,7 @@ export class ListReporter implements Reporter {
 
   /**
    * What the runner saw when the failure landed: the location, the nodes
-   * closest to what a failed locator asked for, and where the failure page
+   * closest to what a failed locator asked for, and where the trace page
    * is (else the screen text). The message says what was asked; these lines
    * say what was there.
    */
@@ -1021,7 +1021,7 @@ export class ListReporter implements Reporter {
     if (appLog !== undefined) row('app', `${appLog} logged`);
     // The page tells the screen too, and every step before it.
     if (page !== undefined) {
-      row('details', bounded(page));
+      row('trace', bounded(page));
     } else if (screenPath !== undefined) {
       const target = this.artifactsRoot === undefined ? screenPath : path.join(this.artifactsRoot, screenPath);
       row('screen', this.displayPath(target));
@@ -1090,7 +1090,7 @@ export class ListReporter implements Reporter {
       if (!group.printed && group.lines.length > 0) this.printGroup(group);
     }
     this.printExplore();
-    const pages = event.failurePages ?? {};
+    const pages = event.traces ?? {};
     this.printFailures('Failed Tests', this.failures, pages);
     this.printFailures('Skipped After Failure', this.skippedFailures, pages);
     this.printErrors();
@@ -1103,7 +1103,7 @@ export class ListReporter implements Reporter {
     const paged = Object.values(pages);
     if (paged.length > 0) {
       const dir = path.posix.dirname(paged[0]!);
-      this.print(padTitle(pc, 'Failures') + `${bounded(dir)}/ ${pc.dim(`(${paged.length} ${paged.length === 1 ? 'page' : 'pages'}: steps, cache, app log, screen)`)}`);
+      this.print(padTitle(pc, 'Traces') + `${bounded(dir)}/ ${pc.dim(`(${paged.length} ${paged.length === 1 ? 'page' : 'pages'}: steps, cache, app log, screen)`)}`);
     }
     if (event.aiTracePath !== undefined) {
       const shown = this.displayPath(event.aiTracePath);

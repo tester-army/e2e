@@ -78,12 +78,12 @@ A setup test cannot skip from its body (`INVALID_ARGUMENT`).
 | `session` | unset | Restore state saved by a setup test. |
 | `agentContext` | unset | Extra context for `agent.*` calls in this test or group. |
 | `agent` | the run's agent | A configured name (`agents.<name>`) or a list run once per agent; `--agent` narrows the list, a setup test takes one name. Innermost wins; `agent.act(..., { agent })` names another for one call. |
-| `video` | the target's | `'off'`, `'on'`, `'retain-on-failure'`, `'on-first-retry'`, `'on-all-retries'`. Innermost wins over `--video`, the target, and the config; recording where the engine cannot is `UNSUPPORTED_ARTIFACT` for the run. |
-| `serial` | `false` | Groups only. Members share app state, run in order on one worker, retry as a whole, and take the group's `video`. |
+| `trace`, `video` | the target's | `'off'`, `'on'`, `'retain-on-failure'`, `'on-first-retry'`, `'on-all-retries'`: whether the test keeps a trace page, which attempts record video. Innermost wins over `--trace` / `--video`, the target, and the config; video where the engine cannot record is `UNSUPPORTED_ARTIFACT` for the run. |
+| `serial` | `false` | Groups only. Members share app state, run in order on one worker, retry as a whole, and take the group's `trace` and `video`. |
 
-Serial members cannot set `retries`, `video`, `session`, `platforms`,
-`requires`, `skip`, or `only`, nor can a nested `describe` set `video`;
-nesting serial groups is a `COLLECTION_ERROR`.
+Serial members cannot set `retries`, `trace`, `video`, `session`,
+`platforms`, `requires`, `skip`, or `only`, nor can a nested `describe` set
+`trace` or `video`; nesting serial groups is a `COLLECTION_ERROR`.
 
 Hooks nest: outer `beforeEach` first, inner `afterEach` first. `beforeAll`
 reruns per retry and per serial group (each a fresh module realm) on the

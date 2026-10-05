@@ -123,7 +123,7 @@ lockfile, then the invoking package manager, then npm.
 | `package.json` | Created as a private ESM package when missing; otherwise only missing dependencies and scripts are added. Sibling packages (`@e2e-dev/web`, `@e2e-dev/mobile`) get the caret range of the version released with the CLI, or that exact version when the CLI is a prerelease. A `test:e2e` script runs `e2e run` unless one exists |
 | `e2e.config.ts` | One target for the selected engine, with the app in its `app`. Playwright reads `APP_URL` (default `http://localhost:3000`) into `app.url` and shows `app.command` in a comment. Mobile sets `app: { bundleId: 'Settings' }` on iOS and `com.android.settings` on Android. With a gateway, `agents.default` is `{ model, system }` |
 | `tests/example.e2e.ts` | An app-open test that passes against any page, plus a commented agent test. Device setup gets a Settings check instead |
-| `.gitignore` | Appends `node_modules/`, `.e2e/artifacts/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/junit.xml`, `.e2e/summary.md`, `.e2e/failures/`, `.e2e/logs/`, and `.e2e/videos/`. Committing the cache is opt-in; see [commit the replay cache](/cache#commit-the-replay-cache) |
+| `.gitignore` | Appends `node_modules/`, `.e2e/artifacts/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/junit.xml`, `.e2e/summary.md`, `.e2e/traces/`, `.e2e/logs/`, and `.e2e/videos/`. Committing the cache is opt-in; see [commit the replay cache](/cache#commit-the-replay-cache) |
 | `.agents/skills/e2e/`, `.claude/skills/e2e/` | `SKILL.md` and one `references/<topic>.md` per `e2e guide` topic. With both chosen, the Claude Code directory is a relative symlink (`../../.agents/skills/e2e`) to the copy |
 | `.mcp.json`, `.cursor/mcp.json` | Registers `e2e mcp` without changing other servers |
 
@@ -384,17 +384,14 @@ or every test was filtered out.
 | `--pass-with-no-tests` | boolean | `false` | Exit 0 instead of `NO_TESTS` when nothing is selected. |
 | `--debug` | boolean | `false` | Phase timings and an agent step table on stderr after the run. |
 | `--ai-trace` | boolean | `false` | Records every model call to `<output>/ai-trace.json`, an AI SDK devtools database. Open it with [unbox-ai](https://github.com/tester-army/unbox-ai). |
-| `--video [mode]` | `off`, `on`, `retain-on-failure`, `on-first-retry`, or `on-all-retries` | config | Which attempts record a video (WebM on a browser engine, MP4 on a device engine), over the config's and every target's `video`; a test's own `video` still wins. A bare `--video` is `on`. It applies to the targets whose engine can record; the run names the others in one notice. The value is optional and greedy, so `--video tests/a.e2e.ts` reads the file as a mode and fails: write `--video=<mode>`, or put test files before `--video`. See [video](/reference/config#video). |
+| `--trace [mode]` | `off`, `on`, `retain-on-failure`, `on-first-retry`, or `on-all-retries` | config | Which tests keep a trace page under `<output>/traces/`, over the config's and every target's `trace`; a test's own `trace` still wins. A bare `--trace` is `on`, a page for every test; `--trace off` writes none. The value is optional and greedy, so `--trace tests/a.e2e.ts` reads the file as a mode and fails: write `--trace=<mode>`, or put test files before `--trace`. See [trace](/reference/config#trace). |
+| `--video [mode]` | a recording mode, as `--trace` | config | Which attempts record a video (WebM on a browser engine, MP4 on a device engine), over the config's and every target's `video`; a test's own `video` still wins. A bare `--video` is `on`. It applies to the targets whose engine can record; the run names the others in one notice. Greedy like `--trace`: write `--video=<mode>`, or put test files before `--video`. See [video](/reference/config#video). |
 
 Out-of-range `--retries` and `--workers` fail with `INVALID_CONFIG` before
 anything starts, the same as the config value would. `--target`, `--tag`,
 `--exclude-tag`, and `--agent` take each name once; an empty value (`--tag ''`,
 or `--tag "$TAGS"` with the variable unset) is a usage error, exit 2, never a
 wider selection.
-
-The removed `--trace` flag, on `run` and `explore`, fails with a message naming what
-replaced Playwright traces: a failed test's page under `<output>/failures/`,
-or `--video` for a recording.
 
 Filters only narrow, and each applies after the one before: positionals, then
 `.only`, `--tag`, `--exclude-tag`, `--grep`, `--grep-invert`, `--last-failed`,
@@ -493,12 +490,12 @@ bunx e2e run --reporter list,junit
 | `list` | Terminal progress, failures with code frames, and a run summary. On a TTY, live progress includes the current agent step, model turns, tool calls, and reasoning excerpts. Untrusted fields are capped at 8 KiB and stripped of control characters. |
 | `json` | The report document to stdout and nothing else there, so `e2e run --reporter json \| jq` works. Same document as `<output>/report.json`, described by `schema/report-v1.schema.json` in the package. The shape changes only with the `schemaVersion` field (`report-1` today). Cannot be combined with `list`. |
 | `junit` | `junit.xml` beside the report. One `<testsuite>` per file, one `<testcase>` per test-target pair named `title > path [target]`. A test-class error is a `<failure>`, any other an `<error>`, a skip a `<skipped>` with its reason. An interrupted test reached no verdict, so it is a `<skipped>` whose message starts `interrupted:`. Run-level errors form a `run` suite. |
-| `markdown` | `summary.md` beside the report with counts, cost, errors, and failure details, each linked to its failure page. Exploration runs show findings. [`@e2e-dev/github`](/github) uses this summary for pull request comments. |
+| `markdown` | `summary.md` beside the report with counts, cost, errors, and failure details, each linked to its trace page. Exploration runs show findings. [`@e2e-dev/github`](/github) uses this summary for pull request comments. |
 
 Every run that gets to its tests writes `report.json` under the [output directory](/reference/config#output)
-(`.e2e` by default) whatever the reporters are, a page per failed or flaky
-test under `failures/` (see [the failure pages](/debugging#the-failure-pages);
-an interrupted test gets none), and the reporters' files beside it. A run that stops before (a config or collection error,
+(`.e2e` by default) whatever the reporters are, the trace pages its
+[`trace`](/reference/config#trace) mode keeps under `traces/` (an interrupted
+test gets none), and the reporters' files beside it. A run that stops before (a config or collection error,
 `NO_TESTS`, `NO_LAST_RUN`, `UNSUPPORTED_ARTIFACT`, an app command that
 fails to start, an interrupt) writes none of them and leaves the previous
 run's files in place; its errors are on the terminal and in the exit code. A `junit.xml` or `summary.md` that could not be written is a
@@ -569,6 +566,7 @@ assessment. The default goal is `Explore the app and find bugs`. See
 | `--output <dir>` | string | config, else `.e2e` | As for `run`; a finding's evidence screenshot is one of the attempt's artifacts under `<output>/artifacts`. |
 | `--debug` | boolean | `false` | As for `run`: phase timings and the agent step table. |
 | `--ai-trace` | boolean | `false` | As for `run`. |
+| `--trace [mode]` | a recording mode | config | As for `run`: a trace page of the exploration. A bare `--trace` is `on`; `retain-on-failure` keeps it only when the exploration did not pass. The exploration is one attempt, so a retry mode keeps none, and the plan-time notice says to pass `--trace on`. Put the goal before `--trace`, or write `--trace=<mode>`. |
 | `--video [mode]` | a recording mode | config | As for `run`: one video of the whole exploration (WebM on a browser engine, MP4 on a device engine). A bare `--video` is `on`; `retain-on-failure` keeps it only when the exploration did not pass. The exploration is one attempt, so a retry mode records nothing. Put the goal before `--video`, or write `--video=<mode>`. |
 
 The run has one result, under the virtual file `explore`, titled by the goal.

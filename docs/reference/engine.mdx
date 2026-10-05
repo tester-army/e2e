@@ -520,7 +520,7 @@ export interface EngineAttemptContext {
    * Reports something the app did on its own while the attempt ran: a
    * console error, an uncaught exception, a request that failed. The harness
    * redacts the text, files it under the step that started last (an entry
-   * before the first step waits for it), and shows it on the failure page.
+   * before the first step waits for it), and shows it on the trace page.
    * Call it from the moment
    * `startAttempt` begins until `endAttempt`; entries past a per-attempt cap
    * are dropped.

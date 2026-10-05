@@ -4,7 +4,7 @@ description: Read the report, open the evidence, watch the browser, and see what
 icon: "magnifying-glass"
 ---
 
-Start with the failure in the terminal, then open the failure page it names.
+Start with the failure in the terminal, then open the trace page it names.
 Every run also writes `.e2e/report.json`, with links to the screenshots,
 downloads, and recordings captured by the selected engine.
 
@@ -12,7 +12,7 @@ downloads, and recordings captured by the selected engine.
 
 The `list` reporter's `Failed Tests` section shows the error, the failing
 line, nearby matches for a failed locator, how many errors the app logged, and
-the failure page:
+the trace page:
 
 ```text
  FAIL  |web| tests/todos.e2e.ts > shows the remaining count
@@ -20,7 +20,7 @@ LOCATOR_NOT_FOUND: locator did not become visible: getByRole("heading", name: "T
  ❯ tests/todos.e2e.ts:31:3
  ❯ at http://127.0.0.1:4271/nope
  ❯ app 2 errors, 2 warnings logged
- ❯ details .e2e/failures/todos-shows-the-remaining-count-796fac5f.md
+ ❯ trace .e2e/traces/todos-shows-the-remaining-count-796fac5f.md
 ```
 
 The exit code identifies the failure type:
@@ -33,11 +33,13 @@ The exit code identifies the failure type:
 | 4 | An internal runner error | Report it |
 | 130 | The run was interrupted | |
 
-## The failure pages
+## Traces
 
-Every run that reaches its tests writes a page for each failed or flaky test
-under `.e2e/failures/` (`<output>/failures/` when the output is moved), and
-removes the previous run's pages. Each step lists what it did: the node an
+Every run that reaches its tests writes a trace page for each failed, timed
+out, or flaky test under `.e2e/traces/` (`<output>/traces/` when the output
+is moved), and removes the previous run's pages. The
+[`trace`](/reference/config#trace) mode chooses which tests keep one; the
+default is `retain-on-failure`. Each step lists what it did: the node an
 action landed on, the values an assertion read while it waited, the replay
 cache's decision, and what the app logged meanwhile (console errors and
 warnings, uncaught exceptions, failed requests, 4xx and 5xx responses). Then
@@ -88,6 +90,10 @@ whose readings changed (`"2 remaining" x3 -> at 410ms "1 remaining"`) raced
 the app. The runner spends at most 5 s capturing the screen and screenshot
 once per failed attempt; an app that does not answer in time gets no screen
 section. CI uploads the pages with the report; see [CI](/ci).
+
+`--trace` keeps a page for every test of one run, passing ones included
+(heading `✓`), and `--trace off` writes none. A test's own `trace` option
+wins over both.
 
 ## The report
 

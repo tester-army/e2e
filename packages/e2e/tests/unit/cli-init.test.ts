@@ -503,7 +503,7 @@ describe('e2e init', () => {
     await init(dir, { yes: true });
     expect(read('e2e.config.ts')).toBe('// custom config\n');
     expect(read('tests/example.e2e.ts')).toBe('// custom test\n');
-    expect(read('.gitignore')).toBe(`${older}.e2e/ai-trace.json\n.e2e/junit.xml\n.e2e/summary.md\n.e2e/failures/\n.e2e/logs/\n.e2e/videos/\n`);
+    expect(read('.gitignore')).toBe(`${older}.e2e/ai-trace.json\n.e2e/junit.xml\n.e2e/summary.md\n.e2e/traces/\n.e2e/logs/\n.e2e/videos/\n`);
     expect(output()).not.toContain('commit-the-replay-cache');
   });
 

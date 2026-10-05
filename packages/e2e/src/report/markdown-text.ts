@@ -1,6 +1,6 @@
 /**
  * Text on its way into markdown: escaped, clipped, one line. Shared by the
- * run page (`markdown.ts`) and the per-failure pages (`failure-page.ts`),
+ * run page (`markdown.ts`) and the trace pages (`failure-text.ts`),
  * so both treat what a test wrote the same way.
  */
 

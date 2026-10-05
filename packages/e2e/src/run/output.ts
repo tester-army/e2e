@@ -11,8 +11,8 @@ export interface OutputLayout {
   readonly report: string;
   /** The `--ai-trace` recording, `ai-trace.json`. */
   readonly aiTrace: string;
-  /** One markdown page per failed or flaky test, `failures/`; a run empties it when it writes the report. */
-  readonly failures: string;
+  /** One markdown page per test that kept a trace, `traces/`; a run empties it when it writes the report. */
+  readonly traces: string;
   /** The artifact tree the report's paths are relative to; a run clears it when it starts. */
   readonly artifacts: string;
   /** The per-run encrypted session stores. */
@@ -26,7 +26,7 @@ export function outputLayout(output: string): OutputLayout {
   return {
     report: path.join(output, 'report.json'),
     aiTrace: path.join(output, 'ai-trace.json'),
-    failures: path.join(output, 'failures'),
+    traces: path.join(output, 'traces'),
     artifacts: path.join(output, 'artifacts'),
     sessions: path.join(output, 'sessions'),
     videos: (sessionId) => path.join(output, 'videos', sessionId),

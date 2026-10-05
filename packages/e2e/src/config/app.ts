@@ -92,13 +92,13 @@ const TARGET_APP_KEYS: readonly string[] = Object.keys({
 } satisfies Record<keyof TargetApp, true>);
 
 /** Keys a target itself takes; anything else is refused, naming where it belongs. */
-export const TARGET_KEYS: ReadonlySet<string> = new Set(['name', 'platform', 'engine', 'app', 'video']);
+export const TARGET_KEYS: ReadonlySet<string> = new Set(['name', 'platform', 'engine', 'app', 'trace', 'video']);
 
 /** Why a key is not a target's, with the nearest one when it reads like a typo. */
 export function unknownTargetKey(where: string, key: string): ConfigurationError {
   return new ConfigurationError(
     'INVALID_CONFIG',
-    `${where} has unknown key "${key}"; a target is { name?, platform?, engine?, app?, video? }${didYouMean(key, [...TARGET_KEYS])}`,
+    `${where} has unknown key "${key}"; a target is { name?, platform?, engine?, app?, trace?, video? }${didYouMean(key, [...TARGET_KEYS])}`,
   );
 }
 

@@ -30,14 +30,14 @@ import { timestamp, uuidv7 } from '../internal/ids.ts';
 import type { ExploreProgress } from '../explore/progress.ts';
 import { buildReport, type Report1Document, type ReportExplore, type TargetProvenance } from '../report/build.ts';
 import { agentStepTable } from '../report/debug-steps.ts';
-import { writeFailurePages, type FailurePages } from '../report/failure-pages.ts';
+import { writeTracePages, type TracePages } from '../report/traces.ts';
 import { STATELESS_REPORTERS } from '../report/builtin.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport } from '../report/write.ts';
 import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCode, type RunStatus, type RunEventFact, type SetupStep } from './events.ts';
 import { allocateAppPorts } from './app-ports.ts';
 import { inProcessSpawner } from './in-process.ts';
-import { someSkippedAfterFailure, type ResultRecord, type RunError, type SerialGroupRecord } from './records.ts';
+import { someSkippedAfterFailure, tracedResultIds, type ResultRecord, type RunError, type SerialGroupRecord } from './records.ts';
 import { runUnits } from './scheduler.ts';
 import { buildWorkPlans, plannedSlots, type TargetWorkPlan } from './units.ts';
 import { SessionStore } from './sessions.ts';
@@ -120,9 +120,14 @@ export interface RunOptions {
   /** Records every model call to `<output>/ai-trace.json` (`--ai-trace`). */
   aiTrace?: boolean | undefined;
   /**
-   * Which attempts record a video (`--video [mode]`), over the config's and
-   * every target's `video`; a test's own `video` still wins. Applies to the
-   * targets whose engine can record video; the run names the others in a notice.
+   * Which attempts keep a trace (`--trace [mode]`), over the config's and
+   * every target's `trace`; a test's own `trace` still wins.
+   */
+  trace?: RecordingMode | undefined;
+  /**
+   * Which attempts record a video (`--video [mode]`), on the same terms as
+   * `trace`. Applies to the targets whose engine can record video; the run
+   * names the others in a notice.
    */
   video?: RecordingMode | undefined;
   /**
@@ -328,6 +333,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   if (options.noCache === true) cli.cache = 'off';
   if (options.strictCache === true) cli.cacheStrict = true;
   if (options.output !== undefined) cli.output = options.output;
+  if (options.trace !== undefined) cli.trace = options.trace;
   if (options.video !== undefined) cli.video = options.video;
   if (options.agent !== undefined) cli.agents = typeof options.agent === 'string' ? [options.agent] : options.agent;
 
@@ -520,21 +526,21 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   };
 
   /**
-   * Writes the failure pages beside the report. Like `junit.xml` and
+   * Writes the trace pages beside the report. Like `junit.xml` and
    * `summary.md`, they read the report and add to it nothing it lacks, so a
    * page that could not be written is a line on stderr, never a run error
    * that would disagree with the report already on disk.
    */
-  const writeFailures = async (config: ResolvedConfig, document: Report1Document): Promise<FailurePages> => {
+  const writeTraces = async (config: ResolvedConfig, document: Report1Document): Promise<TracePages> => {
     try {
-      return await writeFailurePages(document, {
-        dir: outputLayout(config.output).failures,
+      return await writeTracePages(document, tracedResultIds(results, serialGroups), {
+        dir: outputLayout(config.output).traces,
         projectRoot: config.projectRoot,
         artifactsRoot: outputLayout(config.output).artifacts,
         cacheDir: config.cache.store === undefined ? config.cache.dir : undefined,
       });
     } catch (cause) {
-      process.stderr.write(`e2e: the failure pages could not be written: ${errorMessage(cause)}\n`);
+      process.stderr.write(`e2e: the trace pages could not be written: ${errorMessage(cause)}\n`);
       return new Map();
     }
   };
@@ -555,7 +561,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     const document = buildRunReport(currentExitCode());
     const recorded = runErrors.length;
     const reportPath = written === undefined ? undefined : await writeCanonicalReport(written, document);
-    const failurePages = written === undefined ? new Map<string, string>() : await writeFailures(written, document);
+    const traces = written === undefined ? new Map<string, string>() : await writeTraces(written, document);
     const exitCode = currentExitCode();
     const report = runErrors.length === recorded ? document : buildRunReport(exitCode);
     // Read back from the report rather than recomputed: the report derives
@@ -569,7 +575,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       exitCode,
       ...(reportPath === undefined ? {} : { reportPath }),
       ...(aiTracePath === undefined ? {} : { aiTracePath }),
-      ...(failurePages.size === 0 ? {} : { failurePages: Object.fromEntries(failurePages) }),
+      ...(traces.size === 0 ? {} : { traces: Object.fromEntries(traces) }),
     });
     // The list reporter has printed its summary and stopped its window; a
     // line another reporter left unfinished on `run-finished` prints too.
@@ -592,7 +598,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         reportPath,
         artifactsRoot: outputLayout(loaded.config?.output ?? path.resolve(cwd, options.output ?? '.e2e')).artifacts,
         aiTracePath,
-        failurePages,
+        traces,
         ...(lastRun === undefined ? {} : { lastRun }),
       },
       options.reporterTimeout ?? REPORTER_TIMEOUT_MS,

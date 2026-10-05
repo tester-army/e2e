@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { testCaseBrand } from '../internal/brands.ts';
 import { describeValue } from '../config/validate.ts';
-import { isRecordingMode, RECORDING_MODES, TRACE_REPLACEMENT } from '../internal/recording-modes.ts';
+import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES } from '../internal/recording-modes.ts';
 import { CollectionError } from '../internal/errors.ts';
 import { validateTitle } from '../internal/ids.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
@@ -285,6 +285,7 @@ const TEST_OPTION_KEYS: readonly string[] = Object.keys({
   session: true,
   agentContext: true,
   agent: true,
+  trace: true,
   video: true,
 } satisfies Record<keyof TestOptions, true>);
 
@@ -297,6 +298,7 @@ const SETUP_OPTION_KEYS: readonly string[] = Object.keys({
   requires: true,
   agentContext: true,
   agent: true,
+  trace: true,
   video: true,
 } satisfies Record<Exclude<keyof SetupOptions, 'sessions'>, true>);
 
@@ -311,12 +313,10 @@ const DESCRIBE_OPTION_KEYS: readonly string[] = Object.keys({
   session: true,
   agentContext: true,
   agent: true,
+  trace: true,
   video: true,
   serial: true,
 } satisfies Record<keyof DescribeOptions, true>);
-
-/** Options `test()`, `test.setup()`, and `test.describe()` used to take, each mapped to what replaces it. */
-const REMOVED_OPTION_KEYS: ReadonlyMap<string, string> = new Map([['trace', TRACE_REPLACEMENT]]);
 
 /**
  * The checks tests and groups share: only the option `keys` the call takes,
@@ -324,10 +324,6 @@ const REMOVED_OPTION_KEYS: ReadonlyMap<string, string> = new Map([['trace', TRAC
  * and each known option's value.
  */
 function validateCommonOptions(options: TestOptions | DescribeOptions, label: string, keys: readonly string[]): void {
-  for (const key of Object.getOwnPropertyNames(options)) {
-    const removed = REMOVED_OPTION_KEYS.get(key);
-    if (removed !== undefined) throw new CollectionError(`${label}: ${key} was removed: ${removed}`);
-  }
   const unknown = unknownKeyMessage(label, options, keys);
   if (unknown !== undefined) throw new CollectionError(unknown);
   if (options.timeout !== undefined) {
@@ -342,8 +338,16 @@ function validateCommonOptions(options: TestOptions | DescribeOptions, label: st
   }
   if (options.agent !== undefined) validateAgentOption(options.agent, label);
   if (options.tags !== undefined) validateTagsOption(options.tags, label);
-  if (options.video !== undefined && !isRecordingMode(options.video)) {
-    throw new CollectionError(`${label}: video must be one of ${RECORDING_MODES.join(', ')}, got ${describeValue(options.video)}`);
+  for (const kind of ['trace', 'video'] as const) {
+    const mode = options[kind];
+    if (mode !== undefined && !isRecordingMode(mode)) {
+      const legacy = kind === 'trace' ? legacyTraceSpelling(mode) : undefined;
+      throw new CollectionError(
+        legacy === undefined
+          ? `${label}: ${kind} must be one of ${RECORDING_MODES.join(', ')}, got ${describeValue(mode)}`
+          : `${label}: trace ${legacy.was} is the old spelling of trace: '${legacy.mode}'; the modes are ${RECORDING_MODES.join(', ')}`,
+      );
+    }
   }
 }
 
@@ -411,6 +415,7 @@ function validateTestOptions(options: TestOptions, group: GroupNode | undefined,
   if (insideSerial(group)) {
     const forbidden: (keyof TestOptions)[] = [
       'retries',
+      'trace',
       'video',
       'session',
       'platforms',
@@ -434,8 +439,10 @@ function validateDescribeOptions(options: DescribeOptions, parent: GroupNode | u
     throw new CollectionError('nested serial groups are collection errors');
   }
   // The serial group records as one unit, so a describe inside it cannot choose its own recordings.
-  if (options.video !== undefined && insideSerial(parent)) {
-    throw new CollectionError('describe option "video" cannot be set inside a serial group; set it on the serial group or a group around it');
+  for (const kind of ['trace', 'video'] as const) {
+    if (options[kind] !== undefined && insideSerial(parent)) {
+      throw new CollectionError(`describe option "${kind}" cannot be set inside a serial group; set it on the serial group or a group around it`);
+    }
   }
 }
 

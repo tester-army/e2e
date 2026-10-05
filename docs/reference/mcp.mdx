@@ -163,8 +163,8 @@ name fails with `UNKNOWN_TOOL` and the list of names.
 
 A session records video only between `start_recording` and
 `stop_recording`, as many times as needed; the configured
-[`video`](/reference/config#video) mode applies to runs, not sessions. Each
-recording is saved to
+[`video`](/reference/config#video) mode applies to runs, not sessions, and a
+session writes no [trace](/reference/config#trace). Each recording is saved to
 `<output>/videos/<session>/<n>[-<name>].webm` (`.mp4` on mobile, and
 [`output`](/reference/config#output) is `.e2e` by default), where `n`
 counts the session's recordings. A web recording that spans a restart or a

@@ -41,6 +41,7 @@ const target: ResolvedTarget = {
   engine: undefined,
   app: EMPTY_APP,
   declaredApp: EMPTY_DECLARED,
+  trace: { mode: 'off', source: 'default' },
   video: { mode: 'off', source: 'default' },
 };
 
@@ -82,6 +83,7 @@ const defaultOptions: ResolvedTestOptions = {
   agentContext: undefined,
   skipReason: undefined,
   serial: false,
+  trace: undefined,
   video: undefined,
 };
 

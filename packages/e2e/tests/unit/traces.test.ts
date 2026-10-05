@@ -1,6 +1,6 @@
 /**
- * The failure pages a run writes under `<output>/failures/`: one per failed or
- * flaky result, named so a reader can find it, the directory cleared of an
+ * The trace pages a run writes under `<output>/traces/`: one per result that
+ * kept a trace, named so a reader can find it, the directory cleared of an
  * earlier run's pages, and each step told with what it did: the cache's
  * decision, the actions, the polls, and what the app logged.
  */
@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { ReportResult } from '../../src/report/build.ts';
-import { writeFailurePages } from '../../src/report/failure-pages.ts';
+import { writeTracePages } from '../../src/report/traces.ts';
 import { reportAttempt, reportDocument, reportError, reportResult, reportStep } from '../helpers/report.ts';
 
 const dirs: string[] = [];
@@ -19,7 +19,7 @@ afterAll(() => {
 });
 
 function project(): string {
-  const root = mkdtempSync(path.join(tmpdir(), 'e2e-failure-pages-'));
+  const root = mkdtempSync(path.join(tmpdir(), 'e2e-traces-'));
   dirs.push(root);
   return root;
 }
@@ -63,28 +63,37 @@ const failing = reportResult({
 const passing = reportResult({ id: 'f'.repeat(12), titlePath: ['opens'], status: 'passed' });
 const interrupted = reportResult({ id: '9'.repeat(12), titlePath: ['cut short'], status: 'interrupted', attempts: [reportAttempt({ status: 'interrupted' })] });
 
-describe('writeFailurePages', () => {
-  it('writes one page per failed result under its readable name, clears an earlier run, and returns paths from the project root', async () => {
+describe('writeTracePages', () => {
+  it('writes one page per traced result under its readable name, clears an earlier run, and returns paths from the project root', async () => {
     const root = project();
-    const dir = path.join(root, '.e2e', 'failures');
+    const dir = path.join(root, '.e2e', 'traces');
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, 'stale.md'), 'old');
     const document = reportDocument({ status: 'failed', results: [passing, failing, interrupted] });
-    const pages = await writeFailurePages(document, { dir, projectRoot: root, artifactsRoot: path.join(root, '.e2e', 'artifacts'), cacheDir: path.join(root, '.e2e', 'cache') });
+    const pages = await writeTracePages(document, new Set([failing.id]), { dir, projectRoot: root, artifactsRoot: path.join(root, '.e2e', 'artifacts'), cacheDir: path.join(root, '.e2e', 'cache') });
     expect(readdirSync(dir)).toEqual(['checkout-applies-the-coupon-1a2b3c4d5e6f7a8b.md']);
-    expect([...pages]).toEqual([[failing.id, '.e2e/failures/checkout-applies-the-coupon-1a2b3c4d5e6f7a8b.md']]);
+    expect([...pages]).toEqual([[failing.id, '.e2e/traces/checkout-applies-the-coupon-1a2b3c4d5e6f7a8b.md']]);
     const text = readFileSync(path.join(dir, 'checkout-applies-the-coupon-1a2b3c4d5e6f7a8b.md'), 'utf8');
     expect(text).toContain(`(\`.e2e/cache/${ENTRY}.json\`)`);
     expect(text).toContain('## Also failed');
     expect(text).toContain('**ENGINE_FAILURE** in cleanup: the browser closed early');
+  });
+
+  it('tells a traced passing result as its steps, with no failure to look at', async () => {
+    const opened = reportResult({ id: 'f'.repeat(12), titlePath: ['opens'], status: 'passed', attempts: [reportAttempt({ status: 'passed', steps: [reportStep({ index: 0, api: 'app.open', label: '/' })] })] });
+    const [page] = await pagesOf(opened);
+    expect(page!.text).toMatch(/^# ✓ opens\n\n`[^\n]+` · passed · [^\n]+\n\n## Steps\n/);
+    expect(page!.text).toContain('1. ✓ `app.open`');
+    expect(page!.text).not.toContain('Look at:');
+    expect(page!.text).not.toContain('no error was recorded');
   });
 });
 
 /** Writes the pages of `results` into a fresh project and returns each page's name and text. */
 async function pagesOf(...results: ReportResult[]): Promise<{ name: string; text: string }[]> {
   const root = project();
-  const dir = path.join(root, '.e2e', 'failures');
-  await writeFailurePages(reportDocument({ status: 'failed', results }), { dir, projectRoot: root, artifactsRoot: path.join(root, '.e2e', 'artifacts'), cacheDir: path.join(root, '.e2e', 'cache') });
+  const dir = path.join(root, '.e2e', 'traces');
+  await writeTracePages(reportDocument({ status: 'failed', results }), new Set(results.map((result) => result.id)), { dir, projectRoot: root, artifactsRoot: path.join(root, '.e2e', 'artifacts'), cacheDir: path.join(root, '.e2e', 'cache') });
   return readdirSync(dir).map((name) => ({ name, text: readFileSync(path.join(dir, name), 'utf8') }));
 }
 
@@ -100,7 +109,7 @@ function stepLines(text: string, index: number): string[] {
   return under;
 }
 
-describe('failure page names', () => {
+describe('trace page names', () => {
   it('read as the file and the title, keep two results with the same words apart by their id, and bound a long file name', async () => {
     const named = (id: string, file: string) => reportResult({ id, file, titlePath: ['signs up', 'with Google'], status: 'failed', attempts: [reportAttempt({ status: 'failed' })] });
     const pages = await pagesOf(named('abcdef0123456789ff', 'tests/Sign Up.e2e.ts'), named('0123456789abcdefff', 'tests/sign-up.e2e.ts'), named('99999999aaaaaaaaff', `tests/${'very-long-name-'.repeat(20)}.e2e.ts`));
@@ -112,7 +121,7 @@ describe('failure page names', () => {
   });
 });
 
-describe('the steps on a failure page', () => {
+describe('the steps on a trace page', () => {
   it("tell the cache's decision first, then the actions, polls, and app log in the order they happened", async () => {
     const [page] = await pagesOf(failing);
     expect(stepLines(page!.text, 1)).toEqual([

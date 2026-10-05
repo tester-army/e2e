@@ -123,7 +123,7 @@ A secret an engine option holds (`web({ basicAuth: { password: secrets.get(name)
 is resolved on the host when each attempt starts and registered for redaction
 then, together with what the engine derives from it (for basic auth, the
 base64 `user:password` the `Authorization` header carries). It is not a fill
-and is protected as text only: reports, `screen.txt`, failure pages, what the
+and is protected as text only: reports, `screen.txt`, trace pages, what the
 model and an `e2e mcp` session read, and text downloads are redacted, while
 screenshots and the model's pixels are kept. A page that renders the
 password on screen is not masked in pixels.
@@ -251,6 +251,7 @@ project-relative path you configure.
 | Path | Contents | Redaction |
 | --- | --- | --- |
 | `report.json` | The run record. Errors, reasoning excerpts, and action summaries pass the redactor. | complete |
+| `traces/*.md` | Trace pages, written from the redacted report. | complete |
 | `artifacts/.../*.png` | Screenshots. Secure fields are masked before screenshots are returned or saved as artifacts. | complete |
 | `artifacts/.../*.webm`, `*.mp4` | Video, opt-in through `video` or `--video`; `retain-on-failure` keeps only the attempts that did not pass. | incomplete |
 | `artifacts/.../downloads/*` | Files the app served through a download. Text ones are rewritten whenever the session knows a secret value; the rest are kept as served. | complete or incomplete |

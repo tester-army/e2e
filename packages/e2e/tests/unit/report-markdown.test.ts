@@ -804,7 +804,7 @@ describe('markdownReporter', () => {
       reportPath: path.join(root, '.e2e', 'report.json'),
       artifactsRoot,
       aiTracePath: undefined,
-      failurePages: new Map(),
+      traces: new Map(),
     };
   }
 
@@ -825,11 +825,11 @@ describe('markdownReporter', () => {
     const root = mkdtempSync(path.join(tmpdir(), 'e2e-markdown-'));
     dirs.push(root);
     const document = page({ status: 'failed', results: [passing, failing] });
-    const pages = new Map([[failing.id, '.e2e/failures/members-an-email-invitation-1a2b3c4d.md']]);
-    const rows = await markdownReporter.onRunFinished!({ ...finished(document, root), failurePages: pages }, new AbortController().signal);
+    const pages = new Map([[failing.id, '.e2e/traces/members-an-email-invitation-1a2b3c4d.md']]);
+    const rows = await markdownReporter.onRunFinished!({ ...finished(document, root), traces: pages }, new AbortController().signal);
     expect(rows).toEqual([{ label: 'Markdown', text: path.join('.e2e', 'summary.md') }]);
     const summary = readFileSync(path.join(root, '.e2e', 'summary.md'), 'utf8');
-    expect(summary).toContain('Details: `.e2e/failures/members-an-email-invitation-1a2b3c4d.md`');
+    expect(summary).toContain('Trace: `.e2e/traces/members-an-email-invitation-1a2b3c4d.md`');
     expect(readdirSync(path.join(root, '.e2e'))).toEqual(['summary.md']);
   });
 

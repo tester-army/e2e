@@ -71,6 +71,8 @@ export interface ExploreOptions {
   readonly output?: string | undefined;
   readonly debug?: boolean | undefined;
   readonly aiTrace?: boolean | undefined;
+  /** Which attempts keep a trace page, `--trace [mode]`; the exploration is one attempt, so a retry mode keeps none. */
+  readonly trace?: RecordingMode | undefined;
   /** Which attempts record a video, `--video [mode]`; the exploration is one attempt, so a retry mode records nothing. */
   readonly video?: RecordingMode | undefined;
   readonly interruptSignal?: AbortSignal | undefined;
@@ -149,6 +151,7 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
     output: options.output,
     debug: options.debug,
     aiTrace: options.aiTrace,
+    trace: options.trace,
     video: options.video,
     interruptSignal: options.interruptSignal,
     forceSignal: options.forceSignal,

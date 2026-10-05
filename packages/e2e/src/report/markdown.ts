@@ -40,7 +40,7 @@ import {
 } from './failure-text.ts';
 import { cell, code, formatDuration, link, MAX_ID_CHARS, MAX_PATH_CHARS, MAX_TITLE_CHARS, plural } from './markdown-text.ts';
 import { outcome, type Outcome } from './outcome.ts';
-import { isExploreVerdict } from './failure-pages.ts';
+import { isExploreVerdict } from './traces.ts';
 import { toPosixPath, writeTextReport } from './write.ts';
 import type { Reporter, ReporterSummary } from '../types.ts';
 
@@ -61,11 +61,11 @@ export interface MarkdownReportOptions {
   /** A link to a source line, when the commit is known. */
   readonly sourceUrl?: ((file: string, line: number) => string) | undefined;
   /**
-   * Where each failed or flaky result's own page is, by result id, as the
-   * reader should see the path; the block links there. The `markdown`
-   * reporter writes the pages under `failures/` beside the report.
+   * Where each traced result's page is, by result id, as the reader should
+   * see the path; the block links there. The runner writes the pages under
+   * `traces/` beside the report.
    */
-  readonly failurePages?: ReadonlyMap<string, string> | undefined;
+  readonly traces?: ReadonlyMap<string, string> | undefined;
   /**
    * Tells this run's page apart from another's on the same pull request in
    * the headline: `e2e regression: 77 passed`. The GitHub reporter passes
@@ -263,7 +263,7 @@ function runErrorLine(error: ReportError): string {
  * quoted; the facts as a list (expected and observed, whether every attempt
  * failed alike, the last turns, the screen); and the evidence. The file is
  * named once, in the source link. The steps before the failed one are not
- * retold: the lead says where in the flow it was, and the failure page has
+ * retold: the lead says where in the flow it was, and the trace page has
  * the rest. A flaky test's story is its last failed attempt, not the retry that
  * passed.
  */
@@ -277,9 +277,9 @@ function failureBlock({ result, final }: Entry, manyTargets: boolean, options: M
   const alike = attemptsLine(result, final);
   const facts = [...detailLines(error), ...(alike === undefined ? [] : [alike]), ...lastTurnLines(at?.step), ...screenLines(told)];
   const where = evidence(evidenceOf(told), options);
-  const page = options.failurePages?.get(result.id);
+  const page = options.traces?.get(result.id);
   const about = [sourceText(failureSource(result, told), options.sourceUrl), ...(manyTargets ? [cell(result.targetId, MAX_ID_CHARS)] : [])];
-  const tail = [...(where === '' ? [] : [`Evidence: ${where}`]), ...(page === undefined ? [] : [`Details: ${code(page, MAX_PATH_CHARS)}`])];
+  const tail = [...(where === '' ? [] : [`Evidence: ${where}`]), ...(page === undefined ? [] : [`Trace: ${code(page, MAX_PATH_CHARS)}`])];
   const paragraphs = [
     // Two trailing spaces: a hard break, so the title and its line stay two lines wherever the page is rendered.
     `**${ICON[kind]} ${testName(result)}**  \n${about.join(' · ')}`,
@@ -562,7 +562,7 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
  * `summary.md` beside `report.json`, with evidence listed as paths from the
  * project root, for a reader with the checkout in front of it: a pull
  * request description, a coding agent's handoff, a wiki page. Each failure
- * block links to the failure page the runner wrote for it under `failures/`.
+ * block links to the trace page the runner wrote for it under `traces/`.
  */
 export const markdownReporter: Reporter = {
   name: 'markdown',
@@ -570,7 +570,7 @@ export const markdownReporter: Reporter = {
     if (run.reportPath === undefined) return;
     const artifactsDir = toPosixPath(path.relative(run.projectRoot, run.artifactsRoot)) || '.';
     const summary = path.join(path.dirname(run.reportPath), 'summary.md');
-    await writeTextReport(summary, renderMarkdownReport(run.report, { artifactsDir, failurePages: run.failurePages }));
+    await writeTextReport(summary, renderMarkdownReport(run.report, { artifactsDir, traces: run.traces }));
     const rows: ReporterSummary = [{ label: 'Markdown', text: path.relative(run.projectRoot, summary) || summary }];
     return rows;
   },

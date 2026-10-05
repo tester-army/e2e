@@ -95,11 +95,12 @@ Its artifacts land in a directory named after the goal, such as
 of the same goal writes to the same directory.
 
 `--reporter list,markdown` also writes the findings to `.e2e/summary.md`.
-`--debug`, `--ai-trace`, and `--video` work as they do for `e2e run`;
-`--video` applies when the engine can record, with a notice otherwise. The
-exploration is one attempt, so a retry mode (`on-first-retry`,
+`--debug`, `--ai-trace`, `--trace`, and `--video` work as they do for
+`e2e run`; `--video` applies when the engine can record, with a notice
+otherwise. The exploration is one attempt, so a retry mode (`on-first-retry`,
 `on-all-retries`) records nothing, and the run prints a notice saying to pass
-`--video on`; put the goal before a bare `--video`.
+`--trace on` (or `--video on`); put the goal before a bare `--trace` or
+`--video`.
 
 ## Your config applies
 

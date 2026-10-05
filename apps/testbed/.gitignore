@@ -5,7 +5,7 @@
 .e2e/report.json
 .e2e/ai-trace.json
 .e2e/summary.md
-.e2e/failures/
+.e2e/traces/
 # AI SDK devtools trace database written by testbed telemetry.
 .devtools/
 .e2e/explore-bench/

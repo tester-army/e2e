@@ -1,12 +1,12 @@
 /**
- * What a failed run tells without a recording: each step's events in the
- * report (the node a deterministic action landed on, the readings an
- * assertion polled, what the app logged, the hook a step ran in) and the
- * failure page the runner writes for the test, which the run's last event
- * names. Driven through the real runner over the fake engine.
+ * What a run traces: each step's events in the report (the node a
+ * deterministic action landed on, the readings an assertion polled, what the
+ * app logged, the hook a step ran in) and the trace page the runner writes
+ * for each test its `trace` mode keeps, which the run's last event names.
+ * Driven through the real runner over the fake engine.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { AppLogEntry, EngineAttemptContext } from '../../src/engine/index.ts';
@@ -28,7 +28,7 @@ test('saves, then expects two buttons', async ({ screen }) => {
 });
 `;
 
-describe('failure pages', () => {
+describe('traces', () => {
   it(
     "keeps each step's events, files what the app logged under the step it happened in, and writes the page the last event names",
     async () => {
@@ -66,8 +66,8 @@ describe('failure pages', () => {
         expect(count!.events[0]!.count).toBeGreaterThan(1);
 
         const finished = events.find((event) => event.type === 'run-finished');
-        const pages = finished?.type === 'run-finished' ? Object.values(finished.failurePages ?? {}) : [];
-        expect(pages).toEqual([expect.stringMatching(/^\.e2e\/failures\/save-saves-then-expects-two-buttons-[0-9a-f]{16}\.md$/)]);
+        const pages = finished?.type === 'run-finished' ? Object.values(finished.traces ?? {}) : [];
+        expect(pages).toEqual([expect.stringMatching(/^\.e2e\/traces\/save-saves-then-expects-two-buttons-[0-9a-f]{16}\.md$/)]);
         const page = readFileSync(path.join(project.dir, pages[0]!), 'utf8');
         expect(page).toContain('1. ✓ `app.open` `/` (');
         expect(page).toContain('in beforeEach)');
@@ -82,7 +82,7 @@ describe('failure pages', () => {
   );
 
   it(
-    'writes no page for a passing run',
+    'writes no page for a passing run by default',
     async () => {
       const fake = createFakeEngine();
       const passing = SUITE.replace('toHaveCount(2', 'toHaveCount(1');
@@ -92,11 +92,55 @@ describe('failure pages', () => {
       );
       try {
         expect(outcome.status).toBe('passed');
-        expect(existsSync(path.join(project.dir, '.e2e', 'failures'))).toBe(false);
+        expect(existsSync(path.join(project.dir, '.e2e', 'traces'))).toBe(false);
       } finally {
         project.cleanup();
       }
     },
     30_000,
   );
+
+  it(
+    'keeps the traces the mode asks for: none under off, a passing test under on, a retry under --trace on-first-retry',
+    async () => {
+      const suite = `import { test, expect } from 'e2e';
+
+test('passes', async ({ app }) => {
+  await app.open('/');
 });
+
+test('fails', async ({ app }) => {
+  await app.open('/');
+  throw new Error('nope');
+});
+`;
+      /** The titles of the results a run with `config` and `runOptions` kept a trace page for. */
+      const traced = async (config: Partial<E2EConfig>, runOptions: { trace?: 'on-first-retry' } = {}): Promise<string[]> => {
+        const fake = createFakeEngine();
+        const { outcome, project } = await runProject(
+          { 'tests/modes.e2e.ts': suite },
+          { appUrl: FAKE_APP_URL, config: { targets: [{ name: 'fake', platform: 'web', engine: fake.engine, app: FAKE_APP }], ...config } as E2EConfig, runOptions },
+        );
+        try {
+          const finished = outcome.report.run.results.filter((result) => readTrace(project.dir, result.id) !== undefined);
+          return finished.map((result) => result.titlePath.at(-1)!).toSorted();
+        } finally {
+          project.cleanup();
+        }
+      };
+      expect(await traced({ trace: 'off' })).toEqual([]);
+      expect(await traced({ trace: 'on' })).toEqual(['fails', 'passes']);
+      expect(await traced({ retries: 1, trace: 'off' }, { trace: 'on-first-retry' })).toEqual(['fails']);
+      expect(await traced({ trace: 'on-first-retry' })).toEqual([]);
+    },
+    60_000,
+  );
+});
+
+/** The trace page of result `id` under the project's `.e2e/traces/`, if one was written. */
+function readTrace(dir: string, id: string): string | undefined {
+  const traces = path.join(dir, '.e2e', 'traces');
+  if (!existsSync(traces)) return undefined;
+  const name = readdirSync(traces).find((file) => file.endsWith(`-${id.slice(0, 16)}.md`));
+  return name === undefined ? undefined : readFileSync(path.join(traces, name), 'utf8');
+}

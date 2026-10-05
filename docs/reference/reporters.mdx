@@ -47,7 +47,7 @@ interface FinishedRun {
   readonly reportPath: string | undefined; // absent when the write failed
   readonly artifactsRoot: string;          // what the report's artifact paths are relative to
   readonly aiTracePath: string | undefined;
-  readonly failurePages: ReadonlyMap<string, string>; // result id -> its failure page, from the project root
+  readonly traces: ReadonlyMap<string, string>;      // result id -> its trace page, from the project root
   readonly lastRun?: Report;               // with --last-failed, the report the rerun selected from
 }
 
@@ -61,9 +61,9 @@ The built-in `junit` reporter is the smallest complete example: it reads
 `run.report`, writes `junit.xml` beside `run.reportPath`, and returns one row
 naming the file. `markdown` does the same with `summary.md` through
 `renderMarkdownReport(report, options)`, also exported, so your own reporter
-can post the same page elsewhere; `failurePages` links each block to a page
-by result id. The runner writes those pages itself, one per failed, timed-out, or flaky
-test under `failures/`, before `onRunFinished` is called. [`@e2e-dev/github`](/github) is that
+can post the same page elsewhere; `traces` links each block to its trace
+page by result id. The runner writes the trace pages under `traces/` before
+`onRunFinished` is called. [`@e2e-dev/github`](/github) is that
 reporter for GitHub Actions.
 
 A name and at least one handler are required; anything else is
@@ -91,7 +91,7 @@ type RunEventFact =
   | { type: 'run-error'; error: SerializedError }
   | { type: 'run-interrupted'; mode: 'graceful' | 'forced' }
   | { type: 'run-stopped'; failures; limit }
-  | { type: 'run-finished'; status; exitCode; reportPath?; aiTracePath?; failurePages? };
+  | { type: 'run-finished'; status; exitCode; reportPath?; aiTracePath?; traces? };
 ```
 
 `output` is one write a test made to stdout or stderr; `pair` names the test

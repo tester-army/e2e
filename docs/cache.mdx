@@ -38,7 +38,7 @@ once the attempt ended:
 | `evicted` | The entry was deleted: its replay ended in a failure or a repair, or no check confirmed it before the attempt failed. |
 | `no-change` | Nothing recorded: the step changed nothing a replay could check. |
 
-The [failure page](/debugging) shows all of it under the step. `agent.act()`
+The [trace page](/debugging#traces) shows all of it under the step. `agent.act()`
 returns the cache object as `result.cache`, without `write`. The cache object
 is absent when caching is off for the step.
 

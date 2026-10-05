@@ -3,9 +3,8 @@
  * the error said in structured form, whether the attempts failed alike, the
  * line to look at, the last turns, the screen), and the page that tells the
  * whole story, with every step, every kept turn, and the screen at failure
- * inline. The `markdown` reporter writes one page per failed or flaky test
- * under `failures/` beside the report; the run page links each block to its
- * page. Both read the facts from here, so the two never disagree.
+ * inline. The runner writes one such page per test that kept a trace under
+ * `traces/` beside the report; the run page links each block to its page. Both read the facts from here, so the two never disagree.
  */
 
 import { isLoopbackHost } from '../internal/urls.ts';
@@ -26,7 +25,7 @@ const MAX_SCREEN_CHARS = 24_000;
 /** Candidate nodes named on the run page; the page lists every one. */
 const MAX_SUMMARY_CANDIDATES = 3;
 
-export interface FailurePageOptions {
+export interface TracePageOptions {
   /** A link to a source line, when the commit is known. */
   readonly sourceUrl?: ((file: string, line: number) => string) | undefined;
   /** Where the run's artifacts can be fetched; evidence links there. */
@@ -162,7 +161,7 @@ export function failureSource(result: ReportResult, told: AttemptView): ReportSo
 }
 
 /** `file:line`, linked to the commit when known, else in backticks. */
-export function sourceText(source: ReportSource, sourceUrl: FailurePageOptions['sourceUrl']): string {
+export function sourceText(source: ReportSource, sourceUrl: TracePageOptions['sourceUrl']): string {
   const text = `${source.file}:${source.line}`;
   return sourceUrl === undefined ? code(text) : link(cell(text), sourceUrl(source.file, source.line));
 }
@@ -269,7 +268,7 @@ const APP_SOURCE_TEXT: Readonly<Record<string, string>> = {
  * poll that waited or failed (the values it read in order), and every line
  * the app logged while it ran.
  */
-function stepDetailLines(step: ReportStep, options: Pick<FailurePageOptions, 'cacheDir'> = {}): string[] {
+function stepDetailLines(step: ReportStep, options: Pick<TracePageOptions, 'cacheDir'> = {}): string[] {
   const lines: string[] = [];
   if (step.cache !== undefined) lines.push(cacheLine(step.cache, options.cacheDir));
   const told = step.events
@@ -367,7 +366,7 @@ const STATUS_WORD: Record<ReportResult['status'], string> = {
 const STEP_GLYPH: Record<ReportStep['status'], string> = { passed: '✓', failed: '✗', blocked: '✗', 'timed-out': '✗', cancelled: '–' };
 
 /** `[screenshot](run#artifacts) \`web/.../screenshot-1.png\``: the kind, linked to the run's artifacts when there is a URL, and the file's path so the reader finds it. */
-function artifactPath(artifact: ReportArtifact, options: FailurePageOptions): string {
+function artifactPath(artifact: ReportArtifact, options: TracePageOptions): string {
   const kind = cell(artifact.kind, MAX_ID_CHARS);
   // A video a hosted service keeps is its own link, wherever the run's files are.
   if (artifact.url !== undefined) return link(kind, artifact.url);
@@ -377,13 +376,13 @@ function artifactPath(artifact: ReportArtifact, options: FailurePageOptions): st
   return `${named} ${code(shown, MAX_PATH_CHARS)}`;
 }
 
-/** Renders one failed or flaky result as its own markdown page. */
-export function renderFailurePage(report: Report1Document, result: ReportResult, final: Outcome, options: FailurePageOptions = {}): string {
+/** Renders one traced result as its own markdown page: a failed or flaky one tells its failure, a passing one its steps. */
+export function renderTracePage(report: Report1Document, result: ReportResult, final: Outcome, options: TracePageOptions = {}): string {
   const run = report.run;
   const told = toldAttempt(result, final);
   const manyTargets = run.targets.length > 1;
   const title = `${result.titlePath.map((part) => cell(part, MAX_TITLE_CHARS)).join(' › ')}${repeatSuffix(result.repeat)}`;
-  const lines: string[] = [`# ✗ ${title}`, ''];
+  const lines: string[] = [`# ${result.status === 'passed' ? '✓' : '✗'} ${title}`, ''];
   const about = [
     code(result.file, MAX_PATH_CHARS),
     ...(manyTargets ? [`target ${code(result.targetId, MAX_ID_CHARS)}`] : []),
@@ -401,14 +400,14 @@ export function renderFailurePage(report: Report1Document, result: ReportResult,
     const { expected, observed } = error.details ?? {};
     const spelled = expected !== undefined && observed !== undefined && error.message.includes(expected) && error.message.includes(observed);
     if (!spelled) for (const line of detailLines(error)) lines.push(`${line}  `);
-  } else {
+  } else if (result.status !== 'passed') {
     lines.push(`_${STATUS_WORD[result.status]}: no error was recorded._`);
   }
-  lines.push(`Look at: ${sourceText(failureSource(result, told), options.sourceUrl)}  `);
+  if (result.status !== 'passed') lines.push(`Look at: ${sourceText(failureSource(result, told), options.sourceUrl)}  `);
   const attempts = attemptsLine(result, final);
   if (attempts !== undefined) lines.push(`${attempts}  `);
   if (result.status === 'flaky') lines.push(`Passed after ${plural(final.failedAttempts, 'failed attempt')}; this page tells the last failure.  `);
-  lines.push('');
+  if (lines.at(-1) !== '') lines.push('');
 
   const at = failedStepOf(told.steps);
   if (told.steps.length > 0) {

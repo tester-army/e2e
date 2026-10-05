@@ -6,7 +6,7 @@
 
 import { isEngineHandle, type EngineHandle } from '../engine/index.ts';
 import { ConfigurationError } from '../internal/errors.ts';
-import { TRACE_REPLACEMENT, type ResolvedRecording } from '../internal/recording-modes.ts';
+import type { ResolvedRecording } from '../internal/recording-modes.ts';
 import type { Target } from '../types.ts';
 import { checkTargetApp, digestTargetApp, resolveTargetApp, TARGET_KEYS, unknownTargetKey, type ResolvedApp, type TargetAppDeclaration } from './app.ts';
 import { isRecord } from './command.ts';
@@ -25,12 +25,11 @@ export interface ResolvedTarget {
   readonly app: ResolvedApp;
   /** The app as declared and checked: what `bindTargets` resolves again on the run's port, and what the digest reads. */
   readonly declaredApp: TargetAppDeclaration;
+  /** Which attempts on the target record a trace: `--trace`, else the target's `trace`, else the config's, else `on` (`on-first-retry` in CI). A test's own `trace` wins over it. */
+  readonly trace: ResolvedRecording;
   /** Which attempts on the target record a video: `--video`, else the target's `video`, else the config's, else `off`. A test's own `video` wins over it. */
   readonly video: ResolvedRecording;
 }
-
-/** Keys a target used to accept, each mapped to what replaces it. */
-const REMOVED_TARGET_KEYS: ReadonlyMap<string, string> = new Map([['trace', TRACE_REPLACEMENT]]);
 
 /** A safe artifact path segment: the filename alphabet, and never `.` or `..`, which would name a directory's self or parent. */
 export const TARGET_NAME_PATTERN = /^(?!\.+$)[A-Za-z0-9_.-]+$/;
@@ -39,7 +38,7 @@ export const TARGET_NAME_PATTERN = /^(?!\.+$)[A-Za-z0-9_.-]+$/;
 export function resolveTargets(
   declared: unknown,
   projectRoot: string,
-  recordings: (target: Target, where: string) => Pick<ResolvedTarget, 'video'>,
+  recordings: (target: Target, where: string) => Pick<ResolvedTarget, 'trace' | 'video'>,
 ): readonly ResolvedTarget[] {
   if (declared === undefined) {
     throw new ConfigurationError(
@@ -58,8 +57,6 @@ export function resolveTargets(
     // Errors raised before the name settles point at the entry itself.
     const where = typeof target.name === 'string' ? `target "${target.name}"` : `targets[${index}]`;
     for (const key of Object.keys(target)) {
-      const removed = REMOVED_TARGET_KEYS.get(key);
-      if (removed !== undefined) throw new ConfigurationError('INVALID_CONFIG', `${where}: ${key} was removed: ${removed}`);
       if (!TARGET_KEYS.has(key)) throw unknownTargetKey(where, key);
     }
     if (target.engine !== undefined && !isEngineHandle(target.engine)) {

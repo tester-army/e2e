@@ -1,8 +1,10 @@
 /** Execution result data model shared by the executor and reporters. */
 
 import type { SerializedError } from '../internal/errors.ts';
+import { resultId } from '../internal/ids.ts';
 import type { TestIdentity } from '../collect/collect.ts';
 import type { SkipInfo } from '../collect/select.ts';
+import type { AttemptRecording } from '../internal/recording-modes.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
 import type { StepRecord } from './steps.ts';
 
@@ -71,6 +73,8 @@ export interface AttemptRecord {
   /** Why the body skipped itself (`test.skip(condition, reason)`); set exactly when `status` is `skipped`. */
   skip?: SkipInfo;
   secondaryErrors: SerializedError[];
+  /** When the attempt keeps a trace, its `trace` mode resolved for this attempt; the runner's, never in the report. */
+  trace?: AttemptRecording | undefined;
   cleanup: 'complete' | 'failed' | 'forced';
 }
 
@@ -99,6 +103,8 @@ export interface SerialAttemptRecord {
   artifacts: ArtifactRecord[];
   error?: SerializedError;
   secondaryErrors: SerializedError[];
+  /** When the attempt keeps a trace, its `trace` mode resolved for this attempt; the runner's, never in the report. */
+  trace?: AttemptRecording | undefined;
   cleanup: 'complete' | 'failed' | 'forced';
 }
 
@@ -135,6 +141,23 @@ export type FailedStatus = Exclude<AttemptStatus, 'passed' | 'skipped'>;
  */
 export function isFailedStatus(status: AttemptStatus | ResultStatus): status is FailedStatus {
   return status !== 'passed' && status !== 'skipped' && status !== 'flaky';
+}
+
+/** Whether an attempt that ended `status` keeps its trace: under `retain-on-failure`, only a failed one does. */
+function keepsTrace(attempt: Pick<AttemptRecord, 'status' | 'trace'>): boolean {
+  if (attempt.trace === undefined || attempt.status === 'skipped' || attempt.status === 'interrupted') return false;
+  return attempt.trace.keep === 'always' || isFailedStatus(attempt.status);
+}
+
+/** The report ids of the results that keep a trace page: those with an attempt that kept a trace; a serial member's attempts are its group's. */
+export function tracedResultIds(results: readonly ResultRecord[], serialGroups: readonly SerialGroupRecord[]): Set<string> {
+  const groups = new Map(serialGroups.map((group) => [group.id, group]));
+  const traced = new Set<string>();
+  for (const result of results) {
+    const attempts = result.serialGroupId === undefined ? result.attempts : (groups.get(result.serialGroupId)?.attempts ?? []);
+    if (attempts.some(keepsTrace)) traced.add(resultId(result.test.id, result.target.name, result.agent, result.repeat));
+  }
+  return traced;
 }
 
 export interface ResultRecord {

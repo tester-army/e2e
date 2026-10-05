@@ -617,6 +617,13 @@ export interface TestOptions {
    */
   agent?: string | readonly string[];
   /**
+   * Which of the test's attempts keep a trace, in place of the run's: the
+   * same modes as the config's `trace`. Innermost wins, over `--trace` too;
+   * inside a serial group the group's value applies, since the group runs as
+   * one unit.
+   */
+  trace?: RecordingMode;
+  /**
    * Which of the test's attempts record a video, in place of the run's:
    * the same modes as the config's `video`. Innermost wins, over `--video`
    * too; inside a serial group the group's value applies, since the group
@@ -1087,6 +1094,11 @@ export interface Target {
   /** The app under test: what it is, where it is served, and the command that starts it. */
   app?: TargetApp;
   /**
+   * Which attempts on this target keep a trace, in place of the config's
+   * `trace`; `--trace` and a test's own `trace` win over it.
+   */
+  trace?: RecordingMode;
+  /**
    * Which attempts on this target record a video, in place of the config's
    * `video`; `--video` and a test's own `video` win over it. A mode set here
    * is required of the engine: one that cannot record fails the run with
@@ -1096,7 +1108,7 @@ export interface Target {
 }
 
 /**
- * Which attempts record a video, and which recordings are kept.
+ * Which attempts keep a trace or record a video, and which are kept.
  * `off`: none. `on`: every attempt, every recording kept.
  * `retain-on-failure`: every attempt records, only the recordings of attempts
  * that did not pass are kept. `on-first-retry`: only the first retry records,
@@ -1228,8 +1240,8 @@ export interface StoredArtifactLink {
 }
 
 /**
- * Where artifacts go. What is recorded is not configured here: `video`
- * chooses the recordings, and a failure's screenshot and screen text
+ * Where artifacts go. What is recorded is not configured here: `trace` and
+ * `video` choose what is kept, and a failure's screenshot and screen text
  * are captured whenever the engine can.
  */
 export interface ArtifactsConfig {
@@ -1349,11 +1361,11 @@ export interface FinishedRun {
   /** Where `--ai-trace` wrote the run's model calls, when it was requested. */
   readonly aiTracePath: string | undefined;
   /**
-   * The failure page the runner wrote for each test that failed, timed out,
-   * or was flaky, by report result id, as a path from the project root
-   * (`.e2e/failures/checkout-applies-the-coupon-1a2b3c4d.md`).
+   * The trace the runner wrote for each test that kept one (by its `trace`
+   * mode, a failed one by default), by report result id, as a path from the
+   * project root (`.e2e/traces/checkout-applies-the-coupon-1a2b3c4d5e6f7a8b.md`).
    */
-  readonly failurePages: ReadonlyMap<string, string>;
+  readonly traces: ReadonlyMap<string, string>;
   /**
    * The report `--last-failed` selected from, when the run was given that
    * flag: the run before this one, whose tests that did not fail were left
@@ -1415,6 +1427,13 @@ export interface E2EConfig {
   workers?: number;
   /** `{ store }` hands every artifact to a host store as it is produced. */
   artifacts?: ArtifactsConfig;
+  /**
+   * Which attempts keep a trace, a markdown page under `<output>/traces/`
+   * telling every step, the cache's decisions, what the app logged, and the
+   * screen at failure; default `retain-on-failure`. A target's `trace` wins
+   * over it, `--trace [mode]` over both, and a test's own `trace` over all.
+   */
+  trace?: RecordingMode;
   /**
    * Which attempts record a video; default `off`. A target's `video` wins
    * over it, `--video [mode]` over both, and a test's own `video` over all.

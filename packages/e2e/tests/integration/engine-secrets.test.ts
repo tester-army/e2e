@@ -103,12 +103,12 @@ describe('a secret in an engine option', () => {
     for (const [file, text] of contents) expect(text, file).not.toContain(PASSWORD);
   });
 
-  it('redacts the base64 credential of the echoed header everywhere: failure, screen, failure pages, download', () => {
+  it('redacts the base64 credential of the echoed header everywhere: failure, screen, trace pages, download', () => {
     const error = resultByTitle(outcome, 'fails on the echoed Authorization header').attempts[0]!.error!;
     expect(error.message).toContain('Basic <secret:stagingPassword>');
     expect(JSON.stringify(outcome.report)).not.toContain(CREDENTIAL);
     const contents = contentsUnder(`${project.dir}/.e2e`);
-    for (const written of ['/failure/screen.txt', '/failures/', '/downloads/']) {
+    for (const written of ['/failure/screen.txt', '/traces/', '/downloads/']) {
       expect(contents.some(([name]) => name.includes(written)), written).toBe(true);
     }
     for (const [file, text] of contents) expect(text, file).not.toContain(CREDENTIAL);

@@ -27,8 +27,8 @@ import { Deadline, NEVER_ABORTS, withAbort, withScopedBudget, withTimeout } from
 import { createAgentCacheContext, flushStagedTraces } from '../cache/context.ts';
 import { storedRecordingsFor, type StoredRecordings } from '../cache/rekeyed.ts';
 import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
-import { pairVideo, type TestTargetPair } from '../collect/select.ts';
-import { attemptRecording, type AttemptRecording } from '../internal/recording-modes.ts';
+import { pairRecordings, type TestTargetPair } from '../collect/select.ts';
+import type { AttemptRecording } from '../internal/recording-modes.ts';
 import type { ArtifactStore, Secret } from '../types.ts';
 import { attemptSegments, createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
 import { AttemptBudget } from './budget.ts';
@@ -147,7 +147,7 @@ export interface ClosingRecord {
 
 /**
  * What one attempt's session opens with: the saved session to restore, and
- * the video the attempt records (`pairVideo`), undefined for none.
+ * the video the attempt records (`pairRecordings`), undefined for none.
  */
 export interface SessionPlan {
   readonly session: string | undefined;
@@ -796,7 +796,7 @@ export class TargetExecutor implements SerialHost {
     context: AttemptContext,
   ): Promise<AttemptRecord> {
     const attemptId = uuidv7();
-    const video = attemptRecording(pairVideo(pair), attemptIndex);
+    const { trace, video } = pairRecordings(pair, attemptIndex);
     const startedAt = timestamp();
     const startedMs = Date.now();
     // Serial members borrow the group's shared session, open state, artifact
@@ -875,6 +875,7 @@ export class TargetExecutor implements SerialHost {
       steps: [],
       artifacts: artifacts.records,
       secondaryErrors,
+      trace,
       cleanup: 'complete',
     };
 

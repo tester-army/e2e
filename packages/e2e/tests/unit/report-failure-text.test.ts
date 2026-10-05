@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ReportAttempt, ReportResult, ReportStep } from '../../src/report/build.ts';
 import type { ReportSerialGroup } from '../../src/report/build.ts';
-import { attemptsLine, detailLines, evidenceOf, failureSource, lastTurnLines, renderFailurePage, screenLines, toldAttempt } from '../../src/report/failure-text.ts';
+import { attemptsLine, detailLines, evidenceOf, failureSource, lastTurnLines, renderTracePage, screenLines, toldAttempt } from '../../src/report/failure-text.ts';
 import { outcome } from '../../src/report/outcome.ts';
 import { reportAttempt, reportDocument, reportError, reportResult, reportStep, reportTarget } from '../helpers/report.ts';
 
@@ -100,7 +100,7 @@ describe('evidenceOf', () => {
   });
 });
 
-describe('renderFailurePage', () => {
+describe('renderTracePage', () => {
   const page = (attempts: ReportAttempt[], readArtifact?: (reportPath: string) => string | undefined) => {
     const failing = reportResult({
       id: 'r1',
@@ -110,7 +110,7 @@ describe('renderFailurePage', () => {
       attempts,
     });
     const document = reportDocument({ status: 'failed', exitCode: 1, targets: [reportTarget()], results: [failing] });
-    return renderFailurePage(document, failing, outcome(failing, NO_GROUPS), { artifactsDir: '.e2e/artifacts', readArtifact });
+    return renderTracePage(document, failing, outcome(failing, NO_GROUPS), { artifactsDir: '.e2e/artifacts', readArtifact });
   };
 
   it('quotes a step explanation that starts like a heading as prose, with its linkable tokens as code, through the shared cell', () => {
