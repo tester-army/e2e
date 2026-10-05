@@ -10,7 +10,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { sanitizeFilename } from '../../src/support.ts';
-import { noSecrets } from '../helpers/secrets.ts';
+import { ignoreAppLog, noSecrets } from '../helpers/secrets.ts';
 
 const HOSTILE_NAMES = [
   '../../etc/passwd',
@@ -47,7 +47,7 @@ describe('artifact paths', () => {
   it('writes a server-chosen download name as one counted file inside the attempt downloads folder', async () => {
     directory = mkdtempSync(path.join(tmpdir(), 'e2e-artifact-path-'));
     const surface = new PlaywrightSurface({});
-    await surface.startAttempt({ attemptId: 'a1', artifactsDir: directory, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await surface.startAttempt({ attemptId: 'a1', artifactsDir: directory, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
     const folder = path.join(directory, 'downloads');
     try {
       for (const [index, name] of HOSTILE_NAMES.entries()) {
