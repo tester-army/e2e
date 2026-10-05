@@ -170,6 +170,13 @@ export interface ExtractOptions<Schema extends StandardSchemaV1> extends VisionO
   schema: Schema;
   /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
+  /**
+   * Let the result be reasoned from the instruction as well as the observation.
+   * This is for runner-owned planning and selection, where the requested result
+   * is not expected to already be visible; ordinary screen extraction remains
+   * strict by default.
+   */
+  allowUnobserved?: boolean;
 }
 
 /**

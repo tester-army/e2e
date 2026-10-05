@@ -87,7 +87,13 @@ export interface PlanRequest {
 
 /** Asks the model for the next charter or the closing assessment. */
 export async function planNext(agent: Agent, state: ExploreState, request: PlanRequest): Promise<PlanDecision> {
-  return repairPlan(await agent.extract(planInstruction(state, request), { schema: PLAN_SCHEMA, timeout: request.timeoutMs }));
+  return repairPlan(
+    await agent.extract(planInstruction(state, request), {
+      schema: PLAN_SCHEMA,
+      timeout: request.timeoutMs,
+      allowUnobserved: true,
+    }),
+  );
 }
 
 /**

@@ -28,7 +28,10 @@ regression tests. It uses the same model, tools, and action rules as
 ## What a run does
 
 The runner opens the target app, plans one step, and carries it out with
-`agent.act`. The agent records findings as it goes, including what it
+`agent.act`. Planning is allowed to name a destination or action that has not
+appeared on screen yet: that is the planner's job, not an extraction of screen
+data. The ordinary `agent.extract` contract remains strict and never invents
+missing values. The agent records findings as it goes, including what it
 expected, what it saw, and how to reproduce it. A screenshot is attached
 when capture is allowed and succeeds.
 

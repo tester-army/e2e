@@ -33,7 +33,7 @@ import {
   validateExtractResponse,
   validateJudgmentResponse,
 } from './protocol.ts';
-import { EXTRACT_REPAIR_OUTLET, EXTRACT_REQUEST, JUDGMENT_REQUEST } from './prompts.ts';
+import { EXTRACT_REPAIR_OUTLET, EXTRACT_REQUEST, JUDGMENT_REQUEST, PLAN_REQUEST } from './prompts.ts';
 import { deriveJsonSchema } from './model/schema.ts';
 
 const DEFAULT_WAIT_INTERVAL_MS = 3_000;
@@ -65,7 +65,7 @@ const VISION_HINT_UNPROVEN =
   'the judge saw the semantic tree only; if the engine captures pixels, pass vision: true when the answer is in pixels';
 
 const WAIT_FOR_KEYS = ['timeout', 'interval', 'maxModelCalls', 'vision', 'agent'] as const;
-const EXTRACT_KEYS = ['schema', 'timeout', 'vision', 'agent'] as const;
+const EXTRACT_KEYS = ['schema', 'timeout', 'vision', 'agent', 'allowUnobserved'] as const;
 const ASSERT_KEYS = ['timeout', 'screenshot', 'vision', 'agent'] as const;
 
 /** Builds the agent fixture for one attempt. */
@@ -191,7 +191,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
         {
           api: 'agent.extract',
           agent: options.agent,
-          task: 'extract structured data from the observation',
+          task: options.allowUnobserved ? 'produce structured planning data from the instruction and observation' : 'extract structured data from the observation',
           timeoutMs: resolveTimeout(options.timeout, config.judgmentTimeout),
           maxModelCalls: EXTRACT_MODEL_CALLS,
           vision,
@@ -209,7 +209,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
               schema: shape === undefined ? undefined : extractSchema(shape),
               validate: validateExtractResponse,
               prompt: {
-                request: EXTRACT_REQUEST,
+                request: options.allowUnobserved ? PLAN_REQUEST : EXTRACT_REQUEST,
                 instruction,
                 observation,
                 ...(repair === undefined ? {} : { repair }),

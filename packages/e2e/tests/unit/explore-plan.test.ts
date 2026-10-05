@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { PLAN_SCHEMA, planInstruction, repairPlan } from '../../src/explore/plan.ts';
+import { AgentError } from '../../src/agent/error.ts';
+import type { Agent } from '../../src/types.ts';
+import { PLAN_SCHEMA, planInstruction, planNext, repairPlan } from '../../src/explore/plan.ts';
 import { ExploreState } from '../../src/explore/state.ts';
 
 /** Answers with every field present, as strict providers require; unused ones empty. */
@@ -73,6 +75,29 @@ describe('repairPlan', () => {
     expect(plan.kind === 'step' && plan.title).toBe('Open the catalog');
     expect(PLAN_SCHEMA.safeParse(finish({ summary: 's'.repeat(6_000) })).success).toBe(true);
     expect(PLAN_SCHEMA.safeParse(step({ title: 'x'.repeat(8_001) })).success).toBe(false);
+  });
+});
+
+describe('planNext', () => {
+  it('requests planning output even when the goal outcome is not on screen yet', async () => {
+    const state = new ExploreState('Click only Help and report whether it reaches a useful page', { maxSteps: 2, timeoutMs: 600_000 });
+    let options: Record<string, unknown> | undefined;
+    const agent = {
+      extract: async (_instruction: string, received: Record<string, unknown>) => {
+        options = received;
+        if (received.allowUnobserved !== true) {
+          throw new AgentError('ASSERTION_INCONCLUSIVE', 'nothing to extract: the Help destination is not on screen');
+        }
+        return step({ title: 'Help', instruction: 'Click only the Help navigation link and inspect its destination' });
+      },
+    } as unknown as Agent;
+
+    await expect(planNext(agent, state, { mustFinish: false, remainingMs: 300_000, timeoutMs: 60_000 })).resolves.toEqual({
+      kind: 'step',
+      title: 'Help',
+      instruction: 'Click only the Help navigation link and inspect its destination',
+    });
+    expect(options?.allowUnobserved).toBe(true);
   });
 });
 
