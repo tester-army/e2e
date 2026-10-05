@@ -3,6 +3,7 @@ title: Quickstart
 description: Set up e2e with one prompt to your coding agent, or step by step.
 ---
 
+import { ModelProvider } from './snippets/model-provider.jsx';
 import { SetupPrompt } from './snippets/setup-prompt-card.jsx';
 
 export const setupPrompt = `Set up e2e end-to-end tests in this project. Docs: \`https://e2e.tester.army/docs/quickstart.md\`
@@ -166,17 +167,26 @@ Connect the provider you chose in the wizard.
   [Subscriptions](/subscriptions) for details.
   </Tab>
   <Tab title="API key">
-  Set your provider's key in the terminal where you run e2e. For Vercel AI
-  Gateway:
+  Select your provider. Install its package and set its key in the terminal
+  where you run e2e.
 
-  ```bash
-  export AI_GATEWAY_API_KEY="your-api-key"
-  ```
+  <ModelProvider show="select" />
 
-  A project linked with `vercel link` can use a
-  [Vercel OIDC token](/models#vercel-oidc-instead-of-a-key) instead.
-  OpenRouter uses `OPENROUTER_API_KEY`. See [Models](/models) for other
-  providers and local models.
+  <ModelProvider show="install" />
+
+  <ModelProvider show="env" />
+
+  Vercel AI Gateway reads `AI_GATEWAY_API_KEY`, or a
+  [Vercel OIDC token](/models#vercel-oidc-instead-of-a-key) in a project
+  linked with `vercel link`. OpenRouter reads `OPENROUTER_API_KEY`.
+
+  The wizard writes the config for Vercel AI Gateway, OpenRouter, and
+  OpenAI-compatible endpoints. For another provider, replace the model import
+  and `model` value in `e2e.config.ts`, and use `agent` as `agents.default`:
+
+  <ModelProvider show="model" />
+
+  See [Models](/models) for local models and more options.
   </Tab>
 </Tabs>
 

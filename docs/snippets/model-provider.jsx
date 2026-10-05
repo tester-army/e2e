@@ -1,6 +1,7 @@
 /**
- * One part of the provider setup on the Models page: `show` is `select`,
- * `install`, `env`, or `config`. All parts on the page share one selection.
+ * One part of the provider setup on the Models and Quickstart pages: `show`
+ * is `select`, `install`, `env`, `config` (a whole web config), or `model`
+ * (the import and model alone, for any target). All parts share one selection.
  *
  * Mintlify evaluates each snippet export alone, so exports share no module
  * scope. For this reason, one component takes `show`, and the selection is a
@@ -656,6 +657,9 @@ export default {
   targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
   agents: { default: { model: ${provider.model} } },
 } satisfies E2EConfig;`;
+  const model = `${provider.code}
+
+const agent = { model: ${provider.model} };`;
 
   /** Mintlify's own code block: Shiki highlighting in the site theme, and its copy button. */
   const code = (text, language) => <CodeBlock language={language}>{text}</CodeBlock>;
@@ -749,6 +753,10 @@ export default {
 
   if (show === 'config') {
     return part('e2e.config.ts', code(config, 'ts'));
+  }
+
+  if (show === 'model') {
+    return part('Model setup', code(model, 'ts'));
   }
 
   return null;

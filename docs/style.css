@@ -389,7 +389,7 @@ html.dark body .code-block-fade-overlay {
   outline-offset: 3px;
 }
 
-/* The provider walkthrough on the Models page: separate boxes sharing one
+/* The provider walkthrough on the Models and Quickstart pages: separate boxes sharing one
    selection (snippets/model-provider.jsx). */
 #content .provider-part {
   margin-block: 1.25rem;
