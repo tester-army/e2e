@@ -476,6 +476,55 @@ describe('StepTraceSession', () => {
     expect(stagedTrace(context).actions.map((action) => action.name)).toEqual(['navigate']);
   });
 
+  it('does not accumulate the failed replay wait when healing stale anchors without another action', async () => {
+    vi.useFakeTimers();
+    vi.setTimerTickMode('nextTimerAsync');
+    let trace: Partial<ActionTrace> = { endPath: '/customers', endAnchors: [savedAnchor], endWaitMs: 30_000 };
+    const waits: number[] = [];
+    for (const text of ['north', 'south', 'east']) {
+      const context = entryContext(trace);
+      let path = '/pricing';
+      let session: StepTraceSession;
+      const host: StepCacheHost = {
+        ...makeHost([]),
+        remainingMs: () => 300_000,
+        observe: async () => ({
+          kind: 'semantic', path, viewport: { width: 1280, height: 720 },
+          nodes: nodeMap(path === '/pricing' ? [] : [{ ...savedMarker, text }]),
+        }),
+        actions: {
+          navigate: async (url: string) => { path = url; session.record({ name: 'navigate', url }); },
+        } as unknown as ExecutorActions,
+      };
+      session = makeSession(context, host);
+      expect(await session.begin()).toBeUndefined();
+      expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
+      await new Promise((resolve) => setTimeout(resolve, 4_000));
+      await session.conclude('passed', 'the customers page is open');
+      trace = stagedTrace(context);
+      waits.push(trace.endWaitMs!);
+      expect(trace.endAnchors).toEqual([{ ...savedAnchor, text }]);
+    }
+    expect(waits).toEqual([14_000, 14_000, 14_000]);
+  });
+
+  it('measures the end wait from a live action after a partial replay hand-off', async () => {
+    vi.useFakeTimers();
+    vi.setTimerTickMode('nextTimerAsync');
+    const context = entryContext({ actions: [
+      { name: 'navigate', url: '/customers', summary: 'open customers' },
+      { name: 'tool', summary: 'refresh customers' },
+    ] });
+    const session = recordingSession(context, ['/pricing', '/customers', '/customers']);
+    expect(await session.begin()).toBeUndefined();
+    expect(session.replayedPrefix?.stopReason).toBe('gap');
+    await new Promise((resolve) => setTimeout(resolve, 20_000));
+    session.record({ name: 'navigate', url: '/customers' });
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    await session.conclude('passed', 'refreshed customers');
+    expect(stagedTrace(context).endWaitMs).toBe(12_000);
+  });
+
   it('evicts instead of re-staging when the executor had to repair after an end-mismatch', async () => {
     const deleted: string[] = [];
     const context = entryContext({ endPath: '/customers', endAnchors: [savedAnchor] });

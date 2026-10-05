@@ -89,6 +89,12 @@ Typed values replay as recorded, even when an earlier run left the same
 value on screen. Secret fills resolve the current value by name and run
 through authorization again.
 
+The end-state wait budget measures the time from the last action to the
+passing observation, plus a 10-second margin, capped at 120 seconds. After a
+hand-off, a refreshed recording measures from the hand-off or a later action.
+It excludes the failed replay's wait, so repeated hand-offs do not accumulate
+that wait in the next recording.
+
 ## What must match
 
 A cache entry belongs to a specific test, target, instruction, set of

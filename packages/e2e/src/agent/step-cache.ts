@@ -147,6 +147,7 @@ export class StepTraceSession {
   private prefix: ReplayedPrefix | undefined;
   private startPath: string | undefined;
   private startedMs = Date.now();
+  private handedOffAtMs: number | undefined;
   /**
    * The screen before any action, captured only when this step may write: the
    * staged trace's end anchors are the delta between this and the passing
@@ -519,6 +520,7 @@ export class StepTraceSession {
   }
 
   private handOff(outcome: ReplayOutcome, stopReason: HandOffReason): void {
+    this.handedOffAtMs = Date.now();
     if (stopReason === 'end-mismatch') this.actionsAtEndMismatch = this.recorder?.recordedCount ?? 0;
     this.prefix = {
       replayedActions: outcome.summaries,
@@ -573,12 +575,7 @@ export class StepTraceSession {
       ...(endPath === undefined ? {} : { endPath }),
       endAnchors: delta.appeared,
       goneAnchors: delta.gone,
-      // How long the app took to show its end state after the last action,
-      // plus room for a slower day: the budget a replay waits for the anchors
-      // to return. Measured from the last action, not the step's start: the
-      // model's thinking time before that action is no reason for a replay,
-      // which does not think, to wait.
-      endWaitMs: Date.now() - (recorder.lastActionAtMs ?? this.startedMs) + END_WAIT_MARGIN_MS,
+      endWaitMs: Date.now() - Math.max(recorder.lastActionAtMs ?? this.startedMs, this.handedOffAtMs ?? this.startedMs) + END_WAIT_MARGIN_MS,
     });
     if (trace === undefined) return false;
     // A trace with no start anchor — no recorded path (a surface without a URL)

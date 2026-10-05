@@ -261,6 +261,10 @@ matches. Misses and hand-offs use the model; `agent.assert`,
   over mid-step. Entries are keyed per agent and per `agentContext`. `step.cache.reason` says why: `no-entry`,
   `wrong-context`, `target-not-found`, `target-ambiguous`, `end-mismatch`,
   and so on.
+- A refreshed recording measures its end-state wait from the last action
+  or hand-off, whichever was later, plus 10 seconds, capped at 120 seconds.
+  The failed replay's wait is excluded, so repeated hand-offs do not
+  accumulate that wait in the next recording.
 - A step recording no actions, or changing nothing on screen or in the
   route, creates no entry; one whose `unique()` value
   equals, is spelled inside, or is the encoded form of another param's value
