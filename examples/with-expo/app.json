@@ -15,7 +15,7 @@
       "package": "dev.e2e.examples.expo",
       "adaptiveIcon": {
         "backgroundColor": "#111111",
-        "foregroundImage": "./assets/icon.png"
+        "foregroundImage": "./assets/adaptive-icon.png"
       },
       "predictiveBackGestureEnabled": false
     },

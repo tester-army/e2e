@@ -113,7 +113,7 @@ suites that consume the built packages the way a user would.
   the published packages from npm, sit outside the pnpm workspace, commit no
   lockfile, and run in no CI; oxlint and fallow ignore them. A change runs
   the example's suite by hand and updates the "Last checked" line in its
-  README. A native example keeps its tests in an `e2e/` folder beside the
+  README. A SwiftUI example keeps its tests in an `e2e/` folder beside the
   native project, as a user would.
 - `docs/` (the Mintlify docs site; pages are the `.mdx` files under `docs/`,
   navigation, theme, and redirects in `docs/docs.json`, extra CSS in

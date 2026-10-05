@@ -32,7 +32,7 @@ export default function App() {
       <StatusBar style="light" />
 
       <View style={styles.nav}>
-        <Image source={require('./assets/helmet-mark.png')} style={styles.mark} accessibilityLabel="e2e" />
+        <Image source={require('./assets/helmet-mark.png')} style={styles.mark} accessible={false} accessibilityElementsHidden importantForAccessibility="no" />
         <Text style={styles.slash}>/</Text>
         <Text style={styles.wordmark}>e2e</Text>
       </View>
