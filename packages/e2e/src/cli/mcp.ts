@@ -7,7 +7,6 @@
  */
 
 import { Writable } from 'node:stream';
-import { isCiMode } from '../config/resolve.ts';
 import { errorMessage, exitCodeForCategory, classifyError } from '../internal/errors.ts';
 import { serveMcp, type ServeOptions } from '../mcp/server.ts';
 import { mcpSessionEvent } from '../telemetry/events.ts';
@@ -16,7 +15,7 @@ import type { Telemetry } from '../telemetry/telemetry.ts';
 export interface McpCommandOptions {
   config?: string | undefined;
   target?: string | undefined;
-  headless?: boolean | undefined;
+  headed?: boolean | undefined;
   maxSessions?: number | undefined;
 }
 
@@ -74,7 +73,7 @@ export async function mcp(version: string, options: McpCommandOptions, telemetry
       cwd: process.cwd(),
       configPath: options.config,
       target: options.target,
-      headed: options.headless !== true && !isCiMode(process.env),
+      headed: options.headed === true,
       maxSessions: options.maxSessions,
       env: process.env,
       version,

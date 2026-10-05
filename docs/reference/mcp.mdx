@@ -5,15 +5,15 @@ description: Let a coding agent inspect and interact with your app over MCP.
 
 <CodeGroup>
 ```bash npm
-npx e2e mcp [--config <path>] [--target <name>] [--headless] [--max-sessions <n>]
+npx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 ```
 
 ```bash pnpm
-pnpm exec e2e mcp [--config <path>] [--target <name>] [--headless] [--max-sessions <n>]
+pnpm exec e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 ```
 
 ```bash bun
-bunx e2e mcp [--config <path>] [--target <name>] [--headless] [--max-sessions <n>]
+bunx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 ```
 </CodeGroup>
 
@@ -64,7 +64,7 @@ Start the server in the project directory. Config discovery works like
 | --- | --- |
 | `--config <path>` | The config every session loads unless `open_session` names one. Configs are reloaded on every `open_session`, with every file they import by path. |
 | `--target <name>` | The target every session opens on. Otherwise `open_session` names one, or the only target is used; several targets and no name is `TARGET_REQUIRED`. |
-| `--headless` | Hide the browser or simulator. Sessions are headed by default outside CI. |
+| `--headed` | Show the browser or simulator, when the engine supports it. Sessions are headless by default, as in `e2e run`. |
 | `--max-sessions <n>` | How many sessions may be open at once, 1 through 16; default 4. Each session is its own browser or device. |
 
 Operator output goes to stderr, prefixed `e2e mcp:`. Stdout carries only the

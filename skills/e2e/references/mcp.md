@@ -24,8 +24,8 @@ No model is needed: without the optional `ai` package, sessions open and the
 deterministic tools work.
 
 Flags: `--config <path>` names the default config file, `--target <name>`
-fixes the target every session opens on, `--headless` hides the browser or
-simulator (sessions are headed by default outside CI), `--max-sessions <n>`
+fixes the target every session opens on, `--headed` shows the browser or
+simulator (sessions are headless by default, as in `e2e run`), `--max-sessions <n>`
 sets how many sessions may be open at once (default 4, 1 through 16).
 
 ## Tools

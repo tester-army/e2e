@@ -496,7 +496,10 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     )
     .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
     .option('--target <name>', 'target every session opens on (default: the only target, or the one open_session names)')
-    .option('--headless', 'hide the UI during live sessions (default: headed outside CI)')
+    .option('--headed', 'show the UI during live sessions, when the engine supports it')
+    // Sessions were headed by default before 0.18 and took --headless; a client config that still passes it
+    // asks for the default now, and a refused flag would surface as nothing but a failed connection.
+    .addOption(new Option('--headless').hideHelp())
     .option(
       '--max-sessions <n>',
       `sessions open at once, each with its own browser or device, ${SESSION_BOUNDS.min} through ${SESSION_BOUNDS.max} (default: ${SESSION_BOUNDS.default})`,
@@ -506,12 +509,12 @@ function createProgram(version: string, telemetry: Telemetry): Command {
       'after',
       [
         '',
-        examples(['e2e mcp', 'e2e mcp --target web --headless', 'e2e mcp --max-sessions 8', 'claude mcp add e2e -- npx e2e mcp']),
+        examples(['e2e mcp', 'e2e mcp --target web --headed', 'e2e mcp --max-sessions 8', 'claude mcp add e2e -- npx e2e mcp']),
         '',
         docsLine('/reference/mcp'),
       ].join('\n'),
     )
-    .action(async (options: { config?: string; target?: string; headless?: boolean; maxSessions?: number }) => {
+    .action(async (options: { config?: string; target?: string; headed?: boolean; maxSessions?: number }) => {
       process.exitCode = await mcp(version, options, telemetry);
     });
 

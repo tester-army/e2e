@@ -33,7 +33,7 @@ describe('e2e mcp stdout backpressure', { timeout: 60_000 }, () => {
 
   beforeAll(() => {
     project = createProject({ 'e2e.config.ts': CONFIG });
-    server = spawn(process.execPath, [CLI, 'mcp', '--headless'], {
+    server = spawn(process.execPath, [CLI, 'mcp'], {
       cwd: project.dir,
       env: { ...process.env, CI: '' },
       stdio: ['pipe', 'pipe', 'pipe'],

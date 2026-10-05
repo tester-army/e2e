@@ -99,7 +99,7 @@ describe('e2e mcp when the client goes away', { timeout: 90_000 }, () => {
     project = createProject({ 'e2e.config.ts': config(await freePort()), 'app.cjs': APP });
     stderr = '';
     responses = new Map();
-    server = spawn(process.execPath, [CLI, 'mcp', '--headless'], {
+    server = spawn(process.execPath, [CLI, 'mcp'], {
       cwd: project.dir,
       env: { ...process.env, CI: '' },
       stdio: ['pipe', 'pipe', 'pipe'],
