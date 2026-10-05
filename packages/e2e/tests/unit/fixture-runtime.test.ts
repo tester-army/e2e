@@ -418,6 +418,16 @@ describe('agent.extract', () => {
       .resolves.toEqual({ count: 3 });
   });
 
+  it('uses planning semantics only when explicitly enabled', async () => {
+    const model = installFakeModel(() => extracted({ count: 3 }));
+    const { fixtures } = runtime(todos(), { agents: { default: { model } } });
+    await expect(fixtures.agent.extract('choose the next exploration step', {
+      schema: z.object({ count: z.number().int() }),
+      allowUnobserved: true,
+    })).resolves.toEqual({ count: 3 });
+    expect(fakeCalls[0]?.prompt).toContain('This is planning, not screen-data extraction');
+  });
+
   it('fails inconclusive, naming what was missing, when the screen does not show the data', async () => {
     const model = installFakeModel(() => notFound('no phone number is on this screen'));
     const { fixtures, steps } = runtime(todos(), { agents: { default: { model } } });

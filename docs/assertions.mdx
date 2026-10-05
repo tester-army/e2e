@@ -49,6 +49,13 @@ const data = await agent.extract('every todo title and how many remain', {
 expect(data.titles).toContain('Buy milk');
 ```
 
+`agent.extract` is strict: it only returns data supported by the current
+observation. If the screen does not show a requested value, the step fails
+with `ASSERTION_INCONCLUSIVE` rather than inventing an empty value or zero.
+The `e2e explore` runner has a separate internal planning mode for choosing a
+next charter before its destination is visible; that mode does not weaken the
+ordinary `agent.extract` contract.
+
 <Tip>
 For model-generated descriptions, check the relevant meaning rather than the
 entire sentence. Use a [locator assertion](/locators) when the exact text matters.

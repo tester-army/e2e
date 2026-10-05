@@ -174,6 +174,17 @@ export const EXTRACT_REQUEST = [
   'the shape the instruction implies. Rejections list the errors and the required field paths.',
 ].join('\n');
 
+
+/** Request text for runner-owned structured planning, where the answer need not be on screen. */
+export const PLAN_REQUEST = [
+  'Produce the requested structured planning decision from the instruction and the observation.',
+  'This is planning, not screen-data extraction: the requested plan may not be visible yet.',
+  'Use the goal, prior steps, findings, and current screen supplied in the instruction and observation.',
+  'Return found=true when those inputs are sufficient to choose the next step or finish; return found=false only when required context is genuinely missing.',
+  'Never invent application facts that are absent from both the instruction and the observation.',
+  'Respond with one JSON object and nothing else: no prose, no code fence.',
+].join('\n');
+
 /** The extraction's answer to a rejection the screen cannot satisfy: say so rather than change the data. */
 export const EXTRACT_REPAIR_OUTLET =
   'Correct a misread or a wrong shape. When the data the observation shows cannot satisfy the errors, respond with "found": false and say why in "missing" rather than change a value to fit.';

@@ -177,7 +177,10 @@ expect(data.titles).toContain('Buy milk');
   patterns), which check what it read. Data the screen does not show is
   `ASSERTION_INCONCLUSIVE` naming what was missing, never `""` or `0`; to
   accept absence, ask for it (`'the phone, or null when none is shown'`
-  with `.nullable()`).
+  with `.nullable()`). The `e2e explore` planner uses a separate internal
+  planning mode because its next charter may target a destination that is not
+  visible yet; this does not relax ordinary extraction.
+
 
 `vision` on a judgment picks the evidence: `false` (default) the tree;
 `true` the tree plus a masked screenshot; `'only'` the screenshot alone, for
