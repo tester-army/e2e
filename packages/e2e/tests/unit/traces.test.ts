@@ -162,4 +162,27 @@ describe('the steps on a trace page', () => {
     expect(lines.at(-1)).toBe('tap button "29" (1ms)');
     expect(lines).toHaveLength(21);
   });
+
+  it('tell how the screen changed by the step, where the page went, and what the app said in passing', async () => {
+    const at = (second: number) => `2026-01-01T00:00:0${second}.000Z`;
+    const open = reportStep({ index: 0, api: 'app.open', label: '/', screen: { location: 'http://127.0.0.1:4100/todos', nodes: 33, changes: [] } });
+    const tap = reportStep({
+      index: 1,
+      status: 'failed',
+      events: [
+        { kind: 'app', name: 'console', level: 'info', startedAt: at(1), durationMs: 0, status: 'passed', detail: 'loaded 3 todos' },
+        { kind: 'app', name: 'navigation', level: 'info', startedAt: at(2), durationMs: 0, status: 'passed', detail: 'navigated to http://127.0.0.1:4100/login' },
+      ],
+      screen: { location: 'http://127.0.0.1:4100/login', nodes: 5, since: 0, changes: ['added heading "Sign in"', 'removed heading "Todos"'], more: 3 },
+    });
+    const still = reportStep({ index: 2, api: 'locator.tap', screen: { nodes: 5, since: 1, changes: [] } });
+    const [page] = await pagesOf(
+      reportResult({ id: 'cccccccc33', status: 'failed', attempts: [reportAttempt({ status: 'failed', environment: { browser: 'chromium 141.0', 'user agent': 'Mozilla/5.0' }, steps: [open, tap, still] })] }),
+    );
+    expect(page!.text).toContain('Ran on: browser `chromium 141.0` · user agent `Mozilla/5.0`');
+    expect(stepLines(page!.text, 1)).toEqual(['screen: 33 nodes at `/todos`']);
+    expect(stepLines(page!.text, 2)).toEqual(['ℹ console: `loaded 3 todos`', '↪ navigated to /login', 'screen: 5 changes since step 1 at `/login`, 5 nodes']);
+    expect(page!.text).toContain('     - `added heading "Sign in"`\n     - `removed heading "Todos"`\n     - 3 more\n');
+    expect(stepLines(page!.text, 3)).toEqual(['screen: unchanged since step 2']);
+  });
 });

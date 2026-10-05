@@ -82,6 +82,60 @@ describe('traces', () => {
   );
 
   it(
+    'keeps the screen each step left and what the engine said the attempt ran on, in the report and on the page',
+    async () => {
+      let context: EngineAttemptContext | undefined;
+      let taps = 0;
+      const screenAfter = (names: readonly string[]) =>
+        context?.screen?.({
+          root: { ref: { id: 'root', revision: '' }, role: 'document', children: names.map((name, index) => ({ ref: { id: `t${taps}-${index}`, revision: '' }, role: 'button', name })) },
+          viewport: { width: 390, height: 844 },
+          location: `${FAKE_APP_URL}/`,
+        });
+      const fake = createFakeEngine({
+        onStartAttempt: (attempt: EngineAttemptContext) => {
+          context = attempt;
+          attempt.environment({ device: 'Pixel 9', os: 'Android 16' });
+        },
+        perform: () => {
+          taps += 1;
+          screenAfter(taps === 1 ? ['Submit'] : ['Submit', 'Undo']);
+        },
+      });
+      const suite = SUITE.replace("await screen.getByRole('button', { name: 'Submit' }).tap();", "await screen.getByRole('button', { name: 'Submit' }).tap();\n  await screen.getByRole('button', { name: 'Submit' }).tap();");
+      const { outcome, project } = await runProject(
+        { 'tests/save.e2e.ts': suite },
+        { appUrl: FAKE_APP_URL, config: { targets: [{ name: 'fake', platform: 'web', engine: fake.engine, app: FAKE_APP }], actionTimeout: 300 } as E2EConfig },
+      );
+      try {
+        assertValidReport(outcome.report);
+        const attempt = outcome.report.run.results[0]!.attempts[0]!;
+        expect(attempt.environment).toEqual({ device: 'Pixel 9', os: 'Android 16' });
+        const [, first, second] = attempt.steps;
+        expect(first!.screen).toMatchObject({ nodes: 2, changes: [] });
+        expect(second!.screen).toMatchObject({ since: 1, changes: ['added button "Undo"'] });
+        const page = readTrace(project.dir, outcome.report.run.results[0]!.id)!;
+        expect(page).toContain('Ran on: device `Pixel 9` · os `Android 16`');
+        expect(page).toContain('   - screen: 1 change since step 2 at `/`, 3 nodes\n     - `added button "Undo"`');
+      } finally {
+        project.cleanup();
+      }
+      // An attempt that keeps no trace asks the engine for no screens.
+      let asked: boolean | undefined;
+      const untraced = createFakeEngine({ onStartAttempt: (attempt: EngineAttemptContext) => {
+        asked = attempt.screen !== undefined;
+      } });
+      const off = await runProject(
+        { 'tests/save.e2e.ts': suite },
+        { appUrl: FAKE_APP_URL, config: { targets: [{ name: 'fake', platform: 'web', engine: untraced.engine, app: FAKE_APP }], actionTimeout: 300, trace: 'off' } as E2EConfig },
+      );
+      off.project.cleanup();
+      expect(asked).toBe(false);
+    },
+    30_000,
+  );
+
+  it(
     'writes no page for a passing run by default',
     async () => {
       const fake = createFakeEngine();

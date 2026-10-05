@@ -17,8 +17,13 @@ default.
      points at a wrong expectation, a broken app, or one slower than the
      timeout, changing values at a race;
    - what the app logged meanwhile (`✗ network error: POST /api/save 500`,
-     `✗ uncaught error: ...`, `⚠ console warning: ...`); `❯ app 2 errors`
-     in the terminal says there are some;
+     `✗ uncaught error: ...`, `⚠ console warning: ...`, `ℹ console: ...`);
+     `❯ app 2 errors` in the terminal says there are some;
+   - where the page went (`↪ navigated to /login`, a new tab the app
+     opened, a frame that loaded);
+   - how the screen changed since the step before (`screen: 2 changes since
+     step 3` with the added, removed, and changed nodes); `unchanged` after
+     an action means it had no visible effect;
    - the cache's decision for an agent step: replayed, handed off and where
      (`at action 2 of 3, tap button "Apply": ...`), what became of the
      recording, and the entry file;

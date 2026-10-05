@@ -316,9 +316,12 @@ function eventLine(event: StepEvent): string {
   const detail = event.detail === undefined ? undefined : cell(shortenLoopback(event.detail), MAX_DETAIL_CHARS);
   switch (event.kind) {
     case 'app': {
+      // A navigation is the page moving on, told in the engine's own words.
+      if (event.name === 'navigation') return `↪ ${cell(shortenLoopback(event.detail ?? 'navigated'), MAX_DETAIL_CHARS)}`;
       const glyph = event.level === 'error' ? '✗' : event.level === 'warning' ? '⚠' : 'ℹ';
       const text = event.detail === undefined ? '' : code(shortenLoopback(event.detail), MAX_DETAIL_CHARS);
-      return `${glyph} ${APP_SOURCE_TEXT[event.name ?? ''] ?? cell(event.name ?? 'app', MAX_ID_CHARS)} ${event.level ?? 'info'}: ${text}`;
+      const source = APP_SOURCE_TEXT[event.name ?? ''] ?? cell(event.name ?? 'app', MAX_ID_CHARS);
+      return event.level === 'info' || event.level === undefined ? `${glyph} ${source}: ${text}` : `${glyph} ${source} ${event.level}: ${text}`;
     }
     case 'poll': {
       const verb = event.status === 'passed' ? 'passed after' : 'gave up after';
@@ -330,6 +333,25 @@ function eventLine(event: StepEvent): string {
       return `${event.status === 'cancelled' ? '–' : '✗'} ${what}${event.code === undefined ? '' : `: **${cell(event.code, 128)}**`}`;
     }
   }
+}
+
+/**
+ * How the screen changed by the step, as page lines under it: the first
+ * screen's size, `unchanged`, or the nodes added, removed, and changed since
+ * the step before that saw one. Nothing for a step that saw no screen.
+ */
+function stepScreenLines(screen: ReportStep['screen']): string[] {
+  if (screen === undefined) return [];
+  const where = screen.location === undefined ? '' : ` at ${code(shortenLoopback(screen.location), MAX_CELL_CHARS)}`;
+  if (screen.since === undefined) return [`   - screen: ${plural(screen.nodes, 'node')}${where}`];
+  const since = `step ${screen.since + 1}`;
+  if (screen.changes.length === 0) return [`   - screen: unchanged since ${since}${where}`];
+  const total = screen.changes.length + (screen.more ?? 0);
+  return [
+    `   - screen: ${plural(total, 'change')} since ${since}${where}, ${plural(screen.nodes, 'node')}`,
+    ...screen.changes.map((change) => `     - ${code(shortenLoopback(change), MAX_DETAIL_CHARS)}`),
+    ...(screen.more === undefined ? [] : [`     - ${screen.more} more`]),
+  ];
 }
 
 /** Drops a loopback origin from the URLs in a line: nobody reading the page can open it, and the path says the rest. */
@@ -391,6 +413,8 @@ export function renderTracePage(report: Report1Document, result: ReportResult, f
     formatDuration(final.durationMs),
   ];
   lines.push(about.join(' · '), '');
+  const ranOn = Object.entries(told.environment ?? {});
+  if (ranOn.length > 0) lines.push(`Ran on: ${ranOn.map(([name, value]) => `${cell(name, MAX_ID_CHARS)} ${code(value, MAX_CELL_CHARS)}`).join(' · ')}`, '');
 
   const error = told.error;
   if (error !== undefined) {
@@ -427,6 +451,7 @@ export function renderTracePage(report: Report1Document, result: ReportResult, f
         lines.push(`   > ${cell(step.explanation, MAX_DETAIL_CHARS)}`);
       }
       for (const line of stepDetailLines(step, options)) lines.push(`   - ${line}`);
+      lines.push(...stepScreenLines(step.screen));
     });
     lines.push('');
   }

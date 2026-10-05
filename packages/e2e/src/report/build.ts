@@ -187,6 +187,8 @@ export interface ReportStep {
   agent?: string | undefined;
   /** The hook the step ran in; absent for a step of the test body. */
   phase?: StepRecord['phase'];
+  /** How the last screen the step saw differs from the step before's; absent when it saw none. */
+  screen?: StepRecord['screen'];
   error?: ReportError | undefined;
   artifacts: readonly string[];
 }
@@ -201,6 +203,8 @@ interface ReportAttemptBase {
   error?: ReportError | undefined;
   secondaryErrors: readonly ReportError[];
   cleanup: AttemptRecord['cleanup'];
+  /** What the engine said the attempt ran on, such as `browser` or `device`; absent when it said nothing. */
+  environment?: Readonly<Record<string, string>> | undefined;
 }
 
 export interface ReportAttempt extends ReportAttemptBase {
@@ -439,6 +443,7 @@ function serializeAttemptBase(attempt: AttemptRecord | SerialAttemptRecord): Rep
     error: attempt.error === undefined ? undefined : serializeErrorRecord(attempt.error),
     secondaryErrors: attempt.secondaryErrors.map(serializeErrorRecord),
     cleanup: attempt.cleanup,
+    ...(attempt.environment === undefined ? {} : { environment: attempt.environment }),
   };
 }
 

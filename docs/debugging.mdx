@@ -39,11 +39,13 @@ Every run that reaches its tests writes a trace page for each failed, timed
 out, or flaky test under `.e2e/traces/` (`<output>/traces/` when the output
 is moved), and removes the previous run's pages. The
 [`trace`](/reference/config#trace) mode chooses which tests keep one; the
-default is `retain-on-failure`. Each step lists what it did: the node an
-action landed on, the values an assertion read while it waited, the replay
-cache's decision, and what the app logged meanwhile (console errors and
-warnings, uncaught exceptions, failed requests, 4xx and 5xx responses). Then
-come the agent's last turns and the screen at failure:
+default is `retain-on-failure`. The page names what the test ran on (browser
+and user agent, or device). Each step lists what it did: the node an action
+landed on, the values an assertion read while it waited, the replay cache's
+decision, what the app logged meanwhile (console output, uncaught exceptions,
+failed requests, 4xx and 5xx responses), where the page went (`↪ navigated
+to /login`, a new tab, a frame), and how the screen changed since the step
+before. Then come the agent's last turns and the screen at failure:
 
 ````markdown
 # ✗ todos › shows the remaining count
@@ -59,6 +61,8 @@ expected: text "1 remaining"
 observed: text "0 remaining" (match count 1)
 ```
 
+Ran on: browser `chromium 141.0.7390.37` · user agent `Mozilla/5.0 (Macintosh; …) HeadlessChrome/141.0.7390.37 Safari/537.36`
+
 Look at: `tests/todos.e2e.ts:15`
 
 ## Steps
@@ -69,8 +73,17 @@ Look at: `tests/todos.e2e.ts:15`
    - type "Milk" into textbox "New todo" (17ms)
    - press "Enter" on the focused field (5ms)
    - ✗ network error: `POST /api/todos 500 Internal Server Error`
+   - screen: 6 changes since step 1 at `/todos`, 38 nodes
+     - `added listitem "Milk Delete Milk" testid="todo"`
+     - `added checkbox "Milk"`
+     - `changed status "Remaining" text="1 remaining" (was: status "Remaining" text="0 remaining")`
+     - 3 more
 3. ✓ `locator.check` `getByLabel("Milk")` (13ms) — `tests/todos.e2e.ts:14`
    - check checkbox "Milk" (13ms)
+   - screen: 3 changes since step 2 at `/todos`, 38 nodes
+     - `added checkbox "Milk" [checked]`
+     - `changed status "Remaining" text="0 remaining" (was: status "Remaining" text="1 remaining")`
+     - `removed checkbox "Milk"`
 4. ✗ `expect.toHaveText` `getByRole("status", name: "Remaining")` (1.6s) — **ASSERTION_FAILED** — `tests/todos.e2e.ts:15`
    - expect gave up after 16 reads in 1.6s: text "0 remaining" (1 match) x16
 
@@ -87,7 +100,9 @@ URL: `http://127.0.0.1:4271/todos`
 
 An assertion that read one value the whole time is a wrong expectation; one
 whose readings changed (`"2 remaining" x3 -> at 410ms "1 remaining"`) raced
-the app. The runner spends at most 5 s capturing the screen and screenshot
+the app. A step's screen is the last one it saw: on web, the screen an action
+left; on a device, the screen the step acted on. `screen: unchanged` after an
+action means the action had no visible effect. The runner spends at most 5 s capturing the screen and screenshot
 once per failed attempt; an app that does not answer in time gets no screen
 section. CI uploads the pages with the report; see [CI](/ci).
 

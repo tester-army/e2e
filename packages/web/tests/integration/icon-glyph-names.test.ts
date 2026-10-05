@@ -14,7 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { EngineCleanupContext, EngineHandle, LocatorExpression, OperationContext, SemanticNode } from 'e2e/engine';
 import { surfaceOf, web } from '../../src/index.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
-import { ignoreAppLog, noSecrets } from '../helpers/secrets.ts';
+import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 const PAGE = `
   <style>
@@ -74,7 +74,7 @@ describe('names with CSS generated content', () => {
       app: { site: new URL(app.url).hostname }, env: {}, headed: false,
       workerSlot: 0, log: () => undefined, signal: new AbortController().signal,
     });
-    await engine.startAttempt!({ attemptId: 'glyphs-1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
+    await engine.startAttempt!({ attemptId: 'glyphs-1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
     await engine.session!.open!(`${app.url}/login`, op);
     await surfaceOf(engine)!.page().setContent(PAGE);
   });

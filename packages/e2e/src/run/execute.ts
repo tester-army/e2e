@@ -2,7 +2,7 @@
 
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
-import type { ResolveSecretOptions } from '../engine/index.ts';
+import type { EngineSnapshot, ResolveSecretOptions } from '../engine/index.ts';
 import type { TargetSession, OperationContext, VideoSegment } from '../engine/surface.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import {
@@ -26,6 +26,7 @@ import { engineAppInfo } from '../config/app.ts';
 import { Deadline, NEVER_ABORTS, withAbort, withScopedBudget, withTimeout } from '../internal/time.ts';
 import { createAgentCacheContext, flushStagedTraces } from '../cache/context.ts';
 import { storedRecordingsFor, type StoredRecordings } from '../cache/rekeyed.ts';
+import { bound } from '../cache/trace.ts';
 import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
 import { pairRecordings, type TestTargetPair } from '../collect/select.ts';
 import type { AttemptRecording } from '../internal/recording-modes.ts';
@@ -49,6 +50,7 @@ import type {
   SerialMemberRecord,
 } from './records.ts';
 import { isFailedStatus } from './records.ts';
+import { traceScreen } from './step-screens.ts';
 import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialAttemptRun, type SerialAttemptStart, type SerialHost, type SharedSerialSession } from './serial.ts';
 import { interruptedSkip, pairKey, pairResult, repeatSegment, unstartedResult } from './units.ts';
@@ -152,6 +154,8 @@ export interface ClosingRecord {
 export interface SessionPlan {
   readonly session: string | undefined;
   readonly video: AttemptRecording | undefined;
+  /** Whether the attempt may keep a trace, so the engine is asked for the screens it reads. */
+  readonly traced: boolean;
 }
 
 /** What closing an attempt's session needs besides its verdict: the video it started. */
@@ -613,6 +617,8 @@ export class TargetExecutor implements SerialHost {
               signal: launchSignal,
               resolveSecret: (secret, options) => this.resolveEngineSecret(session, secret, options),
               appLog: (entry) => session.appLog.push(entry),
+              ...(plan.traced ? { screen: (snapshot: EngineSnapshot) => session.screens.push(snapshot) } : {}),
+              environment: (facts) => session.environment.push(facts),
             }),
           ),
         );
@@ -962,11 +968,20 @@ export class TargetExecutor implements SerialHost {
     try {
       const session =
         shared?.session ??
-        (await this.launchSession({ session: pair.options.session, video }, attemptId, artifacts.dir, attemptAbort.signal));
+        (await this.launchSession({ session: pair.options.session, video, traced: trace !== undefined }, attemptId, artifacts.dir, attemptAbort.signal));
       openSession = session;
       // A serial group's session serves one member at a time; what the app
       // logs from here is this attempt's.
       session.appLog.route((entry, at) => steps.recordAppLog(entry, at));
+      session.screens.route((observation) =>
+        steps.recordScreen(() =>
+          traceScreen(observation, {
+            secrecy: sessionSecrecy(session, this.config.allSecrets),
+            maxBytes: this.config.limits.maxObservationBytes,
+            appOrigin: this.target.app.base?.origin,
+          }),
+        ),
+      );
 
       const testDeadline = new Deadline(pair.options.timeout);
       this.options.events?.onAttemptDeadline?.(pair, { index: attemptIndex, id: attemptId, startedAt });
@@ -1207,8 +1222,13 @@ export class TargetExecutor implements SerialHost {
       if (openSession !== null && shared === undefined) {
         await this.closeSession(openSession, { attemptId, video }, record, artifacts.sink, secondaryErrors);
       }
+      if (openSession !== null) {
+        const environment = environmentRecord(openSession, redact);
+        if (environment !== undefined) record.environment = environment;
+      }
       // What a shared session's app logs from here waits for the next member.
       openSession?.appLog.route(undefined);
+      openSession?.screens.route(undefined);
     }
 
     // Size and digest land asynchronously; the record is read right after.
@@ -1237,6 +1257,12 @@ export class TargetExecutor implements SerialHost {
     }
     return record;
   }
+}
+
+/** What the engine said the session runs on, redacted; undefined when it said nothing. */
+function environmentRecord(session: TargetSession, redact: (text: string) => string): Record<string, string> | undefined {
+  const facts = Object.entries(session.environment.read());
+  return facts.length === 0 ? undefined : Object.fromEntries(facts.map(([name, value]) => [bound(redact(name), 40), bound(redact(value), 200)]));
 }
 
 /**

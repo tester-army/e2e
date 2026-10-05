@@ -11,7 +11,7 @@ import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { LocatorExpression } from 'e2e/engine';
 import { surfaceOf, web } from '../../src/index.ts';
-import { ignoreAppLog, noSecrets } from '../helpers/secrets.ts';
+import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 /** Escapes HTML for a double-quoted attribute value, so a document can carry a nested `srcdoc`. */
 function attribute(html: string): string {
@@ -65,7 +65,7 @@ describe('nested frame locators', () => {
 
   beforeAll(async () => {
     await engine.init!({ runId: 'frames', targetName: 'fixture', projectRoot: process.cwd(), app: {}, env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
-    await engine.startAttempt!({ attemptId: 'attempt', artifactsDir, signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
+    await engine.startAttempt!({ attemptId: 'attempt', artifactsDir, signal, resolveSecret: noSecrets, ...ignoreTrace });
     await engine.session!.open!('about:blank', operation);
     page = surfaceOf(engine)!.page();
     await page.setContent(HOST_DOCUMENT);

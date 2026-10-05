@@ -175,6 +175,12 @@
                   "column": 1
                 },
                 "phase": "afterEach",
+                "screen": {
+                  "location": "https://app.example.com/results",
+                  "nodes": 12,
+                  "since": 0,
+                  "changes": ["added heading \"Results\"", "changed status text=\"3 found\" (was: status text=\"searching\")"]
+                },
                 "status": "failed",
                 "startedAt": "2026-07-24T12:00:00.000Z",
                 "durationMs": 1000,
@@ -223,6 +229,7 @@
             ],
             "secondaryErrors": [],
             "cleanup": "complete",
+            "environment": { "browser": "chromium 141.0.7390.37" },
             "failure": {
               "url": "http://127.0.0.1:3000/todos",
               "screen": "018f0f5c-7b2a-7abc-8abc-1123456789ab:artifact:0",

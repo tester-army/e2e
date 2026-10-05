@@ -73,6 +73,8 @@ export interface AttemptRecord {
   /** Why the body skipped itself (`test.skip(condition, reason)`); set exactly when `status` is `skipped`. */
   skip?: SkipInfo;
   secondaryErrors: SerializedError[];
+  /** What the engine said the attempt ran on (`EngineAttemptContext.environment`), redacted. */
+  environment?: Record<string, string>;
   /** When the attempt keeps a trace, its `trace` mode resolved for this attempt; the runner's, never in the report. */
   trace?: AttemptRecording | undefined;
   cleanup: 'complete' | 'failed' | 'forced';
@@ -103,6 +105,8 @@ export interface SerialAttemptRecord {
   artifacts: ArtifactRecord[];
   error?: SerializedError;
   secondaryErrors: SerializedError[];
+  /** What the engine said the attempt ran on (`EngineAttemptContext.environment`), redacted. */
+  environment?: Record<string, string>;
   /** When the attempt keeps a trace, its `trace` mode resolved for this attempt; the runner's, never in the report. */
   trace?: AttemptRecording | undefined;
   cleanup: 'complete' | 'failed' | 'forced';

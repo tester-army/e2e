@@ -12,6 +12,7 @@ import { classifyError, serializeError, TestError, withHint, type SerializedErro
 import { timestamp } from '../internal/ids.ts';
 import { sourceLocation, type SourceLocation } from '../internal/source.ts';
 import type { AppLogEntry } from '../engine/index.ts';
+import { compareScreens, type ScreenText, type StepScreen } from './step-screens.ts';
 
 /** The closed step kind set; the type is derived from it, so the two cannot drift. */
 export const STEP_KINDS = ['agent', 'locator', 'assertion', 'screen', 'app', 'session', 'resource'] as const;
@@ -211,6 +212,8 @@ export interface StepRecord {
   agent?: string;
   /** The hook the step ran in; absent for a step of the test body. */
   phase?: StepPhase;
+  /** How the last screen the step saw differs from the step before's; absent when it saw none. */
+  screen?: StepScreen;
   error?: SerializedError;
   artifacts: string[];
 }
@@ -320,8 +323,10 @@ function stepStack(projectRoot: string | undefined): string | undefined {
   }
 }
 
-/** App log entries one attempt keeps; a page logging in a loop must not swell the report. */
+/** App log errors and warnings one attempt keeps; a page logging in a loop must not swell the report. */
 const MAX_APP_LOG_ENTRIES = 200;
+/** App log `info` entries one attempt keeps, counted apart so chatter never crowds out an error. */
+const MAX_APP_LOG_INFO = 100;
 /** Characters of an event's detail the report admits. */
 const MAX_DETAIL_CHARS = 300;
 
@@ -350,8 +355,14 @@ export class StepRecorder {
   private readonly abandonedPromises: Promise<unknown>[] = [];
   /** Highest timeline index among passed verification steps, or -1 when none has. */
   private lastVerified = -1;
-  /** App log entries filed so far this attempt, against `MAX_APP_LOG_ENTRIES`. */
+  /** App log errors and warnings filed so far this attempt, against `MAX_APP_LOG_ENTRIES`. */
   private appLogEntries = 0;
+  /** App log `info` entries filed so far this attempt, against `MAX_APP_LOG_INFO`. */
+  private appLogInfo = 0;
+  /** The last screen each running step saw, read only when the step ends. */
+  private readonly seenScreens = new Map<string, () => ScreenText | undefined>();
+  /** The last screen a finished step saw, the one the next step's is compared with. */
+  private lastScreen: { readonly step: number; readonly screen: ScreenText } | undefined;
   /** App log entries that arrived before the attempt's first step, filed under it once it starts. */
   private readonly earlyAppLog: { entry: AppLogEntry; at: string }[] = [];
   private readonly maxEventsPerStep: number;
@@ -461,7 +472,12 @@ export class StepRecorder {
       this.pending.delete(record.id);
       this.stacks.delete(record.id);
       // An abandoned step reported its end when the body returned; what it did since is not the test's.
-      if (!this.abandoned.delete(record.id)) this.publishEnd(record);
+      if (this.abandoned.delete(record.id)) {
+        this.seenScreens.delete(record.id);
+      } else {
+        this.settleScreen(record);
+        this.publishEnd(record);
+      }
     }
   }
 
@@ -546,14 +562,46 @@ export class StepRecorder {
    * waits for it; past the per-attempt cap, entries are dropped.
    */
   recordAppLog(entry: AppLogEntry, at: string = timestamp()): void {
-    if (this.appLogEntries >= MAX_APP_LOG_ENTRIES) return;
-    this.appLogEntries += 1;
+    if (entry.level === 'info') {
+      if (this.appLogInfo >= MAX_APP_LOG_INFO) return;
+      this.appLogInfo += 1;
+    } else {
+      if (this.appLogEntries >= MAX_APP_LOG_ENTRIES) return;
+      this.appLogEntries += 1;
+    }
     const target = this.current() ?? this.steps.at(-1);
     if (target === undefined) {
       this.earlyAppLog.push({ entry, at });
       return;
     }
     this.fileAppLog(target, entry, at);
+  }
+
+  /**
+   * Notes a screen the running step saw; the newest one stands. `read`
+   * renders it, redacted, and runs once, when the step ends, so a step that
+   * observes many times pays for one. A screen no step is running for (the
+   * failure evidence, a launch) is the trace's only through the screen at failure.
+   */
+  recordScreen(read: () => ScreenText | undefined): void {
+    const target = this.current();
+    if (target !== undefined) this.seenScreens.set(target.id, read);
+  }
+
+  /** Compares the last screen a step saw with the one before it, once the step has ended. */
+  private settleScreen(record: StepRecord): void {
+    const read = this.seenScreens.get(record.id);
+    if (read === undefined) return;
+    this.seenScreens.delete(record.id);
+    let screen: ScreenText | undefined;
+    try {
+      screen = read();
+    } catch {
+      return;
+    }
+    if (screen === undefined) return;
+    record.screen = compareScreens(this.lastScreen, screen);
+    this.lastScreen = { step: record.index, screen };
   }
 
   private fileAppLog(target: StepRecord, entry: AppLogEntry, at: string): void {

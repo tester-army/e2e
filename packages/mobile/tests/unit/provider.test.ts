@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { OperationContext, ProviderRecordContext, ProviderRecording, ProviderRecordingResult, ProviderRecordingStopContext } from 'e2e/engine';
 import type { DeviceLease, DeviceProvider, DeviceRequest } from '../../src/provider.ts';
 import { boot, harness, poolVariableIn, PROJECT_ROOT, type Harness } from '../helpers/harness.ts';
-import { ignoreAppLog, noSecrets } from '../helpers/secrets.ts';
+import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 /** A scripted provider: leases `lease-n` against `https://n.example`, remembering every call. */
 function provider(options: { failSlot?: number; installedApp?: string; failRelease?: boolean } = {}) {
@@ -149,7 +149,7 @@ describe('device provider', () => {
     expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'com.example.app', platform: 'ios', device: 'sim-0' });
     await boot(h, 'ios', 0);
     expect(h.fake.methods().filter((method) => method === 'apps.install')).toEqual([]);
-    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir: '', signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
+    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir: '', signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
     await h.engine.session!.restart!({ signal: new AbortController().signal, timeoutMs: 30_000, runId: 'run-1', attemptId: 'a1', origin: 'test' });
     expect(h.fake.lastArgs('apps.open')).toMatchObject({ app: 'com.example.app', device: 'sim-0', relaunch: true });
   });
@@ -433,7 +433,7 @@ describe('device provider recording', () => {
     const result = await runner.prepare(prepareInfo({ DEVICE_SERVICE_TOKEN: 't' }, 1));
     const worker = harness({ device: impl });
     await boot(worker, 'ios', 0, { ...result?.env, DEVICE_SERVICE_TOKEN: 't' });
-    await worker.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
+    await worker.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
     return worker;
   }
 
@@ -483,7 +483,7 @@ describe('device provider recording', () => {
     const cloud = recordingProvider();
     const worker = harness({ device: cloud.impl });
     await boot(worker, 'ios', 0);
-    await worker.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
+    await worker.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
     await worker.engine.artifacts!.startVideo!(operation());
     expect(cloud.recorded).toEqual([]);
     expect(records(worker)).toHaveLength(1);
@@ -554,7 +554,7 @@ describe('device provider recording', () => {
     await worker.engine.endAttempt!(cleanup());
     expect(cloud.stopped).toHaveLength(2);
     // Stopped for good: the next attempt starts with nothing recording.
-    await worker.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
+    await worker.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
     await worker.engine.endAttempt!(cleanup());
     expect(cloud.stopped).toHaveLength(2);
   });

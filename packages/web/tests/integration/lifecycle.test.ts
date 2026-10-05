@@ -22,7 +22,7 @@ import type {
 import { web, surfaceOf } from '../../src/index.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { decodePng } from '../helpers/png.ts';
-import { ignoreAppLog, noSecrets } from '../helpers/secrets.ts';
+import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 /** The segments as files: a local recording never links, so a link here is a failure. */
 function videoFiles(segments: readonly VideoSegment[]): VideoFile[] {
@@ -41,7 +41,7 @@ function operation(attemptId: string, signal = new AbortController().signal): Op
 }
 
 function attempt(attemptId: string, artifactsDir: string) {
-  return { attemptId, artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog };
+  return { attemptId, artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace };
 }
 
 function byRole(role: string): LocatorExpression {
@@ -187,7 +187,7 @@ async function openAttempt(
   artifactsDir: string,
   attemptId: string,
 ): Promise<string> {
-  await engine.startAttempt!({ attemptId, artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
+  await engine.startAttempt!({ attemptId, artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
   await engine.session!.open!(`${app.url}/`, operation(attemptId));
   const nodes = await engine.locate!(
     { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'heading', exact: true } } },
@@ -837,7 +837,7 @@ describe('web engine lifecycle', () => {
     const engine = web();
     try {
       await boot(engine, app);
-      await engine.startAttempt!({ attemptId: 'c1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
+      await engine.startAttempt!({ attemptId: 'c1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
       await expect(engine.observe!(operation('c1'))).rejects.toMatchObject({ code: 'INVALID_STATE' });
     } finally {
       await engine.endAttempt!(cleanup());

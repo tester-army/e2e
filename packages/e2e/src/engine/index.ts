@@ -524,15 +524,33 @@ export interface EngineAttemptContext {
    * are dropped.
    */
   readonly appLog: (entry: AppLogEntry) => void;
+  /**
+   * Hands the harness a screen the engine read anyway: the capture a
+   * `locate` matched against, or one taken right after an action where that
+   * is cheap. The harness redacts it and keeps, for each step, how the
+   * screen changed since the step before, which the trace page shows. It
+   * never becomes an observation: refs it holds are not valid for `perform`.
+   * Nothing in the run waits on it, so an engine that cannot afford it skips
+   * it. Absent when the attempt keeps no trace; the engine then captures nothing for it.
+   */
+  readonly screen?: (snapshot: EngineSnapshot) => void;
+  /**
+   * What the attempt runs on, such as `{ browser: 'chromium 141.0.7390.37' }`
+   * or `{ device: 'iPhone 16', os: 'iOS 26.0' }`, for the trace page. A
+   * later call adds to and overwrites earlier facts; the harness redacts and
+   * clips them and keeps a handful.
+   */
+  readonly environment: (facts: Readonly<Record<string, string>>) => void;
 }
 
 /** One line of what the app did during an attempt, as `EngineAttemptContext.appLog` takes it. */
 export interface AppLogEntry {
   /**
    * Where it came from: the app's `console`, an `error` nothing caught, the
-   * `network`, or the `system` the app runs on (a crash, an OS log).
+   * `network`, the `system` the app runs on (a crash, an OS log), or a
+   * `navigation` (the page moving, a new tab, a frame loading).
    */
-  readonly source: 'console' | 'error' | 'network' | 'system';
+  readonly source: 'console' | 'error' | 'network' | 'system' | 'navigation';
   readonly level: 'error' | 'warning' | 'info';
   /** One line, such as `GET /api/todos 500` or `TypeError: x is undefined`; the harness clips it. */
   readonly text: string;

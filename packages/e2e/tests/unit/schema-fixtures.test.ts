@@ -57,6 +57,27 @@ describe.each(schemas)('%s schema', (name) => {
       }
     });
 
+    it("bounds a step's screen and an attempt's environment", () => {
+      const report = readJson('fixtures', 'report-v1.valid.json') as {
+        run: { results: { attempts: (Record<string, unknown> & { steps: Record<string, unknown>[] })[] }[] };
+      };
+      const attempt = report.run.results[0]!.attempts[0]!;
+      const screen = attempt.steps[1]!['screen'] as Record<string, unknown>;
+      const cases: [() => void, () => void][] = [
+        [() => (screen['changes'] = Array.from({ length: 13 }, () => 'added x')), () => (screen['changes'] = Array.from({ length: 12 }, () => 'added x'))],
+        [() => (screen['more'] = 0), () => (screen['more'] = 1)],
+        [() => delete screen['nodes'], () => (screen['nodes'] = 0)],
+        [() => (attempt['environment'] = { browser: 'x'.repeat(201) }), () => (attempt['environment'] = { browser: 'x'.repeat(200) })],
+        [() => (attempt['environment'] = { cores: 8 }), () => (attempt['environment'] = { cores: '8' })],
+      ];
+      for (const [breakIt, fixIt] of cases) {
+        breakIt();
+        expect(validate(report)).toBe(false);
+        fixIt();
+        expect(validate(report)).toBe(true);
+      }
+    });
+
     it('constrains result tags to distinct names --tag can spell back', () => {
       const report = readJson('fixtures', 'report-v1.valid.json') as { run: { results: { tags?: string[] }[] } };
       const result = report.run.results[0]!;

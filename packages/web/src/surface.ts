@@ -242,6 +242,9 @@ export interface WebOptions {
 /** The test-id attribute when the options name none. */
 const DEFAULT_TEST_ID_ATTRIBUTE = 'data-testid';
 
+/** How long the screen an action left may take for the trace before the step goes without one. */
+const TRACE_SCREEN_TIMEOUT_MS = 1_000;
+
 export class PlaywrightSurface {
   /**
    * Errors raised where nobody awaits them (dialog routing, route handlers)
@@ -273,6 +276,13 @@ export class PlaywrightSurface {
   private projectRoot = '';
   private headed = false;
   private artifactsDir = '';
+  /** Navigations the engine has in flight, which the app log leaves to the step that started them. */
+  private ownNavigations = 0;
+  /** The attempt's `EngineAttemptContext.screen` and `environment`; no-ops between attempts. */
+  private screenSink: ((snapshot: EngineSnapshot) => void) | undefined;
+  private environmentSink: (facts: Readonly<Record<string, string>>) => void = () => undefined;
+  /** Whether this attempt told the harness what it runs on. */
+  private environmentTold = false;
   private artifactCounter = 0;
   /**
    * Attempt-scoped network routes. Registered on the
@@ -441,6 +451,9 @@ export class PlaywrightSurface {
     const persistent = await this.persistentBinding(context);
     this.artifactsDir = context.artifactsDir;
     this.artifactCounter = 0;
+    this.screenSink = context.screen;
+    this.environmentSink = context.environment ?? (() => undefined);
+    this.environmentTold = false;
     const routes: StoredRoute[] = [];
     const initScripts = this.configuredInitScripts.forAttempt();
     this.latch = new ErrorLatch();
@@ -467,7 +480,10 @@ export class PlaywrightSurface {
         for (const script of initScripts) await target.addInitScript(script);
         target.setDefaultTimeout(CONTEXT_DEFAULT_TIMEOUT_MS);
         target.on('dialog', (dialog) => { void dialogs.dispatch(dialog); });
-        installAppLog(target, context.appLog);
+        installAppLog(target, context.appLog, {
+          ownNavigation: () => this.ownNavigations > 0,
+          testPage: () => this.openPage(),
+        });
         await installSiteHeaders(target, this.app.site, this.headers);
         for (const stored of routes) await target.route(stored.predicate, stored.handler);
       },
@@ -571,6 +587,20 @@ export class PlaywrightSurface {
 
   // --- page access shared with the browser fixture ---
 
+  /**
+   * The attempt's open page, or undefined, for a reader beside the test (the
+   * trace): unlike `requirePage`, it leaves an error a handler latched for
+   * the test's next operation to throw.
+   */
+  private openPage(): Page | undefined {
+    try {
+      const page = this.session?.current().page ?? null;
+      return page === null || page.isClosed() ? undefined : page;
+    } catch {
+      return undefined;
+    }
+  }
+
   requirePage(): Page {
     this.latch.throwPending();
     const page = this.requireSession().current().page;
@@ -639,16 +669,98 @@ export class PlaywrightSurface {
 
   /** Opens one URL the harness resolved; the attempt's page is created on first use. */
   open(url: string, operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'navigation', async (currentOperation) => {
-      const page = await this.ensurePage();
-      await page.goto(url, { waitUntil: 'load', timeout: currentOperation.timeoutMs });
-    });
+    return this.acted(operation, this.guard(operation, 'navigation', (currentOperation) =>
+      this.navigating(async () => {
+        const page = await this.ensurePage();
+        await page.goto(url, { waitUntil: 'load', timeout: currentOperation.timeoutMs });
+      }),
+    ));
   }
 
   back(operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'navigation', async (currentOperation) => {
-      await this.requirePage().goBack({ waitUntil: 'load', timeout: currentOperation.timeoutMs });
+    return this.acted(operation, this.guard(operation, 'navigation', (currentOperation) =>
+      this.navigating(async () => {
+        await this.requirePage().goBack({ waitUntil: 'load', timeout: currentOperation.timeoutMs });
+      }),
+    ));
+  }
+
+  /** Runs one navigation the engine itself makes, so the app log leaves it to the step that asked for it. */
+  async navigating<T>(work: () => Promise<T>): Promise<T> {
+    this.ownNavigations += 1;
+    try {
+      const result = await work();
+      this.tellEnvironment();
+      return result;
+    } finally {
+      this.ownNavigations -= 1;
+    }
+  }
+
+  /**
+   * Tells the harness, once an attempt, the browser and the user agent its
+   * page reports. Best effort and not awaited: nothing the test does waits
+   * on it.
+   */
+  private tellEnvironment(): void {
+    if (this.environmentTold) return;
+    const sink = this.environmentSink;
+    void this.environmentFacts().then((facts) => {
+      try {
+        if (facts !== undefined) sink(facts);
+      } catch {
+        // The harness's sink never fails the attempt.
+      }
     });
+  }
+
+  /** The browser and the user agent the page reports, within a second; undefined without a page or a browser to ask. */
+  private async environmentFacts(): Promise<Record<string, string> | undefined> {
+    try {
+      const page = this.openPage();
+      if (page === undefined) return undefined;
+      this.environmentTold = true;
+      const browser = page.context().browser();
+      const facts: Record<string, string> = browser === null ? {} : { browser: `${browser.browserType().name()} ${browser.version()}` };
+      const budget = { signal: AbortSignal.timeout(TRACE_SCREEN_TIMEOUT_MS), timeoutMs: TRACE_SCREEN_TIMEOUT_MS };
+      const userAgent = await withOperationDeadline(budget, 'user agent', () => page.evaluate(() => navigator.userAgent)).catch(() => undefined);
+      return typeof userAgent === 'string' ? { ...facts, 'user agent': userAgent } : facts;
+    } catch {
+      return undefined;
+    }
+  }
+
+
+  /**
+   * Resolves with what an action resolved with once the harness has the
+   * screen it left, for the trace. The screen is captured like an
+   * observation but never published, so every ref a test or model holds
+   * stays valid; a page that cannot answer within a second leaves the step
+   * without one, and an action that failed leaves none.
+   */
+  private async acted<T>(operation: OperationContext, work: Promise<T>): Promise<T> {
+    const result = await work;
+    await this.traceScreen(operation);
+    return result;
+  }
+
+  /** Captures the screen for the trace within its own second; see `acted`. */
+  private async traceScreen(operation: OperationContext): Promise<void> {
+    const sink = this.screenSink;
+    if (sink === undefined || operation.signal.aborted || this.session === undefined) return;
+    try {
+      const page = this.openPage();
+      if (page === undefined) return;
+      const refs = this.session.refs;
+      const budget = { signal: operation.signal, timeoutMs: TRACE_SCREEN_TIMEOUT_MS };
+      const captured = await withOperationDeadline(budget, 'trace screen', (remaining) =>
+        captureObservation(page, refs, { testIdAttribute: this.testIdAttribute, site: this.app.site }, { ...operation, ...remaining() }, undefined),
+      );
+      RefRegistry.dispose(captured.generation);
+      sink(captured.snapshot);
+    } catch {
+      // A screen the page could not give in time is no evidence the trace claims.
+    }
   }
 
   /** Restarts the document while retaining this attempt's context and storage. */
@@ -780,7 +892,7 @@ export class PlaywrightSurface {
    * on the root acts on the document element the root stands for.
    */
   perform(ref: NodeRef, action: LocatorAction, operation: OperationContext): Promise<void> {
-    return this.guard(
+    return this.acted(operation, this.guard(
       operation,
       action.kind,
       (currentOperation) => {
@@ -794,15 +906,15 @@ export class PlaywrightSurface {
         );
       },
       (cause) => classifyActionError(cause, action),
-    );
+    ));
   }
 
   /** One pointer action at a viewport point in CSS pixels, with nothing resolved behind it; see `dispatchPointerAction`. */
   performAt(point: ViewportPoint, action: PointerAction, operation: OperationContext): Promise<void> {
-    return this.guard(operation, `${action.kind} at point`, (currentOperation) => {
+    return this.acted(operation, this.guard(operation, `${action.kind} at point`, (currentOperation) => {
       this.requireSession().requireObservation();
       return dispatchPointerAction(this.requirePage(), point, action, currentOperation.signal);
-    }, classifyInputError);
+    }, classifyInputError));
   }
 
   /**
@@ -813,7 +925,7 @@ export class PlaywrightSurface {
    * scoped by the browser to the whole editing host, so it is opt-in.
    */
   typeText(text: string, options: { readonly replace: boolean }, operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'keyboard.type', async (currentOperation) => {
+    return this.acted(operation, this.guard(operation, 'keyboard.type', async (currentOperation) => {
       const session = this.requireSession();
       session.requireObservation();
       const token = session.token();
@@ -832,15 +944,15 @@ export class PlaywrightSurface {
         checkpoint();
       }
       await page.keyboard.type(text);
-    }, classifyInputError);
+    }, classifyInputError));
   }
 
   /** Sends one key to whatever holds focus, in the contract's key grammar Playwright shares. */
   pressKey(key: string, operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'keyboard.press', () => {
+    return this.acted(operation, this.guard(operation, 'keyboard.press', () => {
       this.requireSession().requireObservation();
       return this.requirePage().keyboard.press(key);
-    }, classifyInputError);
+    }, classifyInputError));
   }
 
   /**

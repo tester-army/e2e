@@ -322,26 +322,26 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
   const browser: Omit<Browser, keyof Expectable<BrowserExpectation>> = {
     goto(url, options) {
       const resolved = context.app.resolveUrl(url);
-      return navigation(options, async (operation) => {
+      return navigation(options, (operation) => surface.navigating(async () => {
         const page = await surface.ensurePage();
         await page.goto(resolved, {
           waitUntil: options?.waitUntil ?? 'load',
           timeout: operation.timeoutMs,
         });
-      });
+      }));
     },
     reload: (options) =>
-      navigation(options, async (operation) => {
+      navigation(options, (operation) => surface.navigating(async () => {
         await surface.requirePage().reload({ waitUntil: 'load', timeout: operation.timeoutMs });
-      }),
+      })),
     back: (options) =>
-      navigation(options, async (operation) => {
+      navigation(options, (operation) => surface.navigating(async () => {
         await surface.requirePage().goBack({ waitUntil: 'load', timeout: operation.timeoutMs });
-      }),
+      })),
     forward: (options) =>
-      navigation(options, async (operation) => {
+      navigation(options, (operation) => surface.navigating(async () => {
         await surface.requirePage().goForward({ waitUntil: 'load', timeout: operation.timeoutMs });
-      }),
+      })),
     url: () => currentUrl(),
     title: () => currentTitle(),
     // The same poll as `expect(browser).toHaveURL`, exposed as a wait.

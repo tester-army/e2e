@@ -334,9 +334,20 @@ function settleOptions(settle: MobileOptions['settle']): SettleOptions {
   return { settle: true, settleQuietMs: quietMs };
 }
 
+/** Calls one of the harness's trace hooks; a hook that throws, or one an older harness lacks, never fails the device's work. */
+function tellHarness(call: () => void): void {
+  try {
+    call();
+  } catch {
+    // The trace is a reader of the attempt, never a reason it fails.
+  }
+}
+
 export class AgentDeviceSurface {
   private client: AgentDeviceClient | undefined;
   private attempt: Attempt | undefined;
+  /** The attempt's `EngineAttemptContext.screen`, which locate captures feed; undefined between attempts. */
+  private screenSink: ((snapshot: EngineSnapshot) => void) | undefined;
   /** The device this worker drives, the pool's binding for its slot; undefined leaves the choice to agent-device. */
   private device: Pick<SlotBinding, 'device' | 'deviceId'> | undefined;
   private generation = new Map<string, NodeBinding>();
@@ -529,12 +540,16 @@ export class AgentDeviceSurface {
     this.attempt = { attemptId: context.attemptId, artifactsDir: context.artifactsDir, screenshots: 0, video: undefined };
     this.generation = new Map();
     this.located.clear();
+    this.screenSink = context.screen;
+    const device = deviceLabel(this.device);
+    tellHarness(() => context.environment?.({ platform: this.options.platform, ...(device === undefined ? {} : { device }) }));
   }
 
   async endAttempt(context: EngineCleanupContext): Promise<void> {
     const attempt = this.attempt;
     const dangling = attempt?.video;
     this.attempt = undefined;
+    this.screenSink = undefined;
     this.generation = new Map();
     this.located.clear();
     // The harness stops the video before it ends the attempt; a recording still
@@ -969,6 +984,7 @@ export class AgentDeviceSurface {
   async locate(expression: LocatorExpression, operation: OperationContext): Promise<readonly SemanticNode[]> {
     const raw = await this.snapshotOrEmpty(operation, false);
     const projected = this.project(raw);
+    this.traceScreen(raw, projected);
     const matches = resolveExpression(expression, projected.index);
     for (const entry of matches) this.located.set(entry.id, this.bind(entry, projected.index));
     for (const oldest of this.located.keys()) {
@@ -976,6 +992,26 @@ export class AgentDeviceSurface {
       this.located.delete(oldest);
     }
     return matches.map((entry) => entry.node);
+  }
+
+  /**
+   * Hands the harness the capture a locate matched against, for the trace:
+   * the screen the step acted on, at no cost of another snapshot. A screen
+   * whose viewport is not known yet is skipped rather than probed.
+   */
+  private traceScreen(raw: RawSnapshot, projected: ProjectedSnapshot): void {
+    const sink = this.screenSink;
+    const viewport = projected.viewport ?? this.knownViewport;
+    if (sink === undefined || viewport === undefined) return;
+    const location = screenLocation(raw.appBundleId ?? raw.appName ?? this.appIdentity, screenTitle(projected));
+    tellHarness(() =>
+      sink({
+        root: screenRoot(projected.roots, viewport),
+        viewport,
+        ...(isTruncated(raw) ? { truncated: true } : {}),
+        ...(location === undefined ? {} : { location }),
+      }),
+    );
   }
 
   private resolveRef(ref: NodeRef): NodeBinding {

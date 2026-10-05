@@ -169,7 +169,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
   };
 
   try {
-    session = await executor.launchSession({ session: undefined, video }, attemptId, artifacts.dir, signal);
+    session = await executor.launchSession({ session: undefined, video, traced: false }, attemptId, artifacts.dir, signal);
     session.appLog.route((entry, at) => steps.recordAppLog(entry, at));
   } catch (cause) {
     await executor.dispose();

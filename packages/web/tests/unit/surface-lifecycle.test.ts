@@ -8,7 +8,7 @@ import type { EngineFixtureContext, OperationContext } from 'e2e/engine';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { createBrowserFixture } from '../../src/browser.ts';
-import { ignoreAppLog, noSecrets } from '../helpers/secrets.ts';
+import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 const acquire = vi.hoisted(() => vi.fn());
 vi.mock('../../src/browser-connection.ts', () => ({
@@ -48,6 +48,7 @@ beforeEach(async () => {
     isConnected: () => true,
     newContext: vi.fn(async () => ({
       addInitScript: async () => undefined,
+      pages: () => [],
       setDefaultTimeout: () => undefined,
       on: () => undefined,
       route: async (_predicate: unknown, handler: (route: Route) => Promise<void>) => { registered = handler; },
@@ -58,7 +59,7 @@ beforeEach(async () => {
   acquire.mockResolvedValue(browser);
   surface = new PlaywrightSurface({});
   await surface.init({ runId: 'run', targetName: 'web', projectRoot: process.cwd(), app: {}, env: {}, headed: false, workerSlot: 0, signal: new AbortController().signal, log: () => undefined });
-  await surface.startAttempt({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
+  await surface.startAttempt({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
 });
 
 afterEach(async () => {
@@ -88,7 +89,7 @@ it.each(['dialog', 'route'] as const)('keeps a late %s failure on the attempt th
     } as unknown as Route);
   }
   await surface.endAttempt(cleanup());
-  await surface.startAttempt({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
+  await surface.startAttempt({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
   release();
   await pending;
   expect(() => oldLatch.throwPending()).toThrow(/old handler failed/);
@@ -162,13 +163,13 @@ it('opens no session for an attempt the runner gave up on while its basic-auth p
     let resolvePassword!: (value: string) => void;
     const slow = new Promise<string>((resolve) => { resolvePassword = resolve; });
     const controller = new AbortController();
-    const starting = protectedSurface.startAttempt({ attemptId: 'slow', artifactsDir, signal: controller.signal, resolveSecret: () => slow, appLog: ignoreAppLog });
+    const starting = protectedSurface.startAttempt({ attemptId: 'slow', artifactsDir, signal: controller.signal, resolveSecret: () => slow, ...ignoreTrace });
     controller.abort();
     await expect(starting).rejects.toMatchObject({ code: 'CANCELLED' });
     await protectedSurface.endAttempt(cleanup());
     resolvePassword('late-password');
     await new Promise<void>((resolve) => setImmediate(resolve));
-    await protectedSurface.startAttempt({ attemptId: 'next', artifactsDir, signal: new AbortController().signal, resolveSecret: async () => 'next-password', appLog: ignoreAppLog });
+    await protectedSurface.startAttempt({ attemptId: 'next', artifactsDir, signal: new AbortController().signal, resolveSecret: async () => 'next-password', ...ignoreTrace });
     expect(vi.mocked(browser.newContext).mock.lastCall?.[0]).toMatchObject({ httpCredentials: { username: 'ada', password: 'next-password' } });
   } finally {
     await protectedSurface.dispose(cleanup());

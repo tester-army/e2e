@@ -426,7 +426,7 @@ async function runSerialAttempt(
   try {
     shared = {
       // Members share the group's session and recordings, which selection resolved alike for each.
-      session: await host.launchSession({ session: first.options.session, video: recordings.video }, attemptId, artifacts.dir, host.interruptSignal),
+      session: await host.launchSession({ session: first.options.session, video: recordings.video, traced: recordings.trace !== undefined }, attemptId, artifacts.dir, host.interruptSignal),
       attemptId,
       artifactSegments,
       priorSteps: [],
@@ -498,6 +498,7 @@ async function runSerialAttempt(
       secondaryErrors: memberAttempt.secondaryErrors,
     });
     record.artifacts.push(...memberAttempt.artifacts);
+    if (memberAttempt.environment !== undefined) record.environment = memberAttempt.environment;
     // A member that skipped itself decided nothing about the shared state; the rest run on.
     if (isFailedStatus(memberAttempt.status)) skipRemaining = predecessorFailed(memberIndex);
     // Nested scopes close when their last member is done, as for ordinary

@@ -23,7 +23,7 @@ import type {
   ViewportPoint,
   ViewportSize,
 } from './contract.ts';
-import type { AppLogEntry, EngineObserveOptions, EngineState, VideoSegment } from './index.ts';
+import type { AppLogEntry, EngineObserveOptions, EngineSnapshot, EngineState, VideoSegment } from './index.ts';
 
 export type * from './contract.ts';
 export { EngineError } from './contract.ts';
@@ -129,6 +129,26 @@ export interface AppLogRoute {
   route(sink: ((entry: AppLogEntry, at: string) => void) | undefined): void;
 }
 
+/**
+ * Where the screens of an attempt go for its trace: what the engine handed
+ * over (`EngineAttemptContext.screen`) and every observation the session
+ * took. Without a sink they are dropped; nothing waits for them.
+ */
+export interface ScreenRoute {
+  /** Takes one engine snapshot, checked: a malformed one is dropped. */
+  push(snapshot: EngineSnapshot): void;
+  /** Sends every screen from now on to `sink`; undefined drops them again. */
+  route(sink: ((observation: Observation) => void) | undefined): void;
+}
+
+/** What the engine said the attempt runs on (`EngineAttemptContext.environment`), bounded. */
+export interface EnvironmentFacts {
+  /** Merges facts in, checked: a non-string value is dropped. */
+  push(facts: Readonly<Record<string, string>>): void;
+  /** The facts so far, unredacted. */
+  read(): Readonly<Record<string, string>>;
+}
+
 export interface TargetSession {
   /** Grammar verbs the engine can honor, derived from its declared action kinds and hooks. */
   readonly verbs: ReadonlySet<GrammarVerb>;
@@ -166,6 +186,8 @@ export interface TargetSession {
   readonly app: SessionApp;
   readonly artifacts: SessionArtifacts;
   readonly appLog: AppLogRoute;
+  readonly screens: ScreenRoute;
+  readonly environment: EnvironmentFacts;
   /** Captures immutable app state for a session envelope. */
   captureState?(operation: OperationContext): Promise<EngineState>;
   /** Replaces current app state with an immutable captured state. */

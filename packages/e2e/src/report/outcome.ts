@@ -22,6 +22,8 @@ export interface AttemptView {
   readonly artifacts: readonly ReportArtifact[];
   /** What else failed after the error: a teardown hook, the engine's cleanup. */
   readonly secondaryErrors: readonly ReportError[];
+  /** What the engine said the attempt ran on; for a serial member, the group attempt's. */
+  readonly environment?: Readonly<Record<string, string>> | undefined;
 }
 
 export interface Outcome {
@@ -62,6 +64,7 @@ function attemptViews(result: ReportResult, groups: ReadonlyMap<string, ReportSe
       failure: attempt.failure,
       artifacts: attempt.artifacts,
       secondaryErrors: attempt.secondaryErrors,
+      environment: attempt.environment,
     }));
   }
   const attempts = groups.get(result.serialGroupId)?.attempts ?? [];
@@ -75,6 +78,7 @@ function attemptViews(result: ReportResult, groups: ReadonlyMap<string, ReportSe
       artifacts: attempt.artifacts,
       // The member's own, then the shared session's: its cleanup errors land on the group attempt.
       secondaryErrors: [...(member?.secondaryErrors ?? []), ...attempt.secondaryErrors],
+      environment: attempt.environment,
     };
   });
 }

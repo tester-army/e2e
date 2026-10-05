@@ -10,6 +10,24 @@
     "run": { "$ref": "#/$defs/run" }
   },
   "$defs": {
+    "stepScreen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodes", "changes"],
+      "properties": {
+        "location": { "type": "string" },
+        "nodes": { "type": "integer", "minimum": 0 },
+        "since": { "type": "integer", "minimum": 0 },
+        "changes": { "type": "array", "maxItems": 12, "items": { "type": "string", "maxLength": 200 } },
+        "more": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "maxProperties": 8,
+      "propertyNames": { "maxLength": 40 },
+      "additionalProperties": { "type": "string", "maxLength": 200 }
+    },
     "timestamp": {
       "type": "string",
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
@@ -303,6 +321,7 @@
         "model": { "$ref": "#/$defs/model" },
         "agent": { "type": "string", "minLength": 1 },
         "phase": { "enum": ["beforeEach", "afterEach"] },
+        "screen": { "$ref": "#/$defs/stepScreen" },
         "error": { "$ref": "#/$defs/error" },
         "artifacts": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "extensions": { "$ref": "#/$defs/extensions" }
@@ -360,6 +379,7 @@
         "skip": { "$ref": "#/$defs/skip" },
         "secondaryErrors": { "type": "array", "items": { "$ref": "#/$defs/error" } },
         "cleanup": { "enum": ["complete", "failed", "forced"] },
+        "environment": { "$ref": "#/$defs/environment" },
         "extensions": { "$ref": "#/$defs/extensions" }
       },
       "allOf": [
@@ -431,6 +451,7 @@
         "error": { "$ref": "#/$defs/error" },
         "secondaryErrors": { "type": "array", "items": { "$ref": "#/$defs/error" } },
         "cleanup": { "enum": ["complete", "failed", "forced"] },
+        "environment": { "$ref": "#/$defs/environment" },
         "extensions": { "$ref": "#/$defs/extensions" }
       }
     },

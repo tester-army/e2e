@@ -16,7 +16,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { Locator } from 'e2e';
 import type { EngineFixtureContext, EngineHandle, LocatorExpression, NodeRef, OperationContext } from 'e2e/engine';
 import { web, type BrowserExpectation } from '../../src/index.ts';
-import { ignoreAppLog, noSecrets } from '../helpers/secrets.ts';
+import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 const BUDGET_MS = 1_000;
 /** The action timeout a read left to the harness's default budget takes. */
@@ -113,7 +113,7 @@ describe('operations on a hung page', () => {
       log: () => undefined,
       signal: new AbortController().signal,
     });
-    await engine.startAttempt!({ attemptId: 'hung', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, appLog: ignoreAppLog });
+    await engine.startAttempt!({ attemptId: 'hung', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
   }
 
   /** Opens the busy page, observes it, and taps the button that starts the endless script. */

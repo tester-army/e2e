@@ -15,7 +15,7 @@ import { secrets } from 'e2e';
 import type { EngineCleanupContext, EngineHandle, OperationContext, Secret } from 'e2e/engine';
 import { web, surfaceOf } from '../../src/index.ts';
 import { PROTECTED_CREDENTIAL, startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
-import { ignoreAppLog, noSecrets } from '../helpers/secrets.ts';
+import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 function cleanup(): EngineCleanupContext {
   return { signal: new AbortController().signal, timeoutMs: 30_000 };
@@ -43,7 +43,7 @@ async function boot(
     log: () => undefined,
     signal: new AbortController().signal,
   });
-  await engine.startAttempt!({ attemptId, artifactsDir, signal: new AbortController().signal, resolveSecret, appLog: ignoreAppLog });
+  await engine.startAttempt!({ attemptId, artifactsDir, signal: new AbortController().signal, resolveSecret, ...ignoreTrace });
 }
 
 async function shutdown(engine: EngineHandle): Promise<void> {
