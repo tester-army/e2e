@@ -43,6 +43,47 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+#navbar div:has(> svg[style*='star.svg']) {
+  position: relative;
+  overflow: hidden;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: calc(50% - 6px);
+    left: -8px;
+    width: 2px;
+    height: 2px;
+    color: var(--e2e-ta-orange);
+    background: currentColor;
+    box-shadow: 0 8px currentColor, 3px 4px currentColor, 3px 12px currentColor, 6px 0 currentColor, 6px 8px currentColor;
+    opacity: 0;
+    pointer-events: none;
+    animation: e2e-stars-shimmer 120s steps(12, end) 120s infinite;
+    @media (prefers-reduced-motion: reduce), (forced-colors: active) {
+      animation: none;
+    }
+  }
+}
+
+@keyframes e2e-stars-shimmer {
+  0% {
+    left: -8px;
+    opacity: 0;
+  }
+  0.16% {
+    opacity: 0.8;
+  }
+  0.64% {
+    left: 100%;
+    opacity: 0.8;
+  }
+  0.8%, 100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+
 /* Square corners everywhere. Mintlify is Tailwind-built, so the rounded
    utilities are the one place radii come from. */
 [class*='rounded'] {
