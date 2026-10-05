@@ -265,13 +265,17 @@ html.dark body .code-block-fade-overlay {
 
 /* A long code block carries `expandable` and reads like the setup prompt on the
    Quickstart page: a few lines fading out over a centered "Show more" that
-   turns into "Show less". Mintlify renders the toggle as a footer button whose
-   own text ("See all N lines", "Collapse") stays the accessible name; the
-   visible label is an ::after with empty alt text. base-ui marks the code root
-   with data-overflow-y-end while lines remain hidden below, which is the
-   collapsed state. */
+   turns into "Show less". Mintlify renders the toggle as a footer button with
+   its own text ("See all N lines", "Collapse"); that text is shrunk to nothing
+   and the label is an ::after, which also joins the accessible name, so a
+   voice command for the visible label finds the button. The collapsed state is
+   Mintlify's `overflow-y-hidden!` class on the code viewport: it follows the
+   toggle alone and is already in the server-rendered HTML, unlike base-ui's
+   overflow attributes, which follow the scroll position and appear only after
+   hydration. A Mintlify upgrade can rename it; the blocks then fall back to
+   Mintlify's own footer. */
 #content .code-block:has(> [data-component-part='code-block-footer']) {
-  & [data-component-part='code-block-root'][data-overflow-y-end] {
+  & [data-component-part='code-block-root']:has(> .overflow-y-hidden\!) {
     mask-image: linear-gradient(to bottom, black 45%, transparent);
   }
 
@@ -293,7 +297,7 @@ html.dark body .code-block-fade-overlay {
     }
 
     &::after {
-      content: 'Show less' / '';
+      content: 'Show less';
       font-size: 0.8125rem;
       font-weight: 400;
     }
@@ -308,9 +312,9 @@ html.dark body .code-block-fade-overlay {
     }
   }
 
-  &:has([data-component-part='code-block-root'][data-overflow-y-end])
+  &:has([data-component-part='code-block-root'] > .overflow-y-hidden\!)
     [data-component-part='code-block-footer-button']::after {
-    content: 'Show more' / '';
+    content: 'Show more';
   }
 }
 
