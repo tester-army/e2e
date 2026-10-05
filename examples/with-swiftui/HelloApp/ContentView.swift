@@ -1,3 +1,4 @@
+import Accessibility
 import SwiftUI
 
 struct ContentView: View {
@@ -103,6 +104,7 @@ struct ContentView: View {
         guard !value.isEmpty else {
             showError = true
             greeted = nil
+            AccessibilityNotification.Announcement("Enter a name first.").post()
             return
         }
         showError = false

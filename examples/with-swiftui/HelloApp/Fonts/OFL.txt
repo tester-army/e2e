@@ -1,5 +1,5 @@
 Copyright 2025 The Stack Sans Project Authors (https://github.com/DylanYoungKoto/Stack-Sans)
-Copyright 2020 The Inter Project Authors (https://github.com/rsms/inter)
+Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
 Copyright 2020 The DM Mono Project Authors (https://www.github.com/googlefonts/dm-mono)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
