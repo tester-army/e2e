@@ -8,16 +8,9 @@ import path from 'node:path';
 import { EngineError, InfrastructureError } from 'e2e/engine';
 import { browserType, type BrowserName } from './browser-connection.ts';
 
-/**
- * Whether an installed `chromium_headless_shell-<revision>` holds its executable,
- * read from the shell directory itself rather than from a path spelled out here:
- * the executable sits in a per-platform subdirectory and carries the platform's
- * extension, and both differ between the machines one run can be started on.
- */
+/** Whether `chromium_headless_shell-<revision>` under `browsersPath` finished installing and holds its executable. */
 function headlessShellInstalled(browsersPath: string, revision: string): boolean {
   const shellRoot = path.join(browsersPath, `chromium_headless_shell-${revision}`);
-  // An install that never finished leaves no marker, and the collection the
-  // Playwright CLI runs reads the same one.
   if (!existsSync(path.join(shellRoot, 'INSTALLATION_COMPLETE'))) return false;
   const executable = process.platform === 'win32' ? 'chrome-headless-shell.exe' : 'chrome-headless-shell';
   return readdirSync(shellRoot, { withFileTypes: true }).some(
@@ -26,28 +19,15 @@ function headlessShellInstalled(browsersPath: string, revision: string): boolean
 }
 
 /**
- * Whether the browser the run will launch exists on disk, or undefined when
- * this process cannot tell. Playwright resolves its browser cache from
- * `PLAYWRIGHT_BROWSERS_PATH` at module load, so the in-process check is only
- * authoritative when the run's environment agrees with this process's. A run
- * pointed at another cache is left to the CLI, which resolves against the
- * environment it is spawned with and is a no-op when nothing is missing.
- *
- * The two builds are asked for separately because a headless launch spawns
- * `chromium_headless_shell` while `executablePath()` reports the full Chrome for
- * Testing build. Answering from either alone lets the other build's absence
- * reach the launch.
+ * Whether the build the run launches (headless shell for headless chromium, else the full build)
+ * is on disk, or undefined when `env` points at another cache than this process loaded.
  */
-export function isBrowserInstalled(name: BrowserName, env: NodeJS.ProcessEnv, headed: boolean): boolean | undefined {
+function isBrowserInstalled(name: BrowserName, env: NodeJS.ProcessEnv, headed: boolean): boolean | undefined {
   if (env['PLAYWRIGHT_BROWSERS_PATH'] !== process.env['PLAYWRIGHT_BROWSERS_PATH']) return undefined;
   try {
-    // `executablePath()` names the cache and the revision; the shell's directory
-    // is <browsersPath>/chromium_headless_shell-<that revision>.
     const executable = browserType(name).executablePath();
-    const full = existsSync(executable);
-    if (headed || name !== 'chromium') return full;
-    if (headlessShellAt(executable)) return true;
-    return false;
+    if (headed || name !== 'chromium') return existsSync(executable);
+    return headlessShellAt(executable);
   } catch {
     return false;
   }
@@ -72,8 +52,7 @@ function playwrightCliArgs(args: readonly string[]): string[] {
  * Runs the pinned Playwright CLI with `args`, sharing this process's terminal,
  * and resolves to its exit code, 128 plus the signal number when a signal
  * ended it. SIGINT and SIGTERM sent to this process reach the child, so a
- * cancelled CI job does not leave a download running. Backs the `e2e-web` command,
- * and collects no revision for the same reason the run's own install does.
+ * cancelled CI job does not leave a download running. Backs the `e2e-web` command.
  */
 export function runPlaywrightCli(args: readonly string[]): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -129,35 +108,17 @@ export interface EnsureBrowsersOptions {
   readonly signal?: AbortSignal;
   /** The run's environment; defaults to this process's. */
   readonly env?: NodeJS.ProcessEnv;
-  /**
-   * Whether the run launches a window, so chromium is provisioned for the build
-   * it will launch. Defaults to false, which is the run's own default.
-   */
+  /** Whether the run launches a window, which decides the chromium build it needs. Defaults to false. */
   readonly headed?: boolean;
 }
 
-/**
- * The browsers to install for a run, as the names the CLI takes. A headless run
- * launches chromium's shell only, and `--only-shell` keeps the full build out of
- * its download and off the disk the run has to hold. A headed run launches the
- * full build, so it asks for that.
- */
+/** The `playwright install` arguments for `names`: `--only-shell` on a headless chromium run. */
 export function installArgs(names: readonly BrowserName[], headed: boolean): string[] {
   if (headed || !names.includes('chromium')) return [...names];
   return ['--only-shell', ...names];
 }
 
-/**
- * The environment the install runs in: the run's, so it fills the cache the
- * workers launch from, with the browser collection turned off.
- *
- * `playwright install` removes every revision in the browsers path that no
- * installed Playwright declares, and that path is shared with every other tool
- * on the machine. A run did not put those revisions there and cannot know
- * another tool still launches them, so the collection is off for the install
- * this spawns, which only adds what it is about to launch. A caller that sets
- * the variable keeps its own choice.
- */
+/** `env` with `PLAYWRIGHT_SKIP_BROWSER_GC=1` unless already set, so an install keeps other tools' browsers. */
 function installEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   return { ...env, PLAYWRIGHT_SKIP_BROWSER_GC: env['PLAYWRIGHT_SKIP_BROWSER_GC'] ?? '1' };
 }

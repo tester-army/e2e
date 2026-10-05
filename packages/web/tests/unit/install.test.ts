@@ -170,13 +170,19 @@ describe('ensureBrowsersInstalled', () => {
     let cache = '';
     let previous: string | undefined;
 
-    /** Calls the exported check in a process that loaded Playwright with this cache. */
+    /** Runs the built-in check in a process that loaded Playwright with this cache; true when nothing would install. */
     const verdict = (headed: boolean): boolean => {
       const probe = path.join(cache, 'probe.mjs');
       writeFileSync(
         probe,
-        `import { isBrowserInstalled } from ${JSON.stringify(built)};
-const value = isBrowserInstalled('chromium', process.env, ${String(headed)});
+        `import { ensureBrowsersInstalled } from ${JSON.stringify(built)};
+let value = true;
+const logs = [];
+await ensureBrowsersInstalled(['chromium'], {
+  headed: ${String(headed)},
+  log: (line) => logs.push(line),
+  install: async () => { value = logs.length > 0 ? false : undefined; },
+});
 console.log(String(value));
 `,
       );
@@ -190,14 +196,23 @@ console.log(String(value));
       return child.stdout.trim() === 'true';
     };
 
+    // This platform's paths inside each build's directory, e.g. `chrome-linux64/chrome`
+    // and `chrome-headless-shell-linux64/chrome-headless-shell`.
+    const buildDir = `${path.sep}chromium-${revision}${path.sep}`;
+    const fullRelative = reported.slice(reported.lastIndexOf(buildDir) + buildDir.length);
+    const platformDir = fullRelative.split(path.sep)[0] ?? '';
+    const shellRelative = path.join(
+      platformDir.replace(/^chrome-/, 'chrome-headless-shell-'),
+      process.platform === 'win32' ? 'chrome-headless-shell.exe' : 'chrome-headless-shell',
+    );
+
     /** Lays out the builds named, each with its completion marker. */
     const lay = (...builds: readonly ('shell' | 'full')[]): void => {
       for (const build of builds) {
         const dir = build === 'shell' ? `chromium_headless_shell-${revision}` : `chromium-${revision}`;
-        const bin = build === 'shell' ? 'chrome-headless-shell-linux64' : 'chrome-linux64';
-        const exe = build === 'shell' ? 'chrome-headless-shell' : 'chrome';
-        mkdirSync(path.join(cache, dir, bin), { recursive: true });
-        writeFileSync(path.join(cache, dir, bin, exe), '');
+        const exe = path.join(cache, dir, build === 'shell' ? shellRelative : fullRelative);
+        mkdirSync(path.dirname(exe), { recursive: true });
+        writeFileSync(exe, '');
         writeFileSync(path.join(cache, dir, 'INSTALLATION_COMPLETE'), '');
       }
     };
