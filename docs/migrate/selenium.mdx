@@ -9,14 +9,14 @@ export const migrationPrompt = `Migrate this project's Selenium tests to e2e, on
 
 1. Read the migration guide above. It maps Selenium config and WebDriver calls to e2e.
 2. e2e tests are TypeScript. If the Selenium suite is Java, Python, or another language, ask me where the new test project should live, for example an \`e2e/\` folder with its own \`package.json\`.
-3. If that project has no \`e2e.config.ts\`, run \`npx e2e init --yes\` (or the pnpm or bun equivalent) there. It writes a config and an example test, and installs nothing yet.
+3. If that project has no e2e config (\`e2e.config.ts\` or \`e2e.config.mts\`), run \`npx e2e init --yes\` (or the pnpm or bun equivalent) there. It writes a config and an example test, and installs nothing yet.
 4. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
 5. If you ran init, ask me which model to use for agent steps: a ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, an API key, or a local model. Configure it with its provider package. If it needs a sign-in, give me the \`npx e2e login\` command and wait until I confirm.
 6. Set the target's \`app\` to the URL every \`driver.get\` used, and the command that starts the app if the suite starts it. Move passwords and tokens into \`credentials\` or \`secrets\`.
 7. Install dependencies.
 8. List the page objects and the flows that use them, and ask me which to move first. Suggest one page object and its flows.
 9. Rewrite those flows as \`.e2e.ts\` files under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default). Prefer role, label, and test id queries on \`screen\` over \`By.id\`, CSS, and XPath. Replace explicit waits, implicit waits, and \`Thread.sleep\` with locator assertions, which retry. \`findElement\` takes the first match and e2e fails on several, so narrow those queries. Turn the page object's setup code into a fixture.
-10. Keep navigation and final assertions as locator calls. Where a run of scripted interactions breaks often, propose an \`agent.act\` goal for it instead.
+10. Keep navigation and the final assertions deterministic, with \`app.open()\` and locator assertions. Where a run of scripted interactions breaks often, propose an \`agent.act\` goal for it instead.
 11. Run the new files with \`npx e2e run <file>\` and fix them until they pass. Keep the Selenium tests until I confirm they can go.
 12. Summarize which flows moved, which stayed in Selenium, and why.`;
 
