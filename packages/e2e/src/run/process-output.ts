@@ -136,7 +136,7 @@ export class RunnerOutput {
     this.view = view;
   }
 
-  /** Releases what is still held, redacted, to the terminal. A later write is redacted the same way and held until the next `end`. */
+  /** Releases what is still held, redacted, to the terminal. Later writes stay redacted; only a tail a later write could complete into a value is held. */
   end(): void {
     this.showThrough(undefined);
     this.release();
