@@ -47,6 +47,7 @@ interface LiveSession {
   readonly id: string;
   readonly target: ResolvedTarget;
   readonly configPath: string;
+  readonly headed: boolean;
   readonly attempt: StandaloneAttempt;
   readonly step: InteractiveStep;
   readonly screen: ScreenPresenter;
@@ -65,6 +66,8 @@ export interface OpenSessionOptions {
   readonly target?: string | undefined;
   /** A config file to load instead of the server's default, relative to the server's directory. */
   readonly config?: string | undefined;
+  /** Whether this session shows its UI; otherwise the server's `headed`. */
+  readonly headed?: boolean | undefined;
 }
 
 export interface SessionHostOptions {
@@ -73,6 +76,7 @@ export interface SessionHostOptions {
   /** Loads the config at an absolute path fresh for each session, so an edited config applies without a restart. */
   readonly loadConfig: (configPath: string) => Promise<LoadedConfig>;
   readonly env: NodeJS.ProcessEnv;
+  /** Whether a session shows its UI when `open_session` does not say, from `--headed`. */
   readonly headed: boolean;
   /** The target every session opens on, from `--target`; a call may still name one. */
   readonly defaultTarget?: string | undefined;
@@ -116,8 +120,9 @@ export class SessionHost {
    * it, or disconnects, aborts the open and what it started.
    */
   open(options: OpenSessionOptions, signal?: AbortSignal): Promise<string> {
-    const usage = new SessionUsage(this.sessions.liveCount, this.options.headed);
-    return this.sessions.admit((id) => this.openSession(id, options, usage, signal)).catch((cause: unknown) => {
+    const headed = options.headed ?? this.options.headed;
+    const usage = new SessionUsage(this.sessions.liveCount, headed);
+    return this.sessions.admit((id) => this.openSession(id, options, headed, usage, signal)).catch((cause: unknown) => {
       this.options.onSessionEnd?.(usage.openFailed(classifyError(cause).code));
       throw cause;
     });
@@ -209,7 +214,13 @@ export class SessionHost {
     );
   }
 
-  private async openSession(id: string, options: OpenSessionOptions, usage: SessionUsage, request: AbortSignal | undefined): Promise<string> {
+  private async openSession(
+    id: string,
+    options: OpenSessionOptions,
+    headed: boolean,
+    usage: SessionUsage,
+    request: AbortSignal | undefined,
+  ): Promise<string> {
     // The catalog renders synchronously, so the optional SDK is loaded once
     // here when installed. Without it the catalog reads the tools' Standard
     // Schemas, and only a model-backed call needs the package.
@@ -242,7 +253,7 @@ export class SessionHost {
         // one attempt that closes as passed, so it traces under `on` only.
         config,
         target: { ...target, video: { mode: 'off', source: 'default' } },
-        headed: this.options.headed,
+        headed,
         env: this.options.env,
         signal: abort.signal,
         timeoutMs: ttlMs + CLOSE_GRACE_MS,
@@ -282,6 +293,7 @@ export class SessionHost {
         id,
         target,
         configPath: loaded.configPath,
+        headed,
         attempt,
         step,
         screen,
@@ -371,7 +383,7 @@ export class SessionHost {
   private openingText(live: LiveSession, config: ResolvedConfig, screen: string): string {
     const engine = live.target.engine;
     const lines = [
-      `Session ${live.id} open on target "${live.target.name}" (platform ${live.target.platform}, engine ${engine === undefined ? 'none' : `${engine.name} ${engine.version}`}), ${this.options.headed ? 'headed' : 'headless'}; config ${live.configPath}.`,
+      `Session ${live.id} open on target "${live.target.name}" (platform ${live.target.platform}, engine ${engine === undefined ? 'none' : `${engine.name} ${engine.version}`}), ${live.headed ? 'headed' : 'headless'}; config ${live.configPath}.`,
     ];
     if (live.target.app.base !== undefined) {
       lines.push(`App: ${live.target.app.base.href}.`);
@@ -458,6 +470,10 @@ export class SessionHost {
       inputSchema: z.object({
         target: z.string().min(1).optional().describe('Target name from the config; required when the config declares several'),
         config: z.string().min(1).optional().describe("Path to an e2e config file, relative to the server's directory; default: the nearest e2e.config.ts"),
+        headed: z
+          .boolean()
+          .optional()
+          .describe('Show the browser or simulator, when the engine supports it; pass true when the user wants to watch. Default: headless, unless the server was started with --headed'),
       }).strict(),
       readOnly: false,
       call: async (args, extra) => textResult(await this.open(args, extra.signal)),

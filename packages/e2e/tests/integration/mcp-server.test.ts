@@ -173,7 +173,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(callTool.description).toContain('call {tool: "tap", args: {target: "n42"}, session: "<id>"}');
     expect(callTool.inputSchema).toMatchObject({ type: 'object', required: ['tool'] });
     expect(tools.find((tool) => tool.name === 'tools')?.annotations).toMatchObject({ readOnlyHint: true });
-    expect(tools.find((tool) => tool.name === 'open_session')?.inputSchema).toMatchObject({ properties: { target: {}, config: {} } });
+    expect(tools.find((tool) => tool.name === 'open_session')?.inputSchema).toMatchObject({ properties: { target: {}, config: {}, headed: { type: 'boolean' } } });
     expect(client.getInstructions()).toContain('call {tool, args} runs any catalog tool');
     expect(client.getInstructions()).toContain('Several sessions can be open at once');
 

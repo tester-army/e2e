@@ -496,7 +496,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     )
     .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
     .option('--target <name>', 'target every session opens on (default: the only target, or the one open_session names)')
-    .option('--headed', 'show the UI during live sessions, when the engine supports it')
+    .option('--headed', 'show the UI in sessions whose open_session does not set headed, when the engine supports it')
     // Sessions were headed by default before 0.18 and took --headless; a client config that still passes it
     // asks for the default now, and a refused flag would surface as nothing but a failed connection.
     .addOption(new Option('--headless').hideHelp())

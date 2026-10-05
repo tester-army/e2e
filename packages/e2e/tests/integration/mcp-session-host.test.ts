@@ -126,6 +126,20 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     expect(fake.stats()).toMatchObject({ attemptsStarted: 2, attemptsEnded: 2, disposes: 2 });
   });
 
+  it("lets open_session's headed override the server's default either way", async () => {
+    const fake = createFakeEngine();
+    const summaries: McpSessionSummary[] = [];
+    const onSessionEnd = (summary: McpSessionSummary): void => void summaries.push(summary);
+    const headless = host(() => fake, { headed: false, onSessionEnd });
+    expect(await headless.open({ headed: true })).toContain('), headed;');
+    await headless.close('done');
+    const headed = host(() => fake, { headed: true, onSessionEnd });
+    expect(await headed.open({ headed: false })).toContain('), headless;');
+    await headed.close('done');
+    expect(fake.inits.map((init) => init.headed)).toEqual([true, false]);
+    expect(summaries.map((summary) => summary.headed)).toEqual([true, false]);
+  });
+
   it('closes an idle session and disposes the engine', async () => {
     const fakes = engines();
     const idle = host(fakes.next, { idleMs: 100 });
