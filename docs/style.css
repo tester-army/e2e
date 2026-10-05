@@ -59,7 +59,7 @@ body {
     box-shadow: 0 8px currentColor, 3px 4px currentColor, 3px 12px currentColor, 6px 0 currentColor, 6px 8px currentColor;
     opacity: 0;
     pointer-events: none;
-    animation: e2e-stars-shimmer 120s steps(12, end) 120s infinite;
+    animation: e2e-stars-shimmer 45s steps(12, end) 45s infinite;
     @media (prefers-reduced-motion: reduce), (forced-colors: active) {
       animation: none;
     }
@@ -71,14 +71,14 @@ body {
     left: -8px;
     opacity: 0;
   }
-  0.16% {
+  0.43% {
     opacity: 0.8;
   }
-  0.64% {
+  1.71% {
     left: 100%;
     opacity: 0.8;
   }
-  0.8%, 100% {
+  2.13%, 100% {
     left: 100%;
     opacity: 0;
   }
