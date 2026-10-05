@@ -211,7 +211,7 @@ export interface Browser extends Expectable<BrowserExpectation> {
   locator(selector: string): Locator;
   /** Creates a screen query scope inside one iframe. */
   frameLocator(selector: string): FrameScreen;
-  /** Evaluates trusted test code in the page: a function, or a string expression whose function value is called. */
+  /** Evaluates trusted test code in the page: a function, or a string expression whose value is returned, called first if it is a function. */
   evaluate<T extends JsonValue>(fn: string | (() => T | Promise<T>)): Promise<T>;
   /** Evaluates trusted test code with one required JSON-safe argument. */
   evaluate<T extends JsonValue, Arg extends JsonValue>(
