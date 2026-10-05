@@ -3,6 +3,28 @@ title: From Cypress
 description: Replace Cypress command chains with async tests and keep your data-cy attributes.
 ---
 
+import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
+
+export const migrationPrompt = `Migrate this project's Cypress tests to e2e, one spec at a time. Docs: \`https://e2e.tester.army/docs/migrate/cypress.md\`
+
+1. Read the migration guide above. It maps Cypress config, commands, and assertions to e2e.
+2. If the project has no \`e2e.config.ts\`, run \`npx e2e init --yes\` (or the pnpm or bun equivalent). It writes a config and an example test, and installs nothing yet.
+3. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
+4. If you ran init, ask me which model to use for agent steps: a ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, an API key, or a local model. Configure it with its provider package. If it needs a sign-in, give me the \`npx e2e login\` command and wait until I confirm.
+5. Port \`cypress.config.*\` into \`e2e.config.ts\`: \`baseUrl\` and the dev server command become the target's \`app\`, and if the specs select by \`data-cy\`, set \`web({ testIdAttribute: 'data-cy' })\` so \`screen.getByTestId\` reads it. Keep Cypress installed while both suites run.
+6. Install dependencies.
+7. List the Cypress end-to-end specs and ask me which one to move first. Suggest one that breaks often or waits with \`cy.wait(ms)\`. Component tests have no e2e equivalent; leave them in Cypress.
+8. Rewrite that spec as a \`.e2e.ts\` file under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default), with one awaited call per line and no chains. \`cy.contains\` matches a substring and e2e queries match the whole text, so pass \`{ exact: false }\` where the spec relied on a fragment. Replace each \`cy.wait(ms)\` with an assertion on the state the test waits for. Move \`cy.task\`, \`cy.exec\`, and \`cy.request\` into plain Node code, and custom commands into functions or fixtures.
+9. Keep navigation and final assertions as locator calls. Where a run of scripted interactions breaks often, propose an \`agent.act\` goal for it instead.
+10. Run the new file with \`npx e2e run <file>\` and fix it until it passes. Keep the Cypress spec until I confirm it can go.
+11. Summarize which tests moved, which stayed in Cypress, and why.`;
+
+<SetupPrompt>
+
+<Prompt description={migrationPrompt} children={migrationPrompt} actions={["copy", "cursor"]} />
+
+</SetupPrompt>
+
 e2e tests run in Node. Use `await` for UI actions and call Node functions
 directly for work previously handled by `cy.task`. Both suites can stay in
 the project while you migrate one spec at a time.

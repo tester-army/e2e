@@ -3,6 +3,28 @@ title: From Playwright
 description: Run e2e alongside Playwright and migrate tests one file at a time.
 ---
 
+import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
+
+export const migrationPrompt = `Migrate this project's Playwright tests to e2e, one spec at a time. Docs: \`https://e2e.tester.army/docs/migrate/playwright.md\`
+
+1. Read the migration guide above. It maps every Playwright config key, API, and CLI flag to e2e and marks what e2e does not have yet.
+2. If the project has no \`e2e.config.ts\`, run \`npx e2e init --yes\` (or the pnpm or bun equivalent). It writes a config and an example test, and installs nothing yet.
+3. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
+4. If you ran init, ask me which model to use for agent steps: a ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, an API key, or a local model. Configure it with its provider package. If it needs a sign-in, give me the \`npx e2e login\` command and wait until I confirm.
+5. Port \`playwright.config.ts\` into \`e2e.config.ts\` with the guide's Config tables. \`baseURL\` and \`webServer\` become the target's \`app\`, \`projects\` become \`targets\`, and browser options under \`use\` (viewport, locale, testIdAttribute) become \`web(...)\` options; \`trace\`, \`video\`, and the timeouts are top-level keys. Keep \`@playwright/test\` installed and the two file patterns apart.
+6. Install dependencies.
+7. List the Playwright specs and ask me which one to move first. Suggest a flow whose steps change often, such as a wizard or a checkout.
+8. Rewrite that spec as a \`.e2e.ts\` file under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default). Map each \`page\` call to \`screen\`, \`app\`, or \`browser\` with the guide. String names in e2e queries match the whole text, case-sensitive, so add \`{ exact: false }\` or a RegExp where the Playwright query matched a fragment. Where the guide marks a feature missing, use the workaround it gives, or leave that test in Playwright and tell me why.
+9. Keep navigation and final assertions as locator calls. Where a run of scripted interactions breaks often, propose an \`agent.act\` goal for it instead.
+10. Run the new file with \`npx e2e run <file>\` and fix it until it passes. Keep the Playwright spec until I confirm it can go.
+11. Summarize which tests moved, which stayed in Playwright, and why.`;
+
+<SetupPrompt>
+
+<Prompt description={migrationPrompt} children={migrationPrompt} actions={["copy", "cursor"]} />
+
+</SetupPrompt>
+
 `@e2e-dev/web` brings its own pinned `playwright-core`, so your
 `@playwright/test` version is yours to keep. Both runners can stay in one
 project. e2e reads `e2e.config.ts` and finds `tests/**/*.e2e.ts` by default,

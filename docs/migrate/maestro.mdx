@@ -3,6 +3,29 @@ title: From Maestro
 description: Move Maestro flows to TypeScript with locators, assertions, and agent goals.
 ---
 
+import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
+
+export const migrationPrompt = `Migrate this project's Maestro flows to e2e, one flow at a time. Docs: \`https://e2e.tester.army/docs/migrate/maestro.md\` and \`https://e2e.tester.army/docs/mobile.md\`
+
+1. Read the migration guide above. It maps every Maestro config option and command to e2e and marks what e2e does not have yet. The mobile guide covers devices and app builds.
+2. e2e tests are TypeScript. If the project has no \`package.json\`, as in a native iOS or Android project, create the test project in an \`e2e/\` folder beside the app.
+3. If the test project has no \`e2e.config.ts\`, run \`npx e2e init --yes\` (or the pnpm or bun equivalent) there. It writes a web config and an example test, and installs nothing yet. Replace @e2e-dev/web with @e2e-dev/mobile, and rewrite \`tests/example.e2e.ts\` for the mobile engine or delete it.
+4. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
+5. If you ran init, ask me which model to use for agent steps: a ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, an API key, or a local model. Configure it with its provider package. If it needs a sign-in, give me the \`npx e2e login\` command and wait until I confirm.
+6. Port the flows' \`appId\` and \`.maestro/config.yaml\` into \`e2e.config.ts\`: one target per platform with \`mobile({ platform })\`, \`app: { bundleId }\` on each target, and tags as \`{ tags }\` on tests. Move passwords and tokens from \`env\` into \`credentials\` or \`secrets\`.
+7. Install dependencies, then run \`npx agent-device doctor\` and fix what it reports.
+8. List the flows and ask me which one to move first. Suggest one whose \`optional\` steps and \`runFlow: { when }\` branches often need updating.
+9. Rewrite that flow as a \`.e2e.ts\` test under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default), with one awaited call per command. Start it with \`app.open()\`, since nothing launches on its own. Maestro matches text and ids as regular expressions and taps the first of several matches; e2e matches the whole string and fails on several, so use a RegExp, \`.first()\`, or \`.nth()\` where the flow relied on that. \`optional\` and \`runFlow: { when }\` become \`if (await locator.isVisible())\`. Relative selectors such as \`below\` have no port; use a label, a test id, or a goal. Where the guide marks a command missing, use the workaround it gives, or leave that flow in Maestro and tell me why.
+10. Keep launches and final assertions as locator calls. Where a run of scripted taps breaks often, propose an \`agent.act\` goal for it instead.
+11. Build and install the app, run the new file with \`npx e2e run <file>\` on each platform target, and fix it until it passes. Keep the Maestro flow until I confirm it can go.
+12. Summarize which flows moved, which stayed in Maestro, and why.`;
+
+<SetupPrompt>
+
+<Prompt description={migrationPrompt} children={migrationPrompt} actions={["copy", "cursor"]} />
+
+</SetupPrompt>
+
 Translate Maestro commands into awaited TypeScript calls. Keep exact
 interactions as locator calls, or give the agent a goal that covers several
 of them. Both runners can use the same simulator or emulator.
