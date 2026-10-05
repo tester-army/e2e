@@ -143,14 +143,16 @@ export class TargetWorker {
             });
           },
           onAttemptDeadline: (pair, attempt) => {
-            // A worker paused at a breakpoint looks blocked; under a debugger nothing watches its attempts.
+            // A worker paused at a breakpoint looks blocked; with a debugger attached nothing watches its attempts.
             if (inspector.url() !== undefined) return;
             this.host.emit({
               type: 'attempt-deadline',
               testId: pair.test.id,
               agent: pair.agent,
               repeat: pair.repeat,
-              attempt,
+              attempt: attempt.index,
+              attemptId: attempt.id,
+              startedAt: attempt.startedAt,
               timeoutMs: pair.options.timeout,
               graceMs: deps.config.cleanupTimeout,
             });

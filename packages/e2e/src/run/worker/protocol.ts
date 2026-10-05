@@ -203,6 +203,9 @@ export interface AttemptDeadlineMessage {
   readonly repeat: number;
   /** The attempt's index among the pair's attempts. */
   readonly attempt: number;
+  /** The attempt's record id and start, which a watchdog kill reports it with. */
+  readonly attemptId: string;
+  readonly startedAt: string;
   /** The test's resolved `timeout`. */
   readonly timeoutMs: number;
   /** How long past the timeout the worker may go without answering a `ping`: the cleanup budget. */

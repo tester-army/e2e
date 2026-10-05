@@ -78,7 +78,7 @@ export interface ExecutionEvents {
   /** Live step progress of one running attempt, for reporters. */
   onProgress?(pair: TestTargetPair, progress: StepProgress): void;
   /** An attempt's test timeout started, as its `beforeEach` hooks and body begin. */
-  onAttemptDeadline?(pair: TestTargetPair, attemptIndex: number): void;
+  onAttemptDeadline?(pair: TestTargetPair, attempt: { readonly index: number; readonly id: string; readonly startedAt: string }): void;
   /** The attempt `onAttemptDeadline` announced has ended, or one that never got that far has. */
   onAttemptEnd?(): void;
   /** One line of progress the engine's `init` reported, already naming the target and worker slot. */
@@ -1010,7 +1010,7 @@ export class TargetExecutor implements SerialHost {
       openSession = session;
 
       const testDeadline = new Deadline(pair.options.timeout);
-      this.options.events?.onAttemptDeadline?.(pair, attemptIndex);
+      this.options.events?.onAttemptDeadline?.(pair, { index: attemptIndex, id: attemptId, startedAt });
       const budget = new AttemptBudget(attemptAbort.signal, testDeadline);
       const saveSession =
         context.kind !== 'setup'

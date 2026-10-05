@@ -95,6 +95,12 @@ const MAX_INIT_FAILURES = 2;
 /** How long a retiring or draining worker gets before it is force-killed. */
 const SHUTDOWN_GRACE_MS = 10_000;
 
+/** Why a pair of a target whose workers cannot boot never ran. */
+const WORKER_START_FAILED: SkipInfo = {
+  cause: 'infrastructure-unavailable',
+  reason: 'worker process failed to start',
+};
+
 /** The least time a worker past an attempt deadline gets to answer a ping, however small `cleanupTimeout` is. */
 const MIN_PING_REPLY_MS = 5_000;
 
@@ -143,9 +149,9 @@ interface WatchedAttempt {
   /** The pair (`pairKey`) the attempt belongs to. */
   readonly pair: string;
   readonly index: number;
-  readonly timeoutMs: number;
+  readonly id: string;
   readonly startedAt: string;
-  readonly startedMs: number;
+  readonly timeoutMs: number;
 }
 
 /**
@@ -288,9 +294,9 @@ class SchedulerWorker {
     this.watched = {
       pair: pairKey(message.testId, message.agent, message.repeat),
       index: message.attempt,
+      id: message.attemptId,
+      startedAt: message.startedAt,
       timeoutMs: message.timeoutMs,
-      startedAt: timestamp(),
-      startedMs: Date.now(),
     };
     const check = (): void => {
       if (this.watched === undefined || !this.runner.alive) return;
@@ -564,8 +570,16 @@ class Scheduler {
     }
   }
 
-  /** Puts an untaken unit back so capacity pressure never drops work. */
+  /**
+   * Puts an untaken unit back so capacity pressure never drops work. A
+   * failed target's queues were already drained and nothing takes from them
+   * again, so its unit skips instead.
+   */
   private returnUnit(state: TargetState, unit: WorkUnit): void {
+    if (state.failed) {
+      for (const pair of unit.pairs) this.report(unstartedResult(pair, WORKER_START_FAILED));
+      return;
+    }
     if (unit.kind === 'setup') state.setupQueue.unshift(unit);
     else state.fileQueue.unshift(unit);
   }
@@ -1017,10 +1031,7 @@ class Scheduler {
         ),
       });
     }
-    this.skipQueues(state, {
-      cause: 'infrastructure-unavailable',
-      reason: 'worker process failed to start',
-    });
+    this.skipQueues(state, WORKER_START_FAILED);
   }
 
   /** Shuts every remaining worker down, force-killing stragglers. */
@@ -1049,11 +1060,11 @@ function hangError(hung: WatchedAttempt): SerializedError {
  */
 function hungAttempt(hung: WatchedAttempt): AttemptRecord {
   return {
-    id: uuidv7(),
+    id: hung.id,
     index: hung.index,
     status: 'timed-out',
     startedAt: hung.startedAt,
-    durationMs: Date.now() - hung.startedMs,
+    durationMs: Date.now() - Date.parse(hung.startedAt),
     steps: [],
     artifacts: [],
     error: hangError(hung),

@@ -139,6 +139,8 @@ interface FakeBehaviour {
   readonly fatalOn?: readonly string[];
   /** Targets whose workers exit instead of becoming ready. */
   readonly failInit?: readonly string[];
+  /** Workers spawned from this index on exit instead of becoming ready, whatever their target. */
+  readonly failInitFrom?: number;
   /** Targets whose workers hang in startup, never becoming ready or exiting. */
   readonly neverReady?: readonly string[];
   /** Unit ids whose worker never finishes: a test that will not end on its own. */
@@ -259,7 +261,7 @@ class FakeRunner implements UnitRunner {
         if (index < signalled.workers) this.end(`code null, signal ${signalled.signal}`, signalled.signal);
         return;
       }
-      if (behaviour.failInit?.includes(targetName) === true) this.end('init failed');
+      if (behaviour.failInit?.includes(targetName) === true || index >= (behaviour.failInitFrom ?? Infinity)) this.end('init failed');
       else this.events.onMessage({ type: 'ready' });
     }, 0);
   }
@@ -362,7 +364,7 @@ class FakeRunner implements UnitRunner {
           this.events.onMessage({ type: 'attempt', ...key, attempt });
         }
         this.events.onMessage({ type: 'attempt-start', ...key, index: finished.length });
-        this.events.onMessage({ type: 'attempt-deadline', ...key, attempt: finished.length, timeoutMs: WATCHDOG_MS, graceMs: WATCHDOG_MS });
+        this.events.onMessage({ type: 'attempt-deadline', ...key, attempt: finished.length, attemptId: `attempt-${finished.length}`, startedAt: new Date().toISOString(), timeoutMs: WATCHDOG_MS, graceMs: WATCHDOG_MS });
         if (overrun === 'blocked') {
           this.blocked = true;
           return;
@@ -841,6 +843,35 @@ describe('scheduler fault handling', () => {
     expect(collected.results[0]!.attempts.map((attempt) => [attempt.index, attempt.status, attempt.error?.code])).toEqual([
       [0, 'failed', 'ERROR'],
       [1, 'timed-out', 'TEST_TIMEOUT'],
+    ]);
+  });
+
+  it('skips the rest of a hung file when its target failed while the worker hung', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = [
+      makePair(makeTest('tests/a.e2e.ts', 'spins'), target),
+      makePair(makeTest('tests/a.e2e.ts', 'next', { declarationIndex: 1 }), target),
+      makePair(makeTest('tests/b.e2e.ts', 'other'), target),
+    ];
+    const fleet = new FakeFleet({ overrun: { 'tests/a.e2e.ts::spins': 'blocked' }, failInitFrom: 1 });
+
+    vi.useFakeTimers();
+    const running = run(
+      makeSelection([{ target, pairs }]),
+      makeCollection(['tests/a.e2e.ts', 'tests/b.e2e.ts'], pairs),
+      fleet,
+      { workers: 2 },
+    );
+    await vi.runAllTimersAsync();
+    const collected = await running;
+
+    expect(collected.runErrors.map((runError) => runError.error.code)).toEqual(['WORKER_INIT_FAILED']);
+    expect(
+      collected.results.map((result) => [result.test.title, result.status, result.skip?.reason]).toSorted(),
+    ).toEqual([
+      ['next', 'skipped', 'worker process failed to start'],
+      ['other', 'skipped', 'worker process failed to start'],
+      ['spins', 'timed-out', undefined],
     ]);
   });
 
