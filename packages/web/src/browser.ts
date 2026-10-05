@@ -311,9 +311,12 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
   const deadlineFor = (timeout: number | undefined): Deadline =>
     new Deadline(context.operation(timeout ?? context.timeouts.assertion).timeoutMs);
 
-  const currentUrl = () => surface.guard(context.operation(), 'url', async () => surface.requirePage().url());
-  const currentTitle = () =>
-    surface.guard(context.operation(), 'title', () => surface.requirePage().title());
+  /** The page URL, read within the action timeout or, for a matcher poll, within the poll's deadline. */
+  const currentUrl = (deadline?: Deadline) =>
+    surface.guard(context.operation(deadline?.remaining()), 'url', async () => surface.requirePage().url());
+  /** The page title, read within the action timeout or, for a matcher poll, within the poll's deadline. */
+  const currentTitle = (deadline?: Deadline) =>
+    surface.guard(context.operation(deadline?.remaining()), 'title', () => surface.requirePage().title());
   const expectation = createBrowserExpectation({ currentUrl, currentTitle, baseHref, deadlineFor, context });
 
   const browser: Omit<Browser, keyof Expectable<BrowserExpectation>> = {
@@ -339,8 +342,8 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       navigation(options, async (operation) => {
         await surface.requirePage().goForward({ waitUntil: 'load', timeout: operation.timeoutMs });
       }),
-    url: currentUrl,
-    title: currentTitle,
+    url: () => currentUrl(),
+    title: () => currentTitle(),
     // The same poll as `expect(browser).toHaveURL`, exposed as a wait.
     waitForURL: (url, options) => {
       rejectUnknownOptions('browser.waitForURL', options, ['timeout']);
@@ -654,34 +657,47 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
 }
 
 interface ExpectationDeps {
-  currentUrl(): Promise<string>;
-  currentTitle(): Promise<string>;
+  currentUrl(deadline: Deadline): Promise<string>;
+  currentTitle(deadline: Deadline): Promise<string>;
   baseHref(): string;
   deadlineFor(timeout: number | undefined): Deadline;
   readonly context: EngineFixtureContext;
 }
 
-/** `expect(browser)` matchers: URL, title, and class polling against the assertion budget. */
+/** One read of a browser matcher poll: whether the condition holds (undefined: not evaluable yet), and what was seen. */
+interface BrowserSample {
+  readonly matches: boolean | undefined;
+  readonly observed: string;
+}
+
+/**
+ * `expect(browser)` matchers: URL, title, and class polling against the
+ * assertion budget. Every read is bounded by the poll's deadline, so a page
+ * that stops answering ends the assertion at its own timeout, and the
+ * failure reports the last read instead of reading a hung page again.
+ */
 function createBrowserExpectation(deps: ExpectationDeps, negated = false): BrowserExpectation {
   const poll = async (
     api: string,
     label: string,
-    condition: () => Promise<boolean | undefined>,
-    observed: () => Promise<string>,
+    read: (deadline: Deadline) => Promise<BrowserSample>,
     timeout: number | undefined,
   ): Promise<void> => {
+    const deadline = deps.deadlineFor(timeout);
+    // pollCondition calls onTimeout only after a read completed, so a sample is always there.
+    let last: BrowserSample | undefined;
     await pollCondition({
-      deadline: deps.deadlineFor(timeout),
+      deadline,
       signal: deps.context.signal,
       negated,
-      evaluate: condition,
-      // A read the deadline cut off means the page stopped answering: reading it again for the message would hang too.
-      onTimeout: async (cause) =>
+      evaluate: async () => {
+        last = await read(deadline);
+        return last.matches;
+      },
+      onTimeout: (cause) =>
         new TestError(
           'ASSERTION_FAILED',
-          `expect.${negated ? 'not.' : ''}${api} failed\nexpected: ${negated ? 'not ' : ''}${label}\nobserved: ${
-            cause === undefined ? await observed() : 'nothing, the page stopped answering'
-          }`,
+          `expect.${negated ? 'not.' : ''}${api} failed\nexpected: ${negated ? 'not ' : ''}${label}\nobserved: ${last?.observed ?? 'nothing'}`,
           cause === undefined ? undefined : { cause },
         ),
     });
@@ -703,8 +719,10 @@ function createBrowserExpectation(deps: ExpectationDeps, negated = false): Brows
       return poll(
         'toHaveURL',
         `URL ${label}${ignoreCase === true ? ' (ignoring case)' : ''}`,
-        async () => urlMatches(await deps.currentUrl(), expected, target, ignoreCase),
-        async () => `URL ${await deps.currentUrl()}`,
+        async (deadline) => {
+          const url = await deps.currentUrl(deadline);
+          return { matches: urlMatches(url, expected, target, ignoreCase), observed: `URL ${url}` };
+        },
         options?.timeout,
       );
     },
@@ -714,8 +732,10 @@ function createBrowserExpectation(deps: ExpectationDeps, negated = false): Brows
       return poll(
         'toHaveTitle',
         `title ${describePattern(pattern)}`,
-        async () => matchesText(await deps.currentTitle(), pattern),
-        async () => `title ${JSON.stringify(await deps.currentTitle())}`,
+        async (deadline) => {
+          const title = await deps.currentTitle(deadline);
+          return { matches: matchesText(title, pattern), observed: `title ${JSON.stringify(title)}` };
+        },
         options?.timeout,
       );
     },
@@ -725,26 +745,24 @@ function createBrowserExpectation(deps: ExpectationDeps, negated = false): Brows
       return poll(
         'toHaveClass',
         `class ${describePattern(pattern)}`,
-        async () => {
+        async (deadline) => {
+          let value: string | null;
           try {
-            const value = await target.getAttribute('class');
-            if (value === null) return false;
-            const normalized = value.trim().split(/\s+/).join(' ');
-            return matchesText(normalized, pattern);
+            // A locator read takes the action timeout; the poll's deadline is the tighter bound.
+            value = await withTimeout(
+              target.getAttribute('class'),
+              deadline.remaining(),
+              () => new EngineError('OPERATION_TIMEOUT', 'class read timed out', { retryable: false }),
+            );
           } catch (error) {
-            if (isTestErrorCode(error, 'LOCATOR_NOT_FOUND')) return undefined;
+            if (isTestErrorCode(error, 'LOCATOR_NOT_FOUND')) return { matches: undefined, observed: 'no node' };
             throw error;
           }
-        },
-        async () => {
-          try {
-            const value = await target.getAttribute('class');
-            if (value === null) return 'no class attribute';
-            return `class ${JSON.stringify(value)}`;
-          } catch (error) {
-            if (isTestErrorCode(error, 'LOCATOR_NOT_FOUND')) return 'no node';
-            throw error;
-          }
+          if (value === null) return { matches: false, observed: 'no class attribute' };
+          return {
+            matches: matchesText(value.trim().split(/\s+/).join(' '), pattern),
+            observed: `class ${JSON.stringify(value)}`,
+          };
         },
         options?.timeout,
       );

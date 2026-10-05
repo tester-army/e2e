@@ -14,11 +14,14 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import type { EngineHandle, LocatorExpression, NodeRef, OperationContext } from 'e2e/engine';
-import { web } from '../../src/index.ts';
+import type { Locator } from 'e2e';
+import type { EngineFixtureContext, EngineHandle, LocatorExpression, NodeRef, OperationContext } from 'e2e/engine';
+import { web, type BrowserExpectation } from '../../src/index.ts';
 import { noSecrets } from '../helpers/secrets.ts';
 
 const BUDGET_MS = 1_000;
+/** The action timeout a read left to the harness's default budget takes. */
+const ACTION_TIMEOUT_MS = 30_000;
 /** How long past its budget a call may still be pending before the test calls it unbounded. */
 const SLACK_MS = 1_000;
 /** How much sooner than the budget a call may fail: Playwright's own timeout is set 250 ms short of it. */
@@ -123,6 +126,46 @@ describe('operations on a hung page', () => {
     const tap = await bounded(() => engine.perform!(target!.ref as NodeRef, { kind: 'tap' }, operation()));
     expect(tap.error).toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED' });
   }
+
+  /**
+   * `expect(browser)` over the attempt, through a fixture context with the
+   * harness's budgets: an operation with no explicit timeout gets the action
+   * timeout.
+   */
+  function browserExpectation(): BrowserExpectation {
+    let expectation: (() => unknown) | undefined;
+    const context = {
+      targetName: 'web',
+      timeouts: { test: 60_000, action: ACTION_TIMEOUT_MS, assertion: BUDGET_MS },
+      signal: new AbortController().signal,
+      operation: (timeoutMs?: number) => ({ ...operation(), timeoutMs: Math.max(1, timeoutMs ?? ACTION_TIMEOUT_MS) }),
+      app: { resolveUrl: (url: string) => new URL(url, origin).href },
+      fixture: (_name: string, target: object) => target,
+      expectable: (target: object, factory: () => unknown) => {
+        expectation = factory;
+        return target;
+      },
+    } as unknown as EngineFixtureContext;
+    engine.fixtures!.browser!(context);
+    return expectation!() as BrowserExpectation;
+  }
+
+  it('ends a browser assertion on a stuck page at its own timeout, not the action timeout', async () => {
+    await start(false);
+    await freeze();
+    const expectation = browserExpectation();
+    const title = await bounded(() => expectation.toHaveTitle('Other', { timeout: BUDGET_MS }));
+    expect(title.error).toMatchObject({ code: 'OPERATION_TIMEOUT' });
+    // A locator read waits out the action timeout, as the harness's does.
+    const card = {
+      getAttribute: async () => {
+        await engine.locate!(button('Next'), { ...operation(), timeoutMs: ACTION_TIMEOUT_MS });
+        return 'card';
+      },
+    } as unknown as Locator;
+    const negated = await bounded(() => expectation.not.toHaveClass(card, 'card', { timeout: BUDGET_MS }));
+    expect(negated.error).toMatchObject({ code: 'OPERATION_TIMEOUT' });
+  });
 
   it('times out a navigation to a server that never answers', async () => {
     await start(true);

@@ -72,9 +72,10 @@ export interface PollConditionOptions {
   readonly signal: AbortSignal;
   readonly negated: boolean;
   /**
-   * Evaluates the positive condition once. Returns undefined when the
-   * condition cannot be evaluated yet: the positive poll keeps waiting and
-   * the negation grace window resets.
+   * Evaluates the positive condition once, every read bounded by
+   * `deadline`: a read on a longer budget outlasts the poll. Returns
+   * undefined when the condition cannot be evaluated yet: the positive poll
+   * keeps waiting and the negation grace window resets.
    */
   evaluate(): Promise<boolean | undefined>;
   /** Builds the poll's failure; `cause` is the read the deadline cut off, when one did. */
