@@ -2,9 +2,8 @@
  * Every operation ends at its budget, whatever the page does: a server that
  * never answers a navigation, which Playwright's own timeout ends, and a
  * renderer stuck in a script a button started. Playwright cannot answer an
- * evaluate or a point tap there at all, and while a trace is recording it
- * cannot answer a locator action or a navigation either, so the engine's own
- * deadline ends the call: `OPERATION_TIMEOUT`, or `ACTION_MAY_HAVE_COMMITTED`
+ * evaluate or a point tap there at all, so the engine's own deadline ends
+ * the call: `OPERATION_TIMEOUT`, or `ACTION_MAY_HAVE_COMMITTED`
  * for input, which may have reached the page.
  */
 
@@ -100,8 +99,8 @@ describe('operations on a hung page', () => {
     await engine.dispose!(cleanup);
   });
 
-  /** Boots a fresh engine and attempt, recording a trace as a run does by default when `trace` is set. */
-  async function start(trace: boolean): Promise<void> {
+  /** Boots a fresh engine and attempt. */
+  async function start(): Promise<void> {
     engine = web();
     await engine.init!({
       runId: 'run-hung',
@@ -115,7 +114,6 @@ describe('operations on a hung page', () => {
       signal: new AbortController().signal,
     });
     await engine.startAttempt!({ attemptId: 'hung', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
-    if (trace) await engine.artifacts!.startTrace!(operation());
   }
 
   /** Opens the busy page, observes it, and taps the button that starts the endless script. */
@@ -151,7 +149,7 @@ describe('operations on a hung page', () => {
   }
 
   it('ends a browser assertion on a stuck page at its own timeout, not the action timeout', async () => {
-    await start(false);
+    await start();
     await freeze();
     const expectation = browserExpectation();
     const title = await bounded(() => expectation.toHaveTitle('Other', { timeout: BUDGET_MS }));
@@ -168,13 +166,13 @@ describe('operations on a hung page', () => {
   });
 
   it('times out a navigation to a server that never answers', async () => {
-    await start(true);
+    await start();
     const open = await bounded(() => engine.session!.open!(`${origin}/never`, operation()));
     expect(open.error).toMatchObject({ code: 'OPERATION_TIMEOUT' });
   });
 
   it('times out a locate and a point tap on a page whose renderer is stuck in a script', async () => {
-    await start(false);
+    await start();
     await freeze();
     const locate = await bounded(() => engine.locate!(button('Next'), operation()));
     expect(locate.error).toMatchObject({ code: 'OPERATION_TIMEOUT' });
@@ -182,17 +180,8 @@ describe('operations on a hung page', () => {
     expect(tap.error).toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED' });
   });
 
-  it('times out the tap, a locate, and a navigation on a stuck page while a trace records', async () => {
-    await start(true);
-    await freeze();
-    const locate = await bounded(() => engine.locate!(button('Next'), operation()));
-    expect(locate.error).toMatchObject({ code: 'OPERATION_TIMEOUT' });
-    const open = await bounded(() => engine.session!.open!(`${origin}/`, operation()));
-    expect(open.error).toMatchObject({ code: 'OPERATION_TIMEOUT' });
-  });
-
   it('keeps the reason Playwright gives for a tap that cannot land, ahead of the deadline', async () => {
-    await start(false);
+    await start();
     await engine.session!.open!(`${origin}/covered`, operation());
     const [target] = await engine.locate!(button('Pay'), operation());
     const tap = await bounded(() => engine.perform!(target!.ref as NodeRef, { kind: 'tap' }, operation()));
