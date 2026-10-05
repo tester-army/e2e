@@ -25,7 +25,8 @@ deterministic tools work.
 
 Flags: `--config <path>` names the default config file, `--target <name>`
 fixes the target every session opens on, `--headed` shows the browser or
-simulator (sessions are headless by default, as in `e2e run`), `--max-sessions <n>`
+simulator when the engine supports it (sessions are headless by default, as in
+`e2e run`), `--max-sessions <n>`
 sets how many sessions may be open at once (default 4, 1 through 16).
 
 ## Tools
