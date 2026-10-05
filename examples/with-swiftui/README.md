@@ -40,4 +40,4 @@ For device setup and CI, see the [Mobile guide](https://e2e.tester.army/docs/mob
 The bundled fonts use the [SIL Open Font License](HelloApp/Fonts/OFL.txt).
 
 Last checked on 2026-10-05 with e2e 0.15.2, @e2e-dev/mobile 0.9.2, and Xcode
-27 on an iOS 27 simulator. All five tests passed, including the agent tests.
+27 on an iOS 27 simulator. Three locator tests passed; the agent tests skipped without a key.
