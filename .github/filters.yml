@@ -39,6 +39,7 @@ docs:
   - 'docs/**'
   - 'skills/e2e/**'
   - 'scripts/check-docs-*.ts'
+  - 'package.json'
   - 'pnpm-lock.yaml'
   - '.github/filters.yml'
   - '.github/workflows/docs.yml'

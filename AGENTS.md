@@ -407,8 +407,9 @@ trees, on both platforms, without a device.
   model for a step with no recording, so those suites gate a pull request at
   deterministic speed and cost. On a pull request they run for this
   repository's branches only, since a fork's has no key; the merge queue runs
-  them for every pull request, with the key. Re-record with the package's `test:agent` and
-  commit the changed entries in the same pull request as the scenario change.
+  them, with the key, for every queued pull request the change reaches.
+  Re-record with the package's `test:agent` and commit the changed entries in
+  the same pull request as the scenario change.
   The web benchmark's agent job runs with `--strict-cache`, so a recording a
   change broke fails with `REPLAY_STALE` instead of quietly calling the model.
   That includes a change to the cache key (`REPLAY_POLICY_VERSION`, a new key
