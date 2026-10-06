@@ -379,6 +379,8 @@ export class AgentDeviceSurface {
   private indexBeforeAction: readonly ProjectedNode[] | undefined;
   /** The most recent projection of the screen, from any observe or locate. */
   private latestIndex: readonly ProjectedNode[] | undefined;
+  /** Foreground app of the last projection; equal-looking controls in different apps are distinct. */
+  private projectionApp: string | undefined;
   /** Budget a control that came with the last action gets to finish arriving; see DEFAULT_TRANSITION_MS. */
   private readonly transitionMs: number;
   /**
@@ -667,6 +669,7 @@ export class AgentDeviceSurface {
     this.sessionApp = undefined;
     this.installedApp = undefined;
     this.knownViewport = undefined;
+    this.latestIndex = undefined;
     if (client === undefined) return;
     await withinCleanupBudget(client.sessions.close().catch(() => undefined), context);
   }
@@ -809,6 +812,7 @@ export class AgentDeviceSurface {
     this.markAction(undefined);
     this.generation = new Map();
     this.located.clear();
+    this.latestIndex = undefined;
   }
 
   /**
@@ -910,13 +914,20 @@ export class AgentDeviceSurface {
   }
 
   private project(raw: RawSnapshot): ProjectedSnapshot {
+    const app = raw.appBundleId ?? raw.appName ?? this.appIdentity;
     const projected = projectSnapshot(raw.nodes ?? [], {
+      ...(this.latestIndex === undefined || app !== this.projectionApp ? {} : { previous: this.latestIndex }),
       mintId: () => {
         this.idCounter += 1;
         return `n${this.idCounter}`;
       },
     });
+    for (const entry of projected.index) {
+      if (this.generation.has(entry.id)) this.generation.set(entry.id, this.bind(entry, projected.index));
+      if (this.located.has(entry.id)) this.located.set(entry.id, this.bind(entry, projected.index));
+    }
     this.latestIndex = projected.index;
+    this.projectionApp = app;
     if (projected.viewport !== undefined) this.knownViewport = projected.viewport;
     return projected;
   }
@@ -953,6 +964,11 @@ export class AgentDeviceSurface {
     const raw = await this.snapshotOrEmpty(operation, this.options.snapshot === 'interactive');
     const projected = this.project(raw);
     this.generation = new Map(projected.index.map((entry) => [entry.id, this.bind(entry, projected.index)]));
+    if (!isTruncated(raw)) {
+      for (const id of this.located.keys()) {
+        if (!this.generation.has(id)) this.located.delete(id);
+      }
+    }
     const viewport = await this.viewportFor(projected, operation.signal);
     const location = screenLocation(raw.appBundleId ?? raw.appName ?? this.appIdentity, screenTitle(projected));
     const capture = options?.pixels === true ? await this.capturePixels(operation, projected, viewport) : undefined;
@@ -1081,11 +1097,14 @@ export class AgentDeviceSurface {
     return this.relocated(entry, operation);
   }
 
-  /** The same control in a fresh snapshot; the binding as it was when the snapshot no longer lists it. */
+  /** Resolves a retained identity after a transition; a missing or ambiguous control cannot receive its old device ref. */
   private async relocated(entry: NodeBinding, operation: OperationContext): Promise<NodeBinding> {
     const projected = this.project(await this.snapshotOrEmpty(operation, false));
-    const found = this.refind(entry, projected.index);
-    return found === undefined ? entry : this.bind(found, projected.index);
+    const found = projected.index.find((candidate) => candidate.id === entry.id);
+    if (found === undefined) {
+      throw new EngineError('NODE_STALE', `node ${entry.id} is no longer identifiable after the transition`, { retryable: true });
+    }
+    return this.bind(found, projected.index);
   }
 
   /**

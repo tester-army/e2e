@@ -19,6 +19,21 @@ SDK and an emulator.
 The package includes a compatible version of `agent-device`; no separate
 installation is needed.
 
+Observations preserve node ids across captures when the node has a unique
+match under the same parent. Matching uses the platform type and declared
+role, then the accessibility identifier when present, otherwise the name and
+label. Values, states, device refs, and bounds can change without replacing
+the id. Actions use the latest device ref for a retained id. Duplicate
+siblings that cannot be distinguished get new ids, as do removed nodes that
+return, nodes after an app relaunch, and nodes in a different foreground app.
+A relabeled node without an identifier gets a new id; unchanged keypad
+buttons keep theirs when only the amount readout changes.
+An ambiguous parent also gives its descendants new ids. After waiting for
+a transition, an action resolves its retained id in a fresh capture; if the
+control disappeared or became ambiguous, it fails with `NODE_STALE` instead
+of sending the old device ref. A complete observation also retires located
+refs that are no longer on screen.
+
 ## Engine
 
 ```ts title="e2e.config.ts"
