@@ -47,6 +47,9 @@ export default {
 The runner boots the device before test timing starts. Boot time does not
 count toward `launchTimeout`.
 
+For a finished setup, see the [example projects](/example-projects) for Expo,
+SwiftUI, Jetpack Compose, Kotlin Multiplatform, and Flutter.
+
 ## Point at your app
 
 The app under test is the target's `app`; `mobile()` only drives it.
@@ -488,6 +491,29 @@ test('shows the version offline in dark mode', async ({ agent, app, device, scre
 `selectOption`, `setInputFiles`, `scrollIntoView`, `secondaryTap`, and
 `modifiers` on `tap` or `doubleTap` are unsupported on devices. Use taps and swipes to interact with native controls.
 
+### Test ids by framework
+
+`getByTestId` reads the accessibility identifier on iOS and the resource id
+on Android. Each UI framework sets them its own way. Every
+[example project](/example-projects) below has the same three locator tests
+on one greeting screen:
+
+| Framework | Set the id with | Example |
+| --- | --- | --- |
+| React Native | `testID` | [with-expo](https://github.com/tester-army/e2e/tree/main/examples/with-expo) |
+| SwiftUI | `.accessibilityIdentifier()` | [with-swiftui](https://github.com/tester-army/e2e/tree/main/examples/with-swiftui) |
+| Jetpack Compose | `Modifier.testTag()` | [with-compose](https://github.com/tester-army/e2e/tree/main/examples/with-compose) |
+| Compose Multiplatform | `Modifier.testTag()` | [with-kotlin-multiplatform](https://github.com/tester-army/e2e/tree/main/examples/with-kotlin-multiplatform) |
+| Flutter | `Semantics(identifier:)` | [with-flutter](https://github.com/tester-army/e2e/tree/main/examples/with-flutter) |
+
+- Compose keeps test tags out of the Android accessibility tree until a root
+  composable sets `Modifier.semantics { testTagsAsResourceId = true }`;
+  without it, `getByTestId` finds nothing on Android. iOS reads a Compose
+  Multiplatform tag as is, so a shared screen sets the flag in its Android
+  activity.
+- In Flutter, wrap a button's `Semantics` in `MergeSemantics` so the id and
+  the button role land on one node.
+
 ### The `device` fixture
 
 Use `device` to manage network state, permissions, appearance, app installs,
@@ -603,6 +629,10 @@ tool.
 - On iOS a plain React Native `View` has no children in the tree, so
   `filter({ has })` on it and queries scoped to it match nothing. Scope to the screen's `ScrollView`
   (`device.locator('role=ScrollView')`), or give the children test ids.
+- A Jetpack Compose clickable drawn smaller than 48dp reports a 48dp touch
+  area but its role node at the drawn size, so the tree shows two buttons
+  and a tap fails with `has no parent-owned touch point`. Make the control
+  at least 48dp, Android's minimum touch target.
 - An element hidden with `display: none` is absent from the tree, so
   `toBeAttached` fails. Assert
   `toHaveCount(0)` or `toBeHidden`.
