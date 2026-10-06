@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-04T08:33:55.168Z",
+  "createdAt": "2026-10-06T13:09:11.004Z",
   "payload": {
     "actions": [
       {
@@ -59,6 +59,6 @@
         "testId": "deal-headphones"
       }
     ],
-    "endWaitMs": 11574
+    "endWaitMs": 11717
   }
 }

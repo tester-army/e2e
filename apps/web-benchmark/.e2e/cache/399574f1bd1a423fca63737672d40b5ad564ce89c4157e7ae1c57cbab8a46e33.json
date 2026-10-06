@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-04T08:29:31.075Z",
+  "createdAt": "2026-10-06T13:05:20.178Z",
   "payload": {
     "actions": [
       {
@@ -23,7 +23,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Scrolled the page until the Footnote paragraph was in view; the Footnote state now reads “in view”.",
+    "summary": "Scrolled the page until the Footnote paragraph was in view; the Footnote state now shows “in view”.",
     "startPath": "/e/control-inventory",
     "endPath": "/e/control-inventory",
     "endAnchors": [
@@ -40,6 +40,6 @@
         "text": "out of view"
       }
     ],
-    "endWaitMs": 11385
+    "endWaitMs": 11780
   }
 }

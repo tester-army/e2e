@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-04T08:29:03.565Z",
+  "createdAt": "2026-10-06T13:04:51.226Z",
   "payload": {
     "actions": [
       {
@@ -34,7 +34,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Long-pressed Hold me; Hold state reads “long-pressed.” Double-clicked Double-click me; Double-click state reads “double-clicked.”",
+    "summary": "Long-pressed Hold me; Hold state reads “long-pressed.” Double-clicked Double-click me; Double-click state reads “double-clicked”.",
     "startPath": "/e/control-inventory",
     "endPath": "/e/control-inventory",
     "endAnchors": [
@@ -61,6 +61,6 @@
         "text": "none"
       }
     ],
-    "endWaitMs": 11370
+    "endWaitMs": 11589
   }
 }

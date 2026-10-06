@@ -1,8 +1,28 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-04T08:33:52.251Z",
+  "createdAt": "2026-10-06T13:09:07.861Z",
   "payload": {
     "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"More actions for NDA Review\" in \"NDA Review\"",
+        "target": {
+          "role": "button",
+          "name": "More actions for NDA Review",
+          "text": "⋯",
+          "within": "NDA Review"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"More actions for NDA Review\" in \"NDA Review\"",
+        "target": {
+          "role": "button",
+          "name": "More actions for NDA Review",
+          "text": "⋯",
+          "within": "NDA Review"
+        }
+      },
       {
         "name": "tap",
         "summary": "tap button \"More actions for Launch Approval Draft\" in \"Launch Approval Draft\"",
@@ -54,7 +74,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Deleted the playbook “Launch Approval Draft” and confirmed the removal. Searching for its exact name shows: “No playbooks match ‘Launch Approval Draft’.”",
+    "summary": "Deleted the “Launch Approval Draft” playbook after confirming the removal. Searching for its exact name now shows “No playbooks match \"Launch Approval Draft\".”",
     "startPath": "/e/playbook-cleanup",
     "endPath": "/e/playbook-cleanup",
     "endAnchors": [
@@ -104,6 +124,6 @@
         "name": "Vendor Onboarding"
       }
     ],
-    "endWaitMs": 11698
+    "endWaitMs": 12206
   }
 }

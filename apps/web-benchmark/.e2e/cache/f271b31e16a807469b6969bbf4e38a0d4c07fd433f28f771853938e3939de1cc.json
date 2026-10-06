@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-04T08:31:11.942Z",
+  "createdAt": "2026-10-06T13:07:22.689Z",
   "payload": {
     "actions": [
       {
@@ -42,7 +42,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Dismissed the cookie banner, closed the overlay, and pressed Continue. The page shows “You made it past the overlay.”",
+    "summary": "Dismissed the cookie banner, closed the overlay, and pressed Continue. The page now shows “You made it past the overlay.”",
     "startPath": "/e/overlay-trap",
     "endPath": "/e/overlay-trap",
     "endAnchors": [
@@ -73,6 +73,6 @@
         "testId": "accept-cookies-button"
       }
     ],
-    "endWaitMs": 11329
+    "endWaitMs": 11431
   }
 }

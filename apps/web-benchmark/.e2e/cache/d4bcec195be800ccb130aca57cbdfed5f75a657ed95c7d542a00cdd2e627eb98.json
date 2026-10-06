@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-04T08:32:31.439Z",
+  "createdAt": "2026-10-06T13:08:42.763Z",
   "payload": {
     "actions": [
       {
@@ -71,7 +71,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Navigated the calendar from June to September 2026, selected September 17, and confirmed. The page shows “Appointment booked for September 17, 2026.”",
+    "summary": "Navigated the calendar from June to September 2026, selected September 17, 2026, and confirmed the appointment. The page displays “Appointment booked for September 17, 2026.”",
     "startPath": "/e/date-picker",
     "endPath": "/e/date-picker",
     "endAnchors": [
@@ -93,6 +93,6 @@
         "testId": "confirm-button"
       }
     ],
-    "endWaitMs": 11647
+    "endWaitMs": 11634
   }
 }

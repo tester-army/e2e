@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-04T08:34:08.113Z",
+  "createdAt": "2026-10-06T13:09:25.644Z",
   "payload": {
     "actions": [
       {
@@ -27,7 +27,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Entered “mug” in the product filter. The list is filtered to Titanium Mug, and the page URL is /e/filter-deep-link?q=mug.",
+    "summary": "Entered “mug” in the product filter. The list is filtered to Titanium Mug, and the page URL now includes ?q=mug.",
     "startPath": "/e/filter-deep-link",
     "endPath": "/e/filter-deep-link?q=mug",
     "endAnchors": [
@@ -63,6 +63,6 @@
         "name": "Camp Lantern"
       }
     ],
-    "endWaitMs": 11489
+    "endWaitMs": 11735
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-04T08:29:07.236Z",
+  "createdAt": "2026-10-06T13:04:56.166Z",
   "payload": {
     "actions": [
       {
@@ -29,7 +29,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Read coupon SAVE-1234 from the first frame, entered it in the checkout form, and applied it. The page now shows “Coupon applied.”",
+    "summary": "Read coupon SAVE-1234 from the first frame, entered it in the checkout frame, and applied it. The page shows “Coupon applied.”",
     "startPath": "/e/iframe-form",
     "endPath": "/e/iframe-form",
     "endAnchors": [
@@ -69,6 +69,6 @@
         "name": "checkout-frame"
       }
     ],
-    "endWaitMs": 11742
+    "endWaitMs": 11600
   }
 }

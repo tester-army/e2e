@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-04T08:28:56.187Z",
+  "createdAt": "2026-10-06T13:04:44.780Z",
   "payload": {
     "actions": [
       {
@@ -29,7 +29,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Entered SHADOW-42 and submitted the form. The page now shows “Access granted.”",
+    "summary": "Entered SHADOW-42 and submitted the nested-shadow-root form. The page shows “Access granted.”",
     "startPath": "/e/shadow-dom-form",
     "endPath": "/e/shadow-dom-form",
     "endAnchors": [
@@ -55,6 +55,6 @@
         "name": "Submit"
       }
     ],
-    "endWaitMs": 11646
+    "endWaitMs": 11657
   }
 }

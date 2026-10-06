@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-04T08:32:21.685Z",
+  "createdAt": "2026-10-06T13:08:30.816Z",
   "payload": {
     "actions": [
       {
@@ -76,7 +76,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Entered the displayed code 493027 into the six segmented inputs. The page now displays “Code verified.”",
+    "summary": "Entered the displayed code 493027 into the six segmented inputs. The page now shows “Code verified.”",
     "startPath": "/e/otp-auto-advance",
     "endPath": "/e/otp-auto-advance",
     "endAnchors": [
@@ -120,6 +120,6 @@
         "inputPurpose": "one-time-code"
       }
     ],
-    "endWaitMs": 14371
+    "endWaitMs": 13146
   }
 }

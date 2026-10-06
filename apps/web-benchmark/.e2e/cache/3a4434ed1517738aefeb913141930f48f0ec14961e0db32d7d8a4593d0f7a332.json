@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-04T08:32:08.612Z",
+  "createdAt": "2026-10-06T13:08:24.316Z",
   "payload": {
     "actions": [
       {
@@ -43,7 +43,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Clicked Tap me three times. The page shows Progress: 3 / 3 and “Target clicked 3 times.”",
+    "summary": "Clicked Tap me three times despite the list rebuilding; the page now shows Progress: 3 / 3 and “Target clicked 3 times.”",
     "startPath": "/e/stale-dom",
     "endPath": "/e/stale-dom",
     "endAnchors": [
@@ -87,6 +87,6 @@
         "text": "Slot 5"
       }
     ],
-    "endWaitMs": 11441
+    "endWaitMs": 12151
   }
 }

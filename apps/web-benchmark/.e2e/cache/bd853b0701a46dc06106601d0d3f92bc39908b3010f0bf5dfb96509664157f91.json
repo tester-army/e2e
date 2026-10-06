@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-04T08:32:03.098Z",
+  "createdAt": "2026-10-06T13:08:17.558Z",
   "payload": {
     "actions": [
       {
@@ -57,7 +57,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Renamed report.pdf to summary.pdf. The file manager now lists summary.pdf and shows “File renamed to summary.pdf.”",
+    "summary": "Renamed report.pdf to summary.pdf. The file list now shows summary.pdf and a success message confirms “File renamed to summary.pdf.”",
     "startPath": "/e/context-menu-trap",
     "endPath": "/e/context-menu-trap",
     "endAnchors": [
@@ -84,6 +84,6 @@
         "text": "⋯"
       }
     ],
-    "endWaitMs": 11888
+    "endWaitMs": 11952
   }
 }

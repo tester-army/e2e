@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-04T08:34:05.073Z",
+  "createdAt": "2026-10-06T13:09:22.414Z",
   "payload": {
     "actions": [
       {
@@ -47,7 +47,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Selected a $25 gift card, entered friend@example.com, and completed the purchase. The page confirms the gift card was sent and says a $25.00 gift card is on its way.",
+    "summary": "Selected a $25 gift card, entered friend@example.com, and completed the purchase. The page confirms the gift card was sent to friend@example.com and that the $25.00 gift card is on its way.",
     "startPath": "/e/gift-card-purchase",
     "endPath": "/e/gift-card-purchase",
     "endAnchors": [
@@ -100,6 +100,6 @@
         "testId": "buy-button"
       }
     ],
-    "endWaitMs": 11710
+    "endWaitMs": 12114
   }
 }

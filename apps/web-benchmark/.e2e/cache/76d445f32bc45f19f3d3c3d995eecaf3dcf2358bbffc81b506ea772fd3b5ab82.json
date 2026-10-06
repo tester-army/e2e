@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-04T08:28:57.166Z",
+  "createdAt": "2026-10-06T13:04:44.636Z",
   "payload": {
     "actions": [
       {
@@ -47,7 +47,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Added address labelled “Cabin mutk7a4i” with line “7 Pine Way, Bend”; the new address appears in the list and an “Address saved” confirmation is shown.",
+    "summary": "Added address labeled “Cabin muwoxo66” with line “7 Pine Way, Bend.” The saved-address list now shows the new entry and an “Address saved” confirmation.",
     "startPath": "/e/saved-addresses",
     "endPath": "/e/saved-addresses",
     "endAnchors": [
@@ -67,6 +67,6 @@
         "text": "7 Pine Way, Bend"
       }
     ],
-    "endWaitMs": 12289
+    "endWaitMs": 11690
   }
 }

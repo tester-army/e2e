@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-04T08:29:03.146Z",
+  "createdAt": "2026-10-06T13:04:51.825Z",
   "payload": {
     "actions": [
       {
@@ -39,7 +39,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Followed the visible labels and page instructions: entered 42.50 in the field beside “Amount,” left the visibly labeled Reference field empty, and submitted. The page now shows “Payment sent.”",
+    "summary": "Followed the visible instructions, entered 42.50 in the field visibly labeled Amount, left Reference empty, and clicked the button visibly labeled Submit payment. The page now shows “Payment sent.”",
     "startPath": "/e/lying-labels",
     "endPath": "/e/lying-labels",
     "endAnchors": [
@@ -74,6 +74,6 @@
         "text": "Cancel order"
       }
     ],
-    "endWaitMs": 11896
+    "endWaitMs": 11534
   }
 }

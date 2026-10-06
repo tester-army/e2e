@@ -1,0 +1,136 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-06T13:08:55.560Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"release approved\" into textbox \"editor\"",
+        "target": {
+          "role": "textbox",
+          "testId": "editor"
+        },
+        "value": "release approved"
+      },
+      {
+        "name": "press",
+        "summary": "press \"Control+Shift+ArrowLeft\" on textbox \"release approved\"",
+        "target": {
+          "role": "textbox",
+          "text": "release approved",
+          "testId": "editor"
+        },
+        "key": "Control+Shift+ArrowLeft"
+      },
+      {
+        "name": "press",
+        "summary": "press \"Shift+ArrowRight\" on textbox \"release approved\"",
+        "target": {
+          "role": "textbox",
+          "text": "release approved",
+          "testId": "editor"
+        },
+        "key": "Shift+ArrowRight"
+      },
+      {
+        "name": "pressKey",
+        "summary": "press \"Shift+ArrowRight\" on the focused field",
+        "key": "Shift+ArrowRight"
+      },
+      {
+        "name": "pressKey",
+        "summary": "press \"Shift+ArrowRight\" on the focused field",
+        "key": "Shift+ArrowRight"
+      },
+      {
+        "name": "pressKey",
+        "summary": "press \"Shift+ArrowRight\" on the focused field",
+        "key": "Shift+ArrowRight"
+      },
+      {
+        "name": "pressKey",
+        "summary": "press \"Shift+ArrowRight\" on the focused field",
+        "key": "Shift+ArrowRight"
+      },
+      {
+        "name": "pressKey",
+        "summary": "press \"Shift+ArrowRight\" on the focused field",
+        "key": "Shift+ArrowRight"
+      },
+      {
+        "name": "pressKey",
+        "summary": "press \"Shift+ArrowRight\" on the focused field",
+        "key": "Shift+ArrowRight"
+      },
+      {
+        "name": "press",
+        "summary": "press \"Shift+ArrowRight\" on textbox \"release approved\"",
+        "target": {
+          "role": "textbox",
+          "text": "release approved",
+          "testId": "editor"
+        },
+        "key": "Shift+ArrowRight"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"B\"",
+        "target": {
+          "role": "button",
+          "name": "B",
+          "testId": "bold-button"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Check document\"",
+        "target": {
+          "role": "button",
+          "name": "Check document",
+          "testId": "check-button"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20rich-text-editor",
+      "targetId": "web",
+      "instructionDigest": "e37ad9ac878deebe5c840d23fded9589f67228d8229a059b855347ab5e49ab96",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Entered “release approved,” selected exactly “approved,” applied bold, and checked the document. The page confirmed “Document approved.”",
+    "startPath": "/e/rich-text-editor",
+    "endPath": "/e/rich-text-editor",
+    "endAnchors": [
+      {
+        "text": "Document approved",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "text": "Type \"release approved\" in the editor and make the word approved bold, then check the document."
+      },
+      {
+        "role": "button",
+        "name": "B",
+        "testId": "bold-button"
+      },
+      {
+        "role": "textbox",
+        "testId": "editor"
+      },
+      {
+        "role": "button",
+        "name": "Check document",
+        "testId": "check-button"
+      }
+    ],
+    "endWaitMs": 12066
+  }
+}

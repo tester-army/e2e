@@ -1,12 +1,12 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-04T08:31:06.435Z",
+  "createdAt": "2026-10-06T13:07:16.901Z",
   "payload": {
     "actions": [
       {
         "name": "scrollUntil",
-        "summary": "scroll down on node \"table-viewport\" until \"Row 4322\" shows (431 screens)",
-        "text": "Row 4322",
+        "summary": "scroll down on node \"table-viewport\" until \"Golden Row\" shows (431 screens)",
+        "text": "Golden Row",
         "direction": "down",
         "target": {
           "testId": "table-viewport"
@@ -35,7 +35,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Scrolled the windowed table until Row 4322 — Golden Row was rendered, clicked Claim, and verified the “Golden Row claimed” success message.",
+    "summary": "Scrolled the virtualized table to row 4322 and clicked Claim. The page displays “Golden Row claimed.”",
     "startPath": "/e/virtualized-table",
     "endPath": "/e/virtualized-table",
     "endAnchors": [
@@ -91,6 +91,6 @@
         "text": "Row 8"
       }
     ],
-    "endWaitMs": 11397
+    "endWaitMs": 11965
   }
 }
