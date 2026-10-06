@@ -107,8 +107,8 @@ export interface AgentCacheContext {
  * `evicted`: the entry was deleted, since it replayed into a failure or a
  * repair. `no-change`: the step passed but changed nothing a replay could
  * check, so there was nothing to record. `not-written`: confirmed, but the
- * store did not write it (the file store refuses a recording past its size
- * limit).
+ * store did not write it (the file store, for one, refuses a recording past
+ * its size limit).
  */
 export type CacheWrite = 'saved' | 'kept' | 'unconfirmed' | 'evicted' | 'no-change' | 'not-written';
 
