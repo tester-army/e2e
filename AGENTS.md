@@ -497,8 +497,9 @@ trees, on both platforms, without a device.
   `npx skills add okwasniewski/dotfiles --skill unslop`.
 - Releases go through changesets: a user-visible change adds a `.changeset/`
   entry. Peer ranges point one way only (engine -> `e2e`, integration ->
-  engine) and read `>=<major.minor.patch> <major+1>` of the sibling the
-  package was built against (`>=0.15.0 <1` on the runner today);
+  engine) and read `>=<major.minor.patch> <major+1>`, the floor the oldest
+  sibling the package works with. Raise it when a package starts relying on a
+  newer sibling's export or contract field;
   `scripts/check-peer-ranges.ts` (`pnpm check`) fails on any other shape for
   every peer one package under `packages/` has on another (vendor SDK peers
   such as `@onkernel/sdk` are not checked). Narrow or exact, every runner minor (exact: every patch too)
