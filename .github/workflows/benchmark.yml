@@ -1,20 +1,24 @@
 name: benchmark
 
 # The web benchmark is where the runner meets deliberately hard surfaces, so
-# its suites gate every pull request that can reach them (the `changes` job
-# says which). Each suite posts one comment through @e2e-dev/github (hence
+# its suites gate every pull request and merge queue entry that can reach them
+# (the `changes` job says which). The ruleset requires `benchmark gate` alone.
+# Each suite posts one comment through @e2e-dev/github (hence
 # pull-requests: write) and edits it on rerun. The mobile benchmark has its
 # own workflow, mobile.yml.
 #
 # A pull request from a fork runs with no secrets and a read-only token, as
 # GitHub grants on `pull_request`. The deterministic suite needs neither and
 # runs for everyone; its reporter then writes the job summary and says why it
-# did not comment. The agentic suite needs the model key, so it runs only for
-# branches of this repository, where only people with push access can put it
-# to work. Never switch this workflow to `pull_request_target` to get the key
+# did not comment. The agentic suite needs the model key, so on a pull request
+# it runs only for branches of this repository, where only people with push
+# access can put it to work, and not for Dependabot's, whose runs get no
+# secrets either. The merge queue runs with this repository's secrets, so it
+# runs the agentic suite for every pull request. Never switch this workflow to `pull_request_target` to get the key
 # onto fork branches: that hands the secret to untrusted code.
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
   workflow_dispatch:
@@ -34,9 +38,7 @@ concurrency:
 jobs:
   # Skips the suites when the change reaches neither the runner, the engine,
   # nor the benchmark app (.github/filters.yml says what does, and why a skip
-  # rather than a workflow-level `paths:` filter). The gate fails toward
-  # running: a manual dispatch runs the suites, and so does a run whose
-  # detection failed.
+  # rather than a workflow-level `paths:` filter). A manual dispatch runs them.
   changes:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
@@ -44,8 +46,9 @@ jobs:
       web: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.web == 'true' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # A pull request's files come from the API; a push to main is diffed
-      # against the commit before it, which the action fetches itself.
+      # A pull request's files come from the API; a merge queue entry is
+      # diffed against its base, and a push to main against the commit
+      # before it, which the action fetches itself.
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         if: ${{ github.event_name != 'workflow_dispatch' }}
@@ -55,7 +58,7 @@ jobs:
 
   web:
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.web == 'true') }}
+    if: ${{ needs.changes.outputs.web == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     steps:
@@ -101,14 +104,14 @@ jobs:
 
   # The agentic suite runs from the recordings committed under
   # apps/web-benchmark/.e2e/cache (AGENTS.md, "Committed recordings") and
-  # needs the key for a step with none: a fork's pull request has no key, so
-  # it is skipped rather than failed.
+  # needs the key for a step with none: a fork's or Dependabot's pull request
+  # has no key, so it is skipped rather than failed.
   web-agent:
     needs: changes
     if: >-
-      ${{ !cancelled()
-        && (needs.changes.result != 'success' || needs.changes.outputs.web == 'true')
-        && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+      ${{ needs.changes.outputs.web == 'true'
+        && (github.event_name != 'pull_request'
+          || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     name: web agent
@@ -154,3 +157,19 @@ jobs:
             apps/web-benchmark/.e2e/results
           if-no-files-found: warn
           retention-days: 7
+
+  # The one check the ruleset requires from this workflow. A skipped job
+  # passes (the change cannot reach it); a failed or cancelled one fails it.
+  gate:
+    name: benchmark gate
+    needs: [changes, web, web-agent]
+    if: ${{ always() }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: Require every job to pass or skip
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          failed="$(jq -r '[to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key) \(.value.result)"] | join(", ")' <<< "$RESULTS")"
+          [ -z "$failed" ] || { echo "::error::$failed"; exit 1; }

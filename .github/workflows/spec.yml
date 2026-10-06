@@ -1,7 +1,10 @@
 name: spec
 
+# The ruleset requires `spec gate` alone, so a job added here gates merges
+# once it is listed in the gate's `needs`.
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
 
@@ -93,3 +96,19 @@ jobs:
       - run: pnpm run build
       - name: Fresh install with pnpm ${{ matrix.pnpm }}
         run: node scripts/install-smoke.ts ${{ matrix.pnpm }}
+
+  # The one check the ruleset requires from this workflow. A skipped job
+  # passes (the change cannot reach it); a failed or cancelled one fails it.
+  gate:
+    name: spec gate
+    needs: [check, test, install]
+    if: ${{ always() }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: Require every job to pass or skip
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          failed="$(jq -r '[to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key) \(.value.result)"] | join(", ")' <<< "$RESULTS")"
+          [ -z "$failed" ] || { echo "::error::$failed"; exit 1; }

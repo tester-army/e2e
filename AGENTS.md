@@ -485,16 +485,24 @@ trees, on both platforms, without a device.
   `engines.node` floors (22.22.3, 24.8.0), and `scripts/install-smoke.ts`, a
   fresh install of the packed packages with pnpm 11 and 12; `benchmark.yml` runs the
   web benchmark's two suites; `mobile.yml` runs the mobile benchmark's on an
-  iOS simulator and an Android emulator (KVM on x64 Linux). The two
-  benchmark workflows gate on paths: a `changes` job (dorny/paths-filter
-  over `.github/filters.yml`) skips the suites when the change reaches
-  neither the runner, the engine, nor the benchmark app, and a manual
-  dispatch always runs them. Skipped satisfies the ruleset's required
-  checks; a workflow-level `paths:` filter would leave them pending, so
-  never gate those workflows that way. The mobile suites are four named
-  jobs sharing steps through YAML anchors, not a matrix: a skipped matrix
-  job reports under its unexpanded name and the required check never
-  arrives. A new build input or benchmark dependency goes into
+  iOS simulator and an Android emulator (KVM on x64 Linux); `docs.yml`
+  checks the docs. All four run on pull requests and in the merge queue
+  (`merge_group`), which is the merge gate: auto-merge enqueues, and the
+  queue merges only when every check is green on the queued tree. Each
+  workflow ends in a `<workflow> gate` job, the only checks the `Main`
+  ruleset requires (`spec gate`, `benchmark gate`, `mobile gate`, `docs
+  gate`); it fails when any job it needs failed or was cancelled and passes
+  over a skipped one, so a new job gates merges once it is in its gate's
+  `needs`. The benchmark and docs workflows gate on paths: a `changes` job
+  (dorny/paths-filter over `.github/filters.yml`) skips the suites when the
+  change cannot reach them, and a manual dispatch always runs them. Never
+  use a workflow-level `paths:` filter: the gate would never report and the
+  merge would wait forever. A suite that cannot run (the agentic ones on a
+  fork's or Dependabot's pull request, which get no model key) is skipped at
+  the job level, never at the step level, so it boots no device for nothing.
+  A push to main runs `spec` and the web benchmark; `mobile` only rebuilds
+  the Expo app on a cache miss, since main's caches are the ones every pull
+  request restores. A new build input or benchmark dependency goes into
   `filters.yml` in the same change. Every workflow
   pins actions by SHA; keep new actions SHA-pinned. Every job runs on
   Blacksmith, like the tester-army repos. Linux jobs use

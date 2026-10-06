@@ -1,8 +1,9 @@
-# What a change has to touch before a benchmark suite can see it. Read by
-# dorny/paths-filter in the `changes` job of benchmark.yml and mobile.yml,
-# which skip their suites when nothing here changed. A skipped job satisfies
-# the ruleset's required checks; a workflow-level `paths:` filter would leave
-# them pending and block the merge.
+# What a change has to touch before a suite can see it. Read by
+# dorny/paths-filter in the `changes` job of benchmark.yml, mobile.yml, and
+# docs.yml, which skip their suites when nothing here changed. Each workflow's
+# `gate` job is the ruleset's required check and passes over a skipped job; a
+# workflow-level `paths:` filter would leave the gate pending and block the
+# merge.
 #
 # The suites run the built packages, so a runner change reaches both, an
 # engine change one. A package's own tests never reach a benchmark: `dist` is
@@ -33,3 +34,11 @@ mobile:
   - 'apps/mobile-benchmark/**'
   - '.github/workflows/mobile.yml'
   - '.github/actions/expo-app/**'
+
+docs:
+  - 'docs/**'
+  - 'skills/e2e/**'
+  - 'scripts/check-docs-*.ts'
+  - 'pnpm-lock.yaml'
+  - '.github/filters.yml'
+  - '.github/workflows/docs.yml'

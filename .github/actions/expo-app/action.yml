@@ -14,19 +14,21 @@ description: >-
 # scripts, so an edit to either rebuilds the app once on every job. The shape
 # follows callstack/agent-device's test-app-build-cache. A repack that fails
 # falls back to the native build, so a job is never left without an app.
+#
+# Caches saved from a pull request or a merge queue run are scoped to that
+# ref; only a push to main saves one every later run can restore. mobile.yml
+# runs this action with `cache-only` on main for that, without a device.
 
 inputs:
   platform:
     description: ios or android. Names the fingerprint, the cache key, and the .build/<platform> directory.
     required: true
-  build-command:
-    description: Shell that builds the app into .build/<platform>; runs from the working directory on a cache miss or a failed repack.
-    required: true
-  app-glob:
-    description: Name of the built app directly under .build/<platform>, as a `find -name` pattern (an iOS `*.app` bundle, an Android `.apk`).
-    required: true
   gradle-cache-read-only:
     description: Android only. Restores Gradle's user home cache without saving it, for a fork's pull request.
+    required: false
+    default: 'false'
+  cache-only:
+    description: Builds and saves the app on a miss, and stops there. A hit downloads nothing, and no app-path is set.
     required: false
     default: 'false'
   working-directory:
@@ -52,6 +54,11 @@ runs:
         HASH="$(pnpm exec fingerprint fingerprint:generate --platform "$PLATFORM" | jq -r '.hash')"
         test -n "$HASH"
         echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+        case "$PLATFORM" in
+          ios) echo "app-glob=*.app" >> "$GITHUB_OUTPUT" ;;
+          android) echo "app-glob=benchmark.apk" >> "$GITHUB_OUTPUT" ;;
+          *) echo "::error::unknown platform \"$PLATFORM\"" && exit 1 ;;
+        esac
     # Restore and save are separate steps: an entry is immutable, and a hit
     # whose app cannot be repacked is deleted below so the rebuilt app can be
     # saved under the same key instead of every later run rebuilding it.
@@ -61,16 +68,17 @@ runs:
       with:
         path: ${{ inputs.working-directory }}/.build/${{ inputs.platform }}
         key: mobile-benchmark-${{ inputs.platform }}-${{ steps.fingerprint.outputs.hash }}
+        lookup-only: ${{ inputs.cache-only }}
     # A hit is current on the native side only; the embedded JS may be older
     # than the checkout. Swap in a bundle built from this source.
     - name: Refresh the JS bundle of the cached app
       id: repack
-      if: steps.app-cache.outputs.cache-hit == 'true'
+      if: steps.app-cache.outputs.cache-hit == 'true' && inputs.cache-only != 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
         PLATFORM: ${{ inputs.platform }}
-        APP_GLOB: ${{ inputs.app-glob }}
+        APP_GLOB: ${{ steps.fingerprint.outputs.app-glob }}
         CACHE_KEY: mobile-benchmark-${{ inputs.platform }}-${{ steps.fingerprint.outputs.hash }}
         GH_TOKEN: ${{ github.token }}
       run: |
@@ -92,11 +100,26 @@ runs:
       uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       with:
         cache-read-only: ${{ inputs.gradle-cache-read-only }}
-    - name: Build the app
-      if: steps.app-cache.outputs.cache-hit != 'true' || steps.repack.outputs.result == 'failed'
+    # `--device generic` builds for the simulator without booting one;
+    # Release embeds the bundle, so no Metro is needed at run time.
+    - name: Build the iOS app
+      if: inputs.platform == 'ios' && (steps.app-cache.outputs.cache-hit != 'true' || steps.repack.outputs.result == 'failed')
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: ${{ inputs.build-command }}
+      run: pnpm exec expo run:ios --configuration Release --device generic --no-bundler --output .build/ios
+    # The Release APK is signed with the debug keystore the template uses;
+    # repack-app ships the same keystore and signs the refreshed APK with it.
+    - name: Build the Android app
+      if: inputs.platform == 'android' && (steps.app-cache.outputs.cache-hit != 'true' || steps.repack.outputs.result == 'failed')
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        pnpm exec expo prebuild --platform android --no-install
+        printf '\n%s\n' 'org.gradle.jvmargs=-Xmx4g' >> android/gradle.properties
+        (cd android && ./gradlew :app:assembleRelease)
+        mkdir -p .build/android
+        cp android/app/build/outputs/apk/release/app-release.apk .build/android/benchmark.apk
     - name: Save the app
       if: steps.app-cache.outputs.cache-hit != 'true' || steps.repack.outputs.result == 'failed'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -105,11 +128,12 @@ runs:
         key: mobile-benchmark-${{ inputs.platform }}-${{ steps.fingerprint.outputs.hash }}
     - name: Locate the app
       id: app
+      if: inputs.cache-only != 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
         PLATFORM: ${{ inputs.platform }}
-        APP_GLOB: ${{ inputs.app-glob }}
+        APP_GLOB: ${{ steps.fingerprint.outputs.app-glob }}
       run: |
         set -euo pipefail
         APP="$(find ".build/$PLATFORM" -maxdepth 1 -name "$APP_GLOB" | head -1)"
