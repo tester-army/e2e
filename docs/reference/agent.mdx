@@ -241,7 +241,11 @@ assert(assertion: string, options?: AssertOptions): Promise<void>;
 
 Checks one fresh observation without polling. The judge sees only the
 assertion and current observation, never prior steps or `act` summaries.
-It answers `holds`, `fails`, or `inconclusive`.
+It answers `holds`, `fails`, or `inconclusive`. When what the assertion is
+about appears more than once, such as a total in a summary and on a pay
+button, every instance must agree: one that contradicts it fails. A claim
+about some item, such as `a todo is marked done`, still holds when one item
+matches.
 
 Throws `ASSERTION_FAILED` on a false judgment and `ASSERTION_INCONCLUSIVE`
 when the screen did not show enough to decide. Both carry the explanation
@@ -274,7 +278,9 @@ Observes and judges at once. After a false or inconclusive judgment it
 waits out `interval`, then observes every 500 ms (or every `interval`, when
 shorter) without a model call, and judges again only once the screen
 differs from the one last judged, pixels included under `vision`. Succeeds
-on the first judgment that holds.
+on the first judgment that holds. Judgments follow the `agent.assert`
+rules, so a value shown in more than one place holds only once every
+instance agrees.
 
 Throws `STEP_TIMEOUT` on deadline expiry and `STEP_BUDGET_EXHAUSTED` on
 budget exhaustion, each carrying the last judgment (with the same vision

@@ -1,8 +1,8 @@
 /**
  * The everyday pages: the landing page, a todo list kept in localStorage, a
- * profile form, the cookie-session login and the dashboard behind it, and a
- * three-step wizard. What queries, fills, sessions, and polling assertions
- * are dogfooded against.
+ * profile form, the cookie-session login and the dashboard behind it, a
+ * three-step wizard, and a checkout with one planted bug. What queries,
+ * fills, sessions, polling assertions, and judgments are dogfooded against.
  */
 
 const nav = [
@@ -12,6 +12,7 @@ const nav = [
   { path: '/login', label: 'Login' },
   { path: '/dashboard', label: 'Dashboard' },
   { path: '/wizard', label: 'Wizard' },
+  { path: '/checkout', label: 'Checkout' },
 ];
 
 const pages = {
@@ -183,6 +184,49 @@ const pages = {
     body: `<h1>Dashboard</h1>
        <p role="status" aria-label="Greeting">Welcome back, ${request.user}!</p>
        <a href="/logout">Sign out</a>`,
+  }),
+
+  // Planted bug: the pay button keeps the total from page load, so after a
+  // quantity change the summary and the button show different totals.
+  '/checkout': () => ({
+    title: 'Checkout',
+    body: `<h1>Checkout</h1>
+       <table aria-label="Cart">
+         <thead><tr><th>Item</th><th>Price</th><th>Quantity</th><th>Line total</th></tr></thead>
+         <tbody>
+           <tr>
+             <td>Notebook</td><td>$12.00</td>
+             <td><input id="notebook-qty" type="number" min="1" value="1" aria-label="Notebook quantity" data-price="12" /></td>
+             <td data-line>$12.00</td>
+           </tr>
+           <tr>
+             <td>Pen</td><td>$3.00</td>
+             <td><input id="pen-qty" type="number" min="1" value="2" aria-label="Pen quantity" data-price="3" /></td>
+             <td data-line>$6.00</td>
+           </tr>
+         </tbody>
+       </table>
+       <section aria-label="Order summary">
+         <h2>Order summary</h2>
+         <p>Order total: <strong id="summary-total">$18.00</strong></p>
+       </section>
+       <button id="pay">Pay $18.00</button>
+
+       <script>
+         const money = (amount) => '$' + amount.toFixed(2);
+         for (const input of document.querySelectorAll('input[data-price]')) {
+           input.addEventListener('input', () => {
+             let total = 0;
+             for (const row of document.querySelectorAll('tbody tr')) {
+               const qty = row.querySelector('input');
+               const line = Number(qty.dataset.price) * Number(qty.value);
+               row.querySelector('[data-line]').textContent = money(line);
+               total += line;
+             }
+             document.getElementById('summary-total').textContent = money(total);
+           });
+         }
+       </script>`,
   }),
 
   '/wizard': () => ({

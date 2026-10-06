@@ -22,6 +22,48 @@ test('assert judges seeded state, mixed with deterministic steps', async ({
   await agent.assert('two todos are listed and neither is marked done');
 });
 
+test('assert fails when one of two displayed totals contradicts it', async ({
+  browser,
+  agent,
+  screen,
+}) => {
+  await browser.goto('/checkout');
+  await screen.getByLabel('Notebook quantity').fill('3');
+  await expect(screen.getByText('$42.00')).toBeVisible();
+  await expect(screen.getByRole('button', 'Pay $18.00')).toBeVisible();
+  const code = await agent.assert('the order total is $42.00').then(
+    () => undefined,
+    (cause: unknown) => (cause as { code?: string }).code,
+  );
+  expect(code).toBe('ASSERTION_FAILED');
+});
+
+test('assert holds for a claim about some item when another item differs', async ({
+  browser,
+  agent,
+  screen,
+}) => {
+  await browser.goto('/todos');
+  await screen.getByLabel('New todo').fill('Pay the invoice');
+  await screen.getByRole('button', 'Add').click();
+  await screen.getByLabel('New todo').fill('Book the venue');
+  await screen.getByRole('button', 'Add').click();
+  await screen.getByRole('checkbox').first().check();
+  await expect(screen.getByRole('status')).toHaveText('1 remaining');
+  await agent.assert('a todo is marked done');
+});
+
+test('assert holds for one value when a different value is stale', async ({
+  browser,
+  agent,
+  screen,
+}) => {
+  await browser.goto('/checkout');
+  await screen.getByLabel('Notebook quantity').fill('3');
+  await expect(screen.getByRole('button', 'Pay $18.00')).toBeVisible();
+  await agent.assert('the Notebook line total is $36.00');
+});
+
 test('waitFor polls until the loaded users appear', async ({ browser, agent, screen }) => {
   await browser.goto('/network');
   await screen.getByRole('button', 'Load users').click();

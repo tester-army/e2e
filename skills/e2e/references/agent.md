@@ -170,6 +170,9 @@ expect(data.titles).toContain('Buy milk');
 - Judgments see the assertion and the current screen only, never prior
   steps or the act loop's summaries; malformed output gets one repair
   round, then `MODEL_OUTPUT_INVALID`.
+- A value shown in more than one place (a total in the summary and on the
+  pay button) must agree everywhere, or the judgment fails. Name the one
+  you mean (`'the order summary total is $42.00'`) when only it matters.
 - `waitFor` observes every `interval` (default 3 s), judges only when the
   screen changed, and is `STEP_TIMEOUT` after `timeout` (default 30 s).
 - `extract` takes any Standard Schema validator (zod works); the model sees
