@@ -1069,7 +1069,7 @@ test('fails on purpose', async ({ app }) => {
       expect(videos).toHaveLength(1);
       const video = videos[0]!;
       expect(video).toMatchObject({ mediaType: 'video/webm', redaction: 'incomplete', producer: { kind: 'attempt' } });
-      expect(video.path).toMatch(/\/attempt-0\/video\/fake\.webm$/);
+      expect(video.path).toMatch(/\/attempt-1\/video\/fake\.webm$/);
       expect(video.size).toBe(8);
       expect(Number.isNaN(Date.parse(video.startedAt!))).toBe(false);
       expect(existsSync(path.join(project.dir, '.e2e', 'artifacts', video.path!))).toBe(true);
@@ -1094,7 +1094,7 @@ test('fails on purpose', async ({ app }) => {
       );
       expect(outcome.status).toBe('failed');
       expect(videosOf(outcome, 'taps a node')).toEqual([]);
-      const passedDir = path.join(project.dir, '.e2e', 'artifacts', 'fake');
+      const passedDir = path.join(project.dir, '.e2e', 'artifacts');
       expect(readdirSync(passedDir).some((entry) => entry.includes('pass'))).toBe(true);
       const kept = videosOf(outcome, 'fails on purpose');
       expect(kept).toHaveLength(1);
@@ -1124,7 +1124,7 @@ test('fails on purpose', async ({ app }) => {
       const videos = attempt.artifacts.filter((artifact) => artifact.kind === 'video');
       expect(videos.map((video) => video.url ?? video.path)).toEqual([
         'https://recordings.example/r.mp4',
-        expect.stringMatching(/\/attempt-0\/video\/fake\.webm$/),
+        expect.stringMatching(/\/attempt-1\/video\/fake\.webm$/),
       ]);
       project.cleanup();
     },
@@ -1282,7 +1282,7 @@ describe('video capability and plan notices', () => {
 });
 
 describe('artifact directories', () => {
-  /** A describe long enough that the two test ids below share their first 120 characters. */
+  /** A describe long enough that the two tests below share every word their artifact directories keep. */
   const LONG_DESCRIBE =
     'a returning customer with a saved card and an expired coupon on file who reloads the checkout page twice before paying';
   const SHARED_PREFIX_FILE = `import { test } from 'e2e';
@@ -1301,7 +1301,7 @@ test.describe(${JSON.stringify(LONG_DESCRIBE)}, () => {
 `;
 
   it(
-    'two failing tests whose ids share a 120-character prefix keep their evidence apart, on disk and in the report',
+    'two failing tests whose titles share their first words keep their evidence apart, on disk and in the report',
     async () => {
       const fake = createFakeEngine({ artifacts: true });
       const { outcome, project } = await runProject(
@@ -1323,8 +1323,10 @@ test.describe(${JSON.stringify(LONG_DESCRIBE)}, () => {
         expect(existsSync(absolute)).toBe(true);
         expect(createHash('sha256').update(readFileSync(absolute)).digest('hex')).toBe(artifact.sha256);
       }
-      // One directory per test under the target, not one written twice.
-      expect(readdirSync(path.join(project.dir, '.e2e', 'artifacts', 'fake'))).toHaveLength(2);
+      // One directory per test, the same words and another id, not one written twice.
+      const dirs = readdirSync(path.join(project.dir, '.e2e', 'artifacts'));
+      expect(dirs).toHaveLength(2);
+      expect(dirs.map((dir) => dir.slice(0, -16))).toEqual(['checkouts-a-returning-customer-with-a-', 'checkouts-a-returning-customer-with-a-']);
       assertValidReport(outcome.report);
       project.cleanup();
     },

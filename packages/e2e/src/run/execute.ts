@@ -21,7 +21,7 @@ import type { ExecutorAttempt } from '../agent/executor.ts';
 import { isModelUnreachable } from '../agent/error.ts';
 import { withAiTraceScope } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
-import { timestamp, uuidv7 } from '../internal/ids.ts';
+import { resultId, timestamp, uuidv7 } from '../internal/ids.ts';
 import { engineAppInfo } from '../config/app.ts';
 import { Deadline, NEVER_ABORTS, withAbort, withScopedBudget, withTimeout } from '../internal/time.ts';
 import { createAgentCacheContext, flushStagedTraces } from '../cache/context.ts';
@@ -31,7 +31,7 @@ import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts'
 import { pairRecordings, type TestTargetPair } from '../collect/select.ts';
 import type { AttemptRecording } from '../internal/recording-modes.ts';
 import type { ArtifactStore, Secret } from '../types.ts';
-import { attemptSegments, createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
+import { attemptSegments, createAttemptArtifacts, resultSegment } from './artifacts.ts';
 import { AttemptBudget } from './budget.ts';
 import { createEngineSession } from '../engine/session.ts';
 import { createExtendedFixtures } from './extended-fixtures.ts';
@@ -53,7 +53,7 @@ import { isFailedStatus } from './records.ts';
 import { traceScreen } from './step-screens.ts';
 import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialAttemptRun, type SerialAttemptStart, type SerialHost, type SharedSerialSession } from './serial.ts';
-import { interruptedSkip, pairKey, pairResult, repeatSegment, unstartedResult } from './units.ts';
+import { interruptedSkip, pairKey, pairResult, unstartedResult } from './units.ts';
 import { adoptSecrecy, carriedSecrecy, processSecrets, registerDerivedSecrets, redactForSession, resolveSecretValue, sessionSecrecy, staticSecretLedger } from './secrecy.ts';
 import { isSecret } from '../secrets.ts';
 import { SessionStaging, SessionStore, targetIdentity, type SessionIdentity } from './sessions.ts';
@@ -851,18 +851,14 @@ export class TargetExecutor implements SerialHost {
     const artifacts = createAttemptArtifacts({
       artifactsRoot: this.artifactsRoot,
       // Serial members share the group's session, and therefore its artifact
-      // directory; registering under their own would not resolve on disk. The
-      // agent and repeat segments keep a test run as several agents, or
-      // several times, from overwriting itself.
+      // directory; registering under their own would not resolve on disk.
       segments:
         shared?.artifactSegments ??
-        attemptSegments(this.rerunDir, [
-          this.target.name,
-          sanitizePathSegment(registered.artifactName ?? pair.test.id),
-          pair.agent,
-          ...repeatSegment(pair.repeat),
-          `attempt-${attemptIndex}`,
-        ]),
+        attemptSegments(
+          this.rerunDir,
+          resultSegment({ id: resultId(pair.test.id, this.target.name, pair.agent, pair.repeat), file: pair.test.file, titlePath: pair.test.titlePath }),
+          attemptIndex,
+        ),
       attemptId,
       currentStepId: () => steps.currentStepId,
       ...(this.config.artifactStore === undefined ? {} : { store: this.config.artifactStore }),

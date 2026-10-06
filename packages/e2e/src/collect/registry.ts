@@ -60,13 +60,6 @@ export interface RegisteredTest {
   readonly group: GroupNode | undefined;
   readonly mode: TestMode;
   readonly source: SourceLocation | undefined;
-  /**
-   * The test's artifact directory under its target's, set by an in-memory
-   * registration whose id makes a poor directory name (`e2e explore`, whose
-   * id is the whole encoded goal). Unset, a non-serial test's is its
-   * sanitized test id; serial members share the group's and ignore it.
-   */
-  readonly artifactName?: string | undefined;
 }
 
 interface HookBase {

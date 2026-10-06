@@ -195,7 +195,7 @@ jobs:
       - name: Failure screens
         if: ${{ failure() }}
         run: |
-          find .e2e -path '*/failure/*' -name screen.txt | sort | head -n 12 | while read -r screen; do
+          find .e2e -name screen-at-failure.txt | sort | head -n 12 | while read -r screen; do
             echo "::group::$screen"
             head -c 8000 "$screen"
             echo
@@ -311,7 +311,7 @@ jobs:
         if: ${{ failure() }}
         working-directory: apps/mobile-benchmark
         run: |
-          find .e2e -path '*/failure/*' -name screen.txt | sort | head -n 12 | while read -r screen; do
+          find .e2e -name screen-at-failure.txt | sort | head -n 12 | while read -r screen; do
             echo "::group::$screen"
             head -c 8000 "$screen"
             echo

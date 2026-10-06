@@ -387,15 +387,35 @@ const STATUS_WORD: Record<ReportResult['status'], string> = {
 
 const STEP_GLYPH: Record<ReportStep['status'], string> = { passed: '✓', failed: '✗', blocked: '✗', 'timed-out': '✗', cancelled: '–' };
 
-/** `[screenshot](run#artifacts) \`web/.../screenshot-1.png\``: the kind, linked to the run's artifacts when there is a URL, and the file's path so the reader finds it. */
-function artifactPath(artifact: ReportArtifact, options: TracePageOptions): string {
-  const kind = cell(artifact.kind, MAX_ID_CHARS);
+/** `[screenshot](run#artifacts) \`todos-adds-a-todo-1a2b…/attempt-1/screenshots/001-failure.png\``: the kind (or `label`), linked to the run's artifacts when there is a URL, and the file's path so the reader finds it. */
+function artifactPath(artifact: ReportArtifact, options: TracePageOptions, label: string = artifact.kind): string {
+  const kind = cell(label, MAX_ID_CHARS);
   // A video a hosted service keeps is its own link, wherever the run's files are.
   if (artifact.url !== undefined) return link(kind, artifact.url);
   const named = options.artifactsUrl === undefined ? kind : link(kind, options.artifactsUrl);
   if (artifact.path === undefined) return named;
   const shown = options.artifactsDir === undefined ? artifact.path : `${options.artifactsDir}/${artifact.path}`;
   return `${named} ${code(shown, MAX_PATH_CHARS)}`;
+}
+
+/**
+ * The screen file's viewport and node count, and its listing: the file opens
+ * with a heading and `key: value` lines before a blank line, which the page
+ * states beside the URL instead of repeating under its own heading. A file
+ * without that header is all listing.
+ */
+function splitScreenFile(file: string): { facts: string[]; listing: string } {
+  const end = file.indexOf('\n\n');
+  if (!file.startsWith('# ') || end === -1) return { facts: [], listing: file };
+  const facts: string[] = [];
+  for (const line of file.slice(0, end).split('\n').slice(1)) {
+    const viewport = /^viewport: (.+)$/u.exec(line);
+    if (viewport !== null) facts.push(`viewport ${viewport[1]}`);
+    // `nodes: 42 (listing truncated)`; `nodes: unavailable` says nothing the listing does not.
+    const nodes = /^nodes: (\d+)(.*)$/u.exec(line);
+    if (nodes !== null) facts.push(`${nodes[1]} nodes${nodes[2]}`);
+  }
+  return { facts, listing: file.slice(end + 2) };
 }
 
 /** Renders one traced result as its own markdown page: a failed or flaky one tells its failure, a passing one its steps. */
@@ -471,18 +491,20 @@ export function renderTracePage(report: Report1Document, result: ReportResult, f
   const failure = told.failure;
   if (failure !== undefined) {
     lines.push('## Screen at failure', '');
-    if (failure.url !== undefined) lines.push(`URL: ${code(failure.url, MAX_PATH_CHARS)}  `);
+    const screen = failure.screen === undefined ? undefined : told.artifacts.find((artifact) => artifact.id === failure.screen);
+    const file = screen?.path === undefined ? undefined : options.readArtifact?.(screen.path);
+    const { facts, listing } = file === undefined ? { facts: [], listing: undefined } : splitScreenFile(file);
+    const where = [...(failure.url === undefined ? [] : [code(failure.url, MAX_PATH_CHARS)]), ...facts.map((fact) => cell(fact, MAX_ID_CHARS))];
+    if (where.length > 0) lines.push(`${where.join(' · ')}  `);
     if (failure.candidates !== undefined && failure.candidates.length > 0) {
       lines.push('Closest to what the locator asked for:  ');
       for (const candidate of failure.candidates) lines.push(`- ${code(candidate, MAX_CELL_CHARS)}`);
     }
-    const screen = failure.screen === undefined ? undefined : told.artifacts.find((artifact) => artifact.id === failure.screen);
-    const text = screen?.path === undefined ? undefined : options.readArtifact?.(screen.path);
-    if (text !== undefined) {
-      const body = text.length > MAX_SCREEN_CHARS ? `${text.slice(0, MAX_SCREEN_CHARS)}\n…[cut at ${MAX_SCREEN_CHARS} characters; the file has the rest]` : text;
+    if (listing !== undefined) {
+      const body = listing.length > MAX_SCREEN_CHARS ? `${listing.slice(0, MAX_SCREEN_CHARS)}\n…[cut at ${MAX_SCREEN_CHARS} characters; the file has the rest]` : listing;
       lines.push('', 'The screen as the agent reads it, one node per line: `#id role "name" text="…" [states]`.', '', '```text', body.replaceAll('```', "'''").trimEnd(), '```');
     } else if (screen !== undefined) {
-      lines.push(`Screen text: ${artifactPath(screen, options)}  `);
+      lines.push(`${artifactPath(screen, options, 'screen')}  `);
     }
     lines.push('');
   }
@@ -499,7 +521,7 @@ export function renderTracePage(report: Report1Document, result: ReportResult, f
   const evidence = evidenceOf(told);
   if (evidence.length > 0) {
     lines.push('## Evidence', '');
-    for (const artifact of evidence) lines.push(`- ${artifactPath(artifact, options)}`);
+    for (const artifact of evidence) lines.push(`- ${artifactPath(artifact, options, artifact.id === failure?.screen ? 'screen' : artifact.kind)}`);
     lines.push('');
   }
 

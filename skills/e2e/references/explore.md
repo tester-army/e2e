@@ -109,11 +109,10 @@ A step carries `errorCode` only when it did not pass; a finding carries
 the result whose `file` is `explore`, where its path, size, and digest are.
 With `--session`, `run.results` also holds the setup's result and the
 project's other tests as skipped (`filtered`). The attempt directory is
-`.e2e/artifacts/<target>/explore-<slug>-<digest>/<agent>/attempt-0/`: the slug
-is the goal's first words in lowercase ASCII, capped, and the digest keeps
-distinct goals apart while the same goal always maps to the same directory.
-For example
-`.e2e/artifacts/web/explore-check-the-cart-totals-1a2b3c4d5e6f7a8b/default/attempt-0/finding-1.png`.
+`.e2e/artifacts/explore-<slug>-<id>/attempt-1/`: the slug is the goal's first
+words in lowercase ASCII, capped, and the id keeps distinct goals, targets, and
+agents apart while the same goal always maps to the same directory. For example
+`.e2e/artifacts/explore-check-the-cart-totals-1a2b3c4d5e6f7a8b/attempt-1/finding-1.png`.
 
 Turn a finding into a test: its `reproduction` steps are the `agent.act()`
 instructions or `screen.*` actions, and `expected` is the assertion.

@@ -122,8 +122,8 @@ describe('output', () => {
 
         const first = await runExisting(project, { appUrl: FAKE_APP_URL, config });
         const firstShot = screenshotOf(first);
-        expect(firstShot.path).toMatch(/^fake\/.*\/attempt-0\//);
-        const planted = path.join(artifacts, 'fake', 'planted.txt');
+        expect(firstShot.path).toMatch(/^fail-fails-on-purpose-[0-9a-f]{16}\/attempt-1\//);
+        const planted = path.join(artifacts, 'planted.txt');
         writeFileSync(planted, 'named by no report');
 
         const rerun = await runExisting(project, { appUrl: FAKE_APP_URL, config, runOptions: { lastFailed: true } });
@@ -144,7 +144,7 @@ describe('output', () => {
         // A full run starts from an empty tree, at the root again.
         const full = await runExisting(project, { appUrl: FAKE_APP_URL, config });
         expect(screenshotOf(full).path).toBe(firstShot.path);
-        expect(readdirSync(artifacts)).toEqual(['fake']);
+        expect(readdirSync(artifacts).filter((entry) => entry.startsWith('rerun-'))).toEqual([]);
       } finally {
         project.cleanup();
       }

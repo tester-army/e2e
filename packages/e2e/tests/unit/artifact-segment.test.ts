@@ -1,118 +1,46 @@
 /**
- * The report path segment a name or test id becomes: a safe alphabet, never
- * `.` or `..` (which would name the directory itself or its parent), a length
- * cap, and a digest of the whole id whenever the alphabet or the cap changed
- * it, so two ids that sanitize alike get artifact directories of their own.
+ * The name a result goes by on disk, its trace page's and its artifact
+ * directory's: the test file's name, the title's first words, and the head of
+ * the result id, always one safe path segment.
  */
 
 import { describe, expect, it } from 'vitest';
-import { labelSegment, sanitizePathSegment } from '../../src/run/artifacts.ts';
+import { resultSegment } from '../../src/run/artifacts.ts';
 
-const SAFE_ALPHABET = /^[A-Za-z0-9._-]+$/;
-const DIGESTED = /-[0-9a-f]{8}$/;
-const MAX_SEGMENT_CHARS = 120;
+const SAFE_SEGMENT = /^[a-z0-9-]+$/;
+const ID = '1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d';
 
-/** A monorepo path, a describe, and a long title: exactly at the cap before the test's own title. */
-const PREFIX = 'apps/storefront/tests/checkouts.e2e.ts::checkout::a returning customer with a saved card and an expired coupon on file::';
-
-describe('sanitizePathSegment', () => {
-  it('leaves an id that is already safe and within the cap unchanged', () => {
-    for (const safe of ['signs-in', 'auth.e2e.ts', 'a_b', '.hidden', 'a..b', 'x'.repeat(MAX_SEGMENT_CHARS)]) {
-      expect(sanitizePathSegment(safe)).toBe(safe);
-    }
+describe('resultSegment', () => {
+  it('names a result by its file, the first words of its title, and the head of its id', () => {
+    expect(resultSegment({ id: ID, file: 'tests/checkout.e2e.ts', titlePath: ['applies the coupon'] })).toBe('checkout-applies-the-coupon-1a2b3c4d5e6f7a8b');
+    expect(resultSegment({ id: ID, file: 'apps/shop/tests/cart.spec.mts', titlePath: ['cart', 'keeps items'] })).toBe('cart-spec-cart-keeps-items-1a2b3c4d5e6f7a8b');
   });
 
-  it('rewrites an id outside the alphabet into it and ends it in a digest of the original', () => {
-    const segment = sanitizePathSegment('tests/auth.e2e.ts::auth::signs in');
-    expect(segment).toMatch(/^tests_auth\.e2e\.ts__auth__signs_in-[0-9a-f]{8}$/);
-    expect(sanitizePathSegment('tests/auth.e2e.ts::auth::signs in')).toBe(segment);
+  it('leaves out a first title word the file name already says', () => {
+    expect(resultSegment({ id: ID, file: 'tests/todos.e2e.ts', titlePath: ['todos', 'adds todos with the button and the keyboard'] })).toBe(
+      'todos-adds-todos-with-the-button-and-1a2b3c4d5e6f7a8b',
+    );
+    expect(resultSegment({ id: ID, file: 'explore', titlePath: ['Explore the app and find bugs'] })).toBe('explore-the-app-and-find-bugs-1a2b3c4d5e6f7a8b');
   });
 
-  it('gives two ids that sanitize alike distinct segments', () => {
-    const pairs: [string, string][] = [
-      ['tests/x.e2e.ts::artifact%20a', 'tests/x.e2e.ts::artifact_20a'],
-      ['a b', 'a_b'],
-      ['a/b', 'a_b'],
-      ['a::b', 'a__b'],
-      ['ünïcode', '_n_code'],
-      ['a b', 'a/b'],
-    ];
-    for (const [left, right] of pairs) {
-      const segments = [sanitizePathSegment(left), sanitizePathSegment(right)];
-      expect(segments[0]).not.toBe(segments[1]);
-      for (const segment of segments) expect(segment).toMatch(SAFE_ALPHABET);
-    }
+  it('keeps two results with the same words apart by their ids', () => {
+    const titlePath = ['checkout', 'applies the coupon'];
+    const web = resultSegment({ id: 'aaaaaaaaaaaaaaaa1111', file: 'tests/checkout.e2e.ts', titlePath });
+    const ios = resultSegment({ id: 'aaaaaaaabbbbbbbb1111', file: 'tests/checkout.e2e.ts', titlePath });
+    expect(web).not.toBe(ios);
   });
 
-  it('never returns the current or parent directory, and tells the dot-only ids apart', () => {
-    const segments = ['.', '..', '...'].map((dots) => sanitizePathSegment(dots));
-    for (const segment of segments) {
-      expect(segment).toMatch(/^_-[0-9a-f]{8}$/);
-      expect(segment).not.toBe('_');
-    }
-    expect(new Set(segments).size).toBe(3);
-  });
-
-  it('gives two long ids with a common 120-character prefix distinct, capped segments in the safe alphabet', () => {
-    expect(PREFIX).toHaveLength(MAX_SEGMENT_CHARS);
-    const first = sanitizePathSegment(`${PREFIX}keeps the coupon after a reload`);
-    const second = sanitizePathSegment(`${PREFIX}drops the coupon after sign-out`);
-
-    expect(first).not.toBe(second);
-    for (const segment of [first, second]) {
-      expect(segment.length).toBeLessThanOrEqual(MAX_SEGMENT_CHARS);
-      expect(segment).toMatch(SAFE_ALPHABET);
-      expect(segment).toMatch(DIGESTED);
-    }
-    expect(sanitizePathSegment(`${PREFIX}keeps the coupon after a reload`)).toBe(first);
-  });
-
-  it('caps a safe 130-character id at 120 with the digest, and a 121-dot id at `_` plus the digest', () => {
-    expect(sanitizePathSegment('.'.repeat(121))).toMatch(/^_-[0-9a-f]{8}$/);
-    const capped = sanitizePathSegment('a'.repeat(130));
-    expect(capped).toHaveLength(MAX_SEGMENT_CHARS);
-    expect(capped).toMatch(/^a{111}-[0-9a-f]{8}$/);
-  });
-});
-
-describe('labelSegment', () => {
-  const GOAL = 'Starting at /e/cart-totals, change each quantity up and down; check every total and the tax line';
-
-  it('names an exploration by the first words of its goal and a digest of the whole goal', () => {
-    expect(labelSegment('explore', GOAL)).toBe('explore-starting-at-e-cart-totals-change-05548d832bd70a7a');
-    expect(labelSegment('explore', GOAL)).toBe(labelSegment('explore', GOAL));
-  });
-
-  it('keeps two goals with the same first words apart', () => {
-    const first = labelSegment('explore', 'Check the cart totals after changing quantities');
-    const second = labelSegment('explore', 'Check the cart totals after removing an item');
-    expect(first).toBe('explore-check-the-cart-totals-after-948a4f2f323d43b8');
-    expect(second).toBe('explore-check-the-cart-totals-after-8821956513c7ae54');
-  });
-
-  it('keeps apart two goals whose first 32 digest bits collide', () => {
-    const first = labelSegment('explore', 'Check the cart totals after changing quantities 5885');
-    const second = labelSegment('explore', 'Check the cart totals after changing quantities 62140');
-    expect(first).toBe('explore-check-the-cart-totals-after-5846d49d844ea116');
-    expect(second).toBe('explore-check-the-cart-totals-after-5846d49df03de864');
-  });
-
-  it('leaves out a first word the prefix already says', () => {
-    expect(labelSegment('explore', 'Explore the app and find bugs')).toBe('explore-the-app-and-find-bugs-f705c04163ee21e6');
-    expect(labelSegment('explore', 'Explore')).toMatch(/^explore-[0-9a-f]{16}$/);
-  });
-
-  it('drops accents, falls back to the digest alone, and cuts one long word, always a safe segment', () => {
+  it('drops accents, falls back to the id alone, and cuts one long word, always a safe segment', () => {
     const segments = [
-      labelSegment('explore', 'Sprawdź koszyk: żółć, Łódź'),
-      labelSegment('explore', '購入フローを確認する'),
-      labelSegment('explore', `${'x'.repeat(300)} and more`),
-      labelSegment('explore', '../../etc/passwd'),
+      resultSegment({ id: ID, file: 'tests/koszyk.e2e.ts', titlePath: ['Sprawdź koszyk: żółć, Łódź'] }),
+      resultSegment({ id: ID, file: '購入.e2e.ts', titlePath: ['購入フローを確認する'] }),
+      resultSegment({ id: ID, file: 'tests/x.e2e.ts', titlePath: [`${'y'.repeat(300)} and more`] }),
+      resultSegment({ id: ID, file: '../../etc/passwd', titlePath: ['../../etc/passwd'] }),
     ];
-    expect(segments[0]).toMatch(/^explore-sprawdz-koszyk-zolc-lodz-[0-9a-f]{16}$/);
-    expect(segments[1]).toMatch(/^explore-[0-9a-f]{16}$/);
-    expect(segments[2]).toMatch(/^explore-x{32}-[0-9a-f]{16}$/);
-    expect(segments[3]).toMatch(/^explore-etc-passwd-[0-9a-f]{16}$/);
-    for (const segment of segments) expect(sanitizePathSegment(segment)).toBe(segment);
+    expect(segments[0]).toBe('koszyk-sprawdz-koszyk-zolc-lodz-1a2b3c4d5e6f7a8b');
+    expect(segments[1]).toBe('1a2b3c4d5e6f7a8b');
+    expect(segments[2]).toBe(`x-${'y'.repeat(32)}-1a2b3c4d5e6f7a8b`);
+    expect(segments[3]).toBe('passwd-etc-passwd-1a2b3c4d5e6f7a8b');
+    for (const segment of segments) expect(segment).toMatch(SAFE_SEGMENT);
   });
 });

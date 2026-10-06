@@ -93,7 +93,7 @@ describe('evidenceOf', () => {
       { id: 'a:1', kind: 'log', mediaType: 'text/plain', path: 't/transcript.txt', redaction: 'complete', producer: { kind: 'attempt' } },
       { id: 'a:2', kind: 'screenshot', mediaType: 'image/png', path: 't/001-assert.png', redaction: 'complete', producer: { kind: 'attempt' } },
       { id: 'a:3', kind: 'screenshot', mediaType: 'image/png', path: 't/002-failure.png', redaction: 'complete', producer: { kind: 'attempt' } },
-      { id: 'a:4', kind: 'log', mediaType: 'text/plain', path: 't/failure/screen.txt', redaction: 'complete', producer: { kind: 'attempt' } },
+      { id: 'a:4', kind: 'log', mediaType: 'text/plain', path: 't/screen-at-failure.txt', redaction: 'complete', producer: { kind: 'attempt' } },
     ];
     const told = toldAttempt(result(), outcome(result({ attempts: [failed({ artifacts, failure: { screenshot: 'a:3', screen: 'a:4' } })] }), NO_GROUPS));
     expect(evidenceOf(told).map((artifact) => artifact.id)).toEqual(['a:3', 'a:4', 'a:0', 'a:2']);
@@ -125,7 +125,7 @@ describe('renderTracePage', () => {
   });
 
   it('tells the whole story: the error in full, its facts, the line, every step, the turns, the screen inline, and the evidence', () => {
-    const screen = { id: 'a:0', kind: 'log' as const, mediaType: 'text/plain', path: 't/failure/screen.txt', redaction: 'complete' as const, producer: { kind: 'attempt' as const } };
+    const screen = { id: 'a:0', kind: 'log' as const, mediaType: 'text/plain', path: 't/screen-at-failure.txt', redaction: 'complete' as const, producer: { kind: 'attempt' as const } };
     const shot = { id: 'a:1', kind: 'screenshot' as const, mediaType: 'image/png', path: 't/001-failure.png', redaction: 'complete' as const, producer: { kind: 'attempt' as const } };
     const body = page(
       [
@@ -157,7 +157,7 @@ describe('renderTracePage', () => {
           failure: { url: 'http://app.test/todos', screen: 'a:0', screenshot: 'a:1' },
         }),
       ],
-      (reportPath) => (reportPath === 't/failure/screen.txt' ? '# Screen at failure\n\n#n1 document "Todos"\n #n19 button "Add"\n' : undefined),
+      (reportPath) => (reportPath === 't/screen-at-failure.txt' ? '# Screen at failure\nurl: http://app.test/todos\nrevision: r4\nviewport: 1280x720\nnodes: 2\n\n#n1 document "Todos"\n #n19 button "Add"\n' : undefined),
     );
     expect(body).toBe(
       [
@@ -193,13 +193,11 @@ describe('renderTracePage', () => {
         '',
         '## Screen at failure',
         '',
-        'URL: `http://app.test/todos`  ',
+        '`http://app.test/todos` · viewport 1280x720 · 2 nodes  ',
         '',
         'The screen as the agent reads it, one node per line: `#id role "name" text="…" [states]`.',
         '',
         '```text',
-        '# Screen at failure',
-        '',
         '#n1 document "Todos"',
         ' #n19 button "Add"',
         '```',
@@ -207,7 +205,7 @@ describe('renderTracePage', () => {
         '## Evidence',
         '',
         '- screenshot `.e2e/artifacts/t/001-failure.png`',
-        '- log `.e2e/artifacts/t/failure/screen.txt`',
+        '- screen `.e2e/artifacts/t/screen-at-failure.txt`',
         '',
         '<sub>e2e 0.0.0 · run `run-1` · the whole run is in `report.json`</sub>',
         '',
@@ -216,9 +214,9 @@ describe('renderTracePage', () => {
   });
 
   it('points at the screen text when it cannot read it, lists the candidates, and cuts a screen past the cap', () => {
-    const screen = { id: 'a:0', kind: 'log' as const, mediaType: 'text/plain', path: 't/failure/screen.txt', redaction: 'complete' as const, producer: { kind: 'attempt' as const } };
+    const screen = { id: 'a:0', kind: 'log' as const, mediaType: 'text/plain', path: 't/screen-at-failure.txt', redaction: 'complete' as const, producer: { kind: 'attempt' as const } };
     const unread = page([failed({ artifacts: [screen], failure: { screen: 'a:0', candidates: ['#n2 button "Add"'] } })]);
-    expect(unread).toContain('Closest to what the locator asked for:  \n- `#n2 button "Add"`\nScreen text: log `.e2e/artifacts/t/failure/screen.txt`  ');
+    expect(unread).toContain('Closest to what the locator asked for:  \n- `#n2 button "Add"`\nscreen `.e2e/artifacts/t/screen-at-failure.txt`  ');
     const huge = page([failed({ artifacts: [screen], failure: { screen: 'a:0' } })], () => 'x'.repeat(30_000));
     expect(huge).toContain('…[cut at 24000 characters; the file has the rest]');
   });

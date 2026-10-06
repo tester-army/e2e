@@ -31,7 +31,7 @@ const MAX_CANDIDATE_BYTES = 1024;
 const MAX_NEAR_WORD_LENGTH = 24;
 const MAX_URL_BYTES = 2048;
 /** Report-relative path of the screen text under the attempt's artifact directory. */
-const SCREEN_FILE = 'failure/screen.txt';
+const SCREEN_FILE = 'screen-at-failure.txt';
 
 export interface FailureEvidenceOptions {
   readonly session: TargetSession;

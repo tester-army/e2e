@@ -46,7 +46,8 @@ jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
    `url`, `screen` and `screenshot` artifact ids, and `candidates`; a
    failed agent step has `turns`; `selected` drops filtered-out tests
    (recorded as `skipped`).
-4. Artifacts, under `.e2e/artifacts/`: `failure/screen.txt`
+4. Artifacts, under `.e2e/artifacts/<test>/attempt-<n>/`, named like the
+   trace page: `screen-at-failure.txt`
    and the engine's screenshot per failed attempt; downloads; with
    `--video` the recording (`video/video.webm` in a local browser, each
    later page `video/video-part<n>.webm` with its own `startedAt`;

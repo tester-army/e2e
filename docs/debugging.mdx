@@ -136,7 +136,15 @@ failed result:
 ## Artifacts
 
 Artifacts land under `.e2e/artifacts/` (`<output>/artifacts/` when the
-[`output`](/reference/config#output) is moved), one directory per attempt.
+[`output`](/reference/config#output) is moved), in a directory per test named
+like its trace page, one `attempt-<n>` per attempt:
+
+```text
+.e2e/traces/todos-adds-a-todo-1a2b3c4d5e6f7a8b.md
+.e2e/artifacts/todos-adds-a-todo-1a2b3c4d5e6f7a8b/attempt-1/screen-at-failure.txt
+.e2e/artifacts/todos-adds-a-todo-1a2b3c4d5e6f7a8b/attempt-1/screenshots/001-failure.png
+```
+
 Each run empties it first, so it holds the latest run's evidence. A
 `--last-failed` rerun instead empties it down to the files the report it
 reruns names, and writes its own under `rerun-<n>/`:

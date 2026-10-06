@@ -156,11 +156,6 @@ export function pairResult(
   return { test: testIdentity(pair.test), target: pair.target, agent: pair.agent, repeat: pair.repeat, ...fields };
 }
 
-/** The artifact path segment of a `--repeat-each` run past the first; none for the first, whose paths do not change. */
-export function repeatSegment(repeat: number): readonly string[] {
-  return repeat === 0 ? [] : [`repeat-${repeat}`];
-}
-
 /** The identity of one pair among a unit's: a test runs once per agent it is pinned to, and once per repeat. */
 export function pairKey(testId: string, agent: string, repeat: number): string {
   return `${testId}\u0000${agent}\u0000${repeat}`;

@@ -632,7 +632,8 @@ test('breaks the second time', async ({ app }) => {
       expect(results[0]!.id).toBe(resultId(results[0]!.testId, 'fake', 'default'));
       const paths = results[4]!.attempts[0]!.artifacts.flatMap((artifact) => (artifact.path === undefined ? [] : [artifact.path]));
       expect(paths.length).toBeGreaterThan(0);
-      expect(paths.every((artifactPath) => artifactPath.includes('/repeat-1/'))).toBe(true);
+      // Each repeat is a result of its own, and its evidence lands under its own id.
+      expect(paths.every((artifactPath) => artifactPath.split('/')[0]!.endsWith(results[4]!.id.slice(0, 16)))).toBe(true);
       expect(outcome.report.run.summary).toMatchObject({ selected: 6, executed: 6, passed: 4, failed: 2 });
 
       // Only the breaking test failed, on its later repeats; the rerun names it once and runs it once,

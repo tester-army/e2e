@@ -108,7 +108,7 @@ describe('a secret in an engine option', () => {
     expect(error.message).toContain('Basic <secret:stagingPassword>');
     expect(JSON.stringify(outcome.report)).not.toContain(CREDENTIAL);
     const contents = contentsUnder(`${project.dir}/.e2e`);
-    for (const written of ['/failure/screen.txt', '/traces/', '/downloads/']) {
+    for (const written of ['/screen-at-failure.txt', '/traces/', '/downloads/']) {
       expect(contents.some(([name]) => name.includes(written)), written).toBe(true);
     }
     for (const [file, text] of contents) expect(text, file).not.toContain(CREDENTIAL);

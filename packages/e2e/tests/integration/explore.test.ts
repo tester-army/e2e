@@ -173,7 +173,7 @@ describe('e2e explore', () => {
     const attempt = result.attempts[0]!;
     const evidence = attempt.artifacts.find((artifact) => artifact.id === finding.artifactId);
     expect(evidence).toMatchObject({ kind: 'screenshot', mediaType: 'image/png', producer: { kind: 'step' } });
-    expect(evidence!.path).toBe('web/explore-the-home-page-and-find-bugs-b45b84f036779c9f/default/attempt-0/finding-1.png');
+    expect(evidence!.path).toMatch(/^explore-the-home-page-and-find-bugs-[0-9a-f]{16}\/attempt-1\/finding-1\.png$/);
     expect(existsSync(path.join(project.dir, '.e2e', 'artifacts', ...evidence!.path!.split('/')))).toBe(true);
     expect(attempt.steps.find((step) => step.api === 'agent.act')!.artifacts).toContain(finding.artifactId);
     expect(result.titlePath).toEqual(['Explore the home page and find bugs']);
@@ -245,7 +245,7 @@ describe('e2e explore', () => {
     expect(loopCalls.length).toBeGreaterThan(0);
     expect(loopCalls[0]!.system).toContain('Exploration goal: Explore the home page with key <secret:probe>');
     const paths = result.attempts[0]!.artifacts.map((artifact) => artifact.path ?? '');
-    expect(paths.some((entry) => entry.startsWith('web/explore-the-home-page-with-key-secret-'))).toBe(true);
+    expect(paths.some((entry) => entry.startsWith('explore-the-home-page-with-key-secret-'))).toBe(true);
     expect(JSON.stringify([outcome.report, fakeCalls, loopCalls])).not.toContain(value);
     expect(readFileSync(path.join(project.dir, '.e2e', 'report.json'), 'utf8')).not.toContain(value);
 
