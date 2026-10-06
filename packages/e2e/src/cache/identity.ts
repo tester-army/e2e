@@ -206,7 +206,6 @@ const KEY_CONTEXT_WORDS: Readonly<Record<keyof TraceKeyContext, { readonly name:
   project: { name: 'the projectId', shown: false },
   platform: { name: 'the platform', shown: true },
   engineName: { name: 'the engine', shown: true },
-  engineVersion: { name: 'the engine version', shown: true },
   engineSpiVersion: { name: 'the engine contract', shown: true },
   appIdentity: { name: "the app's identity (app.identity, else its URL) or environment", shown: false },
   agentContextDigest: { name: "the agent's context (its context, or the test's agentContext)", shown: false },
@@ -214,7 +213,7 @@ const KEY_CONTEXT_WORDS: Readonly<Record<keyof TraceKeyContext, { readonly name:
 
 /**
  * What differs between the context an entry was recorded under and this
- * run's: `the engine version (1.61 -> 1.62)`, `the app's identity ...`. Empty
+ * run's: `the engine contract (1 -> 2)`, `the app's identity ...`. Empty
  * when nothing differs or the entry recorded no context.
  */
 export function keyContextChanges(recorded: TraceKeyContext | undefined, now: TraceKeyContext): string[] {

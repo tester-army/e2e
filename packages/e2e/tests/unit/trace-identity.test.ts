@@ -112,15 +112,14 @@ describe('keyContextChanges', () => {
     project: 'p'.repeat(64),
     platform: 'web',
     engineName: 'web',
-    engineVersion: '0.11',
     engineSpiVersion: 1,
     appIdentity: 'a'.repeat(64),
     agentContextDigest: 'c'.repeat(64),
   } as const;
 
   it('names what changed since the recording, with the values a reader can act on', () => {
-    expect(keyContextChanges({ ...context, engineVersion: '0.10', appIdentity: 'b'.repeat(64) }, context)).toEqual([
-      'the engine version (0.10 -> 0.11)',
+    expect(keyContextChanges({ ...context, engineSpiVersion: 0, appIdentity: 'b'.repeat(64) }, context)).toEqual([
+      'the engine contract (0 -> 1)',
       "the app's identity (app.identity, else its URL) or environment",
     ]);
   });

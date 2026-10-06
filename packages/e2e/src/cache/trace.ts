@@ -434,7 +434,6 @@ export const KEY_CONTEXT_FIELDS = [
   'project',
   'platform',
   'engineName',
-  'engineVersion',
   'engineSpiVersion',
   'appIdentity',
   'agentContextDigest',
