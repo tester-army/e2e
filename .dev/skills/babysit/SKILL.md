@@ -1,6 +1,8 @@
 ---
 name: babysit
 description: Drive an open tester-army/e2e PR through conflicts, review bots, and CI until it is green with every thread handled, then label it Ready for Human Review. Use after opening a PR, or when asked to babysit, watch, monitor, check on, or get a PR green.
+metadata:
+  internal: true
 ---
 
 # Babysit a PR
@@ -13,8 +15,8 @@ thread. You never merge and never approve.
 ## Status
 
 ```bash
-node .claude/skills/babysit/scripts/pr-status.ts [pr]            # one snapshot
-node .claude/skills/babysit/scripts/pr-status.ts [pr] --watch    # poll until it is not WAITING (60s interval, 30 min cap)
+node .dev/skills/babysit/scripts/pr-status.ts [pr]            # one snapshot
+node .dev/skills/babysit/scripts/pr-status.ts [pr] --watch    # poll until it is not WAITING (60s interval, 30 min cap)
 ```
 
 No argument means the current branch's PR. The JSON has `verdict`

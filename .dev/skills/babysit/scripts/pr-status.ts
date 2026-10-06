@@ -11,7 +11,7 @@
  * summaries since the push are listed; a reviewer whose latest verdict is
  * changes-requested blocks until they approve, re-review, or are dismissed.
  *
- * Usage: `node .claude/skills/babysit/scripts/pr-status.ts [pr] [--watch] [--interval <s>] [--timeout <s>]`
+ * Usage: `node .dev/skills/babysit/scripts/pr-status.ts [pr] [--watch] [--interval <s>] [--timeout <s>]`
  */
 
 import { execFileSync } from 'node:child_process';

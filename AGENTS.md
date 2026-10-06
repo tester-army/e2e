@@ -153,6 +153,17 @@ suites that consume the built packages the way a user would.
   (gitignored) so the published package ships it; `src/cli/skill.ts` reads
   that copy first and the repo source as the fallback, and `e2e init` writes
   it into a project's `.agents/skills/` and `.claude/skills/`.
+- `.dev/skills/` — the skills we use to work on this repo (`babysit`,
+  `ship-pr`, `verify`, `writing-pr`). `npx skills add tester-army/e2e`
+  offers `e2e` alone: its default scan never looks in `.dev/`, and it skips
+  `.claude/skills/<name>`, the relative symlink to each that agents load
+  them through, because it does not follow symlinked directories. Its
+  `--full-depth` scan does reach `.dev/skills/`; there the frontmatter's
+  `metadata.internal: true` hides them. A new repo-only skill goes in
+  `.dev/skills/` with both. On Windows the symlinks need Developer Mode and
+  `core.symlinks=true` (CONTRIBUTING.md). The vendored third-party skills in `.claude/skills/` (`unbox-ai`,
+  `unslop`, tracked by `skills-lock.json`) stay where they are: the CLI
+  skips them as installed project skills.
 
 ## Commands
 
@@ -196,16 +207,16 @@ against the built packages, reviewed in a fresh context, green, every bot
 thread handled, and labeled `Ready for Human Review`. "It compiles" and
 "tests pass" are not done.
 
-- Prove behavior with the `verify` skill (`.claude/skills/verify`) while
+- Prove behavior with the `verify` skill (`.dev/skills/verify`) while
   iterating and before the PR: the built CLI on the testbed or a benchmark,
   the `e2e` MCP server (`.mcp.json`), a scratch project for `init`, the docs
   site. If you cannot verify something, say so; never imply you did.
 - Every PR body states under `## Verified` whether it was run locally, with
   CLI output, screenshots, or video when it was, and a main-vs-branch table
   for fixes (`writing-pr` skill).
-- Open every PR through the `ship-pr` skill (`.claude/skills/ship-pr`):
+- Open every PR through the `ship-pr` skill (`.dev/skills/ship-pr`):
   checks, verification, fresh-context self-review, the PR, then the
-  `babysit` skill (`.claude/skills/babysit`) until the label is on. Asking
+  `babysit` skill (`.dev/skills/babysit`) until the label is on. Asking
   for a PR means asking for all of that. A push removes the label
   (`.github/workflows/review-label.yml`), so a labeled PR is always labeled
   for its current head.
@@ -491,7 +502,7 @@ trees, on both platforms, without a device.
 - Commits follow Conventional Commits; PRs are squash-merged with the number in
   the subject.
 - PR titles and bodies follow the `writing-pr` skill
-  (`.claude/skills/writing-pr/SKILL.md`). `unslop`
+  (`.dev/skills/writing-pr/SKILL.md`). `unslop`
   (`.claude/skills/unslop/SKILL.md`, from `okwasniewski/dotfiles`) applies to
   any prose an agent writes here; other agents install it with
   `npx skills add okwasniewski/dotfiles --skill unslop`.

@@ -1,6 +1,8 @@
 ---
 name: writing-pr
 description: Use when writing or editing a pull request title or body.
+metadata:
+  internal: true
 ---
 
 # Writing a PR title and body
@@ -113,7 +115,7 @@ intermediate history.
 
 ## Voice
 
-Run the [unslop](../unslop/SKILL.md) pass on the final text before posting.
+Run the [unslop](../../../.claude/skills/unslop/SKILL.md) pass on the final text before posting.
 PR-specific tells to catch:
 
 - "This PR introduces...", "comprehensive", "robust", "seamless", "ensures",

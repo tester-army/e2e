@@ -1,6 +1,8 @@
 ---
 name: ship-pr
 description: Take finished work in tester-army/e2e to a PR a human can review without fighting CI or bots - checks, verification against the built packages, a fresh-context self-review, the PR itself, then babysitting to the Ready for Human Review label. Use whenever you are asked to open, create, ship, or submit a PR, or when implementation is done and the next step is review.
+metadata:
+  internal: true
 ---
 
 # Ship a PR

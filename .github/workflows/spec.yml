@@ -42,8 +42,8 @@ jobs:
         run: pnpm check:install-scripts
       - name: Agent skill scripts
         run: |
-          pnpm exec tsc -p .claude/skills/babysit/scripts
-          node --test .claude/skills/babysit/scripts/pr-status.test.ts
+          pnpm exec tsc -p .dev/skills/babysit/scripts
+          node --test .dev/skills/babysit/scripts/pr-status.test.ts
       - name: Install browsers
         run: node packages/web/dist/bin.js install chromium --with-deps
       - name: Testbed

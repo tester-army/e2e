@@ -16,7 +16,7 @@ did not write it. Assume it has bugs and find them.
    can be stale) and every untracked file `git status` lists. Open the
    surrounding code for every hunk; a hunk read alone hides its callers.
 3. Check the diff against every pattern in
-   `.claude/skills/babysit/references/review-triage.md` under "Patterns
+   `.dev/skills/babysit/references/review-triage.md` under "Patterns
    reviewers keep catching here".
 4. Check the contracts: a public type, error code, CLI flag, or wire field
    that changed without its `.d.ts` review, `sdk-types.ts` assertion,

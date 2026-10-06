@@ -1,7 +1,7 @@
 <!--
 Title: Conventional Commits, `!` for a breaking change. It becomes the squash commit.
 Body: a few bullets on what and why, then evidence (code, diagram, before/after).
-See .claude/skills/writing-pr/SKILL.md. No history; run output only as `## Verified` evidence.
+See .dev/skills/writing-pr/SKILL.md. No history; run output only as `## Verified` evidence.
 -->
 
 ## What and why

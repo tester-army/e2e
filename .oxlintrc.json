@@ -18,7 +18,12 @@
     "packages/*/tests/conformance/*/**",
     "packages/*/tests/tmp-projects/**",
     // Standalone user-facing projects with their own installs; nothing here builds them.
-    "examples/**"
+    "examples/**",
+    // Symlinks into .dev/skills, which is linted at its real path.
+    ".claude/skills/babysit/**",
+    ".claude/skills/ship-pr/**",
+    ".claude/skills/verify/**",
+    ".claude/skills/writing-pr/**"
   ],
   "rules": {
     // Sequential execution is the contract of a test runner, not a perf bug.

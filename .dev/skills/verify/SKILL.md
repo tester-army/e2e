@@ -1,6 +1,8 @@
 ---
 name: verify
 description: Prove a change to the e2e runner, an engine, the CLI, a reporter, the MCP server, or the docs works the way a user sees it - the real CLI against the testbed and benchmark apps, headed and on video when it matters, main against the branch for fixes. Use while iterating and before opening a PR, when asked to run, test, check, or screenshot something, to reproduce a bug report, or whenever you would otherwise say "it compiles".
+metadata:
+  internal: true
 ---
 
 # Verify
@@ -59,7 +61,7 @@ Agentic runs need `AI_GATEWAY_API_KEY`. The benchmark agent suites replay
 their committed recordings and call the model only for a step with none, as
 CI does; a step that spends a model call there means its recording went
 stale. Go live with `--no-cache --ai-trace` only when the change is to the agent, and
-read the trace with [unbox-ai](../unbox-ai/SKILL.md) (`compare` main against
+read the trace with [unbox-ai](../../../.claude/skills/unbox-ai/SKILL.md) (`compare` main against
 the branch), never by opening it. Re-recorded entries are committed in the
 same PR ("Committed recordings" in `AGENTS.md`).
 

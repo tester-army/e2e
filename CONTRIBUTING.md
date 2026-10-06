@@ -49,6 +49,11 @@ This project is a pnpm monorepo. `packages/` holds what publishes to npm,
 - `apps/mobile-benchmark`: private Expo app of hard mobile surfaces plus the e2e suites written against them
 - `docs/`: the docs site, built with [Mintlify](https://mintlify.com)
 - `skills/e2e/`: the agent skill shipped with the package and installed by `e2e init`
+- `.dev/skills/`: the skills coding agents use to work on this repo, symlinked from `.claude/skills/` so `npx skills add tester-army/e2e` offers only `e2e`
+
+On Windows, enable Developer Mode and clone with
+`git clone -c core.symlinks=true` so those symlinks check out as links rather
+than text files.
 
 Install dependencies from the root:
 
@@ -107,9 +112,9 @@ We follow the [conventional commits specification](https://www.conventionalcommi
 
 Mark a breaking change with `!` after the type (`feat(config)!: ...`). PRs are
 squash-merged, so the PR title is the commit; the
-[`writing-pr`](./.claude/skills/writing-pr/SKILL.md) skill describes the body,
+[`writing-pr`](./.dev/skills/writing-pr/SKILL.md) skill describes the body,
 including the `## Verified` section every PR carries. Coding agents open PRs
-through the [`ship-pr`](./.claude/skills/ship-pr/SKILL.md) skill and babysit
+through the [`ship-pr`](./.dev/skills/ship-pr/SKILL.md) skill and babysit
 them until the `Ready for Human Review` label is on; a later push removes it.
 
 ### Changesets
