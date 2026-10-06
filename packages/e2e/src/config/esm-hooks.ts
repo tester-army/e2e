@@ -6,14 +6,15 @@
  *
  * Resolve: an import written in a compiled file follows TypeScript's rules;
  * every other import, JavaScript's included, resolves as Node.js resolves it.
- * - A relative or absolute path: `./x.js` names `x.ts`, `x.tsx`, or `x.jsx`
- *   when one exists (`./x.mjs` names `x.mts`, `./x.cjs` names `x.cts`), an
- *   extensionless `./x` names `x.ts`, `x.tsx`, `x.jsx`, `x.js`, or `x.json`,
+ * - A relative or absolute path: `./x.js` names the first of `x.ts`,
+ *   `x.tsx`, `x.js`, and `x.jsx` that exists (`./x.jsx` tries `x.tsx`, `x.ts`,
+ *   `x.jsx`, `x.js`; `./x.mjs` names `x.mts`, `./x.cjs` names `x.cts`), an
+ *   extensionless `./x` names `x.ts`, `x.tsx`, `x.js`, `x.jsx`, or `x.json`,
  *   and a directory names its index the same way.
  * - A bare specifier the project's tsconfig.json maps through `paths` or
  *   `baseUrl` names the mapped file, before any package of that name.
- * - A `#` import or package export that names a missing `./x.js` (or `.mjs`,
- *   `.cjs`) names the TypeScript file behind it, for an `import`.
+ * - A `#` import or package export that names a missing `./x.js` (or `.jsx`,
+ *   `.mjs`, `.cjs`) names the TypeScript file behind it, for an `import`.
  *
  * Format: `.ts`, `.mts`, `.tsx`, and `.jsx` are ES modules wherever they are
  * and whatever the nearest package.json says, so a Next.js app, or any

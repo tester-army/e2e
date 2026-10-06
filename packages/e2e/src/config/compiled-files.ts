@@ -17,17 +17,23 @@ export interface CompiledExtension {
   /** The syntax oxc parses. */
   readonly lang: 'ts' | 'tsx' | 'jsx';
   readonly format: ModuleFormat;
-  /** The extension an import of the file writes under TypeScript's rules (`./x.js` for `x.ts`). */
-  readonly written: '.js' | '.mjs' | '.cjs';
 }
 
-/** Every extension the loader compiles, in the order TypeScript tries them for one written extension. */
+/** Every extension the loader compiles. */
 const COMPILED: Readonly<Record<string, CompiledExtension>> = {
-  '.ts': { lang: 'ts', format: 'module', written: '.js' },
-  '.tsx': { lang: 'tsx', format: 'module', written: '.js' },
-  '.jsx': { lang: 'jsx', format: 'module', written: '.js' },
-  '.mts': { lang: 'ts', format: 'module', written: '.mjs' },
-  '.cts': { lang: 'ts', format: 'commonjs', written: '.cjs' },
+  '.ts': { lang: 'ts', format: 'module' },
+  '.tsx': { lang: 'tsx', format: 'module' },
+  '.jsx': { lang: 'jsx', format: 'module' },
+  '.mts': { lang: 'ts', format: 'module' },
+  '.cts': { lang: 'ts', format: 'commonjs' },
+};
+
+/** The files TypeScript tries, in order, for an import that writes each JavaScript extension. */
+const WRITTEN: Readonly<Record<string, readonly string[]>> = {
+  '.js': ['.ts', '.tsx', '.js', '.jsx'],
+  '.jsx': ['.tsx', '.ts', '.jsx', '.js'],
+  '.mjs': ['.mts', '.mjs'],
+  '.cjs': ['.cts', '.cjs'],
 };
 
 /** A file inside an installed package. */
@@ -56,13 +62,11 @@ export function compiledSource(url: string | undefined): CompiledSource | undefi
 
 /**
  * The files TypeScript tries, in order, for an import that wrote
- * `extension`: the compiled files that emit it (`x.ts`, `x.tsx`, `x.jsx` for
- * `./x.js`), then the file as written. Empty for an extension no compiled
- * file emits.
+ * `extension` (`x.ts`, `x.tsx`, `x.js`, `x.jsx` for `./x.js`). Empty for an
+ * extension TypeScript does not swap.
  */
 export function writtenCandidates(extension: string): readonly string[] {
-  const emitting = Object.keys(COMPILED).filter((compiled) => COMPILED[compiled]!.written === extension);
-  return emitting.length === 0 ? [] : [...emitting, extension];
+  return WRITTEN[extension] ?? [];
 }
 
 /** Tried, in order, after an extensionless path and after a directory's `index`: what `./x.js` would find, then JSON. */

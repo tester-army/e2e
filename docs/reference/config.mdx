@@ -80,11 +80,12 @@ its package declares.
 
 e2e compiles TypeScript and JSX itself, and an import written in such a file
 resolves the way TypeScript resolves it: `./helper.js` and `./helper` load
-`helper.ts`, `./lib` loads the file `lib/package.json` names as `main`, else
-`lib/index.ts`, a bare import that `tsconfig.json` maps through `paths` or
-`baseUrl` loads the mapped file, and a `#` import or package export that names
-a missing `./x.js` or `./x` loads `x.ts` when imported (a `require()` of it
-fails as Node.js reports it). An import written in a JavaScript file resolves
+`helper.ts`, `./view.jsx` loads `view.tsx`, `./lib` loads the file
+`lib/package.json` names as `main`, else `lib/index.ts`, a bare import that
+`tsconfig.json` maps through `paths` or `baseUrl` loads the mapped file, and
+a `#` import or package export that names a missing `./x.js`, `./x.jsx`, or
+`./x` loads `x.ts` when imported (a `require()` of it fails as Node.js reports
+it). An import written in a JavaScript file resolves
 as Node.js resolves it.
 
 The `tsconfig.json` is the nearest one above the file, or, when that one has

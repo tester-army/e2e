@@ -73,6 +73,8 @@ beforeAll(() => {
     'lib/util.js': '',
     'lib/data.json': '{}',
     'lib/comp.jsx': '',
+    'lib/both.js': '',
+    'lib/both.jsx': '',
     'lib/dir/index.ts': '',
     'lib/pkg/package.json': JSON.stringify({ main: 'src/entry' }),
     'lib/pkg/src/entry.ts': '',
@@ -90,10 +92,14 @@ describe('resolve', () => {
     ['./x.js to x.ts', '../lib/helper.js', 'lib/helper.ts'],
     ['./x.js to x.tsx', '../lib/view.js', 'lib/view.tsx'],
     ['./x.js to x.jsx', '../lib/comp.js', 'lib/comp.jsx'],
+    ['./x.jsx to x.tsx', '../lib/view.jsx', 'lib/view.tsx'],
+    ['./x.jsx to x.ts', '../lib/helper.jsx', 'lib/helper.ts'],
+    ['./x.jsx to x.js', '../lib/only.jsx', 'lib/only.js'],
     ['./x.mjs to x.mts', '../lib/esm.mjs', 'lib/esm.mts'],
     ['./x.cjs to x.cts', '../lib/cjs.cjs', 'lib/cjs.cts'],
     ['an extensionless import', '../lib/helper', 'lib/helper.ts'],
     ['an extensionless JavaScript import', '../lib/util', 'lib/util.js'],
+    ['an extensionless import to x.js before x.jsx', '../lib/both', 'lib/both.js'],
     ['an extensionless JSON import', '../lib/data', 'lib/data.json'],
     ['a directory to its index', '../lib/dir', 'lib/dir/index.ts'],
     ["a directory to the TypeScript its package.json main names", '../lib/pkg', 'lib/pkg/src/entry.ts'],
@@ -112,6 +118,10 @@ describe('resolve', () => {
     ['a tsconfig alias', '@lib/helper'],
   ])('gives JavaScript Node.js resolution: %s fails as Node.js reports it', (_case, specifier) => {
     expect(() => resolveFrom(url('tests/plain.js'), specifier)).toThrow('Cannot find module');
+  });
+
+  it('keeps ./x.js as written when x.jsx sits beside x.js, as TypeScript does', () => {
+    expect(resolveFrom(url('tests/example.e2e.ts'), '../lib/both.js').asked).toEqual(['../lib/both.js']);
   });
 
   it('sees a file added since an earlier lookup outside a fresh graph', () => {
@@ -134,9 +144,10 @@ describe('resolve', () => {
     expect(resolution).toEqual({ url: url(file), format: 'module' });
   });
 
-  it('retries a # import from TypeScript that maps to a missing ./x.js or ./x on x.ts, or a directory on its index', () => {
-    const exports = { '#js/sub': url('internal/sub.js'), '#bare': url('internal/sub'), '#dir': url('lib/dir') };
+  it('retries a # import from TypeScript that maps to a missing ./x.js, ./x.jsx, or ./x on x.ts, or a directory on its index', () => {
+    const exports = { '#js/sub': url('internal/sub.js'), '#jsx/sub': url('internal/sub.jsx'), '#bare': url('internal/sub'), '#dir': url('lib/dir') };
     expect(resolveFrom(url('tests/example.e2e.ts'), '#js/sub', { exports }).asked).toEqual(['#js/sub', url('internal/sub.ts')]);
+    expect(resolveFrom(url('tests/example.e2e.ts'), '#jsx/sub', { exports }).asked).toEqual(['#jsx/sub', url('internal/sub.ts')]);
     expect(resolveFrom(url('tests/example.e2e.ts'), '#bare', { exports }).asked).toEqual(['#bare', url('internal/sub.ts')]);
     expect(resolveFrom(url('tests/example.e2e.ts'), '#dir', { exports }).asked).toEqual(['#dir', url('lib/dir/index.ts')]);
     expect(resolveFrom(url('tests/example.e2e.ts'), '@ws/lib/sub', { exports: { '@ws/lib/sub': url('internal/sub') } }).asked).toEqual([

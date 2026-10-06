@@ -16,10 +16,10 @@ import type { CompilerOptions } from '../../src/config/tsconfig.ts';
 import { compileTypeScript } from '../../src/config/typescript.ts';
 
 const KINDS: Record<string, CompiledExtension> = {
-  '.ts': { lang: 'ts', format: 'module', written: '.js' },
-  '.tsx': { lang: 'tsx', format: 'module', written: '.js' },
-  '.jsx': { lang: 'jsx', format: 'module', written: '.js' },
-  '.cts': { lang: 'ts', format: 'commonjs', written: '.cjs' },
+  '.ts': { lang: 'ts', format: 'module' },
+  '.tsx': { lang: 'tsx', format: 'module' },
+  '.jsx': { lang: 'jsx', format: 'module' },
+  '.cts': { lang: 'ts', format: 'commonjs' },
 };
 
 /** Node.js options that run compiled output as e2e does: under its loader, which compiled CommonJS calls into, with source maps on. */
