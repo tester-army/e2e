@@ -14,6 +14,15 @@
  * redaction, so a registered secret in it contributes its name only. The
  * executor that produced a trace stays provenance on the entry: the agent's
  * name already keeps two configured agents apart.
+ *
+ * The engine's package version is not part of the key. Its name and SPI
+ * version are: another engine, or another contract, is another context. A
+ * release of the same engine is not, since a recording's actions re-find
+ * their nodes against a fresh observation at replay and a node an engine
+ * release resolves differently misses then (`relocate.ts`). Keying on the
+ * version cold-started every committed recording on each release, which
+ * under `cache.strict` failed every step as `REPLAY_STALE` until it was
+ * re-recorded, for engines that had not changed how a node resolves.
  */
 
 import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
@@ -36,7 +45,6 @@ export interface TraceCacheKey {
   readonly targetId: string;
   readonly platform: string;
   readonly engineName: string;
-  readonly engineVersion: string;
   readonly engineSpiVersion: number;
   readonly kind: TraceCacheKind;
   /** Zero-based occurrence of this signature within the attempt. */
@@ -63,21 +71,8 @@ export interface CacheTargetIdentity {
   readonly targetId: string;
   readonly platform: string;
   readonly engineName: string;
-  readonly engineVersion: string;
   readonly spiVersion: number;
   readonly appIdentity: string;
-}
-
-/**
- * Reduces an engine version to the part that can change how a semantic node
- * resolves: `1.61.1` becomes `1.61`. Keying on the exact version cold-started
- * every entry on a patch release for no benefit; a minor might change matching,
- * so that part is kept. A version that is not `major.minor[.patch]` is used
- * unchanged rather than guessed at.
- */
-export function engineCompatibilityVersion(version: string): string {
-  const match = /^(\d+)\.(\d+)(?:[.\-+].*)?$/u.exec(version);
-  return match === null ? version : `${match[1]!}.${match[2]!}`;
 }
 
 /**
@@ -182,7 +177,6 @@ export function buildTraceCacheKey(parts: {
     targetId: parts.target.targetId,
     platform: parts.target.platform,
     engineName: parts.target.engineName,
-    engineVersion: engineCompatibilityVersion(parts.target.engineVersion),
     engineSpiVersion: parts.target.spiVersion,
     kind: parts.signature.kind,
     callIndex: parts.callIndex,

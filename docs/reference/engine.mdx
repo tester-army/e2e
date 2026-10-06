@@ -58,8 +58,9 @@ export interface Engine {
   /** Engine name, for diagnostics. */
   readonly name: string;
   /**
-   * Required implementation version, recorded in reports and cache keys.
-   * Cached traces cannot replay across engine versions.
+   * Required implementation version, recorded in reports and sessions.
+   * A saved session never restores across engine versions; a cached trace
+   * replays across them and re-finds its nodes.
    */
   readonly version: string;
   /**

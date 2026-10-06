@@ -2,7 +2,7 @@
  * Recordings stored under a key the runner no longer derives.
  *
  * A key names everything that can change replay (`identity.ts`), so a new
- * replay policy, an engine minor, or an agent's context changing turns every
+ * replay policy, a new key field, or an agent's context changing turns every
  * entry recorded before into a lookup miss, the same `no-entry` as a step
  * that was never recorded. `cache.strict` lets a never-recorded step run
  * live, so without this it would let a whole committed cache go quietly

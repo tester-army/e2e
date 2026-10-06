@@ -95,8 +95,10 @@ through authorization again.
 A cache entry belongs to a specific test, target, instruction, set of
 params, and agent. Renaming the test or target, changing the instruction or
 an ordinary param, running with another configured agent, changing the
-agent's `context` or the test's `agentContext`, or upgrading the engine's
-major or minor version causes a miss. A test that runs once per agent
+agent's `context` or the test's `agentContext`, or switching to another
+engine causes a miss. Upgrading the same engine does not: a recorded action
+re-finds its node at replay, so a node the new version resolves differently
+misses then. A test that runs once per agent
 (`agent: ['buyer', 'admin']`) records once per agent. Changing the model
 does not. The agent context enters the key as a hash of its redacted text,
 so a secret in it contributes only its name.
@@ -299,9 +301,9 @@ The reasons that fail are the ones that mean the app or the entry changed:
 `invalid-entry`, `wrong-context`, `target-not-found`, `target-ambiguous`,
 `viewport-changed`, `action-failed`, `action-uncertain`, and `end-mismatch`.
 A `no-entry` miss fails too when the cache directory holds a recording of the
-same step under another key, from before an `e2e` or engine upgrade or a
-change to the project id, the app's identity, or the agent's context. The
-message names that file; delete it once nothing replays it. A custom
+same step under another key, from before an `e2e` upgrade that re-keyed
+entries or a change to the project id, the app's identity, or the agent's
+context. The message names that file; delete it once nothing replays it. A custom
 `cache.store` is not checked this way. Entries recorded before this check
 existed are covered once a `read-write` run replays or re-records them. A
 step never recorded (a new or edited instruction or params), a retry, a

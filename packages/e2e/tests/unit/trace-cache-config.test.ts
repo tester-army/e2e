@@ -125,7 +125,6 @@ describe('REPLAY_STALE advice', () => {
     targetId: 'web',
     platform: 'web',
     engineName: 'playwright',
-    engineVersion: '1.61.1',
     spiVersion: 1,
     appIdentity: 'a'.repeat(64),
   } as const;
@@ -167,7 +166,6 @@ describe('flushStagedTraces', () => {
         targetId: 'web',
         platform: 'web',
         engineName: 'playwright',
-        engineVersion: '1.61.1',
         spiVersion: 1,
         appIdentity: 'a'.repeat(64),
       },

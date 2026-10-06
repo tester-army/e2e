@@ -95,9 +95,10 @@ export function hyperdrive(options: { device: string }): EngineHandle {
 targets: [{ name: 'phone', engine: hyperdrive({ device: 'iPhone 16' }), app: { bundleId: 'com.example.app' } }],
 ```
 
-`version` is required and forms part of the replay cache key. Change it when
-engine behavior changes. With `perform`, also declare `actions` to list the
-supported action kinds. `locate` answers `screen` queries; the exported
+`version` is required: reports name it, and a saved session restores only
+under the version that saved it. The replay cache does not key on it, since
+a recording re-finds its nodes at replay. With `perform`, also declare
+`actions` to list the supported action kinds. `locate` answers `screen` queries; the exported
 `resolveExpression` applies the standard query rules to a semantic tree.
 The app under test is the target's `app`, not an engine option:
 `validateApp` checks it at config load, and `prepare` and `init` receive it

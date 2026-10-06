@@ -397,7 +397,7 @@ trees, on both platforms, without a device.
   The web benchmark's agent job runs with `--strict-cache`, so a recording a
   change broke fails with `REPLAY_STALE` instead of quietly calling the model.
   That includes a change to the cache key (`REPLAY_POLICY_VERSION`, a new key
-  field, an engine minor): strict lists the file store and fails a step whose
+  field): strict lists the file store and fails a step whose
   key misses while an entry recorded for the same step sits under another key
   (`cache/rekeyed.ts`). Only entries whose `recordedFor` names the whole step
   (params digest, occurrence, agent) count; a `read-write` replay completes
