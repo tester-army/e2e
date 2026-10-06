@@ -72,7 +72,7 @@ describe('reporter objects', () => {
     // The document a reporter uploads is the file on disk, byte for byte.
     expect(JSON.parse(readFileSync(run.reportPath!, 'utf8'))).toEqual(run.report);
     expect(run.projectRoot).toBe(project.dir);
-    expect(run.artifactsRoot).toBe(path.join(project.dir, '.e2e', 'artifacts'));
+    expect(run.artifactsRoot).toBe(path.join(project.dir, '.e2e', 'results'));
     const artifacts = run.report.run.results.flatMap((result) =>
       result.attempts.flatMap((attempt) => attempt.artifacts),
     );

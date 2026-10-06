@@ -69,7 +69,7 @@ describe('selections inside a field that holds a secret', () => {
     const attempt = resultByTitle(outcome, 'selects part of a secret in a plain field').attempts.at(-1)!;
     expect(attempt.error?.code).toBe('LOCATOR_NOT_FOUND');
     const screen = attempt.artifacts.find((artifact) => artifact.id === attempt.failure?.screen)!;
-    const screenText = readFileSync(path.join(project.dir, '.e2e', 'artifacts', screen.path!), 'utf8');
+    const screenText = readFileSync(path.join(project.dir, '.e2e', 'results', screen.path!), 'utf8');
     expect(screenText).toContain('value="<secret:member.password>"');
     expect(screenText).not.toContain(FRAGMENT);
     expect(JSON.stringify(outcome.report)).not.toContain(FRAGMENT);

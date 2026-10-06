@@ -20,7 +20,7 @@ LOCATOR_NOT_FOUND: locator did not become visible: getByRole("heading", name: "T
  ❯ tests/todos.e2e.ts:31:3
  ❯ at http://127.0.0.1:4271/nope
  ❯ app 2 errors, 2 warnings logged
- ❯ trace .e2e/traces/todos-shows-the-remaining-count-796fac5f.md
+ ❯ trace .e2e/results/todos-shows-the-remaining-count-796fac5f12ab34cd/trace.md
 ```
 
 The exit code identifies the failure type:
@@ -35,9 +35,9 @@ The exit code identifies the failure type:
 
 ## Traces
 
-Every run that reaches its tests writes a trace page for each failed, timed
-out, or flaky test under `.e2e/traces/` (`<output>/traces/` when the output
-is moved), and removes the previous run's pages. The
+Every run that reaches its tests writes a trace page, `trace.md`, for each
+failed, timed out, or flaky test in the test's [results
+directory](#artifacts), and removes the previous run's pages. The
 [`trace`](/reference/config#trace) mode chooses which tests keep one; the
 default is `retain-on-failure`. The page names what the test ran on (browser
 and user agent, or device). Each step lists what it did: the node an action
@@ -88,7 +88,10 @@ Look at: `tests/todos.e2e.ts:15`
    - expect gave up after 16 reads in 1.6s: text "0 remaining" (1 match) x16
 
 ## Screen at failure
-URL: `http://127.0.0.1:4271/todos`
+`http://127.0.0.1:4271/todos` · viewport 1280x720 · 38 nodes
+
+![screenshot at failure](attempt-1/screenshots/001-failure.png)
+
 ```text
 #n29 textbox "New todo"
 #n30 button "Add"
@@ -97,6 +100,9 @@ URL: `http://127.0.0.1:4271/todos`
 #n40 status "Remaining" text="0 remaining"
 ```
 ````
+
+The page links the screenshot and the attempt's other files from its own
+directory, so they open from an editor's markdown preview.
 
 An assertion that read one value the whole time is a wrong expectation; one
 whose readings changed (`"2 remaining" x3 -> at 410ms "1 remaining"`) raced
@@ -135,19 +141,19 @@ failed result:
 
 ## Artifacts
 
-Artifacts land under `.e2e/artifacts/` (`<output>/artifacts/` when the
-[`output`](/reference/config#output) is moved), in a directory per test named
-like its trace page, one `attempt-<n>` per attempt:
+Each test gets one directory under `.e2e/results/` (`<output>/results/` when
+the [`output`](/reference/config#output) is moved), holding its trace page
+and one `attempt-<n>` per attempt:
 
 ```text
-.e2e/traces/todos-adds-a-todo-1a2b3c4d5e6f7a8b.md
-.e2e/artifacts/todos-adds-a-todo-1a2b3c4d5e6f7a8b/attempt-1/screen-at-failure.txt
-.e2e/artifacts/todos-adds-a-todo-1a2b3c4d5e6f7a8b/attempt-1/screenshots/001-failure.png
+.e2e/results/todos-adds-a-todo-1a2b3c4d5e6f7a8b/trace.md
+.e2e/results/todos-adds-a-todo-1a2b3c4d5e6f7a8b/attempt-1/screen-at-failure.txt
+.e2e/results/todos-adds-a-todo-1a2b3c4d5e6f7a8b/attempt-1/screenshots/001-failure.png
 ```
 
-Each run empties it first, so it holds the latest run's evidence. A
+Each run empties `results/` first, so it holds the latest run's evidence. A
 `--last-failed` rerun instead empties it down to the files the report it
-reruns names, and writes its own under `rerun-<n>/`:
+reruns names, and writes its own attempts under each test's `rerun-<n>/`:
 
 - **Screenshots.** Failed attempts capture one whenever the engine can and
   pixels are allowed. The built-in `agent.assert` also captures one after

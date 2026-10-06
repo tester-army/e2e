@@ -44,7 +44,7 @@ import { SessionStore } from './sessions.ts';
 import { outputLayout } from './output.ts';
 import type { RunnerOutput } from './process-output.ts';
 import { registerStaticSecrets } from './secrecy.ts';
-import { claimRerunDir, pruneArtifacts } from './artifacts.ts';
+import { nextRerunDir, pruneArtifacts } from './artifacts.ts';
 import { carryForward, lastFailedIds, readLastRun, reportArtifactPaths, type RerunCollection } from './last-run.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setSecretRegistry } from '../secrets.ts';
@@ -534,9 +534,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const writeTraces = async (config: ResolvedConfig, document: Report1Document): Promise<TracePages> => {
     try {
       return await writeTracePages(document, tracedResultIds(results, serialGroups), {
-        dir: outputLayout(config.output).traces,
         projectRoot: config.projectRoot,
-        artifactsRoot: outputLayout(config.output).artifacts,
+        resultsRoot: outputLayout(config.output).results,
         cacheDir: config.cache.store === undefined ? config.cache.dir : undefined,
       });
     } catch (cause) {
@@ -596,7 +595,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         exitCode,
         projectRoot: loaded.config?.projectRoot ?? cwd,
         reportPath,
-        artifactsRoot: outputLayout(loaded.config?.output ?? path.resolve(cwd, options.output ?? '.e2e')).artifacts,
+        artifactsRoot: outputLayout(loaded.config?.output ?? path.resolve(cwd, options.output ?? '.e2e')).results,
         aiTracePath,
         traces,
         ...(lastRun === undefined ? {} : { lastRun }),
@@ -625,7 +624,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     runId,
     projectId: config.projectId,
     projectRoot: config.projectRoot,
-    artifactsRoot: outputLayout(config.output).artifacts,
+    artifactsRoot: outputLayout(config.output).results,
     ci: isCiMode(env),
     targets: config.targets.map((target) => target.name),
     ...(config.agentNames.length === 1 && config.agentNames[0] === 'default' ? {} : { agents: config.agentNames }),
@@ -779,13 +778,14 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     const layout = outputLayout(config.output);
 
     // Tests are about to start, and only now is the previous run's evidence
-    // given up: the artifact tree is emptied, so what is there once this run
-    // ends is its own and nothing a report no longer names, and this run's
-    // report replaces the last. A `--last-failed` rerun keeps the evidence
-    // the report it reruns names instead, since that report's results fold
-    // into the rerun's and its carried tests do not run again, and files its
-    // own attempts in a fresh `rerun-<n>` directory beside it, so no attempt
-    // overwrites an earlier one's files. A run that stopped before here (no
+    // given up: the results tree (each test's trace page and artifacts) is
+    // emptied, so what is there once this run ends is its own and nothing a
+    // report no longer names, and this run's report replaces the last. A
+    // `--last-failed` rerun keeps the artifacts the report it reruns names
+    // instead, since that report's results fold into the rerun's and its
+    // carried tests do not run again, and files its own attempts in a fresh
+    // `rerun-<n>` directory inside each test's, so no attempt overwrites an
+    // earlier one's files. The trace pages are written again at the end. A run that stopped before here (no
     // test selected, a collection error, a target that cannot record what it
     // asks, an app that failed to start, an interrupt) leaves both, and
     // `--last-failed` still reads the run that executed. A wipe that fails
@@ -795,17 +795,17 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     let rerunDir: string | undefined;
     try {
       if (lastRun === undefined) {
-        await rm(layout.artifacts, { recursive: true, force: true });
+        await rm(layout.results, { recursive: true, force: true });
       } else {
-        await pruneArtifacts(layout.artifacts, reportArtifactPaths(lastRun));
-        rerunDir = await claimRerunDir(layout.artifacts);
+        await pruneArtifacts(layout.results, reportArtifactPaths(lastRun));
+        rerunDir = await nextRerunDir(layout.results);
       }
     } catch (cause) {
       recordFailure(cause, 'launch');
       return;
     }
 
-    const artifactsRoot = layout.artifacts;
+    const artifactsRoot = layout.results;
     const store = SessionStore.create(runId, layout.sessions);
     sessionStore = store;
 

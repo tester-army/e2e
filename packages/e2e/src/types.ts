@@ -1356,14 +1356,14 @@ export interface FinishedRun {
   readonly projectRoot: string;
   /** Where `report.json` was written; undefined when the write failed or config never loaded. */
   readonly reportPath: string | undefined;
-  /** Absolute directory the report's artifact paths are relative to: `<output>/artifacts`. */
+  /** Absolute directory the report's artifact paths are relative to: `<output>/results`, a directory per test. */
   readonly artifactsRoot: string;
   /** Where `--ai-trace` wrote the run's model calls, when it was requested. */
   readonly aiTracePath: string | undefined;
   /**
    * The trace the runner wrote for each test that kept one (by its `trace`
    * mode, a failed one by default), by report result id, as a path from the
-   * project root (`.e2e/traces/checkout-applies-the-coupon-1a2b3c4d5e6f7a8b.md`).
+   * project root (`.e2e/results/checkout-applies-the-coupon-1a2b3c4d5e6f7a8b/trace.md`).
    */
   readonly traces: ReadonlyMap<string, string>;
   /**
@@ -1428,9 +1428,9 @@ export interface E2EConfig {
   /** `{ store }` hands every artifact to a host store as it is produced. */
   artifacts?: ArtifactsConfig;
   /**
-   * Which attempts keep a trace, a markdown page under `<output>/traces/`
-   * telling every step, the cache's decisions, what the app logged, and the
-   * screen at failure; default `retain-on-failure`. A target's `trace` wins
+   * Which attempts keep a trace, a `trace.md` page in the test's directory
+   * under `<output>/results/` telling every step, the cache's decisions, what
+   * the app logged, and the screen at failure; default `retain-on-failure`. A target's `trace` wins
    * over it, `--trace [mode]` over both, and a test's own `trace` over all.
    */
   trace?: RecordingMode;

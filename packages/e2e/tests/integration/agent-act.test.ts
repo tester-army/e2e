@@ -608,7 +608,7 @@ describe('loop guards and transcripts', () => {
       expect(log!.producer).toEqual({ kind: 'step', stepId: step.id });
       expect(log!.path).toBeDefined();
       const text = readFileSync(
-        path.join(project.dir, '.e2e', 'artifacts', ...log!.path!.split('/')),
+        path.join(project.dir, '.e2e', 'results', ...log!.path!.split('/')),
         'utf8',
       );
       expect(text).toContain('tool call: tap');

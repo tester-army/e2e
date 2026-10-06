@@ -41,7 +41,7 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status or switch
 | `--pass-with-no-tests` | Exit 0, not `NO_TESTS`, when nothing matches. |
 | `--debug` | Phase timings and an agent step table on stderr; transcripts as artifacts. |
 | `--ai-trace` | Every model call, to `<output>/ai-trace.json`. |
-| `--trace [mode]`, `--video [mode]` | Which tests keep a trace page under `<output>/traces/`, or which attempts record a video (WebM on browsers, MP4 on devices), over the config and every target: bare is `on` (`--trace` then pages every test, passing ones too); `--trace off` writes none; `retain-on-failure` keeps only failures; `on-first-retry` keeps first retries, `on-all-retries` every retry. A test's own `trace` or `video` still wins; targets whose engine cannot record video are skipped with a notice. Both are greedy: write `--video=<mode>` or put test files first. The failure recap names the trace page and the video. |
+| `--trace [mode]`, `--video [mode]` | Which tests keep a trace page (`<output>/results/<test>/trace.md`), or which attempts record a video (WebM on browsers, MP4 on devices), over the config and every target: bare is `on` (`--trace` then pages every test, passing ones too); `--trace off` writes none; `retain-on-failure` keeps only failures; `on-first-retry` keeps first retries, `on-all-retries` every retry. A test's own `trace` or `video` still wins; targets whose engine cannot record video are skipped with a notice. Both are greedy: write `--video=<mode>` or put test files first. The failure recap names the trace page and the video. |
 
 ```bash
 npx e2e run tests/signup.e2e.ts
@@ -85,11 +85,12 @@ its own tools.
 ## Output
 
 `<output>` (`.e2e` by default) holds `report.json`, `junit.xml`,
-`summary.md`, `traces/`, `ai-trace.json`, `sessions/`, and `artifacts/`
+`summary.md`, `ai-trace.json`, `sessions/`, and `results/`, one directory
+per test with its `trace.md` and an `attempt-<n>/` per attempt
 (screenshots, videos, `--debug` transcripts, downloads).
-`artifacts/` is cleared once a run's tests start; a run stopping before
+`results/` is cleared once a run's tests start; a run stopping before
 leaves the last run's files, and a `--last-failed` rerun keeps the files
-the report it reruns names and writes its own under `artifacts/rerun-<n>/`. The report records every artifact path, a
+the report it reruns names and writes its own under each test's `rerun-<n>/`. The report records every artifact path, a
 hosted service's video by URL.
 
 - `list` (default): setup steps, one line per file and target, a `Failed
@@ -111,7 +112,7 @@ hosted service's video by URL.
 - `junit`: `junit.xml` for CI summaries; `--reporter list,junit` keeps the
   terminal output.
 - Every run that reaches its tests also writes a trace page per failed,
-  timed-out, or flaky test under `traces/` (the `trace` mode, default
+  timed-out, or flaky test, `results/<test>/trace.md` (the `trace` mode, default
   `retain-on-failure`; an interrupted test gets none): every step with what
   it did, the cache's decisions, what the app logged, the last model turns,
   and the screen at failure. The `list` output names it under each failure
@@ -194,13 +195,12 @@ jobs:
           path: |
             .e2e/report.json
             .e2e/junit.xml
-            .e2e/traces
           if-no-files-found: warn
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-artifacts
-          path: .e2e/artifacts
+          path: .e2e/results
           if-no-files-found: warn
           retention-days: 7
 ```

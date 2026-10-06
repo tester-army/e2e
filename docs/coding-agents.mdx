@@ -130,9 +130,9 @@ retrying a run.
 ## How an agent reads the result
 
 Every run that gets to its tests writes `.e2e/report.json`, and a trace page
-for each failed or flaky test under `.e2e/traces/` (`.e2e` is the default
-`output`). The terminal names the page
-under each failed test (`❯ trace .e2e/traces/<test>.md`). Start there: it has
+for each failed or flaky test in its directory under `.e2e/results/` (`.e2e`
+is the default `output`). The terminal names the page
+under each failed test (`❯ trace .e2e/results/<test>/trace.md`). Start there: it has
 the failing line, every step with what it did (the node an action hit, the
 values an assertion read, the cache's decision, console errors and failed
 requests), the agent's last turns, and the screen at failure.

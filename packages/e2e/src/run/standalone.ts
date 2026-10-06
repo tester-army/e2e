@@ -123,7 +123,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     config,
     target,
     runId,
-    artifactsRoot: layout.artifacts,
+    artifactsRoot: layout.results,
     sessionStore,
     headed: options.headed,
     workerSlot: 0,
@@ -144,8 +144,8 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
   });
   const artifacts = createAttemptArtifacts({
-    artifactsRoot: layout.artifacts,
-    segments: [target.name, 'sessions', attemptId],
+    artifactsRoot: layout.results,
+    segments: ['mcp', `${target.name}-${attemptId}`],
     attemptId,
     currentStepId: () => steps.currentStepId,
     ...(config.artifactStore === undefined ? {} : { store: config.artifactStore }),

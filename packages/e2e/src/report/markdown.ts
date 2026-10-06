@@ -54,7 +54,7 @@ export interface MarkdownReportOptions {
   readonly artifactsUrl?: string | undefined;
   /**
    * The directory the report's artifact paths are relative to, as the reader
-   * should see it (`.e2e/artifacts` for a file the project root is read
+   * should see it (`.e2e/results` for a file the project root is read
    * from). Without `artifactsUrl`, evidence is listed as paths under it.
    */
   readonly artifactsDir?: string | undefined;
@@ -62,8 +62,8 @@ export interface MarkdownReportOptions {
   readonly sourceUrl?: ((file: string, line: number) => string) | undefined;
   /**
    * Where each traced result's page is, by result id, as the reader should
-   * see the path; the block links there. The runner writes the pages under
-   * `traces/` beside the report.
+   * see the path; the block links there. The runner writes each as
+   * `trace.md` in its test's directory under `results/`.
    */
   readonly traces?: ReadonlyMap<string, string> | undefined;
   /**
@@ -177,7 +177,7 @@ function spendLine(run: ReportRun, entries: readonly Entry[]): string | undefine
   return parts.join(' · ');
 }
 
-/** `screenshot \`.e2e/artifacts/web/.../001-failure.png\``: each file as the reader finds it under `artifactsDir`, capped. */
+/** `screenshot \`.e2e/results/<test>/attempt-1/screenshots/001-failure.png\``: each file as the reader finds it under `artifactsDir`, capped. */
 function evidencePaths(sorted: readonly ReportArtifact[], dir: string): string[] {
   const files = sorted.flatMap((artifact) => (artifact.path === undefined ? [] : [{ artifact, file: path.posix.join(dir, artifact.path) }]));
   const shown = files.slice(0, MAX_EVIDENCE_PATHS).map(({ artifact, file }) => `${artifact.kind} ${code(file)}`);
@@ -562,7 +562,8 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
  * `summary.md` beside `report.json`, with evidence listed as paths from the
  * project root, for a reader with the checkout in front of it: a pull
  * request description, a coding agent's handoff, a wiki page. Each failure
- * block links to the trace page the runner wrote for it under `traces/`.
+ * block links to the trace page the runner wrote for it in the test's
+ * directory under `results/`.
  */
 export const markdownReporter: Reporter = {
   name: 'markdown',

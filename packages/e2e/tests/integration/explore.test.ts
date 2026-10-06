@@ -174,7 +174,7 @@ describe('e2e explore', () => {
     const evidence = attempt.artifacts.find((artifact) => artifact.id === finding.artifactId);
     expect(evidence).toMatchObject({ kind: 'screenshot', mediaType: 'image/png', producer: { kind: 'step' } });
     expect(evidence!.path).toMatch(/^explore-the-home-page-and-find-bugs-[0-9a-f]{16}\/attempt-1\/finding-1\.png$/);
-    expect(existsSync(path.join(project.dir, '.e2e', 'artifacts', ...evidence!.path!.split('/')))).toBe(true);
+    expect(existsSync(path.join(project.dir, '.e2e', 'results', ...evidence!.path!.split('/')))).toBe(true);
     expect(attempt.steps.find((step) => step.api === 'agent.act')!.artifacts).toContain(finding.artifactId);
     expect(result.titlePath).toEqual(['Explore the home page and find bugs']);
     expect(result.attempts.at(-1)!.error?.message).toContain('exploration found 1 issue(s)');

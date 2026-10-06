@@ -1,7 +1,7 @@
 /**
- * The trace pages a run writes under `<output>/traces/`: one per result that
- * kept a trace, named so a reader can find it, the directory cleared of an
- * earlier run's pages, and each step told with what it did: the cache's
+ * The trace pages a run writes, `trace.md` in each test's directory under
+ * `<output>/results/`: one per result that kept a trace, in a directory named
+ * so a reader can find it, and each step told with what it did: the cache's
  * decision, the actions, the polls, and what the app logged.
  */
 
@@ -64,16 +64,18 @@ const passing = reportResult({ id: 'f'.repeat(12), titlePath: ['opens'], status:
 const interrupted = reportResult({ id: '9'.repeat(12), titlePath: ['cut short'], status: 'interrupted', attempts: [reportAttempt({ status: 'interrupted' })] });
 
 describe('writeTracePages', () => {
-  it('writes one page per traced result under its readable name, clears an earlier run, and returns paths from the project root', async () => {
+  it("writes one page per traced result into its test's readable directory, beside what is there, and returns paths from the project root", async () => {
     const root = project();
-    const dir = path.join(root, '.e2e', 'traces');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, 'stale.md'), 'old');
+    const dir = path.join(root, '.e2e', 'results');
+    const evidence = path.join(dir, 'checkout-applies-the-coupon-1a2b3c4d5e6f7a8b', 'attempt-1', 'screen-at-failure.txt');
+    mkdirSync(path.dirname(evidence), { recursive: true });
+    writeFileSync(evidence, 'screen');
     const document = reportDocument({ status: 'failed', results: [passing, failing, interrupted] });
-    const pages = await writeTracePages(document, new Set([failing.id]), { dir, projectRoot: root, artifactsRoot: path.join(root, '.e2e', 'artifacts'), cacheDir: path.join(root, '.e2e', 'cache') });
-    expect(readdirSync(dir)).toEqual(['checkout-applies-the-coupon-1a2b3c4d5e6f7a8b.md']);
-    expect([...pages]).toEqual([[failing.id, '.e2e/traces/checkout-applies-the-coupon-1a2b3c4d5e6f7a8b.md']]);
-    const text = readFileSync(path.join(dir, 'checkout-applies-the-coupon-1a2b3c4d5e6f7a8b.md'), 'utf8');
+    const pages = await writeTracePages(document, new Set([failing.id]), { projectRoot: root, resultsRoot: dir, cacheDir: path.join(root, '.e2e', 'cache') });
+    expect(readdirSync(dir)).toEqual(['checkout-applies-the-coupon-1a2b3c4d5e6f7a8b']);
+    expect(readdirSync(path.join(dir, 'checkout-applies-the-coupon-1a2b3c4d5e6f7a8b')).toSorted()).toEqual(['attempt-1', 'trace.md']);
+    expect([...pages]).toEqual([[failing.id, '.e2e/results/checkout-applies-the-coupon-1a2b3c4d5e6f7a8b/trace.md']]);
+    const text = readFileSync(path.join(dir, 'checkout-applies-the-coupon-1a2b3c4d5e6f7a8b', 'trace.md'), 'utf8');
     expect(text).toContain(`(\`.e2e/cache/${ENTRY}.json\`)`);
     expect(text).toContain('## Also failed');
     expect(text).toContain('**ENGINE_FAILURE** in cleanup: the browser closed early');
@@ -89,12 +91,12 @@ describe('writeTracePages', () => {
   });
 });
 
-/** Writes the pages of `results` into a fresh project and returns each page's name and text. */
+/** Writes the pages of `results` into a fresh project and returns each page's directory name and text. */
 async function pagesOf(...results: ReportResult[]): Promise<{ name: string; text: string }[]> {
   const root = project();
-  const dir = path.join(root, '.e2e', 'traces');
-  await writeTracePages(reportDocument({ status: 'failed', results }), new Set(results.map((result) => result.id)), { dir, projectRoot: root, artifactsRoot: path.join(root, '.e2e', 'artifacts'), cacheDir: path.join(root, '.e2e', 'cache') });
-  return readdirSync(dir).map((name) => ({ name, text: readFileSync(path.join(dir, name), 'utf8') }));
+  const dir = path.join(root, '.e2e', 'results');
+  await writeTracePages(reportDocument({ status: 'failed', results }), new Set(results.map((result) => result.id)), { projectRoot: root, resultsRoot: dir, cacheDir: path.join(root, '.e2e', 'cache') });
+  return readdirSync(dir).map((name) => ({ name, text: readFileSync(path.join(dir, name, 'trace.md'), 'utf8') }));
 }
 
 /** The lines a page lists under its step `index`, without their list markers. */
@@ -114,9 +116,9 @@ describe('trace page names', () => {
     const named = (id: string, file: string) => reportResult({ id, file, titlePath: ['signs up', 'with Google'], status: 'failed', attempts: [reportAttempt({ status: 'failed' })] });
     const pages = await pagesOf(named('abcdef0123456789ff', 'tests/Sign Up.e2e.ts'), named('0123456789abcdefff', 'tests/sign-up.e2e.ts'), named('99999999aaaaaaaaff', `tests/${'very-long-name-'.repeat(20)}.e2e.ts`));
     expect(pages.map((page) => page.name).toSorted()).toEqual([
-      'sign-up-signs-up-with-google-0123456789abcdef.md',
-      'sign-up-signs-up-with-google-abcdef0123456789.md',
-      `${'very-long-name-'.repeat(3).slice(0, 40)}-signs-up-with-google-99999999aaaaaaaa.md`,
+      'sign-up-signs-up-with-google-0123456789abcdef',
+      'sign-up-signs-up-with-google-abcdef0123456789',
+      `${'very-long-name-'.repeat(3).slice(0, 40)}-signs-up-with-google-99999999aaaaaaaa`,
     ]);
   });
 });

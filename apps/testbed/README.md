@@ -60,7 +60,7 @@ pnpm --filter @e2e-dev/testbed test:stress                            # reporter
 ```
 
 The local suite runs in CI on every push. Reports land in `.e2e/report.json`;
-artifacts under `.e2e/artifacts/`.
+artifacts and trace pages under `.e2e/results/`.
 
 ## Agentic suites
 

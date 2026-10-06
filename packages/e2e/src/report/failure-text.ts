@@ -3,10 +3,12 @@
  * the error said in structured form, whether the attempts failed alike, the
  * line to look at, the last turns, the screen), and the page that tells the
  * whole story, with every step, every kept turn, and the screen at failure
- * inline. The runner writes one such page per test that kept a trace under
- * `traces/` beside the report; the run page links each block to its page. Both read the facts from here, so the two never disagree.
+ * inline. The runner writes one such page per test that kept a trace, as
+ * `trace.md` in the test's directory under `results/`; the run page links
+ * each block to its page. Both read the facts from here, so the two never disagree.
  */
 
+import path from 'node:path';
 import { isLoopbackHost } from '../internal/urls.ts';
 import type { StepCacheInfo, StepCacheRecord, StepEvent, StepTurn } from '../run/steps.ts';
 import type { Report1Document, ReportError, ReportResult, ReportSource, ReportStep } from './build.ts';
@@ -32,6 +34,12 @@ export interface TracePageOptions {
   readonly artifactsUrl?: string | undefined;
   /** The directory the report's artifact paths are relative to, as the reader should see it. */
   readonly artifactsDir?: string | undefined;
+  /**
+   * The page's own directory, relative to the one the report's artifact
+   * paths are: each file then links from the page, and the screenshot at
+   * failure shows inline, wherever the page is read.
+   */
+  readonly pageDir?: string | undefined;
   /** Reads one artifact by its report path, for inlining the screen text; absent when the files are not at hand. */
   readonly readArtifact?: ((reportPath: string) => string | undefined) | undefined;
   /** The replay cache directory as the reader should see it; a step's entry is named as a file there. */
@@ -392,10 +400,16 @@ function artifactPath(artifact: ReportArtifact, options: TracePageOptions, label
   const kind = cell(label, MAX_ID_CHARS);
   // A video a hosted service keeps is its own link, wherever the run's files are.
   if (artifact.url !== undefined) return link(kind, artifact.url);
-  const named = options.artifactsUrl === undefined ? kind : link(kind, options.artifactsUrl);
+  const fromPage = artifact.path === undefined ? undefined : pageHref(artifact.path, options);
+  const named = options.artifactsUrl !== undefined ? link(kind, options.artifactsUrl) : fromPage !== undefined ? link(kind, fromPage) : kind;
   if (artifact.path === undefined) return named;
   const shown = options.artifactsDir === undefined ? artifact.path : `${options.artifactsDir}/${artifact.path}`;
   return `${named} ${code(shown, MAX_PATH_CHARS)}`;
+}
+
+/** An artifact's path from the page's directory, when the page knows where it is. */
+function pageHref(reportPath: string, options: TracePageOptions): string | undefined {
+  return options.pageDir === undefined ? undefined : path.posix.relative(options.pageDir, reportPath);
 }
 
 /**
@@ -496,13 +510,17 @@ export function renderTracePage(report: Report1Document, result: ReportResult, f
     const { facts, listing } = file === undefined ? { facts: [], listing: undefined } : splitScreenFile(file);
     const where = [...(failure.url === undefined ? [] : [code(failure.url, MAX_PATH_CHARS)]), ...facts.map((fact) => cell(fact, MAX_ID_CHARS))];
     if (where.length > 0) lines.push(`${where.join(' · ')}  `);
+    const shot = failure.screenshot === undefined ? undefined : told.artifacts.find((artifact) => artifact.id === failure.screenshot);
+    const shotHref = shot?.path === undefined ? undefined : pageHref(shot.path, options);
+    if (shotHref !== undefined) lines.push('', `!${link('screenshot at failure', shotHref)}`, '');
     if (failure.candidates !== undefined && failure.candidates.length > 0) {
       lines.push('Closest to what the locator asked for:  ');
       for (const candidate of failure.candidates) lines.push(`- ${code(candidate, MAX_CELL_CHARS)}`);
     }
     if (listing !== undefined) {
       const body = listing.length > MAX_SCREEN_CHARS ? `${listing.slice(0, MAX_SCREEN_CHARS)}\n…[cut at ${MAX_SCREEN_CHARS} characters; the file has the rest]` : listing;
-      lines.push('', 'The screen as the agent reads it, one node per line: `#id role "name" text="…" [states]`.', '', '```text', body.replaceAll('```', "'''").trimEnd(), '```');
+      if (lines.at(-1) !== '') lines.push('');
+      lines.push('The screen as the agent reads it, one node per line: `#id role "name" text="…" [states]`.', '', '```text', body.replaceAll('```', "'''").trimEnd(), '```');
     } else if (screen !== undefined) {
       lines.push(`${artifactPath(screen, options, 'screen')}  `);
     }

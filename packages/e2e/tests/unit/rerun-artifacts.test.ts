@@ -8,12 +8,12 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { claimRerunDir, pruneArtifacts } from '../../src/run/artifacts.ts';
+import { nextRerunDir, pruneArtifacts } from '../../src/run/artifacts.ts';
 
 let root: string;
 
 beforeEach(() => {
-  root = path.join(mkdtempSync(path.join(os.tmpdir(), 'e2e-rerun-artifacts-')), 'artifacts');
+  root = path.join(mkdtempSync(path.join(os.tmpdir(), 'e2e-rerun-artifacts-')), 'results');
 });
 
 afterEach(() => {
@@ -58,23 +58,20 @@ describe('pruneArtifacts', () => {
   });
 });
 
-describe('claimRerunDir', () => {
-  it('claims rerun-1 in a tree without one, then the number past the highest there, never one that exists', async () => {
-    plant('web/a/default/attempt-0/x.png');
-    expect(await claimRerunDir(root)).toBe('rerun-1');
-    expect(await claimRerunDir(root)).toBe('rerun-2');
-    // An earlier rerun's directory pruned away does not bring its number back.
-    rmSync(path.join(root, 'rerun-1'), { recursive: true });
-    expect(await claimRerunDir(root)).toBe('rerun-3');
-    // Names that only look alike, a target called that way among them, do not count.
-    mkdirSync(path.join(root, 'rerun-07'));
-    mkdirSync(path.join(root, 'rerun-x'));
-    expect(await claimRerunDir(root)).toBe('rerun-4');
-    expect(readdirSync(root).toSorted()).toEqual(['rerun-07', 'rerun-2', 'rerun-3', 'rerun-4', 'rerun-x', 'web']);
+describe('nextRerunDir', () => {
+  it("names rerun-1 in a tree without one, then the number past the highest any test's directory holds", async () => {
+    plant('a-1111/attempt-1/x.png');
+    expect(await nextRerunDir(root)).toBe('rerun-1');
+    plant('a-1111/rerun-1/attempt-1/x.png');
+    plant('b-2222/rerun-3/attempt-1/x.png');
+    expect(await nextRerunDir(root)).toBe('rerun-4');
+    // Names that only look alike do not count.
+    plant('c-3333/rerun-07/x.png');
+    plant('c-3333/rerun-x/x.png');
+    expect(await nextRerunDir(root)).toBe('rerun-4');
   });
 
-  it('creates the root when the tree is not there', async () => {
-    expect(await claimRerunDir(root)).toBe('rerun-1');
-    expect(existsSync(path.join(root, 'rerun-1'))).toBe(true);
+  it('names rerun-1 when the tree is not there', async () => {
+    expect(await nextRerunDir(root)).toBe('rerun-1');
   });
 });

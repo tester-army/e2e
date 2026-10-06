@@ -54,7 +54,6 @@ jobs:
           path: |
             .e2e/report.json
             .e2e/junit.xml
-            .e2e/traces
           if-no-files-found: warn
 
       - name: Upload artifacts
@@ -62,7 +61,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-artifacts
-          path: .e2e/artifacts
+          path: .e2e/results
           if-no-files-found: warn
           retention-days: 7
 ```
@@ -144,7 +143,7 @@ implemented yet.
 `--last-failed` runs only the tests the previous run did not pass, read from
 `report.json` in the [`output`](/reference/config#output) directory (`.e2e`
 by default). The rerun keeps the artifacts the first run's report names and
-writes its own under `artifacts/rerun-1/`, so one upload after both steps
+writes its own under each test's `rerun-1/`, so one upload after both steps
 holds the evidence of each. A test another filter keeps out of the rerun
 stays owed: the next `--last-failed` runs it. The
 [CLI reference](/reference/cli#flags) lists what counts as not passed.

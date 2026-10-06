@@ -1072,7 +1072,7 @@ test('fails on purpose', async ({ app }) => {
       expect(video.path).toMatch(/\/attempt-1\/video\/fake\.webm$/);
       expect(video.size).toBe(8);
       expect(Number.isNaN(Date.parse(video.startedAt!))).toBe(false);
-      expect(existsSync(path.join(project.dir, '.e2e', 'artifacts', video.path!))).toBe(true);
+      expect(existsSync(path.join(project.dir, '.e2e', 'results', video.path!))).toBe(true);
       expect(fake.operations.map((op) => op.method)).toEqual(
         expect.arrayContaining(['artifacts.startVideo', 'artifacts.stopVideo']),
       );
@@ -1094,11 +1094,11 @@ test('fails on purpose', async ({ app }) => {
       );
       expect(outcome.status).toBe('failed');
       expect(videosOf(outcome, 'taps a node')).toEqual([]);
-      const passedDir = path.join(project.dir, '.e2e', 'artifacts');
+      const passedDir = path.join(project.dir, '.e2e', 'results');
       expect(readdirSync(passedDir).some((entry) => entry.includes('pass'))).toBe(true);
       const kept = videosOf(outcome, 'fails on purpose');
       expect(kept).toHaveLength(1);
-      expect(existsSync(path.join(project.dir, '.e2e', 'artifacts', kept[0]!.path!))).toBe(true);
+      expect(existsSync(path.join(project.dir, '.e2e', 'results', kept[0]!.path!))).toBe(true);
       // The passing attempt's recording was written, then removed with its verdict.
       const passedVideos = readdirSync(passedDir, { recursive: true })
         .map(String)
@@ -1319,12 +1319,12 @@ test.describe(${JSON.stringify(LONG_DESCRIBE)}, () => {
       expect(a.path).not.toBe(b.path);
       expect(a.sha256).not.toBe(b.sha256);
       for (const artifact of [a, b]) {
-        const absolute = path.join(project.dir, '.e2e', 'artifacts', artifact.path!);
+        const absolute = path.join(project.dir, '.e2e', 'results', artifact.path!);
         expect(existsSync(absolute)).toBe(true);
         expect(createHash('sha256').update(readFileSync(absolute)).digest('hex')).toBe(artifact.sha256);
       }
       // One directory per test, the same words and another id, not one written twice.
-      const dirs = readdirSync(path.join(project.dir, '.e2e', 'artifacts'));
+      const dirs = readdirSync(path.join(project.dir, '.e2e', 'results'));
       expect(dirs).toHaveLength(2);
       expect(dirs.map((dir) => dir.slice(0, -16))).toEqual(['checkouts-a-returning-customer-with-a-', 'checkouts-a-returning-customer-with-a-']);
       assertValidReport(outcome.report);

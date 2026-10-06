@@ -139,7 +139,8 @@ export interface E2EConfig {
   /** `{ store }` hands every artifact to a host store as it is produced. */
   artifacts?: ArtifactsConfig;
   /**
-   * Which tests keep a trace page under `<output>/traces/`; default
+   * Which tests keep a trace page, `trace.md` in the test's directory under
+   * `<output>/results/`; default
    * `retain-on-failure`. A target's `trace` wins over it, `--trace [mode]`
    * over both, and a test's own `trace` over all.
    */
@@ -415,10 +416,9 @@ run.
 | Path under the output | What |
 | --- | --- |
 | `report.json` | The canonical report; `--last-failed` reads the one here |
-| `traces/` | A [trace page](/debugging#traces) per test the [`trace`](#trace) mode keeps, written by every run that reaches its tests |
 | `junit.xml`, `summary.md` | The `junit` and `markdown` reporters' files |
 | `ai-trace.json` | `--ai-trace` |
-| `artifacts/` | Screenshots, videos, downloads, and logs, one directory per attempt. Cleared once a run's tests start, so it holds the latest run's evidence and nothing its report no longer names. A `--last-failed` rerun keeps the files the report it reruns names and writes its own attempts under `artifacts/rerun-<n>/` |
+| `results/` | One directory per test: its [trace page](/debugging#traces), `trace.md`, when the [`trace`](#trace) mode keeps one, and its screenshots, videos, downloads, and logs, one `attempt-<n>/` per attempt. Cleared once a run's tests start, so it holds the latest run's evidence and nothing its report no longer names. A `--last-failed` rerun keeps the files the report it reruns names and writes its own attempts under each test's `rerun-<n>/` |
 | `sessions/` | The run's encrypted `test.setup` sessions, deleted when it ends |
 | `videos/<session>/` | [`e2e mcp`](/reference/mcp#recording) session recordings |
 
@@ -426,9 +426,9 @@ A run that stops before its tests start writes nothing here: a selection
 that matches no test (`NO_TESTS`, a mistyped `--grep`), a collection error,
 a target that cannot record what it asks for (`UNSUPPORTED_ARTIFACT`),
 `NO_LAST_RUN`, an app or service that fails to start, or an interrupt
-leaves the previous run's `report.json`, `ai-trace.json`, and `artifacts/`
-as they were, so `--last-failed` still reads the last run that executed. An `e2e mcp` session writes its attempt's artifacts under the same
-`artifacts/` and never clears it.
+leaves the previous run's `report.json`, `ai-trace.json`, and `results/`
+as they were, so `--last-failed` still reads the last run that executed. An `e2e mcp` session writes its attempt's artifacts under
+`results/mcp/` and never clears it.
 
 The replay cache is independent: [`cache.dir`](#cache) defaults to
 `.e2e/cache` and resolves from the project root whatever `output` says, so
@@ -438,7 +438,7 @@ owns part of it, the output directory fails the config load with
 
 - is the project root, or outside it;
 - is a file, or a path under one (a missing directory is created);
-- is `cache.dir` or inside it, or would hold `cache.dir` under `artifacts/`,
+- is `cache.dir` or inside it, or would hold `cache.dir` under `results/`,
   `sessions/`, or `videos/`;
 - holds a directory a `tests` glob scans (`output: 'tests'` with the default
   `tests/**/*.e2e.ts`).
@@ -621,8 +621,8 @@ invalidates cached replays.
 ### trace
 
 The default is `retain-on-failure`, locally and in CI. A trace page is
-markdown under `<output>/traces/`, one per test, such as
-`.e2e/traces/checkout-applies-the-coupon-1a2b3c4d5e6f7a8b.md`: every step
+markdown, `trace.md` in the test's directory under `<output>/results/`, such as
+`.e2e/results/checkout-applies-the-coupon-1a2b3c4d5e6f7a8b/trace.md`: every step
 with what it did, the cache's decisions, what the app logged, and the screen
 at failure. It works on every engine. [Debugging](/debugging#traces) shows
 one.

@@ -96,7 +96,7 @@ https://github.com/tester-army/e2e/tree/main/examples.
    subscription login, an API key); a local endpoint may need none. Tests
    without agent steps need no model.
 5. Read the trace page the terminal names under each failed test
-   (`.e2e/traces/<test>.md`): every step with what it did, the cache's
+   (`.e2e/results/<test>/trace.md`): every step with what it did, the cache's
    decision, what the app logged, the agent's turns, and the screen at
    failure. Fix the locator, the expectation, or the app. Never add a sleep.
 
@@ -132,7 +132,7 @@ https://github.com/tester-army/e2e/tree/main/examples.
   `system` for how it works, tools for a test API, named personas under
   `agents`. When a step fails, tighten the goal first, then the context, then
   the agent.
-- `.e2e/` is output (`report.json`, `artifacts/`, `cache/`, `logs/`; the
+- `.e2e/` is output (`report.json`, `results/`, `cache/`, `logs/`; the
   config's `output` moves the report and artifacts, never `cache/` or the
   app's log). Read it, never edit it.
 

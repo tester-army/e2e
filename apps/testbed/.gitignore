@@ -1,11 +1,10 @@
-.e2e/artifacts/
+.e2e/results/
 # Fixture-app recordings, worth nothing to share; the benchmarks commit theirs (AGENTS.md, "Committed recordings").
 .e2e/cache/
 .e2e/sessions/
 .e2e/report.json
 .e2e/ai-trace.json
 .e2e/summary.md
-.e2e/traces/
 # AI SDK devtools trace database written by testbed telemetry.
 .devtools/
 .e2e/explore-bench/

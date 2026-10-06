@@ -222,8 +222,8 @@ jobs:
         with:
           name: mobile-benchmark-ios-${{ env.SUITE }}
           path: |
-            apps/mobile-benchmark/.e2e/artifacts
-            apps/mobile-benchmark/.e2e/agent/artifacts
+            apps/mobile-benchmark/.e2e/results
+            apps/mobile-benchmark/.e2e/agent/results
           if-no-files-found: warn
           retention-days: 7
 
@@ -335,8 +335,8 @@ jobs:
         with:
           name: mobile-benchmark-android-${{ env.SUITE }}
           path: |
-            apps/mobile-benchmark/.e2e/artifacts
-            apps/mobile-benchmark/.e2e/agent/artifacts
+            apps/mobile-benchmark/.e2e/results
+            apps/mobile-benchmark/.e2e/agent/results
           if-no-files-found: warn
           retention-days: 7
 

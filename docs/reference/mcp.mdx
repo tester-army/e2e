@@ -195,8 +195,8 @@ been filled, `screenshot` and the point tools (`tap_at`, `hover_at`,
 an action's result, an `open_session` or `close_session` failure, or a cleanup line, has the
 config's secret values redacted once the config has loaded, as do the server's own log lines. Nothing a
 session does is recorded as a test result or into the replay cache; its
-artifacts land under `<output>/artifacts/<target>/sessions/`, its videos under
-`<output>/videos/`. A later `e2e run` clears `<output>/artifacts`; the
+artifacts land under `<output>/results/mcp/<target>-<attemptId>/`, its videos under
+`<output>/videos/`. A later `e2e run` clears `<output>/results`; the
 videos stay.
 
 ## Resources

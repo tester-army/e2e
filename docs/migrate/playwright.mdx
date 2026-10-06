@@ -62,7 +62,7 @@ A Playwright key the runner recognizes (`testDir`, `baseURL`, `webServer`,
 | `maxFailures` | `--max-failures <n>`; no config key | renamed |
 | `reporter` | `reporters: ['list', 'junit']`; also `json` and `markdown` | renamed |
 | `reporter: 'html'` | no equivalent; `markdown` writes `.e2e/summary.md`, every run writes `.e2e/report.json` | missing |
-| `outputDir` | `output`, default `.e2e`, holding `artifacts/` (cleared when a run starts, like `outputDir`) beside the report | renamed |
+| `outputDir` | `output`, default `.e2e`, holding `results/` (cleared when a run starts, like `outputDir`) beside the report | renamed |
 | `metadata` | not yet | missing |
 
 ### Browser, timeouts, and artifacts
@@ -79,7 +79,7 @@ A Playwright key the runner recognizes (`testDir`, `baseURL`, `webServer`,
 | `use.actionTimeout` | `actionTimeout` | renamed |
 | `use.navigationTimeout` | `timeout`, the test budget; `browser.goto(url, { timeout })` overrides one call | renamed |
 | `use.storageState` | `test.setup` and `{ session }`; no file import, see [By design](#by-design) | by design |
-| `use.trace` | `trace` with the same modes (`'off'`, `'on'`, `'retain-on-failure'`, `'on-first-retry'`, `'on-all-retries'`), at the top of the config, per target, `test('x', { trace }, ...)`, or `--trace [mode]` for one run. A trace is a markdown page per test under `.e2e/traces/`, not a zip; the default differs, see [below](#defaults-that-differ) | same |
+| `use.trace` | `trace` with the same modes (`'off'`, `'on'`, `'retain-on-failure'`, `'on-first-retry'`, `'on-all-retries'`), at the top of the config, per target, `test('x', { trace }, ...)`, or `--trace [mode]` for one run. A trace is a markdown page, `trace.md`, in each test's directory under `.e2e/results/`, not a zip; the default differs, see [below](#defaults-that-differ) | same |
 | `use.video` | `video` with the same modes as `trace`, at the top of the config, per target in place of a project, `test('x', { video }, ...)` in place of `test.use`, or `--video [mode]` for one run | same |
 | `use.headless: false` | `--headed` on the CLI | renamed |
 | `use.locale`, `use.timezoneId` | `web({ locale, timezoneId })` | renamed |
@@ -303,14 +303,14 @@ what to do today.
 | `--ui` | not yet; `--headed` to watch, `e2e mcp` to drive the app from a coding agent | missing |
 | `--retries`, `--workers`, `--config`, `--pass-with-no-tests` | the same | same |
 | `--reporter` | the same flag; the ids are `list`, `json`, `junit`, `markdown` | same |
-| `--output` | `--output`, the results directory; the artifacts are in its `artifacts/` | same |
+| `--output` | `--output`, the results directory; each test's trace page and artifacts are in its `results/` | same |
 | `--trace <mode>` | `--trace [mode]`, the same modes; a bare `--trace` is `on` | same |
 | `--last-failed`, `--shard`, `--repeat-each`, `--max-failures` | the same names; `--shard` keeps serial groups together | same |
 | `--quiet` | not yet | missing |
 | `--update-snapshots` | no equivalent; there is no pixel assertion | missing |
 | `--list` | `npx e2e list`, with the same selection flags | renamed |
 | `npx playwright codegen` | `npx e2e explore` walks the app from a goal and reports what it found; `npx e2e mcp` gives a coding agent a live session so it writes the test while driving the app, see [Coding agents](/coding-agents) | renamed |
-| `npx playwright show-trace` | no viewer; open the markdown page under `.e2e/traces/` that the terminal names | by design |
+| `npx playwright show-trace` | no viewer; open the `trace.md` under `.e2e/results/` that the terminal names | by design |
 | `npx playwright show-report` | not yet; `.e2e/summary.md` from the `markdown` reporter | missing |
 | `npx playwright install` | `npx @e2e-dev/web install`, for the Playwright version the engine pins; the engine also installs a missing browser once per run, before the run's clock starts | renamed |
 

@@ -152,7 +152,7 @@ describe('failure evidence', () => {
         const screen = attempt.artifacts.find((artifact) => artifact.id === failure.screen)!;
         expect(screen.kind).toBe('log');
         expect(screen.producer).toEqual({ kind: 'attempt' });
-        const screenFile = path.join(project.dir, '.e2e', 'artifacts', screen.path!);
+        const screenFile = path.join(project.dir, '.e2e', 'results', screen.path!);
         expect(existsSync(screenFile)).toBe(true);
         const text = readFileSync(screenFile, 'utf8');
         expect(text.startsWith('# Screen at failure\nurl: ')).toBe(true);
@@ -280,7 +280,7 @@ describe('failure evidence', () => {
         expect(first.screen.path).not.toBe(second.screen.path);
         expect(first.shot.path).not.toBe(second.shot.path);
         for (const artifact of [first.screen, first.shot, second.screen, second.shot]) {
-          const file = path.join(project.dir, '.e2e', 'artifacts', artifact.path!);
+          const file = path.join(project.dir, '.e2e', 'results', artifact.path!);
           expect(existsSync(file)).toBe(true);
           expect(createHash('sha256').update(readFileSync(file)).digest('hex')).toBe(artifact.sha256);
         }

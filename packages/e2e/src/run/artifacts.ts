@@ -2,7 +2,7 @@
 
 import { createHash } from 'node:crypto';
 import { createReadStream, mkdirSync } from 'node:fs';
-import { mkdir, readdir, readFile, rm, rmdir, stat } from 'node:fs/promises';
+import { readdir, readFile, rm, rmdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { writeFileAtomic } from '../internal/atomic-write.ts';
@@ -241,34 +241,28 @@ export async function pruneArtifacts(root: string, keep: ReadonlySet<string>): P
 }
 
 /**
- * Claims the directory a `--last-failed` rerun's attempts write under, beside
- * the evidence it kept, and returns its name: `rerun-<n>`, past every number
- * already there, so the tree reads in run order. The directory is created
- * exclusively, so no attempt of the rerun writes into a directory an earlier
+ * The directory a `--last-failed` rerun's attempts write under inside each
+ * test's directory, beside the evidence it kept: `rerun-<n>`, past every
+ * number any test's directory already holds, so one rerun has one number
+ * across the tree and no attempt of it writes into a directory an earlier
  * run's report still names.
  */
-export async function claimRerunDir(root: string): Promise<string> {
-  await mkdir(root, { recursive: true });
-  const taken = (await readdir(root)).map((name) => Number(RERUN_DIR.exec(name)?.[1] ?? 0));
-  for (let n = Math.max(0, ...taken) + 1; ; n += 1) {
-    const name = `rerun-${n}`;
-    try {
-      await mkdir(path.join(root, name));
-      return name;
-    } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code !== 'EEXIST') throw cause;
-    }
+export async function nextRerunDir(root: string): Promise<string> {
+  let taken = 0;
+  for (const test of await readdir(root, { withFileTypes: true }).catch(() => [])) {
+    if (!test.isDirectory()) continue;
+    for (const name of await readdir(path.join(root, test.name))) taken = Math.max(taken, Number(RERUN_DIR.exec(name)?.[1] ?? 0));
   }
+  return `rerun-${taken + 1}`;
 }
 
 /**
  * An attempt's report segments: its owner's directory (`resultSegment` of the
- * result, or of the serial group its members share) and `attempt-<n>`,
- * numbered from 1, under the rerun's directory on a `--last-failed` rerun.
+ * result, or of the serial group its members share), the rerun's directory on
+ * a `--last-failed` rerun, and `attempt-<n>`, numbered from 1.
  */
 export function attemptSegments(rerunDir: string | undefined, owner: string, attemptIndex: number): readonly string[] {
-  const segments = [owner, `attempt-${attemptIndex + 1}`];
-  return rerunDir === undefined ? segments : [rerunDir, ...segments];
+  return [owner, ...(rerunDir === undefined ? [] : [rerunDir]), `attempt-${attemptIndex + 1}`];
 }
 
 /**

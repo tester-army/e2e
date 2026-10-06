@@ -72,7 +72,7 @@ describe('secrets cut short by observation limits', () => {
     const attempt = resultByTitle(outcome, 'echoes a secret across the observation limits').attempts.at(-1)!;
     expect(attempt.error?.code).toBe('LOCATOR_NOT_FOUND');
     const screen = attempt.artifacts.find((artifact) => artifact.id === attempt.failure?.screen)!;
-    const screenText = readFileSync(path.join(project.dir, '.e2e', 'artifacts', screen.path!), 'utf8');
+    const screenText = readFileSync(path.join(project.dir, '.e2e', 'results', screen.path!), 'utf8');
     expect(screenText).toContain(`${CONTROL_KEPT}"`);
     const report = JSON.stringify(outcome.report);
     const contents = contentsUnder(path.join(project.dir, '.e2e'));

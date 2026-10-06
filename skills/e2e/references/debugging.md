@@ -6,7 +6,7 @@ default.
 ## Read the failure
 
 1. Every failure in the `list` output ends with `❯ trace
-   .e2e/traces/<test>.md`. Open that trace page: `Look at:` (the line it unwound
+   .e2e/results/<test>/trace.md`. Open that trace page: `Look at:` (the line it unwound
    through), `Expected:` / `Observed:` (an `expect`), `Asked for:` and
    `Waited:` (a locator), whether every attempt failed alike (a bug, not a
    flake), then every step with what it did under it:
@@ -46,7 +46,7 @@ jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
    `url`, `screen` and `screenshot` artifact ids, and `candidates`; a
    failed agent step has `turns`; `selected` drops filtered-out tests
    (recorded as `skipped`).
-4. Artifacts, under `.e2e/artifacts/<test>/attempt-<n>/`, named like the
+4. Artifacts, under `.e2e/results/<test>/attempt-<n>/`, beside the
    trace page: `screen-at-failure.txt`
    and the engine's screenshot per failed attempt; downloads; with
    `--video` the recording (`video/video.webm` in a local browser, each

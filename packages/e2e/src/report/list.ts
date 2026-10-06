@@ -1102,8 +1102,9 @@ export class ListReporter implements Reporter {
     );
     const paged = Object.values(pages);
     if (paged.length > 0) {
-      const dir = path.posix.dirname(paged[0]!);
-      this.print(padTitle(pc, 'Traces') + `${bounded(dir)}/ ${pc.dim(`(${paged.length} ${paged.length === 1 ? 'page' : 'pages'}: steps, cache, app log, screen)`)}`);
+      // A page is `<results>/<test>/trace.md`; the row names the results directory.
+      const dir = path.posix.dirname(path.posix.dirname(paged[0]!));
+      this.print(padTitle(pc, 'Traces') + `${bounded(dir)}/ ${pc.dim(`(${paged.length} ${paged.length === 1 ? 'page' : 'pages'}, trace.md in each test's directory)`)}`);
     }
     if (event.aiTracePath !== undefined) {
       const shown = this.displayPath(event.aiTracePath);

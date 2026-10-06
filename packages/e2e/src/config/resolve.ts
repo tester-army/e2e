@@ -410,7 +410,7 @@ function resolveCacheConfig(
 }
 
 /** The directories under the output a run clears or owns, which nothing else may live in. */
-const OUTPUT_OWNED_DIRS = ['artifacts', 'sessions', 'videos'] as const;
+const OUTPUT_OWNED_DIRS = ['results', 'sessions', 'videos'] as const;
 
 /** Whether `inner` is `outer` or a path below it. */
 function isWithin(inner: string, outer: string): boolean {
@@ -428,7 +428,7 @@ function nearestExisting(target: string): string | undefined {
 
 /**
  * Resolves the results directory, `--output` over the config's `output`,
- * from the project root. A run clears `<output>/artifacts` and writes over
+ * from the project root. A run clears `<output>/results` and writes over
  * its reports, so the directory must be one it can own: a directory (or a
  * path that does not exist yet) inside the project root and not the root
  * itself, not holding the directory a test glob scans, not the cache
@@ -458,7 +458,7 @@ function resolveOutput(
   const root = realpathOfExisting(projectRoot);
   const real = realpathOfExisting(output);
   const cache = realpathOfExisting(cacheDir);
-  if (real === root) refuse("is the project root; the run clears <output>/artifacts, so name a directory of its own, such as '.e2e'");
+  if (real === root) refuse("is the project root; the run clears <output>/results, so name a directory of its own, such as '.e2e'");
   if (!isWithin(real, root)) refuse(`is outside the project root ${projectRoot}; name a directory inside it`);
   const existing = nearestExisting(output);
   if (existing !== undefined && !statSync(existing).isDirectory()) {

@@ -96,7 +96,7 @@ describe('ArtifactStore across a serial group', () => {
     expect(shotRecords).toHaveLength(2);
     for (const record of shotRecords) {
       expect(record.ref).toMatch(/^store:\/\/screenshot\//);
-      expect(existsSync(path.join(project.dir, '.e2e', 'artifacts', record.path!))).toBe(true);
+      expect(existsSync(path.join(project.dir, '.e2e', 'results', record.path!))).toBe(true);
       expect(record.size).toBeGreaterThan(0);
       expect(record.sha256).toMatch(/^[0-9a-f]{64}$/);
     }

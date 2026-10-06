@@ -67,7 +67,7 @@ describe('traces', () => {
 
         const finished = events.find((event) => event.type === 'run-finished');
         const pages = finished?.type === 'run-finished' ? Object.values(finished.traces ?? {}) : [];
-        expect(pages).toEqual([expect.stringMatching(/^\.e2e\/traces\/save-saves-then-expects-two-buttons-[0-9a-f]{16}\.md$/)]);
+        expect(pages).toEqual([expect.stringMatching(/^\.e2e\/results\/save-saves-then-expects-two-buttons-[0-9a-f]{16}\/trace\.md$/)]);
         const page = readFileSync(path.join(project.dir, pages[0]!), 'utf8');
         expect(page).toContain('1. ✓ `app.open` `/` (');
         expect(page).toContain('in beforeEach)');
@@ -146,7 +146,7 @@ describe('traces', () => {
       );
       try {
         expect(outcome.status).toBe('passed');
-        expect(existsSync(path.join(project.dir, '.e2e', 'traces'))).toBe(false);
+        expect(outcome.report.run.results.map((result) => readTrace(project.dir, result.id))).toEqual([undefined]);
       } finally {
         project.cleanup();
       }
@@ -191,10 +191,11 @@ test('fails', async ({ app }) => {
   );
 });
 
-/** The trace page of result `id` under the project's `.e2e/traces/`, if one was written. */
+/** The trace page of result `id`, `trace.md` in its directory under the project's `.e2e/results/`, if one was written. */
 function readTrace(dir: string, id: string): string | undefined {
-  const traces = path.join(dir, '.e2e', 'traces');
-  if (!existsSync(traces)) return undefined;
-  const name = readdirSync(traces).find((file) => file.endsWith(`-${id.slice(0, 16)}.md`));
-  return name === undefined ? undefined : readFileSync(path.join(traces, name), 'utf8');
+  const results = path.join(dir, '.e2e', 'results');
+  if (!existsSync(results)) return undefined;
+  const name = readdirSync(results).find((entry) => entry.endsWith(`-${id.slice(0, 16)}`));
+  const page = name === undefined ? undefined : path.join(results, name, 'trace.md');
+  return page === undefined || !existsSync(page) ? undefined : readFileSync(page, 'utf8');
 }

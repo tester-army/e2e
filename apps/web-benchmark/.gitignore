@@ -2,7 +2,7 @@ app/.next/
 # Next rewrites this on every dev and build, pointing at whichever output
 # directory ran last; the app's tsconfig includes it once generated.
 app/next-env.d.ts
-.e2e/artifacts/
+.e2e/results/
 # .e2e/cache/ is not ignored: recordings committed there replay in CI (AGENTS.md, "Committed recordings").
 .e2e/sessions/
 .e2e/report.json

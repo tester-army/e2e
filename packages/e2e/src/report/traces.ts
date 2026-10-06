@@ -1,15 +1,15 @@
 /**
  * The traces a run keeps: one markdown page per test whose `trace` mode kept
- * one (by default each that failed, timed out, or was flaky), under
- * `<output>/traces/`, telling the whole attempt (each step with what it did,
- * the cache's decisions, what the app logged, the agent's turns, and the
- * screen at failure). The runner writes them before the run's last event, so
- * the terminal can point at them and a coding agent reads one file instead of
- * the report. The directory is the runner's: an earlier run's pages are
- * removed first, so no page ever tells a test this run did not have.
+ * one (by default each that failed, timed out, or was flaky), as `trace.md`
+ * in the test's directory under `<output>/results/`, beside its attempts'
+ * artifacts, telling the whole attempt (each step with what it did, the
+ * cache's decisions, what the app logged, the agent's turns, and the screen
+ * at failure). The runner writes them before the run's last event, so the
+ * terminal can point at them and a coding agent reads one file instead of
+ * the report.
  */
 
-import { readFileSync, rmSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { resultSegment } from '../run/artifacts.ts';
 import type { Report1Document, ReportExplore, ReportResult } from './build.ts';
@@ -42,32 +42,39 @@ function tracedResults(report: Report1Document, traced: ReadonlySet<string>): Re
 }
 
 export interface WriteTracePagesOptions {
-  /** `<output>/traces`, emptied first. */
-  readonly dir: string;
   readonly projectRoot: string;
-  /** Absolute directory the report's artifact paths are relative to. */
-  readonly artifactsRoot: string;
+  /** `<output>/results`: the report's artifact paths are relative to it, and each page goes in its test's directory there. */
+  readonly resultsRoot: string;
   /** Absolute replay cache directory, where a step's entry file is; absent when a custom store holds the cache. */
   readonly cacheDir?: string | undefined;
 }
 
-/** Writes the page of every result in `traced` (result ids) and returns where each went. */
+/** What a test's page is called inside its directory. */
+const TRACE_PAGE = 'trace.md';
+
+/**
+ * Writes the page of every result in `traced` (result ids) into its test's
+ * directory, `<results>/<test>/trace.md`, and returns where each went. The
+ * run emptied the directory when its tests started, so no page there tells a
+ * test this run did not have.
+ */
 export async function writeTracePages(report: Report1Document, traced: ReadonlySet<string>, options: WriteTracePagesOptions): Promise<TracePages> {
-  rmSync(options.dir, { recursive: true, force: true });
   const relative = (absolute: string): string => toPosixPath(path.relative(options.projectRoot, absolute)) || '.';
   const serialGroups = new Map(report.run.serialGroups.map((group) => [group.id, group]));
   const readArtifact = (reportPath: string): string | undefined => {
     try {
-      return readFileSync(path.join(options.artifactsRoot, reportPath), 'utf8');
+      return readFileSync(path.join(options.resultsRoot, reportPath), 'utf8');
     } catch {
       return undefined;
     }
   };
   const pages = new Map<string, string>();
   for (const result of tracedResults(report, traced)) {
-    const file = path.join(options.dir, `${resultSegment(result)}.md`);
+    const dir = resultSegment(result);
+    const file = path.join(options.resultsRoot, dir, TRACE_PAGE);
     const page = renderTracePage(report, result, outcome(result, serialGroups), {
-      artifactsDir: relative(options.artifactsRoot),
+      artifactsDir: relative(options.resultsRoot),
+      pageDir: dir,
       readArtifact,
       ...(options.cacheDir === undefined ? {} : { cacheDir: relative(options.cacheDir) }),
     });

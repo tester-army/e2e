@@ -77,7 +77,7 @@ Two things bite here:
 - `reuseExisting` trusts whatever answers on the port. A dev server left
   running from another checkout serves that checkout's scenarios.
 
-Reports land in `.e2e/report.json`, artifacts under `.e2e/artifacts/`, both
+Reports land in `.e2e/report.json`, artifacts and trace pages under `.e2e/results/`, both
 ignored.
 
 ## Scenario contract

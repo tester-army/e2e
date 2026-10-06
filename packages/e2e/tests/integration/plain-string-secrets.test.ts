@@ -141,7 +141,7 @@ describe('a secret value passed as a plain string', () => {
     const names = pathsUnder(root);
     expect(names).toContain('junit.xml');
     expect(names).toContain('summary.md');
-    expect(names.some((name) => name.startsWith('traces'))).toBe(true);
+    expect(names.some((name) => name.endsWith('trace.md'))).toBe(true);
     for (const name of names) expect(name.includes(SECRET), name).toBe(false);
     for (const [file, text] of contentsUnder(root)) {
       for (const form of SECRET_FORMS) expect(text.toLowerCase().includes(form), file).toBe(false);

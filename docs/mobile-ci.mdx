@@ -95,8 +95,8 @@ A few things hold on every service:
   XCUITest runner into `~/.agent-device` the first time it drives a
   simulator. Cache that directory where the service lets you.
 - **Upload `.e2e/` whatever the outcome.** `report.json` and `junit.xml` say
-  what failed; `.e2e/artifacts/` holds the screenshots and screen dumps that
-  say why, and the video when you run with `--video`.
+  what failed; `.e2e/results/` holds the trace pages, screenshots, and screen
+  dumps that say why, and the video when you run with `--video`.
 - **Replay what you recorded locally.** [Commit the replay cache](/cache#commit-the-replay-cache)
   so `agent.act` steps replay without a model call. Agent judgments
   (`agent.assert`, `agent.waitFor`, `agent.extract`) always call the model.
@@ -520,7 +520,7 @@ workflows:
     artifacts:
       - .e2e/report.json
       - .e2e/junit.xml
-      - .e2e/artifacts/**
+      - .e2e/results/**
 
   e2e-android:
     name: e2e Android
@@ -551,7 +551,7 @@ workflows:
     artifacts:
       - .e2e/report.json
       - .e2e/junit.xml
-      - .e2e/artifacts/**
+      - .e2e/results/**
 ```
 
 Put the model key in the `e2e` environment variable group, marked secret.

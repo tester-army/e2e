@@ -1010,7 +1010,7 @@ describe('resolveConfig', () => {
       expect(refusal({ output: '/tmp/e2e-results' })).toContain('is outside the project root');
       expect(refusal({ output: '.e2e/cache' })).toContain('is the cache directory .e2e/cache or inside it');
       expect(refusal({ output: 'store/results', cache: { dir: 'store' } })).toContain('is the cache directory store or inside it');
-      expect(refusal({ output: 'out', cache: { dir: 'out/artifacts/cache' } })).toContain('would hold cache.dir out/artifacts/cache under artifacts/');
+      expect(refusal({ output: 'out', cache: { dir: 'out/results/cache' } })).toContain('would hold cache.dir out/results/cache under results/');
       expect(refusal({ output: 'tests' })).toContain('holds tests, where the tests glob "tests/**/*.e2e.ts" finds test files');
       expect(refusal({ output: 'e2e', tests: ['e2e/smoke/**/*.e2e.ts'] })).toContain('holds e2e/smoke');
       expect(refusal({ output: 'e2e', tests: 'e2e/login.e2e.ts' })).toContain('holds e2e,');
@@ -1036,10 +1036,10 @@ describe('resolveConfig', () => {
         expect(resolveConfig({ targets: TARGETS }, { projectRoot: link, env: BASE_ENV, cli: { output: path.join(real, 'out') } }).output).toBe(
           path.join(real, 'out'),
         );
-        // A cache the run would clear with <output>/artifacts, however it is spelled.
+        // A cache the run would clear with <output>/results, however it is spelled.
         expect(() =>
-          resolveConfig({ targets: TARGETS, cache: { dir: path.join(link, '.e2e', 'artifacts', 'cache') } }, { projectRoot: real, env: BASE_ENV }),
-        ).toThrow('output ".e2e" (the default) would hold cache.dir .e2e/artifacts/cache under artifacts/');
+          resolveConfig({ targets: TARGETS, cache: { dir: path.join(link, '.e2e', 'results', 'cache') } }, { projectRoot: real, env: BASE_ENV }),
+        ).toThrow('output ".e2e" (the default) would hold cache.dir .e2e/results/cache under results/');
         expect(() =>
           resolveConfig({ targets: TARGETS }, { projectRoot: real, env: BASE_ENV, cli: { output: link } }),
         ).toThrow(`--output ${JSON.stringify(link)} is the project root`);

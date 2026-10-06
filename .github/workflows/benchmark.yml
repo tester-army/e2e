@@ -95,7 +95,7 @@ jobs:
           name: web-benchmark-web
           path: |
             apps/web-benchmark/.e2e/report.json
-            apps/web-benchmark/.e2e/artifacts
+            apps/web-benchmark/.e2e/results
           if-no-files-found: warn
           retention-days: 7
 
@@ -151,6 +151,6 @@ jobs:
           name: web-benchmark-web-agent
           path: |
             apps/web-benchmark/.e2e/report.json
-            apps/web-benchmark/.e2e/artifacts
+            apps/web-benchmark/.e2e/results
           if-no-files-found: warn
           retention-days: 7

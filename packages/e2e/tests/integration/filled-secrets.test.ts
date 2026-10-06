@@ -132,7 +132,7 @@ describe('filled secrets', () => {
     const attempt = resultByTitle(outcome, 'downloads after a fill').attempts[0]!;
     const download = attempt.artifacts.find((artifact) => artifact.kind === 'download')!;
     expect(download).toMatchObject({ redaction: 'complete', mediaType: 'text/csv' });
-    const onDisk = readFileSync(path.join(project.dir, '.e2e', 'artifacts', download.path!), 'utf8');
+    const onDisk = readFileSync(path.join(project.dir, '.e2e', 'results', download.path!), 'utf8');
     expect(onDisk).toBe('id,key\n1,<secret:member.password>\n');
     const put = store.puts.find((stored) => stored.path === download.path)!;
     expect(put).toMatchObject({ kind: 'download', redaction: 'complete', sha256: download.sha256 });
@@ -143,7 +143,7 @@ describe('filled secrets', () => {
     const attempt = resultByTitle(outcome, 'downloads without a fill').attempts[0]!;
     const download = attempt.artifacts.find((artifact) => artifact.kind === 'download')!;
     expect(download).toMatchObject({ redaction: 'complete', mediaType: 'text/csv' });
-    expect(readFileSync(path.join(project.dir, '.e2e', 'artifacts', download.path!), 'utf8')).toBe('id,total\n1,42\n');
+    expect(readFileSync(path.join(project.dir, '.e2e', 'results', download.path!), 'utf8')).toBe('id,total\n1,42\n');
     expect(store.puts.find((stored) => stored.path === download.path)).toMatchObject({ redaction: 'complete' });
   });
 

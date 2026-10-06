@@ -83,7 +83,7 @@ video (both web and mobile do): `start_recording` once the screen is set up,
 ## Drive it like a user
 
 - Run the built CLI, not a unit test harness. Read what it prints and what it
-  writes (`.e2e/report.json`, the trace pages under `.e2e/traces/`, and
+  writes (`.e2e/report.json`, the trace pages under `.e2e/results/<test>/trace.md`, and
   `--reporter list,markdown` for `.e2e/summary.md`).
 - Exercise the failure path too: a change to an error code, a timeout, or a
   policy refusal is verified by triggering it and reading the message a user
@@ -104,7 +104,7 @@ ran, and what you saw, with media:
   fenced `text` block (ANSI stripped, paths trimmed). This is the primary
   evidence for runner, CLI, and reporter changes.
 - **Video:** `--video` (add `--headed` to watch it) records every attempt to
-  `.e2e/artifacts/<test>/attempt-<n>/video/`: `video.webm` from
+  `.e2e/results/<test>/attempt-<n>/video/`: `video.webm` from
   `@e2e-dev/web`, `video.mp4` from `@e2e-dev/mobile`.
   Attach it for engine, locator, and agent changes a viewer can see.
 - **Stills:** cut a frame from the video

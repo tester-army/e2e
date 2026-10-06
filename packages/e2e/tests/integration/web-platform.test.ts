@@ -560,7 +560,7 @@ describe('web platform integration', () => {
     const failure = attempt.failure!;
     expect(failure.url).toMatch(/\/script-flags$/);
     const screen = attempt.artifacts.find((artifact) => artifact.id === failure.screen)!;
-    const text = readFileSync(path.join(project.dir, '.e2e', 'artifacts', screen.path!), 'utf8');
+    const text = readFileSync(path.join(project.dir, '.e2e', 'results', screen.path!), 'utf8');
     expect(text).toContain('heading "Flags"');
     expect(text).not.toContain('heading "Home"');
   });
