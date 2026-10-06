@@ -1,5 +1,5 @@
 /** Shared token and cost accounting for executor loops and judgment calls. */
-import { bound } from '../cache/trace.ts';
+import { bound } from '../internal/text.ts';
 import type { StepEvent, StepModelInfo } from '../run/steps.ts';
 
 type Provenance = Pick<StepModelInfo, 'provider' | 'model' | 'endpoint' | 'adapterVersion' | 'policyVersion'>;

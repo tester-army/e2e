@@ -19,7 +19,6 @@
 import { describeAction, type DescribedAction, type RecordableAction } from '../agent/actions.ts';
 import { isRelocatableDescriptor } from './relocate.ts';
 import {
-  bound,
   DESCRIPTOR_FIELDS,
   MAX_TRACE_ACTIONS,
   MAX_TRACE_DESCRIPTOR_CHARS,
@@ -35,6 +34,7 @@ import {
   type TraceProvenance,
   type TraceTargetDescriptor,
 } from './trace.ts';
+import { bound } from '../internal/text.ts';
 
 /** The summary a run-time value gap records; the prose a project-tool gap would carry for a tool of that name. */
 const DERIVED_GAP_SUMMARY = 'tool type (run-time value)';

@@ -152,8 +152,8 @@ export interface ScreenRoute {
 export interface EnvironmentFacts {
   /** Merges facts in, checked: a non-string value is dropped. */
   push(facts: Readonly<Record<string, string>>): void;
-  /** The facts so far, unredacted. */
-  read(): Readonly<Record<string, string>>;
+  /** The facts so far, each name and value redacted with `redact`, then clipped; undefined when there are none. */
+  read(redact: (text: string) => string): Readonly<Record<string, string>> | undefined;
 }
 
 export interface TargetSession {

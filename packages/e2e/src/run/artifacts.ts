@@ -245,7 +245,9 @@ export async function pruneArtifacts(root: string, keep: ReadonlySet<string>): P
  * test's directory, beside the evidence it kept: `rerun-<n>`, past every
  * number any test's directory already holds, so one rerun has one number
  * across the tree and no attempt of it writes into a directory an earlier
- * run's report still names.
+ * run's report still names. The number is read, not claimed: two runs on one
+ * output at once already share its report and empty each other's results, so
+ * a run owns its output alone, and a rerun is no exception.
  */
 export async function nextRerunDir(root: string): Promise<string> {
   let taken = 0;

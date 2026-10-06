@@ -171,9 +171,8 @@ class AsyncExpectationImpl implements AsyncExpectation {
       const deadline = engine.deadline(timeout ?? engine.assertionTimeout);
       let lastSample: Sample = { count: 0, node: null, nodes: [] };
       const samples = new SampleHistory('expect', (text) => engine.redact(text));
-      let status: 'passed' | 'failed' = 'failed';
-      try {
-        await pollCondition({
+      await samples.record(engine, () =>
+        pollCondition({
           deadline,
           signal: engine.signal,
           negated: this.negated,
@@ -205,11 +204,8 @@ class AsyncExpectationImpl implements AsyncExpectation {
               },
             );
           },
-        });
-        status = 'passed';
-      } finally {
-        engine.recordEvent(samples.event(status === 'failed' && engine.signal.aborted ? 'cancelled' : status));
-      }
+        }),
+      );
     }, { verifies: true });
   }
 

@@ -18,6 +18,7 @@
 
 import { timestamp } from '../internal/ids.ts';
 import type { ScrollDirection } from '../types.ts';
+import { bound } from '../internal/text.ts';
 
 export const TRACE_SCHEMA_VERSION = 'trace-1';
 
@@ -35,11 +36,6 @@ export const MAX_TRACE_DESCRIPTOR_CHARS = 300;
  * trace (`truncated`) instead of bending the value.
  */
 export const MAX_TRACE_INPUT_CHARS = 4_096;
-
-/** Caps prose at `maxChars`, marking the cut with an ellipsis. */
-export function bound(text: string, maxChars: number): string {
-  return text.length <= maxChars ? text : `${text.slice(0, maxChars - 1)}…`;
-}
 
 /**
  * A node as one line of prose names it, `button "Save"`: its role and its
@@ -426,34 +422,46 @@ export interface ActionTrace {
   readonly keyedBy?: TraceKeyContext;
 }
 
-/** The parts of a cache key outside the step's own identity: the runner, the engine, the app, and the agent's context. */
-export interface TraceKeyContext {
-  readonly cacheSchema: string;
-  readonly policyVersion: string;
-  readonly project: string;
-  readonly platform: string;
-  readonly engineName: string;
-  readonly engineVersion: string;
-  readonly engineSpiVersion: number;
-  readonly appIdentity: string;
-  readonly agentContextDigest: string;
-}
+/**
+ * Every part of a cache key outside the step's own identity (the runner, the
+ * engine, the app, and the agent's context), in the order an entry records
+ * them and a changed key names them. One list drives the type, the copy of a
+ * key, the read of a stored one, and the comparison of two.
+ */
+export const KEY_CONTEXT_FIELDS = [
+  'cacheSchema',
+  'policyVersion',
+  'project',
+  'platform',
+  'engineName',
+  'engineVersion',
+  'engineSpiVersion',
+  'appIdentity',
+  'agentContextDigest',
+] as const;
 
-const KEY_CONTEXT_TEXT_FIELDS = ['cacheSchema', 'policyVersion', 'project', 'platform', 'engineName', 'engineVersion', 'appIdentity', 'agentContextDigest'] as const;
+/** The one numeric part; every other is text. */
+type KeyContextNumber = 'engineSpiVersion';
+
+/** The parts of a cache key outside the step's own identity (`KEY_CONTEXT_FIELDS`). */
+export type TraceKeyContext = {
+  readonly [Field in (typeof KEY_CONTEXT_FIELDS)[number]]: Field extends KeyContextNumber ? number : string;
+};
 
 /** A stored `keyedBy`, or undefined for anything else; a malformed one is dropped, never failing the entry. */
 function readKeyContext(document: unknown): TraceKeyContext | undefined {
   if (typeof document !== 'object' || document === null || Array.isArray(document)) return undefined;
   const raw = document as Record<string, unknown>;
-  const text: Partial<Record<(typeof KEY_CONTEXT_TEXT_FIELDS)[number], string>> = {};
-  for (const field of KEY_CONTEXT_TEXT_FIELDS) {
-    const value = readBoundedText(raw[field], MAX_TRACE_DESCRIPTOR_CHARS);
+  const read: Record<string, string | number> = {};
+  for (const field of KEY_CONTEXT_FIELDS) {
+    const value: string | number | undefined =
+      field === 'engineSpiVersion'
+        ? typeof raw[field] === 'number' && Number.isSafeInteger(raw[field]) ? raw[field] : undefined
+        : readBoundedText(raw[field], MAX_TRACE_DESCRIPTOR_CHARS);
     if (value === undefined) return undefined;
-    text[field] = value;
+    read[field] = value;
   }
-  const spi = raw['engineSpiVersion'];
-  if (typeof spi !== 'number' || !Number.isSafeInteger(spi)) return undefined;
-  return { ...(text as Record<(typeof KEY_CONTEXT_TEXT_FIELDS)[number], string>), engineSpiVersion: spi };
+  return read as TraceKeyContext;
 }
 
 export interface TraceEntry {

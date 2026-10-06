@@ -24,9 +24,8 @@ import { DebugTrace } from '../internal/debug.ts';
 import { resultId, timestamp, uuidv7 } from '../internal/ids.ts';
 import { engineAppInfo } from '../config/app.ts';
 import { Deadline, NEVER_ABORTS, withAbort, withScopedBudget, withTimeout } from '../internal/time.ts';
-import { createAgentCacheContext, flushStagedTraces } from '../cache/context.ts';
+import { createAgentCacheContext, settleStagedTraces } from '../cache/context.ts';
 import { storedRecordingsFor, type StoredRecordings } from '../cache/rekeyed.ts';
-import { bound } from '../cache/trace.ts';
 import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
 import { pairRecordings, type TestTargetPair } from '../collect/select.ts';
 import { keeps, type AttemptRecordings, type VideoRecording } from '../internal/recording-modes.ts';
@@ -888,6 +887,11 @@ export class TargetExecutor implements SerialHost {
     /** Set when the body (or a beforeEach) skipped the test with `test.skip(...)`. */
     let skipped: RuntimeSkip | undefined;
     let phase: AttemptPhase = 'launch';
+    /** Moves the attempt to `next`, and the steps it records into the hook they run in (none for the body). */
+    const enter = (next: AttemptPhase): void => {
+      phase = next;
+      steps.phase = next === 'beforeEach' || next === 'afterEach' ? next : undefined;
+    };
     let timedOut = false;
     // The polls the fixtures, the beforeEach hooks, and the body start.
     const bodyPolls = new PollScope('the test body');
@@ -1065,14 +1069,12 @@ export class TargetExecutor implements SerialHost {
       };
       const mainWork = async (): Promise<void> => {
         try {
-          phase = 'beforeEach';
-          steps.phase = 'beforeEach';
+          enter('beforeEach');
           await extended.setUp();
           for (const hook of beforeEachHooks) {
             await hook.fn(fixtures);
           }
-          phase = 'body';
-          steps.phase = undefined;
+          enter('body');
           await (registered.fn as SetupFn)(fixtures);
         } catch (cause) {
           // The body's own failure stays the verdict; the step it abandoned
@@ -1170,8 +1172,7 @@ export class TargetExecutor implements SerialHost {
         await captureEvidence();
       }
 
-      phase = 'afterEach';
-      steps.phase = 'afterEach';
+      enter('afterEach');
       // Each teardown gets its own cleanup budget: a body that timed out or
       // was cancelled must not leave the hook with dead fixtures, and a hook
       // that overruns has its own operations cancelled, not the next hook's.
@@ -1221,7 +1222,7 @@ export class TargetExecutor implements SerialHost {
         await this.closeSession(openSession, { attemptId, video }, record, artifacts.sink, secondaryErrors);
       }
       if (openSession !== null) {
-        const environment = environmentRecord(openSession, redact);
+        const environment = openSession.environment.read(redact);
         if (environment !== undefined) record.environment = environment;
       }
       // What a shared session's app logs from here waits for the next member.
@@ -1243,26 +1244,23 @@ export class TargetExecutor implements SerialHost {
     // nothing about the flow. An attempt whose every failure is that no model
     // answered implicates nothing unconfirmed, so a provider outage evicts no
     // entry.
-    if (cache !== undefined && record.status !== 'interrupted') {
-      await flushStagedTraces(cache, {
-        lastVerifiedStepIndex: failure === undefined ? steps.lastVerifiedStepIndex : lastVerifiedAtFailure,
-        implicatesUnconfirmed: failure === undefined || implicatesUnconfirmed,
-      });
-    }
     if (cache !== undefined) {
+      const writes = await settleStagedTraces(
+        cache,
+        record.status === 'interrupted'
+          ? undefined
+          : {
+              lastVerifiedStepIndex: failure === undefined ? steps.lastVerifiedStepIndex : lastVerifiedAtFailure,
+              implicatesUnconfirmed: failure === undefined || implicatesUnconfirmed,
+            },
+      );
       for (const step of record.steps) {
-        const write = cache.writes.get(step.index);
+        const write = writes.get(step.index);
         if (step.cache !== undefined && write !== undefined) step.cache.write = write;
       }
     }
     return record;
   }
-}
-
-/** What the engine said the session runs on, redacted; undefined when it said nothing. */
-function environmentRecord(session: TargetSession, redact: (text: string) => string): Record<string, string> | undefined {
-  const facts = Object.entries(session.environment.read());
-  return facts.length === 0 ? undefined : Object.fromEntries(facts.map(([name, value]) => [bound(redact(name), 40), bound(redact(value), 200)]));
 }
 
 /**

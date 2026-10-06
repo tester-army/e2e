@@ -27,7 +27,7 @@
 
 import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
 import type { JsonValue } from '../types.ts';
-import { TRACE_SCHEMA_VERSION, type TraceKeyContext } from './trace.ts';
+import { KEY_CONTEXT_FIELDS, TRACE_SCHEMA_VERSION, type TraceKeyContext } from './trace.ts';
 
 /**
  * Step kinds the trace cache admits. Only `act` today: an assert must not
@@ -195,18 +195,8 @@ export function traceCacheKeyHash(key: TraceCacheKey): string {
 }
 
 /** The parts of a key outside the step's own identity, as an entry records them (`ActionTrace.keyedBy`). */
-export function keyContext(key: TraceCacheKey): TraceKeyContext {
-  return {
-    cacheSchema: key.cacheSchema,
-    policyVersion: key.policyVersion,
-    project: key.project,
-    platform: key.platform,
-    engineName: key.engineName,
-    engineVersion: key.engineVersion,
-    engineSpiVersion: key.engineSpiVersion,
-    appIdentity: key.appIdentity,
-    agentContextDigest: key.agentContextDigest,
-  };
+export function keyContext(key: TraceKeyContext): TraceKeyContext {
+  return Object.fromEntries(KEY_CONTEXT_FIELDS.map((field) => [field, key[field]])) as TraceKeyContext;
 }
 
 /** How each part of a key's context reads in a sentence, and whether its value means anything to a reader. */
@@ -229,7 +219,7 @@ const KEY_CONTEXT_WORDS: Readonly<Record<keyof TraceKeyContext, { readonly name:
  */
 export function keyContextChanges(recorded: TraceKeyContext | undefined, now: TraceKeyContext): string[] {
   if (recorded === undefined) return [];
-  return (Object.keys(KEY_CONTEXT_WORDS) as (keyof TraceKeyContext)[]).flatMap((field) => {
+  return KEY_CONTEXT_FIELDS.flatMap((field) => {
     if (recorded[field] === now[field]) return [];
     const { name, shown } = KEY_CONTEXT_WORDS[field];
     return [shown ? `${name} (${String(recorded[field])} -> ${String(now[field])})` : name];

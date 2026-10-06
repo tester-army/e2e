@@ -12,7 +12,6 @@
 import type { ViewportPoint, ViewportSize } from '../engine/surface.ts';
 import { redactNode, type NodeRedaction, type RedactedNode } from './observation.ts';
 import {
-  bound,
   isNodeAction,
   MAX_TRACE_DESCRIPTOR_CHARS,
   MAX_TRACE_SUMMARY_CHARS,
@@ -23,7 +22,7 @@ import {
   type TracePosition,
 } from '../cache/trace.ts';
 import { sanitizeText } from '../internal/errors.ts';
-import { collapseText } from '../internal/text.ts';
+import { bound, collapseText } from '../internal/text.ts';
 import type { ScrollDirection } from '../types.ts';
 
 /** One committed grammar action, addressed by the node it actually ran against. */

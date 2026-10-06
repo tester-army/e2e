@@ -9,7 +9,7 @@
  */
 
 import { describeNode, redactNode, type RedactedNode } from '../agent/observation.ts';
-import { bound } from '../cache/trace.ts';
+import { bound } from '../internal/text.ts';
 import type { Observation } from '../engine/surface.ts';
 import type { SessionSecrecy } from './secrecy.ts';
 

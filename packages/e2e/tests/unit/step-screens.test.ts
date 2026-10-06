@@ -110,3 +110,50 @@ describe('StepRecorder.recordScreen', () => {
     expect(tap!.screen).toMatchObject({ since: 0, changes: ['added listitem "Milk"'] });
   });
 });
+
+describe('the session screen route and environment', () => {
+  const snapshot = (name: string): EngineSnapshot => ({
+    root: { ref: { id: 'root', revision: '' }, role: 'document', children: [{ ref: { id: 'n1', revision: '' }, role: 'button', name }] },
+    viewport: { width: 390, height: 844 },
+    location: 'com.example.app',
+  });
+
+  it('hands every engine screen to the routed sink as a semantic observation, and drops malformed ones', () => {
+    const session = createEngineSession({ engine: undefined, targetName: 'phone', traced: true });
+    const heard: Observation[] = [];
+    session.screens.push(snapshot('before any sink'));
+    session.screens.route((observation) => heard.push(observation));
+    session.screens.push(snapshot('Add'));
+    session.screens.push({ viewport: { width: 1, height: 1 } } as unknown as EngineSnapshot);
+    session.screens.push({ ...snapshot('hidden'), treeUnavailable: true });
+    expect(heard).toHaveLength(1);
+    expect(heard[0]).toMatchObject({ kind: 'semantic', location: 'com.example.app', revision: 's1' });
+    session.screens.route(undefined);
+    session.screens.push(snapshot('after'));
+    expect(heard).toHaveLength(1);
+  });
+
+  it('takes no screen at all for an attempt that keeps no trace', () => {
+    const session = createEngineSession({ engine: undefined, targetName: 'phone' });
+    const heard: Observation[] = [];
+    session.screens.route((observation) => heard.push(observation));
+    session.screens.push(snapshot('Add'));
+    expect(session.screens.traced).toBe(false);
+    expect(heard).toEqual([]);
+  });
+
+  it('merges environment facts, overwriting a name, dropping non-strings, and keeping a handful, redacted before they are clipped', () => {
+    const session = createEngineSession({ engine: undefined, targetName: 'web' });
+    expect(session.environment.read((text) => text)).toBeUndefined();
+    session.environment.push({ browser: 'chromium 140' });
+    // A secret that straddles the value's clip: redacted whole first, so no head of it is left.
+    session.environment.push({ browser: 'chromium 141', count: 3 as unknown as string, 'user agent': `Mozilla ${'x'.repeat(190)}hunter2-secret` });
+    for (let index = 0; index < 10; index += 1) session.environment.push({ [`fact ${index}`]: 'yes' });
+    const facts = session.environment.read((text) => text.replaceAll('hunter2-secret', '<secret:ua>'))!;
+    expect(facts.browser).toBe('chromium 141');
+    expect(facts).not.toHaveProperty('count');
+    expect(facts['user agent']).toHaveLength(200);
+    expect(facts['user agent']).not.toContain('hu');
+    expect(Object.keys(facts)).toHaveLength(8);
+  });
+});

@@ -5,16 +5,14 @@
  * expectation from a race.
  */
 
-import { bound } from '../cache/trace.ts';
+import { bound } from '../internal/text.ts';
 import { timestamp } from '../internal/ids.ts';
-import type { StepEvent } from '../run/steps.ts';
+import { MAX_EVENT_DETAIL_CHARS, type StepEvent } from '../run/steps.ts';
 
 /** Characters of one reading the event keeps. */
 const MAX_VALUE_CHARS = 80;
 /** Distinct readings the event names: the first, then the latest ones. */
 const MAX_RUNS = 4;
-/** The report caps an event's detail at this many characters. */
-const MAX_DETAIL_CHARS = 300;
 
 interface Run {
   readonly value: string;
@@ -27,8 +25,9 @@ interface Run {
 export class SampleHistory {
   /**
    * `name` is what polled, as the event names it (`expect`, `waitFor`);
-   * `redact` replaces secret values in a reading before it is clipped, so no
-   * cut leaves a secret's head behind.
+   * `redact` replaces secret values in a reading before it is clipped here,
+   * so no cut leaves a secret's head behind. The step recorder redacts every
+   * event's detail again; that pass cannot see a value this clip already cut.
    */
   constructor(
     private readonly name: string,
@@ -76,6 +75,21 @@ export class SampleHistory {
       return `${skipped}${at}${bound(run.value, MAX_VALUE_CHARS)}${run.count > 1 ? ` x${run.count}` : ''}`;
     });
     const text = parts.join(' -> ');
-    return bound(text, MAX_DETAIL_CHARS);
+    return bound(text, MAX_EVENT_DETAIL_CHARS);
+  }
+
+  /**
+   * Runs one poll and records it as the step's `poll` event once it settles:
+   * passed, failed, or cancelled when the run was aborted meanwhile.
+   */
+  async record<T>(engine: { readonly signal: AbortSignal; recordEvent(event: StepEvent): void }, poll: () => Promise<T>): Promise<T> {
+    let status: StepEvent['status'] = 'failed';
+    try {
+      const result = await poll();
+      status = 'passed';
+      return result;
+    } finally {
+      engine.recordEvent(this.event(status === 'failed' && engine.signal.aborted ? 'cancelled' : status));
+    }
   }
 }

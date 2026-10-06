@@ -25,10 +25,9 @@
 
 import type { RedactedNode } from '../agent/observation.ts';
 import { describeTarget } from '../agent/actions.ts';
-import { collapseText } from '../internal/text.ts';
+import { bound, collapseText } from '../internal/text.ts';
 import { descriptorTiers, fieldsEqual, type DescriptorField } from './relocate.ts';
 import {
-  bound,
   MAX_TRACE_ANCHORS,
   MAX_TRACE_DESCRIPTOR_CHARS,
   TRACE_ANCHOR_STATES,

@@ -5,7 +5,8 @@ import { isAgentError } from '../agent/error.ts';
 import type { ReplayHandOffReason } from '../agent/executor.ts';
 import type { CacheWrite } from '../cache/context.ts';
 import type { TraceReplayMissReason } from '../cache/decide.ts';
-import { bound, type DerivedReason } from '../cache/trace.ts';
+import type { DerivedReason } from '../cache/trace.ts';
+import { bound } from '../internal/text.ts';
 import { markAbandonedRejection, relocateStack } from '../internal/abandoned.ts';
 import { withAiTraceStep } from '../internal/ai-trace.ts';
 import { classifyError, serializeError, TestError, withHint, type SerializedError } from '../internal/errors.ts';
@@ -332,7 +333,7 @@ export interface AppLogRecord {
   readonly step?: number;
 }
 /** Characters of an event's detail the report admits. */
-const MAX_DETAIL_CHARS = 300;
+export const MAX_EVENT_DETAIL_CHARS = 300;
 
 /** Characters of a step label an error message quotes before clipping it. */
 const MAX_QUOTED_LABEL_CHARS = 80;
@@ -578,7 +579,7 @@ export class StepRecorder {
     if (this.loggedCounts[counted] >= APP_LOG_LIMITS[counted]) return;
     this.loggedCounts[counted] += 1;
     // Redacted before it is cut, so no cut leaves the head of a secret behind.
-    const text = bound(this.redactText(entry.text.replace(/\s+/g, ' ').trim()), MAX_DETAIL_CHARS);
+    const text = bound(this.redactText(entry.text.replace(/\s+/g, ' ').trim()), MAX_EVENT_DETAIL_CHARS);
     this.logged.push({ source: entry.source, level: entry.level, text, at, ...(target === undefined ? {} : { step: target.index }) });
   }
 
@@ -623,7 +624,7 @@ export class StepRecorder {
     if (step.events.length >= this.maxEventsPerStep) return;
     // Redacted before it is cut, so no cut leaves the head of a secret behind.
     const detail = event.detail === undefined ? undefined : (this.redact?.(event.detail) ?? event.detail);
-    const redacted = detail === undefined ? event : { ...event, detail: bound(detail, MAX_DETAIL_CHARS) };
+    const redacted = detail === undefined ? event : { ...event, detail: bound(detail, MAX_EVENT_DETAIL_CHARS) };
     step.events.push(redacted);
     this.publish(step, { phase: 'event', api: step.api, event: redacted });
   }

@@ -36,7 +36,7 @@ export class StoredRecordings {
    * Only an entry that records the whole step counts: one written before the
    * params, occurrence, and agent were recorded could belong to another call
    * of the same instruction, and a read-write run that replays it completes
-   * it (`flushStagedTraces`). A truncated entry never replays under any key,
+   * it (`settleStagedTraces`). A truncated entry never replays under any key,
    * so it is never the reason a step is stale.
    */
   async underAnotherKey(keyHash: string, step: TraceProvenance): Promise<{ readonly keyHash: string; readonly keyedBy?: TraceKeyContext } | undefined> {

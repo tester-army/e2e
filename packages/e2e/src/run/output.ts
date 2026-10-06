@@ -14,7 +14,10 @@ export interface OutputLayout {
   /**
    * One directory per test, `results/<test>/`, holding its trace page
    * (`trace.md`) and its attempts' artifacts (`attempt-<n>/`); the report's
-   * artifact paths are relative to it. A run clears it when its tests start.
+   * artifact paths are relative to it. The members of a serial group keep
+   * their pages in their own directories, and their attempts in the group's,
+   * named the same way after the group, since one session ran them all. A run
+   * clears it when its tests start.
    */
   readonly results: string;
   /** The per-run encrypted session stores. */

@@ -21,6 +21,7 @@ import {
 } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
 import { timestamp } from '../internal/ids.ts';
+import { bound } from '../internal/text.ts';
 import type { AppLogEntry, EngineHandle, EngineSnapshot } from './index.ts';
 import {
   type AppEvent,
@@ -86,10 +87,12 @@ function createAppLogRoute(): AppLogRoute {
   };
 }
 
-/** Facts `environment` keeps, and the characters of each key and value. */
+/** Facts `environment` keeps, and the characters of each key and value once redacted. */
 const MAX_ENVIRONMENT_FACTS = 8;
 const MAX_ENVIRONMENT_KEY_CHARS = 40;
 const MAX_ENVIRONMENT_VALUE_CHARS = 200;
+/** Characters of a value held before it is read: far past the clip, so redaction sees a secret whole. */
+const MAX_HELD_ENVIRONMENT_CHARS = 4_096;
 
 /** The session's environment facts; see `EnvironmentFacts`. */
 function createEnvironmentFacts(): EnvironmentFacts {
@@ -99,12 +102,16 @@ function createEnvironmentFacts(): EnvironmentFacts {
       if (typeof next !== 'object' || next === null) return;
       for (const [key, value] of Object.entries(next)) {
         if (typeof value !== 'string' || key.trim() === '' || value.trim() === '') continue;
-        const name = key.trim().slice(0, MAX_ENVIRONMENT_KEY_CHARS);
+        const name = key.trim().slice(0, MAX_HELD_ENVIRONMENT_CHARS);
         if (!facts.has(name) && facts.size >= MAX_ENVIRONMENT_FACTS) continue;
-        facts.set(name, value.replace(/\s+/g, ' ').trim().slice(0, MAX_ENVIRONMENT_VALUE_CHARS));
+        facts.set(name, value.replace(/\s+/g, ' ').trim().slice(0, MAX_HELD_ENVIRONMENT_CHARS));
       }
     },
-    read: () => Object.fromEntries(facts),
+    // Redacted before it is clipped, so no clip leaves the head of a secret behind.
+    read: (redact) =>
+      facts.size === 0
+        ? undefined
+        : Object.fromEntries([...facts].map(([name, value]) => [bound(redact(name), MAX_ENVIRONMENT_KEY_CHARS), bound(redact(value), MAX_ENVIRONMENT_VALUE_CHARS)])),
   };
 }
 

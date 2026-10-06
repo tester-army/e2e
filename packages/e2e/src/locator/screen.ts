@@ -587,9 +587,8 @@ class LocatorImpl extends ScreenImpl implements Locator {
       const deadline = engine.deadline(options?.timeout);
       const startedMs = Date.now();
       const samples = new SampleHistory('waitFor', (text) => engine.redact(text));
-      let status: 'passed' | 'failed' = 'failed';
-      try {
-        await pollCondition({
+      await samples.record(engine, () =>
+        pollCondition({
           deadline,
           signal: engine.signal,
           negated: false,
@@ -603,11 +602,8 @@ class LocatorImpl extends ScreenImpl implements Locator {
               details: locatorDetails(this.expression, Date.now() - startedMs),
               ...(cause === undefined ? {} : { cause }),
             }),
-        });
-        status = 'passed';
-      } finally {
-        engine.recordEvent(samples.event(status === 'failed' && engine.signal.aborted ? 'cancelled' : status));
-      }
+        }),
+      );
     }, { verifies: true });
   }
 

@@ -19,7 +19,7 @@ import { sameRoute } from '../cache/route.ts';
 import { keyContextChanges, type CacheAgentIdentity } from '../cache/identity.ts';
 import { recordedProvenance, TraceRecorder } from '../cache/recorder.ts';
 import { expandTrace, templateParams, templatesCollide, templateTrace, type ParamTemplate } from '../cache/template.ts';
-import { bound, readTraceEntry, targetLabel, type ActionTrace, type DerivedReason, type TraceEntry, type TraceTargetDescriptor } from '../cache/trace.ts';
+import { readTraceEntry, targetLabel, type ActionTrace, type DerivedReason, type TraceEntry, type TraceTargetDescriptor } from '../cache/trace.ts';
 import { sleep } from '../internal/time.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
@@ -37,6 +37,7 @@ import {
 } from './replay.ts';
 import { redactNodesAgain, type NodeRedaction } from './observation.ts';
 import type { SettleMode } from './settle-policy.ts';
+import { bound } from '../internal/text.ts';
 
 /**
  * The replay host plus the step's live progress. Each capture carries its
@@ -359,7 +360,7 @@ export class StepTraceSession {
         } else {
           const staged = await this.stage(recorder, verdictSummary);
           if (staged !== 'staged' && this.readEntryHit) await this.evict();
-          else if (staged === 'no-change') this.cache.writes.set(this.options.stepIndex, 'no-change');
+          else if (staged === 'no-change') this.cache.staged.push({ kind: 'decided', outcome: 'no-change', keyHash: this.keyHash, stepIndex: this.options.stepIndex });
         }
         return;
     }
@@ -560,7 +561,7 @@ export class StepTraceSession {
   /**
    * Stages the recorded trace for attempt-end settlement. The write is
    * deferred, not immediate: the trace is confirmed or evicted at attempt end
-   * (`flushStagedTraces`), because the verification step after this one — not
+   * (`settleStagedTraces`), because the verification step after this one — not
    * the verdict alone — is what proves the flow reached the right state. A
    * step the executor finished after a hand-off re-stages the entry with
    * fresh descriptors and anchors, which is how staleness self-heals; a step
@@ -629,7 +630,7 @@ export class StepTraceSession {
    */
   private async evict(): Promise<void> {
     if (this.cache.store.delete === undefined) return;
-    this.cache.writes.set(this.options.stepIndex, 'evicted');
+    this.cache.staged.push({ kind: 'decided', outcome: 'evicted', keyHash: this.keyHash, stepIndex: this.options.stepIndex });
     await this.cache.store.delete(this.keyHash).catch(() => undefined);
   }
 

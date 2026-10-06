@@ -46,6 +46,8 @@ export type StagedTrace = {
 } & (
   | { readonly kind: 'write'; readonly trace: ActionTrace }
   | { readonly kind: 'keep'; readonly recordedFor: TraceProvenance }
+  /** What the step decided itself when it concluded: it evicted its entry, or had nothing to record. */
+  | { readonly kind: 'decided'; readonly outcome: 'evicted' | 'no-change' }
 );
 
 /** One step's claimed key: its hash, and the step it names as an entry records it. */
@@ -89,15 +91,9 @@ export interface AgentCacheContext {
    * Trace writes staged during the attempt. A trace is not trusted the moment
    * its own step passes — the verification step after it is what proves the
    * flow reached the right state. The runner settles at attempt end via
-   * `flushStagedTraces`.
+   * `settleStagedTraces`.
    */
   readonly staged: StagedTrace[];
-  /**
-   * What became of each step's recording, by step index: decided when the
-   * step concludes (an eviction, nothing to record) or when the attempt
-   * settles what it staged. The report shows it beside the step's cache mode.
-   */
-  readonly writes: Map<number, CacheWrite>;
 }
 
 /**
@@ -166,7 +162,10 @@ export interface AttemptSettlement {
 }
 
 /**
- * Settles the attempt's staged trace writes. A staged trace is confirmed only
+ * Settles the attempt's staged trace writes, and says what became of each
+ * step's recording, by step index, for the report to show beside the step's
+ * cache mode: what a step decided itself when it concluded, and what the
+ * settlement made of the rest. A staged trace is confirmed only
  * when a verification step — a deterministic assertion or an agent judgment
  * (`run/steps.ts`, `StepRunOptions.verifies`) — passed after it: an act's own
  * verdict is the recording executor's opinion of its work, and a later act
@@ -177,41 +176,47 @@ export interface AttemptSettlement {
  * not merely withheld: its entry is evicted, so a cached flow implicated in
  * a failure — or one that was never checked — re-records on the next pass
  * instead of replaying a poisoned state forever, unless the settlement says
- * the failure implicates nothing unconfirmed. The runner does not call this
- * for an interrupted attempt: interruption implicates nothing, so it writes
- * nothing and evicts nothing. An entry a step replayed whole is staged too,
+ * the failure implicates nothing unconfirmed. An interrupted attempt passes
+ * no settlement: interruption implicates nothing, so it writes nothing and
+ * evicts nothing. An entry a step replayed whole is staged too,
  * so the same rule evicts it when nothing confirmed it; when something did,
  * it is left exactly as it was found, but for provenance it lacked.
  */
-export async function flushStagedTraces(context: AgentCacheContext, settlement: AttemptSettlement): Promise<void> {
+export async function settleStagedTraces(context: AgentCacheContext, settlement: AttemptSettlement | undefined): Promise<ReadonlyMap<number, CacheWrite>> {
+  const outcomes = new Map<number, CacheWrite>();
   const staged = context.staged.splice(0);
-  if (context.mode !== 'read-write') return;
   for (const entry of staged) {
+    if (entry.kind === 'decided') {
+      outcomes.set(entry.stepIndex, entry.outcome);
+      continue;
+    }
+    if (settlement === undefined || context.mode !== 'read-write') continue;
     const confirmed = entry.stepIndex < settlement.lastVerifiedStepIndex;
     try {
       if (!confirmed) {
         // A kept entry existed for certain, so deleting it is an eviction; a
         // new recording's delete only clears what an earlier run may have left.
         const deletes = settlement.implicatesUnconfirmed && context.store.delete !== undefined;
-        context.writes.set(entry.stepIndex, entry.kind === 'keep' && deletes ? 'evicted' : 'unconfirmed');
+        outcomes.set(entry.stepIndex, entry.kind === 'keep' && deletes ? 'evicted' : 'unconfirmed');
         if (deletes) await context.store.delete?.(entry.keyHash);
         continue;
       }
       if (entry.kind === 'keep') {
-        context.writes.set(entry.stepIndex, 'kept');
+        outcomes.set(entry.stepIndex, 'kept');
         await completeProvenance(context.store, entry.keyHash, entry.recordedFor);
         continue;
       }
       if (await holdsSameFlow(context.store, entry.keyHash, entry.trace)) {
-        context.writes.set(entry.stepIndex, 'kept');
+        outcomes.set(entry.stepIndex, 'kept');
         continue;
       }
       const written = await context.store.write(entry.keyHash, entry.trace);
-      context.writes.set(entry.stepIndex, written === undefined ? 'not-written' : 'saved');
+      outcomes.set(entry.stepIndex, written === undefined ? 'not-written' : 'saved');
     } catch {
       // The cache is disposable; a failed flush is a slower next run only.
     }
   }
+  return outcomes;
 }
 
 /**
@@ -288,7 +293,6 @@ export function createAgentCacheContext(options: {
       };
     },
     staged: [],
-    writes: new Map(),
   };
 }
 

@@ -380,7 +380,8 @@ async function runSerialAttempt(
   const recordings = pairRecordings(first, attemptIndex);
   const artifactSegments = attemptSegments(
     host.rerunDir,
-    resultSegment({ id: serialGroupId(first.test.serialId!, host.target.name, first.agent, first.repeat), file: first.test.file, titlePath: serialTitlePath(first.test) }),
+    // The group's own directory, named like a result's from the group's id and describe titles: one session ran every member.
+    resultSegment({ id: groupId, file: first.test.file, titlePath: serialTitlePath(first.test) }),
     attemptIndex,
   );
   const artifacts = createAttemptArtifacts({
@@ -390,7 +391,7 @@ async function runSerialAttempt(
     ...(host.artifactStore === undefined ? {} : { store: host.artifactStore }),
     // A group-owned artifact is identified by the group, the same identity
     // its report path uses.
-    identity: { runId: host.runId, testId: first.test.serialId ?? first.test.id, attemptId },
+    identity: { runId: host.runId, testId: first.test.serialId!, attemptId },
   });
   const record: SerialAttemptRecord = {
     id: attemptId,

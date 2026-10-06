@@ -43,6 +43,7 @@ import { AttemptSession, type StorageState } from './attempt-session.ts';
 import type { CdpEndpointResolver } from './cdp-recovery.ts';
 import { LeasedBrowsers, type BrowserProvider, type LeaseDownloads } from './provider.ts';
 import { installAppLog } from './app-log.ts';
+import { TraceFeed } from './trace-feed.ts';
 import { DialogRouter } from './dialogs.ts';
 import { ensureBrowsersInstalled } from './install.ts';
 import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts';
@@ -242,11 +243,6 @@ export interface WebOptions {
 /** The test-id attribute when the options name none. */
 const DEFAULT_TEST_ID_ATTRIBUTE = 'data-testid';
 
-/** How long the screen an action left may take for the trace before the step goes without one. */
-const TRACE_SCREEN_TIMEOUT_MS = 1_000;
-/** How long the page may take to report its user agent before the trace names the browser alone. */
-const ENVIRONMENT_TIMEOUT_MS = 1_000;
-
 export class PlaywrightSurface {
   /**
    * Errors raised where nobody awaits them (dialog routing, route handlers)
@@ -280,11 +276,8 @@ export class PlaywrightSurface {
   private artifactsDir = '';
   /** Navigations the engine has in flight, which the app log leaves to the step that started them. */
   private ownNavigations = 0;
-  /** The attempt's `EngineAttemptContext.screen` and `environment`; no-ops between attempts. */
-  private screenSink: ((snapshot: EngineSnapshot) => void) | undefined;
-  private environmentSink: (facts: Readonly<Record<string, string>>) => void = () => undefined;
-  /** Whether this attempt told the harness what it runs on. */
-  private environmentTold = false;
+  /** What the attempt tells its trace beside the app log; absent between attempts. */
+  private trace: TraceFeed | undefined;
   private artifactCounter = 0;
   /**
    * Attempt-scoped network routes. Registered on the
@@ -453,9 +446,7 @@ export class PlaywrightSurface {
     const persistent = await this.persistentBinding(context);
     this.artifactsDir = context.artifactsDir;
     this.artifactCounter = 0;
-    this.screenSink = context.screen;
-    this.environmentSink = context.environment ?? (() => undefined);
-    this.environmentTold = false;
+    this.trace = new TraceFeed(context, () => this.openPage(), () => this.session?.refs, { testIdAttribute: this.testIdAttribute, site: this.app.site });
     const routes: StoredRoute[] = [];
     const initScripts = this.configuredInitScripts.forAttempt();
     this.latch = new ErrorLatch();
@@ -693,77 +684,18 @@ export class PlaywrightSurface {
     this.ownNavigations += 1;
     try {
       const result = await work();
-      this.tellEnvironment();
+      this.trace?.tellEnvironment();
       return result;
     } finally {
       this.ownNavigations -= 1;
     }
   }
 
-  /**
-   * Tells the harness, once an attempt, the browser and the user agent its
-   * page reports. Best effort and not awaited: nothing the test does waits
-   * on it.
-   */
-  private tellEnvironment(): void {
-    if (this.environmentTold) return;
-    const sink = this.environmentSink;
-    void this.environmentFacts().then((facts) => {
-      try {
-        if (facts !== undefined) sink(facts);
-      } catch {
-        // The harness's sink never fails the attempt.
-      }
-    });
-  }
-
-  /** The browser and the user agent the page reports, within a second; undefined without a page or a browser to ask. */
-  private async environmentFacts(): Promise<Record<string, string> | undefined> {
-    try {
-      const page = this.openPage();
-      if (page === undefined) return undefined;
-      this.environmentTold = true;
-      const browser = page.context().browser();
-      const facts: Record<string, string> = browser === null ? {} : { browser: `${browser.browserType().name()} ${browser.version()}` };
-      const budget = { signal: AbortSignal.timeout(ENVIRONMENT_TIMEOUT_MS), timeoutMs: ENVIRONMENT_TIMEOUT_MS };
-      const userAgent = await withOperationDeadline(budget, 'user agent', () => page.evaluate(() => navigator.userAgent)).catch(() => undefined);
-      return typeof userAgent === 'string' ? { ...facts, 'user agent': userAgent } : facts;
-    } catch {
-      return undefined;
-    }
-  }
-
-  /**
-   * Resolves with what an action resolved with once the harness has the
-   * screen it left, for the trace. The read is on the action's path, as the
-   * `screen` contract allows, and only when the attempt keeps a trace. The
-   * screen is captured like an observation but never published, so every ref
-   * a test or model holds stays valid; a page that cannot answer within a
-   * second leaves the step without one, and an action that failed leaves none.
-   */
+  /** Resolves with what an action resolved with once the trace has the screen it left (`TraceFeed.screenAfterAction`); an action that failed leaves none. */
   private async acted<T>(operation: OperationContext, work: Promise<T>): Promise<T> {
     const result = await work;
-    await this.traceScreen(operation);
+    await this.trace?.screenAfterAction(operation);
     return result;
-  }
-
-  /** Captures the screen for the trace within its own second; see `acted`. */
-  private async traceScreen(operation: OperationContext): Promise<void> {
-    const sink = this.screenSink;
-    if (sink === undefined || operation.signal.aborted || this.session === undefined) return;
-    try {
-      const page = this.openPage();
-      if (page === undefined) return;
-      const refs = this.session.refs;
-      const budget = { signal: operation.signal, timeoutMs: TRACE_SCREEN_TIMEOUT_MS };
-      const captured = await withOperationDeadline(budget, 'trace screen', (remaining) =>
-        captureObservation(page, refs, { testIdAttribute: this.testIdAttribute, site: this.app.site }, { ...operation, ...remaining() }, undefined),
-      );
-      RefRegistry.dispose(captured.generation);
-      sink(captured.snapshot);
-    } catch {
-      // A screen the page could not give in time is no evidence the trace claims.
-    }
   }
 
   /** Restarts the document while retaining this attempt's context and storage. */
