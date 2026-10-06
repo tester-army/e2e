@@ -1,6 +1,6 @@
 ---
 title: Example projects
-description: Run standalone e2e examples with Vite, Next.js, Expo, and SwiftUI.
+description: Run standalone e2e examples with Vite, Next.js, Expo, SwiftUI, Jetpack Compose, Kotlin Multiplatform, and Flutter.
 icon: "folder-open"
 ---
 
@@ -21,11 +21,20 @@ install published e2e packages from npm and work outside this repository.
   <Card title="SwiftUI" icon="/images/examples/swiftui.png" href="https://github.com/tester-army/e2e/tree/main/examples/with-swiftui" cta="View example" arrow>
     A native iOS app with an Xcode project. Run tests on an iPhone simulator.
   </Card>
+  <Card title="Jetpack Compose" icon="/images/examples/jetpack-compose.svg" href="https://github.com/tester-army/e2e/tree/main/examples/with-compose" cta="View example" arrow>
+    A native Android app with a Gradle project. Run tests on an Android emulator.
+  </Card>
+  <Card title="Kotlin Multiplatform" icon="/images/examples/kotlin.svg" href="https://github.com/tester-army/e2e/tree/main/examples/with-kotlin-multiplatform" cta="View example" arrow>
+    One Compose Multiplatform screen for Android and iOS. Run the same tests on an emulator or a simulator.
+  </Card>
+  <Card title="Flutter" icon="/images/examples/flutter.svg" href="https://github.com/tester-army/e2e/tree/main/examples/with-flutter" cta="View example" arrow>
+    A Flutter app for Android and iOS. Run the same tests on an emulator or a simulator.
+  </Card>
 </CardGroup>
 
 Follow each project's README for installation, builds, and run commands.
-The config and tests live beside the app. The SwiftUI project keeps them
-in its `e2e/` folder.
+The config and tests live beside the app. The SwiftUI, Jetpack Compose,
+Kotlin Multiplatform, and Flutter projects keep them in an `e2e/` folder.
 
 Locator tests need no model. Set `AI_GATEWAY_API_KEY` to run the agent
 tests; without it, those tests skip. See [Models](/models) for model setup

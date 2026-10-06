@@ -9,6 +9,9 @@ Every app uses the same demo: enter a name and press Greet.
 | [with-next](with-next) | Next.js App Router | Chromium |
 | [with-expo](with-expo) | Expo + React Native | Chromium, iOS simulator, Android emulator |
 | [with-swiftui](with-swiftui) | SwiftUI | iOS simulator |
+| [with-compose](with-compose) | Jetpack Compose | Android emulator |
+| [with-kotlin-multiplatform](with-kotlin-multiplatform) | Kotlin Multiplatform + Compose Multiplatform | Android emulator, iOS simulator |
+| [with-flutter](with-flutter) | Flutter | Android emulator, iOS simulator |
 
 Each folder installs published packages from npm and works outside this
 repository. See its README for run commands. Agent tests need

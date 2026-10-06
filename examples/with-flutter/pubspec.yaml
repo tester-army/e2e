@@ -1,0 +1,32 @@
+name: with_flutter
+description: "A greeting app for the e2e examples."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/helmet-mark.png
+
+  # The brand fonts (SIL OFL, see assets/fonts/OFL.txt).
+  fonts:
+    - family: StackSansNotch
+      fonts:
+        - asset: assets/fonts/StackSansNotch_400Regular.ttf
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter_400Regular.ttf
+    - family: DMMono
+      fonts:
+        - asset: assets/fonts/DMMono_400Regular.ttf

@@ -1,0 +1,17 @@
+{
+  "name": "e2e-example-with-flutter",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e:android": "e2e run --target android",
+    "test:e2e:ios": "e2e run --target ios"
+  },
+  "devDependencies": {
+    "@e2e-dev/mobile": "^0.10.0",
+    "@types/node": "^26.6.4",
+    "ai": "^7.0.0",
+    "e2e": "^0.18.0",
+    "typescript": "^7.0.2",
+    "zod": "^4.1.8"
+  }
+}

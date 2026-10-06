@@ -46,8 +46,8 @@ config and an example test. The
 
 To see a finished setup in your stack, open
 [`examples/`](https://github.com/tester-army/e2e/tree/main/examples):
-Vite, Next.js, Expo, and SwiftUI, each a standalone project with a passing
-suite.
+Vite, Next.js, Expo, SwiftUI, Jetpack Compose, Kotlin Multiplatform, and
+Flutter, each a standalone project with a passing suite.
 
 ## Packages
 
