@@ -1,8 +1,16 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-06T13:08:55.560Z",
+  "createdAt": "2026-10-06T13:31:35.957Z",
   "payload": {
     "actions": [
+      {
+        "name": "tap",
+        "summary": "tap textbox \"editor\"",
+        "target": {
+          "role": "textbox",
+          "testId": "editor"
+        }
+      },
       {
         "name": "type",
         "summary": "type \"release approved\" into textbox \"editor\"",
@@ -24,53 +32,58 @@
       },
       {
         "name": "press",
-        "summary": "press \"Shift+ArrowRight\" on textbox \"release approved\"",
+        "summary": "press \"ArrowRight\" on textbox \"release approved\"",
         "target": {
           "role": "textbox",
           "text": "release approved",
           "testId": "editor"
         },
-        "key": "Shift+ArrowRight"
-      },
-      {
-        "name": "pressKey",
-        "summary": "press \"Shift+ArrowRight\" on the focused field",
-        "key": "Shift+ArrowRight"
-      },
-      {
-        "name": "pressKey",
-        "summary": "press \"Shift+ArrowRight\" on the focused field",
-        "key": "Shift+ArrowRight"
-      },
-      {
-        "name": "pressKey",
-        "summary": "press \"Shift+ArrowRight\" on the focused field",
-        "key": "Shift+ArrowRight"
-      },
-      {
-        "name": "pressKey",
-        "summary": "press \"Shift+ArrowRight\" on the focused field",
-        "key": "Shift+ArrowRight"
-      },
-      {
-        "name": "pressKey",
-        "summary": "press \"Shift+ArrowRight\" on the focused field",
-        "key": "Shift+ArrowRight"
-      },
-      {
-        "name": "pressKey",
-        "summary": "press \"Shift+ArrowRight\" on the focused field",
-        "key": "Shift+ArrowRight"
+        "key": "ArrowRight"
       },
       {
         "name": "press",
-        "summary": "press \"Shift+ArrowRight\" on textbox \"release approved\"",
+        "summary": "press \"Shift+ArrowLeft\" on textbox \"release approved\"",
         "target": {
           "role": "textbox",
           "text": "release approved",
           "testId": "editor"
         },
-        "key": "Shift+ArrowRight"
+        "key": "Shift+ArrowLeft"
+      },
+      {
+        "name": "pressKey",
+        "summary": "press \"Shift+ArrowLeft\" on the focused field",
+        "key": "Shift+ArrowLeft"
+      },
+      {
+        "name": "pressKey",
+        "summary": "press \"Shift+ArrowLeft\" on the focused field",
+        "key": "Shift+ArrowLeft"
+      },
+      {
+        "name": "pressKey",
+        "summary": "press \"Shift+ArrowLeft\" on the focused field",
+        "key": "Shift+ArrowLeft"
+      },
+      {
+        "name": "pressKey",
+        "summary": "press \"Shift+ArrowLeft\" on the focused field",
+        "key": "Shift+ArrowLeft"
+      },
+      {
+        "name": "pressKey",
+        "summary": "press \"Shift+ArrowLeft\" on the focused field",
+        "key": "Shift+ArrowLeft"
+      },
+      {
+        "name": "pressKey",
+        "summary": "press \"Shift+ArrowLeft\" on the focused field",
+        "key": "Shift+ArrowLeft"
+      },
+      {
+        "name": "pressKey",
+        "summary": "press \"Shift+ArrowLeft\" on the focused field",
+        "key": "Shift+ArrowLeft"
       },
       {
         "name": "tap",
@@ -103,7 +116,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Entered “release approved,” selected exactly “approved,” applied bold, and checked the document. The page confirmed “Document approved.”",
+    "summary": "Typed “release approved,” selected exactly “approved” and applied bold, then checked the document. The page displays “Document approved.”",
     "startPath": "/e/rich-text-editor",
     "endPath": "/e/rich-text-editor",
     "endAnchors": [
@@ -131,6 +144,6 @@
         "testId": "check-button"
       }
     ],
-    "endWaitMs": 12066
+    "endWaitMs": 11667
   }
 }
