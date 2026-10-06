@@ -361,6 +361,33 @@ describe('resolveConfig', () => {
     ).toThrow(/password must be a non-empty string or a provider function/);
   });
 
+  it('rejects a credential username that is not a string, an unknown credential key, and a non-object credential', () => {
+    expect(() =>
+      resolve({
+        credentials: { admin: { username: (() => 'admin') as never, password: 'admin-pass' } },
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: 'INVALID_CONFIG',
+        message: 'credential "admin" username must be a string, got a function; only password may be a provider function',
+      }),
+    );
+    expect(() =>
+      resolve({
+        credentials: { admin: { username: 'admin', password: 'admin-pass', usename: 'admin' } as never },
+      }),
+    ).toThrow(/unknown key "usename" in credential "admin"; a credential has username and password; did you mean "username"\?/);
+    expect(() => resolve({ credentials: { admin: null as never } })).toThrow(
+      /credential "admin" must be an object of \{ username, password \}, got null/,
+    );
+  });
+
+  it('takes a username missing from the config from E2E_USER_<NAME>_USERNAME, and rejects one missing from both', () => {
+    const credentials = { admin: { username: undefined as never, password: 'admin-pass' } };
+    expect(resolve({ credentials }, { E2E_USER_ADMIN_USERNAME: 'from-env' }).credentials.get('admin')?.username).toBe('from-env');
+    expect(() => resolve({ credentials })).toThrow(/credential "admin" has no username; set username or E2E_USER_ADMIN_USERNAME/);
+  });
+
   it('rejects an empty credential password at config time, including an empty env override', () => {
     expect(() =>
       resolve({

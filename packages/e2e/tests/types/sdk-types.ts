@@ -149,6 +149,9 @@ void attemptContext.resolveSecret(secrets.get('key'), { derived: (plaintext) => 
 // @ts-expect-error a derived form is a string computed from the value, never the handle itself.
 void attemptContext.resolveSecret(secrets.get('key'), { derived: () => [secrets.get('key')] });
 credentials.user('admin').password satisfies Secret;
+({ targets, credentials: { admin: { username: 'admin', password: () => 'admin-pass' } } }) satisfies E2EConfig;
+// @ts-expect-error only password may be a provider function; username is a plain string.
+({ targets, credentials: { admin: { username: () => 'admin', password: 'admin-pass' } } }) satisfies E2EConfig;
 // @ts-expect-error a Secret has no plaintext accessor.
 secrets.get('key').value;
 void screen.getByLabel('Key').fill(secrets.get('key'));

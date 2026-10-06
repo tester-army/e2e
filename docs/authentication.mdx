@@ -118,11 +118,11 @@ every command, `e2e list` included, fails with `INVALID_CONFIG`.
 ### Keep the value out of the environment
 
 A string from `process.env` sits in the environment of the runner and of
-every process it starts, where any code in the run can read it. `password`
-also accepts a function, called on every authorized fill and nowhere else,
-so the value can come straight from a vault, or be a freshly computed
-one-time code, and never be an environment variable (only the vault client's
-own access is configured in the environment):
+every process it starts, where any code in the run can read it. `password`,
+unlike `username`, also accepts a function, called on every authorized fill
+and nowhere else, so the value can come straight from a vault, or be a
+freshly computed one-time code, and never be an environment variable (only
+the vault client's own access is configured in the environment):
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';

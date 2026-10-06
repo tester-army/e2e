@@ -329,7 +329,8 @@ credentials: {
 
 - A static password or secret needs 6 or more code points, else
   `INVALID_CONFIG` at config load, so an unset variable fails every command.
-  A function is read at fill time and redacted only from that fill on.
+  A function `password` is read at fill time and redacted only from that fill
+  on; `username` is always a string.
 - `E2E_USER_<NAME>_USERNAME` and `E2E_USER_<NAME>_PASSWORD` override either
   field per run, even over a function; `<NAME>` is the credential name
   uppercased, every character outside `[A-Z0-9]` as `_`. Two credentials (or

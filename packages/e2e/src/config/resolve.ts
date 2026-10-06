@@ -12,6 +12,7 @@ import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES, type RecordingKi
 import { BUILTIN_REPORTER_LIST, BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { isStepExecutor } from '../agent/executor.ts';
 import { compileGlob, compileGlobList, literalPrefix } from '../internal/globs.ts';
+import { isRecord } from './command.ts';
 import { boundedInt, describeValue, positiveInt } from './validate.ts';
 import type {
   ArtifactStore,
@@ -772,8 +773,15 @@ function resolveSecrets(
   checkEnvNameCollisions('E2E_USER', 'credentials', Object.keys(raw.credentials ?? {}));
   checkEnvNameCollisions('E2E_SECRET', 'secrets', Object.keys(raw.secrets ?? {}));
   for (const [name, credential] of Object.entries(raw.credentials ?? {})) {
+    checkCredentialShape(name, credential);
     const prefix = envName('E2E_USER', name);
     const username = env[`${prefix}_USERNAME`] ?? credential.username;
+    if (typeof username !== 'string') {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `credential "${name}" has no username; set username or ${prefix}_USERNAME`,
+      );
+    }
     // An env override always wins, including over a provider: the operator
     // rotating a credential must not need to know how it was configured.
     const password = env[`${prefix}_PASSWORD`] ?? credential.password;
@@ -801,6 +809,37 @@ function resolveSecrets(
     allSecrets.set(name, secret);
   }
   return { credentials, secrets, allSecrets };
+}
+
+const CREDENTIAL_KEYS = new Set(['username', 'password']);
+
+/**
+ * A credential entry is `{ username, password }`, with `username` a plain
+ * string when set (`E2E_USER_<NAME>_USERNAME` may supply it): only
+ * `password` may be a provider function.
+ */
+function checkCredentialShape(name: string, credential: unknown): void {
+  if (!isRecord(credential)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `credential "${name}" must be an object of { username, password }, got ${describeValue(credential)}`,
+    );
+  }
+  for (const key of Object.keys(credential)) {
+    if (!CREDENTIAL_KEYS.has(key)) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `unknown key "${key}" in credential "${name}"; a credential has username and password${didYouMean(key, [...CREDENTIAL_KEYS])}`,
+      );
+    }
+  }
+  const username = credential['username'];
+  if (username !== undefined && typeof username !== 'string') {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `credential "${name}" username must be a string, got ${describeValue(username)}; only password may be a provider function`,
+    );
+  }
 }
 
 /**
