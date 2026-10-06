@@ -244,7 +244,8 @@ export async function runCommand<T>(label: string, work: () => Promise<T>, signa
  * retryable `NODE_STALE`: nothing was dispatched, so the harness may
  * re-observe and re-resolve the node instead of failing the action. Keyed on
  * the reason alone: agent-device marks a drag's stale ref `dispatched:
- * 'unknown'` although it refuses it before the gesture.
+ * 'unknown'` after Android blocking-dialog recovery, although it refuses it
+ * before the gesture.
  */
 export function staleOr(cause: unknown, operation: string, where?: string): Error {
   if (isClassified(cause)) return cause;

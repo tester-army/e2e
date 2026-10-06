@@ -66,14 +66,14 @@ describe('error translation', () => {
     ).toMatchObject({ code: 'ENGINE_FAILURE', message: 'open com.example.app failed: runner connect timed out after 60s' });
   });
 
-  // Each refusal as agent-device 0.21.20 sends it: the typed reason, and the message the reason replaces.
+  // Each refusal as agent-device 0.21.21 sends it: the typed reason, and the message the reason replaces.
   it.each([
     ['ref_not_found', 'Ref @e12 not found', 'no'],
     ['ref_frame_expired', 'Ref @e12 belongs to an expired ref frame — a device action since the snapshot invalidated it', 'no'],
     ['ref_generation_mismatch', 'Ref @e12 was minted from a superseded snapshot generation', 'no'],
     ['plain_ref_requires_complete_frame', 'Ref @e12 needs a complete snapshot — the current frame only authorizes its emitted refs', 'no'],
     ['ref_not_issued', 'Ref @e12 was not issued by the current ref frame', 'no'],
-    // A drag refuses its stale ref before the gesture, but reports it as `unknown`.
+    // After Android blocking-dialog recovery, a drag refuses its stale ref before the gesture but reports it as `unknown`.
     ['ref_frame_expired', 'Ref @e12 belongs to an expired ref frame — a device action since the snapshot invalidated it', 'unknown'],
   ] as const)('maps the stale-ref refusal %s (dispatched: %s) to retryable NODE_STALE', (reason, text, dispatched) => {
     const refused = new AppError('COMMAND_FAILED', text, { reason, dispatched });

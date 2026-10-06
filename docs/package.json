@@ -15,7 +15,7 @@
     "@e2e-dev/web": "workspace:*",
     "@openrouter/ai-sdk-provider": "3.1.0",
     "@types/node": "26.6.2",
-    "agent-device": "0.21.20",
+    "agent-device": "0.21.21",
     "ai": "7.0.107",
     "e2e": "workspace:*",
     "mint": "4.2.909",
