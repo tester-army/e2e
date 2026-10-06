@@ -570,7 +570,10 @@ export class StepRecorder {
   recordAppEvent(event: AppEvent, at: string = timestamp()): void {
     const target = this.current() ?? this.steps.at(-1);
     if (event.kind === 'navigation') {
-      if (target === undefined) this.earlyNavigations.push({ line: event.line, at });
+      if (target === undefined) {
+        // A step takes no more events than this, so no more wait for one.
+        if (this.earlyNavigations.length < this.maxEventsPerStep) this.earlyNavigations.push({ line: event.line, at });
+      }
       else this.fileNavigation(target, event.line, at);
       return;
     }

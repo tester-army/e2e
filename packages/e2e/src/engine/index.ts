@@ -517,8 +517,9 @@ export interface EngineAttemptContext {
   /**
    * Reports something the app did on its own while the attempt ran: a
    * console line, an uncaught exception, a request that failed. The harness
-   * redacts the text, keeps it with the step that was running, and shows it
-   * on the trace page. Call it from the moment `startAttempt` begins until
+   * redacts the text, keeps it with the step that was running (from an event
+   * callback outside any step, the step that started last; before the first
+   * step, with none), and shows it on the trace page. Call it from the moment `startAttempt` begins until
    * `endAttempt`; entries past a per-attempt cap are dropped.
    */
   readonly appLog: (entry: AppLogEntry) => void;
@@ -550,10 +551,10 @@ export interface EngineAttemptContext {
   readonly environment: (facts: Readonly<Record<string, string>>) => void;
 }
 
-/** One line of what the app did during an attempt, as `EngineAttemptContext.appLog` takes it. */
 /** Where an app log entry came from. */
 export type AppLogSource = 'console' | 'error' | 'network' | 'system';
 
+/** One line of what the app did during an attempt, as `EngineAttemptContext.appLog` takes it. */
 export interface AppLogEntry {
   /**
    * Where it came from: the app's `console`, an `error` nothing caught, the

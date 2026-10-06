@@ -53,7 +53,8 @@ export interface EngineSessionOptions {
  * session holds no more than both while no recorder takes its entries.
  */
 export const APP_LOG_LIMITS = { errorsAndWarnings: 200, info: 100 } as const;
-const MAX_WAITING_APP_EVENTS = APP_LOG_LIMITS.errorsAndWarnings + APP_LOG_LIMITS.info;
+/** Navigations held while no step recorder takes them, apart from the log lines so neither crowds out the other. */
+const MAX_WAITING_NAVIGATIONS = 50;
 const APP_LOG_SOURCES: ReadonlySet<unknown> = new Set(['console', 'error', 'network', 'system']);
 const APP_LOG_LEVELS: ReadonlySet<unknown> = new Set(['error', 'warning', 'info']);
 
@@ -68,9 +69,19 @@ function isAppLogEntry(value: unknown): value is AppLogEntry {
 function createAppLogRoute(): AppLogRoute {
   let sink: ((event: AppEvent, at: string) => void) | undefined;
   const waiting: { event: AppEvent; at: string }[] = [];
+  // While no recorder takes them, each kind waits within its own quota, so
+  // chatter before the first step never crowds out an error.
+  const held = { errorsAndWarnings: 0, info: 0, navigation: 0 };
+  const quota = { ...APP_LOG_LIMITS, navigation: MAX_WAITING_NAVIGATIONS };
   const pass = (event: AppEvent): void => {
-    if (sink !== undefined) sink(event, timestamp());
-    else if (waiting.length < MAX_WAITING_APP_EVENTS) waiting.push({ event, at: timestamp() });
+    if (sink !== undefined) {
+      sink(event, timestamp());
+      return;
+    }
+    const kind = event.kind === 'navigation' ? 'navigation' : event.entry.level === 'info' ? 'info' : 'errorsAndWarnings';
+    if (held[kind] >= quota[kind]) return;
+    held[kind] += 1;
+    waiting.push({ event, at: timestamp() });
   };
   return {
     push(entry) {
@@ -83,6 +94,9 @@ function createAppLogRoute(): AppLogRoute {
       sink = next;
       if (sink === undefined) return;
       for (const { event, at } of waiting.splice(0)) sink(event, at);
+      held.errorsAndWarnings = 0;
+      held.info = 0;
+      held.navigation = 0;
     },
   };
 }
@@ -91,8 +105,6 @@ function createAppLogRoute(): AppLogRoute {
 const MAX_ENVIRONMENT_FACTS = 8;
 const MAX_ENVIRONMENT_KEY_CHARS = 40;
 const MAX_ENVIRONMENT_VALUE_CHARS = 200;
-/** Characters of a value held before it is read: far past the clip, so redaction sees a secret whole. */
-const MAX_HELD_ENVIRONMENT_CHARS = 4_096;
 
 /** The session's environment facts; see `EnvironmentFacts`. */
 function createEnvironmentFacts(): EnvironmentFacts {
@@ -102,9 +114,10 @@ function createEnvironmentFacts(): EnvironmentFacts {
       if (typeof next !== 'object' || next === null) return;
       for (const [key, value] of Object.entries(next)) {
         if (typeof value !== 'string' || key.trim() === '' || value.trim() === '') continue;
-        const name = key.trim().slice(0, MAX_HELD_ENVIRONMENT_CHARS);
+        // Held whole, however long: a cut before redaction could leave a secret's head behind.
+        const name = key.trim();
         if (!facts.has(name) && facts.size >= MAX_ENVIRONMENT_FACTS) continue;
-        facts.set(name, value.replace(/\s+/g, ' ').trim().slice(0, MAX_HELD_ENVIRONMENT_CHARS));
+        facts.set(name, value.replace(/\s+/g, ' ').trim());
       }
     },
     // Redacted before it is clipped, so no clip leaves the head of a secret behind.

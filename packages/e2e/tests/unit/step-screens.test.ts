@@ -78,6 +78,14 @@ describe('traceScreen', () => {
     });
   });
 
+  it('counts its budget in UTF-8 bytes, so a screen in another script is bounded the same', () => {
+    const children = Array.from({ length: 50 }, (_, index) => ({ ref: { id: `n${index}`, revision: 'r1' }, role: 'button', name: `購入する商品${index}` }));
+    const kept = traceScreen(observed({ ref: { id: 'root', revision: 'r1' }, role: 'document', children }), { secrecy, maxBytes: 200, appOrigin: undefined });
+    const bytes = kept!.lines.reduce((total, line) => total + Buffer.byteLength(line.text, 'utf8') + 1, 0);
+    expect(bytes).toBeLessThanOrEqual(200);
+    expect(kept!.lines.length).toBeGreaterThan(1);
+  });
+
   it('stops at its byte budget, keeping at least the root', () => {
     const children = Array.from({ length: 50 }, (_, index) => ({ ref: { id: `n${index}`, revision: 'r1' }, role: 'button', name: `Item ${index}` }));
     const kept = traceScreen(observed({ ref: { id: 'root', revision: 'r1' }, role: 'document', children }), { secrecy, maxBytes: 60, appOrigin: undefined });
@@ -155,5 +163,13 @@ describe('the session screen route and environment', () => {
     expect(facts['user agent']).toHaveLength(200);
     expect(facts['user agent']).not.toContain('hu');
     expect(Object.keys(facts)).toHaveLength(8);
+  });
+
+  it('redacts a secret longer than anything held before, whole', () => {
+    const session = createEngineSession({ engine: undefined, targetName: 'web' });
+    const secret = `sk-${'z'.repeat(6000)}`;
+    session.environment.push({ token: secret });
+    const facts = session.environment.read((text) => text.replaceAll(secret, '<secret:token>'))!;
+    expect(facts['token']).toBe('<secret:token>');
   });
 });

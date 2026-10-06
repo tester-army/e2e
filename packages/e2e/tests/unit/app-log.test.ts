@@ -70,6 +70,13 @@ describe('StepRecorder.recordAppEvent', () => {
     ]);
     expect(steps.appLog()).toEqual([]);
   });
+
+  it('holds no more navigations before the first step than a step takes events', async () => {
+    const steps = new StepRecorder('attempt', { maxEventsPerStep: 3 });
+    for (let index = 0; index < 10; index += 1) steps.recordAppEvent({ kind: 'navigation', line: `navigated to /${index}` });
+    await steps.run('app', 'app.open', '/', async () => undefined);
+    expect(steps.all()[0]!.events.map((event) => event.detail)).toEqual(['navigated to /0', 'navigated to /1', 'navigated to /2']);
+  });
 });
 
 describe('the session app log route', () => {
@@ -85,5 +92,17 @@ describe('the session app log route', () => {
     session.appLog.route((event) => heard.push(event.kind === 'log' ? event.entry.text : `↪ ${event.line}`));
     session.appLog.push({ source: 'network', level: 'warning', text: 'late' });
     expect(heard).toEqual(['boom', '↪ navigated to /login', 'late']);
+  });
+
+  it('holds each kind within its own quota before a sink is routed, so chatter never crowds out an error', () => {
+    const session = createEngineSession({ engine: undefined, targetName: 'web' });
+    for (let index = 0; index < 400; index += 1) session.appLog.push({ source: 'console', level: 'info', text: `tick ${index}` });
+    for (let index = 0; index < 80; index += 1) session.appLog.navigated(`navigated to /${index}`);
+    session.appLog.push(ERROR);
+    const heard: AppEvent[] = [];
+    session.appLog.route((event) => heard.push(event));
+    expect(heard.filter((event) => event.kind === 'log' && event.entry.level === 'info')).toHaveLength(100);
+    expect(heard.filter((event) => event.kind === 'navigation')).toHaveLength(50);
+    expect(heard.at(-1)).toEqual({ kind: 'log', entry: ERROR });
   });
 });

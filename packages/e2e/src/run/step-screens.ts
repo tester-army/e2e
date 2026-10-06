@@ -123,7 +123,7 @@ export function traceScreen(observation: Observation, options: TraceScreenOption
   let bytes = 0;
   const walk = (node: RedactedNode): boolean => {
     const text = describeNode(node, options.appOrigin, UNCOMPARED_STATES);
-    bytes += text.length + 1;
+    bytes += Buffer.byteLength(text, 'utf8') + 1;
     if (lines.length > 0 && bytes > options.maxBytes) return false;
     lines.push({ id: node.ref.id, text });
     return (node.children ?? []).every(walk);
