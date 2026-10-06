@@ -1,9 +1,10 @@
 # @e2e-dev/decision
 
 Run `agent.act` and `agent.assert` through a decision model instead of an LLM:
-any AI SDK evaluation model that answers `choice` questions with probability
+any AI SDK decision model that answers `choice` questions with probability
 distributions (e.g. TypeSafe Jev), plus a small language model that writes
-field values when the decision model picks `type`.
+field values when the decision model picks `type`. Needs `ai` 7.0.128 or
+later.
 
 ```ts
 import type { E2EConfig } from 'e2e';
@@ -15,7 +16,7 @@ export default {
   agents: {
     default: {
       executor: decisionExecutor({
-        model: typeSafeAi.evaluationModel('jev-latest'),
+        model: typeSafeAi.decisionModel('jev-latest'),
         textModel: openrouter('inception/mercury-2.5'),
       }),
     },
@@ -24,7 +25,7 @@ export default {
 ```
 
 Set `agents.default.executor` in the e2e config. Tests stay plain natural
-language, with no params needed. One `experimental_evaluate` call per action
+language, with no params needed. One `experimental_decide` call per action
 asks the operation plus one target question per operation; operations with a
 single target dispatch without a question. The text model is also the agent's
 judgment tier (`waitFor`, `extract`); without a text model or a configured agent

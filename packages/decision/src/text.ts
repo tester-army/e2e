@@ -9,10 +9,10 @@ import {
   TypeValidationError,
 } from 'ai';
 import type { LanguageModel } from 'ai';
-import type { SharedV4ProviderOptions } from '@ai-sdk/provider';
 import { AgentError, isAgentError } from 'e2e/agent';
 import type { JsonValue, StepExecutorContext } from 'e2e';
 import { z } from 'zod';
+import { missingKey } from './api-key.ts';
 import type { HistoryEntry } from './questions.ts';
 /** What the text helper needs: the goal, the field, and what the page shows. */
 export interface FieldInput {
@@ -33,6 +33,8 @@ const TEXT_SYSTEM = [
   // code fence, and fail validation.
   'Answer with only a JSON object, no code fence, with exactly one key, "text", set to that string or null.',
 ].join('\n');
+/** The provider options `generateText` takes. */
+type ProviderOptions = NonNullable<Parameters<typeof generateText>[0]['providerOptions']>;
 const textSchema = z.object({ text: z.string().max(2000).nullable() });
 /**
  * Asks the language model for one field value; null means the goal supplies
@@ -65,7 +67,7 @@ export async function fieldText(
       output: Output.object({ schema: textSchema }),
       maxRetries: 0,
       abortSignal: ctx.signal,
-      ...(ctx.providerOptions === undefined ? {} : { providerOptions: ctx.providerOptions as SharedV4ProviderOptions }),
+      ...(ctx.providerOptions === undefined ? {} : { providerOptions: ctx.providerOptions as ProviderOptions }),
     });
     ctx.signal.throwIfAborted();
     inputTokens = result.usage.inputTokens;
@@ -90,7 +92,7 @@ export async function fieldText(
 function textError(error: unknown, signal: AbortSignal): unknown {
   signal.throwIfAborted();
   if (isAgentError(error)) return error;
-  if (LoadAPIKeyError.isInstance(error)) return new AgentError('MODEL_UNAVAILABLE', 'Set the field-text model API key.');
+  if (LoadAPIKeyError.isInstance(error)) return missingKey('field-text', error);
   if (InvalidArgumentError.isInstance(error)) return error;
   const invalid = InvalidResponseDataError.isInstance(error) || TypeValidationError.isInstance(error) ||
     JSONParseError.isInstance(error) || NoObjectGeneratedError.isInstance(error);

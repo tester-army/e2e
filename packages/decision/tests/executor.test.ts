@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { InvalidArgumentError } from 'ai';
+import { InvalidArgumentError, LoadAPIKeyError } from 'ai';
 import { AgentError } from 'e2e/agent';
 import type { ExecutorNode } from 'e2e';
 import { decisionExecutor } from '../src/index.ts';
-import { context, scriptedEvaluation, scriptedText } from './helpers.ts';
+import { context, scriptedDecision, scriptedText } from './helpers.ts';
 
+/** Matches the ConfigurationError a factory throws at config load. */
+function invalidConfig(message: string): object {
+  return expect.objectContaining({ name: 'ConfigurationError', code: 'INVALID_CONFIG', message: expect.stringContaining(message) });
+}
 const BUTTONS: ExecutorNode = { id: 'root', children: [
   { id: 'save', role: 'button', name: 'Save' },
   { id: 'cancel', role: 'button', name: 'Cancel' },
@@ -17,18 +21,34 @@ const FIELD: ExecutorNode = { id: 'root', children: [
 /** Construction-time validation: gates and model support. */
 describe('construction', () => {
   it('rejects gates outside [0, 1]', () => {
-    const { model } = scriptedEvaluation(() => ({ choice: 'done' }));
+    const { model } = scriptedDecision(() => ({ choice: 'done' }));
     for (const bad of [-1, 2, NaN]) {
-      expect(() => decisionExecutor({ model, minProbability: bad })).toThrow();
-      expect(() => decisionExecutor({ model, minConfidence: bad })).toThrow();
+      expect(() => decisionExecutor({ model, minProbability: bad })).toThrow(invalidConfig('between 0 and 1'));
+      expect(() => decisionExecutor({ model, minConfidence: bad })).toThrow(invalidConfig('between 0 and 1'));
     }
   });
   it('rejects a model without choice support', () => {
-    const { model } = scriptedEvaluation(() => ({ choice: 'done' }), { supported: [] });
-    expect(() => decisionExecutor({ model })).toThrow('choice');
+    const { model } = scriptedDecision(() => ({ choice: 'done' }), { supported: [] });
+    expect(() => decisionExecutor({ model })).toThrow(invalidConfig('got scripted/scripted-1, which does not answer choice questions'));
+  });
+  it.each([
+    ['no options', undefined, 'decisionExecutor() takes an options object'],
+    ['no model', {}, 'decisionExecutor({ model }) got undefined;'],
+    ['a model id', { model: 'openai/gpt-5' }, 'decisionExecutor({ model }) got the string "openai/gpt-5";'],
+    ['a language model', { model: scriptedText([]).model }, 'got the language model scripted-text/scripted-text-1;'],
+    ['a plain object', { model: { modelId: 'x' } }, 'got an object that is not a decision model;'],
+    ['a v3 model', { model: { specificationVersion: 'v3', provider: 'p', modelId: 'm', doDecide: () => undefined } }, 'got p/m, a v3 model'],
+  ])('rejects %s as INVALID_CONFIG naming the fix', (_name, options, message) => {
+    expect(() => decisionExecutor(options as never)).toThrow(invalidConfig(message));
+  });
+  it('accepts a decision model and a deprecated evaluation model', () => {
+    for (const legacy of [undefined, true] as const) {
+      const { model } = scriptedDecision(() => ({ choice: 'done' }), legacy === undefined ? {} : { legacy });
+      expect(decisionExecutor({ model }).name).toBe('decision');
+    }
   });
   it('exposes the text model and replays cache', () => {
-    const { model } = scriptedEvaluation(() => ({ choice: 'done' }));
+    const { model } = scriptedDecision(() => ({ choice: 'done' }));
     const text = scriptedText([]);
     const executor = decisionExecutor({ model, textModel: text.model });
     expect(executor.cache).toBe('inherit');
@@ -40,7 +60,7 @@ describe('construction', () => {
 
 describe('act loop', () => {
   it('taps a button and passes on a held completion check', async () => {
-    const { model, requests } = scriptedEvaluation((id, keys, call) => {
+    const { model, requests } = scriptedDecision((id, keys, call) => {
       if (id === 'operation') return { choice: call === 0 ? 'tap' : 'done' };
       if (id === 'verdict') return { choice: 'holds' };
       return { choice: keys[0] ?? '' };
@@ -56,8 +76,19 @@ describe('act loop', () => {
     expect(fixture.turns.length).toBeGreaterThan(0);
     expect(fixture.transcripts).toHaveLength(1);
   });
+  it('runs a deprecated evaluation model through the same loop', async () => {
+    const { model, requests } = scriptedDecision((id, keys, call) => {
+      if (id === 'operation') return { choice: call === 0 ? 'tap' : 'done' };
+      if (id === 'verdict') return { choice: 'holds' };
+      return { choice: keys[0] ?? '' };
+    }, { legacy: true });
+    const fixture = context({ tree: BUTTONS });
+    expect(await decisionExecutor({ model }).runStep(fixture.ctx)).toMatchObject({ status: 'passed' });
+    expect(fixture.actions.tap).toHaveBeenCalledTimes(1);
+    expect(requests).toHaveLength(3);
+  });
   it('dispatches a lone target with no target question', async () => {
-    const { model, requests } = scriptedEvaluation((id, keys, call) => ({
+    const { model, requests } = scriptedDecision((id, keys, call) => ({
       choice: id === 'operation' ? (call === 0 ? 'tap' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({ tree: { id: 'root', children: [{ id: 'only', role: 'button', name: 'Only' }] } });
@@ -66,7 +97,7 @@ describe('act loop', () => {
     expect(Object.keys(requests[0]?.questions ?? {})).toEqual(['operation']);
   });
   it('stops on blocked without acting', async () => {
-    const { model, requests } = scriptedEvaluation((id, keys) => ({ choice: id === 'operation' ? 'blocked' : (keys[0] ?? '') }));
+    const { model, requests } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'blocked' : (keys[0] ?? '') }));
     const fixture = context({ tree: BUTTONS });
     const verdict = await decisionExecutor({ model }).runStep(fixture.ctx);
     expect(verdict).toMatchObject({ status: 'blocked', errorCode: 'AUTOMATION_UNSUPPORTED' });
@@ -78,7 +109,7 @@ describe('act loop', () => {
 describe('secrets', () => {
   const LOGIN: ExecutorNode = { id: 'root', children: [{ id: 'pw', role: 'textbox', name: 'Password', inputPurpose: 'password' }] };
   it('asks the secret question only with two or more secrets', async () => {
-    const scripted = scriptedEvaluation((id, keys, call) => {
+    const scripted = scriptedDecision((id, keys, call) => {
       if (id === 'operation') return { choice: call === 0 ? 'typeSecret' : 'done' };
       if (id === 'secret') return { choice: 'password' };
       if (id === 'verdict') return { choice: 'holds' };
@@ -92,7 +123,7 @@ describe('secrets', () => {
     expect(fixture.actions.typeSecret).toHaveBeenCalledWith({ id: 'pw' }, 'password');
   });
   it('fills a lone secret with no secret question', async () => {
-    const scripted = scriptedEvaluation((id, keys, call) => ({
+    const scripted = scriptedDecision((id, keys, call) => ({
       choice: id === 'operation' ? (call === 0 ? 'typeSecret' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({ tree: LOGIN });
@@ -104,7 +135,7 @@ describe('secrets', () => {
 
 describe('field text', () => {
   it('types the text-model value into the chosen field', async () => {
-    const scripted = scriptedEvaluation((id, keys, call) => ({
+    const scripted = scriptedDecision((id, keys, call) => ({
       choice: id === 'operation' ? (call === 0 ? 'type' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const text = scriptedText(['Buy milk']);
@@ -117,7 +148,7 @@ describe('field text', () => {
     expect(fixture.turns[0]?.calls?.[0]).toContain('Buy milk');
   });
   it('keeps secret values out of the text prompt', async () => {
-    const scripted = scriptedEvaluation((id, keys, call) => ({
+    const scripted = scriptedDecision((id, keys, call) => ({
       choice: id === 'operation' ? (call === 0 ? 'type' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const text = scriptedText(['irrelevant']);
@@ -131,7 +162,7 @@ describe('field text', () => {
     expect(JSON.stringify(text.prompts)).not.toContain('admin.password');
   });
   it('continues with history when the goal supplies no value', async () => {
-    const scripted = scriptedEvaluation((id, keys, call) => ({
+    const scripted = scriptedDecision((id, keys, call) => ({
       choice: id === 'operation' ? (call === 0 ? 'type' : call === 1 ? 'tap' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const text = scriptedText([null]);
@@ -143,7 +174,7 @@ describe('field text', () => {
   });
   it('never offers type without a text model', async () => {
     const seen: string[][] = [];
-    const scripted = scriptedEvaluation((id, keys, call) => {
+    const scripted = scriptedDecision((id, keys, call) => {
       seen.push([id, ...keys]);
       return { choice: id === 'operation' ? (call === 0 ? 'tap' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? '') };
     });
@@ -152,7 +183,7 @@ describe('field text', () => {
     expect(JSON.stringify(seen)).not.toContain('"type"');
   });
   it('counts the text call toward the model-call budget', async () => {
-    const scripted = scriptedEvaluation((id, keys) => ({
+    const scripted = scriptedDecision((id, keys) => ({
       choice: id === 'operation' ? 'type' : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const text = scriptedText(['Buy milk']);
@@ -166,7 +197,7 @@ describe('field text', () => {
 
 describe('terminal checks', () => {
   it('passes done on holds', async () => {
-    const { model, requests } = scriptedEvaluation((id, keys, call) => ({
+    const { model, requests } = scriptedDecision((id, keys, call) => ({
       choice: id === 'operation' ? (call === 0 ? 'done' : 'blocked') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({ tree: BUTTONS });
@@ -175,7 +206,7 @@ describe('terminal checks', () => {
     expect(requests).toHaveLength(2);
   });
   it('fails failed on fails with ACTION_FAILED', async () => {
-    const { model } = scriptedEvaluation((id, keys, call) => ({
+    const { model } = scriptedDecision((id, keys, call) => ({
       choice: id === 'operation' ? (call === 0 ? 'failed' : 'blocked') : id === 'verdict' ? 'fails' : (keys[0] ?? ''),
     }));
     const fixture = context({ tree: BUTTONS });
@@ -183,7 +214,7 @@ describe('terminal checks', () => {
     expect(verdict).toMatchObject({ status: 'failed', errorCode: 'ACTION_FAILED' });
   });
   it('continues after one rejected claim with history', async () => {
-    const { model } = scriptedEvaluation((id, keys, call) => {
+    const { model } = scriptedDecision((id, keys, call) => {
       if (id === 'operation') return { choice: call === 0 ? 'done' : call <= 2 ? 'tap' : 'done' };
       if (id === 'verdict') return { choice: call <= 1 ? 'fails' : 'holds' };
       return { choice: keys[0] ?? '' };
@@ -201,7 +232,7 @@ describe('terminal checks', () => {
       { claim: 'failed', check: 'inconclusive', expected: { status: 'blocked', errorCode: 'AUTOMATION_UNSUPPORTED' } },
     ] as const;
     for (const { claim, check, expected } of cases) {
-      const { model, requests } = scriptedEvaluation((id, keys) => ({
+      const { model, requests } = scriptedDecision((id, keys) => ({
         choice: id === 'operation' ? claim : id === 'verdict' ? check : (keys[0] ?? ''),
       }));
       const fixture = context({ tree: BUTTONS });
@@ -211,7 +242,7 @@ describe('terminal checks', () => {
     }
   });
   it('counts a completion check under the gate as a rejection', async () => {
-    const { model } = scriptedEvaluation((id, keys) => {
+    const { model } = scriptedDecision((id, keys) => {
       if (id === 'operation') return { choice: 'done' };
       if (id === 'verdict') return { choice: 'holds', probabilities: { holds: 0.4, fails: 0.3, inconclusive: 0.3 }, confidence: 0.95 };
       return { choice: keys[0] ?? '' };
@@ -221,7 +252,7 @@ describe('terminal checks', () => {
     expect(verdict).toMatchObject({ status: 'blocked', errorCode: 'AUTOMATION_UNSUPPORTED' });
   });
   it('sends action descriptions but no model output to the check', async () => {
-    const { model, requests } = scriptedEvaluation((id, keys, call) => ({
+    const { model, requests } = scriptedDecision((id, keys, call) => ({
       choice: id === 'operation' ? (call === 0 ? 'tap' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({ tree: BUTTONS });
@@ -231,7 +262,7 @@ describe('terminal checks', () => {
     expect(JSON.stringify(check?.state)).not.toContain('recentActions');
   });
   it('retries the claim when the check screen is incomplete', async () => {
-    const { model, requests } = scriptedEvaluation((id, keys, call) => ({
+    const { model, requests } = scriptedDecision((id, keys, call) => ({
       choice: id === 'operation' ? (call === 0 ? 'done' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({ tree: BUTTONS });
@@ -254,7 +285,7 @@ describe('terminal checks', () => {
       ] },
       { id: 'save', role: 'button', name: 'Save' },
     ] };
-    const { model, requests } = scriptedEvaluation((id, keys, call) => ({
+    const { model, requests } = scriptedDecision((id, keys, call) => ({
       choice: id === 'operation' ? (call === 0 ? 'select' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({ tree });
@@ -269,7 +300,7 @@ describe('terminal checks', () => {
 
 describe('guard rails', () => {
   it('blocks three actions with no page change', async () => {
-    const { model } = scriptedEvaluation((id, keys) => ({
+    const { model } = scriptedDecision((id, keys) => ({
       choice: id === 'operation' ? 'tap' : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({ tree: BUTTONS });
@@ -278,7 +309,7 @@ describe('guard rails', () => {
     expect(fixture.actions.tap).toHaveBeenCalledTimes(3);
   });
   it('counts a scroll that brings other nodes into view as progress', async () => {
-    const { model } = scriptedEvaluation((id, keys, call) => ({
+    const { model } = scriptedDecision((id, keys, call) => ({
       choice: id === 'operation' ? (call < 4 ? 'scroll_down' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({ tree: BUTTONS });
@@ -297,7 +328,7 @@ describe('guard rails', () => {
     expect(fixture.actions.scroll).toHaveBeenCalledTimes(4);
   });
   it('blocks three scrolls that move nothing, as at the bottom of the page', async () => {
-    const { model } = scriptedEvaluation((id, keys) => ({
+    const { model } = scriptedDecision((id, keys) => ({
       choice: id === 'operation' ? 'scroll_down' : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const tree: ExecutorNode = { id: 'root', children: [
@@ -309,7 +340,7 @@ describe('guard rails', () => {
     expect(fixture.actions.scroll).toHaveBeenCalledTimes(3);
   });
   it('never trips the guard when pages keep changing', async () => {
-    const { model } = scriptedEvaluation((id, keys, call) => ({
+    const { model } = scriptedDecision((id, keys, call) => ({
       choice: id === 'operation' ? (call < 4 ? 'tap' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({ tree: BUTTONS });
@@ -326,7 +357,7 @@ describe('guard rails', () => {
     expect(fixture.actions.tap.mock.calls.length).toBeGreaterThan(3);
   });
   it('sends failing actions back as history and rethrows hard stops', async () => {
-    const { model } = scriptedEvaluation((id, keys, call) => ({
+    const { model } = scriptedDecision((id, keys, call) => ({
       choice: id === 'operation' ? (call === 0 ? 'tap' : call === 1 ? 'tap' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({ tree: BUTTONS });
@@ -337,14 +368,14 @@ describe('guard rails', () => {
   });
   it('rethrows STEP_TIMEOUT and CANCELLED', async () => {
     for (const code of ['STEP_TIMEOUT', 'CANCELLED'] as const) {
-      const { model } = scriptedEvaluation((id, keys) => ({ choice: id === 'operation' ? 'tap' : (keys[0] ?? '') }));
+      const { model } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'tap' : (keys[0] ?? '') }));
       const fixture = context({ tree: BUTTONS });
       fixture.actions.tap.mockRejectedValueOnce(new AgentError(code, 'stop'));
       await expect(decisionExecutor({ model }).runStep(fixture.ctx)).rejects.toMatchObject({ code });
     }
   });
   it('never makes the call that would exceed the budget', async () => {
-    const { model, requests } = scriptedEvaluation((id, keys) => ({ choice: id === 'operation' ? 'tap' : (keys[0] ?? '') }));
+    const { model, requests } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'tap' : (keys[0] ?? '') }));
     const fixture = context({ tree: BUTTONS, maxModelCalls: 1 });
     const verdict = await decisionExecutor({ model }).runStep(fixture.ctx);
     expect(verdict).toMatchObject({ status: 'blocked', errorCode: 'AUTOMATION_UNSUPPORTED' });
@@ -352,7 +383,7 @@ describe('guard rails', () => {
     expect(fixture.usage).toHaveLength(1);
   });
   it('records failed calls too', async () => {
-    const { model } = scriptedEvaluation(() => ({ choice: 'tap' }), { throws: new Error('boom') });
+    const { model } = scriptedDecision(() => ({ choice: 'tap' }), { throws: new Error('boom') });
     const fixture = context({ tree: BUTTONS });
     await expect(decisionExecutor({ model }).runStep(fixture.ctx)).rejects.toMatchObject({ code: 'MODEL_PROVIDER_FAILED' });
     expect(fixture.usage).toHaveLength(1);
@@ -365,7 +396,7 @@ describe('gates', () => {
     return Object.fromEntries(keys.map((key) => [key, key === choice ? mass : rest]));
   };
   it('stays off by default', async () => {
-    const { model } = scriptedEvaluation((id, keys, call) => {
+    const { model } = scriptedDecision((id, keys, call) => {
       if (id === 'operation') return call === 0 ? { choice: 'tap', probabilities: spread(keys, 'tap', 0.2), confidence: 0.9 } : { choice: 'done' };
       if (id === 'verdict') return { choice: 'holds' };
       return { choice: keys[0] ?? '' };
@@ -375,7 +406,7 @@ describe('gates', () => {
     expect(verdict).toMatchObject({ status: 'passed' });
   });
   it('blocks a low-probability operation under a gate', async () => {
-    const { model } = scriptedEvaluation((id, keys) => ({
+    const { model } = scriptedDecision((id, keys) => ({
       choice: id === 'operation' ? 'tap' : (keys[0] ?? ''),
       ...(id === 'operation' ? { probabilities: spread(keys, 'tap', 0.2), confidence: 0.9 } : {}),
     }));
@@ -385,7 +416,7 @@ describe('gates', () => {
     expect(fixture.actions.tap).not.toHaveBeenCalled();
   });
   it('blocks a low-probability target under a gate', async () => {
-    const { model } = scriptedEvaluation((id, keys) => {
+    const { model } = scriptedDecision((id, keys) => {
       if (id === 'operation') return { choice: 'tap' };
       return { choice: keys[0] ?? '', probabilities: Object.fromEntries(keys.map((key) => [key, 0.5])), confidence: 0.9 };
     });
@@ -399,7 +430,7 @@ describe('gates', () => {
 describe('assert', () => {
   it('passes holds, fails fails, and calls the rest inconclusive', async () => {
     for (const [answer, status, code] of [['holds', 'passed', undefined], ['fails', 'failed', 'ASSERTION_FAILED'], ['inconclusive', 'failed', 'ASSERTION_INCONCLUSIVE']] as const) {
-      const { model, requests } = scriptedEvaluation(() => ({ choice: answer }));
+      const { model, requests } = scriptedDecision(() => ({ choice: answer }));
       const fixture = context({ kind: 'assert', tree: BUTTONS });
       const verdict = await decisionExecutor({ model }).runStep(fixture.ctx);
       expect(verdict.status).toBe(status);
@@ -408,7 +439,7 @@ describe('assert', () => {
     }
   });
   it('treats a gated-out verdict as inconclusive', async () => {
-    const { model } = scriptedEvaluation(() => ({ choice: 'holds', probabilities: { holds: 0.4, fails: 0.3, inconclusive: 0.3 }, confidence: 0.9 }));
+    const { model } = scriptedDecision(() => ({ choice: 'holds', probabilities: { holds: 0.4, fails: 0.3, inconclusive: 0.3 }, confidence: 0.9 }));
     const fixture = context({ kind: 'assert', tree: BUTTONS });
     const verdict = await decisionExecutor({ model, minProbability: 0.5 }).runStep(fixture.ctx);
     expect(verdict).toMatchObject({ status: 'failed', errorCode: 'ASSERTION_INCONCLUSIVE' });
@@ -417,12 +448,12 @@ describe('assert', () => {
 
 describe('model failures', () => {
   it('fails without a choice distribution', async () => {
-    const { model } = scriptedEvaluation(() => ({ choice: 'tap', bare: true }));
+    const { model } = scriptedDecision(() => ({ choice: 'tap', bare: true }));
     const fixture = context({ tree: BUTTONS });
     await expect(decisionExecutor({ model }).runStep(fixture.ctx)).rejects.toMatchObject({ code: 'MODEL_OUTPUT_INVALID' });
   });
   it('fails a probability outside [0, 1]', async () => {
-    const { model } = scriptedEvaluation((id, keys) => {
+    const { model } = scriptedDecision((id, keys) => {
       if (id !== 'operation') return { choice: keys[0] ?? '' };
       return { choice: 'tap', probabilities: Object.fromEntries(keys.map((key) => [key, key === 'tap' ? 1.5 : key === 'done' ? -0.5 : 0])) };
     });
@@ -430,21 +461,32 @@ describe('model failures', () => {
     await expect(decisionExecutor({ model }).runStep(fixture.ctx)).rejects.toMatchObject({ code: 'MODEL_OUTPUT_INVALID' });
   });
   it('maps provider failures without provider text', async () => {
-    const { model } = scriptedEvaluation(() => ({ choice: 'tap' }), { throws: new Error('upstream detail') });
+    const { model } = scriptedDecision(() => ({ choice: 'tap' }), { throws: new Error('upstream detail') });
     const fixture = context({ tree: BUTTONS });
     await expect(decisionExecutor({ model }).runStep(fixture.ctx)).rejects.toMatchObject({ code: 'MODEL_PROVIDER_FAILED' });
     await expect(decisionExecutor({ model }).runStep(fixture.ctx)).rejects.not.toMatchObject({ message: expect.stringContaining('upstream') });
   });
+  it('names the API key variable the provider reads', async () => {
+    const missing = new LoadAPIKeyError({ message: "TypeSafe AI API key is missing. Pass it using the 'apiKey' parameter or the TYPESAFE_AI_API_KEY environment variable." });
+    const { model } = scriptedDecision(() => ({ choice: 'tap' }), { throws: missing });
+    await expect(decisionExecutor({ model }).runStep(context({ tree: BUTTONS }).ctx)).rejects.toMatchObject({
+      code: 'MODEL_UNAVAILABLE', message: 'Set TYPESAFE_AI_API_KEY to the decision model API key.',
+    });
+    const { model: unnamed } = scriptedDecision(() => ({ choice: 'tap' }), { throws: new LoadAPIKeyError({ message: 'no key' }) });
+    await expect(decisionExecutor({ model: unnamed }).runStep(context({ tree: BUTTONS }).ctx)).rejects.toMatchObject({
+      code: 'MODEL_UNAVAILABLE', message: 'Set the decision model API key.',
+    });
+  });
   it('rethrows InvalidArgumentError as our own bug', async () => {
     const failure = new InvalidArgumentError({ parameter: 'questions', value: 1, message: 'bad' });
-    const { model } = scriptedEvaluation(() => ({ choice: 'tap' }), { throws: failure });
+    const { model } = scriptedDecision(() => ({ choice: 'tap' }), { throws: failure });
     const fixture = context({ tree: BUTTONS });
     await expect(decisionExecutor({ model }).runStep(fixture.ctx)).rejects.toBe(failure);
   });
   it('honors abort', async () => {
     const controller = new AbortController();
     controller.abort();
-    const { model } = scriptedEvaluation(() => ({ choice: 'tap' }));
+    const { model } = scriptedDecision(() => ({ choice: 'tap' }));
     const fixture = context({ tree: BUTTONS, signal: controller.signal });
     await expect(decisionExecutor({ model }).runStep(fixture.ctx)).rejects.toThrow();
   });
@@ -452,7 +494,7 @@ describe('model failures', () => {
 
 describe('observations', () => {
   it('acts on a truncated observation', async () => {
-    const { model } = scriptedEvaluation((id, keys, call) => ({
+    const { model } = scriptedDecision((id, keys, call) => ({
       choice: id === 'operation' ? (call === 0 ? 'tap' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({ tree: BUTTONS, observation: { truncated: true } });
@@ -460,14 +502,14 @@ describe('observations', () => {
     expect(verdict).toMatchObject({ status: 'passed' });
   });
   it('blocks act and judges inconclusive without a tree', async () => {
-    const { model } = scriptedEvaluation(() => ({ choice: 'holds' }));
+    const { model } = scriptedDecision(() => ({ choice: 'holds' }));
     const act = context({ tree: BUTTONS, observation: { treeUnavailable: true } });
     expect(await decisionExecutor({ model }).runStep(act.ctx)).toMatchObject({ status: 'blocked', errorCode: 'AUTOMATION_UNSUPPORTED' });
     const assert = context({ kind: 'assert', tree: BUTTONS, observation: { treeUnavailable: true } });
     expect(await decisionExecutor({ model }).runStep(assert.ctx)).toMatchObject({ status: 'failed', errorCode: 'ASSERTION_INCONCLUSIVE' });
   });
   it('judges a truncated assertion on what is there', async () => {
-    const { model } = scriptedEvaluation(() => ({ choice: 'holds' }));
+    const { model } = scriptedDecision(() => ({ choice: 'holds' }));
     const fixture = context({ kind: 'assert', tree: BUTTONS, observation: { truncated: true } });
     const verdict = await decisionExecutor({ model }).runStep(fixture.ctx);
     expect(verdict).toMatchObject({ status: 'passed' });
@@ -476,7 +518,7 @@ describe('observations', () => {
 
 describe('context', () => {
   it('sends the ledger and non-secret params, never secret handles', async () => {
-    const { model, requests } = scriptedEvaluation((id, keys, call) => ({
+    const { model, requests } = scriptedDecision((id, keys, call) => ({
       choice: id === 'operation' ? (call === 0 ? 'tap' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({
@@ -495,7 +537,7 @@ describe('context', () => {
     expect(JSON.stringify(state)).not.toContain('nested.token');
   });
   it('seeds history from a replayed prefix and flags the uncertain action', async () => {
-    const { model, requests } = scriptedEvaluation((id, keys, call) => ({
+    const { model, requests } = scriptedDecision((id, keys, call) => ({
       choice: id === 'operation' ? (call === 0 ? 'tap' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({
@@ -515,7 +557,7 @@ describe('context', () => {
     expect(history[1]).toMatchObject({ action: 'type Name', uncertain: true });
   });
   it('keeps secret handles out of replayed summaries', async () => {
-    const { model, requests } = scriptedEvaluation((id, keys) => ({
+    const { model, requests } = scriptedDecision((id, keys) => ({
       choice: id === 'operation' ? 'done' : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({
@@ -544,7 +586,7 @@ describe('context', () => {
     expect(JSON.stringify(requests.map((request) => request.state))).not.toContain('secret \\"password\\"');
   });
   it('sends only the last 10 actions', async () => {
-    const { model, requests } = scriptedEvaluation((id, keys, call) => ({
+    const { model, requests } = scriptedDecision((id, keys, call) => ({
       choice: id === 'operation' ? (call < 12 ? 'tap' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({ tree: BUTTONS });
@@ -561,7 +603,7 @@ describe('context', () => {
     expect(actions).toEqual(Array.from({ length: 10 }, (_, index) => `tap Page ${index + 3} [a]`));
   });
   it('gives the completion check the inputs, typed values, and actions, never claims or secrets', async () => {
-    const { model, requests } = scriptedEvaluation((id, keys, call) => {
+    const { model, requests } = scriptedDecision((id, keys, call) => {
       if (id === 'operation') return { choice: call === 0 ? 'type' : 'done' };
       if (id === 'verdict') return { choice: call === 2 ? 'inconclusive' : 'holds' };
       return { choice: keys[0] ?? '' };
@@ -587,7 +629,7 @@ describe('context', () => {
       { id: 'greeting', role: 'status', name: 'Greeting', text: 'Welcome back, admin!' },
       { id: 'out', role: 'button', name: 'Sign out' },
     ] };
-    const { model, requests } = scriptedEvaluation((id, keys) => ({
+    const { model, requests } = scriptedDecision((id, keys) => ({
       choice: id === 'operation' ? 'done' : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({ tree });
@@ -601,7 +643,7 @@ describe('context', () => {
       { id: 'name', role: 'textbox', name: 'Name', value: 'Ada' },
       { id: 'save', role: 'button', name: 'Save' },
     ] };
-    const { model, requests } = scriptedEvaluation((id, keys) => ({
+    const { model, requests } = scriptedDecision((id, keys) => ({
       choice: id === 'operation' ? 'done' : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     // No text model and no press verb: in the act loop the field offers no operation.
@@ -618,7 +660,7 @@ describe('context', () => {
       { id: 'milk', role: 'checkbox', name: 'Buy milk', states: { checked: true } },
       { id: 'dog', role: 'checkbox', name: 'Walk the dog', states: { checked: false } },
     ] };
-    const { model, requests } = scriptedEvaluation((id, keys, call) => ({
+    const { model, requests } = scriptedDecision((id, keys, call) => ({
       choice: id === 'operation' ? (call === 0 ? 'check' : 'done') : id === 'verdict' ? 'holds' : (keys[1] ?? ''),
     }));
     const fixture = context({ tree });
@@ -632,7 +674,7 @@ describe('context', () => {
   });
   it('rejects an undeclared secret name', async () => {
     const login: ExecutorNode = { id: 'root', children: [{ id: 'pw', role: 'textbox', name: 'Password', inputPurpose: 'password' }] };
-    const { model } = scriptedEvaluation((id, keys) => {
+    const { model } = scriptedDecision((id, keys) => {
       if (id === 'operation') return { choice: 'typeSecret' };
       if (id === 'secret') return { choice: 'intruder' };
       return { choice: keys[0] ?? '' };

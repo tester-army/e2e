@@ -9,14 +9,14 @@
     "typecheck": "tsc --noEmit --project examples/tsconfig.json"
   },
   "devDependencies": {
-    "@ai-sdk/typesafe-ai": "3.0.12",
+    "@ai-sdk/typesafe-ai": "3.0.13",
     "@e2e-dev/decision": "workspace:*",
     "@e2e-dev/mobile": "workspace:*",
     "@e2e-dev/web": "workspace:*",
     "@openrouter/ai-sdk-provider": "3.1.0",
     "@types/node": "26.6.2",
     "agent-device": "0.21.21",
-    "ai": "7.0.107",
+    "ai": "7.0.128",
     "e2e": "workspace:*",
     "mint": "4.2.909",
     "typescript": "7.0.2",

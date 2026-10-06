@@ -44,9 +44,9 @@ describe('fieldText', () => {
   });
   it('maps a missing key to unavailable and bad output to invalid', async () => {
     const text = scriptedText(['Ada']);
-    const missing: Exclude<LanguageModel, string> = { ...text.model, doGenerate: async () => { throw new LoadAPIKeyError({ message: 'no key' }); } };
+    const missing: Exclude<LanguageModel, string> = { ...text.model, doGenerate: async () => { throw new LoadAPIKeyError({ message: "OpenRouter API key is missing. Pass it using the 'apiKey' parameter or the OPENROUTER_API_KEY environment variable." }); } };
     const malformed: Exclude<LanguageModel, string> = { ...text.model, doGenerate: async () => { throw new TypeValidationError({ value: 'nope', cause: new Error('bad') }); } };
-    await expect(fieldText(context({ model: missing }).ctx, missing, input())).rejects.toMatchObject({ code: 'MODEL_UNAVAILABLE' });
+    await expect(fieldText(context({ model: missing }).ctx, missing, input())).rejects.toMatchObject({ code: 'MODEL_UNAVAILABLE', message: 'Set OPENROUTER_API_KEY to the field-text model API key.' });
     await expect(fieldText(context({ model: malformed }).ctx, malformed, input())).rejects.toMatchObject({ code: 'MODEL_OUTPUT_INVALID' });
   });
   it('honors abort', async () => {

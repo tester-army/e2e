@@ -1,5 +1,5 @@
-import type { Experimental_EvaluationModelV4 } from '@ai-sdk/provider';
 import type { LanguageModel } from 'ai';
+import type { DecisionExecutorOptions } from '../src/index.ts';
 import type { ExecutorActions, ExecutorModelCall, ExecutorNode, ExecutorObservation, JsonValue, StepExecutorContext, StepTurn } from 'e2e';
 import { vi } from 'vitest';
 /** One scripted answer: the choice, its distribution, and the reported confidence. */
@@ -10,46 +10,52 @@ export interface ScriptedAnswer {
   /** Omit `probabilities` from the answer entirely. */
   readonly bare?: true;
 }
-/** A recorded evaluate call: the state and the question map the executor sent. */
+/** A recorded decide call: the state and the question map the executor sent. */
 export interface EvalRequest {
   readonly state: unknown;
   readonly questions: Record<string, { type: string; criteria: unknown }>;
 }
+/** The model shapes the executor accepts: a decision model, or a deprecated evaluation model. */
+type AcceptedModel = DecisionExecutorOptions['model'];
+type DecideCall = Parameters<Extract<AcceptedModel, { doDecide: unknown }>['doDecide']>[0];
+type DecideResult = Awaited<ReturnType<Extract<AcceptedModel, { doDecide: unknown }>['doDecide']>>;
 /**
- * A scripted evaluation model: records requests and answers every choice
+ * A scripted decision model: records requests and answers every choice
  * question through one resolver. Unspecified probabilities become a
  * unanimous distribution for the choice, which core validation accepts.
+ * `legacy` builds the deprecated evaluation model shape (`doEvaluate`).
  */
-export function scriptedEvaluation(resolve: (id: string, keys: string[], call: number) => ScriptedAnswer, options?: { supported?: readonly ('choice' | 'score' | 'boolean')[]; throws?: unknown }): { model: Experimental_EvaluationModelV4; requests: EvalRequest[] } {
+export function scriptedDecision(resolve: (id: string, keys: string[], call: number) => ScriptedAnswer, options?: { supported?: readonly ('choice' | 'score' | 'boolean')[]; throws?: unknown; legacy?: true }): { model: AcceptedModel; requests: EvalRequest[] } {
   const requests: EvalRequest[] = [];
-  const model: Experimental_EvaluationModelV4 = {
-    specificationVersion: 'v4',
+  const respond = async (call: DecideCall): Promise<DecideResult> => {
+    if (options?.throws !== undefined) throw options.throws;
+    const index = requests.length;
+    const questions: EvalRequest['questions'] = {};
+    const answers: Record<string, { type: 'choice'; choice: string; probabilities: Record<string, number> }> = {};
+    const confidence: Record<string, number> = {};
+    for (const [id, question] of Object.entries(call.questions)) {
+      if (question.type !== 'choice') throw new Error('scripted model answers choice questions only');
+      const criteria = question.criteria as Record<string, unknown>;
+      questions[id] = { type: question.type, criteria };
+      const keys = Object.keys(criteria);
+      const answer = resolve(id, keys, index);
+      if (answer.bare === true) {
+        answers[id] = { type: 'choice', choice: answer.choice } as (typeof answers)[string];
+      } else {
+        answers[id] = { type: 'choice', choice: answer.choice, probabilities: answer.probabilities ?? Object.fromEntries(keys.map((key) => [key, key === answer.choice ? 1 : 0])) };
+      }
+      if (answer.confidence !== undefined) confidence[id] = answer.confidence;
+    }
+    requests.push({ state: call.state, questions });
+    return { answers, warnings: [], usage: { inputTokens: 10, outputTokens: 0 }, providerMetadata: { scripted: { confidence } }, response: { modelId: 'scripted-1' } };
+  };
+  const base = {
+    specificationVersion: 'v4' as const,
     provider: 'scripted',
     modelId: 'scripted-1',
-    supportedQuestionTypes: [...(options?.supported ?? ['choice'])],
-    doEvaluate: async (call) => {
-      if (options?.throws !== undefined) throw options.throws;
-      const index = requests.length;
-      const questions: EvalRequest['questions'] = {};
-      const answers: Record<string, { type: 'choice'; choice: string; probabilities: Record<string, number> }> = {};
-      const confidence: Record<string, number> = {};
-      for (const [id, question] of Object.entries(call.questions)) {
-        if (question.type !== 'choice') throw new Error('scripted model answers choice questions only');
-        const criteria = question.criteria as Record<string, unknown>;
-        questions[id] = { type: question.type, criteria };
-        const keys = Object.keys(criteria);
-        const answer = resolve(id, keys, index);
-        if (answer.bare === true) {
-          answers[id] = { type: 'choice', choice: answer.choice } as (typeof answers)[string];
-        } else {
-          answers[id] = { type: 'choice', choice: answer.choice, probabilities: answer.probabilities ?? Object.fromEntries(keys.map((key) => [key, key === answer.choice ? 1 : 0])) };
-        }
-        if (answer.confidence !== undefined) confidence[id] = answer.confidence;
-      }
-      requests.push({ state: call.state, questions });
-      return { answers, warnings: [], usage: { inputTokens: 10, outputTokens: 0 }, providerMetadata: { scripted: { confidence } }, response: { modelId: 'scripted-1' } };
-    },
+    supportedQuestionTypes: [...(options?.supported ?? ['choice' as const])],
   };
+  const model: AcceptedModel = options?.legacy === true ? { ...base, doEvaluate: respond } : { ...base, doDecide: respond };
   return { model, requests };
 }
 /** A scripted language model: returns queued texts as JSON through real generateText. */

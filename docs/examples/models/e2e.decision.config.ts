@@ -9,7 +9,7 @@ export default {
   agents: {
     default: {
       executor: decisionExecutor({
-        model: typeSafeAi.evaluationModel('jev-latest'),
+        model: typeSafeAi.decisionModel('jev-latest'),
         textModel: openrouter('inception/mercury-2.5'),
       }),
     },

@@ -10,7 +10,7 @@ request: which operation, and which element for each operation that has
 more than one, chosen from what the executor builds out of the latest
 semantic tree. It never generates free text: when the choice is `type`, a
 small language model writes the field value. Both models are
-plain AI SDK models, so any evaluation provider that answers `choice`
+plain AI SDK models, so any decision model provider that answers `choice`
 questions with probability distributions (Jev) and any language-model
 provider works; the runner still authorizes every dispatched action.
 
@@ -32,7 +32,7 @@ bun add -d @e2e-dev/decision
 
 The decision model answers `choice` questions with probability
 distributions; the text model writes field values. Each installs as its
-own package:
+own package. Decision models need `ai` 7.0.128 or later:
 
 <CodeGroup>
 ```bash npm
@@ -60,13 +60,16 @@ export default {
   agents: {
     default: {
       executor: decisionExecutor({
-        model: typeSafeAi.evaluationModel('jev-latest'),
+        model: typeSafeAi.decisionModel('jev-latest'),
         textModel: openrouter('inception/mercury-2.5'),
       }),
     },
   },
 } satisfies E2EConfig;
 ```
+
+`evaluationModel()` instances still work. A model id string or a language
+model in `model` fails config load with `INVALID_CONFIG`.
 
 Tests stay plain natural language, with no params needed:
 

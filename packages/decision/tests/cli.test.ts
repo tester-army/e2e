@@ -63,7 +63,7 @@ describe('decision executor through the built CLI and real Chromium', () => {
     const requestsFile = join(directory, 'requests.jsonl');
     await writeFile(join(directory, 'models.ts'), [
       'import { appendFileSync } from "node:fs";',
-      'import type { Experimental_EvaluationModelV4 } from "@ai-sdk/provider";',
+      'import type { DecisionExecutorOptions } from "@e2e-dev/decision";',
       'import type { LanguageModel } from "ai";',
       'const log = process.env.E2E_DECISION_REQUESTS === undefined ? "" : process.env.E2E_DECISION_REQUESTS;',
       'function record(entry: unknown): void { if (log !== "") appendFileSync(log, JSON.stringify(entry) + "\\n"); }',
@@ -96,9 +96,9 @@ describe('decision executor through the built CLI and real Chromium', () => {
       '  const hit = entries.find((entry) => { const record = entry[1]; return typeof record !== "string" && record.role === role; });',
       '  return (hit ?? entries[0] as [string, unknown])[0];',
       '}',
-      'export const evaluationModel: Experimental_EvaluationModelV4 = {',
+      'export const decisionModel: DecisionExecutorOptions["model"] = {',
       '  specificationVersion: "v4", provider: "scripted", modelId: "scripted-1", supportedQuestionTypes: ["choice"],',
-      '  async doEvaluate({ state, questions }) {',
+      '  async doDecide({ state, questions }) {',
       '    record({ state, questions });',
       '    const view = state as { goal?: unknown; recentActions?: { action?: unknown }[]; page?: { text?: unknown } };',
       '    const goal = typeof view.goal === "string" ? view.goal : "";',
@@ -135,12 +135,12 @@ describe('decision executor through the built CLI and real Chromium', () => {
     await writeFile(join(directory, 'e2e.config.ts'), [
       'import { web } from "@e2e-dev/web";',
       'import { decisionExecutor } from "@e2e-dev/decision";',
-      'import { evaluationModel, textModel } from "./models.ts";',
+      'import { decisionModel, textModel } from "./models.ts";',
       'export default {',
       '  tests: "decision.e2e.ts",',
       `  targets: [{ engine: web(), app: { url: ${JSON.stringify(appUrl)} } }],`,
       `  credentials: { admin: { username: "Ada", password: ${JSON.stringify(password)} } },`,
-      '  agents: { default: { executor: decisionExecutor({ model: evaluationModel, textModel }) } },',
+      '  agents: { default: { executor: decisionExecutor({ model: decisionModel, textModel }) } },',
       '};',
     ].join('\n'));
     await writeFile(join(directory, 'decision.e2e.ts'), [

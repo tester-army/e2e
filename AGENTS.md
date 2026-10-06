@@ -87,7 +87,7 @@ suites that consume the built packages the way a user would.
   Expo's GraphQL API with `fetch`, and `@e2e-dev/mobile` is its only peer.
 - `packages/decision` — the published `@e2e-dev/decision` package: a
   `StepExecutor` (`decisionExecutor()`) that drives `agent.act` and
-  `agent.assert` through an AI SDK *evaluation* model answering `choice`
+  `agent.assert` through an AI SDK *decision* model answering `choice`
   questions with probability distributions, plus an optional small language
   model that writes field values when the decision model picks `type`.
   `minProbability` and `minConfidence` gate a chosen operation, target,

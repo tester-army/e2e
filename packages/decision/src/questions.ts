@@ -52,7 +52,7 @@ export interface DecisionRequest {
   readonly questions: Record<string, ChoiceQuestion>;
 }
 /**
- * Builds one evaluate request: the operation question plus one target
+ * Builds one decide request: the operation question plus one target
  * question per operation with two or more targets, and a secret question
  * when two or more secrets are declared. Operations with no targets are
  * left out; a lone target dispatches with no question.
