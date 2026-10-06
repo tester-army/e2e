@@ -696,6 +696,154 @@ describe('observation', () => {
     expect(h.fake.calls.filter((call) => call.method === 'interactions.press')).toHaveLength(presses);
   });
 
+  it('keeps ids when captures alternate between known app name and bundle id', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const { appBundleId: _bundle, ...namedApp } = SETTINGS_SNAPSHOT;
+    const { appName: _name, ...identifiedApp } = SETTINGS_SNAPSHOT;
+    h.fake.respond('capture.snapshot', () => ({ ...namedApp, nodes: SETTINGS_NODES.map((node) => ({ ...node, bundleId: 'com.apple.Preferences' })) }));
+    const before = await observed(h, 'About');
+    h.fake.respond('capture.snapshot', () => identifiedApp);
+    expect((await observed(h, 'About')).ref.id).toBe(before.ref.id);
+  });
+
+  it('does not infer identity from a name shared by two known apps', async () => {
+    const h = harness();
+    await openAttempt(h);
+    await observed(h, 'About');
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, appBundleId: 'another.settings' }));
+    const [about] = await h.engine.locate!({ kind: 'selector', selector: 'id=ABOUT' }, operation());
+    const { appBundleId: _bundle, ...namedApp } = SETTINGS_SNAPSHOT;
+    h.fake.respond('capture.snapshot', () => ({ ...namedApp, truncated: true }));
+    const after = await observed(h, 'About');
+    expect(after.ref.id).not.toBe(about!.ref.id);
+    await expect(h.engine.perform!(about!.ref, { kind: 'tap' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
+  });
+
+  it('keeps ids when a backend adds per-node bundle metadata', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const before = await observed(h, 'About');
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, nodes: SETTINGS_NODES.map((node) => ({ ...node, bundleId: 'com.apple.Preferences' })) }));
+    expect((await observed(h, 'About')).ref.id).toBe(before.ref.id);
+  });
+
+  it.each(['unknown', 'different'])('retires located refs on a truncated capture of an %s app', async (identity) => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    const [about] = await h.engine.locate!({ kind: 'selector', selector: 'id=ABOUT' }, operation());
+    h.fake.respond('capture.snapshot', () => ({ nodes: SETTINGS_NODES, truncated: true,
+      ...(identity === 'different' ? { appBundleId: 'other.app' } : {}),
+    }));
+    const after = await h.engine.observe!(operation());
+    expect(named(after.root, 'About').ref.id).not.toBe(about!.ref.id);
+    const presses = h.fake.calls.filter((call) => call.method === 'interactions.press').length;
+    await expect(h.engine.perform!(about!.ref, { kind: 'tap' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
+    expect(h.fake.calls.filter((call) => call.method === 'interactions.press')).toHaveLength(presses);
+  });
+
+  it('does not carry a row action id into a recycled row with reused identifiers', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    const rows = (name: string, ref: string) => ({ ...SETTINGS_SNAPSHOT, nodes: [
+      { index: 0, type: 'application', label: 'Contacts' },
+      { index: 1, parentIndex: 0, type: 'table', identifier: 'contacts' },
+      { index: 2, parentIndex: 1, type: 'cell', identifier: 'row-slot' },
+      { index: 3, parentIndex: 2, type: 'static-text', identifier: 'row-name', label: name },
+      { index: 4, parentIndex: 2, type: 'button', identifier: 'row-action', label: 'Delete', ref },
+    ] });
+    h.fake.respond('capture.snapshot', () => rows('Alice', '@alice'));
+    const before = await observed(h, 'Delete');
+    h.fake.respond('capture.snapshot', () => rows('Bob', '@bob'));
+    const after = await observed(h, 'Delete');
+    expect(after.ref.id).not.toBe(before.ref.id);
+    const presses = h.fake.calls.filter((call) => call.method === 'interactions.press').length;
+    await expect(h.engine.perform!(before.ref, { kind: 'tap' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
+    expect(h.fake.calls.filter((call) => call.method === 'interactions.press')).toHaveLength(presses);
+  });
+
+  it.each(['ios', 'android'] as const)('does not carry a save id between %s screens with reused identifiers', async (platform) => {
+    const h = harness({ platform, transition: 0 });
+    await openAttempt(h);
+    const screen = (title: string, ref: string) => ({ ...SETTINGS_SNAPSHOT, nodes: [
+      { index: 0, type: 'application', label: 'Contacts' },
+      { index: 1, parentIndex: 0, type: platform === 'ios' ? 'navigation-bar' : 'android.view.ViewGroup', identifier: 'header', label: platform === 'ios' ? 'Contacts' : '' },
+      { index: 2, parentIndex: 1, type: platform === 'ios' ? 'button' : 'android.widget.ImageButton', label: platform === 'ios' ? 'Back' : 'Navigate up' },
+      { index: 3, parentIndex: 1, type: platform === 'ios' ? 'static-text' : 'android.widget.TextView', label: title },
+      { index: 4, parentIndex: 0, type: 'other', identifier: 'form' },
+      { index: 5, parentIndex: 4, type: platform === 'ios' ? 'button' : 'android.widget.Button', identifier: 'save', label: 'Save', ref },
+    ] });
+    h.fake.respond('capture.snapshot', () => screen('New contact', '@new'));
+    const before = await observed(h, 'Save');
+    h.fake.respond('capture.snapshot', () => screen('Edit contact', '@edit'));
+    expect((await observed(h, 'Save')).ref.id).not.toBe(before.ref.id);
+    await expect(h.engine.perform!(before.ref, { kind: 'tap' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
+  });
+
+  it('pins both drag endpoints to the latest native capture generation', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    let generation = 0;
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, refsGeneration: ++generation }));
+    const [source] = await h.engine.locate!({ kind: 'selector', selector: 'id=ABOUT' }, operation());
+    const [destination] = await h.engine.locate!({ kind: 'selector', selector: 'id=BackButton' }, operation());
+    await h.engine.perform!(source!.ref, { kind: 'dragTo', target: destination!.ref }, operation());
+    expect(h.fake.lastArgs('interactions.drag')).toEqual({ source: '@e4~s2', destination: '@e3~s2' });
+  });
+
+  it('rejects a disappeared drag source after the destination capture reuses its native ref', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    const [source] = await h.engine.locate!({ kind: 'selector', selector: 'id=ABOUT' }, operation());
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, refsGeneration: 2, nodes: SETTINGS_NODES.map((node) => node.index === 3 ? { ...node, identifier: 'DANGER', label: 'Danger' } : node) }));
+    const [destination] = await h.engine.locate!({ kind: 'selector', selector: 'id=BackButton' }, operation());
+    await expect(h.engine.perform!(source!.ref, { kind: 'dragTo', target: destination!.ref }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
+    expect(h.fake.methods()).not.toContain('interactions.drag');
+  });
+
+  it('retains controls across normalized backend roles and an inserted anonymous wrapper', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, refsGeneration: 1, nodes: [
+      { index: 0, type: 'application', label: 'Controls' },
+      { index: 1, parentIndex: 0, type: 'other', identifier: 'panel' },
+      { index: 2, parentIndex: 1, type: 'other', identifier: 'newsletter', label: 'Newsletter', value: 'checkbox, unchecked', ref: '@e3' },
+      { index: 3, parentIndex: 1, type: 'text-field', identifier: 'name', label: 'Name', value: 'Ada', ref: '@e4' },
+    ] }));
+    const first = await h.engine.observe!(operation());
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, refsGeneration: 2, nodes: [
+      { index: 0, type: 'application', label: 'Controls' },
+      { index: 1, parentIndex: 0, type: 'android.widget.FrameLayout', identifier: 'panel' },
+      { index: 2, parentIndex: 1, type: 'other' },
+      { index: 3, parentIndex: 2, type: 'android.widget.CheckBox', identifier: 'newsletter', label: 'Newsletter', checked: true, ref: '@e20' },
+      { index: 4, parentIndex: 2, type: 'android.widget.EditText', identifier: 'name', label: 'Name', value: 'Grace', editable: true, ref: '@e21' },
+    ] }));
+    const next = await h.engine.observe!(operation());
+    expect(named(next.root, 'Newsletter').ref.id).toBe(named(first.root, 'Newsletter').ref.id);
+    expect(named(next.root, 'Name').ref.id).toBe(named(first.root, 'Name').ref.id);
+    expect(named(next.root, 'Newsletter').states?.checked).toBe(true);
+    expect(named(next.root, 'Name').value).toBe('Grace');
+    await h.engine.perform!(named(first.root, 'Newsletter').ref, { kind: 'tap' }, operation());
+    expect(h.fake.lastArgs('interactions.press')).toMatchObject({ ref: '@e20~s2' });
+  });
+
+  it('keeps keypad controls when a container inherits its changing readout label', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    const keypad = (amount: string, ref: string) => ({ ...SETTINGS_SNAPSHOT, nodes: [
+      { index: 0, type: 'application', label: 'Keypad' },
+      { index: 1, parentIndex: 0, type: 'other', identifier: 'pad', label: `Amount ${amount} USD` },
+      { index: 2, parentIndex: 1, type: 'static-text', identifier: 'amount', label: `Amount ${amount} USD` },
+      { index: 3, parentIndex: 1, type: 'button', identifier: 'key-7', label: '7', ref },
+    ] });
+    h.fake.respond('capture.snapshot', () => keypad('0', '@e4'));
+    const before = await observed(h, '7');
+    h.fake.respond('capture.snapshot', () => keypad('7', '@e40'));
+    expect((await observed(h, '7')).ref.id).toBe(before.ref.id);
+    await h.engine.perform!(before.ref, { kind: 'tap' }, operation());
+    expect(h.fake.lastArgs('interactions.press')).toMatchObject({ ref: '@e40' });
+  });
+
   it('forgets node identities when the app relaunches', async () => {
     const h = harness();
     await openAttempt(h);
@@ -730,11 +878,11 @@ describe('observation', () => {
       { index: 5, parentIndex: 0, type: 'button', label: 'Delete', ref: '@one' },
       { index: 6, parentIndex: 0, type: 'button', label: 'Delete', ref: '@two' },
     ];
-    h.fake.respond('capture.snapshot', () => ({ nodes }));
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, nodes }));
     const first = await h.engine.observe!(operation());
     const saves = [...walk(first.root)].filter((node) => node.name === 'Save');
     const deletes = [...walk(first.root)].filter((node) => node.name === 'Delete');
-    h.fake.respond('capture.snapshot', () => ({ nodes: [nodes[0], nodes[3], nodes[4], nodes[1], nodes[2], nodes[6], nodes[5]] }));
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, nodes: [nodes[0], nodes[3], nodes[4], nodes[1], nodes[2], nodes[6], nodes[5]] }));
     const next = await h.engine.observe!(operation());
     const nextSaves = [...walk(next.root)].filter((node) => node.name === 'Save');
     expect(nextSaves.map((node) => node.ref.id)).toEqual([saves[1]!.ref.id, saves[0]!.ref.id]);
@@ -812,6 +960,7 @@ describe('observation', () => {
     await openAttempt(free);
     const empty = await free.engine.observe!(operation());
     expect(empty).toEqual({
+      nodeIdentity: 'stable',
       root: { ref: { id: 'root', revision: '' }, role: 'screen', rect: { x: 0, y: 0, width: 390, height: 844 } },
       viewport: { width: 390, height: 844 },
     });
@@ -1782,7 +1931,7 @@ describe('reference lifetime and cancellation', () => {
   it('bounds located bindings while preserving current observation ids', async () => {
     const h = harness();
     await openAttempt(h);
-    const observation = await observed(h, 'About');
+    const observation = await observed(h, 'Back');
     let capture = 0;
     h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, nodes: SETTINGS_NODES.map((node) => {
       if (node.identifier !== 'ABOUT') return node;
@@ -2071,7 +2220,7 @@ describe('deterministic actions', () => {
     expect(h.fake.calls.filter((call) => call.method === 'interactions.press')).toHaveLength(presses);
   });
 
-  it('uses a retained id to resolve a relabeled control after its transition', async () => {
+  it('refuses a renamed interactive control even when its identifier was reused', async () => {
     autoAdvanceTimers();
     const h = harness({ transition: 120 });
     await openAttempt(h);
@@ -2083,8 +2232,9 @@ describe('deterministic actions', () => {
     h.fake.respond('capture.snapshot', () => snapshot('Submit', '@old'));
     const arriving = await observed(h, 'Submit');
     h.fake.respond('capture.snapshot', () => snapshot('Save', '@fresh'));
-    await h.engine.perform!(arriving.ref, { kind: 'tap' }, test());
-    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@fresh' });
+    const presses = h.fake.calls.filter((call) => call.method === 'interactions.press').length;
+    await expect(h.engine.perform!(arriving.ref, { kind: 'tap' }, test())).rejects.toMatchObject({ code: 'NODE_STALE' });
+    expect(h.fake.calls.filter((call) => call.method === 'interactions.press')).toHaveLength(presses);
   });
 
   it('refuses an arriving control whose fresh snapshot becomes ambiguous', async () => {

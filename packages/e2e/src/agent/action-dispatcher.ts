@@ -598,11 +598,10 @@ export class ActionDispatcher {
 
   /**
    * One action against a resolved node. A node the engine reports stale is
-   * re-found by its descriptor against a fresh capture and the action retried
-   * (`MAX_STALE_RELOCATIONS` times): a list that remounts its rows between
-   * the observation and the action keeps the control on screen under a dead
-   * handle, and the control, not the handle, is what the model asked for. A
-   * descriptor that matches nothing or several nodes fails the action instead.
+   * recovered against a fresh capture and the action retried
+   * (`MAX_STALE_RELOCATIONS` times): stable sources require the same id, while
+   * capture-scoped sources use their descriptor to survive a remount. A
+   * missing or ambiguous recovery fails the action instead.
    */
   private commitTargeted(
     name: GrammarActionName,
@@ -629,7 +628,7 @@ export class ActionDispatcher {
         return { ...(await perform(node, observation)), ...placement };
       } catch (cause) {
         if (asEngineError(cause)?.code !== 'NODE_STALE') throw cause;
-        const relocated = relocations < MAX_STALE_RELOCATIONS ? await this.feed.relocate(node) : undefined;
+        const relocated = relocations < MAX_STALE_RELOCATIONS ? await this.feed.relocate(node, observation) : undefined;
         if (relocated === undefined) {
           throw new AgentError('LOCATOR_NOT_FOUND', 'the target node left the screen before the action reached it', {
             cause,
@@ -669,4 +668,3 @@ function isInViewport(rect: SemanticNode['rect'], viewport: { readonly width: nu
   if (rect === undefined) return true;
   return rect.x < viewport.width && rect.y < viewport.height && rect.x + rect.width > 0 && rect.y + rect.height > 0;
 }
-

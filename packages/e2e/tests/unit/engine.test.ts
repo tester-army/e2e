@@ -388,6 +388,15 @@ describe('createEngineSession', () => {
     expect(observation.viewport).toEqual({ width: 1280, height: 720 });
   });
 
+  it('carries the engine node identity fact onto the observation', async () => {
+    const session = createEngineSession({
+      engine: defineEngine(observingEngine({ observe: async () => snapshot([], { nodeIdentity: 'stable' }) })),
+      targetName: 'toy-target',
+    });
+    const observation = await session.observe(OP);
+    expect(observation.nodeIdentity).toBe('stable');
+  });
+
   it('derives the grammar verbs from the declared action kinds and hooks', () => {
     const verbs = (extra: Partial<Engine>) =>
       [...createEngineSession({ engine: defineEngine(observingEngine(extra)), targetName: 't' }).verbs].toSorted();

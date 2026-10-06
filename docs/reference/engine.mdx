@@ -552,6 +552,12 @@ URLs arrive through `session.open` only; `init` never learns the app URL.
  */
 export interface EngineSnapshot {
   /**
+   * The engine never rebinds a semantic node id to another node during an
+   * attempt. Omit this for capture-scoped ids; the runner then uses its
+   * descriptor recovery when a later capture renumbers a node.
+   */
+  readonly nodeIdentity?: 'stable';
+  /**
    * Where the surface is, as an opaque address the platform understands: a
    * URL on a document platform, the foreground screen or activity on a
    * device, the front window on a desktop. The harness shows it to the model
@@ -600,6 +606,15 @@ Return the surface as it is right now. The runner mints the revision, stamps
 it onto every ref, redacts registered secret values, bounds the byte size, and
 checks that `maskedRegionCount` covers every `secure` node when `pixels` are
 present.
+
+When an engine sets `nodeIdentity: 'stable'`, it promises that an id is never
+rebound to a different semantic node during the attempt. If a later
+observation omits that id, the runner keeps the target unresolved; a retryable
+`NODE_STALE` action captures again and can recover only the same id. This makes
+replacement controls fail safely even when their descriptors are identical.
+An engine with capture-scoped ids omits the field and keeps descriptor-based
+recovery for live actions. Trace replay continues to relocate from descriptors
+because recordings cross attempts and runs.
 
 Set `truncated` when a node limit or inaccessible subtree leaves content out.
 The runner warns the model that the tree is incomplete and never treats a

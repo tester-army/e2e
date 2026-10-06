@@ -41,6 +41,8 @@ export type SemanticAgentObservation = Extract<AgentObservation, { kind: 'semant
 
 /** Identity, geometry, and redacted prose shared by both evidence variants. */
 interface AgentObservationMetadata {
+  /** Present when the engine guarantees ids are never rebound during an attempt. */
+  readonly nodeIdentity?: 'stable';
   /** Where the surface was when captured, when the platform has a location. */
   readonly location?: string;
   /** Location projected to path and query when it is a URL, otherwise kept opaque. */
@@ -80,6 +82,7 @@ export function prepareObservation(
   const path = location === undefined ? undefined : observationPath(location);
   const metadata = {
     revision: observation.revision,
+    ...(observation.nodeIdentity === undefined ? {} : { nodeIdentity: observation.nodeIdentity }),
     ...(location === undefined ? {} : { location }),
     ...(path === undefined ? {} : { path }),
     viewport: observation.viewport,

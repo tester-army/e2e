@@ -99,6 +99,12 @@ const SCENARIOS: readonly Scenario[] = [
     success: 'Form submitted',
   },
   {
+    name: 'Keypad',
+    goal: 'enter {amount} via the number pad and save',
+    success: 'Saved 750 USD',
+    params: () => ({ amount: '750' }),
+  },
+  {
     name: 'Broken Accessibility',
     goal: 'complete the flow the screen describes until it says Access granted',
     success: 'Access granted',

@@ -213,11 +213,14 @@ summaries, and your context; never raw HTML, cookies, headers, environment
 values, or a `Secret`'s value; password fields masked. The first
 screen of a step arrives whole; later action results report what changed,
 keyed by node ids stable while an element exists, or the whole screen when
-most changed. On mobile, ids persist for uniquely matched siblings, using
-the accessibility identifier or name and label. A relabeled node without an
-identifier or an ambiguous duplicate gets a new id; changing a value or
-checked state keeps the id. Children of an ambiguous parent also get new ids.
-An app relaunch resets mobile node identities.
+most changed. On mobile, ids persist for unique semantic matches within the
+same app, screen and list-item context. A reused test id does not hide changed
+control names or recycled row data. Values, checked states and readout labels
+do not change nearby control ids. Native refs are pinned to their capture when
+supported. Missing ids from a stable-identity engine are gone; the agent does
+not silently re-find another control with the same descriptor. A stale native
+frame can recover only through the same id. Legacy engines that do not declare
+stable identity retain descriptor-based recovery.
 Pixels arrive through `vision` on a judgment or the act loop's
 `screenshot` and point tools, masked and withheld after a secret fill. When
 the browser engine's tree capture times out, the model gets a screenshot and

@@ -19,20 +19,32 @@ SDK and an emulator.
 The package includes a compatible version of `agent-device`; no separate
 installation is needed.
 
-Observations preserve node ids across captures when the node has a unique
-match under the same parent. Matching uses the platform type and declared
-role, then the accessibility identifier when present, otherwise the name and
-label. Values, states, device refs, and bounds can change without replacing
-the id. Actions use the latest device ref for a retained id. Duplicate
-siblings that cannot be distinguished get new ids, as do removed nodes that
-return, nodes after an app relaunch, and nodes in a different foreground app.
-A relabeled node without an identifier gets a new id; unchanged keypad
-buttons keep theirs when only the amount readout changes.
-An ambiguous parent also gives its descendants new ids. After waiting for
-a transition, an action resolves its retained id in a fresh capture; if the
-control disappeared or became ambiguous, it fails with `NODE_STALE` instead
-of sending the old device ref. A complete observation also retires located
-refs that are no longer on screen.
+Observations retain ids for uniquely matched controls within the same app,
+screen and item context. Matching uses normalized roles, identifiers and
+meaningful names. A reused identifier does not override a changed control
+name or a list row's changed item text. Native navigation titles distinguish
+screens that reuse the same controls. Values and checked states can change
+without replacing an id; readout labels are also excluded from the identity
+of their surrounding controls.
+
+Unnamed layout wrappers do not add a matching boundary. Optional per-node
+bundle metadata does not participate in individual node identity, and
+normalized roles can match across backend type changes. App scope comes from
+current bundle evidence, not a remembered app name. Without current app
+identity, the engine assigns new ids instead of assuming the last opened
+app is still in front.
+
+Actions use bindings from the latest capture. When agent-device supplies a
+capture generation, the native refs are pinned to it, so a superseded frame
+fails before input. Missing and ambiguous targets are `NODE_STALE`; test
+locators retry by resolving their original expression. The engine declares
+[stable node identity](/reference/engine#observation), so the agent never
+silently transfers a removed id to another descriptor match.
+
+This is inferred semantic identity, not a native object handle. Physical
+replacements with identical app, screen, names and item context cannot be
+distinguished from the snapshots alone. An app's accessibility labels and
+entity-specific identifiers must expose the distinctions a test depends on.
 
 ## Engine
 

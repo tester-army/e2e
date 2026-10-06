@@ -40,9 +40,9 @@ import type { StepAccounting } from './step-accounting.ts';
 /**
  * Observations kept for resolving an id the newest one no longer carries.
  * A turn that batches actions addresses the screen it saw, while every
- * action's own look re-observes; on an engine that mints ids per observation
- * (a device), each look renumbers the tree. A few looks back is as far as one
- * turn can reach.
+ * action's own look re-observes. Capture-scoped engines may renumber the tree
+ * on each look, so a few looks back is as far as one turn can reach; engines
+ * that claim stable identity keep a missing id unresolved instead.
  */
 const MAX_RECENT_OBSERVATIONS = 8;
 /**
@@ -195,12 +195,11 @@ export class ObservationFeed {
   }
 
   /**
-   * Resolves an executor target against the newest observation. An id the
-   * newest observation no longer carries, but a recent one did, is re-found
-   * in the newest one by its descriptor: a turn that batches actions keeps
-   * addressing the screen it saw while each action's own look re-observes,
-   * and an engine that mints ids per observation renumbers the tree between
-   * them. Exactly one match, or the id counts as gone.
+   * Resolves an executor target against the newest observation. A direct id
+   * hit always wins. A missing id from a stable source stays gone, while a
+   * capture-scoped source may be re-found by its descriptor: a turn that
+   * batches actions keeps addressing the screen it saw while each action's
+   * own look re-observes. Exactly one match, or the id counts as gone.
    */
   resolve(target: ExecutorTarget): Resolved {
     const { id, node, observation } = this.lookup(target);
@@ -224,7 +223,11 @@ export class ObservationFeed {
     if (latest.kind === 'pixels') {
       throw new AgentError('LOCATOR_NOT_FOUND', 'semantic capture is unavailable; previous node ids are no longer valid, so use the current screenshot');
     }
-    return { id, node: latest.nodes.get(id) ?? this.refound(id, latest), observation: latest };
+    const direct = latest.nodes.get(id);
+    if (direct !== undefined) return { id, node: direct, observation: latest };
+    const source = this.lastSeen(id);
+    if (source?.observation.nodeIdentity === 'stable') return { id, node: undefined, observation: latest };
+    return { id, node: this.refound(id, latest), observation: latest };
   }
 
   /** What `id` named in the most recent observation that carried it. */
@@ -238,15 +241,17 @@ export class ObservationFeed {
   }
 
   /**
-   * Re-finds a node that went stale: one fresh capture, then the trace
-   * recorder's own descriptor matching (`cache/relocate.ts`) against it,
-   * exactly one match or nothing. The capture is taken directly rather than
-   * through the queued observe: this runs inside a queued action body, and a
-   * queued observation would wait on its own caller.
+   * Recovers a node that went stale with one fresh capture. A stable source
+   * re-resolves the same id; a capture-scoped source uses the trace recorder's
+   * descriptor matching (`cache/relocate.ts`), exactly one match or nothing.
+   * The capture is taken directly rather than through the queued observe:
+   * this runs inside a queued action body, and a queued observation would wait
+   * on its own caller.
    */
-  async relocate(stale: RedactedNode): Promise<{ node: RedactedNode; observation: SemanticAgentObservation } | undefined> {
-    const descriptor = describeTarget(stale);
-    if (descriptor === undefined) return undefined;
+  async relocate(
+    stale: RedactedNode,
+    source: SemanticAgentObservation,
+  ): Promise<{ node: RedactedNode; observation: SemanticAgentObservation } | undefined> {
     this.accounting.checkpoint();
     const observation = await instrumentPhase(
       this.runtime,
@@ -256,6 +261,12 @@ export class ObservationFeed {
     );
     this.publish(observation);
     if (observation.kind === 'pixels') return undefined;
+    if (source.nodeIdentity === 'stable') {
+      const node = observation.nodes.get(stale.ref.id);
+      return node === undefined ? undefined : { node, observation };
+    }
+    const descriptor = describeTarget(stale);
+    if (descriptor === undefined) return undefined;
     const relocated = relocateDescriptor(descriptor, observation.nodes);
     if (relocated.kind !== 'found') return undefined;
     const node = observation.nodes.get(relocated.id);

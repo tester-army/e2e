@@ -381,13 +381,13 @@ function isSystemBar(node: RawNode, screen: ViewportSize | undefined, displayOnl
 }
 
 /**
- * Projects one snapshot, retaining ids for uniquely matched siblings from
- * the previous projection. Device refs and values are not identities. Android's
+ * Projects one snapshot, assigning ids in document order. Identity retention
+ * is owned by SnapshotIdentity after the semantic roles have been normalized. Android's
  * system bars are left out with their children, see `isSystemBar`.
  */
 export function projectSnapshot(
   raw: readonly RawNode[],
-  options: { readonly mintId: () => string; readonly previous?: readonly ProjectedNode[] },
+  options: { readonly mintId: () => string },
 ): ProjectedSnapshot {
   const viewport = viewportOf(raw);
   const parents = parentPositions(raw);
@@ -403,32 +403,10 @@ export function projectSnapshot(
     else siblings.push(position);
   });
 
-  const prior = new Map<string | undefined, Map<string, ProjectedNode[]>>();
-  for (const entry of options.previous ?? []) {
-    const parent = entry.parent?.id;
-    let siblings = prior.get(parent);
-    if (siblings === undefined) prior.set(parent, (siblings = new Map()));
-    const key = identityOf(entry.raw);
-    const matches = siblings.get(key);
-    if (matches === undefined) siblings.set(key, [entry]);
-    else matches.push(entry);
-  }
-  const counts = new Map<number | undefined, Map<string, number>>();
-  raw.forEach((source, position) => {
-    const parent = parents[position];
-    let siblings = counts.get(parent);
-    if (siblings === undefined) counts.set(parent, (siblings = new Map()));
-    const key = identityOf(source);
-    siblings.set(key, (siblings.get(key) ?? 0) + 1);
-  });
-
   const index: ProjectedNode[] = [];
   const build = (position: number, parent: ProjectedNode | undefined): SemanticNode => {
     const source = raw[position] as RawNode;
-    const key = identityOf(source);
-    const matches = prior.get(parent?.id)?.get(key);
-    const unique = counts.get(parents[position])?.get(key) === 1 && matches?.length === 1;
-    const id = (unique ? matches?.[0]?.id : undefined) ?? options.mintId();
+    const id = options.mintId();
     const kind = kindOf(source);
     const android = isAndroidClass(source.type);
     // The role React Native spelled into the value outranks the platform's
@@ -512,16 +490,6 @@ export function projectSnapshot(
     .filter((position) => !isSystemBar(raw[position] as RawNode, viewport, () => displayOnly(position)))
     .map((position) => build(position, undefined));
   return { roots: rootNodes, index, viewport };
-}
-
-/** A sibling's identity excludes capture refs, geometry, values, and mutable states. */
-function identityOf(raw: RawNode): string {
-  const identifier = nonEmpty(raw.identifier);
-  return JSON.stringify([
-    kindOf(raw), raw.bundleId, raw.password === true, raw.editable === true,
-    describedRole(raw), kindOf(raw) === 'other' ? reactNativeValue(raw.value)?.role : undefined,
-    identifier === undefined ? [nonEmpty(raw.contentDescription), nonEmpty(raw.label)] : identifier,
-  ]);
 }
 
 /** Quotes one selector term value the way agent-device's parser reads it back. */

@@ -79,6 +79,8 @@ export type Observation = ObservationMetadata & (
 
 /** Capture identity and geometry, independent of whether semantic evidence exists. */
 interface ObservationMetadata {
+  /** Present when the engine guarantees ids are never rebound during an attempt. */
+  readonly nodeIdentity?: 'stable';
   /** Stable viewport action reference; it is not evidence that semantic nodes were captured. */
   readonly root: NodeRef;
   /** Where the surface was when captured, when the platform has a location. */

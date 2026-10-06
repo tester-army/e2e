@@ -89,6 +89,10 @@ customSnapshot satisfies EngineSnapshot;
 customExecutorObservation satisfies ExecutorObservation;
 declare const engineSnapshot: EngineSnapshot;
 engineSnapshot.treeUnavailable satisfies true | undefined;
+engineSnapshot.nodeIdentity satisfies 'stable' | undefined;
+({ ...engineSnapshot, nodeIdentity: 'stable' }) satisfies EngineSnapshot;
+// @ts-expect-error node identity is a closed safety fact, never an arbitrary label.
+({ ...engineSnapshot, nodeIdentity: 'capture-scoped' }) satisfies EngineSnapshot;
 // @ts-expect-error unavailable semantics are explicitly true or absent, never a separate false state.
 ({ ...engineSnapshot, treeUnavailable: false }) satisfies EngineSnapshot;
 

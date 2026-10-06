@@ -240,6 +240,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
         root: { ...snapshot.root.ref, revision: minted },
         revision: minted,
         capturedAt: new Date().toISOString(),
+        ...(snapshot.nodeIdentity === undefined ? {} : { nodeIdentity: snapshot.nodeIdentity }),
         ...(snapshot.location === undefined ? {} : { location: snapshot.location }),
         viewport: snapshot.viewport,
         redaction: {

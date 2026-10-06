@@ -1033,7 +1033,7 @@ export class PlaywrightSurface {
       }
       refs.publish(capture, captured);
       session.observedGeneration(token);
-      return snapshot;
+      return { ...snapshot, nodeIdentity: 'stable' };
     } catch (cause) {
       RefRegistry.dispose(generation);
       throw cause;

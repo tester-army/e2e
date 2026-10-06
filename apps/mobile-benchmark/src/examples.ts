@@ -14,6 +14,7 @@ import FlattenedLogin from "./Examples/FlattenedLogin";
 import Gestures from "./Examples/Gestures";
 import HugeVirtualizedList from "./Examples/HugeVirtualizedList";
 import InfiniteScrollList from "./Examples/InfiniteScrollList";
+import Keypad from "./Examples/Keypad";
 import LoginForm from "./Examples/LoginForm";
 import ModalFlow from "./Examples/ModalFlow";
 import PermissionPrompt from "./Examples/PermissionPrompt";
@@ -67,6 +68,11 @@ export const examples: Example[] = [
     component: TextInputs,
     name: "Text Input Variations",
     description: "Fill secure, multiline, and numeric inputs to unlock the submit button.",
+  },
+  {
+    component: Keypad,
+    name: "Keypad",
+    description: "Enter an amount with the number pad, then save and verify the exact value.",
   },
   {
     component: BrokenAccessibility,

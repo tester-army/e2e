@@ -1,8 +1,8 @@
 /**
  * The agent-device surface: one simulator or emulator session, driven through
  * agent-device's typed client, exposed to the runner as the contract's
- * observe/locate/perform members. It owns the id space (one fresh generation
- * per observation), the attempt state (artifact directory, screenshot
+ * observe/locate/perform members. It owns the retained node identities,
+ * the attempt state (artifact directory, screenshot
  * counter), and every translation between the contract's vocabulary and
  * agent-device's commands. Its device and session come from the target's
  * `DevicePool`, by worker slot. The runner owns everything else.
@@ -57,6 +57,7 @@ import {
   type ProjectedSnapshot,
 } from './nodes.ts';
 import { DEVICE_PERMISSIONS, type AgentDeviceClient, type ClientFactory, type DevicePermission, type LaunchPermissions, type MobileOptions, type PermissionState } from './options.ts';
+import { SnapshotIdentity } from './snapshot-identity.ts';
 import { maskPng } from './png.ts';
 import { deviceLabel, pinnedApp, type SlotBinding } from './bindings.ts';
 import { assertAppId } from './links.ts';
@@ -130,7 +131,7 @@ export interface OpenAppOptions {
  * is the band the capture's producer measured: `visible` with its frame,
  * `absent`, or that it could not look.
  */
-type RawSnapshot = Partial<Pick<CaptureSnapshotResult, 'nodes' | 'truncated' | 'appName' | 'appBundleId' | 'snapshotQuality' | 'keyboard'>>;
+type RawSnapshot = Partial<Pick<CaptureSnapshotResult, 'nodes' | 'truncated' | 'appName' | 'appBundleId' | 'snapshotQuality' | 'keyboard' | 'refsGeneration'>>;
 
 /** Platform element types that are the soft keyboard or one of its keys, as agent-device names them. */
 const KEYBOARD_TYPES: ReadonlySet<string> = new Set(['keyboard', 'key']);
@@ -379,8 +380,7 @@ export class AgentDeviceSurface {
   private indexBeforeAction: readonly ProjectedNode[] | undefined;
   /** The most recent projection of the screen, from any observe or locate. */
   private latestIndex: readonly ProjectedNode[] | undefined;
-  /** Foreground app of the last projection; equal-looking controls in different apps are distinct. */
-  private projectionApp: string | undefined;
+  private readonly identity = new SnapshotIdentity(() => `n${++this.idCounter}`);
   /** Budget a control that came with the last action gets to finish arriving; see DEFAULT_TRANSITION_MS. */
   private readonly transitionMs: number;
   /**
@@ -670,6 +670,7 @@ export class AgentDeviceSurface {
     this.installedApp = undefined;
     this.knownViewport = undefined;
     this.latestIndex = undefined;
+    this.identity.reset();
     if (client === undefined) return;
     await withinCleanupBudget(client.sessions.close().catch(() => undefined), context);
   }
@@ -813,6 +814,7 @@ export class AgentDeviceSurface {
     this.generation = new Map();
     this.located.clear();
     this.latestIndex = undefined;
+    this.identity.reset();
   }
 
   /**
@@ -913,21 +915,21 @@ export class AgentDeviceSurface {
     }
   }
 
+  /** Reconciles identities and adopts only bindings from this capture. */
   private project(raw: RawSnapshot): ProjectedSnapshot {
-    const app = raw.appBundleId ?? raw.appName ?? this.appIdentity;
-    const projected = projectSnapshot(raw.nodes ?? [], {
-      ...(this.latestIndex === undefined || app !== this.projectionApp ? {} : { previous: this.latestIndex }),
-      mintId: () => {
-        this.idCounter += 1;
-        return `n${this.idCounter}`;
-      },
-    });
+    const projected = this.identity.project(raw);
+    const live = new Set(projected.index.map((entry) => entry.id));
+    for (const id of this.generation.keys()) if (!live.has(id)) this.generation.delete(id);
+    for (const id of this.located.keys()) if (!live.has(id)) this.located.delete(id);
     for (const entry of projected.index) {
-      if (this.generation.has(entry.id)) this.generation.set(entry.id, this.bind(entry, projected.index));
-      if (this.located.has(entry.id)) this.located.set(entry.id, this.bind(entry, projected.index));
+      const observed = this.generation.has(entry.id);
+      const located = this.located.has(entry.id);
+      if (!observed && !located) continue;
+      const binding = this.bind(entry, projected.index);
+      if (observed) this.generation.set(entry.id, binding);
+      if (located) this.located.set(entry.id, binding);
     }
     this.latestIndex = projected.index;
-    this.projectionApp = app;
     if (projected.viewport !== undefined) this.knownViewport = projected.viewport;
     return projected;
   }
@@ -974,6 +976,7 @@ export class AgentDeviceSurface {
     const capture = options?.pixels === true ? await this.capturePixels(operation, projected, viewport) : undefined;
     return {
       root: screenRoot(projected.roots, viewport),
+      nodeIdentity: 'stable',
       viewport,
       ...(isTruncated(raw) ? { truncated: true } : {}),
       ...(location === undefined ? {} : { location }),
@@ -1039,34 +1042,6 @@ export class AgentDeviceSurface {
   }
 
   /**
-   * The node a binding stands for, in a fresh snapshot: same role, same test
-   * id, same name and text, and of those the one closest to where it was.
-   */
-  private refind(entry: NodeBinding, index: readonly ProjectedNode[]): ProjectedNode | undefined {
-    const candidates = index.filter(
-      (candidate) =>
-        candidate.node.role === entry.node.role &&
-        candidate.node.testId === entry.node.testId &&
-        candidate.node.name === entry.node.name &&
-        candidate.node.text === entry.node.text,
-    );
-    if (candidates.length <= 1 || entry.node.rect === undefined) return candidates[0];
-    const was = centreOf(entry.node.rect);
-    let best = candidates[0];
-    let bestDistance = Number.POSITIVE_INFINITY;
-    for (const candidate of candidates) {
-      if (candidate.node.rect === undefined) continue;
-      const at = centreOf(candidate.node.rect);
-      const distance = Math.hypot(at.x - was.x, at.y - was.y);
-      if (distance < bestDistance) {
-        best = candidate;
-        bestDistance = distance;
-      }
-    }
-    return best;
-  }
-
-  /**
    * Lets a control that came with the last action finish arriving before a
    * test acts on it, and answers the binding to act on. A control already
    * present at the same place in the snapshot the last action was resolved
@@ -1085,7 +1060,7 @@ export class AgentDeviceSurface {
     if (remaining <= 0) return entry;
     const before = this.indexBeforeAction;
     if (before !== undefined) {
-      const prior = this.refind(entry, before);
+      const prior = before.find((candidate) => candidate.id === entry.id);
       if (prior !== undefined && sameRect(prior.node.rect, entry.node.rect)) return entry;
     }
     await sleep(remaining, operation.signal);
@@ -1194,7 +1169,7 @@ export class AgentDeviceSurface {
         case 'dragTo': {
           const destination = this.resolveRef(action.target);
           return client.interactions.drag({
-            source: this.actionTarget(target).ref,
+            source: this.actionTarget(this.resolveRef(ref)).ref,
             destination: this.actionTarget(destination).ref,
           });
         }

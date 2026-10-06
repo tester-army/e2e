@@ -563,6 +563,12 @@ export interface EngineObserveOptions {
  */
 export interface EngineSnapshot {
   /**
+   * Declares that semantic node ids are never rebound to another node during
+   * an attempt. Omit this for an engine whose ids are capture-scoped; the
+   * runner retains its descriptor-based recovery for those engines.
+   */
+  readonly nodeIdentity?: 'stable';
+  /**
    * Where the surface is, as an opaque address the platform understands: a
    * URL on a document platform, the foreground screen or activity on a
    * device, the front window on a desktop. The harness shows it to the model

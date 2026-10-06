@@ -1,0 +1,89 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-06T22:38:14.463Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"7\" in \"Enter an amount\"",
+        "target": {
+          "role": "button",
+          "name": "7",
+          "testId": "keypad-7",
+          "selector": "id=keypad-7",
+          "within": "Enter an amount"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"5\" in \"Enter an amount\"",
+        "target": {
+          "role": "button",
+          "name": "5",
+          "testId": "keypad-5",
+          "selector": "id=keypad-5",
+          "within": "Enter an amount"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"0\" in \"Enter an amount\"",
+        "target": {
+          "role": "button",
+          "name": "0",
+          "testId": "keypad-0",
+          "selector": "id=keypad-0",
+          "within": "Enter an amount"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save\" in \"Enter an amount\"",
+        "target": {
+          "role": "button",
+          "name": "Save",
+          "testId": "keypad-save",
+          "selector": "id=keypad-save",
+          "within": "Enter an amount"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Keypad",
+      "targetId": "android-emulator",
+      "instructionDigest": "69b79d2792583404ad147bb6caebd2807fb843eb0d32b8be5fe2e803cd98c0f5",
+      "paramsDigest": "29441e7c224dd55e1d9654e3f9e4fad6095988335284a00669c994b9b18d0fda",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Entered 750 using the number pad and tapped Save. The screen confirms “Saved 750 USD.”.",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Amount 750 USD",
+        "text": "750 USD",
+        "testId": "keypad-amount"
+      },
+      {
+        "role": "text",
+        "name": "Saved 750 USD",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Amount 0 USD",
+        "text": "0 USD",
+        "testId": "keypad-amount"
+      }
+    ],
+    "endWaitMs": 13350
+  }
+}
