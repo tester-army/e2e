@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.clearText
@@ -77,6 +79,8 @@ fun GreetingScreen() {
             .fillMaxSize()
             .background(Brand.canvas)
             .windowInsetsPadding(WindowInsets.safeDrawing)
+            // Scrolls when the keyboard leaves too little height for the form.
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp),
     ) {
         Row(

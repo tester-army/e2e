@@ -65,7 +65,8 @@ class _GreetingScreenState extends State<GreetingScreen> {
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
         body: SafeArea(
-          child: Padding(
+          // Scrolls when the keyboard leaves too little height for the form.
+          child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
