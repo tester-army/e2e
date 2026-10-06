@@ -2,11 +2,12 @@ name: docs
 
 # Mintlify builds and hosts the site from main through its GitHub app, so
 # this workflow is only the check, on pull requests and merge queue entries
-# that touch the docs (the `changes` job says which). The ruleset requires
-# `docs gate` alone.
+# that touch the docs (the `changes` job says which); a manual dispatch
+# always runs it. The ruleset requires `docs gate` alone.
 on:
   pull_request:
   merge_group:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,11 +23,12 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
     outputs:
-      docs: ${{ steps.filter.outputs.docs }}
+      docs: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.docs == 'true' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
+        if: ${{ github.event_name != 'workflow_dispatch' }}
         with:
           filters: .github/filters.yml
           predicate-quantifier: some-with-excludes

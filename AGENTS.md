@@ -405,8 +405,9 @@ trees, on both platforms, without a device.
   tracked, the testbed's ignores its own, since fixture-app recordings are
   worth nothing to anyone). CI replays the entries read-only and calls the
   model for a step with no recording, so those suites gate a pull request at
-  deterministic speed and cost, for this repository's branches only: a fork's
-  pull request has no key. Re-record with the package's `test:agent` and
+  deterministic speed and cost. On a pull request they run for this
+  repository's branches only, since a fork's has no key; the merge queue runs
+  them for every pull request, with the key. Re-record with the package's `test:agent` and
   commit the changed entries in the same pull request as the scenario change.
   The web benchmark's agent job runs with `--strict-cache`, so a recording a
   change broke fails with `REPLAY_STALE` instead of quietly calling the model.
@@ -478,7 +479,10 @@ trees, on both platforms, without a device.
     names, and never let a label become a path component.
   - Test, config, and engine code run with the runner's full OS authority;
     nothing here sandboxes them. Untrusted PR code belongs in an external
-    sandbox with no secrets or write tokens.
+    sandbox with no secrets or write tokens. The merge queue runs a queued
+    pull request's code with the repository's secrets, fork or not, so
+    enqueueing (auto-merge included) is the trust decision: review a fork's
+    test, config, and engine changes before you enqueue it.
 
 - CI: `.github/workflows/spec.yml` runs lint, typecheck, and the testbed on
   Node 26, `pnpm test` on the newest Node 22, 24, and 26 and on the
