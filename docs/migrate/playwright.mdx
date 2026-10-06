@@ -61,7 +61,7 @@ A Playwright key the runner recognizes (`testDir`, `baseURL`, `webServer`,
 | `fullyParallel` | not yet; a file's tests run in order on one worker, files run in parallel | missing |
 | `maxFailures` | `--max-failures <n>`; no config key | renamed |
 | `reporter` | `reporters: ['list', 'junit']`; also `json` and `markdown` | renamed |
-| `reporter: 'html'` | no equivalent; `markdown` writes `.e2e/summary.md`, every run writes `.e2e/report.json` | missing |
+| `reporter: 'html'` | no equivalent; `markdown` writes `.e2e/summary.md`, and each failed test gets a `trace.md` page under `.e2e/results/` | missing |
 | `outputDir` | `output`, default `.e2e`, holding `results/` (cleared when a run starts, like `outputDir`) beside the report | renamed |
 | `metadata` | not yet | missing |
 

@@ -492,7 +492,7 @@ bunx e2e run --reporter list,junit
 | `junit` | `junit.xml` beside the report. One `<testsuite>` per file, one `<testcase>` per test-target pair named `title > path [target]`. A test-class error is a `<failure>`, any other an `<error>`, a skip a `<skipped>` with its reason. An interrupted test reached no verdict, so it is a `<skipped>` whose message starts `interrupted:`. Run-level errors form a `run` suite. |
 | `markdown` | `summary.md` beside the report with counts, cost, errors, and failure details, each linked to its trace page. Exploration runs show findings. [`@e2e-dev/github`](/github) uses this summary for pull request comments. |
 
-Every run that gets to its tests writes `report.json` under the [output directory](/reference/config#output)
+Every run that gets to its tests writes `report.json`, for scripts, under the [output directory](/reference/config#output)
 (`.e2e` by default) whatever the reporters are, the trace pages its
 [`trace`](/reference/config#trace) mode keeps in each test's directory under `results/` (an interrupted
 test gets none), and the reporters' files beside it. A run that stops before (a config or collection error,

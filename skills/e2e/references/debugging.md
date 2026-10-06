@@ -32,9 +32,9 @@ default.
      accessibility tree at failure, one node per line.
    Fix from what was there. `trace` (default `retain-on-failure`) chooses
    which tests keep a page; `--trace` keeps one for every test of a run.
-2. `.e2e/report.json` backs the pages; each step's `events` hold the same
-   lines (`engine`, `poll`, `app`).
-3. To query the report:
+2. `.e2e/report.json` holds the same facts for scripts, not for reading:
+   each step's `events` are the page's lines (`engine`, `poll`, `app`).
+3. When a script needs them:
 
 ```bash
 jq '.run | {status, exitCode, errors}' .e2e/report.json

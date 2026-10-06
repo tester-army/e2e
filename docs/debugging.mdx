@@ -1,12 +1,13 @@
 ---
 title: Debugging a run
-description: Read the report, open the evidence, watch the browser, and see what the model was sent.
+description: Read the trace page, open the evidence, watch the browser, and see what the model was sent.
 icon: "magnifying-glass"
 ---
 
-Start with the failure in the terminal, then open the trace page it names.
-Every run also writes `.e2e/report.json`, with links to the screenshots,
-downloads, and recordings captured by the selected engine.
+Start with the failure in the terminal, then open the trace page it names:
+it tells every step, links the screenshots, downloads, and recordings, and
+shows the screen at failure. For a whole-run overview, add the `markdown`
+reporter, which writes `.e2e/summary.md`.
 
 ## Read the failure
 
@@ -123,10 +124,11 @@ section. CI uploads the pages with the report; see [CI](/ci).
 (heading `✓`), and `--trace off` writes none. A test's own `trace` option
 wins over both.
 
-## The report
+## For scripts: report.json
 
-Use `.e2e/report.json` for scripts and integrations. `--reporter json` prints
-the same document to stdout:
+Every run that reaches its tests also writes `.e2e/report.json`, the same
+data as the pages in a versioned schema, for scripts and integrations rather
+than for reading. `--reporter json` prints it to stdout:
 
 ```bash
 jq '.run | {status, exitCode, errors}' .e2e/report.json

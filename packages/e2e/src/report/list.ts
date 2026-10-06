@@ -1096,10 +1096,8 @@ export class ListReporter implements Reporter {
     this.printErrors();
     this.print('');
     for (const row of this.summaryRows(true)) this.print(row);
-    this.print(
-      padTitle(pc, 'Report') +
-        (event.reportPath === undefined ? pc.dim('(not written)') : this.displayPath(event.reportPath)),
-    );
+    // The report is for scripts, so a run names it only when it is missing: `--last-failed` reads it next.
+    if (event.reportPath === undefined) this.print(padTitle(pc, 'Report') + pc.dim('(not written)'));
     const paged = Object.values(pages);
     if (paged.length > 0) {
       // A page is `<results>/<test>/trace.md`; the row names the results directory.

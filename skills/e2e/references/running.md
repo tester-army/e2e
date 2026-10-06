@@ -97,10 +97,11 @@ hosted service's video by URL.
   Tests` section (error, code, failing line, code frame), then the
   summary rows `Test Files`, `Tests`, `AI`, `Cache` (when the replay cache
   ran), `Repeats` (with `--repeat-each`), `Errors`, `Start at`, `Duration`,
-  `Report`, `AI trace` (with `--ai-trace`). Past a minute `Duration`
+  `Traces` (when a page was written), `AI trace` (with `--ai-trace`). Past a minute `Duration`
   repeats as minutes and seconds, setup time split out as `startup` in the
   same parenthetical (`682.97s (11m 23s, startup 43.00s)`).
-- `report.json`, written whatever the reporters, holds `run.status`,
+- `report.json`, for scripts rather than reading (`jq`, CI tools; read the
+  trace page instead), written whatever the reporters, holds `run.status`,
   `run.exitCode`, `run.errors[]` (run-level, such as `APP_UNREACHABLE`),
   and `run.results[]`, one per test and target: `titlePath`, `file`,
   `source`, `tags` (`[]` when none), `agent`, `repeat` (0 unless

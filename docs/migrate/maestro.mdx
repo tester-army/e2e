@@ -53,7 +53,7 @@ reference pages hold the details: [screen](/reference/screen),
 | `env` and `${VAR}` | module constants, and `params` in a goal, see [Selectors](#selectors) | renamed |
 | `MAESTRO_*` variables | `process.env` in the config; a password or token goes under `credentials` or `secrets` | renamed |
 | `--format junit`, `--output` | `--reporter list,junit`, written to `.e2e/junit.xml` | renamed |
-| `--format html` | no equivalent; `markdown` writes `.e2e/summary.md`, every run writes `.e2e/report.json` | missing |
+| `--format html` | no equivalent; `markdown` writes `.e2e/summary.md`, and each failed test gets a `trace.md` page under `.e2e/results/` | missing |
 | `properties` (JUnit `<property>`) | not yet | missing |
 | `--shards`, `--shard-split` | `device: [...]` plus `workers` splits a target's files across devices on one machine; `--shard <index/total>` splits the suite across machines, see [Sharding](/ci#sharding) | renamed |
 | `maestro record`, `startRecording` | `npx e2e run --video`, one MP4 of the device per attempt, or `video` in the config | renamed |

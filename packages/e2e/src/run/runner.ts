@@ -582,6 +582,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     if (debug.enabled) {
       process.stderr.write(debug.summary());
       process.stderr.write(agentStepTable(results, serialGroups));
+      // The report is for scripts, so the summary leaves it out; a reader after the raw record finds it here.
+      if (written !== undefined && reportPath !== undefined) process.stderr.write(`[e2e debug] report ${path.relative(written.projectRoot, reportPath) || reportPath}\n`);
     }
     // `onRunFinished` runs last, after everything the terminal shows, so
     // nothing reading it waits on a slow reporter; the rows they resolve with

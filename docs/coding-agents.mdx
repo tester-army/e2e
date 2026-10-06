@@ -129,18 +129,18 @@ retrying a run.
 
 ## How an agent reads the result
 
-Every run that gets to its tests writes `.e2e/report.json`, and a trace page
-for each failed or flaky test in its directory under `.e2e/results/` (`.e2e`
-is the default `output`). The terminal names the page
+Every run that gets to its tests writes a trace page for each failed or
+flaky test, in its directory under `.e2e/results/` (`.e2e` is the default
+`output`). The terminal names the page
 under each failed test (`❯ trace .e2e/results/<test>/trace.md`). Start there: it has
 the failing line, every step with what it did (the node an action hit, the
 values an assertion read, the cache's decision, console errors and failed
 requests), the agent's last turns, and the screen at failure.
 
-When reading JSON, check `run.errors` for run-level failures, then the last
-attempt of each failed result. Its `error`, `steps`, and `artifacts` show
-what failed and how far the test got. `--reporter json` also prints the JSON
-report to stdout.
+Read the page, not `.e2e/report.json`: the report holds the same facts for
+scripts, without the page's reading of them. When a script needs it, check
+`run.errors` for run-level failures, then the last attempt of each failed
+result; `--reporter json` prints it to stdout.
 
 For model-call details, use `--ai-trace` and read the trace with
 [unbox-ai](/debugging#agent-steps). Avoid opening the raw trace in an agent's

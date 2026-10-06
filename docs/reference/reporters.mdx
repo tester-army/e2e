@@ -191,14 +191,13 @@ counts a carried failure or hook error against the outcome. The artifacts
 both reports name are on disk under `artifactsRoot`.
 
 The rows a reporter resolves with print under the `list` summary in the same
-layout as `Report`; the `json` reporter does not carry them:
+layout as its own rows; the `json` reporter does not carry them:
 
 ```
    Test Files  2 passed (2)
         Tests  6 passed (6)
      Start at  14:02:11
      Duration  8.41s
-       Report  .e2e/report.json
 
         JUnit  .e2e/junit.xml
       Results  https://example.test/runs/0192c…
