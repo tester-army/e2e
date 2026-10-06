@@ -236,7 +236,8 @@ app: {
   499 status within `startupTimeout` (default 60 s), and stops it when the run
   ends, fails, or is interrupted (`shutdownTimeout`, default 10 s). Never
   ready is `APP_UNREACHABLE`; the run stops before its tests and leaves the
-  last run's output as it was.
+  last run's report and results as they were (`command.log` still gets this
+  boot's output).
 - The child gets only `PATH`, `HOME`, the temp-directory variables,
   `SystemRoot` and `COMSPEC` on Windows, and `command.env`; pass the rest
   through `env`. Model keys and `E2E_USER_*` values are never inherited.

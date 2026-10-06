@@ -34,7 +34,8 @@ default.
    Fix from what was there. `trace` (default `retain-on-failure`) chooses
    which tests keep a page; `--trace` keeps one for every test of a run.
 2. `.e2e/report.json` holds the same facts for scripts, not for reading:
-   each step's `events` are the page's lines (`engine`, `poll`, `app`).
+   each step's `events` (`engine`, `poll`, `app`) are what the page's step
+   lines are rendered from, before it filters and caps them.
 3. When a script needs them:
 
 ```bash
