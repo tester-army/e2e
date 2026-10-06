@@ -1,7 +1,8 @@
 import type { StepExecutorContext } from 'e2e';
 import { AgentError, isAgentError } from 'e2e/agent';
+import { ConfigurationError } from 'e2e/engine';
+import * as ai from 'ai';
 import {
-  experimental_decide,
   InvalidArgumentError,
   InvalidResponseDataError,
   JSONParseError,
@@ -11,6 +12,18 @@ import {
 import { missingKey } from './api-key.ts';
 import type { DecisionRequest } from './questions.ts';
 import type { DecisionExecutorOptions } from './types.ts';
+/**
+ * The SDK's decide call, or INVALID_CONFIG when the installed `ai` predates
+ * it. Read off the namespace so an older `ai` still loads this module and
+ * the user gets the version to install instead of a link error.
+ */
+export function requireDecide(): typeof ai.experimental_decide {
+  const found = (ai as Partial<typeof ai>).experimental_decide;
+  if (typeof found !== 'function') {
+    throw new ConfigurationError('INVALID_CONFIG', 'decisionExecutor() needs ai 7.0.128 or later; update the ai package');
+  }
+  return found;
+}
 /** One gated answer: the chosen option, its probability, and the provider confidence. */
 export interface Decision {
   readonly choice: string;
@@ -43,8 +56,8 @@ export async function decide(
   let answers: Record<string, RawAnswer>;
   try {
     const call = { model, state: request.state, questions: request.questions };
-    const result = await experimental_decide({
-      ...(call as unknown as Parameters<typeof experimental_decide>[0]),
+    const result = await requireDecide()({
+      ...(call as unknown as Parameters<typeof ai.experimental_decide>[0]),
       maxRetries: 0,
       abortSignal: ctx.signal,
     });

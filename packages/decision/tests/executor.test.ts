@@ -35,6 +35,7 @@ describe('construction', () => {
     ['no options', undefined, 'decisionExecutor() takes an options object'],
     ['no model', {}, 'decisionExecutor({ model }) got undefined;'],
     ['a model id', { model: 'openai/gpt-5' }, 'decisionExecutor({ model }) got the string "openai/gpt-5";'],
+    ['an uncalled provider factory', { model: (id: string) => id }, 'decisionExecutor({ model }) got a function, not a model; call it'],
     ['a language model', { model: scriptedText([]).model }, 'got the language model scripted-text/scripted-text-1;'],
     ['a plain object', { model: { modelId: 'x' } }, 'got an object that is not a decision model;'],
     ['a v3 model', { model: { specificationVersion: 'v3', provider: 'p', modelId: 'm', doDecide: () => undefined } }, 'got p/m, a v3 model'],

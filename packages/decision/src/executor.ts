@@ -2,7 +2,7 @@ import type { LanguageModel } from 'ai';
 import type { ExecutorObservation, StepExecutor, StepExecutorContext, StepTurn, StepVerdict } from 'e2e';
 import { AgentError, isAgentError } from 'e2e/agent';
 import { ConfigurationError } from 'e2e/engine';
-import { decide, type Decision } from './decide.ts';
+import { decide, requireDecide, type Decision } from './decide.ts';
 import { actionSpace, type ActionSpace, type Control, type Operation, type Target } from './elements.ts';
 import {
   assertionRequest,
@@ -25,6 +25,7 @@ export function decisionExecutor(options: DecisionExecutorOptions): StepExecutor
   if (typeof options !== 'object' || options === null) {
     throw new ConfigurationError('INVALID_CONFIG', `decisionExecutor() takes an options object; ${EXAMPLE}`);
   }
+  requireDecide();
   checkModel(options.model);
   const minProbability = options.minProbability ?? 0;
   const minConfidence = options.minConfidence ?? 0;
@@ -49,6 +50,9 @@ const EXAMPLE = "pass an AI SDK decision model, e.g. decisionExecutor({ model: t
  * string, a language model, or a decision model that cannot answer `choice`.
  */
 function checkModel(model: unknown): void {
+  if (typeof model === 'function') {
+    throw new ConfigurationError('INVALID_CONFIG', `decisionExecutor({ model }) got a function, not a model; call it with a model id, ${EXAMPLE}`);
+  }
   if (typeof model !== 'object' || model === null) {
     const got = typeof model === 'string' ? `the string ${JSON.stringify(model)}` : String(model);
     throw new ConfigurationError('INVALID_CONFIG', `decisionExecutor({ model }) got ${got}; ${EXAMPLE}`);
