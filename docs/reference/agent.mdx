@@ -243,9 +243,10 @@ Checks one fresh observation without polling. The judge sees only the
 assertion and current observation, never prior steps or `act` summaries.
 It answers `holds`, `fails`, or `inconclusive`. When what the assertion is
 about appears more than once, such as a total in a summary and on a pay
-button, every instance must agree: one that contradicts it fails. A claim
-about some item, such as `a todo is marked done`, still holds when one item
-matches.
+button, every instance must agree: one that contradicts it fails. Name
+the place (`the order summary total is $42.00`) to judge only that one. A
+claim about some item, such as `a todo is marked done`, still holds when one
+item matches.
 
 Throws `ASSERTION_FAILED` on a false judgment and `ASSERTION_INCONCLUSIVE`
 when the screen did not show enough to decide. Both carry the explanation
