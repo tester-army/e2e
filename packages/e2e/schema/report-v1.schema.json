@@ -244,7 +244,7 @@
         "totalActions": { "type": "integer", "minimum": 0 },
         "entry": { "$ref": "#/$defs/sha256" },
         "detail": { "type": "string", "maxLength": 600 },
-        "write": { "enum": ["saved", "kept", "unconfirmed", "evicted", "no-change"] }
+        "write": { "enum": ["saved", "kept", "unconfirmed", "evicted", "no-change", "not-written"] }
       },
       "allOf": [
         {

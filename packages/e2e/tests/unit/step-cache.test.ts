@@ -1068,6 +1068,33 @@ describe('flushStagedTraces and a re-recorded flow', () => {
     await flush(trace('minted-token'));
     expect(await readFile(file, 'utf8')).toBe(written);
   });
+
+  it('says a confirmed recording the store did not write was not written, rather than saved', async () => {
+    const directory = await tempDir('e2e-flush-too-large-');
+    const trace: ActionTrace = {
+      actions: [{ name: 'tap', summary: 'tap Save', target: { role: 'button', name: 'Save' } }],
+      executor: { name: 'scripted' },
+      summary: 'saved',
+      startPath: '/',
+      endPath: '/',
+      endAnchors: [{ role: 'status', name: 'State', text: 'saved' }],
+    };
+    const outcome = async (maxBytes: number) => {
+      const context: AgentCacheContext = {
+        mode: 'read-write',
+        store: new FileCacheStore({ directory, maxBytes, writable: true }),
+        replayEligible: true,
+        strict: false,
+        claimKey: () => claimedKey('e'.repeat(64)),
+        staged: [{ kind: 'write', keyHash: 'e'.repeat(64), stepIndex: 0, trace }],
+        writes: new Map(),
+      };
+      await flushStagedTraces(context, { lastVerifiedStepIndex: 1, implicatesUnconfirmed: true });
+      return context.writes.get(0);
+    };
+    expect(await outcome(16)).toBe('not-written');
+    expect(await outcome(MAX_CACHE_WIRE_BYTES)).toBe('saved');
+  });
 });
 
 describe('cache.strict', () => {

@@ -103,7 +103,8 @@ ran, and what you saw, with media:
 - **Terminal output:** paste the relevant lines of the CLI output as a
   fenced `text` block (ANSI stripped, paths trimmed). This is the primary
   evidence for runner, CLI, and reporter changes.
-- **Video:** `--video` (add `--headed` to watch it) records every attempt to
+- **Video:** `--video` (add `--headed` to watch it) records every attempt, on
+  an engine that records video, to
   `.e2e/results/<test>/attempt-<n>/video/`: `video.webm` from
   `@e2e-dev/web`, `video.mp4` from `@e2e-dev/mobile`.
   Attach it for engine, locator, and agent changes a viewer can see.

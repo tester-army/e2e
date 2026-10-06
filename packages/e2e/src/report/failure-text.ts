@@ -258,8 +258,9 @@ const CACHE_WRITE_TEXT: Readonly<Record<NonNullable<StepCacheRecord['write']>, s
   saved: 'recording saved',
   kept: 'recording kept',
   unconfirmed: 'recording not saved: no check passed after this step',
-  evicted: 'recording deleted',
+  evicted: 'recording deleted: its replay ended in a failure or a repair, or no check confirmed it',
   'no-change': 'nothing recorded: the step changed nothing a replay could check',
+  'not-written': 'recording not saved: the cache store did not write it (past its size limit)',
 };
 
 /** Where an app log line came from, as the page names it. */
@@ -303,16 +304,17 @@ function closestToTheEnd(events: readonly StepEvent[]): readonly StepEvent[] {
   return events.filter((event) => kept.has(event));
 }
 
-/** App log lines the page lists in its own section; errors and warnings stay first, then the latest of the rest. */
+/** App log lines the page lists in its own section; errors and warnings take the slots first, then the latest of the rest. */
 const MAX_APP_LOG_LINES = 50;
 
 /**
- * Every line the app logged across the attempt (console output, uncaught
+ * The lines the app logged across the attempt (console output, uncaught
  * errors, failed requests), oldest first, each with its step's number, so a
- * reader finds the whole log in one place rather than spread across steps.
+ * reader finds the log in one place rather than spread across steps.
  * Navigations are where the page went, not what the app said, and stay
- * under their steps. Past the cap, every error and warning is kept, then the
- * latest of the rest.
+ * under their steps. Past the cap, errors and warnings take the slots first
+ * (the latest of them when they alone pass it), then the latest of the rest,
+ * and a line counts what was left out.
  */
 function appLogLines(steps: readonly ReportStep[]): string[] {
   const logged = steps
@@ -326,7 +328,7 @@ function appLogLines(steps: readonly ReportStep[]): string[] {
   const shown = logged.filter((entry) => kept.has(entry));
   const left = logged.length - shown.length;
   return [
-    ...(left === 0 ? [] : [`${left} earlier ${left === 1 ? 'line' : 'lines'} left out`]),
+    ...(left === 0 ? [] : [`${left} ${left === 1 ? 'line' : 'lines'} left out`]),
     ...shown.map(({ step, event }) => `step ${step} · ${eventLine(event)}`),
   ];
 }
@@ -520,7 +522,7 @@ export function renderTracePage(report: Report1Document, result: ReportResult, f
 
   const appLog = appLogLines(told.steps);
   if (appLog.length > 0) {
-    lines.push('## App log', '', 'Everything the app logged, oldest first, with the step it happened in.', '');
+    lines.push('## App log', '', 'What the app logged, oldest first, with the step it happened in.', '');
     for (const line of appLog) lines.push(`- ${line}`);
     lines.push('');
   }

@@ -19,7 +19,8 @@ default.
    - what the app logged meanwhile (`✗ network error: POST /api/save 500`,
      `✗ uncaught error: ...`, `⚠ console warning: ...`, `ℹ console: ...`);
      `❯ app 2 errors` in the terminal says there are some, and the page's
-     `## App log` lists them all with their step;
+     `## App log` lists up to 50 with their step, errors first, counting
+     the rest;
    - where the page went (`↪ navigated to /login`, a new tab the app
      opened, a frame that loaded);
    - how the screen changed since the step before (`screen: 2 changes since
@@ -47,7 +48,8 @@ jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
    `url`, `screen` and `screenshot` artifact ids, and `candidates`; a
    failed agent step has `turns`; `selected` drops filtered-out tests
    (recorded as `skipped`).
-4. Artifacts, under `.e2e/results/<test>/attempt-<n>/`, beside the
+4. Artifacts, under `.e2e/results/<test>/attempt-<n>/` (`rerun-<n>/attempt-<m>/`
+   for a `--last-failed` rerun), beside the
    trace page: `screen-at-failure.txt`
    and the engine's screenshot per failed attempt; downloads; with
    `--video` the recording (`video/video.webm` in a local browser, each

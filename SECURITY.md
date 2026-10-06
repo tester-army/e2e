@@ -47,8 +47,8 @@ logs, reports, or artifacts. A secret fill is authorized by the runner from
 its own observation (an unresolved handle, a secure sink, an editable node
 with a compatible purpose, no control transfer since); the
 model never sees or picks the value. Once a secret is filled, the viewport
-stays pixel-tainted for the rest of the attempt, and a UTF-8 text download
-is rewritten before it is registered or stored, every secret value becoming
+stays pixel-tainted for the rest of the attempt, and a text download (`.txt`,
+`.csv`, `.json`, `.html`) is rewritten before it is registered or stored, every secret value becoming
 `<secret:name>`; any other download is kept as served and marked
 `incomplete`. Sessions are per-run, target-bound, encrypted
 with a memory-only key, and deleted at cleanup.

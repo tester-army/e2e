@@ -111,7 +111,8 @@ With `--session`, `run.results` also holds the setup's result and the
 project's other tests as skipped (`filtered`). The attempt directory is
 `.e2e/results/explore-<slug>-<id>/attempt-1/`: the slug is the goal's first
 words in lowercase ASCII, capped, and the id keeps distinct goals, targets, and
-agents apart while the same goal always maps to the same directory. For example
+agents apart while the same goal on the same target and agent always maps to
+the same directory. For example
 `.e2e/results/explore-check-the-cart-totals-1a2b3c4d5e6f7a8b/attempt-1/finding-1.png`.
 
 Turn a finding into a test: its `reproduction` steps are the `agent.act()`

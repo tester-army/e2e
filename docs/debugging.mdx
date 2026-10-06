@@ -46,8 +46,10 @@ landed on, the values an assertion read while it waited, the replay cache's
 decision, what the app logged meanwhile (console output, uncaught exceptions,
 failed requests, 4xx and 5xx responses), where the page went (`↪ navigated
 to /login`, a new tab, a frame), and how the screen changed since the step
-before. Then come the app log (everything the app logged, each line with its
-step), the agent's last turns, and the screen at failure:
+before. Then come the app log (up to 50 lines, each with its step, errors
+and warnings first when there are more; a run keeps at most 200 errors and
+warnings and 100 other lines per attempt), the agent's last turns, and the
+screen at failure:
 
 ````markdown
 # ✗ todos › shows the remaining count
@@ -91,7 +93,7 @@ Look at: `tests/todos.e2e.ts:15`
 
 ## App log
 
-Everything the app logged, oldest first, with the step it happened in.
+What the app logged, oldest first, with the step it happened in.
 
 - step 2 · ✗ network error: `POST /api/todos 500 Internal Server Error`
 
@@ -112,7 +114,8 @@ Everything the app logged, oldest first, with the step it happened in.
 The page links the screenshot and the attempt's other files from its own
 directory, so they open from an editor's markdown preview.
 
-An assertion that read one value the whole time is a wrong expectation; one
+An assertion that read one value the whole time is a wrong expectation or a
+state the app never reached (check the app log for a failed request); one
 whose readings changed (`"2 remaining" x3 -> at 410ms "1 remaining"`) raced
 the app. A step's screen is the last one it saw: on web, the screen an action
 left; on a device, the screen the step acted on. `screen: unchanged` after an
@@ -152,7 +155,8 @@ failed result:
 
 Each test gets one directory under `.e2e/results/` (`<output>/results/` when
 the [`output`](/reference/config#output) is moved), holding its trace page
-and one `attempt-<n>` per attempt:
+and one `attempt-<n>` per attempt; the tests of a serial group share the
+group's directory for their attempts:
 
 ```text
 .e2e/results/todos-adds-a-todo-1a2b3c4d5e6f7a8b/trace.md

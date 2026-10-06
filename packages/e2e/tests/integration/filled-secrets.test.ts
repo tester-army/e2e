@@ -6,7 +6,7 @@
  * filled or not. A secret filled into a visible ordinary field denies
  * screenshots. The executor's fill is recorded in the trace cache by the
  * secret's name alone. Nothing under the project's `.e2e` directory holds
- * the plaintext afterwards.
+ * the plaintext afterwards, a trace page for every test included.
  */
 
 import { readFileSync } from 'node:fs';
@@ -84,6 +84,8 @@ describe('filled secrets', () => {
       config: {
         tests: 'tests/**/*.e2e.ts',
         reporters: ['json'] as const,
+        // A page for every test, passing ones too, so the scan below reads each step's screen and log.
+        trace: 'on' as const,
         cache: 'read-write' as const,
         artifacts: { store },
         credentials: { member: { username: 'ada', password: SECRET } },
@@ -166,6 +168,8 @@ describe('filled secrets', () => {
     for (const put of store.puts) {
       expect(Buffer.from(put.bytes).includes(SECRET), put.path).toBe(false);
     }
-    for (const [file, text] of contentsUnder(path.join(project.dir, '.e2e'))) expect(text.includes(SECRET), file).toBe(false);
+    const written = contentsUnder(path.join(project.dir, '.e2e'));
+    expect(written.filter(([file]) => file.endsWith('trace.md'))).toHaveLength(6);
+    for (const [file, text] of written) expect(text.includes(SECRET), file).toBe(false);
   });
 });

@@ -106,9 +106,11 @@ export interface AgentCacheContext {
  * is. `unconfirmed`: not saved, because no check passed after the step.
  * `evicted`: the entry was deleted, since it replayed into a failure or a
  * repair. `no-change`: the step passed but changed nothing a replay could
- * check, so there was nothing to record.
+ * check, so there was nothing to record. `not-written`: confirmed, but the
+ * store did not write it (the file store refuses a recording past its size
+ * limit).
  */
-export type CacheWrite = 'saved' | 'kept' | 'unconfirmed' | 'evicted' | 'no-change';
+export type CacheWrite = 'saved' | 'kept' | 'unconfirmed' | 'evicted' | 'no-change' | 'not-written';
 
 /**
  * Whether the store already holds this flow: the same actions, paths, anchors,
@@ -204,8 +206,8 @@ export async function flushStagedTraces(context: AgentCacheContext, settlement: 
         context.writes.set(entry.stepIndex, 'kept');
         continue;
       }
-      await context.store.write(entry.keyHash, entry.trace);
-      context.writes.set(entry.stepIndex, 'saved');
+      const written = await context.store.write(entry.keyHash, entry.trace);
+      context.writes.set(entry.stepIndex, written === undefined ? 'not-written' : 'saved');
     } catch {
       // The cache is disposable; a failed flush is a slower next run only.
     }

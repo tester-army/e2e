@@ -37,6 +37,11 @@ const MOVING = `<!doctype html><html><body><h1>Moving</h1><button onclick="windo
   setTimeout(() => { location.href = '/next'; }, 1000);
 </script></body></html>`;
 
+/** The pages a navigation lands on, each naming its own path; served from here, never from the request. */
+const LANDINGS: Readonly<Record<string, string>> = Object.fromEntries(
+  ['/next', '/tab', '/embed'].map((landing) => [landing, `<!doctype html><h1>${landing}</h1>`]),
+);
+
 const signal = new AbortController().signal;
 const cleanup = (): EngineCleanupContext => ({ signal, timeoutMs: 30_000 });
 const operation = (): OperationContext => ({ signal, timeoutMs: 30_000, runId: 'app-log', attemptId: 'a', origin: 'test' });
@@ -53,9 +58,9 @@ describe('app log', () => {
       } else if (request.url === '/moving') {
         response.writeHead(200, { 'content-type': 'text/html' });
         response.end(MOVING);
-      } else if (request.url === '/next' || request.url === '/tab' || request.url === '/embed') {
+      } else if (request.url !== undefined && Object.hasOwn(LANDINGS, request.url)) {
         response.writeHead(200, { 'content-type': 'text/html' });
-        response.end(`<!doctype html><h1>${request.url}</h1>`);
+        response.end(LANDINGS[request.url]);
       } else if (request.url === '/api/reset') {
         request.socket.destroy();
       } else if (request.url === '/api/todos') {

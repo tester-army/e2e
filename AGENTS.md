@@ -301,8 +301,9 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   directory, then `E2E_DEVTOOLS=1 ... test:agent -- --workers 1` (the testbed
   agent config registers `@ai-sdk/devtools`; that recorder is one database
   per process, hence one worker). Prefer `--ai-trace` for anything to keep.
-- "Trace" means two things here: the recorded actions the replay cache
-  keeps (`trace-1` entries under `.e2e/cache/`) and this AI trace. Say
+- "Trace" means three things here: the recorded actions the replay cache
+  keeps (`trace-1` entries under `.e2e/cache/`), this AI trace, and the
+  runner's trace page per test (`.e2e/results/<test>/trace.md`). Say
   which.
 
 ## Cross-checking the web engine's tree

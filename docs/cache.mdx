@@ -37,6 +37,7 @@ once the attempt ended:
 | `unconfirmed` | Not saved: no check passed after the step. Follow it with a locator assertion or `agent.assert`. |
 | `evicted` | The entry was deleted: its replay ended in a failure or a repair, or no check confirmed it before the attempt failed. |
 | `no-change` | Nothing recorded: the step changed nothing a replay could check. |
+| `not-written` | Not saved: the store did not write the recording, such as one past the file store's size limit. |
 
 The [trace page](/debugging#traces) shows all of it under the step. `agent.act()`
 returns the cache object as `result.cache`, without `write`. The cache object

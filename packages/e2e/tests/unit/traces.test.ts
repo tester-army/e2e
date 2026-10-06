@@ -202,7 +202,7 @@ describe('the app log on a trace page', () => {
       [
         '## App log',
         '',
-        'Everything the app logged, oldest first, with the step it happened in.',
+        'What the app logged, oldest first, with the step it happened in.',
         '',
         '- step 1 · ℹ console: `booted`',
         '- step 2 · ⚠ console warning: `slow render`',
@@ -219,7 +219,7 @@ describe('the app log on a trace page', () => {
     const section = page!.text.split('## App log')[1]!.split('\n## ')[0]!;
     const items = section.split('\n').filter((line) => line.startsWith('- '));
     expect(items).toHaveLength(51);
-    expect(items[0]).toBe('- 11 earlier lines left out');
+    expect(items[0]).toBe('- 11 lines left out');
     expect(items[1]).toBe('- step 1 · ✗ console error: `first failure`');
     expect(items.at(-1)).toBe('- step 1 · ℹ console: `tick 59`');
     expect(section).not.toContain('`tick 10`');

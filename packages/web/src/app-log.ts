@@ -32,8 +32,14 @@ export interface NavigationLog {
 /** Chrome's console echo of a failed load, which the network lines already tell. */
 const LOAD_ECHO = 'Failed to load resource:';
 
-/** A request the browser cancelled because the page moved on; not the app failing. */
-const ABORTED = 'net::ERR_ABORTED';
+/**
+ * Whether a failed request is one the browser cancelled because the page
+ * moved on, not the app failing: Chromium's and Firefox's abort codes, and
+ * WebKit's text, read the way Playwright reads each browser's cancellation.
+ */
+function isCancelled(errorText: string): boolean {
+  return errorText === 'net::ERR_ABORTED' || errorText === 'NS_BINDING_ABORTED' || errorText.includes('cancelled');
+}
 
 /** Reports the context's console output, uncaught exceptions, failed requests, and navigations to `log`, from now on. */
 export function installAppLog(context: BrowserContext, log: (entry: AppLogEntry) => void, navigation: NavigationLog): void {
@@ -55,7 +61,7 @@ export function installAppLog(context: BrowserContext, log: (entry: AppLogEntry)
   });
   context.on('requestfailed', (request) => {
     const failure = request.failure()?.errorText ?? 'failed';
-    if (failure === ABORTED) return;
+    if (isCancelled(failure)) return;
     report({ source: 'network', level: 'error', text: `${requestLine(request)} ${failure}` });
   });
   context.on('response', (response) => {
