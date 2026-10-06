@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/eas",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "EAS Simulators for e2e: run mobile targets on Expo's hosted iOS simulators and Android emulators",
   "keywords": [
     "e2e",
