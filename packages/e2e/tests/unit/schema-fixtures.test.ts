@@ -35,15 +35,21 @@ describe.each(schemas)('%s schema', (name) => {
   });
 
   if (name === 'report-v1') {
-    it('bounds what a step tells: an app event level, a hook phase, and the cache detail, entry, and write', () => {
+    it("bounds what a step tells and what the app logged: a log line's source and level, a hook phase, and the cache detail, entry, and write", () => {
       const report = readJson('fixtures', 'report-v1.valid.json') as {
-        run: { results: { attempts: { steps: Record<string, unknown>[] }[] }[] };
+        run: { results: { attempts: (Record<string, unknown> & { steps: Record<string, unknown>[] })[] }[] };
       };
-      const step = report.run.results[0]!.attempts[0]!.steps[0]!;
+      const attempt = report.run.results[0]!.attempts[0]!;
+      const step = attempt.steps[0]!;
       const cache = step['cache'] as Record<string, unknown>;
-      const app = (step['events'] as Record<string, unknown>[]).find((event) => event['kind'] === 'app')!;
+      const line = (attempt['appLog'] as Record<string, unknown>[])[0]!;
+      const navigation = (step['events'] as Record<string, unknown>[]).find((event) => event['kind'] === 'navigation')!;
       const cases: [() => void, () => void][] = [
-        [() => (app['level'] = 'fatal'), () => (app['level'] = 'error')],
+        [() => (line['level'] = 'fatal'), () => (line['level'] = 'error')],
+        [() => (line['source'] = 'navigation'), () => (line['source'] = 'network')],
+        [() => (line['text'] = 'x'.repeat(301)), () => (line['text'] = 'x'.repeat(300))],
+        [() => (line['step'] = -1), () => (line['step'] = 0)],
+        [() => (navigation['level'] = 'info'), () => delete navigation['level']],
         [() => (step['phase'] = 'body'), () => delete step['phase']],
         [() => (cache['detail'] = 'x'.repeat(601)), () => (cache['detail'] = 'x'.repeat(600))],
         [() => (cache['entry'] = 'not-a-digest'), () => (cache['entry'] = 'a'.repeat(64))],

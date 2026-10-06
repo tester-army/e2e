@@ -118,6 +118,7 @@ describe('app log', () => {
     const surface = new PlaywrightSurface({});
     const artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-app-log-'));
     const entries: AppLogEntry[] = [];
+    const went: string[] = [];
     const screens: EngineSnapshot[] = [];
     const facts: Record<string, string>[] = [];
     try {
@@ -126,6 +127,7 @@ describe('app log', () => {
       await surface.startAttempt({
         attemptId: 'a', artifactsDir, signal, resolveSecret: noSecrets,
         appLog: (entry) => entries.push(entry),
+        navigation: (line) => went.push(line),
         screen: (snapshot) => screens.push(snapshot),
         environment: (told) => facts.push({ ...told }),
       });
@@ -138,7 +140,7 @@ describe('app log', () => {
       await surface.perform(help!.ref, { kind: 'tap' }, operation());
       await surface.perform(help!.ref, { kind: 'tap' }, operation());
       expect(screens).toHaveLength(3);
-      const navigations = () => entries.filter((entry) => entry.source === 'navigation').map((entry) => entry.text);
+      const navigations = () => [...went];
       await expect.poll(navigations, { timeout: 5_000 }).toContain(`navigated to ${url}/next`);
       expect(navigations()).toEqual(expect.arrayContaining([
         `frame "pay" loaded ${url}/embed`,

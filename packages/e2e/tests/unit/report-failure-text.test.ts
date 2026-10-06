@@ -154,10 +154,10 @@ describe('renderTracePage', () => {
             }),
           ],
           artifacts: [screen, shot],
-          failure: { url: 'http://app.test/todos', screen: 'a:0', screenshot: 'a:1' },
+          failure: { url: 'http://app.test/todos', viewport: { width: 1280, height: 720 }, nodes: 2, screen: 'a:0', screenshot: 'a:1' },
         }),
       ],
-      (reportPath) => (reportPath === 't/screen-at-failure.txt' ? '# Screen at failure\nurl: http://app.test/todos\nrevision: r4\nviewport: 1280x720\nnodes: 2\n\n#n1 document "Todos"\n #n19 button "Add"\n' : undefined),
+      (reportPath) => (reportPath === 't/screen-at-failure.txt' ? '#n1 document "Todos"\n #n19 button "Add"\n' : undefined),
     );
     expect(body).toBe(
       [

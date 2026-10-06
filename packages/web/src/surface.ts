@@ -244,6 +244,8 @@ const DEFAULT_TEST_ID_ATTRIBUTE = 'data-testid';
 
 /** How long the screen an action left may take for the trace before the step goes without one. */
 const TRACE_SCREEN_TIMEOUT_MS = 1_000;
+/** How long the page may take to report its user agent before the trace names the browser alone. */
+const ENVIRONMENT_TIMEOUT_MS = 1_000;
 
 export class PlaywrightSurface {
   /**
@@ -481,6 +483,7 @@ export class PlaywrightSurface {
         target.setDefaultTimeout(CONTEXT_DEFAULT_TIMEOUT_MS);
         target.on('dialog', (dialog) => { void dialogs.dispatch(dialog); });
         installAppLog(target, context.appLog, {
+          navigated: context.navigation,
           ownNavigation: () => this.ownNavigations > 0,
           testPage: () => this.openPage(),
         });
@@ -722,7 +725,7 @@ export class PlaywrightSurface {
       this.environmentTold = true;
       const browser = page.context().browser();
       const facts: Record<string, string> = browser === null ? {} : { browser: `${browser.browserType().name()} ${browser.version()}` };
-      const budget = { signal: AbortSignal.timeout(TRACE_SCREEN_TIMEOUT_MS), timeoutMs: TRACE_SCREEN_TIMEOUT_MS };
+      const budget = { signal: AbortSignal.timeout(ENVIRONMENT_TIMEOUT_MS), timeoutMs: ENVIRONMENT_TIMEOUT_MS };
       const userAgent = await withOperationDeadline(budget, 'user agent', () => page.evaluate(() => navigator.userAgent)).catch(() => undefined);
       return typeof userAgent === 'string' ? { ...facts, 'user agent': userAgent } : facts;
     } catch {
@@ -730,13 +733,13 @@ export class PlaywrightSurface {
     }
   }
 
-
   /**
    * Resolves with what an action resolved with once the harness has the
-   * screen it left, for the trace. The screen is captured like an
-   * observation but never published, so every ref a test or model holds
-   * stays valid; a page that cannot answer within a second leaves the step
-   * without one, and an action that failed leaves none.
+   * screen it left, for the trace. The read is on the action's path, as the
+   * `screen` contract allows, and only when the attempt keeps a trace. The
+   * screen is captured like an observation but never published, so every ref
+   * a test or model holds stays valid; a page that cannot answer within a
+   * second leaves the step without one, and an action that failed leaves none.
    */
   private async acted<T>(operation: OperationContext, work: Promise<T>): Promise<T> {
     const result = await work;

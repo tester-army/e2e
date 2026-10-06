@@ -10,7 +10,8 @@
 
 import path from 'node:path';
 import { isLoopbackHost } from '../internal/urls.ts';
-import type { StepCacheInfo, StepCacheRecord, StepEvent, StepTurn } from '../run/steps.ts';
+import type { AppLogSource } from '../engine/index.ts';
+import type { AppLogRecord, StepCacheInfo, StepCacheRecord, StepEvent, StepTurn } from '../run/steps.ts';
 import type { Report1Document, ReportError, ReportResult, ReportSource, ReportStep } from './build.ts';
 import { cell, code, formatDuration, link, MAX_CELL_CHARS, MAX_ID_CHARS, MAX_LABEL_CHARS, MAX_PATH_CHARS, MAX_TITLE_CHARS, plural } from './markdown-text.ts';
 import { repeatSuffix } from './format.ts';
@@ -264,44 +265,65 @@ const CACHE_WRITE_TEXT: Readonly<Record<NonNullable<StepCacheRecord['write']>, s
 };
 
 /** Where an app log line came from, as the page names it. */
-const APP_SOURCE_TEXT: Readonly<Record<string, string>> = {
+const APP_SOURCE_TEXT: Readonly<Record<AppLogSource, string>> = {
   console: 'console',
   error: 'uncaught',
   network: 'network',
   system: 'system',
 };
 
-/**
- * The lines under one step on the page, oldest first: the cache's decision
- * for an agent step, then each action it took (the node it landed on), each
- * poll that waited or failed (the values it read in order), and every line
- * the app logged while it ran.
- */
-function stepDetailLines(step: ReportStep, options: Pick<TracePageOptions, 'cacheDir'> = {}): string[] {
-  const lines: string[] = [];
-  if (step.cache !== undefined) lines.push(cacheLine(step.cache, options.cacheDir));
-  const told = step.events
-    .filter((event) => event.kind === 'app' || event.kind === 'engine' || (event.kind === 'poll' && ((event.count ?? 0) > 1 || event.status !== 'passed')))
-    .toSorted((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
-  const shown = closestToTheEnd(told);
-  if (shown.length < told.length) lines.push(`${told.length - shown.length} earlier ${told.length - shown.length === 1 ? 'event' : 'events'} left out`);
-  for (const event of shown) lines.push(eventLine(event));
-  return lines;
+/** One line a page lists, when it happened, and whether it outranks the rest when there is no room for all. */
+interface PageItem {
+  readonly at: string;
+  readonly important: boolean;
+  readonly line: string;
 }
 
 /**
- * The events a page lists for a step with more than it has room for: every
- * one that failed or logged an error, then the latest of the rest, in the
- * order they happened. The end of a step is where it went wrong.
+ * The items a page has room for, in the order they happened: past `max`,
+ * the important ones take the slots first (the latest of them when they
+ * alone pass it), then the latest of the rest. The end is where it went
+ * wrong. Also says how many it left out.
  */
-function closestToTheEnd(events: readonly StepEvent[]): readonly StepEvent[] {
-  if (events.length <= MAX_STEP_EVENTS) return events;
-  const kept = new Set(events.filter((event) => event.status !== 'passed').slice(-MAX_STEP_EVENTS));
-  for (const event of events.toReversed()) {
-    if (kept.size >= MAX_STEP_EVENTS) break;
-    kept.add(event);
+function importantThenLatest(items: readonly PageItem[], max: number): { readonly shown: readonly PageItem[]; readonly left: number } {
+  const ordered = items.toSorted((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  if (ordered.length <= max) return { shown: ordered, left: 0 };
+  const kept = new Set(ordered.filter((item) => item.important).slice(-max));
+  for (const item of ordered.toReversed()) {
+    if (kept.size >= max) break;
+    kept.add(item);
   }
-  return events.filter((event) => kept.has(event));
+  const shown = ordered.filter((item) => kept.has(item));
+  return { shown, left: ordered.length - shown.length };
+}
+
+/** One app log line as a page shows it: `✗ network error: \`GET /api 500\``. */
+function appLogLine(entry: AppLogRecord): string {
+  const glyph = entry.level === 'error' ? '✗' : entry.level === 'warning' ? '⚠' : 'ℹ';
+  const text = code(shortenLoopback(entry.text), MAX_DETAIL_CHARS);
+  const source = APP_SOURCE_TEXT[entry.source];
+  return entry.level === 'info' ? `${glyph} ${source}: ${text}` : `${glyph} ${source} ${entry.level}: ${text}`;
+}
+
+/**
+ * The lines under one step on the page, oldest first: the cache's decision
+ * for an agent step, then each action it took (the node it landed on), each
+ * poll that waited or failed (the values it read in order), where the app
+ * went, and every line the app logged while it ran (`appLog`, the attempt's).
+ */
+function stepDetailLines(step: ReportStep, appLog: readonly AppLogRecord[], options: Pick<TracePageOptions, 'cacheDir'> = {}): string[] {
+  const lines: string[] = [];
+  if (step.cache !== undefined) lines.push(cacheLine(step.cache, options.cacheDir));
+  const items: PageItem[] = [
+    ...step.events
+      .filter((event) => event.kind === 'engine' || event.kind === 'navigation' || (event.kind === 'poll' && ((event.count ?? 0) > 1 || event.status !== 'passed')))
+      .map((event) => ({ at: event.startedAt, important: event.status !== 'passed', line: eventLine(event) })),
+    ...appLog.filter((entry) => entry.step === step.index).map((entry) => ({ at: entry.at, important: entry.level !== 'info', line: appLogLine(entry) })),
+  ];
+  const { shown, left } = importantThenLatest(items, MAX_STEP_EVENTS);
+  if (left > 0) lines.push(`${left} ${left === 1 ? 'event' : 'events'} left out`);
+  for (const item of shown) lines.push(item.line);
+  return lines;
 }
 
 /** App log lines the page lists in its own section; errors and warnings take the slots first, then the latest of the rest. */
@@ -309,28 +331,19 @@ const MAX_APP_LOG_LINES = 50;
 
 /**
  * The lines the app logged across the attempt (console output, uncaught
- * errors, failed requests), oldest first, each with its step's number, so a
- * reader finds the log in one place rather than spread across steps.
- * Navigations are where the page went, not what the app said, and stay
- * under their steps. Past the cap, errors and warnings take the slots first
- * (the latest of them when they alone pass it), then the latest of the rest,
- * and a line counts what was left out.
+ * errors, failed requests), oldest first, each with its step's number on the
+ * page, so a reader finds the log in one place rather than spread across
+ * steps. Past the cap, errors and warnings take the slots first, and a line
+ * counts what was left out.
  */
-function appLogLines(steps: readonly ReportStep[]): string[] {
-  const logged = steps
-    .flatMap((step, index) => step.events.filter((event) => event.kind === 'app' && event.name !== 'navigation').map((event) => ({ step: index + 1, event })))
-    .toSorted((a, b) => Date.parse(a.event.startedAt) - Date.parse(b.event.startedAt));
-  const kept = new Set(logged.filter(({ event }) => event.level === 'error' || event.level === 'warning').slice(-MAX_APP_LOG_LINES));
-  for (const entry of logged.toReversed()) {
-    if (kept.size >= MAX_APP_LOG_LINES) break;
-    kept.add(entry);
-  }
-  const shown = logged.filter((entry) => kept.has(entry));
-  const left = logged.length - shown.length;
-  return [
-    ...(left === 0 ? [] : [`${left} ${left === 1 ? 'line' : 'lines'} left out`]),
-    ...shown.map(({ step, event }) => `step ${step} · ${eventLine(event)}`),
-  ];
+function appLogLines(steps: readonly ReportStep[], appLog: readonly AppLogRecord[]): string[] {
+  const numbers = new Map(steps.map((step, position) => [step.index, position + 1]));
+  const items = appLog.map((entry) => {
+    const number = entry.step === undefined ? undefined : numbers.get(entry.step);
+    return { at: entry.at, important: entry.level !== 'info', line: `${number === undefined ? 'before step 1' : `step ${number}`} · ${appLogLine(entry)}` };
+  });
+  const { shown, left } = importantThenLatest(items, MAX_APP_LOG_LINES);
+  return [...(left === 0 ? [] : [`${left} ${left === 1 ? 'line' : 'lines'} left out`]), ...shown.map((item) => item.line)];
 }
 
 function cacheLine(cache: StepCacheRecord, cacheDir: string | undefined): string {
@@ -353,14 +366,9 @@ function cacheLine(cache: StepCacheRecord, cacheDir: string | undefined): string
 function eventLine(event: StepEvent): string {
   const detail = event.detail === undefined ? undefined : cell(shortenLoopback(event.detail), MAX_DETAIL_CHARS);
   switch (event.kind) {
-    case 'app': {
-      // A navigation is the page moving on, told in the engine's own words.
-      if (event.name === 'navigation') return `↪ ${cell(shortenLoopback(event.detail ?? 'navigated'), MAX_DETAIL_CHARS)}`;
-      const glyph = event.level === 'error' ? '✗' : event.level === 'warning' ? '⚠' : 'ℹ';
-      const text = event.detail === undefined ? '' : code(shortenLoopback(event.detail), MAX_DETAIL_CHARS);
-      const source = APP_SOURCE_TEXT[event.name ?? ''] ?? cell(event.name ?? 'app', MAX_ID_CHARS);
-      return event.level === 'info' || event.level === undefined ? `${glyph} ${source}: ${text}` : `${glyph} ${source} ${event.level}: ${text}`;
-    }
+    case 'navigation':
+      // The page moving on, told in the engine's own words.
+      return `↪ ${cell(shortenLoopback(event.detail ?? 'navigated'), MAX_DETAIL_CHARS)}`;
     case 'poll': {
       const verb = event.status === 'passed' ? 'passed after' : 'gave up after';
       return `${event.name === undefined ? 'poll' : cell(event.name, MAX_ID_CHARS)} ${verb} ${plural(event.count ?? 1, 'read')} in ${formatDuration(event.durationMs)}${detail === undefined ? '' : `: ${detail}`}`;
@@ -442,26 +450,6 @@ function pageHref(reportPath: string, options: TracePageOptions): string | undef
   return options.pageDir === undefined ? undefined : path.posix.relative(options.pageDir, reportPath);
 }
 
-/**
- * The screen file's viewport and node count, and its listing: the file opens
- * with a heading and `key: value` lines before a blank line, which the page
- * states beside the URL instead of repeating under its own heading. A file
- * without that header is all listing.
- */
-function splitScreenFile(file: string): { facts: string[]; listing: string } {
-  const end = file.indexOf('\n\n');
-  if (!file.startsWith('# ') || end === -1) return { facts: [], listing: file };
-  const facts: string[] = [];
-  for (const line of file.slice(0, end).split('\n').slice(1)) {
-    const viewport = /^viewport: (.+)$/u.exec(line);
-    if (viewport !== null) facts.push(`viewport ${viewport[1]}`);
-    // `nodes: 42 (listing truncated)`; `nodes: unavailable` says nothing the listing does not.
-    const nodes = /^nodes: (\d+)(.*)$/u.exec(line);
-    if (nodes !== null) facts.push(`${nodes[1]} nodes${nodes[2]}`);
-  }
-  return { facts, listing: file.slice(end + 2) };
-}
-
 /** Renders one traced result as its own markdown page: a failed or flaky one tells its failure, a passing one its steps. */
 export function renderTracePage(report: Report1Document, result: ReportResult, final: Outcome, options: TracePageOptions = {}): string {
   const run = report.run;
@@ -514,13 +502,13 @@ export function renderTracePage(report: Report1Document, result: ReportResult, f
       if (step.status !== 'passed' && step.explanation !== undefined && step.explanation.trim() !== '') {
         lines.push(`   > ${cell(step.explanation, MAX_DETAIL_CHARS)}`);
       }
-      for (const line of stepDetailLines(step, options)) lines.push(`   - ${line}`);
+      for (const line of stepDetailLines(step, told.appLog, options)) lines.push(`   - ${line}`);
       lines.push(...stepScreenLines(step.screen));
     });
     lines.push('');
   }
 
-  const appLog = appLogLines(told.steps);
+  const appLog = appLogLines(told.steps, told.appLog);
   if (appLog.length > 0) {
     lines.push('## App log', '', 'What the app logged, oldest first, with the step it happened in.', '');
     for (const line of appLog) lines.push(`- ${line}`);
@@ -543,9 +531,12 @@ export function renderTracePage(report: Report1Document, result: ReportResult, f
   if (failure !== undefined) {
     lines.push('## Screen at failure', '');
     const screen = failure.screen === undefined ? undefined : told.artifacts.find((artifact) => artifact.id === failure.screen);
-    const file = screen?.path === undefined ? undefined : options.readArtifact?.(screen.path);
-    const { facts, listing } = file === undefined ? { facts: [], listing: undefined } : splitScreenFile(file);
-    const where = [...(failure.url === undefined ? [] : [code(failure.url, MAX_PATH_CHARS)]), ...facts.map((fact) => cell(fact, MAX_ID_CHARS))];
+    const listing = screen?.path === undefined ? undefined : options.readArtifact?.(screen.path);
+    const where = [
+      ...(failure.url === undefined ? [] : [code(failure.url, MAX_PATH_CHARS)]),
+      ...(failure.viewport === undefined ? [] : [`viewport ${failure.viewport.width}x${failure.viewport.height}`]),
+      ...(failure.nodes === undefined ? [] : [plural(failure.nodes, 'node')]),
+    ];
     if (where.length > 0) lines.push(`${where.join(' · ')}  `);
     const shot = failure.screenshot === undefined ? undefined : told.artifacts.find((artifact) => artifact.id === failure.screenshot);
     const shotHref = shot?.path === undefined ? undefined : pageHref(shot.path, options);

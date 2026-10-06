@@ -53,14 +53,16 @@ describe('traces', () => {
       );
       try {
         assertValidReport(outcome.report);
-        const [open, tap, count] = outcome.report.run.results[0]!.attempts[0]!.steps;
+        const attempt = outcome.report.run.results[0]!.attempts[0]!;
+        const [open, tap, count] = attempt.steps;
         expect(open).toMatchObject({ api: 'app.open', phase: 'beforeEach' });
-        // Launched before any step, the warning waits for the first one.
-        expect(open!.events).toEqual([expect.objectContaining({ kind: 'app', name: 'console', level: 'warning', detail: 'booting' })]);
+        expect(open!.events).toEqual([]);
         expect(tap!.phase).toBeUndefined();
-        expect(tap!.events).toEqual([
-          expect.objectContaining({ kind: 'app', name: 'network', level: 'error', status: 'failed' }),
-          expect.objectContaining({ kind: 'engine', name: 'tap', status: 'passed', detail: 'tap button "Submit"' }),
+        expect(tap!.events).toEqual([expect.objectContaining({ kind: 'engine', name: 'tap', status: 'passed', detail: 'tap button "Submit"' })]);
+        // Launched before any step, the warning belongs to none; the failed request to the tap that sent it.
+        expect(attempt.appLog).toEqual([
+          { source: 'console', level: 'warning', text: 'booting', at: expect.any(String) },
+          { source: 'network', level: 'error', text: `POST ${FAKE_APP_URL}/api/save 500 Internal Server Error`, at: expect.any(String), step: tap!.index },
         ]);
         expect(count!.events).toEqual([expect.objectContaining({ kind: 'poll', name: 'expect', status: 'failed', detail: expect.stringMatching(/^count 1 \(1 match\) x\d+$/) })]);
         expect(count!.events[0]!.count).toBeGreaterThan(1);
@@ -72,6 +74,7 @@ describe('traces', () => {
         expect(page).toContain('1. ✓ `app.open` `/` (');
         expect(page).toContain('in beforeEach)');
         expect(page).toContain('   - ✗ network error: `POST /api/save 500 Internal Server Error`');
+        expect(page).toContain('- before step 1 · ⚠ console warning: `booting`');
         expect(page).toContain('   - tap button "Submit" (');
         expect(page).toMatch(/ {3}- expect gave up after \d+ reads in [\d.]+m?s: count 1 \(1 match\) x\d+/);
       } finally {
@@ -120,7 +123,7 @@ describe('traces', () => {
       } finally {
         project.cleanup();
       }
-      // An attempt that keeps no trace asks the engine for no screens.
+      // An attempt that keeps no trace asks the engine for no screens, and takes none from what the test observes.
       let asked: boolean | undefined;
       const untraced = createFakeEngine({ onStartAttempt: (attempt: EngineAttemptContext) => {
         asked = attempt.screen !== undefined;
@@ -131,6 +134,9 @@ describe('traces', () => {
       );
       off.project.cleanup();
       expect(asked).toBe(false);
+      const offSteps = off.outcome.report.run.results.flatMap((result) => result.attempts.flatMap((attempt) => attempt.steps));
+      expect(offSteps.length).toBeGreaterThan(0);
+      expect(offSteps.filter((step) => step.screen !== undefined)).toEqual([]);
     },
     30_000,
   );

@@ -579,7 +579,7 @@ export type RecordingMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry
 | --- | --- | --- |
 | `off` | none | none |
 | `on` | every test, passing ones included | every attempt |
-| `retain-on-failure` | each failed, timed-out, or flaky test | every attempt, keeping those that did not pass |
+| `retain-on-failure` | each failed, timed-out, interrupted, or flaky test | every attempt, keeping those that did not pass |
 | `on-first-retry` | each test whose first retry ran | the first retry only, the second attempt |
 | `on-all-retries` | each test that was retried | every attempt after the first |
 

@@ -37,7 +37,7 @@ The exit code identifies the failure type:
 ## Traces
 
 Every run that reaches its tests writes a trace page, `trace.md`, for each
-failed, timed out, or flaky test in the test's [results
+failed, timed out, interrupted, or flaky test in the test's [results
 directory](#artifacts), and removes the previous run's pages. The
 [`trace`](/reference/config#trace) mode chooses which tests keep one; the
 default is `retain-on-failure`. The page names what the test ran on (browser
@@ -147,8 +147,10 @@ failed result:
 - `failure` identifies the screen and screenshot artifacts and any locator
   candidates.
 - `steps` shows the calls leading to the failure. Each step's `events` hold
-  what it did (`engine`), what it polled (`poll`), and what the app logged
-  (`app`); agent steps add `cache` and recent model turns.
+  what it did (`engine`), what it polled (`poll`), and where the app went
+  (`navigation`); agent steps add `cache` and recent model turns.
+- `appLog` holds what the app logged; each line's `step` is the `index` of
+  the step it happened in, absent before the first step.
 - `artifacts` lists the captured files.
 
 ## Artifacts

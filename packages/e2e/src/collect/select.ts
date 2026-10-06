@@ -4,7 +4,7 @@ import { ConfigurationError, CollectionError } from '../internal/errors.ts';
 import { resultId } from '../internal/ids.ts';
 import { didYouMean, suggestionNote } from '../internal/suggest.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import { attemptRecording, type AttemptRecordings, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
+import { attemptKeep, attemptVideo, type AttemptRecordings, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
 import type { Capability, RecordingMode, TestOptions } from '../types.ts';
 import { excludingEntry, type Collection, type CollectedTest, type UncollectedFile } from './collect.ts';
 import { groupChain } from './registry.ts';
@@ -212,11 +212,11 @@ export function pairRecording(pair: Pick<TestTargetPair, 'options' | 'target'>, 
   return own === undefined ? pair.target[kind] : { mode: own, source: 'test' };
 }
 
-/** What an attempt of a pair at `attemptIndex` records: one decision for the trace and the video alike. */
+/** What an attempt of a pair at `attemptIndex` captures: one keep decision for the trace and the video alike. */
 export function pairRecordings(pair: Pick<TestTargetPair, 'options' | 'target'>, attemptIndex: number): AttemptRecordings {
   return {
-    trace: attemptRecording(pairRecording(pair, 'trace'), attemptIndex),
-    video: attemptRecording(pairRecording(pair, 'video'), attemptIndex),
+    trace: attemptKeep(pairRecording(pair, 'trace').mode, attemptIndex),
+    video: attemptVideo(pairRecording(pair, 'video'), attemptIndex),
   };
 }
 

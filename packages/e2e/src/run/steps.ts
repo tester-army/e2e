@@ -11,7 +11,9 @@ import { withAiTraceStep } from '../internal/ai-trace.ts';
 import { classifyError, serializeError, TestError, withHint, type SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import { sourceLocation, type SourceLocation } from '../internal/source.ts';
-import type { AppLogEntry } from '../engine/index.ts';
+import type { AppLogEntry, AppLogSource } from '../engine/index.ts';
+import { APP_LOG_LIMITS } from '../engine/session.ts';
+import type { AppEvent } from '../engine/surface.ts';
 import { compareScreens, type ScreenText, type StepScreen } from './step-screens.ts';
 
 /** The closed step kind set; the type is derived from it, so the two cannot drift. */
@@ -25,12 +27,8 @@ export type StepKind = (typeof STEP_KINDS)[number];
  * by this milestone.
  */
 export interface StepEvent {
-  /**
-   * `app` is something the app did on its own (a console error, an
-   * uncaught exception, a failed request), as its engine reported it; `name`
-   * says where it came from and `level` how bad it was.
-   */
-  kind: 'poll' | 'observation' | 'model' | 'policy' | 'engine' | 'schema' | 'app';
+  /** `navigation` is where the app went on its own (a navigation the engine did not start, a tab, a frame), in `detail`. */
+  kind: 'poll' | 'observation' | 'model' | 'policy' | 'engine' | 'schema' | 'navigation';
   /**
    * When the event began, not when it was recorded. A `model` event carries
    * the moment the request went out even when the executor reports the turn
@@ -49,8 +47,6 @@ export interface StepEvent {
   inputTokens?: number;
   outputTokens?: number;
   bytes?: number;
-  /** How serious an `app` event is. */
-  level?: AppLogEntry['level'];
   decision?: 'allowed' | 'denied';
   code?: string;
   /**
@@ -323,10 +319,18 @@ function stepStack(projectRoot: string | undefined): string | undefined {
   }
 }
 
-/** App log errors and warnings one attempt keeps; a page logging in a loop must not swell the report. */
-const MAX_APP_LOG_ENTRIES = 200;
-/** App log `info` entries one attempt keeps, counted apart so chatter never crowds out an error. */
-const MAX_APP_LOG_INFO = 100;
+/**
+ * One line the app logged during an attempt, redacted and bounded: where it
+ * came from, how bad it was, when, and the index of the step that was running
+ * (else the one that started last); absent before the attempt's first step.
+ */
+export interface AppLogRecord {
+  readonly source: AppLogSource;
+  readonly level: AppLogEntry['level'];
+  readonly text: string;
+  readonly at: string;
+  readonly step?: number;
+}
 /** Characters of an event's detail the report admits. */
 const MAX_DETAIL_CHARS = 300;
 
@@ -355,16 +359,16 @@ export class StepRecorder {
   private readonly abandonedPromises: Promise<unknown>[] = [];
   /** Highest timeline index among passed verification steps, or -1 when none has. */
   private lastVerified = -1;
-  /** App log errors and warnings filed so far this attempt, against `MAX_APP_LOG_ENTRIES`. */
-  private appLogEntries = 0;
-  /** App log `info` entries filed so far this attempt, against `MAX_APP_LOG_INFO`. */
-  private appLogInfo = 0;
+  /** What the app logged this attempt, within `APP_LOG_LIMITS`. */
+  private readonly logged: AppLogRecord[] = [];
+  /** App log entries of each kind `APP_LOG_LIMITS` counts, kept so far. */
+  private readonly loggedCounts = { errorsAndWarnings: 0, info: 0 };
   /** The last screen each running step saw, read only when the step ends. */
   private readonly seenScreens = new Map<string, () => ScreenText | undefined>();
   /** The last screen a finished step saw, the one the next step's is compared with. */
   private lastScreen: { readonly step: number; readonly screen: ScreenText } | undefined;
-  /** App log entries that arrived before the attempt's first step, filed under it once it starts. */
-  private readonly earlyAppLog: { entry: AppLogEntry; at: string }[] = [];
+  /** Where the app went before the attempt's first step, told under it once it starts. */
+  private readonly earlyNavigations: { line: string; at: string }[] = [];
   private readonly maxEventsPerStep: number;
   private readonly onProgress: ((progress: StepProgress) => void) | undefined;
   private readonly projectRoot: string | undefined;
@@ -433,7 +437,7 @@ export class StepRecorder {
     };
     this.steps.push(record);
     this.running.add(record.id);
-    for (const { entry, at } of this.earlyAppLog.splice(0)) this.fileAppLog(record, entry, at);
+    for (const { line, at } of this.earlyNavigations.splice(0)) this.fileNavigation(record, line, at);
     if (stack !== undefined) this.stacks.set(record.id, stack);
     this.publish(record, { phase: 'start', kind, api, label });
     const promise = this.execute(record, body, options);
@@ -555,26 +559,32 @@ export class StepRecorder {
   }
 
   /**
-   * Files one app log entry under the step running in this async context,
-   * else the step that started last: an engine reports from its own event
-   * callbacks, outside any step's context, so a request that fails after a
-   * tap resolved lands with the tap. One that arrives before the first step
-   * waits for it; past the per-attempt cap, entries are dropped.
+   * Keeps one thing the app did on its own, with the step running in this
+   * async context, else the step that started last: an engine reports from
+   * its own event callbacks, outside any step's context, so a request that
+   * fails after a tap resolved lands with the tap. A log line goes to the
+   * attempt's app log (`appLog`), within `APP_LOG_LIMITS`; where the app went
+   * is an event of the step, and one before the first step waits for it.
    */
-  recordAppLog(entry: AppLogEntry, at: string = timestamp()): void {
-    if (entry.level === 'info') {
-      if (this.appLogInfo >= MAX_APP_LOG_INFO) return;
-      this.appLogInfo += 1;
-    } else {
-      if (this.appLogEntries >= MAX_APP_LOG_ENTRIES) return;
-      this.appLogEntries += 1;
-    }
+  recordAppEvent(event: AppEvent, at: string = timestamp()): void {
     const target = this.current() ?? this.steps.at(-1);
-    if (target === undefined) {
-      this.earlyAppLog.push({ entry, at });
+    if (event.kind === 'navigation') {
+      if (target === undefined) this.earlyNavigations.push({ line: event.line, at });
+      else this.fileNavigation(target, event.line, at);
       return;
     }
-    this.fileAppLog(target, entry, at);
+    const { entry } = event;
+    const counted = entry.level === 'info' ? 'info' : 'errorsAndWarnings';
+    if (this.loggedCounts[counted] >= APP_LOG_LIMITS[counted]) return;
+    this.loggedCounts[counted] += 1;
+    // Redacted before it is cut, so no cut leaves the head of a secret behind.
+    const text = bound(this.redactText(entry.text.replace(/\s+/g, ' ').trim()), MAX_DETAIL_CHARS);
+    this.logged.push({ source: entry.source, level: entry.level, text, at, ...(target === undefined ? {} : { step: target.index }) });
+  }
+
+  /** What the app logged this attempt, oldest first. */
+  appLog(): readonly AppLogRecord[] {
+    return this.logged;
   }
 
   /**
@@ -604,17 +614,8 @@ export class StepRecorder {
     this.lastScreen = { step: record.index, screen };
   }
 
-  private fileAppLog(target: StepRecord, entry: AppLogEntry, at: string): void {
-    const text = entry.text.replace(/\s+/g, ' ').trim();
-    this.push(target, {
-      kind: 'app',
-      name: entry.source,
-      level: entry.level,
-      startedAt: at,
-      durationMs: 0,
-      status: entry.level === 'error' ? 'failed' : 'passed',
-      detail: text,
-    });
+  private fileNavigation(target: StepRecord, line: string, at: string): void {
+    this.push(target, { kind: 'navigation', startedAt: at, durationMs: 0, status: 'passed', detail: line.replace(/\s+/g, ' ').trim() });
   }
 
   /** Appends an event to a step, its prose redacted, within the per-step cap. */

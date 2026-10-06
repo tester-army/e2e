@@ -29,7 +29,7 @@ import { storedRecordingsFor, type StoredRecordings } from '../cache/rekeyed.ts'
 import { bound } from '../cache/trace.ts';
 import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
 import { pairRecordings, type TestTargetPair } from '../collect/select.ts';
-import type { AttemptRecording } from '../internal/recording-modes.ts';
+import { keeps, type AttemptRecordings, type VideoRecording } from '../internal/recording-modes.ts';
 import type { ArtifactStore, Secret } from '../types.ts';
 import { attemptSegments, createAttemptArtifacts, resultSegment } from './artifacts.ts';
 import { AttemptBudget } from './budget.ts';
@@ -149,19 +149,18 @@ export interface ClosingRecord {
 
 /**
  * What one attempt's session opens with: the saved session to restore, and
- * the video the attempt records (`pairRecordings`), undefined for none.
+ * what the attempt captures (`pairRecordings`): the video it records, and
+ * whether it keeps a trace, which decides whether screens are taken at all.
  */
 export interface SessionPlan {
   readonly session: string | undefined;
-  readonly video: AttemptRecording | undefined;
-  /** Whether the attempt may keep a trace, so the engine is asked for the screens it reads. */
-  readonly traced: boolean;
+  readonly recordings: AttemptRecordings;
 }
 
 /** What closing an attempt's session needs besides its verdict: the video it started. */
 export interface SessionClose {
   readonly attemptId: string;
-  readonly video: AttemptRecording | undefined;
+  readonly video: VideoRecording | undefined;
 }
 
 /** How one attempt acquires its session and session-staging hooks. */
@@ -601,7 +600,8 @@ export class TargetExecutor implements SerialHost {
         `target "${this.target.name}" has no engine state capability for session restore`,
       );
     }
-    const session = createEngineSession({ engine, targetName: this.target.name });
+    const { video } = plan.recordings;
+    const session = createEngineSession({ engine, targetName: this.target.name, traced: plan.recordings.trace !== undefined });
     const launch = <T>(label: string, run: (launchSignal: AbortSignal) => Promise<T>) =>
       this.lifecycle(label, this.config.launchTimeout, 'LAUNCH_TIMEOUT', signal, run);
     const launchOp = (launchSignal: AbortSignal) =>
@@ -617,7 +617,8 @@ export class TargetExecutor implements SerialHost {
               signal: launchSignal,
               resolveSecret: (secret, options) => this.resolveEngineSecret(session, secret, options),
               appLog: (entry) => session.appLog.push(entry),
-              ...(plan.traced ? { screen: (snapshot: EngineSnapshot) => session.screens.push(snapshot) } : {}),
+              navigation: (line) => session.appLog.navigated(line),
+              ...(session.screens.traced ? { screen: (snapshot: EngineSnapshot) => session.screens.push(snapshot) } : {}),
               environment: (facts) => session.environment.push(facts),
             }),
           ),
@@ -638,9 +639,9 @@ export class TargetExecutor implements SerialHost {
       // or test set) or skipped with a notice (a run-wide mode). A required
       // video's failure fails the launch; a default one's is swallowed.
       const { startVideo } = session.artifacts;
-      if (plan.video !== undefined && startVideo !== undefined) {
+      if (video !== undefined && startVideo !== undefined) {
         const starting = launch('starting the video', (launchSignal) => startVideo(launchOp(launchSignal)));
-        if (plan.video.policy === 'required') await starting;
+        if (video.policy === 'required') await starting;
         else await starting.catch(() => undefined);
       }
     } catch (cause) {
@@ -720,7 +721,7 @@ export class TargetExecutor implements SerialHost {
       await this.stopVideo(video, attemptId, record, secondaryErrors, async (operation) => {
         const segments = await stopVideo(operation);
         // Recorded so a failure could be looked at; a pass has nothing to show.
-        if (video.keep === 'on-failure' && !isFailedStatus(record.status)) {
+        if (!keeps(video.keep, record.status)) {
           await Promise.all(
             segments.flatMap((segment) => ('path' in segment ? [rm(path.join(artifactSink.dir, segment.path), { force: true })] : [])),
           );
@@ -743,7 +744,7 @@ export class TargetExecutor implements SerialHost {
    * must show; a best-effort one fails quietly.
    */
   private async stopVideo(
-    recording: AttemptRecording,
+    recording: VideoRecording,
     attemptId: string,
     record: ClosingRecord,
     secondaryErrors: SerializedError[],
@@ -802,7 +803,8 @@ export class TargetExecutor implements SerialHost {
     context: AttemptContext,
   ): Promise<AttemptRecord> {
     const attemptId = uuidv7();
-    const { trace, video } = pairRecordings(pair, attemptIndex);
+    const recordings = pairRecordings(pair, attemptIndex);
+    const { trace, video } = recordings;
     const startedAt = timestamp();
     const startedMs = Date.now();
     // Serial members borrow the group's shared session, open state, artifact
@@ -964,11 +966,11 @@ export class TargetExecutor implements SerialHost {
     try {
       const session =
         shared?.session ??
-        (await this.launchSession({ session: pair.options.session, video, traced: trace !== undefined }, attemptId, artifacts.dir, attemptAbort.signal));
+        (await this.launchSession({ session: pair.options.session, recordings }, attemptId, artifacts.dir, attemptAbort.signal));
       openSession = session;
       // A serial group's session serves one member at a time; what the app
       // logs from here is this attempt's.
-      session.appLog.route((entry, at) => steps.recordAppLog(entry, at));
+      session.appLog.route((event, at) => steps.recordAppEvent(event, at));
       session.screens.route((observation) =>
         steps.recordScreen(() =>
           traceScreen(observation, {
@@ -1231,6 +1233,8 @@ export class TargetExecutor implements SerialHost {
     await artifacts.settle();
     record.durationMs = Date.now() - startedMs;
     record.steps = [...steps.all()];
+    const appLog = steps.appLog();
+    if (appLog.length > 0) record.appLog = [...appLog];
 
     // Settled only after the status is classified. An interrupted attempt
     // implicates nothing: it writes nothing and evicts nothing, so Ctrl-C can

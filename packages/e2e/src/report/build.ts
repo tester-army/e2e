@@ -26,6 +26,7 @@ import type {
   SerialMemberRecord,
 } from '../run/records.ts';
 import type {
+  AppLogRecord,
   StepCacheRecord,
   StepEvent,
   StepMetrics,
@@ -209,6 +210,8 @@ interface ReportAttemptBase {
 
 export interface ReportAttempt extends ReportAttemptBase {
   steps: readonly ReportStep[];
+  /** What the app logged during the attempt, each line with the index of its step; absent when it logged nothing. */
+  appLog?: readonly AppLogRecord[] | undefined;
   /** What the runner saw when the failure landed; absent on a pass or when nothing could be captured. */
   failure?: FailureEvidence | undefined;
   /** Why the body skipped itself; present exactly when `status` is `skipped`. */
@@ -223,6 +226,8 @@ export interface ReportSerialMember {
   startedAt: string;
   durationMs: number;
   steps: readonly ReportStep[];
+  /** What the app logged during this member, as on an attempt. */
+  appLog?: readonly AppLogRecord[] | undefined;
   error?: ReportError | undefined;
   /** What the runner saw when this member's failure landed. */
   failure?: FailureEvidence | undefined;
@@ -453,6 +458,7 @@ function serializeAttempt(attempt: AttemptRecord): ReportAttempt {
     ...(attempt.failure === undefined ? {} : { failure: attempt.failure }),
     ...(attempt.skip === undefined ? {} : { skip: attempt.skip }),
     steps: attempt.steps.map(serializeStep),
+    ...(attempt.appLog === undefined ? {} : { appLog: attempt.appLog }),
   };
 }
 
@@ -466,6 +472,7 @@ function serializeSerialMember(member: SerialMemberRecord): ReportSerialMember {
     durationMs: member.durationMs,
     // A member skipped at selection has no steps; one that skipped itself keeps the steps that ran.
     steps: member.steps.map(serializeStep),
+    ...(member.appLog === undefined ? {} : { appLog: member.appLog }),
     error: member.error === undefined ? undefined : serializeErrorRecord(member.error),
     ...(member.failure === undefined ? {} : { failure: member.failure }),
     skip: member.status === 'skipped' ? member.skip : undefined,

@@ -8,7 +8,7 @@
  * text moved reads as changed rather than as removed and added.
  */
 
-import { prepareObservation } from '../agent/observation.ts';
+import { describeNode, redactNode, type RedactedNode } from '../agent/observation.ts';
 import { bound } from '../cache/trace.ts';
 import type { Observation } from '../engine/surface.ts';
 import type { SessionSecrecy } from './secrecy.ts';
@@ -18,11 +18,16 @@ const MAX_SCREEN_CHANGES = 12;
 /** Characters of one change line. */
 const MAX_CHANGE_CHARS = 200;
 
-/** One screen as the trace reads it: where it was, and its node lines as listed. */
+/** One node of a screen as the trace compares it: the engine's id, and the node as a line describes it, without the id or focus. */
+interface ScreenLine {
+  readonly id: string;
+  readonly text: string;
+}
+
+/** One screen as the trace keeps it: where it was, and its nodes in screen order. */
 export interface ScreenText {
   readonly location?: string | undefined;
-  /** The listing, one node per line, as `prepareObservation` renders it. */
-  readonly text: string;
+  readonly lines: readonly ScreenLine[];
 }
 
 /** How the screen a step saw differs from the one before it. */
@@ -39,28 +44,12 @@ export interface StepScreen {
   more?: number;
 }
 
-interface ScreenLine {
-  readonly id: string | undefined;
-  readonly text: string;
-}
-
-/** `#n27 textbox "New todo" [focused]` as `{ id: 'n27', text: 'textbox "New todo"' }`; focus moves with every action and is left out. */
-function screenLines(text: string): ScreenLine[] {
-  const lines: ScreenLine[] = [];
-  for (const raw of text.split('\n')) {
-    const match = /^\s*#(\S+) (.*)$/u.exec(raw);
-    if (match === null) continue;
-    lines.push({ id: match[1], text: match[2]!.replace(/ \[focused\]$/u, '').replace(/\bfocused, |, focused\b/u, '') });
-  }
-  return lines;
-}
-
 /** The step's screen against the one `since` saw, or as the first screen when there was none. */
 export function compareScreens(previous: { readonly step: number; readonly screen: ScreenText } | undefined, next: ScreenText): StepScreen {
-  const after = screenLines(next.text);
+  const after = next.lines;
   const head = { ...(next.location === undefined ? {} : { location: next.location }), nodes: after.length };
   if (previous === undefined) return { ...head, changes: [] };
-  const before = screenLines(previous.screen.text);
+  const before = previous.screen.lines;
   const changes = diffLines(before, after);
   return {
     ...head,
@@ -76,11 +65,11 @@ export function compareScreens(previous: { readonly step: number; readonly scree
  * more often than the old is added, and one it lists less often is removed.
  */
 function diffLines(before: readonly ScreenLine[], after: readonly ScreenLine[]): string[] {
-  const beforeById = new Map(before.flatMap((line) => (line.id === undefined ? [] : [[line.id, line] as const])));
+  const beforeById = new Map(before.map((line) => [line.id, line] as const));
   const paired = new Set<ScreenLine>();
   const changed = new Map<ScreenLine, ScreenLine>();
   for (const line of after) {
-    const old = line.id === undefined ? undefined : beforeById.get(line.id);
+    const old = beforeById.get(line.id);
     if (old === undefined) continue;
     paired.add(old);
     if (old.text !== line.text) changed.set(line, old);
@@ -96,7 +85,7 @@ function diffLines(before: readonly ScreenLine[], after: readonly ScreenLine[]):
       lines.push(`changed ${line.text} (was: ${old.text})`);
       continue;
     }
-    if (line.id !== undefined && beforeById.has(line.id)) continue;
+    if (beforeById.has(line.id)) continue;
     const left = remaining.get(line.text) ?? 0;
     if (left > 0) remaining.set(line.text, left - 1);
     else lines.push(`added ${line.text}`);
@@ -119,10 +108,26 @@ export interface TraceScreenOptions {
   readonly appOrigin: string | undefined;
 }
 
-/** One observation as the trace keeps it, redacted the way the screen at failure is; undefined for a screen with no tree. */
+/** States a reader comparing two screens does not count as a change: focus moves with every action. */
+const UNCOMPARED_STATES: ReadonlySet<string> = new Set(['focused']);
+
+/**
+ * One observation as the trace keeps it: every node redacted the way the
+ * screen at failure is, then described the way its line reads, in screen
+ * order, up to `maxBytes` of text; undefined for a screen with no tree.
+ */
 export function traceScreen(observation: Observation, options: TraceScreenOptions): ScreenText | undefined {
   if (observation.kind !== 'semantic') return undefined;
   const { redact, redactCut } = options.secrecy.ledger;
-  const prepared = prepareObservation(observation, { redact, redactCut, maxBytes: options.maxBytes, appOrigin: options.appOrigin });
-  return { location: prepared.location, text: prepared.text };
+  const lines: ScreenLine[] = [];
+  let bytes = 0;
+  const walk = (node: RedactedNode): boolean => {
+    const text = describeNode(node, options.appOrigin, UNCOMPARED_STATES);
+    bytes += text.length + 1;
+    if (lines.length > 0 && bytes > options.maxBytes) return false;
+    lines.push({ id: node.ref.id, text });
+    return (node.children ?? []).every(walk);
+  };
+  walk(redactNode(observation.tree, { redact, redactCut }));
+  return { location: observation.location === undefined ? undefined : redact(observation.location), lines };
 }

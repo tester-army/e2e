@@ -1,32 +1,39 @@
-/** Which attempts record and keep a trace or a video under each mode, and how firmly the engine is asked. */
+/** Which attempts keep a trace or a video under each mode, how firmly the engine is asked for the video, and one keep rule for both. */
 
 import { describe, expect, it } from 'vitest';
-import { attemptRecording, recordsOnSomeAttempt } from '../../src/internal/recording-modes.ts';
+import { attemptKeep, attemptVideo, keeps, recordsOnSomeAttempt } from '../../src/internal/recording-modes.ts';
 
 const set = { source: 'run' } as const;
 
-describe('attemptRecording', () => {
-  it('records every attempt for on and retain-on-failure, keeping all or only failures', () => {
-    expect([0, 1, 2].map((index) => attemptRecording({ mode: 'on', ...set }, index))).toEqual([
-      { keep: 'always', policy: 'required' },
-      { keep: 'always', policy: 'required' },
-      { keep: 'always', policy: 'required' },
-    ]);
-    expect(attemptRecording({ mode: 'retain-on-failure', ...set }, 0)).toEqual({ keep: 'on-failure', policy: 'required' });
-    expect(attemptRecording({ mode: 'retain-on-failure', ...set }, 3)).toEqual({ keep: 'on-failure', policy: 'required' });
+describe('attemptKeep', () => {
+  it('keeps every attempt for on, only failures for retain-on-failure, on every attempt', () => {
+    expect([0, 1, 2].map((index) => attemptKeep('on', index))).toEqual(['always', 'always', 'always']);
+    expect([0, 3].map((index) => attemptKeep('retain-on-failure', index))).toEqual(['on-failure', 'on-failure']);
   });
 
-  it('records nothing for off, only the first retry for on-first-retry, and every retry for on-all-retries', () => {
-    expect(attemptRecording({ mode: 'off', ...set }, 0)).toBeUndefined();
-    expect([0, 1, 2].map((index) => attemptRecording({ mode: 'on-first-retry', ...set }, index)?.keep)).toEqual([undefined, 'always', undefined]);
-    expect([0, 1, 2].map((index) => attemptRecording({ mode: 'on-all-retries', ...set }, index)?.keep)).toEqual([undefined, 'always', 'always']);
+  it('captures nothing for off, only the first retry for on-first-retry, and every retry for on-all-retries', () => {
+    expect(attemptKeep('off', 0)).toBeUndefined();
+    expect([0, 1, 2].map((index) => attemptKeep('on-first-retry', index))).toEqual([undefined, 'always', undefined]);
+    expect([0, 1, 2].map((index) => attemptKeep('on-all-retries', index))).toEqual([undefined, 'always', 'always']);
   });
+});
 
-  it('asks best-effort for a default mode and requires one somebody set', () => {
-    expect(attemptRecording({ mode: 'on', source: 'default' }, 0)?.policy).toBe('best-effort');
+describe('attemptVideo', () => {
+  it('records under the same keep rule, best-effort for a default mode and required for one somebody set', () => {
+    expect(attemptVideo({ mode: 'retain-on-failure', ...set }, 0)).toEqual({ keep: 'on-failure', policy: 'required' });
+    expect(attemptVideo({ mode: 'off', ...set }, 0)).toBeUndefined();
+    expect(attemptVideo({ mode: 'on', source: 'default' }, 0)?.policy).toBe('best-effort');
     for (const source of ['run', 'target', 'test'] as const) {
-      expect(attemptRecording({ mode: 'on', source }, 0)?.policy).toBe('required');
+      expect(attemptVideo({ mode: 'on', source }, 0)?.policy).toBe('required');
     }
+  });
+});
+
+describe('keeps', () => {
+  it('keeps nothing of an attempt that never ran, and under on-failure everything that did not pass, interrupted included', () => {
+    const statuses = ['passed', 'failed', 'timed-out', 'interrupted', 'skipped'] as const;
+    expect(statuses.map((status) => keeps('always', status))).toEqual([true, true, true, true, false]);
+    expect(statuses.map((status) => keeps('on-failure', status))).toEqual([false, true, true, true, false]);
   });
 });
 

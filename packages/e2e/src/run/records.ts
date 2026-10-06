@@ -4,9 +4,9 @@ import type { SerializedError } from '../internal/errors.ts';
 import { resultId } from '../internal/ids.ts';
 import type { TestIdentity } from '../collect/collect.ts';
 import type { SkipInfo } from '../collect/select.ts';
-import type { AttemptRecording } from '../internal/recording-modes.ts';
+import { keeps, type Keep } from '../internal/recording-modes.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
-import type { StepRecord } from './steps.ts';
+import type { AppLogRecord, StepRecord } from './steps.ts';
 
 export type ArtifactProducer = { kind: 'step'; stepId: string } | { kind: 'attempt' };
 
@@ -52,7 +52,11 @@ export interface ArtifactRecord {
  */
 export interface FailureEvidence {
   url?: string;
-  /** The `log` artifact holding the redacted screen at failure, by id. */
+  /** The viewport the screen at failure was captured in. */
+  viewport?: { width: number; height: number };
+  /** Nodes the screen at failure listed; absent when it had no tree. */
+  nodes?: number;
+  /** The `log` artifact holding the redacted screen at failure, its listing alone, by id. */
   screen?: string;
   /** The masked `screenshot` artifact taken at failure, by id. */
   screenshot?: string;
@@ -67,6 +71,8 @@ export interface AttemptRecord {
   startedAt: string;
   durationMs: number;
   steps: StepRecord[];
+  /** What the app logged during the attempt, each line with its step; absent when it logged nothing. */
+  appLog?: AppLogRecord[];
   artifacts: ArtifactRecord[];
   error?: SerializedError;
   failure?: FailureEvidence;
@@ -75,8 +81,8 @@ export interface AttemptRecord {
   secondaryErrors: SerializedError[];
   /** What the engine said the attempt ran on (`EngineAttemptContext.environment`), redacted. */
   environment?: Record<string, string>;
-  /** When the attempt keeps a trace, its `trace` mode resolved for this attempt; the runner's, never in the report. */
-  trace?: AttemptRecording | undefined;
+  /** Which of the attempt's outcomes keep a trace (`keeps`), when it keeps one at all; the runner's, never in the report. */
+  trace?: Keep | undefined;
   cleanup: 'complete' | 'failed' | 'forced';
 }
 
@@ -88,6 +94,8 @@ export interface SerialMemberRecord {
   startedAt: string;
   durationMs: number;
   steps: StepRecord[];
+  /** What the app logged during the attempt, each line with its step; absent when it logged nothing. */
+  appLog?: AppLogRecord[];
   error?: SerializedError;
   /** What the runner saw when this member's failure landed; see `FailureEvidence`. */
   failure?: FailureEvidence;
@@ -107,8 +115,8 @@ export interface SerialAttemptRecord {
   secondaryErrors: SerializedError[];
   /** What the engine said the attempt ran on (`EngineAttemptContext.environment`), redacted. */
   environment?: Record<string, string>;
-  /** When the attempt keeps a trace, its `trace` mode resolved for this attempt; the runner's, never in the report. */
-  trace?: AttemptRecording | undefined;
+  /** Which of the attempt's outcomes keep a trace (`keeps`), when it keeps one at all; the runner's, never in the report. */
+  trace?: Keep | undefined;
   cleanup: 'complete' | 'failed' | 'forced';
 }
 
@@ -147,10 +155,9 @@ export function isFailedStatus(status: AttemptStatus | ResultStatus): status is 
   return status !== 'passed' && status !== 'skipped' && status !== 'flaky';
 }
 
-/** Whether an attempt that ended `status` keeps its trace: under `retain-on-failure`, only a failed one does. */
+/** Whether an attempt keeps its trace, by the rule its video follows too (`keeps`). */
 function keepsTrace(attempt: Pick<AttemptRecord, 'status' | 'trace'>): boolean {
-  if (attempt.trace === undefined || attempt.status === 'skipped' || attempt.status === 'interrupted') return false;
-  return attempt.trace.keep === 'always' || isFailedStatus(attempt.status);
+  return attempt.trace !== undefined && keeps(attempt.trace, attempt.status);
 }
 
 /** The report ids of the results that keep a trace page: those with an attempt that kept a trace; a serial member's attempts are its group's. */

@@ -125,9 +125,14 @@ export interface SessionArtifacts {
 export interface AppLogRoute {
   /** Takes one entry from the engine, checked: a malformed one is dropped. */
   push(entry: AppLogEntry): void;
-  /** Sends every entry from now on, and every one still waiting, to `sink`; undefined holds them again. */
-  route(sink: ((entry: AppLogEntry, at: string) => void) | undefined): void;
+  /** Takes one line saying where the app went (`EngineAttemptContext.navigation`); a blank one is dropped. */
+  navigated(line: string): void;
+  /** Sends everything from now on, and everything still waiting, to `sink`; undefined holds it again. */
+  route(sink: ((event: AppEvent, at: string) => void) | undefined): void;
 }
+
+/** What the app did on its own, as the session passes it on: a log line, or where it went. */
+export type AppEvent = { readonly kind: 'log'; readonly entry: AppLogEntry } | { readonly kind: 'navigation'; readonly line: string };
 
 /**
  * Where the screens of an attempt go for its trace: what the engine handed
@@ -135,6 +140,8 @@ export interface AppLogRoute {
  * took. Without a sink they are dropped; nothing waits for them.
  */
 export interface ScreenRoute {
+  /** Whether the attempt keeps a trace; without one, nothing is pushed or routed, and the engine is not asked. */
+  readonly traced: boolean;
   /** Takes one engine snapshot, checked: a malformed one is dropped. */
   push(snapshot: EngineSnapshot): void;
   /** Sends every screen from now on to `sink`; undefined drops them again. */

@@ -152,6 +152,9 @@ void attemptContext.resolveSecret(secrets.get('key'), { derived: () => [secrets.
 attemptContext.appLog({ source: 'network', level: 'error', text: 'GET /api/todos 500' });
 // @ts-expect-error an app log source is a closed union.
 attemptContext.appLog({ source: 'stdout', level: 'error', text: 'boom' });
+// @ts-expect-error where the app went is its own report, not an app log line.
+attemptContext.appLog({ source: 'navigation', level: 'info', text: 'navigated to /login' });
+attemptContext.navigation('navigated to /login');
 declare const actCache: NonNullable<Awaited<ReturnType<Agent['act']>>['cache']>;
 actCache.entry satisfies string | undefined;
 // @ts-expect-error what became of the recording is known once the attempt ends, so only the report has it.

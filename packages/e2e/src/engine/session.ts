@@ -23,6 +23,7 @@ import { requireKey } from '../internal/keys.ts';
 import { timestamp } from '../internal/ids.ts';
 import type { AppLogEntry, EngineHandle, EngineSnapshot } from './index.ts';
 import {
+  type AppEvent,
   type AppLogRoute,
   EngineError,
   type EnvironmentFacts,
@@ -40,11 +41,19 @@ import {
 export interface EngineSessionOptions {
   readonly engine: EngineHandle | undefined;
   readonly targetName: string;
+  /** Whether the attempt keeps a trace; without one, no screen is taken for it, from the engine or an observation. */
+  readonly traced?: boolean;
 }
 
 /** App log entries held while no step recorder takes them, the launch's own. */
-const MAX_WAITING_APP_LOG = 50;
-const APP_LOG_SOURCES: ReadonlySet<unknown> = new Set(['console', 'error', 'network', 'system', 'navigation']);
+/**
+ * App log entries one attempt keeps: errors and warnings, and `info` apart
+ * so chatter never crowds out an error. The step recorder enforces them; the
+ * session holds no more than both while no recorder takes its entries.
+ */
+export const APP_LOG_LIMITS = { errorsAndWarnings: 200, info: 100 } as const;
+const MAX_WAITING_APP_EVENTS = APP_LOG_LIMITS.errorsAndWarnings + APP_LOG_LIMITS.info;
+const APP_LOG_SOURCES: ReadonlySet<unknown> = new Set(['console', 'error', 'network', 'system']);
 const APP_LOG_LEVELS: ReadonlySet<unknown> = new Set(['error', 'warning', 'info']);
 
 /** Whether an engine handed `appLog` an entry of the contract's shape. */
@@ -56,19 +65,23 @@ function isAppLogEntry(value: unknown): value is AppLogEntry {
 
 /** The session's app log route; see `AppLogRoute`. */
 function createAppLogRoute(): AppLogRoute {
-  let sink: ((entry: AppLogEntry, at: string) => void) | undefined;
-  const waiting: { entry: AppLogEntry; at: string }[] = [];
+  let sink: ((event: AppEvent, at: string) => void) | undefined;
+  const waiting: { event: AppEvent; at: string }[] = [];
+  const pass = (event: AppEvent): void => {
+    if (sink !== undefined) sink(event, timestamp());
+    else if (waiting.length < MAX_WAITING_APP_EVENTS) waiting.push({ event, at: timestamp() });
+  };
   return {
     push(entry) {
-      if (!isAppLogEntry(entry)) return;
-      const copy: AppLogEntry = { source: entry.source, level: entry.level, text: entry.text };
-      if (sink !== undefined) sink(copy, timestamp());
-      else if (waiting.length < MAX_WAITING_APP_LOG) waiting.push({ entry: copy, at: timestamp() });
+      if (isAppLogEntry(entry)) pass({ kind: 'log', entry: { source: entry.source, level: entry.level, text: entry.text } });
+    },
+    navigated(line) {
+      if (typeof line === 'string' && line.trim() !== '') pass({ kind: 'navigation', line });
     },
     route(next) {
       sink = next;
       if (sink === undefined) return;
-      for (const { entry, at } of waiting.splice(0)) sink(entry, at);
+      for (const { event, at } of waiting.splice(0)) sink(event, at);
     },
   };
 }
@@ -275,7 +288,9 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
   let screenSink: ((observation: Observation) => void) | undefined;
   let screenRevision = 0;
   /** Hands one screen to the trace; a sink that throws never fails what the session was doing. */
+  const traced = options.traced === true;
   const showScreen = (observation: Observation): void => {
+    if (!traced) return;
     try {
       screenSink?.(observation);
     } catch {
@@ -292,6 +307,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
     artifacts,
     appLog: createAppLogRoute(),
     screens: {
+      traced,
       push(snapshot) {
         if (screenSink === undefined || !isEngineSnapshot(snapshot) || snapshot.treeUnavailable === true) return;
         screenRevision += 1;

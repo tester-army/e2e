@@ -185,7 +185,7 @@
       "required": ["kind", "startedAt", "durationMs", "status"],
       "properties": {
         "kind": {
-          "enum": ["poll", "observation", "model", "tool-proposal", "policy", "engine", "schema", "app"]
+          "enum": ["poll", "observation", "model", "tool-proposal", "policy", "engine", "schema", "navigation"]
         },
         "startedAt": { "$ref": "#/$defs/timestamp" },
         "durationMs": { "type": "integer", "minimum": 0 },
@@ -195,12 +195,23 @@
         "inputTokens": { "type": "integer", "minimum": 0 },
         "outputTokens": { "type": "integer", "minimum": 0 },
         "bytes": { "type": "integer", "minimum": 0 },
-        "level": { "enum": ["error", "warning", "info"] },
         "decision": { "enum": ["allowed", "denied"] },
         "code": { "type": "string", "maxLength": 128 },
         "detail": { "type": "string", "maxLength": 300 },
         "reasoning": { "type": "string", "maxLength": 600 },
         "extensions": { "$ref": "#/$defs/extensions" }
+      }
+    },
+    "appLogLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "level", "text", "at"],
+      "properties": {
+        "source": { "enum": ["console", "error", "network", "system"] },
+        "level": { "enum": ["error", "warning", "info"] },
+        "text": { "type": "string", "maxLength": 300 },
+        "at": { "$ref": "#/$defs/timestamp" },
+        "step": { "type": "integer", "minimum": 0 }
       }
     },
     "stepMetrics": {
@@ -270,6 +281,13 @@
       "additionalProperties": false,
       "properties": {
         "url": { "type": "string", "maxLength": 2048 },
+        "viewport": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": { "width": { "type": "integer", "minimum": 0 }, "height": { "type": "integer", "minimum": 0 } }
+        },
+        "nodes": { "type": "integer", "minimum": 0 },
         "screen": { "type": "string", "minLength": 1, "maxLength": 128 },
         "screenshot": { "type": "string", "minLength": 1, "maxLength": 128 },
         "candidates": { "type": "array", "maxItems": 8, "items": { "type": "string", "maxLength": 1024 } }
@@ -373,6 +391,7 @@
         "startedAt": { "$ref": "#/$defs/timestamp" },
         "durationMs": { "type": "integer", "minimum": 0 },
         "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+        "appLog": { "type": "array", "maxItems": 300, "items": { "$ref": "#/$defs/appLogLine" } },
         "artifacts": { "type": "array", "items": { "$ref": "#/$defs/artifact" } },
         "error": { "$ref": "#/$defs/error" },
         "failure": { "$ref": "#/$defs/failureEvidence" },
@@ -414,6 +433,7 @@
         "startedAt": { "$ref": "#/$defs/timestamp" },
         "durationMs": { "type": "integer", "minimum": 0 },
         "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+        "appLog": { "type": "array", "maxItems": 300, "items": { "$ref": "#/$defs/appLogLine" } },
         "error": { "$ref": "#/$defs/error" },
         "failure": { "$ref": "#/$defs/failureEvidence" },
         "skip": { "$ref": "#/$defs/skip" },

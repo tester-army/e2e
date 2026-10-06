@@ -26,7 +26,7 @@ import type { EnginePrepareResult } from '../engine/index.ts';
 import type { ProcessPool } from './process-pool.ts';
 import type { AppProcesses } from './managed-process.ts';
 import { PreparedEngines, recordingNotices, startDeclaredProcesses, validateEngine } from './provision.ts';
-import { attemptRecording, type AttemptRecording, type ResolvedRecording } from '../internal/recording-modes.ts';
+import { attemptVideo, type ResolvedRecording, type VideoRecording } from '../internal/recording-modes.ts';
 import { redactForSession, sessionSecrecy } from './secrecy.ts';
 import { SessionStore } from './sessions.ts';
 import { outputLayout } from './output.ts';
@@ -169,8 +169,8 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
   };
 
   try {
-    session = await executor.launchSession({ session: undefined, video, traced: false }, attemptId, artifacts.dir, signal);
-    session.appLog.route((entry, at) => steps.recordAppLog(entry, at));
+    session = await executor.launchSession({ session: undefined, recordings: { trace: undefined, video } }, attemptId, artifacts.dir, signal);
+    session.appLog.route((event, at) => steps.recordAppEvent(event, at));
   } catch (cause) {
     await executor.dispose();
     await teardownProcesses();
@@ -242,7 +242,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
  * passed, so a recording kept only on failure would be made and deleted, and
  * is not made at all.
  */
-function sessionRecording(recording: ResolvedRecording): AttemptRecording | undefined {
-  const planned = attemptRecording(recording, 0);
+function sessionRecording(recording: ResolvedRecording): VideoRecording | undefined {
+  const planned = attemptVideo(recording, 0);
   return planned?.keep === 'on-failure' ? undefined : planned;
 }

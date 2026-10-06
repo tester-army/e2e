@@ -117,13 +117,11 @@
                     "detail": "tap button \"Close\""
                   },
                   {
-                    "kind": "app",
+                    "kind": "navigation",
                     "startedAt": "2026-07-24T12:00:03.100Z",
                     "durationMs": 0,
-                    "status": "failed",
-                    "name": "network",
-                    "level": "error",
-                    "detail": "POST /api/cart 500 Internal Server Error"
+                    "status": "passed",
+                    "detail": "navigated to /cart"
                   },
                   {
                     "kind": "poll",
@@ -179,7 +177,10 @@
                   "location": "https://app.example.com/results",
                   "nodes": 12,
                   "since": 0,
-                  "changes": ["added heading \"Results\"", "changed status text=\"3 found\" (was: status text=\"searching\")"]
+                  "changes": [
+                    "added heading \"Results\"",
+                    "changed status text=\"3 found\" (was: status text=\"searching\")"
+                  ]
                 },
                 "status": "failed",
                 "startedAt": "2026-07-24T12:00:00.000Z",
@@ -229,7 +230,9 @@
             ],
             "secondaryErrors": [],
             "cleanup": "complete",
-            "environment": { "browser": "chromium 141.0.7390.37" },
+            "environment": {
+              "browser": "chromium 141.0.7390.37"
+            },
             "failure": {
               "url": "http://127.0.0.1:3000/todos",
               "screen": "018f0f5c-7b2a-7abc-8abc-1123456789ab:artifact:0",
@@ -254,7 +257,16 @@
                 "line": 9,
                 "column": 3
               }
-            }
+            },
+            "appLog": [
+              {
+                "source": "network",
+                "level": "error",
+                "text": "POST /api/cart 500 Internal Server Error",
+                "at": "2026-07-24T12:00:03.100Z",
+                "step": 0
+              }
+            ]
           }
         ]
       },

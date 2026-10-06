@@ -1,9 +1,9 @@
 /**
- * What the page did on its own during an attempt, for the harness's app log:
- * console output, exceptions nothing caught, requests that failed, responses
- * with an error status, and where the page went (a navigation, a new tab, a
- * frame loading). These are the first things to read when a step fails
- * because the app broke rather than the test.
+ * What the page did on its own during an attempt: for the harness's app log,
+ * console output, exceptions nothing caught, requests that failed, and
+ * responses with an error status; apart from it, where the page went (a
+ * navigation, a new tab, a frame loading). These are the first things to
+ * read when a step fails because the app broke rather than the test.
  */
 
 import type { BrowserContext, ConsoleMessage, Frame, Page, Request, Response } from 'playwright-core';
@@ -21,8 +21,10 @@ const CONSOLE_LEVELS: Readonly<Record<string, AppLogEntry['level']>> = {
 /** Documents that are no place the app went: a fresh tab, an inline frame. */
 const NO_PLACE = new Set(['about:blank', 'about:srcdoc']);
 
-/** What the app log asks the engine to tell its navigations from the app's. */
+/** Where the app log tells where the page went, and what it asks the engine to tell its navigations from the app's. */
 export interface NavigationLog {
+  /** Takes one line saying where the page went. */
+  readonly navigated: (line: string) => void;
   /** Whether a navigation of the test's page to `url` is one the engine started, which its step already tells. */
   readonly ownNavigation: (url: string) => boolean;
   /** The page the test drives; every other page is a tab the app opened. */
@@ -46,6 +48,13 @@ export function installAppLog(context: BrowserContext, log: (entry: AppLogEntry)
   const report = (entry: AppLogEntry): void => {
     try {
       log(entry);
+    } catch {
+      // The harness's sink never fails a page event.
+    }
+  };
+  const went = (line: string): void => {
+    try {
+      navigation.navigated(line);
     } catch {
       // The harness's sink never fails a page event.
     }
@@ -79,12 +88,12 @@ export function installAppLog(context: BrowserContext, log: (entry: AppLogEntry)
         return;
       }
       const line = navigationLine(page, frame, tab, navigation);
-      if (line !== undefined) report({ source: 'navigation', level: 'info', text: line });
+      if (line !== undefined) went(line);
     });
     // A tab the app opened (`window.open`, a `target="_blank"` link); the test stays on its own page.
     page.on('popup', (tab) => {
       const at = NO_PLACE.has(tab.url()) ? '' : ` at ${tab.url()}`;
-      report({ source: 'navigation', level: 'info', text: `the app opened a new tab${at}; the test stays on its page` });
+      went(`the app opened a new tab${at}; the test stays on its page`);
     });
   };
   for (const page of context.pages()) watch(page);

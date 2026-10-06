@@ -1,22 +1,23 @@
 /**
- * The recording modes `trace` and `video` share, in one place for every
- * check that reads one (the config, a target, a test, `--trace`, `--video`),
- * and the one per-attempt decision both recordings follow: which attempts
- * record, which recordings are kept, and how firmly the engine is asked.
+ * The modes `trace` and `video` share, in one place for every check that
+ * reads one (the config, a target, a test, `--trace`, `--video`), and the
+ * one per-attempt decision both follow: which attempts keep what they
+ * captured. Only the video is an engine recording with a start and a stop;
+ * the trace is the runner's own record of the attempt, on every engine.
  */
 
 import type { RecordingMode } from '../types.ts';
 
 export const RECORDING_MODES: readonly RecordingMode[] = ['off', 'on', 'retain-on-failure', 'on-first-retry', 'on-all-retries'];
 
-/** The recordings a mode chooses attempts for. */
+/** The two settings a mode is resolved for. */
 export type RecordingKind = 'trace' | 'video';
 
 /**
  * Where an effective mode was set. `default`: nobody set it. `run`: the
  * config root or the CLI flag, which apply to every target whose engine can
- * record the kind. `target` and `test`: set for that target or test, so the
- * engine must be able to record it.
+ * record video. `target` and `test`: set for that target or test, so the
+ * engine must be able to record the video it asks for.
  */
 export type RecordingSource = 'default' | 'run' | 'target' | 'test';
 
@@ -26,21 +27,36 @@ export interface ResolvedRecording {
   readonly source: RecordingSource;
 }
 
+/** Which attempts keep what they captured: every one, or only one that ran and did not pass. */
+export type Keep = 'always' | 'on-failure';
+
 /**
- * What one attempt records of one kind. `keep` says which recordings survive
- * the verdict. `policy` says what a recording that fails to start or finalize
- * does: `best-effort` (a default mode) drops it quietly, `required` (a mode
- * someone set) fails the attempt's launch or cleanup.
+ * The video one attempt records. `policy` says what a recording that fails
+ * to start or finalize does: `best-effort` (a default mode) drops it
+ * quietly, `required` (a mode someone set) fails the attempt's launch or
+ * cleanup.
  */
-export interface AttemptRecording {
-  readonly keep: 'always' | 'on-failure';
+export interface VideoRecording {
+  readonly keep: Keep;
   readonly policy: 'best-effort' | 'required';
 }
 
-/** Both recordings of one attempt; undefined records nothing of that kind. */
+/** What one attempt captures: the trace's keep rule and the video; undefined captures nothing of that kind. */
 export interface AttemptRecordings {
-  readonly trace: AttemptRecording | undefined;
-  readonly video: AttemptRecording | undefined;
+  readonly trace: Keep | undefined;
+  readonly video: VideoRecording | undefined;
+}
+
+/**
+ * Whether an attempt that ended `status` keeps what it captured under
+ * `keep`: nothing of an attempt that never ran (skipped), and under
+ * `on-failure` only one that did not pass, interrupted ones included, since
+ * where it stopped is what a reader is after. One rule for the trace and the
+ * video alike.
+ */
+export function keeps(keep: Keep, status: 'passed' | 'failed' | 'timed-out' | 'interrupted' | 'skipped'): boolean {
+  if (status === 'skipped') return false;
+  return keep === 'always' || status !== 'passed';
 }
 
 /** Whether `value` is one of `RECORDING_MODES`. */
@@ -68,21 +84,26 @@ export function isRetryMode(mode: RecordingMode): boolean {
   return mode === 'on-first-retry' || mode === 'on-all-retries';
 }
 
-/** What an attempt at `attemptIndex` (0 for the first run, 1 for the first retry) records under `recording`; undefined records nothing. */
-export function attemptRecording(recording: ResolvedRecording, attemptIndex: number): AttemptRecording | undefined {
-  const policy = recording.source === 'default' ? 'best-effort' : 'required';
-  switch (recording.mode) {
+/** Which attempts keep what they capture under `mode`, for the attempt at `attemptIndex` (0 for the first run, 1 for the first retry); undefined captures nothing. */
+export function attemptKeep(mode: RecordingMode, attemptIndex: number): Keep | undefined {
+  switch (mode) {
     case 'off':
       return undefined;
     case 'on':
-      return { keep: 'always', policy };
+      return 'always';
     case 'retain-on-failure':
-      return { keep: 'on-failure', policy };
+      return 'on-failure';
     case 'on-first-retry':
-      return attemptIndex === 1 ? { keep: 'always', policy } : undefined;
+      return attemptIndex === 1 ? 'always' : undefined;
     case 'on-all-retries':
-      return attemptIndex >= 1 ? { keep: 'always', policy } : undefined;
+      return attemptIndex >= 1 ? 'always' : undefined;
   }
+}
+
+/** The video an attempt at `attemptIndex` records under `recording`; undefined records none. */
+export function attemptVideo(recording: ResolvedRecording, attemptIndex: number): VideoRecording | undefined {
+  const keep = attemptKeep(recording.mode, attemptIndex);
+  return keep === undefined ? undefined : { keep, policy: recording.source === 'default' ? 'best-effort' : 'required' };
 }
 
 /** Whether any attempt of a test with `retries` records under `mode`: what the engine has to be able to honour before the run starts. */

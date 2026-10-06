@@ -518,19 +518,25 @@ export interface EngineAttemptContext {
   readonly signal: AbortSignal;
   /**
    * Reports something the app did on its own while the attempt ran: a
-   * console error, an uncaught exception, a request that failed. The harness
-   * redacts the text, files it under the step that started last (an entry
-   * before the first step waits for it), and shows it on the trace page.
-   * Call it from the moment
-   * `startAttempt` begins until `endAttempt`; entries past a per-attempt cap
-   * are dropped.
+   * console line, an uncaught exception, a request that failed. The harness
+   * redacts the text, keeps it with the step that was running, and shows it
+   * on the trace page. Call it from the moment `startAttempt` begins until
+   * `endAttempt`; entries past a per-attempt cap are dropped.
    */
   readonly appLog: (entry: AppLogEntry) => void;
   /**
-   * Hands the harness a screen the engine read anyway: the capture a
-   * `locate` matched against, or one taken right after an action where that
-   * is cheap. The trace page shows how each step's screen changed. Refs in
-   * it are not valid for `perform`. Absent when the attempt keeps no trace.
+   * Reports where the app went on its own, as one line (`navigated to
+   * /login`, `the app opened a new tab at /help`): a navigation the engine
+   * did not start, a tab, a frame. Shown under the step that was running.
+   */
+  readonly navigation: (line: string) => void;
+  /**
+   * Hands the harness a screen for the trace: the capture a `locate`
+   * matched against, or one read right after an action. A read after an
+   * action is on the action's path, so bound it and skip it where it is
+   * expensive; it never fails the action. The trace page shows how each
+   * step's screen changed. Refs in it are not valid for `perform`. Absent
+   * when the attempt keeps no trace.
    */
   readonly screen?: (snapshot: EngineSnapshot) => void;
   /**
@@ -545,10 +551,9 @@ export interface EngineAttemptContext {
 export interface AppLogEntry {
   /**
    * Where it came from: the app's `console`, an `error` nothing caught, the
-   * `network`, the `system` the app runs on (a crash, an OS log), or a
-   * `navigation` (the page moving, a new tab, a frame loading).
+   * `network`, or the `system` the app runs on (a crash, an OS log).
    */
-  readonly source: 'console' | 'error' | 'network' | 'system' | 'navigation';
+  readonly source: 'console' | 'error' | 'network' | 'system';
   readonly level: 'error' | 'warning' | 'info';
   /** One line, such as `GET /api/todos 500` or `TypeError: x is undefined`; the harness clips it. */
   readonly text: string;

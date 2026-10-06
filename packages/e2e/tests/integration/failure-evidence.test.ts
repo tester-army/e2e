@@ -155,8 +155,10 @@ describe('failure evidence', () => {
         const screenFile = path.join(project.dir, '.e2e', 'results', screen.path!);
         expect(existsSync(screenFile)).toBe(true);
         const text = readFileSync(screenFile, 'utf8');
-        expect(text.startsWith('# Screen at failure\nurl: ')).toBe(true);
+        expect(text).toMatch(/^#\S+ /);
         expect(text).toContain('button "Submit"');
+        expect(failure.viewport).toEqual({ width: expect.any(Number), height: expect.any(Number) });
+        expect(failure.nodes).toBe(text.trim().split('\n').length);
         const shot = attempt.artifacts.find((artifact) => artifact.id === failure.screenshot)!;
         expect(shot.kind).toBe('screenshot');
         expect(fake.operations.some((operation) => operation.method === 'artifacts.screenshot(failure)')).toBe(true);

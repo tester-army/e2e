@@ -114,8 +114,8 @@ hosted service's video by URL.
 - `junit`: `junit.xml` for CI summaries; `--reporter list,junit` keeps the
   terminal output.
 - Every run that reaches its tests also writes a trace page per failed,
-  timed-out, or flaky test, `results/<test>/trace.md` (the `trace` mode, default
-  `retain-on-failure`; an interrupted test gets none): every step with what
+  timed-out, interrupted, or flaky test, `results/<test>/trace.md` (the
+  `trace` mode, default `retain-on-failure`): every step with what
   it did, the cache's decisions, what the app logged, the last model turns,
   and the screen at failure. The `list` output names it under each failure
   (`❯ trace <path>`). Read it first.

@@ -12,7 +12,7 @@ import type { SerializedError } from '../internal/errors.ts';
 import { resultId } from '../internal/ids.ts';
 import { packageVersion } from '../internal/package-version.ts';
 import type { RunEvent, RunEventFact, RunEventOf, RunEventResult, SetupStep } from '../run/events.ts';
-import type { StepRecord } from '../run/steps.ts';
+import type { AppLogRecord, StepRecord } from '../run/steps.ts';
 import { failureBeforeSkip, type ArtifactRecord, type AttemptRecord, type FailureEvidence, type ResultStatus, type SerialGroupRecord } from '../run/records.ts';
 import type { Reporter, ReporterSummary } from '../types.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
@@ -117,17 +117,10 @@ interface ResultDetails {
   readonly appLog: string | undefined;
 }
 
-/** `2 errors, 1 warning`: the app log lines of these steps that say something went wrong. */
-function appLogTally(steps: readonly StepRecord[]): string | undefined {
-  let errors = 0;
-  let warnings = 0;
-  for (const step of steps) {
-    for (const event of step.events) {
-      if (event.kind !== 'app') continue;
-      if (event.level === 'error') errors += 1;
-      else if (event.level === 'warning') warnings += 1;
-    }
-  }
+/** `2 errors, 1 warning`: the app log lines that say something went wrong. */
+function appLogTally(appLog: readonly AppLogRecord[]): string | undefined {
+  const errors = appLog.filter((entry) => entry.level === 'error').length;
+  const warnings = appLog.filter((entry) => entry.level === 'warning').length;
   const parts = [
     ...(errors === 0 ? [] : [`${errors} ${errors === 1 ? 'error' : 'errors'}`]),
     ...(warnings === 0 ? [] : [`${warnings} ${warnings === 1 ? 'warning' : 'warnings'}`]),
@@ -148,7 +141,7 @@ function attemptDetails(attempts: readonly AttemptRecord[]): ResultDetails {
     error: told?.error,
     videos: videoPaths(attempts),
     ...failureOf(told),
-    appLog: appLogTally(told?.steps ?? []),
+    appLog: appLogTally(told?.appLog ?? []),
   };
 }
 
@@ -199,7 +192,7 @@ function serialMemberDetails(group: SerialGroupRecord, testId: string): ResultDe
     // The group's recording covers every member, so a failed member points at it.
     videos: videoPaths(group.attempts),
     ...failureOf(own === undefined ? undefined : { failure: own.failure, artifacts: last?.attempt.artifacts ?? [] }),
-    appLog: appLogTally(own?.steps ?? []),
+    appLog: appLogTally(own?.appLog ?? []),
   };
 }
 

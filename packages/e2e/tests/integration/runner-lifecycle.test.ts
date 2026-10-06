@@ -865,9 +865,10 @@ test('sleeps until interrupted', async () => {
       expect(outcome.report.run.summary).toMatchObject({ failed: 0, interrupted: 1 });
       expect(readFileSync(path.join(output, 'summary.md'), 'utf8')).toMatch(/^### ⏹️ e2e: 1 interrupted\n/u);
       expect(readFileSync(path.join(output, 'junit.xml'), 'utf8')).toContain('<skipped message="interrupted: ');
+      // The interrupted test's page is this run's own: it shows where the test stopped.
       const results = path.join(output, 'results');
       const pages = existsSync(results) ? readdirSync(results, { recursive: true }).map(String).filter((entry) => entry.endsWith('trace.md')) : [];
-      expect(pages).toEqual([]);
+      expect(pages).toEqual([expect.stringMatching(/^sleeps-until-interrupted-[0-9a-f]{16}\/trace\.md$/)]);
       project.cleanup();
     },
     120_000,

@@ -36,6 +36,7 @@ const failing = reportResult({
       status: 'failed',
       error: reportError({ code: 'ASSERTION_FAILED', message: 'expect.toHaveText failed' }),
       secondaryErrors: [reportError({ code: 'ENGINE_FAILURE', message: 'the browser closed early', phase: 'cleanup' })],
+      appLog: [{ source: 'network', level: 'error', text: 'POST http://127.0.0.1:4100/api/coupon 500 Internal Server Error', at: '2026-01-01T00:00:02.000Z', step: 0 }],
       steps: [
         reportStep({
           index: 0,
@@ -45,7 +46,6 @@ const failing = reportResult({
           cache: { mode: 'agent-concluded', reason: 'target-not-found', replayedActions: 1, totalActions: 3, entry: ENTRY, detail: 'at action 2 of 3, tap button "Apply"', write: 'saved' },
           events: [
             { kind: 'engine', name: 'tap', startedAt: '2026-01-01T00:00:01.000Z', durationMs: 12, status: 'passed', detail: 'tap button "Coupon"' },
-            { kind: 'app', name: 'network', level: 'error', startedAt: '2026-01-01T00:00:02.000Z', durationMs: 0, status: 'failed', detail: 'POST http://127.0.0.1:4100/api/coupon 500 Internal Server Error' },
           ],
         }),
         reportStep({
@@ -159,7 +159,7 @@ describe('the steps on a trace page', () => {
     const step = reportStep({ index: 0, kind: 'agent', api: 'agent.act', label: 'tap them all', status: 'failed', events });
     const [page] = await pagesOf(reportResult({ id: 'bbbbbbbb22', status: 'failed', attempts: [reportAttempt({ status: 'failed', steps: [step] })] }));
     const lines = stepLines(page!.text, 1);
-    expect(lines[0]).toBe('10 earlier events left out');
+    expect(lines[0]).toBe('10 events left out');
     expect(lines[1]).toBe('✗ tap button "2"');
     expect(lines.at(-1)).toBe('tap button "29" (1ms)');
     expect(lines).toHaveLength(21);
@@ -171,15 +171,23 @@ describe('the steps on a trace page', () => {
     const tap = reportStep({
       index: 1,
       status: 'failed',
-      events: [
-        { kind: 'app', name: 'console', level: 'info', startedAt: at(1), durationMs: 0, status: 'passed', detail: 'loaded 3 todos' },
-        { kind: 'app', name: 'navigation', level: 'info', startedAt: at(2), durationMs: 0, status: 'passed', detail: 'navigated to http://127.0.0.1:4100/login' },
-      ],
+      events: [{ kind: 'navigation', startedAt: at(2), durationMs: 0, status: 'passed', detail: 'navigated to http://127.0.0.1:4100/login' }],
       screen: { location: 'http://127.0.0.1:4100/login', nodes: 5, since: 0, changes: ['added heading "Sign in"', 'removed heading "Todos"'], more: 3 },
     });
     const still = reportStep({ index: 2, api: 'locator.tap', screen: { nodes: 5, since: 1, changes: [] } });
     const [page] = await pagesOf(
-      reportResult({ id: 'cccccccc33', status: 'failed', attempts: [reportAttempt({ status: 'failed', environment: { browser: 'chromium 141.0', 'user agent': 'Mozilla/5.0' }, steps: [open, tap, still] })] }),
+      reportResult({
+        id: 'cccccccc33',
+        status: 'failed',
+        attempts: [
+          reportAttempt({
+            status: 'failed',
+            environment: { browser: 'chromium 141.0', 'user agent': 'Mozilla/5.0' },
+            steps: [open, tap, still],
+            appLog: [{ source: 'console', level: 'info', text: 'loaded 3 todos', at: at(1), step: 1 }],
+          }),
+        ],
+      }),
     );
     expect(page!.text).toContain('Ran on: browser `chromium 141.0` · user agent `Mozilla/5.0`');
     expect(stepLines(page!.text, 1)).toEqual(['screen: 33 nodes at `/todos`']);
@@ -191,31 +199,35 @@ describe('the steps on a trace page', () => {
 
 describe('the app log on a trace page', () => {
   const at = (ms: number) => new Date(Date.UTC(2026, 0, 1) + ms).toISOString();
-  const logged = (ms: number, level: 'info' | 'warning' | 'error', detail: string, name = 'console') =>
-    ({ kind: 'app', name, level, startedAt: at(ms), durationMs: 0, status: level === 'error' ? 'failed' : 'passed', detail }) as const;
+  const logged = (ms: number, level: 'info' | 'warning' | 'error', text: string, step: number | undefined, source: 'console' | 'network' = 'console') =>
+    ({ source, level, text, at: at(ms), ...(step === undefined ? {} : { step }) }) as const;
 
-  it('lists every line the app logged in one section, oldest first, with its step, and leaves navigations under their steps', async () => {
-    const first = reportStep({ index: 0, api: 'app.open', events: [logged(20, 'info', 'booted'), { ...logged(10, 'info', 'navigated to http://127.0.0.1:4100/'), name: 'navigation' }] });
-    const second = reportStep({ index: 1, status: 'failed', events: [logged(40, 'error', 'POST /api/todos 500', 'network'), logged(30, 'warning', 'slow render')] });
-    const [page] = await pagesOf(reportResult({ id: 'dddddddd44', status: 'failed', attempts: [reportAttempt({ status: 'failed', steps: [first, second] })] }));
+  it('lists every line the app logged in one section, oldest first, with its step on the page, and one before the first step as such', async () => {
+    const first = reportStep({ index: 0, api: 'app.open', events: [{ kind: 'navigation', startedAt: at(10), durationMs: 0, status: 'passed', detail: 'navigated to http://127.0.0.1:4100/' }] });
+    const second = reportStep({ index: 1, status: 'failed' });
+    const appLog = [logged(40, 'error', 'POST /api/todos 500', 1, 'network'), logged(20, 'info', 'booted', 0), logged(30, 'warning', 'slow render', 1), logged(5, 'info', 'early', undefined)];
+    const [page] = await pagesOf(reportResult({ id: 'dddddddd44', status: 'failed', attempts: [reportAttempt({ status: 'failed', steps: [first, second], appLog })] }));
     expect(page!.text).toContain(
       [
         '## App log',
         '',
         'What the app logged, oldest first, with the step it happened in.',
         '',
+        '- before step 1 · ℹ console: `early`',
         '- step 1 · ℹ console: `booted`',
         '- step 2 · ⚠ console warning: `slow render`',
         '- step 2 · ✗ network error: `POST /api/todos 500`',
         '',
       ].join('\n'),
     );
+    expect(stepLines(page!.text, 1)).toEqual(['↪ navigated to /', 'ℹ console: `booted`']);
   });
 
   it('keeps every error past the cap, then the latest of the rest, and says how many it left out', async () => {
-    const chatter = Array.from({ length: 60 }, (_, index) => logged(index, 'info', `tick ${index}`));
-    const step = reportStep({ index: 0, status: 'failed', events: [logged(-1, 'error', 'first failure'), ...chatter] });
-    const [page] = await pagesOf(reportResult({ id: 'eeeeeeee55', status: 'failed', attempts: [reportAttempt({ status: 'failed', steps: [step] })] }));
+    const chatter = Array.from({ length: 60 }, (_, index) => logged(index, 'info', `tick ${index}`, 0));
+    const step = reportStep({ index: 0, status: 'failed' });
+    const appLog = [logged(-1, 'error', 'first failure', 0), ...chatter];
+    const [page] = await pagesOf(reportResult({ id: 'eeeeeeee55', status: 'failed', attempts: [reportAttempt({ status: 'failed', steps: [step], appLog })] }));
     const section = page!.text.split('## App log')[1]!.split('\n## ')[0]!;
     const items = section.split('\n').filter((line) => line.startsWith('- '));
     expect(items).toHaveLength(51);

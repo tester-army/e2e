@@ -494,8 +494,7 @@ bunx e2e run --reporter list,junit
 
 Every run that gets to its tests writes `report.json`, for scripts, under the [output directory](/reference/config#output)
 (`.e2e` by default) whatever the reporters are, the trace pages its
-[`trace`](/reference/config#trace) mode keeps in each test's directory under `results/` (an interrupted
-test gets none), and the reporters' files beside it. A run that stops before (a config or collection error,
+[`trace`](/reference/config#trace) mode keeps in each test's directory under `results/`, and the reporters' files beside it. A run that stops before (a config or collection error,
 `NO_TESTS`, `NO_LAST_RUN`, `UNSUPPORTED_ARTIFACT`, an app command that
 fails to start, an interrupt) writes none of them and leaves the previous
 run's files in place; its errors are on the terminal and in the exit code. A `junit.xml` or `summary.md` that could not be written is a

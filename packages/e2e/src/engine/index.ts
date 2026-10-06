@@ -516,22 +516,29 @@ export interface EngineAttemptContext {
   readonly signal: AbortSignal;
   /**
    * Reports something the app did on its own while the attempt ran: a
-   * console error, an uncaught exception, a request that failed. The harness
-   * redacts the text, files it under the step that started last (an entry
-   * before the first step waits for it), and shows it on the trace page.
-   * Call it from the moment
-   * `startAttempt` begins until `endAttempt`; entries past a per-attempt cap
-   * are dropped.
+   * console line, an uncaught exception, a request that failed. The harness
+   * redacts the text, keeps it with the step that was running, and shows it
+   * on the trace page. Call it from the moment `startAttempt` begins until
+   * `endAttempt`; entries past a per-attempt cap are dropped.
    */
   readonly appLog: (entry: AppLogEntry) => void;
   /**
-   * Hands the harness a screen the engine read anyway: the capture a
-   * `locate` matched against, or one taken right after an action where that
-   * is cheap. The harness redacts it and keeps, for each step, how the
-   * screen changed since the step before, which the trace page shows. It
-   * never becomes an observation: refs it holds are not valid for `perform`.
-   * Nothing in the run waits on it, so an engine that cannot afford it skips
-   * it. Absent when the attempt keeps no trace; the engine then captures nothing for it.
+   * Reports where the app went on its own, as one line (`navigated to
+   * /login`, `the app opened a new tab at /help`, `frame "pay" loaded
+   * /embed`): a navigation the engine did not start, a tab, a frame. The
+   * harness redacts it and shows it under the step that was running.
+   */
+  readonly navigation: (line: string) => void;
+  /**
+   * Hands the harness a screen for the trace: the capture a `locate`
+   * matched against, or one read right after an action. The harness redacts
+   * it and keeps, for each step, how the screen changed since the step
+   * before, which the trace page shows. It never becomes an observation:
+   * refs it holds are not valid for `perform`. An engine that reads one after
+   * an action does so on the action's path, so it bounds the read (the web
+   * engine allows one second and gives up silently) and skips it where a
+   * read is expensive; an action never fails because of it. Absent when the
+   * attempt keeps no trace; the engine then reads nothing for it.
    */
   readonly screen?: (snapshot: EngineSnapshot) => void;
   /**
@@ -544,13 +551,15 @@ export interface EngineAttemptContext {
 }
 
 /** One line of what the app did during an attempt, as `EngineAttemptContext.appLog` takes it. */
+/** Where an app log entry came from. */
+export type AppLogSource = 'console' | 'error' | 'network' | 'system';
+
 export interface AppLogEntry {
   /**
    * Where it came from: the app's `console`, an `error` nothing caught, the
-   * `network`, the `system` the app runs on (a crash, an OS log), or a
-   * `navigation` (the page moving, a new tab, a frame loading).
+   * `network`, or the `system` the app runs on (a crash, an OS log).
    */
-  readonly source: 'console' | 'error' | 'network' | 'system' | 'navigation';
+  readonly source: AppLogSource;
   readonly level: 'error' | 'warning' | 'info';
   /** One line, such as `GET /api/todos 500` or `TypeError: x is undefined`; the harness clips it. */
   readonly text: string;
