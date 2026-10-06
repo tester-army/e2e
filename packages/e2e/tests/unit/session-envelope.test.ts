@@ -1,6 +1,6 @@
 /** Session envelope wire format. */
 
-import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -20,11 +20,19 @@ const identity: SessionIdentity = {
 
 const SECRET_VALUE = 'provider-minted-token-7391';
 
+/** Temp dirs the cases in this file create, removed after each so a run leaves nothing behind. */
+const tempDirs: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(tempDirs.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+});
+
 /** Saves one state and returns the parsed envelope, its raw text, its file, and its store. */
 async function saveEnvelope(
   secrecy: SavedSecrecy = { secrets: [], tainted: false },
 ): Promise<{ store: SessionStore; raw: string; file: string; envelope: Record<string, unknown> }> {
   const root = await mkdtemp(path.join(tmpdir(), 'e2e-sessions-'));
+  tempDirs.push(root);
   const runId = uuidv7();
   const store = SessionStore.create(runId, root);
   await store.save('member', identity, {
@@ -159,6 +167,7 @@ describe('session file names', () => {
   /** Opens a store on a fresh temporary root. */
   async function openStore(): Promise<{ store: SessionStore; root: string; runId: string }> {
     const root = await mkdtemp(path.join(tmpdir(), 'e2e-sessions-'));
+    tempDirs.push(root);
     const runId = uuidv7();
     return { store: SessionStore.create(runId, root), root, runId };
   }

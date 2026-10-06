@@ -1,6 +1,6 @@
 /** StepTraceSession: store resilience, staging anchors, replay postconditions, the write-side decision. */
 
-import { mkdtemp, readFile, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -135,8 +135,19 @@ function stagedTrace(context: AgentCacheContext, index = 0): ActionTrace {
   return staged.trace;
 }
 
-afterEach(() => {
+/** Temp dirs the cases below create, removed after each so a run leaves nothing behind. */
+const tempDirs: string[] = [];
+
+/** A temp directory for one case, registered for removal after it. */
+async function tempDir(prefix: string): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), prefix));
+  tempDirs.push(directory);
+  return directory;
+}
+
+afterEach(async () => {
   vi.useRealTimers();
+  await Promise.all(tempDirs.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });
 
 describe('recordedVerdictOf', () => {
@@ -811,7 +822,7 @@ describe('StepTraceSession', () => {
   });
 
   it('leaves the entry file untouched across replays and rewrites it after a hand-off the executor healed', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'e2e-step-cache-'));
+    const directory = await tempDir('e2e-step-cache-');
     const store = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
     const context = (): AgentCacheContext => ({
       mode: 'read-write',
@@ -951,7 +962,7 @@ describe('destination path settling', () => {
 
 describe('flushStagedTraces and a re-recorded flow', () => {
   it('leaves an entry the same flow re-recorded untouched, and replaces it when the actions change', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'e2e-flush-'));
+    const directory = await tempDir('e2e-flush-');
     const store = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
     const context = (): AgentCacheContext => ({
       mode: 'read-write',
@@ -1000,7 +1011,7 @@ describe('flushStagedTraces and a re-recorded flow', () => {
   });
 
   it('leaves an entry untouched when only the rule that flagged a typed value differs', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'e2e-flush-derived-'));
+    const directory = await tempDir('e2e-flush-derived-');
     const store = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
     const file = join(directory, `${'d'.repeat(64)}.json`);
     const trace = (derived?: DerivedReason): ActionTrace => ({
@@ -1104,7 +1115,7 @@ describe('cache.strict and a step whose key changed under its recording', () => 
 
   /** A file store holding one entry under `OLD_KEY`, and a context whose own key finds nothing in it. */
   async function rekeyedContext(payload: ActionTrace, strict = true): Promise<AgentCacheContext> {
-    const directory = await mkdtemp(join(tmpdir(), 'e2e-rekeyed-'));
+    const directory = await tempDir('e2e-rekeyed-');
     const store = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
     await store.write(OLD_KEY, payload);
     return {

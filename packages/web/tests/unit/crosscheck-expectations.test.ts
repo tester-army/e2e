@@ -1,16 +1,25 @@
 /** The cross-check's committed expectations: keys, the diff, and the rewrite that keeps reasons. */
 
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { diffExpectations, keyOf, readExpectations, TODO_REASON, writeExpectations } from '../crosscheck/expectations.ts';
 
 const fileRole = { oracle: 'chrome', field: 'role', node: 'textbox "Attachments"', ours: 'textbox', theirs: 'button' } as const;
 const inert = { oracle: 'chrome', field: 'unknown', node: 'button "Inert"', ours: 'button', theirs: 'no AX node' } as const;
 
+/** Temp dirs the cases here create, removed after each so a run leaves nothing behind. */
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const directory of tempDirs.splice(0)) rmSync(directory, { recursive: true, force: true });
+});
+
 function file(content: string): string {
-  const target = path.join(mkdtempSync(path.join(os.tmpdir(), 'crosscheck-')), 'expected.txt');
+  const root = mkdtempSync(path.join(os.tmpdir(), 'crosscheck-'));
+  tempDirs.push(root);
+  const target = path.join(root, 'expected.txt');
   writeFileSync(target, content);
   return target;
 }
