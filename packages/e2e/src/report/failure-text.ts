@@ -303,6 +303,34 @@ function closestToTheEnd(events: readonly StepEvent[]): readonly StepEvent[] {
   return events.filter((event) => kept.has(event));
 }
 
+/** App log lines the page lists in its own section; errors and warnings stay first, then the latest of the rest. */
+const MAX_APP_LOG_LINES = 50;
+
+/**
+ * Every line the app logged across the attempt (console output, uncaught
+ * errors, failed requests), oldest first, each with its step's number, so a
+ * reader finds the whole log in one place rather than spread across steps.
+ * Navigations are where the page went, not what the app said, and stay
+ * under their steps. Past the cap, every error and warning is kept, then the
+ * latest of the rest.
+ */
+function appLogLines(steps: readonly ReportStep[]): string[] {
+  const logged = steps
+    .flatMap((step, index) => step.events.filter((event) => event.kind === 'app' && event.name !== 'navigation').map((event) => ({ step: index + 1, event })))
+    .toSorted((a, b) => Date.parse(a.event.startedAt) - Date.parse(b.event.startedAt));
+  const kept = new Set(logged.filter(({ event }) => event.level === 'error' || event.level === 'warning').slice(-MAX_APP_LOG_LINES));
+  for (const entry of logged.toReversed()) {
+    if (kept.size >= MAX_APP_LOG_LINES) break;
+    kept.add(entry);
+  }
+  const shown = logged.filter((entry) => kept.has(entry));
+  const left = logged.length - shown.length;
+  return [
+    ...(left === 0 ? [] : [`${left} earlier ${left === 1 ? 'line' : 'lines'} left out`]),
+    ...shown.map(({ step, event }) => `step ${step} · ${eventLine(event)}`),
+  ];
+}
+
 function cacheLine(cache: StepCacheRecord, cacheDir: string | undefined): string {
   const how =
     cache.mode === 'self-finalized'
@@ -487,6 +515,13 @@ export function renderTracePage(report: Report1Document, result: ReportResult, f
       for (const line of stepDetailLines(step, options)) lines.push(`   - ${line}`);
       lines.push(...stepScreenLines(step.screen));
     });
+    lines.push('');
+  }
+
+  const appLog = appLogLines(told.steps);
+  if (appLog.length > 0) {
+    lines.push('## App log', '', 'Everything the app logged, oldest first, with the step it happened in.', '');
+    for (const line of appLog) lines.push(`- ${line}`);
     lines.push('');
   }
 

@@ -45,7 +45,8 @@ landed on, the values an assertion read while it waited, the replay cache's
 decision, what the app logged meanwhile (console output, uncaught exceptions,
 failed requests, 4xx and 5xx responses), where the page went (`↪ navigated
 to /login`, a new tab, a frame), and how the screen changed since the step
-before. Then come the agent's last turns and the screen at failure:
+before. Then come the app log (everything the app logged, each line with its
+step), the agent's last turns, and the screen at failure:
 
 ````markdown
 # ✗ todos › shows the remaining count
@@ -86,6 +87,12 @@ Look at: `tests/todos.e2e.ts:15`
      - `removed checkbox "Milk"`
 4. ✗ `expect.toHaveText` `getByRole("status", name: "Remaining")` (1.6s) — **ASSERTION_FAILED** — `tests/todos.e2e.ts:15`
    - expect gave up after 16 reads in 1.6s: text "0 remaining" (1 match) x16
+
+## App log
+
+Everything the app logged, oldest first, with the step it happened in.
+
+- step 2 · ✗ network error: `POST /api/todos 500 Internal Server Error`
 
 ## Screen at failure
 `http://127.0.0.1:4271/todos` · viewport 1280x720 · 38 nodes

@@ -188,3 +188,45 @@ describe('the steps on a trace page', () => {
     expect(stepLines(page!.text, 3)).toEqual(['screen: unchanged since step 2']);
   });
 });
+
+describe('the app log on a trace page', () => {
+  const at = (ms: number) => new Date(Date.UTC(2026, 0, 1) + ms).toISOString();
+  const logged = (ms: number, level: 'info' | 'warning' | 'error', detail: string, name = 'console') =>
+    ({ kind: 'app', name, level, startedAt: at(ms), durationMs: 0, status: level === 'error' ? 'failed' : 'passed', detail }) as const;
+
+  it('lists every line the app logged in one section, oldest first, with its step, and leaves navigations under their steps', async () => {
+    const first = reportStep({ index: 0, api: 'app.open', events: [logged(20, 'info', 'booted'), { ...logged(10, 'info', 'navigated to http://127.0.0.1:4100/'), name: 'navigation' }] });
+    const second = reportStep({ index: 1, status: 'failed', events: [logged(40, 'error', 'POST /api/todos 500', 'network'), logged(30, 'warning', 'slow render')] });
+    const [page] = await pagesOf(reportResult({ id: 'dddddddd44', status: 'failed', attempts: [reportAttempt({ status: 'failed', steps: [first, second] })] }));
+    expect(page!.text).toContain(
+      [
+        '## App log',
+        '',
+        'Everything the app logged, oldest first, with the step it happened in.',
+        '',
+        '- step 1 · ℹ console: `booted`',
+        '- step 2 · ⚠ console warning: `slow render`',
+        '- step 2 · ✗ network error: `POST /api/todos 500`',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('keeps every error past the cap, then the latest of the rest, and says how many it left out', async () => {
+    const chatter = Array.from({ length: 60 }, (_, index) => logged(index, 'info', `tick ${index}`));
+    const step = reportStep({ index: 0, status: 'failed', events: [logged(-1, 'error', 'first failure'), ...chatter] });
+    const [page] = await pagesOf(reportResult({ id: 'eeeeeeee55', status: 'failed', attempts: [reportAttempt({ status: 'failed', steps: [step] })] }));
+    const section = page!.text.split('## App log')[1]!.split('\n## ')[0]!;
+    const items = section.split('\n').filter((line) => line.startsWith('- '));
+    expect(items).toHaveLength(51);
+    expect(items[0]).toBe('- 11 earlier lines left out');
+    expect(items[1]).toBe('- step 1 · ✗ console error: `first failure`');
+    expect(items.at(-1)).toBe('- step 1 · ℹ console: `tick 59`');
+    expect(section).not.toContain('`tick 10`');
+  });
+
+  it('leaves the section out when the app logged nothing', async () => {
+    const [page] = await pagesOf(reportResult({ id: 'ffffffff66', status: 'failed', attempts: [reportAttempt({ status: 'failed', steps: [reportStep({ index: 0 })] })] }));
+    expect(page!.text).not.toContain('## App log');
+  });
+});

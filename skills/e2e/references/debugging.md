@@ -18,7 +18,8 @@ default.
      timeout, changing values at a race;
    - what the app logged meanwhile (`✗ network error: POST /api/save 500`,
      `✗ uncaught error: ...`, `⚠ console warning: ...`, `ℹ console: ...`);
-     `❯ app 2 errors` in the terminal says there are some;
+     `❯ app 2 errors` in the terminal says there are some, and the page's
+     `## App log` lists them all with their step;
    - where the page went (`↪ navigated to /login`, a new tab the app
      opened, a frame that loaded);
    - how the screen changed since the step before (`screen: 2 changes since
