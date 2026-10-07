@@ -67,8 +67,12 @@ export default {
 } satisfies E2EConfig;
 ```
 
-The provider runs `lightpanda` from `PATH`, or the binary `LIGHTPANDA_PATH`
-names in the environment `e2e run` starts in, or `binary` in the options.
+The provider runs `lightpanda` from `PATH`, `~/.lightpanda/lightpanda`, or
+`~/.local/bin/lightpanda`, the places
+[agent-browser](https://agent-browser.dev/engines/lightpanda) looks too, or
+the binary `LIGHTPANDA_PATH` names in the environment `e2e run` starts in,
+or `binary` in the options. None found fails the run before any test,
+naming the install page.
 Each worker gets its own server, so `workers` sets how many run at once,
 and the run's log names each one:
 
@@ -108,7 +112,7 @@ the same way without the package, if you would rather not add one.
 
 | Option          | Default                         | Meaning |
 | --------------- | ------------------------------- | ------- |
-| `binary`        | `LIGHTPANDA_PATH`, else `lightpanda` | The binary to start: a path, or a name on `PATH`. |
+| `binary`        | `LIGHTPANDA_PATH`, else found   | The binary to start: a path, or a name on `PATH`. |
 | `endpoint`      | `LIGHTPANDA_URL`, else none     | A running server to attach to instead; see [above](#attach-to-a-running-server). |
 | `loadResources` | `[]`                            | Sub-resources the started server fetches: `iframe`, `image`, `stylesheet`. See [Fetch more of the page](#fetch-more-of-the-page). |
 | `args`          | `[]`                            | Further `lightpanda serve` flags, after the ones the provider sets. |

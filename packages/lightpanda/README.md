@@ -26,7 +26,7 @@ export default {
 ```
 
 The binary comes from `binary`, `LIGHTPANDA_PATH` in the run's environment,
-or `lightpanda` on `PATH`. `endpoint`, or `LIGHTPANDA_URL`, attaches every
+or `lightpanda` on `PATH`, `~/.lightpanda`, or `~/.local/bin`. `endpoint`, or `LIGHTPANDA_URL`, attaches every
 worker to a server already running (the Docker image in CI) instead, and
 release leaves it alone. `loadResources` passes `--load-resources` for
 `iframe`, `image`, and `stylesheet`; `args` adds any other `serve` flag.

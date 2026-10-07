@@ -1,11 +1,12 @@
 /**
  * `lightpanda()` against a fake binary: a node script that parses the serve
  * flags, listens on the port, and answers `/json/version`. Covers the lease
- * endpoint and log line, the flags passed, stop on release, a binary that
- * exits before listening, a cancelled request, and `endpoint` mode.
+ * endpoint and log line, the flags passed, stop on release, where the binary
+ * is found, a binary that exits before listening, a cancelled request, and
+ * `endpoint` mode.
  */
 
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { BrowserLease, BrowserReleaseContext, BrowserRequest } from '@e2e-dev/web';
@@ -113,6 +114,24 @@ describe('lightpanda()', () => {
     const lease = await provider.acquire(request({ env: { LIGHTPANDA_PATH: binary } }));
     expect(await listening(lease)).toBe(true);
     await provider.release(lease, releaseContext);
+  });
+
+  it('finds the binary on PATH, then under the home directory, and names the install page otherwise', async () => {
+    const home = path.join(dir, 'home');
+    mkdirSync(path.join(home, '.lightpanda'), { recursive: true });
+    copyFileSync(binary, path.join(home, '.lightpanda', 'lightpanda'));
+    const provider = lightpanda();
+    const fromHome = await provider.acquire(request({ env: { HOME: home, PATH: path.join(dir, 'empty') } }));
+    expect(await listening(fromHome)).toBe(true);
+    await provider.release(fromHome, releaseContext);
+
+    const fromPath = await provider.acquire(request({ env: { HOME: path.join(dir, 'nohome'), PATH: dir } }));
+    expect(await listening(fromPath)).toBe(true);
+    await provider.release(fromPath, releaseContext);
+
+    await expect(provider.acquire(request({ env: { HOME: path.join(dir, 'nohome'), PATH: path.join(dir, 'empty') } }))).rejects.toThrow(
+      /not on PATH, in ~\/.lightpanda, or in ~\/.local\/bin; install it \(https:\/\/lightpanda.io\/docs\/open-source\/installation\) or set LIGHTPANDA_PATH/,
+    );
   });
 
   it('fails with the stderr of a binary that exits before listening', async () => {

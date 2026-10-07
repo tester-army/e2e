@@ -1,12 +1,12 @@
 /** Lightpanda as a `BrowserProvider` for the web engine: a `lightpanda serve` per lease, or a server already running. */
 
 import type { BrowserLease, BrowserProvider, BrowserReleaseContext, BrowserRequest } from '@e2e-dev/web';
+import { findBinary } from './binary.ts';
 import { envValue } from './env.ts';
 import { serve, type LightpandaResource, type LightpandaServer } from './server.ts';
 
 const LIGHTPANDA_PATH = 'LIGHTPANDA_PATH';
 const LIGHTPANDA_URL = 'LIGHTPANDA_URL';
-const DEFAULT_BINARY = 'lightpanda';
 
 /** How long a released server gets to exit on SIGTERM before SIGKILL. */
 const STOP_GRACE_MS = 5_000;
@@ -14,7 +14,8 @@ const STOP_GRACE_MS = 5_000;
 export interface LightpandaOptions {
   /**
    * The `lightpanda` binary to start: a path, or a name on `PATH`. Default
-   * `LIGHTPANDA_PATH` from the run's environment, else `lightpanda`.
+   * `LIGHTPANDA_PATH` from the run's environment, else `lightpanda` on
+   * `PATH`, `~/.lightpanda/lightpanda`, or `~/.local/bin/lightpanda`.
    */
   readonly binary?: string | undefined;
   /**
@@ -63,7 +64,7 @@ export function lightpanda(options: LightpandaOptions = {}): BrowserProvider {
         request.log(`lightpanda at ${endpoint}`);
         return { id: endpoint, cdpEndpoint: endpoint };
       }
-      const binary = options.binary ?? envValue(request.env, LIGHTPANDA_PATH) ?? DEFAULT_BINARY;
+      const binary = options.binary ?? envValue(request.env, LIGHTPANDA_PATH) ?? findBinary(request.env);
       const server = await serve({ binary, loadResources, args, signal: request.signal });
       if (request.signal.aborted) {
         await server.stop(STOP_GRACE_MS);
