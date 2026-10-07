@@ -233,7 +233,7 @@ describe('trace cache: a changed screen hands the step to the agent, which re-re
 
   it('replays the typing, hands off at the renamed button, and tells the model what already ran', () => {
     const step = onlyActStep(replayed, 'creates a company');
-    expect(step.cache).toEqual({ mode: 'agent-concluded', reason: 'target-not-found', replayedActions: 1, totalActions: 2 });
+    expect(step.cache).toEqual({ mode: 'agent-concluded', reason: 'target-not-found', outcome: 'written', replayedActions: 1, totalActions: 2 });
     expect(step.metrics?.modelCalls).toBeGreaterThan(0);
     const notice = handedOffNotice(loopCalls);
     expect(notice).toMatch(/target-not-found/u);

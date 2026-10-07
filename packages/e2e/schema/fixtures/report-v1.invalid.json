@@ -61,6 +61,14 @@
                   "contextBytes": 0,
                   "ledgerBytes": 0
                 },
+                "cache": {
+                  "mode": "missed",
+                  "reason": "no-entry",
+                  "outcome": "written",
+                  "outcomeReason": "confirmed",
+                  "replayedActions": 0,
+                  "totalActions": 1
+                },
                 "artifacts": []
               }
             ]

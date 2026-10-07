@@ -327,15 +327,21 @@ export function expectPassed(outcome: RunOutcome): void {
   expect(outcome.exitCode).toBe(0);
 }
 
-/** A step the cache served whole: no model turn, the recorded verdict as its explanation. */
+/** A step the cache served whole and a later assertion confirmed: no model turn, the recorded verdict as its explanation. */
 export function expectReplayed(step: StepRecord, actions: number): void {
   expect(step.status).toBe('passed');
-  expect(step.cache).toEqual({ mode: 'self-finalized', replayedActions: actions, totalActions: actions });
+  expect(step.cache).toEqual({
+    mode: 'self-finalized',
+    outcome: 'kept',
+    outcomeReason: 'confirmed',
+    replayedActions: actions,
+    totalActions: actions,
+  });
   expect(step.metrics?.modelCalls).toBe(0);
   expect(step.explanation).toContain('zero-turn');
 }
 
-/** A step the executor ran from the top, with the reason the report gives. */
+/** A step the executor ran from the top and recorded, with the reason the report gives. */
 export function expectMissed(step: StepRecord, reason: NonNullable<StepCacheInfo['reason']>, totalActions: number): void {
-  expect(step.cache).toEqual({ mode: 'missed', reason, replayedActions: 0, totalActions });
+  expect(step.cache).toEqual({ mode: 'missed', reason, outcome: 'written', replayedActions: 0, totalActions });
 }

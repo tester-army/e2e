@@ -196,6 +196,30 @@ A stop before any action ran is a miss. After replay starts, it is a
 hand-off. Unique test data and cleanup in `afterEach` help avoid stale
 state between runs.
 
+### What a run did to a recording
+
+In `read-write` mode, `step.cache.outcome` in the report says what the
+attempt did to the step's entry once it settled, and `step.cache.outcomeReason`
+says why it kept or deleted one. A self-healing CI loop can read them to know
+which tests need a second pass, without diffing `.e2e/cache/`.
+
+| Outcome | Reason | What happened |
+| --- | --- | --- |
+| `written` | | A new or changed recording was verified and saved. |
+| `kept` | `confirmed` | The step replayed whole and a later verification passed. The file is unchanged, except that an entry recorded before e2e 0.17 gains the step fields it was recorded without. |
+| `kept` | `unchanged` | The step ran live and recorded the flow the entry already holds. The file is unchanged. |
+| `evicted` | `repaired` | Every recorded action ran, the outcome did not appear, and the agent had to act again. The next verified pass records a clean flow. |
+| `evicted` | `failed-after-replay` | The step failed after replaying part of its entry. |
+| `evicted` | `not-replaced` | The step passed, but changed nothing a replay could check, so nothing replaced the entry it read. |
+| `evicted` | `unconfirmed` | No verification passed after the step, or the attempt failed before one did. |
+
+`outcome` is absent when the attempt left the store alone: a `read-only`
+cache, a cancelled run, an attempt whose only failures were ones where no
+model answered, or a step with nothing to record and nothing stored. A custom store without `delete` never
+reports `evicted`. The `cache` on the result of `agent.act()` is read before
+the attempt settles, so it carries only `repaired`, `failed-after-replay`,
+and `not-replaced`; the report carries all of them.
+
 ### Limits and gaps
 
 A recording is `truncated` when the step took more than 50 actions (only

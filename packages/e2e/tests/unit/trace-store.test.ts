@@ -1,6 +1,6 @@
 /** trace-1 file store: atomic writes, fail-to-miss reads. */
 
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -83,6 +83,13 @@ describe('FileCacheStore', () => {
     const readOnly = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: false });
     await store.write(KEY, payload);
     await readOnly.delete(KEY);
+    expect(await readdir(directory)).toEqual([`${KEY}.json`]);
+  });
+
+  it('rejects a delete that leaves the entry in place, so no caller reports it evicted', async () => {
+    const { directory, store } = await makeStore();
+    await mkdir(path.join(directory, `${KEY}.json`));
+    await expect(store.delete(KEY)).rejects.toMatchObject({ code: expect.any(String) });
     expect(await readdir(directory)).toEqual([`${KEY}.json`]);
   });
 });

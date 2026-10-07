@@ -332,10 +332,10 @@ export class StepTraceSession {
         // A stale recording `cache.strict` failed on stays for the next strict
         // run to fail on too, until a lenient run re-records it; evicting it
         // would turn it into a `no-entry` that runs live.
-        if (this.consumedReplay && !this.failedStale) await this.evict();
+        if (this.consumedReplay && !this.failedStale) await this.evict('failed-after-replay');
         return;
       case 'passed':
-        if (this.repairedAfterEndMismatch(recorder)) await this.evict();
+        if (this.repairedAfterEndMismatch(recorder)) await this.evict('repaired');
         else if (this.replayedWhole) {
           this.cache.staged.push({
             kind: 'keep',
@@ -343,7 +343,7 @@ export class StepTraceSession {
             stepIndex: this.options.stepIndex,
             recordedFor: recordedProvenance(this.claim.step, this.options.redact),
           });
-        } else if (!(await this.stage(recorder, verdictSummary)) && this.readEntryHit) await this.evict();
+        } else if (!(await this.stage(recorder, verdictSummary)) && this.readEntryHit) await this.evict('not-replaced');
         return;
     }
   }
@@ -602,10 +602,18 @@ export class StepTraceSession {
   /**
    * Awaited so the step does not close — and a later read cannot be served
    * the stale flow — before the eviction has settled. The cache is
-   * disposable; a failed eviction is a slower next run only.
+   * disposable; a failed eviction is a slower next run only, and the step
+   * detail claims an eviction only when the store performed one.
    */
-  private async evict(): Promise<void> {
-    await this.cache.store.delete?.(this.keyHash).catch(() => undefined);
+  private async evict(reason: NonNullable<StepCacheInfo['outcomeReason']>): Promise<void> {
+    const remove = this.cache.store.delete;
+    if (remove === undefined) return;
+    try {
+      await remove.call(this.cache.store, this.keyHash);
+    } catch {
+      return;
+    }
+    if (this.info !== undefined) this.info = { ...this.info, outcome: 'evicted', outcomeReason: reason };
   }
 
   private repairedAfterEndMismatch(recorder: TraceRecorder): boolean {

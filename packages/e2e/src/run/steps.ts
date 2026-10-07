@@ -121,6 +121,28 @@ export interface StepCacheInfo {
    * recording could not tell which param a recorded input came from.
    */
   notRecorded?: 'param-collision';
+  /**
+   * What the attempt did to the step's recording, in read-write mode, once
+   * it settled: `written` when a new or changed recording was confirmed and
+   * stored, `kept` when the stored entry was left as it stands, `evicted`
+   * when it was deleted. Absent when the attempt left the store alone: a
+   * read-only cache, an interrupted attempt, a step that ended with no
+   * verdict, or nothing to record and nothing stored. `agent.act()` returns
+   * before the attempt settles, so its result carries only the evictions
+   * the step decided itself.
+   */
+  outcome?: 'written' | 'kept' | 'evicted';
+  /**
+   * Why the entry was kept or evicted; absent on `written`. Kept:
+   * `confirmed` (the step replayed whole and a later verification passed),
+   * `unchanged` (the step ran live and recorded the flow the store already
+   * holds). Evicted: `repaired` (the replay ended in an end mismatch the
+   * executor had to act to repair), `failed-after-replay` (the step failed
+   * after replaying part of the entry), `not-replaced` (the step passed with
+   * nothing a replay could check to record in the entry's place),
+   * `unconfirmed` (no verification passed after the step).
+   */
+  outcomeReason?: 'confirmed' | 'unchanged' | 'repaired' | 'failed-after-replay' | 'not-replaced' | 'unconfirmed';
   replayedActions: number;
   totalActions: number;
 }

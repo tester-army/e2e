@@ -129,6 +129,7 @@
                   "mode": "missed",
                   "reason": "gap",
                   "derived": "minted-token",
+                  "outcome": "written",
                   "replayedActions": 0,
                   "totalActions": 2
                 },
@@ -474,6 +475,8 @@
                     "mode": "missed",
                     "reason": "gap",
                     "derived": "minted-token",
+                    "outcome": "evicted",
+                    "outcomeReason": "unconfirmed",
                     "replayedActions": 0,
                     "totalActions": 2
                   },

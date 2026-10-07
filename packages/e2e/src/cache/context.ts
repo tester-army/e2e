@@ -26,6 +26,7 @@ import {
 import type { StoredRecordings } from './rekeyed.ts';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES, type CacheStore } from './store.ts';
 import type { ActionTrace, TraceProvenance } from './trace.ts';
+import type { StepCacheInfo } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
 
 /**
@@ -160,27 +161,49 @@ export interface AttemptSettlement {
  * nothing and evicts nothing. An entry a step replayed whole is staged too,
  * so the same rule evicts it when nothing confirmed it; when something did,
  * it is left exactly as it was found, but for provenance it lacked.
+ *
+ * Returns what the settlement did to each staged step's entry, for its
+ * report detail. An entry left alone because nothing implicates it, and
+ * one whose store operation failed, has no outcome.
  */
-export async function flushStagedTraces(context: AgentCacheContext, settlement: AttemptSettlement): Promise<void> {
+export async function flushStagedTraces(context: AgentCacheContext, settlement: AttemptSettlement): Promise<SettledOutcome[]> {
   const staged = context.staged.splice(0);
-  if (context.mode !== 'read-write') return;
+  if (context.mode !== 'read-write') return [];
+  const settled: SettledOutcome[] = [];
   for (const entry of staged) {
     const confirmed = entry.stepIndex < settlement.lastVerifiedStepIndex;
     try {
       if (!confirmed) {
-        if (settlement.implicatesUnconfirmed) await context.store.delete?.(entry.keyHash);
+        if (settlement.implicatesUnconfirmed && context.store.delete !== undefined) {
+          await context.store.delete(entry.keyHash);
+          settled.push({ stepIndex: entry.stepIndex, outcome: 'evicted', outcomeReason: 'unconfirmed' });
+        }
         continue;
       }
       if (entry.kind === 'keep') {
         await completeProvenance(context.store, entry.keyHash, entry.recordedFor);
+        settled.push({ stepIndex: entry.stepIndex, outcome: 'kept', outcomeReason: 'confirmed' });
         continue;
       }
-      if (await holdsSameFlow(context.store, entry.keyHash, entry.trace)) continue;
+      if (await holdsSameFlow(context.store, entry.keyHash, entry.trace)) {
+        settled.push({ stepIndex: entry.stepIndex, outcome: 'kept', outcomeReason: 'unchanged' });
+        continue;
+      }
       await context.store.write(entry.keyHash, entry.trace);
+      settled.push({ stepIndex: entry.stepIndex, outcome: 'written' });
     } catch {
       // The cache is disposable; a failed flush is a slower next run only.
     }
   }
+  return settled;
+}
+
+/** What attempt-end settlement did to one staged step's entry. */
+export interface SettledOutcome {
+  /** Index of the step in the attempt's step timeline. */
+  readonly stepIndex: number;
+  readonly outcome: NonNullable<StepCacheInfo['outcome']>;
+  readonly outcomeReason?: NonNullable<StepCacheInfo['outcomeReason']>;
 }
 
 /**

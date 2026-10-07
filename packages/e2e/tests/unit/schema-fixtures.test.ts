@@ -145,6 +145,36 @@ describe.each(schemas)('%s schema', (name) => {
       delete (cache as { derived?: string }).derived;
       expect(validate(report)).toBe(false);
     });
+
+    it('names a reason for a kept or evicted entry from its own closed list, and none for a written one', () => {
+      const report = readJson('fixtures', 'report-v1.valid.json') as {
+        run: { results: { attempts: { steps: { api: string; cache?: { outcome?: string; outcomeReason?: string } }[] }[] }[] };
+      };
+      const cache = report.run.results[0]!.attempts[0]!.steps.find((step) => step.api === 'agent.act')!.cache!;
+      expect(cache).toMatchObject({ outcome: 'written' });
+      expect(cache).not.toHaveProperty('outcomeReason');
+      expect(validate(report)).toBe(true);
+      const accepts = (outcome: string | undefined, outcomeReason: string | undefined) => {
+        if (outcome === undefined) delete cache.outcome;
+        else cache.outcome = outcome;
+        if (outcomeReason === undefined) delete cache.outcomeReason;
+        else cache.outcomeReason = outcomeReason;
+        return validate(report);
+      };
+      expect(accepts('written', 'confirmed')).toBe(false);
+      expect(accepts('kept', 'confirmed')).toBe(true);
+      expect(accepts('kept', 'unchanged')).toBe(true);
+      expect(accepts('kept', 'unconfirmed')).toBe(false);
+      expect(accepts('kept', undefined)).toBe(false);
+      for (const reason of ['repaired', 'failed-after-replay', 'not-replaced', 'unconfirmed']) {
+        expect(accepts('evicted', reason)).toBe(true);
+      }
+      expect(accepts('evicted', 'confirmed')).toBe(false);
+      expect(accepts('evicted', undefined)).toBe(false);
+      expect(accepts('overwritten', undefined)).toBe(false);
+      expect(accepts(undefined, 'unconfirmed')).toBe(false);
+      expect(accepts(undefined, undefined)).toBe(true);
+    });
   }
 });
 

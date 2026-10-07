@@ -109,11 +109,20 @@ export class FileCacheStore implements CacheStore {
     return { bytes };
   }
 
+  /**
+   * Removes the entry file; an absent one is already evicted. Any other
+   * failure rejects, so a caller never reports an entry it left on disk as
+   * evicted. Callers treat the rejection as a slower next run.
+   */
   async delete(keyHash: string): Promise<void> {
     if (!this.writable) return;
     const path = this.entryPath(keyHash);
     if (path === undefined) return;
-    await unlink(path).catch(() => undefined);
+    try {
+      await unlink(path);
+    } catch (cause) {
+      if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause;
+    }
   }
 
   /**

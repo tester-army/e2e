@@ -145,6 +145,7 @@ describe('trace cache: divergence hands the step over mid-step', () => {
     expect(step.cache).toEqual({
       mode: 'agent-concluded',
       reason: 'target-not-found',
+      outcome: 'written',
       replayedActions: 1,
       totalActions: 2,
     });
@@ -226,6 +227,7 @@ describe('trace cache: unconfirmed traces are withheld and poisoned entries evic
     expect(outcome.exitCode).not.toBe(0);
     expect(records.at(-1)!.calls).toBe(0);
     expect(readdirSync(cacheDir(project))).toHaveLength(0);
+    expect(actStep(outcome).cache).toMatchObject({ mode: 'self-finalized', outcome: 'evicted', outcomeReason: 'unconfirmed' });
   }, 240_000);
 });
 
@@ -302,6 +304,7 @@ describe('trace cache: a model that never answered implicates nothing', () => {
     });
     expect(outcome.exitCode).not.toBe(0);
     expect(actStep(outcome).cache?.mode).toBe('self-finalized');
+    expect(actStep(outcome).cache).not.toHaveProperty('outcome');
     expect(stepErrorCode(outcome, 'agent.assert')).toBe('MODEL_PROVIDER_FAILED');
     expect(entryFileState(project)).toEqual(recorded);
     project.cleanup();
@@ -325,6 +328,7 @@ describe('trace cache: a model that never answered implicates nothing', () => {
     });
     expect(outcome.exitCode).not.toBe(0);
     expect(actStep(outcome).cache).toMatchObject({ mode: 'agent-concluded', reason: 'target-not-found', replayedActions: 1 });
+    expect(actStep(outcome).cache).not.toHaveProperty('outcome');
     expect(stepErrorCode(outcome, 'agent.act')).toBe('MODEL_PROVIDER_FAILED');
     expect(entryFileState(project)).toEqual(handedOff);
     project.cleanup();
@@ -702,7 +706,7 @@ describe('trace cache: a replayed typed value is the flow\'s data on an app that
       expect(outcome.exitCode).toBe(0);
       expect(records.at(-1)!.calls, `run ${String(run)}`).toBe(0);
       const step = cacheOf(outcome);
-      expect(step.cache, `run ${String(run)}`).toEqual({ mode: 'self-finalized', replayedActions: 2, totalActions: 2 });
+      expect(step.cache, `run ${String(run)}`).toEqual({ mode: 'self-finalized', outcome: 'kept', outcomeReason: 'confirmed', replayedActions: 2, totalActions: 2 });
       expect(step.metrics!.modelCalls).toBe(0);
       const restaged = readOnlyEntry(project).entry.payload.actions;
       expect(restaged, `run ${String(run)}`).toEqual(recorded);
@@ -813,6 +817,6 @@ describe('trace cache: a composed word that appears on screen is not a run-time 
     expect(second.exitCode).toBe(0);
     expect(records.at(-1)!.calls).toBe(0);
     const step = resultByTitle(second, 'fills both row fields').attempts.at(-1)!.steps.find((s) => s.api === 'agent.act')!;
-    expect(step.cache).toEqual({ mode: 'self-finalized', replayedActions: 2, totalActions: 2 });
+    expect(step.cache).toEqual({ mode: 'self-finalized', outcome: 'kept', outcomeReason: 'confirmed', replayedActions: 2, totalActions: 2 });
   }, 240_000);
 });

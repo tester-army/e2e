@@ -1260,10 +1260,14 @@ export class TargetExecutor implements SerialHost {
     // answered implicates nothing unconfirmed, so a provider outage evicts no
     // entry.
     if (cache !== undefined && record.status !== 'interrupted') {
-      await flushStagedTraces(cache, {
+      const settled = await flushStagedTraces(cache, {
         lastVerifiedStepIndex: failure === undefined ? steps.lastVerifiedStepIndex : lastVerifiedAtFailure,
         implicatesUnconfirmed: failure === undefined || implicatesUnconfirmed,
       });
+      for (const { stepIndex, ...outcome } of settled) {
+        const step = record.steps[stepIndex];
+        if (step?.cache !== undefined) step.cache = { ...step.cache, ...outcome };
+      }
     }
     return record;
   }

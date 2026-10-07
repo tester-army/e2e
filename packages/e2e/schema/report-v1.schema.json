@@ -221,10 +221,33 @@
         },
         "derived": { "enum": ["pixels", "whole-node", "minted-token", "date"] },
         "notRecorded": { "enum": ["param-collision"] },
+        "outcome": { "enum": ["written", "kept", "evicted"] },
+        "outcomeReason": {
+          "enum": ["confirmed", "unchanged", "repaired", "failed-after-replay", "not-replaced", "unconfirmed"]
+        },
         "replayedActions": { "type": "integer", "minimum": 0 },
         "totalActions": { "type": "integer", "minimum": 0 }
       },
       "allOf": [
+        {
+          "if": { "required": ["outcomeReason"] },
+          "then": { "required": ["outcome"] }
+        },
+        {
+          "if": { "properties": { "outcome": { "const": "written" } }, "required": ["outcome"] },
+          "then": { "not": { "required": ["outcomeReason"] } }
+        },
+        {
+          "if": { "properties": { "outcome": { "const": "kept" } }, "required": ["outcome"] },
+          "then": { "required": ["outcomeReason"], "properties": { "outcomeReason": { "enum": ["confirmed", "unchanged"] } } }
+        },
+        {
+          "if": { "properties": { "outcome": { "const": "evicted" } }, "required": ["outcome"] },
+          "then": {
+            "required": ["outcomeReason"],
+            "properties": { "outcomeReason": { "enum": ["repaired", "failed-after-replay", "not-replaced", "unconfirmed"] } }
+          }
+        },
         {
           "if": { "properties": { "mode": { "const": "self-finalized" } } },
           "then": { "not": { "required": ["reason"] } }

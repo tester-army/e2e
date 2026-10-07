@@ -504,12 +504,13 @@ describe('StepTraceSession', () => {
     await session.conclude('passed', 'saved after all');
     expect(context.staged).toHaveLength(0);
     expect(deleted).toEqual(['a'.repeat(64)]);
+    expect(session.cacheInfo).toMatchObject({ mode: 'agent-concluded', outcome: 'evicted', outcomeReason: 'repaired' });
   });
 
   it('evicts a consumed entry when the step then fails, and never when nothing judged the app', async () => {
-    for (const [outcome, expected] of [
-      ['failed', ['a'.repeat(64)]],
-      ['no-verdict', []],
+    for (const [outcome, expected, reported] of [
+      ['failed', ['a'.repeat(64)], { outcome: 'evicted', outcomeReason: 'failed-after-replay' }],
+      ['no-verdict', [], {}],
     ] as const) {
       const deleted: string[] = [];
       const context = entryContext({ endPath: '/customers', endAnchors: [savedAnchor] });
@@ -522,6 +523,21 @@ describe('StepTraceSession', () => {
       await session.conclude(outcome, undefined);
       expect(deleted).toEqual(expected);
       expect(context.staged).toHaveLength(0);
+      expect(session.cacheInfo).toEqual({ mode: 'agent-concluded', reason: 'end-mismatch', replayedActions: 1, totalActions: 1, ...reported });
+    }
+  });
+
+  it('claims no eviction the store did not perform: a store without delete, or a delete that rejects', async () => {
+    const withoutDelete = entryContext({ endPath: '/customers', endAnchors: [savedAnchor] });
+    const rejecting = entryContext({ endPath: '/customers', endAnchors: [savedAnchor] });
+    rejecting.store.delete = async () => {
+      throw new Error('redis is down');
+    };
+    for (const context of [withoutDelete, rejecting]) {
+      const session = makeSession(context, makeHost(['/pricing', '/customers']));
+      await session.begin();
+      await session.conclude('failed', undefined);
+      expect(session.cacheInfo).not.toHaveProperty('outcome');
     }
   });
 
@@ -551,6 +567,7 @@ describe('StepTraceSession', () => {
     await session.conclude('failed', undefined);
     expect(deleted).toEqual([]);
     expect(context.staged).toHaveLength(0);
+    expect(session.cacheInfo).not.toHaveProperty('outcome');
   });
 
   it('lets an engine-independent executor run when the baseline cannot be observed, and stages nothing', async () => {
@@ -752,12 +769,16 @@ describe('StepTraceSession', () => {
     const save: SemanticNode = { ref: { id: 'b', revision: 'r1' }, role: 'button', name: 'Save' };
     // The saved marker already shows, so the replay hands off; the agent finds the step done without changing anything.
     const host = makeHost(['/form', '/form', '/form'], [[save, savedMarker]]);
-    const session = makeSession(context, { ...host, actions: { tap: async () => undefined } as unknown as ExecutorActions });
+    // The replayed tap records through the host's grammar, as the real dispatch's does.
+    const session: StepTraceSession = makeSession(context, {
+      ...host,
+      actions: { tap: async () => session.record({ name: 'tap', node: redacted(save) }) } as unknown as ExecutorActions,
+    });
     expect(await session.begin()).toBeUndefined();
-    session.record({ name: 'tap', node: redacted(save) });
     await session.conclude('passed', 'already saved');
     expect(context.staged).toHaveLength(0);
     expect(deleted).toBe(1);
+    expect(session.cacheInfo).toMatchObject({ outcome: 'evicted', outcomeReason: 'not-replaced' });
   });
 
   it('never stages a step that changed nothing a replay could check', async () => {
@@ -842,37 +863,57 @@ describe('StepTraceSession', () => {
       // navigate records through the host's grammar, as the real dispatch's does.
       if (session.cacheInfo?.mode === 'missed') session.record({ name: 'navigate', url: '/customers' });
       await session.conclude('passed', verdict?.summary ?? 'opened the customers page');
-      await flushStagedTraces(current, { lastVerifiedStepIndex, implicatesUnconfirmed: true });
-      return session;
+      const settled = await flushStagedTraces(current, { lastVerifiedStepIndex, implicatesUnconfirmed: true });
+      return { session, settled };
     };
 
     // The recording run: a miss, then the flow and its effect are written.
     const recorded = await run(['/pricing', '/customers'], [[], [savedMarker]]);
-    expect(recorded.cacheInfo?.mode).toBe('missed');
+    expect(recorded.session.cacheInfo?.mode).toBe('missed');
+    expect(recorded.settled).toEqual([{ stepIndex: 1, outcome: 'written' }]);
     const written = await snapshot();
     expect(JSON.parse(written.bytes).payload.endAnchors).toEqual([savedAnchor]);
 
     // Two replays in a row: the file's bytes and mtime never move.
     await new Promise((resolve) => setTimeout(resolve, 20));
     const first = await run(['/pricing', '/customers'], [[savedMarker]]);
-    expect(first.cacheInfo?.mode).toBe('self-finalized');
+    expect(first.session.cacheInfo?.mode).toBe('self-finalized');
+    expect(first.settled).toEqual([{ stepIndex: 1, outcome: 'kept', outcomeReason: 'confirmed' }]);
     expect(await snapshot()).toEqual(written);
     const second = await run(['/pricing', '/customers'], [[savedMarker]]);
-    expect(second.cacheInfo?.mode).toBe('self-finalized');
+    expect(second.session.cacheInfo?.mode).toBe('self-finalized');
     expect(await snapshot()).toEqual(written);
 
     // A hand-off the executor settled without acting re-records with the live anchors.
     const renamed: SemanticNode = { ...savedMarker, text: 'stored' };
     const healed = await run(['/pricing', '/customers', '/customers'], [[], [], [renamed]]);
-    expect(healed.replayedPrefix?.stopReason).toBe('end-mismatch');
+    expect(healed.session.replayedPrefix?.stopReason).toBe('end-mismatch');
+    expect(healed.settled).toEqual([{ stepIndex: 1, outcome: 'written' }]);
     const rewritten = await snapshot();
     expect(rewritten.bytes).not.toBe(written.bytes);
     expect(JSON.parse(rewritten.bytes).payload.endAnchors).toEqual([{ ...savedAnchor, text: 'stored' }]);
 
     // A replay nothing verified afterwards is implicated like a recording would be: evicted.
     const unconfirmed = await run(['/pricing', '/customers'], [[], [renamed]], 0);
-    expect(unconfirmed.cacheInfo?.mode).toBe('self-finalized');
+    expect(unconfirmed.session.cacheInfo?.mode).toBe('self-finalized');
+    expect(unconfirmed.settled).toEqual([{ stepIndex: 1, outcome: 'evicted', outcomeReason: 'unconfirmed' }]);
     await expect(stat(file)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('settles no outcome for an entry a failure without a verdict leaves alone, nor in read-only mode', async () => {
+    const staged = (mode: AgentCacheContext['mode']): AgentCacheContext => {
+      const context = { ...fakeContext(async () => ({ status: 'miss' })), mode };
+      context.store.delete = async () => undefined;
+      context.staged.push({ kind: 'keep', keyHash: 'a'.repeat(64), stepIndex: 1, recordedFor: exampleStep });
+      return context;
+    };
+    expect(await flushStagedTraces(staged('read-write'), { lastVerifiedStepIndex: 0, implicatesUnconfirmed: false })).toEqual([]);
+    expect(await flushStagedTraces(staged('read-only'), { lastVerifiedStepIndex: 5, implicatesUnconfirmed: true })).toEqual([]);
+    const rejecting = staged('read-write');
+    rejecting.store.delete = async () => {
+      throw new Error('EPERM: the entry is still on disk');
+    };
+    expect(await flushStagedTraces(rejecting, { lastVerifiedStepIndex: 0, implicatesUnconfirmed: true })).toEqual([]);
   });
 
   it('takes the step for the live progress on a hit, before the start-path probe, and hands it over only when the model must finish it', async () => {
@@ -990,21 +1031,21 @@ describe('flushStagedTraces and a re-recorded flow', () => {
     const flush = async (staged: ActionTrace) => {
       const current = context();
       current.staged.push({ kind: 'write', keyHash: 'c'.repeat(64), stepIndex: 0, trace: staged });
-      await flushStagedTraces(current, { lastVerifiedStepIndex: 1, implicatesUnconfirmed: true });
+      return flushStagedTraces(current, { lastVerifiedStepIndex: 1, implicatesUnconfirmed: true });
     };
 
-    await flush(trace('saved the record', 10_100, 1));
+    expect(await flush(trace('saved the record', 10_100, 1))).toEqual([{ stepIndex: 0, outcome: 'written' }]);
     const written = await snapshot();
     expect(JSON.parse(written.bytes).payload.summary).toBe('saved the record');
 
     // A live run of the same flow words its summary differently and measures
     // another end wait; the file is what a replay reads, and nothing it reads changed.
     await new Promise((resolve) => setTimeout(resolve, 20));
-    await flush(trace('the record reads saved now', 10_137, 1));
+    expect(await flush(trace('the record reads saved now', 10_137, 1))).toEqual([{ stepIndex: 0, outcome: 'kept', outcomeReason: 'unchanged' }]);
     expect(await snapshot()).toEqual(written);
 
     // One more tap is a different flow, and the entry follows it.
-    await flush(trace('saved after a retry', 10_090, 2));
+    expect(await flush(trace('saved after a retry', 10_090, 2))).toEqual([{ stepIndex: 0, outcome: 'written' }]);
     const replaced = await snapshot();
     expect(replaced.bytes).not.toBe(written.bytes);
     expect(JSON.parse(replaced.bytes).payload.actions).toHaveLength(2);
