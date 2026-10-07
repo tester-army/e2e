@@ -86,7 +86,10 @@ workflows:
 ## Notes
 
 - **Secrets.** Put the model key in the `e2e` environment variable group,
-  and mark it as secret.
+  and mark it as secret. Each build that reads the group can read the key,
+  including a pull request build that runs untrusted code. Trigger pull
+  request builds with this group only for contributors that you trust. See
+  [Mobile jobs](/ci#mobile-jobs).
 - **Test reports.** `test_report` sends `junit.xml` to the Tests tab of the
   build.
 - **Billing.** Linux instances need billing enabled.

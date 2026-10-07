@@ -37,12 +37,15 @@ runner, see [Hosted browsers and devices](/integrations).
 
 ## Reports
 
-Each run writes `.e2e/report.json`. With the `junit` reporter
-(`--reporter list,junit`, as in the examples), it also writes
-`.e2e/junit.xml`. `.e2e/results/`
-holds the trace pages, screenshots, and screen dumps of each test, and the
-video when you run with `--video`. Upload `.e2e/` at the end of each job,
-also when a test fails.
+Each run that reaches its tests writes `.e2e/report.json`. With the
+`junit` reporter (`--reporter list,junit`, as in the examples), the run also
+writes `.e2e/junit.xml`. `.e2e/results/` holds the trace pages,
+screenshots, and screen dumps of each test. With `--video`, it also holds
+the video of each target whose engine can record. Upload `.e2e/` at the end
+of each job, also when a test fails.
+
+`.e2e/` is the default output directory. The
+[`output`](/reference/config#output) option moves it.
 
 Set the test-report integration of your CI service to read
 `.e2e/junit.xml`. The file also has startup failures, such as
@@ -243,7 +246,7 @@ bunx e2e run --last-failed
 </CodeGroup>
 
 In CI, the report is a job artifact, not a file on the next runner. Download
-it into `.e2e/` before the rerun step, or run the failed job again.
+it into the output directory (`.e2e/` by default) before the rerun step, or run the failed job again.
 
 ## Model credentials
 

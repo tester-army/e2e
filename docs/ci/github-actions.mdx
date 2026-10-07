@@ -213,6 +213,9 @@ job as one comment on the pull request. A rerun updates the same comment.
 The reporter also writes the results to the job summary. The workflows
 above have read-only permissions. To post, the job needs `pull-requests: write` and
 `GITHUB_TOKEN` in the env of the test step. See [Setup](/github#setup).
+GitHub gives a read-only token to a `pull_request` run from a fork, so the
+reporter cannot post there. See
+[When nothing is posted](/github#when-nothing-is-posted).
 
 To block a merge on a failed run, make the e2e job a required check in the
 repository settings.

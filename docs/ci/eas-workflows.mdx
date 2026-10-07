@@ -125,7 +125,9 @@ jobs:
   [EAS environment variable](https://docs.expo.dev/eas/environment-variables/)
   with secret visibility. `environment:` sets the EAS environment that a job
   reads. Set it in each job, because a custom job reads `production` by
-  default.
+  default. Each job that reads the environment can read the key, including
+  a job that runs the code of an untrusted pull request. Give the key only
+  to builds of branches that you trust. See [Mobile jobs](/ci#mobile-jobs).
 - **CI mode.** `CI: '1'` turns on the [CI defaults](/ci#what-ci-changes),
   also on a runner that does not set it.
 - **Emulator function.** `eas/start_android_emulator` is an EAS build
