@@ -22,12 +22,13 @@ import {
   type TracePosition,
 } from '../cache/trace.ts';
 import { sanitizeText } from '../internal/errors.ts';
+import type { KeyModifier } from '../engine/contract.ts';
 import { collapseText } from '../internal/text.ts';
 import type { ScrollDirection } from '../types.ts';
 
 /** One committed grammar action, addressed by the node it actually ran against. */
 export type RecordableAction =
-  | ({ readonly name: NodeActionName; readonly node: RedactedNode } & Placement)
+  | ({ readonly name: NodeActionName; readonly node: RedactedNode; readonly modifiers?: readonly KeyModifier[] } & Placement)
   | ({ readonly name: 'type'; readonly node: RedactedNode; readonly value: string } & Placement)
   | ({ readonly name: 'typeSecret'; readonly node: RedactedNode; readonly secret: string } & Placement)
   | ({ readonly name: 'press'; readonly node: RedactedNode; readonly key: string } & Placement)
@@ -195,7 +196,11 @@ export function describeAction(action: RecordableAction, redaction: NodeRedactio
   const where = describeForSummary(target);
   const safe = (value: string) => quote(redaction.redact(sanitizeText(value)));
   const prose = (() => {
-    if (isNodeAction(action)) return NODE_ACTION_PROSE[action.name](where);
+    if (isNodeAction(action)) {
+      const said = NODE_ACTION_PROSE[action.name](where);
+      const held = 'modifiers' in action ? action.modifiers : undefined;
+      return held === undefined || held.length === 0 ? said : `${said} with ${held.join('+')} held`;
+    }
     switch (action.name) {
       case 'type':
         return `type ${safe(action.value)} into ${where}`;

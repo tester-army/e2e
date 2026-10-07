@@ -12,6 +12,7 @@
 import type { StepResult, Tool, ToolSet } from 'ai';
 import { z } from 'zod';
 import type { NodeActionName, PointActionName } from '../cache/trace.ts';
+import { KEY_MODIFIERS, type KeyModifier } from '../engine/contract.ts';
 import type { ViewportPoint } from '../engine/surface.ts';
 import { codedMessage, hasCause, TestError } from '../internal/errors.ts';
 import type { AgentErrorCode } from '../types.ts';
@@ -217,6 +218,13 @@ export interface GrammarToolOptions {
    * code is still structured.
    */
   readonly onActionFailed?: ((cause: unknown) => void) | undefined;
+  /**
+   * True when the target's engine declares `tapModifiers`: the tap, double
+   * tap, and right click tools then take an optional `modifiers` argument,
+   * so the agent can Shift-click or Ctrl-click like a test's `tap({
+   * modifiers })` can. Absent on engines that cannot hold keys for a click.
+   */
+  readonly tapModifiers?: boolean | undefined;
 }
 
 /**
@@ -334,11 +342,32 @@ export function createGrammarTools(
   };
   for (const { verb, tool, lead, description, expectChange } of NODE_VERBS) {
     if (!verbs.has(verb)) continue;
+    // Modifiers ride the tap-family tools only, and only when the engine
+    // declares tapModifiers: a verb the surface cannot honor is not offered
+    // at all, and the tap is refused with UNSUPPORTED_CAPABILITY below.
+    const holdable = options.tapModifiers === true && (verb === 'tap' || verb === 'doubleTap' || verb === 'secondaryTap');
+    const modifiers = z
+      .array(z.enum(KEY_MODIFIERS))
+      .optional()
+      .describe(
+        'Keys held while the pointer clicks: "Shift", "Control", "Alt", "Meta", or "ControlOrMeta". A Shift-click extends a selection, a Control-click (Meta on macOS) toggles one item.',
+      );
     tools[tool] = screenTool({
-      description,
-      inputSchema: z.object({ target }),
-      execute: ({ target: id }) =>
-        acting({ done: `${lead} #${id}.`, attempt: `${tool} #${id}` }, () => context.actions[verb]({ id }), expectChange === undefined ? {} : { expectChange }),
+      description: holdable ? `${description} Pass modifiers to hold keys for the click.` : description,
+      inputSchema: holdable ? z.object({ target, modifiers }) : z.object({ target }),
+      execute: (input: { readonly target: string; readonly modifiers?: readonly KeyModifier[] | undefined }) => {
+        const { target: id, modifiers: held } = input;
+        const clicked = held === undefined ? undefined : { modifiers: held };
+        const run = (): Promise<void> =>
+          verb === 'tap' || verb === 'doubleTap' || verb === 'secondaryTap'
+            ? context.actions[verb]({ id }, clicked)
+            : context.actions[verb]({ id });
+        return acting(
+          { done: `${lead} #${id}.`, attempt: `${tool} #${id}` },
+          run,
+          expectChange === undefined ? {} : { expectChange },
+        );
+      },
     });
   }
   // scroll_to reaches a node the screen lists (by id, through the engine's

@@ -63,7 +63,11 @@ export function createSessionCatalog(options: CatalogOptions): SessionCatalog {
   const { context, screen } = options;
   // The grammar's own observe reports a diff for the model loop; the
   // session's shows the whole screen, so it replaces the grammar's.
-  const { observe: _diffObserve, ...verbs } = createGrammarTools(context, { screen, onActionFailed: options.onActionFailed });
+  const { observe: _diffObserve, ...verbs } = createGrammarTools(context, {
+    screen,
+    onActionFailed: options.onActionFailed,
+    tapModifiers: options.session.tapModifiers,
+  });
   const recording = options.recorder === undefined ? {} : recordingTools(options.recorder);
   const builtIn: ToolSet = {
     observe: fullObserveTool(context, screen),
