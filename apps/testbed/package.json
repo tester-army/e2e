@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsc --noEmit && node node_modules/e2e/dist/cli/bin.js run",
     "test:headed": "node node_modules/e2e/dist/cli/bin.js run --headed",
+    "test:lightpanda": "node node_modules/e2e/dist/cli/bin.js run --config e2e.lightpanda.config.ts",
     "app": "node app/server.mjs",
     "test:agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts",
     "test:dogfood": "node node_modules/e2e/dist/cli/bin.js run --config e2e.dogfood.config.ts",
