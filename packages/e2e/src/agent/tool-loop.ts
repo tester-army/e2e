@@ -17,7 +17,7 @@ import { asSdkLanguageModel, loadAiSdk, type AiSdk, type SdkLanguageModel } from
 import { MODEL_REQUEST_HEADERS } from '../internal/client-identity.ts';
 import { ConfigurationError, withHint } from '../internal/errors.ts';
 import type { ProviderOptions } from '../types.ts';
-import { failureHint, isAbort, TRANSPORT_RETRIES } from './model/sdk.ts';
+import { failureHint, isAbort, isModelRefusal, modelRefusalError, TRANSPORT_RETRIES } from './model/sdk.ts';
 import { isContextOverflow } from './model/overflow.ts';
 import {
   isForcedToolCallMismatched,
@@ -298,6 +298,13 @@ class LoopRun {
             this.noticeToolChoiceDowngrade(step);
           },
         });
+        if (isModelRefusal(result) || (this.lastStep !== undefined && isModelRefusal(this.lastStep))) {
+          throw modelRefusalError(
+            isModelRefusal(result) ? result : this.lastStep,
+            { provider: this.model.provider, id: this.model.modelId },
+            `agent.${this.context.step.kind}`,
+          );
+        }
         const continued = this.continueAfterTextReply(result.responseMessages);
         if (continued !== undefined) {
           prompt = continued;
@@ -305,6 +312,18 @@ class LoopRun {
         }
         break;
       } catch (cause) {
+        // Before the tool-choice and overflow retries: a content-filter is
+        // not a missing tool call, and sending the prompt again spends a
+        // call the model will refuse the same way.
+        if (isModelRefusal(cause)) {
+          this.attachTranscript();
+          throw modelRefusalError(
+            cause,
+            { provider: this.model.provider, id: this.model.modelId },
+            `agent.${this.context.step.kind}`,
+            cause,
+          );
+        }
         const shrunk = this.overflowRetry(cause);
         if (shrunk !== undefined) {
           prompt = shrunk;

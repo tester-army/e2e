@@ -357,6 +357,7 @@ export class Invocation {
           { kind: 'model', phase: 'agent.model', name: request.schemaName },
           () =>
             this.adapter.generate({
+              step: this.options.api,
               system: this.system,
               prompt,
               ...(images === undefined ? {} : { images }),

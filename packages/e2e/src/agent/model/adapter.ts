@@ -39,6 +39,8 @@ export interface ModelImage {
 
 /** One bounded, stateless model request. There is no shared transcript. */
 export interface ModelCall<Value> {
+  /** The public API step name (e.g. `agent.extract`, `agent.assert`), for error attribution. */
+  readonly step?: string | undefined;
   /** Trusted runner policy followed by trusted project context. */
   readonly system: string;
   /** Untrusted evidence and the method instruction. */

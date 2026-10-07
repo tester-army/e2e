@@ -177,7 +177,7 @@ describe('failedStepOutcome', () => {
     for (const code of ['CANCELLED', 'MODEL_PROVIDER_FAILED', 'MODEL_UNAVAILABLE'] as const) {
       expect(failedStepOutcome(new AgentError(code, 'x'))).toBe('no-verdict');
     }
-    for (const code of ['ASSERTION_FAILED', 'STEP_TIMEOUT', 'MODEL_OUTPUT_INVALID', 'CONTEXT_OVERFLOW', 'APP_UNREACHABLE'] as const) {
+    for (const code of ['ASSERTION_FAILED', 'STEP_TIMEOUT', 'MODEL_OUTPUT_INVALID', 'CONTEXT_OVERFLOW', 'APP_UNREACHABLE', 'MODEL_REFUSED'] as const) {
       expect(failedStepOutcome(new AgentError(code, 'x'))).toBe('failed');
     }
     expect(failedStepOutcome(new Error('MODEL_PROVIDER_FAILED'))).toBe('failed');
