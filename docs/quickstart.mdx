@@ -6,6 +6,7 @@ icon: "rocket"
 
 import { ModelProvider } from './snippets/model-provider.jsx';
 import { SetupPrompt } from './snippets/setup-prompt-card.jsx';
+import { Video } from './snippets/video.jsx';
 
 export const setupPrompt = `Set up e2e end-to-end tests in this project. Docs: \`https://e2e.tester.army/docs/quickstart.md\`
 
@@ -148,6 +149,12 @@ test('Settings opens', async ({ app, screen }) => {
   sign-in or API key needed.
   </Step>
 </Steps>
+
+<Video>
+  <video src="/images/init.mp4" aria-label="npx e2e init asks for an engine, a model gateway, and coding agent setup, then lists the files it will write." muted loop playsInline controls />
+
+  `npx e2e init` asks a few questions, then shows every change before it writes anything.
+</Video>
 
 ### Use a subscription or API key
 
