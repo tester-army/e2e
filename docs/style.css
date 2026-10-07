@@ -683,6 +683,26 @@ html.dark body .code-block-fade-overlay {
   }
 }
 
+/* A video in a hairline frame with its caption underneath. */
+#content .video-figure {
+  margin-block: 1.25rem;
+
+  & video {
+    display: block;
+    width: 100%;
+    margin: 0;
+    border: 1px solid var(--e2e-hairline);
+    border-radius: 0;
+  }
+
+  & p {
+    margin: 0.5rem 0 0;
+    color: var(--e2e-muted);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+  }
+}
+
 /* The "Copy page" menu shows titles only. docs.json requires a description on
    every custom option and Mintlify renders one under each title, so the second
    line is hidden here, on the built-in items too. The menu has no id; the

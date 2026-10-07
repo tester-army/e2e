@@ -1,85 +1,128 @@
 ---
 title: Bug bashes
-description: Run many explorations at once, then prove each bug with a failing test before anyone reads about it.
+description: Run many explore sessions at the same time, then prove each bug with a failing test.
 icon: "bug"
 ---
 
-A bug bash runs several `e2e explore` sessions at once, each on one area
-of the app. Every finding they report is then reproduced with a test that
-fails for the reported reason. You get back only bugs that reproduced, each
-with a repro test and the steps to reach it, plus the explorer's screenshot
-and video where the engine captures them.
+A bug bash runs many `e2e explore` sessions at the same time. Each session
+examines one area of the app. A coding agent then writes a test for each
+finding. The agent reports a finding as a bug only when its test fails.
 
-A coding agent runs the whole thing from the `bug-bash` topic of the
-[skill](/coding-agents):
+<div className="video-figure">
+  <video autoPlay muted loop playsInline controls src="/images/bug-bash.mp4" />
+  <p>A coding agent runs a bug bash. Six headed browsers explore the app at the same time.</p>
+</div>
+
+## Install the skill
+
+The coding agent runs the bug bash from the `e2e` skill. Install the skill
+in your project:
+
+<CodeGroup>
+```bash npm
+npx skills add tester-army/e2e
+```
+
+```bash pnpm
+pnpm dlx skills add tester-army/e2e
+```
+
+```bash bun
+bunx skills add tester-army/e2e
+```
+</CodeGroup>
+
+`e2e init` also installs the skill. See [Coding agents](/coding-agents).
+
+## Start a bug bash
+
+Give a prompt to your coding agent:
 
 ```text
 Bug bash the checkout and account settings on this branch.
 ```
 
-The agent plans the charters, fans them out, merges the results, and
-verifies each finding. Nothing here needs a service beyond the model your
-config already uses.
+## What the agent does
 
-## How it runs
+1. Reads the routes of the app. On a branch, it also reads the diff.
+2. Writes 5 to 10 charters. A charter is a one-sentence goal for one area,
+   with one posture: first-time user, numbers and copy, edge input, state
+   after reload, or error paths.
+3. Runs one `e2e explore` for each charter, 4 at the same time. Each
+   charter has its own persona (`--agent`) and its own output directory
+   (`--output`).
+4. Merges the findings of all charters.
+5. Rejects findings that have a known cause: a limit of the explorer (for
+   example, a link that opens a new tab), the local environment, the
+   intended design, or the seed data.
+6. Writes a repro test for each remaining finding. The test asserts the
+   expected behavior. The agent can start one subagent for each area. Each
+   subagent opens its own [`e2e mcp` session](/reference/mcp#several-sessions)
+   to check locators on the live app.
+7. Runs each repro test. The finding is a bug only when the test fails with
+   `ASSERTION_FAILED`.
+8. Reports, in this order: confirmed bugs, production risks that it cannot
+   verify locally, rejected findings by reason, and warnings.
 
-The agent reads the app's routes and, for a branch, the diff, and writes
-five to ten charters: one-sentence goals, each on one area with one
-posture, such as a first-time user, numbers and copy, edge input, state
-across reloads, or error paths. Each posture runs as its own persona, a
-named agent whose system prompt sets the stance, picked per charter with
-`--agent`. It runs one `e2e explore` per charter, four
-at a time, each with its own `--output` directory so reports never collide,
-and merges the findings. It sets aside findings that the local
-environment, the design, or the seed data explain, and the explorer's own
-blind spots first: links that opened a new tab, text that only reads broken
-in the accessibility tree, infinite-scroll sentinels, lazy-loaded media. Each remaining issue
-gets a repro test that asserts the expected behavior, and counts as a bug
-only when that test fails with `ASSERTION_FAILED` on it; verifying
-subagents, one per area, each drive their own
-[`e2e mcp` session](/reference/mcp#several-sessions) to check locators
-against the live app. The report lists confirmed bugs first, then
-production risks the triage surfaced but could not verify locally, then
-rejected findings grouped by reason, then warnings.
+Each confirmed bug has its repro test and steps. It also has the
+explorer's screenshot and video when the engine records them.
 
-The steps, commands, and rules the agent follows are the skill topic
-itself: `npx e2e guide bug-bash`.
+To read the full procedure, run `npx e2e guide bug-bash`.
 
 ## Before you start
 
-- The app must serve several explorers at once. Start it once and set
-  `reuseExisting: true` on the target's `command`, or declare the URL with
-  port `0` so each run starts its own copy. `reuseExisting` does not apply
-  when `CI` is set; use port `0` there. See
+- Make sure that the app can serve many explorers at the same time. Do one
+  of these:
+  - Start the app one time. Set `reuseExisting: true` on the target's
+    `app.command`.
+  - Set port `0` in the app URL. Each run then starts its own copy of the
+    app.
+
+  When `CI` is set, e2e ignores `reuseExisting`. Use port `0`. See
   [Starting your app](/web#starting-your-app).
-- When the target's `app.command` brings up a stack of its own, such as a
-  database from `docker compose` that it removes on exit, start the stack once
-  and explore with a config that points at the running app and declares no
-  command, so one explorer's exit never removes the database under the
-  others.
-- Prefer a production build. A dev server that compiles a route on its
-  first visit looks to an explorer like a link that does nothing.
-- Give each charter its own seeded account, and tell the explorers in the
-  agent's `context` which integrations the local app has no keys for.
-- When a setup test signs in, start charters with
-  [`e2e explore --session <name>`](/explore): a setup that signs in without
-  typing a password keeps screenshots available, where the engine captures
-  them.
-- On mobile, each explorer needs its own device: declare one target per
-  simulator or emulator.
-- Put test accounts under `credentials`; explorers fill passwords by name
-  and never see them.
-- Every charter costs its model calls. The last lines of each run print
+- If `app.command` also starts a stack, such as a database from
+  `docker compose`, start the stack one time yourself. Then explore with a
+  config that has the app URL and no command. If you do not, the first
+  explorer that stops removes the database for all other explorers.
+- Use a production build. A dev server compiles a route on the first visit,
+  and the explorer can report this as a broken link.
+- Give each charter its own seeded account. Put the accounts under
+  `credentials`. The explorers fill passwords by name and never see them.
+- Tell the explorers which integrations have no keys on your machine. Put
+  this in the agent's `context`.
+- If a setup test signs in, start the charters with
+  [`e2e explore --session <name>`](/explore). Sign in with a cookie or an
+  API call, not a typed password. After a typed password, the runner stops
+  screenshots.
+- On mobile, each explorer needs its own device. Declare one target for
+  each simulator or emulator.
+- Each charter uses model calls. The last lines of each run show the
   tokens, cost, and duration.
-- A bash against a deployed site others use is read-only: no signups, no
-  sign-ins, no submissions, nothing injection-shaped in URLs. A WAF block
-  is the firewall working, not a finding.
+- On a deployed site that other people use, do not change data. Do not sign
+  up, sign in, or submit forms. Do not put injection strings in URLs. A WAF
+  block is not a bug.
 
 ## Repro tests
 
-A repro test fails until its bug is fixed, so keep it out of the suite that
-gates merges until then. Once the bug is fixed, the test passes and stays as
-its regression test.
+A repro test fails until the bug is fixed. The agent tags each repro test
+`bugbash`. Keep these tests out of the test run that gates merges:
+
+<CodeGroup>
+```bash npm
+npx e2e run --exclude-tag bugbash
+```
+
+```bash pnpm
+pnpm exec e2e run --exclude-tag bugbash
+```
+
+```bash bun
+bunx e2e run --exclude-tag bugbash
+```
+</CodeGroup>
+
+After the fix, the test passes. Remove the tag and keep the test as a
+regression test.
 
 <CardGroup cols={2}>
   <Card title="Exploring without a test" icon="compass" href="/explore">
