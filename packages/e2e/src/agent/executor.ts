@@ -26,6 +26,7 @@ import type {
   ProviderOptions,
   ScrollDirection,
   Secret,
+  VisionMode,
 } from '../types.ts';
 import { AGENT_CODE_TABLE, isAgentError, type AgentError } from './error.ts';
 
@@ -47,6 +48,12 @@ export interface ExecutorStep {
   readonly params: Readonly<Record<string, JsonValue>> | undefined;
   /** Secrets declared in the params, fillable via `actions.typeSecret`. */
   readonly secrets: readonly { readonly name: string; readonly purpose: Secret['purpose'] }[];
+  /**
+   * Assert only: the `vision` the call asked for, set only for an executor
+   * that declares `vision: true`. `true` shows pixels beside the tree,
+   * `'only'` pixels alone; absent when the call passed none.
+   */
+  readonly vision?: VisionMode;
 }
 
 /**
@@ -496,6 +503,13 @@ export interface StepExecutor {
    * `INVALID_CONFIG` when both are set and differ.
    */
   readonly judge?: ModelInstance;
+  /**
+   * Whether the executor honors `agent.assert(..., { vision })`: the mode
+   * reaches it as `step.vision`. Without this, the option fails the call with
+   * `UNSUPPORTED_CAPABILITY`, since only the executor decides what its model
+   * sees.
+   */
+  readonly vision?: true;
   runStep(context: StepExecutorContext): Promise<StepVerdict>;
 }
 

@@ -28,4 +28,12 @@ export interface DecisionExecutorOptions {
    * `providerOptions`, so options meant for one model never reach the other.
    */
   readonly providerOptions?: Parameters<typeof experimental_decide>[0]['providerOptions'];
+  /**
+   * Show the decision model a masked screenshot beside the element table on
+   * every question, and offer `tap_at` over a grid of screenshot cells when
+   * the engine taps points. Needs a decision model that takes images, e.g.
+   * `openaiDecisionModel()`; the AI SDK's own `openai.decisionModel()` sends
+   * text only. Also honors `agent.assert(..., { vision })`. Default off.
+   */
+  readonly vision?: boolean;
 }

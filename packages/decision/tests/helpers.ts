@@ -62,8 +62,12 @@ export function scriptedDecision(resolve: (id: string, keys: string[], call: num
 }
 /** A scripted language model: returns queued texts as JSON through real generateText. */
 export function scriptedText(texts: (string | null)[]): { model: Exclude<LanguageModel, string>; prompts: unknown[] } {
+  return scriptedOutputs(texts.map((text) => ({ text })));
+}
+/** A scripted language model that answers each call with the next queued JSON value. */
+export function scriptedOutputs(values: unknown[]): { model: Exclude<LanguageModel, string>; prompts: unknown[] } {
   const prompts: unknown[] = [];
-  const queue = [...texts];
+  const queue = [...values];
   const model = {
     specificationVersion: 'v4',
     provider: 'scripted-text',
@@ -71,10 +75,10 @@ export function scriptedText(texts: (string | null)[]): { model: Exclude<Languag
     doGenerate: async (options: { prompt?: unknown }) => {
       prompts.push(options.prompt);
       // Exhaustion throws: queue an explicit null for the goal-supplies-no-value case.
-      const text = queue.shift();
-      if (text === undefined) throw new Error('scriptedText exhausted: the executor asked for more field values than queued.');
+      const value = queue.shift();
+      if (value === undefined) throw new Error('scriptedText exhausted: the executor asked for more field values than queued.');
       return {
-        content: [{ type: 'text', text: JSON.stringify({ text }) }],
+        content: [{ type: 'text', text: JSON.stringify(value) }],
         finishReason: { unified: 'stop' as const },
         usage: { inputTokens: { total: 5, noCache: 5 }, outputTokens: { total: 1, text: 1 } },
         warnings: [],
@@ -95,6 +99,7 @@ export function context(options: {
   signal?: AbortSignal;
   params?: Readonly<Record<string, JsonValue>>;
   secrets?: StepExecutorContext['step']['secrets'];
+  vision?: StepExecutorContext['step']['vision'];
 } = {}) {
   const signal = options.signal ?? new AbortController().signal;
   const noop = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
@@ -124,7 +129,7 @@ export function context(options: {
   const turns: StepTurn[] = [];
   const transcripts: string[] = [];
   const ctx: StepExecutorContext = {
-    step: { kind: options.kind ?? 'act', index: 0, instruction: 'Do the thing', params: options.params, secrets: options.secrets ?? [{ name: 'password', purpose: 'password' }] },
+    step: { kind: options.kind ?? 'act', index: 0, instruction: 'Do the thing', params: options.params, secrets: options.secrets ?? [{ name: 'password', purpose: 'password' }], ...(options.vision === undefined ? {} : { vision: options.vision }) },
     attempt: { testId: 'test', attemptId: 'attempt', index: 0, signal, memory: new Map() },
     signal, target: { name: 'web', platform: 'web', verbs: new Set(options.verbs ?? (Object.keys(actions) as (keyof ExecutorActions)[])) },
     model: options.model as StepExecutorContext['model'], providerOptions: undefined,

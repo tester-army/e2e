@@ -5,6 +5,7 @@ import { ConfigurationError } from 'e2e/engine';
 import { decide, requireDecide, type Decision } from './decide.ts';
 import { actionSpace, type ActionSpace, type Control, type Operation, type Target } from './elements.ts';
 import {
+  NONE,
   assertionRequest,
   completionRequest,
   decisionRequest,
@@ -13,8 +14,10 @@ import {
   targetKeyIndex,
   type DecisionRequest,
   type HistoryEntry,
+  type Screenshot,
 } from './questions.ts';
-import { fieldText, type FieldInput } from './text.ts';
+import { withGrid } from './overlay.ts';
+import { fieldText, uploadPaths, type FieldInput } from './text.ts';
 import type { DecisionExecutorOptions } from './types.ts';
 /** Error codes the runtime owns: rethrown untouched, never absorbed as history. */
 const RUNTIME_CODES = new Set(['STEP_BUDGET_EXHAUSTED', 'STEP_TIMEOUT', 'CANCELLED']);
@@ -35,12 +38,16 @@ export function decisionExecutor(options: DecisionExecutorOptions): StepExecutor
   if (options.providerOptions !== undefined && !isOptionsRecord(options.providerOptions)) {
     throw new ConfigurationError('INVALID_CONFIG', 'decisionExecutor({ providerOptions }) maps provider names to option objects, e.g. { gateway: { zeroDataRetention: true } }');
   }
+  if (options.vision !== undefined && typeof options.vision !== 'boolean') {
+    throw new ConfigurationError('INVALID_CONFIG', 'decisionExecutor({ vision }) must be a boolean');
+  }
   const textModel = options.textModel;
   return {
     name: 'decision',
-    version: '1',
+    version: '2',
     cache: 'inherit',
     ...(textModel === undefined ? {} : { model: textModel }),
+    ...(options.vision === true ? { vision: true } : {}),
     async runStep(ctx) {
       return run(ctx, options, minProbability, minConfidence);
     },
@@ -95,6 +102,8 @@ interface Taken {
   readonly operation: string;
   readonly elementKey: string;
 }
+/** What a target question settled: a bound target, or the model's `none` for the chosen operation. */
+type Resolved = { readonly taken: Taken; readonly targetAnswer?: Decision } | { readonly none: Decision };
 async function run(
   ctx: StepExecutorContext,
   options: DecisionExecutorOptions,
@@ -108,12 +117,19 @@ async function run(
   const history: HistoryEntry[] = seedHistory(ctx);
   const language = ctx.model as Exclude<LanguageModel, string> | undefined;
   const canType = language !== undefined && ctx.target.verbs.has('type');
+  const vision = options.vision === true;
   let previousFingerprint: string | undefined;
   let lastTurn: StepTurn | undefined;
   let rejectedTerminals = 0;
-  const finish = (verdict: StepVerdict): StepVerdict => {
+  let attached = false;
+  const attach = (): void => {
+    if (attached) return;
+    attached = true;
     ctx.attachTurns(turns);
     ctx.attachTranscript(transcript.join('\n'));
+  };
+  const finish = (verdict: StepVerdict): StepVerdict => {
+    attach();
     return verdict;
   };
   const gated = (decision: Decision): boolean =>
@@ -122,6 +138,14 @@ async function run(
     `p=${decision.probability.toFixed(3)}, confidence ${decision.confidence.toFixed(3)}`;
   const budgetMessage = (): string =>
     `The step did not conclude within its ${ctx.budgets.maxModelCalls} decision calls.`;
+  /** A fresh observation: the tree, and masked pixels when vision is on and no secret has been filled. */
+  const look = (): Promise<ExecutorObservation> => ctx.observe({ tree: true, pixels: vision && !ctx.pixelsTainted });
+  /** The granted pixels of an observation as the model receives them; nothing without vision. */
+  const screenshotOf = (observation: ExecutorObservation): Screenshot | undefined => {
+    const pixels = vision ? observation.pixels : undefined;
+    if (pixels === undefined) return undefined;
+    return { mediaType: pixels.mediaType, data: pixels.data, width: pixels.width, height: pixels.height, scale: pixels.scale };
+  };
   /**
    * The action space of a complete observation; undefined when the tree is
    * missing or empty. Verdict views pass `typing: true` so a field the step
@@ -130,34 +154,62 @@ async function run(
   const spaceOf = (observation: ExecutorObservation, typing: boolean): ActionSpace | undefined => {
     const tree = observation.tree;
     if (observation.treeUnavailable || tree === undefined || emptyTree(observation)) return undefined;
-    return actionSpace(ctx, { path: observation.path ?? '', viewport: observation.viewport, tree }, typing);
+    const pixels = vision ? observation.pixels : undefined;
+    return actionSpace(
+      ctx,
+      { path: observation.path ?? '', viewport: observation.viewport, tree, ...(pixels === undefined ? {} : { pixels }) },
+      typing,
+    );
   };
   const ask = async (request: DecisionRequest): Promise<Record<string, Decision> | undefined> => {
     if (calls >= ctx.budgets.maxModelCalls) return undefined;
-    transcript.push(JSON.stringify({ state: request.state, questions: request.questions }));
+    transcript.push(JSON.stringify({ state: request.state, questions: request.questions, ...(request.screenshot === undefined ? {} : { screenshot: `${request.screenshot.width}x${request.screenshot.height}` }) }));
     calls += 1;
     const answers = await decide(ctx, model, request, options.providerOptions);
     transcript.push(JSON.stringify(answers));
     return answers;
   };
+  const textInput = (field: FieldInput['field'], page: string): FieldInput => ({
+    goal: ctx.step.instruction,
+    context: ctx.agentContext ?? null,
+    params: nonSecretParams(ctx.step.params),
+    field,
+    page,
+    recentActions: history.slice(-6),
+  });
   const askText = async (field: FieldInput['field'], page: string): Promise<string | null | undefined> => {
     if (calls >= ctx.budgets.maxModelCalls) return undefined;
     if (language === undefined) throw invalid('The decision model chose type with no text model configured.');
     calls += 1;
-    return fieldText(ctx, language, {
-      goal: ctx.step.instruction,
-      context: ctx.agentContext ?? null,
-      params: nonSecretParams(ctx.step.params),
-      field,
-      page,
-      recentActions: history.slice(-6),
-    });
+    return fieldText(ctx, language, textInput(field, page));
   };
+  const askPaths = async (field: FieldInput['field'], page: string): Promise<readonly string[] | undefined> => {
+    if (calls >= ctx.budgets.maxModelCalls) return undefined;
+    if (language === undefined) throw invalid('The decision model chose upload with no text model configured.');
+    calls += 1;
+    return uploadPaths(ctx, language, textInput(field, page));
+  };
+  try {
+    return await loop();
+  } finally {
+    // A thrown step keeps its evidence too: the transcript is what explains a refusal or a bad answer.
+    attach();
+  }
+  async function loop(): Promise<StepVerdict> {
   if (ctx.step.kind === 'assert') {
-    const observation = await ctx.observe({ tree: true });
+    const observation = await look();
     const space = spaceOf(observation, true);
     if (space === undefined) return finish(inconclusive('A complete semantic observation is required.'));
-    const request = assertionRequest(ctx.step.instruction, observation.path ?? '', space.pageText, elementRecords(space));
+    const screenshot = screenshotOf(observation);
+    // `vision: 'only'` judges the pixels alone; without granted pixels the tree still decides.
+    const pixelsOnly = ctx.step.vision === 'only' && screenshot !== undefined;
+    const request = assertionRequest(
+      ctx.step.instruction,
+      observation.path ?? '',
+      pixelsOnly ? '' : space.pageText,
+      pixelsOnly ? [] : elementRecords(space),
+      screenshot,
+    );
     const answers = await ask(request);
     if (answers === undefined) return finish(blocked(budgetMessage()));
     const verdict = need(answers.verdict, 'verdict');
@@ -172,7 +224,7 @@ async function run(
     return finish(inconclusive(`The screen does not settle the assertion (${evidence}).`));
   }
   for (;;) {
-    const observation = await ctx.observe({ tree: true });
+    const observation = await look();
     const space = spaceOf(observation, canType);
     if (space === undefined) return finish(blocked('A complete semantic observation is required.'));
     const changed = space.fingerprint !== previousFingerprint;
@@ -184,7 +236,9 @@ async function run(
     if (previous !== undefined) history[history.length - 1] = { ...previous, pageChanged: changed };
     previousFingerprint = space.fingerprint;
     if (stalled(history)) return finish(blocked('Three actions in a row changed nothing on screen.'));
-    const answers = await ask(decisionRequest(ctx, space, history, observation.path ?? ''));
+    const screenshot = screenshotOf(observation);
+    const request = decisionRequest(ctx, space, history, observation.path ?? '', screenshot === undefined || space.cells.size === 0 ? screenshot : withGrid(screenshot, space.cells));
+    const answers = await ask(request);
     if (answers === undefined) return finish(blocked(budgetMessage()));
     const op = need(answers.operation, 'operation');
     if (!gated(op)) return finish(blocked(`The next operation is uncertain (${describe(op)}).`));
@@ -194,7 +248,11 @@ async function run(
       if (terminal !== undefined) return finish(terminal);
       continue;
     }
-    const { taken, targetAnswer } = resolveTarget(op.choice, answers, space);
+    const resolved = resolveTarget(op.choice, answers, space);
+    if ('none' in resolved) {
+      return finish(blocked(`The decision model chose ${op.choice} but no target for it (${describe(resolved.none)}).`));
+    }
+    const { taken, targetAnswer } = resolved;
     if (targetAnswer !== undefined && !gated(targetAnswer)) {
       return finish(blocked(`The next target is uncertain (${describe(targetAnswer)}).`));
     }
@@ -208,22 +266,44 @@ async function run(
       await runTarget(taken, op, targetAnswer, space, text, text);
       continue;
     }
+    if (op.choice === 'upload') {
+      const paths = await askPaths(elementField(space, taken.elementKey), space.pageText);
+      if (paths === undefined) return finish(blocked(budgetMessage()));
+      if (paths.length === 0) {
+        history.push({ action: taken.target.description, error: 'no files for this input' });
+        continue;
+      }
+      await runTarget(taken, op, targetAnswer, space, paths, paths.join(', '));
+      continue;
+    }
+    if (op.choice === 'drag') {
+      const destination = resolveDestination(answers.drag_destination, space);
+      if ('none' in destination) {
+        return finish(blocked(`The decision model chose drag but no destination for it (${describe(destination.none)}).`));
+      }
+      if (!gated(destination.answer)) return finish(blocked(`The drop destination is uncertain (${describe(destination.answer)}).`));
+      await runTarget(taken, op, targetAnswer, space, destination.key, `onto ${destination.label}`);
+      continue;
+    }
     let secret: string | undefined;
     if (op.choice === 'typeSecret') {
-      const resolved = resolveSecret(answers.secret);
-      if (resolved.answer !== undefined && !gated(resolved.answer)) {
-        return finish(blocked(`The next secret is uncertain (${describe(resolved.answer)}).`));
+      const chosen = resolveSecret(answers.secret);
+      if ('none' in chosen) {
+        return finish(blocked(`The decision model chose typeSecret but no secret for it (${describe(chosen.none)}).`));
       }
-      secret = resolved.name;
+      if (chosen.answer !== undefined && !gated(chosen.answer)) {
+        return finish(blocked(`The next secret is uncertain (${describe(chosen.answer)}).`));
+      }
+      secret = chosen.name;
     }
     await runTarget(taken, op, targetAnswer, space, secret);
   }
-  /** Resolves the chosen operation to a bound target. Throws MODEL_OUTPUT_INVALID for anything not offered. */
-  function resolveTarget(
-    choice: string,
-    answers: Record<string, Decision>,
-    space: ActionSpace,
-  ): { taken: Taken; targetAnswer?: Decision } {
+  }
+  /**
+   * Resolves the chosen operation to a bound target, or to the model's
+   * `none` for it. Throws MODEL_OUTPUT_INVALID for anything not offered.
+   */
+  function resolveTarget(choice: string, answers: Record<string, Decision>, space: ActionSpace): Resolved {
     const control = space.controls.get(choice as Control);
     if (control !== undefined) return { taken: { target: control, operation: choice, elementKey: '' } };
     const group = space.targets.get(choice as Operation);
@@ -235,15 +315,28 @@ async function run(
     }
     const answer = answers[`${choice}_target`];
     if (answer === undefined) throw invalid('The decision model returned no target answer.');
+    if (answer.choice === NONE) return { none: answer };
     const target = group.get(answer.choice);
     if (target === undefined) throw invalid('The decision model chose an unavailable target.');
     return { taken: { target, operation: choice, elementKey: answer.choice }, targetAnswer: answer };
   }
+  /** Resolves the drop destination of a drag: the only one, or the gated destination answer. */
+  function resolveDestination(
+    answer: Decision | undefined,
+    space: ActionSpace,
+  ): { key: string; label: string; answer: Decision } | { none: Decision } {
+    if (answer === undefined) throw invalid('The decision model returned no drag destination.');
+    if (answer.choice === NONE) return { none: answer };
+    const destination = space.destinations.get(answer.choice);
+    if (destination === undefined) throw invalid('The decision model chose an unavailable drop destination.');
+    return { key: answer.choice, label: destination.label, answer };
+  }
   /** Resolves the secret fill: the declared secret, or the gated secret answer with 2+ secrets. */
-  function resolveSecret(answer: Decision | undefined): { name: string; answer?: Decision } {
+  function resolveSecret(answer: Decision | undefined): { name: string; answer?: Decision } | { none: Decision } {
     const secrets = ctx.step.secrets;
     if (secrets.length === 1 && secrets[0] !== undefined) return { name: secrets[0].name };
     if (answer === undefined) throw invalid('The decision model returned no secret answer.');
+    if (answer.choice === NONE) return { none: answer };
     const found = secrets.find((secret) => secret.name === answer.choice);
     if (found === undefined) throw invalid('The decision model chose an undeclared secret.');
     return { name: found.name, answer };
@@ -258,13 +351,13 @@ async function run(
     op: Decision,
     targetAnswer: Decision | undefined,
     space: ActionSpace,
-    argument?: string,
+    argument?: string | readonly string[],
     typedText?: string,
   ): Promise<void> {
     const targetPart = targetAnswer === undefined ? '' : `, target p=${targetAnswer.probability.toFixed(3)}`;
     const turn: StepTurn = {
       index: turns.length + 1,
-      calls: [callLabel(space, taken, op.choice, argument)],
+      calls: [callLabel(space, taken, op.choice, typedText)],
       outcome: `op p=${op.probability.toFixed(3)}${targetPart}`,
     };
     turns.push(turn);
@@ -300,9 +393,10 @@ async function run(
    * the loop. A verdict under the gates confirms nothing.
    */
   async function terminalCheck(claim: 'done' | 'failed'): Promise<StepVerdict | undefined> {
-    const observation = await ctx.observe({ tree: true });
+    const observation = await look();
     const space = spaceOf(observation, true);
     if (space === undefined) return rejectClaim(claim, 'incomplete observation');
+    const screenshot = screenshotOf(observation);
     const request = completionRequest({
       goal: ctx.step.instruction,
       params: nonSecretParams(ctx.step.params),
@@ -310,6 +404,7 @@ async function run(
       pageText: space.pageText,
       elements: elementRecords(space),
       history,
+      ...(screenshot === undefined ? {} : { screenshot }),
     });
     const answers = await ask(request);
     if (answers === undefined) return blocked(budgetMessage());

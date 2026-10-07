@@ -518,6 +518,10 @@ declare const seedCart: ReturnType<typeof defineTool>;
 // A custom brain goes under executor, and keeps the model, judge, context, and budgets.
 declare const brain: StepExecutor;
 ({ targets, agents: { default: { executor: brain, model, judge: model, context: 'Plans are called tiers.', maxModelCalls: 10 } } }) satisfies E2EConfig;
+// An executor that declares vision receives the assert option as step.vision.
+({ name: 'seeing', vision: true, runStep: async (ctx) => ({ status: 'passed', summary: ctx.step.vision === 'only' ? 'pixels' : 'tree' }) }) satisfies StepExecutor;
+// @ts-expect-error vision is a declaration, not a mode
+({ name: 'seeing', vision: 'only', runStep: async () => ({ status: 'passed', summary: '' }) }) satisfies StepExecutor;
 // @ts-expect-error system belongs to the built-in agent; a custom executor brings its own prompt
 ({ targets, agents: { default: { executor: brain, system: 'Be thorough.' } } }) satisfies E2EConfig;
 // @ts-expect-error tools belong to the built-in agent; a custom executor brings its own

@@ -3,7 +3,7 @@ import { InvalidArgumentError, InvalidResponseDataError, LoadAPIKeyError } from 
 import { AgentError } from 'e2e/agent';
 import type { ExecutorNode } from 'e2e';
 import { decisionExecutor } from '../src/index.ts';
-import { context, scriptedDecision, scriptedText } from './helpers.ts';
+import { context, scriptedDecision, scriptedOutputs, scriptedText } from './helpers.ts';
 
 /** Matches the ConfigurationError a factory throws at config load. */
 function invalidConfig(message: string): object {
@@ -81,7 +81,8 @@ describe('act loop', () => {
     expect(verdict).toMatchObject({ status: 'passed' });
     expect(fixture.actions.tap).toHaveBeenCalledTimes(1);
     expect(requests).toHaveLength(3);
-    expect(Object.keys(requests[0]?.questions ?? {})).toEqual(['operation', 'tap_target']);
+    expect(Object.keys(requests[0]?.questions ?? {})).toEqual(['operation', 'tap_target', 'double_tap_target', 'long_press_target', 'hover_target', 'secondary_tap_target']);
+    expect(Object.keys(requests[0]?.questions['tap_target']?.criteria as object)).toEqual(['1', '2', 'none']);
     expect(fixture.usage).toHaveLength(3);
     expect(fixture.usage[0]).toMatchObject({ provider: 'scripted', modelId: 'scripted-1' });
     expect(fixture.turns.length).toBeGreaterThan(0);
@@ -316,10 +317,11 @@ describe('terminal checks', () => {
     const fixture = context({ tree });
     await decisionExecutor({ model }).runStep(fixture.ctx);
     const criteria = requests[0]?.questions['select_target']?.criteria as Record<string, unknown>;
-    expect(Object.values(criteria)).toEqual([
+    expect(Object.values(criteria).slice(0, 2)).toEqual([
       { element: 'Small', role: 'option' },
       { element: 'Large', role: 'option' },
     ]);
+    expect(Object.keys(criteria)).toEqual(['1:0', '1:1', 'none']);
   });
 });
 
@@ -443,7 +445,7 @@ describe('gates', () => {
   it('blocks a low-probability target under a gate', async () => {
     const { model } = scriptedDecision((id, keys) => {
       if (id === 'operation') return { choice: 'tap' };
-      return { choice: keys[0] ?? '', probabilities: Object.fromEntries(keys.map((key) => [key, 0.5])), confidence: 0.9 };
+      return { choice: keys[0] ?? '', probabilities: Object.fromEntries(keys.map((key) => [key, 1 / keys.length])), confidence: 0.9 };
     });
     const fixture = context({ tree: BUTTONS });
     const verdict = await decisionExecutor({ model, minProbability: 0.9 }).runStep(fixture.ctx);
@@ -698,7 +700,7 @@ describe('context', () => {
     const fixture = context({ tree });
     await decisionExecutor({ model }).runStep(fixture.ctx);
     const criteria = requests[0]?.questions['check_target']?.criteria as Record<string, unknown>;
-    expect(Object.values(criteria)).toEqual([
+    expect(Object.values(criteria).slice(0, 2)).toEqual([
       { element: 'Buy milk', role: 'checkbox', checked: true },
       { element: 'Walk the dog', role: 'checkbox', checked: false },
     ]);
@@ -716,5 +718,138 @@ describe('context', () => {
       secrets: [{ name: 'password', purpose: 'password' }, { name: 'token', purpose: 'generic-secret' }],
     });
     await expect(decisionExecutor({ model }).runStep(fixture.ctx)).rejects.toMatchObject({ code: 'MODEL_OUTPUT_INVALID' });
+  });
+});
+
+describe('new operations', () => {
+  const PIXELS = { data: new Uint8Array([1, 2, 3]), mediaType: 'image/png' as const, width: 800, height: 600, scale: 1, maskedRegionCount: 0 };
+  it('blocks when the model answers none for the chosen operation', async () => {
+    const { model } = scriptedDecision((id) => ({ choice: id === 'operation' ? 'tap' : 'none' }));
+    const fixture = context({ tree: BUTTONS });
+    const verdict = await decisionExecutor({ model }).runStep(fixture.ctx);
+    expect(verdict).toMatchObject({ status: 'blocked', errorCode: 'AUTOMATION_UNSUPPORTED', summary: expect.stringContaining('chose tap but no target') });
+    expect(fixture.actions.tap).not.toHaveBeenCalled();
+  });
+  it('drags the chosen source onto the chosen destination', async () => {
+    const tree: ExecutorNode = { id: 'root', children: [
+      { id: 'list', role: 'list', name: 'Todo column', children: [{ id: 'card', role: 'listitem', name: 'Design review' }] },
+      { id: 'done', role: 'region', name: 'Done column' },
+    ] };
+    const { model, requests } = scriptedDecision((id, keys, call) => {
+      if (id === 'operation') return { choice: call === 0 ? 'drag' : 'done' };
+      if (id === 'verdict') return { choice: 'holds' };
+      if (id === 'drag_target') return { choice: '2' };
+      if (id === 'drag_destination') return { choice: '3' };
+      return { choice: keys[0] ?? '' };
+    });
+    const fixture = context({ tree });
+    const verdict = await decisionExecutor({ model }).runStep(fixture.ctx);
+    expect(verdict).toMatchObject({ status: 'passed' });
+    expect(fixture.actions.drag).toHaveBeenCalledWith({ id: 'card' }, { id: 'done' });
+    expect(Object.keys(requests[0]?.questions['drag_destination']?.criteria as object)).toEqual(['1', '2', '3', 'none']);
+    expect(fixture.turns[0]?.calls[0]).toBe('drag [2] listitem "Design review" = "onto Done column"');
+  });
+  it('blocks a drag whose destination is none', async () => {
+    const tree: ExecutorNode = { id: 'root', children: [
+      { id: 'card', role: 'listitem', name: 'Design review' },
+      { id: 'done', role: 'region', name: 'Done column' },
+    ] };
+    const { model } = scriptedDecision((id) => ({ choice: id === 'operation' ? 'drag' : id === 'drag_destination' ? 'none' : '1' }));
+    const fixture = context({ tree });
+    const verdict = await decisionExecutor({ model }).runStep(fixture.ctx);
+    expect(verdict).toMatchObject({ status: 'blocked', summary: expect.stringContaining('no destination') });
+    expect(fixture.actions.drag).not.toHaveBeenCalled();
+  });
+  it('uploads the paths the text model names, and skips an empty list', async () => {
+    const tree: ExecutorNode = { id: 'root', children: [{ id: 'f', role: 'button', name: 'Attachments', attributes: { type: 'file' } }] };
+    const { model } = scriptedDecision((id, keys, call) => ({
+      choice: id === 'operation' ? (call < 2 ? 'upload' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
+    }));
+    const text = scriptedOutputs([{ paths: [] }, { paths: ['fixtures/a.txt', 'fixtures/b.txt'] }]);
+    const fixture = context({ tree, model: text.model, params: { files: ['fixtures/a.txt', 'fixtures/b.txt'] } });
+    const verdict = await decisionExecutor({ model, textModel: text.model }).runStep(fixture.ctx);
+    expect(verdict).toMatchObject({ status: 'passed' });
+    expect(fixture.actions.upload).toHaveBeenCalledTimes(1);
+    expect(fixture.actions.upload).toHaveBeenCalledWith({ id: 'f' }, ['fixtures/a.txt', 'fixtures/b.txt']);
+    expect(fixture.actions.tap).not.toHaveBeenCalled();
+    expect(fixture.transcripts[0]).toContain('no files for this input');
+  });
+  it('never offers upload without a text model', async () => {
+    const tree: ExecutorNode = { id: 'root', children: [{ id: 'f', role: 'button', name: 'Attachments', attributes: { type: 'file' } }] };
+    const { model, requests } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'blocked' : (keys[0] ?? '') }));
+    await decisionExecutor({ model }).runStep(context({ tree }).ctx);
+    expect(Object.keys(requests[0]?.questions['operation']?.criteria as object)).not.toContain('upload');
+  });
+  it('runs hover, right-click, double-tap, long-press, and scroll-to through the grammar', async () => {
+    const tree: ExecutorNode = { id: 'root', children: [
+      { id: 'b', role: 'button', name: 'Hold me', rect: { x: 0, y: 0, width: 50, height: 20 } },
+      { id: 'p', role: 'paragraph', name: 'Footnote', rect: { x: 0, y: 5000, width: 50, height: 20 } },
+    ] };
+    const operations = ['hover', 'secondary_tap', 'double_tap', 'long_press', 'scroll_to'];
+    const { model } = scriptedDecision((id, keys, call) => {
+      if (id === 'operation') return { choice: operations[call] ?? 'done' };
+      if (id === 'verdict') return { choice: 'holds' };
+      return { choice: id === 'scroll_to_target' ? '2' : '1' };
+    });
+    const fixture = context({ tree });
+    // Every action changes nothing on this scripted screen; the stall guard must not fire before the fifth.
+    let revision = 0;
+    fixture.observe.mockImplementation(async () => ({ revision: String(revision += 1), text: 'x', truncated: false, viewport: { width: 800, height: 600 }, tree: { ...tree, children: [...(tree.children ?? []), { id: `t${revision}`, text: `tick ${revision}` }] } }));
+    const verdict = await decisionExecutor({ model }).runStep(fixture.ctx);
+    expect(verdict).toMatchObject({ status: 'passed' });
+    expect(fixture.actions.hover).toHaveBeenCalledWith({ id: 'b' });
+    expect(fixture.actions.secondaryTap).toHaveBeenCalledWith({ id: 'b' });
+    expect(fixture.actions.doubleTap).toHaveBeenCalledWith({ id: 'b' });
+    expect(fixture.actions.longPress).toHaveBeenCalledWith({ id: 'b' });
+    expect(fixture.actions.scrollTo).toHaveBeenCalledWith({ id: 'p' });
+  });
+  it('with vision, asks for pixels, sends the screenshot, and taps a grid cell', async () => {
+    const { model, requests } = scriptedDecision((id, keys, call) => {
+      if (id === 'operation') return { choice: call === 0 ? 'tap_at' : 'done' };
+      if (id === 'verdict') return { choice: 'holds' };
+      if (id === 'tap_at_target') return { choice: 'p7' };
+      return { choice: keys[0] ?? '' };
+    });
+    const fixture = context({ tree: BUTTONS, observation: { pixels: PIXELS } });
+    const executor = decisionExecutor({ model, vision: true });
+    expect(executor.vision).toBe(true);
+    const verdict = await executor.runStep(fixture.ctx);
+    expect(verdict).toMatchObject({ status: 'passed' });
+    expect(fixture.observe).toHaveBeenCalledWith({ tree: true, pixels: true });
+    expect(fixture.actions.tapAt).toHaveBeenCalledWith({ x: 240, y: 240 });
+    const options = requests[0]?.providerOptions as { decision: { screenshot: { mediaType: string; data: string } } };
+    expect(options.decision.screenshot.mediaType).toBe('image/png');
+    // Undecodable pixels go through untouched, as base64.
+    expect(options.decision.screenshot.data).toBe(Buffer.from([1, 2, 3]).toString('base64'));
+    const cells = requests[0]?.questions['tap_at_target']?.criteria as Record<string, unknown> | undefined;
+    expect(cells?.['p7']).toEqual({ cell: 7, x: [160, 320], y: [160, 320] });
+    expect(fixture.transcripts[0]).toContain('"screenshot":"800x600"');
+  });
+  it('without vision never asks for pixels nor offers tap_at', async () => {
+    const { model, requests } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'blocked' : (keys[0] ?? '') }));
+    const fixture = context({ tree: BUTTONS, observation: { pixels: PIXELS } });
+    expect(decisionExecutor({ model }).vision).toBeUndefined();
+    await decisionExecutor({ model }).runStep(fixture.ctx);
+    expect(fixture.observe).toHaveBeenCalledWith({ tree: true, pixels: false });
+    expect(Object.keys(requests[0]?.questions ?? {})).not.toContain('tap_at_target');
+  });
+  it('judges an assert with vision only on the pixels alone', async () => {
+    const { model, requests } = scriptedDecision(() => ({ choice: 'holds' }));
+    const fixture = context({ kind: 'assert', tree: BUTTONS, observation: { pixels: PIXELS }, vision: 'only' });
+    const verdict = await decisionExecutor({ model, vision: true }).runStep(fixture.ctx);
+    expect(verdict).toMatchObject({ status: 'passed' });
+    expect(requests[0]?.state).toMatchObject({ elements: [], page: { text: '' } });
+    expect(requests[0]?.providerOptions).toMatchObject({ decision: { screenshot: { mediaType: 'image/png' } } });
+  });
+  it('keeps the transcript when the model call throws', async () => {
+    const { model } = scriptedDecision(() => ({ choice: 'tap' }), { throws: new Error('boom') });
+    const fixture = context({ tree: BUTTONS });
+    await expect(decisionExecutor({ model }).runStep(fixture.ctx)).rejects.toMatchObject({ code: 'MODEL_PROVIDER_FAILED' });
+    expect(fixture.transcripts).toHaveLength(1);
+    expect(fixture.transcripts[0]).toContain('"operation"');
+  });
+  it('rejects a non-boolean vision option', () => {
+    const { model } = scriptedDecision(() => ({ choice: 'done' }));
+    expect(() => decisionExecutor({ model, vision: 'only' as never })).toThrow(invalidConfig('vision'));
   });
 });

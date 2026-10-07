@@ -69,8 +69,10 @@ export default {
 } satisfies E2EConfig;
 ```
 
-OpenAI's Decisions API works the same way through `@ai-sdk/openai` 4.0.86
-or later, which reads `OPENAI_API_KEY`:
+OpenAI's Decisions API works the same way. `openaiDecisionModel()` from this
+package talks to it directly, reads `OPENAI_API_KEY`, and also takes the
+screenshot that `vision` sends; `openai.decisionModel('gpt-6-luna')` from
+`@ai-sdk/openai` 4.0.86 or later works too, text only:
 
 <CodeGroup>
 ```bash npm
@@ -87,11 +89,13 @@ bun add -d @ai-sdk/openai
 </CodeGroup>
 
 ```ts title="e2e.config.ts"
+import { openaiDecisionModel } from '@e2e-dev/decision';
 import { openai } from '@ai-sdk/openai';
 
 const executor = decisionExecutor({
-  model: openai.decisionModel('gpt-6-luna'),
-  textModel: openai('gpt-5.4-nano'),
+  model: openaiDecisionModel(),
+  textModel: openai('gpt-5.4-mini'),
+  vision: true,
 });
 ```
 
@@ -111,11 +115,44 @@ test('adds a todo', async ({ app, screen, agent }) => {
 });
 ```
 
+## What the model can do
+
+Each turn offers the operations the engine declares on the elements of the
+newest screen: `tap`, `type`, `typeSecret`, `submit`, `select`, `check`,
+`upload`, `hover`, `secondary_tap` (a right-click), `double_tap`,
+`long_press`, `drag` with a separate destination question, `scroll_to` for
+an element outside the viewport, plus `scroll_up`, `scroll_down`, and
+`back`. Hover, right-click, drag, and scroll-to also reach labeled nodes
+that are no control: a card that opens a menu on hover, a file row, a
+paragraph. Every target question carries a `none` option, so a provider
+that finds no target for an operation the step will not take answers
+`none` instead of refusing; `none` for the operation the model did choose
+blocks the step.
+
+## Vision
+
+`vision: true` asks the engine for masked pixels on every observation and
+sends the screenshot beside the element table to every question, so the
+model judges drawn content a tree cannot show. It also offers `tap_at`
+over a grid of 160px screenshot cells, drawn on the image with their
+numbers, for a control the tree does not list. `agent.assert(..., {
+vision: true })` and `vision: 'only'` reach the executor the same way.
+The model must take images: `openaiDecisionModel()` does, the AI SDK's
+`openai.decisionModel()` does not yet. Pixels are withheld once a secret
+has been filled in the attempt, as everywhere in the runner.
+
+Measured on gpt-6-luna over the playground: a vision assert on a drawn
+chart passes, and drawn controls (a keypad, a map pin) are located
+coarsely at best, with 0.3 to 0.5 probability on the right 160px cell.
+Expect `tap_at` to miss small targets.
+
 ## How text gets typed
 
 The decision model only ever names an element index. When it picks `type`,
 the text model writes the value from the goal, the field's label, and the
-page text, and the executor types exactly that string. Model output never
+page text, and the executor types exactly that string. When it picks
+`upload`, the text model lists the project-relative paths the goal or params
+name, and the runner authorizes each path before the engine sees it. Model output never
 becomes a selector, a URL, or a key. When the goal supplies no value,
 nothing is typed and the decision model picks another action. Password
 fields never reach the text model; secrets stay declared handles that only
@@ -178,17 +215,15 @@ a fallback list, never reaches the other.
 
 ## Limits
 
-- No vision: screenshots never reach the model; canvas-only controls and
-  image-based targets are not implemented.
 - No `navigate`: in-app navigation is a `tap` on a link. URLs belong in
   test code (`browser.goto`, `app.open`).
-- No multi-select `listbox` in v1.
+- No multi-select `listbox`, no `scrollUntil`, no keyboard typing at a
+  point (`type_at`).
 - A question the provider refuses to answer fails the step with
   `MODEL_OUTPUT_INVALID`.
 - The choice cap is 255 options per question (TypeSafe's limit; OpenAI
   documents none). Larger
   screens list viewport nodes first and count the rest as omitted, so the
   model can scroll; the step never blocks just for being large.
-- Drag, upload, and hover are not offered in v1.
 - `waitFor` and `extract` use the text model through the runner's
   built-in judgment tier.

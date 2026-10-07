@@ -62,10 +62,19 @@ export async function decide(
       questions: request.questions,
       ...(providerOptions === undefined ? {} : { providerOptions }),
     };
+    const screenshot = request.screenshot;
     const result = await requireDecide()({
       ...(call as unknown as Parameters<typeof ai.experimental_decide>[0]),
       maxRetries: 0,
       abortSignal: ctx.signal,
+      ...(screenshot === undefined
+        ? {}
+        : {
+            providerOptions: {
+              ...providerOptions,
+              decision: { ...providerOptions?.['decision'], screenshot: { mediaType: screenshot.mediaType, data: Buffer.from(screenshot.data).toString('base64') } },
+            },
+          }),
     });
     ctx.signal.throwIfAborted();
     inputTokens = result.usage.inputTokens;

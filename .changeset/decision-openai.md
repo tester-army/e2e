@@ -1,5 +1,5 @@
 ---
-"@e2e-dev/decision": patch
+"@e2e-dev/decision": minor
 ---
 
-Name a provider refusal when the decision model declines a question, and document OpenAI `gpt-6-luna` through `@ai-sdk/openai` 4.0.86 or later.
+Offer the whole action grammar (hover, right-click, double-tap, long-press, drag, scroll-to, upload) with a `none` option on every target question, add `vision: true` with `openaiDecisionModel()` for screenshots and a `tap_at` grid, name a provider refusal, and document OpenAI `gpt-6-luna`.

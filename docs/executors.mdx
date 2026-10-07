@@ -168,9 +168,10 @@ passing the plaintext through your executor.
 
 A custom executor handles `act` and `assert` through `runStep`. Both use the
 agent's `maxSteps` and `maxModelCalls` and default to the configured
-`timeout`. On `assert`, `vision` raises `UNSUPPORTED_CAPABILITY`, since your
-executor chooses what it observes; `screenshot` still attaches evidence after
-your verdict.
+`timeout`. On `assert`, `vision` reaches `runStep` as `ctx.step.vision` only
+when the executor declares `vision: true`; otherwise it raises
+`UNSUPPORTED_CAPABILITY`, since your executor chooses what it observes.
+`screenshot` still attaches evidence after your verdict.
 
 `waitFor` and `extract` still use the built-in judgments. They require a
 configured model and raise `MODEL_UNAVAILABLE` without one.

@@ -1,5 +1,12 @@
 import type { JsonValue, StepExecutorContext } from 'e2e';
 import type { ActionSpace, Control, Element, Operation, Terminal } from './elements.ts';
+/**
+ * The fallback every target question carries. A provider that finds no
+ * applicable target for an operation the step will not take (OpenAI refuses
+ * such a question outright) chooses this instead, and the step reads it as
+ * "not this operation".
+ */
+export const NONE = 'none';
 /** One step of history the decision model reads. */
 export interface HistoryEntry {
   readonly action: string;
@@ -23,7 +30,8 @@ const TARGET = [
   'Choose the best offered target for the operation this question names.',
   'Use the goal, field values, nearby text, and recent actions. This question',
   'chooses only a target; another question decides the operation. Do not choose',
-  'a field that already holds the requested value. Choose only an offered element index.',
+  'a field that already holds the requested value, nor a target a recent action',
+  'already used without changing the page. Choose only an offered element index.',
 ].join('\n');
 const TERMINALS: Readonly<Record<Terminal, string>> = {
   done: 'The page visibly satisfies every requirement of the goal.',
@@ -37,10 +45,20 @@ const OPERATIONS: Readonly<Record<Operation | Control, string>> = {
   submit: 'Submit a field with Enter.',
   select: 'Choose a labeled option in a native select.',
   check: 'Toggle a checkbox, radio, or switch.',
+  hover: 'Move the pointer over an element without pressing, to reveal what hovering shows.',
+  secondary_tap: 'Right-click an element to open its context menu.',
+  double_tap: 'Double-tap an element.',
+  long_press: 'Press and hold an element.',
+  drag: 'Drag an element and drop it on another.',
+  scroll_to: 'Bring an element outside the viewport into view.',
+  upload: 'Attach the files the goal names to a file input.',
+  tap_at: 'Tap a point in the screenshot where the element table lists nothing, such as a drawn control.',
   scroll_up: 'Scroll the viewport up.',
   scroll_down: 'Scroll the viewport down.',
-  back: 'Go back one step in history.',
+  back: 'Go back to the previous page, as the browser back button does.',
 };
+/** The fallback criterion of a target question. */
+const NONE_TARGET = 'The next operation is not this one; no target applies.';
 /** One choice question as the request sends it. */
 interface ChoiceQuestion {
   readonly type: 'choice';
@@ -50,18 +68,32 @@ interface ChoiceQuestion {
 export interface DecisionRequest {
   readonly state: Record<string, JsonValue>;
   readonly questions: Record<string, ChoiceQuestion>;
+  /** Masked viewport pixels the model sees beside the state, when vision is on and pixels were granted. */
+  readonly screenshot?: Screenshot;
+}
+/** A screenshot as the decision model receives it. */
+export interface Screenshot {
+  readonly mediaType: 'image/png';
+  readonly data: Uint8Array;
+  readonly width: number;
+  readonly height: number;
+  /** Image pixels per CSS pixel of the state's coordinates. */
+  readonly scale: number;
 }
 /**
  * Builds one decide request: the operation question plus one target
- * question per operation with two or more targets, and a secret question
- * when two or more secrets are declared. Operations with no targets are
- * left out; a lone target dispatches with no question.
+ * question per operation with two or more targets, a destination question
+ * when a drag is offered, and a secret question when two or more secrets
+ * are declared. Operations with no targets are left out; a lone target
+ * dispatches with no question. Every target question carries the `none`
+ * fallback, so a provider never has to refuse one.
  */
 export function decisionRequest(
   ctx: StepExecutorContext,
   space: ActionSpace,
   history: readonly HistoryEntry[],
   path: string,
+  screenshot?: Screenshot,
 ): DecisionRequest {
   const criteria: Record<string, string> = {};
   for (const operation of space.targets.keys()) criteria[operation] = OPERATIONS[operation];
@@ -74,7 +106,10 @@ export function decisionRequest(
     if (targets.size < 2) continue;
     const options: Record<string, JsonValue | null> = {};
     for (const [key, target] of targets) {
-      if (operation === 'select') {
+      if (operation === 'tap_at') {
+        const cell = space.cells.get(key);
+        options[key] = cell === undefined ? target.description : { cell: Number(key.slice(1)), x: [...cell.x], y: [...cell.y] };
+      } else if (operation === 'select') {
         // Every option under one select shares the parent row, so the
         // parent description cannot tell options apart. Name the option.
         const label = target.optionLabel;
@@ -84,15 +119,35 @@ export function decisionRequest(
         options[key] = element === undefined ? target.description : targetCriterion(element);
       }
     }
-    questions[`${operation}_target`] = choice({ operation, rules: TARGET }, options);
+    options[NONE] = NONE_TARGET;
+    questions[`${operation}_target`] = choice({ operation, rules: operation === 'tap_at' ? TAP_AT : TARGET }, options);
+  }
+  if (space.targets.has('drag') && space.destinations.size > 0) {
+    const options: Record<string, JsonValue | null> = {};
+    for (const [key, destination] of space.destinations) options[key] = { element: destination.label, role: destination.role };
+    options[NONE] = NONE_TARGET;
+    questions.drag_destination = choice({ operation: 'drag', rules: DROP }, options);
   }
   if (space.targets.has('typeSecret') && ctx.step.secrets.length >= 2) {
     const secrets: Record<string, JsonValue | null> = {};
     for (const secret of ctx.step.secrets) secrets[secret.name] = secret.purpose;
+    secrets[NONE] = 'The next operation is not a secret fill.';
     questions.secret = choice({ rules: 'Choose the declared secret this fill needs.' }, secrets);
   }
-  return { state: decisionState(ctx, space, history, path), questions };
+  return { state: decisionState(ctx, space, history, path), questions, ...(screenshot === undefined ? {} : { screenshot }) };
 }
+/** Rules for the drop destination of a drag. */
+const DROP = [
+  'Choose where the dragged element should be dropped. This question chooses only',
+  'the destination; another question chooses what is dragged.',
+].join('\n');
+/** Rules for a tap on a screenshot cell: the state carries no element for it. */
+const TAP_AT = [
+  'Choose the screenshot cell holding the drawn control the goal needs next.',
+  'The screenshot shows the grid with each cell number in its top-left corner;',
+  'the tap lands at the cell center. The element table lists nothing there.',
+  'Prefer a listed element when one does the same.',
+].join('\n');
 /** A choice question from its instructions and criteria. */
 function choice(instructions: Record<string, JsonValue>, criteria: Record<string, JsonValue | null>): ChoiceQuestion {
   return { type: 'choice', instructions, criteria };
@@ -202,8 +257,10 @@ export function assertionRequest(
   path: string,
   pageText: string,
   elements: readonly Record<string, JsonValue>[],
+  screenshot?: Screenshot,
 ): DecisionRequest {
   return {
+    ...(screenshot === undefined ? {} : { screenshot }),
     state: { goal, page: { path, text: pageText }, elements: [...elements] },
     questions: {
       verdict: choice({ rules: ASSERTION }, {
@@ -222,6 +279,7 @@ export interface CompletionInput {
   readonly pageText: string;
   readonly elements: readonly Record<string, JsonValue>[];
   readonly history: readonly HistoryEntry[];
+  readonly screenshot?: Screenshot;
 }
 /**
  * Builds a completion-check request: the goal with its non-secret params, the
@@ -232,6 +290,7 @@ export interface CompletionInput {
 export function completionRequest(input: CompletionInput): DecisionRequest {
   const actions = input.history.filter((entry) => entry.action !== 'done' && entry.action !== 'failed').map(actionLine);
   return {
+    ...(input.screenshot === undefined ? {} : { screenshot: input.screenshot }),
     state: {
       goal: input.goal,
       ...(Object.keys(input.params).length === 0 ? {} : { params: input.params }),

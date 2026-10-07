@@ -30,7 +30,9 @@ describe('element table', () => {
     ]);
     expect(space.targets.get('tap')).toBeUndefined();
     expect([...(space.targets.get('check')?.keys() ?? [])]).toEqual(['1', '2', '3']);
-    expect(space.elements[0]).toMatchObject({ checked: false, operations: ['check'] });
+    expect(space.elements[0]).toMatchObject({ checked: false });
+    expect(space.elements[0]?.operations).toContain('check');
+    expect(space.elements[0]?.operations).not.toContain('tap');
   });
   it('never offers check on a checked radio, which would uncheck it', () => {
     const space = spaceFor([
@@ -50,7 +52,9 @@ describe('element table', () => {
     expect(space.targets.get('tap')).toBeUndefined();
     expect(space.targets.get('type')).toBeUndefined();
     expect([...(space.targets.get('select')?.keys() ?? [])]).toEqual(['1:0', '1:1']);
-    expect(space.elements[0]).toMatchObject({ operations: ['select'] });
+    expect(space.elements[0]?.operations).toContain('select');
+    expect(space.elements[0]?.operations).not.toContain('tap');
+    expect(space.elements[0]?.operations).not.toContain('double_tap');
   });
   it('skips hidden and disabled options', () => {
     const space = spaceFor([{ id: 's', role: 'combobox', name: 'Size', children: [
@@ -86,9 +90,56 @@ describe('element table', () => {
       { id: 'b', role: 'button', name: 'Off', states: { disabled: true } },
       { id: 'c', role: 'heading', name: 'Todos' },
     ]);
-    expect(space.elements).toEqual([]);
-    expect(space.targets.size).toBe(0);
+    // The heading is no control; it stays on the page text and takes only pointer operations.
+    expect(space.elements.map((element) => [element.label, [...element.operations].toSorted()])).toEqual([['Todos', ['hover', 'secondary_tap']]]);
+    expect(space.targets.get('tap')).toBeUndefined();
     expect(space.pageText).toBe('Todos');
+  });
+  it('offers pointer operations on labeled passive nodes and drag only with a drop target', () => {
+    const space = spaceFor([
+      { id: 'menu', text: 'Card actions' },
+      { id: 'list', role: 'list', name: 'Todo column', children: [{ id: 'card', role: 'listitem', name: 'Design review' }] },
+      { id: 'done', role: 'region', name: 'Done column' },
+      { id: 'label', text: '' },
+    ]);
+    expect(space.elements.map((element) => element.label)).toEqual(['Card actions', 'Todo column', 'Design review', 'Done column']);
+    expect([...(space.targets.get('hover')?.keys() ?? [])]).toEqual(['1', '2', '3', '4']);
+    expect([...(space.targets.get('secondary_tap')?.keys() ?? [])]).toEqual(['1', '2', '3', '4']);
+    expect([...(space.targets.get('drag')?.keys() ?? [])]).toEqual(['1', '2', '3', '4']);
+    expect([...space.destinations.entries()].map(([key, destination]) => [key, destination.label])).toEqual([['2', 'Todo column'], ['3', 'Design review'], ['4', 'Done column']]);
+    expect(space.pageText).toBe('Card actions\nTodo column\nDesign review\nDone column');
+    const noDrop = spaceFor([{ id: 'menu', text: 'Card actions' }]);
+    expect(noDrop.targets.get('drag')).toBeUndefined();
+    expect(noDrop.elements[0]?.operations).not.toContain('drag');
+  });
+  it('offers scroll_to only on nodes outside the viewport', () => {
+    const space = spaceFor([
+      { id: 'in', role: 'heading', name: 'Top', rect: { x: 0, y: 10, width: 100, height: 20 } },
+      { id: 'out', role: 'paragraph', name: 'Footnote', rect: { x: 0, y: 5000, width: 100, height: 20 } },
+    ]);
+    expect([...(space.targets.get('scroll_to')?.keys() ?? [])]).toEqual(['2']);
+  });
+  it('offers upload on a file input with a text model, never tap', () => {
+    const space = spaceFor([{ id: 'f', role: 'button', name: 'Attachments', attributes: { type: 'file' } }]);
+    expect([...(space.targets.get('upload')?.keys() ?? [])]).toEqual(['1']);
+    expect(space.targets.get('tap')).toBeUndefined();
+    expect(space.targets.get('double_tap')).toBeUndefined();
+    const fixture = context();
+    const noText = actionSpace(fixture.ctx, { path: '/form', viewport: { width: 800, height: 600 }, tree: tree([{ id: 'f', role: 'button', name: 'Attachments', attributes: { type: 'file' } }]) }, false);
+    expect(noText.targets.get('upload')).toBeUndefined();
+  });
+  it('offers a tap_at grid of 160px cells only with pixels and the tapAt verb', () => {
+    const fixture = context();
+    const pixels = { data: new Uint8Array(0), mediaType: 'image/png' as const, width: 800, height: 600, scale: 1, maskedRegionCount: 0 };
+    const space = actionSpace(fixture.ctx, { path: '/', viewport: { width: 800, height: 600 }, tree: tree([{ id: 'a', role: 'button', name: 'Add' }]), pixels }, true);
+    expect(space.cells.size).toBe(20);
+    expect(space.cells.get('p1')).toEqual({ x: [0, 160], y: [0, 160] });
+    expect(space.cells.get('p20')).toEqual({ x: [640, 800], y: [480, 600] });
+    expect(space.targets.get('tap_at')?.size).toBe(20);
+    const noPixels = spaceFor([{ id: 'a', role: 'button', name: 'Add' }]);
+    expect(noPixels.cells.size).toBe(0);
+    const noVerb = actionSpace(context({ verbs: ['tap'] }).ctx, { path: '/', viewport: { width: 800, height: 600 }, tree: tree([]), pixels }, true);
+    expect(noVerb.cells.size).toBe(0);
   });
   it('uses the placeholder as the label when there is no name', () => {
     const space = spaceFor([{ id: 'q', role: 'searchbox', attributes: { placeholder: 'Search todos' } }]);

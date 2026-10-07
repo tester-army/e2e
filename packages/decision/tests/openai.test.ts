@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createOpenAI } from '@ai-sdk/openai';
 import type { ExecutorNode } from 'e2e';
-import { decisionExecutor } from '../src/index.ts';
+import { decisionExecutor, openaiDecisionModel } from '../src/index.ts';
 import { context } from './helpers.ts';
 
 const BUTTONS: ExecutorNode = { id: 'root', children: [
@@ -68,10 +68,11 @@ describe('OpenAI Decisions API', () => {
     const first = requests[0];
     expect(first?.model).toBe('gpt-6-luna');
     expect(JSON.parse(first?.input ?? '')).toMatchObject({ goal: 'Do the thing', elements: expect.any(Array) });
-    expect(first?.questions.map((question) => question.name)).toEqual(['operation', 'tap_target']);
+    expect(first?.questions.map((question) => question.name)).toEqual(['operation', 'tap_target', 'double_tap_target', 'long_press_target', 'hover_target', 'secondary_tap_target']);
     expect(first?.questions[1]?.choices).toEqual([
       { value: '1', description: JSON.stringify({ element: 'Save', role: 'button' }) },
       { value: '2', description: JSON.stringify({ element: 'Cancel', role: 'button' }) },
+      { value: 'none', description: 'The next operation is not this one; no target applies.' },
     ]);
     expect(fixture.usage[0]).toMatchObject({ provider: 'openai.decision', modelId: 'gpt-6-luna-2026-09-01', inputTokens: 321 });
     expect(fixture.turns[0]?.outcome).toContain('op p=0.950, target p=1.000');
@@ -90,5 +91,65 @@ describe('OpenAI Decisions API', () => {
     await expect(decisionExecutor({ model }).runStep(fixture.ctx)).rejects.toMatchObject({
       code: 'MODEL_OUTPUT_INVALID', message: 'The decision model refused to answer a question.',
     });
+  });
+});
+
+describe('openaiDecisionModel', () => {
+  /** Captures the Decisions API request body and answers every choice question with its first option. */
+  function endpoint(answers?: (request: WireRequest) => WireAnswer[]) {
+    const bodies: WireRequest[] = [];
+    const fetch = async (_url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const request = JSON.parse(String(init?.body)) as WireRequest;
+      bodies.push(request);
+      const reply = answers?.(request) ?? request.questions.map((question) => ({ ...unanimous(question, question.choices?.[0]?.value ?? ''), confidence: 0.7 }));
+      return new Response(JSON.stringify({ model: 'gpt-6-luna', usage: { input_tokens: 42, output_tokens: 0 }, answers: reply }), { status: 200, headers: { 'content-type': 'application/json' } });
+    };
+    return { bodies, fetch: fetch as typeof globalThis.fetch };
+  }
+  it('is accepted at config load and sends JSON text without a screenshot', async () => {
+    const { bodies, fetch } = endpoint();
+    const model = openaiDecisionModel({ apiKey: 'sk-test', fetch });
+    expect(decisionExecutor({ model }).name).toBe('decision');
+    const result = await model.doDecide({ state: { goal: 'g' }, questions: { q: { type: 'choice', instructions: 'pick', criteria: { a: 'A', b: null } } } });
+    expect(bodies[0]).toMatchObject({ model: 'gpt-6-luna', input: '{"goal":"g"}', questions: [{ type: 'choice', name: 'q', instructions: 'pick', choices: [{ value: 'a', description: 'A' }, { value: 'b' }] }] });
+    expect(result.answers['q']).toEqual({ type: 'choice', choice: 'a', probabilities: { a: 1, b: 0 } });
+    expect(result.providerMetadata).toMatchObject({ openai: { confidence: { q: 0.7 } } });
+    expect(result.usage).toEqual({ inputTokens: 42, outputTokens: 0 });
+    expect(result.response?.modelId).toBe('gpt-6-luna');
+  });
+  it('sends the screenshot as an image part beside the text', async () => {
+    const { bodies, fetch } = endpoint();
+    const model = openaiDecisionModel({ apiKey: 'sk-test', fetch });
+    await model.doDecide({
+      state: { goal: 'g' },
+      questions: { q: { type: 'choice', instructions: 'pick', criteria: { a: 'A' } } },
+      providerOptions: { decision: { screenshot: { mediaType: 'image/png', data: 'AQID' } } },
+    });
+    expect(bodies[0]?.input).toEqual([{ role: 'user', content: [{ type: 'input_text', text: '{"goal":"g"}' }, { type: 'input_image', image_url: 'data:image/png;base64,AQID' }] }]);
+  });
+  it('reads the API key from the environment and reports a missing one as MODEL_UNAVAILABLE', async () => {
+    const saved = process.env['OPENAI_API_KEY'];
+    delete process.env['OPENAI_API_KEY'];
+    try {
+      const { model } = { model: openaiDecisionModel({ fetch: endpoint().fetch }) };
+      await expect(decisionExecutor({ model }).runStep(context({ tree: BUTTONS }).ctx)).rejects.toMatchObject({
+        code: 'MODEL_UNAVAILABLE', message: 'Set OPENAI_API_KEY to the decision model API key.',
+      });
+    } finally {
+      if (saved !== undefined) process.env['OPENAI_API_KEY'] = saved;
+    }
+  });
+  it('names a refusal through the executor', async () => {
+    const { fetch } = endpoint((request) => request.questions.map((question) =>
+      question.name === 'operation' ? { type: 'refusal', name: 'operation' } : unanimous(question, question.choices?.[0]?.value ?? '')));
+    const model = openaiDecisionModel({ apiKey: 'sk-test', fetch });
+    await expect(decisionExecutor({ model }).runStep(context({ tree: BUTTONS }).ctx)).rejects.toMatchObject({
+      code: 'MODEL_OUTPUT_INVALID', message: 'The decision model refused to answer a question.',
+    });
+  });
+  it('rejects an incomplete answer set as invalid output', async () => {
+    const { fetch } = endpoint((request) => request.questions.slice(1).map((question) => unanimous(question, question.choices?.[0]?.value ?? '')));
+    const model = openaiDecisionModel({ apiKey: 'sk-test', fetch });
+    await expect(decisionExecutor({ model }).runStep(context({ tree: BUTTONS }).ctx)).rejects.toMatchObject({ code: 'MODEL_OUTPUT_INVALID' });
   });
 });

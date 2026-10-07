@@ -200,6 +200,6 @@ describe('decision executor through the built CLI and real Chromium', () => {
     const fanned = requests
       .filter((request) => typeof (request as { questions?: unknown }).questions === 'object')
       .map((request) => Object.keys((request as { questions: Record<string, unknown> }).questions).toSorted());
-    expect(fanned).toContainEqual(['operation', 'tap_target']);
+    expect(fanned.some((keys) => keys.includes('operation') && keys.includes('tap_target'))).toBe(true);
   });
 });

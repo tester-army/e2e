@@ -22,7 +22,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ConfigurationError } from '../internal/errors.ts';
 import { withAbort, withTimeout } from '../internal/time.ts';
-import type { ActOptions, ActResult, AgentErrorCode, JsonValue, ModelInstance, Secret } from '../types.ts';
+import type { ActOptions, ActResult, AgentErrorCode, JsonValue, ModelInstance, Secret, VisionMode } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, toAgentError } from './error.ts';
 import { redactParams, validateActOptions, validateInstruction, validateParams, validateVerdict } from './act-validation.ts';
 import { ActionDispatcher } from './action-dispatcher.ts';
@@ -64,6 +64,8 @@ export interface DispatchSpec {
   readonly agent: string | undefined;
   /** Assert only: whether the harness keeps a redacted screenshot after the verdict; `false` opts out. */
   readonly screenshot?: boolean;
+  /** Assert only: the `vision` the call asked for; the executor must declare `vision: true` to receive it. */
+  readonly vision?: VisionMode;
 }
 
 /** Runs one `agent.act()` call as a harness-dispatched executor step. */
@@ -97,19 +99,20 @@ export async function runActStep(
  * assertions, so swapping brains swaps all the thinking. The built-in
  * single-judgment tier remains the default-path implementation. `screenshot`
  * is harness evidence taken after the verdict, so it is honored here as on
- * the default path; `vision` is what the executor's model sees, which only
- * the executor decides.
+ * the default path; `vision` is what the executor's model sees, so it reaches
+ * only an executor that declares `vision: true`.
  */
 export async function runAssertStep(
   runtime: AgentContext,
   assertion: string,
-  options: { timeout?: number; vision?: unknown; screenshot?: boolean; agent?: string } | undefined,
+  options: { timeout?: number; vision?: VisionMode; screenshot?: boolean; agent?: string } | undefined,
 ): Promise<void> {
   const normalized = validateInstruction(assertion, 'agent.assert');
-  if (options?.vision !== undefined) {
+  const agent = runtime.select(options?.agent);
+  if (options?.vision !== undefined && agent.executor.vision !== true) {
     throw new ConfigurationError(
       'UNSUPPORTED_CAPABILITY',
-      'agent.assert vision (options.vision) is not supported with a custom executor: the executor decides what its model sees',
+      `agent.assert vision (options.vision) is not supported with the executor ${JSON.stringify(agent.executor.name)}: the executor decides what its model sees`,
     );
   }
   await dispatchAgentStep(runtime, {
@@ -125,7 +128,8 @@ export async function runAssertStep(
     maxModelCalls: undefined,
     agent: options?.agent,
     ...(options?.screenshot === undefined ? {} : { screenshot: options.screenshot }),
-  });
+    ...(options?.vision === undefined ? {} : { vision: options.vision }),
+  }, agent);
 }
 
 /**
@@ -275,6 +279,7 @@ class ActDispatch {
           name: secret.name,
           purpose: secret.purpose,
         })),
+        ...(this.spec.vision === undefined ? {} : { vision: this.spec.vision }),
       },
       target: this.runtime.target,
       attempt: this.runtime.attempt,

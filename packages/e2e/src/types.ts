@@ -135,8 +135,9 @@ export interface VisionOption {
   /**
    * What the judge is shown; `false` by default. The tree, the tree with a
    * masked screenshot, or the screenshot alone. A custom `StepExecutor`
-   * rejects it with `UNSUPPORTED_CAPABILITY`: the executor decides what its
-   * model sees.
+   * receives it as `step.vision` only when it declares `vision: true`;
+   * otherwise the call fails with `UNSUPPORTED_CAPABILITY`, since the
+   * executor decides what its model sees.
    */
   vision?: VisionMode;
 }
