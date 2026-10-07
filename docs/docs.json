@@ -134,7 +134,8 @@
               "index",
               "quickstart",
               "core-concepts",
-              "explore"
+              "explore",
+              "coding-agents"
             ]
           },
           {
@@ -155,16 +156,18 @@
             ]
           },
           {
-            "group": "Automate",
+            "group": "Run in CI",
             "pages": [
-              "coding-agents",
               "ci",
-              "mobile-ci",
+              "ci/github-actions",
+              "ci/eas-workflows",
+              "ci/bitrise",
+              "ci/codemagic",
               "github"
             ]
           },
           {
-            "group": "Integrations",
+            "group": "Hosted browsers and devices",
             "pages": [
               "integrations/index",
               "integrations/kernel",
@@ -264,6 +267,10 @@
     }
   },
   "redirects": [
+    {
+      "source": "/mobile-ci",
+      "destination": "/ci#mobile-jobs"
+    },
     {
       "source": "/introduction",
       "destination": "/"

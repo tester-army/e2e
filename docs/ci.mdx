@@ -1,91 +1,165 @@
 ---
 title: Continuous integration
-description: Run tests on pull requests, upload reports, and configure model credentials in CI.
+sidebarTitle: Overview
+description: Run e2e on GitHub Actions, EAS Workflows, Bitrise, Codemagic, or any CI service that runs Node.
 icon: "rotate"
 ---
 
-Run deterministic and agent tests in the same CI job. This workflow assumes
-your config includes a [command](/web#starting-your-app) to start the app and
-uses AI Gateway for model calls:
+e2e runs on each CI service that can run Node. A CI job does the same steps
+on each service: install the dependencies, start the app or a device, and
+run `npx e2e run`. Only the syntax of the job file is different. A mobile
+job that boots its own device also needs a Mac (iOS) or a Linux machine
+with KVM (Android); see [Mobile jobs](#mobile-jobs). A hosted device
+service needs neither.
 
-```yaml title=".github/workflows/e2e.yml" expandable
-name: e2e
+## Pick your CI service
 
-on:
-  pull_request:
-  push:
-    branches: [main]
+<CardGroup cols={2}>
+  <Card title="GitHub Actions" icon="/images/integrations/github-actions.svg" href="/ci/github-actions">
+    Web and mobile workflows. Post the results as a pull request comment.
+  </Card>
+  <Card title="EAS Workflows" icon="/images/integrations/expo.svg" href="/ci/eas-workflows">
+    Build an Expo app on EAS, then run iOS and Android tests on it.
+  </Card>
+  <Card title="Bitrise" icon="/images/integrations/bitrise.svg" href="/ci/bitrise">
+    iOS and Android workflows with the Bitrise steps for simulators and emulators.
+  </Card>
+  <Card title="Codemagic" icon="/images/integrations/codemagic.svg" href="/ci/codemagic">
+    iOS and Android workflows on Mac mini and Linux instances.
+  </Card>
+</CardGroup>
 
-permissions:
-  contents: read
+For a different CI service, use the [GitHub Actions](/ci/github-actions)
+workflow as a model. The steps are the same.
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+To get browsers or devices from a hosted service, and not start them on the
+runner, see [Hosted browsers and devices](/integrations).
 
-jobs:
-  e2e:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 26
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+## Reports
 
-      - name: Install browsers
-        run: pnpm exec e2e-web install chromium --with-deps
+Each run writes `.e2e/report.json`. With the `junit` reporter
+(`--reporter list,junit`, as in the examples), it also writes
+`.e2e/junit.xml`. `.e2e/results/`
+holds the trace pages, screenshots, and screen dumps of each test, and the
+video when you run with `--video`. Upload `.e2e/` at the end of each job,
+also when a test fails.
 
-      - name: Run e2e
-        run: npx e2e run --reporter list,junit
-        env:
-          APP_URL: http://127.0.0.1:3000
-          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
-          E2E_USER_ADMIN_USERNAME: ${{ secrets.E2E_USER_ADMIN_USERNAME }}
-          E2E_USER_ADMIN_PASSWORD: ${{ secrets.E2E_USER_ADMIN_PASSWORD }}
+Set the test-report integration of your CI service to read
+`.e2e/junit.xml`. The file also has startup failures, such as
+`APP_UNREACHABLE`, in a `run` suite. On GitHub, add the
+[GitHub reporter](/github) to post the results on the pull request.
 
-      - name: Upload report
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: e2e-report
-          path: |
-            .e2e/report.json
-            .e2e/junit.xml
-          if-no-files-found: warn
+## Mobile jobs
 
-      - name: Upload artifacts
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: e2e-artifacts
-          path: .e2e/results
-          if-no-files-found: warn
-          retention-days: 7
+A mobile CI job does four steps on each service:
+
+1. Build the app for a simulator or an emulator.
+2. Boot a device.
+3. Install the build.
+4. Run `npx e2e run`.
+
+| | iOS | Android |
+| --- | --- | --- |
+| Machine | macOS with Xcode and a simulator runtime | Linux with KVM (nested virtualization) |
+| Build | Release simulator `.app`, no signing | Release `.apk` |
+| Device | A booted simulator | A booted emulator |
+| Node | 24.8 or later, or 22.22.3 or later on 22 | 24.8 or later, or 22.22.3 or later on 22 |
+
+Make a Release build on the two platforms. A React Native or Expo debug
+build loads its JavaScript from Metro. No CI job on these pages starts
+Metro, so a debug build opens on an error screen. The examples use a React
+Native project with `ios/` and `android/` in the repository. For an Expo
+project without these directories, run `npx expo prebuild` first.
+
+The config sets the app by its bundle id or package name. The job installs
+the build before the run:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { mobile } from '@e2e-dev/mobile';
+
+export default {
+  targets: [
+    { name: 'ios', engine: mobile({ platform: 'ios' }), app: { bundleId: 'com.example.app' } },
+    { name: 'android', engine: mobile({ platform: 'android' }), app: { bundleId: 'com.example.app' } },
+  ],
+  workers: 1,
+} satisfies E2EConfig;
 ```
 
-The workflow pins actions to commit SHAs and installs dependencies from the
-lockfile. `npx e2e` runs the installed version. The
-[install command](/reference/web#installing-browsers) downloads the browsers
-for the Playwright version the engine pins, with their system libraries.
+<CodeGroup>
+```bash npm
+# iOS
+xcrun simctl install booted path/to/MyApp.app
+npx e2e run --target ios --reporter list,junit
 
-Artifacts upload on every run that is not cancelled, so a test that failed
-and then passed on retry still has its evidence.
+# Android
+adb install -r path/to/app.apk
+npx e2e run --target android --reporter list,junit
+```
 
-For iOS and Android suites, see [Mobile CI](/mobile-ci): GitHub Actions, EAS
-Workflows, Bitrise, and Codemagic.
+```bash pnpm
+# iOS
+xcrun simctl install booted path/to/MyApp.app
+pnpm exec e2e run --target ios --reporter list,junit
 
-Configure your CI's test-report integration to read `.e2e/junit.xml`. It
-includes startup failures such as `APP_UNREACHABLE` in a `run` suite. Add
-the [GitHub reporter](/github) to post results on the pull request. Make the
-e2e job a required check in your repository settings if it should block merges.
+# Android
+adb install -r path/to/app.apk
+pnpm exec e2e run --target android --reporter list,junit
+```
+
+```bash bun
+# iOS
+xcrun simctl install booted path/to/MyApp.app
+bunx e2e run --target ios --reporter list,junit
+
+# Android
+adb install -r path/to/app.apk
+bunx e2e run --target android --reporter list,junit
+```
+</CodeGroup>
+
+The engine uses the booted device. When no device is booted, it tells
+agent-device to boot one. But boot the device in a separate step:
+
+- A new Linux runner has no emulator image until you install one.
+- A boot in a separate step shows a slow or failed boot apart from a failed
+  test.
+
+To let the suite install the build, set `app.appPath` and call
+`device.installApp()`. See [Point at your app](/mobile#point-at-your-app).
+
+These rules apply on each service:
+
+- **One job for each platform.** Run `--target ios` on a Mac and
+  `--target android` on a Linux machine with KVM. Hosted Macs use Apple
+  Silicon, which cannot nest virtualization. The Android emulator does not
+  start on them.
+- **Pin the iOS runtime.** A simulator that you select by name
+  (`iPhone 17`) runs the default iOS of the image. The accessibility tree
+  changes between iOS releases. An update of the runner image can then make
+  a locator assertion fail with no change in your code. The examples create
+  a simulator on a named runtime and boot it by UDID. Replace `iOS-26-5`
+  with a runtime that the image has (`xcrun simctl list runtimes`). Change
+  it only when you decide to.
+- **The iOS runner compiles on first use.** agent-device builds its
+  XCUITest runner into `~/.agent-device` when it first drives a simulator.
+  Cache that directory if the service lets you.
+- **Replay what you recorded locally.** [Commit the replay cache](/cache#commit-the-replay-cache).
+  Then `agent.act` steps replay with no model call. Agent judgments
+  (`agent.assert`, `agent.waitFor`, `agent.extract`) always call the model.
+  The cache key includes `app`, so a recording from your simulator replays
+  on the CI simulator.
+- **Keep the model key from untrusted code.** A job that runs the code of a
+  pull request gives the key to that code, including its tests and
+  dependencies. Give the key only to builds of branches that you trust. See
+  [Model credentials](#model-credentials) and the
+  [security model](/security).
 
 ## What CI changes
 
-CI mode is on when `CI` is set to a value other than an empty string, `0`,
-or `false`. Use `CI=1 npx e2e run` to reproduce these defaults locally:
+CI mode is on when `CI` has a value other than an empty string, `0`, or
+`false`. To get these defaults locally, run `CI=1 npx e2e run`:
 
 | Setting | Local | CI |
 | --- | --- | --- |
@@ -95,7 +169,7 @@ or `false`. Use `CI=1 npx e2e run` to reproduce these defaults locally:
 | `.only` | allowed | rejected with `ONLY_IN_CI` |
 | `command.reuseExisting` | honored | ignored, with a notice |
 
-Override worker and retry defaults with flags:
+To change the worker and retry defaults, use flags:
 
 <CodeGroup>
 ```bash npm
@@ -111,16 +185,18 @@ bunx e2e run --workers 4 --retries 0
 ```
 </CodeGroup>
 
-Add `E2E_TELEMETRY_DISABLED: '1'` to the job's `env` to send no
-[telemetry](/telemetry#in-ci) from CI.
+To send no [telemetry](/telemetry#in-ci) from CI, add
+`E2E_TELEMETRY_DISABLED: '1'` to the `env` of the job.
 
 ## Sharding
 
-`--shard <index/total>` runs one slice of the suite per job. Every job runs
-the same command with its own index, and the same suite shards the same way
-on every machine. A shard that gets no test fails with `NO_TESTS`; add
-`--pass-with-no-tests` when a matrix may have more shards than tests. The
+`--shard <index/total>` runs one slice of the suite in each job. Each job
+runs the same command with its own index. The same suite shards the same way
+on each machine. A shard with no test fails with `NO_TESTS`. If a matrix can
+have more shards than tests, add `--pass-with-no-tests`. The
 [CLI reference](/reference/cli#flags) has the slicing rules.
+
+On GitHub Actions, a matrix runs one job for each shard:
 
 ```yaml
 jobs:
@@ -134,20 +210,20 @@ jobs:
       - run: npx e2e run --shard ${{ matrix.shard }}/3 --reporter list,junit
 ```
 
-Each shard writes its own `report.json` and `junit.xml`; upload them under a
+Each shard writes its own `report.json` and `junit.xml`. Upload them with a
 name that includes the shard index. Combining the documents into one is not
 implemented yet.
 
 ## Rerunning failures
 
-`--last-failed` runs only the tests the previous run did not pass, read from
-`report.json` in the [`output`](/reference/config#output) directory (`.e2e`
-by default). The rerun keeps the artifacts the first run's report names and
-writes its own under each test's `rerun-1/`, so one upload after both steps
-holds the evidence of each. A test another filter keeps out of the rerun
-stays owed: the next `--last-failed` runs it. The
-[CLI reference](/reference/cli#flags) lists what counts as not passed.
-Locally it is the loop after a red run:
+`--last-failed` runs only the tests that did not pass in the previous run.
+It reads them from `report.json` in the [`output`](/reference/config#output)
+directory (`.e2e` by default). The rerun keeps the artifacts that the first
+report names, and writes its own under `rerun-1/` of each test. So one
+upload after the two steps holds the evidence of each. When a different
+filter keeps a test out of the rerun, the test stays owed: the next
+`--last-failed` runs it. The [CLI reference](/reference/cli#flags) lists
+what counts as not passed. Locally, use it after a failed run:
 
 <CodeGroup>
 ```bash npm
@@ -166,44 +242,48 @@ bunx e2e run --last-failed
 ```
 </CodeGroup>
 
-In CI the report is a job artifact, not a file on the next runner; download
-it into `.e2e/` before the rerun step, or rerun the failed job whole.
+In CI, the report is a job artifact, not a file on the next runner. Download
+it into `.e2e/` before the rerun step, or run the failed job again.
 
 ## Model credentials
 
-Pass the credential your configured provider needs, such as
-`AI_GATEWAY_API_KEY` in the workflow above. See [Models](/models)
-for provider setup. Tests that never use `agent` need no model credentials.
+Give the job the credential that your provider needs, such as
+`AI_GATEWAY_API_KEY`. See [Models](/models) for provider setup. Tests that
+never use `agent` need no model credentials.
 
-Store keys in CI secrets and use spending limits where available. The code
-running in the job can read those keys, including test code and dependencies.
-GitHub withholds secrets from fork pull requests. Fully replayed action
-steps need no model call, but live actions and agent judgments still do.
-Run untrusted code without secrets or write tokens. See the
+Keep keys in CI secrets, and set spending limits where you can. The code in
+the job can read those keys, including test code and dependencies. GitHub
+does not give secrets to pull requests from forks. Action steps that replay
+fully need no model call, but live actions and agent judgments do. Run
+untrusted code with no secrets and no write tokens. See the
 [security model](/security).
 
 ## Gating pull requests on agent steps
 
-A failed agent step fails the job like a failed `expect`. Keep the checks
-predictable by giving each `agent.act` one goal and checking its outcome
+A failed agent step fails the job, as a failed `expect` does. To keep the
+checks predictable, give each `agent.act` one goal. Then check its result
 with a locator assertion or `agent.assert`.
 
-To reuse verified actions in CI, [share the replay cache](/cache#commit-the-replay-cache).
-A cache hit avoids a model call for that action step. Agent judgments still
-run live, and a cache miss or hand-off uses the model.
+To use verified actions again in CI, [share the replay cache](/cache#commit-the-replay-cache).
+A cache hit prevents a model call for that action step. Agent judgments
+still run live, and a cache miss or a hand-off uses the model.
 
-CI retries once by default. A test that passes only on retry is reported as
-flaky, so you can identify flows that need investigation.
+By default, CI runs a failed test one more time. A test that passes only on
+the retry is reported as flaky. Use this to find flows that need attention.
 
-`--max-failures <n>` stops the run once that many tests have failed, so a
-broken deploy does not spend a model call on every remaining agent step. The
-tests not started are skipped with cause `failure-limit`, the ones running
-end as `interrupted`, counted apart from the failures, and the job exits 1.
+`--max-failures <n>` stops the run when that number of tests have failed.
+Then a broken deploy does not spend a model call on each remaining agent
+step. The tests that did not start are skipped with cause `failure-limit`.
+The tests that are running end as `interrupted`, counted apart from the
+failures. The job exits 1.
+
+To block merges on a failed run, make the e2e job a required check of your
+repository.
 
 ## Exit codes
 
-Any non-zero exit fails the job. [Debugging a run](/debugging#read-the-failure)
-lists each code and whether a retry of the job can help.
+Each non-zero exit fails the job. [Debugging a run](/debugging#read-the-failure)
+lists each code and tells you if a retry of the job can help.
 
 <CardGroup cols={2}>
   <Card title="Pull request comments" icon="code-pull-request" href="/github">

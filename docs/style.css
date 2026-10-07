@@ -721,6 +721,11 @@ html.dark body .code-block-fade-overlay {
   filter: invert(1);
 }
 
+/* The Bitrise purple is too dark on the dark background. Make it lighter. */
+.dark img[src*='/images/integrations/bitrise.svg'] {
+  filter: brightness(2.2);
+}
+
 /* The Next.js wordmark needs the same contrast in dark mode. */
 .dark img[src*='/images/examples/nextjs.svg'] {
   filter: invert(1);

@@ -1,0 +1,101 @@
+---
+title: Codemagic
+description: Run iOS and Android tests on Codemagic, on a Mac mini for iOS and a Linux instance for Android.
+icon: "/images/icons/codemagic.svg"
+---
+
+This setup has one workflow for each platform. Before you start, read
+[Mobile jobs](/ci#mobile-jobs). That section tells you what each job needs
+on every CI service.
+
+iOS runs on a Mac mini instance. Android runs on a Linux instance. The
+Ubuntu image has AVDs with the names `emulator` (API 34), `emulator-35`, and
+`emulator-36`.
+
+```yaml title="codemagic.yaml" expandable
+workflows:
+  e2e-ios:
+    name: e2e iOS
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      groups:
+        - e2e
+      node: 22
+      xcode: latest
+    triggering:
+      events:
+        - push
+        - pull_request
+    scripts:
+      - name: Install dependencies
+        script: npm ci
+      - name: Install pods
+        script: cd ios && pod install
+      - name: Build for the simulator
+        script: |
+          xcodebuild -workspace ios/MyApp.xcworkspace -scheme MyApp \
+            -configuration Release -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ios/build
+      - name: Boot a simulator and install the app
+        script: |
+          UDID=$(xcrun simctl create e2e "iPhone 17" com.apple.CoreSimulator.SimRuntime.iOS-26-5)
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" ios/build/Build/Products/Release-iphonesimulator/MyApp.app
+      - name: Run e2e
+        script: npx e2e run --target ios --reporter list,junit
+        test_report: .e2e/junit.xml
+    artifacts:
+      - .e2e/report.json
+      - .e2e/junit.xml
+      - .e2e/results/**
+
+  e2e-android:
+    name: e2e Android
+    instance_type: linux_x2
+    max_build_duration: 60
+    environment:
+      groups:
+        - e2e
+      node: 22
+    triggering:
+      events:
+        - push
+        - pull_request
+    scripts:
+      - name: Install dependencies
+        script: npm ci
+      - name: Build the APK
+        script: cd android && ./gradlew :app:assembleRelease
+      - name: Boot the emulator and install the app
+        script: |
+          emulator -avd emulator-35 -no-window -no-audio -no-boot-anim > /dev/null 2>&1 &
+          adb wait-for-device
+          until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 2; done
+          adb install -r android/app/build/outputs/apk/release/app-release.apk
+      - name: Run e2e
+        script: npx e2e run --target android --reporter list,junit
+        test_report: .e2e/junit.xml
+    artifacts:
+      - .e2e/report.json
+      - .e2e/junit.xml
+      - .e2e/results/**
+```
+
+## Notes
+
+- **Secrets.** Put the model key in the `e2e` environment variable group,
+  and mark it as secret.
+- **Test reports.** `test_report` sends `junit.xml` to the Tests tab of the
+  build.
+- **Billing.** Linux instances need billing enabled.
+
+<CardGroup cols={2}>
+  <Card title="CI overview" icon="rotate" href="/ci">
+    CI defaults, sharding, reruns, and exit codes.
+  </Card>
+  <Card title="Hosted devices" icon="cloud" href="/mobile#hosted-devices">
+    Lease devices from a service. Then the runner boots no device.
+  </Card>
+</CardGroup>

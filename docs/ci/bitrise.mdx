@@ -1,0 +1,145 @@
+---
+title: Bitrise
+description: Run iOS and Android tests on Bitrise with one workflow for each platform in a pipeline.
+icon: "/images/icons/bitrise.svg"
+---
+
+This setup has one workflow for each platform, in one pipeline. Before you
+start, read [Mobile jobs](/ci#mobile-jobs). That section tells you what each
+job needs on every CI service.
+
+Bitrise has steps that boot the two devices: `xcode-start-simulator` on
+macOS, and `avd-manager` with `wait-for-android-emulator` on Linux. Start
+the emulator before the Gradle build. Then the emulator boots while the APK
+compiles.
+
+```yaml title="bitrise.yml" expandable
+format_version: '25'
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+
+tools:
+  nodejs: 22:installed
+
+pipelines:
+  e2e:
+    triggers:
+      push:
+      - branch: main
+      pull_request:
+      - target_branch: main
+    workflows:
+      e2e-ios: {}
+      e2e-android: {}
+
+workflows:
+  e2e-ios:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.6.x
+    steps:
+    - git-clone@8: {}
+    - script@1:
+        title: Install dependencies
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -euo pipefail
+            npm ci
+            cd ios && pod install
+    - xcode-build-for-simulator@3:
+        inputs:
+        - project_path: ios/MyApp.xcworkspace
+        - scheme: MyApp
+        - configuration: Release
+    - xcode-start-simulator@0:
+        inputs:
+        - destination: platform=iOS Simulator,name=iPhone 17,OS=26.5
+    - script@1:
+        title: Run e2e
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -euo pipefail
+            xcrun simctl install booted "$BITRISE_APP_DIR_PATH"
+            npx e2e run --target ios --reporter list,junit
+    - script@1:
+        title: Package the e2e output
+        is_always_run: true
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            if [ -d .e2e ]; then (cd .e2e && zip -qr "$BITRISE_DEPLOY_DIR/e2e-ios.zip" .); fi
+    - custom-test-results-export@1:
+        inputs:
+        - test_name: e2e-ios
+        - base_path: $BITRISE_SOURCE_DIR/.e2e/junit.xml
+        - search_pattern: '*'
+    - deploy-to-bitrise-io@2: {}
+
+  e2e-android:
+    meta:
+      bitrise.io:
+        stack: ubuntu-noble-24.04-bitrise-2025-android
+    steps:
+    - git-clone@8: {}
+    - script@1:
+        title: Install dependencies
+        inputs:
+        - content: npm ci
+    - avd-manager@2:
+        inputs:
+        - api_level: 35
+        - tag: google_apis
+        - abi: x86_64
+    - android-build@1:
+        inputs:
+        - project_location: $BITRISE_SOURCE_DIR/android
+        - module: app
+        - variant: release
+        - build_type: apk
+    - wait-for-android-emulator@1: {}
+    - script@1:
+        title: Run e2e
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -euo pipefail
+            adb install -r "$BITRISE_APK_PATH"
+            npx e2e run --target android --reporter list,junit
+    - script@1:
+        title: Package the e2e output
+        is_always_run: true
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            if [ -d .e2e ]; then (cd .e2e && zip -qr "$BITRISE_DEPLOY_DIR/e2e-android.zip" .); fi
+    - custom-test-results-export@1:
+        inputs:
+        - test_name: e2e-android
+        - base_path: $BITRISE_SOURCE_DIR/.e2e/junit.xml
+        - search_pattern: '*'
+    - deploy-to-bitrise-io@2: {}
+```
+
+## Notes
+
+- **Artifacts.** `deploy-to-bitrise-io` uploads only the top level of
+  `$BITRISE_DEPLOY_DIR`. So the workflow puts `.e2e/` into a zip file in
+  that directory. `custom-test-results-export` sends `junit.xml` to the Test
+  Reports tab. These steps also run after a step fails.
+- **Secrets.** Add the model key under Secrets in the workflow editor of the
+  app. A pull request build gets a secret only when **Expose for Pull
+  Requests** is on. A build of a public app never gets a secret. On such a
+  build the deterministic tests run, but each agent judgment and each
+  `agent.act` step with no recording fails.
+- **Release signing.** A release APK must have a signature. The React
+  Native and Expo templates sign it with the debug keystore.
+
+<CardGroup cols={2}>
+  <Card title="CI overview" icon="rotate" href="/ci">
+    CI defaults, sharding, reruns, and exit codes.
+  </Card>
+  <Card title="Hosted devices" icon="cloud" href="/mobile#hosted-devices">
+    Lease devices from a service. Then the runner boots no device.
+  </Card>
+</CardGroup>
