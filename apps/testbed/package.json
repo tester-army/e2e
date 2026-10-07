@@ -19,7 +19,8 @@
   },
   "dependencies": {
     "@e2e-dev/web": "workspace:*",
-    "e2e": "workspace:*"
+    "e2e": "workspace:*",
+    "@e2e-dev/lightpanda": "workspace:*"
   },
   "devDependencies": {
     "@ai-sdk/devtools": "1.0.22",

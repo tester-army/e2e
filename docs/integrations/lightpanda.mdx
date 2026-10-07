@@ -1,15 +1,18 @@
 ---
 title: Lightpanda
 sidebarTitle: Lightpanda
-description: Run web targets in Lightpanda, the open-source headless browser, by attaching the web engine to its CDP server.
+description: Run web targets in Lightpanda, the open-source headless browser, with the lightpanda() browser provider from @e2e-dev/lightpanda.
 icon: "/images/icons/lightpanda.svg"
 ---
 
 [Lightpanda](https://lightpanda.io) is an open-source headless browser
 written from scratch, without Chromium. It starts in milliseconds, holds a
-fraction of Chrome's memory, and speaks the Chrome DevTools Protocol, so the
-web engine attaches to it with `connect` and nothing else changes: tests,
-`e2e run`, and CI stay the same. No extra package is needed.
+fraction of Chrome's memory, and speaks the Chrome DevTools Protocol.
+`lightpanda()` from `@e2e-dev/lightpanda` is a
+[browser provider](/browser#hosted-browsers) for it: each worker slot gets
+its own `lightpanda serve`, started on a free port when the run starts and
+stopped when it ends. Tests and CI stay the same; the config changes only
+in the target's `browser`.
 
 Lightpanda has no layout engine. It builds the DOM, runs JavaScript, and
 exposes the accessibility tree the engine reads, which is what locators,
@@ -19,7 +22,23 @@ where a node is painted behaves differently; see
 
 ## Setup
 
-Install the nightly binary:
+Install the package:
+
+<CodeGroup>
+```bash npm
+npm install --save-dev @e2e-dev/lightpanda
+```
+
+```bash pnpm
+pnpm add -D @e2e-dev/lightpanda
+```
+
+```bash bun
+bun add -d @e2e-dev/lightpanda
+```
+</CodeGroup>
+
+And the Lightpanda nightly binary, which the provider starts:
 
 <CodeGroup>
 ```bash macOS
@@ -30,47 +49,73 @@ brew install lightpanda-io/browser/lightpanda
 curl -L -o lightpanda https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-x86_64-linux
 chmod a+x ./lightpanda
 ```
-
-```bash Docker
-docker run -d --name lightpanda -p 127.0.0.1:9222:9222 lightpanda/browser:nightly
-```
 </CodeGroup>
-
-Start its CDP server, the `serve` command, before the run; the Docker image
-starts it on its own:
-
-```bash
-lightpanda serve --host 127.0.0.1 --port 9222
-```
-
-Point the target's `connect` at the server:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { web } from '@e2e-dev/web';
+import { lightpanda } from '@e2e-dev/lightpanda';
 
 export default {
   targets: [
     {
       name: 'lightpanda',
-      engine: web({ connect: { cdpEndpoint: () => 'ws://127.0.0.1:9222/' } }),
+      engine: web({ browser: lightpanda() }),
       app: { url: 'http://localhost:3000' },
     },
   ],
 } satisfies E2EConfig;
 ```
 
-`cdpEndpoint` can also read the address from the environment, so one config
-runs against a local binary and a container in CI:
+The provider runs `lightpanda` from `PATH`, or the binary `LIGHTPANDA_PATH`
+names in the environment `e2e run` starts in, or `binary` in the options.
+Each worker gets its own server, so `workers` sets how many run at once,
+and the run's log names each one:
 
-```ts
-web({ connect: { cdpEndpoint: () => process.env.LIGHTPANDA_URL ?? 'ws://127.0.0.1:9222/' } })
+```text
+ℹ lightpanda (1 of 2): lightpanda 1.1.0-nightly at ws://127.0.0.1:51165/
 ```
 
-Every worker attaches to the same server and gets its own browser context
-there, so `workers` sets how many tests run at once. One `lightpanda serve`
-takes 16 connections by default; raise `--cdp-max-connections` above
-`workers` when you run more.
+## Attach to a running server
+
+Set `endpoint`, or `LIGHTPANDA_URL` in the environment, to attach every
+worker to a server that is already running instead of starting one: the
+Docker image in CI, or one on another machine.
+
+<CodeGroup>
+```bash npm
+docker run -d --name lightpanda -p 127.0.0.1:9222:9222 lightpanda/browser:nightly
+LIGHTPANDA_URL=ws://127.0.0.1:9222/ npx e2e run
+```
+
+```bash pnpm
+docker run -d --name lightpanda -p 127.0.0.1:9222:9222 lightpanda/browser:nightly
+LIGHTPANDA_URL=ws://127.0.0.1:9222/ pnpm exec e2e run
+```
+
+```bash bun
+docker run -d --name lightpanda -p 127.0.0.1:9222:9222 lightpanda/browser:nightly
+LIGHTPANDA_URL=ws://127.0.0.1:9222/ bunx e2e run
+```
+</CodeGroup>
+
+Release leaves that server running. One `lightpanda serve` takes 16
+connections by default; raise its `--cdp-max-connections` above `workers`
+when you run more. `web({ connect: { cdpEndpoint: () => url } })` attaches
+the same way without the package, if you would rather not add one.
+
+## Options
+
+| Option          | Default                         | Meaning |
+| --------------- | ------------------------------- | ------- |
+| `binary`        | `LIGHTPANDA_PATH`, else `lightpanda` | The binary to start: a path, or a name on `PATH`. |
+| `endpoint`      | `LIGHTPANDA_URL`, else none     | A running server to attach to instead; see [above](#attach-to-a-running-server). |
+| `loadResources` | `[]`                            | Sub-resources the started server fetches: `iframe`, `image`, `stylesheet`. See [Fetch more of the page](#fetch-more-of-the-page). |
+| `args`          | `[]`                            | Further `lightpanda serve` flags, after the ones the provider sets. |
+
+The provider leases one server per worker slot for the run; it has no
+`scope: 'attempt'`, since Lightpanda does not expose the default context
+identity a per-attempt lease reattaches by.
 
 ## What works
 
@@ -105,11 +150,11 @@ tracks most of them.
 | [Sessions](/authentication) (`test.setup` with `session.save`, `session:` on a test) | The setup passes and the session is saved, but a test that restores it opens signed out. | Cookies set on a context before its first page exists are dropped. Set them from the test with `browser.setCookies` after `app.open` instead. |
 | [Dialogs](/browser#handle-a-dialog) | `browser.onDialog` runs, then fails the test with `ENGINE_FAILURE`: `Page.handleJavaScriptDialog` reports no dialog. | Lightpanda answers `alert`, `confirm` (`false`), and `prompt` (`null`) itself before a client can. |
 | [Downloads](/browser#download-a-file) | `browser.waitForDownload` times out. | No download events over CDP. |
-| [Iframes](/browser#reach-into-an-iframe) | `frameLocator` finds nothing. | Iframes are not loaded by default. `lightpanda serve --load-resources iframe` loads them; queries and fills then work, but a listener in the host page on an element the frame created does not fire. |
+| [Iframes](/browser#reach-into-an-iframe) | `frameLocator` finds nothing. | Iframes are not loaded by default. `loadResources: ['iframe']` loads them; queries and fills then work, but a listener in the host page on an element the frame created does not fire. |
 | Drags: `screen.swipe`, `locator.swipeTo`, and `browser.mouse` moves with a button down | `ENGINE_FAILURE` naming `Input.setInterceptDrags`. | Playwright needs that command for a drag and Lightpanda has not implemented it. |
 | `browser.setViewport` | The page measures the new size, but a `resize` listener never runs. | No `resize` event is dispatched. |
 | Scrolling: `scrollIntoView`, `scrollUntilVisible`, and an action on a node "outside of the viewport" | The scroll is a no-op, and an actionability wait can time out. | Without layout there is no scroll position to move. |
-| `browser: 'firefox'` or `'webkit'` | `INVALID_CONFIG`. | `connect` is CDP, and CDP attach is chromium-only. |
+| `browser: 'firefox'` or `'webkit'` | Not an option: `browser` names the provider. | A provider attaches over CDP, which is chromium-only. |
 
 A Lightpanda release that closes one of these makes the row above go away
 with no change on the e2e side; the engine sends the same CDP commands it
@@ -118,11 +163,11 @@ sends Chrome.
 ## Fetch more of the page
 
 `lightpanda serve` requests no sub-resources by default: no images, no
-external stylesheets, no iframes. `--load-resources` opts into each, and
-can be passed more than once:
+external stylesheets, no iframes. `loadResources` opts into each, as
+`--load-resources` on the server:
 
-```bash
-lightpanda serve --load-resources stylesheet --load-resources iframe
+```ts
+web({ browser: lightpanda({ loadResources: ['stylesheet', 'iframe'] }) })
 ```
 
 Inline styles, `<style>` blocks, and the `hidden` attribute already decide
