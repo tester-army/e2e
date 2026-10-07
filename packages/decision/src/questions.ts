@@ -1,4 +1,5 @@
 import type { JsonValue, StepExecutorContext } from 'e2e';
+import { AgentError } from 'e2e/agent';
 import type { ActionSpace, Control, Element, Operation, Terminal } from './elements.ts';
 /**
  * The fallback every target question carries. A provider that finds no
@@ -15,6 +16,8 @@ export interface HistoryEntry {
   readonly error?: string;
   readonly replayed?: true;
   readonly uncertain?: true;
+  /** What the engine reported for the action, when that tells the model something. */
+  readonly note?: string;
 }
 /** Rules for the operation question, adapted from jev-ultrafast NEXT_ACTION. */
 const NEXT_ACTION = [
@@ -130,7 +133,10 @@ export function decisionRequest(
   }
   if (space.targets.has('typeSecret') && ctx.step.secrets.length >= 2) {
     const secrets: Record<string, JsonValue | null> = {};
-    for (const secret of ctx.step.secrets) secrets[secret.name] = secret.purpose;
+    for (const secret of ctx.step.secrets) {
+      if (secret.name === NONE) throw new AgentError('MODEL_OUTPUT_INVALID', `A secret named ${JSON.stringify(NONE)} collides with the fallback option; rename the param.`);
+      secrets[secret.name] = secret.purpose;
+    }
     secrets[NONE] = 'The next operation is not a secret fill.';
     questions.secret = choice({ rules: 'Choose the declared secret this fill needs.' }, secrets);
   }

@@ -118,6 +118,8 @@ async function run(
   const language = ctx.model as Exclude<LanguageModel, string> | undefined;
   const canType = language !== undefined && ctx.target.verbs.has('type');
   const vision = options.vision === true;
+  /** Whether this step may show pixels: vision is on and no secret has been filled in the attempt. */
+  const pixelsAllowed = (): boolean => vision && !ctx.pixelsTainted;
   let previousFingerprint: string | undefined;
   let lastTurn: StepTurn | undefined;
   let rejectedTerminals = 0;
@@ -139,10 +141,10 @@ async function run(
   const budgetMessage = (): string =>
     `The step did not conclude within its ${ctx.budgets.maxModelCalls} decision calls.`;
   /** A fresh observation: the tree, and masked pixels when vision is on and no secret has been filled. */
-  const look = (): Promise<ExecutorObservation> => ctx.observe({ tree: true, pixels: vision && !ctx.pixelsTainted });
+  const look = (): Promise<ExecutorObservation> => ctx.observe({ tree: true, pixels: pixelsAllowed() });
   /** The granted pixels of an observation as the model receives them; nothing without vision. */
   const screenshotOf = (observation: ExecutorObservation): Screenshot | undefined => {
-    const pixels = vision ? observation.pixels : undefined;
+    const pixels = pixelsAllowed() ? observation.pixels : undefined;
     if (pixels === undefined) return undefined;
     return { mediaType: pixels.mediaType, data: pixels.data, width: pixels.width, height: pixels.height, scale: pixels.scale };
   };
@@ -154,7 +156,7 @@ async function run(
   const spaceOf = (observation: ExecutorObservation, typing: boolean): ActionSpace | undefined => {
     const tree = observation.tree;
     if (observation.treeUnavailable || tree === undefined || emptyTree(observation)) return undefined;
-    const pixels = vision ? observation.pixels : undefined;
+    const pixels = pixelsAllowed() ? observation.pixels : undefined;
     return actionSpace(
       ctx,
       { path: observation.path ?? '', viewport: observation.viewport, tree, ...(pixels === undefined ? {} : { pixels }) },
@@ -199,15 +201,15 @@ async function run(
   if (ctx.step.kind === 'assert') {
     const observation = await look();
     const space = spaceOf(observation, true);
-    if (space === undefined) return finish(inconclusive('A complete semantic observation is required.'));
     const screenshot = screenshotOf(observation);
-    // `vision: 'only'` judges the pixels alone; without granted pixels the tree still decides.
+    // `vision: 'only'` judges the pixels alone, tree or no tree; without granted pixels the tree still decides.
     const pixelsOnly = ctx.step.vision === 'only' && screenshot !== undefined;
+    if (space === undefined && !pixelsOnly) return finish(inconclusive('A complete semantic observation is required.'));
     const request = assertionRequest(
       ctx.step.instruction,
       observation.path ?? '',
-      pixelsOnly ? '' : space.pageText,
-      pixelsOnly ? [] : elementRecords(space),
+      pixelsOnly || space === undefined ? '' : space.pageText,
+      pixelsOnly || space === undefined ? [] : elementRecords(space),
       screenshot,
     );
     const answers = await ask(request);
@@ -282,6 +284,7 @@ async function run(
         return finish(blocked(`The decision model chose drag but no destination for it (${describe(destination.none)}).`));
       }
       if (!gated(destination.answer)) return finish(blocked(`The drop destination is uncertain (${describe(destination.answer)}).`));
+      if (destination.key === taken.elementKey) return finish(blocked('The decision model chose to drag an element onto itself.'));
       await runTarget(taken, op, targetAnswer, space, destination.key, `onto ${destination.label}`);
       continue;
     }
@@ -363,15 +366,16 @@ async function run(
     turns.push(turn);
     lastTurn = turn;
     const typed = typedText === undefined ? {} : { text: typedText };
+    let note: string | undefined;
     try {
-      await taken.target.run(argument);
+      note = await taken.target.run(argument);
     } catch (error) {
       if (isAgentError(error) && RUNTIME_CODES.has(error.code)) throw error;
       const code = isAgentError(error) ? error.code : error instanceof Error ? error.name : 'unknown';
       history.push({ action: taken.target.description, ...typed, error: code });
       return;
     }
-    history.push({ action: taken.target.description, ...typed });
+    history.push({ action: taken.target.description, ...typed, ...(note === undefined ? {} : { note }) });
   }
   /** One turn call label, e.g. type [3] textbox "New todo" = "Buy milk". */
   function callLabel(space: ActionSpace, taken: Taken, operation: string, text?: string): string {

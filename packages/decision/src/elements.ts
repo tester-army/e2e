@@ -35,8 +35,13 @@ export interface Element {
 /** A bound target. `run` calls `ctx.actions`; the model only ever names the key. */
 export interface Target {
   readonly description: string;
-  /** Text for `type`, the secret name for `typeSecret`, paths for `upload`, the destination key for `drag`, nothing otherwise. */
-  run(argument?: string | readonly string[]): Promise<void>;
+  /**
+   * Text for `type`, the secret name for `typeSecret`, paths for `upload`,
+   * the destination key for `drag`, nothing otherwise. Resolves to what the
+   * engine reported when that tells the model something (a point tap's
+   * landing), nothing otherwise.
+   */
+  run(argument?: string | readonly string[]): Promise<string | undefined>;
   /** Native-select option label, set only for `select` options; names the choice criterion. */
   readonly optionLabel?: string;
 }
@@ -194,13 +199,14 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
     for (const child of node.children ?? []) visit(child, underNativeSelect || node.role === 'combobox');
   };
   visit(observation.tree, false);
-  // Viewport nodes first, then controls before passive rows, then tree
-  // order; drop the rest past the cap so the model can scroll to them, and
-  // never block on a large screen.
+  // Controls before passive rows, viewport nodes first within each, then
+  // tree order; drop the rest past the cap so the model can scroll to them,
+  // and never block on a large screen. A control below the fold still
+  // outranks any amount of visible prose.
   const ordered = [...rows]
     .map((row, order) => ({ row, order }))
     .toSorted((a, b) =>
-      Number(b.row.inViewport) - Number(a.row.inViewport) || Number(a.row.passive) - Number(b.row.passive) || a.order - b.order,
+      Number(a.row.passive) - Number(b.row.passive) || Number(b.row.inViewport) - Number(a.row.inViewport) || a.order - b.order,
     )
     .map(({ row }) => row);
   const omitted = Math.max(0, ordered.length - MAX_CHOICES);
@@ -232,7 +238,7 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
           options.set(key, {
             description: `select option ${JSON.stringify(optionLabel)} in ${label} [${row.node.id}]`,
             optionLabel,
-            run: () => ctx.actions.select({ id: row.node.id }, optionLabel),
+            run: () => quiet(ctx.actions.select({ id: row.node.id }, optionLabel)),
           });
           selectCount += 1;
         }
@@ -282,9 +288,7 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
         const point = { x: Math.round((x[0] + x[1]) / 2), y: Math.round((y[0] + y[1]) / 2) };
         points.set(key, {
           description: `tap at (${point.x}, ${point.y}) in cell ${key}`,
-          run: async () => {
-            await ctx.actions.tapAt(point);
-          },
+          run: async () => (await ctx.actions.tapAt(point)).summary,
         });
       }
     }
@@ -292,11 +296,11 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
   }
   const controls = new Map<Control, Target>();
   if (verbs.has('scroll')) {
-    controls.set('scroll_up', { description: 'scroll viewport up', run: () => ctx.actions.scroll('up') });
-    controls.set('scroll_down', { description: 'scroll viewport down', run: () => ctx.actions.scroll('down') });
+    controls.set('scroll_up', { description: 'scroll viewport up', run: () => quiet(ctx.actions.scroll('up')) });
+    controls.set('scroll_down', { description: 'scroll viewport down', run: () => quiet(ctx.actions.scroll('down')) });
   }
   if (verbs.has('back')) {
-    controls.set('back', { description: 'back one step in history', run: () => ctx.actions.back() });
+    controls.set('back', { description: 'back one step in history', run: () => quiet(ctx.actions.back()) });
   }
   return {
     elements,
@@ -322,29 +326,29 @@ function bind(
   const where = `${label} [${node.id}]`;
   switch (operation) {
     case 'tap':
-      return { description: `tap ${where}`, run: () => ctx.actions.tap(target) };
+      return { description: `tap ${where}`, run: () => quiet(ctx.actions.tap(target)) };
     case 'type':
-      return { description: `type into ${where}`, run: (argument = '') => ctx.actions.type(target, argumentText(argument)) };
+      return { description: `type into ${where}`, run: (argument = '') => quiet(ctx.actions.type(target, argumentText(argument))) };
     case 'typeSecret':
-      return { description: `typeSecret into ${where}`, run: (argument = '') => ctx.actions.typeSecret(target, argumentText(argument)) };
+      return { description: `typeSecret into ${where}`, run: (argument = '') => quiet(ctx.actions.typeSecret(target, argumentText(argument))) };
     case 'submit':
-      return { description: `submit ${where}`, run: () => ctx.actions.press(target, 'Enter') };
+      return { description: `submit ${where}`, run: () => quiet(ctx.actions.press(target, 'Enter')) };
     case 'check':
-      return { description: `check ${where}`, run: () => ctx.actions.check(target, !(node.states?.checked ?? false)) };
+      return { description: `check ${where}`, run: () => quiet(ctx.actions.check(target, !(node.states?.checked ?? false))) };
     case 'hover':
-      return { description: `hover ${where}`, run: () => ctx.actions.hover(target) };
+      return { description: `hover ${where}`, run: () => quiet(ctx.actions.hover(target)) };
     case 'secondary_tap':
-      return { description: `right-click ${where}`, run: () => ctx.actions.secondaryTap(target) };
+      return { description: `right-click ${where}`, run: () => quiet(ctx.actions.secondaryTap(target)) };
     case 'double_tap':
-      return { description: `double-tap ${where}`, run: () => ctx.actions.doubleTap(target) };
+      return { description: `double-tap ${where}`, run: () => quiet(ctx.actions.doubleTap(target)) };
     case 'long_press':
-      return { description: `long-press ${where}`, run: () => ctx.actions.longPress(target) };
+      return { description: `long-press ${where}`, run: () => quiet(ctx.actions.longPress(target)) };
     case 'scroll_to':
-      return { description: `scroll to ${where}`, run: () => ctx.actions.scrollTo(target) };
+      return { description: `scroll to ${where}`, run: () => quiet(ctx.actions.scrollTo(target)) };
     case 'upload':
       return {
         description: `upload to ${where}`,
-        run: (argument = []) => ctx.actions.upload(target, typeof argument === 'string' ? [argument] : argument),
+        run: (argument = []) => quiet(ctx.actions.upload(target, typeof argument === 'string' ? [argument] : argument)),
       };
     case 'drag':
       return {
@@ -352,7 +356,7 @@ function bind(
         run: (argument = '') => {
           const destination = destinations.get(argumentText(argument));
           if (destination === undefined) throw new Error('drag needs a destination key');
-          return ctx.actions.drag(target, { id: destination.id });
+          return quiet(ctx.actions.drag(target, { id: destination.id }));
         },
       };
     case 'select':
@@ -361,6 +365,11 @@ function bind(
   }
 }
 
+/** An action with nothing to report back. */
+async function quiet(action: Promise<void>): Promise<undefined> {
+  await action;
+  return undefined;
+}
 /** The string form of a run argument; a path list joins with commas. */
 function argumentText(argument: string | readonly string[]): string {
   return typeof argument === 'string' ? argument : argument.join(',');

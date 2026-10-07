@@ -3,6 +3,7 @@ import { InvalidArgumentError, InvalidResponseDataError, LoadAPIKeyError } from 
 import { AgentError } from 'e2e/agent';
 import type { ExecutorNode } from 'e2e';
 import { decisionExecutor } from '../src/index.ts';
+import { PNG } from 'pngjs';
 import { context, scriptedDecision, scriptedOutputs, scriptedText } from './helpers.ts';
 
 /** Matches the ConfigurationError a factory throws at config load. */
@@ -851,5 +852,69 @@ describe('new operations', () => {
   it('rejects a non-boolean vision option', () => {
     const { model } = scriptedDecision(() => ({ choice: 'done' }));
     expect(() => decisionExecutor({ model, vision: 'only' as never })).toThrow(invalidConfig('vision'));
+  });
+});
+
+describe('vision details', () => {
+  /** A decodable white screenshot of the fixture viewport. */
+  function whitePixels() {
+    const png = new PNG({ width: 800, height: 600 });
+    png.data.fill(255);
+    return { data: new Uint8Array(PNG.sync.write(png)), mediaType: 'image/png' as const, width: 800, height: 600, scale: 1, maskedRegionCount: 0 };
+  }
+  it('draws the numbered grid on the screenshot every decision question sees', async () => {
+    const { model, requests } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'blocked' : (keys[0] ?? '') }));
+    const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() } });
+    await decisionExecutor({ model, vision: true }).runStep(fixture.ctx);
+    const options = requests[0]?.providerOptions as { decision: { screenshot: { data: string } } } | undefined;
+    const sent = options?.decision.screenshot.data ?? '';
+    const png = PNG.sync.read(Buffer.from(sent, 'base64'));
+    const at = (x: number, y: number) => [...png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3)];
+    expect(at(159, 300)).toEqual([255, 0, 255]);
+    expect(at(2, 2)).toEqual([0, 0, 0]);
+    expect(at(100, 100)).toEqual([255, 255, 255]);
+  });
+  it('never asks for pixels once a secret was filled, and offers no tap_at', async () => {
+    const { model, requests } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'blocked' : (keys[0] ?? '') }));
+    const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() }, pixelsTainted: true });
+    await decisionExecutor({ model, vision: true }).runStep(fixture.ctx);
+    expect(fixture.observe).toHaveBeenCalledWith({ tree: true, pixels: false });
+    expect(Object.keys(requests[0]?.questions ?? {})).not.toContain('tap_at_target');
+  });
+  it('judges a vision-only assert from the pixels when the tree is unavailable', async () => {
+    const { model, requests } = scriptedDecision(() => ({ choice: 'holds' }));
+    const fixture = context({ kind: 'assert', observation: { treeUnavailable: true, pixels: whitePixels() }, vision: 'only' });
+    const verdict = await decisionExecutor({ model, vision: true }).runStep(fixture.ctx);
+    expect(verdict).toMatchObject({ status: 'passed' });
+    expect(requests[0]?.state).toMatchObject({ elements: [], page: { text: '' } });
+    const noPixels = context({ kind: 'assert', observation: { treeUnavailable: true }, vision: 'only' });
+    expect(await decisionExecutor({ model, vision: true }).runStep(noPixels.ctx)).toMatchObject({ status: 'failed', errorCode: 'ASSERTION_INCONCLUSIVE' });
+  });
+  it('tells the model where a cell tap landed', async () => {
+    const { model, requests } = scriptedDecision((id, keys, call) => {
+      if (id === 'operation') return { choice: call === 0 ? 'tap_at' : 'blocked' };
+      if (id === 'tap_at_target') return { choice: 'p1' };
+      return { choice: keys[0] ?? '' };
+    });
+    const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() } });
+    fixture.actions.tapAt.mockResolvedValue({ point: { x: 80, y: 80 }, summary: 'tapped a bare point under heading "Map"' });
+    await decisionExecutor({ model, vision: true }).runStep(fixture.ctx);
+    const state = requests[1]?.state as { recentActions: { note?: string }[] } | undefined;
+    expect(state?.recentActions.at(-1)?.note).toBe('tapped a bare point under heading "Map"');
+  });
+  it('blocks a drag onto itself', async () => {
+    const tree: ExecutorNode = { id: 'root', children: [
+      { id: 'a', role: 'listitem', name: 'A' },
+      { id: 'b', role: 'listitem', name: 'B' },
+    ] };
+    const { model } = scriptedDecision((id) => ({ choice: id === 'operation' ? 'drag' : '1' }));
+    const fixture = context({ tree });
+    expect(await decisionExecutor({ model }).runStep(fixture.ctx)).toMatchObject({ status: 'blocked', summary: expect.stringContaining('onto itself') });
+    expect(fixture.actions.drag).not.toHaveBeenCalled();
+  });
+  it('refuses a secret named none', async () => {
+    const { model } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'typeSecret' : (keys[0] ?? '') }));
+    const fixture = context({ tree: FIELD, secrets: [{ name: 'none', purpose: 'password' }, { name: 'pin', purpose: 'password' }] });
+    await expect(decisionExecutor({ model }).runStep(fixture.ctx)).rejects.toMatchObject({ code: 'MODEL_OUTPUT_INVALID', message: expect.stringContaining('collides') });
   });
 });

@@ -100,6 +100,7 @@ export function context(options: {
   params?: Readonly<Record<string, JsonValue>>;
   secrets?: StepExecutorContext['step']['secrets'];
   vision?: StepExecutorContext['step']['vision'];
+  pixelsTainted?: boolean;
 } = {}) {
   const signal = options.signal ?? new AbortController().signal;
   const noop = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
@@ -121,10 +122,11 @@ export function context(options: {
     hitTest: vi.fn<ExecutorActions['hitTest']>().mockImplementation(async (point) => ({ point, summary: 'hit' })),
   };
   const tree = options.tree ?? { id: 'root', children: [{ id: 'name', role: 'textbox', name: 'Name', value: '' }] };
-  const observe = vi.fn<StepExecutorContext['observe']>().mockResolvedValue({
+  const observation: ExecutorObservation = {
     revision: '1', text: '#name textbox', truncated: false,
-    viewport: { width: 800, height: 600 }, tree, ...options.observation,
-  });
+    viewport: { width: 800, height: 600 }, ...(options.observation?.treeUnavailable === true ? {} : { tree }), ...options.observation,
+  };
+  const observe = vi.fn<StepExecutorContext['observe']>().mockResolvedValue(observation);
   const usage: ExecutorModelCall[] = [];
   const turns: StepTurn[] = [];
   const transcripts: string[] = [];
@@ -134,7 +136,7 @@ export function context(options: {
     signal, target: { name: 'web', platform: 'web', verbs: new Set(options.verbs ?? (Object.keys(actions) as (keyof ExecutorActions)[])) },
     model: options.model as StepExecutorContext['model'], providerOptions: undefined,
     ledger: options.ledger ?? '', agentContext: undefined,
-    actions, observe, pixelsTainted: false,
+    actions, observe, pixelsTainted: options.pixelsTainted ?? false,
     attachTranscript: (text) => { transcripts.push(text); }, attachTurns: (seen) => { turns.push(...seen); }, attachScreenshot: async () => 'screenshot',
     budgets: { maxActions: 25, maxModelCalls: options.maxModelCalls ?? 25, remainingMs: () => 60000, actionsUsed: () => 0, recordModelCall: (call) => { usage.push(call ?? {}); }, runTool: (_call, body) => body() },
     ...(options.replayedPrefix === undefined ? {} : { replayedPrefix: options.replayedPrefix }),
