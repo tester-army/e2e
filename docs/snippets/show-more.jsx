@@ -4,7 +4,8 @@ export const ShowMore = ({ id, children }) => {
 
   return (
     <div className="show-more" data-expanded={expanded}>
-      <div id={id} className="show-more-content">
+      {/* Tabbing into the folded part opens it, so focus never lands on clipped text. */}
+      <div id={id} className="show-more-content" onFocus={() => setExpanded(true)}>
         {children}
       </div>
       <button

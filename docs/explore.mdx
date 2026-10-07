@@ -4,6 +4,8 @@ description: Give the agent a goal instead of a test file. It plans its own step
 icon: "compass"
 ---
 
+import { Video } from './snippets/video.jsx';
+
 Use `e2e explore` to investigate a flow without writing a test. Give the
 agent a goal; it chooses the steps, records findings, and prints them when
 it ends.
@@ -26,10 +28,9 @@ Explore can help you investigate a feature or choose flows to turn into
 regression tests. It uses the same model, tools, and action rules as
 `agent.act()`. Review the findings against their evidence.
 
-<div className="video-figure">
-  <video autoPlay muted loop playsInline controls src="/images/explore.mp4" />
-  <p>`e2e explore --headed` drives the app and reports findings as it goes.</p>
-</div>
+<Video src="/images/explore.mp4" label="e2e explore drives the app in a headed browser and reports findings in the terminal.">
+  `e2e explore --headed` drives the app and reports findings as it goes.
+</Video>
 
 ## What a run does
 

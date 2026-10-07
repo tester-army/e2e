@@ -740,11 +740,15 @@ html.dark body .code-block-fade-overlay {
     border-radius: 0;
   }
 
-  & p {
-    margin: 0.5rem 0 0;
+  & .video-figure-caption {
+    margin-top: 0.5rem;
     color: var(--e2e-muted);
     font-size: 0.8125rem;
     line-height: 1.5;
+
+    & > * {
+      margin: 0;
+    }
   }
 }
 

@@ -5,22 +5,23 @@ icon: "bug"
 ---
 
 import { ShowMore } from './snippets/show-more.jsx';
+import { Video } from './snippets/video.jsx';
 
 A bug bash runs many `e2e explore` sessions at the same time. Each session
 examines one area of the app. A coding agent then writes a test for each
 finding. The agent reports a finding as a bug only when its test fails.
 
-<div className="video-figure">
-  <video autoPlay muted loop playsInline controls src="/images/bug-bash.mp4" />
-  <p>A coding agent runs a bug bash. Six headed browsers explore the app at the same time.</p>
-</div>
+<Video src="/images/bug-bash.mp4" label="A coding agent runs a bug bash in headed browsers.">
+  A coding agent runs a bug bash. Each browser is one explore session.
+</Video>
 
 ## Before you start
 
 - Make sure that the app can serve many explorers at the same time. Start
   the app one time and set `reuseExisting: true` on the target's
   `app.command`, or set port `0` in the app URL so each run starts its own
-  copy. See [Starting your app](/web#starting-your-app).
+  copy. When `CI` is set, e2e ignores `reuseExisting`: use port `0`. See
+  [Starting your app](/web#starting-your-app).
 - On mobile, declare one target for each simulator or emulator. Each
   explorer needs its own device.
 - Each explore session uses model calls. The last lines of each run show
@@ -86,7 +87,9 @@ Bug bash the checkout and account settings on this branch.
 </ShowMore>
 
 Each confirmed bug has its repro test and steps. It also has the
-explorer's screenshot and video when the engine records them.
+explorer's screenshot and video when the engine records them. The video is
+not masked: if the explorer typed a password, check the video before you
+share it.
 
 To read the full procedure, run `npx e2e guide bug-bash`.
 
