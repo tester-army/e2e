@@ -128,7 +128,9 @@ function decideError(error: unknown, signal: AbortSignal): unknown {
 /**
  * Whether the decision model refused a question. ai 7.0.130 throws its own
  * refusal error; 7.0.128 and 7.0.129 report the `refusal` answer as one of
- * the wrong type, so the rejected answers are checked too.
+ * the wrong type, so the rejected answers are checked too. Providers that
+ * throw on a refusal themselves (`@ai-sdk/openai` before 4.0.86) stay
+ * generic invalid output.
  */
 function refused(error: unknown): boolean {
   const RefusalError = (ai as Partial<typeof ai>).Experimental_DecisionRefusalError;

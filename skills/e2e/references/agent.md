@@ -32,7 +32,8 @@ any provider.
 Decision models pick actions from choices the executor builds: install
 `@e2e-dev/decision` and put `decisionExecutor({ model:
 typeSafeAi.decisionModel('jev-latest'), textModel: openrouter('inception/mercury-2.5') })`
-under `executor`. Tests stay plain language with no params; the text model
+under `executor`; `openai.decisionModel('gpt-6-luna')` from `@ai-sdk/openai`
+4.0.86+ works too. Tests stay plain language with no params; the text model
 writes field values. See the shipped `docs/decision-models.mdx` or
 [the online guide](https://e2e.tester.army/docs/decision-models) for setup,
 gates, and limits.

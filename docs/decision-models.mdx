@@ -69,8 +69,22 @@ export default {
 } satisfies E2EConfig;
 ```
 
-OpenAI's Decisions API works the same way through `@ai-sdk/openai` 4.0.85
+OpenAI's Decisions API works the same way through `@ai-sdk/openai` 4.0.86
 or later, which reads `OPENAI_API_KEY`:
+
+<CodeGroup>
+```bash npm
+npm install -D @ai-sdk/openai
+```
+
+```bash pnpm
+pnpm add -D @ai-sdk/openai
+```
+
+```bash bun
+bun add -d @ai-sdk/openai
+```
+</CodeGroup>
 
 ```ts title="e2e.config.ts"
 import { openai } from '@ai-sdk/openai';
@@ -139,7 +153,8 @@ Probability and confidence are different provider fields: probability is the
 selected option's share of the answer distribution, confidence is the
 provider's separate statistic. A threshold is a policy choice; measure
 accuracy on your own tests before changing it. Providers round: OpenAI
-reports both to two decimals, so a gate above 0.99 blocks every action.
+reports both to two decimals, so a gate between two hundredths acts as the
+next hundredth.
 
 ## Provider options
 
