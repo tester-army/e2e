@@ -4,6 +4,8 @@ description: Run many explore sessions at the same time, then prove each bug wit
 icon: "bug"
 ---
 
+import { ShowMore } from './snippets/show-more.jsx';
+
 A bug bash runs many `e2e explore` sessions at the same time. Each session
 examines one area of the app. A coding agent then writes a test for each
 finding. The agent reports a finding as a bug only when its test fails.
@@ -12,6 +14,21 @@ finding. The agent reports a finding as a bug only when its test fails.
   <video autoPlay muted loop playsInline controls src="/images/bug-bash.mp4" />
   <p>A coding agent runs a bug bash. Six headed browsers explore the app at the same time.</p>
 </div>
+
+## Before you start
+
+- Make sure that the app can serve many explorers at the same time. Start
+  the app one time and set `reuseExisting: true` on the target's
+  `app.command`, or set port `0` in the app URL so each run starts its own
+  copy. See [Starting your app](/web#starting-your-app).
+- On mobile, declare one target for each simulator or emulator. Each
+  explorer needs its own device.
+- Each explore session uses model calls. The last lines of each run show
+  the tokens, cost, and duration.
+- On a deployed site that other people use, do not change data.
+
+The agent does the rest of the setup, such as seeded accounts and sign-in,
+from the skill.
 
 ## Install the skill
 
@@ -44,6 +61,8 @@ Bug bash the checkout and account settings on this branch.
 
 ## What the agent does
 
+<ShowMore id="bug-bash-steps">
+
 1. Reads the routes of the app. On a branch, it also reads the diff.
 2. Writes 5 to 10 charters. A charter is a one-sentence goal for one area,
    with one posture: first-time user, numbers and copy, edge input, state
@@ -64,43 +83,12 @@ Bug bash the checkout and account settings on this branch.
 8. Reports, in this order: confirmed bugs, production risks that it cannot
    verify locally, rejected findings by reason, and warnings.
 
+</ShowMore>
+
 Each confirmed bug has its repro test and steps. It also has the
 explorer's screenshot and video when the engine records them.
 
 To read the full procedure, run `npx e2e guide bug-bash`.
-
-## Before you start
-
-- Make sure that the app can serve many explorers at the same time. Do one
-  of these:
-  - Start the app one time. Set `reuseExisting: true` on the target's
-    `app.command`.
-  - Set port `0` in the app URL. Each run then starts its own copy of the
-    app.
-
-  When `CI` is set, e2e ignores `reuseExisting`. Use port `0`. See
-  [Starting your app](/web#starting-your-app).
-- If `app.command` also starts a stack, such as a database from
-  `docker compose`, start the stack one time yourself. Then explore with a
-  config that has the app URL and no command. If you do not, the first
-  explorer that stops removes the database for all other explorers.
-- Use a production build. A dev server compiles a route on the first visit,
-  and the explorer can report this as a broken link.
-- Give each charter its own seeded account. Put the accounts under
-  `credentials`. The explorers fill passwords by name and never see them.
-- Tell the explorers which integrations have no keys on your machine. Put
-  this in the agent's `context`.
-- If a setup test signs in, start the charters with
-  [`e2e explore --session <name>`](/explore). Sign in with a cookie or an
-  API call, not a typed password. After a typed password, the runner stops
-  screenshots.
-- On mobile, each explorer needs its own device. Declare one target for
-  each simulator or emulator.
-- Each charter uses model calls. The last lines of each run show the
-  tokens, cost, and duration.
-- On a deployed site that other people use, do not change data. Do not sign
-  up, sign in, or submit forms. Do not put injection strings in URLs. A WAF
-  block is not a bug.
 
 ## Repro tests
 

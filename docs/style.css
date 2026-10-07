@@ -683,6 +683,51 @@ html.dark body .code-block-fade-overlay {
   }
 }
 
+/* Long content folded like the setup prompt (snippets/show-more.jsx). */
+#content .show-more {
+  margin-block: 1.25rem;
+  border: 1px solid var(--e2e-hairline);
+}
+
+#content .show-more-content {
+  max-height: 132px;
+  padding: 1rem 1rem 0;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, black 45%, transparent);
+
+  & > :first-child {
+    margin-top: 0;
+  }
+
+  & > :last-child {
+    margin-bottom: 0;
+  }
+}
+
+#content .show-more[data-expanded='true'] .show-more-content {
+  max-height: none;
+  mask-image: none;
+}
+
+#content .show-more-toggle {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 1rem 0.75rem;
+  color: var(--e2e-muted);
+  font-size: 0.8125rem;
+  text-align: center;
+  cursor: pointer;
+}
+
+#content .show-more-toggle:hover {
+  color: var(--e2e-ink);
+}
+
+#content .show-more-toggle:focus-visible {
+  outline: 2px solid var(--e2e-ink);
+  outline-offset: -2px;
+}
+
 /* A video in a hairline frame with its caption underneath. */
 #content .video-figure {
   margin-block: 1.25rem;
