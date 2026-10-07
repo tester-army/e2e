@@ -559,19 +559,20 @@ assessment. The default goal is `Explore the app and find bugs`. See
 | --- | --- | --- | --- |
 | `--config <path>` | string | discovered | Explicit config path, with the same errors as `run`. |
 | `--target <id>` | string | the first configured target | The one target to explore. Several targets and no flag explores the first and says so on stderr. An unknown name is `UNKNOWN_TARGET`. |
-| `--agent <name>` | string | `default` | The configured agent the exploration runs as. Its model, tools, and context are reused; a hand-rolled `StepExecutor` is replaced by the built-in agent, with a notice. An unknown name is `INVALID_CONFIG`. |
+| `--agent <name>` | string | `default` | The configured agent the exploration runs as. Its model, `system`, tools, and context are reused; a hand-rolled `StepExecutor` is replaced by the built-in agent, with a notice. An entry with no model, a custom executor's included, is `MODEL_UNAVAILABLE` before anything starts. An unknown name is `INVALID_CONFIG`. |
 | `--session <name>` | string | none | Starts signed in. The setup test in the config's test files that declares this session runs first, and the exploration restores what it saved, as a test with `{ session }` does. No other test runs. A name no setup test declares is `COLLECTION_ERROR`, naming the declared ones, before any app process starts. See [Start signed in](/explore#start-signed-in). |
 | `--max-steps <n>` | integer 1-12 | `8` | Exploration steps at most. Out of range exits 2. |
 | `--timeout <ms>` | integer 180000-900000 | `600000` | The run's wall clock. The last minute is kept for the closing assessment. Out of range exits 2. |
 | `--headed` | boolean | `false` | Requests visible UI when the engine supports it. |
-| `--reporter <ids>` | comma-separated list | resolved config value | As for `run`. The exploration summary rows print under the `list` summary; `json` carries the record in the report. |
+| `--reporter <ids>` | comma-separated list | resolved config value | As for `run`. The exploration summary rows print under the `list` summary; `json` carries the record in the report; `markdown` writes the findings to `<output>/summary.md`. |
 | `--output <dir>` | string | config, else `.e2e` | As for `run`; a finding's evidence screenshot is one of the attempt's artifacts under `<output>/results`. |
 | `--debug` | boolean | `false` | As for `run`: phase timings and the agent step table. |
 | `--ai-trace` | boolean | `false` | As for `run`. |
 | `--trace [mode]` | a recording mode | config | As for `run`: a trace page of the exploration. A bare `--trace` is `on`; `retain-on-failure` keeps it only when the exploration did not pass. The exploration is one attempt, so a retry mode keeps none, and the plan-time notice says to pass `--trace on`. Put the goal before `--trace`, or write `--trace=<mode>`. |
-| `--video [mode]` | a recording mode | config | As for `run`: one video of the whole exploration (WebM on a browser engine, MP4 on a device engine). A bare `--video` is `on`; `retain-on-failure` keeps it only when the exploration did not pass. The exploration is one attempt, so a retry mode records nothing. Put the goal before `--video`, or write `--video=<mode>`. |
+| `--video [mode]` | a recording mode | config | As for `run`: one video of the whole exploration (WebM on a browser engine, MP4 on a device engine). A bare `--video` is `on`; `retain-on-failure` keeps it only when the exploration did not pass. An engine that cannot record prints a notice. The exploration is one attempt, so a retry mode records nothing, and the plan-time notice says to pass `--video on`. Put the goal before `--video`, or write `--video=<mode>`. |
 
 The run has one result, under the virtual file `explore`, titled by the goal.
+The exploration opens the app first when the target declares `app.url`.
 With `--session`, the report also holds the setup test's result and lists the
 project's other tests as skipped with cause `filtered`, as `run` lists the
 tests of a file no positional named.
@@ -582,9 +583,33 @@ config's agents, cache, and retries.
 ended (`finished`, `step-limit`, `time`, `stuck`, or `aborted`), the
 assessment, the steps, and the findings.
 
-Exit codes: `0` when steps ran and no finding of kind `issue` was reported,
-`1` when one was or when no step ran at all, `2` and `3` as for `run`, `130`
-on Ctrl-C.
+Each step has its own budget: 40 actions and 40 model calls, unless the agent
+sets `maxSteps` or `maxModelCalls` (1 to 100). A step that reaches its action
+or time budget is time-boxed, and its findings still count. A failed step
+does not end the run; three failed or blocked steps in a row with no new
+finding do (`stuck`).
+
+A finding of kind `issue` is a functional defect; a `warning` is cosmetic.
+Severity runs from `trivial` (1) to `critical` (5), and the report lists
+issues before warnings, the most severe first. Each finding has its location,
+the expected and observed behavior, the steps to reproduce, and a screenshot
+when capture is allowed and succeeds. After a secret fill, findings carry no
+screenshots; see
+[screenshots after a secret fill](/security#screenshots-after-a-secret-fill).
+
+Artifacts go to a directory named from the goal's first words and a digest of
+the goal, target, and agent, such as
+`<output>/results/explore-check-the-cart-totals-1a2b3c4d5e6f7a8b/`, so a rerun
+of the same goal on the same target and agent writes to the same directory.
+
+| Outcome | Run status | Exit code |
+| --- | --- | --- |
+| Steps ran, no `issue` finding, and not every step was blocked | passed | 0 |
+| At least one `issue` finding | failed | 1 |
+| No step ran and nothing was found | blocked | 1 |
+| Every step was blocked, with no `issue` finding | blocked | 1, 2, or 3, from the first blocker |
+| Config, engine, or model provider error | error | 2 or 3 |
+| Ctrl-C | | 130 |
 
 <CodeGroup>
 ```bash npm

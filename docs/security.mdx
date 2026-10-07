@@ -300,8 +300,12 @@ additional connections.
 allows four open sessions at once by default
 ([`--max-sessions`](/reference/mcp), 1 through 16) and closes idle sessions.
 
-`e2e explore` offers every configured credential to every step; see
-[Exploring without a test](/explore#your-config-applies).
+`e2e explore` offers every configured credential to every step. The explorer
+sees account names and usernames. Passwords stay secret handles and need an
+engine that supports sensitive fills; without one, the explorer skips signing
+in with them. Configure only the accounts the exploration needs. With no
+credentials, the explorer may sign in with made-up test credentials, typed as
+plain text.
 
 ## Reporting a vulnerability
 
