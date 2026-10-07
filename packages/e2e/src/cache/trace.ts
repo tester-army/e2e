@@ -16,6 +16,7 @@
  * `undefined`, never as a repaired or partially trusted entry.
  */
 
+import { isKeyModifier, KEY_MODIFIERS, type KeyModifier } from '../engine/contract.ts';
 import { timestamp } from '../internal/ids.ts';
 import type { ScrollDirection } from '../types.ts';
 
@@ -179,6 +180,8 @@ export function isNodeAction<A extends { readonly name: string }>(action: A): ac
 export interface NodeAction extends ActionBase {
   readonly name: NodeActionName;
   readonly target: TraceTargetDescriptor;
+  /** Keys a tap-family action held for the click; replayed with the action. */
+  readonly modifiers?: readonly KeyModifier[];
 }
 
 export interface TypeAction extends ActionBase {
@@ -513,6 +516,18 @@ function readAnchors(document: unknown): TraceTargetDescriptor[] | undefined {
   return each(document, readDescriptor);
 }
 
+/** The `modifiers` of a recorded tap-family action: a list of distinct key modifiers, or undefined when absent. */
+function readModifiers(document: unknown): readonly KeyModifier[] | undefined {
+  if (document === undefined) return undefined;
+  if (!Array.isArray(document) || document.length === 0 || document.length > KEY_MODIFIERS.length) return undefined;
+  const modifiers: KeyModifier[] = [];
+  for (const value of document) {
+    if (!isKeyModifier(value) || modifiers.includes(value)) return undefined;
+    modifiers.push(value);
+  }
+  return modifiers;
+}
+
 function readRecordedAction(document: unknown): RecordedAction | undefined {
   if (typeof document !== 'object' || document === null || Array.isArray(document)) {
     return undefined;
@@ -524,7 +539,9 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
   const name = raw['name'];
   if (isNodeActionName(name)) {
     const target = readDescriptor(raw['target']);
-    return target === undefined ? undefined : { name, summary, target };
+    if (target === undefined) return undefined;
+    const modifiers = readModifiers(raw['modifiers']);
+    return modifiers === undefined ? { name, summary, target } : { name, summary, target, modifiers };
   }
   switch (name) {
     case 'type': {

@@ -10,12 +10,13 @@
  * and queue as `runTool`.
  */
 
-import type { LocatorActionKind, SemanticNode, ViewportPoint } from '../engine/surface.ts';
+import { isKeyModifier, KEY_MODIFIERS, type KeyModifier } from '../engine/contract.ts';
+import type { LocatorAction, LocatorActionKind, SemanticNode, ViewportPoint } from '../engine/surface.ts';
 import { asEngineError, TestError } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
 import { clampToViewport, requireFinitePoint, viewportShare } from '../internal/geometry.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
-import type { JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
+import type { ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
 import { PROJECT_TOOL_EVENT_PREFIX, type GrammarActionName } from './action-names.ts';
 import { containerKey, describeAction, type Placement, type RecordableAction } from './actions.ts';
 import { describePosition } from '../cache/relocate.ts';
@@ -84,6 +85,23 @@ const NODE_ACTION_KINDS = {
   scrollTo: 'scrollIntoView',
 } as const satisfies Record<NodeActionName, LocatorActionKind & GrammarActionName>;
 
+/**
+ * The `modifiers` of a tap-family action, validated: distinct key modifiers,
+ * as the test API's `tap({ modifiers })` takes them. An empty list holds
+ * nothing and is dropped, so the recorded action stays clean.
+ */
+function requireClickModifiers(value: readonly KeyModifier[], verb: NodeActionName): readonly KeyModifier[] | undefined {
+  if (!Array.isArray(value) || !value.every(isKeyModifier)) {
+    throw new TestError('INVALID_ARGUMENT', `${verb}() modifiers must be an array of ${KEY_MODIFIERS.join(', ')}`);
+  }
+  const modifiers: KeyModifier[] = [];
+  for (const modifier of value) {
+    if (modifiers.includes(modifier)) throw new TestError('INVALID_ARGUMENT', `${verb}() names a modifier twice`);
+    modifiers.push(modifier);
+  }
+  return modifiers.length === 0 ? undefined : modifiers;
+}
+
 export interface ActionDispatcherOptions {
   readonly instruction: string;
   readonly params: Readonly<Record<string, JsonValue>> | undefined;
@@ -112,10 +130,10 @@ export class ActionDispatcher {
     private readonly options: ActionDispatcherOptions,
   ) {
     this.actions = {
-      tap: (target) => this.nodeVerb('tap', target),
-      doubleTap: (target) => this.nodeVerb('doubleTap', target),
+      tap: (target, click) => this.nodeVerb('tap', target, click),
+      doubleTap: (target, click) => this.nodeVerb('doubleTap', target, click),
       longPress: (target) => this.nodeVerb('longPress', target),
-      secondaryTap: (target) => this.nodeVerb('secondaryTap', target),
+      secondaryTap: (target, click) => this.nodeVerb('secondaryTap', target, click),
       hover: (target) => this.nodeVerb('hover', target),
       type: (target, value) => this.type(target, value),
       typeSecret: (target, name) => this.typeSecret(target, name),
@@ -194,8 +212,9 @@ export class ActionDispatcher {
   }
 
   /** One node verb that carries nothing but its target: a tap or one of its variants, a hover, a scroll into view. */
-  private nodeVerb(name: NodeActionName, target: ExecutorTarget): Promise<void> {
-    return this.commitTargeted(NODE_ACTION_KINDS[name], target, (node) => this.performNode(name, node));
+  private nodeVerb(name: NodeActionName, target: ExecutorTarget, options?: ClickOptions): Promise<void> {
+    const modifiers = options?.modifiers === undefined ? undefined : requireClickModifiers(options.modifiers, name);
+    return this.commitTargeted(NODE_ACTION_KINDS[name], target, (node) => this.performNode(name, node, modifiers));
   }
 
   /**
@@ -277,9 +296,16 @@ export class ActionDispatcher {
     return this.runtime.target.verbs;
   }
 
-  private async performNode(name: NodeActionName, node: RedactedNode): Promise<RecordableAction> {
-    await this.session.perform(node.ref, { kind: NODE_ACTION_KINDS[name] }, this.accounting.actionOperation());
-    return { name, node };
+  private async performNode(name: NodeActionName, node: RedactedNode, modifiers?: readonly KeyModifier[]): Promise<RecordableAction> {
+    const kind = NODE_ACTION_KINDS[name];
+    // Only the tap family declares `modifiers` on its `LocatorAction`; a
+    // session whose engine did not declare `tapModifiers` refuses them.
+    const action: LocatorAction =
+      modifiers === undefined || (kind !== 'tap' && kind !== 'doubleTap' && kind !== 'secondaryTap')
+        ? { kind }
+        : { kind, modifiers };
+    await this.session.perform(node.ref, action, this.accounting.actionOperation());
+    return { name, node, ...(modifiers === undefined ? {} : { modifiers }) };
   }
 
   /**

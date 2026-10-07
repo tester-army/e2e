@@ -147,7 +147,16 @@ type PlannedCall =
 type PointInvoke = (point: ViewportPoint) => Promise<unknown>;
 
 function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall {
-  if (isNodeAction(action)) return { kind: 'targeted', descriptor: action.target, invoke: (t) => actions[action.name](t) };
+  if (isNodeAction(action)) {
+    // Only the tap family records modifiers; replay holds the same keys.
+    const modifiers = action.name === 'tap' || action.name === 'doubleTap' || action.name === 'secondaryTap' ? action.modifiers : undefined;
+    return {
+      kind: 'targeted',
+      descriptor: action.target,
+      invoke: (t) =>
+        modifiers === undefined ? actions[action.name](t) : actions[action.name](t, { modifiers }),
+    };
+  }
   switch (action.name) {
     case 'tool':
       return { kind: 'gap', ...(action.derived === undefined ? {} : { derived: action.derived }) };

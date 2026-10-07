@@ -21,6 +21,7 @@ import type { ObservationPixels, SemanticNode, ViewportPoint, ViewportSize } fro
 import type { VisionDegradation, StepTurn } from '../run/steps.ts';
 import type {
   AgentErrorCode,
+  ClickOptions,
   JsonValue,
   ModelInstance,
   ProviderOptions,
@@ -155,13 +156,18 @@ export interface ExecutorTarget {
  * fresh `observe()`.
  */
 export interface ExecutorActions {
-  tap(target: ExecutorTarget): Promise<void>;
-  /** Double-taps one node (`doubleTap` in `target.verbs`). */
-  doubleTap(target: ExecutorTarget): Promise<void>;
+  /**
+   * Taps one node. `options.modifiers` holds keys for the click, as a
+   * Shift-click extends a selection; needs an engine that declares
+   * `tapModifiers`, which refuses them otherwise.
+   */
+  tap(target: ExecutorTarget, options?: ClickOptions): Promise<void>;
+  /** Double-taps one node (`doubleTap` in `target.verbs`). Takes the tap's `options.modifiers`. */
+  doubleTap(target: ExecutorTarget, options?: ClickOptions): Promise<void>;
   /** Presses one node and holds for the engine's default duration (`longPress` in `target.verbs`). */
   longPress(target: ExecutorTarget): Promise<void>;
-  /** A right-click on a pointer surface (`secondaryTap` in `target.verbs`). */
-  secondaryTap(target: ExecutorTarget): Promise<void>;
+  /** A right-click on a pointer surface (`secondaryTap` in `target.verbs`). Takes the tap's `options.modifiers`. */
+  secondaryTap(target: ExecutorTarget, options?: ClickOptions): Promise<void>;
   /** Moves the pointer over one node without pressing (`hover` in `target.verbs`). */
   hover(target: ExecutorTarget): Promise<void>;
   type(target: ExecutorTarget, value: string): Promise<void>;
