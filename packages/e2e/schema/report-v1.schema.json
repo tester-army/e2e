@@ -222,7 +222,8 @@
         "derived": { "enum": ["pixels", "whole-node", "minted-token", "date"] },
         "notRecorded": { "enum": ["param-collision"] },
         "replayedActions": { "type": "integer", "minimum": 0 },
-        "totalActions": { "type": "integer", "minimum": 0 }
+        "totalActions": { "type": "integer", "minimum": 0 },
+        "relocated": { "type": "integer", "minimum": 1 }
       },
       "allOf": [
         {
@@ -240,6 +241,10 @@
         {
           "if": { "required": ["notRecorded"] },
           "then": { "properties": { "mode": { "enum": ["missed", "agent-concluded"] } } }
+        },
+        {
+          "if": { "required": ["relocated"] },
+          "then": { "properties": { "mode": { "enum": ["self-finalized", "agent-concluded"] } } }
         }
       ]
     },

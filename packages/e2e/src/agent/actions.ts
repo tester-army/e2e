@@ -111,11 +111,33 @@ export function containerKey(
     if (container !== undefined && CONTAINER_ROLES.has(container.role ?? '')) {
       const key = firstLeafText(container) ?? ownLabel(container);
       const clean = key === undefined ? '' : bound(collapseText(key), MAX_WITHIN_CHARS);
-      return clean === '' || squash(clean) === own ? undefined : clean;
+      if (clean === '' || squash(clean) === own) return undefined;
+      // A key that is another control of the node's own kind names a
+      // neighbour, not the container: the first row of a list the node is a
+      // row of, which a scroll changes. Only a container's own text (a row's
+      // first cell, a card's title) tells the node from its twins.
+      return node !== undefined && labelsByRole(nodes).get(node.role ?? '')?.has(squash(clean)) === true ? undefined : clean;
     }
     cursor = parents.get(cursor);
   }
   return undefined;
+}
+
+/** The labels (name, else text) of an observation's nodes by role, squashed; computed once per observation. */
+const roleLabels = new WeakMap<ReadonlyMap<string, RedactedNode>, ReadonlyMap<string, ReadonlySet<string>>>();
+
+function labelsByRole(nodes: ReadonlyMap<string, RedactedNode>): ReadonlyMap<string, ReadonlySet<string>> {
+  const cached = roleLabels.get(nodes);
+  if (cached !== undefined) return cached;
+  const index = new Map<string, Set<string>>();
+  for (const node of nodes.values()) {
+    const label = squash(node.name ?? node.text ?? '');
+    if (label === '') continue;
+    const role = node.role ?? '';
+    index.set(role, (index.get(role) ?? new Set()).add(label));
+  }
+  roleLabels.set(nodes, index);
+  return index;
 }
 
 /** Parent id of every non-root node, derived from the tree the node map indexes. */

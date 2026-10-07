@@ -10,7 +10,7 @@ import { AttemptBudget } from '../../src/run/budget.ts';
 /** Publishes a fake attempt with its own soft-failure collector; `end()` clears it. */
 function attempt(): { soft: SoftFailures; end: () => void } {
   const end = new AbortController();
-  const soft = new SoftFailures();
+  const soft = new SoftFailures(() => -1);
   publishAttempt(
     {
       attemptId: 'attempt',
@@ -34,6 +34,16 @@ function thrownBy(run: () => unknown): unknown {
 }
 
 describe('expect.soft', () => {
+  it('remembers what was verified when its first failure landed, not when the body settled', () => {
+    let verified = 3;
+    const soft = new SoftFailures(() => verified);
+    vexpect(soft.verifiedBeforeFirstFailure).toBeUndefined();
+    soft.keep(new TestError('ASSERTION_FAILED', 'first'));
+    verified = 7;
+    soft.keep(new TestError('ASSERTION_FAILED', 'second'));
+    vexpect(soft.verifiedBeforeFirstFailure).toBe(3);
+  });
+
   it('throws like expect outside an attempt', () => {
     const error = thrownBy(() => e2eExpect.soft(1).toBe(2));
     vexpect(error).toBeInstanceOf(TestError);

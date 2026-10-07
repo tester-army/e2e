@@ -1,0 +1,88 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T09:16:18.654Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "scrollUntil",
+        "summary": "scroll down until \"Row 0512\" shows (55 screens)",
+        "text": "Row 0512",
+        "direction": "down"
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Row 0512\"",
+        "target": {
+          "role": "group",
+          "name": "Row 0512",
+          "testId": "row-512",
+          "selector": "id=row-512"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Huge%20Virtualized%20List",
+      "targetId": "android-emulator",
+      "instructionDigest": "0cbf462391106879e99df44b824d6b362b915d99d44a02d241309ec3d4bf4041",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Tapped Row 0512, and the screen now displays “Found Row 0512.”",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Found Row 0512",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "All 600 rows are loaded. Scroll to Row 0512 and tap it."
+      },
+      {
+        "role": "group",
+        "name": "Row 0001",
+        "testId": "row-1"
+      },
+      {
+        "role": "group",
+        "name": "Row 0002",
+        "testId": "row-2"
+      },
+      {
+        "role": "group",
+        "name": "Row 0003",
+        "testId": "row-3"
+      },
+      {
+        "role": "group",
+        "name": "Row 0004",
+        "testId": "row-4"
+      },
+      {
+        "role": "group",
+        "name": "Row 0005",
+        "testId": "row-5"
+      },
+      {
+        "role": "group",
+        "name": "Row 0006",
+        "testId": "row-6"
+      },
+      {
+        "role": "group",
+        "name": "Row 0007",
+        "testId": "row-7"
+      }
+    ],
+    "endWaitMs": 11324
+  }
+}

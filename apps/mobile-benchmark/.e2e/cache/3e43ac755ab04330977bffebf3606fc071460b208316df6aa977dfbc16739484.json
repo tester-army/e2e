@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T07:52:08.379Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap other \"Choose photo\"",
+        "target": {
+          "role": "other",
+          "name": "Choose photo",
+          "testId": "choose-photo",
+          "selector": "id=choose-photo"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap image \"Photo, October 03, 22:50\"",
+        "target": {
+          "role": "image",
+          "name": "Photo, October 03, 22:50",
+          "testId": "PXGGridLayout-Info",
+          "selector": "id=PXGGridLayout-Info"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Photo%20Picker",
+      "targetId": "ios-simulator",
+      "instructionDigest": "d601aab262121b364841d0fcc4785cb58a9ec678addac0d10f4a1683f22638a6",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Selected the most recent library photo (October 03, 22:50). The picker returned to the expense screen and confirms “Receipt attached: icon.png”.",
+    "startPath": "dev.e2e.benchmark / Photo Picker",
+    "endPath": "dev.e2e.benchmark / Photo Picker",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Receipt attached: icon.png",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Expense report"
+      },
+      {
+        "role": "text",
+        "name": "Attach the receipt photo from your photo library to submit this expense."
+      },
+      {
+        "role": "other",
+        "name": "Choose photo",
+        "testId": "choose-photo"
+      }
+    ],
+    "endWaitMs": 12123
+  }
+}

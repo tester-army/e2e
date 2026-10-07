@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T09:03:10.609Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap group \"Enable microphone\" in \"Voice notes\"",
+        "target": {
+          "role": "group",
+          "name": "Enable microphone",
+          "testId": "request-permission",
+          "selector": "id=request-permission",
+          "within": "Voice notes"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Permission%20Prompt",
+      "targetId": "android-emulator",
+      "instructionDigest": "b0942b32f51f5f05d38db2a1978624dad1187acfb8aca674dbbb09cc9c29ac87",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Tapped Enable microphone. The app now displays “Microphone enabled,” confirming microphone access was granted.",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Microphone enabled",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Voice notes"
+      },
+      {
+        "role": "text",
+        "name": "Recording voice notes requires microphone access. Allow the permission when the system asks."
+      },
+      {
+        "role": "group",
+        "name": "Enable microphone",
+        "testId": "request-permission"
+      }
+    ],
+    "endWaitMs": 12095
+  }
+}

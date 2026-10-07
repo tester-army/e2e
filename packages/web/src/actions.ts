@@ -61,7 +61,7 @@ async function setChecked(target: ActionTarget, checked: boolean, timeout: numbe
       throw cause;
     }
     if (after !== checked) {
-      throw new EngineError('NOT_ACTIONABLE', `${verb} clicked the control but its checked state did not change`, {
+      throw new EngineError('ACTION_MAY_HAVE_COMMITTED', `${verb} clicked the control but its checked state did not change`, {
         retryable: false,
       });
     }

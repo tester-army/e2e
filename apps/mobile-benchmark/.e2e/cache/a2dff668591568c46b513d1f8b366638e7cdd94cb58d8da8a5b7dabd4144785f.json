@@ -1,0 +1,92 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T07:29:42.222Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Actions, tab, 3 of 3\"",
+        "target": {
+          "role": "button",
+          "name": "Actions, tab, 3 of 3",
+          "testId": "tab-actions",
+          "selector": "id=tab-actions"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Complete action\"",
+        "target": {
+          "role": "other",
+          "name": "Complete action",
+          "testId": "complete-action-button",
+          "selector": "id=complete-action-button"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Bottom%20Tabs",
+      "targetId": "ios-simulator",
+      "instructionDigest": "e537c4fc20970c63b73faeca0620f6f3aa5afdc8ad6e5b0964959e0f5762de45",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Opened the Actions tab and pressed the Complete action button. The screen now shows “Action completed.”",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Actions"
+      },
+      {
+        "role": "text",
+        "name": "Action completed",
+        "testId": "success-message"
+      },
+      {
+        "role": "button",
+        "name": "Home, tab, 1 of 3",
+        "testId": "tab-home"
+      },
+      {
+        "role": "button",
+        "name": "Actions, tab, 3 of 3",
+        "testId": "tab-actions",
+        "states": [
+          "selected"
+        ]
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Home",
+        "testId": "home-tab-content"
+      },
+      {
+        "role": "text",
+        "name": "Go to the Actions tab and press the button there."
+      },
+      {
+        "role": "button",
+        "name": "Home, tab, 1 of 3",
+        "testId": "tab-home",
+        "states": [
+          "selected"
+        ]
+      },
+      {
+        "role": "button",
+        "name": "Actions, tab, 3 of 3",
+        "testId": "tab-actions"
+      }
+    ],
+    "endWaitMs": 11847
+  }
+}

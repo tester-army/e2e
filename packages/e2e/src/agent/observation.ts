@@ -588,6 +588,12 @@ export interface SettleOptions<T> {
    */
   readonly stableWaitMs: number;
   readonly pollMs?: number | undefined;
+  /**
+   * Called when a capture, in either phase, has left `changedFrom`'s shape:
+   * the action changed the screen, even when a later capture reads as it was
+   * again (a save that showed "Saving…" and came back).
+   */
+  readonly onLeft?: (() => void) | undefined;
 }
 
 /**
@@ -616,11 +622,15 @@ export async function settleObservation<T>(
 ): Promise<T> {
   const pollMs = options.pollMs ?? SETTLE_POLL_MS;
   const transitional = options.transitional ?? (() => false);
+  const changeShapeOf = options.changeShapeOf ?? shapeOf;
+  const noteLeft = (captured: T) => {
+    if (options.changedFrom !== undefined && changeShapeOf(captured) !== options.changedFrom.shape) options.onLeft?.();
+  };
   let value = await capture();
   let shape = shapeOf(value);
   if (shape === undefined) return value;
+  noteLeft(value);
   if (options.changedFrom !== undefined) {
-    const changeShapeOf = options.changeShapeOf ?? shapeOf;
     while (
       (changeShapeOf(value) === options.changedFrom.shape || transitional(value)) &&
       Date.now() < options.changedFrom.deadlineMs &&
@@ -630,6 +640,7 @@ export async function settleObservation<T>(
       value = await capture();
       shape = shapeOf(value);
       if (shape === undefined) return value;
+      noteLeft(value);
     }
   }
   const deadlineMs = Date.now() + options.stableWaitMs;
@@ -638,6 +649,7 @@ export async function settleObservation<T>(
     value = await capture();
     const next = shapeOf(value);
     if (next === undefined) return value;
+    noteLeft(value);
     const stable = next === shape;
     shape = next;
     if (stable && (options.changedFrom === undefined || !transitional(value))) break;

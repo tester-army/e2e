@@ -1,0 +1,98 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T08:57:06.563Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"tester@tester.army\" into textbox \"Email\" in \"Use tester@tester.army / <secret:benchm…\"",
+        "target": {
+          "role": "textbox",
+          "name": "Email",
+          "testId": "email-input",
+          "placeholder": "Email",
+          "selector": "id=email-input",
+          "within": "Use tester@tester.army / <secret:benchmark.password>"
+        },
+        "value": "tester@tester.army"
+      },
+      {
+        "name": "typeSecret",
+        "summary": "fill secret \"benchmark.password\" into textbox \"Password\" in \"Use tester@tester.army / <secret:benchm…\"",
+        "target": {
+          "role": "textbox",
+          "name": "Password",
+          "testId": "password-input",
+          "placeholder": "Password",
+          "selector": "id=password-input",
+          "inputPurpose": "password",
+          "within": "Use tester@tester.army / <secret:benchmark.password>"
+        },
+        "secret": "benchmark.password"
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Log in\" in \"Use tester@tester.army / <secret:benchm…\"",
+        "target": {
+          "role": "group",
+          "name": "Log in",
+          "testId": "login-button",
+          "selector": "id=login-button",
+          "within": "Use tester@tester.army / <secret:benchmark.password>"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Login%20Form",
+      "targetId": "android-emulator",
+      "instructionDigest": "faf898a5790a0ed0790b7cf57f66838eaa92ae4cb5975ac34563020bbe5cc9a3",
+      "paramsDigest": "7c4620c298b4003cb825c790cc548f7357fad575798b56d1bf1966e88babd7b9",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Logged in with tester@tester.army and the provided password. The screen confirms “Logged in successfully” and shows a Log out control.",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Logged in successfully",
+        "testId": "success-message"
+      },
+      {
+        "role": "group",
+        "name": "Log out",
+        "testId": "logout-button"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Use tester@tester.army / <secret:benchmark.password>"
+      },
+      {
+        "role": "textbox",
+        "name": "Email",
+        "testId": "email-input",
+        "placeholder": "Email"
+      },
+      {
+        "role": "textbox",
+        "name": "Password",
+        "testId": "password-input",
+        "placeholder": "Password",
+        "inputPurpose": "password"
+      },
+      {
+        "role": "group",
+        "name": "Log in",
+        "testId": "login-button"
+      }
+    ],
+    "endWaitMs": 11933
+  }
+}

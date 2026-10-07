@@ -32,7 +32,7 @@
  * route word, and a screen that looks alike on another route (a settings
  * page and a profile page sharing one layout) is exactly where a wrong link
  * lands. A device engine reports a screen title in place of a URL, which is
- * already a route and compares as itself.
+ * already a route but for the record ids in it, read as `:id` the same way.
  */
 
 type Route =
@@ -116,7 +116,9 @@ function locationParts(location: string): { readonly origin?: string; readonly p
     return undefined;
   }
   const hashAt = rest.indexOf('#');
-  const fragment = hashAt === -1 ? '' : rest.slice(hashAt + 1);
+  // A hash-bang app (`#!/companies/1`) routes in the fragment like `#/companies/1` does.
+  const rawFragment = hashAt === -1 ? '' : rest.slice(hashAt + 1);
+  const fragment = rawFragment.startsWith('!/') ? rawFragment.slice(1) : rawFragment;
   const [documentPath, documentSearch] = splitOnce(hashAt === -1 ? rest : rest.slice(0, hashAt), '?');
   if (!fragment.startsWith('/')) return { ...(origin === undefined ? {} : { origin }), pathname: documentPath, search: documentSearch };
   const [fragmentPath, fragmentSearch] = splitOnce(fragment, '?');
@@ -142,10 +144,20 @@ function queryTerms(search: string): string[] {
   return terms.toSorted();
 }
 
+/**
+ * A location that is not a web address, a device's `<app> / <screen title>`,
+ * with each word minted per record read as `:id` by the path segment rules:
+ * `Order 48213` and `Order 48214` are one screen, as `/orders/48213` and
+ * `/orders/48214` are.
+ */
+function opaqueRoute(location: string): string {
+  return location.replace(/[\p{L}\p{N}_-]+/gu, (word) => (MINTED_SEGMENT.some((pattern) => pattern.test(word)) ? PARAM : word));
+}
+
 /** The route of a location. */
 function routeOf(location: string): Route {
   const parts = locationParts(location);
-  if (parts === undefined) return { kind: 'opaque', location };
+  if (parts === undefined) return { kind: 'opaque', location: opaqueRoute(location) };
   const segments = parts.pathname
     .split('/')
     .filter((raw) => raw !== '')

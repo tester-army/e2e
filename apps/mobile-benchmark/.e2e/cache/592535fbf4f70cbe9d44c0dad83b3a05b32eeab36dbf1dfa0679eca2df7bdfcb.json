@@ -1,0 +1,125 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T07:52:24.489Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap other \"Trail Mix, 500 g · $6.99\"",
+        "target": {
+          "role": "other",
+          "name": "Trail Mix, 500 g · $6.99",
+          "testId": "product-trail-mix-500",
+          "selector": "id=product-trail-mix-500"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"+\"",
+        "target": {
+          "role": "other",
+          "name": "+",
+          "testId": "quantity-increase",
+          "selector": "id=quantity-increase"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Add to cart\"",
+        "target": {
+          "role": "other",
+          "name": "Add to cart",
+          "testId": "add-to-cart",
+          "selector": "id=add-to-cart"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Cart (2)\"",
+        "target": {
+          "role": "other",
+          "name": "Cart (2)",
+          "testId": "open-cart",
+          "selector": "id=open-cart"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Product%20Catalog",
+      "targetId": "ios-simulator",
+      "instructionDigest": "df6d87ed0275359863ecaf58d94669a7d2b9881afd75c25cb6af7327bb4e052d",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Opened the exact Trail Mix 500 g product, increased quantity to 2, added it to the cart, and opened the cart. The cart shows “2 × Trail Mix 500 g” and “Order ready: 2 × Trail Mix 500 g”.",
+    "startPath": "dev.e2e.benchmark / Product Catalog",
+    "endPath": "dev.e2e.benchmark / Product Catalog",
+    "endAnchors": [
+      {
+        "role": "other",
+        "name": "‹ Back to catalog",
+        "testId": "back-to-list"
+      },
+      {
+        "role": "text",
+        "name": "Cart"
+      },
+      {
+        "role": "text",
+        "name": "2 × Trail Mix 500 g"
+      },
+      {
+        "role": "text",
+        "name": "Order ready: 2 × Trail Mix 500 g",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Add exactly 2 × Trail Mix 500 g to the cart, then review the cart"
+      },
+      {
+        "role": "other",
+        "name": "Cart (0)",
+        "testId": "open-cart"
+      },
+      {
+        "role": "other",
+        "name": "Trail Mix, 250 g · $3.99",
+        "testId": "product-trail-mix-250"
+      },
+      {
+        "role": "other",
+        "name": "Favorite Trail Mix 250 g",
+        "testId": "favorite-trail-mix-250"
+      },
+      {
+        "role": "other",
+        "name": "Trail Mix, 500 g · $6.99",
+        "testId": "product-trail-mix-500"
+      },
+      {
+        "role": "other",
+        "name": "Favorite Trail Mix 500 g",
+        "testId": "favorite-trail-mix-500"
+      },
+      {
+        "role": "other",
+        "name": "Trail Mix, 1 kg · $11.99",
+        "testId": "product-trail-mix-1000"
+      },
+      {
+        "role": "other",
+        "name": "Favorite Trail Mix 1 kg",
+        "testId": "favorite-trail-mix-1000"
+      }
+    ],
+    "endWaitMs": 11918
+  }
+}

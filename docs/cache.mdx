@@ -24,9 +24,11 @@ The run summary reports the outcomes:
 | `handed off` | `agent-concluded` | Replay started, then the agent took over. |
 | `missed` | `missed` | The agent ran the step from the beginning. |
 
-Misses and hand-offs also include `step.cache.reason`. `agent.act()` returns
-the same cache object as `result.cache`. The cache object is absent when
-caching is off for the step.
+Misses and hand-offs also include `step.cache.reason`. `step.cache.relocated`
+counts the replayed actions whose control was found only by a fallback (see
+below), and the run summary adds `relocated` for those steps. `agent.act()`
+returns the same cache object as `result.cache`. The cache object is absent
+when caching is off for the step.
 
 To rule the cache out of a failure, run once without it:
 
@@ -53,7 +55,9 @@ bunx e2e run --no-cache
    for missing controls and stops if a match is ambiguous. A control with no
    name is found by its place among the unnamed controls of its kind inside
    the same named row, list item, or group; with no such container to tell
-   it from its twins, the agent takes the step.
+   it from its twins, the agent takes the step. When nothing matches every
+   recorded detail, the runner falls back to fewer, most stable first (see
+   [Fallbacks](#fallbacks)).
 3. Check the final route and what the original step changed: the controls
    that appeared, with their checked, selected, expanded, or pressed state,
    and the ones that went away. At least one of those changes must happen
@@ -62,10 +66,47 @@ bunx e2e run --no-cache
    that should produce it proves nothing; a step whose last action moved to
    another route has that move as its evidence. An alert the replay raised
    that the recording never saw stops it too. Text that reads differently on
-   every run, a date, a time, a duration, an id, is not used, except in an
-   alert, where it is read as a placeholder.
+   every run, a date, a time, a duration, an id, is read as a placeholder,
+   and used only when the step changed nothing more stable, or in an alert.
 4. Finish without a model call, or let the agent continue with a record of
    what ran and why replay stopped.
+
+Replays run at the pace the recording saw. After each action the runner
+waits up to two seconds for the screen to change, then for it to hold
+still. An action that changed nothing on screen when it was recorded, such
+as a right-click that opens a native menu or a key that moves the cursor,
+is marked in the recording, and a replay waits only a short beat after it.
+
+### Fallbacks
+
+UI copy changes more often than test ids. A control whose test id the app
+generates anew on each render is still an exact match when everything
+else recorded matches, and no other control carries the recorded test id.
+When no control matches everything recorded, the runner tries these in
+order and takes the first that finds exactly one control:
+
+1. The test id and the role: a button relabeled from `Save` to `Save changes`.
+2. The test id alone: the button also became a link.
+3. The role and accessible name: the test id or a placeholder changed.
+4. The accessible name across one kind of control: a link restyled as a
+   button, a checkbox redrawn as a switch, a text field given suggestions.
+
+A control matched this way must be found the same way on a second look a
+moment later, so a page still leaving is never acted on. The recorded row
+or group still has to match, and when the test id points at one control and
+the name at another, the agent takes the step. A control recorded among
+identical twins is found only by its place among the same number of them. A
+tapped checkbox, switch, or radio is found only in the state it was tapped
+in, since the tap flips it. An action the app never received, such as a tap
+that landed while a list re-rendered, is tried once more after the screen
+holds still.
+A control recorded by its role alone, with no name, text, placeholder, or
+test id, has no fallback.
+
+A replay that used a fallback and passed re-records the step in
+`read-write` mode, so the next run matches exactly. In `read-only` mode the
+entry keeps replaying through the fallback; `step.cache.relocated` shows
+which steps to re-record.
 
 A route is the origin, the path, and the query. Ids, tokens, timestamps,
 and cache busters in either the path or the query are read as an id
@@ -256,7 +297,7 @@ Treat committed entries as test data and review them in the pull request
 that re-recorded them.
 
 Local runs leave a committed directory clean unless something changed. A
-replayed step never rewrites its entry, and a live re-recording with the same
+replayed step never rewrites its entry unless it needed a fallback, and a live re-recording with the same
 actions, paths, and anchors is not written: the summary, the measured end
 wait, and the rule that flagged a typed run-time value differ between two
 live runs of the same flow and do not count. Upgrading `e2e` to a version
@@ -264,7 +305,11 @@ that changes how entries are matched re-keys every entry, so the first run
 after it records them again. A file changes when:
 
 - a step records for the first time,
+- an entry recorded by an `e2e` version before replay pacing gets its
+  pacing, once, from the next run that records or replays it,
 - the agent finishes a step after a hand-off, re-recording what it saw,
+- a replay found a control only by a [fallback](#fallbacks), re-recording
+  the control as it reads now,
 - a step fails after replaying, or ends in an `end-mismatch` the agent had
   to repair, which deletes the entry,
 - a step with an entry passes without leaving anything to record, which
@@ -272,8 +317,7 @@ after it records them again. A file changes when:
 - no verification step confirmed the entry by the end of the attempt, which
   deletes it.
 
-A replay that still finds every control refreshes nothing, so an entry for a
-drifting UI is repaired only once a control can no longer be found.
+A replay that finds every control exactly refreshes nothing.
 
 ## Fail on a stale recording
 
@@ -307,7 +351,12 @@ context. The message names that file; delete it once nothing replays it. A custo
 `cache.store` is not checked this way. Entries recorded before this check
 existed are covered once a `read-write` run replays or re-records them. A
 step never recorded (a new or edited instruction or params), a retry, a
-`gap`, and a `truncated` recording still run live. `REPLAY_STALE` exits 2 and is not retried, since a
+`gap`, and a `truncated` recording still run live. A replay that needed a
+[fallback](#fallbacks) is not stale by itself: when it finishes and passes
+its end-state checks it passes with no model call, and when it fails an
+action or the end state it fails like any other replay. `relocated` in the
+run summary counts the steps that needed one; `step.cache.relocated` in the
+report names them. `REPLAY_STALE` exits 2 and is not retried, since a
 retry never replays and would pass live. The entry stays where it is, even
 in `read-write` mode, so every strict run fails on it until it is re-recorded:
 run the test in `read-write` mode without the flag, and with `cache.strict`

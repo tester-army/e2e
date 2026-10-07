@@ -129,6 +129,14 @@ describe('classifyActionError', () => {
     expect(classifyActionError(cut, TAP)).toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED', retryable: false, cause: cut });
   });
 
+  it('treats a press that timed out waiting for the navigation its key started as uncertain', () => {
+    const error = new Error(
+      'locator.press: Timeout 2000ms exceeded.\nCall log:\n  - waiting for locator(\'#q\')\n    - locator resolved to <input id="q" name="q"/>\n  - elementHandle.press("Enter")\n',
+    );
+    error.name = 'TimeoutError';
+    expect(classifyActionError(error, { kind: 'press', key: 'Enter' })).toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED' });
+  });
+
   it('keeps a bare timeout without a call log a plain actionability miss', () => {
     const error = new Error('Timeout 5000ms exceeded');
     error.name = 'TimeoutError';

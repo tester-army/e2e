@@ -115,10 +115,10 @@ describe.each(KINDS)('through the %s target', (kind) => {
     expect(await page.getAttribute('#box', 'aria-checked')).toBe('true');
   });
 
-  it('fails a click that left the control as it was', async () => {
+  it('fails a click that left the control as it was, as one the app may have acted on', async () => {
     await page.setContent('<label><input type="checkbox" id="box" onclick="event.preventDefault()">Locked</label>');
     expect(await perform(await targetOf(kind, '#box'), { kind: 'check' })).toMatchObject({
-      code: 'NOT_ACTIONABLE',
+      code: 'ACTION_MAY_HAVE_COMMITTED',
       message: 'check clicked the control but its checked state did not change',
     });
   });

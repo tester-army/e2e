@@ -483,6 +483,7 @@ class ActDispatch {
       get traceEligible() { return feed.traceEligible; },
       observe: async (mode) => screenOf(await this.feed.probe(mode), this.runtime.app.base?.origin),
       actions: this.dispatcher.actions,
+      withChangeWait: (changeWaitMs, call) => this.dispatcher.withChangeWait(changeWaitMs, call),
       signal: this.accounting.signal,
       remainingMs: () => this.accounting.remainingMs(),
       replaying: (active) => {

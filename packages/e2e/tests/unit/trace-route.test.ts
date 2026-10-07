@@ -67,6 +67,8 @@ describe('route identity', () => {
     expect(alike('/app/#/settings?tab=2', '/settings?tab=3')).toBe(true);
     expect(alike('/app/?lang=en#/settings?tab=billing', '/settings?lang=en&tab=billing')).toBe(true);
     expect(alike('https://app.example.test/#/orders/42', 'https://app.example.test/orders/7')).toBe(true);
+    expect(alike('/#!/companies/42', '/#/companies/7', '/companies/9')).toBe(true);
+    expect(alike('/#!/companies', '/#!/settings')).toBe(false);
   });
 
   it('treats a segment with whitespace as a record name, and a literal plus as a literal', () => {
@@ -84,6 +86,13 @@ describe('route identity', () => {
     }
     expect(alike('Settings', 'General')).toBe(false);
     expect(alike('Settings', '/Settings')).toBe(false);
+  });
+
+  it('reads a record id in a device screen title as an id, by the path segment rules', () => {
+    expect(alike('com.example.shop / Order 48213', 'com.example.shop / Order 48214')).toBe(true);
+    expect(alike('com.example.shop / Invoice INV-2041', 'com.example.shop / Invoice INV-2042')).toBe(true);
+    expect(alike('com.example.shop / Order 48213', 'com.example.shop / Refund 48213')).toBe(false);
+    expect(alike('com.example.shop / Page 2', 'com.example.shop / Page two')).toBe(false);
   });
 });
 

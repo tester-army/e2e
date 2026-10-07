@@ -1,0 +1,88 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T07:48:23.096Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"Benchmark Target\" into textbox \"Search…\"",
+        "target": {
+          "role": "textbox",
+          "testId": "search-input",
+          "placeholder": "Search…",
+          "selector": "id=search-input"
+        },
+        "value": "Benchmark Target"
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Benchmark Target\"",
+        "target": {
+          "role": "other",
+          "name": "Benchmark Target",
+          "testId": "result-Benchmark Target",
+          "selector": "id=\"result-Benchmark Target\""
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Benchmark Target\"",
+        "target": {
+          "role": "other",
+          "name": "Benchmark Target",
+          "testId": "result-Benchmark Target",
+          "selector": "id=\"result-Benchmark Target\""
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Debounced%20Search",
+      "targetId": "ios-simulator",
+      "instructionDigest": "c212f90679a61041258d6d57a10468462a17a4c9c398605f324169c734daa7f5",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Selected the single “Benchmark Target” result after the keyboard closed. The screen now displays “Selected Benchmark Target.”",
+    "startPath": "dev.e2e.benchmark / Debounced Search",
+    "endPath": "dev.e2e.benchmark / Debounced Search",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Selected Benchmark Target",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Search for and select \"Benchmark Target\""
+      },
+      {
+        "role": "textbox",
+        "testId": "search-input",
+        "placeholder": "Search…"
+      },
+      {
+        "role": "other",
+        "name": "Vertical scroll bar, 1 page",
+        "value": "0%"
+      },
+      {
+        "role": "other",
+        "name": "Horizontal scroll bar, 1 page",
+        "value": "0%"
+      },
+      {
+        "role": "other",
+        "name": "Vertical scroll bar, 1 page",
+        "testId": "search-results"
+      }
+    ],
+    "endWaitMs": 12059
+  }
+}

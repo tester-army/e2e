@@ -12,10 +12,28 @@ import { currentAttempt } from './attempt.ts';
 export class SoftFailures {
   private readonly failures: E2EError[] = [];
   private open = true;
+  private readonly lastVerified: () => number;
+  private verifiedAtFirst: number | undefined;
+
+  /** `lastVerified` reads the attempt's highest passed verification step index (`StepRecorder.lastVerifiedStepIndex`). */
+  constructor(lastVerified: () => number) {
+    this.lastVerified = lastVerified;
+  }
+
+  /**
+   * The highest verified step index when the first failure was kept, or
+   * undefined when none was. The attempt fails where that failure landed, not
+   * where the body settled: a check that passed after it confirms no replay
+   * cache entry the failed one may have been about.
+   */
+  get verifiedBeforeFirstFailure(): number | undefined {
+    return this.verifiedAtFirst;
+  }
 
   /** Keeps `error` for the verdict; false once the body has settled, when the caller must throw it instead. */
   keep(error: E2EError): boolean {
     if (!this.open) return false;
+    this.verifiedAtFirst ??= this.lastVerified();
     this.failures.push(error);
     return true;
   }

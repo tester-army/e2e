@@ -44,7 +44,7 @@ import {
   ConfigurationError,
   TestError,
 } from 'e2e/engine';
-import { isNoSessionApp, isSnapshotPresentationFailure, runCommand, staleOr } from './errors.ts';
+import { isNoSessionApp, isSnapshotPresentationFailure, runCommand, refusedOr } from './errors.ts';
 import { pointerInteraction, DEFAULT_LONG_PRESS_MS } from './actions.ts';
 import { resolveExpression } from './locate.ts';
 import {
@@ -333,6 +333,9 @@ function settleOptions(settle: MobileOptions['settle']): SettleOptions {
   }
   return { settle: true, settleQuietMs: quietMs };
 }
+
+/** Waits before each retry of a capture that failed the runner's presentation check: a beat, then long enough for an iOS transition to land. */
+const PRESENTATION_RETRY_MS: readonly number[] = [150, 400];
 
 export class AgentDeviceSurface {
   private client: AgentDeviceClient | undefined;
@@ -879,20 +882,26 @@ export class AgentDeviceSurface {
   }
 
   /**
-   * One capture, taken again once when the iOS runner acquired the tree but
+   * One capture, taken again when the iOS runner acquired the tree but
    * failed its own presentation check on it (a viewport it could not read, a
-   * malformed graph). The check is per capture and a capture is a read, so
-   * the retry is safe; a second failure is the runner's and propagates.
+   * node outside its parent's clip). The check is per capture and a capture
+   * is a read, so a retry is safe. The usual cause is a view mid-animation
+   * (an alert or a modal dismissing), so the retries wait for it to land
+   * (`PRESENTATION_RETRY_MS`); a failure that outlasts them is the runner's
+   * and propagates.
    */
   private async capture(signal: AbortSignal, interactiveOnly: boolean): Promise<RawSnapshot> {
     const take = (): Promise<RawSnapshot> =>
       this.command('snapshot', (client) => client.capture.snapshot({ interactiveOnly }), signal);
-    try {
-      return await take();
-    } catch (cause) {
-      if (signal.aborted || !isSnapshotPresentationFailure(cause)) throw cause;
-      return take();
+    for (const delayMs of PRESENTATION_RETRY_MS) {
+      try {
+        return await take();
+      } catch (cause) {
+        if (signal.aborted || !isSnapshotPresentationFailure(cause)) throw cause;
+        await sleep(delayMs, signal);
+      }
     }
+    return take();
   }
 
   /**
@@ -1189,7 +1198,7 @@ export class AgentDeviceSurface {
     try {
       await raceAbort(() => this.track(run()), operation.signal, label);
     } catch (cause) {
-      throw staleOr(cause, label, this.where);
+      throw refusedOr(cause, label, this.where);
     }
     this.markAction(before);
   }

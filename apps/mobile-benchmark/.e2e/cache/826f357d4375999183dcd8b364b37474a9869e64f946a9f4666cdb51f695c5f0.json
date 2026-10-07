@@ -1,0 +1,76 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T08:58:51.011Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tapAt",
+        "summary": "tap the point (749, 1458) on group",
+        "point": {
+          "x": 749,
+          "y": 1458
+        },
+        "viewport": {
+          "width": 1080,
+          "height": 2400
+        }
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (331, 1458) on group",
+        "point": {
+          "x": 331,
+          "y": 1458
+        },
+        "viewport": {
+          "width": 1080,
+          "height": 2400
+        }
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (540, 1458) on group",
+        "point": {
+          "x": 540,
+          "y": 1458
+        },
+        "viewport": {
+          "width": 1080,
+          "height": 2400
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Vision%20Only",
+      "targetId": "android-emulator",
+      "instructionDigest": "e950bf904a3587f9a1d42a4dc15c29517000d20a1e31c8bd896e96a9c6ebd6d1",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Tapped the square, then circle, then diamond. The screen now displays “Sequence complete.”",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Sequence complete"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Tap: square, then circle, then diamond"
+      },
+      {
+        "role": "text",
+        "name": "Progress: 0/3"
+      }
+    ],
+    "endWaitMs": 14481
+  }
+}

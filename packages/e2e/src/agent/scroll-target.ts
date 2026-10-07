@@ -11,7 +11,7 @@
  * does; a smaller region that vanished is gone, as for any other action.
  */
 
-import { MAIN_LIST_SHARE } from '../cache/relocate.ts';
+import { MAIN_LIST_SHARE } from '../cache/locate.ts';
 import { overlapShare, viewportShare, type Box } from '../internal/geometry.ts';
 import type { ExecutorTarget } from './executor.ts';
 import { nodeGone, type ObservationFeed, type Resolved } from './observation-feed.ts';

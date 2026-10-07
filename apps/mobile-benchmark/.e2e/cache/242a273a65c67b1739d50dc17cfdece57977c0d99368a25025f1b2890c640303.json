@@ -1,0 +1,116 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T07:45:55.979Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"benchmarkuser\" into textbox \"username-input\"",
+        "target": {
+          "role": "textbox",
+          "testId": "username-input",
+          "selector": "id=username-input"
+        },
+        "value": "benchmarkuser"
+      },
+      {
+        "name": "type",
+        "summary": "type \"4826\" into textbox \"pin-input\"",
+        "target": {
+          "role": "textbox",
+          "testId": "pin-input",
+          "selector": "id=pin-input",
+          "inputPurpose": "password"
+        },
+        "value": "4826"
+      },
+      {
+        "name": "tap",
+        "summary": "tap textbox \"Vertical scroll bar, 1 page\"",
+        "target": {
+          "role": "textbox",
+          "name": "Vertical scroll bar, 1 page",
+          "testId": "notes-input",
+          "selector": "id=notes-input"
+        }
+      },
+      {
+        "name": "type",
+        "summary": "type \"These are at least ten characters of no…\" into textbox \"Vertical scroll bar, 1 page\"",
+        "target": {
+          "role": "textbox",
+          "name": "Vertical scroll bar, 1 page",
+          "testId": "notes-input",
+          "selector": "id=notes-input"
+        },
+        "value": "These are at least ten characters of notes."
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Submit\"",
+        "target": {
+          "role": "other",
+          "name": "Submit",
+          "testId": "submit-button",
+          "selector": "id=submit-button"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Text%20Input%20Variations",
+      "targetId": "ios-simulator",
+      "instructionDigest": "fbc47cae1853b33f40b2f33da5fd5f41dfc811c660e7aecb291ad1d964757d21",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Entered username benchmarkuser, a 4-digit PIN, and notes exceeding 10 characters, then submitted. The screen now displays “Form submitted.”",
+    "startPath": "dev.e2e.benchmark / Text Input Variations",
+    "endPath": "dev.e2e.benchmark / Text Input Variations",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Form submitted",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Username (min 3 chars)"
+      },
+      {
+        "role": "textbox",
+        "testId": "username-input"
+      },
+      {
+        "role": "text",
+        "name": "PIN (exactly 4 digits, secure)"
+      },
+      {
+        "role": "textbox",
+        "testId": "pin-input",
+        "inputPurpose": "password"
+      },
+      {
+        "role": "text",
+        "name": "Notes (multiline, min 10 chars) — 0/10"
+      },
+      {
+        "role": "other",
+        "name": "Submit",
+        "testId": "submit-button"
+      },
+      {
+        "role": "textbox",
+        "name": "Vertical scroll bar, 1 page",
+        "testId": "notes-input"
+      }
+    ],
+    "endWaitMs": 12079
+  }
+}

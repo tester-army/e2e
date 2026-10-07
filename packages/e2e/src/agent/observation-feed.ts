@@ -8,8 +8,9 @@
  * the engine; the dispatcher and the pixel tier ask the feed.
  */
 
+import type { SettleNote } from '../cache/recorder.ts';
 import type { SemanticNode } from '../engine/surface.ts';
-import { relocateDescriptor } from '../cache/relocate.ts';
+import { relocateExact } from '../cache/locate.ts';
 import { TestError } from '../internal/errors.ts';
 import { isEditable } from '../internal/roles.ts';
 import type { StepAgentDetails, VisionDegradation } from '../run/steps.ts';
@@ -90,7 +91,7 @@ export class ObservationFeed {
    * a tap on a link reads the old page, stable and wrong, and the model
    * repairs what already worked.
    */
-  private pendingChange: PendingChange | undefined;
+  private pendingChange: (PendingChange & { readonly onSettled: SettleNote | undefined }) | undefined;
   /** The last pixel decision recorded on this step: `allowed`, or the withheld reason. */
   private pixelsDecided: string | undefined;
   /** Why requested pixels did not become model input, when they did not. */
@@ -187,11 +188,14 @@ export class ObservationFeed {
    * Gives the screen `waitMs` from this completed action to leave the newest
    * observation's shape. Captures and time before the next observation count
    * toward the window. Nothing is armed without a comparable shape.
+   * `onSettled` is told whether the screen left that shape (the trace
+   * recorder's note, `RecordedAction.quiet`), unless another action's wait
+   * was still pending: the look then answers for both, and neither note.
    */
-  armChange(waitMs: number): void {
-    if (this.newest === undefined) return;
-    const shape = changeShape(this.newest);
-    this.pendingChange = shape === undefined ? undefined : { shape, deadlineMs: Date.now() + waitMs };
+  armChange(waitMs: number, onSettled?: SettleNote): void {
+    const stacked = this.pendingChange !== undefined;
+    const shape = this.newest === undefined ? undefined : changeShape(this.newest);
+    this.pendingChange = shape === undefined ? undefined : { shape, deadlineMs: Date.now() + waitMs, onSettled: stacked ? undefined : onSettled };
   }
 
   /**
@@ -256,7 +260,7 @@ export class ObservationFeed {
     );
     this.publish(observation);
     if (observation.kind === 'pixels') return undefined;
-    const relocated = relocateDescriptor(descriptor, observation.nodes);
+    const relocated = relocateExact(descriptor, observation.nodes);
     if (relocated.kind !== 'found') return undefined;
     const node = observation.nodes.get(relocated.id);
     return node === undefined ? undefined : { node, observation };
@@ -317,7 +321,8 @@ export class ObservationFeed {
     if (mode === 'raw') return this.capture(pixels);
     const changedFrom = this.pendingChange;
     this.pendingChange = undefined;
-    return settleObservation(
+    let left = false;
+    const settled = settleObservation(
       () => this.capture(pixels),
       observationShape,
       {
@@ -332,8 +337,17 @@ export class ObservationFeed {
         stableWaitMs: mode === 'held-still' ? HELD_STILL_MS : 0,
         changeShapeOf: changeShape,
         transitional: isTransitionalObservation,
+        onLeft: () => {
+          left = true;
+        },
       },
     );
+    const note = changedFrom?.onSettled;
+    if (note === undefined) return settled;
+    return settled.then((observation) => {
+      note(left);
+      return observation;
+    });
   }
 
   /** Makes an observation the newest, remembers it among the recent ones, and books its size. */
@@ -445,7 +459,7 @@ export class ObservationFeed {
     if (earlier === undefined) return undefined;
     const descriptor = describeTarget(earlier);
     if (descriptor === undefined) return undefined;
-    const relocated = relocateDescriptor(descriptor, latest.nodes);
+    const relocated = relocateExact(descriptor, latest.nodes);
     return relocated.kind === 'found' ? latest.nodes.get(relocated.id) : undefined;
   }
 

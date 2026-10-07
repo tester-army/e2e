@@ -935,6 +935,8 @@ export class TargetExecutor implements SerialHost {
     // afterEach cleanup, teardown — must not confirm traces the failure
     // implicated (a cleanup assertion says nothing about the failed flow).
     let lastVerifiedAtFailure = -1;
+    // Opened with the body; read when the attempt settles its cache entries.
+    let attemptSoft: SoftFailures | undefined;
     // Whether any failure, primary or later, says something about the app:
     // one where no model answered does not, but an afterEach assertion
     // failing after it still implicates the flows nothing confirmed.
@@ -1051,7 +1053,8 @@ export class TargetExecutor implements SerialHost {
       });
       // `expect.poll` and `expect.soft` take no fixture, so the attempt they
       // run on is published here and cleared when `attemptEnd` fires in `finally`.
-      const soft = new SoftFailures();
+      const soft = new SoftFailures(() => steps.lastVerifiedStepIndex);
+      attemptSoft = soft;
       publishAttempt(
         { attemptId, testKind: pair.test.kind, assertionTimeout: this.config.assertionTimeout, budget, soft },
         attemptEnd.signal,
@@ -1261,7 +1264,12 @@ export class TargetExecutor implements SerialHost {
     // entry.
     if (cache !== undefined && record.status !== 'interrupted') {
       await flushStagedTraces(cache, {
-        lastVerifiedStepIndex: failure === undefined ? steps.lastVerifiedStepIndex : lastVerifiedAtFailure,
+        // A soft failure bounds confirmation whatever the verdict, a skip
+        // that leaves no failure included.
+        lastVerifiedStepIndex: Math.min(
+          failure === undefined ? steps.lastVerifiedStepIndex : lastVerifiedAtFailure,
+          attemptSoft?.verifiedBeforeFirstFailure ?? Infinity,
+        ),
         implicatesUnconfirmed: failure === undefined || implicatesUnconfirmed,
       });
     }

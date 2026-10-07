@@ -1,0 +1,146 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T07:41:00.739Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "scrollUntil",
+        "summary": "scroll down on scroll-view \"Read the agreement, tap Accept terms at…\" until \"Accept terms\" shows (3 screens)",
+        "text": "Accept terms",
+        "direction": "down",
+        "target": {
+          "role": "scroll-view",
+          "name": "Read the agreement, tap Accept terms at the bottom, then Continue."
+        },
+        "spans": 0.806
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Accept terms\"",
+        "target": {
+          "role": "other",
+          "name": "Accept terms",
+          "testId": "accept-terms",
+          "selector": "id=accept-terms"
+        },
+        "quiet": true
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Continue\"",
+        "target": {
+          "role": "other",
+          "name": "Continue",
+          "testId": "continue-button",
+          "selector": "id=continue-button"
+        }
+      },
+      {
+        "name": "scroll",
+        "summary": "scroll down on other \"Read the agreement, tap Accept terms at…\" (2 of 2)",
+        "direction": "down",
+        "target": {
+          "role": "other",
+          "name": "Read the agreement, tap Accept terms at the bottom, then Continue.",
+          "position": {
+            "index": 1,
+            "of": 2
+          }
+        },
+        "spans": 0.806
+      },
+      {
+        "name": "scroll",
+        "summary": "scroll down on other \"Vertical scroll bar, 4 pages\" (2 of 3)",
+        "direction": "down",
+        "target": {
+          "role": "other",
+          "name": "Vertical scroll bar, 4 pages",
+          "position": {
+            "index": 1,
+            "of": 3
+          }
+        },
+        "spans": 0.806,
+        "quiet": true
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Accept terms\"",
+        "target": {
+          "role": "other",
+          "name": "Accept terms",
+          "testId": "accept-terms",
+          "selector": "id=accept-terms"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Continue\"",
+        "target": {
+          "role": "other",
+          "name": "Continue",
+          "testId": "continue-button",
+          "selector": "id=continue-button"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Sticky%20Chrome%20Target",
+      "targetId": "ios-simulator",
+      "instructionDigest": "c8995bcdba36d775696cf386be302127a69622849b54e095755e2dc908af89bd",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Scrolled to the bottom, tapped Accept terms until it showed “Terms accepted ✓,” then tapped Continue. The success screen now displays “Terms accepted.”",
+    "startPath": "dev.e2e.benchmark / Sticky Chrome Target",
+    "endPath": "dev.e2e.benchmark / Sticky Chrome Target",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Terms accepted",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Read the agreement, tap Accept terms at the bottom, then Continue."
+      },
+      {
+        "role": "text",
+        "name": "Section 1"
+      },
+      {
+        "role": "text",
+        "name": "Deterministic agreement paragraph 1 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+      },
+      {
+        "role": "text",
+        "name": "Section 2"
+      },
+      {
+        "role": "text",
+        "name": "Deterministic agreement paragraph 2 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+      },
+      {
+        "role": "text",
+        "name": "Section 3"
+      },
+      {
+        "role": "text",
+        "name": "Deterministic agreement paragraph 3 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+      },
+      {
+        "role": "text",
+        "name": "Section 4"
+      }
+    ],
+    "endWaitMs": 13226
+  }
+}

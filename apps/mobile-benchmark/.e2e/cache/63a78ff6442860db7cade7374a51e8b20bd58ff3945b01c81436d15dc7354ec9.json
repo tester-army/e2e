@@ -1,0 +1,124 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T07:26:47.176Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"tester@tester.army\" into textbox \"Email\"",
+        "target": {
+          "role": "textbox",
+          "testId": "email-input",
+          "placeholder": "Email",
+          "selector": "id=email-input"
+        },
+        "value": "tester@tester.army"
+      },
+      {
+        "name": "press",
+        "summary": "press \"Enter\" on textbox \"tester@tester.army\"",
+        "target": {
+          "role": "textbox",
+          "name": "tester@tester.army",
+          "testId": "email-input",
+          "placeholder": "Email",
+          "selector": "id=email-input"
+        },
+        "key": "Enter"
+      },
+      {
+        "name": "typeSecret",
+        "summary": "fill secret \"benchmark.password\" into textbox \"Password\"",
+        "target": {
+          "role": "textbox",
+          "testId": "password-input",
+          "placeholder": "Password",
+          "selector": "id=password-input",
+          "inputPurpose": "password"
+        },
+        "secret": "benchmark.password"
+      },
+      {
+        "name": "press",
+        "summary": "press \"Enter\" on textbox \"••••••••••••\"",
+        "target": {
+          "role": "textbox",
+          "name": "••••••••••••",
+          "testId": "password-input",
+          "placeholder": "Password",
+          "selector": "id=password-input",
+          "inputPurpose": "password"
+        },
+        "key": "Enter"
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Log in\"",
+        "target": {
+          "role": "other",
+          "name": "Log in",
+          "testId": "login-button",
+          "selector": "id=login-button"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Not Now\"",
+        "target": {
+          "role": "button",
+          "name": "Not Now"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Login%20Form",
+      "targetId": "ios-simulator",
+      "instructionDigest": "faf898a5790a0ed0790b7cf57f66838eaa92ae4cb5975ac34563020bbe5cc9a3",
+      "paramsDigest": "7c4620c298b4003cb825c790cc548f7357fad575798b56d1bf1966e88babd7b9",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Logged in with tester@tester.army and the provided password. The app shows “Logged in successfully” and a Log out control.",
+    "startPath": "dev.e2e.benchmark / Login Form",
+    "endPath": "dev.e2e.benchmark / Login Form",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Logged in successfully",
+        "testId": "success-message"
+      },
+      {
+        "role": "other",
+        "name": "Log out",
+        "testId": "logout-button"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Use tester@tester.army / <secret:benchmark.password>"
+      },
+      {
+        "role": "textbox",
+        "testId": "email-input",
+        "placeholder": "Email"
+      },
+      {
+        "role": "textbox",
+        "testId": "password-input",
+        "placeholder": "Password",
+        "inputPurpose": "password"
+      },
+      {
+        "role": "other",
+        "name": "Log in",
+        "testId": "login-button"
+      }
+    ],
+    "endWaitMs": 12343
+  }
+}

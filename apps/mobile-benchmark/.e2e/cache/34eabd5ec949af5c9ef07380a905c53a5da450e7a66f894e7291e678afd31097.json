@@ -1,0 +1,76 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T08:59:27.346Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "longPress",
+        "summary": "long-press group \"Hold me\" in \"Step 1 of 3\"",
+        "target": {
+          "role": "group",
+          "name": "Hold me",
+          "testId": "long-press-target",
+          "selector": "id=long-press-target",
+          "within": "Step 1 of 3"
+        }
+      },
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
+      {
+        "name": "doubleTap",
+        "summary": "double-tap group \"Double-tap me\" in \"Step 3 of 3\"",
+        "target": {
+          "role": "group",
+          "name": "Double-tap me",
+          "testId": "double-tap-target",
+          "selector": "id=double-tap-target",
+          "within": "Step 3 of 3"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Gestures",
+      "targetId": "android-emulator",
+      "instructionDigest": "548193505ec38bc1149592fdc74a267de461a8b29e29f4e7a168b20807a81a11",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Completed the long-press, left swipe, and double-tap gestures. The screen now confirms “All gestures completed.”",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "All gestures completed",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Step 1 of 3"
+      },
+      {
+        "role": "group",
+        "name": "Hold me",
+        "testId": "long-press-target"
+      }
+    ],
+    "endWaitMs": 14378
+  }
+}

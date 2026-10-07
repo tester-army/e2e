@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T09:03:03.711Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)",
+        "derived": "whole-node"
+      },
+      {
+        "name": "tap",
+        "summary": "tap checkbox \"I accept the terms\"",
+        "target": {
+          "role": "checkbox",
+          "name": "I accept the terms",
+          "testId": "terms",
+          "selector": "id=terms",
+          "states": []
+        },
+        "quiet": true
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Apply coupon\" in \"Checkout coupon\"",
+        "target": {
+          "role": "button",
+          "name": "Apply coupon",
+          "testId": "apply",
+          "selector": "id=apply",
+          "within": "Checkout coupon"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20WebView%20Accessibility",
+      "targetId": "android-emulator",
+      "instructionDigest": "60e9576a643a70f4d33968ccc19d845112ca2ed50212584e9e7aadc34707e5c8",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Read coupon code TA-BENCH-50, entered it, accepted the terms, and applied it. The page displays “Coupon applied.”",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Coupon applied",
+        "testId": "success-message"
+      },
+      {
+        "role": "textbox",
+        "name": "TA-BENCH-50",
+        "testId": "coupon-input",
+        "placeholder": "Coupon code",
+        "value": "TA-BENCH-50"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Apply the coupon shown inside the web page (accept the terms first)"
+      },
+      {
+        "role": "textbox",
+        "testId": "coupon-input",
+        "placeholder": "Coupon code"
+      }
+    ],
+    "endWaitMs": 12861
+  }
+}

@@ -26,7 +26,9 @@ There is no separate spec. The code is the contract, pinned in three places:
   `reference/errors.mdx` or `reference/engine.mdx`, or documented but raised
   nowhere.
 
-There are no RFCs or design documents in the repo. The why lives in PR
+There are no RFCs. The one design document is the replay cache's,
+`packages/e2e/src/cache/README.md`: keep it current with any change to
+the cache's rules. Otherwise the why lives in PR
 descriptions and commit bodies; `git log` and `gh pr view` are the archive.
 ## Layout
 

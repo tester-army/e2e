@@ -1,0 +1,75 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T09:13:41.045Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tapAt",
+        "summary": "tap the point (634, 1392) on group",
+        "point": {
+          "x": 634,
+          "y": 1392
+        },
+        "viewport": {
+          "width": 1080,
+          "height": 2400
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap textbox in \"Enter the code 7291 and press the arrow\" (1 of 1)",
+        "target": {
+          "role": "textbox",
+          "within": "Enter the code 7291 and press the arrow",
+          "position": {
+            "index": 0,
+            "of": 1
+          }
+        },
+        "quiet": true
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)",
+        "derived": "pixels"
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"→\" in \"Enter the code 7291 and press the arrow\"",
+        "target": {
+          "role": "group",
+          "name": "→",
+          "within": "Enter the code 7291 and press the arrow"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Broken%20Accessibility",
+      "targetId": "android-emulator",
+      "instructionDigest": "39a6071dd8e903747ecddcc20ac06b4c62c7e399b90ef1a0c2e79a3bcb5c4e92",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Entered code 7291 and pressed the arrow. The screen now displays “Access granted.”",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Access granted"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Tap the green circle to continue"
+      }
+    ],
+    "endWaitMs": 14051
+  }
+}

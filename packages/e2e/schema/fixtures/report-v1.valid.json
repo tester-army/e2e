@@ -471,11 +471,11 @@
                     "ledgerBytes": 0
                   },
                   "cache": {
-                    "mode": "missed",
-                    "reason": "gap",
-                    "derived": "minted-token",
-                    "replayedActions": 0,
-                    "totalActions": 2
+                    "mode": "agent-concluded",
+                    "reason": "target-not-found",
+                    "replayedActions": 2,
+                    "totalActions": 3,
+                    "relocated": 1
                   },
                   "artifacts": [],
                   "turns": [

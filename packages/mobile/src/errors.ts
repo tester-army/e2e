@@ -83,6 +83,18 @@ const STALE_REF_REASONS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * The `details.reason` values agent-device refuses a press with when the
+ * target offers no point to touch: its bounds are empty or off screen, it is
+ * covered by another node, or its interactive children cover all of it. Each
+ * is raised while resolving the touch point, before the gesture.
+ */
+const UNTOUCHABLE_TARGET_REASONS: ReadonlySet<string> = new Set([
+  'target_bounds_invalid',
+  'target_covered',
+  'covered_by_interactive_descendants',
+]);
+
+/**
  * What the iOS automation runner reported about itself, by the code
  * agent-device emits for it: `RUNNER_WEDGED` at the top level, `RUNNER_BUSY`
  * and `MAIN_THREAD_TIMEOUT` in `details.runnerErrorCode` under
@@ -123,7 +135,10 @@ const RUNNER_STATE: ReadonlyMap<string, { readonly headline: string; readonly fi
  * presenter rewraps as `invalid-presented-payload` on the presented tree and
  * `invalid-quality-payload` on the quality tree, and the payload checks it
  * raises as `invalid-presented-payload` directly (a parent outside the
- * payload, a disabled or off-viewport node marked actionable).
+ * payload, a disabled or off-viewport node marked actionable), the regular
+ * tree's invariants (a node outside its ancestors' clip, which a view
+ * mid-animation trips; an actionable node with no frame), and a projection
+ * that does not match its source (`ios-snapshot-engine`).
  */
 const PRESENTATION_CODE = 'IOS_SNAPSHOT_ENGINE_FAILED';
 const PRESENTATION_REASONS = new Set([
@@ -132,6 +147,9 @@ const PRESENTATION_REASONS = new Set([
   'malformed-graph',
   'invalid-presented-payload',
   'invalid-quality-payload',
+  'regular-node-outside-cumulative-clip',
+  'regular-degenerate-actionable-node',
+  'projection-mismatch',
 ]);
 const PRESENTATION = {
   headline: 'the iOS automation runner could not present the accessibility snapshot',
@@ -240,18 +258,23 @@ export async function runCommand<T>(label: string, work: () => Promise<T>, signa
 }
 
 /**
- * Like translateError, but a ref agent-device refused as stale becomes
- * retryable `NODE_STALE`: nothing was dispatched, so the harness may
- * re-observe and re-resolve the node instead of failing the action. Keyed on
+ * Like translateError, but an action agent-device refused before sending any
+ * input says so: a ref refused as stale becomes retryable `NODE_STALE`, so
+ * the harness may re-observe and re-resolve the node instead of failing the
+ * action, and a target it found no touch point on becomes `NOT_ACTIONABLE`,
+ * with agent-device's hint, so the model taps the child it meant. Keyed on
  * the reason alone: agent-device marks a drag's stale ref `dispatched:
  * 'unknown'` after Android blocking-dialog recovery, although it refuses it
  * before the gesture.
  */
-export function staleOr(cause: unknown, operation: string, where?: string): Error {
+export function refusedOr(cause: unknown, operation: string, where?: string): Error {
   if (isClassified(cause)) return cause;
   const { reason } = details(cause);
   if (typeof reason === 'string' && STALE_REF_REASONS.has(reason)) {
     return new EngineError('NODE_STALE', `${operation}: ${message(cause)}`, { retryable: true, cause });
+  }
+  if (typeof reason === 'string' && UNTOUCHABLE_TARGET_REASONS.has(reason)) {
+    return new EngineError('NOT_ACTIONABLE', `${operation}: ${withHint(cause, message(cause))}`, { retryable: false, cause });
   }
   return translateError(cause, operation, where);
 }

@@ -217,7 +217,8 @@ export default {
 ## Replay cache on a device
 
 A step recorded on `com.apple.Preferences / General` replays only when
-Settings is on General again. A mutating project-tool call such as
+Settings is on General again. A record id in the title reads as an id, like
+one in a URL path, so `Order 48213` and `Order 48214` are the same screen. A mutating project-tool call such as
 `open_app` ends a replay. Declare `app.bundleId` and call `app.open()` first, so steps
 start on the same screen, and switch apps through the `device` fixture
 between steps rather than inside one.

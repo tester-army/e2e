@@ -240,16 +240,19 @@ export interface CacheTally {
   replayed: number;
   handedOff: number;
   missed: number;
+  /** Steps, replayed or handed off, whose replay found a control only by a fallback (`StepCacheInfo.relocated`). */
+  relocated: number;
 }
 
 export function emptyCacheTally(): CacheTally {
-  return { replayed: 0, handedOff: 0, missed: 0 };
+  return { replayed: 0, handedOff: 0, missed: 0, relocated: 0 };
 }
 
 export function addCacheTally(into: CacheTally, counts: CacheTally): void {
   into.replayed += counts.replayed;
   into.handedOff += counts.handedOff;
   into.missed += counts.missed;
+  into.relocated += counts.relocated;
 }
 
 /** The trace cache's part in several step lists, by step. */
@@ -257,6 +260,7 @@ export function stepsCacheTally(stepLists: readonly (readonly StepRecord[])[]): 
   const counts = emptyCacheTally();
   for (const steps of stepLists) {
     for (const step of steps) {
+      if (step.cache?.relocated !== undefined) counts.relocated += 1;
       switch (step.cache?.mode) {
         case 'self-finalized':
           counts.replayed += 1;
@@ -276,14 +280,15 @@ export function stepsCacheTally(stepLists: readonly (readonly StepRecord[])[]): 
 }
 
 /**
- * `9 replayed · 2 handed off · 4 missed`, zero counts left out, or undefined
- * when no step went through the trace cache.
+ * `9 replayed · 2 handed off · 4 missed · 1 relocated`, zero counts left
+ * out, or undefined when no step went through the trace cache.
  */
 export function cacheText(pc: Colors, counts: CacheTally): string | undefined {
   const parts = [
     counts.replayed > 0 ? pc.green(`${counts.replayed} replayed`) : undefined,
     counts.handedOff > 0 ? pc.yellow(`${counts.handedOff} handed off`) : undefined,
     counts.missed > 0 ? `${counts.missed} missed` : undefined,
+    counts.relocated > 0 ? pc.yellow(`${counts.relocated} relocated`) : undefined,
   ].filter((part) => part !== undefined);
   return parts.length === 0 ? undefined : parts.join(pc.dim(' · '));
 }

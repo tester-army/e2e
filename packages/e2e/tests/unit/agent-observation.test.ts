@@ -628,6 +628,17 @@ describe('settleObservation', () => {
     expect(value).toBe('new');
   });
 
+  it('reports a change that came back to the pre-action shape, and none for a screen that never left it', async () => {
+    let left = 0;
+    const saving = scripted(['old', 'saving', 'old', 'old', 'old']);
+    expect(await settleObservation(saving.capture, (v) => v, clock, { ...fast, changedFrom: leaving(), onLeft: () => void (left += 1) })).toBe('old');
+    expect(left).toBeGreaterThan(0);
+    left = 0;
+    const still = scripted(['old']);
+    await settleObservation(still.capture, (v) => v, clock, { ...fast, changedFrom: leaving(), onLeft: () => void (left += 1) });
+    expect(left).toBe(0);
+  });
+
   it('returns the unchanged screen once the change wait runs out', async () => {
     vi.useFakeTimers();
     try {

@@ -79,8 +79,19 @@ describe('unique() through validateParams', () => {
   it('round-trips a key that contains a closing brace', () => {
     const templates = [{ pointer: paramPointer('', 'a}b'), value: 'Acme Corp' }];
     const templated = templateText('tap "Acme Corp"', templates);
-    expect(templated).toBe('tap "{{param:/a}b}}"');
+    expect(templated).toBe('tap "{{param:/a%7Db}}"');
     expect(expandText(templated, values([{ pointer: '/a}b', value: 'Globex' }]))).toBe('tap "Globex"');
+    // A placeholder written before pointers were escaped still reads.
+    expect(expandText('tap "{{param:/a}b}}"', values([{ pointer: '/a}b', value: 'Globex' }]))).toBe('tap "Globex"');
+  });
+
+  it('round-trips a key that spells the encoding bar, the closing braces, or the escape itself', () => {
+    for (const key of ['a|b', 'x|uri', 'a}}b', '50%']) {
+      const pointer = paramPointer('', key);
+      const templates = [{ pointer, value: 'Acme Corp' }];
+      const templated = templateText('open /companies/acme-corp for "Acme Corp"', templates);
+      expect(expandText(templated, values([{ pointer, value: 'Globex Inc' }]))).toBe('open /companies/globex-inc for "Globex Inc"');
+    }
   });
 });
 

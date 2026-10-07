@@ -18,13 +18,14 @@ import { resolveNavigationUrl } from '../internal/urls.ts';
 import type { JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
 import { PROJECT_TOOL_EVENT_PREFIX, type GrammarActionName } from './action-names.ts';
 import { containerKey, describeAction, type Placement, type RecordableAction } from './actions.ts';
-import { describePosition } from '../cache/relocate.ts';
+import { describePosition } from '../cache/locate.ts';
 import type { NodeActionName, PointActionName, RecordedAction } from '../cache/trace.ts';
 import { derivedReason } from './derived.ts';
 import { AgentError } from './error.ts';
 import type { ExecutorActions, ExecutorTarget, PointHit, PointTapResult } from './executor.ts';
 import type { AgentContext } from './invocation.ts';
 import type { ObservationFeed, Resolved } from './observation-feed.ts';
+import type { SettleNote } from '../cache/recorder.ts';
 import { resolveScrollTarget } from './scroll-target.ts';
 import type { OperationQueue } from './operation-queue.ts';
 import { instrumentPhase, recordPolicyEvent } from './phases.ts';
@@ -103,6 +104,8 @@ export class ActionDispatcher {
    * rather than a guess.
    */
   readonly actions: ExecutorActions;
+  /** The change wait the next action arms in place of its policy's (`withChangeWait`). */
+  private nextChangeWaitMs: number | undefined;
 
   constructor(
     private readonly runtime: AgentContext,
@@ -545,7 +548,26 @@ export class ActionDispatcher {
     return this.queue.run(() => this.runActionNow(name, body));
   }
 
+  /**
+   * Runs `call` with `changeWaitMs` as the change wait the action it commits
+   * arms, in place of its settle policy's. A replay runs an action its
+   * recording saw leave the screen as it was (`RecordedAction.quiet`) this
+   * way, so it does not wait out a change the recording proved never comes.
+   * Scoped to the call: an action that fails before it commits leaves no
+   * wait behind for the next one.
+   */
+  async withChangeWait<T>(changeWaitMs: number, call: () => Promise<T>): Promise<T> {
+    this.nextChangeWaitMs = changeWaitMs;
+    try {
+      return await call();
+    } finally {
+      this.nextChangeWaitMs = undefined;
+    }
+  }
+
   private async runActionNow(name: GrammarActionName, body: () => Promise<RecordableAction>): Promise<void> {
+    const paced = this.nextChangeWaitMs;
+    this.nextChangeWaitMs = undefined;
     this.accounting.reserveAction();
     const redaction = { redact: this.runtime.redact, redactCut: this.runtime.redactCut };
     let action: RecordableAction;
@@ -560,9 +582,15 @@ export class ActionDispatcher {
       this.accounting.checkpoint(cause);
       throw cause;
     }
-    this.armAfter(action.name);
     const trace = this.options.trace();
-    if (trace === undefined) return;
+    // Recorded before the change wait is armed, so the look that answers the
+    // wait can note it against this action (`RecordedAction.quiet`).
+    const note = trace === undefined ? undefined : this.recordAction(trace, action);
+    this.armAfter(action.name, paced, note);
+  }
+
+  /** Records one committed action into the step trace, or the gap it stands for; returns the action's settle note. */
+  private recordAction(trace: StepTraceSession, action: RecordableAction): SettleNote | undefined {
     // A typed value the step read off the screen (its tree, or a screenshot
     // it was shown) or reckoned from the date is this run's data, not the
     // flow's: it is recorded as a gap so replay hands over before it rather
@@ -576,10 +604,10 @@ export class ActionDispatcher {
       });
       if (derived !== undefined) {
         trace.recordDerivedGap(derived);
-        return;
+        return undefined;
       }
     }
-    trace.record(action);
+    return trace.record(action);
   }
 
   /**
@@ -590,10 +618,10 @@ export class ActionDispatcher {
    * would wait against the destination screen. An action whose effect the
    * tree cannot show arms nothing.
    */
-  private armAfter(name: RecordedAction['name']): void {
+  private armAfter(name: RecordedAction['name'], paced?: number, note?: SettleNote): void {
     if (name === 'scrollUntil' && !this.verbs.has('scrollTo')) return;
     const { changeWaitMs } = SETTLE_AFTER[name];
-    if (changeWaitMs !== undefined) this.feed.armChange(changeWaitMs);
+    if (changeWaitMs !== undefined) this.feed.armChange(paced === undefined ? changeWaitMs : Math.min(paced, changeWaitMs), note);
   }
 
   /**

@@ -11,7 +11,7 @@
 import path from 'node:path';
 import type { CacheStrictSource, ResolvedCacheConfig } from '../config/resolve.ts';
 import { canonicalJson } from '../internal/ids.ts';
-import { REPLAY_POLICY_VERSION } from './relocate.ts';
+import { REPLAY_POLICY_VERSION } from './locate.ts';
 import {
   buildTraceCacheKey,
   createCallIndexer,
@@ -43,8 +43,21 @@ export type StagedTrace = {
   /** Index of the step in the attempt's step timeline. */
   readonly stepIndex: number;
 } & (
-  | { readonly kind: 'write'; readonly trace: ActionTrace }
-  | { readonly kind: 'keep'; readonly recordedFor: TraceProvenance }
+  | {
+      readonly kind: 'write';
+      readonly trace: ActionTrace;
+      /**
+       * Set when the step read an entry that did not serve it: its replay
+       * stopped short for a reason other than a gap. The recording replaces
+       * the entry even when it is the same flow, since what made the replay
+       * stop (a stale `quiet` mark, a timing) is not part of the flow.
+       */
+      readonly replaces?: true;
+    }
+  | {
+      readonly kind: 'keep';
+      readonly recordedFor: TraceProvenance;
+    }
 );
 
 /** One step's claimed key: its hash, and the step it names as an entry records it. */
@@ -93,16 +106,24 @@ export interface AgentCacheContext {
 
 /**
  * Whether the store already holds this flow: the same actions, paths, anchors,
- * executor, and provenance. The model's summary, the measured end wait, and
- * the rule that flagged a gap's typed value (`derived`, which follows how the
- * agent read the value this time) differ between live runs, so a step that
- * runs live each time (it types a value read off the screen) would otherwise
- * rewrite an entry a committed cache directory carries. A replay stops at a
- * gap whatever its rule, which only names the hand-off in the report.
+ * executor, and provenance. The model's summary, the measured end wait, the
+ * rule that flagged a gap's typed value (`derived`, which follows how the
+ * agent read the value this time), and which actions settled quietly (a
+ * timing) differ between live runs, so a step that runs live each time (it
+ * types a value read off the screen) would otherwise rewrite an entry a
+ * committed cache directory carries. A replay stops at a gap whatever its
+ * rule, which only names the hand-off in the report. An entry recorded
+ * before pacing was learns it once from the first run that has it.
  */
 async function holdsSameFlow(store: CacheStore, keyHash: string, trace: ActionTrace): Promise<boolean> {
   const existing = await store.read(keyHash);
-  return existing.status === 'hit' && flowOf(existing.entry.payload) === flowOf(trace);
+  if (existing.status !== 'hit' || flowOf(existing.entry.payload) !== flowOf(trace)) return false;
+  return isPaced(existing.entry.payload) || !isPaced(trace);
+}
+
+/** Whether a trace says how any of its actions settled (`RecordedAction.quiet`). */
+function isPaced(trace: ActionTrace): boolean {
+  return trace.actions.some((action) => action.quiet === true);
 }
 
 /** The part of a trace that decides what a replay does, as canonical JSON. */
@@ -111,8 +132,9 @@ function flowOf(trace: ActionTrace): string {
   return canonicalJson({
     ...flow,
     actions: actions.map((action) => {
-      if (action.name !== 'tool') return action;
-      const { derived: _derived, ...gap } = action;
+      const { quiet: _quiet, ...paced } = action;
+      if (paced.name !== 'tool') return paced;
+      const { derived: _derived, ...gap } = paced;
       return gap;
     }),
   });
@@ -175,7 +197,7 @@ export async function flushStagedTraces(context: AgentCacheContext, settlement: 
         await completeProvenance(context.store, entry.keyHash, entry.recordedFor);
         continue;
       }
-      if (await holdsSameFlow(context.store, entry.keyHash, entry.trace)) continue;
+      if (entry.replaces !== true && (await holdsSameFlow(context.store, entry.keyHash, entry.trace))) continue;
       await context.store.write(entry.keyHash, entry.trace);
     } catch {
       // The cache is disposable; a failed flush is a slower next run only.

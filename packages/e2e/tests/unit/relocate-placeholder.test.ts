@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { RedactedNode } from '../../src/agent/observation.ts';
 import { redacted } from '../helpers/redacted.ts';
 import { describeTarget } from '../../src/agent/actions.ts';
-import { relocateDescriptor } from '../../src/cache/relocate.ts';
+import { relocateExact } from '../../src/cache/locate.ts';
 
 function textbox(id: string, placeholder: string, name?: string): RedactedNode {
   return redacted({
@@ -29,13 +29,13 @@ describe('relocation by placeholder', () => {
       ['m1', textbox('m1', 'Filter tags')],
       ['m2', textbox('m2', 'Search products')],
     ]);
-    expect(relocateDescriptor(descriptor!, nodes)).toEqual({ kind: 'found', id: 'm2' });
+    expect(relocateExact(descriptor!, nodes)).toEqual({ kind: 'found', id: 'm2' });
   });
 
   it('fails instead of guessing when the placeholder changed or repeats', () => {
     const descriptor = describeTarget(textbox('n1', 'Search products'))!;
     const renamed = new Map<string, RedactedNode>([['m1', textbox('m1', 'Find products')]]);
-    expect(relocateDescriptor(descriptor, renamed)).toEqual({
+    expect(relocateExact(descriptor, renamed)).toEqual({
       kind: 'failed',
       failure: 'target-not-found',
     });
@@ -43,7 +43,7 @@ describe('relocation by placeholder', () => {
       ['m1', textbox('m1', 'Search products')],
       ['m2', textbox('m2', 'Search products')],
     ]);
-    expect(relocateDescriptor(descriptor, twins)).toEqual({
+    expect(relocateExact(descriptor, twins)).toEqual({
       kind: 'failed',
       failure: 'target-ambiguous',
       candidates: ['m1', 'm2'],

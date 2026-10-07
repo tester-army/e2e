@@ -1,0 +1,13 @@
+---
+'e2e': minor
+---
+
+The replay cache falls back when a recorded control drifts instead of handing the step to the agent. When no control matches everything recorded, a replay tries the test id with the role, the test id alone, the role and accessible name, then the name across one kind of control (a link that became a button), and takes the first that finds exactly one control on two looks in a row. A replay that needed a fallback re-records the step in `read-write` mode. `step.cache.relocated` counts those actions, the run summary shows `relocated`, and telemetry reports `agent_steps_relocated`. A test id that moved to another control is now `target-ambiguous` instead of matched by the label, and so is the one remaining control of several identical ones the step was recorded among.
+
+The end-state check a replay must pass uses the same matching. A status is found by its test id even after the region around it was relabeled or its role is reported differently, and still has to read what the recording saw. The recorded text on another control no longer counts while the control with the recorded test id shows something else.
+
+Replays are paced by what the recording saw: an action that changed nothing on screen when recorded (a right-click that opens a native menu, a key that moves the cursor) no longer waits the full two-second change timeout on every replay. Entries recorded before learn their pacing once, from the next `read-write` run that records or replays them.
+
+A replayed action the engine refused before sending any input (a tap on a row a list re-rendered) is tried once more after the screen holds still. A step that starts before the app reaches the screen its recording began on (a sheet the app presents once a request returns) waits for that screen instead of missing as `wrong-context`. A tapped checkbox, switch, radio, or their menu item forms replays only onto the control in the state it was tapped in.
+
+Also fixed: a list row is no longer keyed by whichever row was first on screen when it was recorded, which made it unreachable after any scroll; a step whose only effect read a time or id (`Saved at 10:42`) no longer fails its own replay; a recording keeps one end-state check per label, so a wrapper one iOS accessibility backend reports and another does not no longer fails a replay; a `unique()` param whose key contains `|` or `}}` replays; a device screen title with a record id (`Order 48213`) matches the next run's; hash-bang routes (`#!/settings`) are told apart; a soft assertion failure stops later checks from confirming cache entries recorded before it; and in `read-write` mode a replay cut off by a step timeout evicts its entry.

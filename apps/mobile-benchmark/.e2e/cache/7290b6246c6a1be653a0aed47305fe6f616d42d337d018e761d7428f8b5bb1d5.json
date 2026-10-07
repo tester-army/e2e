@@ -1,0 +1,97 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T09:02:48.062Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "scrollUntil",
+        "summary": "scroll down on group until \"Accept terms\" shows (1 screen)",
+        "text": "Accept terms",
+        "direction": "down",
+        "target": {
+          "role": "group"
+        },
+        "spans": 1
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Accept terms\" in \"Deterministic agreement paragraph 8 of …\"",
+        "target": {
+          "role": "group",
+          "name": "Accept terms",
+          "testId": "accept-terms",
+          "selector": "id=accept-terms",
+          "within": "Deterministic agreement paragraph 8 of 14. Nothing in this section is actionabl…"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Continue\" in \"Deterministic agreement paragraph 8 of …\"",
+        "target": {
+          "role": "group",
+          "name": "Continue",
+          "testId": "continue-button",
+          "selector": "id=continue-button",
+          "within": "Deterministic agreement paragraph 8 of 14. Nothing in this section is actionabl…"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Sticky%20Chrome%20Target",
+      "targetId": "android-emulator",
+      "instructionDigest": "c8995bcdba36d775696cf386be302127a69622849b54e095755e2dc908af89bd",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Scrolled to Accept terms, tapped it and verified the control changed to “Terms accepted ✓”. Tapped Continue in the sticky footer; the screen now shows “Terms accepted” success message.",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Terms accepted",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Read the agreement, tap Accept terms at the bottom, then Continue."
+      },
+      {
+        "role": "text",
+        "name": "Section 1"
+      },
+      {
+        "role": "text",
+        "name": "Deterministic agreement paragraph 1 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+      },
+      {
+        "role": "text",
+        "name": "Section 2"
+      },
+      {
+        "role": "text",
+        "name": "Deterministic agreement paragraph 2 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+      },
+      {
+        "role": "text",
+        "name": "Section 3"
+      },
+      {
+        "role": "text",
+        "name": "Deterministic agreement paragraph 3 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+      },
+      {
+        "role": "text",
+        "name": "Section 4"
+      }
+    ],
+    "endWaitMs": 11542
+  }
+}

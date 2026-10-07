@@ -320,14 +320,16 @@ export function isTestErrorCode(cause: unknown, code: string): cause is Error & 
  * or strict mode message: `performing <x> action`, `<x> action done`, and
  * `waiting for scheduled navigations to finish` are only logged once the input
  * is being (or has been) dispatched, so a failure whose log reaches them is
- * uncertain and the harness must not blindly repeat it. Every earlier line
- * (`waiting for element to be visible, enabled and stable`, `scrolling into
- * view if needed`, `retrying <x> action`) precedes dispatch and is a plain
- * actionability miss. Only whole `- ` log lines count, so a locator or element
- * text quoting those words never does.
+ * uncertain and the harness must not blindly repeat it. A press has no
+ * actionability wait: its log ends at `elementHandle.press(...)` while it waits
+ * for a navigation the key started, so that line counts as dispatch too. Every
+ * earlier line (`waiting for element to be visible, enabled and stable`,
+ * `scrolling into view if needed`, `retrying <x> action`) precedes dispatch
+ * and is a plain actionability miss. Only whole `- ` log lines count, so a
+ * locator or element text quoting those words never does.
  */
 export const POST_DISPATCH_PATTERN =
-  /^\s*- (performing \w+ action|[\w ]+ action done|waiting for scheduled navigations to finish)\s*$/im;
+  /^\s*- (performing \w+ action|[\w ]+ action done|waiting for scheduled navigations to finish|elementHandle\.press\(.*\))\s*$/im;
 
 /** Translates an unexpected Playwright error at the contract boundary. */
 export function translatePwError(cause: unknown, operation: string): Error {

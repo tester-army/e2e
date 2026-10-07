@@ -1,0 +1,88 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T07:29:15.183Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "scrollUntil",
+        "summary": "scroll down until \"Item 137\" shows (30 screens)",
+        "text": "Item 137",
+        "direction": "down"
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Item 137\"",
+        "target": {
+          "role": "other",
+          "name": "Item 137",
+          "testId": "item-137",
+          "selector": "id=item-137"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Infinite%20Scroll%20List",
+      "targetId": "ios-simulator",
+      "instructionDigest": "240960ef8daa93f30d3183a42cf877c23681993025141766e480102a3eca2d75",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Scrolled the paginated list until Item 137 appeared and tapped it. The screen now shows “Found item 137.”",
+    "startPath": "dev.e2e.benchmark / Infinite Scroll List",
+    "endPath": "dev.e2e.benchmark / Infinite Scroll List",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Found item 137",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Scroll down and tap Item 137 to complete"
+      },
+      {
+        "role": "other",
+        "name": "Item 1",
+        "testId": "item-1"
+      },
+      {
+        "role": "other",
+        "name": "Item 2",
+        "testId": "item-2"
+      },
+      {
+        "role": "other",
+        "name": "Item 3",
+        "testId": "item-3"
+      },
+      {
+        "role": "other",
+        "name": "Item 4",
+        "testId": "item-4"
+      },
+      {
+        "role": "other",
+        "name": "Item 5",
+        "testId": "item-5"
+      },
+      {
+        "role": "other",
+        "name": "Item 6",
+        "testId": "item-6"
+      },
+      {
+        "role": "other",
+        "name": "Vertical scroll bar, 5 pages",
+        "value": "0%"
+      }
+    ],
+    "endWaitMs": 11892
+  }
+}

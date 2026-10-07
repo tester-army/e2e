@@ -122,6 +122,12 @@ export interface StepCacheInfo {
    */
   notRecorded?: 'param-collision';
   replayedActions: number;
+  /**
+   * How many of the replayed actions found their control only by a fallback
+   * (its test id after a label change, its name after a test id or role
+   * change) rather than by everything recorded; absent when none did.
+   */
+  relocated?: number;
   totalActions: number;
 }
 

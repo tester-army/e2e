@@ -1,0 +1,166 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T08:21:45.647Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tapAt",
+        "summary": "tap the point (118, 450) on other \"Use tester@tester.army / <secret:benchm…\"",
+        "point": {
+          "x": 118,
+          "y": 450
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Use tester@tester.army / <secret:benchmark.password>, Email, Password, SIGN IN"
+          },
+          "fx": 0.2935,
+          "fy": 0.4406
+        }
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)",
+        "derived": "pixels"
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (188, 531) on other \"Use tester@tester.army / <secret:benchm…\"",
+        "point": {
+          "x": 188,
+          "y": 531
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Use tester@tester.army / <secret:benchmark.password>, Email, Password, SIGN IN"
+          },
+          "fx": 0.4677,
+          "fy": 0.5475
+        }
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)",
+        "derived": "pixels",
+        "quiet": true
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (216, 251) on other \"Use tester@tester.army / <secret:benchm…\"",
+        "point": {
+          "x": 216,
+          "y": 251
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Use tester@tester.army / <secret:benchmark.password>, Email, Password, SIGN IN"
+          },
+          "fx": 0.5373,
+          "fy": 0.1781
+        },
+        "quiet": true
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (188, 531) on other \"Use tester@tester.army / <secret:benchm…\"",
+        "point": {
+          "x": 188,
+          "y": 531
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Use tester@tester.army / <secret:benchmark.password>, Email, Password, SIGN IN"
+          },
+          "fx": 0.4677,
+          "fy": 0.5475
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"return\"",
+        "target": {
+          "role": "button",
+          "name": "return",
+          "testId": "Return",
+          "selector": "id=Return"
+        }
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (202, 597) on other \"Use tester@tester.army / <secret:benchm…\"",
+        "point": {
+          "x": 202,
+          "y": 597
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Use tester@tester.army / <secret:benchmark.password>, Email, Password, SIGN IN"
+          },
+          "fx": 0.5025,
+          "fy": 0.6346
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Not Now\"",
+        "target": {
+          "role": "button",
+          "name": "Not Now"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Flattened%20Login",
+      "targetId": "ios-simulator",
+      "instructionDigest": "2ac57f8c28a31069613ffb9bbf8151a42ea8ceb4bb65d0ad6dcd9eea0b8a2755",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Entered the hinted email and password, submitted the login form, dismissed the password-save prompt, and verified the screen says “Logged in successfully.”",
+    "startPath": "dev.e2e.benchmark / Flattened Login",
+    "endPath": "dev.e2e.benchmark / Flattened Login",
+    "endAnchors": [
+      {
+        "role": "other",
+        "name": "Logged in successfully"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "other",
+        "name": "Use tester@tester.army / <secret:benchmark.password>, Email, Password, SIGN IN"
+      }
+    ],
+    "endWaitMs": 13258
+  }
+}

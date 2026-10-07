@@ -306,6 +306,7 @@ export function runCompletedEvent(report: Report1Document, context: RunContext):
       agent_steps_replayed: steps.filter((step) => step.cache?.mode === 'self-finalized').length,
       agent_steps_partial: steps.filter((step) => step.cache?.mode === 'agent-concluded').length,
       agent_steps_missed: steps.filter((step) => step.cache?.mode === 'missed').length,
+      agent_steps_relocated: steps.filter((step) => step.cache?.relocated !== undefined).length,
       agent_steps_vision: steps.filter((step) => step.visionInput === true).length,
       agent_actions: agentActions(steps),
       model_gateway: first?.provider ?? null,

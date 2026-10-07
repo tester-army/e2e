@@ -134,7 +134,10 @@ export interface TraceTargetDescriptor {
    */
   readonly position?: TracePosition;
   /**
-   * An anchor's states that were on, sorted; anchors only. A switch turned
+   * The states that were on, sorted: an anchor's, and a toggle's when a tap
+   * acted on it (`TOGGLE_ROLES`), empty for a toggle that was off. A tapped
+   * toggle relocates only onto one in the same state: a tap flips it, so on
+   * a toggle in the other state it does the opposite of the recording. A switch turned
    * on is the same control before and after, so its state is what tells
    * the step's effect from a tap that did nothing.
    */
@@ -155,9 +158,21 @@ export type TraceAnchorState = (typeof TRACE_ANCHOR_STATES)[number];
 
 const isTraceAnchorState = oneOf(TRACE_ANCHOR_STATES);
 
+/** The roles a tap flips, whose state a recorded tap keeps (`TraceTargetDescriptor.states`). */
+export const TOGGLE_ROLES: ReadonlySet<string> = new Set(['checkbox', 'switch', 'radio', 'menuitemcheckbox', 'menuitemradio']);
+
 interface ActionBase {
   /** One-line prose summary — the only view a mid-step hand-off notice shows. */
   readonly summary: string;
+  /**
+   * Set when the recording saw the screen keep the shape the action was
+   * resolved against for the action's whole change wait: a tap that opened
+   * a native menu, a key that moved a caret. A replay waits only a short
+   * beat for a change after it (`QUIET_CHANGE_WAIT_MS`) rather than the
+   * full wait the recording spent proving nothing changed, so a replay is
+   * paced by what the recording saw, not by timeouts.
+   */
+  readonly quiet?: true;
 }
 
 /** The verbs that act on one node and carry no input: tap and its variants, hover, scroll into view. */
@@ -510,69 +525,76 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
 function readAnchors(document: unknown): TraceTargetDescriptor[] | undefined {
   if (document === undefined) return [];
   if (!Array.isArray(document) || document.length > MAX_TRACE_ANCHORS) return undefined;
-  return each(document, readDescriptor);
+  return each(document, readAnchor);
 }
 
 function readRecordedAction(document: unknown): RecordedAction | undefined {
   if (typeof document !== 'object' || document === null || Array.isArray(document)) {
     return undefined;
   }
-  const raw = document as Record<string, unknown>;
+  const quiet = (document as Record<string, unknown>)['quiet'];
+  if (quiet !== undefined && quiet !== true) return undefined;
+  const action = readActionBody(document as Record<string, unknown>);
+  return action === undefined || quiet === undefined ? action : { ...action, quiet };
+}
+
+/** One action's variant fields, read and validated; `quiet` is read by the caller. */
+function readActionBody(raw: Record<string, unknown>): RecordedAction | undefined {
   const summary = readBoundedText(raw['summary'], MAX_TRACE_SUMMARY_CHARS);
   if (summary === undefined) return undefined;
 
   const name = raw['name'];
   if (isNodeActionName(name)) {
-    const target = readDescriptor(raw['target']);
+    const target = readTarget(raw['target']);
     return target === undefined ? undefined : { name, summary, target };
   }
   switch (name) {
     case 'type': {
-      const target = readDescriptor(raw['target']);
+      const target = readTarget(raw['target']);
       const value = readTypedValue(raw['value']);
       if (target === undefined || value === undefined) return undefined;
       return { name: 'type', summary, target, value };
     }
     case 'typeSecret': {
-      const target = readDescriptor(raw['target']);
+      const target = readTarget(raw['target']);
       const secret = readBoundedText(raw['secret'], MAX_TRACE_DESCRIPTOR_CHARS);
       if (target === undefined || secret === undefined) return undefined;
       return { name: 'typeSecret', summary, target, secret };
     }
     case 'press': {
-      const target = readDescriptor(raw['target']);
+      const target = readTarget(raw['target']);
       const key = readBoundedText(raw['key'], 64);
       if (target === undefined || key === undefined) return undefined;
       return { name: 'press', summary, target, key };
     }
     case 'select': {
-      const target = readDescriptor(raw['target']);
+      const target = readTarget(raw['target']);
       const value = readInputText(raw['value']);
       if (target === undefined || value === undefined) return undefined;
       return { name: 'select', summary, target, value };
     }
     case 'check': {
-      const target = readDescriptor(raw['target']);
+      const target = readTarget(raw['target']);
       const checked = raw['checked'];
       if (target === undefined || typeof checked !== 'boolean') return undefined;
       return { name: 'check', summary, target, checked };
     }
     case 'upload': {
-      const target = readDescriptor(raw['target']);
+      const target = readTarget(raw['target']);
       const paths = readInputPaths(raw['paths']);
       if (target === undefined || paths === undefined) return undefined;
       return { name: 'upload', summary, target, paths };
     }
     case 'drag': {
-      const target = readDescriptor(raw['target']);
-      const destination = readDescriptor(raw['destination']);
+      const target = readTarget(raw['target']);
+      const destination = readTarget(raw['destination']);
       if (target === undefined || destination === undefined) return undefined;
       return { name: 'drag', summary, target, destination };
     }
     case 'scroll': {
       const direction = raw['direction'];
       if (!isScrollDirection(direction)) return undefined;
-      const target = raw['target'] === undefined ? undefined : readDescriptor(raw['target']);
+      const target = raw['target'] === undefined ? undefined : readTarget(raw['target']);
       if (raw['target'] !== undefined && target === undefined) return undefined;
       const times = raw['times'];
       if (times !== undefined && (typeof times !== 'number' || !Number.isInteger(times) || times < 2)) return undefined;
@@ -591,7 +613,7 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
       const text = readInputText(raw['text']);
       const direction = raw['direction'];
       if (text === undefined || !isScrollDirection(direction)) return undefined;
-      const target = raw['target'] === undefined ? undefined : readDescriptor(raw['target']);
+      const target = raw['target'] === undefined ? undefined : readTarget(raw['target']);
       if (raw['target'] !== undefined && target === undefined) return undefined;
       const spans = raw['spans'];
       if (spans !== undefined && (typeof spans !== 'number' || !(spans >= 0 && spans <= 1))) return undefined;
@@ -660,7 +682,7 @@ function readViewport(document: unknown): TraceViewport | undefined {
 
 function readWithin(document: unknown): NonNullable<PointAction['within']> | undefined {
   const raw = readObject(document);
-  const target = raw === undefined ? undefined : readDescriptor(raw['target']);
+  const target = raw === undefined ? undefined : readTarget(raw['target']);
   const fx = raw?.['fx'];
   const fy = raw?.['fy'];
   if (target === undefined || !isFraction(fx) || !isFraction(fy)) return undefined;
@@ -816,7 +838,18 @@ function mapDescriptors(descriptors: readonly TraceTargetDescriptor[], map: Trac
   return each(descriptors, (descriptor) => mapDescriptorText(descriptor, map));
 }
 
-function readDescriptor(document: unknown): TraceTargetDescriptor | undefined {
+/** One action's target descriptor. */
+function readTarget(document: unknown): TraceTargetDescriptor | undefined {
+  return readDescriptor(document, 'target');
+}
+
+/** One anchor's descriptor: unlike a target's, its state list is never empty. */
+function readAnchor(document: unknown): TraceTargetDescriptor | undefined {
+  return readDescriptor(document, 'anchor');
+}
+
+/** One descriptor; a target may carry the empty state list a tapped toggle that was off records, an anchor never does. */
+function readDescriptor(document: unknown, as: 'target' | 'anchor'): TraceTargetDescriptor | undefined {
   if (typeof document !== 'object' || document === null || Array.isArray(document)) {
     return undefined;
   }
@@ -836,15 +869,15 @@ function readDescriptor(document: unknown): TraceTargetDescriptor | undefined {
   }
   if (raw['states'] !== undefined) {
     const states = readStates(raw['states']);
-    if (states === undefined) return undefined;
+    if (states === undefined || (states.length === 0 && as === 'anchor')) return undefined;
     descriptor['states'] = states;
   }
   return descriptor as TraceTargetDescriptor;
 }
 
-/** Known anchor states, each once, in sorted order, as `anchors.ts` writes them; an empty list is never written. */
+/** Known states, each once, in sorted order; empty only on a tapped toggle that was off. */
 function readStates(document: unknown): readonly TraceAnchorState[] | undefined {
-  if (!Array.isArray(document) || document.length === 0) return undefined;
+  if (!Array.isArray(document)) return undefined;
   const states = each(document, (state) => (isTraceAnchorState(state) ? state : undefined));
   if (states === undefined) return undefined;
   return states.every((state, index) => index === 0 || states[index - 1]! < state) ? states : undefined;

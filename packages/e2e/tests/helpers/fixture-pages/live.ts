@@ -3,6 +3,26 @@
 import { constant, type PageRenderer } from './page.ts';
 
 export const LIVE_PAGES: Record<string, PageRenderer> = {
+  // A control whose effect the tree never shows (it arms the next one), then
+  // a control that reports whether it was armed: the first action's change
+  // wait runs out with the screen as it was, on every run.
+  '/arm': constant(`<!doctype html>
+<html>
+<head><title>Arm</title></head>
+<body>
+  <h1>Arm</h1>
+  <button id="arm">Arm</button>
+  <button id="fire">Fire</button>
+  <output role="status" aria-label="Launch">idle</output>
+  <script>
+    let armed = false;
+    document.getElementById('arm').addEventListener('click', () => { armed = true; });
+    document.getElementById('fire').addEventListener('click', () => {
+      document.querySelector('output').textContent = armed ? 'launched' : 'not armed';
+    });
+  </script>
+</body>
+</html>`),
   // Two identically named fields on a page whose layout keeps moving, the way a
   // lazily-loaded banner or an expanding summary shifts a booking form under the
   // cursor. Every node keeps its identity while its rectangle drifts between the

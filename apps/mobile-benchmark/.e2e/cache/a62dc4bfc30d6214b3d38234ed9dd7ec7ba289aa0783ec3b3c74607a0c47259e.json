@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T09:12:54.295Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap group \"Open modal\"",
+        "target": {
+          "role": "group",
+          "name": "Open modal",
+          "testId": "open-modal-button",
+          "selector": "id=open-modal-button"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Continue\" in \"Benchmark modal\"",
+        "target": {
+          "role": "group",
+          "name": "Continue",
+          "testId": "continue-button",
+          "selector": "id=continue-button",
+          "within": "Benchmark modal"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"CONFIRM\"",
+        "target": {
+          "role": "button",
+          "name": "CONFIRM",
+          "testId": "android:id/button1",
+          "selector": "id=android:id/button1"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Modal%20Flow",
+      "targetId": "android-emulator",
+      "instructionDigest": "32bf25d16daf4e21f574c8c4919b38c59ac735da3fa3c55d0ddb4093a2abd239",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Confirmed the alert. The Modal Flow screen now displays “Flow completed.”",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Flow completed",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "group",
+        "name": "Open modal",
+        "testId": "open-modal-button"
+      }
+    ],
+    "endWaitMs": 11729
+  }
+}

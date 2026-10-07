@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { describeAction } from '../../src/agent/actions.ts';
-import { describePosition, relocateDescriptor } from '../../src/cache/relocate.ts';
+import { describePosition, relocateExact } from '../../src/cache/locate.ts';
 import { buildTraceEntry, readTraceEntry, type ActionTrace } from '../../src/cache/trace.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import type { RedactedNode } from '../../src/agent/observation.ts';
@@ -44,25 +44,25 @@ describe('relocation with a recorded position', () => {
   const descriptor = { role: 'button', name: 'Set up', position: { index: 1, of: 3 } };
 
   it('relocates to the same twin when the live screen shows the same number of them', () => {
-    expect(relocateDescriptor(descriptor, screen(button('p'), button('q'), button('r')))).toEqual({
+    expect(relocateExact(descriptor, screen(button('p'), button('q'), button('r')))).toEqual({
       kind: 'found',
       id: 'q',
     });
   });
 
   it('diverges as ambiguous when a twin appeared or vanished', () => {
-    expect(relocateDescriptor(descriptor, screen(button('p'), button('q')))).toEqual({
+    expect(relocateExact(descriptor, screen(button('p'), button('q')))).toEqual({
       kind: 'failed',
       failure: 'target-ambiguous',
       candidates: ['p', 'q'],
     });
     expect(
-      relocateDescriptor(descriptor, screen(button('p'), button('q'), button('r'), button('s'))),
+      relocateExact(descriptor, screen(button('p'), button('q'), button('r'), button('s'))),
     ).toEqual({ kind: 'failed', failure: 'target-ambiguous', candidates: ['p', 'q', 'r', 's'] });
   });
 
   it('still diverges without a recorded position', () => {
-    expect(relocateDescriptor({ role: 'button', name: 'Set up' }, screen(button('p'), button('q')))).toEqual({
+    expect(relocateExact({ role: 'button', name: 'Set up' }, screen(button('p'), button('q')))).toEqual({
       kind: 'failed',
       failure: 'target-ambiguous',
       candidates: ['p', 'q'],

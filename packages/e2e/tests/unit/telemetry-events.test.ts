@@ -117,6 +117,7 @@ describe('telemetry events', () => {
       agent_steps_replayed: 1,
       agent_steps_partial: 0,
       agent_steps_missed: 1,
+      agent_steps_relocated: 0,
       agent_steps_vision: 1,
       agent_actions: {},
       model_gateway: 'anthropic',

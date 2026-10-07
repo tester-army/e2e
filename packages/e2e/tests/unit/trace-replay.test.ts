@@ -287,7 +287,7 @@ describe('replayTrace', () => {
     expect(outcome).toMatchObject({ completed: false, executed: 1, stopReason: 'action-failed' });
     expect(outcome.summaries).toEqual(['tap button "Upgrade"']);
     expect(host.calls).toEqual(['tap']);
-    // The first look was the start capture; the failed one was the fill's.
+    // The first look was the start capture; the failed one was the fill's, which is not retried: no action ran.
     expect(host.looks).toEqual(['held-still']);
   });
 
@@ -324,6 +324,17 @@ describe('replayTrace', () => {
     expect(outcome).toMatchObject({ completed: true, executed: 1 });
     expect(host.calls).toEqual(['drag']);
     expect(details[0]).toEqual({ source: { id: 'n1' }, destination: { id: 'n2' } });
+  });
+
+  it('confirms a drag end a fallback found on a second look and counts the drag once', async () => {
+    const relabeled: SemanticNode = { ref: { id: 'n7', revision: 'r1' }, role: 'button', name: 'Upgrade plan', testId: 'upgrade' };
+    const host = makeHost({ nodes: [relabeled, email] });
+    const outcome = await replayTrace(
+      host,
+      trace([{ name: 'drag', summary: 'drag', target: { role: 'button', name: 'Upgrade', testId: 'upgrade' }, destination: { role: 'textbox', name: 'Email' } }]),
+    );
+    expect(outcome).toMatchObject({ completed: true, executed: 1, relocated: 1 });
+    expect(host.looks).toEqual(['held-still', 'raw']);
   });
 
   it('hands a drag off when either end cannot be re-found, never dragging half of it', async () => {
@@ -401,6 +412,122 @@ describe('replayTrace', () => {
     );
     expect(outcome).toMatchObject({ completed: true, executed: 1 });
     expect(host.calls).toEqual(['tap']);
+  });
+
+  it('acts on a control a fallback found only once a second look finds it the same way, and counts it', async () => {
+    const relabeled: SemanticNode = { ref: { id: 'n6', revision: 'r1' }, role: 'button', name: 'Upgrade now', testId: 'upgrade' };
+    const host = makeHost({ nodes: [relabeled, email] });
+    const recorded: RecordedAction = { ...tapUpgrade, target: { role: 'button', name: 'Upgrade', testId: 'upgrade' } };
+    const outcome = await replayTrace(host, trace([recorded, typeEmail]));
+    expect(outcome).toMatchObject({ completed: true, executed: 2, relocated: 1 });
+    expect(host.calls).toEqual(['tap', 'type']);
+    // The tap's look, its confirming raw look, then the look the tap's settle policy asks of the fill.
+    expect(host.looks).toEqual(['held-still', 'raw', 'held-still']);
+  });
+
+  it('reports no relocation when every control matched exactly', async () => {
+    const outcome = await replayTrace(makeHost({}), trace([tapUpgrade, typeEmail]));
+    expect(outcome).toEqual({ completed: true, executed: 2, total: 2, summaries: [tapUpgrade.summary, typeEmail.summary] });
+  });
+
+  it('never acts on a fallback match the next look no longer shows, a screen still leaving', async () => {
+    // A wizard's outgoing page holds "Next" under the test id the recorded "Save" carries.
+    const next: SemanticNode = { ref: { id: 'w1', revision: 'r1' }, role: 'button', name: 'Next', testId: 'primary' };
+    const save: SemanticNode = { ref: { id: 'w2', revision: 'r1' }, role: 'button', name: 'Save', testId: 'primary' };
+    const screens = [[next], [save]];
+    const tapped: unknown[] = [];
+    const host = makeHost({ onAction: (name, detail) => void (name === 'tap' && tapped.push(detail)) });
+    host.capture = async () => {
+      host.observations += 1;
+      return screen(screens.length > 1 ? screens.shift()! : screens[0]!);
+    };
+    const outcome = await replayTrace(host, trace([{ ...tapUpgrade, summary: 'tap button "Save"', target: { role: 'button', name: 'Save', testId: 'primary' } }]));
+    expect(outcome).toEqual({ completed: true, executed: 1, total: 1, summaries: ['tap button "Save"'] });
+    expect(tapped).toEqual([{ id: 'w2' }]);
+  });
+
+  it('confirms a fallback match only once it holds its place, so a control still sliding in is not tapped mid-move', async () => {
+    const at = (y: number): SemanticNode => ({ ref: { id: 'c', revision: 'r1' }, role: 'button', name: 'Configure', testId: 'setup', rect: { x: 0, y, width: 100, height: 20 } });
+    const screens = [[at(300)], [at(40)], [at(40)]];
+    const host = makeHost({});
+    host.capture = async () => {
+      host.observations += 1;
+      return screen(screens.length > 1 ? screens.shift()! : screens[0]!);
+    };
+    const outcome = await replayTrace(host, trace([{ ...tapUpgrade, summary: 'tap button "Set up"', target: { role: 'button', name: 'Set up', testId: 'setup' } }]));
+    expect(outcome).toMatchObject({ completed: true, relocated: 1 });
+    expect(host.looks).toEqual(['held-still', 'raw', 'raw']);
+  });
+
+  it('looks again when a test id and a name disagree, since a screen still settling may resolve them', async () => {
+    const leaving: SemanticNode = { ref: { id: 'w1', revision: 'r1' }, role: 'button', name: 'Next', testId: 'primary' };
+    const arriving: SemanticNode = { ref: { id: 'w2', revision: 'r1' }, role: 'button', name: 'Save', testId: 'save-v2' };
+    const settled: SemanticNode = { ref: { id: 'w3', revision: 'r1' }, role: 'button', name: 'Save', testId: 'primary' };
+    const screens = [[leaving, arriving], [settled]];
+    const tapped: unknown[] = [];
+    const host = makeHost({ onAction: (name, detail) => void (name === 'tap' && tapped.push(detail)) });
+    host.capture = async () => {
+      host.observations += 1;
+      return screen(screens.length > 1 ? screens.shift()! : screens[0]!);
+    };
+    const outcome = await replayTrace(host, trace([{ ...tapUpgrade, summary: 'tap button "Save"', target: { role: 'button', name: 'Save', testId: 'primary' } }]));
+    expect(outcome).toEqual({ completed: true, executed: 1, total: 1, summaries: ['tap button "Save"'] });
+    expect(tapped).toEqual([{ id: 'w3' }]);
+  });
+
+  it('tries an action that never reached the app once more, after the screen holds still and the target is found again', async () => {
+    let failures = 1;
+    const host = makeHost({
+      onAction: (name) => {
+        if (name === 'tap' && failures > 0) {
+          failures -= 1;
+          throw new AgentError('ACTION_FAILED', 'the list re-rendered under the tap', { cause: { code: 'NODE_STALE' } });
+        }
+      },
+    });
+    const outcome = await replayTrace(host, trace([tapUpgrade, typeEmail]));
+    expect(outcome).toMatchObject({ completed: true, executed: 2 });
+    expect(host.calls).toEqual(['tap', 'tap', 'type']);
+    expect(host.looks.slice(0, 2)).toEqual(['held-still', 'held-still']);
+  });
+
+  it('tries a folded viewport scroll that never reached the app once more too', async () => {
+    let failures = 1;
+    const host = makeHost({
+      onAction: (name) => {
+        if (name === 'scroll' && failures > 0) {
+          failures -= 1;
+          throw new AgentError('ACTION_FAILED', 'the page was still loading', { cause: { code: 'NOT_ACTIONABLE' } });
+        }
+      },
+    });
+    const outcome = await replayTrace(host, trace([{ name: 'scroll', summary: 'scroll down', direction: 'down', times: 2 }]));
+    expect(outcome).toMatchObject({ completed: true, executed: 1 });
+    expect(host.calls).toEqual(['scroll', 'scroll', 'scroll']);
+  });
+
+  it('never tries again an action without proof it never reached the app', async () => {
+    const fault = makeHost({
+      onAction: (name) => {
+        if (name === 'tap') throw new AgentError('ACTION_FAILED', 'runner timed out', { cause: { code: 'ENGINE_FAILURE' } });
+      },
+    });
+    expect(await replayTrace(fault, trace([tapUpgrade]))).toMatchObject({ completed: false, stopReason: 'action-failed' });
+    expect(fault.calls).toEqual(['tap']);
+    const denied = makeHost({
+      onAction: (name) => {
+        if (name === 'tap') throw new AgentError('POLICY_DENIED', 'not allowed');
+      },
+    });
+    expect(await replayTrace(denied, trace([tapUpgrade]))).toMatchObject({ completed: false, stopReason: 'action-failed' });
+    expect(denied.calls).toEqual(['tap']);
+    const uncertain = makeHost({
+      onAction: (name) => {
+        if (name === 'tap') throw new AgentError('ACTION_FAILED', 'timed out', { cause: { code: 'ACTION_MAY_HAVE_COMMITTED' } });
+      },
+    });
+    expect(await replayTrace(uncertain, trace([tapUpgrade]))).toMatchObject({ completed: false, stopReason: 'action-uncertain' });
+    expect(uncertain.calls).toEqual(['tap']);
   });
 
   it('absorbs an action failure as divergence, never as a step failure', async () => {
@@ -496,6 +623,15 @@ describe('replayTrace: bare-point taps', () => {
     const flat = makeHost({ nodes: [boxless] });
     expect(await replayTrace(flat, trace([{ ...pin, within }]))).toMatchObject({ completed: false, stopReason: 'target-not-found' });
     expect(flat.calls).toEqual([]);
+  });
+
+  it('never lets the recorded point settle a test id and a name that disagree', async () => {
+    const byTestId: SemanticNode = { ref: { id: 'a', revision: 'r1' }, role: 'img', name: 'Chart', testId: 'map', rect: { x: 0, y: 0, width: 400, height: 200 } };
+    const byName: SemanticNode = { ref: { id: 'b', revision: 'r1' }, role: 'img', name: 'Map', testId: 'map-v2', rect: { x: 0, y: 0, width: 400, height: 200 } };
+    const host = makeHost({ nodes: [byTestId, byName], remainingMs: 50 });
+    const outcome = await replayTrace(host, trace([{ ...pin, within: { target: { role: 'img', name: 'Map', testId: 'map' }, fx: 0.75, fy: 0.3 } }]));
+    expect(outcome).toMatchObject({ completed: false, executed: 0, stopReason: 'target-ambiguous' });
+    expect(host.calls).toEqual([]);
   });
 
   it('lets the recorded point pick among look-alikes when it lies inside exactly one of them', async () => {

@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T09:02:35.369Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)",
+        "derived": "pixels"
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)",
+        "derived": "pixels"
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"SIGN IN\" in \"Use tester@tester.army / <secret:benchm…\"",
+        "target": {
+          "role": "group",
+          "name": "SIGN IN",
+          "within": "Use tester@tester.army / <secret:benchmark.password>"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Flattened%20Login",
+      "targetId": "android-emulator",
+      "instructionDigest": "2ac57f8c28a31069613ffb9bbf8151a42ea8ceb4bb65d0ad6dcd9eea0b8a2755",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Entered the hinted email tester@tester.army and password <secret:benchmark.password>, tapped SIGN IN, and verified the screen displays “Logged in successfully.”",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Logged in successfully"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Use tester@tester.army / <secret:benchmark.password>"
+      },
+      {
+        "role": "text",
+        "name": "Email"
+      },
+      {
+        "role": "text",
+        "name": "Password"
+      },
+      {
+        "role": "text",
+        "name": "SIGN IN"
+      }
+    ],
+    "endWaitMs": 14072
+  }
+}

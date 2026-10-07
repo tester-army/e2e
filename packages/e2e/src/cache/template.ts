@@ -80,15 +80,30 @@ function encode(encoding: Encoding, value: string): string | undefined {
 }
 
 function placeholder(pointer: string, encoding?: Encoding): string {
-  return `${PLACEHOLDER_PREFIX}${pointer}${encoding === undefined ? '' : `|${encoding}`}}}`;
+  return `${PLACEHOLDER_PREFIX}${escapePointer(pointer)}${encoding === undefined ? '' : `|${encoding}`}}}`;
+}
+
+/**
+ * A pointer as a placeholder spells it: a param key may hold the `|` that
+ * opens an encoding or the `}` that closes the placeholder, so those two and
+ * the escape's own `%` are percent-encoded. A pointer without any of them
+ * reads as before.
+ */
+function escapePointer(pointer: string): string {
+  return pointer.replaceAll('%', '%25').replaceAll('|', '%7C').replaceAll('}', '%7D');
+}
+
+/** The pointer a placeholder spells, its escapes (`escapePointer`) read back. */
+function unescapePointer(spelled: string): string {
+  return spelled.replaceAll('%7C', '|').replaceAll('%7D', '}').replaceAll('%25', '%');
 }
 
 /** The pointer and encoding a placeholder names; undefined for an encoding this codec does not know. */
 function parsePlaceholder(inner: string): { readonly pointer: string; readonly encoding: Encoding | undefined } | undefined {
   const bar = inner.lastIndexOf('|');
-  if (bar === -1) return { pointer: inner, encoding: undefined };
+  if (bar === -1) return { pointer: unescapePointer(inner), encoding: undefined };
   const encoding = inner.slice(bar + 1);
-  return encoding in ENCODERS ? { pointer: inner.slice(0, bar), encoding: encoding as Encoding } : undefined;
+  return Object.hasOwn(ENCODERS, encoding) ? { pointer: unescapePointer(inner.slice(0, bar)), encoding: encoding as Encoding } : undefined;
 }
 
 /** One spelling of a template's value and the placeholder that stands for it. */

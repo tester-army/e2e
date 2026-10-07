@@ -17,7 +17,8 @@
  */
 
 import { describeAction, type DescribedAction, type RecordableAction } from '../agent/actions.ts';
-import { isRelocatableDescriptor } from './relocate.ts';
+import type { RedactedNode } from '../agent/observation.ts';
+import { isRelocatableDescriptor } from './locate.ts';
 import {
   bound,
   DESCRIPTOR_FIELDS,
@@ -26,6 +27,8 @@ import {
   MAX_TRACE_END_WAIT_MS,
   MAX_TRACE_INPUT_CHARS,
   MAX_TRACE_SUMMARY_CHARS,
+  TOGGLE_ROLES,
+  TRACE_ANCHOR_STATES,
   isNodeAction,
   type ActionTrace,
   type DerivedReason,
@@ -46,6 +49,9 @@ export interface TraceRecorderOptions {
   readonly maxActions?: number;
 }
 
+/** The answer the look after an action gives: whether the screen left the shape the action was resolved against. */
+export type SettleNote = (changed: boolean) => void;
+
 export class TraceRecorder {
   private readonly actions: RecordedAction[] = [];
   private truncated = false;
@@ -60,6 +66,8 @@ export class TraceRecorder {
   }
 
   private lastActionAt: number | undefined;
+  /** Counts every push, a fold or a dropped action included: a settle note goes stale once it moves. */
+  private revision = 0;
 
   /** Number of actions recorded so far, gaps included. */
   get recordedCount(): number {
@@ -71,10 +79,25 @@ export class TraceRecorder {
     return this.lastActionAt;
   }
 
-  /** Records one committed grammar action. */
-  record(action: RecordableAction): void {
-    this.push(this.toRecorded(action, describeAction(action, { redact: this.redact, redactCut: this.redactCut })));
+  /**
+   * Records one committed grammar action, returning the note the look after
+   * it answers: whether the screen left the shape the action was resolved
+   * against within its change wait. One that did not is marked `quiet`, and
+   * a replay will not wait out the change the recording proved never comes.
+   * An action folded into the one before it or dropped at the cap gets no
+   * note, and a note goes stale once anything else is recorded before the
+   * look, which then answers for both.
+   */
+  record(action: RecordableAction): SettleNote | undefined {
+    const index = this.push(this.toRecorded(action, describeAction(action, { redact: this.redact, redactCut: this.redactCut })));
     this.lastActionAt = Date.now();
+    if (index === undefined) return undefined;
+    const at = this.revision;
+    return (changed) => {
+      const recorded = this.actions[index];
+      if (changed || this.revision !== at || recorded === undefined) return;
+      this.actions[index] = { ...recorded, quiet: true };
+    };
   }
 
   /**
@@ -168,7 +191,11 @@ export class TraceRecorder {
       return descriptor ?? { role: 'unknown' };
     };
     const requireTarget = (): TraceTargetDescriptor => require(target);
-    if (isNodeAction(action)) return { name: action.name, summary, target: requireTarget() };
+    if (isNodeAction(action)) {
+      // A tap flips a toggle; hovering it or scrolling it into view does not.
+      const flips = action.name === 'tap' || action.name === 'doubleTap';
+      return { name: action.name, summary, target: flips ? withToggleState(requireTarget(), action.node) : requireTarget() };
+    }
     switch (action.name) {
       case 'check':
         return { name: 'check', summary, target: requireTarget(), checked: action.checked };
@@ -248,7 +275,9 @@ export class TraceRecorder {
     return bound(redacted, MAX_TRACE_INPUT_CHARS);
   }
 
-  private push(action: RecordedAction): void {
+  /** Stores one action, returning its index, or undefined when it folded into the one before or was dropped at the cap. */
+  private push(action: RecordedAction): number | undefined {
+    this.revision += 1;
     // A scroll repeated in the same direction on the same target is one
     // action that ran several times, not several actions: a long list paged
     // to its end fits the trace, and replays with the same repeats.
@@ -256,17 +285,29 @@ export class TraceRecorder {
     if (action.name === 'scroll' && last?.name === 'scroll' && sameScroll(last, action)) {
       // The smallest coverage of the repeats decides the viewport fallback,
       // so a list that shrank on the way is never promoted by its first size.
-      const { spans: previous, ...rest } = last;
+      // A folded scroll is paced in full: only its first repeat would take a
+      // replay's override, and nothing says that repeat was the quiet one.
+      const { spans: previous, quiet: _quiet, ...rest } = last;
       const spans = previous === undefined || action.spans === undefined ? undefined : Math.min(previous, action.spans);
       this.actions[this.actions.length - 1] = { ...rest, times: (last.times ?? 1) + 1, ...(spans === undefined ? {} : { spans }) };
-      return;
+      return undefined;
     }
     if (this.actions.length >= this.maxActions) {
       this.truncated = true;
-      return;
+      return undefined;
     }
-    this.actions.push(action);
+    return this.actions.push(action) - 1;
   }
+}
+
+/**
+ * A tapped toggle's descriptor with the states it was in (`TOGGLE_ROLES`),
+ * none of them on included: a tap flips it, so a replay must find it in the
+ * state the recording tapped it in.
+ */
+function withToggleState(target: TraceTargetDescriptor, node: RedactedNode): TraceTargetDescriptor {
+  if (target.role === undefined || !TOGGLE_ROLES.has(target.role)) return target;
+  return { ...target, states: TRACE_ANCHOR_STATES.filter((state) => node.states?.[state] === true) };
 }
 
 /** A place inside a box as a fraction of its side, clamped to the box and rounded so the entry stays small. */

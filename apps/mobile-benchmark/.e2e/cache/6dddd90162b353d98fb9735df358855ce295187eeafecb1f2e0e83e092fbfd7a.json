@@ -1,0 +1,133 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T09:03:55.336Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap radio \"Medium\" in \"Order a Medium pizza with exactly Chees…\"",
+        "target": {
+          "role": "radio",
+          "name": "Medium",
+          "testId": "size-medium",
+          "selector": "id=size-medium",
+          "within": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…",
+          "states": []
+        }
+      },
+      {
+        "name": "check",
+        "summary": "check checkbox \"Cheese\" in \"Order a Medium pizza with exactly Chees…\"",
+        "target": {
+          "role": "checkbox",
+          "name": "Cheese",
+          "testId": "topping-cheese",
+          "selector": "id=topping-cheese",
+          "within": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…"
+        },
+        "checked": true
+      },
+      {
+        "name": "check",
+        "summary": "check checkbox \"Olives\" in \"Order a Medium pizza with exactly Chees…\"",
+        "target": {
+          "role": "checkbox",
+          "name": "Olives",
+          "testId": "topping-olives",
+          "selector": "id=topping-olives",
+          "within": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…"
+        },
+        "checked": true
+      },
+      {
+        "name": "check",
+        "summary": "check switch \"rush-delivery\" in \"Order a Medium pizza with exactly Chees…\"",
+        "target": {
+          "role": "switch",
+          "testId": "rush-delivery",
+          "selector": "id=rush-delivery",
+          "within": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…"
+        },
+        "checked": true
+      },
+      {
+        "name": "dismissKeyboard",
+        "summary": "dismiss the keyboard",
+        "quiet": true
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Place order\" in \"Order a Medium pizza with exactly Chees…\"",
+        "target": {
+          "role": "group",
+          "name": "Place order",
+          "testId": "place-order",
+          "selector": "id=place-order",
+          "within": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Choice%20Controls",
+      "targetId": "android-emulator",
+      "instructionDigest": "e45bc3c8dfe206c28355448b56384192428222d9ab9b304cefdfa5b86f6da188",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Selected Medium, checked exactly Cheese and Olives, enabled rush delivery, dismissed the keyboard, and placed the order. The screen confirms: “Order placed: Medium with Cheese, Olives (rush).”",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Order placed: Medium with Cheese, Olives (rush)",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then place the order (dismiss the keyboard first)."
+      },
+      {
+        "role": "text",
+        "name": "Size"
+      },
+      {
+        "role": "radio",
+        "name": "Small",
+        "testId": "size-small"
+      },
+      {
+        "role": "radio",
+        "name": "Medium",
+        "testId": "size-medium"
+      },
+      {
+        "role": "radio",
+        "name": "Large",
+        "testId": "size-large"
+      },
+      {
+        "role": "text",
+        "name": "Toppings"
+      },
+      {
+        "role": "checkbox",
+        "name": "Cheese",
+        "testId": "topping-cheese"
+      },
+      {
+        "role": "checkbox",
+        "name": "Olives",
+        "testId": "topping-olives"
+      }
+    ],
+    "endWaitMs": 12061
+  }
+}

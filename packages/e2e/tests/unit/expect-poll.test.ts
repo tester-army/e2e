@@ -22,7 +22,7 @@ function attempt(options: { assertionTimeout: number; deadlineMs: number }) {
       testKind: 'test',
       assertionTimeout: options.assertionTimeout,
       budget: new AttemptBudget(cancel.signal, new Deadline(options.deadlineMs)),
-      soft: new SoftFailures(),
+      soft: new SoftFailures(() => -1),
     },
     end.signal,
   );

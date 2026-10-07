@@ -315,3 +315,19 @@ describe('TraceRecorder: bare-point taps', () => {
     expect(broken((action) => { action['point'] = { x: 'left', y: 60 }; })).toBeUndefined();
   });
 });
+
+describe('tapped toggles', () => {
+  it('records the state a tapped toggle was in, off included, and reads it back; other controls record none', () => {
+    const recorder = makeRecorder();
+    const box = (checked: boolean) => redacted({ ref: { id: 'b', revision: 'r1' }, role: 'checkbox', name: 'Mushrooms', states: { checked } });
+    recorder.record({ name: 'tap', node: box(true) });
+    recorder.record({ name: 'tap', node: box(false) });
+    recorder.record({ name: 'tap', node: upgradeButton });
+    // Hovering a toggle does not flip it, so its state is not part of the target.
+    recorder.record({ name: 'hover', node: box(true) });
+    const trace = recorder.finalize(conclusion)!;
+    expect(trace.actions.map((action) => ('target' in action ? action.target?.states : undefined))).toEqual([['checked'], [], undefined, undefined]);
+    expect(readTraceEntry(JSON.parse(JSON.stringify(buildTraceEntry(trace))))?.payload.actions).toEqual(trace.actions);
+  });
+});
+

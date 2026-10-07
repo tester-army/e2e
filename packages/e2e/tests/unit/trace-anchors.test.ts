@@ -117,6 +117,29 @@ describe('describeDelta', () => {
     ]);
   });
 
+  it('records one anchor per label, the one with a test id, since which wrappers a platform reports varies', () => {
+    // One iOS accessibility backend reports the status and a wrapper named after it; another reports only the status.
+    const status = node('s', { role: 'text', name: 'Flow completed', testId: 'success-message' });
+    const wrapper = node('w', { role: 'other', name: 'Flow completed' });
+    const recorded = appeared(nodes([heading]), nodes([heading, wrapper, status]));
+    expect(recorded).toEqual([{ role: 'text', name: 'Flow completed', testId: 'success-message' }]);
+    expect(deltaHolds({ endAnchors: recorded }, nodes([heading, status]), nodes([heading]))).toBe(true);
+    // Nested wrappers of a removed button collapse the same way on the gone side.
+    const button = node('b', { role: 'other', name: 'Open modal', testId: 'open-modal-button' });
+    const outer = node('o', { role: 'other', name: 'Open modal', children: [button] });
+    expect(describeDelta(nodes([heading, outer, button]), nodes([heading]), false).gone).toEqual([
+      { role: 'other', name: 'Open modal', testId: 'open-modal-button' },
+    ]);
+    // A wrapper with a test id never takes the slot from the status it wraps.
+    const plain = node('p', { role: 'status', name: 'Saved' });
+    const tagged = node('g', { role: 'other', name: 'Saved', testId: 'save-banner', children: [plain] });
+    expect(appeared(nodes([heading]), nodes([heading, tagged, plain]))).toEqual([{ role: 'status', name: 'Saved' }]);
+    // Fields reading one label with different values are different effects.
+    const first = node('f1', { role: 'textbox', name: 'Email', value: 'a@x.test' });
+    const second = node('f2', { role: 'textbox', name: 'Email', value: 'b@x.test' });
+    expect(appeared(nodes([heading]), nodes([heading, first, second]))).toHaveLength(2);
+  });
+
   it('puts announcements first, then leaves, then containers, which only repeat their children', () => {
     // Ten list items, each a container over one text leaf, plus a status line
     // after the list: 21 new descriptors for a cap of 8. The observation index
@@ -220,7 +243,9 @@ describe('describeDelta', () => {
       // The status reads "Express" too: the label is gone, but an anchor of its text alone is not.
       expect(delta.gone).not.toContainEqual({ text: 'Express' });
       expect(delta.gone).toContainEqual({ role: 'radio', name: 'Express' });
-      expect(delta.gone).toContainEqual({ text: 'Standard' });
+      // The radio and its label read one label: one anchor stands for both.
+      expect(delta.gone).not.toContainEqual({ text: 'Standard' });
+      expect(delta.gone).toContainEqual({ role: 'radio', name: 'Standard' });
     });
 
     it('still fails a replay whose pick left the radios on screen', () => {
@@ -284,11 +309,62 @@ describe('deltaHolds', () => {
     expect(holds([{ role: 'alert', text: 'Session expires at 17:42' }], [node('x', { role: 'alert', text: 'Session expired' })])).toBe(false);
   });
 
+  it('reads the volatile parts of any anchor as placeholders, so a recording whose only effect reads a time passes its own replay', () => {
+    const start = nodes([heading]);
+    const delta = describeDelta(start, nodes([heading, node('s', { role: 'status', text: 'Saved at 10:42' })]), false);
+    expect(delta.appeared).toEqual([{ role: 'status', text: 'Saved at 10:42' }]);
+    const recorded = { endAnchors: delta.appeared, goneAnchors: delta.gone };
+    const replayEnd = nodes([heading, node('s2', { role: 'status', text: 'Saved at 10:45' })]);
+    expect(deltaHolds(recorded, replayEnd, start)).toBe(true);
+    expect(deltaEvidenced(recorded, start, [])).toBe(true);
+    // The same status already on screen before the replay acted proves nothing.
+    expect(deltaEvidenced(recorded, nodes([heading, node('s0', { role: 'status', text: 'Saved at 09:58' })]), [])).toBe(false);
+    expect(deltaHolds(recorded, nodes([heading, node('s3', { role: 'status', text: 'Save failed' })]), start)).toBe(false);
+  });
+
+  it('compares a field\'s value exactly, even when it reads a date or a duration: the value is the step\'s effect', () => {
+    const picked = { role: 'textbox', name: 'Due date', value: '2026-10-05' };
+    expect(holds([picked], [node('d', { role: 'textbox', name: 'Due date', value: '2026-10-05' })])).toBe(true);
+    expect(holds([picked], [node('d', { role: 'textbox', name: 'Due date', value: '2026-10-06' })])).toBe(false);
+  });
+
   it('forgives a churned test id when the other fields still identify the node', () => {
     const anchor = { role: 'link', name: 'PB-Twin-Alpha', testId: 'row-1a2b' };
     const rerendered = node('r2', { role: 'link', name: 'PB-Twin-Alpha', testId: 'row-9f8e' });
     expect(holds([anchor], [rerendered])).toBe(true);
     expect(holds([{ role: 'listitem', testId: 'row-1a2b' }], [rerendered])).toBe(false);
+  });
+
+  it('finds a status by its test id when the region around it was relabeled, and still requires what it reads', () => {
+    const anchor = { role: 'region', name: 'Save status', text: 'Saved', testId: 'save' };
+    expect(holds([anchor], [node('r', { role: 'region', name: 'Draft status', text: 'Saved', testId: 'save' })])).toBe(true);
+    expect(holds([anchor], [node('r', { role: 'region', name: 'Draft status', text: 'Saving', testId: 'save' })])).toBe(false);
+  });
+
+  it('reads the name of a node that says nothing else as its content, and keeps the node by its test id across a role change', () => {
+    const anchor = { role: 'text', name: 'Receipt attached: icon.png', testId: 'success-message' };
+    expect(holds([anchor], [node('t', { role: 'other', name: 'Receipt attached: icon.png', testId: 'success-message' })])).toBe(true);
+    expect(holds([anchor], [node('t', { role: 'text', name: 'Upload failed', testId: 'success-message' })])).toBe(false);
+  });
+
+  it('never counts the recorded reading on another node while the recorded test id is on screen reading something else', () => {
+    const anchor = { role: 'text', name: 'Saved', testId: 'save-message' };
+    const failed = node('m', { role: 'text', name: 'Save failed', testId: 'save-message' });
+    const elsewhere = node('o', { role: 'text', name: 'Saved' });
+    expect(holds([anchor], [failed, elsewhere])).toBe(false);
+    // With the test id gone, a node reading the same is a re-minted id, as before.
+    expect(holds([anchor], [elsewhere])).toBe(true);
+  });
+
+  it('sees a vanished label as gone when its control stayed and now reads otherwise, and fails when the evidence disagrees', () => {
+    const gone = { role: 'button', name: 'Choose photo', testId: 'choose-photo' };
+    expect(holds([], [node('b', { role: 'button', name: 'Change photo', testId: 'choose-photo' })], [], [gone])).toBe(true);
+    expect(holds([], [node('b', { role: 'button', name: 'Choose photo', testId: 'choose-photo' })], [], [gone])).toBe(false);
+    const pending = { role: 'status', name: 'Upload', text: 'Pending', testId: 'upload-status' };
+    const done = node('u', { role: 'status', name: 'Upload', text: 'Done', testId: 'upload-status' });
+    const stale = node('s', { role: 'status', name: 'Upload', text: 'Pending' });
+    expect(holds([], [done], [], [pending])).toBe(true);
+    expect(holds([], [done, stale], [], [pending])).toBe(false);
   });
 });
 

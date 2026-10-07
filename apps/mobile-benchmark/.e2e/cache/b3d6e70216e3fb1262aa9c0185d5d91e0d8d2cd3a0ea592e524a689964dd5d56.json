@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T09:12:30.411Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "scrollUntil",
+        "summary": "scroll down on group \"benchmark-list\" until \"Item 137\" shows (8 screens)",
+        "text": "Item 137",
+        "direction": "down",
+        "target": {
+          "role": "group",
+          "testId": "benchmark-list",
+          "selector": "id=benchmark-list"
+        },
+        "spans": 0.8821
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Item 137\"",
+        "target": {
+          "role": "group",
+          "name": "Item 137",
+          "testId": "item-137",
+          "selector": "id=item-137"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Infinite%20Scroll%20List",
+      "targetId": "android-emulator",
+      "instructionDigest": "240960ef8daa93f30d3183a42cf877c23681993025141766e480102a3eca2d75",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Tapped Item 137; the screen now displays “Found item 137.”",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Found item 137",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Scroll down and tap Item 137 to complete"
+      },
+      {
+        "role": "group",
+        "name": "Item 1",
+        "testId": "item-1"
+      },
+      {
+        "role": "group",
+        "name": "Item 2",
+        "testId": "item-2"
+      },
+      {
+        "role": "group",
+        "name": "Item 3",
+        "testId": "item-3"
+      },
+      {
+        "role": "group",
+        "name": "Item 4",
+        "testId": "item-4"
+      },
+      {
+        "role": "group",
+        "name": "Item 5",
+        "testId": "item-5"
+      },
+      {
+        "role": "group",
+        "name": "Item 6",
+        "testId": "item-6"
+      },
+      {
+        "role": "group",
+        "name": "Item 7",
+        "testId": "item-7"
+      }
+    ],
+    "endWaitMs": 11515
+  }
+}

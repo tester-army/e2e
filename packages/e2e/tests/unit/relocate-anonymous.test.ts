@@ -1,7 +1,7 @@
 /** Anonymous targets: a control with only a role relocates by its place among the unnamed controls of its kind. */
 
 import { describe, expect, it } from 'vitest';
-import { describePosition, relocateDescriptor } from '../../src/cache/relocate.ts';
+import { describePosition, relocateExact } from '../../src/cache/locate.ts';
 import { buildTraceEntry, readTraceEntry } from '../../src/cache/trace.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import type { RedactedNode } from '../../src/agent/observation.ts';
@@ -30,27 +30,27 @@ describe('an anonymous target', () => {
   });
 
   it('relocates the only unnamed control of its role, never to a named control of the same role', () => {
-    expect(relocateDescriptor({ role: 'textbox', position: { index: 0, of: 1 } }, screen(textbox('a', 'Email'), textbox('b')))).toEqual({ kind: 'found', id: 'b' });
+    expect(relocateExact({ role: 'textbox', position: { index: 0, of: 1 } }, screen(textbox('a', 'Email'), textbox('b')))).toEqual({ kind: 'found', id: 'b' });
   });
 
   it('hands off a place counted among unnamed twins with no container to tell them apart, since rows reorder', () => {
     const recorded = { role: 'textbox', position: { index: 1, of: 2 } };
-    expect(relocateDescriptor(recorded, screen(textbox('a', 'Email'), textbox('b'), textbox('c')))).toEqual({ kind: 'failed', failure: 'target-not-found' });
+    expect(relocateExact(recorded, screen(textbox('a', 'Email'), textbox('b'), textbox('c')))).toEqual({ kind: 'failed', failure: 'target-not-found' });
   });
 
   it('diverges when the number of unnamed controls changed, or none is left', () => {
     const recorded = { role: 'textbox', position: { index: 0, of: 1 } };
-    expect(relocateDescriptor(recorded, screen(textbox('a'), textbox('b')))).toEqual({ kind: 'failed', failure: 'target-ambiguous', candidates: ['a', 'b'] });
-    expect(relocateDescriptor(recorded, screen(textbox('a', 'Email')))).toEqual({ kind: 'failed', failure: 'target-not-found' });
+    expect(relocateExact(recorded, screen(textbox('a'), textbox('b')))).toEqual({ kind: 'failed', failure: 'target-ambiguous', candidates: ['a', 'b'] });
+    expect(relocateExact(recorded, screen(textbox('a', 'Email')))).toEqual({ kind: 'failed', failure: 'target-not-found' });
     // Counted among two with no container, even one survivor is never taken for it.
-    expect(relocateDescriptor({ role: 'textbox', position: { index: 1, of: 2 } }, screen(textbox('a', 'Email'), textbox('b')))).toEqual({ kind: 'failed', failure: 'target-not-found' });
+    expect(relocateExact({ role: 'textbox', position: { index: 1, of: 2 } }, screen(textbox('a', 'Email'), textbox('b')))).toEqual({ kind: 'failed', failure: 'target-not-found' });
   });
 
   it('never lets a churned test id fall back to an anonymous position', () => {
     // Recorded among test-id twins; when the id churns, the position says nothing about unnamed textboxes.
     const recorded = { role: 'textbox', testId: 'field-zz9', position: { index: 0, of: 2 } };
     const form = screen(textbox('a'), textbox('b'));
-    expect(relocateDescriptor(recorded, form)).toEqual({ kind: 'failed', failure: 'target-not-found' });
+    expect(relocateExact(recorded, form)).toEqual({ kind: 'failed', failure: 'target-not-found' });
   });
 
   it('survives the trace reader with a count of one', () => {
@@ -64,6 +64,6 @@ describe('an anonymous target', () => {
   });
 
   it('stays unrelocatable without a recorded position, as before', () => {
-    expect(relocateDescriptor({ role: 'textbox' }, screen(textbox('a')))).toEqual({ kind: 'failed', failure: 'target-not-found' });
+    expect(relocateExact({ role: 'textbox' }, screen(textbox('a')))).toEqual({ kind: 'failed', failure: 'target-not-found' });
   });
 });

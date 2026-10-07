@@ -1,0 +1,86 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-04T07:54:14.661Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tapAt",
+        "summary": "tap the point (197, 577) on other \"Buy with Apple Pay\"",
+        "point": {
+          "x": 197,
+          "y": 577
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Buy with Apple Pay",
+            "testId": "apple-pay-button",
+            "selector": "id=apple-pay-button"
+          },
+          "fx": 0.4887,
+          "fy": 0.5168
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Pay with Passcode\"",
+        "target": {
+          "role": "button",
+          "name": "Pay with Passcode",
+          "testId": "footer",
+          "selector": "id=footer"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Apple%20Pay",
+      "targetId": "ios-simulator",
+      "instructionDigest": "94f39431cf1ce1c380678b2d8ee27fb1e2a33fe296495a90c007ad4dc3f2ae45",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Started Apple Pay from the order screen and authorized with “Pay with Passcode.” The app now shows “Payment complete: $8.99.”",
+    "startPath": "dev.e2e.benchmark / Apple Pay",
+    "endPath": "dev.e2e.benchmark / Apple Pay",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Payment complete: $8.99",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Order summary"
+      },
+      {
+        "role": "text",
+        "name": "Trail Mix 500 g — $6.99"
+      },
+      {
+        "role": "text",
+        "name": "Rush delivery — $2.00"
+      },
+      {
+        "role": "text",
+        "name": "Total — $8.99"
+      },
+      {
+        "role": "other",
+        "name": "Buy with Apple Pay",
+        "testId": "apple-pay-button"
+      }
+    ],
+    "endWaitMs": 17813
+  }
+}

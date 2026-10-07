@@ -178,6 +178,27 @@ test('cached step increments twice', async ({ app, agent, screen }) => {
 });
 `;
 
+const SOFT_FAILURE_THEN_PASS_SUITE = `import { test, expect } from 'e2e';
+
+test('cached step increments twice', async ({ app, agent, screen }) => {
+  await app.open();
+  await agent.act('increment the counter twice');
+  await expect.soft(screen.getByRole('status')).toHaveText('3');
+  await expect(screen.getByRole('status')).toHaveText('2');
+});
+`;
+
+const SOFT_FAILURE_THEN_SKIP_SUITE = `import { test, expect } from 'e2e';
+
+test('cached step increments twice', async ({ app, agent, screen }) => {
+  await app.open();
+  await agent.act('increment the counter twice');
+  await expect.soft(screen.getByRole('status')).toHaveText('3');
+  await expect(screen.getByRole('status')).toHaveText('2');
+  test.skip(true, 'skipped after the checks');
+});
+`;
+
 describe('trace cache: unconfirmed traces are withheld and poisoned entries evicted', () => {
   let app: FixtureApp;
   let project: FixtureProject;
@@ -211,6 +232,21 @@ describe('trace cache: unconfirmed traces are withheld and poisoned entries evic
     expect(outcome.exitCode).not.toBe(0);
     // The afterEach hook's app.open passes with a higher step index than the
     // failed assertion; confirmation must stop at the failure, not at it.
+    expect(existsSync(cacheDir(project))).toBe(false);
+    project.cleanup();
+  }, 120_000);
+
+  it('a check that passes after a soft failure cannot confirm the trace the soft failure was about', async () => {
+    project = createProject({ 'tests/act.e2e.ts': SOFT_FAILURE_THEN_PASS_SUITE });
+    const outcome = await runExisting(project, options());
+    expect(outcome.exitCode).not.toBe(0);
+    expect(existsSync(cacheDir(project))).toBe(false);
+    project.cleanup();
+  }, 120_000);
+
+  it('a skip after a soft failure cannot let a later check confirm the trace either', async () => {
+    project = createProject({ 'tests/act.e2e.ts': SOFT_FAILURE_THEN_SKIP_SUITE });
+    await runExisting(project, options());
     expect(existsSync(cacheDir(project))).toBe(false);
     project.cleanup();
   }, 120_000);
@@ -816,3 +852,62 @@ describe('trace cache: a composed word that appears on screen is not a run-time 
     expect(step.cache).toEqual({ mode: 'self-finalized', replayedActions: 2, totalActions: 2 });
   }, 240_000);
 });
+
+describe('trace cache: a replay is paced by what its recording saw settle', () => {
+  let app: FixtureApp;
+  let project: FixtureProject;
+  const SUITE_ARM = `import { test, expect } from 'e2e';
+
+test('arms and fires', async ({ app, agent, screen }) => {
+  await app.open('/arm');
+  await agent.act('arm, then fire');
+  await expect(screen.getByRole('status', { name: 'Launch' })).toHaveText('launched');
+});
+`;
+  const armThenFire: StepExecutor = {
+    name: 'arm-then-fire',
+    version: 'test',
+    async runStep(context: StepExecutorContext) {
+      let observation = await context.observe();
+      await context.actions.tap({ id: nodeIdFor(observation.text, /button "Arm"/) });
+      observation = await context.observe();
+      await context.actions.tap({ id: nodeIdFor(observation.text, /button "Fire"/) });
+      await context.observe();
+      return { status: 'passed' as const, summary: 'launched' };
+    },
+  };
+  const options = () => ({
+    appUrl: app.url,
+    config: { tests: 'tests/**/*.e2e.ts', agents: { default: { executor: armThenFire } }, cache: 'read-write' as const },
+  });
+  const actStepOf = (outcome: RunOutcome) => resultByTitle(outcome, 'arms and fires').attempts.at(-1)!.steps.find((step) => step.api === 'agent.act')!;
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    project = createProject({ 'tests/arm.e2e.ts': SUITE_ARM });
+  }, 60_000);
+
+  afterAll(async () => {
+    project?.cleanup();
+    await app?.close();
+  });
+
+  it('records the control that changed nothing as quiet, and replays it without waiting out the change timeout', async () => {
+    const recorded = await runExisting(project, options());
+    expect(recorded.exitCode).toBe(0);
+    const { entry } = readOnlyEntry(project);
+    expect(entry.payload.actions.map((action) => [action.name, action.quiet])).toEqual([
+      ['tap', true],
+      ['tap', undefined],
+    ]);
+    // The recording waited the Arm tap's full change wait before its next look.
+    expect(actStepOf(recorded).durationMs).toBeGreaterThan(2_000);
+
+    const replayed = await runExisting(project, options());
+    expect(replayed.exitCode).toBe(0);
+    const step = actStepOf(replayed);
+    expect(step.cache).toMatchObject({ mode: 'self-finalized', replayedActions: 2 });
+    expect(step.durationMs).toBeLessThan(1_800);
+  }, 120_000);
+});
+
