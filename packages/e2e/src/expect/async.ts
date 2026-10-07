@@ -177,7 +177,10 @@ class AsyncExpectationImpl implements AsyncExpectation {
           const sample = await this.sample(spec, deadline);
           lastSample = sample;
           if (spec.readsWithheld === true) {
-            denySecureRead(sample.node === null ? sample.nodes : [sample.node], this.label);
+            const read = sample.node === null ? sample.nodes : [sample.node];
+            // The expected value of a read a secure field withholds is as private as the field.
+            if (read.some((node) => node.states?.secure === true)) this.internals.context.steps.amendArgument('<withheld>');
+            denySecureRead(read, this.label);
           }
           if (!this.conditionEvaluable(spec, sample)) return undefined;
           return spec.predicate(sample);
@@ -201,7 +204,7 @@ class AsyncExpectationImpl implements AsyncExpectation {
           );
         },
       });
-    }, { verifies: true });
+    }, { verifies: true, argument: `${this.negated ? 'not ' : ''}${spec.describeExpected}` });
   }
 
   /**

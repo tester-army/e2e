@@ -72,6 +72,26 @@ describe.each(schemas)('%s schema', (name) => {
       }
     });
 
+    it("types a step's argument and target: a string of at most 1024 characters, and a box or point of numbers", () => {
+      const report = readJson('fixtures', 'report-v1.valid.json') as { run: { results: { attempts: { steps: Record<string, unknown>[] }[] }[] } };
+      const step = report.run.results.flatMap((result) => result.attempts).flatMap((attempt) => attempt.steps).find((entry) => 'target' in entry)!;
+      expect(validate(report)).toBe(true);
+      for (const [key, bad] of [
+        ['argument', 42],
+        ['argument', 'x'.repeat(1025)],
+        ['target', { box: { x: 1, y: 2 } }],
+        ['target', { box: { x: 1, y: 2, width: -1, height: 3 } }],
+        ['target', { point: { x: 'left', y: 2 } }],
+        ['target', { cursor: { x: 1, y: 2 } }],
+      ] as const) {
+        const saved = step[key];
+        step[key] = bad;
+        expect(validate(report), `${key}: ${JSON.stringify(bad).slice(0, 40)}`).toBe(false);
+        step[key] = saved;
+      }
+      expect(validate(report)).toBe(true);
+    });
+
     it('counts interrupted results in the summary apart from failed ones', () => {
       const report = readJson('fixtures', 'report-v1.valid.json') as { run: { summary: Record<string, number> } };
       expect(validate(report)).toBe(true);

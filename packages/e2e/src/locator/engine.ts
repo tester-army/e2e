@@ -353,8 +353,9 @@ export class LocatorEngine {
     expression: LocatorExpression,
     action: LocatorAction | ((deadline: Deadline) => Promise<LocatorAction>),
     timeoutMs?: number,
+    inspect?: NodeInspector,
   ): Promise<void> {
-    await this.performUntil(expression, action, this.deadline(timeoutMs));
+    await this.performUntil(expression, action, this.deadline(timeoutMs), inspect);
   }
 
   /** Performs one pointer action at a viewport point, with no node behind it. */
@@ -376,6 +377,7 @@ export class LocatorEngine {
     offset: ViewportPoint,
     action: PointerAction,
     timeoutMs?: number,
+    inspect?: NodeInspector,
   ): Promise<void> {
     this.checkPointerAction(action);
     const deadline = this.deadline(timeoutMs);
@@ -401,6 +403,7 @@ export class LocatorEngine {
       sampled = true;
       const rect = isNodeVisible(node) ? node.rect : undefined;
       if (rect !== undefined) {
+        inspect?.(node);
         await this.dispatchAt({ x: rect.x + offset.x, y: rect.y + offset.y }, action, deadline);
         return;
       }
@@ -434,6 +437,7 @@ export class LocatorEngine {
     chunks: readonly string[],
     delayMs: number,
     timeoutMs?: number,
+    inspect?: NodeInspector,
   ): Promise<void> {
     this.checkAction({ kind: 'focus' });
     if (!this.session.verbs.has('typeText')) {
@@ -443,7 +447,7 @@ export class LocatorEngine {
       );
     }
     const deadline = this.deadline(timeoutMs);
-    await this.performUntil(expression, { kind: 'focus' }, deadline);
+    await this.performUntil(expression, { kind: 'focus' }, deadline, inspect);
     const timedOut = (typed: number): TestError =>
       new TestError(
         'ACTION_FAILED',
@@ -473,10 +477,15 @@ export class LocatorEngine {
     expression: LocatorExpression,
     action: LocatorAction | ((deadline: Deadline) => Promise<LocatorAction>),
     deadline: Deadline,
+    inspect?: NodeInspector,
   ): Promise<void> {
     if (typeof action !== 'function') this.checkAction(action);
     for (;;) {
       const ref = await this.resolveExactlyOne(expression, deadline);
+      if (inspect !== undefined) {
+        // One node read, not a screen: a failed read reports nothing known, and the caller fails closed.
+        inspect(await this.session.read(ref, this.operationWithin(deadline)).catch(() => null));
+      }
       const resolved = typeof action === 'function' ? await action(deadline) : action;
       try {
         await this.session.perform(ref, resolved, this.operationWithin(deadline));
@@ -495,6 +504,9 @@ export class LocatorEngine {
     }
   }
 }
+
+/** Sees the node an action resolved to, read once before it acts; null when the read failed. */
+export type NodeInspector = (node: SemanticNode | null) => void;
 
 /** Zero matches -> null; one -> the ref; many -> LOCATOR_AMBIGUOUS. */
 function assertSingle(refs: readonly NodeRef[], expression: LocatorExpression): NodeRef | null {

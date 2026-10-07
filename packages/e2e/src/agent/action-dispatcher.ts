@@ -232,6 +232,10 @@ export class ActionDispatcher {
       // the tree's root is the page itself and follows no layout shift.
       const under = hit.under === undefined || (observation.kind === 'semantic' && hit.under.ref.id === observation.tree.ref.id) ? undefined : hit.under;
       await this.runActionNow(verb, async () => {
+        this.runtime.steps.amendTarget({
+          point: { x: clamped.x, y: clamped.y },
+          ...(under?.rect === undefined ? {} : { box: { x: under.rect.x, y: under.rect.y, width: under.rect.width, height: under.rect.height } }),
+        });
         await this.session.performAt(clamped, { kind: nodeVerb }, this.accounting.actionOperation());
         return {
           name: verb,
@@ -252,6 +256,8 @@ export class ActionDispatcher {
       if (call.mutates) {
         this.accounting.reserveAction();
         this.options.trace()?.recordGap(call.name);
+        // A project tool acts on no node the step knows, so the step has no target once one runs.
+        this.runtime.steps.amendTarget(undefined);
       }
       const value = await instrumentPhase(
         this.runtime,
@@ -547,6 +553,8 @@ export class ActionDispatcher {
 
   private async runActionNow(name: GrammarActionName, body: () => Promise<RecordableAction>): Promise<void> {
     this.accounting.reserveAction();
+    // The step's target is its last action's: an action with no node or point (a scroll, back, a wait) leaves none.
+    this.runtime.steps.amendTarget(undefined);
     const redaction = { redact: this.runtime.redact, redactCut: this.runtime.redactCut };
     let action: RecordableAction;
     try {
@@ -625,6 +633,8 @@ export class ActionDispatcher {
     let { node, observation } = resolved;
     for (let relocations = 0; ; relocations += 1) {
       const placement = this.placementOf({ node, observation });
+      // A step that acts more than once records where its last action landed; a relocated node with no box leaves none.
+      this.runtime.steps.amendTarget(node.rect === undefined ? undefined : { box: { x: node.rect.x, y: node.rect.y, width: node.rect.width, height: node.rect.height } });
       try {
         return { ...(await perform(node, observation)), ...placement };
       } catch (cause) {

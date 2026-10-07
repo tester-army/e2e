@@ -45,6 +45,8 @@
                 "kind": "agent",
                 "api": "agent.assert",
                 "label": "the result is visible",
+                "argument": 42,
+                "target": { "box": { "x": 1, "y": 2 } },
                 "source": {
                   "file": "tests/example.e2e.ts",
                   "line": 3,

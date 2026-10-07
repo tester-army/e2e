@@ -86,8 +86,19 @@ failed result:
 - `error` contains the code, message, source line, and assertion details.
 - `failure` identifies the screen and screenshot artifacts and any locator
   candidates.
-- `steps` shows the calls leading to the failure. Failed agent steps include
-  recent model turns.
+- `steps` shows the calls leading to the failure. A step's `label` is the
+  call: a locator step's names its target, an agent step's is its
+  instruction. `argument` is what the step was given: the text a fill typed,
+  the key a press sent, the value an assertion expected. A secret is always
+  `<secret:name>`. Other typed text or a key records `<withheld>` when it went
+  into a secure field (a password input), or into a node that is not itself
+  the control taking it (a `<label>` hands a fill to its field), or when the
+  node could not be read. An assertion's expected value is `<withheld>` when
+  the assertion reads a secure field. `target` says where the step acted, in CSS pixels: the
+  `box` of the node it resolved to and, for a positioned tap, the `point`; an
+  agent step records its last action's, and none when that action had no
+  node or point.
+  Failed agent steps include recent model turns.
 - `artifacts` lists the captured files.
 
 ## Artifacts
