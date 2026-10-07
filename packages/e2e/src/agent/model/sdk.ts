@@ -9,7 +9,7 @@
 
 import type { ModelMessage } from 'ai';
 import { withHint } from '../../internal/errors.ts';
-import { missingModelError, type ResolvedModel } from '../../config/agent.ts';
+import { missingModelError, modelLabel, type ResolvedModel } from '../../config/agent.ts';
 import { aiSdk, asSdkLanguageModel, loadAiSdk, type SdkLanguageModel } from '../ai-sdk.ts';
 import { MODEL_REQUEST_HEADERS } from '../../internal/client-identity.ts';
 import { packageVersion } from '../../internal/package-version.ts';
@@ -100,6 +100,9 @@ export function createModelAdapter(model: ResolvedModel | undefined, agentName =
       try {
         if (schema === undefined) {
           const result = await generateText(settings);
+          // Checked before the text is parsed: a refusal has no JSON, and
+          // reading it as invalid output would spend the repair round.
+          if (isModelRefusal(result)) throw modelRefusalError(result, model, call.step);
           const parsed = parseJsonObject(result.text);
           const validation = call.validate(parsed);
           if (!validation.ok) {
@@ -121,13 +124,17 @@ export function createModelAdapter(model: ResolvedModel | undefined, agentName =
             name: call.schemaName,
           }),
         });
+        // Reading `output` throws "No output generated" and drops the finish
+        // reason, which is how a content-filter refusal was reported as a
+        // provider outage. The reason is on the result; read it first.
+        if (isModelRefusal(result)) throw modelRefusalError(result, model, call.step);
         const output = result.output;
         if (output === undefined) {
           throw new ModelOutputInvalidError('provider returned no structured output');
         }
         return { value: output, usage: readUsage(result, inputBound), reasoning: result.finalStep.reasoningText };
       } catch (cause) {
-        throw translateModelError(cause, issue, call.signal);
+        throw translateModelError(cause, issue, call.signal, model, call.step);
       }
     },
   };
@@ -257,6 +264,75 @@ function parseCost(raw: unknown): number | undefined {
 }
 
 /**
+ * Whether a model call ended because the model refused it. The AI SDK's
+ * unified finish reason for that is `content-filter`; the provider's own
+ * word (`refusal`, `content_filter`) is `rawFinishReason`, on the result or
+ * nested in the raw generate response. Message text is not a signal: a
+ * transport error can quote a policy without the model having refused.
+ */
+export function isModelRefusal(target: unknown): boolean {
+  if (unifiedFinishReason(target) === 'content-filter') return true;
+  const raw = rawFinishReasonOf(target);
+  return raw !== undefined && isRefusalToken(raw);
+}
+
+function isRecord(target: unknown): target is Record<string, unknown> {
+  return typeof target === 'object' && target !== null;
+}
+
+/** The unified finish reason, whether the SDK flattened it or left the provider pair. */
+function unifiedFinishReason(target: unknown): string | undefined {
+  if (!isRecord(target)) return undefined;
+  const reason = target['finishReason'];
+  if (typeof reason === 'string') return reason;
+  if (isRecord(reason) && typeof reason['unified'] === 'string') return reason['unified'];
+  return undefined;
+}
+
+/** The provider's own finish-reason token, when the call carried one. */
+function rawFinishReasonOf(target: unknown): string | undefined {
+  if (!isRecord(target)) return undefined;
+  const direct = target['rawFinishReason'];
+  if (typeof direct === 'string' && direct.length > 0) return direct;
+  const reason = target['finishReason'];
+  if (isRecord(reason) && typeof reason['raw'] === 'string' && reason['raw'].length > 0) return reason['raw'];
+  return undefined;
+}
+
+/** Provider tokens that mean a refusal rather than a stop or a transport failure. */
+function isRefusalToken(value: string): boolean {
+  return value === 'content-filter' || /^content[-_]?filter$/i.test(value) || /^refusal$/i.test(value);
+}
+
+/**
+ * The token the message quotes: the provider's raw reason when it sent one,
+ * otherwise the unified `content-filter`.
+ */
+function quotedFinishReason(target: unknown): string {
+  return rawFinishReasonOf(target) ?? unifiedFinishReason(target) ?? 'content-filter';
+}
+
+/**
+ * `MODEL_REFUSED` for one refused call. The class is test (exit 1), so a
+ * retry policy keyed on an infrastructure failure (exit 3) does not spend
+ * another call on a prompt the model refused. The message names the step,
+ * the model, and the raw finish reason.
+ */
+export function modelRefusalError(
+  target: unknown,
+  model: { readonly provider: string; readonly id: string },
+  step: string | undefined,
+  cause?: unknown,
+): AgentError {
+  const stepName = step !== undefined && step.length > 0 ? step : 'model call';
+  return new AgentError(
+    'MODEL_REFUSED',
+    `${stepName}: the model ${modelLabel(model)} refused the request (${quotedFinishReason(target)})`,
+    cause === undefined ? undefined : { cause },
+  );
+}
+
+/**
  * Maps adapter and provider failures onto the closed agent error set. Runs
  * only after `generate` loaded the SDK, so the cached module is available for
  * the error-class checks.
@@ -265,6 +341,8 @@ function translateModelError(
   rawCause: unknown,
   issue: string | undefined,
   signal: AbortSignal,
+  model: { readonly provider: string; readonly id: string },
+  step: string | undefined,
 ): Error {
   const { APICallError, NoObjectGeneratedError } = aiSdk();
   const cause = unwrapRetry(rawCause);
@@ -281,6 +359,9 @@ function translateModelError(
       { cause },
     );
   }
+  // A content-filter that still produced text throws NoObjectGeneratedError
+  // carrying the finish reason. That is a refusal, not a schema repair.
+  if (isModelRefusal(cause)) return modelRefusalError(cause, model, step, cause);
   if (NoObjectGeneratedError.isInstance(cause)) {
     return new ModelOutputInvalidError(
       issue ?? 'provider response did not match the closed response grammar',

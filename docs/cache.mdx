@@ -183,10 +183,11 @@ got no response within 120 seconds). Those say nothing about the app, so a
 read-write run without model access keeps its recordings, including one a
 step replayed before an `agent.assert` that could not reach its model, and
 still saves steps verified before the failure. A model that answered with
-something unusable (`MODEL_OUTPUT_INVALID`, `CONTEXT_OVERFLOW`) or a step that
-ran out of time (`STEP_TIMEOUT`, even while a request was still open) counts
-as a failure of the flow, and so does any other failure in the same attempt,
-such as an `afterEach` assertion.
+something unusable (`MODEL_OUTPUT_INVALID`, `CONTEXT_OVERFLOW`) or refused
+the request (`MODEL_REFUSED`), or a step that ran out of time
+(`STEP_TIMEOUT`, even while a request was still open) counts as a failure of
+the flow, and so does any other failure in the same attempt, such as an
+`afterEach` assertion.
 
 ## Why a step was not replayed
 

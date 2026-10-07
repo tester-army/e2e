@@ -220,12 +220,13 @@ that could not reach a product verdict, carries one of these codes:
 | environment | `ENVIRONMENT_UNAVAILABLE`, `APP_UNREACHABLE`, `APP_ALREADY_RUNNING` |
 | seed data | `SEED_DATA_MISSING` |
 | test setup | `TEST_SETUP_FAILED`, `APP_NOT_OPEN`, `POLICY_DENIED` |
-| automation | `MODEL_UNAVAILABLE`, `AUTOMATION_UNSUPPORTED`, `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`, `CONTEXT_OVERFLOW` |
+| automation | `MODEL_UNAVAILABLE`, `AUTOMATION_UNSUPPORTED`, `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`, `CONTEXT_OVERFLOW`, `MODEL_REFUSED` |
 
 The runner's own stops are
 `STEP_BUDGET_EXHAUSTED` and `STEP_TIMEOUT` when a budget or the deadline ran
 out, `CANCELLED`, `STEP_NO_CONCLUSION` when the turns ran out without a
-conclusion, `CONTEXT_OVERFLOW`, `MODEL_PROVIDER_FAILED`,
+conclusion, `CONTEXT_OVERFLOW`, `MODEL_REFUSED` when the model refused the
+request, `MODEL_PROVIDER_FAILED`,
 `MODEL_OUTPUT_INVALID` for a verdict outside the grammar, and `REPLAY_STALE`
 under a strict cache. Every code is in [Errors](/reference/errors#agenterror).
 
