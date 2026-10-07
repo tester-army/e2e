@@ -11,8 +11,9 @@ more than one, chosen from what the executor builds out of the latest
 semantic tree. It never generates free text: when the choice is `type`, a
 small language model writes the field value. Both models are
 plain AI SDK models, so any decision model provider that answers `choice`
-questions with probability distributions (Jev) and any language-model
-provider works; the runner still authorizes every dispatched action.
+questions with probability distributions (TypeSafe Jev, OpenAI `gpt-6-luna`)
+and any language-model provider works; the runner still authorizes every
+dispatched action.
 
 ## Install and configure
 
@@ -66,6 +67,18 @@ export default {
     },
   },
 } satisfies E2EConfig;
+```
+
+OpenAI's Decisions API works the same way through `@ai-sdk/openai` 4.0.85
+or later, which reads `OPENAI_API_KEY`:
+
+```ts title="e2e.config.ts"
+import { openai } from '@ai-sdk/openai';
+
+const executor = decisionExecutor({
+  model: openai.decisionModel('gpt-6-luna'),
+  textModel: openai('gpt-5.4-nano'),
+});
 ```
 
 `evaluationModel()` instances still work. A model id string or a language
@@ -125,7 +138,8 @@ const executor = decisionExecutor({ model, minProbability: 0.9, minConfidence: 0
 Probability and confidence are different provider fields: probability is the
 selected option's share of the answer distribution, confidence is the
 provider's separate statistic. A threshold is a policy choice; measure
-accuracy on your own tests before changing it.
+accuracy on your own tests before changing it. Providers round: OpenAI
+reports both to two decimals, so a gate above 0.99 blocks every action.
 
 ## Provider options
 
@@ -154,7 +168,10 @@ a fallback list, never reaches the other.
 - No `navigate`: in-app navigation is a `tap` on a link. URLs belong in
   test code (`browser.goto`, `app.open`).
 - No multi-select `listbox` in v1.
-- The choice cap is 255 options per question (TypeSafe's limit). Larger
+- A question the provider refuses to answer fails the step with
+  `MODEL_OUTPUT_INVALID`.
+- The choice cap is 255 options per question (TypeSafe's limit; OpenAI
+  documents none). Larger
   screens list viewport nodes first and count the rest as omitted, so the
   model can scroll; the step never blocks just for being large.
 - Drag, upload, and hover are not offered in v1.

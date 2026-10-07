@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { InvalidArgumentError, LoadAPIKeyError } from 'ai';
+import { InvalidArgumentError, InvalidResponseDataError, LoadAPIKeyError } from 'ai';
 import { AgentError } from 'e2e/agent';
 import type { ExecutorNode } from 'e2e';
 import { decisionExecutor } from '../src/index.ts';
@@ -484,6 +484,13 @@ describe('model failures', () => {
     });
     const fixture = context({ tree: BUTTONS });
     await expect(decisionExecutor({ model }).runStep(fixture.ctx)).rejects.toMatchObject({ code: 'MODEL_OUTPUT_INVALID' });
+  });
+  it('names a refusal the SDK rejects as a wrong-type answer', async () => {
+    const rejected = new InvalidResponseDataError({ data: { operation: { type: 'refusal' } }, message: 'Question "operation" returned an answer with the wrong type.' });
+    const { model } = scriptedDecision(() => ({ choice: 'tap' }), { throws: rejected });
+    await expect(decisionExecutor({ model }).runStep(context({ tree: BUTTONS }).ctx)).rejects.toMatchObject({
+      code: 'MODEL_OUTPUT_INVALID', message: 'The decision model refused to answer a question.',
+    });
   });
   it('maps provider failures without provider text', async () => {
     const { model } = scriptedDecision(() => ({ choice: 'tap' }), { throws: new Error('upstream detail') });

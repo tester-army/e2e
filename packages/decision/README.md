@@ -2,9 +2,9 @@
 
 Run `agent.act` and `agent.assert` through a decision model instead of an LLM:
 any AI SDK decision model that answers `choice` questions with probability
-distributions (e.g. TypeSafe Jev), plus a small language model that writes
-field values when the decision model picks `type`. Needs `ai` 7, version 7.0.128 or
-later.
+distributions (TypeSafe Jev, OpenAI `gpt-6-luna` through `@ai-sdk/openai`
+4.0.85 or later), plus a small language model that writes field values when
+the decision model picks `type`. Needs `ai` 7, version 7.0.128 or later.
 
 ```ts
 import type { E2EConfig } from 'e2e';

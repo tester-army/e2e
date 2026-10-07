@@ -119,8 +119,24 @@ function decideError(error: unknown, signal: AbortSignal): unknown {
   if (isAgentError(error)) return error;
   if (LoadAPIKeyError.isInstance(error)) return missingKey('decision', error);
   if (InvalidArgumentError.isInstance(error)) return error;
+  if (refused(error)) return new AgentError('MODEL_OUTPUT_INVALID', 'The decision model refused to answer a question.');
   if (InvalidResponseDataError.isInstance(error) || TypeValidationError.isInstance(error) || JSONParseError.isInstance(error)) {
     return new AgentError('MODEL_OUTPUT_INVALID', 'The decision model returned an invalid answer.');
   }
   return new AgentError('MODEL_PROVIDER_FAILED', 'The decision model call failed.');
+}
+/**
+ * Whether the decision model refused a question. ai 7.0.130 throws its own
+ * refusal error; 7.0.128 and 7.0.129 report the `refusal` answer as one of
+ * the wrong type, so the rejected answers are checked too.
+ */
+function refused(error: unknown): boolean {
+  const RefusalError = (ai as Partial<typeof ai>).Experimental_DecisionRefusalError;
+  if (RefusalError !== undefined && RefusalError.isInstance(error)) return true;
+  if (!InvalidResponseDataError.isInstance(error)) return false;
+  const answers = error.data;
+  if (typeof answers !== 'object' || answers === null) return false;
+  return Object.values(answers as Record<string, unknown>).some(
+    (answer) => typeof answer === 'object' && answer !== null && (answer as { type?: unknown }).type === 'refusal',
+  );
 }

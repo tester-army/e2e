@@ -137,7 +137,7 @@
   "devDependencies": {
     "@ai-sdk/anthropic": "4.0.58",
     "@ai-sdk/google": "4.0.77",
-    "@ai-sdk/openai": "4.0.71",
+    "@ai-sdk/openai": "4.0.86",
     "@ai-sdk/openai-compatible": "3.0.53",
     "@ai-sdk/xai": "5.0.4",
     "@e2e-dev/web": "workspace:*",
