@@ -25,14 +25,14 @@ describe('vision', () => {
     expect(Object.keys(requests[0]?.questions['operation']?.criteria as object)).toContain('tap_at');
     expect(Object.keys(requests[0]?.questions ?? {})).not.toContain('tap_at_target');
     // The operation question reads the tree alone; the point looks get the pixels.
-    expect(requests[0]?.providerOptions ?? {}).not.toHaveProperty('decision');
+    expect(requests[0]?.files).toEqual([]);
     expect(requests[1]?.questions['x']).toMatchObject({ type: 'score' });
     const rows = requests[1]?.questions['y']?.criteria as unknown[] | undefined;
     expect(rows?.length).toBe(8);
-    const options = requests[1]?.providerOptions as { decision: { screenshot: { mediaType: string; data: string } } };
-    expect(options.decision.screenshot.mediaType).toBe('image/png');
-    // Undecodable pixels go through untouched, as base64.
-    expect(options.decision.screenshot.data).toBe(Buffer.from([1, 2, 3]).toString('base64'));
+    expect(requests[1]?.files).toHaveLength(1);
+    expect(requests[1]?.files[0]).toMatchObject({ mediaType: 'image/png' });
+    // Undecodable pixels go through untouched.
+    expect([...(requests[1]?.files[0]?.data as Uint8Array ?? [])]).toEqual([1, 2, 3]);
     expect(fixture.transcripts[0]).toContain('"screenshot":"800x600"');
     expect(fixture.turns[0]?.calls[0]).toBe('tap at (240, 263)');
   });
@@ -56,7 +56,7 @@ describe('vision', () => {
     const verdict = await decisionExecutor({ model, vision: true }).runStep(fixture.ctx);
     expect(verdict).toMatchObject({ status: 'passed' });
     expect(requests[0]?.state).toMatchObject({ elements: [], page: { text: '' } });
-    expect(requests[0]?.providerOptions).toMatchObject({ decision: { screenshot: { mediaType: 'image/png' } } });
+    expect(requests[0]?.files.map((file) => file.mediaType)).toEqual(['image/png']);
   });
   it('rejects a non-boolean vision option', () => {
     const { model } = scriptedDecision(() => ({ choice: 'done' }));
@@ -74,8 +74,7 @@ describe('vision details', () => {
     const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() } });
     await decisionExecutor({ model, vision: true }).runStep(fixture.ctx);
     const sent = (index: number) => {
-      const options = requests[index]?.providerOptions as { decision: { screenshot: { data: string } } } | undefined;
-      const png = PNG.sync.read(Buffer.from(options?.decision.screenshot.data ?? '', 'base64'));
+      const png = PNG.sync.read(Buffer.from(requests[index]?.files[0]?.data as Uint8Array));
       return { png, at: (x: number, y: number) => [...png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3)] };
     };
     const full = sent(1);

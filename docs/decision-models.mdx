@@ -34,7 +34,7 @@ bun add -d @e2e-dev/decision
 
 The decision model answers `choice` questions with probability
 distributions; the text model writes field values. Each installs as its
-own package. Decision models need `ai` 7, version 7.0.128 or later:
+own package. Decision models need `ai` 7, version 7.0.134 or later:
 
 <CodeGroup>
 ```bash npm
@@ -70,10 +70,9 @@ export default {
 } satisfies E2EConfig;
 ```
 
-OpenAI's Decisions API works the same way. `openaiDecisionModel()` from this
-package talks to it directly, reads `OPENAI_API_KEY`, and also takes the
-screenshot that `vision` sends; `openai.decisionModel('gpt-6-luna')` from
-`@ai-sdk/openai` 4.0.86 or later works too, text only:
+OpenAI's Decisions API works the same way through `@ai-sdk/openai` 4.0.90
+or later, which reads `OPENAI_API_KEY` and takes the screenshot `vision`
+sends as a file part of the decision state:
 
 <CodeGroup>
 ```bash npm
@@ -90,11 +89,10 @@ bun add -d @ai-sdk/openai
 </CodeGroup>
 
 ```ts title="e2e.config.ts"
-import { openaiDecisionModel } from '@e2e-dev/decision';
 import { openai } from '@ai-sdk/openai';
 
 const executor = decisionExecutor({
-  model: openaiDecisionModel(),
+  model: openai.decisionModel('gpt-6-luna'),
   textModel: openai('gpt-5.4-mini'),
   vision: true,
 });
@@ -143,10 +141,11 @@ pairs of score questions, column and row on the full screenshot, then
 again on a zoomed crop with grid lines drawn on it. A tap that changed the
 pixels under it is remembered for its control, so the same key on the same
 page again needs no new looks. `agent.assert(..., { vision: true })` and `vision: 'only'` reach the
-executor the same way. The model must take images and answer score
-questions: `openaiDecisionModel()` does, the AI SDK's `openai.decisionModel()`
-sends text only. Pixels are withheld once a secret has been filled in the
-attempt, as everywhere in the runner.
+executor the same way. The screenshot goes as a file part of the decision
+state, so the model must take images and answer score questions:
+`openai.decisionModel('gpt-6-luna')` does, and a text-only model such as
+Jev refuses the file. Pixels are withheld once a secret has been filled in
+the attempt, as everywhere in the runner.
 
 Measured on gpt-6-luna over the playground: a vision assert on a drawn
 chart, a drawn map pin, and five- and ten-digit codes on a drawn keypad

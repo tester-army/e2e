@@ -15,7 +15,10 @@ export interface ScriptedAnswer {
 }
 /** A recorded decide call: the state and the question map the executor sent. */
 export interface EvalRequest {
+  /** The JSON part of the state. */
   readonly state: unknown;
+  /** The file parts of the state, as the SDK hands them to the model. */
+  readonly files: readonly { readonly mediaType: string; readonly data: unknown }[];
   readonly questions: Record<string, { type: string; instructions?: string; criteria: unknown }>;
   /** Present only when the executor sent provider options. */
   readonly providerOptions?: unknown;
@@ -64,7 +67,10 @@ export function scriptedDecision(resolve: (id: string, keys: string[], call: num
       }
       if (answer.confidence !== undefined) confidence[id] = answer.confidence;
     }
-    requests.push({ state: call.state, questions, ...(call.providerOptions === undefined ? {} : { providerOptions: call.providerOptions }) });
+    const parts = call.state as readonly ({ type: 'json'; value: unknown } | { type: 'file'; mediaType: string; data: { type: 'data'; data: unknown } } | { type: 'text' })[];
+    const state = parts.find((part) => part.type === 'json')?.value;
+    const files = parts.flatMap((part) => (part.type === 'file' ? [{ mediaType: part.mediaType, data: part.data.data }] : []));
+    requests.push({ state, files, questions, ...(call.providerOptions === undefined ? {} : { providerOptions: call.providerOptions }) });
     return { answers, warnings: [], usage: { inputTokens: 10, outputTokens: 0 }, rounding: { probabilityDecimals: 6, scoreDecimals: 6 }, providerMetadata: { scripted: { confidence } }, response: { modelId: 'scripted-1' } };
   };
   const base = {

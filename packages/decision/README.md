@@ -2,10 +2,10 @@
 
 Run `agent.act` and `agent.assert` through a decision model instead of an LLM:
 any AI SDK decision model that answers `choice` questions with probability
-distributions (TypeSafe Jev, OpenAI `gpt-6-luna` through the bundled
-`openaiDecisionModel()` or `@ai-sdk/openai` 4.0.86 or later), plus a small
-language model that writes field values when the decision model picks
-`type` or `upload`. Needs `ai` 7, version 7.0.128 or later.
+distributions (TypeSafe Jev, OpenAI `gpt-6-luna` through `@ai-sdk/openai`
+4.0.90 or later), plus a small language model that writes field values when
+the decision model picks `type` or `upload`. Needs `ai` 7, version 7.0.134
+or later.
 
 ```ts
 import type { E2EConfig } from 'e2e';
@@ -36,8 +36,8 @@ Each turn asks the operation, then the target for it; every question
 states the goal and recent actions. Every operation the engine declares is
 offered: tap, type, submit, select, check, upload, hover, right-click,
 double-tap, long-press, drag, scroll-to, scroll, and back; target questions
-carry a `none` option. With `vision: true` and `openaiDecisionModel()`,
-verdicts see a masked screenshot, and `tap_at` reaches a drawn control the
+carry a `none` option. With `vision: true` and a model that takes images
+(`openai.decisionModel('gpt-6-luna')`), verdicts see a masked screenshot, and `tap_at` reaches a drawn control the
 text model names, located by score questions on the screenshot and a zoomed
 crop with grid lines. The runner authorizes every dispatched action and records every
 model call against the step budget. `providerOptions` go with every decide

@@ -31,22 +31,20 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ai-sdk/provider": "4.0.24",
-    "@ai-sdk/provider-utils": "5.0.56",
     "pngjs": "7.0.0",
     "zod": "4.6.1"
   },
   "peerDependencies": {
-    "ai": "^7.0.128",
+    "ai": "^7.0.134",
     "e2e": ">=0.19.0 <1"
   },
   "devDependencies": {
-    "@ai-sdk/openai": "4.0.86",
-    "@ai-sdk/typesafe-ai": "3.0.13",
+    "@ai-sdk/openai": "4.0.90",
+    "@ai-sdk/typesafe-ai": "3.0.16",
     "@e2e-dev/web": "workspace:*",
     "@types/node": "26.6.2",
     "@types/pngjs": "6.0.5",
-    "ai": "7.0.130",
+    "ai": "7.0.134",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "e2e": "workspace:*",

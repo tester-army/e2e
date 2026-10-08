@@ -32,11 +32,11 @@ export interface DecisionExecutorOptions {
    * Ask for masked pixels on every observation. Assertions and completion
    * checks see the screenshot beside the page, and `tap_at` is offered for
    * a drawn control when the engine taps points: the text model names it,
-   * and score questions over the screenshot locate it. Needs a decision
-   * model that takes images and answers `score` questions, e.g.
-   * `openaiDecisionModel()`; the AI SDK's own `openai.decisionModel()` sends
-   * text only, so it judges without `tap_at`. Also honors
-   * `agent.assert(..., { vision })`. Default off.
+   * and score questions over the screenshot locate it. The screenshot goes
+   * as a file part of the decision state, so the model must take images and
+   * answer `score` questions, e.g. `openai.decisionModel('gpt-6-luna')` with
+   * `@ai-sdk/openai` 4.0.90 or later; a text-only model such as Jev refuses
+   * the file. Also honors `agent.assert(..., { vision })`. Default off.
    */
   readonly vision?: boolean;
 }

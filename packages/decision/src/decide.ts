@@ -2,7 +2,9 @@ import type { StepExecutorContext } from 'e2e';
 import { AgentError, isAgentError } from 'e2e/agent';
 import { ConfigurationError } from 'e2e/engine';
 import * as ai from 'ai';
+import type { Experimental_DecisionState } from 'ai';
 import {
+  Experimental_DecisionRefusalError,
   InvalidArgumentError,
   InvalidResponseDataError,
   JSONParseError,
@@ -22,7 +24,7 @@ const MAX_RETRIES = 3;
 export function requireDecide(): typeof ai.experimental_decide {
   const found = (ai as Partial<typeof ai>).experimental_decide;
   if (typeof found !== 'function') {
-    throw new ConfigurationError('INVALID_CONFIG', 'decisionExecutor() needs ai 7.0.128 or later; update the ai package');
+    throw new ConfigurationError('INVALID_CONFIG', 'decisionExecutor() needs ai 7.0.134 or later; update the ai package');
   }
   return found;
 }
@@ -66,26 +68,18 @@ export async function decide(
   let providerMetadata: Record<string, Record<string, unknown>> | undefined;
   let answers: Record<string, RawAnswer>;
   try {
-    const call = {
-      model,
-      state: request.state,
-      questions: request.questions,
-      ...(providerOptions === undefined ? {} : { providerOptions }),
-    };
     const screenshot = request.screenshot;
+    // The screenshot rides beside the JSON state as a file part; a text-only provider rejects it before the request.
+    const state: Experimental_DecisionState =
+      screenshot === undefined
+        ? request.state
+        : [{ type: 'json', value: request.state }, { type: 'file', mediaType: screenshot.mediaType, data: screenshot.data }];
+    const call = { model, state, questions: request.questions, ...(providerOptions === undefined ? {} : { providerOptions }) };
     const result = await requireDecide()({
       ...(call as unknown as Parameters<typeof ai.experimental_decide>[0]),
       // Transport retries for a rate limit or a 5xx, as the runner's own adapter has; a bad answer never retries.
       maxRetries: MAX_RETRIES,
       abortSignal: ctx.signal,
-      ...(screenshot === undefined
-        ? {}
-        : {
-            providerOptions: {
-              ...providerOptions,
-              decision: { ...providerOptions?.['decision'], screenshot: { mediaType: screenshot.mediaType, data: Buffer.from(screenshot.data).toString('base64') } },
-            },
-          }),
     });
     ctx.signal.throwIfAborted();
     inputTokens = result.usage.inputTokens;
@@ -164,14 +158,12 @@ function decideError(error: unknown, signal: AbortSignal): unknown {
 }
 /**
  * The question ids the decision model refused, or undefined when the error
- * is no refusal. ai 7.0.130 throws its own refusal error naming them;
- * 7.0.128 and 7.0.129 report the `refusal` answer as one of the wrong type,
- * so the rejected answers are checked too. Providers that throw on a refusal
- * themselves (`@ai-sdk/openai` before 4.0.86) stay generic invalid output.
+ * is no refusal. The SDK throws its own refusal error naming them; a
+ * provider that reports the refusal as an answer of the wrong type is read
+ * from the rejected answers.
  */
 function refused(error: unknown): readonly string[] | undefined {
-  const RefusalError = (ai as Partial<typeof ai>).Experimental_DecisionRefusalError;
-  if (RefusalError !== undefined && RefusalError.isInstance(error)) return error.questionIds;
+  if (Experimental_DecisionRefusalError.isInstance(error)) return error.questionIds;
   if (!InvalidResponseDataError.isInstance(error)) return undefined;
   const answers = error.data;
   if (typeof answers !== 'object' || answers === null) return undefined;
