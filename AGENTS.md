@@ -81,6 +81,10 @@ suites that consume the built packages the way a user would.
   engine's provider seam (`BrowserProvider` for web, `DeviceProvider` for
   mobile) and imports the engine's types only; the engines never know it
   exists.
+- `packages/lightpanda` - the published `@e2e-dev/lightpanda` package: a
+  `BrowserProvider` that starts a local `lightpanda serve` per worker slot
+  and stops it with the run, or attaches to a running one; no vendor SDK,
+  the binary is the dependency.
 - `packages/eas` - the published `@e2e-dev/eas` package: EAS Simulators
   hosted iOS simulators and Android emulators for the mobile engine
   (`DeviceProvider`). Expo publishes no SDK for the sessions API, so it calls

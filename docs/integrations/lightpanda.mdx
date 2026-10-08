@@ -1,0 +1,185 @@
+---
+title: Lightpanda
+sidebarTitle: Lightpanda
+description: Run web targets in Lightpanda, the open-source headless browser, with the lightpanda() browser provider from @e2e-dev/lightpanda.
+icon: "/images/icons/lightpanda.svg"
+---
+
+[Lightpanda](https://lightpanda.io) is an open-source headless browser
+written from scratch, without Chromium. It starts in milliseconds, holds a
+fraction of Chrome's memory, and speaks the Chrome DevTools Protocol.
+`lightpanda()` from `@e2e-dev/lightpanda` is a
+[browser provider](/browser#hosted-browsers) for it: each worker slot gets
+its own `lightpanda serve`, started on a free port when the run starts and
+stopped when it ends. Tests and CI stay the same; the config changes only
+in the target's `browser`.
+
+Lightpanda has no layout engine. It builds the DOM, runs JavaScript, and
+exposes the accessibility tree the engine reads, which is what locators,
+assertions, and [agent steps](/agent-steps) use. Anything that depends on
+where a node is painted behaves differently; see
+[What does not work](#what-does-not-work) before moving a suite over.
+
+## Setup
+
+Install the package:
+
+<CodeGroup>
+```bash npm
+npm install --save-dev @e2e-dev/lightpanda
+```
+
+```bash pnpm
+pnpm add -D @e2e-dev/lightpanda
+```
+
+```bash bun
+bun add -d @e2e-dev/lightpanda
+```
+</CodeGroup>
+
+And the Lightpanda nightly binary, which the provider starts:
+
+<CodeGroup>
+```bash macOS
+brew install lightpanda-io/browser/lightpanda
+```
+
+```bash Linux
+curl -L -o lightpanda https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-x86_64-linux
+install -m 755 lightpanda ~/.local/bin/
+```
+</CodeGroup>
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { lightpanda } from '@e2e-dev/lightpanda';
+
+export default {
+  targets: [
+    {
+      name: 'lightpanda',
+      engine: web({ browser: lightpanda() }),
+      app: { url: 'http://localhost:3000' },
+    },
+  ],
+} satisfies E2EConfig;
+```
+
+The provider runs `lightpanda` from `PATH`, `~/.lightpanda/lightpanda`, or
+`~/.local/bin/lightpanda`, the places
+[agent-browser](https://agent-browser.dev/engines/lightpanda) looks too, or
+the binary `LIGHTPANDA_PATH` names in the environment `e2e run` starts in,
+or `binary` in the options. None found fails the run before any test,
+naming the install page.
+Each worker gets its own server, so `workers` sets how many run at once,
+and the run's log names each one:
+
+```text
+ℹ lightpanda (1 of 2): lightpanda 1.1.0-nightly at ws://127.0.0.1:51165/
+```
+
+## Attach to a running server
+
+A Lightpanda already running, such as the Docker image in CI, is a
+[`connect`](/reference/web#options) target rather than a provider: the
+engine attaches to its CDP endpoint and leaves it running.
+
+```ts title="e2e.config.ts"
+web({ connect: { cdpEndpoint: () => process.env.LIGHTPANDA_URL ?? 'ws://127.0.0.1:9222/' } })
+```
+
+```bash
+docker run -d --name lightpanda -p 127.0.0.1:9222:9222 lightpanda/browser:nightly
+```
+
+Every worker then shares that server. One `lightpanda serve` takes 16
+connections by default; raise its `--cdp-max-connections` above `workers`
+when you run more.
+
+## Options
+
+| Option          | Default                         | Meaning |
+| --------------- | ------------------------------- | ------- |
+| `binary`        | `LIGHTPANDA_PATH`, else found   | The binary to start: a path, or a name on `PATH`. |
+| `loadResources` | `[]`                            | Sub-resources the server fetches: `iframe`, `image`, `stylesheet`. See [Fetch more of the page](#fetch-more-of-the-page). |
+| `args`          | `[]`                            | Further `lightpanda serve` flags, after the ones the provider sets. |
+
+The provider leases one server per worker slot for the run; it has no
+`scope: 'attempt'`, since Lightpanda does not expose the default context
+identity a per-attempt lease reattaches by. A server that does not answer
+on its port within ten seconds fails the lease, and so does a binary that
+exits first, with its stderr in the message.
+
+## Fetch more of the page
+
+`lightpanda serve` requests no sub-resources by default: no images, no
+external stylesheets, no iframes. `loadResources` opts into each, as
+`--load-resources` on the server:
+
+```ts
+web({ browser: lightpanda({ loadResources: ['stylesheet', 'iframe'] }) })
+```
+
+Inline styles, `<style>` blocks, and the `hidden` attribute already decide
+visibility; `stylesheet` makes an external file's rules count too, so a
+node a linked stylesheet hides is hidden to a query. `image` fetches image
+headers so `load` and `error` reflect the real status.
+
+## What works
+
+Against the e2e testbed's local suite on a Lightpanda nightly from October
+2026, these pass unchanged:
+
+- `app.open`, `app.back`, and `expect(browser).toHaveURL` and `toHaveTitle`.
+- Every `screen` query (`getByRole`, `getByLabel`, `getByText`,
+  `getByTestId`, filters, `nth`) and the actions on them: `tap`, `fill`,
+  `check`, `select`, `press`, and keyboard input.
+- Polling assertions on text, value, count, and state.
+- `browser.route` mocks and request waits.
+- `browser.setCookies` from a test, after a page is open.
+- `app.screenshot` and the screenshot of a failure. Lightpanda paints a plain
+  render of the DOM, not the page as Chrome would show it.
+- Agent steps: `agent.act` and `agent.extract` read the screen tree, which
+  Lightpanda provides in full. A judgment on pixels sees the plain render,
+  so keep the agent on the tree.
+
+A test that asserts on what the user sees, not where it is drawn, moves
+over as is.
+
+## What does not work
+
+Each of these fails the test with the engine's usual error, not a hang. The
+reasons are Lightpanda's, and its
+[Playwright compatibility issue](https://github.com/lightpanda-io/browser/issues/3076)
+tracks most of them.
+
+| Feature | What happens | Why |
+| ------- | ------------ | --- |
+| [Sessions](/authentication) (`test.setup` with `session.save`, `session:` on a test) | The setup passes and the session is saved, but a test that restores it opens signed out. | Cookies set on a context before its first page exists are dropped. Set them from the test with `browser.setCookies` after `app.open` instead. |
+| [Dialogs](/browser#handle-a-dialog) | `browser.onDialog` runs, then fails the test with `ENGINE_FAILURE`: `Page.handleJavaScriptDialog` reports no dialog. | Lightpanda answers `alert`, `confirm` (`false`), and `prompt` (`null`) itself before a client can. |
+| [Downloads](/browser#download-a-file) | `browser.waitForDownload` times out. | No download events over CDP. |
+| [Iframes](/browser#reach-into-an-iframe) | `frameLocator` finds nothing. | Iframes are not loaded by default. `loadResources: ['iframe']` loads them; queries and fills then work, but a listener in the host page on an element the frame created does not fire. |
+| Drags: `screen.swipe`, `locator.swipeTo`, and `browser.mouse` moves with a button down | `ENGINE_FAILURE` naming `Input.setInterceptDrags`. | Playwright needs that command for a drag and Lightpanda has not implemented it. |
+| `browser.setViewport` | The page measures the new size, but a `resize` listener never runs. | No `resize` event is dispatched. |
+| Scrolling: `scrollIntoView`, `scrollUntilVisible`, and an action on a node "outside of the viewport" | The scroll is a no-op, and an actionability wait can time out. | Without layout there is no scroll position to move. |
+
+A Lightpanda release that closes one of these makes the row above go away
+with no change on the e2e side; the engine sends the same CDP commands it
+sends Chrome.
+
+## Where it fits
+
+Lightpanda suits a suite that is heavy on the agent's reading of the screen
+and light on geometry: smoke flows, forms, navigation, API-backed pages, and
+`agent.act` steps whose checks are text and state. It runs that suite in a
+fraction of Chrome's time and memory, on a box with no Chrome installed.
+
+Keep a Chromium target for the rest, and select by target when both are in
+one config:
+
+```bash
+e2e run --target lightpanda
+e2e run --target chromium
+```

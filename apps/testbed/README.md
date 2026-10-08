@@ -28,6 +28,10 @@ here.
   swipes (`pointer`), viewport and node scrolling (`scroll`), the `browser`
   fixture's own verbs (`browser`), and the per-action speed floor (`speed`).
   `tests/helpers.ts` holds the shared `failure`, `boxOf`, and `centerOf`.
+- `e2e.lightpanda.config.ts`: the local suite on `@e2e-dev/lightpanda`,
+  which starts [Lightpanda](https://lightpanda.io) from `LIGHTPANDA_PATH`
+  (or `PATH`), run by hand to see which features its nightly covers; the
+  docs page `integrations/lightpanda` lists the result.
 - `e2e.agent.config.ts` + `tests-agent/` — opt-in agentic suite against the
   playground: `agent.act` flows, assisted polling, judgments,
   schema-validated extraction with zod, and the pixel tools on the canvas

@@ -171,6 +171,7 @@
             "pages": [
               "integrations/index",
               "integrations/kernel",
+              "integrations/lightpanda",
               "integrations/eas"
             ]
           },
