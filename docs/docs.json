@@ -134,7 +134,6 @@
               "index",
               "quickstart",
               "core-concepts",
-              "explore",
               "coding-agents"
             ]
           },
@@ -143,8 +142,17 @@
             "pages": [
               "web",
               "mobile",
-              "api-testing",
-              "visual-testing"
+              "api-testing"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "explore",
+              "visual-testing",
+              "authentication",
+              "bug-bash",
+              "agents"
             ]
           },
           {
@@ -187,12 +195,9 @@
             "group": "Deep dive",
             "pages": [
               "browser",
-              "bug-bash",
-              "authentication",
               "security",
               "telemetry",
               "debugging",
-              "agents",
               "agent-steps"
             ]
           },
