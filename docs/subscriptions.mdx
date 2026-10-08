@@ -1,6 +1,6 @@
 ---
 title: Subscriptions
-description: Use your ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription for agent steps.
+description: Use your ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, or your Claude plan's API credits, for agent steps.
 icon: "id-card"
 ---
 
@@ -17,8 +17,10 @@ in `e2e init`, install dependencies, then sign in:
 Follow the terminal prompts, then run `npx e2e run`. Agent calls use your
 plan's usage limits. For a new project, start with the [quickstart](/quickstart).
 
-Claude subscriptions are not supported. To use Claude, configure an
-[API provider](/models) or a model available through your Copilot plan.
+Claude plans have no sign-in for other apps. Max and Team plans include
+monthly API credits instead; see [Claude Max or Team](#claude-max-or-team).
+On other Claude plans, configure an [API provider](/models) or a Claude model
+available through your Copilot plan.
 
 ## Set up an existing project
 
@@ -130,6 +132,42 @@ const agent = { model: grok('grok-4') };
 
 Set `agents: { default: agent }` in `e2e.config.ts`. Choose a model
 available to your account.
+
+## Claude Max or Team
+
+Max and Team plans include monthly credits for the Claude API, used with an
+API key instead of a sign-in:
+
+1. Link a Claude Console organization in claude.ai: on Max, under
+   Settings > Billing; on Team, an Owner or Primary Owner links it under
+   Organization settings > Billing. See [Anthropic's guide](https://support.claude.com/en/articles/17154008-monthly-api-credits-for-max-and-team-plans)
+   for eligible plans and amounts.
+2. In the linked Console organization, create an API key and set it as
+   `ANTHROPIC_API_KEY`.
+3. Install `@ai-sdk/anthropic` and use an Anthropic model:
+
+<CodeGroup>
+```bash npm
+npm install -D ai @ai-sdk/anthropic
+```
+
+```bash pnpm
+pnpm add -D ai @ai-sdk/anthropic
+```
+
+```bash bun
+bun add -d ai @ai-sdk/anthropic
+```
+</CodeGroup>
+
+```ts title="Model setup"
+import { anthropic } from '@ai-sdk/anthropic';
+
+const agent = { model: anthropic('claude-sonnet-5-5') };
+```
+
+Set `agents: { default: agent }` in `e2e.config.ts`. Unused credits expire
+at the end of each billing cycle. The key works in CI too.
 
 ## Pick a model
 
