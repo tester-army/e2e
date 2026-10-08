@@ -28,8 +28,10 @@ export function requireDecide(): typeof ai.experimental_decide {
 }
 /**
  * One gated answer: the chosen option, its probability, and the provider
- * confidence. A score answer reads its most probable level as the choice
- * and carries the probability-weighted level as `score`.
+ * confidence. A score answer reads its most probable level as the choice,
+ * carries the probability-weighted level as `score`, and its probability
+ * is the mass on the levels within half a level of that score: a spread
+ * over two adjacent columns is a precise position, not an uncertain one.
  */
 export interface Decision {
   readonly choice: string;
@@ -115,14 +117,17 @@ function selected(answer: RawAnswer | undefined): { choice: string; probability:
     throw new AgentError('MODEL_OUTPUT_INVALID', 'The decision model returned an answer without a choice distribution.');
   }
   if (answer.type === 'score') {
-    if (typeof answer.score !== 'number' || !Number.isFinite(answer.score)) {
+    const score = answer.score;
+    if (typeof score !== 'number' || !Number.isFinite(score)) {
       throw new AgentError('MODEL_OUTPUT_INVALID', 'The decision model returned a score answer without a score.');
     }
     let top: { choice: string; probability: number } = { choice: '', probability: -1 };
+    let nearby = 0;
     for (const [level, probability] of Object.entries(answer.probabilities)) {
       if (probability > top.probability) top = { choice: level, probability };
+      if (Math.abs(Number(level) - score) <= 0.5) nearby += probability;
     }
-    return { ...top, score: answer.score };
+    return { choice: top.choice, probability: Math.min(1, nearby), score };
   }
   const probability = answer.choice === undefined ? 0 : (answer.probabilities[answer.choice] ?? 0);
   if (!Number.isFinite(probability) || probability < 0 || probability > 1) {

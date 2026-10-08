@@ -111,8 +111,10 @@ const tappable = new Set([
 const typable = new Set(['textbox', 'searchbox', 'spinbutton', 'combobox']);
 const secretTypable = new Set(['textbox', 'searchbox', 'combobox']);
 const checkable = new Set(['checkbox', 'radio', 'switch']);
-/** Live regions whose text reports what the app just did. */
+/** Live regions whose text reports what the app just did; a log can run long, so each line and their count are bounded. */
 const liveRegions = new Set(['status', 'alert', 'log']);
+const MAX_STATUSES = 20;
+const MAX_STATUS_LENGTH = 300;
 /** Roles that can receive a dropped node. */
 const droppable = new Set(['region', 'list', 'listitem', 'group', 'cell', 'gridcell', 'row', 'article', 'section', 'tabpanel']);
 /**
@@ -211,9 +213,9 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
         const line = pageLine(node);
         // A checked radio leaves the table, so its state rides on the page text.
         if (line !== '') pageText.push(checkedRadio ? `${line} (checked)` : line);
-        if (liveRegions.has(role)) {
+        if (liveRegions.has(role) && statuses.length < MAX_STATUSES) {
           const text = (node.text ?? '').replace(/\s+/g, ' ').trim();
-          if (text !== '') statuses.push(`${(node.name ?? '').trim() || role}: ${text}`);
+          if (text !== '') statuses.push(clip(`${(node.name ?? '').trim() || role}: ${text}`, MAX_STATUS_LENGTH));
         }
       }
     }
@@ -331,7 +333,7 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
     ...(grid === undefined ? {} : { grid }),
     omitted,
     pageText: clip(pageText.join('\n'), 6000),
-    statuses: statuses.slice(0, 20),
+    statuses,
     fingerprint: fingerprint(observation.path ?? '', observation.tree, observation.viewport, observation.pixels),
   };
 }

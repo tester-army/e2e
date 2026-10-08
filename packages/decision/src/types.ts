@@ -29,11 +29,14 @@ export interface DecisionExecutorOptions {
    */
   readonly providerOptions?: Parameters<typeof experimental_decide>[0]['providerOptions'];
   /**
-   * Show the decision model a masked screenshot beside the element table on
-   * every question, and offer `tap_at` over a grid of screenshot cells when
-   * the engine taps points. Needs a decision model that takes images, e.g.
+   * Ask for masked pixels on every observation. Assertions and completion
+   * checks see the screenshot beside the page, and `tap_at` is offered for
+   * a drawn control when the engine taps points: the text model names it,
+   * and score questions over the screenshot locate it. Needs a decision
+   * model that takes images and answers `score` questions, e.g.
    * `openaiDecisionModel()`; the AI SDK's own `openai.decisionModel()` sends
-   * text only. Also honors `agent.assert(..., { vision })`. Default off.
+   * text only, so it judges without `tap_at`. Also honors
+   * `agent.assert(..., { vision })`. Default off.
    */
   readonly vision?: boolean;
 }

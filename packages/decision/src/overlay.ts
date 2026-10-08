@@ -16,6 +16,22 @@ export function gridCells(width: number, height: number, columns: number, rows: 
   }
   return cells;
 }
+/**
+ * A hash of the `box` by `box` CSS-pixel region around `center`: what a tap
+ * there changed, read without the rest of the page. Undefined without
+ * pixels or when they cannot be decoded.
+ */
+export function regionHash(screenshot: Screenshot | undefined, center: { x: number; y: number }, box: number): string | undefined {
+  if (screenshot === undefined) return undefined;
+  const zoom = zoomAround(screenshot, center, box, 1);
+  if (zoom === undefined) return undefined;
+  let hash = 2166136261;
+  for (const byte of zoom.screenshot.data) {
+    hash ^= byte;
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
 /** A zoomed crop: the image, and where its top-left corner sits in the screenshot's CSS pixels. */
 export interface Zoom {
   readonly screenshot: Screenshot;

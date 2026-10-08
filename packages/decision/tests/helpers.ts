@@ -46,7 +46,8 @@ export function scriptedDecision(resolve: (id: string, keys: string[], call: num
         const low = Math.floor(score);
         const high = Math.min(levels.length - 1, low + 1);
         const weightHigh = score - low;
-        answers[id] = { type: 'score', score, probabilities: Object.fromEntries(levels.map((level) => [level, level === String(low) ? 1 - weightHigh : level === String(high) ? weightHigh : 0])) };
+        const probabilities = answer.probabilities ?? Object.fromEntries(levels.map((level) => [level, level === String(low) ? 1 - weightHigh : level === String(high) ? weightHigh : 0]));
+        answers[id] = { type: 'score', score, probabilities };
         if (answer.confidence !== undefined) confidence[id] = answer.confidence;
         continue;
       }
