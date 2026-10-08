@@ -1,0 +1,178 @@
+---
+title: Your coding agent
+description: Run agent steps on Claude Code, Codex, or any agent that speaks the Agent Client Protocol.
+icon: "terminal"
+---
+
+`@e2e-dev/acp` runs `agent.act` and `agent.assert` on a coding agent you
+already use, over the [Agent Client Protocol](https://agentclientprotocol.com)
+(ACP): Claude Code, Codex, Cursor, or any other agent with an ACP mode. The
+agent signs in the way it does on its own, with its CLI login or its own API
+key, so e2e needs no model provider of its own.
+
+The agent gets the built-in agent's action tools for the verbs your
+target's engine supports, with its rules for them, plus `complete_step`. Every
+action goes through the runner, which authorizes, counts, and records it, so
+steps replay from the [cache](/cache) without the agent.
+
+## Install and configure
+
+<Tabs>
+  <Tab title="Claude Code">
+Install the package and Zed's ACP adapter for Claude Code. Sign in with
+`claude` first, or set `ANTHROPIC_API_KEY`.
+
+<CodeGroup>
+```bash npm
+npm install -D @e2e-dev/acp @agentclientprotocol/claude-agent-acp
+```
+
+```bash pnpm
+pnpm add -D @e2e-dev/acp @agentclientprotocol/claude-agent-acp
+```
+
+```bash bun
+bun add -d @e2e-dev/acp @agentclientprotocol/claude-agent-acp
+```
+</CodeGroup>
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { acpExecutor } from '@e2e-dev/acp';
+
+export default {
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
+  agents: {
+    default: { executor: acpExecutor.claudeCode({ model: 'sonnet' }) },
+  },
+} satisfies E2EConfig;
+```
+  </Tab>
+  <Tab title="Codex">
+Install the package and the Codex ACP adapter. Sign in with `codex login`
+first.
+
+<CodeGroup>
+```bash npm
+npm install -D @e2e-dev/acp @agentclientprotocol/codex-acp
+```
+
+```bash pnpm
+pnpm add -D @e2e-dev/acp @agentclientprotocol/codex-acp
+```
+
+```bash bun
+bun add -d @e2e-dev/acp @agentclientprotocol/codex-acp
+```
+</CodeGroup>
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { acpExecutor } from '@e2e-dev/acp';
+
+export default {
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
+  agents: {
+    default: { executor: acpExecutor.codex() },
+  },
+} satisfies E2EConfig;
+```
+  </Tab>
+</Tabs>
+
+Tests stay plain natural language:
+
+```ts title="tests/todos.e2e.ts"
+import { test, expect } from 'e2e';
+
+test('adds a todo', async ({ app, screen, agent }) => {
+  await app.open('/todos');
+  await agent.act('Add a todo named Buy coffee.');
+  await expect(screen.getByText('Buy coffee')).toBeVisible();
+  await agent.assert('The todo list contains Buy coffee.');
+});
+```
+
+`acpExecutor.claudeCode()` and `acpExecutor.codex()` take these options:
+
+| Option | What it does |
+| --- | --- |
+| `model` | A model the agent offers, such as `sonnet`. The session fails to start when the agent does not offer it, and the error lists what it does offer. Omitted, the agent's default runs. |
+| `env` | Variables added to the agent's environment. |
+| `system` | Appended to the rules the agent gets with the first step. |
+| `name` | The executor name in reports. |
+
+## Other agents
+
+`acpExecutor({ command, args })` starts any agent that speaks ACP on stdio,
+such as Cursor's CLI. It also takes `mode`, a session mode to select, and
+`sessionMeta`, the `_meta` of `session/new` that the agent's adapter
+documents.
+
+```ts
+executor: acpExecutor({ command: 'agent', args: ['acp'] }),
+```
+
+The agent keeps its own tools, so turn them off the way the agent allows.
+See [Containment](#containment). A permission request for a step tool is
+allowed only when the adapter names the MCP server and tool in the call's
+raw input, or marks it the way the Claude Code and Codex adapters do; an
+agent whose adapter does neither has its step tool calls rejected.
+
+## How a test runs
+
+One agent session serves one test attempt. The first agent step that the
+cache cannot replay starts it, every later step of the test is one more
+message in the same conversation, and the session closes when the attempt
+ends. Each message carries the step, its non-secret params, the steps
+completed so far, and the current screen. Action results report what
+changed on screen since, as they do for the built-in agent, and a
+`screenshot` reaches the agent as an image.
+
+An assertion gets the same session and tools, but an action that changes
+the screen is refused; `observe`, `screenshot`, scrolling, and hovering
+still work. The agent concludes every step with `complete_step`, as the
+built-in agent does: `passed`, `failed`, or `blocked` with an error code
+when the environment or test setup prevented a verdict.
+
+## Secrets
+
+A secret in the params reaches the agent by name only. When the step
+declares secrets and the target's engine can fill them, the agent fills one
+with `type_secret`, and the runner authorizes the fill and types the value
+itself, the same as for the built-in agent. The agent's process does not
+get the `E2E_SECRET_*` and `E2E_USER_*` variables; it gets every other
+variable of the runner's environment.
+
+## Containment
+
+The agent should use only the step tools, since an action it takes with its
+own tools is not recorded, cannot replay, and can reach files or the web
+the test never meant it to. The agent process starts in your project, its
+session opens in an empty temporary directory, and e2e advertises no file
+system or terminal access to it. When the agent asks permission for a tool,
+calls of the step tools are allowed and anything else is rejected. When a
+tool of the agent's own runs without asking, e2e stops the turn and fails
+the step with `POLICY_DENIED`.
+
+Each preset also turns off the agent's own tools that run without asking:
+
+- Claude Code: no built-in tools, no user, project, or local settings, no
+  MCP servers but the step tools, no saved session, and no bypass of
+  permission prompts.
+- Codex: read-only mode, no shell, web search, apps, plugins, browser, or
+  computer use, and every MCP server from your Codex config turned off for
+  these sessions only. Codex can still start a subagent, which fails the
+  step like any tool of its own.
+
+## Limits
+
+- Model requests are not reported over ACP. Each prompt turn counts as one
+  model call against `maxModelCalls`, with the turn's tokens and cost when
+  the agent reports them; `maxSteps` and the step timeout bound the turn.
+- `waitFor` and `extract` still use the built-in judgments and need the
+  agents entry's `model`.
+- An agents entry with an `executor` takes no `tools`, so the agent gets no
+  project tools from `defineTool`.

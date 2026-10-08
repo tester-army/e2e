@@ -17,7 +17,7 @@ import { projectTools } from '../agent/default-agent.ts';
 import type { ExecutorNode, StepExecutorContext } from '../agent/executor.ts';
 import { projectTree, redactNode, type NodeRedaction } from '../agent/observation.ts';
 import { GRAMMAR_TOOL_NAMES } from '../agent/action-names.ts';
-import { createGrammarTools } from '../agent/primitives.ts';
+import { grammarTools } from '../agent/primitives.ts';
 import type { ScreenPresenter } from '../agent/screen-update.ts';
 import type { LocatorExpression, SemanticNode, TargetSession } from '../engine/surface.ts';
 import { ConfigurationError } from '../internal/errors.ts';
@@ -63,7 +63,7 @@ export function createSessionCatalog(options: CatalogOptions): SessionCatalog {
   const { context, screen } = options;
   // The grammar's own observe reports a diff for the model loop; the
   // session's shows the whole screen, so it replaces the grammar's.
-  const { observe: _diffObserve, ...verbs } = createGrammarTools(context, { screen, onActionFailed: options.onActionFailed });
+  const { observe: _diffObserve, ...verbs } = grammarTools(context, { screen, onActionFailed: options.onActionFailed });
   const recording = options.recorder === undefined ? {} : recordingTools(options.recorder);
   const builtIn: ToolSet = {
     observe: fullObserveTool(context, screen),

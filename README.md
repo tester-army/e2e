@@ -60,6 +60,7 @@ and Flutter, each a standalone project with a passing suite.
 | [`@e2e-dev/kernel`](https://www.npmjs.com/package/@e2e-dev/kernel) | Kernel hosted browsers for the web engine. |
 | [`@e2e-dev/eas`](https://www.npmjs.com/package/@e2e-dev/eas) | EAS Simulators hosted iOS simulators and Android emulators for the mobile engine. |
 | [`@e2e-dev/decision`](https://e2e.tester.army/docs/decision-models) | Decision-model executors for bounded semantic actions and assertions. |
+| [`@e2e-dev/acp`](https://e2e.tester.army/docs/acp) | Runs agent steps on your own coding agent (Claude Code, Codex, and more) over the Agent Client Protocol. |
 
 ## Documentation
 

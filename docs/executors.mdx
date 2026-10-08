@@ -77,6 +77,23 @@ failure back to the model as text. `ctx.actions` authorizes, counts, and
 records each action, so these steps replay from the [cache](/cache) like the
 built-in agent's and run on any engine that supports `tap`.
 
+To keep the built-in actions beside your own tools, spread
+`createGrammarTools(ctx, { guard })` into the toolset. It returns the
+built-in agent's action tools for the verbs the target's engine supports,
+and each result reports what changed on screen. `BASE_RULES` is the
+built-in agent's guidance for those tools; start your `system` with it.
+
+```ts
+import { BASE_RULES, createGrammarTools, createToolLoopExecutor } from 'e2e/agent';
+
+createToolLoopExecutor({
+  name: 'with-inbox',
+  system: `${BASE_RULES}\n\nCheck the inbox with read_inbox when a step mentions an email.`,
+  buildPrompt: (ctx) => ctx.step.instruction,
+  tools: (ctx, { guard }) => ({ ...createGrammarTools(ctx, { guard }), read_inbox: readInbox }),
+});
+```
+
 A tool that works outside `ctx.actions`, such as a call to your test API,
 wraps its body in `ctx.budgets.runTool({ name, mutates })` to take an action
 slot and record the outcome. Never call `ctx.actions` or `ctx.observe` inside
@@ -237,6 +254,12 @@ resulting exits. `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`, and `CANCELLED`
 belong to the runner: return one only when that budget is spent, the step
 deadline has passed, or the test was cancelled. Returning one otherwise, or
 a passed verdict with any code, is refused with `MODEL_OUTPUT_INVALID`.
+
+For a model your executor drives itself, `createVerdictTool()` from
+`e2e/agent` is the built-in agent's `complete_step`. Give the model its
+`tool` and `VERDICT_RULES`, then return `verdict()`. A grammar tool returns a
+`ScreenOutput`: text, or text with the screenshot. When a tool throws an
+error that `isRuntimeHardStop(error)` accepts, end the step and rethrow it.
 
 <CardGroup cols={2}>
   <Card title="agent reference" icon="wand-magic-sparkles" href="/reference/agent">

@@ -35,6 +35,7 @@ import {
   type Secret,
   type StepExecutor,
   type StepExecutorContext,
+  type StepVerdict,
   type StepTurn,
   type StoredArtifactLink,
   type Target,
@@ -50,8 +51,18 @@ import {
   describe,
 } from '../../src/index.ts';
 import type { Engine, EngineAttemptContext, EngineHandle, EngineObserveOptions, EngineSnapshot } from '../../src/engine/index.ts';
-import { createToolLoopExecutor, defineTool } from '../../src/agent/public.ts';
+import {
+  BASE_RULES,
+  createGrammarTools,
+  createToolLoopExecutor,
+  createVerdictTool,
+  defineTool,
+  isRuntimeHardStop,
+  VERDICT_RULES,
+  type ScreenOutput,
+} from '../../src/agent/public.ts';
 import type { Report } from '../../src/index.ts';
+import type { ToolSet } from 'ai';
 import type { LanguageModelV2, LanguageModelV3, LanguageModelV4 } from '@ai-sdk/provider';
 import { chatgpt } from '../../src/oauth/chatgpt.ts';
 import { copilot } from '../../src/oauth/copilot.ts';
@@ -514,6 +525,21 @@ declare const brain: StepExecutor;
 ({ targets, agents: { default: brain } }) satisfies E2EConfig;
 // @ts-expect-error maxTurns left createToolLoopExecutor: the agent's maxModelCalls bounds its turns
 createToolLoopExecutor({ name: 'brain', tools: () => ({}), buildPrompt: () => 'go', maxTurns: 3 });
+// A custom loop keeps the built-in actions: the grammar tools take the loop's guard, and their rules are text.
+createToolLoopExecutor({ name: 'brain', system: BASE_RULES, buildPrompt: () => 'go', tools: (ctx, { guard }) => createGrammarTools(ctx, { guard }) });
+// @ts-expect-error the screen presenter stays internal: a caller's first observe shows the whole screen
+createGrammarTools(executorContext, { screen: undefined });
+// An executor outside the AI SDK loop keeps the built-in verdict: complete_step as a tool, its rules as text, and the verdict it collected.
+const conclusion = createVerdictTool();
+({ complete_step: conclusion.tool }) satisfies ToolSet;
+conclusion.verdict() satisfies StepVerdict | undefined;
+VERDICT_RULES satisfies string;
+// A runtime hard stop narrows to the AgentError the step rethrows untouched.
+declare const thrown: unknown;
+if (isRuntimeHardStop(thrown)) thrown.code satisfies string;
+// A grammar tool's result is a rendered screen: text, or text with its screenshot.
+declare const rendered: ScreenOutput;
+if (typeof rendered !== 'string') rendered.pixels.mediaType satisfies string;
 // @ts-expect-error limits left the config: maxInputTokens is per agent, the rest are fixed by the runner
 ({ targets, limits: { maxModelTokensPerCall: 1_000 } }) satisfies E2EConfig;
 

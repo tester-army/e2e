@@ -1,0 +1,66 @@
+{
+  "name": "@e2e-dev/acp",
+  "version": "0.0.0",
+  "description": "Run e2e agent steps on a coding agent you already use (Claude Code, Codex, Cursor, ...) over the Agent Client Protocol",
+  "keywords": [
+    "e2e",
+    "end-to-end",
+    "testing",
+    "ai-testing",
+    "acp",
+    "agent-client-protocol",
+    "claude-code",
+    "codex",
+    "cursor"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tester-army/e2e.git",
+    "directory": "packages/acp"
+  },
+  "bugs": {
+    "url": "https://github.com/tester-army/e2e/issues"
+  },
+  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/acp#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "tag": "latest"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json && node ../../scripts/stamp-dist.ts",
+    "prepublishOnly": "node ../../scripts/check-dist.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "1.7.0",
+    "@modelcontextprotocol/server": "2.3.0",
+    "zod": "4.6.1"
+  },
+  "peerDependencies": {
+    "e2e": ">=0.19.0 <1"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.2.0",
+    "@types/node": "26.6.2",
+    "e2e": "workspace:*",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1"
+  },
+  "engines": {
+    "node": "^22.22.3 || >=24.8.0"
+  }
+}

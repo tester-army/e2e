@@ -152,6 +152,7 @@
               "models",
               "decision-models",
               "subscriptions",
+              "acp",
               "cache"
             ]
           },

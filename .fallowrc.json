@@ -20,6 +20,8 @@
     "packages/web/tests/types/routes.ts",
     "packages/mobile/tests/types/options.ts",
     "packages/decision/tests/types/options.ts",
+    "packages/acp/tests/fixtures/scripted-agent.ts",
+    "packages/acp/tests/live/*.ts",
     "packages/e2e/tests/live/*.ts",
     "packages/e2e/src/config/register.ts"
   ],
