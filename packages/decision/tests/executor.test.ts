@@ -603,8 +603,9 @@ describe('context', () => {
     ];
     const decision = requests[0]?.state as { recentActions: { action: string }[] };
     expect(decision.recentActions.slice(0, 3).map((entry) => entry.action)).toEqual(expected);
-    const check = requests[1]?.state as { actions: string[] };
-    expect(check.actions.slice(0, 3)).toEqual(expected);
+    const check = requests[1]?.questions['verdict']?.instructions ?? '';
+    for (const line of expected) expect(check).toContain(line);
+    expect(JSON.stringify(requests.map((request) => request.questions))).not.toContain('secret \\"password\\"');
     expect(JSON.stringify(requests.map((request) => request.state))).not.toContain('secret \\"password\\"');
   });
   it('sends only the last 10 actions', async () => {
@@ -622,7 +623,7 @@ describe('context', () => {
     const state = requests[12]?.state as { recentActions?: unknown[] } | undefined;
     expect(fixture.actions.tap).toHaveBeenCalledTimes(12);
     const actions = (state?.recentActions as { action: string }[] | undefined)?.map((entry) => entry.action);
-    expect(actions).toEqual(Array.from({ length: 10 }, (_, index) => `tap Page ${index + 3} [a]`));
+    expect(actions).toEqual(Array.from({ length: 10 }, (_, index) => `tap button "Page ${index + 3}"`));
   });
   it('gives the completion check the inputs, typed values, and actions, never claims or secrets', async () => {
     const { model, requests } = scriptedDecision((id, keys, call) => {
@@ -640,10 +641,10 @@ describe('context', () => {
     expect(verdict).toMatchObject({ status: 'passed' });
     const checks = requests.filter((request) => 'verdict' in request.questions);
     expect(checks).toHaveLength(2);
-    expect(checks[1]?.state).toMatchObject({
-      params: { nickname: 'Ada' },
-      actions: ['type into Name [name] = "Ada"'],
-    });
+    expect(checks[1]?.state).toMatchObject({ params: { nickname: 'Ada' } });
+    // The actions reach the verdict in its question only; the same list in the state was measured to hurt.
+    expect(checks[1]?.state).not.toHaveProperty('actions');
+    expect(checks[1]?.questions['verdict']?.instructions).toContain('1. type into textbox "Name" = "Ada"');
     expect(JSON.stringify(checks[1]?.state)).not.toContain('admin.password');
   });
   it('shows a named status\'s text to the completion check', async () => {

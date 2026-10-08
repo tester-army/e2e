@@ -361,9 +361,11 @@ export interface CompletionInput {
 }
 /**
  * Builds a completion-check request: the goal with its non-secret params, the
- * page, the element table, and the actions the step took with the values it
- * typed. Rejected done/failed claims are left out (they are not actions), and
- * so is any model reasoning.
+ * page, and the element table in the state; the actions the step took, with
+ * the values it typed, in the question only. The same list in the state was
+ * measured on gpt-6-luna to pull a verdict toward inconclusive (holds 0.17
+ * with it, 0.51 without, on a checked checkbox). Rejected done/failed claims
+ * are left out (they are not actions), and so is any model reasoning.
  */
 export function completionRequest(input: CompletionInput): DecisionRequest {
   const taken = input.history.filter((entry) => entry.action !== 'done' && entry.action !== 'failed');
@@ -375,7 +377,6 @@ export function completionRequest(input: CompletionInput): DecisionRequest {
       goal: input.goal,
       ...(Object.keys(input.params).length === 0 ? {} : { params: input.params }),
       ...(statuses.length === 0 ? {} : { status: statuses.join('\n') }),
-      ...(actions.length === 0 ? {} : { actions }),
       page: { path: input.path, text: input.pageText },
       elements: [...input.elements],
     },
