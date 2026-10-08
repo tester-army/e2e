@@ -1,7 +1,7 @@
 /** RGBA images in memory: PNG decoding and encoding, resampling, cropping, painting boxes, and comparing two images. */
 
+import { convertIndexedToRgb, decode, encode, type DecodedPng } from 'fast-png';
 import pixelmatch from 'pixelmatch';
-import { PNG } from 'pngjs';
 
 /** An RGBA image, 8 bits per channel, rows top to bottom. */
 export interface RgbaImage {
@@ -18,17 +18,52 @@ export interface ImageBox {
   readonly height: number;
 }
 
-/** Decodes PNG bytes; throws on bytes that are not a PNG. */
+/** Decodes PNG bytes to 8-bit RGBA: any color type, at 8 or 16 bits or with a palette; throws on anything else. */
 export function decodePng(bytes: Uint8Array): RgbaImage {
-  const png = PNG.sync.read(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
-  return { width: png.width, height: png.height, data: new Uint8Array(png.data.buffer, png.data.byteOffset, png.data.byteLength) };
+  const png = decode(bytes);
+  return { width: png.width, height: png.height, data: toRgba(png) };
 }
 
 /** Encodes an image as PNG bytes. */
 export function encodePng(image: RgbaImage): Uint8Array {
-  const png = new PNG({ width: image.width, height: image.height });
-  png.data = Buffer.from(image.data.buffer, image.data.byteOffset, image.data.byteLength);
-  return new Uint8Array(PNG.sync.write(png));
+  return encode({ width: image.width, height: image.height, data: image.data, channels: 4, depth: 8 });
+}
+
+/**
+ * A decoded PNG's samples as 8-bit RGBA: a palette expanded, gray spread to
+ * three channels, a missing alpha opaque, and 16-bit samples scaled to 8
+ * bits with rounding. A gray or RGB image's transparent color, when it
+ * declares one, comes out with alpha 0.
+ */
+function toRgba(png: DecodedPng): Uint8Array {
+  const pixels = png.width * png.height;
+  if (png.palette !== undefined) {
+    const expanded = convertIndexedToRgb(png);
+    if (expanded.length === pixels * 4) return expanded;
+    return spread(expanded, 3, pixels, undefined);
+  }
+  if (png.depth !== 8 && png.depth !== 16) throw new Error(`unsupported PNG: ${png.depth}-bit samples without a palette`);
+  if (png.depth === 8 && png.channels === 4) return png.data instanceof Uint8Array ? png.data : Uint8Array.from(png.data);
+  const scale = png.depth === 16 ? (sample: number): number => Math.round((sample * 255) / 65535) : (sample: number): number => sample;
+  const samples = png.depth === 16 ? Uint8Array.from(png.data, scale) : png.data;
+  const key = png.channels === 1 || png.channels === 3 ? png.transparency : undefined;
+  return spread(samples, png.channels, pixels, key === undefined ? undefined : Array.from(key, scale));
+}
+
+/** Samples of `channels` per pixel as RGBA; a pixel equal to `key` is transparent. */
+function spread(samples: ArrayLike<number>, channels: number, pixels: number, key: readonly number[] | undefined): Uint8Array {
+  const out = new Uint8Array(pixels * 4);
+  for (let pixel = 0; pixel < pixels; pixel += 1) {
+    const at = pixel * channels;
+    const gray = channels <= 2;
+    const r = samples[at]!;
+    const g = gray ? r : samples[at + 1]!;
+    const b = gray ? r : samples[at + 2]!;
+    const alpha = channels === 2 || channels === 4 ? samples[at + channels - 1]! : 255;
+    const keyed = key !== undefined && (gray ? r === key[0] : r === key[0] && g === key[1] && b === key[2]);
+    out.set([r, g, b, keyed ? 0 : alpha], pixel * 4);
+  }
+  return out;
 }
 
 /** Resamples an image to `width` by `height` with a box filter; the input itself when it already has that size. */

@@ -1,5 +1,7 @@
 /** The in-memory image operations `toHaveScreenshot` is built on: clipping, cropping, painting, the PNG round trip, and the comparison's tolerance. */
 
+import { encode } from 'fast-png';
+import { PNG } from 'pngjs';
 import { describe, expect, it } from 'vitest';
 import { clipBox, compareImages, cropImage, decodePng, encodePng, fillBoxes, resampleImage, type RgbaImage } from '../../src/internal/image.ts';
 
@@ -16,6 +18,18 @@ describe('image', () => {
   it('round-trips through PNG', () => {
     const image = gray(3, 2, 120);
     expect(decodePng(encodePng(image))).toEqual(image);
+  });
+
+  it.each([
+    ['gray', { channels: 1, depth: 8, data: Uint8Array.from([0, 90, 180, 255, 30, 60]) }],
+    ['gray with alpha', { channels: 2, depth: 8, data: Uint8Array.from([0, 255, 90, 128, 180, 0, 255, 255, 30, 10, 60, 200]) }],
+    ['RGB', { channels: 3, depth: 8, data: Uint8Array.from([255, 0, 0, 0, 255, 0, 0, 0, 255, 10, 20, 30, 40, 50, 60, 70, 80, 90]) }],
+    ['16-bit RGBA', { channels: 4, depth: 16, data: Uint16Array.from([65535, 0, 0, 65535, 0, 32768, 0, 65535, 0, 0, 65535, 0, 4096, 8192, 12288, 65535, 1, 2, 3, 4, 60000, 50000, 40000, 30000]) }],
+    ['a palette', { channels: 1, depth: 8, data: Uint8Array.from([0, 1, 2, 1, 0, 2]), palette: [[255, 0, 0], [0, 255, 0], [0, 0, 255]] }],
+  ] as const)('decodes %s to the RGBA pngjs reads from the same file', (_label, image) => {
+    const bytes = encode({ width: 3, height: 2, ...image } as Parameters<typeof encode>[0]);
+    const oracle = PNG.sync.read(Buffer.from(bytes));
+    expect([...decodePng(bytes).data]).toEqual([...oracle.data]);
   });
 
   it('clips a box to the image on whole pixels, and has none for a box outside it', () => {
