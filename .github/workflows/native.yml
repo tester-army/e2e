@@ -1,0 +1,68 @@
+name: native controls
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  controls:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    env:
+      E2E_TELEMETRY_DISABLED: '1'
+      TERN_RUNTIME_URL: ${{ vars.E2E_TERN_RUNTIME_URL }}
+      TERN_RUNTIME_SHA256: ${{ vars.E2E_TERN_RUNTIME_SHA256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 26
+          cache: pnpm
+      - name: Require permitted pinned native runtime delivery
+        run: |
+          test -n "$TERN_RUNTIME_URL" && test -n "$TERN_RUNTIME_SHA256" || {
+            echo '::error::Native Tern remains closed beta. Supply maintainer-approved public Linux archive and SHA256; no private executable or simulated native smoke fallback.'
+            exit 1
+          }
+          mkdir -p "$RUNNER_TEMP/tern-runtime"
+          curl --fail --location --proto '=https' "$TERN_RUNTIME_URL" -o "$RUNNER_TEMP/tern-runtime.tar.gz"
+          printf '%s  %s\n' "$TERN_RUNTIME_SHA256" "$RUNNER_TEMP/tern-runtime.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/tern-runtime.tar.gz" -C "$RUNNER_TEMP/tern-runtime"
+          test -x "$RUNNER_TEMP/tern-runtime/tern"
+      - name: Install isolated display dependencies
+        run: sudo apt-get update && sudo apt-get install -y sway grim zsh
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Real isolated native controls
+        run: |
+          set -euo pipefail
+          proof=$(mktemp -d "$RUNNER_TEMP/native-proof.XXXXXXXX")
+          mkdir -m 700 "$proof/run" "$proof/home" "$proof/config" "$proof/cache" "$proof/state"
+          printf 'output HEADLESS-1 mode 1280x900\nxwayland disable\n' > "$proof/sway.conf"
+          env -i PATH="$PATH" HOME="$proof/home" XDG_RUNTIME_DIR="$proof/run" WLR_BACKENDS=headless WLR_HEADLESS_OUTPUTS=1 WLR_RENDERER=pixman sway --config "$proof/sway.conf" > "$proof/sway.log" 2>&1 &
+          sway_pid=$!
+          tern_pid=''
+          cleanup() { test -z "$tern_pid" || kill "$tern_pid" 2>/dev/null || true; kill "$sway_pid" 2>/dev/null || true; wait || true; }
+          trap cleanup EXIT INT TERM
+          for i in $(seq 1 100); do
+            socket=$(find "$proof/run" -maxdepth 1 -type s -name 'wayland-*' -print -quit)
+            test -z "$socket" || break
+            kill -0 "$sway_pid"
+            sleep .1
+          done
+          test -n "$socket"
+          export E2E_TERN_BINARY="$RUNNER_TEMP/tern-runtime/tern"
+          export E2E_TERN_CONTROL="$proof/control.sock"
+          env -i PATH="$PATH" LANG=C.UTF-8 SHELL=/usr/bin/zsh HOME="$proof/home" XDG_CONFIG_HOME="$proof/config" XDG_CACHE_HOME="$proof/cache" XDG_STATE_HOME="$proof/state" XDG_RUNTIME_DIR="$proof/run" WAYLAND_DISPLAY="${socket##*/}" TERN_CONFIG_DIR="$proof/config/tern" "$E2E_TERN_BINARY" --control "$E2E_TERN_CONTROL" > "$proof/tern.log" 2>&1 &
+          tern_pid=$!
+          for i in $(seq 1 100); do test ! -S "$E2E_TERN_CONTROL" || break; kill -0 "$tern_pid"; sleep .1; done
+          test -S "$E2E_TERN_CONTROL"
+          "$E2E_TERN_BINARY" ctl --control "$E2E_TERN_CONTROL" ready
+          "$E2E_TERN_BINARY" ctl --control "$E2E_TERN_CONTROL" "run \"node $GITHUB_WORKSPACE/apps/tern-testbed/src/controls.mjs\""
+          export E2E_TERN_PANE=$("$E2E_TERN_BINARY" ctl --control "$E2E_TERN_CONTROL" state | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const v=JSON.parse(s);if(!v.ok||v.panes.length!==1)process.exit(1);console.log(v.focused.id)})')
+          node packages/e2e/dist/cli/bin.js run --config apps/tern-testbed/e2e.config.ts --output apps/tern-testbed/.e2e --workers 1 --retries 0 --no-cache --reporter list,markdown
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: native-controls
+          path: apps/tern-testbed/.e2e/
