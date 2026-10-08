@@ -5,7 +5,7 @@ import { NONE } from './questions.ts';
  * What a target question settled: the offered value the model chose with
  * its answer, or the model's `none` for the operation it was asked about.
  */
-export type Pick<T> = { readonly value: T; readonly answer: Decision } | { readonly none: Decision };
+export type Pick<T> = { readonly key: string; readonly value: T; readonly answer: Decision } | { readonly none: Decision };
 /**
  * Resolves a target answer against what was offered. Anything the request
  * never offered is MODEL_OUTPUT_INVALID: our validation, never the
@@ -16,7 +16,7 @@ export function pick<T>(answer: Decision | undefined, offered: ReadonlyMap<strin
   if (answer.choice === NONE) return { none: answer };
   const value = offered.get(answer.choice);
   if (value === undefined) throw invalid(`The decision model chose an unavailable ${what}.`);
-  return { value, answer };
+  return { key: answer.choice, value, answer };
 }
 /** A model answer the request never offered: our validation, never the provider's text. */
 export function invalid(message: string): AgentError {

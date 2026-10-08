@@ -1,7 +1,8 @@
 import type { LanguageModel } from 'ai';
 import type { DecisionExecutorOptions } from '../src/index.ts';
-import type { ExecutorActions, ExecutorModelCall, ExecutorNode, ExecutorObservation, JsonValue, StepExecutorContext, StepTurn } from 'e2e';
-import { vi } from 'vitest';
+import type { ExecutorActions, ExecutorModelCall, ExecutorNode, ExecutorObservation, ExecutorPixels, JsonValue, StepExecutorContext, StepTurn } from 'e2e';
+import { expect, vi } from 'vitest';
+import { PNG } from 'pngjs';
 /** One scripted answer: the choice, its distribution, and the reported confidence. */
 export interface ScriptedAnswer {
   readonly choice: string;
@@ -157,4 +158,25 @@ export function context(options: {
     ...(options.replayedPrefix === undefined ? {} : { replayedPrefix: options.replayedPrefix }),
   };
   return { ctx, usage, observe, actions, turns, transcripts };
+}
+
+/** Matches the ConfigurationError a factory throws at config load. */
+export function invalidConfig(message: string): object {
+  return expect.objectContaining({ name: 'ConfigurationError', code: 'INVALID_CONFIG', message: expect.stringContaining(message) });
+}
+/** Two buttons: the smallest screen with a target question. */
+export const BUTTONS: ExecutorNode = { id: 'root', children: [
+  { id: 'save', role: 'button', name: 'Save' },
+  { id: 'cancel', role: 'button', name: 'Cancel' },
+]};
+/** A field and a button: the smallest screen that types. */
+export const FIELD: ExecutorNode = { id: 'root', children: [
+  { id: 'name', role: 'textbox', name: 'Name', value: '' },
+  { id: 'save', role: 'button', name: 'Save' },
+]};
+/** A decodable white screenshot of the fixture viewport. */
+export function whitePixels(): ExecutorPixels {
+  const png = new PNG({ width: 800, height: 600 });
+  png.data.fill(255);
+  return { data: new Uint8Array(PNG.sync.write(png)), mediaType: 'image/png', width: 800, height: 600, scale: 1, maskedRegionCount: 0 };
 }

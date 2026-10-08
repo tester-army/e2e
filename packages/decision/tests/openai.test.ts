@@ -159,11 +159,13 @@ describe('openaiDecisionModel', () => {
 });
 
 describe('openaiDecisionModel parity', () => {
-  it('sends the request body and maps the answers exactly as the SDK model does, without a screenshot', async () => {
+  it('sends the request body and maps choice, score, and boolean answers exactly as the SDK model does, without a screenshot', async () => {
     const bodies: WireRequest[] = [];
-    const answers: WireAnswer[] = [
+    const answers: unknown[] = [
       { type: 'choice', name: 'q', choice: 'a', confidence: 0.7, probabilities: [{ value: 'a', probability: 0.9 }, { value: 'b', probability: 0.1 }] },
       { type: 'choice', name: 'r', choice: 'y', probabilities: [{ value: 'x', probability: 0 }, { value: 'y', probability: 1 }] },
+      { type: 'score', name: 's', score: 1.5, confidence: 0.6, probabilities: [{ value: 0, probability: 0 }, { value: 1, probability: 0.5 }, { value: 2, probability: 0.5 }] },
+      { type: 'predicate', name: 'p', probability: 0.8 },
     ];
     const fetch = async (_url: string | URL | Request, init?: RequestInit): Promise<Response> => {
       bodies.push(JSON.parse(String(init?.body)) as WireRequest);
@@ -174,6 +176,8 @@ describe('openaiDecisionModel parity', () => {
       questions: {
         q: { type: 'choice' as const, instructions: { rules: 'pick' }, criteria: { a: 'A', b: null } },
         r: { type: 'choice' as const, instructions: 'pick again', criteria: { x: { element: 'X' }, y: 'Y' } },
+        s: { type: 'score' as const, instructions: 'where', criteria: ['left', null, 'right'] },
+        p: { type: 'boolean' as const, instructions: 'is it', criteria: { true: 'yes', false: null } },
       },
     };
     const sdk = await createOpenAI({ apiKey: 'sk-test', fetch: fetch as typeof globalThis.fetch }).decisionModel('gpt-6-luna').doDecide(call);

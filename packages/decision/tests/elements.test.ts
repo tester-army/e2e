@@ -128,20 +128,38 @@ describe('element table', () => {
     const noText = actionSpace(fixture.ctx, { path: '/form', viewport: { width: 800, height: 600 }, tree: tree([{ id: 'f', role: 'button', name: 'Attachments', attributes: { type: 'file' } }]) }, false);
     expect(noText.targets.get('upload')).toBeUndefined();
   });
-  it('offers a tap_at grid of at most ten columns and rows only with pixels, scores, and the tapAt verb', () => {
+  it('offers tap_at only with pixels, scores, and the tapAt verb', () => {
     const fixture = context();
     const pixels = { data: new Uint8Array(0), mediaType: 'image/png' as const, width: 800, height: 600, scale: 1, maskedRegionCount: 0 };
     const space = actionSpace(fixture.ctx, { path: '/', viewport: { width: 800, height: 600 }, tree: tree([{ id: 'a', role: 'button', name: 'Add' }]), pixels, scores: true }, true);
-    expect(space.grid).toMatchObject({ columns: 10, rows: 8, cellWidth: 80, cellHeight: 75 });
+    expect(space.tapAt).toBe(true);
+    expect(space.operation('tap_at')).toBe('tap_at');
     expect(space.targets.get('tap_at')).toBeUndefined();
-    const wide = actionSpace(fixture.ctx, { path: '/', viewport: { width: 1280, height: 720 }, tree: tree([]), pixels, scores: true }, true);
-    expect(wide.grid).toMatchObject({ columns: 10, rows: 9, cellWidth: 128, cellHeight: 80 });
     const noPixels = spaceFor([{ id: 'a', role: 'button', name: 'Add' }]);
-    expect(noPixels.grid).toBeUndefined();
+    expect(noPixels.tapAt).toBe(false);
+    expect(noPixels.operation('tap_at')).toBeUndefined();
     const noScores = actionSpace(fixture.ctx, { path: '/', viewport: { width: 800, height: 600 }, tree: tree([]), pixels }, true);
-    expect(noScores.grid).toBeUndefined();
+    expect(noScores.tapAt).toBe(false);
     const noVerb = actionSpace(context({ verbs: ['tap'] }).ctx, { path: '/', viewport: { width: 800, height: 600 }, tree: tree([]), pixels, scores: true }, true);
-    expect(noVerb.grid).toBeUndefined();
+    expect(noVerb.tapAt).toBe(false);
+  });
+  it('types the operation and control an answer names', () => {
+    const space = spaceFor([{ id: 'a', role: 'button', name: 'Add' }]);
+    expect(space.operation('tap')).toBe('tap');
+    expect(space.operation('upload')).toBeUndefined();
+    expect(space.control('back')).toBe('back');
+    expect(space.control('tap')).toBeUndefined();
+  });
+  it('never offers drag when the only droppable node is the root or fell past the cap', () => {
+    const fixture = context();
+    const root = actionSpace(fixture.ctx, { path: '/', viewport: { width: 800, height: 600 }, tree: { id: 'root', role: 'region', name: 'Main', children: [{ id: 'go', role: 'button', name: 'Go' }] } }, true);
+    expect(root.targets.get('drag')).toBeUndefined();
+    expect(root.elements[0]?.operations).not.toContain('drag');
+    const children = Array.from({ length: 256 }, (_, index) => ({ id: `b${index}`, role: 'button', name: `Button ${index}`, rect: { x: 0, y: 10, width: 50, height: 20 } }));
+    const capped = spaceFor([...children, { id: 'done', role: 'region', name: 'Done column' }]);
+    expect(capped.elements).toHaveLength(255);
+    expect(capped.destinations.size).toBe(0);
+    expect(capped.targets.get('drag')).toBeUndefined();
   });
   it('uses the placeholder as the label when there is no name', () => {
     const space = spaceFor([{ id: 'q', role: 'searchbox', attributes: { placeholder: 'Search todos' } }]);

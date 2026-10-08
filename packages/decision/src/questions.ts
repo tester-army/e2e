@@ -88,7 +88,7 @@ export function operationRequest(
 ): DecisionRequest {
   const criteria: Record<string, string> = {};
   for (const operation of space.targets.keys()) criteria[operation] = OPERATIONS[operation];
-  if (space.grid !== undefined) criteria['tap_at'] = OPERATIONS.tap_at;
+  if (space.tapAt) criteria['tap_at'] = OPERATIONS.tap_at;
   for (const control of space.controls.keys()) criteria[control] = OPERATIONS[control];
   for (const [terminal, description] of Object.entries(TERMINALS)) criteria[terminal] = description;
   const recent = history.slice(-RECENT_ACTIONS);

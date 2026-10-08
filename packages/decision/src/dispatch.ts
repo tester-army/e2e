@@ -1,17 +1,16 @@
 import type { StepExecutorContext } from 'e2e';
-import type { Control, Operation, Target } from './elements.ts';
+import type { Control, Target } from './elements.ts';
 import type { Point } from './overlay.ts';
-/** What an operation takes beside its target: typed text, a secret name, upload paths, a drop target, or a point. */
-export type Argument =
-  | { readonly kind: 'text'; readonly text: string }
-  | { readonly kind: 'secret'; readonly name: string }
-  | { readonly kind: 'paths'; readonly paths: readonly string[] }
-  | { readonly kind: 'destination'; readonly id: string }
-  | { readonly kind: 'point'; readonly point: Point }
-  | { readonly kind: 'none' };
-/** One action the loop dispatches: an operation on a target, or a control. */
+/** Operations that take a target and nothing else. */
+export type Pointer = 'tap' | 'double_tap' | 'long_press' | 'hover' | 'secondary_tap' | 'scroll_to' | 'submit' | 'check' | 'select';
+/** One action the loop dispatches, with everything its operation needs. */
 export type Action =
-  | { readonly operation: Operation; readonly target: Target; readonly argument: Argument }
+  | { readonly operation: Pointer; readonly target: Target }
+  | { readonly operation: 'type'; readonly target: Target; readonly text: string }
+  | { readonly operation: 'typeSecret'; readonly target: Target; readonly name: string }
+  | { readonly operation: 'upload'; readonly target: Target; readonly paths: readonly string[] }
+  | { readonly operation: 'drag'; readonly target: Target; readonly destinationId: string }
+  | { readonly operation: 'tap_at'; readonly point: Point }
   | { readonly operation: Control };
 /**
  * Performs one action through the runner's grammar: the only place that
@@ -20,71 +19,63 @@ export type Action =
  */
 export async function perform(ctx: StepExecutorContext, action: Action): Promise<string | undefined> {
   const { actions } = ctx;
-  if (!('target' in action)) {
-    switch (action.operation) {
-      case 'scroll_up':
-        await actions.scroll('up');
-        return undefined;
-      case 'scroll_down':
-        await actions.scroll('down');
-        return undefined;
-      case 'back':
-        await actions.back();
-        return undefined;
-    }
-  }
-  const { operation, target, argument } = action;
-  const node = { id: target.id };
-  switch (operation) {
+  switch (action.operation) {
+    case 'scroll_up':
+      await actions.scroll('up');
+      return undefined;
+    case 'scroll_down':
+      await actions.scroll('down');
+      return undefined;
+    case 'back':
+      await actions.back();
+      return undefined;
     case 'tap':
-      await actions.tap(node);
+      await actions.tap(node(action.target));
       return undefined;
     case 'double_tap':
-      await actions.doubleTap(node);
+      await actions.doubleTap(node(action.target));
       return undefined;
     case 'long_press':
-      await actions.longPress(node);
+      await actions.longPress(node(action.target));
       return undefined;
     case 'hover':
-      await actions.hover(node);
+      await actions.hover(node(action.target));
       return undefined;
     case 'secondary_tap':
-      await actions.secondaryTap(node);
+      await actions.secondaryTap(node(action.target));
       return undefined;
     case 'scroll_to':
-      await actions.scrollTo(node);
+      await actions.scrollTo(node(action.target));
       return undefined;
     case 'submit':
-      await actions.press(node, 'Enter');
+      await actions.press(node(action.target), 'Enter');
       return undefined;
     case 'check':
-      await actions.check(node, !(target.checked ?? false));
+      await actions.check(node(action.target), !(action.target.checked ?? false));
       return undefined;
     case 'select':
-      await actions.select(node, target.optionLabel ?? '');
+      await actions.select(node(action.target), action.target.optionLabel ?? '');
       return undefined;
     case 'type':
-      await actions.type(node, expect(argument, 'text').text);
+      await actions.type(node(action.target), action.text);
       return undefined;
     case 'typeSecret':
-      await actions.typeSecret(node, expect(argument, 'secret').name);
+      await actions.typeSecret(node(action.target), action.name);
       return undefined;
     case 'upload':
-      await actions.upload(node, expect(argument, 'paths').paths);
+      await actions.upload(node(action.target), action.paths);
       return undefined;
     case 'drag':
-      await actions.drag(node, { id: expect(argument, 'destination').id });
+      await actions.drag(node(action.target), { id: action.destinationId });
       return undefined;
     case 'tap_at': {
       // The engine's prose for a bare point ("no listed control is there")
       // reads as a miss to a classifier; whether the page changed says more.
-      const result = await actions.tapAt(expect(argument, 'point').point);
+      const result = await actions.tapAt(action.point);
       return result.target === undefined ? undefined : `landed on listed control ${result.target.id}`;
     }
   }
 }
-/** The argument an operation needs; its absence is the loop's bug, never the model's. */
-function expect<K extends Argument['kind']>(argument: Argument, kind: K): Extract<Argument, { kind: K }> {
-  if (argument.kind !== kind) throw new Error(`${kind} argument expected, got ${argument.kind}`);
-  return argument as Extract<Argument, { kind: K }>;
+function node(target: Target): { id: string } {
+  return { id: target.id };
 }

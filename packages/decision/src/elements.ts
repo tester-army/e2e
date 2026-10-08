@@ -1,6 +1,5 @@
 import type { ExecutorNode, ExecutorPixels, StepExecutorContext } from 'e2e';
 import { fnv1a } from './hash.ts';
-import { CELL_TARGET, gridFor, type Grid } from './overlay.ts';
 
 /** Operations the executor offers on elements. */
 export type Operation =
@@ -59,10 +58,13 @@ export interface ActionSpace {
   /** Per operation: target key -> target. Only operations with at least one target appear. */
   readonly targets: ReadonlyMap<Operation, ReadonlyMap<string, Target>>;
   readonly controls: ReadonlySet<Control>;
+  /** The operation or control an answer names, typed; undefined for anything not offered. */
+  operation(choice: string): Operation | undefined;
+  control(choice: string): Control | undefined;
   /** Where a `drag` can drop, by element key; empty when nothing can receive a drop. */
   readonly destinations: ReadonlyMap<string, Destination>;
-  /** The `tap_at` columns and rows; absent without a screenshot, the `tapAt` verb, or a model that scores. */
-  readonly grid?: Grid;
+  /** Whether `tap_at` is offered: a screenshot, the `tapAt` verb, and a model that scores. */
+  readonly tapAt: boolean;
   /** Elements left out to stay under the per-question cap; scrolling can bring them into view. */
   readonly omitted: number;
   /** Non-interactive page text from the tree, without node ids, clipped to 6000 chars. */
@@ -142,8 +144,6 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
   const rows: Row[] = [];
   const pageText: string[] = [];
   const statuses: string[] = [];
-  // A drag with nowhere to drop is no operation: know the drop targets before offering it.
-  const canDrop = verbs.has('drag') && hasDroppable(observation.tree);
   /** Walks the tree, collecting interactive rows and page text. */
   const visit = (node: ExecutorNode, underNativeSelect: boolean): void => {
     if (node.states?.disabled !== true && node.states?.hidden !== true) {
@@ -181,7 +181,7 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
       if (pointable) {
         if (verbs.has('hover')) operations.push('hover');
         if (verbs.has('secondaryTap')) operations.push('secondary_tap');
-        if (canDrop) operations.push('drag');
+        if (verbs.has('drag')) operations.push('drag');
         if (verbs.has('scrollTo') && node.rect !== undefined && !inViewport) operations.push('scroll_to');
       }
       if (operations.length > 0) {
@@ -212,18 +212,24 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
     .map(({ row }) => row);
   const omitted = Math.max(0, ordered.length - MAX_CHOICES);
   const kept = ordered.slice(0, MAX_CHOICES);
-  const targets = new Map<Operation, Map<string, Target>>();
+  // Drop targets come from the kept rows: a drag with nowhere to drop is no operation.
   const destinations = new Map<string, Destination>();
+  if (verbs.has('drag')) {
+    for (const [position, row] of kept.entries()) {
+      const role = row.node.role ?? '';
+      const label = clip(nodeLabel(row.node), 120);
+      if (droppable.has(role) && label !== '') destinations.set(String(position + 1), { id: row.node.id, label, role });
+    }
+  }
+  const targets = new Map<Operation, Map<string, Target>>();
   const byIndex = new Map<string, Element>();
   let selectCount = 0;
   const elements: Element[] = kept.map((row, position) => {
     const index = String(position + 1);
     const label = clip(nodeLabel(row.node), 120);
     const role = row.node.role ?? '';
-    if (canDrop && droppable.has(role) && label !== '') {
-      destinations.set(index, { id: row.node.id, label, role });
-    }
-    for (const operation of row.operations) {
+    const operations = destinations.size === 0 ? row.operations.filter((operation) => operation !== 'drag') : row.operations;
+    for (const operation of operations) {
       if (operation === 'select') {
         const options = new Map<string, Target>();
         for (const [optionIndex, child] of (row.node.children ?? []).entries()) {
@@ -262,12 +268,12 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
       ...(row.node.value === undefined ? {} : { value: row.node.value }),
       ...(row.node.states?.checked === undefined ? {} : { checked: row.node.states.checked }),
       ...(row.node.states?.expanded === undefined ? {} : { expanded: row.node.states.expanded }),
-      operations: row.operations,
+      operations,
     };
     byIndex.set(index, element);
     return element;
   });
-  const grid = observation.pixels !== undefined && observation.scores === true && verbs.has('tapAt') ? gridFor(observation.viewport.width, observation.viewport.height, CELL_TARGET) : undefined;
+  const tapAt = observation.pixels !== undefined && observation.scores === true && verbs.has('tapAt');
   const controls = new Set<Control>();
   if (verbs.has('scroll')) {
     controls.add('scroll_up');
@@ -279,8 +285,10 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
     element: (key) => byIndex.get(targetKeyIndex(key)),
     targets,
     controls,
+    operation: (choice) => (targets.has(choice as Operation) || (tapAt && choice === 'tap_at') ? (choice as Operation) : undefined),
+    control: (choice) => (controls.has(choice as Control) ? (choice as Control) : undefined),
     destinations,
-    ...(grid === undefined ? {} : { grid }),
+    tapAt,
     omitted,
     pageText: clip(pageText.join('\n'), 6000),
     statuses,
@@ -309,15 +317,7 @@ export function targetKeyIndex(key: string): string {
   const at = key.indexOf(':');
   return at === -1 ? key : key.slice(0, at);
 }
-/** Whether any visible labeled node can receive a drop. */
-function hasDroppable(tree: ExecutorNode): boolean {
-  const visit = (node: ExecutorNode): boolean => {
-    if (node.states?.disabled === true || node.states?.hidden === true) return false;
-    if (droppable.has(node.role ?? '') && nodeLabel(node) !== '') return true;
-    return (node.children ?? []).some(visit);
-  };
-  return visit(tree);
-}
+
 
 /** Label the model reads: name, placeholder, or text. */
 function nodeLabel(node: ExecutorNode): string {
