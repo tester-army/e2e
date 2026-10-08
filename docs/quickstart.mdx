@@ -162,19 +162,18 @@ Connect the provider you chose in the wizard.
 
 <Tabs>
   <Tab title="Subscription">
-  Sign in to your existing plan. No API key needed.
+  Sign in to your plan. Most plans need no API key.
 
-  | Subscription | Command |
+  | Plan | How to connect |
   | --- | --- |
   | ChatGPT Plus or Pro | `npx e2e login openai` |
   | GitHub Copilot | `npx e2e login github-copilot` |
   | OpenCode Console (OpenCode Zen and OpenCode Go) | `npx e2e login opencode-console` |
   | SuperGrok or X Premium+ | `npx e2e login spacexai` |
+  | Claude Max or Team (Claude Code) | API key from the plan's monthly API credits. See [Claude Max or Team](/subscriptions#claude-max-or-team). |
 
-  Copilot reuses your GitHub CLI login if available. Claude Max and Team
-  plans use their monthly API credits with an Anthropic API key instead; see
-  [Claude Max or Team](/subscriptions#claude-max-or-team). See
-  [Subscriptions](/subscriptions) for details.
+  Copilot uses your GitHub CLI login if you have one. For more information,
+  see [Subscriptions](/subscriptions).
   </Tab>
   <Tab title="API key">
   Select your provider. Install its package and set the variables it reads,
