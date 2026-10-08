@@ -17,7 +17,7 @@ export interface ScreenshotContext {
   readonly titlePath: readonly string[];
   /** `--update-snapshots`: a missing or different stored screenshot is written, and the matcher passes. */
   readonly update: boolean;
-  /** A CI run never writes into the project: a missing screenshot is only attached to the results. */
+  /** Without `update`, a CI run never writes into the project: a missing screenshot is only attached to the results. */
   readonly ci: boolean;
   /**
    * Stored screenshots this run wrote. A retry, a repeat, or another test

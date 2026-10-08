@@ -237,7 +237,7 @@ export interface ScreenshotOptions {
 | --- | --- |
 | Stored at | `<test file>-snapshots/<name>-<target>-<os>.png`; `.png` is added to a name without it |
 | Unnamed | The test's title path, lowercase, and a count: `checkout-pays-by-card-1` |
-| Missing | Taken from two screenshots in a row that are the same within the tolerance, then `ASSERTION_FAILED`. Written beside the test; in CI only attached to the results, at `snapshots/<path in the project>` |
+| Missing | Taken from two screenshots in a row that are the same within the tolerance, then `ASSERTION_FAILED`. Written beside the test; in CI without `--update-snapshots` only attached to the results, at `snapshots/<path in the project>` |
 | Written earlier in the run | No comparison, `.not` included, passes against a screenshot the same run wrote (a retry, a repeat, another test naming it): `ASSERTION_FAILED` until the next run |
 | Different | Retried until one matches or the timeout; then `ASSERTION_FAILED` with `-expected`, `-actual`, and `-diff` images on the step |
 | `--update-snapshots`, `-u` | A missing or different stored screenshot is written from a screen that holds still, and the matcher passes |

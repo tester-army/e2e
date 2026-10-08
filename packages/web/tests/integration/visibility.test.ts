@@ -183,6 +183,16 @@ describe('the tree walk through a box with no size', () => {
   });
 });
 
+describe('a frame\'s document', () => {
+  it('places its boxes past the frame\'s border and padding, where Playwright measures them', async () => {
+    await page.setContent('<iframe style="margin:13px;border:7px solid;padding:5px;width:200px;height:100px" srcdoc="<button>Framed</button>"></iframe>');
+    await Promise.all(page.frames().slice(1).map((frame) => frame.waitForLoadState()));
+    const node = (await captureTree()).find((candidate) => candidate.name === 'Framed')!;
+    const expected = (await page.frameLocator('iframe').getByRole('button').boundingBox())!;
+    for (const key of ['x', 'y', 'width', 'height'] as const) expect(node.rect![key]).toBeCloseTo(expected[key], 3);
+  });
+});
+
 describe('an inert subtree', () => {
   it('leaves the tree, as Chrome drops it, while Playwright still calls it visible', async () => {
     await page.setContent(`

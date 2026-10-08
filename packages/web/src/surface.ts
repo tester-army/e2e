@@ -47,7 +47,7 @@ import { TraceFeed } from './trace-feed.ts';
 import { DialogRouter } from './dialogs.ts';
 import { ensureBrowsersInstalled } from './install.ts';
 import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts';
-import { placeRectInFrame, ROOT_NODE_ID, toSemanticNode } from './observation.ts';
+import { contentBox, frameContentInset, placeRectInFrame, ROOT_NODE_ID, toSemanticNode } from './observation.ts';
 import { captureObservation } from './observation-capture.ts';
 import { maskOptions, secureFieldMasks } from './observe.ts';
 import { connectionAbort, withOperationDeadline, type OperationBound } from './operation-budget.ts';
@@ -930,13 +930,10 @@ export class PlaywrightSurface {
    * Checks that every frame selector along the expression matches exactly one
    * element, each counted inside the frame before it, the way `project` walks
    * the same chain; a frame-scoped `count` is 0 until that frame's document
-   * has loaded, which is what makes `FRAME_NOT_FOUND` worth retrying.
-   */
-  /**
-   * Checks that every frame the expression enters matches exactly one
-   * element, and returns the innermost one's box in the top-level viewport:
-   * undefined for an expression in the main document, null for a frame with
-   * no box. A child document measures its nodes against its own viewport.
+   * has loaded, which is what makes `FRAME_NOT_FOUND` worth retrying. Returns
+   * the innermost frame's content box in the top-level viewport, where its
+   * document's viewport starts: undefined for an expression in the main
+   * document, null for a frame with no box.
    */
   private async frameBox(expression: LocatorExpression): Promise<Rect | null | undefined> {
     let scope: Page | FrameLocator = this.requirePage();
@@ -963,7 +960,8 @@ export class PlaywrightSurface {
     }
     if (element === undefined) return undefined;
     try {
-      return await element.boundingBox();
+      const border = await element.boundingBox();
+      return border === null ? null : contentBox(border, await element.evaluate(frameContentInset));
     } catch (cause) {
       throw translatePwError(cause, 'frame resolution');
     }

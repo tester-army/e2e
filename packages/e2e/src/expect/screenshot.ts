@@ -167,7 +167,7 @@ async function keep(run: Run, expected: RgbaImage | undefined, settled: RgbaImag
   const { store, stored, api } = run;
   if (expected === undefined && !store.update && store.ci) {
     const kept = attach(run, path.join('snapshots', ...stored.shown.split('/')), settled);
-    throw failure(api, `no stored screenshot at ${stored.shown}, and CI writes none; commit this run's there\nactual: ${kept}`, stored, 'no stored screenshot');
+    throw failure(api, `no stored screenshot at ${stored.shown}, and CI writes none without --update-snapshots; commit this run's there\nactual: ${kept}`, stored, 'no stored screenshot');
   }
   mkdirSync(path.dirname(stored.file), { recursive: true });
   await writeFileAtomic(stored.file, encodePng(settled));

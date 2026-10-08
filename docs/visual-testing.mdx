@@ -59,9 +59,10 @@ bunx e2e run --update-snapshots
 
 Screenshots must come from the machine that renders them in CI: a Linux
 runner for the web and an Android emulator, a macOS runner with the same
-simulator for iOS. A CI run never writes into the project. A missing
-screenshot fails the test, and the run puts it in the test's results at
-`snapshots/<path in the project>`, so it can be downloaded and committed.
+simulator for iOS. Without `--update-snapshots`, a CI run never writes into
+the project: a missing screenshot fails the test, and the run puts it in the
+test's results at `snapshots/<path in the project>`, so it can be downloaded
+and committed.
 
 To write them all at once, run the suite with `--update-snapshots` in a job
 like the test job and keep what it wrote:

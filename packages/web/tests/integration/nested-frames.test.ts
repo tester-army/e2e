@@ -33,7 +33,7 @@ const INNER_DOCUMENT =
   '<button onclick="this.textContent = \'Inner clicked\'">Inner button</button>' +
   `<iframe id="deep" title="deep" srcdoc="${attribute(DEEP_DOCUMENT)}"></iframe>`;
 const OUTER_DOCUMENT =
-  `<h2>Outer</h2><iframe id="inner" title="inner" srcdoc="${attribute(INNER_DOCUMENT)}"></iframe>` +
+  `<h2>Outer</h2><iframe id="inner" title="inner" style="border:7px solid;padding:5px" srcdoc="${attribute(INNER_DOCUMENT)}"></iframe>` +
   TWIN_FRAME +
   TWIN_FRAME;
 const HOST_DOCUMENT =
@@ -91,16 +91,13 @@ describe('nested frame locators', () => {
     expect(await page.frameLocator('#outer').frameLocator('#inner').getByRole('button').innerText()).toBe('Inner clicked');
   });
 
-  it('reports a located node\'s box in the top-level viewport, shifted by its frame\'s box', async () => {
+  it('reports a located node\'s box in the top-level viewport, past each frame\'s border and padding', async () => {
     // The inner document's one button, whatever an earlier test renamed it to.
     const button: LocatorExpression = { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'button', exact: true } } };
     const [node] = await engine.locate!(withinFrames(['#outer', '#inner'], button), operation);
-    const frame = (await page.frameLocator('#outer').locator('#inner').boundingBox())!;
-    const own = await page.frameLocator('#outer').frameLocator('#inner').getByRole('button').evaluate((element) => {
-      const { x, y, width, height } = element.getBoundingClientRect();
-      return { x, y, width, height };
-    });
-    expect(node!.rect).toEqual({ x: frame.x + own.x, y: frame.y + own.y, width: own.width, height: own.height });
+    // Playwright's own box for the same element, measured through both frames' borders and padding.
+    const expected = (await page.frameLocator('#outer').frameLocator('#inner').getByRole('button').boundingBox())!;
+    for (const key of ['x', 'y', 'width', 'height'] as const) expect(node!.rect![key]).toBeCloseTo(expected[key], 3);
   });
 
   it('resolves a three-level chain, counting the last frame inside the second', async () => {
