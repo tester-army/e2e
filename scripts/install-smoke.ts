@@ -28,7 +28,7 @@ if (pnpmVersion === undefined) {
 }
 
 /** The packages a new user installs: the runner and its engines. */
-const PACKAGES = ['e2e', 'web', 'mobile'] as const;
+const PACKAGES = ['e2e', 'web', 'mobile', 'tern', 'sway', 'hyprland'] as const;
 
 const root = mkdtempSync(join(tmpdir(), 'e2e-install-smoke-'));
 const tarballs = join(root, 'tarballs');
@@ -60,13 +60,13 @@ try {
       name: 'install-smoke',
       private: true,
       type: 'module',
-      devDependencies: { e2e: tarball('e2e-0'), '@e2e-dev/web': tarball('e2e-dev-web-'), '@e2e-dev/mobile': tarball('e2e-dev-mobile-') },
+      devDependencies: { e2e: tarball('e2e-0'), '@e2e-dev/web': tarball('e2e-dev-web-'), '@e2e-dev/mobile': tarball('e2e-dev-mobile-'), '@e2e-dev/tern': tarball('e2e-dev-tern-'), '@e2e-dev/sway': tarball('e2e-dev-sway-'), '@e2e-dev/hyprland': tarball('e2e-dev-hyprland-') },
     }),
   );
   writeFileSync(join(project, 'e2e.config.ts'), "import type { E2EConfig } from 'e2e';\n\nexport default { targets: [{ name: 'local', platform: 'test' }] } satisfies E2EConfig;\n");
   writeFileSync(
     join(project, 'tests', 'smoke.e2e.ts'),
-    "import { expect, test } from 'e2e';\n\nenum Answer { Yes = 'yes' }\n\ntest('TypeScript runs', () => {\n  expect(Answer.Yes).toBe('yes');\n});\n",
+    "import { expect, test } from 'e2e';\nimport { ternEngine } from '@e2e-dev/tern';\nimport { sway } from '@e2e-dev/sway';\nimport { hyprland } from '@e2e-dev/hyprland';\n\nenum Answer { Yes = 'yes' }\n\ntest('TypeScript and published native packages load without install hooks', () => {\n  expect(Answer.Yes).toBe('yes');\n  expect(typeof ternEngine).toBe('function');\n  expect(typeof sway).toBe('function');\n  expect(typeof hyprland).toBe('function');\n});\n",
   );
 
   for (const [step, args] of [

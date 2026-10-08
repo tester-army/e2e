@@ -1,0 +1,22 @@
+---
+title: Tern
+description: Test native terminal controls with explicit isolated session ownership.
+---
+
+Use `@e2e-dev/tern` with the public `e2e/engine` contract. Native mode observes accessibility, values and control geometry; capture mode is incomplete, observation-only text. No window or socket is discovered automatically.
+
+```ts
+import { attachedTern, ternEngine } from "@e2e-dev/tern";
+export const engine = ternEngine({ provider: attachedTern({
+  id: "isolated-controls", mode: "native", binary: "/path/to/tern",
+  control: "/private/run/control.sock", pane: "1", env: { PATH: "/usr/bin:/bin" },
+}) });
+```
+
+A borrowed native target must be a single-pane isolated window already focused internally. The engine refuses sibling panes rather than selecting one. It never focuses the operator's desktop or closes a borrowed window. Use an attempt-scoped provider for owned application launches.
+
+Native actions re-read AX, tree and layout before resolving a unique current target. A stale ref is retryable; uncertain input is not. Native `ctl` modifier delivery varies by runtime; the engine refuses modifier chords unless the selected provider supplies a compositor-local keyboard.
+
+Tern SDK and native executable versions are separate. The public SDK is `@stencil-hq/tern`; the native executable is currently distributed through a closed beta. Obtain permitted pinned runtime delivery before enabling the required native CI job. Never redistribute an installed private binary. `tern serve` has simulated system integrations and is not proof of live Wayland keyboard delivery.
+
+See [reference](/reference/tern) for lifecycle and capabilities.

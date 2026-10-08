@@ -217,6 +217,30 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
 
+  apps/tern-testbed:
+    devDependencies:
+      '@e2e-dev/hyprland':
+        specifier: workspace:*
+        version: link:../../packages/hyprland
+      '@e2e-dev/sway':
+        specifier: workspace:*
+        version: link:../../packages/sway
+      '@e2e-dev/tern':
+        specifier: workspace:*
+        version: link:../../packages/tern
+      '@stencil-hq/tern':
+        specifier: 0.1.0
+        version: 0.1.0
+      '@types/node':
+        specifier: 26.6.2
+        version: 26.6.2
+      e2e:
+        specifier: workspace:*
+        version: link:../../packages/e2e
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
   apps/testbed:
     dependencies:
       '@e2e-dev/web':
@@ -287,9 +311,18 @@ importers:
       '@e2e-dev/decision':
         specifier: workspace:*
         version: link:../packages/decision
+      '@e2e-dev/hyprland':
+        specifier: workspace:*
+        version: link:../packages/hyprland
       '@e2e-dev/mobile':
         specifier: workspace:*
         version: link:../packages/mobile
+      '@e2e-dev/sway':
+        specifier: workspace:*
+        version: link:../packages/sway
+      '@e2e-dev/tern':
+        specifier: workspace:*
+        version: link:../packages/tern
       '@e2e-dev/web':
         specifier: workspace:*
         version: link:../packages/web
@@ -479,6 +512,27 @@ importers:
         specifier: 5.0.1
         version: 5.0.1(@types/node@26.6.2)(vite@8.1.5(@types/node@26.6.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
 
+  packages/hyprland:
+    devDependencies:
+      '@e2e-dev/sway':
+        specifier: workspace:*
+        version: link:../sway
+      '@e2e-dev/tern':
+        specifier: workspace:*
+        version: link:../tern
+      '@types/node':
+        specifier: 26.6.2
+        version: 26.6.2
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@26.6.2)(vite@8.1.5(@types/node@26.6.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.14)(yaml@2.9.0))
+
   packages/kernel:
     devDependencies:
       '@e2e-dev/web':
@@ -530,6 +584,39 @@ importers:
       vitest:
         specifier: 5.0.1
         version: 5.0.1(@types/node@26.6.2)(vite@8.1.5(@types/node@26.6.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
+
+  packages/sway:
+    devDependencies:
+      '@e2e-dev/tern':
+        specifier: workspace:*
+        version: link:../tern
+      '@types/node':
+        specifier: 26.6.2
+        version: 26.6.2
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@26.6.2)(vite@8.1.5(@types/node@26.6.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.14)(yaml@2.9.0))
+
+  packages/tern:
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.2
+        version: 26.6.2
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@26.6.2)(vite@8.1.5(@types/node@26.6.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.14)(yaml@2.9.0))
 
   packages/web:
     dependencies:
@@ -2920,6 +3007,10 @@ packages:
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
+
+  '@stencil-hq/tern@0.1.0':
+    resolution: {integrity: sha512-CVwFMnlDcLzU9NeILdpaE3jlxMgiHbKuJr3RJ4cvnBZKT03gItIuO57JvSALEbwW03bXHlfCx24u+qgDXtzJZg==}
+    engines: {node: '>=22'}
 
   '@stoplight/better-ajv-errors@1.0.3':
     resolution: {integrity: sha512-0p9uXkuB22qGdNfy3VeEhxkU5uwvp/KrBTAbrLBURv6ilxIVwanKwjMc41lQfIVgPGcOkmLbTolfFrSsueu7zA==}
@@ -10298,6 +10389,8 @@ snapshots:
     optional: true
 
   '@standard-schema/spec@1.1.0': {}
+
+  '@stencil-hq/tern@0.1.0': {}
 
   '@stoplight/better-ajv-errors@1.0.3(ajv@8.20.0)':
     dependencies:

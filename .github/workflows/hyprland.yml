@@ -1,0 +1,53 @@
+name: native containment
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  boundary:
+    # Maintainers may choose an ephemeral render-capable runner. Never use an operator desktop.
+    runs-on: ${{ vars.E2E_NATIVE_RENDER_RUNNER || 'blacksmith-4vcpu-ubuntu-2404' }}
+    timeout-minutes: 20
+    env:
+      E2E_TELEMETRY_DISABLED: '1'
+      TERN_RUNTIME_URL: ${{ vars.E2E_TERN_RUNTIME_URL }}
+      TERN_RUNTIME_SHA256: ${{ vars.E2E_TERN_RUNTIME_SHA256 }}
+      E2E_SWAY_BINARY: /usr/bin/sway
+      E2E_SWAYMSG_BINARY: /usr/bin/swaymsg
+      E2E_GRIM_BINARY: /usr/bin/grim
+      E2E_HYPRLAND_BINARY: /usr/bin/Hyprland
+      E2E_HYPRCTL_BINARY: /usr/bin/hyprctl
+      E2E_BWRAP_BINARY: /usr/bin/bwrap
+      E2E_NSENTER_BINARY: /usr/bin/nsenter
+      E2E_RENDER_DEVICE: ${{ vars.E2E_NATIVE_RENDER_DEVICE }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 26
+          cache: pnpm
+      - name: Require permitted runtime and disposable graphics prerequisites
+        run: |
+          test -n "$TERN_RUNTIME_URL" && test -n "$TERN_RUNTIME_SHA256" || { echo '::error::Supply a permitted public pinned native Tern archive; closed beta is not a simulated smoke pass.'; exit 1; }
+          test -n "$E2E_RENDER_DEVICE" && test -c "$E2E_RENDER_DEVICE" && test -r "$E2E_RENDER_DEVICE" && test -w "$E2E_RENDER_DEVICE" || { echo '::error::Provision an explicit already-readable render-only node on a disposable runner; never change permissions or use KMS.'; exit 1; }
+          for binary in "$E2E_SWAY_BINARY" "$E2E_SWAYMSG_BINARY" "$E2E_GRIM_BINARY" "$E2E_HYPRLAND_BINARY" "$E2E_HYPRCTL_BINARY" "$E2E_BWRAP_BINARY" "$E2E_NSENTER_BINARY"; do test -x "$binary" || { echo '::error::Provision source-pinned graphics runtimes, explicit nsenter and rootless user namespaces on the disposable runner.'; exit 1; }; done
+          mkdir -p "$RUNNER_TEMP/tern-runtime"
+          curl --fail --location --proto '=https' "$TERN_RUNTIME_URL" -o "$RUNNER_TEMP/tern-runtime.tar.gz"
+          printf '%s  %s\n' "$TERN_RUNTIME_SHA256" "$RUNNER_TEMP/tern-runtime.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/tern-runtime.tar.gz" -C "$RUNNER_TEMP/tern-runtime"
+          test -x "$RUNNER_TEMP/tern-runtime/tern"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: node packages/sway/scripts/build-input.mjs "$RUNNER_TEMP/e2e-input"
+      - name: Real private parent and declared human boundary
+        env:
+          E2E_TERN_BINARY: ${{ runner.temp }}/tern-runtime/tern
+          E2E_INPUT_BINARY: ${{ runner.temp }}/e2e-input
+        run: node apps/tern-testbed/scripts/hyprland.ts
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: native-containment
+          path: apps/tern-testbed/.e2e-hyprland/
+          include-hidden-files: true

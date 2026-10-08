@@ -16,6 +16,10 @@
 # Engines.
 /packages/web/             @okwasniewski @szymonrybczak
 /packages/mobile/           @szymonrybczak @okwasniewski
+/packages/tern/             @okwasniewski @szymonrybczak
+/packages/sway/             @okwasniewski @szymonrybczak
+/packages/hyprland/         @okwasniewski @szymonrybczak
+/apps/tern-testbed/         @okwasniewski @szymonrybczak
 
 # Release and CI.
 /.github/                         @okwasniewski

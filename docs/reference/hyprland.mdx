@@ -1,0 +1,43 @@
+---
+title: "Hyprland provider"
+description: "Explicit placement ownership around private Sway input."
+---
+
+Import `hyprland` and `HyprlandOptions` from `@e2e-dev/hyprland`. Pass the returned `TernProvider` to `ternEngine`. See the [containment guide](/hyprland) for required native acceptance and public runtime prerequisites.
+
+## `HyprlandOptions`
+
+| Field | Contract |
+| --- | --- |
+| `host.instance` | Exact explicitly owned Hyprland instance signature. No discovery or fallback. |
+| `host.runtimeDir` | Absolute caller-owned mode-0700 runtime directory containing that instance and display. |
+| `host.waylandDisplay` | Exact owned `wayland-N` socket; must match the compositor's PID/display lock. |
+| `host.hyprctl` | Absolute explicit controller binary. |
+| `host.process` | Optional parent PID/start generation independently pinned outside the sandbox. A guest-authored lock must match it. |
+| `protectedWorkspaces` | Required nonempty numeric ids and/or names which must not be activated or reused. |
+| `protectedOutputs` | Required unique exact names whose workspace/layout/focus state is measured. Missing outputs fail closed. |
+| `workspace` | Optional unique named workspace; it must not already exist or be configured. Otherwise a nonce name is generated. |
+| `sway` | Explicit Sway binaries, optional logical size and curated environment; parent/root/journalRoot/configurationRoot are supplied by containment. |
+| `root` | Host-private durable containment-record directory, outside every guest-visible writable path/ancestor or symlink. |
+| `nativeRoot` | Optional absolute mode-0700 short shared directory, at most 14 UTF-8 bytes, for nested Unix socket paths. |
+| `guest` | Disposable fixture only: absolute `nsenter` and host-created `configurationRoot`, mounted read-only; requires independently pinned `host.process`. All Tern/app/CLI command authority is guest-routed through pinned namespace/root descriptors. |
+
+Ownership requires the parent PID/start time, one generated output/tag, new nonpersistent visible workspace, exact child PID/start time, mapped native geometry and unfocused parent output. Stock Sway app class is not used as a unique id. Supported source-reviewed API versions are 0.53.0 and 0.56.2; the real disposable gate pins the latter's exact source commit.
+
+## Operations and cleanup
+
+`acquire` saves durable ownership before mutation, creates only its own named headless output and renames only the observed new empty workspace. Atomic no-focus placement is read back before the Sway provider accepts input. Guards measure the declared human boundary before and after native observations, keyboard, pointer and output capture. A changed boundary or uncertain action is nonretryable; never replay input or restore focus.
+
+The guest receives runtime/profile paths, never the outer compositor's IPC/control/input endpoints or host-private supervisor journals. Containment supplies a separate host-private `sway-journals` directory. Guest-authored launch receipts are not cleanup authority: current kernel generation/ancestry must independently link the nested process to the pinned compositor. The disposable fixture pins that compositor below its owned outer launcher, exposes only explicit child-write mounts plus the exact outer Wayland socket, and verifies host journals are inaccessible even through the host `/proc` root path.
+
+Allocation intent precedes a host-private staged child root. Its device/inode is saved before atomic no-replace publication. Pre-publication crashes or an existing destination own no external root; foreign empty collisions remain untouched. A post-publication crash can remove only the saved matching inode after it is validated as private and empty. Profiles follow the same staged publication boundary; configuration is written only to a separate host-created read-only guest mount. Active workspace id/name is checked during cleanup even after child exit, with an explicit original-name/renamed phase. Output x/y/width/height/scale must remain equal to their measured baseline, and guards require the client's full `at`/`size` rectangle inside the current logical output bounds. Never repair or ignore geometry drift.
+
+`release` removes the recorded child tree and output only after exact identity and foreign-client checks. Every present tagged client must still satisfy exact PID/output/workspace/full-rectangle/mapped/visible containment even during cleanup; false-mode verification permits absence or exit, never changed placement. `sweep` recovers only the supplied run/target's mode-0700 ownership records. A foreign client, changed host generation or unsafe workspace prevents destructive cleanup and leaves evidence for the caller; there is no broad PID kill, output pattern deletion, reload or persistent rule restoration.
+
+A pending or missing guest receipt cannot erase cleanup evidence. Recovery authenticates the exact mapped tagged client with current kernel generation/ancestry before Sway removes records. Before parent endpoint persistence or dispatch, it can instead prove `NEVER_LAUNCHED` by atomically closing the host-private dispatch fence and observing no private potential-dispatch receipt. Native `dispatch-owned` publishes that receipt before any controller fork under the same fence, waits for the exact child and preserves its real status. Interrupted/timeout controllers are pidfd-signaled and reaped; receipt presence with no authenticated child remains `UNKNOWN`. Old unfenced journal versions are refused, never inferred absent.
+
+Runtime/run/child-root deletion claims the candidate into a non-guest-writable same-filesystem private directory, validates its saved device/inode after claiming, then deletes only that private owned claim. Both source and destination parents are opened without symlinks. Replaced roots and mismatching claims are preserved, with evidence retained; empty private claims can resume after a crash without touching a new public replacement. Namespace entry remains pinned to namespace/root descriptors without a PID namespace. Actual guest runtime and `/proc` behavior still require real fixture assertions; no host-command or physical-device fallback is permitted.
+
+`lease.capture(signal)` returns raw owned-output PNG bytes for private callers. It is not secret-masked and does not enable the engine screenshot capability. `hyprland-proof.jsonl` contains scoped opaque ids, geometry, workspaces, focus and cursor, not window titles. Keep real application artifacts private.
+
+Native vendor gating is independent of Hyprland ownership. Before/after app semantics, input and capture, require phase `off`, null error, and either `applies === false` or `applies === true && signed_in === true` for native 0.6.1 beta windows. Applicable signed-in/off is not a covering gate. Active, applicable signed-out or unknown gates refuse; underlying AX beneath sign-in is not visible proof. Account automation, host-authentication imports and gate bypasses are not part of this provider.

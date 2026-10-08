@@ -1,0 +1,1 @@
+This package implements public Hyprland IPC contracts. It does not bundle or patch Hyprland, Aquamarine, Sway or Tern. Those runtimes retain their own licenses. Native Tern runtime redistribution is not supplied by this package.

@@ -1,0 +1,74 @@
+---
+title: "Hyprland containment"
+description: "Keep native Tern automation inside an explicitly owned headless output."
+---
+
+`@e2e-dev/hyprland` supplies a native Tern provider. Hyprland owns placement; private Sway owns all agent keyboard, pointer and framebuffer operations. This is keyboard/pointer/focus isolation, not a virtual machine or access to `/dev/kvm`. See [Tern](/tern) and [Sway](/sway) first.
+
+Install `e2e`, `@e2e-dev/tern`, `@e2e-dev/sway` and `@e2e-dev/hyprland`. These packages do not install GUI runtimes or run native build hooks. Build the source-only input helper explicitly as described in the Sway guide.
+
+## Explicit ownership
+
+Pass the exact owned Hyprland instance, runtime directory, Wayland display and absolute `hyprctl` binary. Pass each output whose human state must be measured. The adapter never discovers the operator's compositor, selects the current host seat, or restores focus after stealing it.
+
+```typescript
+import { ternEngine } from '@e2e-dev/tern';
+import { hyprland, type HyprlandOptions } from '@e2e-dev/hyprland';
+import type { SwayOptions } from '@e2e-dev/sway';
+
+export function nativeEngine(
+  host: HyprlandOptions['host'],
+  binaries: SwayOptions['binaries'],
+  protectedOutputs: readonly string[],
+) {
+  return ternEngine({
+    provider: hyprland({
+      host,
+      protectedOutputs,
+      protectedWorkspaces: [1, 2, 8],
+      sway: { binaries, size: { width: 1280, height: 900 } },
+    }),
+  });
+}
+```
+
+The protected workspace list is caller policy, not a universal list. Declare the actual protected outputs; a missing or ambiguous name fails before resource creation. Boundary proof covers those declared outputs, global focus and cursor, not every undeclared host output. Independent agent-owned headless outputs may coexist.
+
+Each attempt creates a nonce-named headless output. Its actual default dimensions and scale must contain the requested client. Its visible workspace must be new, empty, nonpersistent and unprotected; only that exact workspace id is renamed. Existing workspaces, including empty ones, and configured named-workspace rules are refused. No runtime monitor-size, workspace or persistent window rule is installed.
+
+Stock Sway's Wayland app id is `wlroots`, not a generated class. Placement therefore uses an exact generated tag, output/workspace and same-PID launch identity in one atomic Hyprland `exec`, with `no_initial_focus` and `no_focus`. No global `wlroots` rule or compositor patch is needed. Readback requires the actual mapped native client, process start time, tag, visible workspace, geometry and unfocused parent output before input.
+
+## Required runtimes
+
+The adapter supports the source-reviewed Hyprland 0.53.0 and 0.56.2 APIs. The real disposable boundary fixture pins 0.56.2 commit `efb50993780079460b0cbed1363e2166a2de1d9f`; compatibility source review is not runtime proof for 0.53.0. Native Tern is closed beta. The public MIT SDK does not include the native executable. Maintainer-approved permitted public runtime delivery and its SHA256 are prerequisites for required CI; no private binary, login, simulated `serve`, or skipped smoke test counts as native acceptance.
+
+Native Tern must report `state.gate.phase === 'off'` and `state.gate.error === null` before and after app observation/input/capture. The gate must either have `applies === false` or, for native 0.6.1 signed-in beta windows, `applies === true && signed_in === true`. Applicability is not visibility: active/unknown gates still fail closed, and AX beneath sign-in is not visible proof. This setup does not copy host authentication, automate accounts or bypass gates.
+
+A nested Hyprland parent needs real linux-dmabuf and an explicit already-readable/writable render-only node. A pixman parent is not equivalent. The fixture uses a fresh GLES Sway parent and rootless bubblewrap, with only the exact private parent Wayland socket and selected `/dev/dri/renderD*` device. KMS/card devices, logind/seatd, system/auth D-Bus sockets and host profiles are absent. `/proc` and `/sys` are read-only metadata; PID coordinates remain the host coordinates for ownership checks. No sudo, permission changes, physical-output fallback or provider credentials are used.
+
+Outer Sway endpoints and supervisor journals live in a separate host-private directory that is never exposed by guest binds, writable ancestors or symlinks. Only the exact outer Wayland socket is mounted, at a remapped guest runtime path rather than its private host path. Guest runtime/profile/foreign-fixture/short-native paths are mounted individually; host-generated Sway configuration has a separate read-only mount. Nested Sway journals and supervisors remain host-private. Tern servers, SDK apps, native CLI, output capture and Sway IPC execute in the guest: a control socket in a guest bind must never carry host command authority.
+
+The concrete `guest: { nsenter, configurationRoot }` option requires an explicit absolute namespace entrant and independently pinned `host.process`. The source helper pins user/mount/network/IPC/UTS and root descriptors, rechecks the process generation and pidfd, then enters those descriptors; it never uses numeric-only `--target` or enters a PID namespace. The actual guest `/proc` view and Node/Tern/app runtime remain unproven until real namespace/root and app assertions pass. There is no host-root, host-proc or KMS fallback.
+
+Child/profile trees are staged in host-private directories. Device/inode ownership is saved before closing-fenced atomic no-replace publication into guest-writable roots. Cleanup claims the exact inode into a same-filesystem private quarantine and postvalidates it before deletion; saved ownership is not permission to delete a later replacement at the public path. Existing foreign directories, including empty private collisions, and mismatching claims are preserved. Guest-writable symlinks cannot redirect host config/profile writes. Recovery derives missing pending launch authority from exact currently mapped tag/output/workspace/full rectangle/visibility and pinned kernel ancestry, or proves never-launched only after closing the host-private dispatch fence with no potential-dispatch receipt. A receipt without an authenticated child remains unknown; old unfenced versions are refused. Cleanup preserves evidence until authority is established.
+
+## Real boundary gate
+
+The required `native containment` workflow needs an ephemeral render-capable runner, source-pinned Sway/Hyprland, rootless user namespaces, compiler/protocol headers, and the permitted Tern archive. Set repository variables `E2E_NATIVE_RENDER_RUNNER`, `E2E_NATIVE_RENDER_DEVICE`, `E2E_TERN_RUNTIME_URL` and `E2E_TERN_RUNTIME_SHA256`. Missing prerequisites fail the job; they are not a green simulated fallback.
+
+For an explicitly approved disposable environment, set absolute `E2E_SWAY_BINARY`, `E2E_SWAYMSG_BINARY`, `E2E_GRIM_BINARY`, `E2E_TERN_BINARY`, `E2E_INPUT_BINARY`, `E2E_HYPRLAND_BINARY`, `E2E_HYPRCTL_BINARY`, `E2E_BWRAP_BINARY`, `E2E_NSENTER_BINARY` and the selected `E2E_RENDER_DEVICE`, then run:
+
+```sh
+node apps/tern-testbed/scripts/hyprland.ts
+```
+
+The fixture creates its own parent and two protected synthetic outputs. It asserts actual native AX/rendered values, an independent inert human editor's value/focus and insertion position, real chord replacement and pointer count change, owned PNG dimensions, same-client identity, parallel public CLI scenarios, SIGKILL/SIGTERM/SIGINT recovery and exact output cleanup. Kernel namespace/root assertions include the actual ctl-launched Node SDK app; filesystem probes require read-only generated configuration and an inaccessible inert host sentinel. SIGKILL recovery also reconstructs a pending-launch journal checkpoint on real mapped processes with the guest receipt removed. This checkpoint reconstruction is not a claim that worker death was caught at that exact instruction. These assertions must execute successfully before reporting native acceptance. Receipts or SDK draft/ACK values alone are not proof.
+
+Artifacts are private, inert fixture data. Raw `lease.capture` PNGs are not the engine's secret-safe screenshot capability and must not be sent to models or published as workstation captures. If ownership changes or foreign clients occupy the output, cleanup fails closed and retains its durable record; it never removes foreign resources or restores operator state.
+
+## Source contracts
+
+- [Hyprland pinned backend and lock identity](https://github.com/hyprwm/Hyprland/blob/efb50993780079460b0cbed1363e2166a2de1d9f/src/Compositor.cpp)
+- [Same-PID exec rule matching](https://github.com/hyprwm/Hyprland/blob/efb50993780079460b0cbed1363e2166a2de1d9f/src/desktop/rule/windowRule/WindowRule.cpp)
+- [Scoped legacy dispatchers](https://github.com/hyprwm/Hyprland/blob/efb50993780079460b0cbed1363e2166a2de1d9f/src/config/legacy/DispatcherTranslator.cpp)
+- [Aquamarine Wayland prerequisites](https://github.com/hyprwm/aquamarine/blob/v0.15.1/src/backend/Wayland.cpp)

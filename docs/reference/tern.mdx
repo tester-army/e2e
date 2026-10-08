@@ -1,0 +1,22 @@
+---
+title: Tern engine
+description: Native controls, provider lifecycle and observation-only captures.
+---
+
+`ternEngine({ provider })` returns an SPI1 desktop engine. A provider declares `mode`, acquires one `TernLease` per attempt and releases it within the cleanup budget. `sweep` runs after all workers, including a worker killed during acquisition. Requests carry the harness environment and project root; do not read the runner process's global display environment.
+
+A native lease names an explicit control endpoint and pane. Observations retain role, value, hierarchy, focused/checked/expanded/hidden state and omit protected field values. Native action selectors are ephemeral and refreshed before every dispatch. Secure observations never expose field contents. No screenshots or raw framebuffer pixels are advertised by this engine.
+
+Native Tern 0.6 observations and app input require an explicit open gate before and after semantic capture or mutation: `phase === "off"`, `error === null`, and either `applies === false` (a non-gated build) or `applies === true && signed_in === true` (an authenticated beta build). `applies` describes applicability, not whether the overlay is blocking. An absent, unknown, signed-out, waiting, waitlisted or errored gate is a hard refusal: AX can still expose an app underneath sign-in and is not proof that the app is visible. Native tests require vendor-supported authentication and an **isolated test profile**; the native client may use its existing official account service without copying authentication. Do not bypass the gate, automate account actions, copy live host credentials or substitute terminal/AX-only evidence. Account provisioning is external, not performed by this engine.
+
+Editable metadata must come from one unambiguous input-bearing DOM element matching the AX control, not a same-size wrapper. Explicit password roles remain editable password fields but never expose values. Fill keeps the intended AX identity and refuses focus redirection before clearing or typing. Scroll-into-view alone may address an offscreen (not intrinsically hidden) control. A single operation deadline includes all inspections, guards and dispatches.
+
+Native actions: tap, double tap, secondary tap, focus, fill, clear, press, swipe and scroll-into-view. Unsupported native accessibility actions fail rather than click as a substitute. Keyboard typing requires an editable focused control; replacement first clears the native field. Modifier chords require the provider's verified compositor keyboard. Capture leases have no actions, keyboard or restart capability and mark observations truncated.
+
+Borrowed providers are limited to one worker and never close or restart the target. Owned providers launch `target.app.appPath` with `launchArguments` inside their lease; restart acquires a fresh lease. Acquisition must undo partial failures; release and sweep must be ownership-aware and idempotent.
+
+Do not record raw application text, input strings or credentials in transport errors. Native `ok:false` is failure even when the CLI exits zero. Failed inspections raise `ENGINE_FAILURE`; ambiguous/hidden controls raise `NOT_ACTIONABLE`; replaced refs raise `NODE_STALE`; uncertain mutations raise `ACTION_MAY_HAVE_COMMITTED`.
+
+Native text controls must agree between current control-tree and accessibility values when both are supplied. A successful edit/draft receipt is not a rendered-value assertion. A provider may supply `input.tap`; it receives the center of the uniquely matched current native control and must remain in the owned compositor.
+
+Capture leases may name an explicit `recordPath` to include historical TSP tool heads that cell capture omits. `toolCards(record)` preserves native node and surface identity and reports `statusAtAdd`, not a claim about live completion. These nodes are disabled, observation-only and marked historical; neither a record nor a failed native inspection becomes an actionable fallback. Raw captures/records are unmasked: use inert fixtures or keep their output private.

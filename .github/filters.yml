@@ -43,3 +43,13 @@ docs:
   - 'pnpm-lock.yaml'
   - '.github/filters.yml'
   - '.github/workflows/docs.yml'
+
+native:
+  - *runner
+  - 'packages/tern/**'
+  - 'packages/sway/**'
+  - 'packages/hyprland/**'
+  - 'apps/tern-testbed/**'
+  - '.github/workflows/native.yml'
+  - '.github/workflows/hyprland.yml'
+  - '.github/workflows/spec.yml'

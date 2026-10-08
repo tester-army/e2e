@@ -1,0 +1,46 @@
+{
+  "name": "@e2e-dev/hyprland",
+  "version": "0.1.0",
+  "description": "Explicit owned headless-output containment for private Sway/Tern tests",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc --project tsconfig.build.json && node ../../scripts/stamp-dist.ts",
+    "prepublishOnly": "node ../../scripts/check-dist.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "e2e": ">=0.18.0 <1",
+    "@e2e-dev/tern": ">=0.1.0 <1",
+    "@e2e-dev/sway": ">=0.1.0 <1"
+  },
+  "devDependencies": {
+    "e2e": "workspace:*",
+    "@e2e-dev/tern": "workspace:*",
+    "@e2e-dev/sway": "workspace:*",
+    "@types/node": "26.6.2",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1"
+  },
+  "engines": {
+    "node": "^22.22.3 || >=24.8.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tester-army/e2e.git",
+    "directory": "packages/hyprland"
+  }
+}

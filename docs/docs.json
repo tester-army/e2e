@@ -142,6 +142,9 @@
             "pages": [
               "web",
               "mobile",
+              "tern",
+              "sway",
+              "hyprland",
               "api-testing"
             ]
           },
@@ -250,6 +253,10 @@
             "pages": [
               "reference/mobile"
             ]
+          },
+          {
+            "group": "Tern",
+            "pages": ["reference/tern", "reference/sway", "reference/hyprland"]
           },
           {
             "group": "Engine contract",
