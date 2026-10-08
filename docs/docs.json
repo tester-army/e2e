@@ -171,7 +171,9 @@
             "pages": [
               "integrations/index",
               "integrations/kernel",
-              "integrations/eas"
+              "integrations/eas",
+              "integrations/testmu",
+              "integrations/testmu-browsers"
             ]
           },
           {

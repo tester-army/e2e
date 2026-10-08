@@ -284,6 +284,9 @@ Built-in features may connect to:
 - the GitHub API, only from the opt-in `@e2e-dev/github` reporter
 - the Kernel API and its hosted browsers, only from
   [`kernel()`](/integrations/kernel)
+- TestMu AI's CDP hub and its hosted browsers, only from
+  [`testmuBrowsers()`](/integrations/testmu-browsers). The username and
+  access key travel only in the CDP URL, never in a log line
 - the Expo API and the simulators' agent-device daemons, only from
   [`easSimulators()`](/integrations/eas). It authenticates with `EXPO_TOKEN`,
   else with the eas-cli login in `~/.expo/state.json`: on a CI runner, set

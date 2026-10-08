@@ -193,6 +193,36 @@ describe('snapshot projection', () => {
     expect(screenTitle(projected)).toBe('Settings');
   });
 
+  it('reads the XCUIElementType class names a WebDriver session reports as the native XCTest types', () => {
+    const native: RawNode[] = [
+      { ref: 'e1', index: 0, depth: 0, type: 'Application', label: 'Profiler', rect: { x: 0, y: 0, width: 390, height: 844 } },
+      { ref: 'e2', index: 1, parentIndex: 0, depth: 1, type: 'NavigationBar', identifier: 'Profiler' },
+      { ref: 'e3', index: 2, parentIndex: 1, depth: 2, type: 'StaticText', label: 'Profiler' },
+      { ref: 'e4', index: 3, parentIndex: 0, depth: 1, type: 'Button', label: 'CPU Load' },
+      { ref: 'e5', index: 4, parentIndex: 0, depth: 1, type: 'TextView', label: 'Notes', value: 'idle' },
+      { ref: 'e6', index: 5, parentIndex: 0, depth: 1, type: 'TabBar' },
+      { ref: 'e7', index: 6, parentIndex: 5, depth: 2, type: 'Button', label: 'Home', selected: true },
+      { ref: 'e8', index: 7, parentIndex: 5, depth: 2, type: 'Button', label: 'Settings' },
+    ];
+    const webDriver = native.map((node) => ({ ...node, type: `XCUIElementType${node.type}` }));
+    const kindsAndRoles = (nodes: readonly RawNode[]) => project(nodes).index.map((entry) => [entry.kind, entry.node.role]);
+    expect(kindsAndRoles(webDriver)).toEqual(kindsAndRoles(native));
+    const projected = project(webDriver);
+    expect(projected.index.map((entry) => entry.kind)).toEqual([
+      'application',
+      'navigation-bar',
+      'static-text',
+      'button',
+      'text-view',
+      'tab-bar',
+      'button',
+      'button',
+    ]);
+    expect(projected.index.map((entry) => entry.node.role)).toEqual(['application', 'navigation', 'text', 'button', 'textbox', 'tablist', 'tab', 'tab']);
+    expect(projected.viewport).toEqual({ width: 390, height: 844 });
+    expect(screenTitle(projected)).toBe('Profiler');
+  });
+
   it('maps iOS composite widgets onto the vocabulary roles a browser reports for them', () => {
     const projected = project([
       { ref: 'e1', index: 0, depth: 0, type: 'Application', label: 'Shop' },

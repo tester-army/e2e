@@ -1,0 +1,330 @@
+---
+title: TestMu AI
+sidebarTitle: TestMu AI
+description: Run mobile targets on TestMu AI (formerly LambdaTest) Android emulators, iOS simulators, and real devices with the testmu() device provider from @e2e-dev/testmu.
+---
+
+`testmu()` from `@e2e-dev/testmu` is a
+[device provider](/mobile#hosted-devices) for
+[TestMu AI](https://www.lambdatest.com) (formerly LambdaTest). The run gets
+hosted Android emulators, iOS simulators, or real devices, leased when it
+starts and released when it ends. agent-device reaches them through its
+`testmu` cloud provider, which drives each session over TestMu AI's Appium
+hub. Tests, config, and CI stay the same.
+
+<Tip>
+No Mac, Xcode, or Android SDK on the machine that runs e2e.
+</Tip>
+
+## Setup
+
+The provider runs on agent-device's `testmu` provider, so install
+`agent-device` beside the package, at a release that includes it:
+
+<CodeGroup>
+```bash npm
+npm install --save-dev @e2e-dev/testmu agent-device@<version>
+```
+
+```bash pnpm
+pnpm add -D @e2e-dev/testmu agent-device@<version>
+```
+
+```bash bun
+bun add -d @e2e-dev/testmu agent-device@<version>
+```
+</CodeGroup>
+
+`<version>` is an agent-device release that includes the `testmu` provider.
+No published release does yet: until one does, install agent-device from a
+build that includes it. The package's `agent-device` peer range excludes
+only the releases known to lack the provider, so it cannot tell you whether
+a newer one has it.
+
+`@e2e-dev/mobile` pins its own agent-device. The provider starts the daemon
+from your copy and the engine's workers send commands through theirs, so
+both must be the same agent-device. Override the engine's pin:
+
+<CodeGroup>
+```json npm
+{
+  "overrides": {
+    "agent-device": "$agent-device"
+  }
+}
+```
+
+```yaml pnpm
+# pnpm-workspace.yaml
+overrides:
+  agent-device: $agent-device
+```
+
+```json bun
+{
+  "overrides": {
+    "agent-device": "<version>"
+  }
+}
+```
+</CodeGroup>
+
+For npm and bun the `overrides` field goes in `package.json`.
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { mobile } from '@e2e-dev/mobile';
+import { testmu } from '@e2e-dev/testmu';
+
+const apk = 'https://prod-mobile-artefacts.lambdatest.com/assets/docs/proverbial_android.apk';
+const ipa = 'https://prod-mobile-artefacts.lambdatest.com/assets/docs/proverbial_ios.ipa';
+
+export default {
+  targets: [
+    {
+      name: 'android-emulator',
+      engine: mobile({
+        platform: 'android',
+        device: testmu({ device: 'Galaxy S22 Ultra 5G', osVersion: '14', app: apk }),
+      }),
+      app: { bundleId: 'com.lambdatest.proverbial' },
+    },
+    {
+      name: 'ios-real',
+      engine: mobile({
+        platform: 'ios',
+        device: testmu({ device: 'iPhone 16', osVersion: '18', app: ipa, deviceType: 'real' }),
+      }),
+      app: { bundleId: 'proverbial' },
+    },
+    {
+      name: 'android-real',
+      engine: mobile({
+        platform: 'android',
+        device: testmu({ device: 'Pixel 6', osVersion: '14', app: apk, deviceType: 'real' }),
+      }),
+      app: { bundleId: 'com.lambdatest.proverbial' },
+    },
+  ],
+  workers: 1,
+} satisfies E2EConfig;
+```
+
+Every target runs TestMu AI's Proverbial sample app, from its public
+Android and iOS builds, so the test below passes on each one.
+
+`device` and `osVersion` must match TestMu AI's catalog exactly, as the
+[capabilities generator](https://www.lambdatest.com/capabilities-generator)
+lists them: a virtual iOS device takes a version like `18.0`, a real iOS
+device one like `18`, and Android one like `14`. TestMu AI checks them when
+the session starts and refuses a name or version it does not list.
+
+`app` is required: the provider hands the build to TestMu AI, which
+uploads a local one and installs it when the session starts. Leave the
+target's `app.appPath` out; the provider refuses it on purpose, so a target
+that names one fails its lease instead of installing the build twice.
+`device.installApp()` with a path still installs a build during a test.
+Keep `app.bundleId`: `app.open()` launches the installed bundle id or
+package, not the upload name.
+
+## Authenticate
+
+Set `LT_USERNAME` and `LT_ACCESS_KEY` to your TestMu AI username and access
+key in the environment `e2e run` starts in, such as CI secrets. Without
+either, the lease fails before anything starts, naming the missing one.
+To get them, [sign up for TestMu AI](https://accounts.lambdatest.com/register)
+or log in to your account, then copy your username and access key from
+**Account Settings → Password & Security → Username and Access Key**
+([accounts.lambdatest.com/security/username-accesskey](https://accounts.lambdatest.com/security/username-accesskey)).
+
+agent-device's `testmu` runtime reads the credentials from the environment
+of the daemon that drives the sessions. The provider starts that daemon from
+the runner process, and agent-device starts a daemon with the process's own
+environment and takes no other, so while the provider calls the daemon (to
+allocate, heartbeat, or release a lease), it sets `LT_USERNAME` and
+`LT_ACCESS_KEY` from the run's environment in the runner's `process.env`,
+where a daemon the call starts reads them. Once no such call is running, it
+puts back the values `process.env` had before, unless the host changed them
+in the meantime, so the credentials do not stay there for other child
+processes of a long-lived host. In a host that runs several runs with
+different credentials at once, their daemon calls take turns, and one run's
+slow allocation can delay another run's heartbeats; run one TestMu AI
+account per process where you can.
+
+## Install the app
+
+`app` names the build TestMu AI installs on every session:
+
+- **An app id**: an `lt://` reference to a build already in TestMu AI's app
+  storage.
+- **A URL**: an `https` link to the build.
+- **A local path**: a build on the machine that runs e2e, resolved against
+  the directory of `e2e.config.ts` and uploaded when the session starts.
+
+The build must suit the device:
+
+| Device | Build |
+| --- | --- |
+| Android emulator or real device | `.apk` or `.aab` |
+| iOS simulator | a zipped `.app` bundle, not an `.ipa` |
+| Real iOS device | a signed `.ipa` |
+
+An iOS simulator target names a zipped simulator build of the app:
+
+```ts
+device: testmu({ device: 'iPhone 16', osVersion: '18.0', app: './build/MyApp.zip' }),
+```
+
+## Real devices
+
+`deviceType: 'real'` leases a real device instead of an emulator or
+simulator. Real and virtual devices have separate catalogs, so check
+`device` and `osVersion` against the real-device one, and give a real iOS
+device a signed `.ipa`. Real devices need an agent-device release whose
+`testmu` provider supports them.
+
+## Options
+
+| Option        | Default         | Meaning |
+| ------------- | --------------- | ------- |
+| `device`      | required        | Device name exactly as TestMu AI's catalog lists it (`'Galaxy S22 Ultra 5G'`, `'iPhone 16'`). |
+| `osVersion`   | required        | OS version exactly as the catalog lists it for that device: `'14'` on Android, `'18.0'` on a virtual iOS device, `'18'` on a real one. |
+| `app`         | required        | The build TestMu AI installs: an `lt://` app id, an `https` URL, or a local path. See [Install the app](#install-the-app). |
+| `deviceType`  | `'virtual'`     | `'virtual'` for an emulator or simulator, `'real'` for a real device. |
+| `project`     | `'e2e'`         | Dashboard project the sessions are grouped under. |
+| `build`       | the run id      | Dashboard build the sessions are grouped under. |
+| `sessionName` | `e2e-<run id>-<target>-<slot>` | Name of each session on the dashboard. With more than one worker slot, `-<slot>` is appended, so every slot's session has its own name; slots count from 1. Give targets that share a `build` different names. |
+| `stateDir`    | `'.e2e/testmu'` | Directory for the agent-device daemon each run starts, relative to the directory of `e2e.config.ts`. Keep it out of version control. See [What the provider does](#what-the-provider-does) for how long a run's directory is kept. |
+| `orientation` | the device's    | `'portrait'` or `'landscape'`: the orientation the device starts in. |
+| `geoLocation` | TestMu AI's     | Country the device's IP address geolocates to, as a country code TestMu AI takes (`'US'`, `'FR'`). |
+| `timezone`    | the device's    | The device's time zone, as TestMu AI takes it (`'UTC+05:30'`). |
+| `language`    | the device's    | The device's language, as a language code (`'fr'`). |
+| `locale`      | the device's    | The device's locale (`'fr_FR'`). |
+| `appiumVersion` | TestMu AI's default | Appium version TestMu AI starts for the session (`'2.16.2'`). |
+
+The device features, `orientation` through `appiumVersion`, are set when the
+session starts and hold for the whole session; a test cannot change them.
+
+An option not in this table, a missing or empty `device`, `osVersion`, or
+`app`, another `deviceType` or `orientation`, or any other option given as
+something other than a non-empty string fails the config load with
+`INVALID_CONFIG`.
+
+## Write a test
+
+Tests are the same as on a local device:
+
+```ts title="tests/home.e2e.ts"
+import { test } from '@e2e-dev/mobile';
+import { expect } from 'e2e';
+
+test('Proverbial home screen', async ({ app, screen }) => {
+  await app.open();
+  await expect(screen.getByText('Proverbial')).toBeVisible();
+  // Android labels the button GEOLOCATION, iOS GeoLocation.
+  await expect(screen.getByRole('button', /^geolocation$/i)).toBeVisible();
+});
+```
+
+## Sessions
+
+Each target leases up to `workers` devices (`--workers` overrides it), one
+per worker slot, before the run's clock starts. Allocating a lease starts
+its TestMu AI session, which takes about 30 to 75 seconds, app upload
+included, so every slot is billed from the moment it is leased until the run
+ends, even when no test runs on it. TestMu AI runs as many sessions at once
+as the plan allows, so keep `workers` times the number of TestMu AI targets
+within it.
+
+The provider logs each lease as it is granted:
+
+```text
+ℹ leasing 1 android device(s) from testmu
+ℹ testmu (1 of 1): lease 4f0c…: Galaxy S22 Ultra 5G, android 14 (virtual); session e2e-0199…-android-emulator-1 started
+ℹ testmu: leased 4f0c…
+```
+
+The video, device logs, and network logs of every session are on the
+TestMu AI dashboard, under the project and build the options name.
+
+## Recordings
+
+An attempt that records [video](/reference/config#video) links TestMu AI's
+recording of its session in the report, instead of recording through
+agent-device, which cannot record over TestMu AI's Appium hub:
+
+```ts title="e2e.config.ts"
+export default {
+  targets: [
+    {
+      name: 'android-emulator',
+      engine: mobile({
+        platform: 'android',
+        device: testmu({ device: 'Galaxy S22 Ultra 5G', osVersion: '14', app: apk }),
+      }),
+      app: { bundleId: 'com.lambdatest.proverbial' },
+      video: 'retain-on-failure',
+    },
+  ],
+} satisfies E2EConfig;
+```
+
+TestMu AI records the whole session, from the lease to the end of the run,
+so the link is the same video for every attempt on that worker slot, and
+the video starts when the session did. When the attempt starts recording,
+the provider finds the session through TestMu AI's sessions API by its
+build and name, among the sessions of the `LT_USERNAME` user, taking the
+newest that matches, and takes the session's start time as the video's, so the
+report's timeline offsets land on the attempt within it; if TestMu AI
+reports no start time, the time the attempt started recording is used
+instead. When the attempt stops recording, the link is the video URL the
+API returns for the session. The runner never downloads the video. The
+provider reads the API at `TESTMU_API_ENDPOINT` when that is set, as
+agent-device does.
+
+The default `build` (the run id) and `sessionName` (with the run id in it)
+give every session its own name. A fixed `build` and a fixed `sessionName`
+shared by runs that overlap name several sessions the same, so an attempt
+can link another run's video; give such runs their own `build`, or leave
+`sessionName` to its default.
+
+## What the provider does
+
+- Starts one agent-device daemon per run under `stateDir/<run id>` and
+  allocates a `testmu` lease from it for each worker slot. The allocation
+  starts the TestMu AI session, which installs `app`.
+- Keeps each run's directory, with its daemon's state and logs, after the
+  run: the daemon exits on its own after 5 idle minutes, and its logs help
+  explain a failure. The provider marks each run's directory as its own
+  with a `.e2e-testmu-run` file and touches it on every heartbeat. Before
+  its first lease, a run removes the marked directories of earlier runs
+  under `stateDir` in which nothing has changed for more than 24 hours,
+  never its own. A directory without the marker is never removed, so a
+  `stateDir` shared with other tools is safe, and a failure to remove one
+  does not fail the lease.
+- Keeps each lease alive while the run holds it. The provider allocates
+  with agent-device's longest lease window, 10 minutes, and heartbeats the
+  lease every 2 minutes once it is granted, so a session that takes up to
+  10 minutes to start keeps its lease on any agent-device version. A failed heartbeat is logged
+  once and does not fail the run.
+- Hands the worker the lease scope and the device selectors as agent-device
+  client configuration, so every command lands on the lease's session.
+- Releases each lease when the run ends, which ends its session. A lease
+  is released once however often the engine asks, and a failed release can
+  be tried again.
+- Releases a lease it was granted after the run was interrupted, or could
+  not hand to the run, before failing the lease.
+
+## Limits
+
+Sessions run over TestMu AI's Appium hub through agent-device's WebDriver
+runtime, so what agent-device does not support there is not available to
+tests:
+
+- `device` settings: permissions, location, network, and appearance.
+- System alerts.
+- Recording through agent-device. An attempt's video links TestMu AI's
+  recording of the session instead; see [Recordings](#recordings).
+- Device logs through agent-device; read them on the dashboard.
+- Port reverse. To reach a server on your machine or network, use TestMu
+  AI Tunnel.

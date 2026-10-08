@@ -1,0 +1,93 @@
+{
+  "name": "@e2e-dev/testmu",
+  "version": "0.0.0",
+  "description": "TestMu AI (formerly LambdaTest) for e2e: run mobile targets on hosted Android emulators, iOS simulators, and real devices, and web targets on hosted Chrome and Edge",
+  "keywords": [
+    "e2e",
+    "end-to-end",
+    "testing",
+    "mobile-testing",
+    "testmu",
+    "lambdatest",
+    "browser-testing",
+    "chrome",
+    "cdp",
+    "device-cloud",
+    "real-devices",
+    "ios-simulator",
+    "android-emulator",
+    "agent-device",
+    "ci"
+  ],
+  "license": "Apache-2.0",
+  "contributors": [
+    "Oskar Kwaśniewski <oskar@tester.army>",
+    "Szymon Rybczak <szymon@tester.army>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tester-army/e2e.git",
+    "directory": "packages/testmu"
+  },
+  "bugs": {
+    "url": "https://github.com/tester-army/e2e/issues"
+  },
+  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/testmu#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "tag": "latest"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./web": {
+      "types": "./dist/web.d.ts",
+      "default": "./dist/web.js"
+    }
+  },
+  "files": [
+    "dist",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json && node ../../scripts/stamp-dist.ts",
+    "prepublishOnly": "node ../../scripts/check-dist.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit"
+  },
+  "peerDependencies": {
+    "@e2e-dev/mobile": ">=0.9.0 <1",
+    "@e2e-dev/web": ">=0.11.0 <1",
+    "agent-device": ">0.21.20 <1",
+    "e2e": ">=0.15.0 <1"
+  },
+  "peerDependenciesMeta": {
+    "@e2e-dev/mobile": {
+      "optional": true
+    },
+    "@e2e-dev/web": {
+      "optional": true
+    },
+    "agent-device": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@e2e-dev/mobile": "workspace:*",
+    "@e2e-dev/web": "workspace:*",
+    "@types/node": "26.6.2",
+    "agent-device": "0.21.20",
+    "e2e": "workspace:*",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1"
+  },
+  "engines": {
+    "node": "^22.22.3 || >=24.8.0"
+  }
+}
