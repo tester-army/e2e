@@ -9,7 +9,7 @@
  * of a planned flow (`agent.act`), and one cache design serves the latter.
  */
 
-import { isVisionMode } from '../config/agent.ts';
+import { resolveVision } from '../config/agent.ts';
 import { TestError, withHint } from '../internal/errors.ts';
 import { rejectUnknownOptions } from '../internal/options.ts';
 import { describeIssue, requireStandardSchema } from '../internal/standard-schema.ts';
@@ -70,14 +70,6 @@ const ASSERT_KEYS = ['timeout', 'screenshot', 'vision', 'agent'] as const;
 
 /** Builds the agent fixture for one attempt. */
 export function createAgentFixture(runtime: AgentContext): Agent {
-  /** A judgment's `vision`: the tree unless the call asks for pixels. */
-  const resolveVision = (requested: VisionMode | undefined): VisionMode => {
-    if (requested === undefined) return false;
-    if (!isVisionMode(requested)) {
-      throw new TestError('INVALID_ARGUMENT', "vision must be true, false, or 'only'");
-    }
-    return requested;
-  };
 
   /**
    * The vision hint for an inconclusive judgment made from the tree alone,

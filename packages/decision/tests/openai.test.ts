@@ -157,3 +157,33 @@ describe('openaiDecisionModel', () => {
     await expect(decisionExecutor({ model }).runStep(context({ tree: BUTTONS }).ctx)).rejects.toMatchObject({ code: 'MODEL_OUTPUT_INVALID' });
   });
 });
+
+describe('openaiDecisionModel parity', () => {
+  it('sends the request body and maps the answers exactly as the SDK model does, without a screenshot', async () => {
+    const bodies: WireRequest[] = [];
+    const answers: WireAnswer[] = [
+      { type: 'choice', name: 'q', choice: 'a', confidence: 0.7, probabilities: [{ value: 'a', probability: 0.9 }, { value: 'b', probability: 0.1 }] },
+      { type: 'choice', name: 'r', choice: 'y', probabilities: [{ value: 'x', probability: 0 }, { value: 'y', probability: 1 }] },
+    ];
+    const fetch = async (_url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      bodies.push(JSON.parse(String(init?.body)) as WireRequest);
+      return new Response(JSON.stringify({ model: 'gpt-6-luna', usage: { input_tokens: 5, output_tokens: 0 }, answers }), { status: 200, headers: { 'content-type': 'application/json' } });
+    };
+    const call = {
+      state: { goal: 'g', elements: [{ index: '1' }] },
+      questions: {
+        q: { type: 'choice' as const, instructions: { rules: 'pick' }, criteria: { a: 'A', b: null } },
+        r: { type: 'choice' as const, instructions: 'pick again', criteria: { x: { element: 'X' }, y: 'Y' } },
+      },
+    };
+    const sdk = await createOpenAI({ apiKey: 'sk-test', fetch: fetch as typeof globalThis.fetch }).decisionModel('gpt-6-luna').doDecide(call);
+    const ours = await openaiDecisionModel({ apiKey: 'sk-test', fetch: fetch as typeof globalThis.fetch }).doDecide(call);
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toEqual(bodies[0]);
+    expect(ours.answers).toEqual(sdk.answers);
+    expect(ours.usage).toEqual(sdk.usage);
+    expect(ours.rounding).toEqual(sdk.rounding);
+    expect(ours.providerMetadata).toEqual(sdk.providerMetadata);
+    expect(ours.response?.modelId).toBe(sdk.response?.modelId);
+  });
+});

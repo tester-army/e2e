@@ -1,6 +1,7 @@
 import type { JsonValue, StepExecutorContext } from 'e2e';
 import { AgentError } from 'e2e/agent';
-import type { ActionSpace, Control, Element, Operation, Terminal } from './elements.ts';
+import { targetKeyIndex, type ActionSpace, type Control, type Element, type Operation, type Terminal } from './elements.ts';
+import type { Grid, Screenshot } from './overlay.ts';
 /**
  * The fallback every target question carries. A provider that finds no
  * applicable target for an operation the step will not take (OpenAI refuses
@@ -72,15 +73,6 @@ export interface DecisionRequest {
   readonly questions: Record<string, Question>;
   /** Masked viewport pixels the model sees beside the state, when vision is on and pixels were granted. */
   readonly screenshot?: Screenshot;
-}
-/** A screenshot as the decision model receives it. */
-export interface Screenshot {
-  readonly mediaType: 'image/png';
-  readonly data: Uint8Array;
-  readonly width: number;
-  readonly height: number;
-  /** Image pixels per CSS pixel of the state's coordinates. */
-  readonly scale: number;
 }
 /**
  * Builds the operation request: one choice over the operations the screen
@@ -168,31 +160,21 @@ const DROP = [
   'Choose where the dragged element should be dropped. This question chooses only',
   'the destination; another question chooses what is dragged.',
 ].join('\n');
-/** The image a point question reads: its grid, and how it relates to the screen. */
-export interface PointFrame {
-  readonly columns: number;
-  readonly rows: number;
-  readonly cellWidth: number;
-  readonly cellHeight: number;
-  /** One sentence on what the image shows: the full screenshot, or a zoomed region. */
-  readonly framing: string;
-}
 /**
- * Builds a point request: two score questions over the grid drawn on the
- * image, one for the column and one for the row of the control the goal
- * needs. The probability-weighted means give a point finer than any one
- * cell. The state is the goal alone: the element table adds nothing to
- * where a drawn control sits, and measured on gpt-6-luna it pulls the
- * estimate off. A dependent decision goes in its own request, as the
- * Decisions API asks.
+ * Builds a point request: two score questions over the grid on the image,
+ * one for the column and one for the row of the control the goal needs
+ * (`target`, as the text model named it). The probability-weighted means
+ * give a point finer than any one cell. The state is the goal alone: the
+ * element table adds nothing to where a drawn control sits, and measured on
+ * gpt-6-luna it pulls the estimate off. A dependent decision goes in its own
+ * request, as the Decisions API asks. Sizes are in the pixels of the image
+ * the model sees: the runner hands over a downscaled capture, and a model
+ * told CSS sizes for a smaller image lands its estimate short.
  */
-export function pointRequest(ctx: StepExecutorContext, path: string, image: Screenshot, frame: PointFrame, target?: string): DecisionRequest {
+export function pointRequest(ctx: StepExecutorContext, path: string, image: Screenshot, grid: Grid, framing: string, target?: string): DecisionRequest {
   const goal = ctx.step.instruction;
   const lead = target === undefined ? `Goal of this step: ${goal}` : `Goal of this step: ${goal}\n\nThe control to tap now: ${target}`;
   const wanted = target === undefined ? 'the control the goal needs next' : 'that control';
-  // Sizes in the pixels of the image the model sees: the runner hands over
-  // a downscaled capture, and a model told CSS sizes for a smaller image
-  // lands its estimate short.
   const scale = image.scale;
   const levels = (count: number, size: number, axis: 'x' | 'y'): string[] =>
     Array.from({ length: count }, (_, index) => `${axis} ${Math.round(index * size * scale)}-${Math.round((index + 1) * size * scale)}`);
@@ -202,15 +184,15 @@ export function pointRequest(ctx: StepExecutorContext, path: string, image: Scre
     const last = axis === 'horizontally' ? 'rightmost' : 'bottom';
     return [
       lead,
-      `${frame.framing} The image is ${image.width} pixels wide and ${image.height} pixels tall. Where in this image is ${wanted}, ${axis}? The image is split into ${count} ${unit} of ${Math.round(size * scale)} pixels; level 0 is the ${first}, level ${count - 1} the ${last}. The tap lands at the probability-weighted position.`,
+      `${framing} The image is ${image.width} pixels wide and ${image.height} pixels tall. Where in this image is ${wanted}, ${axis}? The image is split into ${count} ${unit} of ${Math.round(size * scale)} pixels; level 0 is the ${first}, level ${count - 1} the ${last}. The tap lands at the probability-weighted position.`,
     ].join('\n\n');
   };
   return {
     screenshot: image,
     state: { goal, ...(target === undefined ? {} : { target }), page: { path } },
     questions: {
-      x: { type: 'score', instructions: where('horizontally', frame.columns, frame.cellWidth), criteria: levels(frame.columns, frame.cellWidth, 'x') },
-      y: { type: 'score', instructions: where('vertically', frame.rows, frame.cellHeight), criteria: levels(frame.rows, frame.cellHeight, 'y') },
+      x: { type: 'score', instructions: where('horizontally', grid.columns, grid.cellWidth), criteria: levels(grid.columns, grid.cellWidth, 'x') },
+      y: { type: 'score', instructions: where('vertically', grid.rows, grid.cellHeight), criteria: levels(grid.rows, grid.cellHeight, 'y') },
     },
   };
 }
@@ -300,11 +282,6 @@ function setKey(record: Record<string, JsonValue>, key: string, value: JsonValue
     record[key] = value;
   }
 }
-/** Element index behind a target key (`7` for both `7` and `7:2`). */
-export function targetKeyIndex(key: string): string {
-  const at = key.indexOf(':');
-  return at === -1 ? key : key.slice(0, at);
-}
 /**
  * Rules for an assertion verdict, following the runner's own judgment
  * request: visible evidence on the current screen decides, nothing else,
@@ -343,23 +320,27 @@ export function elementRecords(space: ActionSpace): Record<string, JsonValue>[] 
     operations: [...element.operations],
   }));
 }
-/**
- * Builds an assertion verdict request: the goal, the page, and the element
- * table. No history: an assertion judges the screen alone.
- */
-export function assertionRequest(
-  goal: string,
-  path: string,
-  pageText: string,
-  elements: readonly Record<string, JsonValue>[],
-  screenshot?: Screenshot,
-  statuses: readonly string[] = [],
-): DecisionRequest {
+/** What an assertion judges: the screen alone, no history. */
+export interface AssertionInput {
+  readonly goal: string;
+  readonly path: string;
+  readonly pageText: string;
+  readonly elements: readonly Record<string, JsonValue>[];
+  readonly statuses: readonly string[];
+  readonly screenshot?: Screenshot;
+}
+/** Builds an assertion verdict request: the goal, the page, and the element table. */
+export function assertionRequest(input: AssertionInput): DecisionRequest {
   return {
-    ...(screenshot === undefined ? {} : { screenshot }),
-    state: { goal, ...(statuses.length === 0 ? {} : { status: statuses.join('\n') }), page: { path, text: pageText }, elements: [...elements] },
+    ...(input.screenshot === undefined ? {} : { screenshot: input.screenshot }),
+    state: {
+      goal: input.goal,
+      ...(input.statuses.length === 0 ? {} : { status: input.statuses.join('\n') }),
+      page: { path: input.path, text: input.pageText },
+      elements: [...input.elements],
+    },
     questions: {
-      verdict: choice(`Assertion to judge: ${goal}${reported(statuses)}\n\n${ASSERTION}`, {
+      verdict: choice(`Assertion to judge: ${input.goal}${reported(input.statuses)}\n\n${ASSERTION}`, {
         holds: 'The current screen shows the assertion is true.',
         fails: 'The current screen shows the assertion is false.',
         inconclusive: 'The current screen does not provide enough evidence to decide.',

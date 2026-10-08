@@ -1,41 +1,54 @@
 import { PNG } from 'pngjs';
-import type { Cell } from './elements.ts';
-import type { Screenshot } from './questions.ts';
-/** The cells of a `columns` by `rows` grid over a `width` by `height` image, numbered row by row from 1. */
-export function gridCells(width: number, height: number, columns: number, rows: number): Map<string, Cell> {
-  const cells = new Map<string, Cell>();
-  const cellWidth = width / columns;
-  const cellHeight = height / rows;
-  for (let row = 0; row < rows; row += 1) {
-    for (let column = 0; column < columns; column += 1) {
-      cells.set(`p${row * columns + column + 1}`, {
-        x: [Math.round(column * cellWidth), Math.round((column + 1) * cellWidth)],
-        y: [Math.round(row * cellHeight), Math.round((row + 1) * cellHeight)],
-      });
-    }
-  }
-  return cells;
+import type { ExecutorPixels } from 'e2e';
+import { fnv1a } from './hash.ts';
+/** Pixels as the decision model receives them: the runner's capture without its masking count. */
+export type Screenshot = Omit<ExecutorPixels, 'maskedRegionCount'>;
+/** A viewport point in CSS pixels. */
+export interface Point {
+  readonly x: number;
+  readonly y: number;
 }
 /**
- * A hash of the `box` by `box` CSS-pixel region around `center`: what a tap
- * there changed, read without the rest of the page. Undefined without
- * pixels or when they cannot be decoded.
+ * A grid over an image: at most ten columns and rows, one score level per
+ * column and row. Sizes are in the CSS pixels of the image's coordinates.
  */
-export function regionHash(screenshot: Screenshot | undefined, center: { x: number; y: number }, box: number): string | undefined {
-  if (screenshot === undefined) return undefined;
-  const zoom = zoomAround(screenshot, center, box, 1);
-  if (zoom === undefined) return undefined;
-  let hash = 2166136261;
-  for (const byte of zoom.screenshot.data) {
-    hash ^= byte;
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
+export interface Grid {
+  readonly columns: number;
+  readonly rows: number;
+  readonly cellWidth: number;
+  readonly cellHeight: number;
+}
+/** The Decisions API scores at most ten levels per question. */
+const MAX_LEVELS = 10;
+/**
+ * Target cell size of a first look in CSS pixels. A 1280 by 720 viewport
+ * gets 10 columns of 128px and 9 rows of 80px; measured on gpt-6-luna over
+ * a drawn keypad, the probability-weighted column and row land within a
+ * column of every key.
+ */
+export const CELL_TARGET = 80;
+/**
+ * The grid for an image: as close to `cellTarget` CSS pixels per cell as
+ * the level cap allows. A 1280 by 720 viewport with an 80px target gets 10
+ * columns of 128px and 9 rows of 80px.
+ */
+export function gridFor(width: number, height: number, cellTarget: number): Grid {
+  const columns = Math.min(MAX_LEVELS, Math.max(1, Math.round(width / cellTarget)));
+  const rows = Math.min(MAX_LEVELS, Math.max(1, Math.round(height / cellTarget)));
+  return { columns, rows, cellWidth: width / columns, cellHeight: height / rows };
+}
+/** The point a column and row score name on a grid: the center of the scored position, inside the image. */
+export function pointOf(grid: Grid, column: number, row: number): Point {
+  const clamp = (value: number, max: number): number => Math.min(max - 1, Math.max(0, Math.round(value)));
+  return {
+    x: clamp((column + 0.5) * grid.cellWidth, grid.columns * grid.cellWidth),
+    y: clamp((row + 0.5) * grid.cellHeight, grid.rows * grid.cellHeight),
+  };
 }
 /** A zoomed crop: the image, and where its top-left corner sits in the screenshot's CSS pixels. */
 export interface Zoom {
   readonly screenshot: Screenshot;
-  readonly origin: { readonly x: number; readonly y: number };
+  readonly origin: Point;
   readonly factor: number;
 }
 /**
@@ -43,13 +56,9 @@ export interface Zoom {
  * screenshot and enlarged `factor` times (nearest neighbor), for a finer
  * second look at a drawn control. Undefined when the pixels cannot be decoded.
  */
-export function zoomAround(screenshot: Screenshot, center: { x: number; y: number }, box: number, factor: number): Zoom | undefined {
-  let png: PNG;
-  try {
-    png = PNG.sync.read(Buffer.from(screenshot.data));
-  } catch {
-    return undefined;
-  }
+export function zoomAround(screenshot: Screenshot, center: Point, box: number, factor: number): Zoom | undefined {
+  const png = decode(screenshot);
+  if (png === undefined) return undefined;
   const scale = screenshot.scale;
   const cssWidth = png.width / scale;
   const cssHeight = png.height / scale;
@@ -75,73 +84,52 @@ export function zoomAround(screenshot: Screenshot, center: { x: number; y: numbe
   return { screenshot: { mediaType: 'image/png', data: new Uint8Array(PNG.sync.write(out)), width: size, height: size, scale: 1 }, origin, factor };
 }
 /**
- * The screenshot with the `tap_at` grid drawn on it: cell borders and each
- * cell's number in its top-left corner, so a choice model can name the cell
- * holding a drawn control by reading the number off the image. Returns the
- * input untouched when it cannot be decoded.
+ * A hash of the `box` by `box` CSS-pixel region around `center`: what a tap
+ * there changed, read without the rest of the page. Undefined without
+ * pixels or when they cannot be decoded.
  */
-export function withGrid(screenshot: Screenshot, cells: ReadonlyMap<string, Cell>): Screenshot {
-  let png: PNG;
-  try {
-    png = PNG.sync.read(Buffer.from(screenshot.data));
-  } catch {
-    return screenshot;
-  }
-  const scale = screenshot.scale;
-  for (const [key, cell] of cells) {
-    const x0 = Math.round(cell.x[0] * scale);
-    const y0 = Math.round(cell.y[0] * scale);
-    const x1 = Math.min(png.width, Math.round(cell.x[1] * scale));
-    const y1 = Math.min(png.height, Math.round(cell.y[1] * scale));
-    for (let x = x0; x < x1; x += 1) {
-      paint(png, x, y0, GRID);
-      paint(png, x, y1 - 1, GRID);
-    }
-    for (let y = y0; y < y1; y += 1) {
-      paint(png, x0, y, GRID);
-      paint(png, x1 - 1, y, GRID);
-    }
-    drawLabel(png, x0 + 2, y0 + 2, key.replace(/\D/g, ''), Math.max(1, Math.round(2 * scale)));
-  }
-  const data = new Uint8Array(PNG.sync.write(png));
-  return { ...screenshot, data };
+export function regionHash(screenshot: Screenshot | undefined, center: Point, box: number): string | undefined {
+  if (screenshot === undefined) return undefined;
+  const zoom = zoomAround(screenshot, center, box, 1);
+  return zoom === undefined ? undefined : fnv1a([zoom.screenshot.data]);
 }
-const GRID: readonly [number, number, number] = [255, 0, 255];
-const INK: readonly [number, number, number] = [255, 255, 255];
-const PLATE: readonly [number, number, number] = [0, 0, 0];
-/** 3 by 5 glyphs for the digits, one row per string. */
-const GLYPHS: Readonly<Record<string, readonly string[]>> = {
-  '0': ['111', '101', '101', '101', '111'],
-  '1': ['010', '110', '010', '010', '111'],
-  '2': ['111', '001', '111', '100', '111'],
-  '3': ['111', '001', '111', '001', '111'],
-  '4': ['101', '101', '111', '001', '001'],
-  '5': ['111', '100', '111', '001', '111'],
-  '6': ['111', '100', '111', '101', '111'],
-  '7': ['111', '001', '001', '001', '001'],
-  '8': ['111', '101', '111', '101', '111'],
-  '9': ['111', '101', '111', '001', '111'],
-};
-/** Draws `text` at (x, y) in white on a black plate, each glyph pixel `size` image pixels wide. */
-function drawLabel(png: PNG, x: number, y: number, text: string, size: number): void {
-  const width = text.length * 4 * size + size;
-  const height = 5 * size + 2 * size;
-  for (let dy = 0; dy < height; dy += 1) for (let dx = 0; dx < width; dx += 1) paint(png, x + dx, y + dy, PLATE);
-  for (const [position, character] of [...text].entries()) {
-    const glyph = GLYPHS[character];
-    if (glyph === undefined) continue;
-    for (const [row, line] of glyph.entries()) {
-      for (const [column, bit] of [...line].entries()) {
-        if (bit !== '1') continue;
-        for (let dy = 0; dy < size; dy += 1) {
-          for (let dx = 0; dx < size; dx += 1) {
-            paint(png, x + size + position * 4 * size + column * size + dx, y + size + row * size + dy, INK);
-          }
-        }
+/**
+ * The screenshot with the grid's cell borders drawn on it. Measured on
+ * gpt-6-luna over a drawn keypad at the runner's 768px capture, the zoomed
+ * look lands within 30px of every key with the lines, and a cell number
+ * drawn in each corner only covered the glyphs it was meant to help find.
+ * Returns the input untouched when it cannot be decoded.
+ */
+export function withGrid(screenshot: Screenshot, grid: Grid): Screenshot {
+  const png = decode(screenshot);
+  if (png === undefined) return screenshot;
+  const scale = screenshot.scale;
+  for (let row = 0; row < grid.rows; row += 1) {
+    for (let column = 0; column < grid.columns; column += 1) {
+      const x0 = Math.round(column * grid.cellWidth * scale);
+      const y0 = Math.round(row * grid.cellHeight * scale);
+      const x1 = Math.min(png.width, Math.round((column + 1) * grid.cellWidth * scale));
+      const y1 = Math.min(png.height, Math.round((row + 1) * grid.cellHeight * scale));
+      for (let x = x0; x < x1; x += 1) {
+        paint(png, x, y0, GRID);
+        paint(png, x, y1 - 1, GRID);
+      }
+      for (let y = y0; y < y1; y += 1) {
+        paint(png, x0, y, GRID);
+        paint(png, x1 - 1, y, GRID);
       }
     }
   }
+  return { ...screenshot, data: new Uint8Array(PNG.sync.write(png)) };
 }
+function decode(screenshot: Screenshot): PNG | undefined {
+  try {
+    return PNG.sync.read(Buffer.from(screenshot.data));
+  } catch {
+    return undefined;
+  }
+}
+const GRID: readonly [number, number, number] = [255, 0, 255];
 function paint(png: PNG, x: number, y: number, color: readonly [number, number, number]): void {
   if (x < 0 || y < 0 || x >= png.width || y >= png.height) return;
   const offset = (y * png.width + x) * 4;

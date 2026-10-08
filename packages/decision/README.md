@@ -39,7 +39,7 @@ double-tap, long-press, drag, scroll-to, scroll, and back; target questions
 carry a `none` option. With `vision: true` and `openaiDecisionModel()`,
 verdicts see a masked screenshot, and `tap_at` reaches a drawn control the
 text model names, located by score questions on the screenshot and a zoomed
-crop. The runner authorizes every dispatched action and records every
+crop with grid lines. The runner authorizes every dispatched action and records every
 model call against the step budget. `providerOptions` go with every decide
 call and reach the decision model only; the text model keeps the agents
 entry's `providerOptions`. Secrets stay declared handles filled only through

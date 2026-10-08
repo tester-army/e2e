@@ -140,18 +140,17 @@ hurt. It also offers `tap_at` for a control the tree does not list: the
 text model names the control to tap next from the goal and the taps so
 far ("the 3 key on the keypad"), and the decision model locates it with two
 pairs of score questions, column and row on the full screenshot, then
-again on a zoomed crop with a grid drawn on it. A tap that changed the
-page is remembered for its control, so the same key again needs no new
-looks. `agent.assert(..., { vision: true })` and `vision: 'only'` reach the
+again on a zoomed crop with grid lines drawn on it. A tap that changed the
+pixels under it is remembered for its control, so the same key on the same
+page again needs no new looks. `agent.assert(..., { vision: true })` and `vision: 'only'` reach the
 executor the same way. The model must take images and answer score
 questions: `openaiDecisionModel()` does, the AI SDK's `openai.decisionModel()`
 sends text only. Pixels are withheld once a secret has been filled in the
 attempt, as everywhere in the runner.
 
 Measured on gpt-6-luna over the playground: a vision assert on a drawn
-chart, a drawn map pin, and a five-digit code on a drawn keypad pass; a
-ten-digit code mislocated one key. Each point tap costs four model calls
-plus the text model's one.
+chart, a drawn map pin, and five- and ten-digit codes on a drawn keypad
+pass. Each point tap costs four model calls plus the text model's one.
 
 ## How text gets typed
 

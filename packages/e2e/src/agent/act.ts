@@ -20,8 +20,8 @@ import type { StepTurn } from '../run/steps.ts';
 import { writeFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { isVisionMode } from '../config/agent.ts';
-import { ConfigurationError, TestError } from '../internal/errors.ts';
+import { resolveVision } from '../config/agent.ts';
+import { ConfigurationError } from '../internal/errors.ts';
 import { withAbort, withTimeout } from '../internal/time.ts';
 import type { ActOptions, ActResult, AgentErrorCode, JsonValue, ModelInstance, Secret, VisionMode } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, toAgentError } from './error.ts';
@@ -110,17 +110,13 @@ export async function runAssertStep(
 ): Promise<void> {
   const normalized = validateInstruction(assertion, 'agent.assert');
   const agent = runtime.select(options?.agent);
-  if (options?.vision !== undefined && !isVisionMode(options.vision)) {
-    throw new TestError('INVALID_ARGUMENT', "vision must be true, false, or 'only'");
-  }
+  const vision = resolveVision(options?.vision);
   if (options?.vision !== undefined && agent.executor.vision !== true) {
     throw new ConfigurationError(
       'UNSUPPORTED_CAPABILITY',
       `agent.assert vision (options.vision) is not supported with the executor ${JSON.stringify(agent.executor.name)}: the executor decides what its model sees`,
     );
   }
-  // `false` asks for the tree, which is what an executor gets with no option at all.
-  const vision = options?.vision === undefined || options.vision === false ? undefined : options.vision;
   await dispatchAgentStep(runtime, {
     api: 'agent.assert',
     kind: 'assert',
@@ -134,7 +130,8 @@ export async function runAssertStep(
     maxModelCalls: undefined,
     agent: options?.agent,
     ...(options?.screenshot === undefined ? {} : { screenshot: options.screenshot }),
-    ...(vision === undefined ? {} : { vision }),
+    // `false` asks for the tree, which is what an executor gets with no option at all.
+    ...(vision === false ? {} : { vision }),
   }, agent);
 }
 
