@@ -141,16 +141,17 @@ async function matchOrSettle(run: Run, expected: RgbaImage | undefined, deadline
       if (!settles && expected !== undefined && latest.comparison !== undefined && latest.comparison.kind !== 'match') {
         return mismatch(run, expected, latest.image, latest.comparison, cause);
       }
+      const images: string[] = [];
       if (unsettled !== undefined) {
-        attach(run, `${run.call.stem}-previous`, unsettled[0]);
-        attach(run, `${run.call.stem}-actual`, unsettled[1]);
         const between = compareImages(unsettled[0], unsettled[1], { threshold: 0, maxDiffPixels: undefined, maxDiffPixelRatio: undefined });
-        if (between.kind === 'pixels') attach(run, `${run.call.stem}-diff`, between.diff);
+        if (between.kind === 'pixels') images.push(`diff: ${attach(run, `${run.call.stem}-diff`, between.diff)}`);
+        images.push(`previous: ${attach(run, `${run.call.stem}-previous`, unsettled[0])}`);
+        images.push(`actual: ${attach(run, `${run.call.stem}-actual`, unsettled[1])}`);
       }
       const message = captures < 2
         ? `took ${captures} screenshot${captures === 1 ? '' : 's'} before the timeout and needs two the same; give it a longer timeout`
         : `the screen never held still: no two of ${captures} screenshots in a row were the same`;
-      return failure(run.api, message, run.stored, 'no stable screenshot', cause);
+      return failure(run.api, [message, ...images].join('\n'), run.stored, 'no stable screenshot', cause);
     },
   });
   return settled;
@@ -165,8 +166,8 @@ async function matchOrSettle(run: Run, expected: RgbaImage | undefined, deadline
 async function keep(run: Run, expected: RgbaImage | undefined, settled: RgbaImage): Promise<void> {
   const { store, stored, api } = run;
   if (expected === undefined && !store.update && store.ci) {
-    const relative = attach(run, path.join('snapshots', ...stored.shown.split('/')), settled);
-    throw failure(api, `no stored screenshot at ${stored.shown}, and CI writes none. This run's is in the results at ${relative.split(path.sep).join('/')}: commit it at ${stored.shown}`, stored, 'no stored screenshot');
+    const kept = attach(run, path.join('snapshots', ...stored.shown.split('/')), settled);
+    throw failure(api, `no stored screenshot at ${stored.shown}, and CI writes none; commit this run's there\nactual: ${kept}`, stored, 'no stored screenshot');
   }
   mkdirSync(path.dirname(stored.file), { recursive: true });
   await writeFileAtomic(stored.file, encodePng(settled));
@@ -212,7 +213,7 @@ function readStored(api: string, stored: Stored): RgbaImage {
   }
 }
 
-/** The failure of a comparison that never matched, the stored, actual, and diff images attached. */
+/** The failure of a comparison that never matched, the diff, actual, and stored images attached and named in the message. */
 function mismatch(
   run: Run,
   expected: RgbaImage,
@@ -221,14 +222,16 @@ function mismatch(
   cause: unknown,
 ): TestError {
   const { stem } = run.call;
-  attach(run, `${stem}-expected`, expected);
-  attach(run, `${stem}-actual`, actual);
-  if (comparison.kind === 'pixels') attach(run, `${stem}-diff`, comparison.diff);
+  const images = [
+    ...(comparison.kind === 'pixels' ? [`diff: ${attach(run, `${stem}-diff`, comparison.diff)}`] : []),
+    `actual: ${attach(run, `${stem}-actual`, actual)}`,
+    `expected: ${attach(run, `${stem}-expected`, expected)}`,
+  ];
   const { shown } = run.stored;
   const observed = comparison.kind === 'size'
     ? `a ${comparison.actual.width}x${comparison.actual.height} screenshot where ${shown} is ${comparison.expected.width}x${comparison.expected.height}`
     : `${comparison.diffPixels} pixels (${formatRatio(comparison.ratio)} of the image) differ from ${shown}`;
-  return failure(run.api, `${observed}; run with --update-snapshots to keep this run's`, run.stored, observed, cause);
+  return failure(run.api, [`${observed}; run with --update-snapshots to keep this run's`, ...images].join('\n'), run.stored, observed, cause);
 }
 
 /** An assertion failure naming the stored screenshot. */
@@ -247,7 +250,7 @@ function formatRatio(ratio: number): string {
 /**
  * Writes an image into the attempt's results, at `screenshots/<name>.png`, or
  * at `name` itself when it ends in `.png`, and attaches it to the running
- * step. Returns the path relative to the attempt directory.
+ * step. Returns its path as a failure names it: relative to the project root.
  */
 function attach(run: Run, name: string, image: RgbaImage): string {
   const { artifacts } = run.store;
@@ -258,5 +261,5 @@ function attach(run: Run, name: string, image: RgbaImage): string {
   mkdirSync(path.dirname(absolute), { recursive: true });
   writeFileSync(absolute, encodePng(image));
   run.context.steps.attachArtifact(artifacts.register('screenshot', relative));
-  return relative;
+  return path.relative(run.store.projectRoot, absolute).split(path.sep).join('/');
 }

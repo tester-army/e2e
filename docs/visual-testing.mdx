@@ -87,10 +87,18 @@ Download the artifact into the project, review the images, and commit them.
 
 The matcher takes screenshots until one matches or the assertion timeout
 (`assertionTimeout`, 5 s) runs out. On a mismatch the failure says how many
-pixels differ, and the step keeps three images in the test's results:
-`-expected`, `-actual`, and `-diff`, with the changed pixels in red. A screen
-that never holds still for two screenshots in a row fails too, with the last
-two attached.
+pixels differ and where it put three images in the test's results: `-diff`,
+with the changed pixels in red, `-actual`, and `-expected`.
+
+```text
+2173 pixels (0.24% of the image) differ from tests/home.e2e.ts-snapshots/screen-web-darwin.png; run with --update-snapshots to keep this run's
+diff: .e2e/results/home-1a2b3c4d5e6f7a8b/attempt-1/screenshots/screen-diff.png
+actual: .e2e/results/home-1a2b3c4d5e6f7a8b/attempt-1/screenshots/screen-actual.png
+expected: .e2e/results/home-1a2b3c4d5e6f7a8b/attempt-1/screenshots/screen-expected.png
+```
+
+A screen that never holds still for two screenshots in a row fails too, with
+the last two and their diff.
 
 ## Tolerance and masks
 

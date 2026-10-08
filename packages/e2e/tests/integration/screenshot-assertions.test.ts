@@ -136,8 +136,13 @@ describe('toHaveScreenshot', () => {
         expect(attempt.error).toMatchObject({ code: 'ASSERTION_FAILED', details: { expected: `tests/home.e2e.ts-snapshots/home${SUFFIX}.png` } });
         expect(attempt.error?.message).toContain(`${BUTTON.width * BUTTON.height} pixels`);
         const step = attempt.steps.find((candidate) => candidate.api === 'expect.toHaveScreenshot')!;
-        const attached = attempt.artifacts.filter((artifact) => step.artifacts.includes(artifact.id)).map((artifact) => path.posix.basename(artifact.path!));
-        expect(attached).toEqual(['home-expected.png', 'home-actual.png', 'home-diff.png']);
+        const attached = attempt.artifacts.filter((artifact) => step.artifacts.includes(artifact.id));
+        expect(attached.map((artifact) => path.posix.basename(artifact.path!))).toEqual(['home-diff.png', 'home-actual.png', 'home-expected.png']);
+        // The message names each image where the user finds it, relative to the project.
+        for (const [label, artifact] of [['diff', attached[0]], ['actual', attached[1]], ['expected', attached[2]]] as const) {
+          expect(attempt.error?.message).toContain(`\n${label}: .e2e/results/${artifact!.path}`);
+          expect(existsSync(path.join(project.dir, '.e2e', 'results', artifact!.path!))).toBe(true);
+        }
 
         const updated = await runExisting(project, { ...options, runOptions: { updateSnapshots: true } });
         expect(attemptOf(updated, 'home').error).toBeUndefined();
@@ -344,6 +349,7 @@ test('after a fill', async ({ app, screen }) => {
         expect(existsSync(path.join(ci.project.dir, 'tests', 'home.e2e.ts-snapshots'))).toBe(false);
         const attempt = result.attempts.at(-1)!;
         expect(attempt.error?.message).toContain('CI writes none');
+        expect(attempt.error?.message).toContain(`\nactual: .e2e/results/${attempt.artifacts.find((artifact) => artifact.path?.includes('/snapshots/'))!.path}`);
         const kept = attempt.artifacts.find((artifact) => artifact.path?.endsWith(`snapshots/tests/home.e2e.ts-snapshots/home${SUFFIX}.png`));
         expect(kept).toBeDefined();
         expect(readPng(path.join(ci.project.dir, '.e2e', 'results', kept!.path!)).width).toBe(WIDTH);
