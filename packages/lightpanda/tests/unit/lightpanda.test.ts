@@ -2,10 +2,11 @@
  * `lightpanda()` against a fake binary: a node script that parses the serve
  * flags, listens on the port, and answers `/json/version`. Covers the lease
  * endpoint and log line, the flags passed, stop on release, where the binary
- * is found, a binary that exits before listening, a cancelled request, and
- * `endpoint` mode.
+ * is found, a binary that exits before listening or never answers, and a
+ * cancelled request.
  */
 
+import { execSync } from 'node:child_process';
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -73,18 +74,22 @@ const releaseContext: BrowserReleaseContext = {
   log: () => undefined,
 };
 
-/** The flags the fake server was started with, read back through `/json/version`. */
-async function serverArgs(lease: BrowserLease): Promise<string[]> {
-  const response = await fetch(lease.cdpEndpoint.replace('ws://', 'http://') + 'json/version');
-  return ((await response.json()) as { args: string[] }).args;
+/** The flags the fake server behind `lease` was started with, read back through `/json/version`; undefined once it is gone. */
+async function serverArgs(lease: BrowserLease): Promise<string[] | undefined> {
+  try {
+    const response = await fetch(lease.cdpEndpoint.replace('ws://', 'http://') + 'json/version');
+    return ((await response.json()) as { args: string[] }).args;
+  } catch {
+    return undefined;
+  }
 }
 
-async function listening(lease: BrowserLease): Promise<boolean> {
+/** How many fake servers are running right now, whatever port they took. */
+function runningFakes(): number {
   try {
-    await fetch(lease.cdpEndpoint.replace('ws://', 'http://') + 'json/version');
-    return true;
+    return execSync('pgrep -f fake-lightpanda.cjs', { encoding: 'utf8' }).trim().split('\n').length;
   } catch {
-    return false;
+    return 0;
   }
 }
 
@@ -94,25 +99,25 @@ describe('lightpanda()', () => {
     const req = request();
     const lease = await provider.acquire(req);
     expect(lease.cdpEndpoint).toMatch(/^ws:\/\/127\.0\.0\.1:\d+\/$/);
-    expect(lease.id).toMatch(/^\d+$/);
+    expect(lease.id).toBe(lease.cdpEndpoint);
     expect(req.lines).toEqual([`lightpanda 1.1.0-test at ${lease.cdpEndpoint}`]);
     expect(await serverArgs(lease)).toEqual(['serve', '--host', '127.0.0.1', '--port', new URL(lease.cdpEndpoint).port]);
     await provider.release(lease, releaseContext);
-    expect(await listening(lease)).toBe(false);
+    expect(await serverArgs(lease)).toBeUndefined();
   });
 
   it('passes load-resources and extra flags, and gives each slot its own server', async () => {
     const provider = lightpanda({ binary, loadResources: ['iframe', 'stylesheet'], args: ['--log-level', 'warn'] });
     const [a, b] = await Promise.all([provider.acquire(request({ slot: 0, slots: 2 })), provider.acquire(request({ slot: 1, slots: 2 }))]);
     expect(a.cdpEndpoint).not.toBe(b.cdpEndpoint);
-    expect((await serverArgs(a)).slice(5)).toEqual(['--load-resources', 'iframe', '--load-resources', 'stylesheet', '--log-level', 'warn']);
+    expect((await serverArgs(a))?.slice(5)).toEqual(['--load-resources', 'iframe', '--load-resources', 'stylesheet', '--log-level', 'warn']);
     await Promise.all([provider.release(a, releaseContext), provider.release(b, releaseContext)]);
   });
 
   it('reads the binary from LIGHTPANDA_PATH in the run environment', async () => {
     const provider = lightpanda();
     const lease = await provider.acquire(request({ env: { LIGHTPANDA_PATH: binary } }));
-    expect(await listening(lease)).toBe(true);
+    expect(await serverArgs(lease)).toBeDefined();
     await provider.release(lease, releaseContext);
   });
 
@@ -122,11 +127,11 @@ describe('lightpanda()', () => {
     copyFileSync(binary, path.join(home, '.lightpanda', 'lightpanda'));
     const provider = lightpanda();
     const fromHome = await provider.acquire(request({ env: { HOME: home, PATH: path.join(dir, 'empty') } }));
-    expect(await listening(fromHome)).toBe(true);
+    expect(await serverArgs(fromHome)).toBeDefined();
     await provider.release(fromHome, releaseContext);
 
     const fromPath = await provider.acquire(request({ env: { HOME: path.join(dir, 'nohome'), PATH: dir } }));
-    expect(await listening(fromPath)).toBe(true);
+    expect(await serverArgs(fromPath)).toBeDefined();
     await provider.release(fromPath, releaseContext);
 
     await expect(provider.acquire(request({ env: { HOME: path.join(dir, 'nohome'), PATH: path.join(dir, 'empty') } }))).rejects.toThrow(
@@ -144,25 +149,18 @@ describe('lightpanda()', () => {
     await expect(provider.acquire(request())).rejects.toThrow(/could not start .*nope/);
   });
 
-  it('stops a server that answers after the request was cancelled', async () => {
+  it('stops a server that is still starting when the request is cancelled', async () => {
     const controller = new AbortController();
     const provider = lightpanda({ binary, args: ['--delay', '300'] });
     const pending = provider.acquire(request({ signal: controller.signal }));
     setTimeout(() => controller.abort(), 50);
     await expect(pending).rejects.toThrow(/cancelled before the CDP server answered/);
+    expect(runningFakes()).toBe(0);
   });
 
-  it('attaches to endpoint, or LIGHTPANDA_URL, without starting anything, and release leaves it alone', async () => {
-    const byOption = lightpanda({ endpoint: 'ws://browsers:9222/' });
-    const req = request();
-    const lease = await byOption.acquire(req);
-    expect(lease).toEqual({ id: 'ws://browsers:9222/', cdpEndpoint: 'ws://browsers:9222/' });
-    expect(req.lines).toEqual(['lightpanda at ws://browsers:9222/']);
-    await byOption.release(lease, releaseContext);
-
-    const byEnv = lightpanda({ binary: path.join(dir, 'nope') });
-    const fromEnv = await byEnv.acquire(request({ env: { LIGHTPANDA_URL: 'http://127.0.0.1:9222' } }));
-    expect(fromEnv.cdpEndpoint).toBe('http://127.0.0.1:9222');
-  });
-
+  it('stops a server that never answers once the startup timeout passes', async () => {
+    const provider = lightpanda({ binary, args: ['--delay', '60000'] });
+    await expect(provider.acquire(request())).rejects.toThrow(/did not answer on http:\/\/127\.0\.0\.1:\d+\/json\/version within 10000ms/);
+    expect(runningFakes()).toBe(0);
+  }, 20_000);
 });

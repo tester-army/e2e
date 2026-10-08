@@ -47,7 +47,7 @@ brew install lightpanda-io/browser/lightpanda
 
 ```bash Linux
 curl -L -o lightpanda https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-x86_64-linux
-chmod a+x ./lightpanda
+install -m 755 lightpanda ~/.local/bin/
 ```
 </CodeGroup>
 
@@ -82,44 +82,50 @@ and the run's log names each one:
 
 ## Attach to a running server
 
-Set `endpoint`, or `LIGHTPANDA_URL` in the environment, to attach every
-worker to a server that is already running instead of starting one: the
-Docker image in CI, or one on another machine.
+A Lightpanda already running, such as the Docker image in CI, is a
+[`connect`](/reference/web#options) target rather than a provider: the
+engine attaches to its CDP endpoint and leaves it running.
 
-<CodeGroup>
-```bash npm
-docker run -d --name lightpanda -p 127.0.0.1:9222:9222 lightpanda/browser:nightly
-LIGHTPANDA_URL=ws://127.0.0.1:9222/ npx e2e run
+```ts title="e2e.config.ts"
+web({ connect: { cdpEndpoint: () => process.env.LIGHTPANDA_URL ?? 'ws://127.0.0.1:9222/' } })
 ```
 
-```bash pnpm
+```bash
 docker run -d --name lightpanda -p 127.0.0.1:9222:9222 lightpanda/browser:nightly
-LIGHTPANDA_URL=ws://127.0.0.1:9222/ pnpm exec e2e run
 ```
 
-```bash bun
-docker run -d --name lightpanda -p 127.0.0.1:9222:9222 lightpanda/browser:nightly
-LIGHTPANDA_URL=ws://127.0.0.1:9222/ bunx e2e run
-```
-</CodeGroup>
-
-Release leaves that server running. One `lightpanda serve` takes 16
+Every worker then shares that server. One `lightpanda serve` takes 16
 connections by default; raise its `--cdp-max-connections` above `workers`
-when you run more. `web({ connect: { cdpEndpoint: () => url } })` attaches
-the same way without the package, if you would rather not add one.
+when you run more.
 
 ## Options
 
 | Option          | Default                         | Meaning |
 | --------------- | ------------------------------- | ------- |
 | `binary`        | `LIGHTPANDA_PATH`, else found   | The binary to start: a path, or a name on `PATH`. |
-| `endpoint`      | `LIGHTPANDA_URL`, else none     | A running server to attach to instead; see [above](#attach-to-a-running-server). |
-| `loadResources` | `[]`                            | Sub-resources the started server fetches: `iframe`, `image`, `stylesheet`. See [Fetch more of the page](#fetch-more-of-the-page). |
+| `loadResources` | `[]`                            | Sub-resources the server fetches: `iframe`, `image`, `stylesheet`. See [Fetch more of the page](#fetch-more-of-the-page). |
 | `args`          | `[]`                            | Further `lightpanda serve` flags, after the ones the provider sets. |
 
 The provider leases one server per worker slot for the run; it has no
 `scope: 'attempt'`, since Lightpanda does not expose the default context
-identity a per-attempt lease reattaches by.
+identity a per-attempt lease reattaches by. A server that does not answer
+on its port within ten seconds fails the lease, and so does a binary that
+exits first, with its stderr in the message.
+
+## Fetch more of the page
+
+`lightpanda serve` requests no sub-resources by default: no images, no
+external stylesheets, no iframes. `loadResources` opts into each, as
+`--load-resources` on the server:
+
+```ts
+web({ browser: lightpanda({ loadResources: ['stylesheet', 'iframe'] }) })
+```
+
+Inline styles, `<style>` blocks, and the `hidden` attribute already decide
+visibility; `stylesheet` makes an external file's rules count too, so a
+node a linked stylesheet hides is hidden to a query. `image` fetches image
+headers so `load` and `error` reflect the real status.
 
 ## What works
 
@@ -158,26 +164,10 @@ tracks most of them.
 | Drags: `screen.swipe`, `locator.swipeTo`, and `browser.mouse` moves with a button down | `ENGINE_FAILURE` naming `Input.setInterceptDrags`. | Playwright needs that command for a drag and Lightpanda has not implemented it. |
 | `browser.setViewport` | The page measures the new size, but a `resize` listener never runs. | No `resize` event is dispatched. |
 | Scrolling: `scrollIntoView`, `scrollUntilVisible`, and an action on a node "outside of the viewport" | The scroll is a no-op, and an actionability wait can time out. | Without layout there is no scroll position to move. |
-| `browser: 'firefox'` or `'webkit'` | Not an option: `browser` names the provider. | A provider attaches over CDP, which is chromium-only. |
 
 A Lightpanda release that closes one of these makes the row above go away
 with no change on the e2e side; the engine sends the same CDP commands it
 sends Chrome.
-
-## Fetch more of the page
-
-`lightpanda serve` requests no sub-resources by default: no images, no
-external stylesheets, no iframes. `loadResources` opts into each, as
-`--load-resources` on the server:
-
-```ts
-web({ browser: lightpanda({ loadResources: ['stylesheet', 'iframe'] }) })
-```
-
-Inline styles, `<style>` blocks, and the `hidden` attribute already decide
-visibility; `stylesheet` makes an external file's rules count too, so a
-node a linked stylesheet hides is hidden to a query. `image` fetches image
-headers so `load` and `error` reflect the real status.
 
 ## Where it fits
 

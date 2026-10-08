@@ -18,9 +18,9 @@
     "explore:bench": "node scripts/explore-bench.mjs"
   },
   "dependencies": {
+    "@e2e-dev/lightpanda": "workspace:*",
     "@e2e-dev/web": "workspace:*",
-    "e2e": "workspace:*",
-    "@e2e-dev/lightpanda": "workspace:*"
+    "e2e": "workspace:*"
   },
   "devDependencies": {
     "@ai-sdk/devtools": "1.0.22",

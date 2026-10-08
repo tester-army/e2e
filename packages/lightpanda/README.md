@@ -26,10 +26,10 @@ export default {
 ```
 
 The binary comes from `binary`, `LIGHTPANDA_PATH` in the run's environment,
-or `lightpanda` on `PATH`, `~/.lightpanda`, or `~/.local/bin`. `endpoint`, or `LIGHTPANDA_URL`, attaches every
-worker to a server already running (the Docker image in CI) instead, and
-release leaves it alone. `loadResources` passes `--load-resources` for
-`iframe`, `image`, and `stylesheet`; `args` adds any other `serve` flag.
+or `lightpanda` on `PATH`, `~/.lightpanda`, or `~/.local/bin`.
+`loadResources` passes `--load-resources` for `iframe`, `image`, and
+`stylesheet`; `args` adds any other `serve` flag. A server already running,
+such as the Docker image in CI, is a `web({ connect })` target instead.
 
 Lightpanda has no layout engine: locators, assertions, and agent steps on
 the accessibility tree work, while drags, dialogs, downloads, scrolling,

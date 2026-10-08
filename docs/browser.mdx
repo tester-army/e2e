@@ -197,8 +197,9 @@ lacks: it asks for a browser when one is needed and gives it back when its
 scope ends, on every exit path, so a session billed by the minute stops
 when the run no longer uses it. The engine knows no vendor: for
 [Kernel](/integrations/kernel), `kernel()` from `@e2e-dev/kernel` is the
-provider, and for any other service a provider is a few dozen lines in your
-project. Add `viewport: null` when
+provider, for [Lightpanda](/integrations/lightpanda) on your own machine
+`lightpanda()` from `@e2e-dev/lightpanda`, and for any other service a
+provider is a few dozen lines in your project. Add `viewport: null` when
 the service shows the window in a live view: the page then
 [fills the window](/web#fill-the-window) instead of a fixed 1280 by
 720 area of it.

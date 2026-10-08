@@ -1,12 +1,14 @@
-/** Lightpanda as a `BrowserProvider` for the web engine: a `lightpanda serve` per lease, or a server already running. */
+/** Lightpanda as a `BrowserProvider` for the web engine: one `lightpanda serve` per lease. */
 
-import type { BrowserLease, BrowserProvider, BrowserReleaseContext, BrowserRequest } from '@e2e-dev/web';
+import type { BrowserLease, BrowserProvider, BrowserRequest } from '@e2e-dev/web';
 import { findBinary } from './binary.ts';
 import { envValue } from './env.ts';
 import { serve, type LightpandaResource, type LightpandaServer } from './server.ts';
 
 const LIGHTPANDA_PATH = 'LIGHTPANDA_PATH';
-const LIGHTPANDA_URL = 'LIGHTPANDA_URL';
+
+/** How long a server gets to answer on its port before the lease fails. */
+const STARTUP_TIMEOUT_MS = 10_000;
 
 /** How long a released server gets to exit on SIGTERM before SIGKILL. */
 const STOP_GRACE_MS = 5_000;
@@ -18,64 +20,36 @@ export interface LightpandaOptions {
    * `PATH`, `~/.lightpanda/lightpanda`, or `~/.local/bin/lightpanda`.
    */
   readonly binary?: string | undefined;
-  /**
-   * A running Lightpanda CDP server to attach to (`ws://host:9222/`, or the
-   * `http://` DevTools URL), such as the Docker image in CI, instead of
-   * starting one. Default `LIGHTPANDA_URL` from the run's environment; with
-   * neither set the provider starts its own. Every slot attaches to the same
-   * server, so raise its `--cdp-max-connections` above `workers`.
-   */
-  readonly endpoint?: string | undefined;
-  /**
-   * Sub-resources the started server fetches (`iframe`, `image`,
-   * `stylesheet`), which Lightpanda skips by default. Not applied to a
-   * server reached through `endpoint`.
-   */
+  /** Sub-resources the server fetches (`iframe`, `image`, `stylesheet`), which Lightpanda skips by default. */
   readonly loadResources?: readonly LightpandaResource[] | undefined;
   /** Further `lightpanda serve` flags, after `--host`, `--port`, and `--load-resources`. */
   readonly args?: readonly string[] | undefined;
 }
 
-/** A lease of a server the provider started; the handle never leaves the side that started it. */
-interface ServerLease extends BrowserLease {
-  readonly server: LightpandaServer;
-}
-
-function isServerLease(lease: BrowserLease): lease is ServerLease {
-  return 'server' in lease && typeof lease.server === 'object' && lease.server !== null;
-}
-
 /**
  * Lightpanda browsers for `web({ browser: lightpanda() })`: one
  * `lightpanda serve` per worker slot, started on a free port when the
- * engine asks and stopped when it gives the lease back. With `endpoint`,
- * or `LIGHTPANDA_URL` in the run's environment, every lease attaches to
- * that server instead and release leaves it running. Worker scope only:
+ * engine asks and stopped when it gives the lease back. Worker scope only:
  * Lightpanda does not expose the default context identity a per-attempt
- * lease reattaches by.
+ * lease reattaches by. A server already running is a `web({ connect })`
+ * target, not a provider.
  */
 export function lightpanda(options: LightpandaOptions = {}): BrowserProvider {
   const { loadResources = [], args = [] } = options;
+  // `release` gets back the object `acquire` returned, on the side that acquired it.
+  const servers = new WeakMap<BrowserLease, LightpandaServer>();
   return {
     name: 'lightpanda',
     async acquire(request: BrowserRequest): Promise<BrowserLease> {
-      const endpoint = options.endpoint ?? envValue(request.env, LIGHTPANDA_URL);
-      if (endpoint !== undefined) {
-        request.log(`lightpanda at ${endpoint}`);
-        return { id: endpoint, cdpEndpoint: endpoint };
-      }
       const binary = options.binary ?? envValue(request.env, LIGHTPANDA_PATH) ?? findBinary(request.env);
-      const server = await serve({ binary, loadResources, args, signal: request.signal });
-      if (request.signal.aborted) {
-        await server.stop(STOP_GRACE_MS);
-        throw new Error(`lightpanda ${server.pid} started after the request was cancelled; stopped`);
-      }
-      request.log(server.version === undefined ? `lightpanda at ${server.cdpEndpoint}` : `lightpanda ${server.version} at ${server.cdpEndpoint}`);
-      const lease: ServerLease = { id: String(server.pid), cdpEndpoint: server.cdpEndpoint, server };
+      const server = await serve({ binary, loadResources, args, startupTimeoutMs: STARTUP_TIMEOUT_MS, signal: request.signal });
+      request.log(`lightpanda ${server.version} at ${server.cdpEndpoint}`);
+      const lease: BrowserLease = { id: server.cdpEndpoint, cdpEndpoint: server.cdpEndpoint };
+      servers.set(lease, server);
       return lease;
     },
-    async release(lease: BrowserLease, _context: BrowserReleaseContext): Promise<void> {
-      if (isServerLease(lease)) await lease.server.stop(STOP_GRACE_MS);
+    async release(lease: BrowserLease): Promise<void> {
+      await servers.get(lease)?.stop(STOP_GRACE_MS);
     },
   };
 }
