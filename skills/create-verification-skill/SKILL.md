@@ -21,10 +21,6 @@ and `npx e2e guide <topic>` prints it from the installed package. Topics
 named below (`setup`, `writing-tests`, `mcp`, `explore`, `bug-bash`,
 `running`, `debugging`) are its reference files.
 
-Based on
-[create-verification-skill](https://github.com/cursor/plugins/tree/main/pstack/skills/create-verification-skill)
-from poteto's pstack, with e2e in place of a hand-rolled harness.
-
 ## 1. Interview the repo, not the user
 
 Answer these from the codebase and ask the user only what you cannot
