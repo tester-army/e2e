@@ -72,7 +72,7 @@ jobs:
   nightly:
     if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     permissions:
       contents: read
       actions: read
@@ -100,14 +100,26 @@ jobs:
           fi
 
       # `spec.yml` runs on every push to main; a nightly ships only a commit
-      # it passed. A red main fails this run instead of skipping it, so a
-      # rerun of spec on the same commit lets the next night ship it.
-      - name: Require a green spec gate on this commit
+      # it passed. A dispatch right after a merge lands while spec is still
+      # running, so this waits for the gate up to 25 minutes. A red main fails
+      # this run instead of skipping it, so a rerun of spec on the same
+      # commit lets the next night ship it.
+      - name: Wait for a green spec gate on this commit
         if: ${{ steps.changed.outputs.skip != 'true' }}
         run: |
-          conclusion="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
-            --jq '[.check_runs[] | select(.name == "spec gate")] | sort_by(.completed_at) | last | .conclusion // "pending"')"
-          [ "$conclusion" = "success" ] || { echo "::error::spec gate on $GITHUB_SHA is $conclusion, not publishing"; exit 1; }
+          for _ in $(seq 1 50); do
+            conclusion="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
+              --jq '[.check_runs[] | select(.name == "spec gate" and .status == "completed")] | sort_by(.completed_at) | last | .conclusion // empty')"
+            if [ -n "$conclusion" ]; then
+              [ "$conclusion" = "success" ] || { echo "::error::spec gate on $GITHUB_SHA is $conclusion, not publishing"; exit 1; }
+              echo "spec gate on $GITHUB_SHA is green"
+              exit 0
+            fi
+            echo "spec gate on $GITHUB_SHA has not finished, waiting 30s"
+            sleep 30
+          done
+          echo "::error::spec gate on $GITHUB_SHA did not finish in 25 minutes"
+          exit 1
 
       - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
         if: ${{ steps.changed.outputs.skip != 'true' }}
