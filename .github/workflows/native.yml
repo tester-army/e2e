@@ -1,0 +1,59 @@
+name: native controls
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  controls:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    env:
+      E2E_TELEMETRY_DISABLED: '1'
+      TERN_RUNTIME_URL: ${{ vars.E2E_TERN_RUNTIME_URL }}
+      TERN_RUNTIME_SHA256: ${{ vars.E2E_TERN_RUNTIME_SHA256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 26
+          cache: pnpm
+      - name: Require permitted pinned native runtime delivery
+        run: |
+          test -n "$TERN_RUNTIME_URL" && test -n "$TERN_RUNTIME_SHA256" || {
+            echo '::error::Supply maintainer-approved public pinned native Tern archive and SHA256. Native gate readiness is checked separately; no host authentication import, gate bypass or simulated native smoke fallback.'
+            exit 1
+          }
+          mkdir -p "$RUNNER_TEMP/tern-runtime"
+          curl --fail --location --proto '=https' "$TERN_RUNTIME_URL" -o "$RUNNER_TEMP/tern-runtime.tar.gz"
+          printf '%s  %s\n' "$TERN_RUNTIME_SHA256" "$RUNNER_TEMP/tern-runtime.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/tern-runtime.tar.gz" -C "$RUNNER_TEMP/tern-runtime"
+          test -x "$RUNNER_TEMP/tern-runtime/tern"
+      - name: Install isolated display dependencies
+        run: sudo apt-get update && sudo apt-get install -y sway grim libwayland-dev libxkbcommon-dev pkg-config build-essential
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Build explicit source-only input helper
+        run: node packages/sway/scripts/build-input.mjs "$RUNNER_TEMP/e2e-input"
+      - name: Real isolated native controls
+        env:
+          E2E_SWAY_BINARY: /usr/bin/sway
+          E2E_SWAYMSG_BINARY: /usr/bin/swaymsg
+          E2E_GRIM_BINARY: /usr/bin/grim
+          E2E_TERN_BINARY: ${{ runner.temp }}/tern-runtime/tern
+          E2E_INPUT_BINARY: ${{ runner.temp }}/e2e-input
+          E2E_NSENTER_BINARY: /usr/bin/nsenter
+        run: |
+          node --test apps/tern-testbed/scripts/failure-report.test.ts
+          node --test packages/sway/tests/native/authority.test.ts
+          node packages/e2e/dist/cli/bin.js run --config apps/tern-testbed/e2e.sway.config.ts --output apps/tern-testbed/.e2e --workers 1 --retries 0 --no-cache --reporter list,markdown
+          for signal in SIGKILL SIGTERM SIGINT; do E2E_NATIVE_WORKER_SIGNAL="$signal" node apps/tern-testbed/scripts/lifecycle.ts; done
+          node apps/tern-testbed/scripts/isolation.ts
+          node packages/e2e/dist/cli/bin.js run --config apps/tern-testbed/e2e.sway.config.ts --output apps/tern-testbed/.e2e-parallel --workers 2 --retries 0 --no-cache --reporter list,markdown
+          node apps/tern-testbed/scripts/failures.ts
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: native-controls
+          path: apps/tern-testbed/.e2e*/
+          include-hidden-files: true

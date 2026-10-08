@@ -14,6 +14,7 @@
   `npx @e2e-dev/web install chromium --with-deps` (pnpm: `pnpm exec e2e-web
   install chromium --with-deps`). Mobile tests: `@e2e-dev/mobile`, pinning
   `agent-device` exactly; each pin moves with its engine release.
+- Native Tern: use `@e2e-dev/tern` with an explicit isolated provider. No host socket is discovered. A borrowed target is never restarted or closed. The SDK and native executable are separate dependencies; permitted pinned native runtime delivery is required for real Linux CI proof.
 
 ## Scaffold
 

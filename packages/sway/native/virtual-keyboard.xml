@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="virtual_keyboard_unstable_v1">
+  <interface name="zwp_virtual_keyboard_v1" version="1">
+    <request name="keymap"><arg name="format" type="uint"/><arg name="fd" type="fd"/><arg name="size" type="uint"/></request>
+    <request name="key"><arg name="time" type="uint"/><arg name="key" type="uint"/><arg name="state" type="uint"/></request>
+    <request name="modifiers"><arg name="mods_depressed" type="uint"/><arg name="mods_latched" type="uint"/><arg name="mods_locked" type="uint"/><arg name="group" type="uint"/></request>
+    <request name="destroy" type="destructor"/>
+  </interface>
+  <interface name="zwp_virtual_keyboard_manager_v1" version="1">
+    <request name="create_virtual_keyboard"><arg name="seat" type="object" interface="wl_seat"/><arg name="id" type="new_id" interface="zwp_virtual_keyboard_v1"/></request>
+  </interface>
+</protocol>

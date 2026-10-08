@@ -1,0 +1,17 @@
+{
+  "name": "@e2e-dev/tern-testbed",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "e2e run --workers 1 --retries 0 --no-cache",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "e2e": "workspace:*",
+    "@e2e-dev/tern": "workspace:*",
+    "@e2e-dev/sway": "workspace:*",
+    "@stencil-hq/tern": "0.1.0",
+    "@types/node": "26.6.2",
+    "typescript": "7.0.2"
+  }
+}

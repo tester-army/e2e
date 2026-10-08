@@ -1,0 +1,5 @@
+e2e
+Copyright TesterArmy contributors
+Licensed under the Apache License, Version 2.0.
+
+The protocol descriptions declare the publicly specified Wayland virtual keyboard and wlr virtual pointer wire interfaces. Native executables are not included.

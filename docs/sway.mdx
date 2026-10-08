@@ -1,0 +1,29 @@
+---
+title: Isolated Sway
+description: Lease a private Linux display and persistent named-seat input without touching the operator's desktop.
+---
+
+`@e2e-dev/sway` supplies a Tern provider and a reusable `swayDisplay` resource. Select absolute pinned binaries. Native Tern is a separate permitted runtime prerequisite; no private executable ships in npm.
+
+```ts
+import { ternEngine } from '@e2e-dev/tern';
+import { sway } from '@e2e-dev/sway';
+export const engine = ternEngine({ provider: sway({ binaries: {
+  sway: '/usr/bin/sway', swaymsg: '/usr/bin/swaymsg', grim: '/usr/bin/grim',
+  tern: '/opt/tern/tern', input: '/opt/e2e/input',
+} }) });
+```
+
+Build the optional native source explicitly with `node packages/sway/scripts/build-input.mjs /absolute/output/input`. It needs Linux 5.6 or newer, a C compiler, `pkg-config`, Wayland client/scanner and xkbcommon headers. There are no install-time builds, permission changes or service installations. Sway/wlroots must expose both virtual-input managers on the owned compositor. Refusal is an error, never a host-seat fallback.
+
+The provider creates a private short runtime path, empty HOME/config/cache/state, explicit headless pixman output and a generated named seat. Keyboard and pointer capabilities are created and retained **before** the native client launches. The input endpoint becomes ready only after the compositor reports both capabilities on that exact seat. There is no diagnostic sleep standing in for native client binding. Every key has down/up, modifiers have physical transitions and release, and every pointer click releases its button. Input is refused unless the named seat still focuses the recorded client generation.
+
+The real inert SDK fixture checks quoted Unicode and multiline text, replacement, cleared values, a Control+A semantic selection followed by ordinary text, and a named-seat pointer counter click on the same client. Exit zero or capability presence alone is not modifier/KVM acceptance. Keep native-client receipts and captures private; the fixture's inert CI artifacts are deliberately public-safe.
+
+`app.appPath` names the executable and `app.launchArguments` its arguments. Each attempt and explicit restart gets a fresh lease. Cleanup uses a source-built descendant supervisor, pidfd signaling and start-time identity. Target finish sweeps only the run/target's private records after worker death. Capture uses `grim` on the exact owned output; it is unmasked and opt-in, not an engine screenshot capability. No host socket discovery, X11/Xwayland input, focus restoration, accounts or provider permissions are involved.
+
+Disconnected queued text, key and pointer requests are discarded before dispatch and release pressed state. An empty aborted socket does not destroy the retained injector; a following valid operation must still change the real app. Pending parent launch authority is authenticated before cleanup can erase its runtime or receipt. Guest execution uses the containment provider's exact pinned context, never a host Tern server behind a guest-visible control socket.
+
+Private journals default to the normalized runtime prefix plus `-j`, never inside runtime writes. Explicit equal/nested/symlinked journal prefixes are rejected before writes. Run roots and profiles have atomically published private allocation metadata and closing-fenced publication; cleanup moves them into a same-filesystem private inode claim before deletion. Foreign replacements and mismatching claims are preserved. Parent recovery distinguishes an authenticated process, a host-private closed dispatch fence with no potential-dispatch receipt (`NEVER_LAUNCHED`), and uncertain dispatch (`UNKNOWN`); old unfenced records never establish no launch.
+
+See [reference](/reference/sway) and [Tern](/tern).
