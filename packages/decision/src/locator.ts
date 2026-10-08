@@ -4,7 +4,7 @@ import { CELL_TARGET, gridFor, pointOf, regionHash, withGrid, zoomAround, type G
 import { describe, gated, invalid, need, type Gates } from './picks.ts';
 import { pointRequest, type DecisionRequest } from './questions.ts';
 /** Asks the decision model one request, or nothing once the step budget is spent. */
-export type Ask = (request: DecisionRequest) => Promise<Record<string, Decision> | undefined>;
+export type AskDecision = (request: DecisionRequest) => Promise<Record<string, Decision> | undefined>;
 /** Where a drawn control is, or why the looks could not say. */
 export type Located = Point | { readonly uncertain: string };
 /**
@@ -30,7 +30,7 @@ export class PointLocator {
   private pending: { readonly key: string; readonly point: Point; readonly before: string | undefined } | undefined;
   constructor(
     private readonly ctx: StepExecutorContext,
-    private readonly ask: Ask,
+    private readonly ask: AskDecision,
     private readonly gates: Gates,
   ) {}
   /** A point already known for this control on this page. */
