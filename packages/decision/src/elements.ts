@@ -53,10 +53,19 @@ export interface Destination {
   readonly role: string;
 }
 
-/** One viewport cell a `tap_at` can land in, in CSS pixels of the newest observation. */
+/** One cell of a grid drawn on an image, in that image's CSS pixels. */
 export interface Cell {
   readonly x: readonly [number, number];
   readonly y: readonly [number, number];
+}
+/** The columns and rows a `tap_at` is scored on: at most ten each, one score level per column and row. */
+export interface Grid {
+  readonly columns: number;
+  readonly rows: number;
+  readonly cellWidth: number;
+  readonly cellHeight: number;
+  /** Taps a viewport point; resolves to what the engine reported. */
+  tapAt(point: { readonly x: number; readonly y: number }): Promise<string | undefined>;
 }
 
 export interface ActionSpace {
@@ -66,12 +75,14 @@ export interface ActionSpace {
   readonly controls: ReadonlyMap<Control, Target>;
   /** Where a `drag` can drop, by element key; empty when nothing can receive a drop. */
   readonly destinations: ReadonlyMap<string, Destination>;
-  /** Grid cells for `tap_at`, by cell key; empty without a screenshot or the `tapAt` verb. */
-  readonly cells: ReadonlyMap<string, Cell>;
+  /** The `tap_at` columns and rows; absent without a screenshot, the `tapAt` verb, or a model that scores. */
+  readonly grid?: Grid;
   /** Elements left out to stay under the per-question cap; scrolling can bring them into view. */
   readonly omitted: number;
   /** Non-interactive page text from the tree, without node ids, clipped to 6000 chars. */
   readonly pageText: string;
+  /** Live regions (status, alert, log) as `name: text`, the lines a completion check reads first. */
+  readonly statuses: readonly string[];
   /** Stable hash of path, tree content with node ids removed, and which nodes are in view. */
   readonly fingerprint: string;
 }
@@ -79,12 +90,13 @@ export interface ActionSpace {
 /** TypeSafe's per-question choice limit; the AI SDK itself has none. */
 const MAX_CHOICES = 255;
 /**
- * Side of one `tap_at` cell in CSS pixels: a 1280 by 720 viewport is 8 by 5
- * cells, numbered row by row. Measured on gpt-6-luna over the drawn keypad:
- * 80px cells (144 choices) gave a flat distribution, 160px cells put 0.3 to
- * 0.5 on the right cell.
+ * Columns and rows of the `tap_at` grid: the Decisions API scores at most ten
+ * levels per question. A 1280 by 720 viewport gets 10 columns of 128px and
+ * 9 rows of 80px. Measured on gpt-6-luna over the drawn keypad, the
+ * probability-weighted column and row land within 45px of every key.
  */
-const CELL_SIDE = 160;
+const MAX_LEVELS = 10;
+const CELL_TARGET = 80;
 
 const tappable = new Set([
   'button',
@@ -99,6 +111,8 @@ const tappable = new Set([
 const typable = new Set(['textbox', 'searchbox', 'spinbutton', 'combobox']);
 const secretTypable = new Set(['textbox', 'searchbox', 'combobox']);
 const checkable = new Set(['checkbox', 'radio', 'switch']);
+/** Live regions whose text reports what the app just did. */
+const liveRegions = new Set(['status', 'alert', 'log']);
 /** Roles that can receive a dropped node. */
 const droppable = new Set(['region', 'list', 'listitem', 'group', 'cell', 'gridcell', 'row', 'article', 'section', 'tabpanel']);
 /**
@@ -129,8 +143,10 @@ interface SpaceObservation {
   readonly path?: string;
   readonly viewport: { readonly width: number; readonly height: number };
   readonly tree: ExecutorNode;
-  /** Granted pixels; with the `tapAt` verb they open the `tap_at` grid. */
+  /** Granted pixels; with the `tapAt` verb and a scoring model they open the `tap_at` grid. */
   readonly pixels?: ExecutorPixels;
+  /** Whether the decision model answers score questions, which locate a `tap_at`. */
+  readonly scores?: boolean;
 }
 
 /** Builds the element table and bound targets from the newest observation. */
@@ -145,6 +161,7 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
   }
   const rows: Row[] = [];
   const pageText: string[] = [];
+  const statuses: string[] = [];
   /** Walks the tree, collecting interactive rows and page text. */
   const visit = (node: ExecutorNode, underNativeSelect: boolean): void => {
     if (node.states?.disabled !== true && node.states?.hidden !== true) {
@@ -194,6 +211,10 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
         const line = pageLine(node);
         // A checked radio leaves the table, so its state rides on the page text.
         if (line !== '') pageText.push(checkedRadio ? `${line} (checked)` : line);
+        if (liveRegions.has(role)) {
+          const text = (node.text ?? '').replace(/\s+/g, ' ').trim();
+          if (text !== '') statuses.push(`${(node.name ?? '').trim() || role}: ${text}`);
+        }
       }
     }
     for (const child of node.children ?? []) visit(child, underNativeSelect || node.role === 'combobox');
@@ -274,25 +295,25 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
       }
     }
   }
-  const cells = new Map<string, Cell>();
-  if (observation.pixels !== undefined && verbs.has('tapAt')) {
-    const columns = Math.ceil(observation.viewport.width / CELL_SIDE);
-    const lines = Math.ceil(observation.viewport.height / CELL_SIDE);
-    const points = new Map<string, Target>();
-    for (let line = 0; line < lines; line += 1) {
-      for (let column = 0; column < columns; column += 1) {
-        const key = `p${line * columns + column + 1}`;
-        const x: [number, number] = [column * CELL_SIDE, Math.min(observation.viewport.width, (column + 1) * CELL_SIDE)];
-        const y: [number, number] = [line * CELL_SIDE, Math.min(observation.viewport.height, (line + 1) * CELL_SIDE)];
-        cells.set(key, { x, y });
-        const point = { x: Math.round((x[0] + x[1]) / 2), y: Math.round((y[0] + y[1]) / 2) };
-        points.set(key, {
-          description: `tap at (${point.x}, ${point.y}) in cell ${key}`,
-          run: async () => (await ctx.actions.tapAt(point)).summary,
-        });
-      }
-    }
-    targets.set('tap_at', points);
+  let grid: Grid | undefined;
+  if (observation.pixels !== undefined && observation.scores === true && verbs.has('tapAt')) {
+    const { width, height } = observation.viewport;
+    const columns = Math.min(MAX_LEVELS, Math.max(1, Math.round(width / CELL_TARGET)));
+    const lines = Math.min(MAX_LEVELS, Math.max(1, Math.round(height / CELL_TARGET)));
+    const cellWidth = width / columns;
+    const cellHeight = height / lines;
+    // The engine's prose for a bare point ("no listed control is there")
+    // reads as a miss to a classifier; whether the page changed says more.
+    grid = {
+      columns,
+      rows: lines,
+      cellWidth,
+      cellHeight,
+      tapAt: async (point) => {
+        const result = await ctx.actions.tapAt(point);
+        return result.target === undefined ? undefined : `landed on listed control ${result.target.id}`;
+      },
+    };
   }
   const controls = new Map<Control, Target>();
   if (verbs.has('scroll')) {
@@ -307,10 +328,11 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
     targets,
     controls,
     destinations,
-    cells,
+    ...(grid === undefined ? {} : { grid }),
     omitted,
     pageText: clip(pageText.join('\n'), 6000),
-    fingerprint: fingerprint(observation.path ?? '', observation.tree, observation.viewport),
+    statuses: statuses.slice(0, 20),
+    fingerprint: fingerprint(observation.path ?? '', observation.tree, observation.viewport, observation.pixels),
   };
 }
 
@@ -405,14 +427,16 @@ function clip(text: string, limit: number): string {
 }
 
 /**
- * Stable hash of the path, the tree content with node ids removed, and
- * whether each node meets the viewport. Ids change on every capture, so they
- * stay out. In-view membership lets a scroll that brings other nodes into
- * view count as progress, while one that moves nothing (the page bottom)
- * still reads as unchanged; raw coordinates stay out so small layout shifts
- * do not count.
+ * Stable hash of the path, the tree content with node ids removed, whether
+ * each node meets the viewport, and the pixels when the step sees them. Ids
+ * change on every capture, so they stay out. In-view membership lets a
+ * scroll that brings other nodes into view count as progress, while one
+ * that moves nothing (the page bottom) still reads as unchanged; raw
+ * coordinates stay out so small layout shifts do not count. Pixels are in
+ * because a drawn control changes nothing in the tree: a keypad digit
+ * entered on a canvas is progress only the screenshot shows.
  */
-function fingerprint(path: string, tree: ExecutorNode, viewport: { width: number; height: number }): string {
+function fingerprint(path: string, tree: ExecutorNode, viewport: { width: number; height: number }, pixels?: ExecutorPixels): string {
   let hash = 2166136261;
   const feed = (text: string): void => {
     for (let index = 0; index < text.length; index += 1) {
@@ -420,6 +444,13 @@ function fingerprint(path: string, tree: ExecutorNode, viewport: { width: number
       hash = Math.imul(hash, 16777619);
     }
   };
+  if (pixels !== undefined) {
+    for (const byte of pixels.data) {
+      hash ^= byte;
+      hash = Math.imul(hash, 16777619);
+    }
+    feed('\0');
+  }
   feed(path);
   feed('\0');
   const visit = (node: ExecutorNode): void => {

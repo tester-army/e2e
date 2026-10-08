@@ -9,11 +9,13 @@ export interface ScriptedAnswer {
   readonly confidence?: number;
   /** Omit `probabilities` from the answer entirely. */
   readonly bare?: true;
+  /** For a score question: the probability-weighted level; defaults to the chosen level. */
+  readonly score?: number;
 }
 /** A recorded decide call: the state and the question map the executor sent. */
 export interface EvalRequest {
   readonly state: unknown;
-  readonly questions: Record<string, { type: string; criteria: unknown }>;
+  readonly questions: Record<string, { type: string; instructions?: string; criteria: unknown }>;
   /** Present only when the executor sent provider options. */
   readonly providerOptions?: unknown;
 }
@@ -33,12 +35,24 @@ export function scriptedDecision(resolve: (id: string, keys: string[], call: num
     if (options?.throws !== undefined) throw options.throws;
     const index = requests.length;
     const questions: EvalRequest['questions'] = {};
-    const answers: Record<string, { type: 'choice'; choice: string; probabilities: Record<string, number> }> = {};
+    const answers: Record<string, { type: 'choice'; choice: string; probabilities: Record<string, number> } | { type: 'score'; score: number; probabilities: Record<string, number> }> = {};
     const confidence: Record<string, number> = {};
     for (const [id, question] of Object.entries(call.questions)) {
-      if (question.type !== 'choice') throw new Error('scripted model answers choice questions only');
+      if (question.type === 'score') {
+        const levels = (question.criteria as readonly unknown[]).map((_, level) => String(level));
+        questions[id] = { type: question.type, instructions: String(question.instructions), criteria: question.criteria };
+        const answer = resolve(id, levels, index);
+        const score = answer.score ?? Number(answer.choice);
+        const low = Math.floor(score);
+        const high = Math.min(levels.length - 1, low + 1);
+        const weightHigh = score - low;
+        answers[id] = { type: 'score', score, probabilities: Object.fromEntries(levels.map((level) => [level, level === String(low) ? 1 - weightHigh : level === String(high) ? weightHigh : 0])) };
+        if (answer.confidence !== undefined) confidence[id] = answer.confidence;
+        continue;
+      }
+      if (question.type !== 'choice') throw new Error('scripted model answers choice and score questions only');
       const criteria = question.criteria as Record<string, unknown>;
-      questions[id] = { type: question.type, criteria };
+      questions[id] = { type: question.type, instructions: String(question.instructions), criteria };
       const keys = Object.keys(criteria);
       const answer = resolve(id, keys, index);
       if (answer.bare === true) {
@@ -49,7 +63,7 @@ export function scriptedDecision(resolve: (id: string, keys: string[], call: num
       if (answer.confidence !== undefined) confidence[id] = answer.confidence;
     }
     requests.push({ state: call.state, questions, ...(call.providerOptions === undefined ? {} : { providerOptions: call.providerOptions }) });
-    return { answers, warnings: [], usage: { inputTokens: 10, outputTokens: 0 }, providerMetadata: { scripted: { confidence } }, response: { modelId: 'scripted-1' } };
+    return { answers, warnings: [], usage: { inputTokens: 10, outputTokens: 0 }, rounding: { probabilityDecimals: 6, scoreDecimals: 6 }, providerMetadata: { scripted: { confidence } }, response: { modelId: 'scripted-1' } };
   };
   const base = {
     specificationVersion: 'v4' as const,

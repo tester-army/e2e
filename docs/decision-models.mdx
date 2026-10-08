@@ -5,11 +5,12 @@ icon: "scale-balanced"
 ---
 
 `@e2e-dev/decision` runs `agent.act` and `agent.assert` through a decision
-model instead of an LLM. For each action the decision model answers one
-request: which operation, and which element for each operation that has
+model instead of an LLM. For each action the decision model answers two
+requests: which operation, then which element for it when the operation has
 more than one, chosen from what the executor builds out of the latest
-semantic tree. It never generates free text: when the choice is `type`, a
-small language model writes the field value. Both models are
+semantic tree. Every question states the goal and the recent actions in its
+own text, with the page as evidence. It never generates free text: when the
+choice is `type`, a small language model writes the field value. Both models are
 plain AI SDK models, so any decision model provider that answers `choice`
 questions with probability distributions (TypeSafe Jev, OpenAI `gpt-6-luna`)
 and any language-model provider works; the runner still authorizes every
@@ -131,20 +132,26 @@ blocks the step.
 
 ## Vision
 
-`vision: true` asks the engine for masked pixels on every observation and
-sends the screenshot beside the element table to every question, so the
-model judges drawn content a tree cannot show. It also offers `tap_at`
-over a grid of 160px screenshot cells, drawn on the image with their
-numbers, for a control the tree does not list. `agent.assert(..., {
-vision: true })` and `vision: 'only'` reach the executor the same way.
-The model must take images: `openaiDecisionModel()` does, the AI SDK's
-`openai.decisionModel()` does not yet. Pixels are withheld once a secret
-has been filled in the attempt, as everywhere in the runner.
+`vision: true` asks the engine for masked pixels on every observation.
+Assertions and completion checks see the screenshot beside the page, so
+the model judges drawn content a tree cannot show; the operation and
+target questions read the tree alone, where a screenshot was measured to
+hurt. It also offers `tap_at` for a control the tree does not list: the
+text model names the control to tap next from the goal and the taps so
+far ("the 3 key on the keypad"), and the decision model locates it with two
+pairs of score questions, column and row on the full screenshot, then
+again on a zoomed crop with a grid drawn on it. A tap that changed the
+page is remembered for its control, so the same key again needs no new
+looks. `agent.assert(..., { vision: true })` and `vision: 'only'` reach the
+executor the same way. The model must take images and answer score
+questions: `openaiDecisionModel()` does, the AI SDK's `openai.decisionModel()`
+sends text only. Pixels are withheld once a secret has been filled in the
+attempt, as everywhere in the runner.
 
 Measured on gpt-6-luna over the playground: a vision assert on a drawn
-chart passes, and drawn controls (a keypad, a map pin) are located
-coarsely at best, with 0.3 to 0.5 probability on the right 160px cell.
-Expect `tap_at` to miss small targets.
+chart, a drawn map pin, and a five-digit code on a drawn keypad pass; a
+ten-digit code mislocated one key. Each point tap costs four model calls
+plus the text model's one.
 
 ## How text gets typed
 
@@ -219,6 +226,9 @@ a fallback list, never reaches the other.
   test code (`browser.goto`, `app.open`).
 - No multi-select `listbox`, no `scrollUntil`, no keyboard typing at a
   point (`type_at`).
+- The text model that names a drawn control reads the page text and the
+  goal, not the pixels: an instruction that exists only as drawn text (a
+  wizard that paints "tap the circle") is out of its reach.
 - A question the provider refuses to answer fails the step with
   `MODEL_OUTPUT_INVALID`.
 - The choice cap is 255 options per question (TypeSafe's limit; OpenAI

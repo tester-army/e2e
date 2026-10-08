@@ -81,10 +81,12 @@ describe('act loop', () => {
     const verdict = await decisionExecutor({ model }).runStep(fixture.ctx);
     expect(verdict).toMatchObject({ status: 'passed' });
     expect(fixture.actions.tap).toHaveBeenCalledTimes(1);
-    expect(requests).toHaveLength(3);
-    expect(Object.keys(requests[0]?.questions ?? {})).toEqual(['operation', 'tap_target', 'double_tap_target', 'long_press_target', 'hover_target', 'secondary_tap_target']);
-    expect(Object.keys(requests[0]?.questions['tap_target']?.criteria as object)).toEqual(['1', '2', 'none']);
-    expect(fixture.usage).toHaveLength(3);
+    expect(requests).toHaveLength(4);
+    expect(Object.keys(requests[0]?.questions ?? {})).toEqual(['operation']);
+    expect(Object.keys(requests[1]?.questions ?? {})).toEqual(['target']);
+    expect(Object.keys(requests[1]?.questions['target']?.criteria as object)).toEqual(['1', '2', 'none']);
+    expect(requests[1]?.questions['target']?.instructions).toContain('The next operation is "tap"');
+    expect(fixture.usage).toHaveLength(4);
     expect(fixture.usage[0]).toMatchObject({ provider: 'scripted', modelId: 'scripted-1' });
     expect(fixture.turns.length).toBeGreaterThan(0);
     expect(fixture.transcripts).toHaveLength(1);
@@ -96,7 +98,7 @@ describe('act loop', () => {
     const withOptions = scriptedDecision(script);
     const fixture = context({ tree: BUTTONS });
     expect(await decisionExecutor({ model: withOptions.model, providerOptions }).runStep(fixture.ctx)).toMatchObject({ status: 'passed' });
-    expect(withOptions.requests).toHaveLength(3);
+    expect(withOptions.requests).toHaveLength(4);
     for (const request of withOptions.requests) expect(request.providerOptions).toEqual(providerOptions);
     const without = scriptedDecision(script);
     expect(await decisionExecutor({ model: without.model }).runStep(context({ tree: BUTTONS }).ctx)).toMatchObject({ status: 'passed' });
@@ -112,7 +114,7 @@ describe('act loop', () => {
     const fixture = context({ tree: BUTTONS });
     expect(await decisionExecutor({ model }).runStep(fixture.ctx)).toMatchObject({ status: 'passed' });
     expect(fixture.actions.tap).toHaveBeenCalledTimes(1);
-    expect(requests).toHaveLength(3);
+    expect(requests).toHaveLength(4);
   });
   it('dispatches a lone target with no target question', async () => {
     const { model, requests } = scriptedDecision((id, keys, call) => ({
@@ -145,7 +147,7 @@ describe('secrets', () => {
     const fixture = context({ tree: LOGIN, secrets: [{ name: 'password', purpose: 'password' }, { name: 'token', purpose: 'generic-secret' }] });
     const verdict = await decisionExecutor({ model: scripted.model }).runStep(fixture.ctx);
     expect(verdict).toMatchObject({ status: 'passed' });
-    expect('secret' in (scripted.requests[0]?.questions ?? {})).toBe(true);
+    expect(scripted.requests.some((request) => 'secret' in request.questions)).toBe(true);
     expect(fixture.actions.typeSecret).toHaveBeenCalledTimes(1);
     expect(fixture.actions.typeSecret).toHaveBeenCalledWith({ id: 'pw' }, 'password');
   });
@@ -317,11 +319,8 @@ describe('terminal checks', () => {
     }));
     const fixture = context({ tree });
     await decisionExecutor({ model }).runStep(fixture.ctx);
-    const criteria = requests[0]?.questions['select_target']?.criteria as Record<string, unknown>;
-    expect(Object.values(criteria).slice(0, 2)).toEqual([
-      { element: 'Small', role: 'option' },
-      { element: 'Large', role: 'option' },
-    ]);
+    const criteria = requests[1]?.questions['target']?.criteria as Record<string, unknown>;
+    expect(Object.values(criteria).slice(0, 2)).toEqual(['option "Small"', 'option "Large"']);
     expect(Object.keys(criteria)).toEqual(['1:0', '1:1', 'none']);
   });
 });
@@ -386,7 +385,8 @@ describe('guard rails', () => {
   });
   it('sends failing actions back as history and rethrows hard stops', async () => {
     const { model } = scriptedDecision((id, keys, call) => ({
-      choice: id === 'operation' ? (call === 0 ? 'tap' : call === 1 ? 'tap' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
+      // Calls alternate operation and target: two taps take four calls before done.
+      choice: id === 'operation' ? (call < 4 ? 'tap' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({ tree: BUTTONS });
     fixture.actions.tap.mockRejectedValueOnce(new AgentError('POLICY_DENIED', 'denied'));
@@ -492,7 +492,7 @@ describe('model failures', () => {
     const rejected = new InvalidResponseDataError({ data: { operation: { type: 'refusal' } }, message: 'Question "operation" returned an answer with the wrong type.' });
     const { model } = scriptedDecision(() => ({ choice: 'tap' }), { throws: rejected });
     await expect(decisionExecutor({ model }).runStep(context({ tree: BUTTONS }).ctx)).rejects.toMatchObject({
-      code: 'MODEL_OUTPUT_INVALID', message: 'The decision model refused to answer a question.',
+      code: 'MODEL_OUTPUT_INVALID', message: 'The decision model refused to answer "operation".',
     });
   });
   it('maps provider failures without provider text', async () => {
@@ -700,11 +700,8 @@ describe('context', () => {
     }));
     const fixture = context({ tree });
     await decisionExecutor({ model }).runStep(fixture.ctx);
-    const criteria = requests[0]?.questions['check_target']?.criteria as Record<string, unknown>;
-    expect(Object.values(criteria).slice(0, 2)).toEqual([
-      { element: 'Buy milk', role: 'checkbox', checked: true },
-      { element: 'Walk the dog', role: 'checkbox', checked: false },
-    ]);
+    const criteria = requests[1]?.questions['target']?.criteria as Record<string, unknown>;
+    expect(Object.values(criteria).slice(0, 2)).toEqual(['[1] checkbox "Buy milk" checked', '[2] checkbox "Walk the dog" unchecked']);
     expect(fixture.actions.check).toHaveBeenCalledWith({ id: 'dog' }, true);
   });
   it('rejects an undeclared secret name', async () => {
@@ -739,15 +736,15 @@ describe('new operations', () => {
     const { model, requests } = scriptedDecision((id, keys, call) => {
       if (id === 'operation') return { choice: call === 0 ? 'drag' : 'done' };
       if (id === 'verdict') return { choice: 'holds' };
-      if (id === 'drag_target') return { choice: '2' };
-      if (id === 'drag_destination') return { choice: '3' };
+      if (id === 'target') return { choice: '2' };
+      if (id === 'destination') return { choice: '3' };
       return { choice: keys[0] ?? '' };
     });
     const fixture = context({ tree });
     const verdict = await decisionExecutor({ model }).runStep(fixture.ctx);
     expect(verdict).toMatchObject({ status: 'passed' });
     expect(fixture.actions.drag).toHaveBeenCalledWith({ id: 'card' }, { id: 'done' });
-    expect(Object.keys(requests[0]?.questions['drag_destination']?.criteria as object)).toEqual(['1', '2', '3', 'none']);
+    expect(Object.keys(requests[1]?.questions['destination']?.criteria as object)).toEqual(['1', '2', '3', 'none']);
     expect(fixture.turns[0]?.calls[0]).toBe('drag [2] listitem "Design review" = "onto Done column"');
   });
   it('blocks a drag whose destination is none', async () => {
@@ -755,7 +752,7 @@ describe('new operations', () => {
       { id: 'card', role: 'listitem', name: 'Design review' },
       { id: 'done', role: 'region', name: 'Done column' },
     ] };
-    const { model } = scriptedDecision((id) => ({ choice: id === 'operation' ? 'drag' : id === 'drag_destination' ? 'none' : '1' }));
+    const { model } = scriptedDecision((id) => ({ choice: id === 'operation' ? 'drag' : id === 'destination' ? 'none' : '1' }));
     const fixture = context({ tree });
     const verdict = await decisionExecutor({ model }).runStep(fixture.ctx);
     expect(verdict).toMatchObject({ status: 'blocked', summary: expect.stringContaining('no destination') });
@@ -790,7 +787,7 @@ describe('new operations', () => {
     const { model } = scriptedDecision((id, keys, call) => {
       if (id === 'operation') return { choice: operations[call] ?? 'done' };
       if (id === 'verdict') return { choice: 'holds' };
-      return { choice: id === 'scroll_to_target' ? '2' : '1' };
+      return { choice: id === 'target' ? '2' : '1' };
     });
     const fixture = context({ tree });
     // Every action changes nothing on this scripted screen; the stall guard must not fire before the fifth.
@@ -804,27 +801,41 @@ describe('new operations', () => {
     expect(fixture.actions.longPress).toHaveBeenCalledWith({ id: 'b' });
     expect(fixture.actions.scrollTo).toHaveBeenCalledWith({ id: 'p' });
   });
-  it('with vision, asks for pixels, sends the screenshot, and taps a grid cell', async () => {
+  it('with vision, asks for pixels, sends the screenshot, and taps the point two score questions locate', async () => {
     const { model, requests } = scriptedDecision((id, keys, call) => {
       if (id === 'operation') return { choice: call === 0 ? 'tap_at' : 'done' };
       if (id === 'verdict') return { choice: 'holds' };
-      if (id === 'tap_at_target') return { choice: 'p7' };
+      if (id === 'x') return { choice: '2', score: 2.5 };
+      if (id === 'y') return { choice: '3', score: 3 };
       return { choice: keys[0] ?? '' };
-    });
+    }, { supported: ['choice', 'score'] });
     const fixture = context({ tree: BUTTONS, observation: { pixels: PIXELS } });
     const executor = decisionExecutor({ model, vision: true });
     expect(executor.vision).toBe(true);
     const verdict = await executor.runStep(fixture.ctx);
     expect(verdict).toMatchObject({ status: 'passed' });
     expect(fixture.observe).toHaveBeenCalledWith({ tree: true, pixels: true });
-    expect(fixture.actions.tapAt).toHaveBeenCalledWith({ x: 240, y: 240 });
-    const options = requests[0]?.providerOptions as { decision: { screenshot: { mediaType: string; data: string } } };
+    // (2.5 + 0.5) * 80 wide cells, (3 + 0.5) * 75 tall cells.
+    expect(fixture.actions.tapAt).toHaveBeenCalledWith({ x: 240, y: 263 });
+    expect(Object.keys(requests[0]?.questions['operation']?.criteria as object)).toContain('tap_at');
+    expect(Object.keys(requests[0]?.questions ?? {})).not.toContain('tap_at_target');
+    // The operation question reads the tree alone; the point looks get the pixels.
+    expect(requests[0]?.providerOptions ?? {}).not.toHaveProperty('decision');
+    expect(requests[1]?.questions['x']).toMatchObject({ type: 'score' });
+    const rows = requests[1]?.questions['y']?.criteria as unknown[] | undefined;
+    expect(rows?.length).toBe(8);
+    const options = requests[1]?.providerOptions as { decision: { screenshot: { mediaType: string; data: string } } };
     expect(options.decision.screenshot.mediaType).toBe('image/png');
     // Undecodable pixels go through untouched, as base64.
     expect(options.decision.screenshot.data).toBe(Buffer.from([1, 2, 3]).toString('base64'));
-    const cells = requests[0]?.questions['tap_at_target']?.criteria as Record<string, unknown> | undefined;
-    expect(cells?.['p7']).toEqual({ cell: 7, x: [160, 320], y: [160, 320] });
     expect(fixture.transcripts[0]).toContain('"screenshot":"800x600"');
+    expect(fixture.turns[0]?.calls[0]).toBe('tap at (240, 263)');
+  });
+  it('never offers tap_at to a model that does not score', async () => {
+    const { model, requests } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'blocked' : (keys[0] ?? '') }));
+    const fixture = context({ tree: BUTTONS, observation: { pixels: PIXELS } });
+    await decisionExecutor({ model, vision: true }).runStep(fixture.ctx);
+    expect(Object.keys(requests[0]?.questions['operation']?.criteria as object)).not.toContain('tap_at');
   });
   it('without vision never asks for pixels nor offers tap_at', async () => {
     const { model, requests } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'blocked' : (keys[0] ?? '') }));
@@ -832,7 +843,7 @@ describe('new operations', () => {
     expect(decisionExecutor({ model }).vision).toBeUndefined();
     await decisionExecutor({ model }).runStep(fixture.ctx);
     expect(fixture.observe).toHaveBeenCalledWith({ tree: true, pixels: false });
-    expect(Object.keys(requests[0]?.questions ?? {})).not.toContain('tap_at_target');
+    expect(Object.keys(requests[0]?.questions['operation']?.criteria as object)).not.toContain('tap_at');
   });
   it('judges an assert with vision only on the pixels alone', async () => {
     const { model, requests } = scriptedDecision(() => ({ choice: 'holds' }));
@@ -862,24 +873,41 @@ describe('vision details', () => {
     png.data.fill(255);
     return { data: new Uint8Array(PNG.sync.write(png)), mediaType: 'image/png' as const, width: 800, height: 600, scale: 1, maskedRegionCount: 0 };
   }
-  it('draws the numbered grid on the screenshot every decision question sees', async () => {
-    const { model, requests } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'blocked' : (keys[0] ?? '') }));
+  it('sends the plain screenshot to the first look and draws the grid only on the zoomed look', async () => {
+    const { model, requests } = scriptedDecision((id, keys, call) => {
+      if (id === 'operation') return { choice: call === 0 ? 'tap_at' : 'blocked' };
+      if (id === 'x' || id === 'y') return { choice: '4' };
+      return { choice: keys[0] ?? '' };
+    }, { supported: ['choice', 'score'] });
     const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() } });
     await decisionExecutor({ model, vision: true }).runStep(fixture.ctx);
-    const options = requests[0]?.providerOptions as { decision: { screenshot: { data: string } } } | undefined;
-    const sent = options?.decision.screenshot.data ?? '';
-    const png = PNG.sync.read(Buffer.from(sent, 'base64'));
-    const at = (x: number, y: number) => [...png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3)];
-    expect(at(159, 300)).toEqual([255, 0, 255]);
-    expect(at(2, 2)).toEqual([0, 0, 0]);
-    expect(at(100, 100)).toEqual([255, 255, 255]);
+    const sent = (index: number) => {
+      const options = requests[index]?.providerOptions as { decision: { screenshot: { data: string } } } | undefined;
+      const png = PNG.sync.read(Buffer.from(options?.decision.screenshot.data ?? '', 'base64'));
+      return { png, at: (x: number, y: number) => [...png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3)] };
+    };
+    const full = sent(1);
+    expect([full.png.width, full.png.height]).toEqual([800, 600]);
+    expect(full.at(159, 300)).toEqual([255, 255, 255]);
+    expect(full.at(2, 2)).toEqual([255, 255, 255]);
+    expect(requests[1]?.questions['x']?.instructions).toContain('no grid is drawn on it');
+    const zoomed = sent(2);
+    expect([zoomed.png.width, zoomed.png.height]).toEqual([800, 800]);
+    expect(zoomed.at(100, 300)).toEqual([255, 0, 255]);
+    expect(zoomed.at(2, 2)).toEqual([0, 0, 0]);
+    expect(zoomed.at(250, 250)).toEqual([255, 255, 255]);
+    // Column 4 of 10 over 800px and row 4 of 8 over 600px is (360, 338); the 400px zoom around it starts at (160, 138)
+    // and settles on its cell 4 center (385, 363).
+    expect(requests[1]?.questions['x']?.instructions).toContain('The image is 800 pixels wide and 600 pixels tall');
+    expect(requests[2]?.questions['x']?.instructions).toContain('2x zoom of a 400 by 400 pixel region');
+    expect(fixture.actions.tapAt).toHaveBeenCalledWith({ x: 160 + 225, y: 138 + 225 });
   });
   it('never asks for pixels once a secret was filled, and offers no tap_at', async () => {
     const { model, requests } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'blocked' : (keys[0] ?? '') }));
     const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() }, pixelsTainted: true });
     await decisionExecutor({ model, vision: true }).runStep(fixture.ctx);
     expect(fixture.observe).toHaveBeenCalledWith({ tree: true, pixels: false });
-    expect(Object.keys(requests[0]?.questions ?? {})).not.toContain('tap_at_target');
+    expect(Object.keys(requests[0]?.questions['operation']?.criteria as object)).not.toContain('tap_at');
   });
   it('judges a vision-only assert from the pixels when the tree is unavailable', async () => {
     const { model, requests } = scriptedDecision(() => ({ choice: 'holds' }));
@@ -890,17 +918,38 @@ describe('vision details', () => {
     const noPixels = context({ kind: 'assert', observation: { treeUnavailable: true }, vision: 'only' });
     expect(await decisionExecutor({ model, vision: true }).runStep(noPixels.ctx)).toMatchObject({ status: 'failed', errorCode: 'ASSERTION_INCONCLUSIVE' });
   });
-  it('tells the model where a cell tap landed', async () => {
+  it('tells the model where a point tap landed', async () => {
     const { model, requests } = scriptedDecision((id, keys, call) => {
       if (id === 'operation') return { choice: call === 0 ? 'tap_at' : 'blocked' };
-      if (id === 'tap_at_target') return { choice: 'p1' };
+      if (id === 'x' || id === 'y') return { choice: '0' };
       return { choice: keys[0] ?? '' };
-    });
+    }, { supported: ['choice', 'score'] });
     const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() } });
-    fixture.actions.tapAt.mockResolvedValue({ point: { x: 80, y: 80 }, summary: 'tapped a bare point under heading "Map"' });
+    fixture.actions.tapAt.mockResolvedValue({ point: { x: 80, y: 80 }, target: { id: 'n9' }, summary: 'tapped button "Add"' });
     await decisionExecutor({ model, vision: true }).runStep(fixture.ctx);
-    const state = requests[1]?.state as { recentActions: { note?: string }[] } | undefined;
-    expect(state?.recentActions.at(-1)?.note).toBe('tapped a bare point under heading "Map"');
+    // Operation, coarse point, zoomed point, then the next operation.
+    expect(requests.slice(0, 4).map((request) => Object.keys(request.questions))).toEqual([['operation'], ['x', 'y'], ['x', 'y'], ['operation']]);
+    expect(requests[2]?.questions['x']?.instructions).toContain('2x zoom of a 400 by 400 pixel region');
+    const state = requests[3]?.state as { recentActions: { note?: string }[] } | undefined;
+    expect(state?.recentActions.at(-1)?.note).toBe('landed on listed control n9');
+    expect(requests[3]?.questions['operation']?.instructions).toContain('(landed on listed control n9)');
+  });
+  it('lets the text model name the drawn control the point looks locate', async () => {
+    const { model, requests } = scriptedDecision((id, keys, call) => {
+      if (id === 'operation') return { choice: call === 0 ? 'tap_at' : 'blocked' };
+      if (id === 'x' || id === 'y') return { choice: '0' };
+      return { choice: keys[0] ?? '' };
+    }, { supported: ['choice', 'score'] });
+    const text = scriptedOutputs([{ target: 'the 3 key on the keypad' }]);
+    const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() }, model: text.model });
+    await decisionExecutor({ model, textModel: text.model, vision: true }).runStep(fixture.ctx);
+    expect(text.prompts).toHaveLength(1);
+    expect(JSON.stringify(text.prompts[0])).toContain('Do the thing');
+    expect(requests[1]?.questions['x']?.instructions).toContain('The control to tap now: the 3 key on the keypad');
+    expect(requests[1]?.state).toMatchObject({ target: 'the 3 key on the keypad' });
+    expect(fixture.turns[0]?.calls[0]).toMatch(/^tap the 3 key on the keypad at \(\d+, \d+\)$/);
+    // Operation, sub-target, two looks, next operation: five model calls recorded.
+    expect(fixture.usage).toHaveLength(5);
   });
   it('blocks a drag onto itself', async () => {
     const tree: ExecutorNode = { id: 'root', children: [

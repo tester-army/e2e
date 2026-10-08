@@ -128,18 +128,20 @@ describe('element table', () => {
     const noText = actionSpace(fixture.ctx, { path: '/form', viewport: { width: 800, height: 600 }, tree: tree([{ id: 'f', role: 'button', name: 'Attachments', attributes: { type: 'file' } }]) }, false);
     expect(noText.targets.get('upload')).toBeUndefined();
   });
-  it('offers a tap_at grid of 160px cells only with pixels and the tapAt verb', () => {
+  it('offers a tap_at grid of at most ten columns and rows only with pixels, scores, and the tapAt verb', () => {
     const fixture = context();
     const pixels = { data: new Uint8Array(0), mediaType: 'image/png' as const, width: 800, height: 600, scale: 1, maskedRegionCount: 0 };
-    const space = actionSpace(fixture.ctx, { path: '/', viewport: { width: 800, height: 600 }, tree: tree([{ id: 'a', role: 'button', name: 'Add' }]), pixels }, true);
-    expect(space.cells.size).toBe(20);
-    expect(space.cells.get('p1')).toEqual({ x: [0, 160], y: [0, 160] });
-    expect(space.cells.get('p20')).toEqual({ x: [640, 800], y: [480, 600] });
-    expect(space.targets.get('tap_at')?.size).toBe(20);
+    const space = actionSpace(fixture.ctx, { path: '/', viewport: { width: 800, height: 600 }, tree: tree([{ id: 'a', role: 'button', name: 'Add' }]), pixels, scores: true }, true);
+    expect(space.grid).toMatchObject({ columns: 10, rows: 8, cellWidth: 80, cellHeight: 75 });
+    expect(space.targets.get('tap_at')).toBeUndefined();
+    const wide = actionSpace(fixture.ctx, { path: '/', viewport: { width: 1280, height: 720 }, tree: tree([]), pixels, scores: true }, true);
+    expect(wide.grid).toMatchObject({ columns: 10, rows: 9, cellWidth: 128, cellHeight: 80 });
     const noPixels = spaceFor([{ id: 'a', role: 'button', name: 'Add' }]);
-    expect(noPixels.cells.size).toBe(0);
-    const noVerb = actionSpace(context({ verbs: ['tap'] }).ctx, { path: '/', viewport: { width: 800, height: 600 }, tree: tree([]), pixels }, true);
-    expect(noVerb.cells.size).toBe(0);
+    expect(noPixels.grid).toBeUndefined();
+    const noScores = actionSpace(fixture.ctx, { path: '/', viewport: { width: 800, height: 600 }, tree: tree([]), pixels }, true);
+    expect(noScores.grid).toBeUndefined();
+    const noVerb = actionSpace(context({ verbs: ['tap'] }).ctx, { path: '/', viewport: { width: 800, height: 600 }, tree: tree([]), pixels, scores: true }, true);
+    expect(noVerb.grid).toBeUndefined();
   });
   it('uses the placeholder as the label when there is no name', () => {
     const space = spaceFor([{ id: 'q', role: 'searchbox', attributes: { placeholder: 'Search todos' } }]);

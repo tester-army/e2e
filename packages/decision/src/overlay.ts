@@ -1,6 +1,63 @@
 import { PNG } from 'pngjs';
 import type { Cell } from './elements.ts';
 import type { Screenshot } from './questions.ts';
+/** The cells of a `columns` by `rows` grid over a `width` by `height` image, numbered row by row from 1. */
+export function gridCells(width: number, height: number, columns: number, rows: number): Map<string, Cell> {
+  const cells = new Map<string, Cell>();
+  const cellWidth = width / columns;
+  const cellHeight = height / rows;
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      cells.set(`p${row * columns + column + 1}`, {
+        x: [Math.round(column * cellWidth), Math.round((column + 1) * cellWidth)],
+        y: [Math.round(row * cellHeight), Math.round((row + 1) * cellHeight)],
+      });
+    }
+  }
+  return cells;
+}
+/** A zoomed crop: the image, and where its top-left corner sits in the screenshot's CSS pixels. */
+export interface Zoom {
+  readonly screenshot: Screenshot;
+  readonly origin: { readonly x: number; readonly y: number };
+  readonly factor: number;
+}
+/**
+ * The `box` by `box` CSS-pixel region around `center`, kept inside the
+ * screenshot and enlarged `factor` times (nearest neighbor), for a finer
+ * second look at a drawn control. Undefined when the pixels cannot be decoded.
+ */
+export function zoomAround(screenshot: Screenshot, center: { x: number; y: number }, box: number, factor: number): Zoom | undefined {
+  let png: PNG;
+  try {
+    png = PNG.sync.read(Buffer.from(screenshot.data));
+  } catch {
+    return undefined;
+  }
+  const scale = screenshot.scale;
+  const cssWidth = png.width / scale;
+  const cssHeight = png.height / scale;
+  const side = Math.min(box, cssWidth, cssHeight);
+  const origin = {
+    x: Math.round(Math.max(0, Math.min(cssWidth - side, center.x - side / 2))),
+    y: Math.round(Math.max(0, Math.min(cssHeight - side, center.y - side / 2))),
+  };
+  const size = Math.round(side * factor);
+  const out = new PNG({ width: size, height: size });
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const sx = Math.min(png.width - 1, Math.floor((origin.x + x / factor) * scale));
+      const sy = Math.min(png.height - 1, Math.floor((origin.y + y / factor) * scale));
+      const from = (sy * png.width + sx) * 4;
+      const to = (y * size + x) * 4;
+      out.data[to] = png.data[from] ?? 0;
+      out.data[to + 1] = png.data[from + 1] ?? 0;
+      out.data[to + 2] = png.data[from + 2] ?? 0;
+      out.data[to + 3] = 255;
+    }
+  }
+  return { screenshot: { mediaType: 'image/png', data: new Uint8Array(PNG.sync.write(out)), width: size, height: size, scale: 1 }, origin, factor };
+}
 /**
  * The screenshot with the `tap_at` grid drawn on it: cell borders and each
  * cell's number in its top-left corner, so a choice model can name the cell

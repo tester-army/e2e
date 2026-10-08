@@ -32,12 +32,14 @@ single target dispatch without a question. The text model is also the agent's
 judgment tier (`waitFor`, `extract`); without a text model or a configured agent
 `model`, `type` is never offered.
 
-Each turn offers every operation the engine declares: tap, type, submit,
-select, check, upload, hover, right-click, double-tap, long-press, drag,
-scroll-to, scroll, and back; target questions carry a `none` option. With
-`vision: true` and `openaiDecisionModel()`, every question also sees a
-masked screenshot, and `tap_at` over a numbered grid reaches drawn
-controls. The runner authorizes every dispatched action and records every
+Each turn asks the operation, then the target for it; every question
+states the goal and recent actions. Every operation the engine declares is
+offered: tap, type, submit, select, check, upload, hover, right-click,
+double-tap, long-press, drag, scroll-to, scroll, and back; target questions
+carry a `none` option. With `vision: true` and `openaiDecisionModel()`,
+verdicts see a masked screenshot, and `tap_at` reaches a drawn control the
+text model names, located by score questions on the screenshot and a zoomed
+crop. The runner authorizes every dispatched action and records every
 model call against the step budget. `providerOptions` go with every decide
 call and reach the decision model only; the text model keeps the agents
 entry's `providerOptions`. Secrets stay declared handles filled only through

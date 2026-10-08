@@ -3,21 +3,23 @@ import type { ExecutorObservation, StepExecutor, StepExecutorContext, StepTurn, 
 import { AgentError, isAgentError } from 'e2e/agent';
 import { ConfigurationError } from 'e2e/engine';
 import { decide, requireDecide, type Decision } from './decide.ts';
-import { actionSpace, type ActionSpace, type Control, type Operation, type Target } from './elements.ts';
+import { actionSpace, type ActionSpace, type Control, type Grid, type Operation, type Target } from './elements.ts';
 import {
   NONE,
   assertionRequest,
   completionRequest,
-  decisionRequest,
   elementRecords,
+  operationRequest,
   nonSecretParams,
+  pointRequest,
   targetKeyIndex,
+  targetRequest,
   type DecisionRequest,
   type HistoryEntry,
   type Screenshot,
 } from './questions.ts';
-import { withGrid } from './overlay.ts';
-import { fieldText, uploadPaths, type FieldInput } from './text.ts';
+import { gridCells, withGrid, zoomAround } from './overlay.ts';
+import { fieldText, pointTarget, uploadPaths, type FieldInput } from './text.ts';
 import type { DecisionExecutorOptions } from './types.ts';
 /** Error codes the runtime owns: rethrown untouched, never absorbed as history. */
 const RUNTIME_CODES = new Set(['STEP_BUDGET_EXHAUSTED', 'STEP_TIMEOUT', 'CANCELLED']);
@@ -118,6 +120,8 @@ async function run(
   const language = ctx.model as Exclude<LanguageModel, string> | undefined;
   const canType = language !== undefined && ctx.target.verbs.has('type');
   const vision = options.vision === true;
+  /** Whether the model scores ordered levels, which is how a `tap_at` is located. */
+  const scores = supportsScores(model);
   /** Whether this step may show pixels: vision is on and no secret has been filled in the attempt. */
   const pixelsAllowed = (): boolean => vision && !ctx.pixelsTainted;
   let previousFingerprint: string | undefined;
@@ -159,7 +163,7 @@ async function run(
     const pixels = pixelsAllowed() ? observation.pixels : undefined;
     return actionSpace(
       ctx,
-      { path: observation.path ?? '', viewport: observation.viewport, tree, ...(pixels === undefined ? {} : { pixels }) },
+      { path: observation.path ?? '', viewport: observation.viewport, tree, ...(pixels === undefined ? {} : { pixels, scores }) },
       typing,
     );
   };
@@ -185,6 +189,19 @@ async function run(
     calls += 1;
     return fieldText(ctx, language, textInput(field, page));
   };
+  /** The drawn control to tap next, from the text model; the goal itself without one. */
+  const askPointTarget = async (page: string): Promise<string | undefined> => {
+    if (language === undefined) return undefined;
+    if (calls >= ctx.budgets.maxModelCalls) return undefined;
+    calls += 1;
+    const { field: _field, ...input } = textInput({ label: '', role: '' }, page);
+    // The whole step so far, not the last few turns: a ten-digit code is ten taps the model must count.
+    return pointTarget(ctx, language, { ...input, recentActions: history.slice(-POINT_HISTORY) });
+  };
+  /** Points that landed, by the control the text model named: the same key again needs no new looks. */
+  const landed = new Map<string, { x: number; y: number }>();
+  /** The last point tap, settled against the next observation: a page change means it landed. */
+  let lastPoint: { wanted: string; point: { x: number; y: number } } | undefined;
   const askPaths = async (field: FieldInput['field'], page: string): Promise<readonly string[] | undefined> => {
     if (calls >= ctx.budgets.maxModelCalls) return undefined;
     if (language === undefined) throw invalid('The decision model chose upload with no text model configured.');
@@ -211,6 +228,7 @@ async function run(
       pixelsOnly || space === undefined ? '' : space.pageText,
       pixelsOnly || space === undefined ? [] : elementRecords(space),
       screenshot,
+      pixelsOnly || space === undefined ? [] : space.statuses,
     );
     const answers = await ask(request);
     if (answers === undefined) return finish(blocked(budgetMessage()));
@@ -236,13 +254,20 @@ async function run(
     }
     const previous = history.at(-1);
     if (previous !== undefined) history[history.length - 1] = { ...previous, pageChanged: changed };
+    if (lastPoint !== undefined) {
+      if (changed) landed.set(lastPoint.wanted, lastPoint.point);
+      else landed.delete(lastPoint.wanted);
+      lastPoint = undefined;
+    }
     previousFingerprint = space.fingerprint;
     if (stalled(history)) return finish(blocked('Three actions in a row changed nothing on screen.'));
     const screenshot = screenshotOf(observation);
-    const request = decisionRequest(ctx, space, history, observation.path ?? '', screenshot === undefined || space.cells.size === 0 ? screenshot : withGrid(screenshot, space.cells));
-    const answers = await ask(request);
-    if (answers === undefined) return finish(blocked(budgetMessage()));
-    const op = need(answers.operation, 'operation');
+    // The operation and target questions read the tree: measured on gpt-6-luna, a
+    // screenshot beside the element table flips a hover target from the card
+    // menu to the card. The pixels serve the point looks and the verdicts.
+    const decided = await ask(operationRequest(ctx, space, history, observation.path ?? ''));
+    if (decided === undefined) return finish(blocked(budgetMessage()));
+    const op = need(decided.operation, 'operation');
     if (!gated(op)) return finish(blocked(`The next operation is uncertain (${describe(op)}).`));
     if (op.choice === 'blocked') return finish(blocked('The decision model cannot make progress.'));
     if (op.choice === 'done' || op.choice === 'failed') {
@@ -250,6 +275,24 @@ async function run(
       if (terminal !== undefined) return finish(terminal);
       continue;
     }
+    if (op.choice === 'tap_at') {
+      const grid = space.grid;
+      if (grid === undefined || screenshot === undefined) throw invalid('The decision model chose tap_at with no grid offered.');
+      const wanted = await askPointTarget(space.pageText);
+      const known = wanted === undefined ? undefined : landed.get(wanted);
+      const point = known ?? (await locate(grid, screenshot, observation.path ?? '', wanted));
+      if (point === undefined) return finish(blocked(budgetMessage()));
+      if ('uncertain' in point) return finish(blocked(`The tap point is uncertain (${point.uncertain}).`));
+      const label = wanted === undefined ? `tap at (${point.x}, ${point.y})` : `tap ${wanted} at (${point.x}, ${point.y})`;
+      const target: Target = { description: label, run: () => grid.tapAt(point) };
+      await runTarget({ target, operation: 'tap_at', elementKey: '' }, op, undefined, space);
+      if (wanted !== undefined) lastPoint = { wanted, point };
+      continue;
+    }
+    // The target depends on the operation: its own request, after the operation settled.
+    const targeted = targetRequest(ctx, space, op.choice as Operation, history, observation.path ?? '');
+    const answers = Object.keys(targeted.questions).length === 0 ? {} : await ask(targeted);
+    if (answers === undefined) return finish(blocked(budgetMessage()));
     const resolved = resolveTarget(op.choice, answers, space);
     if ('none' in resolved) {
       return finish(blocked(`The decision model chose ${op.choice} but no target for it (${describe(resolved.none)}).`));
@@ -279,7 +322,7 @@ async function run(
       continue;
     }
     if (op.choice === 'drag') {
-      const destination = resolveDestination(answers.drag_destination, space);
+      const destination = resolveDestination(answers.destination, space);
       if ('none' in destination) {
         return finish(blocked(`The decision model chose drag but no destination for it (${describe(destination.none)}).`));
       }
@@ -303,6 +346,48 @@ async function run(
   }
   }
   /**
+   * Locates a drawn control in two looks: the column and row on the plain
+   * full screenshot, then again on a zoomed crop around that point with a
+   * grid drawn on it. Measured on gpt-6-luna over the drawn keypad: a grid
+   * on the full screenshot pulls the first look a column left, and the
+   * second look lands within 45px of every key where the first alone
+   * misses by a key.
+   */
+  async function locate(
+    grid: Grid,
+    screenshot: Screenshot,
+    path: string,
+    wanted: string | undefined,
+  ): Promise<{ x: number; y: number } | { uncertain: string } | undefined> {
+    const coarse = await ask(pointRequest(ctx, path, screenshot, { ...grid, framing: 'This image is the full screenshot; no grid is drawn on it.' }, wanted));
+    if (coarse === undefined) return undefined;
+    const first = scored(coarse);
+    if ('uncertain' in first) return first;
+    let point = pointOf(grid.columns * grid.cellWidth, grid.rows * grid.cellHeight, grid.cellWidth, grid.cellHeight, first.x, first.y);
+    for (const box of ZOOM_BOXES) {
+      const zoom = zoomAround(screenshot, point, box, ZOOM_FACTOR);
+      if (zoom === undefined) return point;
+      const side = zoom.screenshot.width;
+      const cell = side / ZOOM_CELLS;
+      const image = withGrid(zoom.screenshot, gridCells(side, side, ZOOM_CELLS, ZOOM_CELLS));
+      const framing = `This image is a ${ZOOM_FACTOR}x zoom of a ${Math.round(side / ZOOM_FACTOR)} by ${Math.round(side / ZOOM_FACTOR)} pixel region of the screen.`;
+      const fine = await ask(pointRequest(ctx, path, image, { columns: ZOOM_CELLS, rows: ZOOM_CELLS, cellWidth: cell, cellHeight: cell, framing }, wanted));
+      if (fine === undefined) return undefined;
+      const next = scored(fine);
+      if ('uncertain' in next) return next;
+      const inZoom = pointOf(side, side, cell, cell, next.x, next.y);
+      point = { x: Math.round(zoom.origin.x + inZoom.x / zoom.factor), y: Math.round(zoom.origin.y + inZoom.y / zoom.factor) };
+    }
+    return point;
+  }
+  /** The column and row scores of a point request, gated like any answer. */
+  function scored(answers: Record<string, Decision>): { x: number; y: number } | { uncertain: string } {
+    const x = need(answers.x, 'x');
+    const y = need(answers.y, 'y');
+    if (!gated(x) || !gated(y)) return { uncertain: `x ${describe(x)}; y ${describe(y)}` };
+    return { x: x.score ?? Number(x.choice), y: y.score ?? Number(y.choice) };
+  }
+  /**
    * Resolves the chosen operation to a bound target, or to the model's
    * `none` for it. Throws MODEL_OUTPUT_INVALID for anything not offered.
    */
@@ -316,7 +401,7 @@ async function run(
       if (only.done === true) throw invalid('The decision model chose an unavailable target.');
       return { taken: { target: only.value[1], operation: choice, elementKey: only.value[0] } };
     }
-    const answer = answers[`${choice}_target`];
+    const answer = answers.target;
     if (answer === undefined) throw invalid('The decision model returned no target answer.');
     if (answer.choice === NONE) return { none: answer };
     const target = group.get(answer.choice);
@@ -408,6 +493,7 @@ async function run(
       pageText: space.pageText,
       elements: elementRecords(space),
       history,
+      statuses: space.statuses,
       ...(screenshot === undefined ? {} : { screenshot }),
     });
     const answers = await ask(request);
@@ -437,6 +523,27 @@ async function run(
     }
     return blocked(`The screen does not confirm the ${claim} claim (check: ${check}).`);
   }
+}
+/** Actions the text model sees when naming the next drawn control. */
+const POINT_HISTORY = 60;
+/**
+ * CSS pixels of the regions the closer looks zoom into, and how much each
+ * is enlarged: wide enough to hold a first look one column off. A tighter
+ * third look was measured to drift on the runner's 768px capture.
+ */
+const ZOOM_BOXES = [400] as const;
+const ZOOM_FACTOR = 2;
+/** Columns and rows of the grid drawn on the zoomed region. */
+const ZOOM_CELLS = 8;
+/** The point a column and row score name on an image: the center of the scored position, inside the image. */
+function pointOf(width: number, height: number, cellWidth: number, cellHeight: number, column: number, row: number): { x: number; y: number } {
+  const clamp = (value: number, max: number): number => Math.min(max - 1, Math.max(0, Math.round(value)));
+  return { x: clamp((column + 0.5) * cellWidth, width), y: clamp((row + 0.5) * cellHeight, height) };
+}
+/** Whether a decision model declares `score` among its question types. */
+function supportsScores(model: DecisionExecutorOptions['model']): boolean {
+  const supported = (model as { supportedQuestionTypes?: unknown }).supportedQuestionTypes;
+  return Array.isArray(supported) && supported.includes('score');
 }
 /** A model answer the request never offered: our validation, never the provider's text. */
 function invalid(message: string): AgentError {

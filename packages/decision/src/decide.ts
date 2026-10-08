@@ -12,6 +12,8 @@ import {
 import { missingKey } from './api-key.ts';
 import type { DecisionRequest } from './questions.ts';
 import type { DecisionExecutorOptions } from './types.ts';
+/** Transport retries per decide call. */
+const MAX_RETRIES = 3;
 /**
  * The SDK's decide call, or INVALID_CONFIG when the installed `ai` predates
  * it. Read off the namespace so an older `ai` still loads this module and
@@ -24,16 +26,22 @@ export function requireDecide(): typeof ai.experimental_decide {
   }
   return found;
 }
-/** One gated answer: the chosen option, its probability, and the provider confidence. */
+/**
+ * One gated answer: the chosen option, its probability, and the provider
+ * confidence. A score answer reads its most probable level as the choice
+ * and carries the probability-weighted level as `score`.
+ */
 export interface Decision {
   readonly choice: string;
   readonly probability: number;
   readonly confidence: number;
+  readonly score?: number;
 }
 /** One answer as the SDK returns it, before validation. */
 interface RawAnswer {
   readonly type: string;
   readonly choice?: string;
+  readonly score?: number;
   readonly probabilities?: Record<string, number>;
 }
 /**
@@ -65,7 +73,8 @@ export async function decide(
     const screenshot = request.screenshot;
     const result = await requireDecide()({
       ...(call as unknown as Parameters<typeof ai.experimental_decide>[0]),
-      maxRetries: 0,
+      // Transport retries for a rate limit or a 5xx, as the runner's own adapter has; a bad answer never retries.
+      maxRetries: MAX_RETRIES,
       abortSignal: ctx.signal,
       ...(screenshot === undefined
         ? {}
@@ -101,9 +110,19 @@ export async function decide(
   return decisions;
 }
 /** The chosen option and its probability; anything without a valid distribution is MODEL_OUTPUT_INVALID. */
-function selected(answer: RawAnswer | undefined): { choice: string; probability: number } {
-  if (answer === undefined || answer.type !== 'choice' || answer.probabilities === undefined) {
+function selected(answer: RawAnswer | undefined): { choice: string; probability: number; score?: number } {
+  if (answer === undefined || answer.probabilities === undefined || (answer.type !== 'choice' && answer.type !== 'score')) {
     throw new AgentError('MODEL_OUTPUT_INVALID', 'The decision model returned an answer without a choice distribution.');
+  }
+  if (answer.type === 'score') {
+    if (typeof answer.score !== 'number' || !Number.isFinite(answer.score)) {
+      throw new AgentError('MODEL_OUTPUT_INVALID', 'The decision model returned a score answer without a score.');
+    }
+    let top: { choice: string; probability: number } = { choice: '', probability: -1 };
+    for (const [level, probability] of Object.entries(answer.probabilities)) {
+      if (probability > top.probability) top = { choice: level, probability };
+    }
+    return { ...top, score: answer.score };
   }
   const probability = answer.choice === undefined ? 0 : (answer.probabilities[answer.choice] ?? 0);
   if (!Number.isFinite(probability) || probability < 0 || probability > 1) {
@@ -128,26 +147,31 @@ function decideError(error: unknown, signal: AbortSignal): unknown {
   if (isAgentError(error)) return error;
   if (LoadAPIKeyError.isInstance(error)) return missingKey('decision', error);
   if (InvalidArgumentError.isInstance(error)) return error;
-  if (refused(error)) return new AgentError('MODEL_OUTPUT_INVALID', 'The decision model refused to answer a question.');
+  const refusedIds = refused(error);
+  if (refusedIds !== undefined) {
+    const which = refusedIds.length === 0 ? 'a question' : refusedIds.map((id) => JSON.stringify(id)).join(', ');
+    return new AgentError('MODEL_OUTPUT_INVALID', `The decision model refused to answer ${which}.`);
+  }
   if (InvalidResponseDataError.isInstance(error) || TypeValidationError.isInstance(error) || JSONParseError.isInstance(error)) {
     return new AgentError('MODEL_OUTPUT_INVALID', 'The decision model returned an invalid answer.');
   }
   return new AgentError('MODEL_PROVIDER_FAILED', 'The decision model call failed.');
 }
 /**
- * Whether the decision model refused a question. ai 7.0.130 throws its own
- * refusal error; 7.0.128 and 7.0.129 report the `refusal` answer as one of
- * the wrong type, so the rejected answers are checked too. Providers that
- * throw on a refusal themselves (`@ai-sdk/openai` before 4.0.86) stay
- * generic invalid output.
+ * The question ids the decision model refused, or undefined when the error
+ * is no refusal. ai 7.0.130 throws its own refusal error naming them;
+ * 7.0.128 and 7.0.129 report the `refusal` answer as one of the wrong type,
+ * so the rejected answers are checked too. Providers that throw on a refusal
+ * themselves (`@ai-sdk/openai` before 4.0.86) stay generic invalid output.
  */
-function refused(error: unknown): boolean {
+function refused(error: unknown): readonly string[] | undefined {
   const RefusalError = (ai as Partial<typeof ai>).Experimental_DecisionRefusalError;
-  if (RefusalError !== undefined && RefusalError.isInstance(error)) return true;
-  if (!InvalidResponseDataError.isInstance(error)) return false;
+  if (RefusalError !== undefined && RefusalError.isInstance(error)) return error.questionIds;
+  if (!InvalidResponseDataError.isInstance(error)) return undefined;
   const answers = error.data;
-  if (typeof answers !== 'object' || answers === null) return false;
-  return Object.values(answers as Record<string, unknown>).some(
-    (answer) => typeof answer === 'object' && answer !== null && (answer as { type?: unknown }).type === 'refusal',
-  );
+  if (typeof answers !== 'object' || answers === null) return undefined;
+  const ids = Object.entries(answers as Record<string, unknown>)
+    .filter(([, answer]) => typeof answer === 'object' && answer !== null && (answer as { type?: unknown }).type === 'refusal')
+    .map(([id]) => id);
+  return ids.length === 0 ? undefined : ids;
 }

@@ -68,12 +68,16 @@ describe('OpenAI Decisions API', () => {
     const first = requests[0];
     expect(first?.model).toBe('gpt-6-luna');
     expect(JSON.parse(first?.input ?? '')).toMatchObject({ goal: 'Do the thing', elements: expect.any(Array) });
-    expect(first?.questions.map((question) => question.name)).toEqual(['operation', 'tap_target', 'double_tap_target', 'long_press_target', 'hover_target', 'secondary_tap_target']);
-    expect(first?.questions[1]?.choices).toEqual([
-      { value: '1', description: JSON.stringify({ element: 'Save', role: 'button' }) },
-      { value: '2', description: JSON.stringify({ element: 'Cancel', role: 'button' }) },
-      { value: 'none', description: 'The next operation is not this one; no target applies.' },
+    expect(first?.questions.map((question) => question.name)).toEqual(['operation']);
+    const second = requests[1];
+    expect(second?.questions.map((question) => question.name)).toEqual(['target']);
+    expect(second?.questions[0]?.choices).toEqual([
+      { value: '1', description: '[1] button "Save"' },
+      { value: '2', description: '[2] button "Cancel"' },
+      { value: 'none', description: 'No offered target fits the goal.' },
     ]);
+    expect(first?.questions[0]?.instructions).toContain('Goal of this step: Do the thing');
+    expect(second?.questions[0]?.instructions).toContain('The next operation is "tap"');
     expect(fixture.usage[0]).toMatchObject({ provider: 'openai.decision', modelId: 'gpt-6-luna-2026-09-01', inputTokens: 321 });
     expect(fixture.turns[0]?.outcome).toContain('op p=0.950, target p=1.000');
   });
@@ -89,7 +93,7 @@ describe('OpenAI Decisions API', () => {
       question.name === 'operation' ? { type: 'refusal', name: 'operation' } : unanimous(question, question.choices?.[0]?.value ?? '')));
     const fixture = context({ tree: BUTTONS });
     await expect(decisionExecutor({ model }).runStep(fixture.ctx)).rejects.toMatchObject({
-      code: 'MODEL_OUTPUT_INVALID', message: 'The decision model refused to answer a question.',
+      code: 'MODEL_OUTPUT_INVALID', message: 'The decision model refused to answer "operation".',
     });
   });
 });
@@ -144,7 +148,7 @@ describe('openaiDecisionModel', () => {
       question.name === 'operation' ? { type: 'refusal', name: 'operation' } : unanimous(question, question.choices?.[0]?.value ?? '')));
     const model = openaiDecisionModel({ apiKey: 'sk-test', fetch });
     await expect(decisionExecutor({ model }).runStep(context({ tree: BUTTONS }).ctx)).rejects.toMatchObject({
-      code: 'MODEL_OUTPUT_INVALID', message: 'The decision model refused to answer a question.',
+      code: 'MODEL_OUTPUT_INVALID', message: 'The decision model refused to answer "operation".',
     });
   });
   it('rejects an incomplete answer set as invalid output', async () => {
