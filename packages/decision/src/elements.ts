@@ -318,7 +318,6 @@ export function targetKeyIndex(key: string): string {
   return at === -1 ? key : key.slice(0, at);
 }
 
-
 /** Label the model reads: name, placeholder, or text. */
 function nodeLabel(node: ExecutorNode): string {
   return node.name ?? node.attributes?.['placeholder'] ?? node.text ?? '';

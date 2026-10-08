@@ -706,6 +706,24 @@ describe('context', () => {
   });
 });
 
+describe('text model history', () => {
+  it('shows a field fill the last six actions only', async () => {
+    const { model } = scriptedDecision((id, keys, call) => {
+      if (id === 'operation') return { choice: call < 18 ? 'tap' : call === 18 ? 'type' : 'blocked' };
+      return { choice: keys[0] ?? '' };
+    });
+    const text = scriptedText(['Ada']);
+    const fixture = context({ tree: FIELD, model: text.model });
+    let look = 0;
+    fixture.observe.mockImplementation(async () => ({ revision: String(look += 1), text: 'x', truncated: false, viewport: { width: 800, height: 600 }, tree: { ...FIELD, children: [...(FIELD.children ?? []), { id: `t${look}`, text: `tick ${look}` }] } }));
+    await decisionExecutor({ model, textModel: text.model }).runStep(fixture.ctx);
+    const messages = text.prompts[0] as { role: string; content: { type: string; text?: string }[] }[];
+    const raw = messages.find((message) => message.role === 'user')?.content.find((part) => part.type === 'text')?.text ?? '';
+    const sent = JSON.parse(raw.slice(raw.indexOf('\n') + 1)) as { recentActions: unknown[] };
+    expect(sent.recentActions).toHaveLength(6);
+  });
+});
+
 describe('grammar', () => {
   it('blocks when the model answers none for the chosen operation', async () => {
     const { model } = scriptedDecision((id) => ({ choice: id === 'operation' ? 'tap' : 'none' }));

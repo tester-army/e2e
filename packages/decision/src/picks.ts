@@ -5,13 +5,13 @@ import { NONE } from './questions.ts';
  * What a target question settled: the offered value the model chose with
  * its answer, or the model's `none` for the operation it was asked about.
  */
-export type Pick<T> = { readonly key: string; readonly value: T; readonly answer: Decision } | { readonly none: Decision };
+export type Chosen<T> = { readonly key: string; readonly value: T; readonly answer: Decision } | { readonly none: Decision };
 /**
  * Resolves a target answer against what was offered. Anything the request
  * never offered is MODEL_OUTPUT_INVALID: our validation, never the
  * provider's text.
  */
-export function pick<T>(answer: Decision | undefined, offered: ReadonlyMap<string, T>, what: string): Pick<T> {
+export function pick<T>(answer: Decision | undefined, offered: ReadonlyMap<string, T>, what: string): Chosen<T> {
   if (answer === undefined) throw invalid(`The decision model returned no ${what} answer.`);
   if (answer.choice === NONE) return { none: answer };
   const value = offered.get(answer.choice);

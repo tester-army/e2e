@@ -4,7 +4,7 @@ import { isAgentError } from 'e2e/agent';
 import { ConfigurationError } from 'e2e/engine';
 import { decide, requireDecide, type Decision } from './decide.ts';
 import { perform, type Action } from './dispatch.ts';
-import { actionSpace, type ActionSpace, type Operation, type Target } from './elements.ts';
+import { actionSpace, type ActionSpace, type Control, type Operation, type Target } from './elements.ts';
 import { PointLocator } from './locator.ts';
 import type { Screenshot } from './overlay.ts';
 import { describe, gated, invalid, need, pick, type Gates } from './picks.ts';
@@ -412,7 +412,7 @@ class Step {
   }
 }
 /** How a control reads in a turn and in history. */
-const CONTROL_LABELS: Readonly<Record<'scroll_up' | 'scroll_down' | 'back', string>> = {
+const CONTROL_LABELS: Readonly<Record<Control, string>> = {
   scroll_up: 'scroll viewport up',
   scroll_down: 'scroll viewport down',
   back: 'back one step in history',
