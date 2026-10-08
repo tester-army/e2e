@@ -183,6 +183,11 @@ When adding a new public package:
 - `next`: release candidates cut from `main` ahead of a `latest` release.
   This is the build we ask reporters to confirm a fix against. Install with
   `@next`.
+- `nightly`: a snapshot of `main` published by the release workflow every
+  night at 03:00 UTC, and on demand by running the workflow by hand from the
+  Actions tab. A night with nothing new on `main` publishes nothing, and a
+  commit whose `spec gate` is not green fails the run instead of shipping.
+  Install with `@nightly`.
 - `canary`: a build of `main` cut by hand ahead of the next versioned release.
   Install with `@canary`. The quickstart installs `latest`.
 
@@ -190,8 +195,10 @@ Versioned releases publish to `latest`: the root `release` script passes no
 `--tag`, and each publishable package carries `publishConfig.tag: "latest"` as
 a backstop for a hand-run `npm publish`. `next` is not cut yet.
 
-A canary is a changesets snapshot release, published from a maintainer's
-machine, never from CI:
+A nightly is the same snapshot release run from the `nightly` job in
+`release.yml`, versioned as `<next version>-nightly-<datetime>` and published
+with `--tag nightly`. A canary is the hand-run form, published from a
+maintainer's machine:
 
 ```sh
 GITHUB_TOKEN=<token> pnpm run canary

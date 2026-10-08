@@ -3,6 +3,11 @@ name: release
 on:
   push:
     branches: [main]
+  schedule:
+    # 03:00 UTC daily: a `nightly` snapshot of `main`.
+    - cron: '0 3 * * *'
+  # Cuts a `nightly` snapshot of `main` now instead of waiting for the night.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -17,6 +22,7 @@ permissions:
 
 jobs:
   release:
+    if: ${{ github.event_name == 'push' }}
     # GitHub-hosted, not Blacksmith: npm Trusted Publishing rejects OIDC
     # tokens from self-hosted runners, and Blacksmith registers as one.
     runs-on: ubuntu-latest
@@ -57,3 +63,75 @@ jobs:
           # No npm token: publishing uses Trusted Publishing (OIDC) configured
           # on each @e2e-dev package. npm attaches provenance automatically
           # once the repository is public.
+
+  # A changesets snapshot of every public package, published to the `nightly`
+  # dist-tag as `<next version>-nightly-<datetime>`. Same filename as the
+  # versioned release on purpose: npm Trusted Publishing is granted per
+  # workflow file. Nothing is committed; the version bump and the pinned peer
+  # ranges stay in the job's checkout.
+  nightly:
+    if: ${{ github.event_name != 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # Nothing merged since the last nightly means nothing to ship. A hand
+      # dispatch always publishes.
+      - name: Skip when main has not moved
+        id: changed
+        if: ${{ github.event_name == 'schedule' }}
+        run: |
+          last="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow release.yml --branch main --status success \
+            --limit 50 --json headSha,event \
+            --jq '[.[] | select(.event == "schedule" or .event == "workflow_dispatch")][0].headSha // empty')"
+          if [ "$last" = "$GITHUB_SHA" ]; then
+            echo "main is still at $GITHUB_SHA, already shipped as nightly"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # `spec.yml` runs on every push to main; a nightly ships only a commit
+      # it passed. A red main fails this run instead of skipping it, so a
+      # rerun of spec on the same commit lets the next night ship it.
+      - name: Require a green spec gate on this commit
+        if: ${{ steps.changed.outputs.skip != 'true' }}
+        run: |
+          conclusion="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
+            --jq '[.check_runs[] | select(.name == "spec gate")] | sort_by(.completed_at) | last | .conclusion // "pending"')"
+          [ "$conclusion" = "success" ] || { echo "::error::spec gate on $GITHUB_SHA is $conclusion, not publishing"; exit 1; }
+
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+        if: ${{ steps.changed.outputs.skip != 'true' }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: ${{ steps.changed.outputs.skip != 'true' }}
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        if: ${{ steps.changed.outputs.skip != 'true' }}
+
+      # Bumps every public package together so each engine's peer range names
+      # the runner build it ships with (see `scripts/canary-changeset.ts`), then
+      # builds after versioning so `dist/.build.json` carries the snapshot
+      # version the `prepublishOnly` check expects.
+      - name: Version and build the snapshot
+        if: ${{ steps.changed.outputs.skip != 'true' }}
+        run: |
+          node scripts/canary-changeset.ts
+          pnpm exec changeset version --snapshot nightly
+          pnpm run build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to the nightly tag
+        if: ${{ steps.changed.outputs.skip != 'true' }}
+        run: pnpm exec changeset publish --tag nightly --no-git-tag
