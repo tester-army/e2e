@@ -474,7 +474,9 @@ artifacts: {
 `artifacts` says where artifacts go, not which are made: [`trace` and
 `video`](#recording) choose the recordings, and a failure's screenshot and
 screen text are captured whenever the engine can (never after a secret
-fill, see [Security](/security)). The removed forms fail with
+fill, see
+[Security rules](/reference/security#screenshots-after-a-secret-fill)). The
+removed forms fail with
 `INVALID_CONFIG` naming what replaced them: a kinds list (`artifacts:
 ['screenshot', 'trace']` or `artifacts.kinds`) names the `trace` mode it
 meant, `artifacts.trace` names `trace: 'on-all-retries'` for `record:

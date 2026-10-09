@@ -37,7 +37,7 @@ summaries. You can configure a separate [judge model](/models#a-judge-of-its-own
 Use `vision: true` to include a masked screenshot or `vision: 'only'` to
 judge the screenshot alone; the [agent reference](/reference/agent#vision)
 lists the modes. No screenshot reaches the model
-[after a secret fill](/security#screenshots-after-a-secret-fill).
+[after a secret fill](/reference/security#screenshots-after-a-secret-fill).
 
 ## What the model may do
 
@@ -112,8 +112,9 @@ the `act` budgets.
 
 For a `Secret` param, the model receives only its name and purpose. The
 runner checks the field the model picked, then fills the value itself.
-The value never enters prompts, transcripts, reports, or AI traces. See the
-[security model](/security#secrets) for what else changes after a fill.
+The value never enters prompts, transcripts, reports, or AI traces. See
+[screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill)
+for what else changes after a fill.
 
 ## Next
 

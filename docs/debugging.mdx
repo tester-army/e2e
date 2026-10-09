@@ -181,10 +181,11 @@ reruns names, and writes its own attempts under each test's `rerun-<n>/`:
 - **Videos** and **agent transcripts** when you ask for them; see below.
 
 After a secret fill, no screenshots are taken for the rest of the attempt; see
-[screenshots after a secret fill](/security#screenshots-after-a-secret-fill).
+[screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill).
 
-Videos mask nothing and are marked `redaction: "incomplete"`. See the
-[security model](/security#where-redaction-stops) for all redaction limits.
+Videos mask nothing and are marked `redaction: "incomplete"`. See
+[where redaction stops](/reference/security#where-redaction-stops) for every
+limit.
 
 ## Watch it happen
 
@@ -262,7 +263,7 @@ prints under `stdout | runner` or `stderr | runner`. Both streams print on
 stdout, in a pipe or a CI log too. Without the `list` reporter, output
 goes to its own stream as written.
 
-Secret values are [redacted](/security#redaction). Output printed while the
+Secret values are [redacted](/reference/security#redaction). Output printed while the
 config loads appears once it has loaded, before the run header, and is
 dropped for a warning if the load fails. Every other line appears when it
 is written. The output is not part of the report; use `expect` or an

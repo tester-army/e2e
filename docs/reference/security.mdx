@@ -1,0 +1,286 @@
+---
+title: Security rules
+description: Every rule the runner enforces on model input, tool calls, secrets, redaction, sessions, the replay cache, artifacts, and network connections.
+icon: "lock"
+---
+
+The [Security](/security) guide explains the trust boundary. This page
+lists the rules behind it, as the code enforces them.
+
+## Model input
+
+The model reads app content as quoted evidence, kept apart from runner policy
+and trusted project context. App content can't grant tools, credentials, or a
+larger budget. [How agent steps work](/agent-steps) explains a step in full.
+
+| In the prompt | Form |
+| --- | --- |
+| Your instruction and params | Quoted inside `<instruction>` and marked as data. A `Secret` param shows only its name and purpose. |
+| The screen | An accessibility tree with node ids, roles, names, text, test ids, link targets, and states, cut at a size limit. No selectors. A link's query and fragment show only as `?…` and `#…`. Secure fields show as `value=<secure>`. |
+| The location | The current URL, redacted. |
+| A screenshot | When needed or requested, and only if the engine proves secure fields are masked and no secret was filled in the attempt. |
+| Prior steps | `agent.act` receives bounded records from the same test or serial group. Judgments use only the current screen and instruction. |
+
+## Tool calls
+
+- Built-in tools have closed schemas and appear only when the engine
+  supports them.
+- Project tools must use `defineTool` with an `execute` and can't replace a
+  built-in name. Any other tool fails the config load with `INVALID_CONFIG`.
+- Only read-only project tools may request an observation.
+- A call to a tool the step doesn't offer, or with an undeclared argument,
+  never runs. The model reads the refusal as the call's result and tries
+  again.
+- A node id that isn't on the current screen fails the action with
+  `LOCATOR_NOT_FOUND`.
+- The runner never evaluates model text as code, selectors, shell commands,
+  or config.
+
+## Policy denials
+
+These calls fail with `POLICY_DENIED`.
+
+| Denied | Why |
+| --- | --- |
+| Navigation to any scheme but `http:` and `https:`, other than `about:blank` | `file:`, `data:`, `javascript:`, and wrappers such as `view-source:file:` would load local or inline content. |
+| A malformed URL | Nothing is repaired. |
+| A `Secret` reaching a JSON sink | Handles carry no value, and no value may be serialized. |
+| Reading a value, text, or attribute from a secure field, with a getter or a `toHaveValue`, `toHaveText`, `toContainText`, or `toHaveAttribute` matcher | Assert the outcome, not the secret. A withheld value is redacted, not empty or absent. |
+| `type_secret` with an undeclared name | Only secrets in the step's params can be filled. |
+| `type_secret` into a disabled or non-editable node | Sinks are `textbox`, `searchbox`, and `combobox`. |
+| A password into a field that isn't a password field | Purpose must match. A generic secret fills any editable input. |
+| A mutating project tool requesting an observation | Observe in a separate call. |
+| `vision: 'only'` when pixels are withheld | There is nothing to fall back to. |
+| `app.screenshot()` or `toHaveScreenshot()` after a secret fill | The app may show the secret outside a secure field. |
+| `toHaveScreenshot()` when the engine can't prove every secure field is masked | The screenshot isn't kept. |
+| An agent, executor, or MCP `upload` of a file outside the project root, a hidden file, or a file under a hidden directory | Only project files can leave the computer through a form. |
+| An `act` or `vision: true` step whose semantic capture times out after a secret fill | It can't fall back to a screenshot. |
+
+## Navigation
+
+- There is no origin allowlist. The agent can follow the app to other sites
+  and use the step's secrets there.
+- `app.open`, `browser.goto`, and the agent's `navigate` verb accept only
+  `http:`, `https:`, and the exact `about:blank`.
+- `device.openLink` accepts an app's custom scheme and refuses `file:`,
+  `data:`, `javascript:`, `view-source:`, `blob:`, and `filesystem:`.
+- `device.openApp` and the `open_app` tool take an app id and refuse a link.
+- The runner doesn't re-check redirects or attach to popup pages. Register
+  `browser.onDialog` to handle browser dialogs.
+
+## Site check
+
+The browser engine compares hostnames to decide what counts as the target's
+site.
+
+- Configured `headers` go only on requests to the target's site.
+- Observations leave out child frames from other sites, and `data:` frames.
+- The check approximates the registrable domain without a public suffix
+  list. A shared hosting domain such as `vercel.app` counts as one site, so
+  headers can reach other hosts under it.
+- `basicAuth` ignores the site check. It answers a `401` challenge from any
+  origin.
+
+## Secret fills
+
+A `Secret` is an opaque handle with no plaintext accessor. Three sinks accept
+one: a locator's `fill`, the params of an agent step, and an engine option
+that declares it.
+
+| Fill | Checks before the value resolves |
+| --- | --- |
+| Model-directed (`type_secret`) | The step declared the secret. The secret is configured. The target is an enabled, editable input on the newest observation. A password goes into a password field. Replay repeats these checks. |
+| Deterministic `fill(secret)` | None on the field: test code chose it. The value is still registered for redaction and turns off pixels. |
+
+The runner resolves the value on the host and passes it to the engine. The
+model never sees or picks it.
+
+## Screenshots after a secret fill
+
+After any secret fill, for the rest of the attempt:
+
+- screenshot and pixel tools are unavailable,
+- `app.screenshot()` and `toHaveScreenshot()` fail with `POLICY_DENIED`,
+- the runner leaves out assertion and failure screenshots,
+- an `act` or `vision: true` step whose semantic capture times out before the
+  step does fails with `POLICY_DENIED`.
+
+The app could show the value anywhere, not only in the field's masked
+rectangle.
+
+A test that restores a [session](#sessions) whose setup filled a secret keeps
+this rule. A setup that signs in without a secret fill, for example by
+setting a session cookie with `browser.setCookies`, leaves screenshots on for
+the tests that restore it. A value it uses is redacted only if it's a
+configured secret.
+
+## Secrets in engine options
+
+A secret in an engine option, such as
+`web({ basicAuth: { password: secrets.get(name) } })`, isn't a fill.
+
+- The runner resolves it on the host when each attempt starts.
+- It registers the value for redaction, together with what the engine
+  derives from it. For basic auth, that is the base64 `user:password` in the
+  `Authorization` header.
+- It's redacted from reports, `screen-at-failure.txt`, trace pages, what the
+  model and an `e2e mcp` session read, and text downloads.
+- Screenshots and the model's pixels stay on. A page that shows the password
+  on screen isn't masked in pixels.
+
+## Redaction
+
+The runner replaces every registered secret value with `<secret:name>` in:
+
+- model input,
+- reports and trace pages,
+- text downloads,
+- what your code prints during `e2e run`: tests, the top-level code of the
+  config and test files, and reporters.
+
+It also redacts a value passed as a plain string instead of a
+`secrets.get()` handle: test and `describe` titles, step labels (an
+`app.open` URL, a locator's text), a `fill`, an `agent.act` or `agent.assert`
+instruction, the strings in `agent.act` params, `agentContext`, and an
+`e2e explore` goal. A plain string isn't a secret fill, so screenshots stay
+on.
+
+| Rule | Detail |
+| --- | --- |
+| Forms matched | As written, JSON-escaped, HTML-escaped, and percent-encoded, in any letter case (so CSS `text-transform` doesn't hide it), and with whitespace collapsed. |
+| Cut text | Text cut at a length limit is masked when it ends with the first 8 or more characters of a value, or half of a value shorter than 16, as written or whitespace collapsed. |
+| Observed screen | Every string (names, text, values, test ids, attributes, selectors, frame paths) is redacted one time, before the model, an executor's tree, a replay cache descriptor, or an end anchor reads it. |
+| Titles | Redacted when the runner collects the test file. The test id, `--grep`, reporters, and artifact and failure-page file names see `<secret:name>`. Two titles that differ only in a secret value are a duplicate title path. |
+| Executors | A custom executor's `ctx.step` and the built-in agent's prompt carry the marker, so only a handle can type the real value. |
+| Config output | Output printed while the config loads appears after it loads. If the load fails, it's withheld. |
+| Minimum length | A static value shorter than 6 characters is `INVALID_CONFIG`. A provider that returns one fails the fill. |
+| Assertions | Unaffected. Redaction rewrites only what the runner reports. |
+| Cache entries | Secret values and their cut parts never enter them. |
+
+## Where redaction stops
+
+Redaction matches strings. These pass through:
+
+- a transformed value, such as its last four characters,
+- a value encoded as a whole, such as base64 or a hash,
+- a value in another Unicode normalization form, such as decomposed accents
+  where the secret has composed ones,
+- text that drops the whitespace inside the value. Text that widens it passes
+  through too, except on the observed screen, where a field whose collapsed
+  form holds the value stays collapsed and masked,
+- a value spread over several nodes, such as one character per cell on a PIN
+  pad,
+- a case mapping that changes length (`ß` shown as `SS`), for the cut-text
+  rule,
+- a value a secret provider returns, in titles, since titles are redacted
+  before any provider runs,
+- console output of tests that run in the runner's own process, when an
+  embedding host passes the config or tests in memory,
+- video: it masks nothing and is labeled `redaction: "incomplete"`. A
+  recording a hosted browser or device service keeps stays with that
+  service, and the report holds only its URL,
+- `command.log`: the runner captures your app's output as written.
+
+## Downloads
+
+A download is what the app served. When the session knows a secret value,
+the runner rewrites a text download (`text/*` or JSON, by file extension) and
+labels it `redaction: "complete"`. It replaces with `<secret:name>`:
+
+- every whole occurrence of a value,
+- any run of 8 or more of its characters, whitespace collapsed or not, so
+  unrelated text that shares 8 characters with a value is masked too,
+- a base64 or base64url run that decodes to either.
+
+Every other download is kept as served and labeled
+`redaction: "incomplete"`: a binary, one that isn't valid UTF-8 or can't be
+rewritten, and any download from a session that knows no secret value.
+
+## Sessions
+
+A saved session holds authentication state. It also carries, in the same
+ciphertext, the secret values the setup test resolved from a provider and
+whether a secret was filled. The test that restores it redacts those values
+and keeps its pixels withheld. The envelope names the secrets in the clear,
+authenticated.
+
+| Property | Value |
+| --- | --- |
+| Location | `sessions/<runId>/` under the [output directory](/reference/config#output) (default `.e2e/sessions/<runId>/`), directory mode `0700`, files `0600` |
+| Cipher | AES-256-GCM, a fresh 12-byte IV per save |
+| Key | 32 random bytes generated per run and held in memory. Workers receive it over IPC, never through disk or the environment. |
+| Bound to | Run id, target, engine name and version, platform, and app identity, all authenticated as additional data |
+| Lifetime | At most 24 hours, sooner if the saved state declares an earlier expiry |
+| Cleanup | The directory is removed when the run ends |
+
+The runner refuses an invalid, expired, missing, or mismatched session. See
+the [session errors](/reference/errors).
+
+## Cache trust
+
+Cache entries replay actions without a model and aren't signed.
+
+| Rule | Detail |
+| --- | --- |
+| Validation | Every entry is validated before use. An invalid entry is a miss. |
+| File name | A hash of the expected key. A file larger than 1 MiB is refused. |
+| Key | Holds the agent's context only as a hash of its redacted text. |
+| Contents | Actions and a redacted summary. Replay runs only the actions. Other typed values are stored verbatim. |
+| Secret fills | Store a name and authorize the fill again on replay. |
+| Agent | An entry recorded by one agent never replays for another. |
+| Start screen | An entry that doesn't start with a navigation replays only on the route where it was recorded: the same path and query, with generated ids ignored. A route on the app's own origin matches on any deployment that shares `app.identity`. A route on another origin keeps that origin. See [Caching](/cache). |
+| CI | A cache mode you didn't set becomes `read-only`, unless you configure a `cache.store`. |
+| Git | `e2e init` ignores `.e2e/cache/`. If you [commit recordings](/cache#commit-the-replay-cache), review their actions and typed values. |
+| `cache.store` | Receives every recorded entry and supplies every replayed one. What comes back is validated again. |
+
+## Artifacts
+
+A run writes under `.e2e/` by default. The
+[`output`](/reference/config#output) option or `--output` moves it. The
+replay cache stays at `cache.dir`, and `command.log` goes to the
+project-relative path you configure.
+
+| Path | Contents | Redaction |
+| --- | --- | --- |
+| `report.json` | The run record. Errors, reasoning excerpts, and action summaries pass the redactor. | complete |
+| `results/<test>/trace.md` | Trace pages, written from the redacted report. | complete |
+| `results/.../*.png` | Screenshots, with secure fields masked. | complete |
+| `results/.../*.webm`, `*.mp4` | Video, opt-in through `video` or `--video`. | incomplete |
+| `results/.../downloads/*` | Files the app served. See [Downloads](#downloads). | complete or incomplete |
+| `results/.../screen-at-failure.txt` | The redacted tree at the moment of failure. | complete |
+| `ai-trace.json` | Every model call, opt-in through `--ai-trace`. Prompts are the redacted ones the model saw. Inline image bytes are replaced by their size. | as the prompt |
+| `sessions/<runId>/` | Encrypted sessions, deleted at cleanup. | encrypted |
+| `videos/<session>/*.webm`, `*.mp4` | Videos an `e2e mcp` session recorded with `start_recording`, kept until you delete them. Never handed to `artifacts.store`. | none |
+| `cache.dir` (default `.e2e/cache/`) | Replay cache entries. | secret-free by construction |
+| The path in `command.log` | Your app's stdout and stderr, verbatim. Must be inside the project root. | none |
+
+An `artifacts.store` receives each artifact's bytes as they're produced,
+after download redaction, with the `redaction` label the report records.
+
+## Outbound connections
+
+| Destination | When |
+| --- | --- |
+| `eu.i.posthog.com` | One telemetry request per CLI invocation, plus at most one per session `e2e mcp` serves, unless you opt out ([Telemetry](/telemetry)). One request per `e2e feedback` you run. |
+| Your model provider | Agent steps that call a model. Deterministic tests and fully replayed steps make no model call. |
+| A subscription provider's sign-in and model-list endpoints | `e2e login` and `e2e models` ([Subscriptions](/subscriptions)). |
+| The app's `readyUrl` | Readiness probes for an app the runner starts. |
+| Playwright's browser download | One time, when the browser is missing. |
+| The DevTools endpoint in `web({ connect })` | Every run of that target. |
+| The GitHub API | Only from the `@e2e-dev/github` reporter. |
+| The Kernel API and its hosted browsers | Only from [`kernel()`](/integrations/kernel). |
+| The Expo API and the simulators' agent-device daemons | Only from [`easSimulators()`](/integrations/eas). It signs in with `EXPO_TOKEN`, else with the eas-cli login in `~/.expo/state.json`. On a CI runner, set `EXPO_TOKEN` or keep that login out of the runner's home. |
+| `mcr.microsoft.com` | Only from [`smol()`](/integrations/smol), to pull the Playwright image. The machines then have unrestricted network access, and reach every port on your computer's loopback through `host.smolvm.internal`, not only `hostPorts` ([Set up the provider](/integrations/smol#set-up-the-provider)). |
+| The package registry | When `e2e init` installs dependencies. |
+| The app under test | Every run, plus whatever the app itself loads. |
+
+There is no crash reporting or update check. `--ai-trace` writes a local file
+and doesn't upload it. Your test code, plugins, and app can make more
+connections.
+
+## MCP and explore
+
+| Command | Rule |
+| --- | --- |
+| `e2e mcp` | Uses stdio and the same action authorization as a test run. Four open sessions by default ([`--max-sessions`](/reference/mcp), 1 through 16). Closes idle sessions. |
+| `e2e explore` | Offers every configured credential to every step. The explorer sees account names and usernames. Passwords stay handles and need an engine that supports sensitive fills; without one, the explorer skips them. With no credentials, it may sign in with made-up test credentials, typed as plain text. |

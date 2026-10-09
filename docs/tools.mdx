@@ -99,7 +99,7 @@ const captureEvidence = defineTool(
 `observe()` returns a redacted text snapshot. Request `tree: true` for the
 node tree or `pixels: true` for a masked screenshot. The built-in agent's
 restrictions apply, including no pixels
-[after a secret fill](/security#screenshots-after-a-secret-fill).
+[after a secret fill](/reference/security#screenshots-after-a-secret-fill).
 
 Observe in a separate read-only tool. A mutating tool already occupies the
 action queue, so observing from inside it would wait on its own operation.

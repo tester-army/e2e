@@ -193,7 +193,7 @@ sign-in succeeded instead.
 
 After a secret fill, screenshots are withheld for the rest of the attempt,
 and in tests that restore the session it saved. See
-[screenshots after a secret fill](/security#screenshots-after-a-secret-fill)
+[screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill)
 for the rule and how to sign in with screenshots kept.
 
 ## Secrets that are not passwords
@@ -263,14 +263,14 @@ When the agent fills a password, the runner requires a password field. A
 
 The model sees only the secret's name and purpose; the runner checks the
 field and fills the value. Known values become `<secret:name>` in
-observations and reports. The [security model](/security#secrets) has the
-full rules.
+observations and reports. See the full
+[secret fill rules](/reference/security#secret-fills).
 
 <Warning>
 Redaction matches full values and their encoded forms. A transformed value,
 such as the last four characters of a key, can still appear. Keep secret
 entry in setup tests and assert the result of submitting it. See
-[where redaction stops](/security#where-redaction-stops).
+[where redaction stops](/reference/security#where-redaction-stops).
 </Warning>
 
 Credentials and secrets are separate namespaces. `secrets.get()` returns

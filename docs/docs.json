@@ -237,7 +237,8 @@
               "reference/mcp",
               "reference/reporters",
               "reference/environment",
-              "reference/errors"
+              "reference/errors",
+              "reference/security"
             ]
           },
           {

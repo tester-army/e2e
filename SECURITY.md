@@ -1,7 +1,9 @@
 # Security
 
-The user-facing version of this document, with every rule and limit as the
-code enforces it, is [e2e.tester.army/docs/security](https://e2e.tester.army/docs/security).
+The user-facing version of this document is
+[e2e.tester.army/docs/security](https://e2e.tester.army/docs/security). Every
+rule and limit, as the code enforces it, is in
+[e2e.tester.army/docs/reference/security](https://e2e.tester.army/docs/reference/security).
 
 ## Reporting a vulnerability
 

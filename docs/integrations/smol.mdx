@@ -69,8 +69,8 @@ option.
 <Warning>
 `hostPorts` isn't an allowlist. The machine can reach any loopback port on
 your computer through `host.smolvm.internal`, and it has unrestricted
-outbound network access. See
-[Security model](/security#smol-machines-network-access).
+outbound network access. Stop sensitive loopback services before you test
+an untrusted app with `smol()`.
 </Warning>
 
 ## Start every test signed in
@@ -130,8 +130,8 @@ On a browser from `connectOverCDP`, `browser.close()` only disconnects.
 With `app`, the app under test runs inside each browser machine instead of
 on your computer. Its code, and anything a test or an agent makes it do,
 never runs on the host. The machine can still reach your computer's
-loopback ports, as the
-[Security model](/security#smol-machines-network-access) explains. In
+loopback ports, as
+[Set up the provider](#set-up-the-provider) warns. In
 `'attempt'` scope, each attempt gets its own copy of the running app and its
 files, a database included. A database on another host stays shared.
 
@@ -209,8 +209,8 @@ Their names start with `e2e-`. List and delete them with the
 ## Next
 
 <CardGroup cols={2}>
-  <Card title="Security model" icon="shield-halved" href="/security">
-    What a machine can reach on your computer and the network.
+  <Card title="Security" icon="shield-halved" href="/security">
+    What runs on your computer, and what can still leak.
   </Card>
   <Card title="Hosted browsers" icon="globe" href="/browser#hosted-browsers">
     How a browser provider leases browsers, and the limits of `'attempt'` scope.
