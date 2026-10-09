@@ -54,6 +54,11 @@ icon: <font awesome name, or /images/icons/<brand>.svg (see Page icons)>
 - **Lede.** Define the thing in the first sentence. No "In this guide you
   will", no "e2e is a powerful". If the reader stops here, they still know
   what the page is about.
+- **Put the fast path first.** Before you write, ask what most readers of
+  this page came to do: the default setup, the common command, the answer
+  to the common question. Make that the first task section, unless an
+  earlier task is a prerequisite. Fold the rare cases or move them down:
+  edge cases, tuning, troubleshooting.
 - **Headings name a task or a question**: "Install the skill", "Start a bug
   bash", "What the agent does". The heading list alone is a usable table
   of contents. "Next" before the closing cards is the one exception. Don't use "Overview", "Introduction",
@@ -235,7 +240,8 @@ every repetition.
    implemented yet" callouts.
 3. **Find the reader's tasks.** Each task becomes a heading, in the order
    the reader does them. Facts that serve no task go to a reference page or
-   a card link, or are cut.
+   a card link, or are cut. When the tasks don't depend on each other, put
+   the fast path first.
 4. **Write the lede and headings first.** Read them alone. If they don't
    explain the page, fix them before writing the body.
 5. **Fold.** Apply the component table. Long examples go into an
@@ -257,6 +263,9 @@ One page per PR. The reviewer compares old and new side by side.
 
 - [ ] Reading only the headings and first sentences explains the page.
 - [ ] The lede defines the thing in its first sentence.
+- [ ] The first task section is the fast path most readers came for,
+      unless an earlier task is a prerequisite. Rare cases are folded or
+      come later.
 - [ ] No section shows much more than one screen without folding.
 - [ ] Every shell block that runs `npx` or `npm install`/`ci` is a
       `CodeGroup` of npm, pnpm, bun.
