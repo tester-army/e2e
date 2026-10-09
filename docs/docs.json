@@ -148,6 +148,7 @@
           {
             "group": "Features",
             "pages": [
+              "cache",
               "explore",
               "visual-testing",
               "authentication",
@@ -160,8 +161,7 @@
             "pages": [
               "models",
               "decision-models",
-              "subscriptions",
-              "cache"
+              "subscriptions"
             ]
           },
           {
