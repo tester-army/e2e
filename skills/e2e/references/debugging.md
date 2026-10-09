@@ -134,3 +134,21 @@ is a product bug or a changed screen, not a flake: reproduce once with
 `--headed`, then fix the app or update locator and expectation together. A
 blocked agent step (`AUTH_CREDENTIAL_UNAVAILABLE`, `ENVIRONMENT_UNAVAILABLE`,
 `SEED_DATA_MISSING`) exits 2 or 3 on purpose: fix the environment.
+
+## Compare a rewrite with Vista
+
+Add `await app.vista('checkout-ready')` at matching points in the same tests.
+Run each app with a separate `--output` directory, then:
+
+```bash
+e2e vista .e2e-original .e2e-rewrite --output vista-review
+```
+
+Read `vista-review/index.json`, then inspect each `paired` image: original
+left, rewrite right. Match by file, title path, target, platform, agent,
+repeat, name, and occurrence; keep those stable between apps. If target
+names differ, pass both `--before-target original` and `--after-target rewrite`.
+Only final attempts are compared. Report missing checkpoints and unavailable
+images as gaps, never as passes. Pixel equality is not visual approval.
+The HTML gallery and copied images remain usable without the source runs.
+Use a new output directory for each comparison.

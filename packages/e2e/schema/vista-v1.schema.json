@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Vista comparison index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "beforeRun",
+    "afterRun",
+    "pairs"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "vista-1"
+    },
+    "beforeRun": {
+      "type": "string"
+    },
+    "afterRun": {
+      "type": "string"
+    },
+    "pairs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "identity",
+          "status"
+        ],
+        "properties": {
+          "identity": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "file",
+              "target",
+              "platform",
+              "agent",
+              "name",
+              "titlePath",
+              "repeat",
+              "occurrence"
+            ],
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "target": {
+                "type": "string"
+              },
+              "platform": {
+                "type": "string"
+              },
+              "agent": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "titlePath": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "repeat": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "occurrence": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "status": {
+            "enum": [
+              "identical",
+              "changed",
+              "unavailable"
+            ]
+          },
+          "before": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "target",
+              "attempt",
+              "attemptStatus",
+              "carried"
+            ],
+            "properties": {
+              "target": {
+                "type": "string"
+              },
+              "attempt": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "attemptStatus": {
+                "type": "string"
+              },
+              "image": {
+                "type": "string"
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "unavailable": {
+                "type": "string"
+              },
+              "carried": {
+                "type": "boolean"
+              }
+            },
+            "oneOf": [
+              {
+                "required": [
+                  "image",
+                  "width",
+                  "height"
+                ],
+                "not": {
+                  "required": [
+                    "unavailable"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "unavailable"
+                ],
+                "not": {
+                  "required": [
+                    "image"
+                  ]
+                }
+              }
+            ]
+          },
+          "after": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "target",
+              "attempt",
+              "attemptStatus",
+              "carried"
+            ],
+            "properties": {
+              "target": {
+                "type": "string"
+              },
+              "attempt": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "attemptStatus": {
+                "type": "string"
+              },
+              "image": {
+                "type": "string"
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "unavailable": {
+                "type": "string"
+              },
+              "carried": {
+                "type": "boolean"
+              }
+            },
+            "oneOf": [
+              {
+                "required": [
+                  "image",
+                  "width",
+                  "height"
+                ],
+                "not": {
+                  "required": [
+                    "unavailable"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "unavailable"
+                ],
+                "not": {
+                  "required": [
+                    "image"
+                  ]
+                }
+              }
+            ]
+          },
+          "paired": {
+            "type": "string"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "enum": [
+                    "identical",
+                    "changed"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "before",
+                "after",
+                "paired"
+              ],
+              "properties": {
+                "before": {
+                  "required": [
+                    "image"
+                  ]
+                },
+                "after": {
+                  "required": [
+                    "image"
+                  ]
+                }
+              }
+            },
+            "else": {
+              "not": {
+                "required": [
+                  "paired"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

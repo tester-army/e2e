@@ -74,6 +74,11 @@ listFromE2E;
 
 declare const agent: Agent;
 declare const appFixture: App;
+appFixture.vista('cart-ready') satisfies Promise<string>;
+// @ts-expect-error Vista checkpoints require a name
+appFixture.vista();
+// @ts-expect-error Vista names are strings
+appFixture.vista(123);
 declare const remoteStore: CacheStore;
 // @ts-expect-error TraceCacheStore is CacheStore: the store serves the replay cache
 declare const renamedStore: import('../../src/index.ts').TraceCacheStore;

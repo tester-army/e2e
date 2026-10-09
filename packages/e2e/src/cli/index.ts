@@ -31,6 +31,7 @@ import { runLogin, runLogout, runModels, type LoginFlags } from '../oauth/cli.ts
 import { SignalLadder } from './signals.ts';
 import { skillTopics } from './skill.ts';
 import { telemetry as telemetryCommand, TELEMETRY_ACTIONS, type TelemetryAction } from './telemetry.ts';
+import { vista } from './vista.ts';
 import { wordmarkBanner } from './wordmark.ts';
 
 /**
@@ -735,6 +736,24 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           }),
         ),
     );
+
+  program
+    .command('vista')
+    .summary('compare named Vista checkpoints from two saved runs side by side')
+    .argument('<before>', 'original run output directory (containing report.json and results/)')
+    .argument('<after>', 'rewrite run output directory')
+    .option('--output <dir>', 'new directory for the gallery, paired PNGs, and index.json', 'vista-comparison')
+    .option('--before-target <name>', 'compare only this target from the original run')
+    .option('--after-target <name>', 'compare only this target from the rewrite run')
+    .action(async (before: string, after: string, options: { output: string; beforeTarget?: string; afterTarget?: string }, command: Command) => {
+      try {
+        const result = await vista(before, after, options);
+        process.stdout.write(`Vista: ${result.count} checkpoints, ${result.unavailable} unavailable captures.\n${bounded(result.output)}\n`);
+        process.exitCode = result.unavailable > 0 ? 1 : 0;
+      } catch (cause) {
+        command.error(bounded(cause instanceof Error ? cause.message : String(cause)), { exitCode: 2 });
+      }
+    });
 
   const listCommand = program
     .command('list')

@@ -36,6 +36,8 @@ export interface App {
   back(): Promise<void>;
   /** Captures a redacted evidence screenshot. */
   screenshot(label?: string): Promise<string>;
+  /** Captures a named Vista checkpoint for side-by-side review across runs. */
+  vista(name: string): Promise<string>;
 }
 ```
 
@@ -48,6 +50,7 @@ timeout. They do not accept per-call timeout options.
 | `restart()` | `config.timeout`, 120000 ms | `ACTION_FAILED`, `ENGINE_FAILURE`, `UNSUPPORTED_CAPABILITY` without `session.restart` |
 | `clearState()` | `config.timeout`, 120000 ms | `ACTION_FAILED`, `ENGINE_FAILURE`, `UNSUPPORTED_CAPABILITY` without `session.reset` |
 | `back()` | `config.actionTimeout`, 30000 ms | `APP_NOT_OPEN`, `ACTION_FAILED`, `UNSUPPORTED_CAPABILITY` without `session.back` |
+| `vista(name)` | `config.actionTimeout`, 30000 ms | As for `screenshot`; `INVALID_ARGUMENT` for a blank name, more than 200 UTF-16 code units, or control/format characters |
 | `screenshot(label?)` | `config.actionTimeout`, 30000 ms | `POLICY_DENIED` after a secret fill, `UNSUPPORTED_CAPABILITY`, `ENGINE_FAILURE` |
 
 `screenshot` registers the file as an attempt artifact and returns its path
@@ -60,13 +63,26 @@ await app.open('/settings/billing');
 const shot = await app.screenshot('after-checkout');
 ```
 
+## Vista checkpoints
+
+`await app.vista('cart-ready')` captures a named screenshot for
+[side-by-side review](/visual-testing#vista-checkpoints-for-rewrites) across
+runs. It returns the same kind of path as `screenshot` and uses the same
+masking and secret policy. A checkpoint captures the current viewport;
+wait for the intended state with an assertion before calling it.
+
+Names are required. Repeated calls with one name are paired by occurrence
+within the test. Use a distinct name for each state to keep pairing stable
+when the journey changes. Vista does not assert visual correctness or
+update stored screenshot baselines.
+
 <Warning>
 `clearState` inside a serial group destroys the shared state the group
 depends on. Use it in `beforeEach` of an ordinary group instead.
 </Warning>
 
 Once a `Secret` has been filled, pixels are withheld for the rest of the
-session, including later tests in a serial group. `app.screenshot()` then
+session, including later tests in a serial group. `app.screenshot()` and `app.vista()` then
 fails with `POLICY_DENIED` and creates no artifact.
 
 Browser-only operations live on the [`browser`](/reference/web) fixture;

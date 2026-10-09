@@ -635,6 +635,47 @@ bunx e2e explore 'Hunt for broken forms and dead links' --agent thorough --video
 ```
 </CodeGroup>
 
+## e2e vista
+
+Compare `app.vista(name)` checkpoints from two saved output directories.
+Each must contain `report.json` and its `results/` files. No config, app, or
+model is loaded.
+
+```bash
+e2e vista .e2e-original .e2e-rewrite --output vista-review
+```
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--output <dir>` | `vista-comparison` | New output directory; refuses to overwrite an existing directory |
+| `--before-target <name>` | All | Select a target from the original run; requires `--after-target` |
+| `--after-target <name>` | All | Select a target from the rewrite; both selections allow different target names to pair |
+
+Checkpoints pair by test file, full title path, target, platform, agent,
+repeat index, checkpoint name, and occurrence of that name. Test ids and
+source line numbers do not affect pairing. With explicit target selections,
+only the target name is ignored. Duplicate identities fail as ambiguous.
+
+Only the final attempt of each test is used, including serial group
+members. An earlier retry's image never substitutes for a missing final
+capture. Preserved `--last-failed` evidence in `run.carried` is included and
+marked as carried from an earlier run (`carried: true` in JSON). The gallery reports each captured attempt's status; a failed test
+can still have useful checkpoints from before its failure.
+
+The output contains `index.html`, `index.json` (`vista-1`, described by
+`e2e/schema/vista-v1.schema.json`), copied PNGs, and one `*-paired.png` per
+available pair. JSON image paths are relative to the comparison directory.
+`identical` means equal decoded pixels and dimensions; `changed` means they
+differ. Both need human or agent judgment. No baseline is updated.
+
+`unavailable` means a checkpoint is absent, failed, withheld, or references
+a missing, unreadable, or out-of-directory image. The gallery shows the
+reason and keeps the available side. A run with no checkpoints on either
+side fails instead of producing an empty review.
+
+Exit `0` means every pair is available, including changed pairs; `1` means
+at least one pair is unavailable; `2` means invalid input or output failure.
+
 ## e2e list
 
 ```bash

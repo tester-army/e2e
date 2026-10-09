@@ -483,6 +483,20 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine, expos
       await engine.session.app.restart(engine.operation(config.timeout));
     });
 
+  /** Captures evidence through the engine's masking and the session's pixel policy. */
+  const capture = (api: string, label: string | undefined): Promise<string> =>
+    steps.run('app', api, label ?? '', async () => {
+      if (exposure.withholdsPixels) {
+        throw new ConfigurationError(
+          'POLICY_DENIED',
+          `${api}() is denied after a secret fill because the app may display the secret outside a secure field`,
+        );
+      }
+      const relative = await engine.session.artifacts.screenshot(label, engine.operation());
+      environment.steps.attachArtifact(environment.artifacts.register('screenshot', relative));
+      return relative;
+    });
+
   return {
     baseUrl: target.app.base?.href,
     open: (openPath?: string) =>
@@ -496,18 +510,12 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine, expos
         await engine.session.app.back(engine.operation());
       });
     },
-    async screenshot(label?: string): Promise<string> {
-      return steps.run('app', 'app.screenshot', label ?? '', async () => {
-        if (exposure.withholdsPixels) {
-          throw new ConfigurationError(
-            'POLICY_DENIED',
-            'app.screenshot() is denied after a secret fill because the app may display the secret outside a secure field',
-          );
-        }
-        const relative = await engine.session.artifacts.screenshot(label, engine.operation());
-        environment.steps.attachArtifact(environment.artifacts.register('screenshot', relative));
-        return relative;
-      });
+    screenshot: (label?: string) => capture('app.screenshot', label),
+    async vista(name: string): Promise<string> {
+      if (typeof name !== 'string' || name.trim() === '' || name.length > 200 || /[\p{Cc}\p{Cf}]/u.test(name)) {
+        throw new ConfigurationError('INVALID_ARGUMENT', 'app.vista() requires a nonblank name of at most 200 characters without control characters');
+      }
+      return capture('app.vista', name);
     },
   };
 }

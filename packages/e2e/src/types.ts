@@ -564,6 +564,8 @@ export interface App {
   back(): Promise<void>;
   /** Captures a redacted evidence screenshot. */
   screenshot(label?: string): Promise<string>;
+  /** Captures a named Vista checkpoint for side-by-side review across runs. */
+  vista(name: string): Promise<string>;
 }
 
 export interface SetupSession {

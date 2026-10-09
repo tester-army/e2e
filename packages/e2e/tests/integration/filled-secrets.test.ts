@@ -56,6 +56,8 @@ test('fills a visible field', async ({ app, screen }) => {
   await screen.getByLabel('Focus target').fill(credentials.user('member').password);
   const denied = await app.screenshot().then(() => undefined, (error: { code?: string }) => error.code);
   expect(denied).toBe('POLICY_DENIED');
+  const vistaDenied = await app.vista('after-secret').then(() => undefined, (error: { code?: string }) => error.code);
+  expect(vistaDenied).toBe('POLICY_DENIED');
 });
 `;
 

@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "vista-1",
+  "beforeRun": "original",
+  "afterRun": "rewrite",
+  "pairs": [
+    {
+      "status": "identical"
+    }
+  ]
+}

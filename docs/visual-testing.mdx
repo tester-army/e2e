@@ -29,6 +29,49 @@ test('checkout looks right', async ({ app, screen }) => {
 `expect(screen)` compares the whole screen; `expect(locator)` compares the
 box of its one match, scrolled into view first.
 
+## Vista checkpoints for rewrites
+
+**Vista** captures named checkpoints for an agent or person to compare
+across two runs. Add checkpoints to the same test journey in both apps:
+
+```ts
+await expect(screen.getByRole('button', { name: 'Pay' })).toBeVisible();
+await app.vista('checkout-ready');
+```
+
+Run against the original app, then the rewrite, keeping separate output
+directories. Point each config at its app:
+
+<CodeGroup>
+```bash npm
+npx e2e run --config e2e.original.config.ts --output .e2e-original
+npx e2e run --config e2e.rewrite.config.ts --output .e2e-rewrite
+npx e2e vista .e2e-original .e2e-rewrite --output vista-review
+```
+
+```bash pnpm
+pnpm exec e2e run --config e2e.original.config.ts --output .e2e-original
+pnpm exec e2e run --config e2e.rewrite.config.ts --output .e2e-rewrite
+pnpm exec e2e vista .e2e-original .e2e-rewrite --output vista-review
+```
+
+```bash bun
+bunx e2e run --config e2e.original.config.ts --output .e2e-original
+bunx e2e run --config e2e.rewrite.config.ts --output .e2e-rewrite
+bunx e2e vista .e2e-original .e2e-rewrite --output vista-review
+```
+</CodeGroup>
+
+Open `vista-review/index.html`. Give an agent `vista-review/index.json` and
+the `*-paired.png` images: original left, rewrite right, at their captured
+sizes. The directory includes its own image copies, so it can be shared.
+
+Keep test file paths, title paths, and checkpoint names the same between
+runs. Use the same viewport, device scale, fonts, and test data. The
+[command reference](/reference/cli#e2e-vista) explains target mapping,
+retries, missing captures, and exit codes. Capture follows the
+[secret policy](/reference/app#vista-checkpoints).
+
 ## Stored screenshots
 
 Commit the screenshots with the tests. The first run has nothing to compare

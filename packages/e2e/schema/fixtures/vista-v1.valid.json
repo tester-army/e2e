@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "vista-1",
+  "beforeRun": "original",
+  "afterRun": "rewrite",
+  "pairs": [
+    {
+      "identity": {
+        "file": "tests/cart.e2e.ts",
+        "titlePath": [
+          "cart"
+        ],
+        "target": "web",
+        "platform": "web",
+        "agent": "default",
+        "name": "ready",
+        "repeat": 0,
+        "occurrence": 1
+      },
+      "status": "identical",
+      "before": {
+        "target": "web",
+        "attempt": 0,
+        "attemptStatus": "passed",
+        "image": "0001-before.png",
+        "width": 100,
+        "height": 50,
+        "carried": false
+      },
+      "after": {
+        "target": "web",
+        "attempt": 0,
+        "attemptStatus": "passed",
+        "image": "0001-after.png",
+        "width": 100,
+        "height": 50,
+        "carried": false
+      },
+      "paired": "0001-paired.png"
+    }
+  ]
+}

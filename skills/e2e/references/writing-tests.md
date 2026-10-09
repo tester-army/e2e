@@ -114,6 +114,11 @@ label. `browser` (`Browser`): browser targets, import `test` from `@e2e-dev/web`
   session included), then reopens the base URL.
 - `clearState()`: clears cookies and storage, recreates the context, reopens
   the base URL.
+- `vista(name)`: captures a named screenshot checkpoint for side-by-side review
+  across saved runs with `e2e vista <original-output> <rewrite-output>`. Wait
+  for the intended state first. Names must be nonblank, at most 200 UTF-16
+  code units, and contain no control/format characters. Same secret policy
+  as `screenshot`; no visual assertion or baseline update.
 - `screenshot(label?)`: saves a redacted screenshot artifact and returns its
   path. Denied after a secret fill (see Sign-in sessions).
 
