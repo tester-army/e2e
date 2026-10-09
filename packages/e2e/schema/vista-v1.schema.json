@@ -248,8 +248,54 @@
                 "required": [
                   "paired"
                 ]
-              }
+              },
+              "anyOf": [
+                {
+                  "not": {
+                    "required": [
+                      "before"
+                    ]
+                  }
+                },
+                {
+                  "not": {
+                    "required": [
+                      "after"
+                    ]
+                  }
+                },
+                {
+                  "properties": {
+                    "before": {
+                      "required": [
+                        "unavailable"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "after": {
+                      "required": [
+                        "unavailable"
+                      ]
+                    }
+                  }
+                }
+              ]
             }
+          }
+        ],
+        "anyOf": [
+          {
+            "required": [
+              "before"
+            ]
+          },
+          {
+            "required": [
+              "after"
+            ]
           }
         ]
       }

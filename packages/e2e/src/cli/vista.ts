@@ -56,7 +56,12 @@ function pairedImage(before: RgbaImage, after: RgbaImage): RgbaImage {
   const width = before.width + after.width + 24;
   const height = Math.max(before.height, after.height);
   const data = new Uint8Array(width * height * 4);
-  for (let i = 0; i < data.length; i += 4) data.set([232, 235, 239, 255], i);
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = 232;
+    data[i + 1] = 235;
+    data[i + 2] = 239;
+    data[i + 3] = 255;
+  }
   for (const [image, offset] of [[before, 0], [after, before.width + 24]] as const) {
     for (let row = 0; row < image.height; row += 1) {
       data.set(image.data.subarray(row * image.width * 4, (row + 1) * image.width * 4), (row * width + offset) * 4);

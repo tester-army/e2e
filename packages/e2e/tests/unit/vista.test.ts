@@ -132,3 +132,18 @@ it('includes preserved rerun evidence and marks its earlier-run provenance', asy
   expect(pair.after.carried).toBe(true);
   expect(await readFile(path.join(f.output, 'index.html'), 'utf8')).toContain('carried from an earlier run');
 });
+
+
+it('rejects unavailable pairs with two available images or neither side recorded', async () => {
+  const schema = JSON.parse(await readFile(new URL('../../schema/vista-v1.schema.json', import.meta.url), 'utf8'));
+  const validate = new Ajv2020({ strict: false }).compile(schema);
+  const document = JSON.parse(await readFile(new URL('../../schema/fixtures/vista-v1.valid.json', import.meta.url), 'utf8'));
+  const pair = document.pairs[0];
+  pair.status = 'unavailable';
+  delete pair.paired;
+  expect(validate(document)).toBe(false);
+  delete pair.before;
+  expect(validate(document)).toBe(true);
+  delete pair.after;
+  expect(validate(document)).toBe(false);
+});
