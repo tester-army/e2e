@@ -31,7 +31,7 @@ copy their shape.
 ---
 title: <noun the reader searches for>
 description: <one sentence: what the reader can do after this page>
-icon: <font awesome name>
+icon: <font awesome name, or /images/icons/<brand>.svg (see Page icons)>
 ---
 
 <lede: 2-4 sentences. What it is, what it does.>
@@ -68,6 +68,37 @@ icon: <font awesome name>
   line of description that says why to go there.
 - **Link to depth instead of repeating it**: "To read the full procedure,
   run `npx e2e guide bug-bash`." or "See [Starting your app](/web#starting-your-app)."
+
+## Page icons
+
+The `icon` in the frontmatter shows in the sidebar beside the page title.
+Use a Font Awesome name. Use a file only for a brand mark, such as a
+vendor's logo on an integration page.
+
+Mintlify fills Font Awesome icons with one grey. A file loads as an `<img>`
+in its own colors. `docs/style.css` turns a file grey only when it is under
+`docs/images/icons/`. It makes every opaque pixel a grey silhouette, so the
+file must be a silhouette too:
+
+- **Location**: `docs/images/icons/<brand>.svg`. A file anywhere else keeps
+  its colors and stands out in the sidebar.
+- **Color**: black marks on a transparent background. Don't use a filled
+  tile, a white background, or brand colors. They turn into a solid grey
+  square.
+- **Format**: SVG. If the vendor has only a raster logo, use a transparent
+  PNG.
+- **Shape**: crop the file to the mark, with no padding. Padding makes the
+  mark smaller than the icons beside it.
+- **Weight**: the icon shows at 16 px. Hairline strokes look faint at that
+  size. Thicken them until the mark is as heavy as the icons beside it.
+
+Card logos in `docs/images/integrations/` are a different set. They keep
+their brand colors, and some sit on a filled tile. Don't use one as a page
+icon. Make a silhouette copy in `docs/images/icons/`.
+
+Preview a new icon in the sidebar in light and dark mode, on its own page
+and on another page. In all four views it must match its neighbors in
+color, size, and weight.
 
 ## Copy agent prompt
 
@@ -234,6 +265,9 @@ One page per PR. The reviewer compares old and new side by side.
       `scripts/check-docs-examples.ts`, and typechecks with
       `pnpm --filter @e2e-dev/docs typecheck`.
 - [ ] Status claims checked against `src/`.
+- [ ] A page icon from a file is a black silhouette under
+      `docs/images/icons/` and matches its sidebar neighbors in light and
+      dark mode.
 - [ ] Links and anchors resolve. Moved pages have redirects.
 - [ ] `pnpm docs:check` passes.
 - [ ] Preview the page with `pnpm docs:dev` and look at it
