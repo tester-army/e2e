@@ -155,6 +155,12 @@ describe('classifyActionError', () => {
 /** A locator stub recording every action call; the swipe path also needs a box and a page. */
 function stubLocator(box = { x: 10, y: 20, width: 200, height: 100 }) {
   const wheel = vi.fn(async (_x: number, _y: number) => undefined);
+  const chooser = { setFiles: vi.fn(async () => undefined) };
+  const page = {
+    viewportSize: () => ({ width: 1280, height: 720 }),
+    mouse: { wheel },
+    waitForEvent: vi.fn(async () => chooser),
+  };
   const locator = {
     click: vi.fn(async () => undefined),
     dblclick: vi.fn(async () => undefined),
@@ -165,12 +171,13 @@ function stubLocator(box = { x: 10, y: 20, width: 200, height: 100 }) {
     scrollIntoViewIfNeeded: vi.fn(async () => undefined),
     selectOption: vi.fn(async () => undefined),
     setInputFiles: vi.fn(async () => undefined),
+    evaluate: vi.fn(async () => true),
     dragTo: vi.fn(async () => undefined),
     boundingBox: vi.fn(async () => box),
-    page: () => ({ viewportSize: () => ({ width: 1280, height: 720 }), mouse: { wheel } }),
+    page: () => page,
   };
   const target: ActionTarget = { kind: 'locator', locator: locator as unknown as PwLocator };
-  return { locator, target, wheel };
+  return { locator, target, wheel, page, chooser };
 }
 
 describe('dispatchLocatorAction', () => {
@@ -194,6 +201,46 @@ describe('dispatchLocatorAction', () => {
       expect(spy.mock.calls[0]).toEqual(args);
     },
   );
+
+  it('uploads through a file chooser when the target is a button', async () => {
+    const { locator, target, page, chooser } = stubLocator();
+    locator.evaluate.mockResolvedValue(false);
+
+    await dispatchLocatorAction(target, { kind: 'setInputFiles', paths: ['/tmp/a.txt'] }, 7, lookup);
+
+    expect(page.waitForEvent).toHaveBeenCalledWith('filechooser', { timeout: 7 });
+    expect(locator.click).toHaveBeenCalledWith({ timeout: 7 });
+    expect(chooser.setFiles).toHaveBeenCalledWith(['/tmp/a.txt'], { timeout: 7 });
+    expect(locator.setInputFiles).not.toHaveBeenCalled();
+  });
+
+  it('keeps direct setInputFiles for a file input target', async () => {
+    const { locator, target, page, chooser } = stubLocator();
+
+    await dispatchLocatorAction(target, { kind: 'setInputFiles', paths: ['/tmp/a.txt'] }, 7, lookup);
+
+    expect(locator.setInputFiles).toHaveBeenCalledWith(['/tmp/a.txt'], { timeout: 7 });
+    expect(locator.click).not.toHaveBeenCalled();
+    expect(page.waitForEvent).not.toHaveBeenCalled();
+    expect(chooser.setFiles).not.toHaveBeenCalled();
+  });
+
+  it('uses the file chooser for an observed element handle', async () => {
+    const chooser = { setFiles: vi.fn(async () => undefined) };
+    const page = { waitForEvent: vi.fn(async () => chooser) };
+    const element = {
+      evaluate: vi.fn(async () => false),
+      click: vi.fn(async () => undefined),
+      ownerFrame: vi.fn(async () => ({ page: () => page })),
+    };
+    const target: ActionTarget = { kind: 'element', element: element as never };
+
+    await dispatchLocatorAction(target, { kind: 'setInputFiles', paths: ['/tmp/a.txt'] }, 7, lookup);
+
+    expect(page.waitForEvent).toHaveBeenCalledWith('filechooser', { timeout: 7 });
+    expect(element.click).toHaveBeenCalledWith({ timeout: 7 });
+    expect(chooser.setFiles).toHaveBeenCalledWith(['/tmp/a.txt'], { timeout: 7 });
+  });
 
   it('scrolls a node with a wheel gesture sized by its own box: the agent node scroll', async () => {
     const { locator, target, wheel } = stubLocator({ x: 0, y: 0, width: 400, height: 300 });

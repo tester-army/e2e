@@ -107,7 +107,7 @@ acted on. A verb the engine does not declare is not offered.
 | `scroll({ direction, target?, times? })` | `swipe` | Scrolls the viewport or one scrollable node, up to 20 screens per call. |
 | `scroll_to({ target })` or `scroll_to({ text, direction?, target? })` | `scrollIntoView`; with `text`, `swipe` | With `target` alone, brings one listed node into the viewport, for a node the tree lists below or above the fold. With `text`, pages the list (`target`, else the viewport) screen by screen in `direction` (down by default) until a node reading that text shows (as its whole label, or bounded by nothing of a word, so `Row 12` never stops at `Row 120`; inside the list when `target` names one, so a heading elsewhere reading the same does not end the paging), then brings it in when the engine can: for a row deep in a long or windowed list the tree has not rendered yet. One action however many screens, up to 800; a screen that stops moving or the cap is `LOCATOR_NOT_FOUND`. Each form is offered only with its action kind. |
 | `drag({ target, to })` | `dragTo` | Drags one node and drops it on another: reordering, kanban columns, drop zones. |
-| `upload({ target, files })` | `setInputFiles` | Attaches files to a file input. Paths are project-relative; see the policy below. |
+| `upload({ target, files })` | `setInputFiles` | Attaches files to a file input, or to a visible control that opens a native file chooser. Paths are project-relative; see the policy below. |
 | `navigate({ url })` | `session.open` | Opens a URL or an app-relative path. |
 | `back()` | `session.back` | Goes back once: browser history on a page, the in-app back on a device. |
 | `observe()` | | Looks again and reports what changed since the last screen the model received. |

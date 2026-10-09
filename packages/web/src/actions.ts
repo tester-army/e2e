@@ -15,6 +15,7 @@ import {
   performViewportSwipe,
   POST_DISPATCH_PATTERN,
   translatePwError,
+  targetPage,
   type ActionTarget,
 } from './support.ts';
 import type { ConnectionBudget } from './operation-budget.ts';
@@ -160,9 +161,27 @@ export async function dispatchLocatorAction(
       }
       return;
     }
-    case 'setInputFiles':
-      await locator.setInputFiles([...action.paths], { timeout });
+    case 'setInputFiles': {
+      const isFileInput = target.kind === 'locator'
+        ? await target.locator.evaluate(
+            (node) => node instanceof HTMLInputElement && node.type === 'file',
+          )
+        : await target.element.evaluate(
+            (node) => node instanceof HTMLInputElement && node.type === 'file',
+          );
+      if (isFileInput) {
+        await locator.setInputFiles([...action.paths], { timeout });
+        return;
+      }
+
+      // The observed target may be the visible button that opens a hidden file
+      // input. Listen before clicking so the browser event cannot be missed.
+      const chooserPromise = (await targetPage(target)).waitForEvent('filechooser', { timeout });
+      await locator.click({ timeout });
+      const chooser = await chooserPromise;
+      await chooser.setFiles([...action.paths], { timeout });
       return;
+    }
     case 'dragTo': {
       const other = lookup(action.target);
       // Playwright's own drag when both sides are locators: it waits for
