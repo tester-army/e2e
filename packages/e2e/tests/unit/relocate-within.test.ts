@@ -74,6 +74,34 @@ describe('container keys', () => {
     expect(relocateDescriptor({ role: 'button', within: within!, position: position! }, live.nodes)).toEqual({ kind: 'found', id: 'b-Alpha' });
   });
 
+  it('does not key a row of a windowed list by whichever twin row is rendered first', () => {
+    // An Android FlatList: an unnamed group of group rows, the rendered window moving with the scroll.
+    const list = (first: number) => {
+      const nodes = new Map<string, RedactedNode>();
+      const parents = new Map<string, string>();
+      const rows: SemanticNode[] = [];
+      for (let n = first; n < first + 12; n += 1) {
+        const label = `Row ${String(n).padStart(4, '0')}`;
+        const text: SemanticNode = { ref: { id: `t-${String(n)}`, revision: 'r' }, role: 'text', text: label };
+        const row: SemanticNode = { ref: { id: `row-${String(n)}`, revision: 'r' }, role: 'group', name: label, testId: `row-${String(n)}`, children: [text] };
+        nodes.set(text.ref.id, redacted(text));
+        nodes.set(row.ref.id, redacted(row));
+        parents.set(text.ref.id, row.ref.id);
+        parents.set(row.ref.id, 'list');
+        rows.push(row);
+      }
+      nodes.set('list', redacted({ ref: { id: 'list', revision: 'r' }, role: 'group', children: rows }));
+      return { nodes, parents };
+    };
+    const recorded = list(500);
+    expect(containerKey('row-512', recorded.nodes, recorded.parents)).toBeUndefined();
+    expect(containerKey('t-512', recorded.nodes, recorded.parents)).toBeUndefined();
+    // A control inside a row is still keyed by its row.
+    expect(containerKey('d1', table().nodes, table().parents)).toBe('Budget draft');
+    const live = list(501);
+    expect(relocateDescriptor({ role: 'group', name: 'Row 0512', testId: 'row-512' }, live.nodes)).toEqual({ kind: 'found', id: 'row-512' });
+  });
+
   it('keys a control by its nearest container only, so rows with no text of their own share no outer label', () => {
     const nodes = new Map<string, RedactedNode>();
     const parents = new Map<string, string>();

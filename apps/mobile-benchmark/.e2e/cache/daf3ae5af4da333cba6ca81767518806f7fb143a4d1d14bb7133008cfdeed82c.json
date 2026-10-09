@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T06:58:46.708Z",
+  "createdAt": "2026-10-09T08:20:40.923Z",
   "payload": {
     "actions": [
       {
@@ -16,24 +16,22 @@
       },
       {
         "name": "tap",
-        "summary": "tap group \"+\" in \"‹ Back to catalog\"",
+        "summary": "tap group \"+\"",
         "target": {
           "role": "group",
           "name": "+",
           "testId": "quantity-increase",
-          "selector": "id=quantity-increase",
-          "within": "‹ Back to catalog"
+          "selector": "id=quantity-increase"
         }
       },
       {
         "name": "tap",
-        "summary": "tap group \"Add to cart\" in \"‹ Back to catalog\"",
+        "summary": "tap group \"Add to cart\"",
         "target": {
           "role": "group",
           "name": "Add to cart",
           "testId": "add-to-cart",
-          "selector": "id=add-to-cart",
-          "within": "‹ Back to catalog"
+          "selector": "id=add-to-cart"
         }
       },
       {
@@ -60,7 +58,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Opened the exact Trail Mix 500 g product, set quantity to 2, added it to the cart, and opened the cart. The cart confirms “2 × Trail Mix 500 g” and “Order ready: 2 × Trail Mix 500 g.”",
+    "summary": "Opened the specific Trail Mix 500 g product, increased quantity to 2, added it to the cart, and opened the cart. The cart shows “2 × Trail Mix 500 g” and “Order ready: 2 × Trail Mix 500 g”.",
     "startPath": "dev.e2e.benchmark",
     "endPath": "dev.e2e.benchmark",
     "endAnchors": [
@@ -121,7 +119,7 @@
         "name": "Granola"
       }
     ],
-    "endWaitMs": 11905,
+    "endWaitMs": 11915,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

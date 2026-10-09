@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T06:52:10.161Z",
+  "createdAt": "2026-10-09T08:18:53.783Z",
   "payload": {
     "actions": [
       {
@@ -17,13 +17,12 @@
       },
       {
         "name": "tap",
-        "summary": "tap group \"Item 137\" in \"Item 121\"",
+        "summary": "tap group \"Item 137\"",
         "target": {
           "role": "group",
           "name": "Item 137",
           "testId": "item-137",
-          "selector": "id=item-137",
-          "within": "Item 121"
+          "selector": "id=item-137"
         }
       }
     ],
@@ -39,7 +38,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Scrolled the paginated list until Item 137 appeared and tapped it. The screen now shows “Found item 137.”",
+    "summary": "Scrolled the paginated list until Item 137 appeared and tapped it. The screen confirms success with “Found item 137.”",
     "startPath": "dev.e2e.benchmark",
     "endPath": "dev.e2e.benchmark",
     "endAnchors": [
@@ -83,7 +82,7 @@
         "name": "Item 7"
       }
     ],
-    "endWaitMs": 11715,
+    "endWaitMs": 11523,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

@@ -97,6 +97,11 @@ const MAX_WITHIN_CHARS = 80;
  * one. A row whose only text is its own (`<li>Alpha <button><svg/></li>`)
  * is keyed by it. Only the nearest container counts: the list around a row
  * with no text names every row alike, so its key would tell no twin apart.
+ * A container whose first text belongs to a twin of the row the node came
+ * up through is such a list, and keys nothing by that text: a windowed list
+ * renders whichever rows are near the viewport, so its first row is a scroll
+ * position, not a place, and the same row would read as `Row 0512 in Row
+ * 0500` one time and `in Row 0501` the next. Its own label still keys it.
  */
 export function containerKey(
   id: string,
@@ -105,17 +110,35 @@ export function containerKey(
 ): string | undefined {
   const node = nodes.get(id);
   const own = node === undefined ? '' : squash(node.name ?? node.text ?? '');
+  let came = id;
   let cursor = parents.get(id);
   while (cursor !== undefined) {
     const container = nodes.get(cursor);
     if (container !== undefined && CONTAINER_ROLES.has(container.role ?? '')) {
-      const key = firstLeafText(container) ?? ownLabel(container);
+      const key = (namedAfterTwinOf(container, nodes.get(came)) ? undefined : firstLeafText(container)) ?? ownLabel(container);
       const clean = key === undefined ? '' : bound(collapseText(key), MAX_WITHIN_CHARS);
       return clean === '' || squash(clean) === own ? undefined : clean;
     }
+    came = cursor;
     cursor = parents.get(cursor);
   }
   return undefined;
+}
+
+/**
+ * Whether `container`'s first text sits in a child that is a container of
+ * the same role as `branch`, the child the keyed node came up through, and
+ * not `branch` itself: the container is then a list of such rows, named
+ * after whichever one comes first.
+ */
+function namedAfterTwinOf(container: RedactedNode, branch: RedactedNode | undefined): boolean {
+  if (branch === undefined || !CONTAINER_ROLES.has(branch.role ?? '')) return false;
+  for (const child of container.children ?? []) {
+    const own = (child.children?.length ?? 0) === 0 ? (child.text ?? child.name ?? '').trim() : '';
+    if (own === '' && firstLeafText(child) === undefined) continue;
+    return child.ref.id !== branch.ref.id && child.role === branch.role;
+  }
+  return false;
 }
 
 /** Parent id of every non-root node, derived from the tree the node map indexes. */

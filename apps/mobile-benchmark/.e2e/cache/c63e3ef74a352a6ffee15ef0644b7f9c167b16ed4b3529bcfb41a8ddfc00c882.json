@@ -1,23 +1,22 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T06:56:44.831Z",
+  "createdAt": "2026-10-09T08:20:10.538Z",
   "payload": {
     "actions": [
       {
         "name": "scrollUntil",
-        "summary": "scroll down until \"Row 0512\" shows (55 screens)",
+        "summary": "scroll down until \"Row 0512\" shows (50 screens)",
         "text": "Row 0512",
         "direction": "down"
       },
       {
         "name": "tap",
-        "summary": "tap group \"Row 0512\" in \"Row 0500\"",
+        "summary": "tap group \"Row 0512\"",
         "target": {
           "role": "group",
           "name": "Row 0512",
           "testId": "row-512",
-          "selector": "id=row-512",
-          "within": "Row 0500"
+          "selector": "id=row-512"
         }
       }
     ],
@@ -33,7 +32,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Scrolled the virtualized list to Row 0512 and tapped it. The screen now shows “Found Row 0512.”",
+    "summary": "Scrolled the virtualized list to Row 0512 and tapped it. The screen confirms success with “Found Row 0512.”",
     "startPath": "dev.e2e.benchmark",
     "endPath": "dev.e2e.benchmark",
     "endAnchors": [
@@ -77,7 +76,7 @@
         "name": "Row 0007"
       }
     ],
-    "endWaitMs": 11730,
+    "endWaitMs": 11555,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",
