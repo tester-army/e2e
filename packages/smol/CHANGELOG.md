@@ -1,0 +1,7 @@
+# @e2e-dev/smol
+
+## 0.1.0
+
+### Minor Changes
+
+- [#956](https://github.com/tester-army/e2e/pull/956) [`06bb726`](https://github.com/tester-army/e2e/commit/06bb72653f9c8ff3377db9124b06e0b2af746c30) Thanks [@BinSquare](https://github.com/BinSquare)! - `@e2e-dev/smol`: `web({ browser: smol() })` runs a web target in Chromium microVMs on the runner's own computer through the `smolmachines` SDK. Each worker slot boots one warm browser machine, and with the default `scope: 'attempt'` every attempt runs in a copy-on-write branch of that running browser, made in about a second and deleted when the attempt ends. `prepare(cdpEndpoint)` drives the warm browser once before it is branched, so every attempt starts from its cookies, storage, and pages. `hostPorts` relays ports on the runner's loopback to the browser's `localhost`, `setup` runs a shell script in the machine before Chromium starts, `cpus` and `memoryMb` size each machine, and `scope: 'worker'` keeps one browser machine per slot instead. Machines are named after the run and target, so `sweep` deletes what a dead worker left, and downloads are read off the machine's disk. `app: { source, setup, start, port, env }` runs the app under test inside each browser machine instead of on the runner's computer: `source` is copied in, `setup` and `start` run there, and the run waits for `port` to answer, so in `attempt` scope every attempt's branch holds its own copy of the running app and its data.

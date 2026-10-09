@@ -1,5 +1,29 @@
 # @e2e-dev/web
 
+## 0.14.0
+
+### Minor Changes
+
+- [#869](https://github.com/tester-army/e2e/pull/869) [`1b92a6d`](https://github.com/tester-army/e2e/commit/1b92a6ddfa8768c303953548e1b1e6cc5afbac8d) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `trace` keeps its modes but now writes e2e's own trace instead of a Playwright zip: a markdown page per test, on every engine, and the terminal names it under each failed test (`❯ trace .e2e/results/<test>/trace.md`). The default is `retain-on-failure`, locally and in CI. Each step on the page shows what it did: the node an action landed on, the values an assertion or `waitFor` read while it waited, the replay cache's decision (where a replay stopped and why, what became of the recording, the entry file), what the app logged meanwhile (console output, uncaught exceptions, failed requests, and 4xx and 5xx responses, also gathered in one App log section with each line's step), where the page went (a navigation, a new tab, a frame), and how the screen changed since the step before. The page also names the browser and user agent, or the device, the test ran on. The `markdown` reporter's `summary.md` names each failure's trace page when one was kept. `report.json` is still written for scripts, but the `list` summary no longer prints its path (`--debug` does), and prints `Report (not written)` only when it is missing. Everything a test left now sits in one directory, `<output>/results/<test>/` (`.e2e` by default): its `trace.md` (which shows the failure screenshot inline and links each file) and an `attempt-<n>/` per attempt, numbered from 1, with the screen at failure as `screen-at-failure.txt`. It replaces `.e2e/artifacts/<target>/<test id>/<agent>/attempt-<n>/`; a `--last-failed` rerun writes under each test's `rerun-<n>/`. Point CI uploads at `.e2e/results`, and add `.e2e/results/` to `.gitignore` (or rerun `e2e init`). A stale recording made from this version on names what changed in its key under `--strict-cache`, such as the agent's context. For engine authors: `startTrace` and `stopTrace` are no longer called, `trace` leaves `artifactCapabilities`, `EngineAttemptContext.appLog` takes what the app logs, `navigation` where it went on its own, `screen` takes a screen for the trace (one a `locate` matched against, or one read right after an action, bounded), and `environment` takes what the attempt runs on. report-1 drops the `trace` artifact kind and the `not-required` redaction (`StoredArtifact.kind` and `redaction` narrow the same way), drops `TRACE_WITHHELD`, and adds `attempt.appLog` (each line with its step), `navigation` events, `failure.viewport` and `failure.nodes`, `step.phase`, `step.screen`, `attempt.environment`, and `step.cache.entry`, `detail`, and `write` (report only; `result.cache` from `agent.act()` gains `entry` and `detail`). `FinishedRun.traces` maps results to their pages.
+
+### Patch Changes
+
+- [#898](https://github.com/tester-army/e2e/pull/898) [`b36ea5c`](https://github.com/tester-army/e2e/commit/b36ea5c4410d99df96d12ccc4d1a60d044846c1a) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Read ARIA selected states and hidden-content flags without letter-case sensitivity. Native option selection still takes precedence.
+
+- [#903](https://github.com/tester-army/e2e/pull/903) [`7949c25`](https://github.com/tester-army/e2e/commit/7949c25c8b47d1cadd3c2f6f91a6907f64dd0a6f) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Check the focused element inside shadow roots and frames, so focus on a button there is refused.
+
+- [#926](https://github.com/tester-army/e2e/pull/926) [`5fb69de`](https://github.com/tester-army/e2e/commit/5fb69de2ce829a7b3a84dbd965d3d2a99c313138) Thanks [@okwasniewski](https://github.com/okwasniewski)! - The agent now reads a sentence with an inline link, emphasis, or code as one line of text, so `<p>Read our <a>privacy policy</a> for details.</p>` no longer reads "Read our for details." The link is still listed as its own control.
+
+- [#977](https://github.com/tester-army/e2e/pull/977) [`5137778`](https://github.com/tester-army/e2e/commit/5137778251928c42a736510fda002a984e924d17) Thanks [@okwasniewski](https://github.com/okwasniewski)! - A node inside a frame reports its box in the page's viewport, past the frame's border and padding, whether it was located or observed, so `tap({ position })`, a point the agent taps, and `toHaveScreenshot` on it land on the node.
+
+- [#941](https://github.com/tester-army/e2e/pull/941) [`56c25bd`](https://github.com/tester-army/e2e/commit/56c25bd37a2210a94f01fdd2ec6b6e4e16aedfe3) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Serialize method shorthand passed to browser.evaluate and function init scripts as runnable function expressions.
+
+- [#889](https://github.com/tester-army/e2e/pull/889) [`0dffb3b`](https://github.com/tester-army/e2e/commit/0dffb3baad1378f6bd95f75cc5f972f66ade45af) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Dismiss an unanswered native dialog when its handler throws, so the page operation completes and the handler error reaches the next step.
+
+- [#943](https://github.com/tester-army/e2e/pull/943) [`9e33593`](https://github.com/tester-army/e2e/commit/9e33593d211ec704b1ccdea99a046e70e6cb3b90) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Keep shadow-root headers and footers scoped to their surrounding article or section instead of reporting them as page landmarks.
+
+- [#920](https://github.com/tester-army/e2e/pull/920) [`745b353`](https://github.com/tester-army/e2e/commit/745b353b7a9e4686e7e996369725bd0f48a1b5d6) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `check()`, `uncheck()`, and the agent's `check` verb wait until the action timeout for the control's checked state to change after the click, so a controlled checkbox or switch that updates asynchronously passes instead of failing with `ACTION_FAILED`.
+
 ## 0.13.0
 
 ### Minor Changes

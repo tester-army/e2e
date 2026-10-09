@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/mobile",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Mobile engine (iOS and Android) for e2e agentic end-to-end testing, built on agent-device",
   "keywords": [
     "e2e",

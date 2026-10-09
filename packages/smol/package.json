@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/smol",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "smol machines browsers for e2e: every test attempt branches a warm Chromium microVM",
   "keywords": [
     "e2e",
