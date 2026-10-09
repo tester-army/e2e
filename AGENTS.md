@@ -176,8 +176,8 @@ suites that consume the built packages the way a user would.
   package and not read by `e2e guide`. `references/example/` is the skill
   it generated and ran for `apps/testbed`: regenerate it when a playground
   route, label, or test it names changes.
-- `.dev/skills/` — the skills we use to work on this repo (`babysit`,
-  `ship-pr`, `verify`, `writing-pr`). `npx skills add tester-army/e2e`
+- `.dev/skills/` — the skills we use to work on this repo (`authoring-docs`,
+  `babysit`, `ship-pr`, `verify`, `writing-pr`). `npx skills add tester-army/e2e`
   offers only `skills/*`: its default scan never looks in `.dev/`, and it skips
   `.claude/skills/<name>`, the relative symlink to each that agents load
   them through, because it does not follow symlinked directories. Its
