@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-09T07:05:42.732Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap other \"Retry\"",
+        "target": {
+          "role": "other",
+          "name": "Retry",
+          "testId": "retry-button",
+          "selector": "id=retry-button"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Delete draft\"",
+        "target": {
+          "role": "other",
+          "name": "Delete draft",
+          "testId": "delete-draft",
+          "selector": "id=delete-draft"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Delete\"",
+        "target": {
+          "role": "other",
+          "name": "Delete",
+          "testId": "confirm-delete",
+          "selector": "id=confirm-delete"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Error%20Recovery",
+      "targetId": "ios-simulator",
+      "instructionDigest": "e8369dfb1ec63a3fa2636f3e1803fa229587d469fcb7abdafcfbbb046625544c",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Retried the failed draft load, which succeeded and displayed the untitled draft. Deleted the draft and confirmed; the screen now shows “Draft deleted.”",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "other",
+        "name": "Draft deleted"
+      },
+      {
+        "role": "text",
+        "name": "Draft deleted",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "status",
+        "name": "In progress",
+        "value": "1"
+      },
+      {
+        "role": "text",
+        "name": "Loading drafts…"
+      },
+      {
+        "role": "other",
+        "name": "Loading drafts…"
+      },
+      {
+        "role": "other",
+        "name": "In progress"
+      }
+    ],
+    "endWaitMs": 12242,
+    "keyedBy": {
+      "cacheSchema": "trace-1",
+      "policyVersion": "conservative/6",
+      "project": "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643",
+      "platform": "ios",
+      "engineName": "mobile",
+      "engineSpiVersion": 1,
+      "appIdentity": "873e96a3c0364ffd8e603a0fb9ccef7bb32dd2c64eb8bddaa76d36fdfbf446ae",
+      "agentContextDigest": "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+    }
+  }
+}

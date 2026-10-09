@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-09T07:00:28.966Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap group \"Enable microphone\" in \"Voice notes\"",
+        "target": {
+          "role": "group",
+          "name": "Enable microphone",
+          "testId": "request-permission",
+          "selector": "id=request-permission",
+          "within": "Voice notes"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"While using the app\"",
+        "target": {
+          "role": "button",
+          "name": "While using the app",
+          "testId": "com.android.permissioncontroller:id/permission_allow_foreground_only_button",
+          "selector": "id=com.android.permissioncontroller:id/permission_allow_foreground_only_button"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Permission%20Prompt",
+      "targetId": "android-emulator",
+      "instructionDigest": "b0942b32f51f5f05d38db2a1978624dad1187acfb8aca674dbbb09cc9c29ac87",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Requested microphone access and allowed it using “While using the app” in the system dialog. The app now displays “Microphone enabled.”",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Microphone enabled",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Voice notes"
+      },
+      {
+        "role": "text",
+        "name": "Recording voice notes requires microphone access. Allow the permission when the system asks."
+      },
+      {
+        "role": "text",
+        "name": "Enable microphone"
+      },
+      {
+        "role": "group",
+        "name": "Enable microphone",
+        "testId": "request-permission"
+      }
+    ],
+    "endWaitMs": 11500,
+    "keyedBy": {
+      "cacheSchema": "trace-1",
+      "policyVersion": "conservative/6",
+      "project": "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643",
+      "platform": "android",
+      "engineName": "mobile",
+      "engineSpiVersion": 1,
+      "appIdentity": "e18e9835187bab993e11f2dd7ff5624429bc26890c846accacf0057b525e92a0",
+      "agentContextDigest": "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+    }
+  }
+}

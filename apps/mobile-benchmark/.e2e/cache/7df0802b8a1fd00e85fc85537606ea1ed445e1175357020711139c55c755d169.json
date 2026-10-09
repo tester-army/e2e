@@ -1,0 +1,120 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-09T07:20:27.371Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap textbox \"Search…\"",
+        "target": {
+          "role": "textbox",
+          "testId": "search-input",
+          "placeholder": "Search…",
+          "selector": "id=search-input"
+        }
+      },
+      {
+        "name": "type",
+        "summary": "type \"Benchmark Target\" into textbox \"Search…\"",
+        "target": {
+          "role": "textbox",
+          "testId": "search-input",
+          "placeholder": "Search…",
+          "selector": "id=search-input"
+        },
+        "value": "Benchmark Target"
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Benchmark Target\"",
+        "target": {
+          "role": "other",
+          "name": "Benchmark Target",
+          "testId": "result-Benchmark Target",
+          "selector": "id=\"result-Benchmark Target\""
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Benchmark Target\"",
+        "target": {
+          "role": "other",
+          "name": "Benchmark Target",
+          "testId": "result-Benchmark Target",
+          "selector": "id=\"result-Benchmark Target\""
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Debounced%20Search",
+      "targetId": "ios-simulator",
+      "instructionDigest": "c212f90679a61041258d6d57a10468462a17a4c9c398605f324169c734daa7f5",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Searched for “Benchmark Target,” waited for the exact result to load, and selected it once. The screen confirms “Selected Benchmark Target.”",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "other",
+        "name": "Selected Benchmark Target"
+      },
+      {
+        "role": "text",
+        "name": "Selected Benchmark Target",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Search for and select \"Benchmark Target\""
+      },
+      {
+        "role": "textbox",
+        "testId": "search-input",
+        "placeholder": "Search…"
+      },
+      {
+        "role": "other",
+        "name": "Vertical scroll bar, 1 page",
+        "value": "0%"
+      },
+      {
+        "role": "other",
+        "name": "Horizontal scroll bar, 1 page",
+        "value": "0%"
+      },
+      {
+        "role": "other",
+        "name": "Search for and select \"Benchmark Target\""
+      },
+      {
+        "role": "other",
+        "name": "Vertical scroll bar, 1 page",
+        "testId": "search-results"
+      },
+      {
+        "role": "scroll-view",
+        "name": "Vertical scroll bar, 1 page"
+      }
+    ],
+    "endWaitMs": 12017,
+    "keyedBy": {
+      "cacheSchema": "trace-1",
+      "policyVersion": "conservative/6",
+      "project": "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643",
+      "platform": "ios",
+      "engineName": "mobile",
+      "engineSpiVersion": 1,
+      "appIdentity": "873e96a3c0364ffd8e603a0fb9ccef7bb32dd2c64eb8bddaa76d36fdfbf446ae",
+      "agentContextDigest": "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+    }
+  }
+}

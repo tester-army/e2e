@@ -16,9 +16,13 @@ name: mobile
 # booted device and, when a test fails, runs the failed tests once more with
 # `--last-failed` before the job goes red (agent-device's runtime has episodes
 # of its own on a shared machine, #502). The agentic suite replays the
-# recordings committed under .e2e/cache, read-only in CI, and calls the model
-# for a step with none, so on a pull request it runs for this repository's
-# branches only, and not for Dependabot's, whose runs get no secrets either.
+# recordings committed under .e2e/cache and calls the model for a step with
+# none, so on a pull request it runs for this repository's branches only,
+# and not for Dependabot's, whose runs get no secrets either. Android runs
+# it with `--strict-cache`, the way benchmark.yml runs the web one: a
+# committed recording that no longer replays fails the job as REPLAY_STALE
+# instead of spending model calls on every run. iOS replays leniently until
+# the three scenarios the README names replay on a simulator.
 # The merge queue runs with this repository's secrets, so it runs the agentic
 # suite for every pull request. Both platforms' entries are recorded on a Mac
 # (an iPhone 17 Pro simulator, a 1080x2400 emulator) and committed with the
@@ -303,7 +307,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           E2E_MOBILE_BENCHMARK_ANDROID_APP: ${{ steps.app.outputs.app-path }}
           E2E_MOBILE_BENCHMARK_COMMENT: android${{ matrix.suite == 'agentic' && ' agent' || '' }}
-          E2E_RUN: node node_modules/e2e/dist/cli/bin.js run --target android-emulator ${{ matrix.suite == 'agentic' && '--config e2e.agent.config.ts --output .e2e/agent' || '' }}
+          E2E_RUN: node node_modules/e2e/dist/cli/bin.js run --target android-emulator ${{ matrix.suite == 'agentic' && '--config e2e.agent.config.ts --output .e2e/agent --strict-cache' || '' }}
       - name: Failure screens
         if: ${{ failure() }}
         working-directory: apps/mobile-benchmark

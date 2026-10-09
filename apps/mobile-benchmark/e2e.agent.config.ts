@@ -7,7 +7,9 @@ import base, { android, ios } from './e2e.config.ts';
  * Agentic suite against the same app and account as the deterministic one.
  * It runs in CI for this repository's branches (`mobile.yml`), replaying the
  * recordings committed under `.e2e/cache/` and calling the model for a step
- * with none. To record by hand, on a booted simulator or emulator:
+ * with none; Android runs with `--strict-cache`, so a recording that no
+ * longer replays fails its step. To record by hand, on a booted simulator or
+ * emulator:
  *
  *   AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/mobile-benchmark test:agent
  *

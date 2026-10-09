@@ -1,0 +1,127 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-09T06:57:21.664Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"tester\" into textbox \"username-input\"",
+        "target": {
+          "role": "textbox",
+          "testId": "username-input",
+          "selector": "id=username-input"
+        },
+        "value": "tester"
+      },
+      {
+        "name": "type",
+        "summary": "type \"1234\" into textbox \"pin-input\"",
+        "target": {
+          "role": "textbox",
+          "testId": "pin-input",
+          "selector": "id=pin-input",
+          "inputPurpose": "password"
+        },
+        "value": "1234"
+      },
+      {
+        "name": "type",
+        "summary": "type \"This is a test note.\" into textbox \"Vertical scroll bar, 1 page\"",
+        "target": {
+          "role": "textbox",
+          "name": "Vertical scroll bar, 1 page",
+          "testId": "notes-input",
+          "selector": "id=notes-input"
+        },
+        "value": "This is a test note."
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Submit\"",
+        "target": {
+          "role": "other",
+          "name": "Submit",
+          "testId": "submit-button",
+          "selector": "id=submit-button"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Text%20Input%20Variations",
+      "targetId": "ios-simulator",
+      "instructionDigest": "fbc47cae1853b33f40b2f33da5fd5f41dfc811c660e7aecb291ad1d964757d21",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Entered username \"tester\", PIN 1234, and notes \"This is a test note.\" (20 characters), then submitted. The screen displays \"Form submitted.\"",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "other",
+        "name": "Form submitted"
+      },
+      {
+        "role": "scroll-view",
+        "name": "Form submitted"
+      },
+      {
+        "role": "text",
+        "name": "Form submitted",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Username (min 3 chars)"
+      },
+      {
+        "role": "textbox",
+        "testId": "username-input"
+      },
+      {
+        "role": "text",
+        "name": "PIN (exactly 4 digits, secure)"
+      },
+      {
+        "role": "textbox",
+        "testId": "pin-input",
+        "inputPurpose": "password"
+      },
+      {
+        "role": "text",
+        "name": "Notes (multiline, min 10 chars) — 0/10"
+      },
+      {
+        "role": "other",
+        "name": "Submit",
+        "testId": "submit-button"
+      },
+      {
+        "role": "other",
+        "name": "Username (min 3 chars)"
+      },
+      {
+        "role": "scroll-view",
+        "name": "Username (min 3 chars)"
+      }
+    ],
+    "endWaitMs": 12441,
+    "keyedBy": {
+      "cacheSchema": "trace-1",
+      "policyVersion": "conservative/6",
+      "project": "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643",
+      "platform": "ios",
+      "engineName": "mobile",
+      "engineSpiVersion": 1,
+      "appIdentity": "873e96a3c0364ffd8e603a0fb9ccef7bb32dd2c64eb8bddaa76d36fdfbf446ae",
+      "agentContextDigest": "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+    }
+  }
+}

@@ -43,11 +43,30 @@ The deterministic suite runs in CI on every pull request (`.github/workflows/mob
 an iOS simulator on a macOS runner and an Android emulator on Linux, with the
 Expo build cached per native fingerprint and its JS bundle repacked on a hit.
 The agentic suite runs there too, for this repository's branches. It replays
-the recordings committed under `.e2e/cache/` where they exist and calls the
-model for a step with none: the iOS entries are recorded on a Mac with
-`test:agent` (below) and committed in the same pull request as the scenario
-change; nobody has recorded on an Android emulator yet, so that side spends
-model calls until an emulator recording is committed.
+the recordings committed under `.e2e/cache/` and calls the model for a step
+with none. Both platforms' entries are recorded on a Mac with `test:agent`
+(below), an iPhone 17 Pro simulator on the pinned iOS runtime and a Pixel 7
+API 36 emulator, and committed in the same pull request as the scenario
+change. Android runs with `--strict-cache`, so a recording that no longer
+replays fails its step as `REPLAY_STALE` instead of handing it to the model.
+iOS replays leniently: three recordings hand off on every run, three more
+on the CI simulator only, and strict mode waits on them.
+
+- Debounced Search: the replay looks before the debounced results render,
+  and relocation settles on the search field's wrapper, which reads
+  "Benchmark Target" too, instead of waiting for the result row.
+- Choice Controls: the keyboard the notes field raises covers the Mushrooms
+  checkbox, which iOS then drops from the tree.
+- Stripe PaymentSheet: the card form's fields are not in the tree after the
+  Card tab is tapped on the sheet.
+- Login Form (CI only): the CI simulator reads the screen's route as its
+  title, `Login Form`, where a Mac reads the back button's `Benchmark
+  Examples`, so the recorded start route does not match.
+- Photo Picker (CI only): the recorded tap names the photo by the time it
+  was seeded, `Photo, October 03, 22:50`, which is another time on another
+  simulator.
+- Permission Prompt (CI only): every recorded action replays, but the
+  recorded end state, `Microphone enabled`, does not show.
 Each job posts its first pass to the pull request as one comment (`e2e ios:
 44 passed`, `e2e android agent: ...`) through `@e2e-dev/github`, like the web
 benchmark's two. The second pass over failed tests posts nothing, so a green

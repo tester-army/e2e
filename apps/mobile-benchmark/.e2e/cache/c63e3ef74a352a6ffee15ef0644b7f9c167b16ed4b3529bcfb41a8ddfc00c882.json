@@ -1,0 +1,92 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-09T06:56:44.831Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "scrollUntil",
+        "summary": "scroll down until \"Row 0512\" shows (55 screens)",
+        "text": "Row 0512",
+        "direction": "down"
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Row 0512\" in \"Row 0500\"",
+        "target": {
+          "role": "group",
+          "name": "Row 0512",
+          "testId": "row-512",
+          "selector": "id=row-512",
+          "within": "Row 0500"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Huge%20Virtualized%20List",
+      "targetId": "android-emulator",
+      "instructionDigest": "0cbf462391106879e99df44b824d6b362b915d99d44a02d241309ec3d4bf4041",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Scrolled the virtualized list to Row 0512 and tapped it. The screen now shows “Found Row 0512.”",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Found Row 0512",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "All 600 rows are loaded. Scroll to Row 0512 and tap it."
+      },
+      {
+        "role": "text",
+        "name": "Row 0001"
+      },
+      {
+        "role": "text",
+        "name": "Row 0002"
+      },
+      {
+        "role": "text",
+        "name": "Row 0003"
+      },
+      {
+        "role": "text",
+        "name": "Row 0004"
+      },
+      {
+        "role": "text",
+        "name": "Row 0005"
+      },
+      {
+        "role": "text",
+        "name": "Row 0006"
+      },
+      {
+        "role": "text",
+        "name": "Row 0007"
+      }
+    ],
+    "endWaitMs": 11730,
+    "keyedBy": {
+      "cacheSchema": "trace-1",
+      "policyVersion": "conservative/6",
+      "project": "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643",
+      "platform": "android",
+      "engineName": "mobile",
+      "engineSpiVersion": 1,
+      "appIdentity": "e18e9835187bab993e11f2dd7ff5624429bc26890c846accacf0057b525e92a0",
+      "agentContextDigest": "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+    }
+  }
+}

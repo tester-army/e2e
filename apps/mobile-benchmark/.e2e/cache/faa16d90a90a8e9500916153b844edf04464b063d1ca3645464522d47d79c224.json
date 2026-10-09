@@ -1,0 +1,102 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-09T06:56:34.302Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "scrollUntil",
+        "summary": "scroll down until \"Item 137\" shows (10 screens)",
+        "text": "Item 137",
+        "direction": "down"
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Item 137\"",
+        "target": {
+          "role": "other",
+          "name": "Item 137",
+          "testId": "item-137",
+          "selector": "id=item-137"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Infinite%20Scroll%20List",
+      "targetId": "ios-simulator",
+      "instructionDigest": "240960ef8daa93f30d3183a42cf877c23681993025141766e480102a3eca2d75",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Scrolled the paginated list until Item 137 appeared and tapped it. The screen now shows “Found item 137.”",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "other",
+        "name": "Found item 137"
+      },
+      {
+        "role": "text",
+        "name": "Found item 137",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Scroll down and tap Item 137 to complete"
+      },
+      {
+        "role": "other",
+        "name": "Item 2",
+        "testId": "item-2"
+      },
+      {
+        "role": "other",
+        "name": "Item 3",
+        "testId": "item-3"
+      },
+      {
+        "role": "other",
+        "name": "Item 4",
+        "testId": "item-4"
+      },
+      {
+        "role": "other",
+        "name": "Item 5",
+        "testId": "item-5"
+      },
+      {
+        "role": "other",
+        "name": "Item 6",
+        "testId": "item-6"
+      },
+      {
+        "role": "other",
+        "name": "Item 7",
+        "testId": "item-7"
+      },
+      {
+        "role": "other",
+        "name": "Item 8",
+        "testId": "item-8"
+      }
+    ],
+    "endWaitMs": 11718,
+    "keyedBy": {
+      "cacheSchema": "trace-1",
+      "policyVersion": "conservative/6",
+      "project": "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643",
+      "platform": "ios",
+      "engineName": "mobile",
+      "engineSpiVersion": 1,
+      "appIdentity": "873e96a3c0364ffd8e603a0fb9ccef7bb32dd2c64eb8bddaa76d36fdfbf446ae",
+      "agentContextDigest": "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+    }
+  }
+}

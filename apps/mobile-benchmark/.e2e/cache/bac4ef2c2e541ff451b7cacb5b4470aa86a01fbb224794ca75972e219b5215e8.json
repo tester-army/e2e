@@ -1,0 +1,182 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-09T06:59:56.716Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"jane@example.com\" into textbox \"e.g. jane@example.com\" in \"Step 1 of 3\"",
+        "target": {
+          "role": "textbox",
+          "name": "e.g. jane@example.com",
+          "testId": "email-input",
+          "placeholder": "e.g. jane@example.com",
+          "selector": "id=email-input",
+          "within": "Step 1 of 3"
+        },
+        "value": "jane@example.com"
+      },
+      {
+        "name": "dismissKeyboard",
+        "summary": "dismiss the keyboard"
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Continue\" in \"Step 1 of 3\"",
+        "target": {
+          "role": "group",
+          "name": "Continue",
+          "testId": "continue-button",
+          "selector": "id=continue-button",
+          "within": "Step 1 of 3"
+        }
+      },
+      {
+        "name": "type",
+        "summary": "type \"Jane\" into textbox \"e.g. Jane\" in \"Step 2 of 3\"",
+        "target": {
+          "role": "textbox",
+          "name": "e.g. Jane",
+          "testId": "first-name-input",
+          "placeholder": "e.g. Jane",
+          "selector": "id=first-name-input",
+          "within": "Step 2 of 3"
+        },
+        "value": "Jane"
+      },
+      {
+        "name": "type",
+        "summary": "type \"Merchant\" into textbox \"e.g. Merchant\" in \"Step 2 of 3\"",
+        "target": {
+          "role": "textbox",
+          "name": "e.g. Merchant",
+          "testId": "last-name-input",
+          "placeholder": "e.g. Merchant",
+          "selector": "id=last-name-input",
+          "within": "Step 2 of 3"
+        },
+        "value": "Merchant"
+      },
+      {
+        "name": "dismissKeyboard",
+        "summary": "dismiss the keyboard"
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Continue\" in \"Step 2 of 3\"",
+        "target": {
+          "role": "group",
+          "name": "Continue",
+          "testId": "continue-button",
+          "selector": "id=continue-button",
+          "within": "Step 2 of 3"
+        }
+      },
+      {
+        "name": "type",
+        "summary": "type \"0612435678\" into textbox \"e.g. 0612435678\" in \"Step 3 of 3\"",
+        "target": {
+          "role": "textbox",
+          "name": "e.g. 0612435678",
+          "testId": "phone-input",
+          "placeholder": "e.g. 0612435678",
+          "selector": "id=phone-input",
+          "within": "Step 3 of 3"
+        },
+        "value": "0612435678"
+      },
+      {
+        "name": "dismissKeyboard",
+        "summary": "dismiss the keyboard"
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Continue\" in \"Step 3 of 3\"",
+        "target": {
+          "role": "group",
+          "name": "Continue",
+          "testId": "continue-button",
+          "selector": "id=continue-button",
+          "within": "Step 3 of 3"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Sequential%20Onboarding",
+      "targetId": "android-emulator",
+      "instructionDigest": "970c887978c38f936a27d9b90e47b8e93318f07069e136ba3b343e8bfa936525",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Completed all three signup steps using jane@example.com, Jane Merchant, and 0612435678. Dismissed the keyboard before each Continue; the final screen confirms “Onboarding complete” and echoes all three values.",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Onboarding complete",
+        "testId": "success-message"
+      },
+      {
+        "role": "text",
+        "name": "jane@example.com",
+        "testId": "echo-email"
+      },
+      {
+        "role": "text",
+        "name": "Jane Merchant",
+        "testId": "echo-name"
+      },
+      {
+        "role": "text",
+        "name": "0612435678",
+        "testId": "echo-phone"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Step 1 of 3"
+      },
+      {
+        "role": "text",
+        "name": "Let's start with your email"
+      },
+      {
+        "role": "textbox",
+        "name": "e.g. jane@example.com",
+        "testId": "email-input",
+        "placeholder": "e.g. jane@example.com"
+      },
+      {
+        "role": "text",
+        "name": "Continue"
+      },
+      {
+        "role": "group",
+        "testId": "onboarding-step-email"
+      },
+      {
+        "role": "group",
+        "name": "Continue",
+        "testId": "continue-button"
+      }
+    ],
+    "endWaitMs": 11700,
+    "keyedBy": {
+      "cacheSchema": "trace-1",
+      "policyVersion": "conservative/6",
+      "project": "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643",
+      "platform": "android",
+      "engineName": "mobile",
+      "engineSpiVersion": 1,
+      "appIdentity": "e18e9835187bab993e11f2dd7ff5624429bc26890c846accacf0057b525e92a0",
+      "agentContextDigest": "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+    }
+  }
+}
