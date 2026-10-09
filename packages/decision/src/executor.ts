@@ -4,20 +4,12 @@ import { isAgentError } from 'e2e/agent';
 import { ConfigurationError } from 'e2e/engine';
 import { decide, requireDecide, type Decision } from './decide.ts';
 import { perform, type Action } from './dispatch.ts';
-import { actionSpace, type ActionSpace, type Control, type Operation, type Target } from './elements.ts';
+import { actionSpace, type ActionSpace, type Control, type Element, type Operation, type Target } from './elements.ts';
 import { PointLocator } from './locator.ts';
 import type { Screenshot } from './overlay.ts';
-import { describe, gated, invalid, need, pick, type Gates } from './picks.ts';
-import {
-  assertionRequest,
-  completionRequest,
-  elementRecords,
-  operationRequest,
-  nonSecretParams,
-  targetRequest,
-  type DecisionRequest,
-  type HistoryEntry,
-} from './questions.ts';
+import { nonSecretParams } from './params.ts';
+import { describe, gated, invalid, need, pick, verdictOf, type Gates, type Verdict } from './picks.ts';
+import { assertionRequest, completionRequest, operationRequest, targetRequest, type DecisionRequest, type HistoryEntry } from './questions.ts';
 import { askText, PATHS, TARGET, TEXT, type Ask, type FieldInput } from './text.ts';
 import type { DecisionExecutorOptions } from './types.ts';
 /** Error codes the runtime owns: rethrown untouched, never absorbed as history. */
@@ -96,18 +88,14 @@ function isOptionsRecord(value: unknown): boolean {
 function inUnit(value: number): boolean {
   return Number.isFinite(value) && value >= 0 && value <= 1;
 }
-/** One look at the app: the path, the action space, and the pixels the step may show. */
+/** One look at the app: the path, the action space when the tree had nodes, and the pixels the step may show. */
 interface View {
   readonly path: string;
-  readonly space: ActionSpace;
+  readonly space: ActionSpace | undefined;
   readonly screenshot: Screenshot | undefined;
 }
-/** A look whose tree was missing or empty: nothing to act on, pixels at most. */
-interface BlindView {
-  readonly path: string;
-  readonly space: undefined;
-  readonly screenshot: Screenshot | undefined;
-}
+/** A look with nodes to act on. */
+type Acting = View & { readonly space: ActionSpace };
 /** An action the loop settled on, with how it reads in the turn and in history. */
 interface Prepared {
   readonly action: Action;
@@ -120,6 +108,8 @@ interface Prepared {
 }
 /** What the loop settled an operation into: an action, a verdict to finish with, or a turn to skip with its reason. */
 type Next = Prepared | { readonly verdict: StepVerdict } | { readonly skip: string; readonly because: string };
+/** What a terminal check found: a verdict, or why the screen could not be judged. */
+type Check = Verdict | 'below gate' | 'incomplete observation';
 /**
  * One `agent.act` or `agent.assert` step: the loop, the budget, the history
  * the model reads, and the turns and transcript the runner keeps.
@@ -132,10 +122,12 @@ class Step {
   private readonly language: Exclude<LanguageModel, string> | undefined;
   private readonly canType: boolean;
   private readonly vision: boolean;
-  private readonly scores: boolean;
+  /** Whether the step can locate a drawn control: the decision model scores and the text model names it. */
+  private readonly locates: boolean;
   private readonly locator: PointLocator;
   private previousFingerprint: string | undefined;
-  private lastTurn: StepTurn | undefined;
+  /** The turn of the last action taken, settled by the next observation. */
+  private pendingTurn: StepTurn | undefined;
   private rejectedTerminals = 0;
   private attached = false;
   constructor(
@@ -147,7 +139,7 @@ class Step {
     this.language = ctx.model as Exclude<LanguageModel, string> | undefined;
     this.canType = this.language !== undefined && ctx.target.verbs.has('type');
     this.vision = options.vision === true;
-    this.scores = options.model.supportedQuestionTypes.includes('score');
+    this.locates = this.language !== undefined && options.model.supportedQuestionTypes.includes('score');
     this.locator = new PointLocator(ctx, (request) => this.ask(request), gates);
   }
   async run(): Promise<StepVerdict> {
@@ -166,15 +158,14 @@ class Step {
    * A fresh look: the tree, and masked pixels when allowed. `typing` keeps a
    * filled field's row for verdict views.
    */
-  private async view(typing: boolean): Promise<View | BlindView> {
+  private async view(typing: boolean): Promise<View> {
     const observation = await this.ctx.observe({ tree: true, pixels: this.pixelsAllowed });
     const path = observation.path ?? '';
-    const pixels = this.pixelsAllowed ? observation.pixels : undefined;
-    const screenshot: Screenshot | undefined = pixels;
+    const screenshot = this.pixelsAllowed ? observation.pixels : undefined;
     const tree = observation.tree;
     if (observation.treeUnavailable || tree === undefined || emptyTree(observation)) return { path, space: undefined, screenshot };
     const base = { path, viewport: observation.viewport, tree };
-    const seen = pixels === undefined ? base : { ...base, pixels, scores: this.scores };
+    const seen = screenshot === undefined ? base : { ...base, pixels: screenshot, locates: this.locates };
     return { path, space: actionSpace(this.ctx, seen, typing), screenshot };
   }
   /** One decide call under the step budget, or undefined once it is spent. */
@@ -218,19 +209,10 @@ class Step {
     // `vision: 'only'` judges the pixels alone, tree or no tree; without granted pixels the tree still decides.
     const pixelsOnly = this.ctx.step.vision === 'only' && screenshot !== undefined;
     if (space === undefined && !pixelsOnly) return inconclusive('A complete semantic observation is required.');
-    const seen = pixelsOnly ? undefined : space;
-    const answers = await this.ask(assertionRequest({
-      goal: this.ctx.step.instruction,
-      path,
-      pageText: seen?.pageText ?? '',
-      elements: seen === undefined ? [] : elementRecords(seen),
-      statuses: seen?.statuses ?? [],
-      ...(screenshot === undefined ? {} : { screenshot }),
-    }));
+    const answers = await this.ask(assertionRequest(this.ctx.step.instruction, path, pixelsOnly ? undefined : space, screenshot));
     if (answers === undefined) return blocked(this.budgetMessage());
-    const verdict = need(answers.verdict, 'verdict');
-    const evidence = describe(verdict);
-    const settled = gated(verdict, this.gates) ? verdict.choice : 'below gate';
+    const evidence = describe(need(answers.verdict, 'verdict'));
+    const settled = verdictOf(answers.verdict, this.gates);
     if (settled === 'holds') return { status: 'passed', summary: `The screen shows the assertion holds (${evidence}).` };
     if (settled === 'fails') return { status: 'failed', errorCode: 'ASSERTION_FAILED', summary: `The screen contradicts the assertion (${evidence}).` };
     return inconclusive(`The screen does not settle the assertion (${evidence}).`);
@@ -240,18 +222,10 @@ class Step {
     for (;;) {
       const view = await this.view(this.canType);
       if (view.space === undefined) return blocked('A complete semantic observation is required.');
-      const { space, screenshot, path } = view;
-      const changed = space.fingerprint !== this.previousFingerprint;
-      if (this.lastTurn !== undefined) {
-        this.lastTurn.outcome += changed ? ', page changed' : ', page unchanged';
-        this.lastTurn = undefined;
-      }
-      const previous = this.history.at(-1);
-      if (previous !== undefined) this.history[this.history.length - 1] = { ...previous, pageChanged: changed };
-      this.locator.settle(screenshot);
-      this.previousFingerprint = space.fingerprint;
+      const acting: Acting = { ...view, space: view.space };
+      this.settle(acting);
       if (stalled(this.history)) return blocked('Three actions in a row changed nothing on screen.');
-      const decided = await this.ask(operationRequest(this.ctx, space, this.history, path));
+      const decided = await this.ask(operationRequest(this.ctx, acting.space, this.history, acting.path));
       if (decided === undefined) return blocked(this.budgetMessage());
       const op = need(decided.operation, 'operation');
       if (!gated(op, this.gates)) return blocked(`The next operation is uncertain (${describe(op)}).`);
@@ -261,7 +235,7 @@ class Step {
         if (terminal !== undefined) return terminal;
         continue;
       }
-      const next = await this.prepare(op, view);
+      const next = await this.prepare(op, acting);
       if ('verdict' in next) return next.verdict;
       if ('skip' in next) {
         this.history.push({ action: next.skip, error: next.because });
@@ -271,83 +245,93 @@ class Step {
     }
   }
   /**
+   * Settles the last action against a fresh look: whether the page changed
+   * goes on its turn and its history entry, and the locator learns whether
+   * a point tap landed.
+   */
+  private settle({ space, screenshot }: Acting): void {
+    const changed = space.fingerprint !== this.previousFingerprint;
+    this.previousFingerprint = space.fingerprint;
+    if (this.pendingTurn !== undefined) {
+      this.pendingTurn.outcome += changed ? ', page changed' : ', page unchanged';
+      this.pendingTurn = undefined;
+    }
+    const previous = this.history.at(-1);
+    if (previous !== undefined) this.history[this.history.length - 1] = { ...previous, pageChanged: changed };
+    this.locator.settle(screenshot);
+  }
+  /**
    * Turns the chosen operation into an action: a control as is, a point
    * through the locator, anything else through its target question and
    * what the operation needs beside the target.
    */
-  private async prepare(op: Decision, { space, screenshot, path }: View): Promise<Next> {
+  private async prepare(op: Decision, view: Acting): Promise<Next> {
+    const { space } = view;
     const control = space.control(op.choice);
     if (control !== undefined) {
       return { action: { operation: control }, label: CONTROL_LABELS[control], description: CONTROL_LABELS[control] };
     }
     const operation = space.operation(op.choice);
     if (operation === undefined) throw invalid('The decision model chose an unavailable operation.');
-    if (operation === 'tap_at') {
-      if (screenshot === undefined) throw invalid('The decision model chose tap_at with no screenshot.');
-      const named = this.language === undefined ? { target: undefined } : await this.askText(TARGET, operation, space.pageText);
-      if (named === undefined) return { verdict: blocked(this.budgetMessage()) };
-      const wanted = named.target;
-      const point = this.locator.known(path, wanted) ?? (await this.locator.locate(screenshot, path, wanted));
-      if (point === undefined) return { verdict: blocked(this.budgetMessage()) };
-      if ('uncertain' in point) return { verdict: blocked(`The tap point is uncertain (${point.uncertain}).`) };
-      this.locator.tapped(path, wanted, point, screenshot);
-      const label = wanted === undefined ? `tap at (${point.x}, ${point.y})` : `tap ${wanted} at (${point.x}, ${point.y})`;
-      return { action: { operation, point }, label, description: label };
-    }
+    if (operation === 'tap_at') return this.prepareTapAt(view);
     const group = space.targets.get(operation);
     if (group === undefined) throw invalid('The decision model chose an unavailable operation.');
     // The target depends on the operation: its own request, after the operation settled.
-    const request = targetRequest(this.ctx, space, operation, this.history, path);
+    const request = targetRequest(this.ctx, space, operation, this.history, view.path);
     const answers = Object.keys(request.questions).length === 0 ? {} : await this.ask(request);
     if (answers === undefined) return { verdict: blocked(this.budgetMessage()) };
-    const [lone] = group;
-    const chosen = group.size === 1 && lone !== undefined ? { key: lone[0], value: lone[1], answer: undefined } : pick(answers.target, group, 'target');
-    if ('none' in chosen) return { verdict: blocked(`The decision model chose ${operation} but no target for it (${describe(chosen.none)}).`) };
-    if (chosen.answer !== undefined && !gated(chosen.answer, this.gates)) return { verdict: blocked(`The next target is uncertain (${describe(chosen.answer)}).`) };
+    const chosen = pick(answers.target, group, this.gates, 'target', operation);
+    if ('blocked' in chosen) return { verdict: blocked(chosen.blocked) };
     const { key, value: target } = chosen;
-    const field = (): FieldInput['field'] => {
-      const element = space.element(key);
-      return element === undefined ? { label: key, role: 'textbox' } : { label: element.label, role: element.role, ...(element.value === undefined ? {} : { value: element.value }) };
-    };
+    const element = space.element(key);
+    const field = fieldOf(key, element);
     const prepared = (action: Action, typed?: string): Prepared => ({
       action,
-      label: callLabel(space, key, operation, target, typed),
+      label: callLabel(element, operation, target, typed),
       description: target.description,
       ...(chosen.answer === undefined ? {} : { targetAnswer: chosen.answer }),
       ...(typed === undefined ? {} : { typed }),
     });
     switch (operation) {
       case 'type': {
-        const answer = await this.askText(TEXT, operation, space.pageText, field());
+        const answer = await this.askText(TEXT, operation, space.pageText, field);
         if (answer === undefined) return { verdict: blocked(this.budgetMessage()) };
         if (answer.text === null || answer.text === '') return { skip: target.description, because: 'no value for this field' };
         return prepared({ operation, target, text: answer.text }, answer.text);
       }
       case 'upload': {
-        const answer = await this.askText(PATHS, operation, space.pageText, field());
+        const answer = await this.askText(PATHS, operation, space.pageText, field);
         if (answer === undefined) return { verdict: blocked(this.budgetMessage()) };
         if (answer.paths.length === 0) return { skip: target.description, because: 'no files for this input' };
         return prepared({ operation, target, paths: answer.paths }, answer.paths.join(', '));
       }
       case 'drag': {
-        const destination = pick(answers.destination, space.destinations, 'drop destination');
-        if ('none' in destination) return { verdict: blocked(`The decision model chose drag but no destination for it (${describe(destination.none)}).`) };
-        if (!gated(destination.answer, this.gates)) return { verdict: blocked(`The drop destination is uncertain (${describe(destination.answer)}).`) };
+        const destination = pick(answers.destination, space.destinations, this.gates, 'destination', operation);
+        if ('blocked' in destination) return { verdict: blocked(destination.blocked) };
         if (destination.value.id === target.id) return { verdict: blocked('The decision model chose to drag an element onto itself.') };
         return prepared({ operation, target, destinationId: destination.value.id }, `onto ${destination.value.label}`);
       }
       case 'typeSecret': {
-        const secrets = this.ctx.step.secrets;
-        const [one] = secrets;
-        if (secrets.length === 1 && one !== undefined) return prepared({ operation, target, name: one.name });
-        const secret = pick(answers.secret, new Map(secrets.map((entry) => [entry.name, entry])), 'secret');
-        if ('none' in secret) return { verdict: blocked(`The decision model chose typeSecret but no secret for it (${describe(secret.none)}).`) };
-        if (!gated(secret.answer, this.gates)) return { verdict: blocked(`The next secret is uncertain (${describe(secret.answer)}).`) };
+        const secret = pick(answers.secret, new Map(this.ctx.step.secrets.map((entry) => [entry.name, entry])), this.gates, 'secret', operation);
+        if ('blocked' in secret) return { verdict: blocked(secret.blocked) };
         return prepared({ operation, target, name: secret.value.name });
       }
       default:
         return prepared({ operation, target });
     }
+  }
+  /** A point tap: the text model names the drawn control, the locator finds it or recalls where it last landed. */
+  private async prepareTapAt({ space, screenshot, path }: Acting): Promise<Next> {
+    if (screenshot === undefined) throw invalid('The decision model chose tap_at with no screenshot.');
+    const named = await this.askText(TARGET, 'tap_at', space.pageText);
+    if (named === undefined) return { verdict: blocked(this.budgetMessage()) };
+    const wanted = named.target;
+    const point = this.locator.known(path, wanted) ?? (await this.locator.locate(screenshot, path, wanted));
+    if (point === undefined) return { verdict: blocked(this.budgetMessage()) };
+    if ('uncertain' in point) return { verdict: blocked(`The tap point is uncertain (${point.uncertain}).`) };
+    this.locator.tapped(path, wanted, point, screenshot);
+    const label = `tap ${wanted} at (${point.x}, ${point.y})`;
+    return { action: { operation: 'tap_at', point }, label, description: label };
   }
   /**
    * Performs a prepared action and records the turn and the history entry.
@@ -358,7 +342,7 @@ class Step {
     const targetPart = targetAnswer === undefined ? '' : `, target p=${targetAnswer.probability.toFixed(3)}`;
     const turn: StepTurn = { index: this.turns.length + 1, calls: [label], outcome: `op p=${op.probability.toFixed(3)}${targetPart}` };
     this.turns.push(turn);
-    this.lastTurn = turn;
+    this.pendingTurn = turn;
     const entry: HistoryEntry = { action: description, ...(typed === undefined ? {} : { text: typed }) };
     try {
       const note = await perform(this.ctx, action);
@@ -377,22 +361,13 @@ class Step {
   private async terminalCheck(claim: 'done' | 'failed'): Promise<StepVerdict | undefined> {
     const { path, space, screenshot } = await this.view(true);
     if (space === undefined) return this.rejectClaim(claim, 'incomplete observation');
-    const answers = await this.ask(completionRequest({
-      goal: this.ctx.step.instruction,
-      params: nonSecretParams(this.ctx.step.params),
-      path,
-      pageText: space.pageText,
-      elements: elementRecords(space),
-      history: this.history,
-      statuses: space.statuses,
-      ...(screenshot === undefined ? {} : { screenshot }),
-    }));
+    const answers = await this.ask(completionRequest(this.ctx, space, this.history, path, screenshot));
     if (answers === undefined) return blocked(this.budgetMessage());
-    const verdict = need(answers.verdict, 'verdict');
-    const settled = gated(verdict, this.gates) ? verdict.choice : 'below gate';
-    if (claim === 'done' && settled === 'holds') return { status: 'passed', summary: `The screen shows the step is done (${describe(verdict)}).` };
+    const evidence = describe(need(answers.verdict, 'verdict'));
+    const settled = verdictOf(answers.verdict, this.gates);
+    if (claim === 'done' && settled === 'holds') return { status: 'passed', summary: `The screen shows the step is done (${evidence}).` };
     if (claim === 'failed' && settled === 'fails') {
-      return { status: 'failed', errorCode: 'ACTION_FAILED', summary: `The screen shows the step failed (${describe(verdict)}).` };
+      return { status: 'failed', errorCode: 'ACTION_FAILED', summary: `The screen shows the step failed (${evidence}).` };
     }
     return this.rejectClaim(claim, settled);
   }
@@ -401,7 +376,7 @@ class Step {
    * rejected claim in a step ends it, decided by the check: visible
    * counter-evidence is a product failure, anything else an automation limit.
    */
-  private rejectClaim(claim: 'done' | 'failed', check: string): StepVerdict | undefined {
+  private rejectClaim(claim: 'done' | 'failed', check: Check): StepVerdict | undefined {
     this.rejectedTerminals += 1;
     this.history.push({ action: claim, error: `check: ${check}` });
     if (this.rejectedTerminals < 2) return undefined;
@@ -417,9 +392,13 @@ const CONTROL_LABELS: Readonly<Record<Control, string>> = {
   scroll_down: 'scroll viewport down',
   back: 'back one step in history',
 };
+/** The field a text ask describes: the element's label, role, and value; a textbox named by its key when the table has no row. */
+function fieldOf(key: string, element: Element | undefined): NonNullable<FieldInput['field']> {
+  if (element === undefined) return { label: key, role: 'textbox' };
+  return { label: element.label, role: element.role, ...(element.value === undefined ? {} : { value: element.value }) };
+}
 /** One turn call label, e.g. type [3] textbox "New todo" = "Buy milk". */
-function callLabel(space: ActionSpace, key: string, operation: Operation, target: Target, text?: string): string {
-  const element = space.element(key);
+function callLabel(element: Element | undefined, operation: Operation, target: Target, text?: string): string {
   if (element === undefined) return target.description;
   const value = text === undefined ? '' : ` = ${JSON.stringify(text)}`;
   return `${operation} [${element.index}] ${element.role} ${JSON.stringify(element.label)}${value}`;

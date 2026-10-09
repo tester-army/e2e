@@ -12,6 +12,7 @@ import {
   TypeValidationError,
 } from 'ai';
 import { missingKey } from './api-key.ts';
+import { recorded } from './budget.ts';
 import type { DecisionRequest } from './questions.ts';
 import type { DecisionExecutorOptions } from './types.ts';
 /** Transport retries per decide call. */
@@ -59,45 +60,36 @@ export async function decide(
   request: DecisionRequest,
   providerOptions?: DecisionExecutorOptions['providerOptions'],
 ): Promise<Record<string, Decision>> {
-  ctx.signal.throwIfAborted();
-  const started = performance.now();
-  const startedAt = new Date().toISOString();
-  let inputTokens: number | undefined;
-  let outputTokens: number | undefined;
-  let modelId = model.modelId;
-  let providerMetadata: Record<string, Record<string, unknown>> | undefined;
+  const screenshot = request.screenshot;
+  // The screenshot rides beside the JSON state as a file part; a text-only provider rejects it before the request.
+  const state: Experimental_DecisionState =
+    screenshot === undefined
+      ? request.state
+      : [{ type: 'json', value: request.state }, { type: 'file', mediaType: screenshot.mediaType, data: screenshot.data }];
   let answers: Record<string, RawAnswer>;
+  let providerMetadata: Record<string, Record<string, unknown>> | undefined;
   try {
-    const screenshot = request.screenshot;
-    // The screenshot rides beside the JSON state as a file part; a text-only provider rejects it before the request.
-    const state: Experimental_DecisionState =
-      screenshot === undefined
-        ? request.state
-        : [{ type: 'json', value: request.state }, { type: 'file', mediaType: screenshot.mediaType, data: screenshot.data }];
-    const call = { model, state, questions: request.questions, ...(providerOptions === undefined ? {} : { providerOptions }) };
-    const result = await requireDecide()({
-      ...(call as unknown as Parameters<typeof ai.experimental_decide>[0]),
-      // Transport retries for a rate limit or a 5xx, as the runner's own adapter has; a bad answer never retries.
-      maxRetries: MAX_RETRIES,
-      abortSignal: ctx.signal,
-    });
-    ctx.signal.throwIfAborted();
-    inputTokens = result.usage.inputTokens;
-    outputTokens = result.usage.outputTokens;
-    modelId = result.response.modelId;
-    providerMetadata = result.providerMetadata as Record<string, Record<string, unknown>> | undefined;
-    answers = result.answers as Record<string, RawAnswer>;
+    ({ answers, providerMetadata } = await recorded(ctx, model, async () => {
+      const result = await requireDecide()({
+        model,
+        state,
+        questions: request.questions,
+        ...(providerOptions === undefined ? {} : { providerOptions }),
+        // Transport retries for a rate limit or a 5xx, as the runner's own adapter has; a bad answer never retries.
+        maxRetries: MAX_RETRIES,
+        abortSignal: ctx.signal,
+      });
+      return {
+        value: {
+          answers: result.answers as Record<string, RawAnswer>,
+          providerMetadata: result.providerMetadata as Record<string, Record<string, unknown>> | undefined,
+        },
+        usage: result.usage,
+        modelId: result.response.modelId,
+      };
+    }));
   } catch (error) {
     throw decideError(error, ctx.signal);
-  } finally {
-    ctx.budgets.recordModelCall({
-      provider: model.provider,
-      modelId,
-      startedAt,
-      durationMs: performance.now() - started,
-      ...(inputTokens === undefined ? {} : { inputTokens }),
-      ...(outputTokens === undefined ? {} : { outputTokens }),
-    });
   }
   const decisions: Record<string, Decision> = {};
   for (const [id, answer] of Object.entries(answers)) {

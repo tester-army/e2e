@@ -63,7 +63,7 @@ export interface ActionSpace {
   control(choice: string): Control | undefined;
   /** Where a `drag` can drop, by element key; empty when nothing can receive a drop. */
   readonly destinations: ReadonlyMap<string, Destination>;
-  /** Whether `tap_at` is offered: a screenshot, the `tapAt` verb, and a model that scores. */
+  /** Whether `tap_at` is offered: a screenshot, the `tapAt` verb, and a step that locates. */
   readonly tapAt: boolean;
   /** Elements left out to stay under the per-question cap; scrolling can bring them into view. */
   readonly omitted: number;
@@ -125,10 +125,10 @@ interface SpaceObservation {
   readonly path?: string;
   readonly viewport: { readonly width: number; readonly height: number };
   readonly tree: ExecutorNode;
-  /** Granted pixels; with the `tapAt` verb and a scoring model they open the `tap_at` grid. */
+  /** Granted pixels; with the `tapAt` verb and a step that locates they open `tap_at`. */
   readonly pixels?: ExecutorPixels;
-  /** Whether the decision model answers score questions, which locate a `tap_at`. */
-  readonly scores?: boolean;
+  /** Whether the step can locate a drawn control on the pixels: the decision model scores and a text model names it. */
+  readonly locates?: boolean;
 }
 
 /** Builds the element table and bound targets from the newest observation. */
@@ -273,7 +273,7 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
     byIndex.set(index, element);
     return element;
   });
-  const tapAt = observation.pixels !== undefined && observation.scores === true && verbs.has('tapAt');
+  const tapAt = observation.pixels !== undefined && observation.locates === true && verbs.has('tapAt');
   const controls = new Set<Control>();
   if (verbs.has('scroll')) {
     controls.add('scroll_up');

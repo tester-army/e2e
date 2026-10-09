@@ -128,19 +128,19 @@ describe('element table', () => {
     const noText = actionSpace(fixture.ctx, { path: '/form', viewport: { width: 800, height: 600 }, tree: tree([{ id: 'f', role: 'button', name: 'Attachments', attributes: { type: 'file' } }]) }, false);
     expect(noText.targets.get('upload')).toBeUndefined();
   });
-  it('offers tap_at only with pixels, scores, and the tapAt verb', () => {
+  it('offers tap_at only with pixels, a step that locates, and the tapAt verb', () => {
     const fixture = context();
     const pixels = { data: new Uint8Array(0), mediaType: 'image/png' as const, width: 800, height: 600, scale: 1, maskedRegionCount: 0 };
-    const space = actionSpace(fixture.ctx, { path: '/', viewport: { width: 800, height: 600 }, tree: tree([{ id: 'a', role: 'button', name: 'Add' }]), pixels, scores: true }, true);
+    const space = actionSpace(fixture.ctx, { path: '/', viewport: { width: 800, height: 600 }, tree: tree([{ id: 'a', role: 'button', name: 'Add' }]), pixels, locates: true }, true);
     expect(space.tapAt).toBe(true);
     expect(space.operation('tap_at')).toBe('tap_at');
     expect(space.targets.get('tap_at')).toBeUndefined();
     const noPixels = spaceFor([{ id: 'a', role: 'button', name: 'Add' }]);
     expect(noPixels.tapAt).toBe(false);
     expect(noPixels.operation('tap_at')).toBeUndefined();
-    const noScores = actionSpace(fixture.ctx, { path: '/', viewport: { width: 800, height: 600 }, tree: tree([]), pixels }, true);
-    expect(noScores.tapAt).toBe(false);
-    const noVerb = actionSpace(context({ verbs: ['tap'] }).ctx, { path: '/', viewport: { width: 800, height: 600 }, tree: tree([]), pixels, scores: true }, true);
+    const noLocate = actionSpace(fixture.ctx, { path: '/', viewport: { width: 800, height: 600 }, tree: tree([]), pixels }, true);
+    expect(noLocate.tapAt).toBe(false);
+    const noVerb = actionSpace(context({ verbs: ['tap'] }).ctx, { path: '/', viewport: { width: 800, height: 600 }, tree: tree([]), pixels, locates: true }, true);
     expect(noVerb.tapAt).toBe(false);
   });
   it('types the operation and control an answer names', () => {

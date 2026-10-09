@@ -14,8 +14,9 @@ describe('vision', () => {
       if (id === 'y') return { choice: '3', score: 3 };
       return { choice: keys[0] ?? '' };
     }, { supported: ['choice', 'score'] });
-    const fixture = context({ tree: BUTTONS, observation: { pixels: PIXELS } });
-    const executor = decisionExecutor({ model, vision: true });
+    const text = scriptedOutputs(Array.from({ length: 1 }, () => ({ target: 'the Add key' })));
+    const fixture = context({ tree: BUTTONS, observation: { pixels: PIXELS }, model: text.model });
+    const executor = decisionExecutor({ model, textModel: text.model, vision: true });
     expect(executor.vision).toBe(true);
     const verdict = await executor.runStep(fixture.ctx);
     expect(verdict).toMatchObject({ status: 'passed' });
@@ -34,10 +35,16 @@ describe('vision', () => {
     // Undecodable pixels go through untouched.
     expect([...(requests[1]?.files[0]?.data as Uint8Array ?? [])]).toEqual([1, 2, 3]);
     expect(fixture.transcripts[0]).toContain('"screenshot":"800x600"');
-    expect(fixture.turns[0]?.calls[0]).toBe('tap at (240, 263)');
+    expect(fixture.turns[0]?.calls[0]).toBe('tap the Add key at (240, 263)');
   });
   it('never offers tap_at to a model that does not score', async () => {
     const { model, requests } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'blocked' : (keys[0] ?? '') }));
+    const fixture = context({ tree: BUTTONS, observation: { pixels: PIXELS } });
+    await decisionExecutor({ model, vision: true }).runStep(fixture.ctx);
+    expect(Object.keys(requests[0]?.questions['operation']?.criteria as object)).not.toContain('tap_at');
+  });
+  it('never offers tap_at without a text model to name the control', async () => {
+    const { model, requests } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'blocked' : (keys[0] ?? '') }), { supported: ['choice', 'score'] });
     const fixture = context({ tree: BUTTONS, observation: { pixels: PIXELS } });
     await decisionExecutor({ model, vision: true }).runStep(fixture.ctx);
     expect(Object.keys(requests[0]?.questions['operation']?.criteria as object)).not.toContain('tap_at');
@@ -71,8 +78,9 @@ describe('vision details', () => {
       if (id === 'x' || id === 'y') return { choice: '4' };
       return { choice: keys[0] ?? '' };
     }, { supported: ['choice', 'score'] });
-    const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() } });
-    await decisionExecutor({ model, vision: true }).runStep(fixture.ctx);
+    const text = scriptedOutputs(Array.from({ length: 1 }, () => ({ target: 'the Add key' })));
+    const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() }, model: text.model });
+    await decisionExecutor({ model, textModel: text.model, vision: true }).runStep(fixture.ctx);
     const sent = (index: number) => {
       const png = PNG.sync.read(Buffer.from(requests[index]?.files[0]?.data as Uint8Array));
       return { png, at: (x: number, y: number) => [...png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3)] };
@@ -115,9 +123,10 @@ describe('vision details', () => {
       if (id === 'x' || id === 'y') return { choice: '0' };
       return { choice: keys[0] ?? '' };
     }, { supported: ['choice', 'score'] });
-    const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() } });
+    const text = scriptedOutputs(Array.from({ length: 1 }, () => ({ target: 'the Add key' })));
+    const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() }, model: text.model });
     fixture.actions.tapAt.mockResolvedValue({ point: { x: 80, y: 80 }, target: { id: 'n9' }, summary: 'tapped button "Add"' });
-    await decisionExecutor({ model, vision: true }).runStep(fixture.ctx);
+    await decisionExecutor({ model, textModel: text.model, vision: true }).runStep(fixture.ctx);
     // Operation, coarse point, zoomed point, then the next operation.
     expect(requests.slice(0, 4).map((request) => Object.keys(request.questions))).toEqual([['operation'], ['x', 'y'], ['x', 'y'], ['operation']]);
     expect(requests[2]?.questions['x']?.instructions).toContain('2x zoom of a 400 by 400 pixel region');
@@ -178,7 +187,8 @@ describe('vision details', () => {
       if (id === 'x' || id === 'y') return { choice: '1' };
       return { choice: keys[0] ?? '' };
     }, { supported: ['choice', 'score'] });
-    const fixture = context({ tree: BUTTONS });
+    const text = scriptedOutputs(Array.from({ length: 9 }, (_, index) => ({ target: `the ${index} key` })));
+    const fixture = context({ tree: BUTTONS, model: text.model });
     let look = 0;
     fixture.observe.mockImplementation(async () => {
       look += 1;
@@ -187,7 +197,7 @@ describe('vision details', () => {
       png.data[look] = 0;
       return { revision: String(look), text: 'x', truncated: false, viewport: { width: 800, height: 600 }, tree: BUTTONS, pixels: { data: new Uint8Array(PNG.sync.write(png)), mediaType: 'image/png' as const, width: 800, height: 600, scale: 1, maskedRegionCount: 0 } };
     });
-    const verdict = await decisionExecutor({ model, vision: true }).runStep(fixture.ctx);
+    const verdict = await decisionExecutor({ model, textModel: text.model, vision: true }).runStep(fixture.ctx);
     expect(verdict).toMatchObject({ status: 'blocked', summary: 'The decision model cannot make progress.' });
     expect(fixture.actions.tapAt).toHaveBeenCalledTimes(3);
     const noVision = context({ tree: BUTTONS });
@@ -202,8 +212,9 @@ describe('vision details', () => {
       if (id === 'x' || id === 'y') return { choice: '2', score: 2.5, probabilities: Object.fromEntries(keys.map((key) => [key, key === '2' || key === '3' ? 0.5 : 0])) };
       return { choice: keys[0] ?? '' };
     }, { supported: ['choice', 'score'] });
-    const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() } });
-    await decisionExecutor({ model, vision: true, minProbability: 0.9 }).runStep(fixture.ctx);
+    const text = scriptedOutputs(Array.from({ length: 25 }, () => ({ target: 'the Add key' })));
+    const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() }, model: text.model });
+    await decisionExecutor({ model, textModel: text.model, vision: true, minProbability: 0.9 }).runStep(fixture.ctx);
     expect(fixture.actions.tapAt).toHaveBeenCalled();
     const { model: spread } = scriptedDecision((id, keys) => {
       if (id === 'operation') return { choice: 'tap_at' };
@@ -211,8 +222,9 @@ describe('vision details', () => {
       if (id === 'x' || id === 'y') return { choice: '2', score: 4, probabilities: Object.fromEntries(keys.map((key) => [key, key === '2' || key === '6' ? 0.5 : 0])) };
       return { choice: keys[0] ?? '' };
     }, { supported: ['choice', 'score'] });
-    const wide = context({ tree: BUTTONS, observation: { pixels: whitePixels() } });
-    expect(await decisionExecutor({ model: spread, vision: true, minProbability: 0.5 }).runStep(wide.ctx)).toMatchObject({ status: 'blocked', summary: expect.stringContaining('tap point is uncertain') });
+    const wideText = scriptedOutputs(Array.from({ length: 25 }, () => ({ target: 'the Add key' })));
+    const wide = context({ tree: BUTTONS, observation: { pixels: whitePixels() }, model: wideText.model });
+    expect(await decisionExecutor({ model: spread, textModel: wideText.model, vision: true, minProbability: 0.5 }).runStep(wide.ctx)).toMatchObject({ status: 'blocked', summary: expect.stringContaining('tap point is uncertain') });
     expect(wide.actions.tapAt).not.toHaveBeenCalled();
   });
 });

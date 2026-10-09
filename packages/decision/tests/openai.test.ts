@@ -3,7 +3,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import type { ExecutorNode } from 'e2e';
 import { whitePixels } from './helpers.ts';
 import { decisionExecutor } from '../src/index.ts';
-import { context } from './helpers.ts';
+import { context, scriptedOutputs } from './helpers.ts';
 
 const BUTTONS: ExecutorNode = { id: 'root', children: [
   { id: 'save', role: 'button', name: 'Save' },
@@ -107,8 +107,9 @@ describe('vision through the SDK model', () => {
       question.type === 'score'
         ? { type: 'score', name: question.name, score: 1, probabilities: (question.levels ?? []).map((_, value) => ({ value, probability: value === 1 ? 1 : 0 })) }
         : unanimous(question, question.name === 'operation' ? 'tap_at' : (question.choices?.[0]?.value ?? ''))));
-    const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() }, maxModelCalls: 3 });
-    await decisionExecutor({ model, vision: true }).runStep(fixture.ctx);
+    const text = scriptedOutputs([{ target: 'the Add key' }]);
+    const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() }, maxModelCalls: 4, model: text.model });
+    await decisionExecutor({ model, textModel: text.model, vision: true }).runStep(fixture.ctx);
     expect(requests[0]?.input[0]?.content.map((part) => part.type)).toEqual(['input_text']);
     const look = requests[1]?.input;
     expect(look?.[0]?.role).toBe('user');

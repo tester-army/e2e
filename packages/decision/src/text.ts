@@ -13,6 +13,7 @@ import { AgentError, isAgentError } from 'e2e/agent';
 import type { JsonValue, StepExecutorContext } from 'e2e';
 import { z } from 'zod';
 import { missingKey } from './api-key.ts';
+import { recorded } from './budget.ts';
 import type { HistoryEntry } from './questions.ts';
 /** What the text helpers read: the goal, the page, recent actions, and for a fill, the field. */
 export interface FieldInput {
@@ -87,39 +88,25 @@ export const TARGET: Ask<{ target: string }> = {
  * fields; the harness still authorizes every path an upload names.
  */
 export async function askText<T>(ctx: StepExecutorContext, model: Exclude<LanguageModel, string>, spec: Ask<T>, input: FieldInput): Promise<T> {
-  ctx.signal.throwIfAborted();
-  const started = performance.now();
-  const startedAt = new Date().toISOString();
-  let inputTokens: number | undefined;
-  let outputTokens: number | undefined;
+  let output: T | undefined;
   try {
-    const result = await generateText({
-      model,
-      instructions: spec.system,
-      prompt: `${spec.lead}\n${JSON.stringify(input)}`,
-      output: Output.object({ schema: spec.schema }),
-      maxRetries: MAX_RETRIES,
-      abortSignal: ctx.signal,
-      ...(ctx.providerOptions === undefined ? {} : { providerOptions: ctx.providerOptions as ProviderOptions }),
+    output = await recorded(ctx, model, async () => {
+      const result = await generateText({
+        model,
+        instructions: spec.system,
+        prompt: `${spec.lead}\n${JSON.stringify(input)}`,
+        output: Output.object({ schema: spec.schema }),
+        maxRetries: MAX_RETRIES,
+        abortSignal: ctx.signal,
+        ...(ctx.providerOptions === undefined ? {} : { providerOptions: ctx.providerOptions as ProviderOptions }),
+      });
+      return { value: result.output, usage: result.usage };
     });
-    ctx.signal.throwIfAborted();
-    inputTokens = result.usage.inputTokens;
-    outputTokens = result.usage.outputTokens;
-    const output = result.output;
-    if (output === undefined) throw new AgentError('MODEL_OUTPUT_INVALID', 'The field-text model returned no value.');
-    return output;
   } catch (error) {
     throw textError(error, ctx.signal);
-  } finally {
-    ctx.budgets.recordModelCall({
-      provider: model.provider,
-      modelId: model.modelId,
-      startedAt,
-      durationMs: performance.now() - started,
-      ...(inputTokens === undefined ? {} : { inputTokens }),
-      ...(outputTokens === undefined ? {} : { outputTokens }),
-    });
   }
+  if (output === undefined) throw new AgentError('MODEL_OUTPUT_INVALID', 'The field-text model returned no value.');
+  return output;
 }
 /** Maps text-model failures the same way decisions map theirs. */
 function textError(error: unknown, signal: AbortSignal): unknown {

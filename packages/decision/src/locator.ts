@@ -34,12 +34,11 @@ export class PointLocator {
     private readonly gates: Gates,
   ) {}
   /** A point already known for this control on this page. */
-  known(path: string, wanted: string | undefined): Point | undefined {
-    return wanted === undefined ? undefined : this.landed.get(key(path, wanted));
+  known(path: string, wanted: string): Point | undefined {
+    return this.landed.get(key(path, wanted));
   }
   /** Records a point tap, to be settled by the next observation. */
-  tapped(path: string, wanted: string | undefined, point: Point, screenshot: Screenshot): void {
-    if (wanted === undefined) return;
+  tapped(path: string, wanted: string, point: Point, screenshot: Screenshot): void {
     this.pending = { key: key(path, wanted), point, before: regionHash(screenshot, point, ZOOM_BOX) };
   }
   /** Settles the last point tap against the newest pixels: changed means it landed. */
@@ -51,7 +50,7 @@ export class PointLocator {
     this.pending = undefined;
   }
   /** Two looks for the control, or undefined once the budget is spent. */
-  async locate(screenshot: Screenshot, path: string, wanted: string | undefined): Promise<Located | undefined> {
+  async locate(screenshot: Screenshot, path: string, wanted: string): Promise<Located | undefined> {
     const grid = gridFor(screenshot.width / screenshot.scale, screenshot.height / screenshot.scale, CELL_TARGET);
     const coarse = await this.ask(pointRequest(this.ctx, path, screenshot, grid, 'This image is the full screenshot; no grid is drawn on it.', wanted));
     if (coarse === undefined) return undefined;
