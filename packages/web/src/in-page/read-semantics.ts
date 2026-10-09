@@ -141,6 +141,16 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   };
 
   /**
+   * The root of a `contenteditable` region, whatever its tag: the region a
+   * person types into is focusable even when its tag keeps it out of the
+   * textbox vocabulary, as a canvas made editable to collect keystrokes is.
+   */
+  const isEditableRoot = (el: Element): boolean =>
+    el instanceof HTMLElement &&
+    el.isContentEditable &&
+    !(el.parentElement instanceof HTMLElement && el.parentElement.isContentEditable);
+
+  /**
    * The root of a contenteditable region: editable itself, under a parent that
    * is not. A rich-text editor (ProseMirror, TipTap, Lexical, Slate) renders
    * its document as such a host with block children; the host is the control
@@ -150,17 +160,88 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * field the keyboard reaches, not a textbox; see `NON_HOST_TAGS`.
    */
   const isEditingHost = (el: Element): boolean =>
-    el instanceof HTMLElement &&
-    el.isContentEditable &&
-    NON_HOST_TAGS.indexOf(el.tagName.toLowerCase()) === -1 &&
-    !(el.parentElement instanceof HTMLElement && el.parentElement.isContentEditable);
+    isEditableRoot(el) && NON_HOST_TAGS.indexOf(el.tagName.toLowerCase()) === -1;
+
+  /**
+   * The global ARIA states and properties that keep a presentational role
+   * from taking an element's semantics away (WAI-ARIA 1.2, "presentational
+   * roles conflict resolution"): the set Chromium's accessibility tree
+   * applies, read off it case by case. A state scoped to another role
+   * (`aria-checked` on a plain element) does not count, and neither do
+   * `aria-disabled`, `aria-haspopup`, `aria-invalid`, or `aria-hidden`,
+   * which Chromium leaves out of its conflict set.
+   */
+  const GLOBAL_ARIA_ATTRIBUTES: ReadonlySet<string> = new Set([
+    'aria-atomic',
+    'aria-busy',
+    'aria-controls',
+    'aria-current',
+    'aria-describedby',
+    'aria-details',
+    'aria-flowto',
+    'aria-keyshortcuts',
+    'aria-label',
+    'aria-labelledby',
+    'aria-live',
+    'aria-owns',
+    'aria-relevant',
+    'aria-roledescription',
+  ]);
+
+  /** True when the element carries a global ARIA state or property. */
+  const hasGlobalAria = (el: Element): boolean =>
+    el.getAttributeNames().some((name) => GLOBAL_ARIA_ATTRIBUTES.has(name));
+
+  /** True when the element carries any ARIA attribute, a role-scoped one included, which Chromium counts against `img alt=""`. */
+  const hasAriaAttribute = (el: Element): boolean =>
+    el.getAttributeNames().some((name) => name.startsWith('aria-'));
+
+  /**
+   * Whether a person can focus the element, which decides whether
+   * `presentation` or `none` may take its role away. Any `tabindex` whose
+   * value starts with an integer counts, negative included: the value keeps
+   * the element out of the tab order but not out of a person's reach, and
+   * Chromium parses it the same way, trailing characters and all, while it
+   * skips only the ASCII whitespace HTML's parser skips. A disabled control
+   * is out of reach whatever its `tabindex` says, and only the root of an
+   * editable region is the control, not every node inside it.
+   */
+  const isFocusable = (el: Element): boolean => {
+    if (el.matches(':disabled')) return false;
+    const tabindex = el.getAttribute('tabindex');
+    if (tabindex !== null && /^[\t\n\f\r ]*[-+]?\d/.test(tabindex)) return true;
+    if (isEditableRoot(el)) return true;
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'a' || tag === 'area') return el.hasAttribute('href');
+    if (tag === 'button' || tag === 'select' || tag === 'textarea' || tag === 'iframe') return true;
+    if (tag === 'input') return (el.getAttribute('type') ?? '').toLowerCase() !== 'hidden';
+    if (tag === 'audio' || tag === 'video') return el.hasAttribute('controls');
+    // Only the summary a `<details>` opens by is focusable; a stray one is not.
+    if (tag === 'summary') {
+      return el.parentElement?.tagName.toLowerCase() === 'details' && el.parentElement.firstElementChild === el;
+    }
+    return false;
+  };
+
+  /**
+   * ARIA's presentational-role conflict resolution: a `presentation` or
+   * `none` role is ignored on a focusable element and on one carrying a
+   * global ARIA state or property, both of which say the element is more than
+   * decoration. The element then keeps the role its tag gives it, where one
+   * of those attributes is the only name it has.
+   */
+  const presentationalConflict = (el: Element): boolean => isFocusable(el) || hasGlobalAria(el);
 
   const implicitRole = memoized((el: Element): string | null => {
     const explicit = el.getAttribute('role');
     if (explicit !== null && explicit.trim() !== '') {
       const first = explicit.trim().split(/\s+/)[0] ?? null;
-      // The vocabulary spells ARIA's `img` as `image`.
-      return first === 'img' ? 'image' : first;
+      // A presentational role a person's own attributes contradict is ignored
+      // (`presentationalConflict`), and the tag decides.
+      if ((first !== 'presentation' && first !== 'none') || !presentationalConflict(el)) {
+        // The vocabulary spells ARIA's `img` as `image`.
+        return first === 'img' ? 'image' : first;
+      }
     }
     // Ahead of the tag: an editor's host is the control, whatever landmark or
     // structure its tag would otherwise be.
@@ -179,7 +260,10 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       case 'textarea':
         return 'textbox';
       case 'img':
-        return el.getAttribute('alt') === '' ? 'presentation' : 'image';
+        // An empty alt is decoration, unless the element is focusable or
+        // carries an ARIA attribute (Chromium counts any, not only the
+        // globals), which keeps it an image without a name.
+        return el.getAttribute('alt') === '' && !isFocusable(el) && !hasAriaAttribute(el) ? 'presentation' : 'image';
       // An inline icon is a picture whether or not anything names it, as
       // Playwright reads it; Chrome ignores an unnamed one.
       case 'svg':
@@ -1025,6 +1109,22 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   };
 
   /**
+   * True when an element is hidden only because it has no box: it still
+   * renders (visible, not under `content-visibility: hidden`, not folded into
+   * a closed `<details>`), but its rectangle is zero-sized, as an empty
+   * inline link's is. A hidden element of this shape that a person can focus
+   * is kept in the tree, as Chromium keeps it and a role locator reaches it,
+   * while every visibility check still calls it hidden.
+   */
+  const isBoxless = (el: Element, style: CSSStyleDeclaration | undefined): boolean => {
+    if (style === undefined) return false;
+    if (style.display === 'contents' || style.visibility !== 'visible') return false;
+    if (isSkippedContent(el) || isInClosedDetails(el)) return false;
+    const rect = el.getBoundingClientRect();
+    return !(rect.width > 0 && rect.height > 0);
+  };
+
+  /**
    * What takes the element and everything under it out of the tree walk: an
    * `aria-hidden` or inert subtree, which the accessibility tree drops though
    * it may paint (`isInert`), and `display: none` or a closed `<details>`
@@ -1484,7 +1584,10 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     let nextParent = parent;
     // An empty painted rectangle carries no semantics to be "interesting" by and
     // is still something a person sees and aims at; `roleOf` names it `box`.
-    if (!hidden && (isInteresting(el) || isVisibleEmptyBox(el))) {
+    // A zero-sized element is hidden to every visibility check; one a person
+    // can focus (an empty inline link) is still in Chromium's tree and
+    // reachable by a role locator, so it is listed too, with `hidden` set.
+    if ((!hidden || (isBoxless(el, style) && isFocusable(el))) && (isInteresting(el) || isVisibleEmptyBox(el))) {
       if (nodes.length >= maxNodes) {
         truncated = true;
         return;

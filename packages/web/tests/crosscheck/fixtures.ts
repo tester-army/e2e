@@ -87,6 +87,11 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
       <div role="button" tabindex="0">Custom action</div>
       <button aria-pressed="true">Bold</button>
       <button aria-pressed="false">Italic</button>
+      <a href="/decor" role="presentation">Decorative link</a>
+      <button role="none">Still a button</button>
+      <button role="none" disabled>Disabled presentation</button>
+      <a href="/empty" title="Empty titled link"></a>
+      <img alt="" tabindex="0" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7">
     `,
   },
   {
@@ -185,6 +190,8 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
       <label>Wrapped <select><option>One</option></select></label>
       <img alt="Company logo" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7">
       <svg role="img" aria-label="Chart" width="10" height="10"></svg>
+      <svg role="presentation" aria-label="Painted chart" width="10" height="10"></svg>
+      <div role="presentation" aria-checked="true">Decorative state</div>
       <figure><img alt="Cat" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7"><figcaption>A cat</figcaption></figure>
     `,
   },
@@ -233,6 +240,7 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
       </script>
       <div role="button" tabindex="0"><span>Nested</span> <b>content</b></div>
       <div contenteditable="true" aria-label="Editor">Hello</div>
+      <div contenteditable="true" aria-label="Decorated editor"><h2 role="presentation">Editor title</h2><img alt="" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7"></div>
     `,
   },
 ];

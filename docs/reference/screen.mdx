@@ -664,6 +664,17 @@ its spelling while engines, the replay cache, and reports see `image`. On the
 web, `image` covers `<img>` with alt text and any element with `role="img"`;
 an `<img alt="">` is decoration and matches nothing.
 
+Decoration is only that while the element is: `role="presentation"` and
+`role="none"` are ignored on a control a person can focus (a negative
+`tabindex` included) or an element carrying a global ARIA state or property
+Chromium counts for the conflict, so `<button role="none">` is still a
+`button` and `<a href role="presentation">` keeps its link role and name. An
+`<img alt="">` that is focusable or carries any `aria-*` attribute is an
+`image` rather than decoration. An empty inline link that renders is listed
+too: a zero-size element a person can focus stays in the tree with its
+`hidden` state set, so `toBeVisible` calls it hidden while a role or test-id
+locator still reaches it.
+
 The web engine derives the roles from HTML the way HTML-AAM does: `<progress>`
 is `progressbar`, `<meter>` is `meter`, `<hr>` is `separator`, `<fieldset>`
 and `<details>` are `group`, `<input type="number">` is `spinbutton`,

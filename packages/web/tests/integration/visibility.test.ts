@@ -166,6 +166,20 @@ describe('the tree walk through a box with no size', () => {
     expect(nodes.find((node) => node.testId === 'wrapper')).toBeUndefined();
   });
 
+  it('lists a focusable zero-size link with its hidden state, while its zero-size wrapper stays out', async () => {
+    await page.setContent(`
+      <a href="#main" title="Skip to content"></a>
+      <nav aria-label="Floating" data-testid="wrapper">
+        <button style="position:fixed;left:0;top:0;width:100px;height:30px">Reset</button>
+      </nav>
+    `);
+    const nodes = await captureTree();
+    const link = nodes.find((node) => node.role === 'link');
+    expect(link).toMatchObject({ name: 'Skip to content', states: { hidden: true } });
+    expect(nodes.find((node) => node.testId === 'wrapper')).toBeUndefined();
+    expect(await page.getByRole('link', { name: 'Skip to content', exact: true }).count()).toBe(1);
+  });
+
   it('lists neither the document of a frame with no box nor the options of a select with none', async () => {
     await page.setContent(`
       <iframe style="width:0;height:0;border:0" srcdoc="<button>Pay</button>"></iframe>

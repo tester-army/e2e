@@ -146,6 +146,59 @@ describe('role mapping', () => {
     expect(await page.getByRole('img', { name: 'Close', exact: true }).getAttribute('data-testid')).toBe('titled');
   });
 
+  it('ignores a presentational role a focusable control or a named image contradicts, as HTML-AAM does', async () => {
+    await page.setContent(`
+      <style>${EMPTY_BOXES}</style>
+      <button role="none" data-testid="button">Delete</button>
+      <a href="/home" role="presentation" data-testid="link">Home</a>
+      <div role="presentation" aria-label="Toolbar" data-testid="named"></div>
+      <div role="presentation" aria-checked="true" data-testid="state">Decorative state</div>
+      <img src="${PIXEL}" alt="" tabindex="0" data-testid="focusable">
+      <img src="${PIXEL}" alt="" aria-label="Named decoration" data-testid="aria">
+      <img src="${PIXEL}" alt="" data-testid="decorative">
+      <h2 role="none" tabindex="0junk" data-testid="junk">Junk</h2>
+      <h2 role="none" tabindex="&#160;0" data-testid="nbsp">Nbsp</h2>
+      <h2 role="none" tabindex="-1" data-testid="negative">Negative</h2>
+      <button role="none" disabled data-testid="disabled">Disabled</button>
+      <fieldset disabled><button role="none" data-testid="in-fieldset">In fieldset</button></fieldset>
+    `);
+    const nodes = await rolesByTestId();
+    expect(nodes.get('button')).toMatchObject({ role: 'button', name: 'Delete' });
+    expect(nodes.get('link')).toMatchObject({ role: 'link', name: 'Home' });
+    // A global ARIA state restores the tag's role; a role-scoped one does not.
+    expect(nodes.get('named')?.role).not.toBe('presentation');
+    expect(nodes.get('state')?.role).toBe('presentation');
+    // Any ARIA attribute or a tabindex restores an `img`; a bare empty alt stays decoration.
+    expect(nodes.get('focusable')).toMatchObject({ role: 'image' });
+    expect(nodes.get('aria')?.role).toBe('image');
+    expect(nodes.get('decorative')?.role).toBe('presentation');
+    // Chromium parses a leading integer and ignores trailing characters; only ASCII whitespace may lead it.
+    expect(nodes.get('junk')?.role).toBe('heading');
+    expect(nodes.get('negative')?.role).toBe('heading');
+    expect(nodes.get('nbsp')?.role).toBe('none');
+    // A disabled control is not focusable, so the presentational role holds.
+    expect(nodes.get('disabled')?.role).toBe('none');
+    expect(nodes.get('in-fieldset')?.role).toBe('none');
+    expect(await page.getByRole('link', { name: 'Home', exact: true }).getAttribute('data-testid')).toBe('link');
+  });
+
+  it('applies a presentational role inside an editing host, where only the host is focusable', async () => {
+    await page.setContent(`
+      <div contenteditable aria-label="Editor" data-testid="editor">
+        <h2 role="presentation" data-testid="editor-heading">Title</h2>
+        <img alt="" src="${PIXEL}" data-testid="editor-image">
+      </div>
+      <canvas contenteditable role="presentation" width="10" height="10" data-testid="canvas"></canvas>
+    `);
+    const nodes = await rolesByTestId();
+    expect(nodes.get('editor')).toMatchObject({ role: 'textbox', name: 'Editor' });
+    expect(nodes.get('editor-heading')?.role).toBe('presentation');
+    expect(nodes.get('editor-image')?.role).toBe('presentation');
+    // An editable canvas is focusable, so its presentational role is ignored; it is no textbox either.
+    expect(nodes.get('canvas')?.role).toBeUndefined();
+    expect(await page.getByRole('heading').count()).toBe(0);
+  });
+
   it('passes the composite widget roles through from role attributes and names their items from content', async () => {
     await page.setContent(`
       <style>${EMPTY_BOXES}</style>
