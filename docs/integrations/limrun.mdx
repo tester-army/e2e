@@ -1,0 +1,157 @@
+---
+title: Test mobile apps on Limrun
+sidebarTitle: Limrun
+description: Run mobile app tests on hosted iOS simulators and Android emulators.
+icon: "mobile-screen"
+---
+
+`@e2e-dev/limrun` is a hosted device provider for the mobile engine.
+It creates a device for each worker, installs your app, and releases the device when the run ends.
+Use the standard `app`, `screen`, and `expect` APIs to test your app's user flows.
+
+## Install and authenticate
+
+Install the integration alongside the mobile engine and its peers:
+
+<CodeGroup>
+```bash npm
+npm install --save-dev e2e @e2e-dev/mobile @e2e-dev/limrun @limrun/api agent-device@0.21.22
+```
+
+```bash pnpm
+pnpm add -D e2e @e2e-dev/mobile @e2e-dev/limrun @limrun/api agent-device@0.21.22
+```
+
+```bash bun
+bun add -d e2e @e2e-dev/mobile @e2e-dev/limrun @limrun/api agent-device@0.21.22
+```
+</CodeGroup>
+
+Set `LIMRUN_API_KEY` in the environment that starts e2e. In CI, store it as
+a secret. Use a key with permission to create and control instances.
+The provider reads the run's environment. It does not read the `lim login`
+session or `LIM_API_KEY`.
+
+The test runner needs Node.js and the package dependencies. For Android,
+put `adb` from [Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools)
+on `PATH`. No local emulator is needed. The iOS runner needs no local Xcode
+or simulator. Build your app separately for an iOS simulator or as an Android
+APK.
+
+## Configure a target
+
+Set `device: limrun()` on the mobile engine and point `appPath` at your build.
+This config runs the SwiftUI app from the
+[app-flow example](https://github.com/tester-army/e2e/tree/main/examples/with-limrun).
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { mobile } from '@e2e-dev/mobile';
+import { limrun } from '@e2e-dev/limrun';
+
+export default {
+  targets: [{
+    name: 'ios',
+    engine: mobile({ platform: 'ios', device: limrun() }),
+    app: {
+      bundleId: 'dev.e2e.examples.swiftui',
+      appPath: 'build/HelloApp.app',
+    },
+  }],
+  workers: 2,
+} satisfies E2EConfig;
+```
+
+For Android, use `platform: 'android'`, the app's package name as `bundleId`,
+and an APK as `appPath`. Paths resolve against the project root.
+The provider installs the build before tests start.
+
+## Test an app flow
+
+Use stable test IDs and visible text to fill forms and check their results.
+This test corrects an empty submission and saves a screenshot of the greeting.
+
+```ts title="tests/greeting.e2e.ts"
+import { expect } from 'e2e';
+import { test } from '@e2e-dev/mobile';
+
+test('corrects an empty submission', async ({ app, screen }) => {
+  await app.open();
+  await screen.getByTestId('greet').click();
+  await expect(screen.getByText('Enter a name first.', { exact: true })).toBeVisible();
+
+  await screen.getByTestId('name').fill('Ada');
+  await screen.getByTestId('greet').click();
+  await expect(screen.getByText('Hello, Ada!', { exact: true })).toBeVisible();
+  await expect(screen.getByText('Enter a name first.', { exact: true })).not.toBeVisible();
+  await app.screenshot('greeting');
+});
+```
+
+The [runnable example](https://github.com/tester-army/e2e/tree/main/examples/with-limrun)
+uses the same five tests on SwiftUI and Compose apps.
+It covers the initial form, validation recovery, trimmed input, repeated submissions, and app restart.
+Its README includes build commands and a config with both targets. No AI key is needed.
+
+## Record a run
+
+Add `--video` to record every attempt:
+
+<CodeGroup>
+```bash npm
+npx e2e run --video
+```
+```bash pnpm
+pnpm exec e2e run --video
+```
+```bash bun
+bunx e2e run --video
+```
+</CodeGroup>
+
+Videos and screenshots are under `.e2e/`, alongside the run reports.
+
+## Choose device options
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `region` | Limrun selects | Region preference, such as `eu` or `us-east1`. Capacity may cause overflow to another region. |
+| `hardTimeout` | `1h` | Maximum device lifetime, including abandoned runs. Use a Go duration such as `30m` or `2h`. |
+| `ios.model` | Limrun selects | `iphone` or `ipad`. |
+| `android.model` | Limrun selects | `phone` or `tablet`. |
+| `android.osVersion` | `15` | Android major version requested as a scheduling clue. |
+
+Each worker gets an isolated agent-device daemon on the test runner and
+one Limrun instance. The daemon uses agent-device's Limrun driver for app
+control and recording. The integration requires the same agent-device
+version that the mobile engine uses and checks that before allocation.
+
+A device must become ready and finish installation within five minutes.
+The provider cleans up after failed setup and the engine releases all
+acquired devices when the run finishes or is interrupted. The provider renews idle driver leases while other targets run. The daemon
+keeps an active device alive between commands; the hard timeout remains the
+upper bound if the runner disappears. Choose a timeout longer than the run.
+
+Instance IDs appear in progress output. Find a run's instances by the
+`source=e2e` and `run=<run id>` labels in Limrun. Recordings use the normal
+mobile artifact path, `video/video.mp4` inside each attempt directory.
+
+## Check app compatibility
+
+With agent-device 0.21.22, the Limrun iOS transport rejects keyboard actions
+such as `locator.press('Enter')` with `UNSUPPORTED_CAPABILITY`.
+Tap the app's submit button when the flow provides one.
+
+Test the locators and libraries your app uses on its target runtime.
+The greeting example demonstrates native form flows; it does not establish compatibility with every mobile framework or control.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Mobile testing" icon="mobile-screen" href="/mobile">
+    Configure app launches, permissions, and mobile locators.
+  </Card>
+  <Card title="Mobile API" icon="code" href="/reference/mobile">
+    Look up the device fixture and provider contract.
+  </Card>
+</CardGroup>

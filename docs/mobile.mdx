@@ -262,6 +262,9 @@ To run on phones in a device farm, see [Hosted devices](#hosted-devices).
 
 ## Hosted devices
 
+Use [Limrun](/integrations/limrun) for hosted iOS simulators and Android
+emulators with automatic app installation and device cleanup.
+
 A `device` can also be a `DeviceProvider`: an object that leases one hosted
 device per worker slot when the run starts and releases it when the run
 ends. The engine drives each lease through the agent-device daemon the lease
