@@ -344,6 +344,24 @@ describe('easSimulators()', () => {
     await expect(provider.acquire(request({ runId: 'run-released' }))).resolves.toMatchObject({ id: 's1' });
   });
 
+  it.each(['maxIdleTimeMinutes', 'maxDurationMinutes'] as const)('rejects invalid %s before a hosted session can start', (option) => {
+    for (const value of [NaN, Infinity, -Infinity, -1, 1.5]) {
+      expect(() => easSimulators({ projectId: 'p1', [option]: value })).toThrow(
+        expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringContaining(`\`${option}\` must be a non-negative integer`) }),
+      );
+    }
+    expect(eas.calls).toHaveLength(0);
+  });
+
+  it('retains zero idle and duration limits accepted by eas-cli', async () => {
+    await easSimulators({ projectId: 'p1', maxIdleTimeMinutes: 0 }).acquire(request());
+    expect(eas.calls[0]?.variables['input']).not.toHaveProperty('maxIdleTimeMinutes');
+    eas.calls = [];
+    await easSimulators({ projectId: 'p1', maxDurationMinutes: 0 }).acquire(request());
+    expect(eas.calls[0]?.variables['input']).toMatchObject({ maxRunTimeMinutes: 0 });
+    expect(eas.calls[0]?.variables['input']).not.toHaveProperty('maxIdleTimeMinutes');
+  });
+
   it('keeps the idle limit below a short duration, as EAS requires, and pins the agent-device an option names', async () => {
     await easSimulators({ projectId: 'p1', maxDurationMinutes: 5, agentDeviceVersion: '0.22.0' }).acquire(request());
     expect(eas.calls[0]?.variables['input']).toMatchObject({ maxRunTimeMinutes: 5, maxIdleTimeMinutes: 4, packageVersion: '0.22.0' });

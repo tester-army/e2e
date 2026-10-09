@@ -73,13 +73,14 @@ export interface EasSimulatorsOptions {
   readonly device?: string | undefined;
   /**
    * Minutes without an agent-device command after which EAS stops the
-   * session. Defaults to 10, or one less than `maxDurationMinutes` when that
+   * session. Must be a non-negative integer; zero omits the idle limit.
+   * Defaults to 10, or one less than `maxDurationMinutes` when that
    * is shorter, since EAS wants it below the duration. A session still
    * queued once another session of the run has been ready for that one's
    * limit fails the lease: EAS is stopping that one.
    */
   readonly maxIdleTimeMinutes?: number | undefined;
-  /** Minutes a session may run once ready before EAS stops it. Absent, the account's cap: 40, or 115 on a high-priority plan. */
+  /** Non-negative integer minutes a session may run once ready before EAS stops it. Absent, the account's cap: 40, or 115 on a high-priority plan. */
   readonly maxDurationMinutes?: number | undefined;
   /**
    * The agent-device version EAS starts the session's daemon at. Defaults to
@@ -102,6 +103,12 @@ export interface EasSimulatorsOptions {
  */
 export function easSimulators(options: EasSimulatorsOptions = {}): DeviceProvider {
   rejectUnknownKeys('easSimulators()', options, OPTION_KEYS);
+  for (const key of ['maxIdleTimeMinutes', 'maxDurationMinutes'] as const) {
+    const value = options[key];
+    if (value !== undefined && (!Number.isInteger(value) || value < 0)) {
+      throw new ConfigurationError('INVALID_CONFIG', `easSimulators: \`${key}\` must be a non-negative integer`);
+    }
+  }
   const { projectId, buildId, applicationArchiveUrl, device, maxDurationMinutes, agentDeviceVersion, tags = [] } = options;
   if (buildId !== undefined && applicationArchiveUrl !== undefined) {
     throw new ConfigurationError('INVALID_CONFIG', 'easSimulators: pass `buildId` or `applicationArchiveUrl`, not both');
