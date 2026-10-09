@@ -271,7 +271,8 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/tester-army/e2e"
+      "github": "https://github.com/tester-army/e2e",
+      "website": "https://tester.army/?utm_source=e2e&utm_medium=docs&utm_campaign=docs_footer"
     }
   },
   "redirects": [

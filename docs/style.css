@@ -830,3 +830,155 @@ html.dark body .code-block-fade-overlay {
 .dark :is(#sidebar-content, #mobile-nav) [data-active='true'] img[src*='/images/icons/'] {
   filter: brightness(0) invert(0.98);
 }
+
+/* The footer credits read as one line on the right, "Built by TesterArmy |
+   Powered by Mintlify", with GitHub alone on the left. Mintlify's footer takes
+   no markup, so the TesterArmy link is the `website` social in docs.json,
+   restyled: its globe svg becomes the mascot, ::before says "Built by",
+   ::after draws the wordmark (the two make its accessible name), and its
+   socials wrapper is dissolved so the link can sit beside Mintlify's. The
+   Mintlify credit itself stays as Mintlify renders it.
+   The images are in images/footer/. Mintlify inlines this file into each
+   page, so a url() resolves against the page, not this file, and production
+   serves the site under /docs while `mint dev` serves it at the root. Each
+   image is therefore two layers, one path per host: the one that misses
+   paints nothing (a failed image layer is transparent), the other draws. */
+#footer {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 0;
+
+  & > div:first-child {
+    display: contents;
+  }
+
+  & a[href*='github.com'] {
+    margin-right: auto;
+  }
+
+  & > div:last-child {
+    order: 2;
+
+    &::before {
+      content: '';
+      width: 1px;
+      height: 0.875rem;
+      margin-inline: 0.875rem;
+      background: var(--e2e-hairline);
+      align-self: center;
+    }
+
+    &,
+    & > div {
+      display: flex;
+      align-items: center;
+    }
+  }
+
+  /* On a phone the line does not fit beside GitHub: Mintlify's credit takes
+     its own line, right-aligned under TesterArmy's, without the divider. */
+  @media (max-width: 28rem) {
+    row-gap: 0.5rem;
+
+    & > div:last-child {
+      width: 100%;
+      justify-content: flex-end;
+
+      &::before {
+        display: none;
+      }
+    }
+  }
+}
+
+#footer a[href^='https://tester.army'] {
+  order: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  /* Mintlify's own credit colors: text-gray-400, dark:text-gray-500, and
+     gray-600 / dark:gray-300 on hover. */
+  color: rgb(var(--gray-400));
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  white-space: nowrap;
+  text-decoration: none;
+
+  &::before {
+    content: 'Built by';
+  }
+
+  /* The wordmark from the brand kit's horizontal logo, drawn in the text
+     color the way Mintlify draws its own. Its cap height matches the text's,
+     and the alt text after the slash names it for screen readers. */
+  &::after {
+    /* Without the alt-text syntax (Safari < 17.4, Firefox < 128) the second
+       declaration is dropped and the first still draws the wordmark. */
+    content: '';
+    content: '' / 'TesterArmy';
+    width: 4.75rem;
+    height: 0.8rem;
+    margin-top: 0.2rem;
+    background: currentColor;
+    -webkit-mask:
+      url('/images/footer/testerarmy-wordmark.svg') center / contain no-repeat,
+      url('/docs/images/footer/testerarmy-wordmark.svg') center / contain no-repeat;
+    mask:
+      url('/images/footer/testerarmy-wordmark.svg') center / contain no-repeat,
+      url('/docs/images/footer/testerarmy-wordmark.svg') center / contain no-repeat;
+
+    @media (forced-colors: active) {
+      forced-color-adjust: none;
+      background: CanvasText;
+    }
+  }
+
+  & > span {
+    display: none;
+  }
+
+  & > svg {
+    width: 1.1rem;
+    height: 1rem;
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+    /* The brand kit's color mark (tester.army/brand), cropped to the
+       mascot. */
+    background:
+      url('/images/footer/testerarmy-mark.png') center / contain no-repeat,
+      url('/docs/images/footer/testerarmy-mark.png') center / contain no-repeat !important;
+    filter: grayscale(1);
+    opacity: 0.6;
+    transition: filter 150ms ease-out, opacity 150ms ease-out;
+  }
+
+  &:hover,
+  &:focus-visible {
+    color: rgb(var(--gray-600));
+
+    & > svg {
+      filter: none;
+      opacity: 1;
+    }
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--e2e-ink);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    & > svg {
+      transition: none;
+    }
+  }
+}
+
+.dark #footer a[href^='https://tester.army'] {
+  color: rgb(var(--gray-500));
+
+  &:hover,
+  &:focus-visible {
+    color: rgb(var(--gray-300));
+  }
+}
