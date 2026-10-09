@@ -6,15 +6,13 @@ icon: "scale-balanced"
 
 `@e2e-dev/decision` runs `agent.act` and `agent.assert` through a decision
 model instead of an LLM. For each action the decision model answers two
-requests: which operation, then which element for it when the operation has
-more than one, chosen from what the executor builds out of the latest
-semantic tree. Every question states the goal and the recent actions in its
-own text, with the page as evidence. It never generates free text: when the
-choice is `type`, a small language model writes the field value. Both models are
-plain AI SDK models, so any decision model provider that answers `choice`
-questions with probability distributions (TypeSafe Jev, OpenAI `gpt-6-luna`)
-and any language-model provider works; the runner still authorizes every
-dispatched action.
+questions: which operation, then which element. Every question carries the
+goal and the recent actions, with the latest semantic tree as evidence. The
+decision model never writes free text. When it picks `type`, a small
+language model writes the field value. Any AI SDK decision model that
+answers `choice` questions with probability distributions works, such as
+TypeSafe Jev or OpenAI `gpt-6-luna`. The runner still authorizes every
+action.
 
 ## Install and configure
 
@@ -32,9 +30,8 @@ bun add -d @e2e-dev/decision
 ```
 </CodeGroup>
 
-The decision model answers `choice` questions with probability
-distributions; the text model writes field values. Each installs as its
-own package. Decision models need `ai` 7, version 7.0.134 or later:
+Install a decision model provider and a text model provider. Decision
+models need `ai` 7.0.134 or later.
 
 <CodeGroup>
 ```bash npm
@@ -70,9 +67,23 @@ export default {
 } satisfies E2EConfig;
 ```
 
-OpenAI's Decisions API works the same way through `@ai-sdk/openai` 4.0.90
-or later, which reads `OPENAI_API_KEY` and takes the screenshot `vision`
-sends as a file part of the decision state:
+Tests stay plain natural language, with no params:
+
+```ts title="tests/todos.e2e.ts"
+import { test, expect } from 'e2e';
+
+test('adds a todo', async ({ app, screen, agent }) => {
+  await app.open('/todos');
+  await agent.act('Add a todo named Buy coffee, and verify it is listed.');
+  await expect(screen.getByTestId('todo')).toContainText('Buy coffee');
+  await agent.assert('The todo list contains Buy coffee.');
+});
+```
+
+<Accordion title="Use OpenAI gpt-6-luna">
+
+`@ai-sdk/openai` 4.0.90 or later reads `OPENAI_API_KEY` and takes the
+screenshot that [vision](#vision) sends.
 
 <CodeGroup>
 ```bash npm
@@ -98,105 +109,93 @@ const executor = decisionExecutor({
 });
 ```
 
+</Accordion>
+
 `evaluationModel()` instances still work. A model id string or a language
 model in `model` fails config load with `INVALID_CONFIG`.
-
-Tests stay plain natural language, with no params needed:
-
-```ts title="tests/todos.e2e.ts"
-import { test, expect } from 'e2e';
-
-test('adds a todo', async ({ app, screen, agent }) => {
-  await app.open('/todos');
-  await agent.act('Add a todo named Buy coffee, and verify it is listed.');
-  await expect(screen.getByTestId('todo')).toContainText('Buy coffee');
-  await agent.assert('The todo list contains Buy coffee.');
-});
-```
 
 ## What the model can do
 
 Each turn offers the operations the engine declares on the elements of the
 newest screen: `tap`, `type`, `typeSecret`, `submit`, `select`, `check`,
 `upload`, `hover`, `secondary_tap` (a right-click), `double_tap`,
-`long_press`, `drag` with a separate destination question, `scroll_to` for
-an element outside the viewport, plus `scroll_up`, `scroll_down`, and
-`back`. Hover, right-click, drag, and scroll-to also reach labeled nodes
-that are no control: a card that opens a menu on hover, a file row, a
-paragraph. Every target question carries a `none` option, so a provider
-that finds no target for an operation the step will not take answers
-`none` instead of refusing; `none` for the operation the model did choose
-blocks the step.
+`long_press`, `drag`, `scroll_to`, `scroll_up`, `scroll_down`, and `back`.
+Hover, right-click, drag, and scroll-to also reach labeled nodes that are
+no control, such as a card that opens a menu on hover or a file row.
+
+Every target question carries a `none` option. A provider that finds no
+target for an operation answers `none` instead of refusing. `none` for the
+operation the model chose blocks the step.
 
 ## Vision
 
 `vision: true` asks the engine for masked pixels on every observation.
-Assertions and completion checks see the screenshot beside the page, so
-the model judges drawn content a tree cannot show; the operation and
-target questions read the tree alone, where a screenshot was measured to
-hurt. It also offers `tap_at` for a control the tree does not list, when a
-text model is configured: the text model names the control to tap next from the goal and the taps so
-far ("the 3 key on the keypad"), and the decision model locates it with two
-pairs of score questions, column and row on the full screenshot, then
-again on a zoomed crop with grid lines drawn on it. A tap that changed the
-pixels under it is remembered for its control, so the same key on the same
-page again needs no new looks. `agent.assert(..., { vision: true })` and `vision: 'only'` reach the
-executor the same way. The screenshot goes as a file part of the decision
-state, so the model must take images and answer score questions:
-`openai.decisionModel('gpt-6-luna')` does, and a text-only model such as
-Jev refuses the file. Pixels are withheld once a secret has been filled in
-the attempt, as everywhere in the runner.
+Assertions and completion checks see the screenshot beside the page, so the
+model can judge drawn content the tree does not show. The operation and
+target questions read the tree alone.
 
-Measured on gpt-6-luna over the playground: a vision assert on a drawn
-chart, a drawn map pin, and five- and ten-digit codes on a drawn keypad
-pass. Each point tap costs four model calls plus the text model's one.
+With a text model configured, vision also offers `tap_at` for a control the
+tree does not list. The text model names the control to tap next, such as
+"the 3 key on the keypad". The decision model then locates it with score
+questions on the screenshot and on a zoomed crop. Each point tap costs four
+decision calls and one text call.
+
+The screenshot goes as a file part of the decision state. The model must
+take images and answer `score` questions. `openai.decisionModel('gpt-6-luna')`
+does. A text-only model such as Jev refuses the file. Behind Vercel AI
+Gateway, keep `vision` off: the gateway rejects the file part.
+
+`agent.assert(..., { vision: true })` and `vision: 'only'` reach the
+executor the same way. Once a secret has been filled in the attempt, the
+executor withholds pixels, as everywhere in the runner.
 
 ## How text gets typed
 
-The decision model only ever names an element index. When it picks `type`,
-the text model writes the value from the goal, the field's label, and the
-page text, and the executor types exactly that string. When it picks
-`upload`, the text model lists the project-relative paths the goal or params
-name, and the runner authorizes each path before the engine sees it. Model output never
-becomes a selector, a URL, or a key. When the goal supplies no value,
-nothing is typed and the decision model picks another action. Password
-fields never reach the text model; secrets stay declared handles that only
-`typeSecret` fills.
+The decision model only names an element index. When it picks `type`, the
+text model writes the value from the goal, the field's label, and the page
+text. The executor types exactly that string. When it picks `upload`, the
+text model lists the project-relative paths the goal or params name, and the
+runner authorizes each path before the engine sees it. Model output never
+becomes a selector, a URL, or a key. When the goal supplies no value, nothing
+is typed and the decision model picks another action.
 
-The text model is also the agent's judgment tier: it is exposed as the
-executor's `model`, so `waitFor` and `extract` use it too. It can come
-from the agents entry's `model` instead. Without either, `type` is never
-offered.
+Password fields never reach the text model. Secrets stay declared handles
+that only `typeSecret` fills.
+
+The text model is also the agent's judgment tier, so `waitFor` and `extract`
+use it. It can come from the agents entry's `model` instead. Without either,
+`type`, `upload`, and `tap_at` are never offered.
 
 ## Finishing a step
 
-When the decision model answers `done` or `failed`, the executor checks
-the claim on a fresh screen with one question: is the step's task complete?
-It sees the step's non-secret params, the actions taken with the non-secret
-values typed, and the page, including the text of named status regions, but
-no model reasoning or secret. A confirmed `done` passes the
-step and a confirmed `failed` fails it with `ACTION_FAILED`. An
-unconfirmed claim goes back to the decision model as history; the second one
-ends the step, as `ACTION_FAILED` when the screen contradicts the goal and
-as `blocked` (`AUTOMATION_UNSUPPORTED`) otherwise.
+When the decision model answers `done` or `failed`, the executor checks the
+claim on a fresh screen with one question: is the step's task complete? The
+check sees the non-secret params, the actions taken with the non-secret
+values typed, and the page with the text of its status regions. It never
+sees model reasoning or a secret.
+
+A confirmed `done` passes the step. A confirmed `failed` fails it with
+`ACTION_FAILED`. An unconfirmed claim goes back to the decision model as
+history. A second unconfirmed claim ends the step: `ACTION_FAILED` when the
+screen contradicts the goal, otherwise `blocked` with
+`AUTOMATION_UNSUPPORTED`.
 
 ## Gates
 
-Both gates are off by default: the executor follows the most probable
+Both gates are off by default, so the executor follows the most probable
 choice. Set `minProbability` or `minConfidence` to block weaker actions,
 reject weaker completion checks, and fail weaker assertions as
-inconclusive instead:
+inconclusive:
 
 ```ts title="Executor setup"
 const executor = decisionExecutor({ model, minProbability: 0.9, minConfidence: 0.8 });
 ```
 
-Probability and confidence are different provider fields: probability is the
-selected option's share of the answer distribution, confidence is the
-provider's separate statistic. A threshold is a policy choice; measure
-accuracy on your own tests before changing it. Providers round: OpenAI
-reports both to two decimals, so a gate between two hundredths acts as the
-next hundredth.
+Probability is the selected option's share of the answer distribution.
+Confidence is the provider's own statistic. A threshold is a policy choice,
+so measure accuracy on your own tests before you set one. OpenAI rounds both
+to two decimals, so a gate between two hundredths acts as the next
+hundredth.
 
 ## Provider options
 
@@ -214,24 +213,22 @@ const executor = decisionExecutor({
 });
 ```
 
-They reach the decision model only. The text model takes the agents
-entry's `providerOptions`, so a gateway setting meant for one model, such as
-a fallback list, never reaches the other.
+They reach the decision model only. The text model takes the agents entry's
+`providerOptions`, so a gateway setting meant for one model, such as a
+fallback list, never reaches the other.
 
 ## Limits
 
-- No `navigate`: in-app navigation is a `tap` on a link. URLs belong in
+- No `navigate`. In-app navigation is a `tap` on a link. URLs belong in
   test code (`browser.goto`, `app.open`).
-- No multi-select `listbox`, no `scrollUntil`, no keyboard typing at a
+- No multi-select `listbox`, no `scrollUntil`, and no keyboard typing at a
   point (`type_at`).
 - The text model that names a drawn control reads the page text and the
-  goal, not the pixels: an instruction that exists only as drawn text (a
-  wizard that paints "tap the circle") is out of its reach.
-- A question the provider refuses to answer fails the step with
-  `MODEL_OUTPUT_INVALID`.
+  goal, not the pixels. An instruction that exists only as drawn text, such
+  as a wizard that paints "tap the circle", is out of its reach.
+- A question the provider refuses fails the step with `MODEL_OUTPUT_INVALID`.
 - The choice cap is 255 options per question (TypeSafe's limit; OpenAI
-  documents none). Larger
-  screens list viewport nodes first and count the rest as omitted, so the
-  model can scroll; the step never blocks just for being large.
-- `waitFor` and `extract` use the text model through the runner's
-  built-in judgment tier.
+  documents none). Larger screens list viewport nodes first and count the
+  rest as omitted, so the model can scroll.
+- `waitFor` and `extract` use the text model through the runner's built-in
+  judgment tier.

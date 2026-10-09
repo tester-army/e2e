@@ -1,11 +1,10 @@
 # @e2e-dev/decision
 
-Run `agent.act` and `agent.assert` through a decision model instead of an LLM:
-any AI SDK decision model that answers `choice` questions with probability
-distributions (TypeSafe Jev, OpenAI `gpt-6-luna` through `@ai-sdk/openai`
-4.0.90 or later), plus a small language model that writes field values when
-the decision model picks `type` or `upload`. Needs `ai` 7, version 7.0.134
-or later.
+Run `agent.act` and `agent.assert` through a decision model instead of an
+LLM. Any AI SDK decision model that answers `choice` questions with
+probability distributions works, such as TypeSafe Jev or OpenAI `gpt-6-luna`
+through `@ai-sdk/openai` 4.0.90 or later. A small language model writes
+field values and upload paths. Needs `ai` 7.0.134 or later.
 
 ```ts
 import type { E2EConfig } from 'e2e';
@@ -25,27 +24,14 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Set `agents.default.executor` in the e2e config. Tests stay plain natural
-language, with no params needed. One `experimental_decide` call per action
-asks the operation plus one target question per operation; operations with a
-single target dispatch without a question. The text model is also the agent's
-judgment tier (`waitFor`, `extract`); without a text model or a configured agent
-`model`, `type` is never offered.
-
-Each turn asks the operation, then the target for it; every question
-states the goal and recent actions. Every operation the engine declares is
-offered: tap, type, submit, select, check, upload, hover, right-click,
-double-tap, long-press, drag, scroll-to, scroll, and back; target questions
-carry a `none` option. With `vision: true` and a model that takes images
-(`openai.decisionModel('gpt-6-luna')`), verdicts see a masked screenshot, and `tap_at` reaches a drawn control the
-text model names, located by score questions on the screenshot and a zoomed
-crop with grid lines. The runner authorizes every dispatched action and records every
-model call against the step budget. `providerOptions` go with every decide
-call and reach the decision model only; the text model keeps the agents
-entry's `providerOptions`. Secrets stay declared handles filled only through
-`typeSecret`; password fields never reach the text model. `minProbability`
-and `minConfidence` gates are off by default. A `done`/`failed` claim passes
-an independent fresh-screen check before it concludes the step.
+Tests stay plain natural language, with no params. Each turn asks the
+operation, then the target for it. Every operation the engine declares is
+offered, and every target question carries a `none` option. With
+`vision: true` and a model that takes images, such as
+`openai.decisionModel('gpt-6-luna')`, verdicts see a masked screenshot and
+`tap_at` reaches a drawn control. The runner authorizes every action and
+records every model call against the step budget. Secrets stay declared
+handles that only `typeSecret` fills.
 
 See the [decision models guide](https://e2e.tester.army/docs/decision-models)
-for setup, gates, vision, and limits (no `navigate`, the 255-choice cap).
+for setup, vision, gates, provider options, and limits.
