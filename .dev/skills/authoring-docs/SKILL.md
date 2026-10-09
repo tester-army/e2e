@@ -1,6 +1,6 @@
 ---
 name: authoring-docs
-description: Use when writing, editing, or rewriting a guide page on the docs site (docs/**/*.mdx outside docs/reference/), including cleanup passes on legacy pages.
+description: Use when writing, editing, rewriting, or shortening a guide page on the docs site (docs/**/*.mdx outside docs/reference/), including cleanup passes on legacy pages and requests to make a page shorter.
 metadata:
   internal: true
 ---
@@ -109,7 +109,8 @@ color, size, and weight.
 
 Put a copyable prompt near the top when a coding agent can do the whole
 task from the page: setup, migration, a bug bash, wiring CI. Skip it when
-the page explains a concept or the task is one command.
+the page explains a concept, or the task is one command or one install and
+a config change.
 
 The import path is relative to the page. Use `./snippets/` for a top-level
 page and `../snippets/` for a page in `docs/ci/`, `docs/integrations/`, or
@@ -256,8 +257,74 @@ every repetition.
    redirect in `docs/docs.json`.
 9. **Compare.** The new page is shorter on screen, and every fact from
    step 1 is still on it, folded, or linked.
+10. **Shorten.** A page in the right shape can still say things twice. Run
+    the pass in [Shortening a page](#shortening-a-page).
 
 One page per PR. The reviewer compares old and new side by side.
+
+## Shortening a page
+
+A page is too long when it says a fact twice, or when it is much longer
+than its sidebar neighbors for no reason. Measure first. Count source lines
+and prose words, and compare the page with its siblings:
+
+````bash
+wc -l docs/integrations/*.mdx
+awk '/^```/{c=!c;next} !c' docs/integrations/smol.mdx | wc -w   # prose only
+````
+
+List every section with its rough line count. Then sort each cut into one
+of three kinds, and work them in this order.
+
+1. **Cut what the reader doesn't act on.**
+   - How the code works inside, such as the order a provider boots
+     machines. Keep the behavior a user sees, as one sentence where it
+     matters.
+   - An agent prompt for a task that is one install and a config change.
+   - Next cards beyond the two the reader most likely needs.
+
+   Keep a guarantee the reader would otherwise doubt, even when it reads
+   like "works as it does locally". Check whether another page says it can
+   fail. `browser.mdx` says a provider without `downloads` fails, so a
+   provider page keeps the line that downloads work.
+2. **Merge what's said twice.** Each fact has one place.
+   - A lede paragraph that previews a section becomes a link to it.
+   - A "Before you start" with one or two items becomes a `Note` in the
+     first task.
+   - A section that explains one option moves under the config that sets
+     it.
+   - A list and a table that describe the same fields become one table,
+     with the details in its cells.
+   - An options table row for an option with its own section links there.
+     It doesn't describe the option again.
+   - Text copied from another page, such as a list of limits, becomes a
+     link to the page that owns it.
+3. **Fold what only some readers need.** An optional path with its own
+   install and example goes into an `Accordion`. The visible text keeps the
+   rule every reader must follow.
+
+Write the target outline before you edit: the headings, and what each one
+holds. List moves that change other pages separately from the cuts on this
+page, and say if you recommend them.
+
+When the user asks how to shorten a page, show the plan before you edit.
+Group the items by kind. Give each item its rough savings in lines and one
+sentence of reason. End with the target outline and your recommendation.
+If an earlier pass of yours added the length, say so.
+
+Shortening adds claims. Check each new sentence:
+
+- **A caveat moves with its claim.** Cut "external state stays shared" from
+  the lede, and "every retry starts from the same state" becomes a promise
+  the code doesn't keep.
+- **A sentence that replaces three is a new claim.** Check it against
+  `src/`. "`workers` sets how many machines run" was wrong: in `'attempt'`
+  scope each worker slot runs a warm machine and a branch.
+- **A leftover fact gets a heading or gets cut.** Don't park it under the
+  nearest heading, such as cleanup under "Options". The heading list must
+  still lead to it.
+- **Estimates run high.** Measure after the edit. Report the real visible
+  and folded line counts against the target.
 
 ## Before you commit
 
@@ -274,6 +341,8 @@ One page per PR. The reviewer compares old and new side by side.
       `scripts/check-docs-examples.ts`, and typechecks with
       `pnpm --filter @e2e-dev/docs typecheck`.
 - [ ] Status claims checked against `src/`.
+- [ ] Each fact is in one place on the page. A fact another page owns is a
+      link.
 - [ ] A page icon from a file is a black silhouette under
       `docs/images/icons/` and matches its sidebar neighbors in light and
       dark mode.
