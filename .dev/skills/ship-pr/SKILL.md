@@ -32,6 +32,13 @@ Then the repo rules `pnpm check` cannot see (`AGENTS.md`, "Contracts"):
 - Behavior changes update the matching `docs/**/*.mdx` page in the same
   change, "not implemented yet" callouts included, and `skills/e2e/` when it
   describes the changed surface.
+- **Important:** every guide page the change touches (`docs/**/*.mdx`
+  outside `docs/reference/`) gets the shortening pass in the
+  [authoring-docs](../authoring-docs/SKILL.md) skill before you verify,
+  even for a one-paragraph edit. Cut what the reader doesn't act on, merge
+  what's said twice, and fold what only some readers need. Then check every
+  new or merged sentence against `src/`. Put the before and after line
+  counts in the PR body.
 - A public API change reviews the emitted `.d.ts` and updates
   `packages/e2e/tests/types/sdk-types.ts`; a wire change edits the schema,
   both fixtures, and the producer together.
