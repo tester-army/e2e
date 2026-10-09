@@ -4,9 +4,17 @@ description: Compare the screen, or one element, against a stored screenshot on 
 icon: "image"
 ---
 
+import { Video } from './snippets/video.jsx';
+
 `toHaveScreenshot` compares what the app shows against a PNG stored next to
 the test file. It works on every engine that captures pixels, so one test
 checks a browser, an iOS simulator, and an Android emulator.
+
+<Video>
+  <video src="/images/visual-testing.mp4" aria-label="A failed toHaveScreenshot assertion in the terminal, then the expected, actual, and diff images side by side." muted loop playsInline controls />
+
+  A failed comparison, then its expected, actual, and diff images.
+</Video>
 
 ```ts title="tests/checkout.e2e.ts"
 import { test, expect } from 'e2e';
