@@ -126,9 +126,8 @@ Deterministic device management, recorded as `device.<method>` steps. Import
 import { test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
 
-test('shows the version offline in dark mode', async ({ agent, device, screen }) => {
+test('shows the version in dark mode', async ({ agent, device, screen }) => {
   await device.setAppearance('dark');
-  await device.setNetwork('offline');
   await agent.act('go to General, then About');
   await expect(screen.getByRole('button', /^iOS Version/)).toBeVisible();
   await expect(device.locator('role=NavigationBar id=About')).toBeVisible();
@@ -140,6 +139,14 @@ Methods: `setNetwork`, `setAirplaneMode`, `setPermission`, `setLocation`,
 `enrollBiometrics`, `installApp`, `openApp`, `closeApp`, `clearKeychain`,
 `foregroundApp`, `home`, `back`, `alert`, `dismissKeyboard`, `clipboard`,
 `setClipboard`, and the `locator` accessor.
+
+`setNetwork('offline')` and `setAirplaneMode(true)` are Android only. An iOS
+simulator shares the Mac's network, and simctl can only change its status
+bar, so on iOS both fail with `UNSUPPORTED_CAPABILITY`; going back online
+does nothing there, so a shared cleanup hook passes. On Android,
+`setNetwork('offline')` turns off Wi-Fi alone, so the app can stay online
+over cellular; `setAirplaneMode(true)` (Android 11 or later) takes it
+offline.
 
 `installApp(appPath, { app, reinstall })` puts a build on the device from a
 test, for upgrade and fresh-install paths the target's `app.appPath` cannot

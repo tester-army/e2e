@@ -233,9 +233,20 @@ export interface Device {
    * vocabulary cannot name. Same polling and strictness as any locator.
    */
   locator(selector: string): Locator;
-  /** Toggles the device's Wi-Fi. */
+  /**
+   * Switches an Android device's Wi-Fi. Cellular data stays on, so an
+   * emulator hands the app over to its cellular link; `setAirplaneMode(true)`
+   * cuts both. On iOS `offline` is `UNSUPPORTED_CAPABILITY`, since a
+   * simulator shares the Mac's network and simctl can only repaint its status
+   * bar; `online` sends nothing there, so a cleanup hook shared with Android
+   * passes.
+   */
   setNetwork(state: 'online' | 'offline'): Promise<void>;
-  /** Toggles airplane mode. */
+  /**
+   * Switches an Android device's airplane mode, Wi-Fi and cellular together;
+   * Android 11 or newer. On iOS, as for `setNetwork`, `true` is
+   * `UNSUPPORTED_CAPABILITY` and `false` sends nothing.
+   */
   setAirplaneMode(enabled: boolean): Promise<void>;
   /**
    * Grants, denies, or resets one permission for the pinned app, brought to

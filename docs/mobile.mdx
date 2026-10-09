@@ -238,13 +238,12 @@ Some device controls need a simulator or emulator, and fail on a phone with
 agent-device's message:
 
 - On an iPhone, every device setting is simulator-only: `app.permissions`
-  and `device.setPermission`, `app.clearState()`, `device.setNetwork`,
-  `device.setAirplaneMode`, `device.setLocation`, `device.clearLocation`,
-  `device.setAppearance`, the biometric methods, and `device.clearKeychain`.
-  So are `device.clipboard`, `device.setClipboard`, and `device.fold`. For a
-  fresh start, reinstall with `device.installApp(path, { reinstall: true })`,
-  with `app.bundleId` on the target or `app` in the options, so agent-device
-  knows which app to remove.
+  and `device.setPermission`, `app.clearState()`, `device.setLocation`,
+  `device.clearLocation`, `device.setAppearance`, the biometric methods, and
+  `device.clearKeychain`. So are `device.clipboard`, `device.setClipboard`,
+  and `device.fold`. For a fresh start, reinstall with
+  `device.installApp(path, { reinstall: true })`, with `app.bundleId` on the
+  target or `app` in the options, so agent-device knows which app to remove.
 - An older iPhone that `xcrun devicectl list devices` does not list is
   driven without CoreDevice: taps, typing, and the screen work, but
   installs, `--video`, `device.openLink`, and `app.launchArguments` fail.
@@ -480,9 +479,8 @@ export function cloudDevices(options: { provider: string; stateDir: string }): D
 import { test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
 
-test('shows the version offline in dark mode', async ({ agent, app, device, screen }) => {
+test('shows the version in dark mode', async ({ agent, app, device, screen }) => {
   await device.setAppearance('dark');
-  await device.setNetwork('offline');
   await app.open();
   await agent.act('go to General, then About');
   await expect(screen.getByRole('button', /^iOS Version/)).toBeVisible();
@@ -545,6 +543,33 @@ routes:
 ```ts
 await device.openLink('myapp://orders/42');
 await expect(screen.getByText('Order #42')).toBeVisible();
+```
+
+`device.setNetwork('offline')` and `device.setAirplaneMode(true)` work on
+Android only. An iOS simulator shares the Mac's network, and simctl can only
+change its status bar, so on iOS both fail with `UNSUPPORTED_CAPABILITY`.
+`setNetwork('online')` and `setAirplaneMode(false)` do nothing on iOS, so a
+cleanup hook that both platforms run still passes.
+
+On Android, `setNetwork('offline')` turns off Wi-Fi only, and the app can
+stay online over cellular. To take the app offline, use
+`setAirplaneMode(true)`. It needs Android 11 or later. The engine doesn't
+restore the network after a test, so turn it back on in `afterEach`, which
+runs when the test fails too:
+
+```ts
+import { afterEach, test } from '@e2e-dev/mobile';
+import { expect } from 'e2e';
+
+afterEach(async ({ device }) => {
+  await device.setAirplaneMode(false);
+});
+
+test('shows the offline banner', { platforms: ['android'] }, async ({ app, device, screen }) => {
+  await app.open();
+  await device.setAirplaneMode(true);
+  await expect(screen.getByText('You are offline')).toBeVisible();
+});
 ```
 
 `device.clearKeychain()` resets the simulator's keychain, which

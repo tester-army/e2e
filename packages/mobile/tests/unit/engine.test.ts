@@ -1406,8 +1406,6 @@ describe('device fixture', () => {
     );
     const device = fixture(h);
     const before = h.fake.calls.length;
-    await device.setNetwork('offline');
-    await device.setAirplaneMode(true);
     await device.setPermission('camera', 'grant');
     await device.setLocation({ latitude: 37.3349, longitude: -122.009 });
     await device.clearLocation();
@@ -1427,8 +1425,6 @@ describe('device fixture', () => {
     expect(await device.clipboard()).toBe('pasted');
     await device.setClipboard('x');
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
-      ['settings.update', { setting: 'wifi', state: 'off' }],
-      ['settings.update', { setting: 'airplane', state: 'on' }],
       ['settings.update', { setting: 'permission', permission: 'camera', state: 'grant' }],
       ['settings.update', { setting: 'location', state: 'set', latitude: 37.3349, longitude: -122.009 }],
       ['settings.update', { setting: 'location', state: 'off' }],
@@ -1648,6 +1644,34 @@ describe('device fixture', () => {
       message: expect.stringContaining('device.openApp({ permissions }) has unknown key "notification"'),
     });
     expect(h.fake.calls.length).toBe(before);
+  });
+
+  it('switches Wi-Fi and airplane mode on Android; on iOS, where simctl only repaints the status bar, refuses going offline and restores with no device command', async () => {
+    const ios = harness();
+    await openAttempt(ios);
+    const before = ios.fake.calls.length;
+    const device = fixture(ios);
+    await expect(device.setNetwork('offline')).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY', message: expect.stringContaining('status bar') });
+    await expect(device.setAirplaneMode(true)).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY', message: expect.stringContaining('status bar') });
+    // The restore a cleanup hook shared with Android runs: nothing went offline, so there is nothing to send.
+    await device.setNetwork('online');
+    await device.setAirplaneMode(false);
+    expect(ios.fake.calls.length).toBe(before);
+
+    const android = harness({ platform: 'android', bundleId: 'com.example.app' });
+    await openAttempt(android);
+    const count = android.fake.calls.length;
+    const radios = fixture(android);
+    await radios.setNetwork('offline');
+    await radios.setNetwork('online');
+    await radios.setAirplaneMode(true);
+    await radios.setAirplaneMode(false);
+    expect(android.fake.calls.slice(count).map((call) => [call.method, call.args])).toEqual([
+      ['settings.update', { setting: 'wifi', state: 'off' }],
+      ['settings.update', { setting: 'wifi', state: 'on' }],
+      ['settings.update', { setting: 'airplane', state: 'on' }],
+      ['settings.update', { setting: 'airplane', state: 'off' }],
+    ]);
   });
 
   it('resets the simulator keychain on iOS and refuses on Android before any device command', async () => {

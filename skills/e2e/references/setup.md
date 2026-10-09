@@ -340,6 +340,12 @@ export default {
   `setPermission`, `setNetwork`, `setAppearance`, `clearKeychain`, `fold`
   for an iPhone Duo's hinge, `locator`, more). Portable suites declare
   `requires: ['device']`.
+- `setNetwork('offline')` and `setAirplaneMode(true)` are Android only: on
+  iOS both are `UNSUPPORTED_CAPABILITY`, since a simulator shares the Mac's
+  network, and `setNetwork('online')` / `setAirplaneMode(false)` do nothing.
+  `setNetwork('offline')` turns off Wi-Fi alone and cellular stays up; an
+  offline test uses `setAirplaneMode(true)` (Android 11+) under
+  `platforms: ['android']` and turns it back off in `afterEach`.
 - No `state` capability: `test.setup` and `session` are unavailable; sign in
   per test with `screen` actions or `agent.act`, both fill a `Secret` (topic
   `writing-tests`, Sign-in sessions).

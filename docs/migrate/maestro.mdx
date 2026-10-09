@@ -173,7 +173,7 @@ declares `requires: ['device']` so other targets skip it. `Status` is `same`,
 | --- | --- | --- |
 | `setLocation` | `device.setLocation({ latitude, longitude })` | device only |
 | `travel: { points }` | `device.setLocation` in a loop | device only |
-| `setAirplaneMode`, `toggleAirplaneMode` | `device.setAirplaneMode(true)` or `false`, the state you want | device only |
+| `setAirplaneMode`, `toggleAirplaneMode` | `device.setAirplaneMode(true)` or `false`, the state you want; `true` is Android only | device only |
 | `setDarkMode`, `toggleDarkMode` | `device.setAppearance('dark')` or `'light'` | device only |
 | `setOrientation` | `device.setOrientation('landscape-left')` | device only |
 | `setPermissions` | `device.setPermission(name, 'grant' \| 'deny' \| 'reset')`, one permission per call, on the open app | device only |
