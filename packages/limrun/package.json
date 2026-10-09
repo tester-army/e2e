@@ -1,0 +1,68 @@
+{
+  "name": "@e2e-dev/limrun",
+  "version": "0.1.0",
+  "description": "Limrun hosted iOS simulators and Android emulators for e2e mobile tests",
+  "keywords": [
+    "e2e",
+    "testing",
+    "limrun",
+    "ios-simulator",
+    "android-emulator",
+    "ci"
+  ],
+  "license": "Apache-2.0",
+  "contributors": [
+    "Mehmet Enes Onus <enes@limrun.com>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tester-army/e2e.git",
+    "directory": "packages/limrun"
+  },
+  "bugs": {
+    "url": "https://github.com/tester-army/e2e/issues"
+  },
+  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/limrun#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "tag": "latest"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json && node ../../scripts/stamp-dist.ts",
+    "prepublishOnly": "node ../../scripts/check-dist.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit"
+  },
+  "peerDependencies": {
+    "@e2e-dev/mobile": ">=0.10.1 <1",
+    "e2e": ">=0.15.0 <1",
+    "@limrun/api": ">=0.59.0 <1",
+    "agent-device": "0.21.22"
+  },
+  "devDependencies": {
+    "@e2e-dev/mobile": "workspace:*",
+    "@types/node": "26.6.2",
+    "e2e": "workspace:*",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1",
+    "@limrun/api": "0.59.0",
+    "agent-device": "0.21.22"
+  },
+  "engines": {
+    "node": "^22.22.3 || >=24.8.0"
+  }
+}

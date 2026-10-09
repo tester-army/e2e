@@ -66,15 +66,19 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
 
 /** Creates one agent-device engine: one device session per worker; a test launches the pinned app with `app.open()`. */
 export function mobile(options: MobileOptions): EngineHandle {
-  const factory: ClientFactory = (session, connection) =>
-    createAgentDeviceClient(
+  const factory: ClientFactory = (session, connection) => {
+    // A provider's local daemon must not inherit the user's remote-daemon connection.
+    const local = connection?.client?.stateDir !== undefined && connection.daemon === undefined;
+    return createAgentDeviceClient(
       obj({
         ...connection?.client,
         session,
-        daemonBaseUrl: connection?.daemon?.baseUrl,
-        daemonAuthToken: connection?.daemon?.authToken,
+        daemonBaseUrl: local ? '' : connection?.daemon?.baseUrl,
+        daemonAuthToken: local ? '' : connection?.daemon?.authToken,
+        daemonTransport: local ? 'auto' as const : undefined,
       }),
     );
+  };
   return buildEngine(new AgentDeviceSurface(options, factory));
 }
 

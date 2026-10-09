@@ -287,6 +287,9 @@ importers:
       '@e2e-dev/decision':
         specifier: workspace:*
         version: link:../packages/decision
+      '@e2e-dev/limrun':
+        specifier: workspace:*
+        version: link:../packages/limrun
       '@e2e-dev/mobile':
         specifier: workspace:*
         version: link:../packages/mobile
@@ -499,6 +502,30 @@ importers:
       '@types/node':
         specifier: 26.6.2
         version: 26.6.2
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@26.6.2)(vite@8.1.5(@types/node@26.6.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.14)(yaml@2.9.0))
+
+  packages/limrun:
+    devDependencies:
+      '@e2e-dev/mobile':
+        specifier: workspace:*
+        version: link:../mobile
+      '@limrun/api':
+        specifier: 0.59.0
+        version: 0.59.0(supports-color@8.1.1)
+      '@types/node':
+        specifier: 26.6.2
+        version: 26.6.2
+      agent-device:
+        specifier: 0.21.22
+        version: 0.21.22(ai@7.0.128(zod@4.6.1))
       e2e:
         specifier: workspace:*
         version: link:../e2e
@@ -2060,6 +2087,12 @@ packages:
   '@leichtgewicht/ip-codec@2.0.5':
     resolution: {integrity: sha512-Vo+PSpZG2/fmgmiNzYK9qWRh8h/CHrwD0mo1h1DzL4yzHNSfWYujGTYsWGreD000gcgmZ7K4Ys6Tx9TxtsKdDw==}
 
+  '@limrun/api@0.59.0':
+    resolution: {integrity: sha512-CipjJnvfLq8cTYP58vUneFyJlGvPmr+PspBuuGST1/krYi0QoVOpdNXGqOexio1N6ltnAG5GoQcU40ViDEUTbQ==}
+
+  '@limrun/xdelta3-wasm@0.2.0':
+    resolution: {integrity: sha512-mEohO7CYj4Gdc0v1Gr/AjlBhfbXQnIz6+2wmMhRfwz8hXZrsIC/yqYQhfoDhu1ysqQwBnU5lDDLPUGdUu+8hPQ==}
+
   '@manypkg/find-root@3.1.0':
     resolution: {integrity: sha512-BcSqCyKhBVZ5YkSzOiheMCV41kqAFptW6xGqYSTjkVTl9XQpr+pqHhwgGCOHQtjDCv7Is6EFyA14Sm5GVbVABA==}
     engines: {node: '>=20.0.0'}
@@ -3066,6 +3099,9 @@ packages:
 
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
+
+  '@types/har-format@1.2.16':
+    resolution: {integrity: sha512-fluxdy7ryD3MV6h8pTfTYpy/xQzCFC7m89nOH9y94cNqJ1mDIDPut7MnRHI3F6qRmh/cT2fUjG1MLdCNb4hE9A==}
 
   '@types/hast@3.0.5':
     resolution: {integrity: sha512-rp/ezSWaD1m44dPKICGhiskI13nVr7qTloFwDa/IYkhhf5nzwP+zIQcIJh3WIFSBOy/H1PzB40jPjMDksN4F+g==}
@@ -4334,6 +4370,10 @@ packages:
 
   events-universal@1.0.1:
     resolution: {integrity: sha512-LUd5euvbMLpwOF8m6ivPCbhQeSiYVNb8Vs0fQ8QjXo0JTkEHpz8pxdQf0gStltaPpw0Cca8b39KxvK9cfKRiAw==}
+
+  eventsource-client@1.2.0:
+    resolution: {integrity: sha512-kDI75RSzO3TwyG/K9w1ap8XwqSPcwi6jaMkNulfVeZmSeUM49U8kUzk1s+vKNt0tGrXgK47i+620Yasn1ccFiw==}
+    engines: {node: '>=18.0.0'}
 
   eventsource-parser@3.1.1:
     resolution: {integrity: sha512-EKN1vKAMcZ8MlYMpaNuxN6R9yakzH6uajHcHVTqWJzvu5pWw9DyhbP35HH8MVBQ+dZjAfDxk+A8NiR9KWaXiyQ==}
@@ -7280,6 +7320,10 @@ packages:
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
 
+  undici@7.29.0:
+    resolution: {integrity: sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==}
+    engines: {node: '>=20.18.1'}
+
   undici@7.29.1:
     resolution: {integrity: sha512-RYONW2MeafgYlkVOKYKkA/Ag7BmXqgIWCa8t1m0JcxrQg9pI9lEqRhAOruOBCbAohOa/gkCF+iPi9hrgvTzu6Q==}
     engines: {node: '>=20.18.1'}
@@ -7660,6 +7704,10 @@ packages:
 
   yauzl@2.10.0:
     resolution: {integrity: sha512-p4a9I6X6nu6IhoGmBqAcbJy1mlC4j27vEPZX9F4L4/vZT3Lyq1VkFHw/V/PUcB9Buo+DG3iHkT0x3Qya58zc3g==}
+
+  yauzl@3.4.0:
+    resolution: {integrity: sha512-jIH9yLR9wqr0wOS0TpBvo/g/2UgZH5qePVbjgRliiF0BYvOZyaBknKsF+x9Iht0O6sqgnB93rCICdOZFecJuDw==}
+    engines: {node: '>=12'}
 
   yoctocolors-cjs@2.1.3:
     resolution: {integrity: sha512-U/PBtDf35ff0D8X8D0jfdzHYEPFxAI7jJlxZXwCSez5M3190m+QobIfh+sWDWSHMCWWJN2AWamkegn6vr6YBTw==}
@@ -9339,6 +9387,24 @@ snapshots:
 
   '@leichtgewicht/ip-codec@2.0.5': {}
 
+  '@limrun/api@0.59.0(supports-color@8.1.1)':
+    dependencies:
+      '@limrun/xdelta3-wasm': 0.2.0
+      '@types/har-format': 1.2.16
+      eventsource-client: 1.2.0
+      https-proxy-agent: 7.0.6(supports-color@8.1.1)
+      ignore: 7.0.5
+      proxy-from-env: 2.1.0
+      undici: 7.29.0
+      ws: 8.21.3
+      yauzl: 3.4.0
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
+  '@limrun/xdelta3-wasm@0.2.0': {}
+
   '@manypkg/find-root@3.1.0':
     dependencies:
       '@manypkg/tools': 2.1.2
@@ -10545,6 +10611,8 @@ snapshots:
       '@types/estree': 1.0.9
 
   '@types/estree@1.0.9': {}
+
+  '@types/har-format@1.2.16': {}
 
   '@types/hast@3.0.5':
     dependencies:
@@ -11865,6 +11933,10 @@ snapshots:
       bare-events: 2.9.2
     transitivePeerDependencies:
       - bare-abort-controller
+
+  eventsource-client@1.2.0:
+    dependencies:
+      eventsource-parser: 3.1.1
 
   eventsource-parser@3.1.1: {}
 
@@ -16089,6 +16161,8 @@ snapshots:
 
   undici-types@8.9.0: {}
 
+  undici@7.29.0: {}
+
   undici@7.29.1: {}
 
   unicode-canonical-property-names-ecmascript@2.0.1: {}
@@ -16483,6 +16557,10 @@ snapshots:
     dependencies:
       buffer-crc32: 0.2.13
       fd-slicer: 1.1.0
+
+  yauzl@3.4.0:
+    dependencies:
+      pend: 1.2.0
 
   yoctocolors-cjs@2.1.3: {}
 

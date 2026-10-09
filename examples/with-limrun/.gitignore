@@ -1,0 +1,6 @@
+node_modules/
+.e2e/
+build/
+package-lock.json
+pnpm-lock.yaml
+bun.lock

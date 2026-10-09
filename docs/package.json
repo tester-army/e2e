@@ -20,7 +20,8 @@
     "e2e": "workspace:*",
     "mint": "4.2.909",
     "typescript": "7.0.2",
-    "zod": "4.6.1"
+    "zod": "4.6.1",
+    "@e2e-dev/limrun": "workspace:*"
   },
   "engines": {
     "node": ">=22.12.0"

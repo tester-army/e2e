@@ -99,6 +99,8 @@ suites that consume the built packages the way a user would.
   Playwright image and Chromium version in sync with `@e2e-dev/web`. Run
   `pnpm --filter @e2e-dev/smol test:unit` and `pnpm check`, then verify live
   machines in both attempt and worker scopes with an app running in the VM.
+- `packages/limrun` — the Limrun hosted mobile device provider. Each worker
+  leases one remote device, installs its app, and releases the device at exit.
 - `packages/decision` — the published `@e2e-dev/decision` package: a
   `StepExecutor` (`decisionExecutor()`) that drives `agent.act` and
   `agent.assert` through an AI SDK *decision* model answering `choice`
