@@ -21,14 +21,22 @@ commit. Don't skip it for a new page or a small edit.** A first draft is
 always too long, and an edit that adds one paragraph often repeats a fact
 the page already has.
 
+When the PR is about something other than docs, such as a flag rename that
+updates three pages, apply the cuts to the sections the change touches.
+List the cuts for the rest of each page as a follow-up. A whole-page
+restructure is its own PR, one page per PR.
+
 A page is too long when it says a fact twice, or when it is much longer
 than its sidebar neighbors for no reason. Measure first. Count source lines
 and prose words, and compare the page with its siblings:
 
 ````bash
 wc -l docs/integrations/*.mdx
-awk '/^```/{c=!c;next} !c' docs/integrations/smol.mdx | wc -w   # prose only
+awk '/^```/{c=!c;next} !c' docs/integrations/smol.mdx | wc -w   # prose, roughly
 ````
+
+The word count is approximate. It misses indented fences and counts
+frontmatter and JSX, so compare counts only between versions of one page.
 
 List every section with its rough line count. Then sort each cut into one
 of three kinds, and work them in this order.
@@ -37,8 +45,10 @@ of three kinds, and work them in this order.
    - How the code works inside, such as the order a provider boots
      machines. Keep the behavior a user sees, as one sentence where it
      matters.
-   - An agent prompt for a task that is one install and a config change.
-   - Next cards beyond the two the reader most likely needs.
+   - An agent prompt that [Copy agent prompt](#copy-agent-prompt) says to
+     skip.
+   - Next cards the reader doesn't need next, down to the skeleton's
+     minimum of two.
 
    Keep a guarantee the reader would otherwise doubt, even when it reads
    like "works as it does locally". Check whether another page says it can
@@ -46,16 +56,17 @@ of three kinds, and work them in this order.
    provider page keeps the line that downloads work.
 2. **Merge what's said twice.** Each fact has one place.
    - A lede paragraph that previews a section becomes a link to it.
-   - A "Before you start" with one or two items becomes a `Note` in the
-     first task.
+   - A "Before you start" whose items fit in two short sentences becomes a
+     `Note` in the first task. Keep the section when its items need
+     bullets, as in `docs/bug-bash.mdx`.
    - A section that explains one option moves under the config that sets
      it.
    - A list and a table that describe the same fields become one table,
      with the details in its cells.
    - An options table row for an option with its own section links there.
      It doesn't describe the option again.
-   - Text copied from another page, such as a list of limits, becomes a
-     link to the page that owns it.
+   - A list of limits or caveats copied from another page becomes a link
+     to the page that owns it.
 3. **Fold what only some readers need.** An optional path with its own
    install and example goes into an `Accordion`. The visible text keeps the
    rule every reader must follow.
@@ -80,8 +91,10 @@ Shortening adds claims. Check each new sentence:
 - **A leftover fact gets a heading or gets cut.** Don't park it under the
   nearest heading, such as cleanup under "Options". The heading list must
   still lead to it.
-- **Estimates run high.** Measure after the edit. Report the real visible
-  and folded line counts against the target.
+- **Every cut fact is cut on purpose.** Name each one, with its reason, in
+  the PR body.
+- **Estimates run high.** Measure after the edit, with the same commands.
+  Report the real line and word counts, before and after.
 
 ## Scope
 
@@ -318,17 +331,19 @@ every repetition.
    `Accordion`, alternatives into `Tabs`, background procedures into
    `ShowMore`.
 6. **Apply the tone rules** sentence by sentence, then run `unslop`.
-7. **Add a copy agent prompt** if an agent can now do the whole task.
+7. **Add a copy agent prompt** if an agent can now do the whole task and
+   [Copy agent prompt](#copy-agent-prompt) doesn't say to skip it.
 8. **Keep URLs and anchors stable.** When you rename a heading, update
    every link to its anchor. Search for `/<page>#<anchor>` across `docs/`,
    `skills/`, `README.md`, and `packages/*/src`. Also search the page itself
    for `](#<anchor>)` and `href="#<anchor>"`. If a page moves, add a
    redirect in `docs/docs.json`.
-9. **Compare.** The new page is shorter on screen, and every fact from
-   step 1 is still on it, folded, or linked.
-10. **Shorten.** A page in the right shape can still say things twice. Run
-    the pass in
-    [IMPORTANT: shorten every page](#important-shorten-every-page).
+9. **Shorten.** A page in the right shape can still say things twice. Run
+   the pass in
+   [IMPORTANT: shorten every page](#important-shorten-every-page).
+10. **Compare.** The new page is shorter on screen. Every fact from step 1
+    is still on it, folded, or linked, or it was cut on purpose and the PR
+    body names it with the reason.
 
 One page per PR. The reviewer compares old and new side by side.
 
@@ -350,8 +365,6 @@ One page per PR. The reviewer compares old and new side by side.
       `scripts/check-docs-examples.ts`, and typechecks with
       `pnpm --filter @e2e-dev/docs typecheck`.
 - [ ] Status claims checked against `src/`.
-- [ ] Each fact is in one place on the page. A fact another page owns is a
-      link.
 - [ ] A page icon from a file is a black silhouette under
       `docs/images/icons/` and matches its sidebar neighbors in light and
       dark mode.
