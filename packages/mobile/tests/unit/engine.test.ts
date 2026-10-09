@@ -428,6 +428,39 @@ describe('lifecycle', () => {
     expect(byUdid.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', udid: '2BBF3F07-AF66-4F95-82AB-BF442506FC89' });
   });
 
+  it('preserves the serial resolved from a configured physical Android device name through warm-up and worker restoration', async () => {
+    const h = harness({ device: '22101320G', platform: 'android' });
+    h.fake.respond('devices.list', () => [{ platform: 'android', id: '2df0797d', name: '22101320G', booted: true }]);
+    const result = await h.prepare({
+      runId: 'run-1', targetName: 'android', projectRoot: PROJECT_ROOT, slots: 1, env: {},
+      signal: new AbortController().signal, headed: false, log: () => undefined,
+    });
+    expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'android', serial: '2df0797d' });
+    expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'Settings', platform: 'android', serial: '2df0797d' });
+    const handed = result?.env ?? {};
+    const variable = poolVariableIn(handed, 'ANDROID');
+    expect(handed[variable]).toBe(JSON.stringify([{ device: '22101320G', deviceId: '2df0797d', sessionApp: 'Settings' }]));
+    const worker = harness({ device: '22101320G', platform: 'android' });
+    await boot(worker, 'android', 0, handed);
+    expect(worker.fake.lastArgs('devices.boot')).toEqual({ platform: 'android', serial: '2df0797d' });
+    expect([...h.fake.calls, ...worker.fake.calls]).not.toContainEqual(
+      expect.objectContaining({ args: expect.objectContaining({ device: '2df0797d' }) }),
+    );
+  });
+
+  it('prefers the exact configured Android name when inventory has normalized name collisions', async () => {
+    const h = harness({ device: 'Pixel 9', platform: 'android' });
+    h.fake.respond('devices.list', () => [
+      { platform: 'android', id: 'serial-one', name: 'Pixel_9' },
+      { platform: 'android', id: 'serial-two', name: 'Pixel 9' },
+    ]);
+    await h.prepare({
+      runId: 'run-1', targetName: 'android', projectRoot: PROJECT_ROOT, slots: 1, env: {},
+      signal: new AbortController().signal, headed: false, log: () => undefined,
+    });
+    expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'android', serial: 'serial-two' });
+  });
+
   it('carries the configured settle window on actions, and none when settle is false; both budgets are non-negative integers', async () => {
     const slow = harness({ settle: 600 });
     await openAttempt(slow);
@@ -2080,4 +2113,3 @@ describe('deterministic actions', () => {
     await tapsAtOnce(h, await observed(h, 'Save'), { ref: '@e11' });
   });
 });
-

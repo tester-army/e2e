@@ -249,12 +249,15 @@ export class DevicePool {
    */
   private async warm(bindings: readonly SlotBinding[], info: EnginePrepareInfo): Promise<readonly SlotBinding[]> {
     const warmed: SlotBinding[] = [];
-    for (const [slot, binding] of bindings.entries()) {
+    for (const [slot, initialBinding] of bindings.entries()) {
+      const session = this.session(info.targetName, slot);
+      const client = this.createClient(session, initialBinding);
+      const binding = this.source instanceof ConfiguredDevices && this.options.platform === 'android'
+        ? await this.resolveName(initialBinding, client, info.signal)
+        : initialBinding;
       const label = deviceLabel(binding) ?? `a booted ${this.options.platform} device`;
       const where = deviceSelection(this.options.platform, binding);
-      const session = this.session(info.targetName, slot);
       const at = `session ${session} on ${label}`;
-      const client = this.createClient(session, binding);
       this.retain(info.targetName, client);
       info.log(`booting ${label} (${slot + 1} of ${bindings.length})`);
       await runCommand('boot', () => client.devices.boot(where), info.signal, at);
@@ -281,6 +284,25 @@ export class DevicePool {
       }
     }
     return warmed;
+  }
+
+  /** Pins a configured name to the id in agent-device's inventory before later commands and workers use it. */
+  private async resolveName(binding: SlotBinding, client: AgentDeviceClient, signal: AbortSignal): Promise<SlotBinding> {
+    const name = binding.device;
+    if (name === undefined || binding.deviceId !== undefined || deviceSelection(this.options.platform, binding).device === undefined) return binding;
+    const inventory: unknown = await runCommand('devices', () => client.devices.list({ platform: this.options.platform }), signal);
+    if (!Array.isArray(inventory)) return binding;
+    const normalized = (value: string): string => value.toLowerCase().replaceAll('_', ' ').replaceAll(/\s+/g, ' ').trim();
+    const matches = inventory.filter(
+      (entry): entry is { id: string; name: string } =>
+        typeof entry === 'object' && entry !== null &&
+        (entry as { platform?: unknown }).platform === this.options.platform &&
+        typeof (entry as { id?: unknown }).id === 'string' &&
+        typeof (entry as { name?: unknown }).name === 'string' &&
+        normalized((entry as { name: string }).name) === normalized(name),
+    );
+    const match = matches.find((entry) => entry.name === name) ?? (matches.length === 1 ? matches[0] : undefined);
+    return match === undefined ? binding : { ...binding, deviceId: match.id };
   }
 
   /** Holds a warm-up client for `finish`, before its first command: a boot that fails still opened the session. */

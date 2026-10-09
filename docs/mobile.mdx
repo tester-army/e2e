@@ -214,7 +214,9 @@ an id only when it is a simulator UDID or an `emulator-<port>` serial, so a
 phone's UDID or adb serial is looked up as a name and not found. The first
 device with a matching name wins, so give each phone a unique name: two
 phones both called `iPhone` or `Pixel 8` would bind one phone to two
-workers. Without `device`, a connected phone counts as booted and joins the
+workers. Before warm-up, the engine resolves a configured Android name through
+agent-device's inventory and keeps its serial for the worker's later commands.
+Without `device`, a connected phone counts as booted and joins the
 pool beside any booted simulators, so name it to be sure a run lands on it.
 
 Set the phone up once:
