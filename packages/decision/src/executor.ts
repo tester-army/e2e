@@ -109,6 +109,7 @@ async function run(
   const language = ctx.model as Exclude<LanguageModel, string> | undefined;
   const canType = language !== undefined && ctx.target.verbs.has('type');
   let previousFingerprint: string | undefined;
+  let startPath: string | undefined;
   let lastTurn: StepTurn | undefined;
   let rejectedTerminals = 0;
   const finish = (verdict: StepVerdict): StepVerdict => {
@@ -173,6 +174,7 @@ async function run(
   }
   for (;;) {
     const observation = await ctx.observe({ tree: true });
+    if (startPath === undefined) startPath = observation.path ?? '';
     const space = spaceOf(observation, canType);
     if (space === undefined) return finish(blocked('A complete semantic observation is required.'));
     const changed = space.fingerprint !== previousFingerprint;
@@ -303,10 +305,12 @@ async function run(
     const observation = await ctx.observe({ tree: true });
     const space = spaceOf(observation, true);
     if (space === undefined) return rejectClaim(claim, 'incomplete observation');
+    const path = observation.path ?? '';
     const request = completionRequest({
       goal: ctx.step.instruction,
       params: nonSecretParams(ctx.step.params),
-      path: observation.path ?? '',
+      origin: startPath ?? path,
+      path,
       pageText: space.pageText,
       elements: elementRecords(space),
       history,
