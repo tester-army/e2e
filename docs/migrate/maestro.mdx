@@ -16,15 +16,14 @@ export const migrationPrompt = `Migrate this project's Maestro flows to e2e, one
 6. Port the flows' \`appId\` and \`.maestro/config.yaml\` into the e2e config: one target per platform with \`mobile({ platform })\`, \`app: { bundleId }\` on each target, and tags as \`{ tags }\` on tests. Move passwords and tokens from \`env\` into \`credentials\` or \`secrets\`.
 7. Install dependencies, then run \`npx agent-device doctor\` and fix what it reports.
 8. List the flows and ask me which one to move first. Suggest one whose \`optional\` steps and \`runFlow: { when }\` branches often need updating.
-9. Rewrite that flow as a \`.e2e.ts\` test under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default), with one awaited call per command. Start it with \`app.open()\`, since nothing launches on its own. Maestro matches text and ids as regular expressions and taps the first of several matches; e2e matches the whole string and fails on several, so use a RegExp, \`.first()\`, or \`.nth()\` where the flow relied on that. \`optional\` and \`runFlow: { when }\` become \`if (await locator.isVisible())\`. Relative selectors such as \`below\` have no port; use a label, a test id, or a goal. Where the guide marks a command missing, use the workaround it gives, or leave that flow in Maestro and tell me why.
+9. Rewrite that flow as a \`.e2e.ts\` test under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default), with one awaited call per command. Start it with \`app.open()\`, since nothing launches on its own. Follow the guide's "Rewrite selectors" section: e2e matches the whole string and fails on several matches. Where the guide marks a command missing, use the workaround it gives, or leave that flow in Maestro and tell me why.
 10. Keep the launch and the final assertions deterministic, with \`app.open()\` and locator assertions. Where a run of scripted taps breaks often, propose an \`agent.act\` goal for it instead.
 11. Build and install the app, run the new file with \`npx e2e run <file>\` on each platform target, and fix it until it passes. Keep the Maestro flow until I confirm it can go.
 12. Summarize which flows moved, which stayed in Maestro, and why.`;
 
-e2e replaces Maestro's YAML flows with TypeScript tests. Each Maestro command
-becomes an awaited call: a locator call for an exact interaction, or one
-agent goal that covers several commands. Both runners can use the same
-simulator or emulator while you move one flow at a time.
+e2e replaces Maestro's YAML flows with TypeScript tests. Each command becomes
+an awaited locator call, or one agent goal covers several. Both runners can
+use the same simulator or emulator while you move one flow at a time.
 
 <SetupPrompt>
 
@@ -36,7 +35,6 @@ simulator or emulator while you move one flow at a time.
 
 <Note>Set up a target with the [mobile guide](/mobile) and a model with the [quickstart](/quickstart).</Note>
 
-Each Maestro option maps to a target, a `mobile()` option, or a CLI flag.
 The reference pages hold the details: [screen](/reference/screen),
 [expect](/reference/expect), [test](/reference/test), and the
 [mobile engine](/reference/mobile).
@@ -52,12 +50,12 @@ The reference pages hold the details: [screen](/reference/screen),
 | `tags` and `--include-tags` | `{ tags: [...] }` on a test or group, `--tag` on the CLI | renamed |
 | `--exclude-tags` | `--exclude-tag` | renamed |
 | `env` and `${VAR}` | module constants, and `params` in a goal: `agent.act('sign in as {email}', { params: { email } })` | renamed |
-| `MAESTRO_*` variables | `process.env` in the config; a password or token goes under `credentials` or `secrets`, so the model never sees the value | renamed |
+| `MAESTRO_*` variables | `process.env` in the config; a password or token goes under `credentials` or `secrets`, which the model never sees, see [Signing in](/authentication) | renamed |
 | `--format junit`, `--output` | `--reporter list,junit`, written to `.e2e/junit.xml` | renamed |
 | `--format html` | no equivalent; `markdown` writes `.e2e/summary.md`, and each failed test gets a `trace.md` page under `.e2e/results/` | missing |
 | `properties` (JUnit `<property>`) | not yet | missing |
-| `--shards`, `--shard-split` | `device: [...]` plus `workers` splits a target's files across devices on one machine; `--shard <index/total>` splits the suite across machines, see [Sharding](/ci#sharding) | renamed |
-| `maestro record`, `startRecording` | `npx e2e run --video`, one MP4 of the device per attempt, or `video` in the config | renamed |
+| `--shards`, `--shard-split` | `device: [...]` plus `workers` on one machine; `--shard <index/total>` across machines, see [Sharding](/ci#sharding) | renamed |
+| `maestro record` | `npx e2e run --video`, one MP4 of the device per attempt, or `video` in the config | renamed |
 | `maestro test -c`, Maestro Studio | not yet; `npx e2e mcp` gives a coding agent a live session on the device, see [Coding agents](/coding-agents) | missing |
 | `maestro hierarchy` | not yet; `device.locator` takes agent-device selectors for nodes `screen` cannot name | missing |
 | Maestro Cloud | your CI, see [Continuous integration](/ci) | by design |
@@ -97,19 +95,15 @@ test('asks for the email', async ({ app, agent, screen }) => {
 });
 ```
 
-The agent handles onboarding. Locator assertions check the confirmation and
-the Resend control. A flow can also stay fully deterministic: every `tapOn`
-has a `screen.getBy*(...).tap()` line.
+A flow can also stay fully deterministic, with a `screen.getBy*(...).tap()`
+line for every `tapOn`.
 
 ## Map each command
 
-Calls on `screen`, `app`, `agent`, and `expect(locator)` run on every target,
-a browser included. Calls on `device` run only on a device. A test that uses
-`device` declares `requires: ['device']`, so other targets skip it.
-
 `Status` is `renamed`, `device only`, `by design`, or `missing` with what to
-do today. See [Rewrite selectors](#rewrite-selectors) and
-[What differs on purpose](#what-differs-on-purpose) for the `by design` rows.
+do today. Calls on `device` run only on a device, so a test that uses it
+declares `requires: ['device']` and other targets skip it. Calls on `screen`,
+`app`, `agent`, and `expect(locator)` run on every target.
 
 <AccordionGroup>
 <Accordion title="App lifecycle">
@@ -143,13 +137,13 @@ do today. See [Rewrite selectors](#rewrite-selectors) and
 | `inputText` | `screen.getByTestId('field').fill('text')` | renamed |
 | `inputRandomEmail`, `inputRandomText`, `faker` | `unique()` around a value in `act` params so the cache still replays; any npm faker for the rest | renamed |
 | `eraseText` | `.clear()` | renamed |
-| `hideKeyboard` | `device.dismissKeyboard()`, the same dismiss key or center drag Maestro uses; fails only when the keyboard outlives both drags | renamed |
+| `hideKeyboard` | `device.dismissKeyboard()` | renamed |
 | `pressKey: Enter` | `.press('Enter')` on the field | renamed |
 | `pressKey: Home`, `back` | `device.home()`, `device.back()` | device only |
 | `pressKey: lock`, `power`, `volume up`, TV remote keys | not yet | missing |
 | `copyTextFrom`, `pasteText` | `await locator.textContent()`, then `.fill(text)` | renamed |
 | `setClipboard` | `device.setClipboard(text)`; `device.clipboard()` reads it | device only |
-| `label: "..."` on a command | not yet; every `screen`, `device`, and `agent` call is a report step named by the call, such as `device.<method>` | missing |
+| `label: "..."` on a command | not yet; every `screen`, `device`, and `agent` call is a report step named by the call | missing |
 
 </Accordion>
 <Accordion title="Gestures">
@@ -172,7 +166,7 @@ do today. See [Rewrite selectors](#rewrite-selectors) and
 | `assertVisible: { checked, selected, focused }` | `.toBeChecked()`, `.toBeSelected()`, `.toBeFocused()` | renamed |
 | `assertTrue: ${...}` | `expect(value).toBe(true)`, or `expect.poll` for a value that is still changing | renamed |
 | `extendedWaitUntil: { visible, timeout }` | `.toBeVisible({ timeout })` | renamed |
-| `assertScreenshot: { path, thresholdPercentage }` | `await expect(screen).toHaveScreenshot(name, { maxDiffPixelRatio })`, stored beside the test and written on the first run; see [Visual comparison](/visual-testing) | renamed |
+| `assertScreenshot: { path, thresholdPercentage }` | `await expect(screen).toHaveScreenshot(name, { maxDiffPixelRatio })`, see [Visual comparison](/visual-testing) | renamed |
 | `assertDarkMode`, `assertLightMode` | not yet; assert on a themed control | missing |
 | `retry: { maxRetries, commands }` | `expect.poll` for a value, `{ retries }` on the test for the flow | renamed |
 | `takeScreenshot` | `app.screenshot('label')`, redacted, withheld after a secret fill | renamed |
@@ -205,42 +199,34 @@ do today. See [Rewrite selectors](#rewrite-selectors) and
 | `runScript`, `evalScript`, `${output.x}` | TypeScript in the test | renamed |
 | `http.get`, `http.post`, `json()` | Node `fetch`, see [API](/api-testing) | renamed |
 | `onFlowStart`, `onFlowComplete` | `beforeEach`, `afterEach` | renamed |
-| `startRecording`, `stopRecording` | `test('x', { video: 'on' }, ...)` records that test's whole attempts, on a device the mobile engine records; no start and stop inside a test | renamed |
+| `startRecording`, `stopRecording` | `test('x', { video: 'on' }, ...)` records that test's whole attempts; no start and stop inside a test | renamed |
 
 </Accordion>
 </AccordionGroup>
 
 ## Rewrite selectors
 
-Maestro's selector shorthand doesn't port one to one. Four differences cause
-most edits.
+Four differences from Maestro's selectors cause most edits.
 
-- Text and id are regular expressions in Maestro, so `tapOn: ".*Save.*"`
-  matches any text with Save in it. `getByText` is exact. Write
-  `getByText(/Save/)` for the pattern, or `{ exact: false }` for a
-  case-insensitive substring. `getByTestId` matches a string as the whole id;
-  write `getByTestId(/^row-/)` for a pattern.
-- `index: 2` is `.nth(2)`. When several nodes match and no index is given,
-  Maestro taps the first one silently; e2e fails with `LOCATOR_AMBIGUOUS`.
-  Write `.first()` when the first match is what you mean.
-- `optional: true` and `runFlow: { when: { visible } }` become
-  `if (await locator.isVisible())`. `isVisible()` is a read: `false` on zero
-  matches, `LOCATOR_AMBIGUOUS` on several. Add `{ visible: true }` to the
-  query or `.first()` to the locator when a hidden twin may exist.
+- Maestro reads text and id as regular expressions, so `tapOn: ".*Save.*"`
+  matches any text with Save in it. `getByText` and `getByTestId` match the
+  whole string. Write `getByText(/Save/)` or `getByTestId(/^row-/)` for a
+  pattern, or `{ exact: false }` for a case-insensitive substring of text.
+- Maestro taps the first of several matches. e2e fails with
+  `LOCATOR_AMBIGUOUS`, so write `.first()` when the first match is what you
+  mean.
+- `isVisible()`, the check that replaces `optional` and `runFlow: { when }`,
+  is `false` on zero matches and `LOCATOR_AMBIGUOUS` on several. Add
+  `{ visible: true }` to the query or `.first()` when a hidden twin may exist.
 - `below`, `above`, `leftOf`, `rightOf`, and `containsDescendants` have no
-  port. e2e has `filter({ has, hasText })` and chaining for structure and
-  nothing spatial; a selector anchored on layout breaks on the next redesign.
-  Anchor an unlabeled input with `getByLabel`, give it a test id, or hand the
-  step to a goal: `agent.act('enter {email} in the email field', { params })`
-  reads the screen and finds the field.
+  port. e2e has `filter({ has, hasText })` and chaining for structure, and
+  nothing spatial. Use `getByLabel`, a test id, or a goal:
+  `agent.act('enter {email} in the email field', { params })` finds the field.
 
 ## What differs on purpose
 
-- One match or `LOCATOR_AMBIGUOUS`, see [Rewrite selectors](#rewrite-selectors).
-- A password is a `Secret` the model never sees, see
-  [Signing in](/authentication).
 - No agent-device client in tests. `device.locator` covers platform-specific
-  selectors; everything else goes through `screen`, `app`, `device`, and the
+  selectors. Everything else goes through `screen`, `app`, `device`, and the
   agent, so it is recorded and redacted.
 - No `test.setup` or `session:` on a device, see
   [what differs from the web](/mobile#what-differs-from-the-web).
