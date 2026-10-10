@@ -58,6 +58,27 @@ const PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAA
 const EMPTY_BOXES = '[data-testid]:empty { min-width: 1px; min-height: 1px }';
 
 describe('role mapping', () => {
+  it('uses the first recognized role token and falls back to native semantics', async () => {
+    await page.setContent(`
+      <button role="unknown button" data-testid="fallback">Save</button>
+      <button role="unknown widget" data-testid="native">Submit</button>
+      <a href="/next" role="unknown button link" data-testid="first">Continue</a>
+      <div role="unknown img" aria-label="Chart" data-testid="image" style="width:10px;height:10px"></div>
+      <div role="unknown\u00a0button" aria-label="Not a role" data-testid="nbsp" style="width:10px;height:10px"></div>
+      <table role="unknown grid"><tr><td data-testid="grid-cell">Cell</td></tr></table>
+    `);
+    const nodes = await rolesByTestId();
+    expect(nodes.get('fallback')).toMatchObject({ role: 'button', name: 'Save' });
+    expect(nodes.get('native')).toMatchObject({ role: 'button', name: 'Submit' });
+    expect(nodes.get('first')).toMatchObject({ role: 'button', name: 'Continue' });
+    expect(nodes.get('image')).toMatchObject({ role: 'image', name: 'Chart' });
+    expect(nodes.get('grid-cell')).toMatchObject({ role: 'gridcell', name: 'Cell' });
+    expect(nodes.has('nbsp')).toBe(true);
+    expect(nodes.get('nbsp')?.role).toBeUndefined();
+    expect(await page.getByRole('button').allTextContents()).toEqual(['Save', 'Submit', 'Continue']);
+    expect(await page.getByRole('gridcell').allTextContents()).toEqual(['Cell']);
+  });
+
   it.each(['open', 'closed'] as const)('scopes nested shadow landmarks to their outer article (%s)', async (mode) => {
     await page.setContent('<article><div id="card"></div></article><div id="page"></div>');
     await page.evaluate(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);

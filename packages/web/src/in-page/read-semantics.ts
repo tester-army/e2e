@@ -112,6 +112,24 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     };
   };
 
+  /** Concrete WAI-ARIA roles, excluding abstract roles that cannot label an element. */
+  const ARIA_ROLES = [
+    'alert', 'alertdialog', 'application', 'article', 'banner', 'blockquote', 'button', 'caption',
+    'cell', 'checkbox', 'code', 'columnheader', 'combobox', 'complementary', 'contentinfo', 'definition',
+    'deletion', 'dialog', 'directory', 'document', 'emphasis', 'feed', 'figure', 'form',
+    'generic', 'grid', 'gridcell', 'group', 'heading', 'img', 'insertion', 'link',
+    'list', 'listbox', 'listitem', 'log', 'main', 'mark', 'marquee', 'math',
+    'meter', 'menu', 'menubar', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'navigation', 'none',
+    'note', 'option', 'paragraph', 'presentation', 'progressbar', 'radio', 'radiogroup', 'region',
+    'row', 'rowgroup', 'rowheader', 'scrollbar', 'search', 'searchbox', 'separator', 'slider',
+    'spinbutton', 'status', 'strong', 'subscript', 'superscript', 'switch', 'tab', 'table',
+    'tablist', 'tabpanel', 'term', 'textbox', 'time', 'timer', 'toolbar', 'tooltip',
+    'tree', 'treegrid', 'treeitem',
+  ];
+  /** ARIA uses the first recognized token, then native semantics if none is recognized. */
+  const explicitRole = memoized((el: Element): string | null =>
+    (el.getAttribute('role') ?? '').split(/[ \t\n\f\r]+/).find((role) => ARIA_ROLES.indexOf(role) !== -1) ?? null);
+
   /**
    * True when an element carries a name of its own (HTML-AAM: `aria-label`,
    * `aria-labelledby`, or `title`). A `<form>` or `<section>` is a landmark
@@ -156,11 +174,10 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     !(el.parentElement instanceof HTMLElement && el.parentElement.isContentEditable);
 
   const implicitRole = memoized((el: Element): string | null => {
-    const explicit = el.getAttribute('role');
-    if (explicit !== null && explicit.trim() !== '') {
-      const first = explicit.trim().split(/\s+/)[0] ?? null;
+    const explicit = explicitRole(el);
+    if (explicit !== null) {
       // The vocabulary spells ARIA's `img` as `image`.
-      return first === 'img' ? 'image' : first;
+      return explicit === 'img' ? 'image' : explicit;
     }
     // Ahead of the tag: an editor's host is the control, whatever landmark or
     // structure its tag would otherwise be.
@@ -243,7 +260,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       // A grid's cells are the interactive kind, as Playwright reads them.
       case 'td': {
         const table = el.closest('table');
-        const tableRole = table?.getAttribute('role')?.trim().split(/\s+/)[0];
+        const tableRole = table === null ? null : explicitRole(table);
         return tableRole === 'grid' || tableRole === 'treegrid' ? 'gridcell' : 'cell';
       }
       case 'th': {
