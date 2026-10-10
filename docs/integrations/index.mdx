@@ -5,10 +5,10 @@ description: Official integrations with hosted browser and device services, one 
 icon: "plug"
 ---
 
-Official integrations connect e2e to hosted services through the engines'
-provider seams, one package per service. Tests and CI stay the same, and the
-config changes only where a target names its `browser` or `device`: the
-integration decides where it comes from.
+An official integration is one package that gives a target its `browser` or
+`device` from a hosted service, through the engine's provider interface.
+Tests and CI stay the same. Only the target's `browser` or `device` in the
+config changes.
 
 <CardGroup cols={2}>
   <Card title="Kernel" icon="/images/integrations/kernel.svg" href="/integrations/kernel">
@@ -18,14 +18,16 @@ integration decides where it comes from.
     `@e2e-dev/eas`: hosted iOS simulators and Android emulators for mobile targets.
   </Card>
   <Card title="smol machines" icon="/images/integrations/smol.png" href="/integrations/smol">
-    `@e2e-dev/smol`: Chromium microVMs on your computer, by default each test in a branch of a warm browser, optionally signed in once and with its own copy of the app and its database.
+    `@e2e-dev/smol`: Chromium microVMs on your computer, each test in a branch of a warm browser.
   </Card>
 </CardGroup>
 
-A service without an integration is one small provider in your project:
-see [Hosted browsers](/browser#hosted-browsers) for the web engine's
-`BrowserProvider` and [Hosted devices](/mobile#hosted-devices) for the mobile engine's
-`DeviceProvider`.
+## Use a service with no integration
 
-To run e2e on a CI service such as GitHub Actions, EAS Workflows, Bitrise,
+For any other service, write a small provider in your project. See
+[Hosted browsers](/browser#hosted-browsers) for the web engine's
+`BrowserProvider`, and [Hosted devices](/mobile#hosted-devices) for the
+mobile engine's `DeviceProvider`.
+
+To run e2e on a CI service, such as GitHub Actions, EAS Workflows, Bitrise,
 or Codemagic, see [Continuous integration](/ci).
