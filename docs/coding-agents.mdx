@@ -4,11 +4,12 @@ description: Give a coding agent the skill, a live app session, and reports it c
 icon: "robot"
 ---
 
-`e2e init` installs a skill for writing and running tests, plus MCP
-configuration for inspecting the app. Coding agents use the CLI to run
-tests and the reports to investigate failures.
+A coding agent such as Claude Code, Codex, or Cursor can write, run, and
+debug e2e tests. `e2e init` installs the e2e skill and the MCP config that
+lets the agent use the app. The agent runs tests with the CLI and reads the
+reports.
 
-## The skill
+## Install the skill
 
 <CodeGroup>
 ```bash npm
@@ -27,64 +28,34 @@ bunx e2e init
 | Path | Used by |
 | --- | --- |
 | `.agents/skills/e2e/` | Agents that read `.agents/skills` |
-| `.claude/skills/e2e/` | Claude Code; a symlink to `.agents/skills/e2e/` when both are installed |
+| `.claude/skills/e2e/` | Claude Code. A symlink to `.agents/skills/e2e/` when both are installed. |
 
-The copy holds `SKILL.md` and topic references; the link is the layout
-`npx skills add` produces, so one copy serves every agent. Run `init` again
-after upgrading e2e to refresh it.
+The copy holds `SKILL.md` and topic references. The symlink is the layout
+that `npx skills add` makes, so one copy serves every agent. After you
+upgrade e2e, run `init` again to update the copy.
 
 Without `init`, `npx skills add tester-army/e2e` installs the skill from the
-repository, and `npx e2e guide [topic]` prints it from the
-installed package.
+repository. `npx e2e guide [topic]` prints it from the installed package.
 
-The package also ships these docs as `.mdx` pages in its `docs/` directory
-(`node_modules/e2e/docs` in a single-package project), so an agent can read
-any page offline. A link such as `/reference/cli` is `docs/reference/cli.mdx`.
-
-For agents that need an explicit pointer, add this line to your project
-instructions. `init` leaves those files unchanged:
+`init` leaves your project instructions unchanged. For agents that need an
+explicit pointer, add this line:
 
 ```md title="AGENTS.md"
 End-to-end tests use e2e; read .agents/skills/e2e/SKILL.md before writing or running one.
 ```
 
-## A verification skill for your app
+The package also ships these docs as `.mdx` pages in its `docs/` directory
+(`node_modules/e2e/docs` in a single-package project). An agent can read
+any page offline. A link such as `/reference/cli` is
+`docs/reference/cli.mdx`.
 
-The e2e skill teaches an agent the runner. It does not know how your app
-starts, which page proves a feature, or what is not a bug there. The
-`create-verification-skill` skill generates that as a project-local
-`.agents/skills/verify-<app>/` skill: launch and doctor commands from your
-config, the two ways to drive the app (a live `e2e mcp` session, a test),
-what evidence a proof keeps, and a feature map with one `e2e explore`
-charter per feature, so a bug bash fans out from the map. It runs its own
-instructions once before handing over.
+## Let the agent use the app
 
-<CodeGroup>
-```bash npm
-npx skills add tester-army/e2e --skill create-verification-skill
-```
-
-```bash pnpm
-pnpm dlx skills add tester-army/e2e --skill create-verification-skill
-```
-
-```bash bun
-bunx skills add tester-army/e2e --skill create-verification-skill
-```
-</CodeGroup>
-
-Then ask the agent for `/create-verification-skill`. The generated skill
-links to the e2e skill for everything the runner does and says only what is
-true of your app. The skill is based on
-[create-verification-skill](https://github.com/cursor/plugins/tree/main/pstack/skills/create-verification-skill)
-from poteto's pstack, with e2e in place of a hand-rolled harness.
-
-## How an agent looks at the app
-
-`e2e mcp` lets the coding agent open and interact with the app. Each agent,
-subagents included, opens its own session, so several can drive the app at
-once. Its `locate` tool checks a `screen.*` locator against the current app and returns
-the test code when exactly one element matches.
+`e2e mcp` lets the coding agent open the app and interact with it. Each
+agent, subagents included, opens its own session, so several agents can
+use the app at the same time. The `locate` tool checks a `screen.*`
+locator against the current app. It returns the test code when exactly one
+element matches.
 
 `init` registers the server in `.mcp.json` for Claude Code and
 `.cursor/mcp.json` for Cursor. To register it with Claude Code by hand:
@@ -103,14 +74,14 @@ claude mcp add e2e -- bunx e2e mcp
 ```
 </CodeGroup>
 
-See the [MCP server reference](/reference/mcp) for its tools, session rules,
-and flags. Run tests and read reports through the CLI.
+The server does not run tests. See the [MCP server reference](/reference/mcp)
+for its tools, session rules, and flags.
 
-## How an agent writes a test
+## How an agent writes and runs a test
 
-The skill tells the coding agent to read the config and an existing test
-first. It uses `agent.act` for one goal at a time and checks the outcome
-with `expect`. Known fields and exact values can use `screen` directly:
+The skill tells the agent to read the config and an existing test first.
+The agent uses `agent.act` for one goal at a time and checks the result
+with `expect`. For known fields and exact values, it uses `screen`:
 
 ```ts title="tests/checkout.e2e.ts"
 import { test, expect, credentials } from 'e2e';
@@ -128,17 +99,14 @@ test('a signed-in user reaches checkout', async ({ screen, app, agent }) => {
 });
 ```
 
-The main rules are:
-
-- One `agent.act` per goal, followed by an `expect`. The assertion makes the
-  step's cache entry eligible for replay, and it is what fails when the agent
-  did the wrong thing.
-- No sleeps. Locators poll, actions wait for their target, and `expect`
+- **One `agent.act` per goal, then an `expect`.** The `expect` fails when
+  the agent did the wrong thing. It also lets the cache replay the step.
+- **No sleeps.** Locators poll, actions wait for their target, and `expect`
   retries until its timeout.
-- Secrets through `credentials.user(name)`, declared in the config, never
-  literal in a test.
+- **Secrets through `credentials.user(name)`.** Declare them in the config.
+  Never write them in a test.
 
-## How an agent runs it
+While it iterates, the agent runs one file:
 
 <CodeGroup>
 ```bash npm
@@ -154,47 +122,78 @@ bunx e2e run tests/checkout.e2e.ts
 ```
 </CodeGroup>
 
-Run one file while iterating. For model configuration and credentials, see
-[Models](/models). Fix CLI, config, and collection errors before
-retrying a run.
+The agent fixes CLI, config, and collection errors before it runs again.
+For model setup and credentials, see [Models](/models).
 
-## How an agent reads the result
+The agent doesn't edit cache recordings. After it changes a test, or when
+a replay fails, it adds `--no-cache` to run the live agent. A failed
+read-write run removes the entries it implicates, so a later verified run
+can replace them. See [Caching](/cache).
 
-Every run that gets to its tests writes a trace page for each failed or
-flaky test, in its directory under `.e2e/results/` (`.e2e` is the default
-`output`). The terminal names the page
-under each failed test (`❯ trace .e2e/results/<test>/trace.md`). Start there: it has
-the failing line, every step with what it did (the node an action hit, the
-values an assertion read, the cache's decision, console errors and failed
-requests), the agent's last turns, and the screen at failure.
+## How an agent reads a failure
 
-Read the page, not `.e2e/report.json`: the report holds the same facts for
-scripts, without the page's reading of them. When a script needs it, check
-`run.errors` for run-level failures, then the last attempt of each failed
-result; `--reporter json` prints it to stdout.
+For each failed or flaky test, a run writes a trace page to the test's
+directory under `.e2e/results/`. `.e2e` is the default `output`. The
+terminal names the page under each failed test, as
+`❯ trace .e2e/results/<test>/trace.md`.
 
-For model-call details, use `--ai-trace` and read the trace with
-[unbox-ai](/debugging#agent-steps). Avoid opening the raw trace in an agent's
-context; it repeats prompts and can be several megabytes.
+The agent starts there. The page has the failing line and every step with
+what it did: the node an action hit, the values an assertion read, the
+cache's decision, console errors, and failed requests. It also has the
+agent's last turns and the screen at the failure.
 
-## How an agent treats the cache
+The agent reads the page, not `.e2e/report.json`. The report has the same
+facts for scripts. See [Debugging](/debugging) to read it from a script.
 
-A verified `agent.act` can replay from `.e2e/cache/` on later runs. Use
-`--no-cache` to check the live agent behavior after changing a test or to
-investigate a replay failure. Pair it with `--ai-trace` to capture every
-model call in the flow.
+For model-call details, the agent adds `--ai-trace` and reads the trace
+with [unbox-ai](/debugging#agent-steps). Pair it with `--no-cache` to
+capture every model call in the flow. Don't open the raw trace in an
+agent's context. It repeats prompts and can be several megabytes.
 
-Do not edit recordings by hand. A failed read-write run removes implicated
-entries so a later verified run can replace them. A failure where no model
-answered implicates nothing and removes none. See
-[Caching](/cache).
+## Generate a verification skill for your app
+
+The e2e skill teaches the runner, but not your app. The
+`create-verification-skill` skill writes a project-local
+`.agents/skills/verify-<app>/` skill that does. It runs its own
+instructions one time before it hands over.
+
+<CodeGroup>
+```bash npm
+npx skills add tester-army/e2e --skill create-verification-skill
+```
+
+```bash pnpm
+pnpm dlx skills add tester-army/e2e --skill create-verification-skill
+```
+
+```bash bun
+bunx skills add tester-army/e2e --skill create-verification-skill
+```
+</CodeGroup>
+
+Then ask the agent for `/create-verification-skill`.
+
+<Accordion title="What the generated skill holds">
+- Launch and doctor commands from your config.
+- The two ways to drive the app: a live `e2e mcp` session and a test.
+- The evidence a proof keeps.
+- A feature map with one `e2e explore` charter for each feature, so a
+  [bug bash](/bug-bash) fans out from the map.
+
+The generated skill links to the e2e skill for everything the runner does.
+It says only what is true of your app. It is based on
+[create-verification-skill](https://github.com/cursor/plugins/tree/main/pstack/skills/create-verification-skill)
+from poteto's pstack, with e2e in place of a hand-rolled harness.
+</Accordion>
+
+## Next
 
 <CardGroup cols={2}>
   <Card title="CLI reference" icon="terminal" href="/reference/cli">
     init, guide, mcp, and run, flag by flag.
   </Card>
   <Card title="MCP server" icon="server" href="/reference/mcp">
-    Inspect the app before writing a test.
+    Examine the app before you write a test.
   </Card>
   <Card title="Debugging a run" icon="bug" href="/debugging">
     The report, the artifacts, and the agent flags.
