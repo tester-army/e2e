@@ -185,7 +185,8 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     signal: attemptEnd.signal,
     memory: new Map<string, unknown>(),
   };
-  const budget = new AttemptBudget(signal, new Deadline(options.timeoutMs));
+  // `close` aborts `attemptEnd` first, so a fixture call still running is cancelled before teardown.
+  const budget = new AttemptBudget(AbortSignal.any([signal, attemptEnd.signal]), new Deadline(options.timeoutMs));
   const { fixtures, agentRuntime } = createFixtures({
     config,
     target,

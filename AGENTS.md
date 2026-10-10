@@ -44,7 +44,9 @@ suites that consume the built packages the way a user would.
   example, and run command; interactive choices derive from this list. These
   presets never import engine implementations.
   - `src/run/` runner core (scheduler, units, workers, retries, sessions;
-    `standalone.ts` opens one attempt with no test body for hosts),
+    `standalone.ts` opens one attempt with no test body for hosts;
+    `open-session.ts` is `openSession` on `e2e/runner` over it, for another
+    test runner),
     `src/collect/` registration+selection, `src/locator/` locator AST/engine,
     `src/agent/` the agent (the `act` executor socket plus the judgment
     methods), `src/mcp/` the `e2e mcp` server (a live session that rides

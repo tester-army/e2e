@@ -1,8 +1,12 @@
 ---
 title: "e2e/runner"
-description: "List the tests a config and a selection would run, without starting a run."
+description: "List the tests a selection would run, or open an e2e session from another test runner."
 icon: "file-lines"
 ---
+
+`e2e/runner` runs e2e in process without `e2e run`. `list` returns a selection, and `openSession` opens one e2e session for a test runner of your own. Importing `e2e` from a test file does not load it.
+
+## list
 
 `list` collects and selects the way [`e2e list`](/reference/cli#e2e-list) does, and stops there. No app process, engine, or worker starts, and nothing is written.
 
@@ -19,7 +23,7 @@ for (const pair of pairs) {
 }
 ```
 
-## Options
+### Options
 
 `list` takes one object. Omit `config` to discover `e2e.config.ts` from `cwd`, the same walk `e2e list` does.
 
@@ -37,7 +41,7 @@ for (const pair of pairs) {
 | `output` | Results directory, over the config's `output`. `lastFailed` reads `report.json` there. |
 | `env` | Environment the config resolves against. Defaults to `process.env`. |
 
-## Result
+### Result
 
 `ListResult` is `{ pairs, unmatched, targets }`.
 
@@ -57,7 +61,7 @@ for (const pair of pairs) {
 
 `e2e list` prints only `run` and `skip`. `list` returns `filtered` pairs too, each with `reason` (for example `title does not match --grep`).
 
-## Errors
+### Errors
 
 A failure is the same classified error `e2e list` exits with. `instanceof` can miss it across copies of the package. Recognize one with `isE2EError` and branch on `error.code`. `ConfigurationError` and `isE2EError` are both exported from `e2e/runner`.
 
@@ -76,3 +80,106 @@ try {
 ```
 
 Each call imports the test files again, so a later `list()` in the same process sees an edit.
+
+## openSession
+
+`openSession` opens one e2e session from a test runner other than `e2e run`:
+Playwright Test, Vitest, Jest, or your own harness. Your runner keeps test
+collection, retries, and reporting. e2e provides what each attempt needs: the
+target's engine, device or browser provisioning (including a
+[`DeviceProvider`](/reference/mobile)'s leases), the fixtures, secret redaction,
+and cleanup.
+
+This is the same attempt `e2e mcp` opens for a coding agent. A host gets the
+fixtures instead of a tool catalog.
+
+```ts
+import { test as base } from '@playwright/test';
+import { openSession, type E2ESession } from 'e2e/runner';
+import type { Device } from '@e2e-dev/mobile';
+
+const test = base.extend<{ e2e: E2ESession<{ device: Device }> }>({
+  e2e: async ({}, use, testInfo) => {
+    const session = await openSession<{ device: Device }>({
+      target: 'android',
+      timeout: testInfo.timeout,
+      onStep: (step) => {
+        if (step.phase === 'end') console.log(`${step.api} ${step.label}: ${step.status}`);
+      },
+    });
+    try {
+      await use(session);
+    } finally {
+      // Cleanup failures come back instead of being thrown: a leaked device fails the test here.
+      const failures = await session.close();
+      if (failures.length > 0) throw new Error(`e2e cleanup failed: ${failures.map((f) => f.message).join('; ')}`);
+    }
+  },
+});
+
+test('turns on dark mode', async ({ e2e }) => {
+  const { agent, app } = e2e.fixtures;
+  await agent.act('open settings and turn on dark mode');
+  await app.screenshot();
+});
+```
+
+### Options
+
+`openSession` loads the config and opens one session on a target. If opening
+fails, everything that already started is torn down before the error is thrown.
+Omit `config` to discover `e2e.config.ts` from `cwd`, the same walk `list` does.
+
+| Option | Default | |
+| --- | --- | --- |
+| `config` | nearest `e2e.config.ts` | A config file path relative to `cwd`, or an `E2EConfig` value in place of a file |
+| `cwd` | `process.cwd()` | Directory the config is looked up from, and the project root of a config value |
+| `target` | the only target | Target name; required when the config declares several (`TARGET_REQUIRED`) |
+| `agent` | the first configured agent | Agent the `agent` fixture runs as when a call names none |
+| `env` | `process.env` | Environment the config, engines, and providers read |
+| `signal` | none | Cancels opening or any fixture call |
+| `timeout` | config `timeout` | Deadline for fixture calls, in milliseconds, counted from when the session opens. It does not bound opening (use `signal`) and does not close the session |
+| `headed` | `false` | Runs a browser engine headed |
+| `onStep` | none | Live step progress, the same feed reporters get as `step` events |
+| `onNotice` | none | Progress outside any step: provisioning, a leased device, an app process |
+
+A config file is loaded fresh on every call, down to the files it imports, so
+each session gets engine instances of its own. A config value's engine
+instances are the ones in the value, shared by every session opened from it.
+Open those sessions one at a time, or give sessions open at once a config
+value each, so no two drive the same engine instance.
+
+`onStep` must not block or throw. Its payload is a `StepProgress`. `phase` is
+`start`, `event`, `activity`, `replay`, or `end`. An `end` event carries the
+step's `status`, `durationMs`, and `modelCalls`, plus a redacted `error` when
+the step failed.
+
+### Session
+
+`openSession` resolves with an `E2ESession`.
+
+| Member | |
+| --- | --- |
+| `fixtures` | `agent`, `app`, `screen`, `platform`, and the engine's fixtures (`browser`, `device`) |
+| `steps()` | The steps run so far, as `StepRecord`s, the way the [report](/reference/reporters) records them |
+| `artifactsDir` | Absolute directory where the session writes screenshots and recordings |
+| `runId`, `attemptId`, `target` | The session's identity |
+| `close()` | Ends the session and releases its devices or browsers. Resolves with cleanup failures (`SerializedError[]`) instead of throwing; calling it again is a no-op |
+
+A session is `AsyncDisposable`, so `await using session = await openSession()`
+closes it when the scope ends and throws an `AggregateError` of any cleanup
+failures.
+
+A failure to open is a classified error, matched like a `list` failure with
+`isE2EError` and `error.code`. An unknown target is `UNKNOWN_TARGET`; a config
+with several targets and no `target` is `TARGET_REQUIRED`.
+
+<Note>
+A session runs a single attempt with no retries, and it writes no run report.
+Your runner owns retries and reporting; build them from `onStep` and `steps()`.
+Video follows the target's `video` mode as a first attempt would. A mode that
+keeps video only on failure records nothing, because a session never fails as
+a whole.
+
+Each session prepares and releases its own engine, including any `DeviceProvider` lease. Use a test-scoped fixture to give each test its own attempt, deadline, steps, and artifacts. A worker-scoped fixture shares one session across tests: they share its deadline, step history, and artifact directory, and a retry does not get a fresh attempt.
+</Note>

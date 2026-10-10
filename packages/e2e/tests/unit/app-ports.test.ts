@@ -128,4 +128,13 @@ describe('allocateAppPorts', () => {
     // A worker handed the same ports resolves the same URLs.
     expect(configOf(declared, allocated.ports).targets.map((target) => target.app)).toEqual(allocated.targets.map((target) => target.app));
   });
+
+  it('allocates only the named targets when asked', async () => {
+    const start = { executable: 'pnpm', args: ['dev'] };
+    const config = configOf({ a: { url: 'http://127.0.0.1:0', command: start }, b: { url: 'http://127.0.0.1:0', command: start } });
+    const allocated = await allocateAppPorts(config, ['b']);
+    expect(Object.keys(allocated.ports)).toEqual(['b']);
+    expect(allocated.targets[0]!.app.portRequest).toBeDefined();
+    expect(allocated.targets[1]!.app.base?.origin).toBe(`http://127.0.0.1:${allocated.ports['b']}`);
+  });
 });

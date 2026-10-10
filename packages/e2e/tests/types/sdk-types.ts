@@ -65,12 +65,25 @@ import { createAgent } from '../../src/agent/public.ts';
 import { BLOCKABLE_CODES } from '../../src/index.ts';
 // @ts-expect-error list is e2e/runner: importing e2e does not load the runner
 import { list as listFromE2E } from '../../src/index.ts';
-import { ConfigurationError, isE2EError, list, type ListedPair, type ListOptions } from '../../src/runner.ts';
+// @ts-expect-error openSession is e2e/runner: importing e2e does not load the runner
+import { openSession as openSessionFromE2E } from '../../src/index.ts';
+import {
+  ConfigurationError,
+  type E2ESession,
+  isE2EError,
+  list,
+  type ListedPair,
+  type ListOptions,
+  openSession,
+  type SerializedError,
+  type StepRecord,
+} from '../../src/runner.ts';
 
 isDefinedTool;
 createAgent;
 BLOCKABLE_CODES;
 listFromE2E;
+openSessionFromE2E;
 
 declare const agent: Agent;
 declare const appFixture: App;
@@ -621,3 +634,14 @@ void list({ grep: ['plain'] });
 // @ts-expect-error disposition is run, skip, or filtered
 const disposition: ListedPair['disposition'] = 'pending';
 void disposition;
+
+// `e2e/runner` opens a session: its fixtures carry the engine's on top of the built-ins, and it closes without throwing.
+declare const session: E2ESession<{ device: { tap(): void } }>;
+void (session.fixtures.agent satisfies Agent);
+void (session.fixtures.device.tap satisfies () => void);
+void (session.close() satisfies Promise<readonly SerializedError[]>);
+void (session satisfies AsyncDisposable);
+// @ts-expect-error the session's steps are the report's, read-only
+session.steps().push({} as StepRecord);
+void openSession({ config: 'e2e.config.ts', target: 'web' });
+void openSession({ config: { targets } });

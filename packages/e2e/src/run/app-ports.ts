@@ -14,10 +14,13 @@ import { ConfigurationError, errorMessage } from '../internal/errors.ts';
  * one and has none yet; the same config when none did. Every port is held
  * until all are chosen, so two targets never receive the same one. A
  * loopback host this machine cannot bind is a bad app URL, reported before
- * anything starts.
+ * anything starts. `only` limits allocation to the named targets, for a
+ * session that opens one target and must not fail on another's URL.
  */
-export async function allocateAppPorts(config: ResolvedConfig): Promise<ResolvedConfig> {
-  const pending = config.targets.filter((target) => target.app.portRequest !== undefined && !Object.hasOwn(config.ports, target.name));
+export async function allocateAppPorts(config: ResolvedConfig, only?: readonly string[]): Promise<ResolvedConfig> {
+  const pending = config.targets.filter(
+    (target) => target.app.portRequest !== undefined && !Object.hasOwn(config.ports, target.name) && (only === undefined || only.includes(target.name)),
+  );
   if (pending.length === 0) return config;
 
   const reserved: net.Server[] = [];

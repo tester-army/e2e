@@ -248,9 +248,11 @@ export class SessionHost {
       registerStaticSecrets(fresh.allSecrets);
       return fresh;
     });
-    // A session is its own run: a URL declared with port 0 gets a port here.
-    const config = await allocateAppPorts(loaded);
-    const target = this.resolveTarget(config, options.target);
+    // A session is its own run: a URL declared with port 0 gets a port here,
+    // for the opened target alone, so another target's URL cannot fail the open.
+    const selected = this.resolveTarget(loaded, options.target);
+    const config = await allocateAppPorts(loaded, [selected.name]);
+    const target = config.targets.find((candidate) => candidate.name === selected.name) ?? selected;
     usage.resolved(target.platform, target.engine);
     this.sessions.claimEngine(id, target.name, target.engine);
     const ttlMs = this.options.ttlMs ?? SESSION_TTL_MS;
