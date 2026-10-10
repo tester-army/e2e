@@ -40,9 +40,13 @@ const ENV_CREDENTIALS: Partial<Record<ProviderId, string>> = { 'opencode-console
  * How a missing login is described to the user: the CLI command that fixes
  * it, and the environment credential that does too, so the message never
  * reads as "no credentials" while a working one is set.
+ *
+ * `environment: false` names the command alone, for the caller whose stored
+ * login outranks the environment credential: telling that caller to set a
+ * variable the call would ignore sends them down a dead end.
  */
-export function loginHint(id: ProviderId): string {
+export function loginHint(id: ProviderId, options: { readonly environment?: boolean } = {}): string {
   const command = `run \`npx e2e login ${id}\``;
-  const environment = ENV_CREDENTIALS[id];
+  const environment = options.environment === false ? undefined : ENV_CREDENTIALS[id];
   return environment === undefined ? command : `${command} or set ${environment}`;
 }
