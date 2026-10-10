@@ -6,9 +6,8 @@ icon: "github"
 ---
 
 `@e2e-dev/github` is a reporter that posts the test results as a pull
-request comment from GitHub Actions. The comment shows failures, source
-links, and links to the workflow artifacts. A rerun updates the same
-comment. The reporter also writes the results to the job summary.
+request comment from GitHub Actions, and writes them to the job summary. A
+rerun updates the same comment.
 
 ## Setup
 
@@ -37,8 +36,8 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Give the workflow permission to write pull request comments. Pass
-`GITHUB_TOKEN` to the test step:
+Give the workflow `pull-requests: write`. Pass `GITHUB_TOKEN` to the test
+step:
 
 ```yaml title=".github/workflows/e2e.yml"
 permissions:
@@ -61,16 +60,13 @@ jobs:
           path: .e2e/results
 ```
 
-Upload the artifacts also when a retry passes. The evidence links of each
-failure open the run's Artifacts section. Keep `path: .e2e/results`: in the
-download, each test has its own directory
-(`billing-upgrades-to-pro-1a2b3c4d5e6f7a8b/attempt-1/`), the same as in the
-report.
+Upload the artifacts also when a retry passes: each failure's evidence
+links open the run's Artifacts section. Keep `path: .e2e/results` so the
+download has the same per-test directories as the report.
 
-The source links start at the checkout root: the nearest directory with
-`.git` inside `GITHUB_WORKSPACE`. A project below it, such as
-`packages/e2e-tests`, gets links under that path. `actions/checkout` with a
-`path` input works too.
+Source links start at the nearest directory with `.git` inside
+`GITHUB_WORKSPACE`. A project below it, such as `packages/e2e-tests`, gets
+links under that path. `actions/checkout` with a `path` input works too.
 
 ## The comment
 
@@ -120,11 +116,8 @@ Evidence: [screenshot](https://github.com/acme/shop/actions/runs/123#artifacts)
 <sub>e2e 0.13.0 · 2m 15s · web · [run artifacts](https://github.com/acme/shop/actions/runs/123#artifacts)</sub>
 ```
 
-The comment starts with the test counts and the agent usage. Run-level
-errors come next, then each failure with its error, source line, and
-evidence links. The flaky tests and the full test list are collapsed. The
-list has a row for each file above its tests, and an agent column only when
-the run used the agent.
+Run-level errors, when there are any, come before the failures. The test
+list has an agent column only when the run used the agent.
 
 The reporter shortens a large report to fit GitHub's comment limit. App text
 that GitHub would turn into a mention, an issue link, or a URL shows as
@@ -133,8 +126,8 @@ code, so a screen that reads `@someone` notifies no one. The built-in
 
 ## Rerunning the failed tests
 
-A `--last-failed` rerun updates the comment as one run with the first
-pass:
+A `--last-failed` rerun updates the comment as one run with the first pass,
+covering the whole suite:
 
 ```yaml
       - name: Run e2e
@@ -142,8 +135,6 @@ pass:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 ```
-
-The comment covers the whole suite, not only the tests the rerun ran again:
 
 | First pass | Rerun | Comment shows |
 | --- | --- | --- |
@@ -156,28 +147,26 @@ The comment stays red while the rerun left out something it owed: a failed
 test, a test that `--max-failures` stopped before it ran, or a failed
 `beforeAll` or `afterAll` whose tests another filter kept out. It shows ⏹️
 when the rerun left out a test that the first pass never finished. The
-rerun's own exit code counts only what it ran.
-
-The rerun keeps the first run's files and puts its own under each test's
-`rerun-1/`, so a failed attempt's evidence still links to its own files.
+rerun's own exit code counts only what it ran. Each attempt's evidence links
+to its own files.
 
 ## Matrix jobs
 
-The reporter identifies a comment by project, workflow, and job. Matrix
-jobs share these, so give each matrix entry a different `key`:
+The reporter finds its comment by project, workflow, and job, which matrix
+jobs share. Give each matrix entry its own `key`:
 
 ```ts
 reporters: ['list', github({ key: process.env.MATRIX_BROWSER })],
 ```
 
 Set `MATRIX_BROWSER: ${{ matrix.browser }}` in the step's `env`. The key
-also shows in the headline, such as `e2e chromium: 77 passed`. Keep it the
-same across runs, so a rerun updates the existing comment.
+shows in the headline, such as `e2e chromium: 77 passed`. Keep it stable
+across runs so a rerun updates the existing comment.
 
 ## When nothing is posted
 
 The reporter never changes the run's status or exit code. When it can't
-post, it gives the reason in one row under the summary:
+post, one row under the summary gives the reason:
 
 ```
        GitHub  not posted: set GITHUB_TOKEN in the step's env (GITHUB_TOKEN: ${{ github.token }}); written to the job summary
@@ -188,7 +177,7 @@ post, it gives the reason in one row under the summary:
 | Not on GitHub Actions | Nothing is written. The row says so. |
 | A `push`, `schedule`, or `workflow_dispatch` run | The job summary is written. There is no pull request to comment on. |
 | No `GITHUB_TOKEN` in the step's `env` | The job summary is written. The row shows the line to add. The reporter also reads `GH_TOKEN`. |
-| A `pull_request` event from a fork | The token is read-only, so posting fails. The reporter tells why. |
+| A `pull_request` event from a fork | The token is read-only, so posting fails. The row says why. |
 | An `issue_comment` event | On a pull request's thread, the comment has no source links, because the checked-out commit is on the default branch. |
 | Missing `pull-requests: write` | Posting fails, and the reporter names the permission. |
 
