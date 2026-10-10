@@ -68,7 +68,9 @@ bunx e2e run --no-cache
    for missing controls and stops if a match is ambiguous. A control with no
    name is found by its place among the unnamed controls of its kind inside
    the same named row, list item, or group; with no such container to tell
-   it from its twins, the agent takes the step.
+   it from its twins, the agent takes the step. A container is named by its
+   first text, a node's own text before its children's, so a region whose
+   first line reads `Count: 0` is named "Count:", not by the count.
 3. Check the final route and what the original step changed: the controls
    that appeared, with their checked, selected, expanded, or pressed state,
    and the ones that went away. At least one of those changes must happen

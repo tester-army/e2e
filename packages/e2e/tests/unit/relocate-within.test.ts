@@ -36,6 +36,26 @@ describe('container keys', () => {
     expect(containerKey('c1', nodes, parents)).toBeUndefined();
   });
 
+  it('keys a region by the text around its live count, not by the count', () => {
+    // `<section aria-label="Counter"><p>Count: <output>N</output></p><button>Increment</button></section>`
+    const counter = (reading: string) => {
+      const nodes = new Map<string, RedactedNode>();
+      const parents = new Map<string, string>();
+      const count: SemanticNode = { ref: { id: 'o', revision: 'r' }, role: 'status', text: reading };
+      const line: SemanticNode = { ref: { id: 'p', revision: 'r' }, role: 'paragraph', text: 'Count:', children: [count] };
+      const button: SemanticNode = { ref: { id: 'b', revision: 'r' }, role: 'button', name: 'Increment' };
+      nodes.set('s', redacted({ ref: { id: 's', revision: 'r' }, role: 'region', name: 'Counter', children: [line, button] }));
+      for (const node of [count, line, button]) nodes.set(node.ref.id, redacted(node));
+      parents.set('o', 'p');
+      parents.set('p', 's');
+      parents.set('b', 's');
+      return containerKey('b', nodes, parents);
+    };
+    expect(counter('0')).toBe('Count:');
+    // The next run starts elsewhere: the key stays the same.
+    expect(counter('7')).toBe('Count:');
+  });
+
   it('records the key with the action and reads it back in the prose', () => {
     const { nodes } = table();
     const described = describeAction({ name: 'tap', node: nodes.get('d1')!, within: 'Budget draft' }, { redact: identity, redactCut: identity });
