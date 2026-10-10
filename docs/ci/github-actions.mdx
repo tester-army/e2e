@@ -14,9 +14,8 @@ export const setupPrompt = `Add a GitHub Actions workflow that runs this project
 4. List the repository secrets the workflow reads, such as the model key, and ask me to add them.
 5. After I push, read the job log and fix errors until the job passes.`;
 
-These two workflows run web targets, and iOS and Android targets. The
-[CI overview](/ci) says what CI mode changes, how to give the job a model
-key, and what each exit code means.
+These two workflows run web targets, and iOS and Android targets. For CI
+defaults, model keys, and exit codes, see the [CI overview](/ci).
 
 <SetupPrompt>
 
@@ -26,10 +25,10 @@ key, and what each exit code means.
 
 ## Web
 
-This workflow runs deterministic and agent tests in one job. It assumes
-that your config has a [command](/web#starting-your-app) that starts the
-app, and that AI Gateway makes the model calls. The model key and the user
-credentials come from repository secrets:
+This workflow runs deterministic and agent tests in one job. It assumes a
+config [command](/web#starting-your-app) that starts the app, and AI
+Gateway for the model calls. The model key and user credentials come from
+repository secrets:
 
 ```yaml title=".github/workflows/e2e.yml" expandable
 name: e2e
@@ -89,21 +88,16 @@ jobs:
           retention-days: 7
 ```
 
-The workflow pins each action to a commit SHA and installs from the
-lockfile, so `npx e2e` runs the installed version. The
+`npx e2e` runs the version the lockfile installs. The
 [install command](/reference/web#installing-browsers) downloads the browsers
-for the Playwright version the engine pins, with their system libraries.
-
-The upload steps run on each run that isn't cancelled. A test that failed
-and then passed on retry keeps its evidence.
+for the engine's pinned Playwright version, with their system libraries. A
+test that passed on retry keeps its failed attempt's evidence in the upload.
 
 ## iOS and Android
 
-This workflow has one job for each platform. It follows the rules in
-[Mobile jobs](/ci#mobile-jobs).
-
-The iOS job builds the app with `xcodebuild`. Another build command works
-if it writes a simulator `.app` and doesn't start the app. For Expo,
+This workflow runs one job for each platform and follows the rules in
+[Mobile jobs](/ci#mobile-jobs). Any build command that writes a simulator
+`.app` without starting the app can replace `xcodebuild`. For Expo,
 `npx expo run:ios --configuration Release --device generic --no-bundler --output build/ios`
 builds without a simulator and writes the `.app` under `build/ios`.
 
@@ -207,27 +201,23 @@ jobs:
           if-no-files-found: warn
 ```
 
-The emulator runner action boots the emulator and runs each `script` line
-in a new shell. It stops the emulator when the step ends, so the install
-and the run must be in the same step.
+The emulator runner action runs each `script` line in a new shell and stops
+the emulator when the step ends. Install and run in the same step.
 
-This repository runs its own mobile suites the same way.
+This repository's own
 [`mobile.yml`](https://github.com/tester-army/e2e/blob/main/.github/workflows/mobile.yml)
-also caches the Expo build for each native fingerprint, boots two
-simulators for two workers, and runs the failed tests again with
-`--last-failed`.
+adds a cached Expo build per native fingerprint, two simulators for two
+workers, and a `--last-failed` rerun.
 
 ## Pull request comments
 
-Add the [`@e2e-dev/github` reporter](/github) to post the results of each
-job as one comment on the pull request. A rerun updates the same comment,
-and the reporter also writes the results to the job summary.
+Add the [`@e2e-dev/github` reporter](/github) to post each job's results as
+one pull request comment, updated on a rerun and copied to the job summary.
 
-To post, the job needs `pull-requests: write` and `GITHUB_TOKEN` in the env
-of the test step. The workflows above have read-only permissions. See
-[Setup](/github#setup). A `pull_request` run from a fork gets a read-only
-token, so the reporter can't post there. See
-[When nothing is posted](/github#when-nothing-is-posted).
+The job needs `pull-requests: write` and `GITHUB_TOKEN` in the test step's
+env; the workflows above are read-only. See [Setup](/github#setup). A fork's
+`pull_request` run gets a read-only token, so nothing is posted
+([why](/github#when-nothing-is-posted)).
 
 ## Next
 
