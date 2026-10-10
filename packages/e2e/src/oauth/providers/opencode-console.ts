@@ -9,16 +9,26 @@
 
 import { rfc8628Flow } from '../device-code.ts';
 import { OAuthError, describeResponse } from '../errors.ts';
+import { EnvCredentialStore } from '../store.ts';
 import { expiryFrom, requestTokens, type TokenResponse } from '../token-endpoint.ts';
-import type { FetchFunction, OAuthCredentials, OAuthProvider, SubscriptionModel } from '../types.ts';
+import type { CredentialStore, FetchFunction, OAuthCredentials, OAuthProvider, SubscriptionModel } from '../types.ts';
 
 /** Console accepts any client id. */
 const CLIENT_ID = 'e2e';
 const CONSOLE_URL = 'https://opencode.ai/console';
 const INFERENCE_URL = 'https://opencode.ai/inference';
+
 const GO_PREFIX = 'go/';
 const ZEN_PROVIDER = 'opencode';
 const GO_PROVIDER = 'opencode-go';
+
+/** The service account key that stands in for a stored Console login. */
+export const OPENCODE_API_KEY_ENV = 'OPENCODE_API_KEY';
+
+/** A Console service API key as a login with nothing to refresh. */
+export function opencodeConsoleApiKeyStore(apiKey: string): CredentialStore {
+  return new EnvCredentialStore(JSON.stringify({ 'opencode-console': { access: apiKey, refresh: '', expires: 0 } }));
+}
 
 export interface OpencodeConsoleCredentials extends OAuthCredentials {
   /** The workspace the login is bound to; absent for a service API key. */
