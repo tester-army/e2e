@@ -231,12 +231,17 @@ export class SessionStore {
    * Validates identity and expiry, then decrypts one session state. A
    * session is immutable for the life of the run that produced it, so the
    * decrypted state is memoized per store: a worker running many consumers
-   * of one session reads and decrypts its file once.
+   * of one session reads and decrypts its file once. Its expiry is still
+   * checked on every load: an immutable state can expire between consumers.
    */
   async load(name: string, identity: SessionIdentity): Promise<SavedSession> {
     const memoKey = `${identity.targetId}\u0000${name}`;
     const cached = this.loaded.get(memoKey);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined) {
+      const saved = await cached;
+      assertSessionNotExpired(name, saved.state.expiresAt);
+      return saved;
+    }
     const loading = this.loadUncached(name, identity);
     this.loaded.set(memoKey, loading);
     try {
@@ -272,9 +277,7 @@ export class SessionStore {
         `session "${name}" does not match the current run/target/engine identity`,
       );
     }
-    if (Date.parse(envelope.expiresAt) <= Date.now()) {
-      throw new ConfigurationError('SESSION_EXPIRED', `session "${name}" is expired`);
-    }
+    assertSessionNotExpired(name, envelope.expiresAt);
 
     const { tag, ciphertext, ...aadState } = envelope.state;
     const aadEnvelope = { ...envelope, state: aadState };
@@ -312,6 +315,13 @@ export class SessionStore {
   /** Deletes the run's session directory. */
   cleanup(): void {
     rmSync(this.directory, { recursive: true, force: true });
+  }
+}
+
+/** Refuses an expired saved session, whether freshly decrypted or already cached. */
+function assertSessionNotExpired(name: string, expiresAt: string | undefined): void {
+  if (expiresAt !== undefined && Date.parse(expiresAt) <= Date.now()) {
+    throw new ConfigurationError('SESSION_EXPIRED', `session "${name}" is expired`);
   }
 }
 
