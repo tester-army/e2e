@@ -10,8 +10,8 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { SemanticNode } from 'e2e/engine';
-import { projectSnapshot, screenRoot, viewportOf, type RawNode } from '../../src/nodes.ts';
+import type { SemanticNode, ViewportSize } from 'e2e/engine';
+import { projectSnapshot, screenRoot, type RawNode } from '../../src/nodes.ts';
 
 const ROOT = path.join(import.meta.dirname, '../fixtures/snapshots');
 const UPDATE = process.env['E2E_GOLDEN_UPDATE'] === '1';
@@ -37,10 +37,10 @@ function render(node: SemanticNode, depth = 0, out: string[] = []): string[] {
 
 /** The tree `observe` would report for a captured snapshot. */
 function treeOf(file: string): string {
-  const raw = JSON.parse(readFileSync(file, 'utf8')) as { nodes: RawNode[]; truncated?: boolean };
+  const raw = JSON.parse(readFileSync(file, 'utf8')) as { nodes: RawNode[]; viewport?: ViewportSize; truncated?: boolean };
   let counter = 0;
-  const projected = projectSnapshot(raw.nodes, { mintId: () => `n${(counter += 1)}` });
-  const root = screenRoot(projected.roots, viewportOf(raw.nodes) ?? { width: 0, height: 0 });
+  const projected = projectSnapshot(raw.nodes, { mintId: () => `n${(counter += 1)}`, viewport: raw.viewport });
+  const root = screenRoot(projected.roots, projected.viewport ?? { width: 0, height: 0 });
   return `${raw.truncated === true ? '# truncated\n' : ''}${render(root).join('\n')}\n`;
 }
 

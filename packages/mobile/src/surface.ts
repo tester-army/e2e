@@ -130,7 +130,7 @@ export interface OpenAppOptions {
  * is the band the capture's producer measured: `visible` with its frame,
  * `absent`, or that it could not look.
  */
-type RawSnapshot = Partial<Pick<CaptureSnapshotResult, 'nodes' | 'truncated' | 'appName' | 'appBundleId' | 'snapshotQuality' | 'keyboard'>>;
+type RawSnapshot = Partial<Pick<CaptureSnapshotResult, 'nodes' | 'viewport' | 'truncated' | 'appName' | 'appBundleId' | 'snapshotQuality' | 'keyboard'>>;
 
 /** Platform element types that are the soft keyboard or one of its keys, as agent-device names them. */
 const KEYBOARD_TYPES: ReadonlySet<string> = new Set(['keyboard', 'key']);
@@ -936,6 +936,7 @@ export class AgentDeviceSurface {
         this.idCounter += 1;
         return `n${this.idCounter}`;
       },
+      viewport: raw.viewport,
     });
     this.latestIndex = projected.index;
     if (projected.viewport !== undefined) this.knownViewport = projected.viewport;
@@ -1360,7 +1361,7 @@ export class AgentDeviceSurface {
   private async dismissKeyboardByGesture(signal: AbortSignal): Promise<void> {
     let raw = await this.dismissKeyboardTip(await this.snapshot(signal, false), signal);
     if (!keyboardShowing(raw)) return;
-    const projected = projectSnapshot(raw.nodes ?? [], { mintId: () => 'keyboard' });
+    const projected = projectSnapshot(raw.nodes ?? [], { mintId: () => 'keyboard', viewport: raw.viewport });
     const viewport = await this.viewportFor(projected, signal);
     const centre = { x: viewport.width / 2, y: viewport.height / 2 };
     const drags: readonly Point[] = [
