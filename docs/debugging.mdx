@@ -152,8 +152,10 @@ attempts under each test's `rerun-<n>/`.
 
 ## For scripts: report.json
 
-Every run that reaches its tests also writes `.e2e/report.json`, the trace
-pages' data in a versioned schema. `--reporter json` prints it to stdout:
+Every run that reaches its tests also writes `report.json` to the
+[output directory](/reference/config#output), `.e2e` by default. It holds
+every result of the run in a versioned schema. `--reporter json` prints it to
+stdout:
 
 ```bash
 jq '.run | {status, exitCode, errors}' .e2e/report.json
