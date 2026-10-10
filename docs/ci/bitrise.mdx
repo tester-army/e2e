@@ -13,8 +13,8 @@ export const setupPrompt = `Add a Bitrise pipeline that runs this project's e2e 
 3. Ask me to add the model key under Secrets in the Bitrise workflow editor.
 4. After I start a build, read the build log and fix errors until both workflows pass.`;
 
-This setup runs one workflow for each platform in one pipeline. The
-workflows follow the rules in [Mobile jobs](/ci#mobile-jobs).
+This setup runs one workflow for each platform in one pipeline, following
+the rules in [Mobile jobs](/ci#mobile-jobs).
 
 <SetupPrompt>
 
@@ -26,9 +26,9 @@ workflows follow the rules in [Mobile jobs](/ci#mobile-jobs).
 
 Bitrise steps boot the devices: `xcode-start-simulator` on macOS, and
 `avd-manager` with `wait-for-android-emulator` on Linux. The Android
-workflow starts the emulator before the Gradle build, so the emulator boots
-while the APK compiles. A release APK must have a signature. The React
-Native and Expo templates sign it with the debug keystore.
+workflow starts the emulator before the Gradle build, so it boots while the
+APK compiles. A release APK must be signed; the React Native and Expo
+templates sign it with the debug keystore.
 
 ```yaml title="bitrise.yml" expandable
 format_version: '25'
@@ -147,11 +147,10 @@ These steps also run after a step fails.
 
 ## Model key
 
-Add the model key under Secrets in the workflow editor of the app. A pull
-request build gets a secret only when **Expose for Pull Requests** is on.
-A build of a public app never gets a secret. On such a build the
-deterministic tests run, but each agent judgment and each `agent.act` step
-with no recording fails. See [Model credentials](/ci#model-credentials).
+Add the model key under Secrets in the app's workflow editor. A pull
+request build gets it only when **Expose for Pull Requests** is on, and a
+public app's build never does. Without the key, deterministic tests still
+run, but agent judgments and unrecorded `agent.act` steps fail. See [Model credentials](/ci#model-credentials).
 
 ## Next
 
