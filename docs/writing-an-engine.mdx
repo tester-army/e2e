@@ -7,32 +7,22 @@ icon: "gear"
 An engine connects `screen`, `app`, and agent calls to a UI platform through
 the `e2e/engine` contract. Write one to test a desktop app, a TV, or another
 platform. `@e2e-dev/web` and `@e2e-dev/mobile` use the same public
-`defineEngine` API, so read them as complete examples.
+`defineEngine` API and are complete examples.
 
-Engines drive user interfaces only. For a supporting service, such as an
-inbox, a database, or a test API, write a fixture with
-[`test.extend`](/reference/test#your-own-fixtures).
+Engines drive user interfaces only. For an inbox, a database, or a test API,
+write a fixture with [`test.extend`](/reference/test#your-own-fixtures).
 
 ## The ownership boundary
 
 The runner manages tests and policy. The engine observes and controls the UI.
 
-| Concern | Owner |
+| Owner | Concerns |
 | --- | --- |
-| Collection, targets, retries, hooks, sessions | runner |
-| Query polling and strict single-match cardinality | runner |
-| Assertion polling, step recording, timeouts | runner |
-| One immediate query, one node read | engine |
-| One node's actionability and input dispatch | engine |
-| Agent planning, prompts, budgets, ledger | runner |
-| Tool authorization and secret resolution | runner |
-| Process, page, and device mechanics | engine |
-| Source masking of secure observations | engine |
-| Defense-in-depth redaction | runner |
+| runner | Collection, targets, retries, hooks, sessions. Query and assertion polling, strict single-match checks, step recording, timeouts. Agent planning, prompts, budgets, ledger. Tool authorization, secret resolution, defense-in-depth redaction |
+| engine | One immediate query, one node read. One node's actionability and input dispatch. Process, page, and device mechanics. Source masking of secure observations |
 
-`locate` returns the current matches at once, or an empty array when
-nothing matches. Don't retry queries or reject multiple matches. The runner
-does the polling and the single-match checks.
+`locate` returns the current matches at once, or an empty array. Don't
+retry queries or reject multiple matches.
 
 ## The shape of an engine
 
@@ -40,10 +30,9 @@ Return a handle from `defineEngine`. It validates the manifest and computes
 the engine's capabilities when the config loads.
 
 <Note>
-Import types and helpers from `e2e/engine` only. Declare `e2e` as a peer
-dependency, so the engine and the runner share one set of error classes.
-The exports include errors, text and URL matching, assertion polling, JSON
-validation, and cancellation helpers. There is no internal subpath.
+Import types and helpers from `e2e/engine` only; there is no internal
+subpath. Declare `e2e` as a peer dependency, so the engine and the runner
+share one set of error classes.
 </Note>
 
 This skeleton assumes a `createClient` adapter for your platform. Its nodes
@@ -104,8 +93,7 @@ targets: [{ name: 'phone', engine: hyperdrive({ device: 'iPhone 16' }), app: { b
 ```
 
 - `version` is required. Reports name it, and a saved session restores only
-  under the version that saved it. The replay cache doesn't key on it,
-  because a recording finds its nodes again at replay.
+  under the version that saved it. The replay cache doesn't key on it.
 - `locate` answers `screen` queries. The exported `resolveExpression`
   applies the standard query rules to a semantic tree.
 - The app under test is the target's `app`, not an engine option.
@@ -127,26 +115,19 @@ a missing one fail with `UNSUPPORTED_CAPABILITY`. Start with these:
 
 Pointer actions, the keyboard, saved state, artifacts, and contributed
 fixtures are optional capabilities too. `actions`, `location`, `pointer`,
-and `keyboard` require `observe`. The
-[engine reference](/reference/engine#capabilities) lists every member, and
-which action kind unlocks which agent tool.
+and `keyboard` require `observe`. The agent gets only the tools your
+declared kinds unlock; the
+[engine reference](/reference/engine#capabilities) lists every member and
+which kind unlocks which tool.
 
-The agent gets only the tools the engine supports and the step's declared
-credentials. Each action kind you declare unlocks its verb: `hover` the
-`hover` tool, `dragTo` the `drag` tool, `setInputFiles` the `upload` tool,
-`check` with `uncheck` the `check` tool.
-
-Agent actions and locator actions both reach `perform` as a
-`LocatorAction`. When one node can't do a declared action, throw
-`UNSUPPORTED_CAPABILITY`.
+Agent and locator actions both reach `perform` as a `LocatorAction`. When
+one node can't do a declared action, throw `UNSUPPORTED_CAPABILITY`.
 
 `session.open` receives a URL that the runner already resolved. After
 `restart` or `reset`, the runner opens the configured address again through
 `open`. If your engine has no `open`, relaunch the app in those hooks.
 
 ## Lifecycle
-
-The hooks, in the order they run:
 
 | Hook | When | Use it to |
 | --- | --- | --- |
@@ -164,9 +145,9 @@ hook's arguments and budgets.
 
 ## Nodes and refs
 
-`observe` returns a `SemanticNode` tree, and `locate` returns the nodes that
-match an expression. Give each node an id that stays unique for the UI's
-lifetime. The runner assigns revisions and checks staleness.
+`observe` returns a `SemanticNode` tree, and `locate` returns matching
+nodes. Give each node an id that stays unique for the UI's lifetime. The
+runner assigns revisions and checks staleness.
 
 - Keep the root id stable across observations. The agent's `scroll` and
   `screen.swipe()` call `perform(root, { kind: 'swipe' })`. A swipe on
@@ -177,31 +158,27 @@ lifetime. The runner assigns revisions and checks staleness.
   `NODE_STALE`. Never return a node read from what is gone: a removed
   element has no size, so `toBeHidden` would pass while its replacement is
   on screen. The runner resolves again within the caller's deadline.
-- Limit the snapshot size if the platform can return an unbounded tree. Set
-  `truncated` when the limit cuts off nodes, so the runner knows the list is
-  incomplete.
+- Limit the snapshot size if the platform can return an unbounded tree, and
+  set `truncated` when the limit cuts off nodes.
 - Use the platform's accessible names for nodes.
 - Put test identifiers in `testId`: a document attribute, an iOS
   accessibility identifier, an Android resource id, or a desktop automation
   id. The `testId` query matches only that field.
 
-An observation can include `location`, such as a URL, a screen title, or a
-window name. The runner shows it to the model and in the report, and
-anchors replay cache entries on it.
+An observation's optional `location`, such as a URL or a screen title,
+goes to the model and the report, and anchors replay cache entries.
 
 ## Keyboard
 
 Implement `keyboard` to type into a control after the agent focuses it.
-`keyboard.type` must type through the platform's keyboard path, so the app
-gets the key events a person's typing makes. A browser engine sends
-`keydown`, `keypress`, `input`, and `keyup` for each character. A device
-engine uses the device keyboard. Setting the value without keystrokes
-doesn't comply.
+`keyboard.type` must go through the platform's keyboard path, so the app
+gets the key events a person's typing makes: `keydown`, `keypress`, `input`,
+and `keyup` per character in a browser, the device keyboard on a device.
+Setting the value without keystrokes doesn't comply.
 
 - Throw `NOT_ACTIONABLE` when no editable control has focus.
 - Leave out `dismiss` on platforms without an on-screen keyboard.
 - `locator.pressSequentially` uses the same hook after a `focus` action.
-  It needs nothing more.
 
 For `press`, read keys such as `Enter` or `ControlOrMeta+a` with the
 exported `parseKey`. The runner rejects invalid spellings with
@@ -215,17 +192,16 @@ For a UI without a semantic tree, return a `root` with no children, plus
 `pixels`, from `observe`. Implement `performAt` and declare its kinds in
 `pointerActions`.
 
-The agent gets the screenshot and acts through tools such as `tap_at`. The
-runner passes a point to `performAt` when no listed node is at it.
-Coordinate actions replay only at the recorded viewport size, and the
-runner checks the recorded end state before it accepts a replay.
+The agent acts through tools such as `tap_at`, and the runner passes the
+point to `performAt` when no listed node is at it. Coordinate actions replay
+only at the recorded viewport size.
 
 ## Handle secrets
 
 A secret fill reaches the engine as a `fill` action with
-`sensitive: true`. There is no separate capability flag for it. The runner
-first checks the declared credential, the current observation, and a
-compatible editable field. Handle the fill securely, or throw
+`sensitive: true`, with no separate capability flag. The runner has already
+checked the credential, the observation, and the field. Handle the fill
+securely, or throw
 `UNSUPPORTED_CAPABILITY`. After it, the runner takes
 [no more screenshots](/reference/security#screenshots-after-a-secret-fill).
 
@@ -238,8 +214,8 @@ to the app:
    name that no secret has.
 3. Read the value in `startAttempt` with `context.resolveSecret(secret)`.
 
-Until a run exists, the handle is only a name. The runner redacts the value
-from the moment it resolves. When the app sees the value in another form,
+The runner redacts the value from the moment it resolves. When the app sees
+the value in another form,
 such as an encoded header, return that form from
 `resolveSecret(secret, { derived })` to redact it under the same name. This
 protects text only: a session whose engine resolved a secret keeps its
@@ -247,11 +223,9 @@ screenshots.
 
 ## State is a credential
 
-A `state` snapshot can hold authentication data such as cookies and tokens.
-The runner encrypts it with a key for each run. It binds the snapshot to
-the run, target, engine, and app identity, and deletes it after the run.
-
-Don't persist, cache, or log snapshots, or put them in errors. `restore`
+A `state` snapshot can hold cookies and tokens. The runner encrypts it per
+run, binds it to the run, target, engine, and app, and deletes it after the
+run. Don't persist, cache, or log snapshots, or put them in errors. `restore`
 must replace the app's whole persisted state, not merge into it.
 
 ## Errors
@@ -291,24 +265,23 @@ import type { Device } from 'e2e-engine-hyperdrive';
 export const test = base.extend<{ device: Device }>();
 ```
 
-The fixture context gives URL policy checks, timeouts, operation budgets,
-artifact attachment, and factories for locators and assertions. For
-example, `expectable(target, factory)` adds matchers for `expect(fixture)`.
-See the [engine reference](/reference/engine) for the full context.
+The fixture context also gives URL policy checks, timeouts, budgets,
+artifacts, and locator and assertion factories, such as
+`expectable(target, factory)` for `expect(fixture)`. See the
+[engine reference](/reference/engine#contributed-fixtures).
 
 ## Ship a tool pack
 
-For platform operations that the action set lacks, ship a pack of
-[project tools](/tools) built with `defineTool`. Set `platforms` so each
-tool shows only on compatible targets. `@e2e-dev/mobile/tools` is one
-example.
+For platform operations the action set lacks, ship
+[project tools](/tools) built with `defineTool`, with `platforms` set so each
+shows only on compatible targets, as `@e2e-dev/mobile/tools` does.
 
 ## Verify it
 
 Run a test file against your engine. Check the lifecycle order,
 observations, actions, errors, and unsupported capabilities.
 [`engine-contract.test.ts`](https://github.com/tester-army/e2e/blob/main/packages/e2e/tests/integration/engine-contract.test.ts)
-tests the runner's side of the contract and has examples of these checks.
+has examples of these checks.
 
 ## Next
 
