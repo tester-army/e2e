@@ -161,16 +161,10 @@ process (`ProcessInfo.processInfo.arguments`); Android appends them to
 `am start`, so `['--ez', 'e2e', 'true']` is a boolean intent extra. `deny` is
 a recorded refusal on iOS, where the app is told no without a prompt, and a
 revocation on Android, where the OS asks again when the app requests the
-permission. The permissions are set before the app starts,
-since iOS terminates a running app whose permission changed and Android one
-whose permission was revoked. agent-device sets them on the app its session
-is on, and only an open puts a session on an app: the warm-up's open in
-`prepare` does that under the session the worker resumes, so a worker's
-launches set them straight away. A run without `prepare`, the first launch
-after `device.closeApp`, and an app the session has not opened get one
-foreground open first; that open is the one process start no permission can
-precede, and the relaunch after it has them. The warm-up passes no launch
-argument and touches no permission.
+permission. The permissions are set on the app by name before it starts,
+with no open first, since iOS terminates a running app whose permission
+changed and Android one whose permission was revoked. The warm-up passes no
+launch argument and touches no permission.
 `device.openApp(app, { relaunch: true, launchArguments, permissions })` does
 the same for one launch of any app. A permission name outside
 `DevicePermission` (naming the nearest one when it is a likely typo) or a
@@ -238,10 +232,9 @@ export interface Device {
   /** Toggles airplane mode. */
   setAirplaneMode(enabled: boolean): Promise<void>;
   /**
-   * Grants, denies, or resets one permission for the pinned app, brought to
-   * the foreground first when the session is on no app. A change terminates
-   * a running app on iOS, a revoke one on Android, so it goes before the
-   * `app.open()` a test starts with.
+   * Grants, denies, or resets one permission for the pinned app, which need
+   * not be running. A change terminates a running app on iOS, a revoke one
+   * on Android, so it goes before the `app.open()` a test starts with.
    */
   setPermission(permission: DevicePermission, state: PermissionState): Promise<void>;
   /** Sets the simulated location, switching location services on first on Android. */
