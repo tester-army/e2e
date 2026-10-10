@@ -7,14 +7,14 @@ icon: "bug"
 import { ShowMore } from './snippets/show-more.jsx';
 import { Video } from './snippets/video.jsx';
 
-A bug bash runs many `e2e explore` sessions at the same time. Each session
-examines one area of the app. A coding agent then writes a test for each
-finding. The agent reports a finding as a bug only when its test fails.
+A bug bash runs many `e2e explore` sessions at the same time, each on one
+area of the app. A coding agent then writes a test for each finding and
+reports it as a bug only when the test fails.
 
 <Video>
   <video src="/images/bug-bash.mp4" aria-label="A coding agent runs a bug bash in headed browsers." muted loop playsInline controls />
 
-  A coding agent runs a bug bash. Each browser is one explore session.
+  Each browser is one explore session.
 </Video>
 
 ## Before you start
@@ -26,8 +26,8 @@ finding. The agent reports a finding as a bug only when its test fails.
   [Starting your app](/web#starting-your-app).
 - On mobile, declare one target for each simulator or emulator. Each
   explorer needs its own device.
-- Each explore session uses model calls. The last lines of each run show
-  the tokens, cost, and duration.
+- Each explore session uses model calls. Each run ends with its tokens,
+  cost, and duration.
 - On a deployed site that other people use, do not change data.
 
 The agent does the rest of the setup, such as seeded accounts and sign-in,
@@ -35,8 +35,8 @@ from the skill.
 
 ## Install the skill
 
-The coding agent runs the bug bash from the `e2e` skill. `e2e init`
-installs it. To install it without `init`:
+The coding agent runs the bug bash from the [`e2e` skill](/coding-agents),
+which `e2e init` installs. To install it without `init`:
 
 <CodeGroup>
 ```bash npm
@@ -51,8 +51,6 @@ pnpm dlx skills add tester-army/e2e
 bunx skills add tester-army/e2e
 ```
 </CodeGroup>
-
-See [Coding agents](/coding-agents).
 
 ## Start a bug bash
 
@@ -70,17 +68,15 @@ Bug bash the checkout and account settings on this branch.
 2. Writes 5 to 10 charters. A charter is a one-sentence goal for one area,
    with one posture: first-time user, numbers and copy, edge input, state
    after reload, or error paths.
-3. Runs one `e2e explore` for each charter, 4 at the same time. Each
-   charter has its own persona (`--agent`) and its own output directory
-   (`--output`).
+3. Runs one `e2e explore` for each charter, 4 at the same time, each with
+   its own persona (`--agent`) and output directory (`--output`).
 4. Merges the findings of all charters.
 5. Rejects findings that have a known cause. The cause can be a limit of
    the explorer (for example, a link that opens a new tab), the local
    environment, the intended design, or the seed data.
-6. Writes a repro test for each remaining finding. The test asserts the
-   expected behavior. The agent can start one subagent for each area. Each
-   subagent opens its own [`e2e mcp` session](/reference/mcp#several-sessions)
-   to check locators on the live app.
+6. Writes a repro test that asserts the expected behavior for each
+   remaining finding. It can start one subagent per area, each with its own
+   [`e2e mcp` session](/reference/mcp#several-sessions) to check locators.
 7. Runs each repro test. The finding is a bug only when the test fails with
    `ASSERTION_FAILED`.
 8. Reports, in this order: confirmed bugs, production risks that it cannot
@@ -100,8 +96,8 @@ To read the full procedure, run `npx e2e guide bug-bash`.
 
 ## Repro tests
 
-A repro test fails until the bug is fixed. The agent tags each repro test
-`bugbash`. Keep these tests out of the test run that gates merges:
+A repro test fails until the bug is fixed. The agent tags each one
+`bugbash`. Keep them out of the run that gates merges:
 
 <CodeGroup>
 ```bash npm
