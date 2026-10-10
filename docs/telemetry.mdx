@@ -32,15 +32,14 @@ export DO_NOT_TRACK=1                    # the cross-tool convention
 ```
 </CodeGroup>
 
-`e2e telemetry` prints the status and, when telemetry is off, the reason.
+`e2e telemetry` prints the status and, when off, the reason.
 `e2e telemetry enable` reverses a saved `disable`. The environment variables
 win over the saved setting. The preferences file is under
 `$XDG_CONFIG_HOME/e2e/` when that is set, and `%APPDATA%\e2e\` on Windows.
 
-A command reads the saved setting again before it sends, so a `disable`
-also stops commands already running in another terminal. Nothing is sent
-when the preferences directory isn't writable, or from a source checkout of
-the e2e repository.
+A `disable` also stops commands already running in another terminal. Nothing
+is sent when the preferences directory isn't writable, or from a source
+checkout of the e2e repository.
 
 ## See what would be sent
 
@@ -58,8 +57,8 @@ E2E_TELEMETRY_DEBUG=1 bunx e2e run
 ```
 </CodeGroup>
 
-The CLI prints the exact event payloads to stderr as `[telemetry] {...}`
-and sends nothing.
+The CLI prints the exact payloads to stderr as `[telemetry] {...}` and
+sends nothing.
 
 ## What is sent
 
@@ -69,9 +68,8 @@ one `e2e_mcp_session` per MCP session. `--help` and `--version` send
 nothing, also on a command.
 
 The events go in one request when the command ends, with a two-second
-deadline for all telemetry work. `e2e mcp` runs as long as its client, so it
-sends each MCP session event in its own request, with the same deadline.
-Events hold only the properties below.
+deadline. `e2e mcp` sends each MCP session event in its own request. Events
+hold only the properties below.
 
 <AccordionGroup>
 <Accordion title="Every event">
@@ -81,7 +79,7 @@ Events hold only the properties below.
 | `distinct_id` | A random id stored in the preferences file. CI uses `ci:<vendor>` instead, and a fleet uses `fleet:<name>` (see [In a fleet](#in-a-fleet)) |
 | `project_id` | A hash of the repository's root commit, shared across full clones. `null` outside git and in a shallow clone |
 | `session_id` | A random id for this one invocation |
-| `first_run`, `days_since_first_run` | Whether this command created the preferences file, and whole days since then. `null` in CI and in a fleet, where no machine persists, and for a preferences file from before the time was recorded |
+| `first_run`, `days_since_first_run` | Whether this command created the preferences file, and whole days since then. `null` in CI, in a fleet, and for a preferences file from before the time was recorded |
 | `os`, `os_release`, `arch`, `cpu_count`, `memory_gb`, `docker`, `wsl`, `tty` | The machine class |
 | `sandbox` | The microVM the kernel announces itself as (`firecracker`), else `null` |
 | `ci`, `ci_name` | Whether `CI` is set, and the vendor when one announces itself (`github-actions`, `gitlab`, `circleci`, ...) |
@@ -114,9 +112,6 @@ Events hold only the properties below.
 </Accordion>
 <Accordion title="e2e_run_completed, once per e2e run or e2e explore">
 
-The CLI builds this event from the numbers in `report.json` and the
-resolved config.
-
 | Property | Value |
 | --- | --- |
 | `command` | `run` or `explore` |
@@ -124,20 +119,19 @@ resolved config.
 | `flags` | The names of the flags given to the run command, never their values |
 | `tests_discovered`, `tests_selected`, `tests_executed`, `tests_passed`, `tests_failed`, `tests_interrupted`, `tests_flaky`, `tests_skipped` | The summary counts |
 | `attempts_total`, `tests_retried` | How many attempts the run made across tests and serial groups, and how many of these needed more than one |
-| `targets`, `platforms`, `engines` | How many targets, on which platforms, and with which engines and versions, as your config declares them: `web`, `ios`, `web@0.6.1`, or your own engine's name and version. A name that isn't a plain token of letters, digits, dots, dashes, and underscores is sent as `other` |
+| `targets`, `platforms`, `engines` | How many targets, on which platforms, and with which engines and versions: `web`, `ios`, `web@0.6.1`, or your own engine's name and version. A name that isn't a plain token of letters, digits, dots, dashes, and underscores is sent as `other` |
 | `steps_total`, `steps_agent`, `steps_locator`, `steps_assertion`, `steps_screen`, `steps_app`, `steps_session`, `steps_resource` | Step counts by kind |
 | `agent_steps_replayed`, `agent_steps_partial`, `agent_steps_missed`, `agent_steps_vision` | How the replay cache served the agent steps, and how many used pixel evidence |
 | `agent_actions` | How often the agent took each action, by the runner's own names: `{"tap": 12, "typeText": 3, "scroll": 2}`. A project's own tools count together as `tool`, anything else as `other`. No other name is sent |
 | `model_gateway`, `model_provider`, `model_id`, `model_calls`, `model_tokens`, `model_cached_tokens`, `estimated_cost_usd` | For the first model-backed step: the AI SDK provider that served it (`gateway` for the Vercel AI Gateway, `openrouter.chat`, `openai.chat`, ...), the vendor (the first segment of a `vendor/model` id, else the provider), and the public model id (a fine-tuned or routed id is sent as `other`). Then the run's totals |
 | `cost_source` | `provider` when the provider priced the calls, `none` when nobody priced them, `null` for a run without model calls |
 | `artifact_bytes` | The size of the artifacts the run wrote |
-| `errors`, `error_codes` | How many run-level errors, and the distinct error codes seen anywhere in the run (`LOCATOR_NOT_FOUND`, `APP_UNREACHABLE`, ...), at most 20. A code that isn't an upper-case token, the shape of every runner code, is sent as `OTHER` |
+| `errors`, `error_codes` | How many run-level errors, and the distinct error codes seen anywhere in the run (`LOCATOR_NOT_FOUND`, `APP_UNREACHABLE`, ...), at most 20. A code that isn't an upper-case token is sent as `OTHER` |
 | `primary_error_code` | The first error the run recorded, which decided its status: a run-level error, else the failed attempt's verdict, else a step's. `null` for a clean run |
-| `error_kinds` | For `ENGINE_FAILURE`, `MODEL_PROVIDER_FAILED`, and `ERROR`, codes that say where a failure surfaced but not what it was: the code and a kind read off the message against a closed list (`auth`, `rate-limit`, `overloaded`, `timeout`, `network`, `server`, `bad-request`, `device`, `daemon`, `browser`, `permission`, `not-found`, `memory`, `other`), as `MODEL_PROVIDER_FAILED:rate-limit`. Only the kind's name leaves the machine, never the message |
+| `error_kinds` | For `ENGINE_FAILURE`, `MODEL_PROVIDER_FAILED`, and `ERROR`: the code and a kind read off the message against a closed list (`auth`, `rate-limit`, `overloaded`, `timeout`, `network`, `server`, `bad-request`, `device`, `daemon`, `browser`, `permission`, `not-found`, `memory`, `other`), as `MODEL_PROVIDER_FAILED:rate-limit`. Only the kind's name leaves the machine, never the message |
 
-The config features the run used follow. They are absent when the config
-didn't load. Each is a count, a boolean, or one of the runner's own option
-values, never a name, a path, or free text you wrote:
+Config features, absent when the config didn't load. Each is a count, a
+boolean, or one of the runner's own option values, never text you wrote:
 
 | Property | Value |
 | --- | --- |
@@ -149,8 +143,7 @@ values, never a name, a path, or free text you wrote:
 | `config_trace_modes`, `config_video_modes` | The distinct recording modes across targets (`off`, `on`, `retain-on-failure`, `on-first-retry`, `on-all-retries`) |
 | `config_app_commands`, `config_environments` | How many targets start an app command, and the distinct app environments (`test`, `staging`, `production`) |
 
-On `e2e explore` only, what the exploration was given and found, as counts.
-Never the goal, a step's charter, or a finding's words:
+On `e2e explore` only, counts of what the exploration was given and found:
 
 | Property | Value |
 | --- | --- |
@@ -184,35 +177,32 @@ client kills the server isn't sent.
 
 Telemetry never sends test titles, file paths, URLs, origins, instructions,
 observations, page content, screenshots, error messages, stack traces,
-environment variable values, credentials, or file contents. It also never
-sends the names of targets, agents, credentials, secrets, or project tools,
-the arguments or results of MCP tool calls, an exploration's goal, or its
-findings.
+environment variable values, credentials, or file contents. It never sends
+the names of targets, agents, credentials, secrets, or project tools, MCP
+tool arguments or results, an exploration's goal or charters, or its
+findings' words.
 
 ## In CI
 
-CI runs count as the CI vendor, not as a machine. The runner writes no
-preferences file and prints no notice. A coding agent that sets `CI` in its
-shell, with no CI vendor around it, counts as the machine it runs on.
+CI runs count as the CI vendor, not as a machine, with no preferences file
+and no notice. A coding agent that sets `CI` in its shell, with no CI vendor
+around it, counts as the machine it runs on.
 
-In CI, only the environment variables turn telemetry off. To send nothing,
-set `E2E_TELEMETRY_DISABLED: '1'` in the job's `env`.
+In CI, only the environment variables turn telemetry off. Set
+`E2E_TELEMETRY_DISABLED: '1'` in the job's `env`.
 
 ## In a fleet
 
-A platform that runs e2e for its users starts each run on a new machine.
-Each new machine would count as a new user. To prevent this, set
-`E2E_TELEMETRY_FLEET=<name>` on those machines. Their events count as
-`fleet:<name>`, like CI: no preferences file and no notice. Or set
-`E2E_TELEMETRY_DISABLED=1` to send nothing.
+A platform that runs e2e for its users on new machines would count each
+machine as a new user. Set `E2E_TELEMETRY_FLEET=<name>` on those machines.
+Their events count as `fleet:<name>`, with no preferences file and no
+notice, as in CI. Or set `E2E_TELEMETRY_DISABLED=1` to send nothing.
 
 ## Where it goes
 
-Events go in one request to `eu.i.posthog.com`, a PostHog project that the
-e2e maintainers operate. PostHog keeps no person profile for the ids and
-stores no request address. Each event asks PostHog to skip GeoIP, so no
-country, city, or coordinates come from the request. The data is read in
-aggregate.
+Events go to `eu.i.posthog.com`, a PostHog project that the e2e
+maintainers operate. PostHog keeps no person profile, stores no request
+address, and skips GeoIP for each event. The data is read in aggregate.
 
 Telemetry falls under the
 [security policy](https://github.com/tester-army/e2e/blob/main/SECURITY.md).
@@ -221,13 +211,13 @@ other connection a run can make.
 
 ## Feedback
 
-[`e2e feedback`](/reference/cli#e2e-feedback) isn't telemetry. It sends
-nothing until you, or the coding agent in your shell, run it. Then it sends
-the words in its flags as one `e2e_feedback` event to the same PostHog
-project, with the machine facts above.
+[`e2e feedback`](/reference/cli#e2e-feedback) isn't telemetry. When you or
+your coding agent run it, it sends the words in its flags as one
+`e2e_feedback` event to the same PostHog project, with the machine facts
+above.
 
-- A saved `e2e telemetry disable` doesn't stop it, because you asked to send
-  it. `E2E_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1` do stop it.
+- A saved `e2e telemetry disable` doesn't stop it.
+  `E2E_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1` do.
 - `E2E_TELEMETRY_DEBUG=1` and `--dry-run` print the event instead of sending
   it.
 - When telemetry is on, the event has the same anonymous id as your
@@ -238,7 +228,6 @@ project, with the machine facts above.
 ## The notice
 
 The first command prints a notice on stderr that tells how to opt out, and
-leaves `--reporter json` output intact. `e2e init` doesn't print it, so a
-new project starts with its prompts, and the next command prints it.
-`e2e telemetry` doesn't print it either, since that is where you act on it.
-The notice shows again after a large change to the data collected.
+leaves `--reporter json` output intact. `e2e init` and `e2e telemetry` don't
+print it, so it waits for the next command. The notice shows again after a
+large change to the data collected.
