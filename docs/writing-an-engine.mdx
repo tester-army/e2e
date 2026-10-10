@@ -5,12 +5,13 @@ icon: "gear"
 ---
 
 An engine connects `screen`, `app`, and agent calls to a UI platform through
-the `e2e/engine` contract. Use it to support a desktop app, a TV, or another
-platform.
+the `e2e/engine` contract. Write one to test a desktop app, a TV, or another
+platform. `@e2e-dev/web` and `@e2e-dev/mobile` use the same public
+`defineEngine` API, so read them as complete examples.
 
-The existing `@e2e-dev/web` and `@e2e-dev/mobile` packages use the
-same public `defineEngine` API. Read their implementations alongside this
-guide for complete examples.
+Engines drive user interfaces only. For a supporting service, such as an
+inbox, a database, or a test API, write a fixture with
+[`test.extend`](/reference/test#your-own-fixtures).
 
 ## The ownership boundary
 
@@ -29,17 +30,24 @@ The runner manages tests and policy. The engine observes and controls the UI.
 | Source masking of secure observations | engine |
 | Defense-in-depth redaction | runner |
 
-`locate` must return the current matches immediately, including an empty
-array when nothing matches. Do not add query retries or reject multiple
-matches. The runner handles polling and single-match checks.
+`locate` returns the current matches at once, or an empty array when
+nothing matches. Don't retry queries or reject multiple matches. The runner
+does the polling and the single-match checks.
 
 ## The shape of an engine
 
-Return a handle from `defineEngine`. It validates the manifest and determines
+Return a handle from `defineEngine`. It validates the manifest and computes
 the engine's capabilities when the config loads.
 
+<Note>
+Import types and helpers from `e2e/engine` only. Declare `e2e` as a peer
+dependency, so the engine and the runner share one set of error classes.
+The exports include errors, text and URL matching, assertion polling, JSON
+validation, and cancellation helpers. There is no internal subpath.
+</Note>
+
 This skeleton assumes a `createClient` adapter for your platform. Its nodes
-must follow the semantic tree contract described below.
+must follow the [semantic tree rules](#nodes-and-refs).
 
 ```ts title="src/index.ts" expandable
 import { ConfigurationError, defineEngine, resolveExpression, type EngineHandle } from 'e2e/engine';
@@ -95,180 +103,174 @@ export function hyperdrive(options: { device: string }): EngineHandle {
 targets: [{ name: 'phone', engine: hyperdrive({ device: 'iPhone 16' }), app: { bundleId: 'com.example.app' } }],
 ```
 
-`version` is required: reports name it, and a saved session restores only
-under the version that saved it. The replay cache does not key on it, since
-a recording re-finds its nodes at replay. With `perform`, also declare
-`actions` to list the supported action kinds. `locate` answers `screen` queries; the exported
-`resolveExpression` applies the standard query rules to a semantic tree.
-The app under test is the target's `app`, not an engine option:
-`validateApp` checks it at config load, and `prepare` and `init` receive it
-as `info.app`. `session` provides methods to open or
-restart it.
-
-## What an engine is not
-
-Engines drive user interfaces. Use fixtures for supporting services such as
-an inbox, a database, or a test API. Add those through
-[`test.extend`](/reference/test#your-own-fixtures).
-
-<Note>
-Import shared types and helpers from `e2e/engine`, and declare `e2e` as a
-peer dependency so the engine and runner share their error classes.
-The public exports include errors, text and URL matching, assertion polling,
-JSON validation, and cancellation helpers. There is no internal subpath.
-</Note>
+- `version` is required. Reports name it, and a saved session restores only
+  under the version that saved it. The replay cache doesn't key on it,
+  because a recording finds its nodes again at replay.
+- `locate` answers `screen` queries. The exported `resolveExpression`
+  applies the standard query rules to a semantic tree.
+- The app under test is the target's `app`, not an engine option.
+  `validateApp` checks it at config load. `prepare` and `init` receive it as
+  `info.app`.
 
 ## Capabilities
 
-Implement the optional methods your platform supports. Their presence
-determines the available capabilities. Calls to unsupported capabilities
-fail with `UNSUPPORTED_CAPABILITY`. A useful engine starts with these:
+The optional methods you implement set the engine's capabilities. Calls to
+a missing one fail with `UNSUPPORTED_CAPABILITY`. Start with these:
 
 | Member | Unlocks |
 | --- | --- |
 | `observe(context, options?)` | Agent observations and the replay cache |
 | `perform(ref, action, context)` + `actions` | Node actions of the declared kinds, including viewport scrolling through `swipe` |
 | `locate(expression, context)` | `screen`, `Locator`, and `expect(locator)` |
-| `validateApp(app, info)` | A config-load check of the target's `app`: throw `INVALID_CONFIG` naming `info.targetName` for a field the platform needs or cannot drive. [Reference](/reference/engine#app) |
+| `validateApp(app, info)` | A config-load check of the target's `app`. Throw `INVALID_CONFIG` naming `info.targetName` for a field the platform needs or can't drive. [Reference](/reference/engine#app) |
 | `session.{open?,back?,restart?,reset?}` | `app.open()`, `app.back()`, `app.restart()`, `app.clearState()`, and the agent's `navigate` and `back` verbs |
 
 Pointer actions, the keyboard, saved state, artifacts, and contributed
-fixtures are optional capabilities of their own; the
-[engine reference](/reference/engine#capabilities) lists every member.
+fixtures are optional capabilities too. `actions`, `location`, `pointer`,
+and `keyboard` require `observe`. The
+[engine reference](/reference/engine#capabilities) lists every member, and
+which action kind unlocks which agent tool.
 
-`actions`, `location`, `pointer`, and `keyboard` require `observe`. The agent
-receives only tools supported by the engine and the step's declared
-credentials: each action kind you declare unlocks its verb (`hover` the
+The agent gets only the tools the engine supports and the step's declared
+credentials. Each action kind you declare unlocks its verb: `hover` the
 `hover` tool, `dragTo` the `drag` tool, `setInputFiles` the `upload` tool,
-`check` with `uncheck` the `check` tool, and so on; the
-[engine reference](/reference/engine#capabilities) lists the mapping).
-Agent and locator actions both reach `perform` as a
-`LocatorAction`. Throw `UNSUPPORTED_CAPABILITY` if a particular node cannot
-support an otherwise declared action.
+`check` with `uncheck` the `check` tool.
 
-The agent's `scroll` and `screen.swipe()` call
-`perform(root, { kind: 'swipe' })`. Keep the root id stable across observations.
-A swipe on another node scrolls within that node.
+Agent actions and locator actions both reach `perform` as a
+`LocatorAction`. When one node can't do a declared action, throw
+`UNSUPPORTED_CAPABILITY`.
 
-Use the exported `parseKey` to interpret `press` keys such as `Enter` or
-`ControlOrMeta+a`. The runner rejects invalid spellings with `INVALID_ARGUMENT`.
-Map valid keys to your platform and throw `UNSUPPORTED_CAPABILITY` for keys
-it cannot send. See the [key grammar](/reference/engine#keys).
+`session.open` receives a URL that the runner already resolved. After
+`restart` or `reset`, the runner opens the configured address again through
+`open`. If your engine has no `open`, relaunch the app in those hooks.
 
-An observation may include `location`, such as a URL, screen title, or window
-name. The runner anchors replay cache entries on it and applies origin
-checks when it parses as a URL.
+## Lifecycle
 
-`session.open` receives a URL already resolved by the runner. After `restart`
-or `reset`, the runner reopens the configured address through `open`. If your
-engine has no `open` method, relaunch the app within those hooks.
+The hooks, in the order they run:
 
-There is no separate secure-fill capability flag. Before dispatching a
-secret fill, the runner checks the declared credential, current
-observation, and compatible editable field. The engine receives a
-`fill` action with `sensitive: true` and must handle it securely or throw
-`UNSUPPORTED_CAPABILITY`. The runner then stops taking screenshots; see
-[screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill).
+| Hook | When | Use it to |
+| --- | --- | --- |
+| `prepare` | One time per target, in the runner process | Install runtimes. The `env` it returns reaches every worker |
+| `init` | One time per worker, before its first attempt | Boot devices. It must also work on an engine that was disposed |
+| `startAttempt` | Before each attempt | Create the test's UI |
+| `settleAttempt` | After the body, and again after teardown | Throw the error of a test callback no step awaited, such as a dialog handler |
+| `endAttempt` | After each attempt, also after a failed start | Clean up the test's UI. Make it idempotent |
+| `dispose` | At worker shutdown, even if `init` never ran | Release the worker's resources |
+| `finish` | One time per target, after the last worker is gone, whenever `prepare` ran | Release what `prepare` acquired |
 
-An engine option can take a secret too, such as a password the engine sends
-the app. Accept `string | Secret` (tell them apart with `isSecret` from
-`e2e/engine`), list each handle in the engine's `secrets`, and read the value
-in `startAttempt` through `context.resolveSecret(secret)`. The config load
-rejects a name no secret has, and the runner redacts the value from the
-moment it resolves. When the app sees the value in another form (a header
-that encodes it), return that form from `resolveSecret(secret, { derived })`
-so it is redacted under the same name. The protection is text only: a
-session whose engine resolved a secret keeps its screenshots and pixels. A config calls `secrets.get()` before any run exists, so
-the handle is a reference by name until then.
+Use `info.env` for the processes you start and `info.log` to report
+progress. The [engine reference](/reference/engine#lifecycle) has each
+hook's arguments and budgets.
 
-### Lifecycle
+## Nodes and refs
 
-In the order they run:
+`observe` returns a `SemanticNode` tree, and `locate` returns the nodes that
+match an expression. Give each node an id that stays unique for the UI's
+lifetime. The runner assigns revisions and checks staleness.
 
-- `prepare`: once per target in the runner process. Install runtimes here;
-  the `env` it returns reaches every worker.
-- `init`: once per worker before its first attempt. Boot devices here.
-- `startAttempt`: before each attempt. Create the test's UI.
-- `settleAttempt`: after the body and again after teardown. Throw the error
-  of a test callback no step awaited, such as a dialog handler.
-- `endAttempt`: after each attempt. Clean up the test's UI; it also runs
-  after a failed start, so make it idempotent.
-- `dispose`: at worker shutdown, even if `init` never ran.
-- `finish`: once per target after the last worker is gone, whenever
-  `prepare` ran. Release what `prepare` acquired.
+- Keep the root id stable across observations. The agent's `scroll` and
+  `screen.swipe()` call `perform(root, { kind: 'swipe' })`. A swipe on
+  another node scrolls inside that node.
+- When `perform` receives `{ id, revision }`, look up the id. Throw
+  `NODE_STALE` when the node no longer exists.
+- When a match leaves the UI while `locate` reads it, throw a retryable
+  `NODE_STALE`. Never return a node read from what is gone: a removed
+  element has no size, so `toBeHidden` would pass while its replacement is
+  on screen. The runner resolves again within the caller's deadline.
+- Limit the snapshot size if the platform can return an unbounded tree. Set
+  `truncated` when the limit cuts off nodes, so the runner knows the list is
+  incomplete.
+- Use the platform's accessible names for nodes.
+- Put test identifiers in `testId`: a document attribute, an iOS
+  accessibility identifier, an Android resource id, or a desktop automation
+  id. The `testId` query matches only that field.
 
-Use `info.env` for spawned processes and `info.log` to report progress. The
-[engine reference](/reference/engine#lifecycle) has each hook's arguments and
-budgets.
+An observation can include `location`, such as a URL, a screen title, or a
+window name. The runner shows it to the model and in the report, and
+anchors replay cache entries on it.
 
-### Nodes and refs
-
-`observe` returns a `SemanticNode` tree. `locate` returns the nodes matching
-an expression. Assign ids that stay unique for the UI's lifetime and keep
-the root id stable. The runner assigns revisions and checks staleness.
-When `perform` receives `{ id, revision }`, look up the id and throw
-`NODE_STALE` if the node no longer exists. When a match leaves the UI while
-`locate` reads it, throw a retryable `NODE_STALE` too, never a node read from
-what is gone: a removed element reports no size, and a node read from it would
-pass `toBeHidden` while its replacement is on screen. The runner re-resolves
-within the caller's deadline.
-
-Limit snapshot size if the platform can return an unbounded tree. Set
-`truncated` when the limit cuts off nodes so the runner knows the listing
-is incomplete. Use the platform's accessible names for nodes.
-
-Put test identifiers in `testId`, whether they come from a document attribute,
-an iOS accessibility identifier, an Android resource id, or a desktop
-automation id. The `testId` query matches only that field.
-
-### Vision-only surfaces
-
-For a UI without a semantic tree, return a childless `root` and `pixels`
-from `observe`. Implement `performAt` and declare the supported kinds in
-`pointerActions`.
-
-The agent receives the screenshot and can act through tools such as `tap_at`.
-The runner passes points to `performAt` when no listed node occupies them.
-Coordinate actions replay only at the recorded viewport size, and the runner
-checks the recorded end state before accepting a replay.
-
-### Keyboard
+## Keyboard
 
 Implement `keyboard` to type into a control after the agent focuses it.
-`keyboard.type` must deliver the text as a person typing would, through the
-platform's keyboard path, so that key events reach the app where the platform
-has them: a browser engine dispatches `keydown`, `keypress`, `input`, and
-`keyup` per character; a device engine sends the text through the device
-keyboard. Inserting the value without keystrokes is not a compliant
-implementation. It must throw `NOT_ACTIONABLE` when no editable control has
-focus. Omit `dismiss` on platforms without an on-screen keyboard. The same
-hook, after the `focus` action, is what `locator.pressSequentially` types
-through; the harness composes the two and asks nothing more of the engine.
+`keyboard.type` must type through the platform's keyboard path, so the app
+gets the key events a person's typing makes. A browser engine sends
+`keydown`, `keypress`, `input`, and `keyup` for each character. A device
+engine uses the device keyboard. Setting the value without keystrokes
+doesn't comply.
 
-### State is a credential
+- Throw `NOT_ACTIONABLE` when no editable control has focus.
+- Leave out `dismiss` on platforms without an on-screen keyboard.
+- `locator.pressSequentially` uses the same hook after a `focus` action.
+  It needs nothing more.
 
-A `state` snapshot can contain authentication data such as cookies and tokens.
-The runner encrypts it with a per-run key, binds it to the run, target,
-engine, and app identity, and deletes it after the run.
+For `press`, read keys such as `Enter` or `ControlOrMeta+a` with the
+exported `parseKey`. The runner rejects invalid spellings with
+`INVALID_ARGUMENT`. Map valid keys to your platform, and throw
+`UNSUPPORTED_CAPABILITY` for keys it can't send. See the
+[key grammar](/reference/engine#keys).
 
-Do not persist, cache, log, or include snapshots in errors. `restore` must
-replace the app's entire persisted state instead of merging into it.
+## Vision-only surfaces
 
-### Errors
+For a UI without a semantic tree, return a `root` with no children, plus
+`pixels`, from `observe`. Implement `performAt` and declare its kinds in
+`pointerActions`.
+
+The agent gets the screenshot and acts through tools such as `tap_at`. The
+runner passes a point to `performAt` when no listed node is at it.
+Coordinate actions replay only at the recorded viewport size, and the
+runner checks the recorded end state before it accepts a replay.
+
+## Handle secrets
+
+A secret fill reaches the engine as a `fill` action with
+`sensitive: true`. There is no separate capability flag for it. The runner
+first checks the declared credential, the current observation, and a
+compatible editable field. Handle the fill securely, or throw
+`UNSUPPORTED_CAPABILITY`. After it, the runner takes
+[no more screenshots](/reference/security#screenshots-after-a-secret-fill).
+
+An engine option can take a secret too, such as a password the engine sends
+to the app:
+
+1. Accept `string | Secret`. Tell them apart with `isSecret` from
+   `e2e/engine`.
+2. List each handle in the engine's `secrets`. The config load rejects a
+   name that no secret has.
+3. Read the value in `startAttempt` with `context.resolveSecret(secret)`.
+
+Until a run exists, the handle is only a name. The runner redacts the value
+from the moment it resolves. When the app sees the value in another form,
+such as an encoded header, return that form from
+`resolveSecret(secret, { derived })` to redact it under the same name. This
+protects text only: a session whose engine resolved a secret keeps its
+screenshots.
+
+## State is a credential
+
+A `state` snapshot can hold authentication data such as cookies and tokens.
+The runner encrypts it with a key for each run. It binds the snapshot to
+the run, target, engine, and app identity, and deletes it after the run.
+
+Don't persist, cache, or log snapshots, or put them in errors. `restore`
+must replace the app's whole persisted state, not merge into it.
+
+## Errors
 
 Throw `EngineError` with a code from the
-[engine reference](/reference/engine). Only `NODE_STALE` and `FRAME_NOT_FOUND`
-can be retryable. Use `ACTION_MAY_HAVE_COMMITTED` when an action may already
-have taken effect so the runner does not repeat it.
+[engine reference](/reference/engine).
 
-`INVALID_STATE` maps to `APP_NOT_OPEN`, and `UNSUPPORTED_CAPABILITY` is a
-configuration error. Unknown errors become infrastructure failures.
+- Only `NODE_STALE` and `FRAME_NOT_FOUND` can be retryable.
+- Use `ACTION_MAY_HAVE_COMMITTED` when an action may already have taken
+  effect, so the runner doesn't repeat it.
+- `INVALID_STATE` becomes `APP_NOT_OPEN`, and `UNSUPPORTED_CAPABILITY` is a
+  configuration error.
+- Unknown errors become infrastructure failures.
 
 ## Contributed fixtures
 
-Engines can contribute fixtures such as `browser` or `device`. Wrap their methods
-with `context.fixture` to record calls as `<fixture>.<method>` steps with
-their own artifacts and failures.
+An engine can contribute fixtures such as `browser` or `device`. Wrap their
+methods with `context.fixture` to record each call as a `<fixture>.<method>`
+step, with its own artifacts and failures.
 
 ```ts
 fixtures: {
@@ -289,24 +291,26 @@ import type { Device } from 'e2e-engine-hyperdrive';
 export const test = base.extend<{ device: Device }>();
 ```
 
-The fixture context provides URL policy checks, timeouts, operation budgets,
-artifact attachment, and factories for locators and assertions. For example,
-`expectable(target, factory)` adds matchers for `expect(fixture)`. See the
-[engine reference](/reference/engine) for the full context.
+The fixture context gives URL policy checks, timeouts, operation budgets,
+artifact attachment, and factories for locators and assertions. For
+example, `expectable(target, factory)` adds matchers for `expect(fixture)`.
+See the [engine reference](/reference/engine) for the full context.
 
 ## Ship a tool pack
 
-Platform operations the action vocabulary lacks can ship as a pack of
-[project tools](/tools) built with `defineTool`, with `platforms` set so each
-tool is offered only on compatible targets. `@e2e-dev/mobile/tools` is one
+For platform operations that the action set lacks, ship a pack of
+[project tools](/tools) built with `defineTool`. Set `platforms` so each
+tool shows only on compatible targets. `@e2e-dev/mobile/tools` is one
 example.
 
 ## Verify it
 
-Run a test file against your engine. Check lifecycle order, observations,
-actions, errors, and unsupported capabilities.
+Run a test file against your engine. Check the lifecycle order,
+observations, actions, errors, and unsupported capabilities.
 [`engine-contract.test.ts`](https://github.com/tester-army/e2e/blob/main/packages/e2e/tests/integration/engine-contract.test.ts)
-demonstrates the runner's contract and provides examples for these checks.
+tests the runner's side of the contract and has examples of these checks.
+
+## Next
 
 <CardGroup cols={2}>
   <Card title="Engine contract" icon="gear" href="/reference/engine">
