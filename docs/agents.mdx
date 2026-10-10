@@ -32,25 +32,20 @@ export default {
 } satisfies E2EConfig;
 ```
 
-An entry holds the `model`, an optional `judge`, the `system` prompt, the
-app's `context`, [tools](/tools), budgets, and `providerOptions`. `maxSteps`
-caps the actions of one step and `maxModelCalls` its model calls. Both
-default to 25 and go up to 100.
-
-Each entry starts from the built-in defaults, never from `default`. Give
-each entry its model and context, for example from a shared constant as
-above. `model` acts and judges, unless you set a separate `judge`. A model
-that gets screenshots must accept images. See [Models](/models) and the
+An entry holds the `model`, an optional [`judge`](/models#a-judge-of-its-own),
+`system`, `context`, [tools](/tools), budgets, and `providerOptions`.
+`maxSteps` caps the actions of one step and `maxModelCalls` its model
+calls: 25 by default, 100 at most. See the
 [config reference](/reference/config#agents).
 
+Entries don't inherit from `default`. Give each one its model and context,
+for example from a shared constant as above.
+
 A [custom executor](/executors) goes under `executor`. The model, judge,
-context, and budgets still apply. `system` and `tools` are rejected there,
-because the executor brings its own prompt and tools.
+context, and budgets still apply. `system` and `tools` are rejected, since
+the executor brings its own prompt and tools.
 
 ## Instructions and vocabulary
-
-An agent takes two kinds of text. `system` tells the acting agent how to
-work. `context` tells every model call what the app calls things.
 
 | | `system` | `context` |
 |---|---|---|
@@ -59,28 +54,14 @@ work. `context` tells every model call what the app calls things.
 | Belongs here | Persona, caution, what to verify before finishing, how to treat unexpected dialogs | Names of screens and menus, where a feature lives, which button submits a form, domain terms |
 | Set on | `agents.<name>.system` | `agents.<name>.context`, at most 16 KiB |
 
-A judge that doesn't know plans are called tiers can't check that a tier
-was chosen. A judge never sees `system`, so "a step is done once the form
-closes" can't lower the bar for a verdict. Rule of thumb: true for any
-tester on this app goes in `context`, true for this tester on any app goes
-in `system`.
+A judge never sees `system`, so "a step is done once the form closes"
+can't lower the bar for a verdict. Rule of thumb: true for any tester on
+this app goes in `context`, true for this tester on any app goes in
+`system`.
 
-```ts title="e2e.config.ts"
-agents: {
-  default: {
-    model: gateway('openai/gpt-6-luna-fast'),
-    // How to work: read by the act loop only.
-    system: 'Verify a visible confirmation before completing a step. Close cookie and feedback notices you did not ask for.',
-    // What things are called: read by every model call, judges included.
-    context: 'Plans are called tiers. Billing lives under Settings. Sales documents are quotes until "Convert to order".',
-    maxSteps: 40,
-  },
-},
-```
-
-A test or group adds its own vocabulary with `agentContext`. e2e appends it
-after the agent's `context` for that test. Use it for facts only that test
-knows, such as seeded data or a feature flag that changes a label:
+A test or group appends its own vocabulary to `context` with
+`agentContext`. Use it for facts only that test knows, such as seeded data
+or a feature flag that changes a label:
 
 ```ts title="tests/billing.e2e.ts"
 import { describe, test } from 'e2e';
@@ -90,13 +71,12 @@ describe('billing', { agentContext: 'The seeded workspace is called "Acme Trial"
 });
 ```
 
-Keep instructions out of `agentContext`. Like `context`, it reaches the
-judges.
+Keep instructions out of `agentContext`: it reaches the judges too.
 
 ## Pick an agent per run
 
 `--agent` chooses the agent for tests that don't select one. Several names
-run each of those tests one time per agent:
+run each test one time per agent:
 
 <CodeGroup>
 ```bash npm
@@ -168,9 +148,8 @@ A serial group runs as one unit per agent, and its members share the
 group's pin. A setup test pins at most one agent.
 
 Each agent records its own [replay cache](/cache) entries, keyed by its name
-and its context. So `buyer` never replays the steps of `admin`, and a
-changed `agentContext` records again. [Project tools](/tools) and
-[custom executors](/executors#replay-cache) have their own replay rules.
+and context. `buyer` never replays the steps of `admin`, and a changed
+`agentContext` records again.
 
 An agent is not a signed-in user. For signed-in personas, pair each agent
 with a `session` in a separate describe block. See
@@ -179,15 +158,11 @@ with a `session` in a separate describe block. See
 ## Make the agent yours
 
 When a step fails or uses too many calls, open its report, or run with
-`--debug` to see the transcript. Fix the instruction first. Change the agent
-when the problem affects several tests:
-
-1. Use the labels on screen in the goal.
-2. Put shared vocabulary in `context`, or in `agentContext` for one test.
-3. Put instructions for the actor in `system`.
-4. Add [tools](/tools) for operations such as seeding a cart through a test API.
-5. Compare models or `providerOptions`: run the same tests with
-   `--agent <name>`.
+`--debug` to see the transcript. Fix the instruction first, using the labels
+on screen. When the problem affects several tests, fix the agent:
+vocabulary in `context`, instructions in `system`, or a [tool](/tools) for an
+operation such as seeding a cart through a test API. To compare models or
+`providerOptions`, run the same tests with `--agent <name>`.
 
 ## Next
 
