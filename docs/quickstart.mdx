@@ -19,8 +19,8 @@ export const setupPrompt = `Set up e2e end-to-end tests in this project. Docs: \
 
 ## Set up with your coding agent
 
-Open Claude Code, Codex, Cursor, or another coding agent in your app's
-directory and paste this prompt:
+Paste this prompt into Claude Code, Codex, Cursor, or another coding agent
+in your app's directory:
 
 <SetupPrompt>
 
@@ -28,8 +28,8 @@ directory and paste this prompt:
 
 </SetupPrompt>
 
-The agent installs the [e2e skill](/coding-agents), so later prompts like
-"add a test for checkout" or "why did this run fail" work without more setup.
+The agent installs the [e2e skill](/coding-agents), so later prompts such as
+"add a test for checkout" need no more setup.
 
 <Note>
 Use Node.js 24.8 or newer (22.22.3 or newer on Node.js 22). On Windows, run inside WSL. Mobile tests also
@@ -59,9 +59,9 @@ need Xcode with an iOS simulator runtime, or the Android SDK with an emulator.
   </CodeGroup>
 
   Choose **Web (Playwright)** or **Mobile (iOS/Android)**, then a
-  subscription or model provider, or **None** for tests without AI. The
+  subscription, a model provider, or **None** for tests without AI. The
   wizard writes a config and an example test, adds dependencies, and offers
-  to set up your coding agent. Existing files stay intact.
+  to set up your coding agent. It keeps existing files.
 
   <Tabs>
     <Tab title="Web">
@@ -94,9 +94,8 @@ test('app opens', async ({ app, browser }) => {
     </Accordion>
     </Tab>
     <Tab title="Mobile">
-    Run `npx agent-device doctor` to check your setup. The example opens
-    Settings so you can try it before installing your own app. The wizard
-    chooses iOS on macOS and Android elsewhere.
+    Run `npx agent-device doctor` to check your setup. The wizard picks iOS
+    on macOS and Android elsewhere. The example opens the Settings app.
 
     <Accordion title="Example iOS config and test">
     This config uses Vercel AI Gateway. For Android, the wizard sets
@@ -158,12 +157,8 @@ test('Settings opens', async ({ app, screen }) => {
 
 ### Use a subscription or API key
 
-Connect the provider you chose in the wizard.
-
 <Tabs>
   <Tab title="Subscription">
-  Sign in to your plan. Most plans need no API key.
-
   | Plan | How to connect |
   | --- | --- |
   | ChatGPT Plus or Pro | `npx e2e login openai` |
@@ -232,8 +227,8 @@ test('the agent opens General', async ({ agent, app, device }) => {
 });
 ```
 
-  `app.open()` launches the configured app fresh. Without it, a test starts
-  where the previous one left the device. `device.locator` uses
+  `app.open()` launches the app fresh. Without it, a test starts where the
+  previous one left the device. `device.locator` takes
   [agent-device selectors](/mobile#the-device-fixture).
   </Tab>
 </Tabs>
