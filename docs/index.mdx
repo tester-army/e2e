@@ -6,14 +6,10 @@ icon: "house"
 
 import { VideoCard } from './snippets/video-card.jsx';
 
-e2e is a next-generation testing framework for web and mobile
-apps, built to keep up with the speed we ship software today.
-
-You choose how agentic each test is: fully deterministic with
-[locators](/core-concepts#locators) and
-[assertions](/reference/expect#locator-matchers), fully driven by an agent
-from [goals](/core-concepts#goals) in natural language, or a mix of
-both in the same test.
+e2e is an open source testing framework for web and mobile apps. A test can
+use exact [locators](/core-concepts#locators) and
+[assertions](/reference/expect#locator-matchers), [goals](/core-concepts#goals)
+in natural language that an agent completes, or both in the same test.
 
 <VideoCard
   id="NEawZb6Hssw"
@@ -36,34 +32,31 @@ test('a member upgrades to Pro', async ({ app, agent, screen }) => {
 
 ## Why e2e
 
-Testing should not slow down how fast you ship or how sure you are of what
-you shipped.
-
-- **Time back.** Write a goal instead of a script of selectors and waits.
-  When the UI changes, the agent adapts, so you spend less time writing and
-  fixing tests and more time building.
+- **Less time on tests.** Write a goal instead of a script of selectors and
+  waits. When the UI changes, the agent adapts, so you fix fewer tests.
 - **Less risk.** Cover more of the flows your users depend on, on web and
   mobile, and catch regressions before they reach production.
 - **Cheap runs.** Verified `agent.act` steps [replay from a cache](/cache)
-  with no model calls. Test more flows without the token bill or a slow CI.
+  with no model calls, so more flows don't mean a bigger token bill or a
+  slower CI.
 
 ## How it works
 
-- **Targets.** Each test runs once per target, such as Chromium or an iPhone
-  simulator. The [web engine](/web) drives browsers through
-  Playwright, the [mobile engine](/mobile) drives iOS simulators and Android
-  emulators through agent-device, and you can
+- **Targets.** Each test runs one time per target, such as Chromium or an
+  iPhone simulator. The [web engine](/web) drives browsers through
+  Playwright. The [mobile engine](/mobile) drives iOS simulators and Android
+  emulators through agent-device. You can also
   [write your own](/writing-an-engine).
 - **Agent steps.** `agent.act` completes a goal. `agent.assert`,
   `agent.waitFor`, and `agent.extract` judge the screen. Use your own
   [subscription](/subscriptions), [API key, or local model](/models). Tests
   without agent steps need no model.
-- **Cache.** An `act` step that a later check verifies is recorded. The next
-  run replays it and hands back to the agent when the app changed. `assert`,
-  `waitFor`, and `extract` always call the model.
+- **Cache.** e2e records an `act` step when a later check passes. The next
+  run replays it, and hands back to the agent when the app changed.
+  `assert`, `waitFor`, and `extract` always call the model.
 - **Reports.** The runner [redacts registered secrets](/security) from model
-  input and records steps, failures, and artifacts in a
-  [report](/debugging) you or your coding agent can read.
+  input. It records steps, failures, and artifacts in a
+  [report](/debugging) that you or your coding agent can read.
 
 ## Get started
 
@@ -79,8 +72,5 @@ you shipped.
   </Card>
   <Card title="Coding agents" icon="robot" href="/coding-agents">
     Let your coding agent write, run, and debug tests.
-  </Card>
-  <Card title="Mobile" icon="mobile-screen" href="/mobile">
-    Run tests on iOS simulators and Android emulators.
   </Card>
 </CardGroup>
