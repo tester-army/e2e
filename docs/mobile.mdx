@@ -256,6 +256,9 @@ test('the list and the detail split across the fold', async ({ agent, app, devic
 Add a target for each platform:
 
 ```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { mobile } from '@e2e-dev/mobile';
+
 const app = { bundleId: 'com.example.app' };
 
 export default {
@@ -288,8 +291,12 @@ Add `mobileTools` for app switching, free-form swipes, and system alerts.
 Pass every device engine in the config to one call:
 
 ```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { mobile } from '@e2e-dev/mobile';
 import { mobileTools } from '@e2e-dev/mobile/tools';
+import { gateway } from 'ai';
 
+const app = { bundleId: 'com.example.app' };
 const iphone = mobile({ platform: 'ios' });
 const pixel = mobile({ platform: 'android' });
 
