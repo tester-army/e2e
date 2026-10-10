@@ -18,7 +18,7 @@ export interface StackFrame {
 /** A position the report keeps: the file relative to the project root, POSIX separators, one-based line and column. */
 export type SourceLocation = StackFrame;
 
-const FRAME_PATTERN = /((?:file:\/\/)?\/[^):]+):(\d+):(\d+)\)?\s*$/;
+const FRAME_PATTERN = /(file:\/\/[^)\n]+|\/[^)\n]+|[A-Za-z]:[\\/][^)\n]+|\\\\[^)\n]+):(\d+):(\d+)\)?\s*$/;
 
 /**
  * `file` relative to `projectRoot` with POSIX separators, or nothing when the
@@ -55,7 +55,7 @@ export function userFrame(stack: string | undefined, projectRoot: string | undef
       continue;
     }
     if (projectRelativePath(projectRoot, file) === undefined) continue;
-    if (file.includes(`${path.sep}node_modules${path.sep}`)) continue;
+    if (path.normalize(file).includes(`${path.sep}node_modules${path.sep}`)) continue;
     return { file, line: Number(line), column: Number(column) };
   }
   return undefined;

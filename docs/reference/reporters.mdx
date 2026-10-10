@@ -203,6 +203,8 @@ layout as its own rows; the `json` reporter does not carry them:
       Results  https://example.test/runs/0192c…
 ```
 
+Failure and step source locations use project-relative POSIX paths, including when the stack contains Windows drive paths, UNC paths, or file URLs.
+
 Artifact paths in the report are POSIX paths relative to `artifactsRoot`.
 `path`, `size`, and `sha256` are optional: an artifact whose file never
 appeared, or that a redaction withheld, is recorded without them. Check for
