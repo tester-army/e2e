@@ -33,7 +33,16 @@ export function getProvider(id: ProviderId): OAuthProvider {
   return PROVIDERS[id];
 }
 
-/** How a missing login is described to the user: the CLI command that fixes it. */
+/** The environment credential a provider also accepts, where it has one. */
+const ENV_CREDENTIALS: Partial<Record<ProviderId, string>> = { 'opencode-console': 'OPENCODE_API_KEY' };
+
+/**
+ * How a missing login is described to the user: the CLI command that fixes
+ * it, and the environment credential that does too, so the message never
+ * reads as "no credentials" while a working one is set.
+ */
 export function loginHint(id: ProviderId): string {
-  return `run \`npx e2e login ${id}\``;
+  const command = `run \`npx e2e login ${id}\``;
+  const environment = ENV_CREDENTIALS[id];
+  return environment === undefined ? command : `${command} or set ${environment}`;
 }

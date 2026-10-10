@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { promptCacheKey } from '../../../src/agent/model/provider-hints.ts';
 import { createOAuthFetch } from '../../../src/oauth/fetch.ts';
 import { opencodeConsole } from '../../../src/oauth/opencode-console.ts';
+import { listModels } from '../../../src/oauth/models.ts';
 import { createOpencodeConsoleProvider } from '../../../src/oauth/providers/opencode-console.ts';
 import { MemoryCredentialStore } from './helpers/store.ts';
 import { json, useServers, useVendor, type Received } from './helpers/server.ts';
@@ -257,5 +258,37 @@ describe('e2e models opencode-console', () => {
       { id: 'glm-5.3', detail: 'Zen, $1.4 in, $4.4 out per 1M' },
       { id: 'go/deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash', detail: 'Go, vision' },
     ]);
+  });
+
+  it('lists ids through OPENCODE_API_KEY when no login is stored, the credential opencodeConsole() uses', async () => {
+    const api = await workspace();
+    vendor(api, {});
+    vi.stubEnv('OPENCODE_API_KEY', ' oc_sk_env ');
+    const models = await listModels('opencode-console', new MemoryCredentialStore());
+    expect(api.requests[0]!.headers['authorization']).toBe('Bearer oc_sk_env');
+    // A service key names no workspace, so there is no header to send.
+    expect(api.requests[0]!.headers).not.toHaveProperty('x-org-id');
+    expect(models.map((model) => model.id)).toContain('go/deepseek-v4.1-flash');
+  });
+
+  it('a stored login wins over the key, so what works today is unchanged', async () => {
+    const api = await workspace();
+    vendor(api, {});
+    vi.stubEnv('OPENCODE_API_KEY', 'oc_sk_env');
+    await listModels('opencode-console', new MemoryCredentialStore({ 'opencode-console': login }));
+    expect(api.requests[0]!.headers['authorization']).toBe('Bearer st_tok');
+    expect(api.requests[0]!.headers['x-org-id']).toBe('org_1');
+  });
+
+  it('with neither credential, the message names the key as well as the login', async () => {
+    // No stored login, and no key in the shell: the listing fails before any request.
+    vi.stubEnv('OPENCODE_API_KEY', '');
+    const failure = await listModels('opencode-console', new MemoryCredentialStore()).catch((error: unknown) => error);
+    expect(failure).toMatchObject({ code: 'NOT_LOGGED_IN' });
+    expect((failure as Error).message).toContain('OPENCODE_API_KEY');
+  });
+
+  it('leaves the other providers on their stored login', async () => {
+    await expect(listModels('openai', new MemoryCredentialStore())).rejects.toMatchObject({ code: 'NOT_LOGGED_IN' });
   });
 });

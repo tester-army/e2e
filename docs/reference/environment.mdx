@@ -22,7 +22,7 @@ See [Models](/models) and [Subscriptions](/subscriptions).
 | Variable | Reading | Effect |
 | --- | --- | --- |
 | `E2E_OAUTH_CREDENTIALS` | value | The stored subscription logins as JSON, the contents of `oauth.json`, for a machine nobody can sign in on. The `e2e/oauth/*` models and `e2e models` read it in place of `$XDG_CONFIG_HOME/e2e/oauth.json`; `e2e login` and `e2e logout` refuse to change it, and refreshed tokens are not written back |
-| `OPENCODE_API_KEY` | value | An OpenCode Console service account key; `opencodeConsole()` uses it in place of the stored `opencode-console` login; `e2e models` still reads the stored login. OpenCode reads the same variable |
+| `OPENCODE_API_KEY` | value | An OpenCode Console service account key; `opencodeConsole()` uses it in place of the stored `opencode-console` login, and `e2e models opencode-console` lists ids through it when no login is stored. OpenCode reads the same variable |
 | `XDG_CONFIG_HOME` | value | Directory of the stored logins, `$XDG_CONFIG_HOME/e2e/oauth.json`; default `~/.config/e2e/oauth.json` |
 
 ## Credentials and secrets

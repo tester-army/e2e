@@ -15,12 +15,11 @@ import { OAuthError } from './errors.ts';
 import { createOAuthFetch } from './fetch.ts';
 import { USER_AGENT } from '../internal/client-identity.ts';
 import { loginHint } from './providers.ts';
-import { createOpencodeConsoleProvider, opencodeConsoleChatRoute, opencodeConsoleRouteFor, type OpencodeConsoleRoute } from './providers/opencode-console.ts';
-import { EnvCredentialStore, defaultCredentialStore } from './store.ts';
-import type { CredentialStore, FetchFunction } from './types.ts';
+import { createOpencodeConsoleProvider, opencodeConsoleApiKeyStore, opencodeConsoleChatRoute, opencodeConsoleRouteFor, OPENCODE_API_KEY_ENV, type OpencodeConsoleRoute } from './providers/opencode-console.ts';
+import { defaultCredentialStore } from './store.ts';
+import type { FetchFunction } from './types.ts';
 
 const CONFIG_TIMEOUT_MS = 10_000;
-const API_KEY_ENV = 'OPENCODE_API_KEY';
 const BREAKPOINT = { cacheControl: { type: 'ephemeral' } } as const;
 
 interface Served {
@@ -29,11 +28,11 @@ interface Served {
 }
 
 export function opencodeConsole(modelId: string): LanguageModelV4 {
-  const apiKey = process.env[API_KEY_ENV]?.trim();
+  const apiKey = process.env[OPENCODE_API_KEY_ENV]?.trim();
   const fetch = createOAuthFetch(createOpencodeConsoleProvider(), {
-    store: apiKey ? apiKeyStore(apiKey) : defaultCredentialStore(),
+    store: apiKey ? opencodeConsoleApiKeyStore(apiKey) : defaultCredentialStore(),
     userAgent: USER_AGENT,
-    loginHint: apiKey ? `check ${API_KEY_ENV}` : loginHint('opencode-console'),
+    loginHint: apiKey ? `check ${OPENCODE_API_KEY_ENV}` : loginHint('opencode-console'),
   });
   // One per model, so a worker's calls stay on one upstream and its cache.
   const session = `e2e_${randomUUID()}`;
@@ -73,11 +72,6 @@ export function opencodeConsole(modelId: string): LanguageModelV4 {
       return model.doStream(requestFor(npm, options, session));
     },
   };
-}
-
-/** A Console service API key as a login with nothing to refresh. */
-function apiKeyStore(apiKey: string): CredentialStore {
-  return new EnvCredentialStore(JSON.stringify({ 'opencode-console': { access: apiKey, refresh: '', expires: 0 } }));
 }
 
 /** `opencode.go` keeps Go's provider options under `opencode`, the name up to the first dot; `apiKey` only satisfies the constructors. */
