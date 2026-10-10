@@ -29,21 +29,18 @@ bunx agent-device doctor
 </CodeGroup>
 
 Follow the [Quickstart](/quickstart) and choose **Mobile (iOS/Android)**.
-The wizard selects iOS on macOS and Android elsewhere. Its config targets
-the Settings app with one worker, so you can run a test before you point it
-at your app.
-
-The runner boots the device and starts the iOS automation runner before
-test timing starts. Boot time doesn't count toward `launchTimeout`.
-
-For a finished setup, see the [example projects](/example-projects) for Expo,
-SwiftUI, Jetpack Compose, Kotlin Multiplatform, and Flutter.
+The wizard selects iOS on macOS and Android elsewhere, and targets the
+Settings app with one worker, so a test runs before you point it at your
+app. Device boot happens before test timing starts and doesn't count toward
+`launchTimeout`. See the [example projects](/example-projects) for finished
+setups.
 
 ## Point at your app
 
-The app under test is the target's `app`. Set `app.bundleId` to your app's
-bundle id or package name. `app.open()`, `app.restart()`, and
-`app.clearState()` launch that app. Add `appPath` to name a build:
+Set the target's `app.bundleId` to your app's bundle id or package name.
+`app.open()`, `app.restart()`, and `app.clearState()` launch that app. Add
+`appPath` to name a build, an `.app` bundle for iOS or an `.apk` for
+Android:
 
 ```ts
 {
@@ -56,23 +53,16 @@ bundle id or package name. `app.open()`, `app.restart()`, and
 }
 ```
 
-A device target needs `bundleId`, `appPath`, or both. Use an `.app` bundle
-for iOS or an `.apk` for Android.
+A device target needs `bundleId`, `appPath`, or both. The engine installs
+nothing on its own. Call `device.installApp()` once per device, for example
+in a fixture every test takes. With no path, it installs `app.appPath`.
+Without `bundleId`, `app.open()` launches the app the build installed.
 
-The engine installs nothing on its own. Call `device.installApp()` once per
-device where the suite needs it, for example in a fixture every test takes.
-With no path, it installs `app.appPath`. Without `bundleId`, `app.open()`
-launches the app the build installed.
-
-To run the suite in CI, see [Mobile jobs](/ci#mobile-jobs). There are
-workflows for [GitHub Actions](/ci/github-actions#ios-and-android),
-[EAS Workflows](/ci/eas-workflows), [Bitrise](/ci/bitrise), and
-[Codemagic](/ci/codemagic).
+To run the suite in CI, see [Mobile jobs](/ci#mobile-jobs).
 
 ### Launch arguments and permissions
 
-`app.launchArguments` and `app.permissions` apply to every fresh launch:
-`app.open()`, `app.restart()`, and `app.clearState()`.
+`app.launchArguments` and `app.permissions` apply to every fresh launch.
 
 ```ts
 app: {
@@ -84,18 +74,19 @@ app: {
 
 - Launch arguments are the process arguments on iOS and `am start`
   arguments on Android.
-- The runner sets permissions before the launch, so no system prompt
-  appears. `app.clearState()` resets them with the data, then sets them
-  again.
-- `deny` on iOS records a refusal: the app is told no without a prompt.
-  `deny` on Android revokes the permission: the OS asks again when the app
-  requests it.
-- The warm-up before the run passes neither. Start each test with
-  `app.open()` to get them.
+- Permissions are set before the launch, so no system prompt appears.
+  `app.clearState()` resets them with the data, then sets them again.
+- `deny` on iOS tells the app no without a prompt. On Android it revokes
+  the permission, so the OS asks again.
+- The warm-up before the run passes neither, so start each test with
+  `app.open()`.
 - Arguments that select a build mode change what the app is. Give each mode
   its own `app.identity` so its recordings stay apart.
 
-To launch one test with its own, use `device.openApp`:
+To launch one test with its own, use `device.openApp`. Each option it passes
+replaces the target's whole value: `permissions: { camera: 'deny' }` drops
+the target's other permissions. On a relaunch of the target's app, options
+it doesn't pass keep the target's values:
 
 ```ts
 await device.openApp('com.example.app', { relaunch: true, permissions: { camera: 'deny' } });
@@ -104,10 +95,9 @@ await device.openApp('com.example.app', { relaunch: true, permissions: { camera:
 ### Expo development builds
 
 A development build (`expo-dev-client`) opens on the dev launcher and loads
-its JavaScript from a dev server. On an iOS simulator, launch arguments open
-the server directly. They also turn off the dev menu, its onboarding sheet,
-and its floating action button, so nothing covers the app. `app.command`
-starts the server for the run:
+its JavaScript from a dev server. On an iOS simulator, these launch
+arguments open the server directly and turn off the dev menu, its
+onboarding sheet, and its floating button. `app.command` starts the server:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -133,12 +123,10 @@ export default {
 } satisfies E2EConfig;
 ```
 
-- Start each test with `app.open()`. The warm-up passes no launch
-  arguments, so it leaves the app on the dev launcher.
+- The warm-up leaves the app on the dev launcher. Start each test with
+  `app.open()`.
 - The first launch waits for the dev server to bundle the app. Give the
   test's first check a longer timeout.
-- A test that relaunches with its own `launchArguments` replaces the
-  target's, so list these arguments again.
 - On Android, expo-dev-launcher doesn't read `--initialUrl`. Open the server
   with `device.openLink` and the build's
   `exp+<slug>://expo-development-client/?url=<encoded server URL>` link.
@@ -170,8 +158,7 @@ controls.
 ### Test ids by framework
 
 `getByTestId` reads the accessibility identifier on iOS and the resource id
-on Android. Each UI framework sets them its own way. Each example project
-has the same three locator tests on one greeting screen:
+on Android. Each UI framework sets them its own way:
 
 | Framework | Set the id with | Example |
 | --- | --- | --- |
@@ -192,19 +179,13 @@ has the same three locator tests on one greeting screen:
 
 `device` changes device settings without a model call: network,
 permissions, appearance, app installs, and more. Each call is a
-`device.<method>` step in the report. Every method is in the
-[mobile engine reference](/reference/mobile#device).
+`device.<method>` step in the report. The
+[mobile engine reference](/reference/mobile#device) lists every method.
 
-`device.locator` takes an agent-device selector, for controls that `screen`
-queries can't name:
+`device.locator` takes an agent-device selector, as in the test above, for
+controls that `screen` queries can't name.
 
-```ts
-await expect(device.locator('role=NavigationBar id=About')).toBeVisible();
-await device.locator('id=SW_VERSION_SPECIFIER role=Button').tap();
-```
-
-`device.installApp` checks upgrades and fresh installs inside a test. With
-no path, it installs the target's `app.appPath`:
+`device.installApp` also tests upgrades and fresh installs:
 
 ```ts
 const { app } = await device.installApp('./build/MyApp.app', { reinstall: true });
@@ -213,8 +194,7 @@ await device.openApp(app);
 
 `device.openApp` takes a bundle id, package, or display name, never a link.
 `device.openLink` opens a deep link or a web link into the pinned app, or
-into the `app` in its options. Use it for magic-link sign-in and deep-link
-routes:
+the `app` in its options, for magic-link sign-in and deep-link routes:
 
 ```ts
 await device.openLink('myapp://orders/42');
@@ -222,18 +202,19 @@ await expect(screen.getByText('Order #42')).toBeVisible();
 ```
 
 `device.clearKeychain()` resets the simulator's keychain, which
-`app.clearState()` leaves alone. A stored session token is then gone on the
-next launch. It is iOS only, since Android has no keychain to reset.
+`app.clearState()` leaves alone, so a stored session token is gone on the
+next launch. It is iOS only.
 
 <Accordion title="Foldable iOS simulators">
 `device.fold(pose)` puts the iPhone Duo simulator in a hinge pose. `closed`
 lights the outer display. `half-open` (a 130° book) and `open` light the
-inner one. The call returns when the simulator reports the hinge at that
-angle, typically after 10 to 16 seconds. Keep `actionTimeout` at 20 seconds
-or more. The next observation reads the app on the other display.
+inner one. The call returns when the hinge reaches the pose, typically after 10 to 16
+seconds, so keep `actionTimeout`
+at 20 seconds or more. The next observation reads the app on the other
+display.
 
-The engine never resets the pose. A retry and the next test start in the
-pose the last test left. Fold back in `afterEach`, which also runs when the
+The engine never resets the pose, so a retry and the next test start where
+the last test left it. Fold back in `afterEach`, which also runs when the
 test fails:
 
 ```ts
@@ -274,8 +255,8 @@ Tests run on both targets. Set `platforms: ['ios']` or
 `platforms: ['android']` on a test with platform-specific labels or
 behavior.
 
-To run files in parallel, give a device pool. Set `workers` to at least the
-pool's size. Each device gets one worker:
+To run files in parallel, give a device pool and set `workers` to at least
+its size. Each device gets one worker:
 
 ```ts
 mobile({ platform: 'ios', device: ['iPhone 17', 'iPhone 17 Pro'] })
@@ -311,16 +292,14 @@ export default {
 
 Calls go to the engine that runs the current attempt. `open_app`, `swipe`,
 and `alert` change device state, so the agent runs them live during a cache
-replay. To add your own tools beside the pack, see
-[Project tools](/tools). The
-[mobile engine reference](/reference/mobile#agent-tools) describes each
-tool.
+replay. The [mobile engine reference](/reference/mobile#agent-tools)
+describes each tool. To add your own beside them, see
+[Project tools](/tools).
 
 ## Physical devices
 
 agent-device drives a phone plugged into your machine as it drives a
-simulator. A phone needs no other engine or option. List the devices
-agent-device sees:
+simulator, with no other engine or option. List the devices it sees:
 
 <CodeGroup>
 ```bash npm
@@ -342,12 +321,11 @@ Then name the phone in `device` as it is listed:
 mobile({ platform: 'ios', device: 'QA iPhone' })
 ```
 
-Name a phone by its name, not its id. The engine reads a `device` string as
-an id only when it is a simulator UDID or an `emulator-<port>` serial. The
-first device with a matching name wins, so give each phone a unique name.
-Two phones both called `iPhone` would bind one phone to two workers.
-Without `device`, a connected phone counts as booted and joins the pool
-beside booted simulators. Name it to be sure a run lands on it.
+Use the name, not the id. The engine reads a `device` string as an id only
+for a simulator UDID or an `emulator-<port>` serial. The first device with
+a matching name wins, so give each phone a unique name. Without `device`, a
+connected phone counts as booted and joins the pool beside booted
+simulators.
 
 Set the phone up one time:
 
@@ -359,10 +337,9 @@ Set the phone up one time:
     `AGENT_DEVICE_IOS_BUNDLE_ID` to a unique reverse-DNS id, such as
     `com.example.agentdevice.runner`. The signing profile must allow that id
     and `<id>.uitests`. The first run builds the runner and takes longer.
-  - A running daemon keeps the environment it started with. After you
-    change these variables, run `npx agent-device daemon stop`.
-  - `app.appPath` must be a signed device build. A simulator `.app` doesn't
-    install on a phone.
+  - After you change these variables, run `npx agent-device daemon stop`.
+    A running daemon keeps the environment it started with.
+  - `app.appPath` must be a signed device build, not a simulator `.app`.
 
   `npx agent-device help physical-device` covers iOS signing in detail.
   </Tab>
@@ -373,9 +350,8 @@ Set the phone up one time:
   </Tab>
 </Tabs>
 
-`npx agent-device doctor` checks the setup. A phone isn't this machine, so
-`localhost` in the app is the phone itself. Point the app at your machine's
-network address. On Android, you can forward the port with
+On a phone, `localhost` in the app is the phone itself. Point the app at
+your machine's network address, or on Android forward the port with
 `adb reverse tcp:<port> tcp:<port>`.
 
 <Accordion title="What doesn't work on a phone">
@@ -389,9 +365,8 @@ with agent-device's message.
   `device.clearKeychain`. So are `device.clipboard`, `device.setClipboard`,
   and `device.fold`.
 - For a fresh start on an iPhone, reinstall with
-  `device.installApp(path, { reinstall: true })`. Set `app.bundleId` on the
-  target or `app` in the options, so agent-device knows which app to
-  remove.
+  `device.installApp(path, { reinstall: true })`. Set `app.bundleId` or the
+  `app` option so agent-device knows which app to remove.
 - agent-device drives an older iPhone without CoreDevice when
   `xcrun devicectl list devices` doesn't list it. Taps, typing, and the
   screen work. Installs, `--video`, `device.openLink`, and
@@ -404,20 +379,16 @@ with agent-device's message.
   second, and drops frames.
 </Accordion>
 
-To run on phones in a device farm, see [Hosted devices](#hosted-devices).
-
 ## Hosted devices
 
-Set `device` to a `DeviceProvider` to run on devices a service hosts. The
-provider leases one device per worker slot when the run starts, and
-releases it when the run ends. The engine drives each lease through the
-agent-device daemon the lease names, instead of the local one. Any service
-that runs an agent-device daemon next to a simulator, an emulator, or a
-phone works.
+Set `device` to a `DeviceProvider` to run on devices a service hosts. Any
+service that runs an agent-device daemon next to a simulator, an emulator,
+or a phone works. The provider leases one device per worker slot when the
+run starts, and releases it when the run ends.
 
 For [EAS Simulators](/integrations/eas), use `easSimulators()` from
-`@e2e-dev/eas`. For another service, write a provider of a few dozen lines
-in your project, such as `hostedDevices` in the example below:
+`@e2e-dev/eas`. For another service, write a provider of a few dozen lines,
+such as `hostedDevices` in the example below:
 
 ```ts
 mobile({
@@ -426,13 +397,11 @@ mobile({
 })
 ```
 
-- With `workers: 2`, two workers lease two sessions in parallel. A service
-  bills a session while it runs, so keep `workers` at what the suite can
-  fill.
+- Each worker leases its own session, and a service bills a session while
+  it runs. Keep `workers` at what the suite can fill.
 - The replay cache keys on `app.bundleId`, so recordings made locally
   replay on hosted devices.
-- The runner warms leased devices like local ones. It boots them, starts
-  the iOS runner, and opens the app one time before test timing starts.
+- Leased devices warm up like local ones, before test timing starts.
 
 <Accordion title="The DeviceProvider contract">
 ```ts
@@ -460,13 +429,11 @@ export interface DeviceLease {
 }
 ```
 
-**`acquire`** runs once per worker slot, for every slot at once, in the
-runner process. It gets the platform, the run id, the target, the slot, the
-target's `app.bundleId` as `app`, and its resolved `app.appPath` as
-`appPath`. It also gets `agentDeviceVersion`, the agent-device version the
-engine's client speaks, for a service that starts a daemon of a chosen
-version. The rest is `projectRoot`, the run's `env`, an interrupt `signal`,
-and a `log` that reaches the reporter.
+**`acquire`** runs for every worker slot at once, in the runner process.
+The request carries `platform`, `runId`, `targetName`, `slot`, `app` (the
+target's `app.bundleId`), the resolved `appPath`, `agentDeviceVersion` (for
+a service that starts a daemon of a chosen version), `projectRoot`, `env`,
+an interrupt `signal`, and a `log` that reaches the reporter.
 
 - Read tokens from `request.env`, not `process.env`. Read project files
   under `request.projectRoot`, not `process.cwd()`.
@@ -477,34 +444,28 @@ and a `log` that reaches the reporter.
 **`release`** runs after the last worker exits, within `cleanupTimeout`, on
 every exit path: a failure, an interrupt, or a `prepare` that threw. It gets
 the object `acquire` returned, so a provider can keep its own fields on it.
-Only `id`, `daemon`, `client`, `device`, `deviceId`, and `installedApp` go
-to the workers. The engine holds every lease it got, including one it then
-refuses. When one slot fails to lease, the run ends before any test, and
-the engine still releases the leases that succeeded.
+Only the `DeviceLease` fields reach the workers. When one slot fails to
+lease, the run ends before any test, and the engine still releases every
+lease it got.
 
-**`client`** is agent-device client configuration, as JSON data. The
-worker's client starts with it, on top of the session name and the `daemon`
-address. The engine refuses a lease that sets `session`, `daemonBaseUrl`,
-`daemonAuthToken`, or `daemonTransport`. For agent-device's own device-cloud
-runtimes, `client` carries the lease scope that `leases.allocate` returned:
-`tenant`, `runId`, `leaseId`, `leaseBackend`, and `leaseProvider`. The
-daemon finds the hosted device from it on each command. A command without a
-scope falls back to the local devices. A `stateDir` in `client` points the
-worker at a daemon the provider started, so that provider needs no `daemon`
-address.
+**`client`** is agent-device client configuration, as JSON data, applied on
+top of the session name and the `daemon` address. A lease that sets
+`session`, `daemonBaseUrl`, `daemonAuthToken`, or `daemonTransport` is
+refused. For agent-device's own device-cloud runtimes, `client` carries the
+lease scope that `leases.allocate` returned: `tenant`, `runId`, `leaseId`,
+`leaseBackend`, and `leaseProvider`. A command without a scope falls back
+to the local devices. A `stateDir` in `client` points the worker at a
+daemon the provider started, so no `daemon` address is needed.
 
 **`record`** is optional. When an attempt records video, the worker calls
-it with its lease, instead of agent-device's screen recording. The worker
-may be another process, so `record` gets only the lease fields that travel
-there, and no state `acquire` kept.
-`record` returns a `ProviderRecording` (import the type from `e2e/engine`).
-When the attempt's video ends, its `stop` either writes a file into the
-directory it gets and returns `{ file }`, or returns `{ url, mediaType }`
-for a recording the service keeps. The runner keeps a file as
-`video/<file>` beside the attempt's other artifacts. The report links a
-URL. A `record` that fails fails the attempt's launch, named after the
-provider and the lease. A `stop` that fails is tried one more time when the
-attempt ends. Without `record`, the engine records with agent-device.
+it instead of agent-device's screen recording. The worker may be another
+process, so `record` gets only the lease fields, not state `acquire` kept.
+It returns a `ProviderRecording` (a type from `e2e/engine`) whose `stop`
+either writes a file into the directory it gets and returns `{ file }`,
+kept as `video/<file>`, or returns `{ url, mediaType }` for a recording the
+service keeps, which the report links. A `record` that fails fails the
+attempt's launch. A `stop` that fails is tried one more time when the
+attempt ends.
 </Accordion>
 
 <Accordion title="Example: a provider for a session API">
@@ -619,7 +580,7 @@ export function cloudDevices(options: { provider: string; stateDir: string }): D
 
 | On the web | On a device |
 | --- | --- |
-| `app.open('/path')` and the agent's `navigate` verb | No app URL. `app.open()` launches the target's `app.bundleId` fresh, `device.openLink(url)` opens a deep link or web link into it, and there is no `navigate` |
+| `app.open('/path')` and the agent's `navigate` verb | No app URL and no `navigate`. `app.open()` launches `app.bundleId` fresh, and `device.openLink(url)` opens a link into it |
 | `test.setup` saves a session, `session:` restores it | Not available. A simulator has no portable session snapshot; sign in per test or seed the app |
 | Secret input | `type_secret` and `screen.getByLabel(...).fill(secret)` fill declared secrets into secure fields |
 | `--video` writes a WebM screencast | `--video` writes an MP4 of the device screen with taps shown (`videoTouches: false` hides them), or keeps a device provider's own recording |
@@ -631,14 +592,13 @@ export function cloudDevices(options: { provider: string; stateDir: string }): D
 - A React Native tab (`accessibilityRole="tab"`) on iOS has role `other`.
   Query it by test id or label and assert `toBeSelected`. Checkboxes,
   radios, and `toBeChecked` work on both platforms.
-- On iOS, a plain React Native `View` has no children in the tree. So
+- On iOS, a plain React Native `View` has no children in the tree, so
   `filter({ has })` on it and queries scoped to it match nothing. Scope to
   the screen's `ScrollView` (`device.locator('role=ScrollView')`), or give
   the children test ids.
-- A Jetpack Compose clickable drawn smaller than 48dp reports a 48dp touch
-  area but its role node at the drawn size. The tree shows two buttons, and
-  a tap fails with `has no parent-owned touch point`. Make the control at
-  least 48dp, Android's minimum touch target.
+- A Jetpack Compose clickable drawn smaller than 48dp shows as two buttons
+  in the tree, and a tap fails with `has no parent-owned touch point`. Make
+  the control at least 48dp, Android's minimum touch target.
 - An element hidden with `display: none` isn't in the tree, so
   `toBeAttached` fails. Assert `toHaveCount(0)` or `toBeHidden`.
 - `doubleTap()` on iOS is two taps about 285 ms apart. Give a double-tap
@@ -652,38 +612,27 @@ export function cloudDevices(options: { provider: string; stateDir: string }): D
 ## Troubleshooting
 
 A device failure shows agent-device's own message. Under the agent, an
-engine fault with no more specific code reports as `APP_UNREACHABLE`. Read
-the message before the code: often the app isn't the part that failed.
+engine fault with no more specific code reports as `APP_UNREACHABLE`, so
+read the message before the code: often the app isn't what failed.
 
 **The iOS automation runner is busy, wedged, or can't present a
-snapshot.** A heavy or animating screen can overrun the runner. A run
-stopped with Ctrl-C can leave it busy for the next run. The message tells
-you what to do:
+snapshot.** A heavy or animating screen can overrun the runner, and a run
+stopped with Ctrl-C can leave it busy. The message names the runner and
+the first move, usually a rerun. If the next run meets it again, stop the
+daemon and reboot the simulator with the commands below.
 
-```text
-APP_UNREACHABLE: agent.act failed: snapshot failed: the iOS automation runner is still
-finishing a command that overran its watchdog (session e2e-ios-0 on iPhone 17 Pro):
-The iOS runner is still finishing a previous command that exceeded its execution
-watchdog (usually an accessibility capture on a heavy or animating screen). The app
-is fine. Wait a few seconds and rerun. If the next run meets it again, stop the
-daemon (`npx agent-device daemon stop`) and reboot the simulator
-(`xcrun simctl shutdown <udid>`, then `boot`).
-```
-
-**`device.installApp()` on Android reports no bundle id or package.** The
-build installed, but agent-device couldn't tell which package it is, so
-`app.open()` has nothing to launch. When agent-device can't read the APK's
-manifest, it falls back to the Android SDK's `aapt`. It looks for the SDK
-under `ANDROID_SDK_ROOT`, `ANDROID_HOME`, `~/Library/Android/sdk` on macOS,
-and `~/Android/Sdk`. Without `aapt`, it names only a package the install
-added, and a build already on the emulator adds none. Set the target's
+**`device.installApp()` on Android reports no bundle id or package.**
+agent-device couldn't tell which package the build is, so `app.open()` has
+nothing to launch. When it can't read the APK's manifest, it falls back to
+the Android SDK's `aapt`, found under `ANDROID_SDK_ROOT`, `ANDROID_HOME`,
+`~/Library/Android/sdk` on macOS, or `~/Android/Sdk`. Set the target's
 `app.bundleId`. Or export `ANDROID_HOME`, then stop the agent-device daemon
 so the next run starts it with the variable.
 
 **A timeout on the device.** A simulator boot, runner connection, or app
-launch that times out on the device is `ENGINE_FAILURE`, with
-agent-device's message and hint. It is never one of e2e's own timeout codes
-(`LAUNCH_TIMEOUT`, `ACTION_FAILED`, `STEP_TIMEOUT`).
+launch that times out on the device is `ENGINE_FAILURE` with agent-device's
+message and hint, never `LAUNCH_TIMEOUT`, `ACTION_FAILED`, or
+`STEP_TIMEOUT`.
 
 <CodeGroup>
 ```bash npm
