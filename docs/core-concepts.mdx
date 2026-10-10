@@ -4,7 +4,8 @@ description: Goals, assertions, and locators, and how to structure and run tests
 icon: "lightbulb"
 ---
 
-A test has three types of step:
+A test is a list of steps of three types: goals, assertions, and locators.
+You can use all three in one test.
 
 | Step | API | Model call |
 | --- | --- | --- |
@@ -14,8 +15,6 @@ A test has three types of step:
 
 The model column is for the built-in agent. A
 [custom executor](/executors) can run `act` and `assert` without a model.
-
-You can use all three in one test:
 
 ```ts title="tests/todos.e2e.ts"
 import { test, expect } from 'e2e';
@@ -37,7 +36,7 @@ while a step still runs, the test fails with `STEP_NOT_AWAITED`.
 ## Goals
 
 `agent.act` takes one goal. The agent selects and does the actions. It
-returns when the goal is complete. It throws when the goal fails.
+returns when the goal is complete and throws when the goal fails.
 
 ```ts
 await agent.act('complete checkout with the test card');
@@ -59,13 +58,13 @@ const email = `ada+${Date.now()}@example.test`;
 await agent.act('sign up with email {email}', { params: { email: unique(email) } });
 ```
 
-If a goal fails, read the report. Then make the instruction more specific.
-Put words that many goals use in the agent's `context`; see
-[Agents and personas](/agents). For verdicts and exit codes, see
-[How agent steps work](/agent-steps#how-a-step-ends).
-
 `act` gets screenshots when it needs them. On some engines, it can tap and
 type at points in the image.
+
+If a goal fails, read the report. Then make the instruction more specific.
+Put words that many goals use in the agent's `context`. See
+[Agents and personas](/agents). For verdicts and exit codes, see
+[How agent steps work](/agent-steps#how-a-step-ends).
 
 ## Assertions
 
@@ -74,7 +73,7 @@ current screen, and the agent's context. It does not see the earlier steps
 or the summaries of `act`.
 
 - `agent.assert` examines the screen now. A false statement fails with
-  `ASSERTION_FAILED`. Not sufficient evidence fails with
+  `ASSERTION_FAILED`. When the evidence is not enough, it fails with
   `ASSERTION_INCONCLUSIVE`.
 - `agent.waitFor` waits until a condition is true. It calls the model only
   when the screen changes.
@@ -87,6 +86,7 @@ import { z } from 'zod';
 
 await agent.assert('the dashboard shows a trial badge');
 await agent.waitFor('a download link appears', { timeout: 120_000 });
+await agent.assert('the chart trends upward', { vision: true });
 
 const data = await agent.extract('every todo title', {
   schema: z.object({ titles: z.array(z.string()) }),
@@ -97,18 +97,11 @@ expect(data.titles).toContain('Buy milk');
 For text that the model wrote, examine the meaning, not the full sentence.
 When the exact text is important, use a [locator](#locators).
 
-### Judging pixels
-
 Judgments read a redacted text snapshot of the screen. For a visual check,
 such as a chart or a layout, add `vision: true`. To judge only the
-screenshot, use `vision: 'only'`.
-
-```ts
-await agent.assert('the chart trends upward', { vision: true });
-```
-
-Images add input tokens. After a secret fill, the attempt sends no more
-screenshots. See the [agent reference](/reference/agent#vision).
+screenshot, use `vision: 'only'`. Images add input tokens. After a secret
+fill, the attempt sends no more screenshots. See the
+[agent reference](/reference/agent#vision).
 
 ## Locators
 
@@ -136,14 +129,14 @@ await expect(screen.getByRole('status')).toHaveText('2 remaining');
   more than one node. Use `.filter()`, `.first()`, or `.nth()` to find one
   node.
 - A direct read, such as `textContent()`, does not retry.
-- Put an `expect` after an `agent.act` goal. It examines the exact result.
+- Put an `expect` after each `agent.act` goal to check the exact result.
   The [replay cache](/cache) records a goal only after a later check passes.
 
 See the [screen reference](/reference/screen) and the
 [expect reference](/reference/expect#locator-matchers). For routes, cookies,
 dialogs, and downloads, see [Working with the browser](/browser).
 
-## Structure
+## Organize tests
 
 ```ts
 import { beforeEach, describe, test } from 'e2e';
@@ -166,11 +159,11 @@ test('needs two organizations', async ({ app }) => {
 - `test.skip(condition, reason)` stops the test when the condition is true.
   The report shows the test as `skipped`.
 - For a flow across many tests, set `{ serial: true }` on the group. The
-  tests run in sequence on one worker, and retry together.
+  tests run in sequence on one worker and retry together.
 - For setup and cleanup, use `test.extend`. See
   [Your own fixtures](/reference/test#your-own-fixtures).
-- Import `test` from `@e2e-dev/web` or `@e2e-dev/mobile` to have the
-  `browser` or `device` fixture typed.
+- Import `test` from `@e2e-dev/web` or `@e2e-dev/mobile` to type the
+  `browser` or `device` fixture.
 
 The [test reference](/reference/test) shows all options.
 
@@ -197,6 +190,8 @@ bunx e2e run --target web             # one target
 </CodeGroup>
 
 The [CLI reference](/reference/cli#e2e-run) shows all flags.
+
+## Next
 
 <CardGroup cols={2}>
   <Card title="Caching" icon="box-archive" href="/cache">
