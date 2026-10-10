@@ -25,13 +25,12 @@ test('the dashboard loads', async ({ app, screen, browser }) => {
 ```
 
 In a suite with device targets, add `{ requires: ['browser'] }` to a test
-that uses `browser`. The runner then skips it on devices.
+that uses `browser`, so the runner skips it on devices.
 
 ## Mock an API
 
-`browser.route` intercepts requests for the rest of the attempt. Register it
-before the page opens. It stays in force after `app.restart()` and a
-session restore.
+`browser.route` intercepts requests for the rest of the attempt, also after
+`app.restart()` and a session restore. Register it before the page opens.
 
 ```ts
 await browser.route('**/api/quote', async (route) => {
@@ -42,8 +41,8 @@ await app.open('/checkout');
 await expect(screen.getByText('$42.00')).toBeVisible();
 ```
 
-- Each handler must call one of `fulfill`, `continue`, `fallback`, or
-  `abort`, exactly one time.
+- Each handler calls exactly one of `fulfill`, `continue`, `fallback`, or
+  `abort`.
 - The newest route runs first. `continue` sends the request to the network.
   `fallback` passes it to the route registered before.
 - An `expect` that fails in a handler fails the test, at the next step or
@@ -104,9 +103,8 @@ await expect(editor.frameLocator('#preview').getByRole('heading', 'Uploaded')).t
 ```
 
 `browser.locator('css or xpath')` does the same on the page. Use a selector
-only when role, label, and test-id queries can't find the element. When a
-hidden duplicate makes a match ambiguous, first try `{ visible: true }` on
-the query.
+only when role, label, and test-id queries can't find the element. For a
+match made ambiguous by a hidden duplicate, try `{ visible: true }` first.
 
 ## Read from the page
 
@@ -118,8 +116,7 @@ const count = await browser.evaluate(() => document.querySelectorAll('li').lengt
 const flag = await browser.evaluate((name: string) => window.localStorage.getItem(name), 'featureFlags');
 ```
 
-Use `evaluate` for state that `screen` can't read. For visible UI, use
-locators and assertions, so the test depends less on the DOM.
+Use `evaluate` only for state that `screen` can't read.
 
 ## Run a script before the page
 
@@ -146,10 +143,9 @@ See [init scripts](/reference/web#init-scripts).
 await browser.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }]);
 ```
 
-A cookie URL that doesn't parse, or that has a scheme other than `http:` or
-`https:`, is `POLICY_DENIED`. `about:blank` is refused too. e2e checks a
-domain cookie as the origin it would go to. When one entry is refused, e2e
-sets no cookies.
+A cookie URL that doesn't parse, `about:blank`, or a scheme other than
+`http:` or `https:` is `POLICY_DENIED`. A domain cookie is checked as the
+origin it would go to. When one entry is refused, e2e sets none.
 
 ## Pick a browser
 
@@ -184,10 +180,9 @@ To set sizes, see [Viewports](/web#viewports).
 ## Hosted browsers
 
 A browser provider leases a browser from a service and gives the engine its
-CDP endpoint. Pass it as `browser`. The engine attaches over CDP as with
-`connect`. It also asks for a browser when it needs one and gives it back
-when its scope ends, on every exit path. A session billed by the minute
-stops when the run no longer uses it.
+CDP endpoint. Pass it as `browser`. The engine gives each browser back when
+its scope ends, on every exit path, so a session billed by the minute stops
+when the run no longer uses it.
 
 | Service | Provider |
 | --- | --- |
@@ -195,12 +190,12 @@ stops when the run no longer uses it.
 | [smol machines](/integrations/smol) microVMs on your own computer | `smol()` from `@e2e-dev/smol` |
 | Any other service | Your own provider, a few dozen lines in your project |
 
-When the service shows the window in a live view, add `viewport: null`.
-The page then [fills the window](/web#fill-the-window) instead of a 1280 by
-720 area of it.
+When the service shows the window in a live view, add `viewport: null` so
+the page [fills the window](/web#fill-the-window).
 
-A provider implies Chromium, because CDP attach works only there. It can't
-be combined with `connect`. A target with nothing to run leases nothing.
+A provider implies Chromium, the only browser CDP attach works on, and
+can't be combined with `connect`. A target with nothing to run leases
+nothing.
 
 ### Write a provider
 
@@ -244,9 +239,10 @@ attempt id for a per-attempt lease, the run's environment, an abort signal,
 and a `log` that reaches the reporter. Read tokens from `request.env`, not
 `process.env`.
 
-A lease is JSON data. Only `id`, `cdpEndpoint`, and `reconnectEndpoint`
-travel to the worker. `release` gets back the object `acquire` returned, so
-a provider can keep its own fields on it.
+A lease is JSON data. `release` gets back the object `acquire` returned, so
+a provider can keep its own fields on it. Only `id`, `cdpEndpoint`, and
+`reconnectEndpoint` travel to the worker, so key anything a worker uses,
+such as a recording, on `lease.id`.
 
 Against a typical session API, a provider sends three requests: create a
 session, poll it until it has a DevTools endpoint, and stop it.
@@ -331,48 +327,35 @@ Two workers lease two sessions in parallel and keep them for the run.
 ### Pick a lease scope
 
 `scope: 'worker'`, the default, keeps one browser per worker slot for the
-whole run. `scope: 'attempt'` gives each attempt a fresh browser that no
-earlier test touched, for the cost of a session start per attempt. A
-hosted session costs money while it runs, so keep `workers` at what the
-suite can fill.
-
-<Accordion title="Worker scope: when leases start and end">
-The engine leases one browser per worker slot when the run starts, all
-slots in parallel. Each worker attaches to its own browser for every
-attempt it runs.
-
-- When a slot fails to lease, the run ends before any test. The engine
-  still releases the leases that succeeded.
-- The engine releases leases after the last worker exits, on every exit
-  path: failure, interrupt, and a `prepare` that threw. It does this
-  within `cleanupTimeout`.
-- When a worker's browser drops, the worker leases a replacement at the
-  next attempt start. It releases the replacement when it exits. The
-  runner keeps the dead lease and releases it at the end.
-- So `acquire` also runs in a worker process. A provider must not depend
-  on state it built in the runner process. Its `log` still reaches the
-  reporter, prefixed with the target and worker slot.
-- The side that acquired a lease releases it, exactly one time.
+whole run. `scope: 'attempt'` gives each attempt, retries included, a fresh
+browser that no earlier test touched, for the cost of a session start per
+attempt. A hosted session costs money while it runs, so keep `workers` at
+what the suite can fill.
 
 A worker that dies (a crash, `process.exit`, a kill) can't release what it
-acquired: an attempt's browser or a replacement. Implement `sweep` to have
-the runner release those. It runs one time per target when the run ends,
-after the last worker exits and the runner released its own leases. Every
-lease it finds at the service with the run's id and the target is one a
-worker left open. `sweep` releases them and resolves to their ids, which
-the reporter lists. A failed sweep shows as a line and fails nothing.
-Without `sweep`, such a browser lives until the service ends it.
+acquired. Implement `sweep` to have the runner release those leases when
+the run ends, one time per target: it finds them at the service by the
+run's id and the target, and resolves to their ids for the reporter. A
+failed sweep shows as a line and fails nothing. Without `sweep`, such a
+browser lives until the service ends it.
+
+<Accordion title="Worker scope: when leases start and end">
+- The engine leases every slot's browser in parallel when the run starts.
+  When one slot fails, the run ends before any test, and the leases that
+  succeeded are released.
+- The engine releases leases after the last worker exits, within
+  `cleanupTimeout`, on every exit path: failure, interrupt, and a
+  `prepare` that threw.
+- When a worker's browser drops, the worker leases a replacement at the
+  next attempt start and releases it when it exits. So `acquire` also runs
+  in a worker process: don't depend on state built in the runner process.
+  Its `log` still reaches the reporter, prefixed with the target and slot.
+- The side that acquired a lease releases it, exactly one time.
 </Accordion>
 
 <Accordion title="Attempt scope: limits">
-The engine leases a fresh browser in every `startAttempt`, retries
-included. It releases the browser in `endAttempt`, also after a failed
-start. A lease that arrives after the attempt was cancelled or ended goes
-straight back, unused.
-
-The attempt runs in the browser's persistent default context, on the
-browser's first tab. The remote browser must contain only that context. The
-limits of
+The attempt runs in the browser's persistent default context, on its first
+tab, so the remote browser must contain only that context. The limits of
 [`connect.reconnectEndpoint`](/reference/web#recovering-a-cdp-transport)
 apply:
 
@@ -384,36 +367,34 @@ apply:
   before its setup test signs in.
 
 After a transport drop, the next operation reattaches through the lease's
-`reconnectEndpoint`, or `cdpEndpoint` when the lease has none. The engine
-checks that it is the same browser.
+`reconnectEndpoint`, else its `cdpEndpoint`, and checks that it is the same
+browser.
 </Accordion>
 
 ### Downloads on the provider
 
 Implement `downloads`, and `browser.waitForDownload` works as it does
 locally. A hosted browser saves a download to its own disk, where the
-runner can't open it. With `downloads`, the browser saves the file under
-`dir` on its machine. The engine gives the finished file's path to `read`,
-which fetches the bytes through the service's file API. `read` runs in the
-worker, bounded by the call's timeout. The engine saves the bytes as the
-attempt's `download` artifact.
+runner can't open it. With `downloads`, it saves the file under `dir`, and
+the engine passes the finished file's path to `read`. `read` fetches the
+bytes through the service's file API, in the worker, bounded by the call's
+timeout. [Kernel](/integrations/kernel#downloads) serves downloads this
+way.
 
 Without `downloads`, a download on a browser on another machine fails with
 `ENGINE_FAILURE`, naming the provider. A provider whose browsers run on the
-runner's machine needs nothing. [Kernel](/integrations/kernel#downloads)
-serves downloads this way.
+runner's machine needs nothing.
 
 ### Recording on the provider
 
 Implement `record` to use the service's own recording as the attempt's
 video. When an attempt records [video](/reference/config#video), the worker
-calls `record` with the attempt's lease instead of starting the engine's
-screencast. The recording starts when the attempt's page is open. It covers
-the whole browser window, tabs and address bar included.
+calls `record` instead of starting the engine's screencast, once the page
+is open. The recording covers the whole browser window, tabs and address
+bar included.
 
-`record` returns a `ProviderRecording` (import the type from `e2e/engine`).
-The attempt stops it when it collects its video. `stop` does one of two
-things:
+`record` returns a `ProviderRecording` from `e2e/engine`. When the attempt
+collects its video, its `stop` does one of two things:
 
 - Writes a file into the directory it gets and returns `{ file }`. e2e keeps
   it as `video/<file>` beside the attempt's other artifacts.
@@ -450,52 +431,45 @@ async record(lease, context): Promise<ProviderRecording> {
 
 </Accordion>
 
-In `worker` scope, `record` usually gets the copy of the lease that
-traveled to the worker. That copy has only `id`, `cdpEndpoint`, and
-`reconnectEndpoint`, so key the recording on `lease.id`.
-
 A failed `record` fails the attempt's launch, naming the provider and the
-lease. A failed `stop` runs one more time when the attempt ends, so a
-recording never keeps running on a browser that later attempts share. When
-the service can't record, or can't record a browser (a headless one), leave
-`record` out. The engine then records the screencast.
-[Kernel](/integrations/kernel#recordings) records this way.
+lease. A failed `stop` runs one more time when the attempt ends, so no
+recording keeps running on a shared browser. When the service can't record
+a browser (a headless one, say), leave `record` out and the engine records
+the screencast. [Kernel](/integrations/kernel#recordings) records this way.
 
 ## Icon fonts and generated content
 
 Text that a stylesheet adds with `::before` or `::after` is part of a
-control's name, as screen readers read it. A button with
-`.next::before { content: "→" }` is `button "→ Next"` in the tree and to
-`getByRole`.
+control's name, as screen readers read it: a button with
+`.next::before { content: "→" }` is `button "→ Next"`. Label text, as
+`getByLabel` reads it, never includes generated content.
 
 Icon fonts are the exception. Font Awesome and similar fonts draw each icon
-from a private-use character (`\f090`) that means nothing as text. The
-engine drops those characters from every name:
+from a private-use character (`\f090`), and the engine drops those
+characters from every name:
 
 - `<button><i class="fa fa-sign-in"> Login</i></button>` is
   `button "Login"`, and `getByRole('button', 'Login')` finds it.
 - A glyph between two words reads as a space.
 - A control with only an icon reads as its `title`, when it has one. The
-  browser names it by the glyph, so `getByRole` by that title finds
+  browser still names it by the glyph, so `getByRole` by that title finds
   nothing. Give it an `aria-label`, or use
   `browser.locator('[title="Sign out"]')`.
-- A `RegExp` name matches the name as the browser computes it, glyph
-  included. On such a control, don't anchor it: `/Login/`.
-
-Label text never includes generated content, as `getByLabel` reads it.
+- A `RegExp` name matches the browser's name, glyph included, so don't
+  anchor it: `/Login/`.
 
 ## Inert content
 
-The agent doesn't see an element with the `inert` attribute, or anything
-under it. So it never aims at a control behind an open drawer. Locators
+The agent doesn't see an element with the `inert` attribute or anything
+under it, so it never aims at a control behind an open drawer. Locators
 still find inert content, and `toBeVisible` still passes, as in Playwright.
 
 ## Shadow DOM
 
 `screen` queries, scopes, and `has` filters reach into open and closed
-shadow roots, and the agent sees their content. Actions and assertions work
-there as anywhere else. `first`, `last`, and `nth` count the matches
-outside a closed root first, then each root's matches in order.
+shadow roots, and the agent sees their content. `first`, `last`, and `nth`
+count the matches outside a closed root first, then each root's matches in
+order.
 
 ```ts
 // The input and the button live in a closed shadow root a widget attached.
