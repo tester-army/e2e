@@ -1,5 +1,13 @@
 # @e2e-dev/decision
 
+## 0.2.1
+
+### Patch Changes
+
+- [#843](https://github.com/tester-army/e2e/pull/843) [`ac657d1`](https://github.com/tester-army/e2e/commit/ac657d1d0c063cd19ee458ee1d645783bf1ef8ce) Thanks [@pvedula7](https://github.com/pvedula7)! - The decision executor offers `dismiss_keyboard` while an on-screen keyboard is showing and the engine can dismiss it. Before, a control the keyboard covered after typing (an iOS number pad over a submit button) could not be reached, and the step failed.
+
+- [#844](https://github.com/tester-army/e2e/pull/844) [`5e55d7c`](https://github.com/tester-army/e2e/commit/5e55d7c92d67f9b8741c7835ef23de5d62c637c2) Thanks [@pvedula7](https://github.com/pvedula7)! - The decision executor's stall guard now counts an action that errored as no progress, so three actions in a row that failed or changed nothing on screen block the step. It used to look only at whether the page changed, and a ticking timer on screen changes it every time: a tap that failed with `APP_UNREACHABLE` again and again never tripped the guard, and the model could repeat it until it gave up and claimed the step failed. A skipped pick and a rejected `done` or `failed` claim also carry an error in the step's history, so they count toward the three as well.
+
 ## 0.2.0
 
 ### Minor Changes
