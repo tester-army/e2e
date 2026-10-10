@@ -488,8 +488,14 @@ export class AgentDeviceSurface {
     }
   }
 
-  /** The device selection this worker's commands take. */
-  private selection(): DeviceSelection {
+  /**
+   * The device selection this worker's commands take. A command that can
+   * run with no app open (before `app.open()`, after `closeApp()` ends the
+   * session) carries it: the daemon then resolves the device from it and
+   * not from every booted one. With a session open it names the session's
+   * own device, which agent-device accepts.
+   */
+  selection(): DeviceSelection {
     return deviceSelection(this.options.platform, this.device);
   }
 
@@ -600,6 +606,7 @@ export class AgentDeviceSurface {
       // The whole screen: an app scope refuses to start while no app is open, before `app.open()` and after `closeApp()`.
       (client) =>
         client.recording.record({
+          ...this.selection(),
           action: 'start',
           path: absolute,
           quality: 'medium',
@@ -642,7 +649,7 @@ export class AgentDeviceSurface {
    * `closeApp` leaves it.
    */
   private async stopScreenRecording(signal: AbortSignal): Promise<{ readonly outPath?: unknown }> {
-    const result = await this.command('stop video recording', (client) => client.recording.record({ action: 'stop' }), signal);
+    const result = await this.command('stop video recording', (client) => client.recording.record({ ...this.selection(), action: 'stop' }), signal);
     if (result.recordOnlySession === true) {
       this.sessionApp = undefined;
       this.screenReplaced();
@@ -771,7 +778,7 @@ export class AgentDeviceSurface {
   private async permission(permission: DevicePermission, state: PermissionState, signal: AbortSignal): Promise<void> {
     await this.command(
       `permission ${permission} ${state}`,
-      (client) => client.settings.update({ setting: 'permission', permission, state }),
+      (client) => client.settings.update({ ...this.selection(), setting: 'permission', permission, state }),
       signal,
     );
   }
@@ -1415,7 +1422,7 @@ export class AgentDeviceSurface {
     if (app === undefined) throw unsupported(`app.clearState needs the target's \`app.bundleId\`, or ${UNINSTALLED_BUILD}`);
     await this.command(
       'clear app state',
-      (client) => client.settings.update({ setting: 'clear-app-state', state: 'clear', app }),
+      (client) => client.settings.update({ ...this.selection(), setting: 'clear-app-state', state: 'clear', app }),
       operation.signal,
     );
     await this.openApp(app, { relaunch: true }, operation.signal);
@@ -1430,7 +1437,7 @@ export class AgentDeviceSurface {
     if (this.options.platform !== 'ios') {
       throw unsupported('device.fold drives a foldable iOS simulator (iPhone Duo) through agent-device; it has no Android driver');
     }
-    await this.screenCommand('device.fold', (client) => client.command.fold({ pose }), signal);
+    await this.screenCommand('device.fold', (client) => client.command.fold({ ...this.selection(), pose }), signal);
   }
 
   /**
@@ -1444,7 +1451,7 @@ export class AgentDeviceSurface {
     }
     await this.command(
       'device.clearKeychain',
-      (client) => client.settings.update({ setting: 'reset-keychain', state: 'clear' }),
+      (client) => client.settings.update({ ...this.selection(), setting: 'reset-keychain', state: 'clear' }),
       signal,
     );
   }

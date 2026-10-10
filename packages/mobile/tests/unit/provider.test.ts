@@ -474,7 +474,7 @@ describe('device provider recording', () => {
   it('keeps the agent-device recording for a provider without record', async () => {
     const worker = await leasedWorker(provider().impl);
     await worker.engine.artifacts!.startVideo!(operation());
-    expect(worker.fake.lastArgs('recording.record')).toEqual({ action: 'start', path: path.join(artifactsDir, 'video', 'video.mp4'), quality: 'medium', recordingScope: 'device' });
+    expect(worker.fake.lastArgs('recording.record')).toEqual({ platform: 'ios', device: 'sim-0', action: 'start', path: path.join(artifactsDir, 'video', 'video.mp4'), quality: 'medium', recordingScope: 'device' });
     await worker.engine.artifacts!.stopVideo!(operation());
     expect(records(worker)).toHaveLength(2);
   });

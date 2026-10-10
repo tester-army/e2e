@@ -27,7 +27,7 @@ describe('agent tool pack', () => {
     const iosFake = createFakeClient({ 'apps.open': () => ({ appName: 'Reminders' }) });
     const androidFake = createFakeClient({ 'apps.open': () => ({ appName: 'Clock' }) });
     const ios = buildEngine(new AgentDeviceSurface({ platform: 'ios' }, () => iosFake.client));
-    const android = buildEngine(new AgentDeviceSurface({ platform: 'android' }, () => androidFake.client));
+    const android = buildEngine(new AgentDeviceSurface({ platform: 'android', device: 'emulator-5554' }, () => androidFake.client));
     const init = (engine: typeof ios, targetName: string) =>
       engine.init!({
         runId: 'r',
@@ -61,7 +61,9 @@ describe('agent tool pack', () => {
       'interactions.swipe',
       'command.alert',
     ]);
-    expect(androidFake.lastArgs('apps.open')).toEqual({ app: 'Clock', platform: 'android', relaunch: true });
+    expect(androidFake.lastArgs('apps.open')).toEqual({ app: 'Clock', platform: 'android', serial: 'emulator-5554', relaunch: true });
+    // The alert carries the worker's device, as it can run with no app open.
+    expect(androidFake.lastArgs('command.alert')).toEqual({ platform: 'android', serial: 'emulator-5554', action: 'dismiss' });
     expect(iosFake.methods()).toEqual(['devices.boot']);
     await android.endAttempt!({ signal: new AbortController().signal, timeoutMs: 1000 });
 

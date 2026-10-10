@@ -77,14 +77,22 @@ test.describe('device fixture', () => {
     await expect(screen.getByTestId('inventory-header')).toBeHidden();
   });
 
-  // The reference promises APP_NOT_OPEN for a lost session.
-  test('foregroundApp after closeApp reports the closed session as APP_NOT_OPEN', async ({ device }) => {
+  // iOS answers foregroundApp from the session, so the reference promises
+  // APP_NOT_OPEN once closeApp ended it.
+  test('foregroundApp after closeApp reports the closed session as APP_NOT_OPEN', { platforms: ['ios'] }, async ({ device }) => {
     await device.closeApp();
     const lost = await device.foregroundApp().then(
       () => undefined,
       (error: unknown) => error as { code?: string },
     );
     expect(lost?.code).toBe('APP_NOT_OPEN');
+  });
+
+  // Android reads the device's foreground activity, which needs no session:
+  // after closeApp terminated the app, something else is in front.
+  test('foregroundApp after closeApp sees the app gone', { platforms: ['android'] }, async ({ device }) => {
+    await device.closeApp();
+    expect((await device.foregroundApp()).bundleId).not.toBe(APP_ID);
   });
 
   test('device.back pops the scenario', async ({ device, screen }) => {

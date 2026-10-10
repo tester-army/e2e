@@ -91,8 +91,8 @@ export interface Device {
   openLink(url: string, options?: { app?: string }): Promise<void>;
   /**
    * Terminates the session's app and ends the session, so the next
-   * `openApp` launches it fresh. Until then the screen is unobservable and
-   * `foregroundApp` is `APP_NOT_OPEN`.
+   * `openApp` launches it fresh. Until then the screen is unobservable.
+   * On iOS, `foregroundApp` is `APP_NOT_OPEN`.
    */
   closeApp(): Promise<void>;
   /**
@@ -105,8 +105,8 @@ export interface Device {
   /**
    * The app the session is on. iOS answers from the session, not the
    * device, so it names the app the session opened even after `home()`;
-   * Android reads the device's foreground activity. `APP_NOT_OPEN` once
-   * `closeApp` ended the session.
+   * Android reads the device's foreground activity. On iOS, `APP_NOT_OPEN`
+   * once `closeApp` ended the session.
    */
   foregroundApp(): Promise<ForegroundApp>;
   /** Sends the device to its home screen. */
@@ -130,14 +130,14 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
     async setNetwork(state) {
       await surface.command(
         'device.setNetwork',
-        (client) => client.settings.update({ setting: 'wifi', state: state === 'offline' ? 'off' : 'on' }),
+        (client) => client.settings.update({ ...surface.selection(), setting: 'wifi', state: state === 'offline' ? 'off' : 'on' }),
         context.signal,
       );
     },
     async setAirplaneMode(enabled) {
       await surface.command(
         'device.setAirplaneMode',
-        (client) => client.settings.update({ setting: 'airplane', state: enabled ? 'on' : 'off' }),
+        (client) => client.settings.update({ ...surface.selection(), setting: 'airplane', state: enabled ? 'on' : 'off' }),
         context.signal,
       );
     },
@@ -151,32 +151,32 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
       if (surface.options.platform === 'android') {
         await surface.command(
           'device.setLocation',
-          (client) => client.settings.update({ setting: 'location', state: 'on' }),
+          (client) => client.settings.update({ ...surface.selection(), setting: 'location', state: 'on' }),
           context.signal,
         );
       }
       await surface.command(
         'device.setLocation',
-        (client) => client.settings.update({ setting: 'location', state: 'set', latitude, longitude }),
+        (client) => client.settings.update({ ...surface.selection(), setting: 'location', state: 'set', latitude, longitude }),
         context.signal,
       );
     },
     async clearLocation() {
       await surface.command(
         'device.clearLocation',
-        (client) => client.settings.update({ setting: 'location', state: 'off' }),
+        (client) => client.settings.update({ ...surface.selection(), setting: 'location', state: 'off' }),
         context.signal,
       );
     },
     async setAppearance(mode) {
       await surface.command(
         'device.setAppearance',
-        (client) => client.settings.update({ setting: 'appearance', state: mode }),
+        (client) => client.settings.update({ ...surface.selection(), setting: 'appearance', state: mode }),
         context.signal,
       );
     },
     async setOrientation(orientation) {
-      await surface.screenCommand('device.setOrientation', (client) => client.command.orientation({ orientation }), context.signal);
+      await surface.screenCommand('device.setOrientation', (client) => client.command.orientation({ ...surface.selection(), orientation }), context.signal);
     },
     async fold(pose) {
       await surface.fold(pose, context.signal);
@@ -186,15 +186,15 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
         'device.setBiometrics',
         (client) =>
           sensor === 'fingerprint'
-            ? client.settings.update({ setting: 'fingerprint', state: result })
-            : client.settings.update({ setting: sensor, state: result }),
+            ? client.settings.update({ ...surface.selection(), setting: 'fingerprint', state: result })
+            : client.settings.update({ ...surface.selection(), setting: sensor, state: result }),
         context.signal,
       );
     },
     async enrollBiometrics(sensor, enrolled) {
       await surface.command(
         'device.enrollBiometrics',
-        (client) => client.settings.update({ setting: sensor, state: enrolled ? 'enroll' : 'unenroll' }),
+        (client) => client.settings.update({ ...surface.selection(), setting: sensor, state: enrolled ? 'enroll' : 'unenroll' }),
         context.signal,
       );
     },
@@ -214,7 +214,7 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
       await surface.clearKeychain(context.signal);
     },
     async foregroundApp() {
-      const state = await surface.command('device.foregroundApp', (client) => client.command.appState({}), context.signal);
+      const state = await surface.command('device.foregroundApp', (client) => client.command.appState(surface.selection()), context.signal);
       if ('package' in state) return { name: state.package, bundleId: state.package };
       return {
         name: state.appName,
@@ -222,13 +222,13 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
       };
     },
     async home() {
-      await surface.screenCommand('device.home', (client) => client.command.home({}), context.signal);
+      await surface.screenCommand('device.home', (client) => client.command.home(surface.selection()), context.signal);
     },
     async back() {
       await surface.screenCommand('device.back', (client) => client.command.back({ ...surface.settleOptions }), context.signal);
     },
     async alert(action) {
-      await surface.screenCommand('device.alert', (client) => client.command.alert({ action }), context.signal);
+      await surface.screenCommand('device.alert', (client) => client.command.alert({ ...surface.selection(), action }), context.signal);
     },
     async dismissKeyboard() {
       await surface.dismissKeyboard(context.signal);
@@ -236,13 +236,13 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
     async clipboard() {
       const result = await surface.command(
         'device.clipboard',
-        (client) => client.command.clipboard({ action: 'read' }),
+        (client) => client.command.clipboard({ ...surface.selection(), action: 'read' }),
         context.signal,
       );
       return result.action === 'read' ? result.text : '';
     },
     async setClipboard(text) {
-      await surface.command('device.setClipboard', (client) => client.command.clipboard({ action: 'write', text }), context.signal);
+      await surface.command('device.setClipboard', (client) => client.command.clipboard({ ...surface.selection(), action: 'write', text }), context.signal);
     },
   };
   const action = { kind: 'resource' } as const;

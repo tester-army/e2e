@@ -104,7 +104,8 @@ export function mobileTools(
           'Accept or dismiss a visible system alert or permission prompt. Use it when the alert\'s buttons are not listed on screen; a listed button tapped by id is the same tap and replays from the trace cache, this tool does not.',
         inputSchema: z.object({ action: z.enum(['accept', 'dismiss']) }),
         execute: async ({ action }, options) => {
-          await active().command('alert', (client) => client.command.alert({ action }), abort(options));
+          const surface = active();
+          await surface.command('alert', (client) => client.command.alert({ ...surface.selection(), action }), abort(options));
           return `Alert ${action}ed.`;
         },
       }),
