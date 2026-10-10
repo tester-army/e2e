@@ -42,12 +42,12 @@ tests/checkout.e2e.ts-snapshots/checkout-ios-darwin.png
 tests/checkout.e2e.ts-snapshots/pay-button-web-linux.png
 ```
 
-Fonts and rendering differ between targets and operating systems, so each
-pair keeps its own file. Without a name, the file takes the test's name:
+Each target and operating system keeps its own file, since fonts and
+rendering differ. Without a name, the file takes the test's name:
 `checkout-looks-right-1-web-linux.png`.
 
-When the app changes on purpose, rewrite the screenshots that differ. This
-also writes missing ones, and the run passes:
+When the app changes on purpose, rewrite the screenshots that differ and
+write the missing ones. The run then passes:
 
 <CodeGroup>
 ```bash npm
@@ -65,16 +65,15 @@ bunx e2e run --update-snapshots
 
 ## In CI
 
-Take the screenshots on the machine that renders them in CI. Use a Linux
-runner for the web and an Android emulator. Use a macOS runner with the
-same simulator for iOS.
+Take the screenshots on the machine that renders them in CI: a Linux
+runner for the web and Android, a macOS runner with the same simulator for
+iOS.
 
 Without `--update-snapshots`, a CI run never writes into the project. A
-missing screenshot fails the test. The run saves it in the test's results
-at `snapshots/<path in the project>`, so you can download and commit it.
-
-To write all of them at one time, run the suite with `--update-snapshots`
-in a job like the test job, and keep what it wrote:
+missing screenshot fails the test, and the run saves it in the test's
+results at `snapshots/<path in the project>` for you to download and
+commit. To write all of them at one time, run `--update-snapshots` in a job
+like the test job:
 
 ```yaml title=".github/workflows/screenshots.yml"
 name: Update screenshots
@@ -91,7 +90,7 @@ jobs:
           path: tests/**/*-snapshots/
 ```
 
-Download the artifact into the project, examine the images, and commit
+Download the artifact into the project, check the images, and commit
 them.
 
 ## When it fails
@@ -108,8 +107,9 @@ actual: .e2e/results/home-1a2b3c4d5e6f7a8b/attempt-1/screenshots/screen-actual.p
 expected: .e2e/results/home-1a2b3c4d5e6f7a8b/attempt-1/screenshots/screen-expected.png
 ```
 
-The matcher needs two screenshots in a row that are the same. A screen that
-never holds still fails too, with the last two screenshots and their diff.
+To write a screenshot, the matcher waits for two in a row that are the
+same. A screen that never holds still fails, with the last two screenshots
+and their diff.
 
 ## Tolerance and masks
 
@@ -130,11 +130,11 @@ await expect(screen).toHaveScreenshot('dashboard.png', {
 | `timeout` | `assertionTimeout` | Assertion budget in milliseconds |
 
 On the web, e2e stops animations and hides the text caret. On iOS and
-Android, e2e holds the status bar in a fixed state, so the clock and
-battery are the same on every run.
+Android, it holds the status bar fixed, so the clock and battery match on
+every run.
 
 e2e masks secure fields in every screenshot. After a test fills a secret,
-the matcher fails with `POLICY_DENIED`, as every other screenshot does.
+the matcher fails with `POLICY_DENIED`, like every other screenshot.
 
 ## Next
 
