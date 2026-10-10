@@ -638,6 +638,13 @@ export interface EngineSnapshot {
    */
   readonly truncated?: boolean;
   /**
+   * Whether an on-screen keyboard is showing, as the engine measured it apart
+   * from `root`: a platform can raise a keyboard the tree lists only in part,
+   * or not at all. Set `false` when it measured none, and omit it only when
+   * the engine did not measure it; consumers then fall back to the tree.
+   */
+  readonly keyboardVisible?: boolean;
+  /**
    * Semantic capture timed out. Return only the stable root reference, with no other fields,
    * and fresh pixels whose masking was proven independently of the failed
    * capture. Requires `pixelFallback`; callers must use the pixels as evidence

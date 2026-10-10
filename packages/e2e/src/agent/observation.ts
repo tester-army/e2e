@@ -28,6 +28,8 @@ export type AgentObservation = AgentObservationMetadata & (
       readonly parents: ReadonlyMap<string, string>;
       readonly tree: RedactedNode;
       readonly truncated: boolean;
+      /** The engine's measured keyboard state; `false` when it measured none, absent only when it did not measure. */
+      readonly keyboardVisible?: boolean | undefined;
       readonly pixels?: ExecutorPixels | undefined;
       readonly pixelsWithheld?: PixelsWithheld | undefined;
     }
@@ -147,6 +149,7 @@ export function prepareObservation(
     parents,
     tree,
     truncated,
+    ...(observation.keyboardVisible === undefined ? {} : { keyboardVisible: observation.keyboardVisible }),
     ...(pixels.cleared === undefined ? {} : { pixels: pixels.cleared }),
     ...(pixels.withheld === undefined ? {} : { pixelsWithheld: pixels.withheld }),
   };

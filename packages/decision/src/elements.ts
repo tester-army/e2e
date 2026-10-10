@@ -134,6 +134,8 @@ interface SpaceObservation {
   readonly pixels?: ExecutorPixels;
   /** Whether the step can locate a drawn control on the pixels: the decision model scores and a text model names it. */
   readonly locates?: boolean;
+  /** The engine's measured keyboard state; undefined leaves it to the tree. */
+  readonly keyboardVisible?: boolean | undefined;
 }
 
 /** Builds the element table and bound targets from the newest observation. */
@@ -285,7 +287,7 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
     controls.add('scroll_down');
   }
   if (verbs.has('back')) controls.add('back');
-  if (verbs.has('dismissKeyboard') && keyboardShowing(observation.tree)) controls.add('dismiss_keyboard');
+  if (verbs.has('dismissKeyboard') && (observation.keyboardVisible ?? keyboardShowing(observation.tree))) controls.add('dismiss_keyboard');
   return {
     elements,
     element: (key) => byIndex.get(targetKeyIndex(key)),
@@ -298,7 +300,7 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
     omitted,
     pageText: clip(pageText.join('\n'), 6000),
     statuses,
-    fingerprint: fingerprint(observation.path ?? '', observation.tree, observation.viewport, observation.pixels),
+    fingerprint: fingerprint(observation.path ?? '', observation.tree, observation.viewport, observation.keyboardVisible, observation.pixels),
   };
 }
 /**
@@ -335,8 +337,9 @@ export function targetKeyIndex(key: string): string {
 }
 
 /**
- * Whether the tree lists an on-screen keyboard. Offering the control only
- * then keeps a choice that does nothing out of the operation question.
+ * Whether the tree lists an on-screen keyboard, for an engine that does not
+ * measure it. Offering the control only then keeps a choice that does
+ * nothing out of the operation question.
  */
 function keyboardShowing(node: ExecutorNode): boolean {
   if (node.states?.hidden === true) return false;
@@ -374,17 +377,25 @@ function clip(text: string, limit: number): string {
 }
 
 /**
- * Stable hash of the path, the tree content with node ids removed, whether
- * each node meets the viewport, and the pixels when the step sees them. Ids
- * change on every capture, so they stay out. In-view membership lets a
- * scroll that brings other nodes into view count as progress, while one
- * that moves nothing (the page bottom) still reads as unchanged; raw
- * coordinates stay out so small layout shifts do not count. Pixels are in
- * because a drawn control changes nothing in the tree: a keypad digit
- * entered on a canvas is progress only the screenshot shows.
+ * Stable hash of the path, the measured keyboard state, the tree content
+ * with node ids removed, whether each node meets the viewport, and the
+ * pixels when the step sees them. Ids change on every capture, so they stay
+ * out. In-view membership lets a scroll that brings other nodes into view
+ * count as progress, while one that moves nothing (the page bottom) still
+ * reads as unchanged; raw coordinates stay out so small layout shifts do not
+ * count. Pixels are in because a drawn control changes nothing in the tree:
+ * a keypad digit entered on a canvas is progress only the screenshot shows.
+ * The keyboard state is in because a dismissal can leave the tree as it was,
+ * and an unmeasured state hashes apart from a measured `false`.
  */
-function fingerprint(path: string, tree: ExecutorNode, viewport: { width: number; height: number }, pixels?: ExecutorPixels): string {
-  const parts: (string | Uint8Array)[] = [path];
+function fingerprint(
+  path: string,
+  tree: ExecutorNode,
+  viewport: { width: number; height: number },
+  keyboardVisible: boolean | undefined,
+  pixels?: ExecutorPixels,
+): string {
+  const parts: (string | Uint8Array)[] = [path, JSON.stringify(keyboardVisible ?? null)];
   if (pixels !== undefined) parts.push(pixels.data);
   const visit = (node: ExecutorNode): void => {
     parts.push(node.role ?? '', node.name ?? '', node.text ?? '', node.value ?? '', JSON.stringify(node.states ?? null), JSON.stringify(node.attributes ?? null), intersects(node, viewport) ? 'v' : '-');

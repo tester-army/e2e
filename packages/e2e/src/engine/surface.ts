@@ -69,6 +69,8 @@ export type Observation = ObservationMetadata & (
       readonly kind: 'semantic';
       readonly tree: SemanticNode;
       readonly truncated: boolean;
+      /** The engine's measured keyboard state (`EngineSnapshot.keyboardVisible`); `false` when it measured none, absent only when it did not measure. */
+      readonly keyboardVisible?: boolean;
       readonly pixels?: ObservationPixels;
     }
   | {

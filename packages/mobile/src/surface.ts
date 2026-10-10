@@ -144,6 +144,17 @@ const KEYBOARD_TYPES: ReadonlySet<string> = new Set(['keyboard', 'key']);
 const KEYBOARD_DRAG_RATIO = 0.03;
 
 /**
+ * Whether the capture's producer measured the soft keyboard on screen:
+ * undefined when it did not look or could not (only the iOS runner measures
+ * it today).
+ */
+function measuredKeyboard(raw: RawSnapshot): boolean | undefined {
+  if (raw.keyboard?.kind === 'visible') return true;
+  if (raw.keyboard?.kind === 'absent') return false;
+  return undefined;
+}
+
+/**
  * Whether a capture shows the soft keyboard: the band its producer measured
  * when it measured one, else a keyboard or key element in the tree, the probe
  * Maestro's `hideKeyboard` uses. A capture that says nothing either way
@@ -151,9 +162,7 @@ const KEYBOARD_DRAG_RATIO = 0.03;
  * tap refuses against by name.
  */
 function keyboardShowing(raw: RawSnapshot): boolean {
-  if (raw.keyboard?.kind === 'visible') return true;
-  if (raw.keyboard?.kind === 'absent') return false;
-  return (raw.nodes ?? []).some((node) => KEYBOARD_TYPES.has((node.type ?? '').toLowerCase()));
+  return measuredKeyboard(raw) ?? (raw.nodes ?? []).some((node) => KEYBOARD_TYPES.has((node.type ?? '').toLowerCase()));
 }
 
 /**
@@ -977,10 +986,12 @@ export class AgentDeviceSurface {
     const viewport = await this.viewportFor(projected, operation.signal);
     const location = screenLocation(raw.appBundleId ?? raw.appName ?? this.appIdentity, screenTitle(projected));
     const capture = options?.pixels === true ? await this.capturePixels(operation, projected, viewport, { normalizeStatusBar: options.comparable === true }) : undefined;
+    const keyboardVisible = measuredKeyboard(raw);
     return {
       root: screenRoot(projected.roots, viewport),
       viewport,
       ...(isTruncated(raw) ? { truncated: true } : {}),
+      ...(keyboardVisible === undefined ? {} : { keyboardVisible }),
       ...(location === undefined ? {} : { location }),
       ...(capture === undefined ? {} : { pixels: capture.pixels, maskedRegionCount: capture.masked }),
     };

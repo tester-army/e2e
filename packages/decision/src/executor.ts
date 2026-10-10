@@ -164,7 +164,7 @@ class Step {
     const screenshot = this.pixelsAllowed ? observation.pixels : undefined;
     const tree = observation.tree;
     if (observation.treeUnavailable || tree === undefined || emptyTree(observation)) return { path, space: undefined, screenshot };
-    const base = { path, viewport: observation.viewport, tree };
+    const base = { path, viewport: observation.viewport, tree, keyboardVisible: observation.keyboardVisible };
     const seen = screenshot === undefined ? base : { ...base, pixels: screenshot, locates: this.locates };
     return { path, space: actionSpace(this.ctx, seen, typing), screenshot };
   }

@@ -155,6 +155,12 @@ focused control. `upload(target, paths)` authorizes every path against the
 project root before the engine sees it: outside the project or hidden is
 `POLICY_DENIED`, a missing file `INVALID_ARGUMENT`.
 
+An observation carries `keyboardVisible` when the engine measured whether
+an on-screen keyboard is showing (`true` or `false`), and omits it when it
+did not. Without it, the [decision executor](/decision-models) falls back to
+a `keyboard` or `key` node in the tree. Your own executor can also look at
+the screenshot `ctx.observe({ pixels: true })` returns.
+
 If semantic capture fails, an observation sets `treeUnavailable: true` and
 omits `tree`. It includes a screenshot when policy allows one, even if pixels
 were not requested. Earlier node ids are invalid, and a missing tree does

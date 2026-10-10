@@ -178,6 +178,7 @@ export class ObservationFeed {
       ...metadata,
       text: observation.text,
       truncated: observation.truncated,
+      ...(observation.keyboardVisible === undefined ? {} : { keyboardVisible: observation.keyboardVisible }),
       ...(options.tree === true ? { tree: projectTree(observation.tree, this.runtime.app.base?.origin) } : {}),
       ...pixels,
     };

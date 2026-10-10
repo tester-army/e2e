@@ -130,6 +130,13 @@ export interface ExecutorObservation {
   readonly truncated: boolean;
   readonly viewport: ViewportSize;
   /**
+   * Whether an on-screen keyboard is showing, as the engine measured it apart
+   * from the tree; `false` when it measured none. Absent only when the engine
+   * did not measure it; the tree's `keyboard` and `key` nodes, or a
+   * screenshot, are then the evidence.
+   */
+  readonly keyboardVisible?: boolean;
+  /**
    * The current location as path and query, redacted, when the engine
    * reports one. Absent on engines without a location (a device screen).
    */

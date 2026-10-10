@@ -501,6 +501,24 @@ describe('project tool dispatch', () => {
     expect(path).toBe('/settings/general');
   });
 
+  it("hands an executor the engine's measured keyboard state, and nothing when the engine measured none", async () => {
+    const measured: (boolean | undefined)[] = [];
+    let reported: boolean | undefined;
+    const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
+      observe: async () => snapshot([], reported === undefined ? {} : { keyboardVisible: reported }),
+    });
+    const executor: StepExecutor = { name: 'test', async runStep(context) {
+      measured.push((await context.observe()).keyboardVisible);
+      return { status: 'passed', summary: 'looked' };
+    } };
+    const { fixtures } = runtime(engine, { agents: { default: { executor } } });
+    for (const state of [undefined, true, false]) {
+      reported = state;
+      await fixtures.agent.act('look');
+    }
+    expect(measured).toEqual([undefined, true, false]);
+  });
+
 });
 
 describe('press key grammar', () => {

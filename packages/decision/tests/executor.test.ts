@@ -137,6 +137,18 @@ describe('keyboard', () => {
     expect(Object.keys(requests[0]?.questions.operation?.criteria ?? {})).toContain('dismiss_keyboard');
     expect(fixture.turns[0]?.calls).toEqual(['dismiss the keyboard']);
   });
+  it('offers dismiss_keyboard for a keyboard the engine measured and the tree does not list', async () => {
+    const { model, requests } = scriptedDecision((id, keys, call) => ({
+      choice: id === 'operation' ? (call === 0 ? 'dismiss_keyboard' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
+    }));
+    const fixture = context({
+      tree: { id: 'root', children: [{ id: 'reps', role: 'textbox', name: 'Reps', value: '8' }] },
+      observation: { keyboardVisible: true },
+    });
+    await decisionExecutor({ model }).runStep(fixture.ctx);
+    expect(Object.keys(requests[0]?.questions.operation?.criteria ?? {})).toContain('dismiss_keyboard');
+    expect(fixture.actions.dismissKeyboard).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('secrets', () => {

@@ -125,7 +125,9 @@ no control, such as a card that opens a menu on hover or a file row.
 
 On an engine that declares keyboard dismissal, such as the mobile engine,
 the executor also offers `dismiss_keyboard` while an on-screen keyboard is
-showing, so a control the keyboard covers can be reached after typing.
+showing, so a control the keyboard covers can be reached after typing. It
+reads the observation's `keyboardVisible` when the engine measured one, and
+otherwise looks for a `keyboard` or `key` node in the tree.
 
 Every target question carries a `none` option. A provider that finds no
 target for an operation answers `none` instead of refusing. `none` for the

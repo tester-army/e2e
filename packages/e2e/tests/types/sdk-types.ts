@@ -95,6 +95,11 @@ declare const engineSnapshot: EngineSnapshot;
 engineSnapshot.treeUnavailable satisfies true | undefined;
 // @ts-expect-error unavailable semantics are explicitly true or absent, never a separate false state.
 ({ ...engineSnapshot, treeUnavailable: false }) satisfies EngineSnapshot;
+// The measured keyboard is a yes or no, or absent when the engine did not measure it.
+engineSnapshot.keyboardVisible satisfies boolean | undefined;
+customExecutorObservation.keyboardVisible satisfies boolean | undefined;
+// @ts-expect-error the keyboard state carries no band or reason, only whether one is showing.
+({ ...engineSnapshot, keyboardVisible: { kind: 'visible' } }) satisfies EngineSnapshot;
 
 // There is no implicit target: a config names at least one, and the type says so before the loader does.
 // @ts-expect-error targets is required

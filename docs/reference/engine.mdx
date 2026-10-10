@@ -624,6 +624,12 @@ export interface EngineSnapshot {
    * read whole.
    */
   readonly truncated?: boolean;
+  /**
+   * Whether an on-screen keyboard is showing, as the engine measured it apart
+   * from `root`. Set `false` when it measured none, and omit it only when the
+   * engine did not measure it.
+   */
+  readonly keyboardVisible?: boolean;
   /** Semantic capture failed; only fresh, independently masked pixels are evidence. */
   readonly treeUnavailable?: true;
   /** Masked pixels, when requested and producible; omitted otherwise. */
@@ -650,6 +656,15 @@ present.
 Set `truncated` when a node limit or inaccessible subtree leaves content out.
 The runner warns the model that the tree is incomplete and never treats a
 truncated observation as unchanged. Omit it for a complete tree.
+
+Set `keyboardVisible` when the platform tells the engine whether a soft
+keyboard is up, separately from the tree: `true` while one is showing,
+`false` when it measured none. A keyboard can be missing from the tree, or
+listed only as a few keys, so the [decision executor](/decision-models)
+reads this first and falls back to the tree's `keyboard` and `key` nodes
+when it is absent. The mobile engine sets it on iOS from the keyboard band
+agent-device's runner measures with each capture; Android captures carry no
+such measurement, so there it is absent.
 
 A valid empty tree may have a childless root and include `pixels`.
 
