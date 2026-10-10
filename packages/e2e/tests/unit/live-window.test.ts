@@ -52,6 +52,29 @@ function shown(payload: string): string {
 }
 
 describe('LiveWindow', () => {
+  it('keeps multiline titles on one physical row when repainting', () => {
+    const restore = withTerminalSize({ rows: 40, columns: 80 });
+    try {
+      const payloads: string[] = [];
+      const window = new LiveWindow((text) => payloads.push(text), () => ['first\nsecond']);
+      window.start();
+      window.redraw();
+      window.stop();
+      expect(shown(payloads[0]!)).toBe('first second');
+      expect(payloads[1]).toContain('\u001b[1A');
+      expect(payloads[1]!.split('\n')).toHaveLength(2);
+    } finally {
+      restore();
+    }
+  });
+
+  it('normalizes CRLF and CR without removing colors or exceeding the row width', () => {
+    expect(shown(paint(['first\r\nsecond\rthird'], 80))).toBe('first second third');
+    const painted = paint(['\u001b[31mfirst\nsecond\u001b[0m'], 10);
+    expect(painted).toContain('\u001b[31m');
+    expect(shown(painted)).toBe('first se…');
+  });
+
   it('never cuts a line inside a code point', () => {
     const payload = paint(['abc\u{1F600}def'], 6);
     // A lone surrogate is the one thing encodeURIComponent refuses.

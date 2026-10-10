@@ -31,6 +31,8 @@ const SYNC_END = `${ESC}[?2026l`;
  * behind on every repaint.
  */
 function clampToWidth(text: string, columns: number): string {
+  // A title may contain line breaks, but each painted entry must occupy one row.
+  text = text.replaceAll('\r\n', ' ').replaceAll('\r', ' ').replaceAll('\n', ' ');
   const max = Math.max(4, columns - WIDTH_MARGIN);
   let width = 0;
   let out = '';

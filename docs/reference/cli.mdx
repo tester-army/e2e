@@ -489,6 +489,8 @@ bunx e2e run --reporter list,junit
 
 ### Output
 
+The live terminal window displays line breaks inside a test title as spaces so each title occupies one row. Saved reports retain the original title.
+
 | Reporter | Writes |
 | --- | --- |
 | `list` | Terminal progress, failures with code frames, and a run summary. On a TTY, live progress includes the current agent step, model turns, tool calls, and reasoning excerpts. Untrusted fields are capped at 8 KiB and stripped of control characters. |
