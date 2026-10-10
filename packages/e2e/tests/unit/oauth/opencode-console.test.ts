@@ -196,6 +196,17 @@ describe('opencodeConsole()', () => {
     expect(markedTexts(placed!)).toEqual([]);
   });
 
+  it('asks for the runner\'s output cap on the Anthropic route instead of letting the SDK\'s own default decide', async () => {
+    const api = await workspace();
+    vendor(api, { 'opencode-console': login });
+    const model = opencodeConsole('claude-sonnet-5');
+    await generateText({ model, prompt: 'hi' });
+    await generateText({ model, prompt: 'hi', maxOutputTokens: 1234 });
+    const [capped, asked] = inference(api.requests).map((call) => JSON.parse(call.body) as { max_tokens?: number });
+    expect(capped!.max_tokens).toBe(8192);
+    expect(asked!.max_tokens).toBe(1234);
+  });
+
   it('says what to do when the login reaches no Go subscription, or the workspace does not serve the model', async () => {
     const api = await workspace({ opencode: config.config.provider.opencode });
     vendor(api, { 'opencode-console': login });

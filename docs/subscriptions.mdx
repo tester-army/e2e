@@ -99,6 +99,10 @@ const agent = { model: opencodeConsole('deepseek-v4.1-flash') };
 // OpenCode Go, billed to your Go subscription
 const goAgent = { model: opencodeConsole('go/deepseek-v4.1-flash') };
 ```
+
+On the Anthropic route, a call that sets no `maxOutputTokens` asks for 8192: the
+Anthropic SDK does not know the ids OpenCode serves there, and on its own it
+limits the request to 4096 tokens and only warns.
   </Tab>
   <Tab title="SuperGrok">
 <CodeGroup>

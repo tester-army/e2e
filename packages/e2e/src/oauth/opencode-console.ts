@@ -21,6 +21,8 @@ import type { CredentialStore, FetchFunction } from './types.ts';
 
 const CONFIG_TIMEOUT_MS = 10_000;
 const API_KEY_ENV = 'OPENCODE_API_KEY';
+/** The Anthropic SDK limits a model id it does not know to 4096 output tokens and only warns, so a caller that sets no cap is truncated in silence; ask for the runner's own cap instead. */
+const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
 const BREAKPOINT = { cacheControl: { type: 'ephemeral' } } as const;
 
 interface Served {
@@ -117,7 +119,7 @@ function requestFor(npm: string, options: LanguageModelV4CallOptions, session: s
       return { ...options, providerOptions: { ...options.providerOptions, openai: { promptCacheKey: cacheKey, ...options.providerOptions?.['openai'], store: false } } };
     }
     case '@ai-sdk/anthropic':
-      return { ...options, prompt: withBreakpoints(options.prompt, (options.tools?.length ?? 0) > 0) };
+      return { ...options, maxOutputTokens: options.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS, prompt: withBreakpoints(options.prompt, (options.tools?.length ?? 0) > 0) };
     default:
       return options;
   }
