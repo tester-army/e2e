@@ -480,7 +480,13 @@ describe('web platform integration', () => {
     expect(result.status).toBe('failed');
     const error = result.attempts[0]!.error;
     expect(error?.code).toBe('ACTION_FAILED');
-    const triggerMs = Number(/^no download started within 500ms; the trigger resolved after (\d+)ms$/.exec(error?.message ?? '')?.[1]);
+    const timing = /^no download started within (\d+)ms; the trigger resolved after (\d+)ms$/.exec(error?.message ?? '');
+    expect(timing).not.toBeNull();
+    // The operation reports its remaining budget after setup, capped by the requested 500ms.
+    const waitMs = Number(timing?.[1]);
+    expect(waitMs).toBeGreaterThan(0);
+    expect(waitMs).toBeLessThanOrEqual(500);
+    const triggerMs = Number(timing?.[2]);
     // The trigger sleeps 200ms; a timer can fire a millisecond or two early.
     expect(triggerMs).toBeGreaterThanOrEqual(190);
   });
