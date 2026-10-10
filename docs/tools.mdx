@@ -4,9 +4,12 @@ description: Add tools for test APIs, data setup, and device operations.
 icon: "screwdriver-wrench"
 ---
 
-Put tools in an agent's `tools` so the agent can call your test API or perform
-other project-specific operations during a goal. Wrap each AI SDK tool with
-`defineTool` to declare whether it changes state and which platforms support it.
+A project tool is an AI SDK tool that the agent can call during a goal, such
+as a request to your test API or a data setup step.
+
+## Add a tool
+
+Wrap the tool with `defineTool` and put it in the agent's `tools`:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -36,7 +39,7 @@ export default {
 } satisfies E2EConfig;
 ```
 
-The agent can now seed a cart before checking out:
+The agent can now seed a cart before it checks out:
 
 ```ts
 await agent.act('seed the cart with SKU {sku}, then check out', {
@@ -44,14 +47,13 @@ await agent.act('seed the cart with SKU {sku}, then check out', {
 });
 ```
 
-Built-in tool names are reserved. Loading the config fails with
-`INVALID_CONFIG` for a project tool named like a grammar verb (`tap`,
-`screenshot`), a tool the harness adds (`complete_step` in every step,
-`locate`, `start_recording`, and `stop_recording` in an `e2e mcp` session,
-`report_finding` under `e2e explore`), and for a value `defineTool` did not
-build. Tools belong to
-the built-in agent: an entry with a custom `executor` cannot also set
-`tools`.
+<Note>
+The config load fails with `INVALID_CONFIG` for a tool named like a
+grammar verb (`tap`, `screenshot`) or a tool the harness adds:
+`complete_step`, `locate`, `start_recording`, `stop_recording`, or
+`report_finding`. It also fails for a value `defineTool` didn't build, and
+for `tools` on an entry with a custom `executor`.
+</Note>
 
 ## Declare what a tool does
 
@@ -59,17 +61,18 @@ the built-in agent: an entry with a custom `executor` cannot also set
 
 | Annotation | Meaning |
 | --- | --- |
-| `mutates: true` | Changes state. The call counts against the step's action budget and runs in order with the other actions. The [replay cache](/cache) cannot replay it, so the agent runs that part of the step live. |
+| `mutates: true` | Changes state. The call counts against the step's action budget and runs in order with the other actions. The [replay cache](/cache) can't replay it, so the agent runs that part of the step live. |
 | `mutates: false` | Read-only. Runs without an action slot and may observe the screen. |
-| `platforms: ['ios', 'android']` | Offers the tool only on those platforms. Omit this to offer it on every target. |
+| `platforms: ['ios', 'android']` | Offers the tool only on those platforms. Omit it to offer the tool on every target. |
 
-A failed call still consumes its action slot. The runner checks the budget
-before dispatch, including when the model requests several calls at once.
+A failed call still uses its action slot. The runner checks the budget
+before dispatch, also when the model asks for several calls at one time.
 
 ## Observe from a tool
 
-A read-only tool can observe the redacted screen. This example saves a
-masked screenshot as report evidence when pixels are available:
+A read-only tool can observe the redacted screen through `getToolContext`.
+This example saves a masked screenshot as report evidence when pixels are
+available:
 
 ```ts
 import { randomUUID } from 'node:crypto';
@@ -96,50 +99,32 @@ const captureEvidence = defineTool(
 );
 ```
 
-`observe()` returns a redacted text snapshot. Request `tree: true` for the
-node tree or `pixels: true` for a masked screenshot. The built-in agent's
-restrictions apply, including no pixels
-[after a secret fill](/reference/security#screenshots-after-a-secret-fill).
-
-Observe in a separate read-only tool. A mutating tool already occupies the
-action queue, so observing from inside it would wait on its own operation.
-
-`attachScreenshot(pixels, label)` adds the image to the step's artifacts and
-returns its artifact id. Use a unique label for each capture to avoid
-overwriting an earlier image.
+- `observe()` returns a redacted text snapshot. Ask for `tree: true` to get
+  the node tree, or `pixels: true` to get a masked screenshot. The built-in
+  agent's rules apply, including no pixels
+  [after a secret fill](/reference/security#screenshots-after-a-secret-fill).
+- Observe only from a read-only tool. A mutating tool holds the action
+  queue, so an observation inside it would wait on its own call.
+- `attachScreenshot(pixels, label)` adds the image to the step's artifacts
+  and returns its artifact id. Give each capture a unique label, or it
+  overwrites an earlier image.
 
 ## Device toolkits
 
-`@e2e-dev/mobile` ships a ready tool pack for its engine. Pass every device
-engine to one `mobileTools` call, and spread the pack to add your own tools
+`@e2e-dev/mobile` has a ready tool pack, `mobileTools`, with `open_app`,
+`swipe`, and `alert` for device targets. Spread it to add your own tools
 beside it:
 
 ```ts
-import type { E2EConfig } from 'e2e';
-import { mobile } from '@e2e-dev/mobile';
-import { mobileTools } from '@e2e-dev/mobile/tools';
-import { gateway } from 'ai';
-
-const iphone = mobile({ platform: 'ios' });
-const pixel = mobile({ platform: 'android' });
-
-export default {
-  targets: [
-    { name: 'iphone', engine: iphone, app: { bundleId: 'Settings' } },
-    { name: 'pixel', engine: pixel, app: { bundleId: 'com.android.settings' } },
-  ],
-  agents: {
-    default: {
-      model: gateway('openai/gpt-6-luna-fast'),
-      tools: { ...mobileTools(iphone, pixel) /* , ...your own tools */ },
-    },
-  },
-} satisfies E2EConfig;
+tools: { ...mobileTools(iphone, pixel), seedCart },
 ```
 
-The pack adds `open_app`, `swipe`, and `alert` on device targets.
-Screenshots and point actions come from the engine's built-in tools.
-See the [Mobile engine reference](/reference/mobile#agent-tools).
+Pass every device engine to one `mobileTools` call. Screenshots and point
+actions come from the engine's built-in tools. See
+[Agent tools](/mobile#agent-tools) for the setup, and the
+[mobile engine reference](/reference/mobile#agent-tools) for each tool.
+
+## Next
 
 <CardGroup cols={2}>
   <Card title="Custom executors" icon="gears" href="/executors">
