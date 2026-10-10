@@ -199,8 +199,10 @@ only at the recorded viewport size.
 ## Handle secrets
 
 A secret fill reaches the engine as a `fill` action with
-`sensitive: true`, with no separate capability flag. The runner has already
-checked the credential, the observation, and the field. Handle the fill
+`sensitive: true`, with no separate capability flag. For an agent's
+`type_secret`, the runner has already checked the credential, the
+observation, and the field. A test's `fill(secret)` skips these
+[checks](/reference/security#secret-fills). Handle the fill
 securely, or throw
 `UNSUPPORTED_CAPABILITY`. After it, the runner takes
 [no more screenshots](/reference/security#screenshots-after-a-secret-fill).
