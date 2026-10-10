@@ -25,18 +25,18 @@ test('GET /api/users returns the seeded users', async ({ app }) => {
 ```
 
 `toMatchSchema` takes any [Standard Schema](/reference/expect#matching-a-schema),
-such as Zod, Valibot, or ArkType. It returns the value, typed. Use the
+such as Zod, Valibot, or ArkType, and returns the value, typed. Use the
 schema your app parses the API with, and the test fails when the API stops
 matching it.
 
 ## Where the API runs
 
-`app.baseUrl` is the target's `app.url`. When the URL declares port `0`, it
-has the port the run picked. So one file runs against the `app.command` the
+`app.baseUrl` is the target's `app.url`, with the port the run picked when
+the URL declares port `0`. So one file runs against the `app.command` the
 config starts and against a deployed preview.
 
 When the API writes state after it answers, use
-[`expect.poll`](/reference/expect#polling-a-value). It reads again until a
+[`expect.poll`](/reference/expect#polling-a-value) to read again until a
 matcher passes.
 
 ## Signed-in requests
@@ -65,9 +65,9 @@ export const test = base.extend<{ api: (path: string, init?: RequestInit) => Pro
 ## Without a browser
 
 On a web target, an API test still opens a browser context. A target
-without an engine opens nothing. It also has no `app.baseUrl`, so read the
-URL from an environment variable. To set up such a target, choose **None**
-at the engine prompt of `e2e init`.
+without an engine opens nothing, and has no `app.baseUrl`, so read the URL
+from an environment variable. `e2e init` sets one up when you choose
+**None** at the engine prompt.
 
 ## Next
 
