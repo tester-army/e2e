@@ -4,16 +4,32 @@ description: Run web, iOS, and Android tests on GitHub Actions, upload the repor
 icon: "/images/icons/github-actions.svg"
 ---
 
-This page has two workflows: one for web targets and one for iOS and
-Android targets. Read the [CI overview](/ci) first. It tells you what CI
-mode changes, how to give the job model credentials, and what each exit
-code means.
+import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
+
+export const setupPrompt = `Add a GitHub Actions workflow that runs this project's e2e tests. Docs: \`https://e2e.tester.army/docs/ci/github-actions.md\` and \`https://e2e.tester.army/docs/ci.md\`
+
+1. Read both pages. Use the web workflow for web targets and the iOS and Android workflow for mobile targets.
+2. Adapt the workflow to this project: package manager, Node version, how the app starts or builds, and the app paths.
+3. For a mobile job, replace the iOS runtime with one the runner image has, and keep it pinned.
+4. List the repository secrets the workflow reads, such as the model key, and ask me to add them.
+5. After I push, read the job log and fix errors until the job passes.`;
+
+These two workflows run web targets, and iOS and Android targets. The
+[CI overview](/ci) says what CI mode changes, how to give the job a model
+key, and what each exit code means.
+
+<SetupPrompt>
+
+<Prompt description={setupPrompt} children={setupPrompt} actions={["copy", "cursor"]} />
+
+</SetupPrompt>
 
 ## Web
 
-This workflow runs deterministic and agent tests in the same job. It
-assumes that your config has a [command](/web#starting-your-app) that starts
-the app, and that AI Gateway does the model calls:
+This workflow runs deterministic and agent tests in one job. It assumes
+that your config has a [command](/web#starting-your-app) that starts the
+app, and that AI Gateway makes the model calls. The model key and the user
+credentials come from repository secrets:
 
 ```yaml title=".github/workflows/e2e.yml" expandable
 name: e2e
@@ -73,26 +89,23 @@ jobs:
           retention-days: 7
 ```
 
-The workflow pins each action to a commit SHA and installs the dependencies
-from the lockfile. `npx e2e` runs the installed version. The
+The workflow pins each action to a commit SHA and installs from the
+lockfile, so `npx e2e` runs the installed version. The
 [install command](/reference/web#installing-browsers) downloads the browsers
-for the Playwright version that the engine pins, with their system
-libraries.
+for the Playwright version the engine pins, with their system libraries.
 
-The upload steps run on each run that is not cancelled. So a test that
-failed and then passed on retry keeps its evidence.
+The upload steps run on each run that isn't cancelled. A test that failed
+and then passed on retry keeps its evidence.
 
 ## iOS and Android
 
-This workflow has two jobs, one for each platform. Before you use it, read
-[Mobile jobs](/ci#mobile-jobs). That section tells you what each job needs
-on every CI service.
+This workflow has one job for each platform. It follows the rules in
+[Mobile jobs](/ci#mobile-jobs).
 
-The iOS job builds the app for the simulator with `xcodebuild`. You can use
-a different build command. The command must write a simulator `.app` and
-must not start the app. For Expo, `npx expo run:ios --configuration Release
---device generic --no-bundler --output build/ios` builds without a
-simulator and writes the `.app` under `build/ios`.
+The iOS job builds the app with `xcodebuild`. Another build command works
+if it writes a simulator `.app` and doesn't start the app. For Expo,
+`npx expo run:ios --configuration Release --device generic --no-bundler --output build/ios`
+builds without a simulator and writes the `.app` under `build/ios`.
 
 ```yaml title=".github/workflows/e2e-mobile.yml" expandable
 name: e2e mobile
@@ -195,36 +208,28 @@ jobs:
 ```
 
 The emulator runner action boots the emulator and runs each `script` line
-in a new shell. When the step ends, the action stops the emulator. So the
-install and the run must be in the same step.
+in a new shell. It stops the emulator when the step ends, so the install
+and the run must be in the same step.
 
-This repository runs its own mobile suites this way. See
+This repository runs its own mobile suites the same way.
 [`mobile.yml`](https://github.com/tester-army/e2e/blob/main/.github/workflows/mobile.yml)
-for a version that does these things:
-
-- It caches the Expo build for each native fingerprint.
-- It boots two simulators for two workers.
-- It runs the failed tests again with `--last-failed`.
+also caches the Expo build for each native fingerprint, boots two
+simulators for two workers, and runs the failed tests again with
+`--last-failed`.
 
 ## Pull request comments
 
 Add the [`@e2e-dev/github` reporter](/github) to post the results of each
-job as one comment on the pull request. A rerun updates the same comment.
-The reporter also writes the results to the job summary. The workflows
-above have read-only permissions. To post, the job needs `pull-requests: write` and
-`GITHUB_TOKEN` in the env of the test step. See [Setup](/github#setup).
-GitHub gives a read-only token to a `pull_request` run from a fork, so the
-reporter cannot post there. See
+job as one comment on the pull request. A rerun updates the same comment,
+and the reporter also writes the results to the job summary.
+
+To post, the job needs `pull-requests: write` and `GITHUB_TOKEN` in the env
+of the test step. The workflows above have read-only permissions. See
+[Setup](/github#setup). A `pull_request` run from a fork gets a read-only
+token, so the reporter can't post there. See
 [When nothing is posted](/github#when-nothing-is-posted).
 
-To block a merge on a failed run, make the e2e job a required check in the
-repository settings.
-
-## Secrets
-
-Keep the model key in a repository secret, as the workflows above do.
-GitHub does not give secrets to pull requests from forks. See
-[Model credentials](/ci#model-credentials).
+## Next
 
 <CardGroup cols={2}>
   <Card title="Pull request comments" icon="code-pull-request" href="/github">
