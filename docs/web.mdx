@@ -23,8 +23,8 @@ works only on a loopback host.
 ### Let the runner start it
 
 Add `app.command` and the runner starts the dev server. It waits until
-`app.url` answers, and stops the server when the run ends, fails, or is
-interrupted:
+`app.url` answers, and stops a server it started when the run ends, fails, or
+is interrupted:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -57,7 +57,7 @@ variables, and `env`.
 | Option | Purpose |
 | --- | --- |
 | `reuseExisting: true` | Use a server that already runs. In CI, e2e ignores it, and a server that already answers is `APP_ALREADY_RUNNING`. |
-| `log` | Save the app's stdout and stderr to a project-relative file. A startup error quotes the last 20 lines, with `command.env` values redacted. The file itself is not redacted. |
+| `log` | Save the app's stdout and stderr to a project-relative file. A startup error quotes the last 20 lines any process appended to the file since the command started, with `command.env` values redacted. The file itself is not redacted. |
 | `env` | Environment variables for the app. |
 | `startupTimeout` | How long to wait for the app to answer. Default 60 seconds. |
 | `readyUrl` | Set beside `command`, not in it, to probe a health endpoint instead of `app.url`. |
