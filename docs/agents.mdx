@@ -4,8 +4,11 @@ description: Configure several agents in one suite, pin tests to them, and run o
 icon: "users"
 ---
 
-Define named agents in `agents` to give tests different models, instructions,
-or tools. Tests use `default` unless you select another agent.
+An agent is a named entry in `agents` with its own model, instructions,
+and tools. Tests use `default` unless you select another agent. Name more
+agents to compare models or to run one flow as several personas.
+
+## Define named agents
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -29,23 +32,25 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Each entry is one plain object. For the built-in agent it holds the model,
-the `system` prompt, the app's `context`, [tools](/tools), budgets, and
-`providerOptions`. For a [custom executor](/executors), put the executor under
-`executor`; the model, judge, context, and budgets still apply, while `system`
-and `tools` are rejected because the executor brings its own prompt and tools.
+An entry holds the `model`, an optional `judge`, the `system` prompt, the
+app's `context`, [tools](/tools), budgets, and `providerOptions`. `maxSteps`
+caps the actions of one step and `maxModelCalls` its model calls. Both
+default to 25 and go up to 100.
 
-Agents do not inherit from each other. Every entry starts from the built-in
-defaults, never from `default`'s values, so give each entry the model and
-context it needs, for example from a shared constant as above.
+Each entry starts from the built-in defaults, never from `default`. Give
+each entry its model and context, for example from a shared constant as
+above. `model` acts and judges, unless you set a separate `judge`. A model
+that gets screenshots must accept images. See [Models](/models) and the
+[config reference](/reference/config#agents).
 
-`model` handles acting and judgments unless you set a separate `judge`.
-Models that receive screenshots must accept images. See [Models](/models) and
-the [config reference](/reference/config#agents).
+A [custom executor](/executors) goes under `executor`. The model, judge,
+context, and budgets still apply. `system` and `tools` are rejected there,
+because the executor brings its own prompt and tools.
 
 ## Instructions and vocabulary
 
-An agent takes two kinds of text, and they go to different readers.
+An agent takes two kinds of text. `system` tells the acting agent how to
+work. `context` tells every model call what the app calls things.
 
 | | `system` | `context` |
 |---|---|---|
@@ -54,16 +59,11 @@ An agent takes two kinds of text, and they go to different readers.
 | Belongs here | Persona, caution, what to verify before finishing, how to treat unexpected dialogs | Names of screens and menus, where a feature lives, which button submits a form, domain terms |
 | Set on | `agents.<name>.system` | `agents.<name>.context`, at most 16 KiB |
 
-The split is deliberate. A judge decides whether the screen shows what the
-test claims, so it must know the app's words: a judge that does not know
-"plans are called tiers" cannot check that a tier was chosen. A judge must
-not know the actor's instructions, or a `system` prompt that says "consider a
-step done once the form closes" would lower the bar for the verdict too.
-Nothing in `system` ever reaches a judge.
-
-A rule of thumb: if the sentence would still be true for a different tester
-using the same app, it is `context`. If it would still be true for the same
-tester on a different app, it is `system`.
+A judge that doesn't know plans are called tiers can't check that a tier
+was chosen. A judge never sees `system`, so "a step is done once the form
+closes" can't lower the bar for a verdict. Rule of thumb: true for any
+tester on this app goes in `context`, true for this tester on any app goes
+in `system`.
 
 ```ts title="e2e.config.ts"
 agents: {
@@ -78,12 +78,9 @@ agents: {
 },
 ```
 
-`maxSteps` caps the actions one step may take and `maxModelCalls` its model
-calls; both default to 25 and go up to 100.
-
-A test or group can add vocabulary of its own with `agentContext`, which is
-appended after the agent's `context` for that test: the ids of seeded data,
-a feature flag that changes a label, anything only that test knows.
+A test or group adds its own vocabulary with `agentContext`. e2e appends it
+after the agent's `context` for that test. Use it for facts only that test
+knows, such as seeded data or a feature flag that changes a label:
 
 ```ts title="tests/billing.e2e.ts"
 import { describe, test } from 'e2e';
@@ -93,70 +90,35 @@ describe('billing', { agentContext: 'The seeded workspace is called "Acme Trial"
 });
 ```
 
-Keep instructions out of `agentContext` for the same reason they stay out of
-`context`: it reaches the judges.
-
-## Make the agent yours
-
-When a step fails or takes too many calls, inspect its report or run with
-`--debug` to see the transcript. Start with the instruction, then adjust the
-agent if the problem affects several tests:
-
-1. Use the labels on screen in the goal.
-2. Put shared vocabulary in `context`, or in `agentContext` for one test.
-3. Put instructions for the actor, such as verifying a visible confirmation
-   before completing a step, in `system`.
-4. Add [tools](/tools) for operations such as seeding a cart through a test API.
-5. Compare models or `providerOptions` by running the same tests with
-   `--agent <name>`.
-
-Named agents can use the [replay cache](/cache). Each agent records its
-own entries, keyed by its name and its context, so a test that runs as
-`buyer` and as `admin` never replays one persona's steps for the other, and
-changing `agentContext` records again. Custom tools and executors have their
-own replay constraints, described under [project tools](/tools) and
-[custom executors](/executors#replay-cache).
+Keep instructions out of `agentContext`. Like `context`, it reaches the
+judges.
 
 ## Pick an agent per run
 
-Use `--agent` to choose the agent for tests that do not specify one:
+`--agent` chooses the agent for tests that don't select one. Several names
+run each of those tests one time per agent:
 
 <CodeGroup>
 ```bash npm
 npx e2e run --agent thorough tests/checkout.e2e.ts
-```
-
-```bash pnpm
-pnpm exec e2e run --agent thorough tests/checkout.e2e.ts
-```
-
-```bash bun
-bunx e2e run --agent thorough tests/checkout.e2e.ts
-```
-</CodeGroup>
-
-Several names run each unpinned test once per agent:
-
-<CodeGroup>
-```bash npm
 npx e2e run --agent buyer,admin
 ```
 
 ```bash pnpm
+pnpm exec e2e run --agent thorough tests/checkout.e2e.ts
 pnpm exec e2e run --agent buyer,admin
 ```
 
 ```bash bun
+bunx e2e run --agent thorough tests/checkout.e2e.ts
 bunx e2e run --agent buyer,admin
 ```
 </CodeGroup>
 
 ## Pin an agent in the suite
 
-A test, describe block, or individual call can select an agent. The closest
-setting wins, in this order: call, test, enclosing groups, run.
-
-The abbreviated tests below show how to select an agent at each level.
+A test, a describe block, or one call can select an agent. The closest
+setting wins: call, then test, then enclosing groups, then run.
 
 ```ts title="tests/checkout.e2e.ts"
 import { describe, test } from 'e2e';
@@ -178,13 +140,13 @@ describe('checkout as a first-time buyer', { agent: 'buyer' }, () => {
 });
 ```
 
-`--agent` does not replace an explicitly selected agent. An unknown agent
-on a test or group fails during collection. An unknown agent on a call raises
-`INVALID_ARGUMENT`. Reports record the agent for each step.
+`--agent` doesn't replace an agent that a test selects. An unknown agent on
+a test or group fails during collection. An unknown agent on a call raises
+`INVALID_ARGUMENT`. Reports record the agent of each step.
 
 ## One flow, several personas
 
-Select several agents to run the same test once with each:
+Select several agents to run the same test one time with each:
 
 ```ts title="tests/checkout.e2e.ts"
 import { describe, test } from 'e2e';
@@ -195,19 +157,37 @@ describe('checkout', { agent: ['buyer', 'admin'] }, () => {
 });
 ```
 
-Each agent gets a separate result and artifact directory. Terminal and JUnit
+Each agent gets its own result and artifact directory. Terminal and JUnit
 test names include the agent, such as `[admin]`.
 
-For the list above, `--agent admin` selects only `admin`. A flag with no
-matching name, such as `--agent thorough`, leaves both selected agents in place.
+`--agent` selects among the pinned agents and never adds one. Here,
+`--agent admin` runs only `admin`. `--agent thorough` matches neither, so
+both still run.
 
-A serial group runs as one unit per agent, so its members share the group's
-pin. A setup test pins at most one agent.
+A serial group runs as one unit per agent, and its members share the
+group's pin. A setup test pins at most one agent.
 
-Selecting an agent does not switch the signed-in user. For signed-in personas,
-pair each agent with a `session` in a separate describe block.
-[Signing in](/authentication#several-signed-in-users) shows how to create the
-sessions and run the tests.
+Each agent records its own [replay cache](/cache) entries, keyed by its name
+and its context. So `buyer` never replays the steps of `admin`, and a
+changed `agentContext` records again. [Project tools](/tools) and
+[custom executors](/executors#replay-cache) have their own replay rules.
+
+An agent is not a signed-in user. For signed-in personas, pair each agent
+with a `session` in a separate describe block. See
+[Signing in](/authentication#several-signed-in-users).
+
+## Make the agent yours
+
+When a step fails or uses too many calls, open its report, or run with
+`--debug` to see the transcript. Fix the instruction first. Change the agent
+when the problem affects several tests:
+
+1. Use the labels on screen in the goal.
+2. Put shared vocabulary in `context`, or in `agentContext` for one test.
+3. Put instructions for the actor in `system`.
+4. Add [tools](/tools) for operations such as seeding a cart through a test API.
+5. Compare models or `providerOptions`: run the same tests with
+   `--agent <name>`.
 
 ## Next
 
@@ -216,6 +196,6 @@ sessions and run the tests.
     Give the agent a test API or a device toolkit.
   </Card>
   <Card title="Custom executors" icon="gears" href="/executors">
-    Customize how the agent chooses and performs actions.
+    Change how the agent chooses and performs actions.
   </Card>
 </CardGroup>
