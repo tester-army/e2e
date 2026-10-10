@@ -14,7 +14,7 @@ in natural language that an agent completes, or both in the same test.
 <VideoCard
   id="NEawZb6Hssw"
   title="Watch e2e explained in 2 minutes"
-  subtitle="Learn how to chain agent goals with deterministic locator checks, run the same tests on web, iOS, and Android, and set up a project in a minute."
+  subtitle="Chain agent goals with locator checks, run one test on web, iOS, and Android, and set up a project in a minute."
 />
 
 ```ts title="tests/checkout.e2e.ts"
@@ -34,11 +34,10 @@ test('a member upgrades to Pro', async ({ app, agent, screen }) => {
 
 - **Less time on tests.** Write a goal instead of a script of selectors and
   waits. When the UI changes, the agent adapts, so you fix fewer tests.
-- **Less risk.** Cover more of the flows your users depend on, on web and
-  mobile, and catch regressions before they reach production.
-- **Cheap runs.** Verified `agent.act` steps [replay from a cache](/cache)
-  with no model calls, so more flows don't mean a bigger token bill or a
-  slower CI.
+- **Cheap runs.** e2e records an `agent.act` step when a later check passes.
+  The next run [replays it](/cache) with no model calls, and hands back to
+  the agent when the app changed. `assert`, `waitFor`, and `extract` always
+  call the model.
 
 ## How it works
 
@@ -51,9 +50,6 @@ test('a member upgrades to Pro', async ({ app, agent, screen }) => {
   `agent.waitFor`, and `agent.extract` judge the screen. Use your own
   [subscription](/subscriptions), [API key, or local model](/models). Tests
   without agent steps need no model.
-- **Cache.** e2e records an `act` step when a later check passes. The next
-  run replays it, and hands back to the agent when the app changed.
-  `assert`, `waitFor`, and `extract` always call the model.
 - **Reports.** The runner [redacts registered secrets](/security) from model
   input. It records steps, failures, and artifacts in a
   [report](/debugging) that you or your coding agent can read.
@@ -65,7 +61,7 @@ test('a member upgrades to Pro', async ({ app, agent, screen }) => {
     One prompt for your coding agent, or set up by hand.
   </Card>
   <Card title="Example projects" icon="folder-open" href="/example-projects">
-    Run a standalone app with Vite, Next.js, Astro, Expo, SwiftUI, Jetpack Compose, Kotlin Multiplatform, or Flutter.
+    Run a standalone web or mobile app that already has e2e tests.
   </Card>
   <Card title="Core concepts" icon="pen-to-square" href="/core-concepts">
     Goals, assertions, and locators.
