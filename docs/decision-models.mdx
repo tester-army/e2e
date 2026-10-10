@@ -5,47 +5,34 @@ icon: "scale-balanced"
 ---
 
 `@e2e-dev/decision` runs `agent.act` and `agent.assert` through a decision
-model instead of an LLM. For each action the decision model answers two
-questions: which operation, then which element. Every question carries the
-goal and the recent actions, with the latest semantic tree as evidence. The
-decision model never writes free text. When it picks `type`, a small
-language model writes the field value. Any AI SDK decision model that
-answers `choice` questions with probability distributions works, such as
-TypeSafe Jev or OpenAI `gpt-6-luna`. The runner still authorizes every
-action.
+model instead of an LLM agent. For each action, the decision model picks an
+operation, then an element, from the goal, the recent actions, and the
+newest semantic tree. It never writes free text: a small text model writes
+field values. The runner still authorizes every action.
+
+Any AI SDK decision model that answers `choice` questions with probabilities
+works, such as TypeSafe Jev or OpenAI `gpt-6-luna`.
 
 ## Install and configure
 
-<CodeGroup>
-```bash npm
-npm install -D @e2e-dev/decision
-```
-
-```bash pnpm
-pnpm add -D @e2e-dev/decision
-```
-
-```bash bun
-bun add -d @e2e-dev/decision
-```
-</CodeGroup>
-
-Install a decision model provider and a text model provider. Decision
-models need `ai` 7.0.134 or later.
+Install the package, a decision model provider, and a text model provider.
+Decision models need `ai` 7.0.134 or later.
 
 <CodeGroup>
 ```bash npm
-npm install -D @ai-sdk/typesafe-ai @openrouter/ai-sdk-provider
+npm install -D @e2e-dev/decision @ai-sdk/typesafe-ai @openrouter/ai-sdk-provider
 ```
 
 ```bash pnpm
-pnpm add -D @ai-sdk/typesafe-ai @openrouter/ai-sdk-provider
+pnpm add -D @e2e-dev/decision @ai-sdk/typesafe-ai @openrouter/ai-sdk-provider
 ```
 
 ```bash bun
-bun add -d @ai-sdk/typesafe-ai @openrouter/ai-sdk-provider
+bun add -d @e2e-dev/decision @ai-sdk/typesafe-ai @openrouter/ai-sdk-provider
 ```
 </CodeGroup>
+
+Set the executor on the agents entry:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -67,7 +54,7 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Tests stay plain natural language, with no params:
+Tests are plain `agent.act` and `agent.assert` calls:
 
 ```ts title="tests/todos.e2e.ts"
 import { test, expect } from 'e2e';
@@ -80,9 +67,12 @@ test('adds a todo', async ({ app, screen, agent }) => {
 });
 ```
 
+`evaluationModel()` instances also work. A model id string or a language
+model in `model` fails the config load with `INVALID_CONFIG`.
+
 <Accordion title="Use OpenAI gpt-6-luna">
 
-`@ai-sdk/openai` 4.0.90 or later reads `OPENAI_API_KEY` and takes the
+`@ai-sdk/openai` 4.0.90 or later reads `OPENAI_API_KEY` and accepts the
 screenshot that [vision](#vision) sends.
 
 <CodeGroup>
@@ -111,78 +101,49 @@ const executor = decisionExecutor({
 
 </Accordion>
 
-`evaluationModel()` instances still work. A model id string or a language
-model in `model` fails config load with `INVALID_CONFIG`.
-
 ## What the model can do
 
-Each turn offers the operations the engine declares on the elements of the
+Each turn offers the operations the engine supports on the elements of the
 newest screen: `tap`, `type`, `typeSecret`, `submit`, `select`, `check`,
 `upload`, `hover`, `secondary_tap` (a right-click), `double_tap`,
 `long_press`, `drag`, `scroll_to`, `scroll_up`, `scroll_down`, and `back`.
 Hover, right-click, drag, and scroll-to also reach labeled nodes that are
-no control, such as a card that opens a menu on hover or a file row.
+not controls, such as a card that opens a menu on hover. On an engine that
+can dismiss the keyboard, such as the mobile engine, the executor offers
+`dismiss_keyboard` while an on-screen keyboard shows, to reach the controls
+it covers.
 
-On an engine that declares keyboard dismissal, such as the mobile engine,
-the executor also offers `dismiss_keyboard` while an on-screen keyboard is
-showing, so a control the keyboard covers can be reached after typing.
-
-Every target question carries a `none` option. A provider that finds no
-target for an operation answers `none` instead of refusing. `none` for the
-operation the model chose blocks the step.
-
-## Vision
-
-`vision: true` asks the engine for masked pixels on every observation.
-Assertions and completion checks see the screenshot beside the page, so the
-model can judge drawn content the tree does not show. The operation and
-target questions read the tree alone.
-
-With a text model configured, vision also offers `tap_at` for a control the
-tree does not list. The text model names the control to tap next, such as
-"the 3 key on the keypad". The decision model then locates it with score
-questions on the screenshot and on a zoomed crop. Each point tap costs four
-decision calls and one text call.
-
-The screenshot goes as a file part of the decision state. The model must
-take images and answer `score` questions. `openai.decisionModel('gpt-6-luna')`
-does. A text-only model such as Jev refuses the file. Behind Vercel AI
-Gateway, keep `vision` off: the gateway rejects the file part.
-
-`agent.assert(..., { vision: true })` and `vision: 'only'` reach the
-executor the same way. Once a secret has been filled in the attempt, the
-executor withholds pixels, as everywhere in the runner.
+Every target question has a `none` option, so a provider with no fitting
+target answers `none` instead of refusing. `none` blocks the step.
 
 ## How text gets typed
 
-The decision model only names an element index. When it picks `type`, the
-text model writes the value from the goal, the field's label, and the page
-text. The executor types exactly that string. When it picks `upload`, the
-text model lists the project-relative paths the goal or params name, and the
-runner authorizes each path before the engine sees it. Model output never
-becomes a selector, a URL, or a key. When the goal supplies no value, nothing
-is typed and the decision model picks another action.
+When the decision model picks `type`, the text model writes the value from
+the goal, the params, the field's label, and the page text. The executor
+types exactly that string. With no value in the goal, nothing is typed and
+the decision model picks again. For `upload`, the text model lists the
+project-relative paths the goal or params name, and the runner authorizes
+each one. Model output never becomes a selector, a URL, or a key.
 
-Password fields never reach the text model. Secrets stay declared handles
-that only `typeSecret` fills.
+Password fields never reach the text model. Only `typeSecret` fills a
+secret, from its declared handle.
 
-The text model is also the agent's judgment tier, so `waitFor` and `extract`
-use it. It can come from the agents entry's `model` instead. Without either,
-`type`, `upload`, and `tap_at` are never offered.
+The text model also answers `waitFor` and `extract`. Instead of
+`textModel`, you can set `model` on the agents entry. With neither, the
+executor never offers `type`, `upload`, or `tap_at`.
 
 ## Finishing a step
 
 When the decision model answers `done` or `failed`, the executor checks the
 claim on a fresh screen with one question: is the step's task complete? The
-check sees the non-secret params, the actions taken with the non-secret
-values typed, and the page with the text of its status regions. It never
-sees model reasoning or a secret.
+check sees the non-secret params, the actions taken with their non-secret
+values, and the page with the text of its status regions. It never sees
+model reasoning or a secret.
 
-A confirmed `done` passes the step. A confirmed `failed` fails it with
+A confirmed `done` passes the step, and a confirmed `failed` fails it with
 `ACTION_FAILED`. An unconfirmed claim goes back to the decision model as
-history. A second unconfirmed claim ends the step: `ACTION_FAILED` when the
-screen contradicts the goal, otherwise `blocked` with
-`AUTOMATION_UNSUPPORTED`.
+history. A second one ends the step: `ACTION_FAILED` when the screen
+contradicts the goal, else `blocked` with `AUTOMATION_UNSUPPORTED`.
 
 ## Gates
 
@@ -195,17 +156,37 @@ inconclusive:
 const executor = decisionExecutor({ model, minProbability: 0.9, minConfidence: 0.8 });
 ```
 
-Probability is the selected option's share of the answer distribution.
-Confidence is the provider's own statistic. A threshold is a policy choice,
-so measure accuracy on your own tests before you set one. OpenAI rounds both
-to two decimals, so a gate between two hundredths acts as the next
-hundredth.
+Probability is the chosen option's share of the answer distribution.
+Confidence is the provider's own statistic. A model that reports no
+confidence counts as 0. Measure accuracy on your own tests before you set a
+threshold. OpenAI rounds both values to two decimals, so a gate between two
+hundredths acts as the next hundredth.
+
+## Vision
+
+`vision: true` adds a masked screenshot to every observation. Assertions and
+completion checks see it, so the model can judge drawn content the tree
+doesn't show. The operation and target questions read the tree only.
+`agent.assert(..., { vision: true })` and `vision: 'only'` work too. After a
+secret fill in the attempt, the executor gets no pixels.
+
+The model must accept images and answer `score` questions, as
+`openai.decisionModel('gpt-6-luna')` does. A text-only model such as Jev
+refuses the screenshot. Vercel AI Gateway rejects it too, so keep `vision`
+off there.
+
+With a text model, vision also offers `tap_at` for a control the tree
+doesn't list. The text model names the control, such as "the 3 key on the
+keypad". The decision model finds it with score questions on the screenshot,
+then on a zoomed crop. A point tap costs three decide calls and one text
+call. A repeat tap on a control that a tap already hit on that page costs
+one of each.
 
 ## Provider options
 
-`providerOptions` go with every decide call, the completion checks
-included. Use them for options of the decision model's provider, such as
-zero data retention on Vercel AI Gateway:
+`providerOptions` go with every decide call, completion checks included,
+and reach the decision model only. Use them for options such as zero data
+retention on Vercel AI Gateway:
 
 ```ts title="Executor setup"
 import { gateway } from 'ai';
@@ -217,22 +198,33 @@ const executor = decisionExecutor({
 });
 ```
 
-They reach the decision model only. The text model takes the agents entry's
-`providerOptions`, so a gateway setting meant for one model, such as a
-fallback list, never reaches the other.
+The text model takes the agents entry's `providerOptions`. So a setting
+for one model, such as a gateway fallback list, never reaches the other.
 
 ## Limits
 
 - No `navigate`. In-app navigation is a `tap` on a link. URLs belong in
   test code (`browser.goto`, `app.open`).
-- No multi-select `listbox`, no `scrollUntil`, and no keyboard typing at a
-  point (`type_at`).
+- No multi-select `listbox`, no `scrollUntil`, and no typing at a point
+  (`type_at`).
 - The text model that names a drawn control reads the page text and the
-  goal, not the pixels. An instruction that exists only as drawn text, such
-  as a wizard that paints "tap the circle", is out of its reach.
+  goal, not the pixels. It can't follow an instruction that exists only as
+  drawn text, such as a wizard that paints "tap the circle".
+- Every decide call and text call counts against `maxModelCalls`.
+- Three actions in a row that fail or change nothing block the step with
+  `AUTOMATION_UNSUPPORTED`.
 - A question the provider refuses fails the step with `MODEL_OUTPUT_INVALID`.
-- The choice cap is 255 options per question (TypeSafe's limit; OpenAI
-  documents none). Larger screens list viewport nodes first and count the
-  rest as omitted, so the model can scroll.
-- `waitFor` and `extract` use the text model through the runner's built-in
-  judgment tier.
+- A question has at most 255 options (TypeSafe's limit; OpenAI documents
+  none). On a larger screen, nodes in the viewport come first and the rest
+  count as omitted, so the model can scroll.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Custom executors" icon="gears" href="/executors">
+    How an executor plugs into the runner.
+  </Card>
+  <Card title="Models" icon="brain" href="/models">
+    Use an LLM agent with tool calls instead.
+  </Card>
+</CardGroup>
