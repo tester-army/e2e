@@ -382,11 +382,16 @@ function isSystemBar(node: RawNode, screen: ViewportSize | undefined, displayOnl
 
 /**
  * Projects one snapshot. `mintId` is called once per node in document order,
- * so the surface's id space stays unique across observations. Android's
- * system bars are left out with their children, see `isSystemBar`.
+ * so the surface's id space stays unique across observations. `viewport` is
+ * the one agent-device published with the snapshot; a producer that measured
+ * none leaves it to `viewportOf`. Android's system bars are left out with
+ * their children, see `isSystemBar`.
  */
-export function projectSnapshot(raw: readonly RawNode[], options: { readonly mintId: () => string }): ProjectedSnapshot {
-  const viewport = viewportOf(raw);
+export function projectSnapshot(
+  raw: readonly RawNode[],
+  options: { readonly mintId: () => string; readonly viewport?: ViewportSize | undefined },
+): ProjectedSnapshot {
+  const viewport = options.viewport ?? viewportOf(raw);
   const parents = parentPositions(raw);
   const children = new Map<number, number[]>();
   const roots: number[] = [];

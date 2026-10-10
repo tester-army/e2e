@@ -680,6 +680,17 @@ describe('observation', () => {
     }
   });
 
+  it('measures the screen in the viewport the snapshot publishes, and in its tree when it publishes none', async () => {
+    const h = harness();
+    // The application node reads 390x844; a published viewport outranks it.
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, viewport: { width: 402, height: 874 } }));
+    await openAttempt(h);
+    expect((await h.engine.observe!(operation())).viewport).toEqual({ width: 402, height: 874 });
+    h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
+    expect((await h.engine.observe!(operation())).viewport).toEqual({ width: 390, height: 844 });
+    expect(h.fake.methods()).not.toContain('capture.screenshot');
+  });
+
   it('is an empty screen before any app is open when no app is pinned, and a fault when one is', async () => {
     const free = harness({}, false);
     free.fake.respond('capture.snapshot', () => {
