@@ -15,14 +15,14 @@ export const migrationPrompt = `Migrate this project's Detox tests to e2e, one s
 5. Port \`.detoxrc.js\` into the e2e config: one target per platform with \`mobile({ platform })\`, the app's \`bundleId\` and \`appPath\` on the target, and the device type as \`mobile({ device })\`. e2e uses the normal debug or release build, with no Detox framework.
 6. Install dependencies, then run \`npx agent-device doctor\` and fix what it reports.
 7. List the Detox specs and ask me which one to move first. Suggest a flow that needs frequent maintenance.
-8. Rewrite that spec as a \`.e2e.ts\` file under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default), not in the Detox folder. Start it with \`app.open()\`, since nothing launches on its own. \`testID\` props work with \`screen.getByTestId\`. Replace \`waitFor(...).withTimeout()\` with a locator assertion and its \`timeout\`. e2e fails when a query matches several nodes, so narrow those queries.
+8. Rewrite that spec as a \`.e2e.ts\` file under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default), not in the Detox folder, with the guide's tables. Start it with \`app.open()\`, since nothing launches on its own. Narrow queries that match several nodes.
 9. Keep the launch and the final assertions deterministic, with \`app.open()\` and locator assertions. Where a run of scripted interactions breaks often, propose an \`agent.act\` goal for it instead.
 10. Build and install the app, run the new file with \`npx e2e run <file>\` on each platform target, and fix it until it passes. Keep the Detox spec until I confirm it can go.
 11. Summarize which tests moved, which stayed in Detox, and why.`;
 
 e2e tests a React Native app on a simulator or emulator with your normal
-debug or release build. The `@e2e-dev/mobile` engine needs no Detox framework
-in the app. Your `testID` props work with `getByTestId` on both platforms.
+debug or release build, with no Detox framework in the app. Your `testID`
+props work with `getByTestId` on both platforms.
 
 <SetupPrompt>
 
@@ -34,8 +34,6 @@ in the app. Your `testID` props work with `getByTestId` on both platforms.
 
 <Note>Set up a target with the [mobile guide](/mobile) and a model with the [quickstart](/quickstart). Both runners can use the same simulator while you move one spec at a time.</Note>
 
-Each `.detoxrc.js` entry maps to a target, its `app`, or a `mobile()` option.
-
 | Detox (`.detoxrc.js`) | e2e |
 | --- | --- |
 | `apps.<name>.binaryPath` | `app: { appPath }` on the target plus one `device.installApp()` per device in a fixture; the engine installs nothing on its own |
@@ -43,7 +41,7 @@ Each `.detoxrc.js` entry maps to a target, its `app`, or a `mobile()` option.
 | `devices.<name>.device.type` | `mobile({ device: 'iPhone 17' })` |
 | `configurations` | `targets`, one engine per platform |
 | Jest config, `maxWorkers` | `workers`, one per device |
-| `detox build` | Your normal build. No Detox framework, no `detox build` step |
+| `detox build` | Your normal build |
 | `device.launchApp({ permissions })` | `app.permissions` on the target, set before every fresh launch, or `device.openApp(app, { relaunch: true, permissions })` for one; `grant`, `deny`, `reset` for `YES`, `NO`, `unset` |
 | `device.launchApp({ launchArgs })` | `app.launchArguments` on the target, or `device.openApp(app, { relaunch: true, launchArguments })` for one; a list of strings the platform launch command takes, not a map |
 
@@ -101,15 +99,15 @@ test('shows the home screen', async ({ agent, app, screen }) => {
 });
 ```
 
-`app.open()` launches the configured app fresh. Nothing launches on its own.
-The password comes from [configured credentials](/authentication).
+Nothing launches on its own, so the test starts with `app.open()`. The
+password comes from [configured credentials](/authentication).
 
 ## Map each Detox call
 
 | Detox | e2e |
 | --- | --- |
 | `by.id('x')` | `screen.getByTestId('x')` |
-| `by.text('t')` | `screen.getByText('t')` |
+| `by.text('t')` | `screen.getByText('t')`; both match the exact text |
 | `by.label('l')` | `screen.getByLabel('l')` |
 | `by.type('RCTImageView')` | `device.locator('role=Image')`, agent-device's selector syntax |
 | `by.id('x').withAncestor(by.id('row'))` | `screen.getByTestId('row').getByTestId('x')` |
@@ -137,15 +135,14 @@ The password comes from [configured credentials](/authentication).
 | `device.setBiometricEnrollment(true)` | `device.enrollBiometrics('faceid', true)` |
 | `device.matchFace()`, `device.unmatchFace()` | `device.setBiometrics('faceid', 'match' \| 'nonmatch')` |
 | `device.setStatusBar`, `device.setURLBlacklist` | No equivalent |
-| `device.disableSynchronization()` | No equivalent. e2e waits through actions and retrying assertions. |
-| `device.takeScreenshot()` | `app.screenshot('label')`, subject to the secret policy |
-| `device.takeScreenshot()` compared with an image snapshot library | `await expect(screen).toHaveScreenshot('name.png')`; the status bar is held fixed for it. See [Visual comparison](/visual-testing) |
+| `device.disableSynchronization()` | No equivalent. Actions wait and assertions retry |
+| `device.takeScreenshot()` | `app.screenshot('label')`; withheld after a secret fill (`POLICY_DENIED`) |
+| `device.takeScreenshot()` compared with an image snapshot library | `await expect(screen).toHaveScreenshot('name.png')`, see [Visual comparison](/visual-testing) |
 | `:ios:` / `:android:` in a test name | `{ platforms: ['ios'] }` on the test |
 
-`by.text` and `getByText` both match the exact text. Two things behave
-differently from Detox:
+Two things differ from Detox:
 
-- Actions and single-node reads or assertions need one match. Several fail
+- Actions and single-node reads and assertions need one match. Several fail
   with `LOCATOR_AMBIGUOUS`. Narrow with `.filter()`, `.first()`, or `.nth()`.
   See [screen](/reference/screen).
 - A device has no `test.setup` or `{ session }`. See
