@@ -146,8 +146,9 @@ within that limit:
   `still queued at EAS after two minutes`.
 - Targets prepare one after another, so one target's ready sessions idle
   while the next target's queue and boot.
-- A session still queued when another has idled for `maxIdleTimeMinutes`
-  fails the lease, because EAS is stopping the idle one. The run then stops
+- A session still queued when another has been ready for
+  `maxIdleTimeMinutes` fails the lease, because EAS may be stopping the idle
+  one. The run then stops
   every session.
 
 ## Watch a run
