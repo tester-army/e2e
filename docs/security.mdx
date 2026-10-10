@@ -5,8 +5,8 @@ icon: "shield-halved"
 ---
 
 e2e trusts the code you write and treats everything the app shows as
-untrusted. Secret values stay out of what the model reads, and the runner
-checks every action the model asks for.
+untrusted. Secret values stay out of what the model reads. The runner checks
+every action the model asks for.
 
 ## How secrets stay out of the model
 
@@ -14,17 +14,15 @@ A `Secret` is a handle with no plaintext accessor. The model sees only its
 name and purpose. When the model asks to fill one, the runner checks the
 field and types the value itself.
 
-After a secret fill, the rest of the attempt has no screenshots, since the
-app could show the value anywhere. The runner replaces every known secret
-value with `<secret:name>` in model input, reports, console output, and text
-downloads.
-
-[Signing in](/authentication) shows how to pass secrets to a test.
+After a secret fill, the rest of the attempt has no screenshots, because
+the app could show the value anywhere. The runner replaces every known
+secret value with `<secret:name>` in model input, reports, console output,
+and text downloads.
 
 ## What can still leak
 
 Redaction matches strings, and only a secret fill turns screenshots off.
-Watch for these gaps:
+These gaps remain:
 
 - **Video and binary downloads.** Neither is masked. If the test typed a
   password, check them before you share them.
@@ -60,17 +58,18 @@ to another site and use the step's secrets there.
 ## What runs with your permissions
 
 Your tests, config, engines, tools, reporters, stores, secret providers, and
-app commands run with your operating-system permissions. e2e doesn't sandbox them. Run untrusted
-pull request code in an external sandbox with no secrets or write tokens.
+app commands run with your operating-system permissions. e2e doesn't sandbox
+them. Run untrusted pull request code in an external sandbox with no secrets
+or write tokens.
 
 ## What leaves your computer
 
 A run connects to your model provider, the app under test, and, unless you
-opt out, [telemetry](/telemetry) at `eu.i.posthog.com`. Hosted browser and
-device integrations connect to their own services. There is no crash
-reporting or update check.
-[Outbound connections](/reference/security#outbound-connections) lists every
-destination.
+opt out, [telemetry](/telemetry) at `eu.i.posthog.com`. There is no crash
+reporting or update check. Integrations such as Kernel, EAS Simulators, and
+smol add their own destinations.
+[Outbound connections](/reference/security#outbound-connections) lists them
+all.
 
 ## Report a vulnerability
 
