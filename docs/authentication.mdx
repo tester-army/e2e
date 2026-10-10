@@ -4,8 +4,14 @@ description: Sign in once, reuse the session across tests, and pass secrets with
 icon: "key"
 ---
 
-Sign in once in a setup test and save a named session. Other tests restore
-that session to start signed in.
+A setup test signs in one time and saves a named session. Other tests
+restore that session and start signed in. Passwords and other secrets are
+handles: the runner types the value, and the model and reports never see it.
+
+## Sign in once in a setup test
+
+Save the session in a `test.setup` body. Restore it with the `session`
+option:
 
 <Tabs>
   <Tab title="tests/auth.setup.e2e.ts">
@@ -49,10 +55,15 @@ test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen,
   </Tab>
 </Tabs>
 
-The runner runs the required setup even when you select only
+The runner runs the setup a test needs, even when you select only
 `tests/dashboard.e2e.ts`.
 
-## Sessions
+<Note>
+`session.save()` doesn't check that sign-in succeeded. Assert the URL or a
+signed-in element before you save.
+</Note>
+
+## Session rules
 
 | Rule | If you break it |
 | --- | --- |
@@ -62,26 +73,21 @@ The runner runs the required setup even when you select only
 | Only declared names are saved | `SESSION_CONTRACT` failure |
 | The target's engine saves and restores state | collection error, before any test runs; a hosted browser leased per attempt has none |
 
-Setup tests run before any ordinary test for the same target. If a setup
-fails, its dependents are skipped with cause `setup-failed` and unrelated
-tests keep going.
-
-<Note>
-`session.save()` saves the current state without checking whether sign-in
-succeeded. Assert the post-login URL or a signed-in element before saving.
-</Note>
+Setup tests run before the ordinary tests of the same target. When a setup
+fails, the runner skips its dependents with cause `setup-failed`. Other
+tests keep running.
 
 On a browser target, a session holds cookies, local storage, and IndexedDB.
-It does not include server or database state. Restoring replaces the client
+It doesn't hold server or database state. A restore replaces the client
 state and leaves no page open, so each test calls `app.open()` first.
 
-Sessions last for one run. They are encrypted on disk with a key that lives
-only in runner memory, and deleted during cleanup. A session file is a bearer
-credential, so it is never reused across runs.
+A session lasts one run. A session file is a bearer credential, so the
+runner encrypts it with a key held only in memory and deletes it at cleanup.
+See [Sessions](/reference/security#sessions) for the cipher and binding.
 
 ## Credentials
 
-Declare credentials in config and read passwords from the environment:
+Declare each account in config. Read the password from the environment:
 
 ```ts title="e2e.config.ts"
 export default {
@@ -95,34 +101,17 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Either field can also be overridden per run. The variable is the credential
-name uppercased, with every non-alphanumeric character replaced by `_`:
+The config load checks each password. While `ADMIN_PASSWORD` is unset or
+shorter than 6 characters, every command fails with `INVALID_CONFIG`,
+`e2e list` included.
 
-<CodeGroup>
-```bash npm
-E2E_USER_ADMIN_USERNAME=admin E2E_USER_ADMIN_PASSWORD=... npx e2e run
-```
+<Accordion title="Keep the value out of the environment">
 
-```bash pnpm
-E2E_USER_ADMIN_USERNAME=admin E2E_USER_ADMIN_PASSWORD=... pnpm exec e2e run
-```
-
-```bash bun
-E2E_USER_ADMIN_USERNAME=admin E2E_USER_ADMIN_PASSWORD=... bunx e2e run
-```
-</CodeGroup>
-
-A string is checked when the config loads: while `ADMIN_PASSWORD` is unset,
-every command, `e2e list` included, fails with `INVALID_CONFIG`.
-
-### Keep the value out of the environment
-
-A string from `process.env` sits in the environment of the runner and of
-every process it starts, where any code in the run can read it. `password`,
-unlike `username`, also accepts a function, called on every authorized fill
-and nowhere else, so the value can come straight from a vault, or be a
-freshly computed one-time code, and never be an environment variable (only
-the vault client's own access is configured in the environment):
+A string from `process.env` is in the environment of the runner and of every
+process it starts, so any code in the run can read it. `password` also
+accepts a function. `username` doesn't. The runner calls the function only
+for an authorized fill, so the value can come from a vault or be a fresh
+one-time code:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -140,12 +129,17 @@ export default {
 } satisfies E2EConfig;
 ```
 
-The function runs in the runner, after the fill is authorized, and its value
-goes to the field and the redaction ledger only. A function's value is
-redacted only from its first fill on, so prefer a string for a value the app
-can show before a test types it. The same applies to a `secrets` entry.
+The function runs in the runner, after the fill is authorized. Its value
+goes to the field and the redaction ledger only. The runner redacts it only
+from its first fill on. If the app can show the value before a test types
+it, use a string. The same applies to a `secrets` entry.
+
+</Accordion>
 
 ## The password is a handle
+
+`credentials.user()` returns the username as a string and the password as a
+`Secret`:
 
 ```ts
 import { credentials } from 'e2e';
@@ -157,15 +151,13 @@ admin.username; // a plain string
 admin.password; // Secret: opaque, named 'admin.password', with no plaintext accessor
 ```
 
-The two fields are declared alike, but only the password is a secret. A
-username is an identifier the app shows on screen, in the account menu and
-the audit log, so the agent reads it and tests assert on it; redacting it
-would hide exactly what a test checks. The password is never shown, so the
-runner keeps it away from test code and the model altogether.
+The app shows the username on screen, so the agent reads it and tests
+assert on it. The password never shows, so the runner keeps it from test
+code and the model.
 
-A `Secret` has no `.value`. Three sinks accept one: the two below in a
-test, and an engine option that declares it, as
-[`basicAuth`](/web#protected-previews) does:
+A `Secret` has no `.value`. Pass it to a `fill`, to the `params` of an agent
+step, or to an engine option that declares it, such as
+[`basicAuth`](/web#protected-previews):
 
 <Tabs>
   <Tab title="Deterministic">
@@ -186,20 +178,17 @@ await agent.act('Sign in', {
   </Tab>
 </Tabs>
 
-In `agent.act`, the model sees the secret's name and purpose. The runner
-authorizes the fill and supplies the value. Secret values are redacted from
-model input and reports. Reading a secure field is denied, so check that
-sign-in succeeded instead.
+When the agent fills a password, the runner requires a password field. The
+agent can't read a secure field, so assert that sign-in succeeded instead.
 
-After a secret fill, screenshots are withheld for the rest of the attempt,
-and in tests that restore the session it saved. See
+After a secret fill, the runner takes no screenshots for the rest of the
+attempt, or in the tests that restore the session it saved. See
 [screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill)
 for the rule and how to sign in with screenshots kept.
 
 ## Secrets that are not passwords
 
-Use `secrets` for API keys, webhook tokens, or other sensitive values a test
-needs to enter:
+Use `secrets` for API keys, webhook tokens, and other values a test types:
 
 ```ts title="e2e.config.ts"
 export default {
@@ -211,84 +200,80 @@ export default {
 } satisfies E2EConfig;
 ```
 
-`E2E_SECRET_<NAME>` overrides an entry per run, with the same uppercasing rule
-as credentials, so a CI job can supply the value without touching the config.
-Two entries that map to one variable, like `stripe-key` and `stripe_key`, fail
-the config load with `INVALID_CONFIG`, as two such credentials do:
-
-<CodeGroup>
-```bash npm
-E2E_SECRET_STRIPE_KEY=sk_test_... npx e2e run
-```
-
-```bash pnpm
-E2E_SECRET_STRIPE_KEY=sk_test_... pnpm exec e2e run
-```
-
-```bash bun
-E2E_SECRET_STRIPE_KEY=sk_test_... bunx e2e run
-```
-</CodeGroup>
-
-Get a handle with `secrets.get()` and use it in `fill` or `agent.act`:
-
-<Tabs>
-  <Tab title="Deterministic">
+`secrets.get()` returns a handle. Use it like a password, in `fill` or in
+agent `params`:
 
 ```ts
 import { secrets } from 'e2e';
 
 await screen.getByLabel('Secret key').fill(secrets.get('stripe-key'));
-```
-
-  </Tab>
-  <Tab title="Agentic">
-
-```ts
-import { secrets } from 'e2e';
-
 await agent.act('Connect Stripe with the given key', {
   params: { apiKey: secrets.get('stripe-key') },
 });
 ```
 
-  </Tab>
-</Tabs>
-
-When the agent fills a password, the runner requires a password field. A
-`secrets` entry can fill any editable input. An unconfigured name throws
+A `secrets` entry can fill any editable input. An unconfigured name throws
 `SECRET_UNAVAILABLE`.
 
-### Where the value goes
+Credentials and secrets are separate namespaces. `secrets.get()` returns
+`secrets` entries only. A credential's password is
+`credentials.user(name).password`, which the agent and the report know as
+`<name>.password`. So `credentials.admin` and `secrets.admin` can both
+exist.
 
-The model sees only the secret's name and purpose; the runner checks the
-field and fills the value. Known values become `<secret:name>` in
-observations and reports. See the full
+In `e2e.config.ts`, `secrets.get()` can pass a secret to an engine option,
+such as a [basic-auth password](/web#protected-previews). The config load
+checks the name. This protects text only: screenshots keep the pixels. See
+[Secrets in engine options](/reference/security#secrets-in-engine-options).
+
+## Override a value per run
+
+An environment variable replaces a config value for one run, so a CI job can
+supply it without a config change:
+
+| Entry | Variable |
+| --- | --- |
+| `credentials.admin.username` | `E2E_USER_ADMIN_USERNAME` |
+| `credentials.admin.password` | `E2E_USER_ADMIN_PASSWORD` |
+| `secrets['stripe-key']` | `E2E_SECRET_STRIPE_KEY` |
+
+The variable holds the entry name in upper case, with each character
+outside `A-Z` and `0-9` as `_`. When two entries map to one variable, such
+as `stripe-key` and `stripe_key`, the config load fails with
+`INVALID_CONFIG`.
+
+<CodeGroup>
+```bash npm
+E2E_USER_ADMIN_PASSWORD=... E2E_SECRET_STRIPE_KEY=sk_test_... npx e2e run
+```
+
+```bash pnpm
+E2E_USER_ADMIN_PASSWORD=... E2E_SECRET_STRIPE_KEY=sk_test_... pnpm exec e2e run
+```
+
+```bash bun
+E2E_USER_ADMIN_PASSWORD=... E2E_SECRET_STRIPE_KEY=sk_test_... bunx e2e run
+```
+</CodeGroup>
+
+## Where the value goes
+
+The model sees only a secret's name and purpose. When the agent fills a
+secret, the runner authorizes the fill, checks the field, and types the
+value. Known values become
+`<secret:name>` in model input, observations, and reports. See the
 [secret fill rules](/reference/security#secret-fills).
 
 <Warning>
 Redaction matches full values and their encoded forms. A transformed value,
 such as the last four characters of a key, can still appear. Keep secret
-entry in setup tests and assert the result of submitting it. See
+entry in setup tests, and assert the result of the submit. See
 [where redaction stops](/reference/security#where-redaction-stops).
 </Warning>
 
-Credentials and secrets are separate namespaces. `secrets.get()` returns
-`secrets` entries only; a credential's password is `credentials.user(name).password`,
-which the agent and the report know as `<name>.password`. A credential is an
-account, a username with the secrets that sign it in, while a secret is one
-value, so `credentials.admin` and `secrets.admin` can both exist.
-
-In `e2e.config.ts`, `secrets.get()` hands an engine option a secret it needs
-before any test runs, such as a [basic-auth password](/web#protected-previews).
-The config load checks the name, and the value is redacted once the engine
-resolves it, together with the base64 `Authorization` credential it becomes.
-The protection is text only: screenshots and the model's pixels are kept, so
-a page that renders the password on screen is not masked in them.
-
 ## Several signed-in users
 
-Save one session per user, then run the same tests with each session and
+Save one session per user. Then run the same tests with each session and
 [agent](/agents):
 
 <Tabs>
@@ -335,8 +320,10 @@ for (const persona of ['buyer', 'admin'] as const) {
 </Tabs>
 
 Each name refers to an `agents` entry, a `credentials` entry, and a saved
-session. When the personas do not need separate sessions,
+session. When the personas don't need separate sessions,
 [run one flow as several agents](/agents#one-flow-several-personas) instead.
+
+## Next
 
 <CardGroup cols={2}>
   <Card title="test reference" icon="flask" href="/reference/test">
