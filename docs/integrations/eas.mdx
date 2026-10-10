@@ -7,11 +7,10 @@ icon: "/images/icons/expo.svg"
 
 `easSimulators()` from `@e2e-dev/eas` is a
 [device provider](/mobile#hosted-devices) for
-[EAS Simulators](https://expo.dev/services/simulators). The run gets hosted
-iOS simulators or Android emulators, started when it starts and stopped when
-it ends. The engine drives each one through the agent-device daemon that EAS
-runs beside it, so the machine that runs e2e needs no Mac, Xcode, or Android
-SDK.
+[EAS Simulators](https://expo.dev/services/simulators): hosted iOS
+simulators and Android emulators. The engine drives each one through the
+agent-device daemon that EAS runs beside it, so the machine that runs e2e
+needs no Mac, Xcode, or Android SDK.
 
 <Note>
 To run e2e in EAS's CI service instead, see [EAS Workflows](/ci/eas-workflows).
@@ -21,7 +20,7 @@ To run e2e in EAS's CI service instead, see [EAS Workflows](/ci/eas-workflows).
 
 EAS Simulators is in limited access. To check yours, run
 `npx eas-cli@latest simulator:availability`. Then install the provider. It
-calls Expo's API with `fetch`, so there is no SDK to install.
+needs no SDK.
 
 <CodeGroup>
 ```bash npm
@@ -62,10 +61,9 @@ export default {
 
 ## Link the Expo project
 
-The provider reads the project id from `extra.eas.projectId`, which
-`eas init` writes, in the app config beside `e2e.config.ts`. If the app
-config is elsewhere or links no project, pass `projectId`: the id, not the
-slug.
+The provider reads the project id from `extra.eas.projectId` in the app
+config beside `e2e.config.ts`, which `eas init` writes. If the app config is
+elsewhere or links no project, pass `projectId`: the id, not the slug.
 
 <Accordion title="How the provider reads the app config">
 - **`app.json` or `app.config.json`**: read as JSON, from under `expo` when
@@ -77,10 +75,9 @@ slug.
   (`EXPO_NO_DOTENV=1`). A variable the config reads must be in the
   environment that `e2e run` starts in.
 
-The provider reads it one time per run. A config that links no project
-fails the lease before any session starts, naming the file. An
-`@e2e-dev/mobile` too old to pass `projectRoot` to providers fails the lease
-and asks you to upgrade or pass `projectId`.
+A config that links no project fails the lease before any session starts,
+naming the file. An `@e2e-dev/mobile` too old to pass `projectRoot` to
+providers fails the lease too: upgrade it or pass `projectId`.
 </Accordion>
 
 ## Authenticate
@@ -89,16 +86,12 @@ The provider authenticates the way eas-cli does:
 
 - **`EXPO_TOKEN`**: an [access token](https://expo.dev/settings/access-tokens)
   of an account or robot with access to the project, in the environment
-  that `e2e run` starts in. Use it in CI, as a secret.
-- **The eas-cli login**, when `EXPO_TOKEN` isn't set. On a machine where you
-  ran `eas login`, the provider reads the session that eas-cli keeps in
-  `~/.expo/state.json`. The home is the run's `HOME`, or `USERPROFILE` on
-  Windows.
+  that `e2e run` starts in. It wins over a login.
+- **The eas-cli login** from `eas login`, which eas-cli keeps in
+  `~/.expo/state.json` (`USERPROFILE` on Windows).
 
-`EXPO_TOKEN` wins when both are there, so set it to run as a robot on a
-machine signed in as yourself. Sessions always go to production
-`api.expo.dev`, so eas-cli's `EXPO_STAGING` and `EXPO_LOCAL` logins don't
-count.
+Sessions always go to production `api.expo.dev`, so eas-cli's
+`EXPO_STAGING` and `EXPO_LOCAL` logins don't count.
 
 <Warning>
 On a CI runner or a shared machine, set `EXPO_TOKEN`. Without it, a login
@@ -120,40 +113,42 @@ The simulator boots with no apps. Choose one way to put yours on it:
 
 | Option                  | Default     | Meaning |
 | ----------------------- | ----------- | ------- |
-| `projectId`             | the app config's | The Expo project the sessions belong to. See [Link the Expo project](#link-the-expo-project). |
-| `buildId`               | none        | EAS Build that EAS installs and launches on every simulator. |
-| `applicationArchiveUrl` | none        | App archive URL that EAS installs instead of a build. Excludes `buildId`. |
+| `projectId`             | the app config's | See [Link the Expo project](#link-the-expo-project). |
+| `buildId`               | none        | See [Install the app](#install-the-app). |
+| `applicationArchiveUrl` | none        | See [Install the app](#install-the-app). |
 | `device`                | EAS's pick  | iOS device name or UDID (`'iPhone 17 Pro'`), or an Android AVD hardware profile (`'pixel_9'`). |
-| `maxIdleTimeMinutes`    | `10`        | Minutes without an agent-device command before EAS stops the session, which also stops the sessions of a run that died. Must be below `maxDurationMinutes`; a shorter duration lowers the default to one less. |
+| `maxIdleTimeMinutes`    | `10`        | Minutes without an agent-device command before EAS stops the session, which also stops the sessions of a run that died. A shorter `maxDurationMinutes` lowers the default to one less. |
 | `maxDurationMinutes`    | account cap | Minutes a session can run after it is ready. EAS caps it at 40, or 115 on a high-priority plan. |
-| `agentDeviceVersion`    | the engine's | The agent-device version of the session's daemon. The default, the version `@e2e-dev/mobile` pins, matches the engine's client. |
+| `agentDeviceVersion`    | the engine's | The agent-device version of the session's daemon. The default matches the client that `@e2e-dev/mobile` pins. |
 | `tags`                  | `[]`        | Tags on every session, beside the run's own. |
 
-These fail the config load with `INVALID_CONFIG`: an option not in this
-table, `buildId` and `applicationArchiveUrl` together, or a
-`maxIdleTimeMinutes` that isn't below a `maxDurationMinutes` passed with it.
+An unknown option, `buildId` with `applicationArchiveUrl`, or a
+`maxIdleTimeMinutes` not below a `maxDurationMinutes` passed with it fails
+the config load
+with `INVALID_CONFIG`.
 
 ## Sessions
 
-Each target starts up to `workers` sessions (`--workers` overrides it), or
-fewer when it has fewer test files. They start in parallel, before the run's
-clock starts, and take about three minutes each (queue, boot, build
-install). Tests start when all are ready.
+Each target starts up to `workers` sessions, fewer when it has fewer test
+files. They start in parallel before the run's clock starts, and take about
+three minutes each (queue, boot, build install). Tests start when all are
+ready.
 
-A run must fit in one session: EAS stops a session `maxDurationMinutes`
-after it is ready. Split a longer suite across more workers or CI jobs.
+A run must fit in one session, because EAS stops a session
+`maxDurationMinutes` after it is ready. Split a longer suite across more
+workers or CI jobs.
 
-EAS runs as many sessions at the same time as the Expo account allows, and
-queues the rest. No session ends before the run does, so keep `workers`
-times the number of EAS targets within that limit:
+EAS queues sessions beyond the account's concurrency limit. No session ends
+before the run does, so keep `workers` times the number of EAS targets
+within that limit:
 
 - A session still queued after two minutes logs
   `still queued at EAS after two minutes`.
 - Targets prepare one after another, so one target's ready sessions idle
   while the next target's queue and boot.
-- A session still queued when another one has idled for
-  `maxIdleTimeMinutes` fails the lease, because EAS is stopping the idle
-  one. The run then stops every session.
+- A session still queued when another has idled for `maxIdleTimeMinutes`
+  fails the lease, because EAS is stopping the idle one. The run then stops
+  every session.
 
 ## Watch a run
 
@@ -165,41 +160,37 @@ The provider logs the expo.dev page of each session when it creates it:
 ℹ eas-simulators: leased 01a0…
 ```
 
-It also logs a browser preview that opens without a token, as
-`watch at <url>`. A preview that needs a token stays out of the log, because
-the token gives control of the simulator.
+A browser preview that opens without a token logs as `watch at <url>`. One
+that needs a token stays out of the log, because the token controls the
+simulator.
 
 Sessions are named `e2e <target> <n> of <total>` and tagged `e2e`,
-`e2e-run:<run id>`, and `e2e-target:<target>`. To find the sessions of a
-run, use `eas simulator:list --tag e2e-run:<run id>`.
+`e2e-run:<run id>`, and `e2e-target:<target>`. To list a run's sessions, use
+`eas simulator:list --tag e2e-run:<run id>`.
 
 ## Recordings
 
 An attempt that records [video](/reference/config#video) records through
-agent-device, as it does locally, to `video/video.mp4` in the attempt's
-artifact directory.
+agent-device, as it does locally, to `video/video.mp4` in its artifact
+directory.
 
 Set the mobile engine's `videoTouches: false`, as in [Setup](#setup).
-agent-device draws its touch indicator into a recording when it stops. On an
-EAS iOS simulator that takes minutes, so the attempt runs out its
-`cleanupTimeout` and keeps no file. Without the indicator, the stop takes
-about two seconds.
+agent-device draws touches into a recording when it stops, which takes
+minutes on an EAS iOS simulator. The attempt then runs out its
+`cleanupTimeout` and keeps no file. Without touches, the stop takes about
+two seconds.
 
-## What the provider does
-
-- Starts no session for a request cancelled before creation.
-- Stops a session that errors, is cancelled, stays queued too long (see
-  [Sessions](#sessions)), or still boots 15 minutes after it leaves the
-  queue. A session that EAS no longer knows counts as stopped.
-- Cancels the queued job of a session it stops, so EAS doesn't start it
-  later and count it against the account.
-- Allows up to three failed status polls in a row before it gives a session
-  up.
+## When a session fails to start
 
 A lease fails, and the run ends before any test, when there is no
 `EXPO_TOKEN` and no eas-cli login, when the account has no EAS Simulators,
-or when a session fails to start. The provider still stops the run's other
-sessions, started or queued.
+or when a session fails to start. A session fails when it errors, stays
+queued too long (see [Sessions](#sessions)), or still boots 15 minutes after
+it leaves the queue.
+
+The provider stops the failed session and the run's other sessions. It
+cancels the job of a queued one, so EAS doesn't start it later and bill the
+account.
 
 ## Next
 
