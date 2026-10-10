@@ -152,11 +152,13 @@ page on any other origin is another route.
 - An alert that the replay raised and the recording never saw stops the
   replay.
 - Text that differs on every run, such as a date, a duration, or an id,
-  isn't used. In an alert, it reads as a placeholder.
+  is skipped while a stable change exists. With nothing else, it is kept,
+  and a changed value hands the replay off. In an alert, it reads as a placeholder.
 - A count that names what it counts, such as `3 records imported`, must read
   the same on replay when the step made it appear on the screen it acted
   on. A count that only moved (`41 items` to `42 items`), one on a screen the
-  step navigated to, and a bare number such as a badge are never used.
+  step navigated to, and a bare number such as a badge are skipped the same
+  way.
 - A control with no name is found by its place among the unnamed controls
   of its kind inside the same named row, list item, or group.
 </Accordion>
