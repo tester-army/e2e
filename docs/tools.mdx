@@ -61,12 +61,9 @@ for `tools` on an entry with a custom `executor`.
 
 | Annotation | Meaning |
 | --- | --- |
-| `mutates: true` | Changes state. The call counts against the step's action budget and runs in order with the other actions. The [replay cache](/cache) can't replay it, so the agent runs that part of the step live. |
+| `mutates: true` | Changes state. The call takes a slot of the step's action budget before it runs, failed or not, and runs in order with the other actions. The [replay cache](/cache) can't replay it, so the agent runs that part of the step live. |
 | `mutates: false` | Read-only. Runs without an action slot and may observe the screen. |
 | `platforms: ['ios', 'android']` | Offers the tool only on those platforms. Omit it to offer the tool on every target. |
-
-A failed call still uses its action slot. The runner checks the budget
-before dispatch, also when the model asks for several calls at one time.
 
 ## Observe from a tool
 
@@ -99,30 +96,25 @@ const captureEvidence = defineTool(
 );
 ```
 
-- `observe()` returns a redacted text snapshot. Ask for `tree: true` to get
-  the node tree, or `pixels: true` to get a masked screenshot. The built-in
-  agent's rules apply, including no pixels
+- `observe()` returns a redacted text snapshot. `tree: true` adds the node
+  tree and `pixels: true` a masked screenshot, under the built-in agent's
+  rules, so no pixels
   [after a secret fill](/reference/security#screenshots-after-a-secret-fill).
-- Observe only from a read-only tool. A mutating tool holds the action
-  queue, so an observation inside it would wait on its own call.
+- A mutating tool holds the action queue, so an observation inside it would
+  wait on its own call.
 - `attachScreenshot(pixels, label)` adds the image to the step's artifacts
-  and returns its artifact id. Give each capture a unique label, or it
-  overwrites an earlier image.
+  and returns its artifact id. A reused label overwrites the earlier image.
 
 ## Device toolkits
 
 `@e2e-dev/mobile` has a ready tool pack, `mobileTools`, with `open_app`,
-`swipe`, and `alert` for device targets. Spread it to add your own tools
-beside it:
+`swipe`, and `alert`. Spread it to add your own tools beside it:
 
 ```ts
 tools: { ...mobileTools(iphone, pixel), seedCart },
 ```
 
-Pass every device engine to one `mobileTools` call. Screenshots and point
-actions come from the engine's built-in tools. See
-[Agent tools](/mobile#agent-tools) for the setup, and the
-[mobile engine reference](/reference/mobile#agent-tools) for each tool.
+See [Agent tools](/mobile#agent-tools) for the setup.
 
 ## Next
 
