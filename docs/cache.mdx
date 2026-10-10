@@ -9,9 +9,8 @@ check verifies the result. On the next run, the runner replays those
 actions without a model call. When a control or the expected end state no
 longer matches, the agent takes over from the current screen.
 
-`agent.assert`, `agent.waitFor`, and `agent.extract` always run live.
-
-The run summary counts the outcomes:
+`agent.assert`, `agent.waitFor`, and `agent.extract` always run live. The
+run summary counts the outcomes:
 
 ```text
            AI  4.1k tokens · 2 model calls · anthropic/claude-sonnet-4.5
@@ -41,8 +40,8 @@ test('adds an item', async ({ app, agent, screen }) => {
 | `locator.waitFor()`, `browser.waitForURL()` | `locator.textContent()` and other reads |
 | `agent.assert(...)`, `agent.waitFor(...)` | `agent.extract(...)`, another `act`, the attempt passing |
 
-`step.cache.write`, in the report only, says what happened to the
-recording when the attempt ended:
+`step.cache.write`, in the report only, says what happened to the recording
+when the attempt ended:
 
 | `step.cache.write` | Meaning |
 | --- | --- |
@@ -53,29 +52,27 @@ recording when the attempt ended:
 | `no-change` | Nothing recorded: no control appeared, went away, or changed state, and the route stayed the same. A step that took no action records nothing either. |
 | `not-written` | Not saved: the store didn't write the recording, for example one over the file store's size limit. |
 
-A failing attempt can still save the steps verified before the failure. It
-deletes unverified entries and the replays involved in the failure,
-including an `end-mismatch`. A custom store needs a `delete` method for
-this cleanup. Cancelling a run leaves the cache unchanged.
+A failing attempt still saves the steps verified before the failure. It
+deletes unverified entries and the replays involved in the failure. A custom store needs a `delete` method for this. Cancelling
+a run leaves the cache unchanged.
 
 <Accordion title="Failures where no model answered">
-An attempt whose only failures are ones where no model answered leaves
-every entry it did not confirm unchanged. These failures say nothing about
-the app:
+An attempt whose only failures are ones where no model answered evicts
+nothing, since these say nothing about the app:
 
 - `MODEL_UNAVAILABLE`: no model is configured.
 - `MODEL_PROVIDER_FAILED`: the provider returned an error, such as a
   missing or rejected key, a rate limit, or a 5xx, or a request got no
   response within 120 seconds.
 
-So a `read-write` run without model access keeps its recordings. That
-includes a step that replayed before an `agent.assert` that could not reach
-its model. The run still saves the steps verified before the failure.
+So a `read-write` run without model access keeps its recordings, including
+a step that replayed before an `agent.assert` that could not reach its
+model.
 
-These count as a failure of the flow: a model answer that can't be used
-(`MODEL_OUTPUT_INVALID`, `CONTEXT_OVERFLOW`), a step that ran out of time
-(`STEP_TIMEOUT`, even with a request still open), and any other failure in
-the same attempt, such as an `afterEach` assertion.
+These count as a failure of the flow: an unusable model answer
+(`MODEL_OUTPUT_INVALID`, `CONTEXT_OVERFLOW`), `STEP_TIMEOUT` (even with a
+request still open), and any other failure in the same attempt, such as an
+`afterEach` assertion.
 </Accordion>
 
 ## What must match
@@ -85,22 +82,17 @@ agent. Each of these changes causes a miss:
 
 - renaming the test or the target,
 - changing the instruction or an ordinary param,
-- running with another configured agent, or changing the agent's `context`
-  or the test's `agentContext`,
+- running with another configured agent (`agent: ['buyer', 'admin']`
+  records one entry each), or changing the agent's `context` or the test's
+  `agentContext` (a secret in it enters the key as its name only),
 - switching to another engine, or changing the project id or the app's
   identity.
 
-A test that runs one time per agent (`agent: ['buyer', 'admin']`) records
-one entry per agent. The agent context enters the key as a hash of its
-redacted text, so a secret in it adds only its name.
+Changing the model doesn't cause a miss, and neither does upgrading the
+engine: a node the new version resolves differently misses at replay.
 
-Changing the model doesn't cause a miss. Upgrading the same engine doesn't
-either: a recorded action finds its node again at replay, so a node the new
-version resolves differently misses then.
-
-A timestamp or a fresh email address would miss on every run. Wrap values
-like these in `unique()`, and the runner puts in the current value when it
-replays:
+A timestamp or a fresh email address would miss on every run. Wrap such
+values in `unique()`, and the runner puts in the current value at replay:
 
 ```ts
 import { unique } from 'e2e';
@@ -110,12 +102,12 @@ await agent.act('create a company named {name}', { params: { name: unique(name) 
 await expect(screen.getByRole('heading', { name })).toBeVisible();
 ```
 
-Use `unique()` for data the flow enters or checks. Keep choices that change
-the flow, such as a plan name, as ordinary params. The substitution also
-covers the value as a URL spells it: `%20` in a path, `+` in a search query.
-When a `unique()` value equals another param's value or is inside one, the
-step passes but isn't recorded. Then `step.cache.notRecorded` reads
-`param-collision`, and the next run, with a fresh value, records it.
+Use `unique()` for data the flow enters or checks, and ordinary params for
+choices that change the flow, such as a plan name. The substitution also
+covers the value as a URL spells it (`%20`, `+`). When a `unique()` value
+equals or sits inside another param's value, the step isn't recorded:
+`step.cache.notRecorded` reads `param-collision`, and the next run records
+it.
 
 For preview URLs that change on each deploy, set
 [`app.identity`](/reference/config#the-app-under-test) to keep one cache
@@ -124,20 +116,18 @@ identity. On devices, replay uses the
 
 ## How a replay works
 
-1. Check the starting screen: it must be the same route. Retries run live,
-   except under `--strict-cache` or `cache.strict`.
-2. Find each recorded control and repeat its action. The runner matches
-   controls by role, name, test id, and surrounding context. It waits for
-   missing controls and stops when a match is ambiguous.
+1. Check the starting screen: it must be the same route.
+2. Find each recorded control by role, name, test id, and surrounding
+   context, and repeat its action. The runner waits for missing controls and
+   stops when a match is ambiguous.
 3. Check the final route and what the original step changed: the controls
    that appeared, with their checked, selected, expanded, or pressed state,
    and the ones that went away.
 4. Finish without a model call, or let the agent continue with a record of
    what ran and why replay stopped.
 
-Typed values replay as recorded, even when an earlier run left the same
-value on screen. A secret fill resolves the current value by name and goes
-through authorization again.
+Typed values replay as recorded. A secret fill resolves the current value
+by name and goes through authorization again.
 
 <Accordion title="What counts as the same route">
 A route is the origin, the path, and the query. The record id and the
@@ -145,45 +135,37 @@ fragment don't count. Ids, tokens, timestamps, and cache busters in the
 path or the query read as an id placeholder, so `/orders/42?t=1727780000`
 and `/orders/7?t=1727780999` are one route.
 
-Every other query value is part of the route. `?mode=safe` and
-`?mode=unsafe` are different screens, and so are `/companies` and
-`/companies?tab=notes`. So is a tracking parameter that wasn't there when
-the step was recorded. Two routes that differ in one word, such as
-`/products/summer-sneaker` and `/products/winter-boot`, are different
-screens too, even when they look alike.
+Every other query value is part of the route: `?mode=safe` and
+`?mode=unsafe` differ, and so do `/companies` and `/companies?tab=notes`, or
+a new tracking parameter. `/products/summer-sneaker` and
+`/products/winter-boot` are different routes too.
 
-A location on the app's own origin is compared by its path. So a recording
+A location on the app's own origin is compared by its path, so a recording
 follows the app to a preview deployment that shares its `app.identity`. A
 page on any other origin is another route.
 </Accordion>
 
 <Accordion title="How the end check reads the screen">
-- At least one recorded change must happen during the replay. The runner
-  counts from the first screen the replay saw on the route it ended on. An
-  outcome already on screen before the actions proves nothing.
-- When the step's last action moved to another route, that move is the
-  evidence.
+- At least one recorded change must happen during the replay. An outcome
+  already on screen before the actions proves nothing. When the step's last
+  action moved to another route, that move is the evidence.
 - An alert that the replay raised and the recording never saw stops the
   replay.
-- Text that reads differently on every run, such as a date, a time, a
-  duration, or an id, isn't used. In an alert, it reads as a placeholder.
-- A count that names what it counts, such as `3 records imported` or
-  `Showing 1 to 9 of 9 results`, is part of the effect when the step made
-  it appear on the screen it acted on. It must read the same on replay.
-- A count that was already on screen and only moved, such as `41 items` to
-  `42 items`, isn't used. Neither is one on a screen the step navigated to,
-  since leftover data from earlier runs moves it again. A bare number, such
-  as a badge, is never used.
+- Text that differs on every run, such as a date, a duration, or an id,
+  isn't used. In an alert, it reads as a placeholder.
+- A count that names what it counts, such as `3 records imported`, must read
+  the same on replay when the step made it appear on the screen it acted
+  on. A count that only moved (`41 items` to `42 items`), one on a screen the
+  step navigated to, and a bare number such as a badge are never used.
 - A control with no name is found by its place among the unnamed controls
-  of its kind, inside the same named row, list item, or group. Without such
-  a container, the agent takes the step.
+  of its kind inside the same named row, list item, or group.
 </Accordion>
 
 ## Why a step was not replayed
 
-Each `act` step reports `step.cache`. `agent.act()` returns it as
-`result.cache`, without `write`, and the [trace page](/debugging#traces)
-shows it under the step. It is absent when caching is off for the step.
+Each `act` step reports `step.cache`, absent when caching is off for the
+step. `agent.act()` returns it as `result.cache`, without `write`, and the
+[trace page](/debugging#traces) shows it under the step.
 
 | Run summary | `step.cache.mode` | Meaning |
 | --- | --- | --- |
@@ -191,11 +173,10 @@ shows it under the step. It is absent when caching is off for the step.
 | `handed off` | `agent-concluded` | Replay started, then the agent took over. |
 | `missed` | `missed` | The agent ran the step from the beginning. |
 
-A stop before any action ran is a miss. A stop after replay started is a
-hand-off. Both carry `step.cache.reason`, and `step.cache.detail` says where
-the replay stopped and why (`at action 2 of 3, tap button "Apply": ...`).
-`step.cache.entry` is the entry's key, which is its file name
-(`<entry>.json`) in the file store.
+Both carry `step.cache.reason`, and `step.cache.detail` says where the
+replay stopped and why (`at action 2 of 3, tap button "Apply": ...`).
+`step.cache.entry` is the entry's key and its file name (`<entry>.json`) in
+the file store.
 
 | Reason | What happened | What to do |
 | --- | --- | --- |
@@ -210,7 +191,7 @@ the replay stopped and why (`at action 2 of 3, tap button "Apply": ...`).
 | `action-failed` | The app rejected a replayed action. | Check the app. |
 | `action-uncertain` | A replayed action failed, and it's unknown whether it took effect. The agent is told to check before it acts again. | Check the app. |
 | `viewport-changed` | A bare-point tap or hover was recorded on a viewport of another size. | Keep the viewport fixed. |
-| `end-mismatch` | Every action ran, but the recorded route, a control that should have appeared or gone away, or a recorded state did not come back. Or the outcome was already on screen before the replay, or the replay raised an alert the recording never saw. | Leftover data from an earlier run, a banner that comes and goes, or a regression. Unique test data and cleanup in `afterEach` help. |
+| `end-mismatch` | Every action ran, but the [end check](#how-a-replay-works) failed. | Leftover data from an earlier run, a banner that comes and goes, or a regression. Unique test data and cleanup in `afterEach` help. |
 
 To rule the cache out of a failure, run one time without it:
 
@@ -248,13 +229,10 @@ composed itself, replay.
 ## What a recording holds
 
 Each entry is a JSON file under `.e2e/cache/`, named by a hash of its key.
-It holds actions, target descriptions, typed text, a step summary, and
-checks for the final state. The checks are the route, up to eight controls
-that appeared during the step (alerts and status messages first), and up to
-eight that went away.
-
-Entries hold no prompts, conversations, screenshots, observed trees, or
-secret values. A secret fill stores only the secret's name.
+It holds actions, target descriptions, typed text, a step summary, and the
+end checks: the route and up to eight controls that appeared and eight that
+went away. Entries hold no prompts, conversations, screenshots, observed
+trees, or secret values. A secret fill stores only the secret's name.
 
 <Warning>
 Other typed values are stored as typed. Review recordings before you share
@@ -275,13 +253,10 @@ cache: 'off',
 cache: { mode: 'read-write', dir: '.e2e/cache' },
 ```
 
-`--no-cache` overrides the config. To let CI update recordings, set
-`cache: 'read-write'`. In `read-only` mode, stale entries stay until a
-`read-write` run replaces them.
-
-A custom `cache.store` replaces the file store, and doesn't default to
-`read-only` in CI. `e2e explore` and `e2e mcp` don't use the cache. See the
-[config reference](/reference/config#cache).
+`--no-cache` overrides the config. In `read-only` mode, stale entries stay
+until a `read-write` run replaces them. A custom `cache.store` replaces the
+file store and doesn't default to `read-only` in CI. `e2e explore` and
+`e2e mcp` don't use the cache.
 
 ## Commit the replay cache
 
@@ -290,38 +265,28 @@ A custom `cache.store` replaces the file store, and doesn't default to
 `e2e init` adds `.e2e/cache/` to `.gitignore`, so each machine records its
 own and CI starts with none. To share replays, remove that line and commit
 the directory. CI stays `read-only` unless you set `cache: 'read-write'`.
-Treat committed entries as test data. Review them in the pull request that
-recorded them again.
+Treat committed entries as test data, and review them in the pull request
+that recorded them again.
 
 Local runs leave a committed directory clean unless something changed. A
-replayed step never rewrites its entry. A live recording with the same
-actions, paths, and anchors isn't written either. Fields that differ between
-two live runs of one flow, such as the summary, the measured end wait, and
-the rule that flagged a typed run-time value, don't count.
+replayed step never rewrites its entry, and a live recording with the same
+actions, paths, and anchors isn't written. So an entry for a UI that drifts
+is repaired only when a control can no longer be found. A file changes when:
 
-A file changes when:
-
-- a step records for the first time,
-- the agent finishes a step after a hand-off, and records what it saw,
-- a step fails after it replayed, or ends in an `end-mismatch` the agent
-  had to repair, which deletes the entry,
-- a step with an entry passes and leaves nothing to record, which deletes
-  the entry,
-- no verification step confirmed the entry by the end of the attempt, which
-  deletes it,
-- an `e2e` upgrade changes how entries are matched. That gives every entry
-  a new key, so the first run after it records them again.
-
-A replay that still finds every control refreshes nothing. So an entry for
-a UI that drifts is repaired only when a control can no longer be found.
+- a step records for the first time, or after a hand-off,
+- a step fails after a replay, ends in an `end-mismatch` the agent had to
+  repair, passes with nothing to record, or isn't confirmed by the end of the attempt, which deletes the
+  entry,
+- an `e2e` upgrade changes how entries are matched, which gives every entry
+  a new key, so the next run records them again.
 
 ## Fail on a stale recording
 
-By default, a committed recording that stops replaying fails nothing. The
-agent takes the step over, and every CI run pays for the model calls until
+By default, a committed recording that stops replaying fails nothing: the
+agent takes the step over, and every CI run pays for model calls until
 someone records it again. With `--strict-cache` (or
-`cache: { strict: true }`), a step whose recording no longer replays fails
-with `REPLAY_STALE` and makes no model call:
+`cache: { strict: true }`), the step fails with `REPLAY_STALE` and makes no
+model call:
 
 <CodeGroup>
 ```bash npm
@@ -337,8 +302,7 @@ CI=1 bunx e2e run --strict-cache
 ```
 </CodeGroup>
 
-`REPLAY_STALE` exits 2 and is not retried. Under strict, a retry replays
-like the first attempt.
+`REPLAY_STALE` exits 2 and is not retried.
 
 | Fails under strict | Still runs live |
 | --- | --- |
@@ -348,26 +312,18 @@ like the first attempt.
 
 A recording under another key comes from an `e2e` upgrade that changed the
 keys, or a change to the project id, the app's identity, or the agent's
-context. The message names that file. For a recording made by this version
-or later, it also names what changed (`the agent's context`). Delete the
-file when nothing replays it. This check doesn't cover a custom
-`cache.store`. Entries recorded before the check existed are covered after
-a `read-write` run without strict replays them or records them again.
+context. The message names that file and, for a recording made by a
+current version, what changed. Delete the file when nothing replays it. This check doesn't cover a
+custom `cache.store`.
 
-A strict run never writes or deletes an entry, even in `read-write` mode.
-It records nothing it runs live, and a failure deletes nothing. A new step
-records only on a run without strict, so prefer `--strict-cache` in CI over
-`cache.strict` in the config.
-
-Every strict run fails on a stale entry until you record it again:
+A strict run never writes or deletes an entry, even in `read-write` mode, so
+a new step records only on a run without strict. Prefer `--strict-cache` in
+CI over `cache.strict` in the config. To fix a stale entry:
 
 1. Run the test in `read-write` mode without the flag. Turn `cache.strict`
    off if the config sets it.
 2. Commit the changed entry. A custom `cache.store` gets the new entry from
    that run instead.
-
-The `REPLAY_STALE` message names the option that turned strict on, and
-where the entry is: the cache directory or the configured `cache.store`.
 
 ## Inspect the cache
 
