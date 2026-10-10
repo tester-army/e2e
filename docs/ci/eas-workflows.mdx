@@ -47,10 +47,9 @@ Add a build profile that needs no credentials:
 
 ## Workflow
 
-The iOS job runs on a macOS runner. The Android job needs a
-`nested-virtualization` Linux runner, the only EAS machines that can run
-the emulator. Use a custom job, as below. The built-in `maestro` job type
-runs Maestro flows, not e2e.
+The Android job needs a `nested-virtualization` Linux runner, the only EAS
+machine that can run the emulator. Use custom jobs, as below. The built-in
+`maestro` job type runs Maestro flows, not e2e.
 
 ```yaml title=".eas/workflows/e2e.yml" expandable
 name: e2e
@@ -135,25 +134,21 @@ jobs:
           path: .e2e
 ```
 
-`CI: '1'` turns on the [CI defaults](/ci#what-ci-changes), also on a runner
-that doesn't set `CI`. The iOS job creates its simulator with
-`xcrun simctl` to pin the runtime.
-
-`eas/start_android_emulator` is an EAS build function, documented under
-[custom builds](https://docs.expo.dev/custom-builds/schema/) and not on the
-Workflows syntax page. It downloads the system image you name with
-`sdkmanager`.
+`CI: '1'` turns on the [CI defaults](/ci#what-ci-changes) on a runner that
+doesn't set `CI`. `eas/start_android_emulator` is an EAS build function,
+documented under [custom builds](https://docs.expo.dev/custom-builds/schema/),
+not on the Workflows syntax page. It downloads the system image you name
+with `sdkmanager`.
 
 ## Model key
 
-Keep `AI_GATEWAY_API_KEY`, or the key of your provider, in an
+Keep the model key, such as `AI_GATEWAY_API_KEY`, in an
 [EAS environment variable](https://docs.expo.dev/eas/environment-variables/)
-with secret visibility. `environment:` sets the EAS environment a job
-reads. Set it in each job, because a custom job reads `production` by
-default.
+with secret visibility. Set `environment:` on each job, because a custom job
+reads `production` by default.
 
-Each job that reads the environment can read the key, including a job that
-runs the code of an untrusted pull request. See
+Each job that reads the environment can read the key, including one that
+runs an untrusted pull request. See
 [Model credentials](/ci#model-credentials).
 
 ## Build less often
