@@ -28,9 +28,9 @@ snapshot when most of it changed. Node ids stay the same while their
 elements exist. A failed action also returns the current screen, so the
 model can choose its next action.
 
-Judgments from `assert`, `waitFor`, and `extract` see only the instruction
-and the current screen, never completed steps or the acting agent's
-summaries. They can use a separate [judge model](/models#a-judge-of-its-own).
+Judgments from `assert`, `waitFor`, and `extract` see the instruction,
+the current screen, and the agent's `context`, never completed steps or the
+acting agent's summaries. They can use a separate [judge model](/models#a-judge-of-its-own).
 
 `vision: true` adds a masked screenshot, and `vision: 'only'` judges the
 screenshot alone. See the [agent reference](/reference/agent#vision) for
