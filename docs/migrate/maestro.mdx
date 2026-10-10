@@ -22,7 +22,7 @@ export const migrationPrompt = `Migrate this project's Maestro flows to e2e, one
 12. Summarize which flows moved, which stayed in Maestro, and why.`;
 
 e2e replaces Maestro's YAML flows with TypeScript tests. Each command becomes
-an awaited locator call, or one agent goal covers several. Both runners can
+an awaited call, usually on a locator, or one agent goal covers several. Both runners can
 use the same simulator or emulator while you move one flow at a time.
 
 <SetupPrompt>
