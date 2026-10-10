@@ -229,7 +229,7 @@ between steps rather than inside one.
 export interface Device {
   /**
    * A locator from an agent-device selector (`'id=SW_VERSION_SPECIFIER'`,
-   * `'role=StaticText label="26.2"'`), for nodes the closed `screen` query
+   * `'role=text label="26.2"'`), for nodes the closed `screen` query
    * vocabulary cannot name. Same polling and strictness as any locator.
    */
   locator(selector: string): Locator;
@@ -482,15 +482,25 @@ Use `device.locator` for platform-specific selectors that `screen` queries
 cannot express.
 
 ```ts
-await expect(device.locator('role=NavigationBar id=About')).toBeVisible();
-await expect(device.locator('role=StaticText label="iOS Version"')).toHaveText('iOS Version');
-await device.locator('id=SW_VERSION_SPECIFIER role=Button').tap();
+await expect(device.locator('role=navigation-bar id=About')).toBeVisible();
+await expect(device.locator('role=text label="iOS Version"')).toHaveText('iOS Version');
+await device.locator('id=SW_VERSION_SPECIFIER role=button').tap();
 ```
 
-Selector terms are agent-device's: `id`, `role`, `text`, `label`, `value`,
-`appname`, `windowtitle`, and the flags `visible`, `hidden`, `editable`,
-`selected`, `focused`, `enabled`, `hittable`. `role` accepts the platform
-type (`StaticText`) or the contract role (`text`).
+Selector terms and their rules are agent-device's (the ones `agent-device
+find ... list` applies): `id`, `role`, `text`, `label`, `value`, `appname`,
+`windowtitle`, and the flags `visible`, `hidden`, `editable`, `selected`,
+`focused`, `enabled`, `hittable`. Strictness stays the locator's: an action
+on a selector that matches several nodes fails, where an agent-device action
+skips an ambiguous `||` alternative.
+
+- `role` takes agent-device's kind, the role `agent-device snapshot` prints:
+  `button`, `text`, `text-field`, `navigation-bar`, `scroll-area`, `switch`,
+  `image`. It is not the `getByRole` role (`textbox`).
+- Text terms compare case-insensitively after collapsing whitespace.
+- `visible` means the node is hittable or has a non-empty frame;
+  `hidden` is its opposite.
+- `text` reads the first non-empty label, value, or identifier.
 
 ## Agent tools
 

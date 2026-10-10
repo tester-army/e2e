@@ -15,7 +15,7 @@ function query(kind: 'role' | 'label' | 'placeholder' | 'text' | 'displayValue' 
 function names(expression: LocatorExpression): string[] {
   let counter = 0;
   const { index } = projectSnapshot(SETTINGS_NODES, { mintId: () => `n${++counter}` });
-  return resolveExpression(expression, index).map((entry) => entry.node.name ?? '');
+  return resolveExpression(expression, index, 'ios').map((entry) => entry.node.name ?? '');
 }
 
 describe('locator expressions over a device snapshot', () => {
@@ -50,9 +50,9 @@ describe('locator expressions over a device snapshot', () => {
   it('answers text and label queries with the innermost match when an ancestor echoes the text', () => {
     let counter = 0;
     const { index } = projectSnapshot(SETTINGS_NODES, { mintId: () => `n${++counter}` });
-    const matches = resolveExpression(query('text', 'About'), index);
+    const matches = resolveExpression(query('text', 'About'), index, 'ios');
     expect(matches.map((entry) => entry.node.role)).toEqual(['text']);
-    expect(resolveExpression(query('label', 'About'), index).map((entry) => entry.node.role)).toEqual(['text']);
+    expect(resolveExpression(query('label', 'About'), index, 'ios').map((entry) => entry.node.role)).toEqual(['text']);
     // The echoing cell still answers role queries, and filters by its subtree text.
     expect(names(query('role', 'listitem', { name: exact('About') }))).toEqual(['About']);
     expect(names({ kind: 'filter', source: query('role', 'listitem'), hasText: exact('About') })).toEqual(['About']);
@@ -70,12 +70,12 @@ describe('locator expressions over a device snapshot', () => {
       ],
       { mintId: () => `n${++counter}` },
     );
-    const field = resolveExpression(query('label', 'Name field'), index);
+    const field = resolveExpression(query('label', 'Name field'), index, 'ios');
     expect(field.map((entry) => [entry.node.role, entry.node.testId])).toEqual([['textbox', 'name-input']]);
     const pattern: LocatorExpression = { kind: 'query', query: { kind: 'label', value: { kind: 'regexp', source: 'field$', flags: '' } } };
-    expect(resolveExpression(pattern, index).map((entry) => entry.node.role)).toEqual(['textbox', 'textbox']);
+    expect(resolveExpression(pattern, index, 'ios').map((entry) => entry.node.role)).toEqual(['textbox', 'textbox']);
     // A role query keeps both, since the host view answers to no vocabulary role of its own.
-    expect(resolveExpression(query('role', 'textbox'), index)).toHaveLength(2);
+    expect(resolveExpression(query('role', 'textbox'), index, 'ios')).toHaveLength(2);
   });
 
   it('scopes, filters, and indexes', () => {
@@ -93,16 +93,9 @@ describe('locator expressions over a device snapshot', () => {
     expect(names({ kind: 'index', source: query('role', 'listitem'), index: 5 })).toEqual([]);
   });
 
-  it('resolves agent-device selectors, alternatives first-match, and rejects frames', () => {
+  it('routes agent-device selectors to the selector matcher, and rejects frames', () => {
     expect(names({ kind: 'selector', selector: 'id=ABOUT' })).toEqual(['About']);
-    expect(names({ kind: 'selector', selector: 'role=button visible' })).toEqual(['Back']);
-    expect(names({ kind: 'selector', selector: 'role=cell' })).toEqual(['About', 'Scroller']);
-    expect(names({ kind: 'selector', selector: 'role=Cell' })).toEqual(['About', 'Scroller']);
-    expect(names({ kind: 'selector', selector: 'role=NavigationBar' })).toEqual(['General']);
-    expect(names({ kind: 'selector', selector: 'role=navigation' })).toEqual(['General']);
-    expect(names({ kind: 'selector', selector: 'label="Airplane Mode" role=switch' })).toEqual(['Airplane Mode']);
-    expect(names({ kind: 'selector', selector: 'editable' })).toEqual(['Search', 'Password']);
-    expect(names({ kind: 'selector', selector: 'enabled=false' })).toEqual(['Hidden']);
+    expect(names({ kind: 'selector', selector: 'id=NOPE || label="Airplane Mode"' })).toEqual(['Airplane Mode']);
     expect(() => names({ kind: 'selector', selector: '@e3' })).toThrow(/invalid agent-device selector/);
     expect(() => names({ kind: 'frame', selector: 'iframe', source: query('role', 'button') })).toThrowError(
       expect.objectContaining({ code: 'FRAME_NOT_FOUND' }),
