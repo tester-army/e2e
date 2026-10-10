@@ -19,10 +19,10 @@ finding. The agent reports a finding as a bug only when its test fails.
 
 ## Before you start
 
-- Make sure that the app can serve many explorers at the same time. Start
-  the app one time and set `reuseExisting: true` on the target's
-  `app.command`, or set port `0` in the app URL so each run starts its own
-  copy. When `CI` is set, e2e ignores `reuseExisting`: use port `0`. See
+- Make sure the app can serve many explorers at the same time. Start the
+  app one time and set `reuseExisting: true` on the target's `app.command`,
+  or set port `0` in the app URL so each run starts its own copy. When `CI`
+  is set, e2e ignores `reuseExisting`. Use port `0`. See
   [Starting your app](/web#starting-your-app).
 - On mobile, declare one target for each simulator or emulator. Each
   explorer needs its own device.
@@ -35,8 +35,8 @@ from the skill.
 
 ## Install the skill
 
-The coding agent runs the bug bash from the `e2e` skill. Install the skill
-in your project:
+The coding agent runs the bug bash from the `e2e` skill. `e2e init`
+installs it. To install it without `init`:
 
 <CodeGroup>
 ```bash npm
@@ -52,7 +52,7 @@ bunx skills add tester-army/e2e
 ```
 </CodeGroup>
 
-`e2e init` also installs the skill. See [Coding agents](/coding-agents).
+See [Coding agents](/coding-agents).
 
 ## Start a bug bash
 
@@ -74,9 +74,9 @@ Bug bash the checkout and account settings on this branch.
    charter has its own persona (`--agent`) and its own output directory
    (`--output`).
 4. Merges the findings of all charters.
-5. Rejects findings that have a known cause: a limit of the explorer (for
-   example, a link that opens a new tab), the local environment, the
-   intended design, or the seed data.
+5. Rejects findings that have a known cause. The cause can be a limit of
+   the explorer (for example, a link that opens a new tab), the local
+   environment, the intended design, or the seed data.
 6. Writes a repro test for each remaining finding. The test asserts the
    expected behavior. The agent can start one subagent for each area. Each
    subagent opens its own [`e2e mcp` session](/reference/mcp#several-sessions)
@@ -89,9 +89,12 @@ Bug bash the checkout and account settings on this branch.
 </ShowMore>
 
 Each confirmed bug has its repro test and steps. It also has the
-explorer's screenshot and video when the engine records them. The video is
-not masked: if the explorer typed a password, check the video before you
-share it.
+explorer's screenshot and video when the engine records them.
+
+<Warning>
+The video is not masked. If the explorer typed a password, check the video
+before you share it.
+</Warning>
 
 To read the full procedure, run `npx e2e guide bug-bash`.
 
@@ -116,6 +119,8 @@ bunx e2e run --exclude-tag bugbash
 
 After the fix, the test passes. Remove the tag and keep the test as a
 regression test.
+
+## Next
 
 <CardGroup cols={2}>
   <Card title="Exploring without a test" icon="compass" href="/explore">
