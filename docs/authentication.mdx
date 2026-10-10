@@ -6,7 +6,8 @@ icon: "key"
 
 A setup test signs in one time and saves a named session. Other tests
 restore that session and start signed in. Passwords and other secrets are
-handles: the runner types the value, and the model and reports never see it.
+handles: the runner types the value and redacts it from model input and
+reports, with [some limits](/reference/security#where-redaction-stops).
 
 ## Sign in once in a setup test
 
@@ -99,7 +100,8 @@ export default {
 
 The config load checks each password. While `ADMIN_PASSWORD` is unset or
 shorter than 6 characters, every command fails with `INVALID_CONFIG`,
-`e2e list` included.
+`e2e list` included. A valid [override](#override-a-value-per-run) replaces
+it.
 
 <Accordion title="Keep the value out of the environment">
 
@@ -124,8 +126,9 @@ export default {
 } satisfies E2EConfig;
 ```
 
-The value goes to the field and the redaction ledger only, and is redacted
-only from its first fill on. If the app can show the value before a test
+The value goes to the field, the redaction ledger, and the encrypted payload
+of a [saved session](/reference/security#sessions). It's redacted only from
+its first fill on. If the app can show the value before a test
 types it, use a string. The same applies to a `secrets` entry.
 
 </Accordion>
@@ -143,7 +146,7 @@ await agent.act('Sign in', {
 });
 ```
 
-The model sees only the secret's name. The runner authorizes the fill,
+The model sees only the secret's name and purpose. The runner authorizes the fill,
 requires a password field for a password, and types the value. Known
 values become `<secret:name>` in model input, observations, and reports.
 See the [secret fill rules](/reference/security#secret-fills). The agent
