@@ -33,10 +33,9 @@ export interface Device {
   /** Toggles airplane mode. */
   setAirplaneMode(enabled: boolean): Promise<void>;
   /**
-   * Grants, denies, or resets one permission for the pinned app, brought to
-   * the foreground first when the session is on no app. A change terminates
-   * a running app on iOS, a revoke one on Android, so it goes before the
-   * `app.open()` a test starts with.
+   * Grants, denies, or resets one permission for the pinned app, which need
+   * not be running. A change terminates a running app on iOS, a revoke one
+   * on Android, so it goes before the `app.open()` a test starts with.
    */
   setPermission(permission: DevicePermission, state: PermissionState): Promise<void>;
   /** Sets the simulated location, switching location services on first on Android. */

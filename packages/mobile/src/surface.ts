@@ -44,7 +44,7 @@ import {
   ConfigurationError,
   TestError,
 } from 'e2e/engine';
-import { isNoSessionApp, isSnapshotPresentationFailure, runCommand, staleOr } from './errors.ts';
+import { isSnapshotPresentationFailure, runCommand, staleOr } from './errors.ts';
 import { pointerInteraction, DEFAULT_LONG_PRESS_MS } from './actions.ts';
 import { resolveExpression } from './locate.ts';
 import {
@@ -360,14 +360,6 @@ export class AgentDeviceSurface {
   private readonly located = new Map<string, NodeBinding>();
   private idCounter = 0;
   private appIdentity: string | undefined;
-  /**
-   * The app this worker's agent-device session is on, and so the app a
-   * permission command there acts on: what the warm-up in `prepare` opened
-   * under the session this worker resumed, while that session is still open,
-   * then whatever this surface last opened. Undefined while nothing has been opened in the session, and once
-   * `closeApp` ended it.
-   */
-  private sessionApp: string | undefined;
   /** The app the build `appPath` installed, once `init` has, itself or through a lease. */
   private installedApp: string | undefined;
   /** The target's app, as `init` received it. */
@@ -509,29 +501,10 @@ export class AgentDeviceSurface {
         ? undefined
         : { provider, lease, runId: info.runId, targetName: info.targetName, env: info.env };
     await this.command('boot', (client) => client.devices.boot(this.selection()), info.signal);
-    this.sessionApp = binding?.sessionApp === undefined ? undefined : await this.resumedSessionApp(session, binding.sessionApp, info.signal);
     // Nothing is installed here: a device provider that installed the build
     // from `appPath` says so on the binding, and otherwise the suite installs
     // it where it wants to, with `device.installApp()`.
     this.installedApp = binding?.installedApp;
-  }
-
-  /**
-   * The app the warm-up left the slot's session on, while agent-device still
-   * holds that session. Only the slot's first worker finds it: a worker
-   * retired after a failing test closed it in `dispose`, and a permission
-   * command on a closed session reaches no device. A session not listed, or
-   * a list that fails, leaves the app unknown, and the first permission
-   * change opens it again.
-   */
-  private async resumedSessionApp(session: string, app: string, signal: AbortSignal): Promise<string | undefined> {
-    const sessions: unknown = await this.command('sessions', (client) => client.sessions.list(), signal).catch((cause: unknown) => {
-      if (signal.aborted) throw cause;
-      return undefined;
-    });
-    if (!Array.isArray(sessions)) return undefined;
-    const open = sessions.some((entry: { name?: unknown; address?: unknown }) => (entry.address ?? entry.name) === session);
-    return open ? app : undefined;
   }
 
   async startAttempt(context: EngineAttemptContext): Promise<void> {
@@ -644,7 +617,6 @@ export class AgentDeviceSurface {
   private async stopScreenRecording(signal: AbortSignal): Promise<{ readonly outPath?: unknown }> {
     const result = await this.command('stop video recording', (client) => client.recording.record({ action: 'stop' }), signal);
     if (result.recordOnlySession === true) {
-      this.sessionApp = undefined;
       this.screenReplaced();
     }
     return result;
@@ -685,7 +657,6 @@ export class AgentDeviceSurface {
     this.generation = new Map();
     this.located.clear();
     this.appIdentity = undefined;
-    this.sessionApp = undefined;
     this.installedApp = undefined;
     this.knownViewport = undefined;
     if (client === undefined) return;
@@ -725,53 +696,32 @@ export class AgentDeviceSurface {
         }),
       signal,
     );
-    this.sessionApp = app;
     this.launched(result.appBundleId ?? result.appName ?? app);
   }
 
   /**
-   * Puts an app's permissions in place before it launches. agent-device sets
-   * a permission on the app its session is on, so a session on another app,
-   * or on none yet, is first brought onto this one with a foreground open;
-   * the warm-up in `prepare` did that for the pinned app under the session
-   * this worker resumed, so its first launch needs none. Before the launch,
-   * never after: iOS terminates a running app whose
-   * permission changed, and Android one whose permission was revoked, so a
-   * change after the launch would leave the test on no screen.
+   * Puts an app's permissions in place before it launches, never after: iOS
+   * terminates a running app whose permission changed, and Android one whose
+   * permission was revoked, so a change after the launch would leave the
+   * test on no screen.
    */
   private async presetPermissions(app: string, permissions: LaunchPermissions, signal: AbortSignal): Promise<void> {
     const entries = Object.entries(permissions).filter(
       (entry): entry is [DevicePermission, PermissionState] => entry[1] !== undefined,
     );
-    if (entries.length === 0) return;
-    if (this.sessionApp !== app) await this.open(app, false, undefined, signal);
-    for (const [permission, state] of entries) await this.permission(permission, state, signal);
+    for (const [permission, state] of entries) await this.permission(permission, state, app, signal);
   }
 
-  /**
-   * One permission change for `device.setPermission`: on the app the session
-   * is on, which is what agent-device acts on. With none known here (nothing
-   * opened yet, `closeApp`, a worker resumed on a bare session) the pinned
-   * app is brought to the foreground first. agent-device's own refusal, met
-   * when its session lost the app since (a failed attempt left it on none),
-   * gets the same foreground open and the command once more.
-   */
+  /** One permission change for `device.setPermission`: on the pinned app, else on the app agent-device's session is on. */
   async setPermission(permission: DevicePermission, state: PermissionState, signal: AbortSignal): Promise<void> {
-    const app = this.pinnedApp;
-    if (this.sessionApp === undefined && app !== undefined) await this.open(app, false, undefined, signal);
-    try {
-      await this.permission(permission, state, signal);
-    } catch (cause) {
-      if (signal.aborted || app === undefined || !isNoSessionApp(cause)) throw cause;
-      await this.open(app, false, undefined, signal);
-      await this.permission(permission, state, signal);
-    }
+    await this.permission(permission, state, this.pinnedApp, signal);
   }
 
-  private async permission(permission: DevicePermission, state: PermissionState, signal: AbortSignal): Promise<void> {
+  /** One permission change on `app`, which needs no running app and no open in the session. */
+  private async permission(permission: DevicePermission, state: PermissionState, app: string | undefined, signal: AbortSignal): Promise<void> {
     await this.command(
       `permission ${permission} ${state}`,
-      (client) => client.settings.update({ setting: 'permission', permission, state }),
+      (client) => client.settings.update({ setting: 'permission', permission, state, ...this.selection(), ...(app === undefined ? {} : { app }) }),
       signal,
     );
   }
@@ -806,7 +756,6 @@ export class AgentDeviceSurface {
         }),
       signal,
     );
-    this.sessionApp = target;
     this.launched(result.appBundleId ?? (target === undefined ? undefined : (result.appName ?? target)));
   }
 
@@ -843,7 +792,6 @@ export class AgentDeviceSurface {
   async closeApp(signal: AbortSignal): Promise<void> {
     const app = this.appIdentity ?? this.pinnedApp;
     await this.command('device.closeApp', (client) => client.apps.close(app === undefined ? {} : { app }), signal);
-    this.sessionApp = undefined;
     this.screenReplaced();
   }
 

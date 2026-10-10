@@ -207,17 +207,6 @@ export function isRunnerFailure(error: unknown): boolean {
   return error instanceof Error && runnerState(error.cause) !== undefined;
 }
 
-const NO_SESSION_APP_PATTERN = /requires an active app in (?:the )?session/i;
-
-/**
- * True for a translated settings command agent-device refused because its
- * session is on no app: the one refusal a foreground open of the pinned app
- * answers.
- */
-export function isNoSessionApp(error: unknown): boolean {
-  return error instanceof Error && NO_SESSION_APP_PATTERN.test(normalizeAgentDeviceError(error.cause).message);
-}
-
 /**
  * True for a translated snapshot the iOS runner acquired but could not
  * present. The check is per capture and the capture is a read, so one retry

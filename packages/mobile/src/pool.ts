@@ -193,14 +193,14 @@ export class DevicePool {
   /**
    * Binds a device to every worker slot the run will use and warms each,
    * once per run and outside every launch budget, so `init` finds a booted
-   * device. The bindings, each naming the app its session is on, are
-   * reported back as the target's worker cap and left in the environment
-   * for the workers. A target nothing runs on binds
+   * device. The bindings are reported back as the target's worker cap and
+   * left in the environment for the workers. A target nothing runs on binds
    * nothing: a hosted session is billed from the moment it starts.
    */
   async prepare(info: EnginePrepareInfo): Promise<EnginePrepareResult> {
     if (info.slots === 0) return {};
-    const bindings = await this.warm(await this.source.bind(info), info);
+    const bindings = await this.source.bind(info);
+    await this.warm(bindings, info);
     this.bound.set(info.targetName, bindings);
     return { workers: bindings.length, env: { [bindingsVariable(info.targetName)]: encodeBindings(bindings) } };
   }
@@ -227,9 +227,8 @@ export class DevicePool {
 
   /**
    * Boots every bound device, starts the iOS automation runner on it, and
-   * opens the pinned app on it once, so the slot's session is on the app,
-   * which the returned binding records for the worker: a permission it
-   * presets there needs no open first. A plain foreground open, with none of the engine's
+   * opens the pinned app on it once, so a test that starts without
+   * `app.open()` finds it on screen. A plain foreground open, with none of the engine's
    * launch options: an app still running from an earlier run keeps its
    * process either way, and a test's `app.open()` relaunches it with them.
    * One slot after another, on purpose: workers
@@ -242,13 +241,11 @@ export class DevicePool {
    * its first observation with the app blamed, and the message names the
    * recovery, which a wait of up to the runner's recycle window would only
    * hide. A runner that did not start leaves the slot unopened: the open
-   * would start it again under a shorter budget, and its timeout resets the
-   * daemon every earlier slot is on. A build `appPath` installs in `init` is
+   * would start it again under a shorter budget. A build `appPath` installs in `init` is
    * not on the device yet, so that slot boots and starts the runner only,
    * unless a lease says the build is already there.
    */
-  private async warm(bindings: readonly SlotBinding[], info: EnginePrepareInfo): Promise<readonly SlotBinding[]> {
-    const warmed: SlotBinding[] = [];
+  private async warm(bindings: readonly SlotBinding[], info: EnginePrepareInfo): Promise<void> {
     for (const [slot, binding] of bindings.entries()) {
       const label = deviceLabel(binding) ?? `a booted ${this.options.platform} device`;
       const where = deviceSelection(this.options.platform, binding);
@@ -260,27 +257,20 @@ export class DevicePool {
       await runCommand('boot', () => client.devices.boot(where), info.signal, at);
       const runnerUp = this.options.platform !== 'ios' || (await prepareRunner(client, where, info, at));
       const app = pinnedApp(info.app, binding.installedApp);
-      if (app === undefined || !runnerUp) {
-        warmed.push(binding);
-        continue;
-      }
+      if (app === undefined || !runnerUp) continue;
       // A build the suite installs itself is not on the device yet, so there
       // is nothing to open: the first attempt installs it.
       if (info.app.appPath !== undefined && binding.installedApp === undefined) {
         info.log(`${label}: ${app} awaits the suite's device.installApp()`);
-        warmed.push(binding);
         continue;
       }
       try {
         await runCommand(`open ${app}`, () => client.apps.open({ app, ...where }), info.signal, at);
-        warmed.push({ ...binding, sessionApp: app });
       } catch (cause) {
         if (info.signal.aborted || isRunnerFailure(cause)) throw cause;
         info.log(`${label}: ${app} did not open (${message(cause)}); the first attempt opens it`);
-        warmed.push(binding);
       }
     }
-    return warmed;
   }
 
   /** Holds a warm-up client for `finish`, before its first command: a boot that fails still opened the session. */
@@ -295,8 +285,7 @@ export class DevicePool {
  * Starts the slot's iOS automation runner under `prepare ios-runner`, whose
  * startup budget covers a cold simulator. Left to the first `open`, the
  * start runs inside that request's 90 s envelope, which a cold runner on a
- * loaded CI Mac outlasts; a timed-out `open` resets the daemon, ending every
- * other slot's session with it. A runner that is busy or wedged ends the run
+ * loaded CI Mac outlasts. A runner that is busy or wedged ends the run
  * here, like a warm-up open that meets one; any other failure is logged and
  * left to the first attempt. True when the runner is up.
  */
