@@ -6,11 +6,11 @@ icon: "brain"
 
 import { ModelProvider } from './snippets/model-provider.jsx';
 
-Agent steps use the model you set in `e2e.config.ts`. The model comes from
-an [AI SDK](https://ai-sdk.dev/providers) provider: a gateway, a direct API
-key, a local server, or your [subscription](/subscriptions). `e2e init`
-offers these choices and writes the config. For a first setup, follow the
-[quickstart](/quickstart#use-a-subscription-or-api-key).
+Agent steps use the model you set in `e2e.config.ts`. There is no default.
+The model comes from an [AI SDK](https://ai-sdk.dev/providers) provider: a
+gateway, a direct API key, a local server, or your
+[subscription](/subscriptions). For a first setup, `e2e init` writes the
+config. See the [quickstart](/quickstart#use-a-subscription-or-api-key).
 
 Tests without agent steps need no model. The built-in agent needs a model
 that supports tool calls and images. [Decision models](/decision-models)
@@ -34,10 +34,9 @@ bun add -d ai
 ```
 </CodeGroup>
 
-There is no default model. The config picks the model, and the provider
-reads its own key from the environment. A gateway reaches many providers
-with one key. To change a config, replace its model import and `model`
-value:
+The provider reads its own key from the environment. A gateway reaches
+many providers with one key. To switch, replace the model import and the
+`model` value. Where a snippet defines `agent`, use it as `agents.default`:
 
 <Tabs>
   <Tab title="Vercel AI Gateway">
@@ -58,8 +57,7 @@ export default {
   </Tab>
   <Tab title="OpenRouter">
 
-Install `@openrouter/ai-sdk-provider` and set `OPENROUTER_API_KEY`. Use
-`agent` as `agents.default`:
+Install `@openrouter/ai-sdk-provider` and set `OPENROUTER_API_KEY`:
 
 ```ts title="Model setup"
 import { openrouter } from '@openrouter/ai-sdk-provider';
@@ -70,8 +68,7 @@ const agent = { model: openrouter('openai/gpt-6-luna-fast') };
   <Tab title="Provider API key">
 
 Install the provider's AI SDK package and set its API key. For OpenAI,
-install `@ai-sdk/openai` and set `OPENAI_API_KEY`. Use `agent` as
-`agents.default`:
+install `@ai-sdk/openai` and set `OPENAI_API_KEY`:
 
 ```ts title="Model setup"
 import { openai } from '@ai-sdk/openai';
@@ -85,8 +82,7 @@ credentials. See [AI SDK providers](#ai-sdk-providers).
   <Tab title="Local or self-hosted">
 
 Install `@ai-sdk/openai-compatible`. Set the endpoint URL and a model ID the
-endpoint serves. Add `apiKey` if the server needs one. Use `agent` as
-`agents.default`:
+endpoint serves. Add `apiKey` if the server needs one:
 
 ```ts title="Model setup"
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
@@ -102,14 +98,13 @@ const agent = { model: local.chatModel('your-model-id') };
   </Tab>
 </Tabs>
 
-Model IDs depend on the provider. Gateways usually use `provider/model`.
-Direct providers use their own IDs.
+Gateways usually use `provider/model` IDs. Direct providers use their own.
 
 ### Vercel OIDC instead of a key
 
-Without `AI_GATEWAY_API_KEY`, `gateway()` signs in with a Vercel OIDC token.
-Sign in to the Vercel CLI and link the project one time. The gateway then
-gets a short-lived token for that project and refreshes it:
+Without `AI_GATEWAY_API_KEY`, `gateway()` signs in with a short-lived Vercel
+OIDC token, which it refreshes. Sign in to the Vercel CLI and link the
+project one time:
 
 <CodeGroup>
 ```bash npm
@@ -133,13 +128,9 @@ bunx e2e run
 
 The gateway uses a valid `VERCEL_OIDC_TOKEN`. Else it gets a token for the
 project in `.vercel/project.json`, found from the working directory upward.
-e2e loads no `.env` file. A token from `npx vercel env pull` works when your
-shell exports it, or when the config loads the file with
+e2e loads no `.env` file, so a token from `npx vercel env pull` works only
+when your shell exports it, or when the config loads the file with
 [`process.loadEnvFile()`](/reference/config#loading).
-
-An OIDC failure is `MODEL_PROVIDER_FAILED`, and the message names only
-`AI_GATEWAY_API_KEY`. Make sure the Vercel CLI is signed in and
-`.vercel/project.json` exists.
 
 ## AI SDK providers
 
@@ -148,8 +139,7 @@ Every AI SDK provider that supports tool calls works. Select yours:
 <ModelProvider show="select" />
 
 A provider that is not in the list also works if it implements the AI SDK
-language model specification v2 or later. Its model must support tool calls
-and images.
+language model specification v2 or later.
 
 <Steps>
   <Step title="Install the provider package">
@@ -158,19 +148,13 @@ and images.
   <ModelProvider show="install" />
   </Step>
   <Step title="Set the credentials">
-  The provider reads its credentials from the environment. e2e loads no
-  `.env` file. Export the variables in your shell or CI, or load the file in
-  the config with [`process.loadEnvFile()`](/reference/config#loading).
+  Export the variables in your shell or CI, or load a `.env` file in the
+  config with [`process.loadEnvFile()`](/reference/config#loading).
 
   <ModelProvider show="env" />
-
-  If a key is missing or wrong, the first agent step fails with
-  `MODEL_PROVIDER_FAILED`. Some providers read the key when the config
-  loads. For those, a missing key stops the run with `CONFIG_LOAD_FAILED`.
   </Step>
   <Step title="Add the model to the config">
-  Set the model in `agents.default`. The model ID is an example. Use a model
-  that supports tool calls and images.
+  Set the model in `agents.default`. The model ID is an example.
 
   <ModelProvider show="config" />
   </Step>
@@ -179,30 +163,16 @@ and images.
 <Accordion title="DeepSeek V4 and Meta Muse Spark">
 These models refuse the forced tool choice that agent steps ask for.
 DeepSeek's V4 models (`@ai-sdk/deepseek`) refuse it because they think by
-default. Muse Spark models accept only `auto`. e2e sends the step again with
-`auto` and an instruction to reply with tool calls only. Later steps on that
-model start that way, so thinking can stay on.
+default. Muse Spark models accept only `auto`. e2e retries with `auto` and
+an instruction to reply with tool calls only, and later steps on that model
+start that way. Thinking can stay on.
 </Accordion>
 
 ## Several models in one config
 
-Give each model its own agent name:
-
-```ts title="e2e.config.ts"
-export default {
-  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
-  agents: {
-    default: { model: gateway('openai/gpt-6-luna-fast') },
-    careful: { model: gateway('anthropic/claude-sonnet-5') },
-  },
-} satisfies E2EConfig;
-```
-
-Run with `npx e2e run --agent careful`, or
-[choose an agent in a test](/agents). Agents don't inherit from each other,
-so an entry without a `model` doesn't use the one from `default`.
-
-To switch a model without editing the config, read an environment variable:
+Give each model its own agent name, then pick one with `--agent` or in a
+test. See [Agents and personas](/agents). To switch a model without editing
+the config, read an environment variable:
 
 ```ts title="Agent setup"
 const agent = {
@@ -223,10 +193,9 @@ const agent = {
 };
 ```
 
-A judgment sees the current screen and the question, not the acting agent's
-transcript or summaries. Reports name the model of each judgment. `judge`
-takes an AI SDK language model. Clef and Jev use a different API: use the
-[decision executor](/decision-models) for `agent.act` and `agent.assert`.
+Reports name the model of each judgment. `judge` takes an AI SDK language
+model. For Clef or Jev, use the [decision executor](/decision-models). See
+[what a judgment sees](/agent-steps#what-the-model-sees).
 
 ## Data retention and compliance
 
@@ -234,24 +203,21 @@ Model input is the redacted screen, the step instruction, and the
 screenshots the agent asks for. e2e reads nothing back from the provider
 after a response, so a run needs no state stored by the provider.
 
-Every model request names e2e. The `User-Agent` starts with
-`e2e/<version> (<platform>; <arch>)`, and `HTTP-Referer:
-https://tester.army/e2e` and `X-Title: e2e` credit the traffic on Vercel AI
-Gateway and OpenRouter. They replace the same headers on the provider
-instance.
+Every model request names e2e: a `User-Agent` that starts with
+`e2e/<version> (<platform>; <arch>)`, plus `HTTP-Referer:
+https://tester.army/e2e` and `X-Title: e2e` for Vercel AI Gateway and
+OpenRouter. They replace the same headers set on the provider instance.
 
 <AccordionGroup>
 <Accordion title="OpenAI and Azure OpenAI: zero data retention">
 Every request to a Responses model (`openai(...)`, `azure(...)`, or
 `openai/*` on the gateway) carries `store: false` and a prompt cache key.
 Chat Completions models and OpenAI-compatible providers get neither. The
-provider keeps no copy of the conversation. A reasoning model's earlier
-turns travel inline as encrypted content, and the prompt cache still serves
-the repeated prefix.
+provider keeps no copy of the conversation, and the prompt cache still
+works. Organizations with zero data retention need no configuration.
 
-Organizations with zero data retention need no configuration. To keep
-stored responses, set `store` in `providerOptions`. For Azure OpenAI, the
-key is `azure`:
+To keep stored responses, set `store` in `providerOptions`. For Azure
+OpenAI, the key is `azure`:
 
 ```ts title="Agent setup"
 const agent = {
@@ -278,7 +244,8 @@ them.
 | --- | --- | --- |
 | A model is a string instead of an AI SDK instance | `INVALID_CONFIG` | Construct it, for example `gateway('openai/gpt-6-luna-fast')`. |
 | The built-in agent has no model | `MODEL_UNAVAILABLE` | Set `agents.<name>.model`. |
-| Authentication fails on the first model call | `MODEL_PROVIDER_FAILED` | Check the provider's API key or the linked Vercel project, or run `npx e2e login` for a subscription. |
+| A provider that reads its key at config load has none | `CONFIG_LOAD_FAILED` | Set the key. |
+| Authentication fails on the first model call | `MODEL_PROVIDER_FAILED` | Check the provider's API key, or run `npx e2e login` for a subscription. For Vercel OIDC the message names only `AI_GATEWAY_API_KEY`. Check `vercel login` and `.vercel/project.json`. |
 | The `ai` package is missing | `MODEL_UNAVAILABLE` | Install `ai`. See [Pick a gateway or a provider](#pick-a-gateway-or-a-provider). |
 | A step's second turn fails with `Item with id 'rs_…' not found` | `MODEL_PROVIDER_FAILED` | Leave `store` off in `providerOptions`, the default, or call OpenAI directly instead of through a gateway. |
 | A custom executor's own `model` or `judge` differs from the agents entry's | `INVALID_CONFIG` | See [Custom executors](/executors#keep-the-loop-change-the-vocabulary). |
