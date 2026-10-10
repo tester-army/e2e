@@ -151,6 +151,8 @@ import { anthropic } from '@ai-sdk/anthropic';
 const agent = { model: anthropic('claude-sonnet-5-5') };
 ```
 
+Set `agents: { default: agent }` in `e2e.config.ts`.
+
 Unused credits expire at the end of each billing cycle. Other Claude plans
 have no API credits. On those, use an [API provider](/models), or a Claude
 model through your Copilot plan.
