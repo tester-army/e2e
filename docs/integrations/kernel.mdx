@@ -7,9 +7,8 @@ icon: "/images/icons/kernel.svg"
 
 `kernel()` from `@e2e-dev/kernel` is a
 [browser provider](/browser#hosted-browsers) for [Kernel](https://kernel.sh).
-Each worker slot gets its own hosted Chromium, created when the run starts
-and deleted when it ends. Tests and CI stay the same. Only the target's
-`browser` changes.
+Each worker slot, or each attempt, gets its own hosted Chromium. Tests stay
+the same. Only the target's `browser` changes.
 
 ## Setup
 
@@ -48,18 +47,16 @@ export default {
 ```
 
 Set `KERNEL_API_KEY` in the environment that `e2e run` starts in, such as a
-CI secret. Each worker gets its own browser, so `workers` sets how many
-browsers run at the same time.
+CI secret. `workers` sets how many browsers run at the same time.
 
-When `KERNEL_API_KEY` is missing or Kernel returns an error, the lease fails
-with that message. In `worker` scope the run ends before any test, and the
-provider still deletes the browsers that other slots got. In `attempt`
-scope only the attempt fails.
+Without the key, or on a Kernel error, the lease fails with that message. In
+`worker` scope the run ends before any test. In `attempt` scope only the
+attempt fails.
 
 ## Fill the screen
 
-Set the screen size with Kernel's `viewport`. Then set the web engine's
-`viewport: null`, so the page takes the size of the window:
+Set the screen size with Kernel's `viewport`, and the web engine's
+`viewport: null` so the page takes the size of the window:
 
 ```ts
 web({
@@ -68,77 +65,67 @@ web({
 })
 ```
 
-Each attempt's window opens maximized, and the page
-[fills it](/web#fill-the-window): 1920 by 993 on a 1920 by 1080 screen,
-after the tab strip and address bar. With a fixed web `viewport`, Kernel's
-live view shows the page cut off, or in part of the window.
+The window opens maximized, and the page [fills it](/web#fill-the-window):
+1920 by 993 on a 1920 by 1080 screen. With a fixed web `viewport`, the live
+view shows the page cut off, or in part of the window.
 
 ## Options
 
 `kernel(options)` takes Kernel's create-browser body as it is: `stealth`,
 `headless`, `timeout_seconds`, `profile`, `proxy_id`, `viewport`, `tags`,
-and the rest of `BrowserCreateParams` in the `@onkernel/sdk` you installed.
-It adds two options:
+and the rest of `BrowserCreateParams` in your `@onkernel/sdk`. It adds two:
 
 | Option   | Default    | Meaning |
 | -------- | ---------- | ------- |
-| `scope`  | `'worker'` | `'worker'`: one browser per worker slot for the run. `'attempt'`: a new browser for each test attempt, retries included. See [Scopes](#scopes). |
-| `replay` | `true`     | How an attempt that records video is recorded. `true`, or Kernel's start-replay body (`framerate`, `max_duration_in_seconds`, `record_audio`): a Kernel replay of the screen. `false`: the web engine's screencast of the page. See [Recordings](#recordings). |
+| `scope`  | `'worker'` | One browser per worker slot, or per attempt. See [Scopes](#scopes). |
+| `replay` | `true`     | A Kernel replay or the engine's screencast. See [Recordings](#recordings). |
 
 ## Scopes
 
 `scope: 'worker'` keeps one browser per worker slot for the run. Each
 attempt gets a new browser context on it, as in a local run, so a test never
-sees the cookies, storage, or permissions of another test. Kernel's first
-tab stays open behind the attempt windows. A Kernel `profile` has no effect,
-because its saved cookies and storage are only in the browser's default
-context.
+sees another test's cookies, storage, or permissions. Kernel's first tab
+stays open behind it. A Kernel `profile` has no effect, because it applies
+only to the browser's default context.
 
-`scope: 'attempt'` leases a new browser for each attempt. The attempt runs
-in that browser's default context, on its first tab, so a `profile` applies
-and the live view shows one tab. Each test pays for a browser start, and the
-[limits of a per-attempt lease](/browser#hosted-browsers) apply, sessions
-included.
+`scope: 'attempt'` leases a new browser for each attempt, retries included.
+The attempt runs in its default context, on its first tab, so a `profile`
+applies and the live view shows one tab. Each test pays for a browser start,
+and the [limits of a per-attempt lease](/browser#hosted-browsers) apply,
+sessions included.
 
 ## Recordings
 
-An attempt that records [video](/reference/config#video), such as with
-`video: 'retain-on-failure'` on the target, gets a Kernel replay of the
-browser's screen. It saves as `video/replay.mp4` in the attempt's artifact
-directory. The replay shows the whole window, with tabs and address bar. The
-web engine's screencast shows only the page.
+An attempt that records [video](/reference/config#video) gets a Kernel
+replay of the browser's screen, saved as `video/replay.mp4` in its artifact
+directory. The replay shows the whole window, tabs and address bar included,
+at the size Kernel's `viewport` sets.
 
-A replay has the size of the screen, which Kernel's `viewport` sets. It
-records at Kernel's default of 10 fps. To change that, pass Kernel's
-start-replay body: `kernel({ replay: { framerate: 20, max_duration_in_seconds: 600 } })`.
-A `framerate` above 20 needs `gpu: true` on the browser.
+Replays run at Kernel's default 10 fps. To change that, pass Kernel's
+start-replay body (`framerate`, `max_duration_in_seconds`, `record_audio`):
+`kernel({ replay: { framerate: 20 } })`. A `framerate` above 20 needs
+`gpu: true` on the browser.
 
-Kernel replays only headed browsers, which is its default. With
-`headless: true` or `replay: false`, the provider doesn't record. The web
-engine then records its screencast of the page, as for a local browser.
+Kernel replays only headed browsers, its default. With `headless: true` or
+`replay: false`, the web engine records its screencast of the page instead.
 
 ## Downloads
 
-`browser.waitForDownload` works as it does locally, in both scopes. Each
-browser saves downloads to `/tmp/e2e-downloads` on its own disk. The
-provider reads each finished file through Kernel's browser filesystem API
-into the attempt's artifacts.
+`browser.waitForDownload` works as it does locally, in both scopes. The
+provider copies each file off the browser's disk into the attempt's
+artifacts.
 
-## What the provider does
+## Watch and clean up browsers
 
-- Tags every browser `e2e_run`, `e2e_target`, `e2e_slot`, and `e2e_attempt`
-  for an attempt's browser, on top of the `tags` you pass. A session in
-  Kernel's dashboard then names the run that started it.
-- Logs `browser <id>, watch at <live view URL>` to the reporter for each new
-  browser.
-- Deletes, when the run ends, every active browser with the run's `e2e_run`
-  and `e2e_target` tags. That includes the browser of a worker that died
-  during an attempt, in either scope.
-- Sets `timeout_seconds` to 600 unless you pass your own. If the run itself
-  dies before it deletes its browsers, Kernel deletes each one after it is
-  idle for that long.
-- Deletes a browser that arrives after its request was cancelled. A browser
-  that Kernel no longer knows counts as deleted.
+The reporter logs `browser <id>, watch at <live view URL>` for each new
+browser. Each browser carries the tags `e2e_run`, `e2e_target`, `e2e_slot`,
+and `e2e_attempt` in `'attempt'` scope, on top of your `tags`. Kernel's
+dashboard then names the run that started it.
+
+When the run ends, the provider deletes every active browser tagged with the
+run and target, including the browser of a worker that died. If the run
+itself dies first, Kernel deletes each browser after `timeout_seconds` idle,
+600 unless you pass your own.
 
 ## Next
 
