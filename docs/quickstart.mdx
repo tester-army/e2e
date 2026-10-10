@@ -145,8 +145,8 @@ test('Settings opens', async ({ app, screen }) => {
   </CodeGroup>
 
   e2e downloads a browser or boots the simulator or emulator, checks that
-  the app opens, and prints the result. No model calls yet, so no
-  sign-in or API key needed.
+  the app opens, and prints the result. The example makes no model calls,
+  so it needs no sign-in or API key.
   </Step>
 </Steps>
 
@@ -172,8 +172,8 @@ Connect the provider you chose in the wizard.
   | SuperGrok or X Premium+ | `npx e2e login spacexai` |
   | Claude Max or Team (Claude Code) | API key from the plan's monthly API credits. See [Claude Max or Team](/subscriptions#claude-max-or-team). |
 
-  Copilot uses your GitHub CLI login if you have one. For more information,
-  see [Subscriptions](/subscriptions).
+  Copilot uses your GitHub CLI login if you have one. See
+  [Subscriptions](/subscriptions).
   </Tab>
   <Tab title="API key">
   Select your provider. Install its package and set the variables it reads,
@@ -184,10 +184,6 @@ Connect the provider you chose in the wizard.
   <ModelProvider show="install" />
 
   <ModelProvider show="env" />
-
-  Vercel AI Gateway reads `AI_GATEWAY_API_KEY`, or a
-  [Vercel OIDC token](/models#vercel-oidc-instead-of-a-key) in a project
-  linked with `vercel link`. OpenRouter reads `OPENROUTER_API_KEY`.
 
   The wizard writes the config for Vercel AI Gateway, OpenRouter, and
   OpenAI-compatible endpoints. For another provider, replace the model import
@@ -236,13 +232,13 @@ test('the agent opens General', async ({ agent, app, device }) => {
 });
 ```
 
-  `app.open()` launches the configured app fresh; without it, a test starts
+  `app.open()` launches the configured app fresh. Without it, a test starts
   where the previous one left the device. `device.locator` uses
   [agent-device selectors](/mobile#the-device-fixture).
   </Tab>
 </Tabs>
 
-`params` fill the goal's placeholders. `agent.assert` judges the screen;
+`params` fill the goal's placeholders. `agent.assert` judges the screen.
 `expect` checks an exact value.
 
 <CodeGroup>
@@ -259,8 +255,8 @@ bunx e2e run tests/agent.e2e.ts
 ```
 </CodeGroup>
 
-Chose **None** in the wizard? [Add a model](/models) first. Add `--headed`
-to watch a web test, `--no-cache` to skip replaying cached actions.
+If you chose **None** in the wizard, [add a model](/models) first. Add
+`--headed` to watch a web test. Add `--no-cache` to skip cached actions.
 
 ## Next
 
