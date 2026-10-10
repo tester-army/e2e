@@ -10,8 +10,8 @@ icon: "/images/icons/smol.png"
 [smol machines](https://smolmachines.com) microVMs on your computer. Each
 worker slot boots one browser machine. By default, each test attempt runs in
 a copy-on-write branch of it, ready in about a second and deleted when the
-attempt ends. Every retry starts from the same browser state. The app's
-data resets too, but only when the app
+attempt ends. Every retry starts from the same browser state. The app's data
+resets too, but only when the app
 [runs in the machine](#run-the-app-in-the-machine). State on your computer
 or in external services stays shared.
 
@@ -61,8 +61,8 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Inside the machine, `localhost` is the machine itself. `hostPorts` lists
-ports on your computer that the browser reaches as its own `localhost`, so
+In the machine, `localhost` is the machine itself. `hostPorts` lists ports
+on your computer that the browser reaches as its own `localhost`, so
 `app.url` stays `http://localhost:3000`. An app on another host needs no
 option.
 
@@ -80,9 +80,9 @@ it. Every attempt on that slot starts with the cookies, storage, and pages
 it left. It replaces [sessions](/authentication), which `'attempt'` scope
 can't use.
 
-`prepare` gets the browser's DevTools endpoint. Use the browser's
-default context, because attempts run there. Disconnect before `prepare`
-resolves, and leave the browser running.
+`prepare` gets the browser's DevTools endpoint. Use the browser's default
+context, because attempts run there. Disconnect before `prepare` resolves,
+and leave the browser running.
 
 <Accordion title="Sign in with Playwright">
 Install the `playwright-core` version that `@e2e-dev/web` pins, 1.63.0
@@ -127,13 +127,12 @@ On a browser from `connectOverCDP`, `browser.close()` only disconnects.
 
 ## Run the app in the machine
 
-With `app`, the app under test runs inside each browser machine instead of
-on your computer. Its code, and anything a test or an agent makes it do,
-never runs on the host. The machine can still reach your computer's
-loopback ports, as
-[Set up the provider](#set-up-the-provider) warns. In
-`'attempt'` scope, each attempt gets its own copy of the running app and its
-files, a database included. A database on another host stays shared.
+With `app`, the app under test runs in each browser machine instead of on
+your computer. Its code, and anything a test or an agent makes it do, never
+runs on the host. The machine can still reach your computer's loopback
+ports, as [Set up the provider](#set-up-the-provider) warns. In `'attempt'`
+scope, each attempt gets its own copy of the running app and its files, a
+database included. A database on another host stays shared.
 
 ```ts title="e2e.config.ts"
 export default {
@@ -166,7 +165,7 @@ Set `app.url` to `http://localhost:<port>` and declare no `app.command`.
 | `port`      | Required. Port the app listens on inside the machine. Not 80 or 9229, which the browser uses, and not in `hostPorts`. |
 | `source`    | Directory copied to `/app`, without `node_modules`, `.git`, or `.e2e`. Resolved against where the run starts. `.` by default. |
 | `setup`     | Shell script run as root in `/app` before `start`. The image includes Node.js and npm, so `npm ci` installs dependencies for the machine's Linux. |
-| `env`       | Environment variables for `setup` and `start`. |
+| `env`       | Environment variables for `setup` and `start`. Names must be shell variable names. |
 
 ## Choose a scope
 
@@ -201,9 +200,9 @@ machine's disk for `browser.waitForDownload`.
 ## Clean up leftover machines
 
 The runner deletes the run's machines when the run ends, including those of
-a worker that crashed. A runner that is killed itself, such as by a
-cancelled CI job, leaves its `'worker'`-scope machines behind, stopped.
-Their names start with `e2e-`. List and delete them with the
+a worker that crashed. A runner that is killed, such as by a cancelled CI
+job, leaves its `'worker'`-scope machines behind, stopped. Their names start
+with `e2e-`. List and delete them with the
 [smol CLI](https://smolmachines.com), for example `smol machine ls`.
 
 ## Next
