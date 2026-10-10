@@ -9,9 +9,8 @@ icon: "/images/icons/smol.png"
 [browser provider](/browser#hosted-browsers) that runs Chromium in
 [smol machines](https://smolmachines.com) microVMs on your computer. Each
 worker slot boots one browser machine. By default, each test attempt runs in
-a copy-on-write branch of it, ready in about a second and deleted when the
-attempt ends. Every retry starts from the same browser state. The app's data
-resets too, but only when the app
+a copy-on-write branch of it, ready in about a second, so every retry starts
+from the same browser state. The app's data resets only when the app
 [runs in the machine](#run-the-app-in-the-machine). State on your computer
 or in external services stays shared.
 
@@ -63,8 +62,7 @@ export default {
 
 In the machine, `localhost` is the machine itself. `hostPorts` lists ports
 on your computer that the browser reaches as its own `localhost`, so
-`app.url` stays `http://localhost:3000`. An app on another host needs no
-option.
+`app.url` stays `http://localhost:3000`.
 
 <Warning>
 `hostPorts` isn't an allowlist. The machine can reach any loopback port on
@@ -80,15 +78,14 @@ it. Every attempt on that slot starts with the cookies, storage, and pages
 it left. It replaces [sessions](/authentication), which `'attempt'` scope
 can't use.
 
-`prepare` gets the browser's DevTools endpoint. Use the browser's default
-context, because attempts run there. Disconnect before `prepare` resolves,
-and leave the browser running.
+`prepare` gets the browser's DevTools endpoint. Work in the default context,
+where attempts run. Disconnect before `prepare` resolves, and leave the
+browser running.
 
 <Accordion title="Sign in with Playwright">
 Install the `playwright-core` version that `@e2e-dev/web` pins, 1.63.0
-today. Your config needs its own copy, because pnpm doesn't let it import a
-dependency of a dependency. Match the version when you upgrade
-`@e2e-dev/web`.
+today, and match it when you upgrade. pnpm doesn't let your config import
+a dependency's dependency.
 
 <CodeGroup>
 ```bash npm
@@ -104,7 +101,7 @@ bun add -d playwright-core@1.63.0
 ```
 </CodeGroup>
 
-```ts title="e2e.config.ts"
+```ts title="Provider options"
 import { chromium } from 'playwright-core';
 
 smol({
@@ -128,32 +125,22 @@ On a browser from `connectOverCDP`, `browser.close()` only disconnects.
 ## Run the app in the machine
 
 With `app`, the app under test runs in each browser machine instead of on
-your computer. Its code, and anything a test or an agent makes it do, never
-runs on the host. The machine can still reach your computer's loopback
-ports, as [Set up the provider](#set-up-the-provider) warns. In `'attempt'`
-scope, each attempt gets its own copy of the running app and its files, a
-database included. A database on another host stays shared.
+your computer, so nothing a test or an agent makes it do runs on the host.
+The machine can still reach your loopback ports, as
+[Set up the provider](#set-up-the-provider) warns. In `'attempt'` scope,
+each attempt gets its own copy of the running app and its files, a local
+database included.
 
-```ts title="e2e.config.ts"
-export default {
-  targets: [
-    {
-      name: 'web',
-      engine: web({
-        browser: smol({
-          app: {
-            source: '.',
-            setup: 'npm ci && npm run db:seed',
-            start: 'npm start',
-            port: 3000,
-            env: { DATABASE_URL: 'file:/app/dev.db' },
-          },
-        }),
-      }),
-      app: { url: 'http://localhost:3000' },
-    },
-  ],
-} satisfies E2EConfig;
+```ts title="Provider options"
+smol({
+  app: {
+    source: '.',
+    setup: 'npm ci && npm run db:seed',
+    start: 'npm start',
+    port: 3000,
+    env: { DATABASE_URL: 'file:/app/dev.db' },
+  },
+})
 ```
 
 Set `app.url` to `http://localhost:<port>` and declare no `app.command`.
@@ -170,14 +157,13 @@ Set `app.url` to `http://localhost:<port>` and declare no `app.command`.
 ## Choose a scope
 
 `scope: 'attempt'`, the default, gives every attempt its own branch of the
-slot's warm browser. It has the limits of a
-[per-attempt lease](/browser#hosted-browsers), sessions included. Use
-`prepare` for what those would set up.
+slot's warm browser, with the limits of a
+[per-attempt lease](/browser#hosted-browsers).
 
 `scope: 'worker'` keeps one machine per worker slot for the run. Each
 attempt gets a new browser context on it, as in a local run, so sessions
 and options such as `headers` and `locale` work. Nothing is branched, and
-the provider refuses `prepare`.
+`prepare` is an `INVALID_CONFIG`.
 
 ## Options
 
@@ -189,21 +175,20 @@ the provider refuses `prepare`.
 | `app`       | none        | See [Run the app in the machine](#run-the-app-in-the-machine). |
 | `setup`     | none        | Shell script run as root in each machine before Chromium starts, such as `apt-get update && apt-get install -y fonts-noto-cjk` for more fonts. |
 | `cpus`      | `2`         | vCPUs per machine. |
-| `memoryMb`  | `2048`      | Memory per machine in MiB. Memory the browser doesn't use goes back to your computer. |
+| `memoryMb`  | `2048`      | Memory per machine in MiB. |
 
 ## What differs from a local browser
 
 The browser's back/forward cache is off, so going back reloads the page.
-Downloads work as they do locally: the provider reads each one off the
-machine's disk for `browser.waitForDownload`.
+`browser.waitForDownload` works as it does locally.
 
 ## Clean up leftover machines
 
 The runner deletes the run's machines when the run ends, including those of
-a worker that crashed. A runner that is killed, such as by a cancelled CI
-job, leaves its `'worker'`-scope machines behind, stopped. Their names start
-with `e2e-`. List and delete them with the
-[smol CLI](https://smolmachines.com), for example `smol machine ls`.
+a crashed worker. A killed runner, such as in a cancelled CI job, leaves its
+`'worker'`-scope machines behind, stopped, with names that start with
+`e2e-`. List and delete them with the [smol CLI](https://smolmachines.com),
+for example `smol machine ls`.
 
 ## Next
 
