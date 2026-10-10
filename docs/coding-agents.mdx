@@ -94,7 +94,9 @@ test('a signed-in user reaches checkout', async ({ screen, app, agent }) => {
 ```
 
 - **One `agent.act` per goal, then an `expect`.** The `expect` fails when
-  the agent did the wrong thing. It also lets the cache replay the step.
+  the agent did the wrong thing. A locator matcher, or another
+  [verification check](/cache#when-a-recording-is-written), also lets the
+  cache replay the step.
 - **No sleeps.** Locators poll, actions wait for their target, and `expect`
   retries until its timeout.
 - **Secrets through `credentials.user(name)`.** Declare them in the config.
@@ -122,7 +124,8 @@ fails, it adds `--no-cache` to run the live agent. See [Caching](/cache).
 
 ## How an agent reads a failure
 
-For each failed or flaky test, a run writes a trace page to the test's
+By default ([`trace`](/reference/config#trace)), a run writes a trace page
+for each failed, timed-out, interrupted, or flaky test, to the test's
 directory under `.e2e/results/`. `.e2e` is the default `output`. The
 terminal names the page under each failed test, as
 `❯ trace .e2e/results/<test>/trace.md`.
