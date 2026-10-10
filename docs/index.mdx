@@ -36,8 +36,8 @@ test('a member upgrades to Pro', async ({ app, agent, screen }) => {
   waits. When the UI changes, the agent adapts, so you fix fewer tests.
 - **Cheap runs.** e2e records an `agent.act` step when a later check passes.
   The next run [replays it](/cache) with no model calls, and hands back to
-  the agent when the app changed. `assert`, `waitFor`, and `extract` always
-  call the model.
+  the agent when the app changed. With the built-in agent, `assert`,
+  `waitFor`, and `extract` always call the model.
 
 ## How it works
 
