@@ -11,7 +11,9 @@ newest semantic tree. It never writes free text: a small text model writes
 field values. The runner still authorizes every action.
 
 Any AI SDK decision model that answers `choice` questions with probabilities
-works, such as TypeSafe Jev or OpenAI `gpt-6-luna`.
+works, such as TypeSafe Jev or OpenAI `gpt-6-luna`. `evaluationModel()`
+instances work too. A model id string or a language model in `model` fails
+the config load with `INVALID_CONFIG`.
 
 ## Install and configure
 
@@ -67,13 +69,10 @@ test('adds a todo', async ({ app, screen, agent }) => {
 });
 ```
 
-`evaluationModel()` instances also work. A model id string or a language
-model in `model` fails the config load with `INVALID_CONFIG`.
-
 <Accordion title="Use OpenAI gpt-6-luna">
 
-`@ai-sdk/openai` 4.0.90 or later reads `OPENAI_API_KEY` and accepts the
-screenshot that [vision](#vision) sends.
+Use `@ai-sdk/openai` 4.0.90 or later, which accepts the
+[vision](#vision) screenshot. Set `OPENAI_API_KEY`.
 
 <CodeGroup>
 ```bash npm
@@ -108,10 +107,9 @@ newest screen: `tap`, `type`, `typeSecret`, `submit`, `select`, `check`,
 `upload`, `hover`, `secondary_tap` (a right-click), `double_tap`,
 `long_press`, `drag`, `scroll_to`, `scroll_up`, `scroll_down`, and `back`.
 Hover, right-click, drag, and scroll-to also reach labeled nodes that are
-not controls, such as a card that opens a menu on hover. On an engine that
-can dismiss the keyboard, such as the mobile engine, the executor offers
-`dismiss_keyboard` while an on-screen keyboard shows, to reach the controls
-it covers.
+not controls, such as a card that opens a menu on hover. While an on-screen
+keyboard shows on an engine that can dismiss it, such as the mobile engine,
+the executor also offers `dismiss_keyboard`.
 
 Every target question has a `none` option, so a provider with no fitting
 target answers `none` instead of refusing. `none` blocks the step.
@@ -120,7 +118,7 @@ target answers `none` instead of refusing. `none` blocks the step.
 
 When the decision model picks `type`, the text model writes the value from
 the goal, the params, the field's label, and the page text. The executor
-types exactly that string. With no value in the goal, nothing is typed and
+types exactly that string. With no value in the goal, it types nothing and
 the decision model picks again. For `upload`, the text model lists the
 project-relative paths the goal or params name, and the runner authorizes
 each one. Model output never becomes a selector, a URL, or a key.
@@ -136,9 +134,7 @@ executor never offers `type`, `upload`, or `tap_at`.
 
 When the decision model answers `done` or `failed`, the executor checks the
 claim on a fresh screen with one question: is the step's task complete? The
-check sees the non-secret params, the actions taken with their non-secret
-values, and the page with the text of its status regions. It never sees
-model reasoning or a secret.
+check never sees model reasoning or a secret.
 
 A confirmed `done` passes the step, and a confirmed `failed` fails it with
 `ACTION_FAILED`. An unconfirmed claim goes back to the decision model as
@@ -157,10 +153,9 @@ const executor = decisionExecutor({ model, minProbability: 0.9, minConfidence: 0
 ```
 
 Probability is the chosen option's share of the answer distribution.
-Confidence is the provider's own statistic. A model that reports no
-confidence counts as 0. Measure accuracy on your own tests before you set a
-threshold. OpenAI rounds both values to two decimals, so a gate between two
-hundredths acts as the next hundredth.
+Confidence is the provider's own statistic, 0 when it reports none. OpenAI
+rounds both to two decimals. Measure accuracy on your own tests before you
+set a threshold.
 
 ## Vision
 
@@ -177,16 +172,15 @@ off there.
 
 With a text model, vision also offers `tap_at` for a control the tree
 doesn't list. The text model names the control, such as "the 3 key on the
-keypad". The decision model finds it with score questions on the screenshot,
-then on a zoomed crop. A point tap costs three decide calls and one text
-call. A repeat tap on a control that a tap already hit on that page costs
-one of each.
+keypad", and the decision model finds it on the screenshot, then on a
+zoomed crop. A point tap costs three decide calls and one text call, or one
+of each to repeat a tap on the same page.
 
 ## Provider options
 
-`providerOptions` go with every decide call, completion checks included,
-and reach the decision model only. Use them for options such as zero data
-retention on Vercel AI Gateway:
+The executor's `providerOptions` go with every decide call, completion
+checks included, and reach the decision model only. Use them for options
+such as zero data retention on Vercel AI Gateway:
 
 ```ts title="Executor setup"
 import { gateway } from 'ai';
@@ -198,7 +192,7 @@ const executor = decisionExecutor({
 });
 ```
 
-The text model takes the agents entry's `providerOptions`. So a setting
+The text model takes the agents entry's `providerOptions`, so a setting
 for one model, such as a gateway fallback list, never reaches the other.
 
 ## Limits
@@ -207,16 +201,16 @@ for one model, such as a gateway fallback list, never reaches the other.
   test code (`browser.goto`, `app.open`).
 - No multi-select `listbox`, no `scrollUntil`, and no typing at a point
   (`type_at`).
-- The text model that names a drawn control reads the page text and the
-  goal, not the pixels. It can't follow an instruction that exists only as
-  drawn text, such as a wizard that paints "tap the circle".
+- The text model that names a drawn control doesn't see pixels. It can't
+  follow an instruction that exists only as drawn text, such as a wizard
+  that paints "tap the circle".
 - Every decide call and text call counts against `maxModelCalls`.
 - Three actions in a row that fail or change nothing block the step with
   `AUTOMATION_UNSUPPORTED`.
 - A question the provider refuses fails the step with `MODEL_OUTPUT_INVALID`.
-- A question has at most 255 options (TypeSafe's limit; OpenAI documents
-  none). On a larger screen, nodes in the viewport come first and the rest
-  count as omitted, so the model can scroll.
+- A question has at most 255 options, TypeSafe's limit. On a larger
+  screen, nodes in the viewport come first and the rest count as omitted,
+  so the model can scroll.
 
 ## Next
 
