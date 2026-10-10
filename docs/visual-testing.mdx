@@ -6,7 +6,7 @@ icon: "image"
 
 import { Video } from './snippets/video.jsx';
 
-`toHaveScreenshot` compares what the app shows against a PNG stored next to
+`toHaveScreenshot` compares what the app shows with a PNG stored next to
 the test file. It works on every engine that captures pixels, so one test
 checks a browser, an iOS simulator, and an Android emulator.
 
@@ -22,17 +22,17 @@ import { test, expect } from 'e2e';
 test('checkout looks right', async ({ app, screen }) => {
   await app.open('/checkout');
   await expect(screen).toHaveScreenshot('checkout.png');
-  await expect(screen.getByRole('button', { name: 'Pay' })).toHaveScreenshot('pay-button.png');
+  await expect(screen.getByRole('button', 'Pay')).toHaveScreenshot('pay-button.png');
 });
 ```
 
-`expect(screen)` compares the whole screen; `expect(locator)` compares the
-box of its one match, scrolled into view first.
+`expect(screen)` compares the whole screen. `expect(locator)` scrolls its
+one match into view and compares that box.
 
 ## Stored screenshots
 
 Commit the screenshots with the tests. The first run has nothing to compare
-against: it writes the screenshot and fails. Look at the image, commit it,
+with, so it writes the screenshot and fails. Look at the image, commit it,
 and run again.
 
 ```text
@@ -42,12 +42,12 @@ tests/checkout.e2e.ts-snapshots/checkout-ios-darwin.png
 tests/checkout.e2e.ts-snapshots/pay-button-web-linux.png
 ```
 
-Each target and operating system keeps its own file, since fonts and
-rendering differ between them. Without a name, the screenshot is named after
-the test: `checkout-looks-right-1-web-linux.png`.
+Fonts and rendering differ between targets and operating systems, so each
+pair keeps its own file. Without a name, the file takes the test's name:
+`checkout-looks-right-1-web-linux.png`.
 
-When the app changes on purpose, rewrite the screenshots that differ. A
-missing one is written too, and the run passes:
+When the app changes on purpose, rewrite the screenshots that differ. This
+also writes missing ones, and the run passes:
 
 <CodeGroup>
 ```bash npm
@@ -65,15 +65,16 @@ bunx e2e run --update-snapshots
 
 ## In CI
 
-Screenshots must come from the machine that renders them in CI: a Linux
-runner for the web and an Android emulator, a macOS runner with the same
-simulator for iOS. Without `--update-snapshots`, a CI run never writes into
-the project: a missing screenshot fails the test, and the run puts it in the
-test's results at `snapshots/<path in the project>`, so it can be downloaded
-and committed.
+Take the screenshots on the machine that renders them in CI. Use a Linux
+runner for the web and an Android emulator. Use a macOS runner with the
+same simulator for iOS.
 
-To write them all at once, run the suite with `--update-snapshots` in a job
-like the test job and keep what it wrote:
+Without `--update-snapshots`, a CI run never writes into the project. A
+missing screenshot fails the test. The run saves it in the test's results
+at `snapshots/<path in the project>`, so you can download and commit it.
+
+To write all of them at one time, run the suite with `--update-snapshots`
+in a job like the test job, and keep what it wrote:
 
 ```yaml title=".github/workflows/screenshots.yml"
 name: Update screenshots
@@ -90,13 +91,14 @@ jobs:
           path: tests/**/*-snapshots/
 ```
 
-Download the artifact into the project, review the images, and commit them.
+Download the artifact into the project, examine the images, and commit
+them.
 
 ## When it fails
 
-The matcher takes screenshots until one matches or the assertion timeout
-(`assertionTimeout`, 5 s) runs out. On a mismatch the failure says how many
-pixels differ and where it put three images in the test's results: `-diff`,
+The matcher takes screenshots until one matches, or until the assertion
+timeout (`assertionTimeout`, 5 s) ends. On a mismatch, the failure gives the
+number of different pixels and three images in the test's results: `-diff`
 with the changed pixels in red, `-actual`, and `-expected`.
 
 ```text
@@ -106,8 +108,8 @@ actual: .e2e/results/home-1a2b3c4d5e6f7a8b/attempt-1/screenshots/screen-actual.p
 expected: .e2e/results/home-1a2b3c4d5e6f7a8b/attempt-1/screenshots/screen-expected.png
 ```
 
-A screen that never holds still for two screenshots in a row fails too, with
-the last two and their diff.
+The matcher needs two screenshots in a row that are the same. A screen that
+never holds still fails too, with the last two screenshots and their diff.
 
 ## Tolerance and masks
 
@@ -120,16 +122,27 @@ await expect(screen).toHaveScreenshot('dashboard.png', {
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `threshold` | `0.2` | How far one pixel's color may drift and still count as the same, 0 to 1 |
-| `maxDiffPixels` | `0` | How many pixels may differ |
-| `maxDiffPixelRatio` | `0` | What share of the pixels may differ, 0 to 1 |
-| `mask` | none | Locators painted over before comparing, for content that changes between runs |
+| `threshold` | `0.2` | How far one pixel's color can drift and still count as the same, 0 to 1 |
+| `maxDiffPixels` | `0` | How many pixels can differ |
+| `maxDiffPixelRatio` | `0` | What share of the pixels can differ, 0 to 1 |
+| `mask` | none | Locators painted over before the comparison, for content that changes between runs |
 | `maskColor` | `#ff00ff` | Color of the mask boxes |
 | `timeout` | `assertionTimeout` | Assertion budget in milliseconds |
 
-On the web, animations are stopped and the text caret is hidden. On iOS and
-Android, the status bar is held in a fixed state, so the clock and battery
-read the same on every run.
+On the web, e2e stops animations and hides the text caret. On iOS and
+Android, e2e holds the status bar in a fixed state, so the clock and
+battery are the same on every run.
 
-Secure fields are masked in every screenshot, and after a test fills a
-secret the matcher fails with `POLICY_DENIED`, like every other screenshot.
+e2e masks secure fields in every screenshot. After a test fills a secret,
+the matcher fails with `POLICY_DENIED`, as every other screenshot does.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Screenshot matchers" icon="circle-check" href="/reference/expect#screenshot-matchers">
+    `toHaveScreenshot` and `.not`, with every option.
+  </Card>
+  <Card title="Security" icon="shield-halved" href="/security">
+    How secrets stay out of screenshots, reports, and model input.
+  </Card>
+</CardGroup>
