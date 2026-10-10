@@ -4,10 +4,8 @@ description: Point the web engine at your app or let the runner start it, and ru
 icon: "globe"
 ---
 
-`@e2e-dev/web` runs tests in a browser against your app's URL. This page
-shows how to start the app for a run, reach a protected preview, and test
-at several sizes. For routes, cookies, dialogs, and downloads, see
-[Working with the browser](/browser).
+`@e2e-dev/web` runs tests in a browser against your app's URL. For routes,
+cookies, dialogs, and downloads, see [Working with the browser](/browser).
 
 ## Starting your app
 
@@ -19,9 +17,8 @@ engine: web(),
 app: { url: process.env.APP_URL ?? 'http://localhost:3000' },
 ```
 
-This config reads `APP_URL`, so you can change the address for a run
-without editing the file. A URL without a scheme uses HTTPS, or HTTP for a
-loopback host. Plain HTTP works only on a loopback host.
+A URL without a scheme uses HTTPS, or HTTP for a loopback host. Plain HTTP
+works only on a loopback host.
 
 ### Let the runner start it
 
@@ -53,17 +50,17 @@ export default {
  ✓ target "web" command ready 1.20s
 ```
 
-The command runs without a shell. The runner finds `executable` on `PATH`
-and passes `args` as written. The child gets only `PATH`, `HOME`, the
-temp-directory variables, and `env`, so pass what the app needs.
+The command runs without a shell: `executable` comes from `PATH` and `args`
+pass as written. The child gets only `PATH`, `HOME`, the temp-directory
+variables, and `env`.
 
 | Option | Purpose |
 | --- | --- |
-| `reuseExisting: true` | Use a server that already runs. In CI, e2e ignores it. A server that already answers is then `APP_ALREADY_RUNNING`. |
+| `reuseExisting: true` | Use a server that already runs. In CI, e2e ignores it, and a server that already answers is `APP_ALREADY_RUNNING`. |
 | `log` | Save the app's stdout and stderr to a project-relative file. A startup error quotes the last 20 lines, with `command.env` values redacted. The file itself is not redacted. |
 | `env` | Environment variables for the app. |
 | `startupTimeout` | How long to wait for the app to answer. Default 60 seconds. |
-| `readyUrl` | Set beside `command`, not in it, to probe a health endpoint instead of `app.url`: `app: { url, command, readyUrl: 'http://localhost:3000/health' }`. |
+| `readyUrl` | Set beside `command`, not in it, to probe a health endpoint instead of `app.url`. |
 
 See the [command reference](/reference/config#command) for all options.
 
@@ -76,8 +73,7 @@ and serves the app. A services API returns in a later release.
 ### Let the runner pick the port
 
 Use port `0` to run several checkouts without a port conflict. The runner
-picks a free port and replaces `{port}` in the command's `args` and `env`.
-Your app command must use that value:
+picks a free port and replaces `{port}` in the command's `args` and `env`:
 
 ```ts title="Target fragment"
 engine: web(),
@@ -91,16 +87,15 @@ app: {
   `localhost:0` is rejected.
 - Tests read the URL with the real port from `app.baseUrl`.
 - Cache entries stay valid when the port changes.
-- `reuseExisting` doesn't work with port `0`, because the port is new on
-  every run.
+- `reuseExisting` doesn't work with port `0`.
 
 See [free ports](/reference/config#free-ports).
 
 <Accordion title="Next.js dev server renders but never hydrates">
 Next.js 16 blocks cross-origin requests to its dev resources. When the
 target opens `127.0.0.1` or `[::1]`, `next dev` still identifies as
-`localhost`. The page renders but never hydrates. Locators resolve and
-clicks land, but no React handler runs, so every retry fails the same way.
+`localhost`. The page renders, locators resolve, and clicks land, but no
+React handler runs.
 
 Add the host the target opens to `allowedDevOrigins`. Use `'[::1]'` when
 `app.url` opens `http://[::1]:0`:
@@ -115,8 +110,7 @@ const nextConfig: NextConfig = {
 export default nextConfig;
 ```
 
-A target on `localhost` needs no entry. A production `next start` target
-is not affected.
+A `localhost` target and a production `next start` target need no entry.
 </Accordion>
 
 ## Protected previews
@@ -136,14 +130,11 @@ app: {
 },
 ```
 
-The browser sends `headers` only to the target's site, decided by its
-hostname. The site includes subdomains, and treats a shared suffix such as
-`vercel.app` as one site. Read [header scope](/reference/security#site-check)
-before you use a bypass secret. For ngrok, use
-`'ngrok-skip-browser-warning': '1'`.
-
-`app.identity` keeps the app's cache identity stable when the preview URL
-changes.
+The browser sends `headers` only to the target's site: its hostname, its
+subdomains, and every host under a shared suffix such as `vercel.app`. Read
+[header scope](/reference/security#site-check) before you use a bypass
+secret. For ngrok, use `'ngrok-skip-browser-warning': '1'`.
+`app.identity` keeps the cache identity stable when the preview URL changes.
 
 <Note>
 Setting `headers` turns off the browser's HTTP cache and blocks service
@@ -172,16 +163,15 @@ export default {
 } satisfies E2EConfig;
 ```
 
-The engine resolves the secret when each attempt starts. The runner keeps
-it out of reports, logs, and what the agent reads. A name that `secrets`
-doesn't declare fails the config load with `INVALID_CONFIG`. A plain string
-password also works, but e2e redacts only a `secrets.get` password.
+The engine resolves the secret when each attempt starts, and the runner
+keeps it out of reports, logs, and what the agent reads. An undeclared name
+fails the config load with `INVALID_CONFIG`. A plain string password also
+works, but e2e redacts only a `secrets.get` password.
 
 ## Viewports
 
-Set a viewport on the target to run a suite at that size. Use
-`browser.setViewport()` to resize during a test. The agent uses the current
-size and can't resize it.
+Set a viewport on the target to run a suite at that size, or call
+`browser.setViewport()` during a test. The agent can't resize.
 
 ### One size per target
 
@@ -203,19 +193,18 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Every test runs on every target, with a separate result labeled `desktop`,
-`tablet`, or `phone`. Every retry starts at the target's size.
+Every test runs on every target, with a separate result per target name.
+Every retry starts at the target's size.
 
 - Run one size with `npx e2e run --target phone`. List the test-target
   pairs with `npx e2e list`.
-- Targets that declare the same `app.command` share one process, so one dev
-  server serves every size.
+- Targets that declare the same `app.command` share one dev server.
 - A device target can sit in the same list. See the
   [Mobile engine reference](/reference/mobile).
 
 ### Fill the window
 
-`viewport: null` sets no size, so the page fills the browser window. The
+`viewport: null` sets no size, so the page fills the browser window, and the
 agent, screenshots, and videos use that size. Use it in a headed run, or
 with a hosted browser whose live view would show a 1280 by 720 page in one
 corner:
@@ -224,16 +213,15 @@ corner:
 { name: 'window', engine: web({ viewport: null }), app }
 ```
 
-In a headed browser the page is the window minus the toolbar. A local
-headed launch opens a small window. A hosted browser uses the window size
-you requested from the service. `browser.setViewport` still works.
+A local headed launch opens a small window. A hosted browser uses the
+window size you requested from the service. `browser.setViewport` still
+works.
 
 ### Resize inside a test
 
 `browser.setViewport` resizes the page for the rest of the attempt, also
 after `app.restart()` and `app.clearState()`. Use it when one test checks a
-layout before and after a resize. For a whole suite, use one target per
-size.
+layout before and after a resize:
 
 ```ts
 import { test } from '@e2e-dev/web';
@@ -249,22 +237,20 @@ test('the menu collapses on a narrow screen', async ({ app, screen, browser }) =
 });
 ```
 
-Call it before `app.open` to load the first page at that size. The app then
-never renders its desktop layout first. The resize shows as a step in the
-report.
+Call it before `app.open` to load the first page at that size, with no
+desktop render first.
 
 ### What the agent sees
 
-The agent gets the current viewport size with each observation. Resize
+The agent gets the current viewport size with each observation, so resize
 before `agent.act`. Screenshots cover the viewport. Off-screen elements can
-still be in the tree, and a tap scrolls them into view. The agent can
+still be in the tree, a tap scrolls them into view, and the agent can
 scroll to load lazy content.
 
-A sentence with a link, bold or italic text, or code reaches the agent
-whole, as it reads on screen. The link is also listed as a control the
-agent can tap. The agent reads the first 512 characters of each block of
-text. In a longer block, e2e also lists its links and emphasized text on
-their own.
+A sentence with a link, emphasis, or code reaches the agent whole, and the
+link is also listed as a control. The agent reads the first 512 characters
+of each block of text. In a longer block, e2e also lists its links and
+emphasized text on their own.
 
 ### Scoping a test to one size
 
@@ -303,8 +289,5 @@ whole screen instead.
   </Card>
   <Card title="Web engine reference" icon="masks-theater" href="/reference/web">
     Every `web()` option and every `browser` method.
-  </Card>
-  <Card title="Config reference" icon="sliders" href="/reference/config#the-app-under-test">
-    `app`, `command`, and every app key.
   </Card>
 </CardGroup>
