@@ -20,21 +20,21 @@ export const migrationPrompt = `Migrate this project's Detox tests to e2e, one s
 10. Build and install the app, run the new file with \`npx e2e run <file>\` on each platform target, and fix it until it passes. Keep the Detox spec until I confirm it can go.
 11. Summarize which tests moved, which stayed in Detox, and why.`;
 
+e2e tests a React Native app on a simulator or emulator with your normal
+debug or release build. The `@e2e-dev/mobile` engine needs no Detox framework
+in the app. Your `testID` props work with `getByTestId` on both platforms.
+
 <SetupPrompt>
 
 <Prompt description={migrationPrompt} children={migrationPrompt} actions={["copy", "cursor"]} />
 
 </SetupPrompt>
 
-`@e2e-dev/mobile` drives a simulator or emulator using your normal debug
-or release build. It does not need the Detox framework. React Native
-`testID` props work with `getByTestId` on both platforms.
+## Port the config
 
-Set up a target with the [mobile guide](/mobile) and a model with the
-[quickstart](/quickstart). You can use the same simulator for each runner
-while migrating one spec at a time.
+<Note>Set up a target with the [mobile guide](/mobile) and a model with the [quickstart](/quickstart). Both runners can use the same simulator while you move one spec at a time.</Note>
 
-## Config
+Each `.detoxrc.js` entry maps to a target, its `app`, or a `mobile()` option.
 
 | Detox (`.detoxrc.js`) | e2e |
 | --- | --- |
@@ -68,7 +68,11 @@ export default {
 } satisfies E2EConfig;
 ```
 
-## A test, before and after
+## Rewrite one spec
+
+Start with a flow that needs frequent maintenance. If its screens take time
+to settle, set the engine's
+[`settle` and `transition` options](/reference/mobile#engine).
 
 ```js title="Detox"
 describe('login', () => {
@@ -97,10 +101,10 @@ test('shows the home screen', async ({ agent, app, screen }) => {
 });
 ```
 
-`app.open()` launches the configured app fresh; nothing launches on its own.
+`app.open()` launches the configured app fresh. Nothing launches on its own.
 The password comes from [configured credentials](/authentication).
 
-## API map
+## Map each Detox call
 
 | Detox | e2e |
 | --- | --- |
@@ -138,21 +142,16 @@ The password comes from [configured credentials](/authentication).
 | `device.takeScreenshot()` compared with an image snapshot library | `await expect(screen).toHaveScreenshot('name.png')`; the status bar is held fixed for it. See [Visual comparison](/visual-testing) |
 | `:ios:` / `:android:` in a test name | `{ platforms: ['ios'] }` on the test |
 
-Where the behavior differs from Detox's:
+`by.text` and `getByText` both match the exact text. Two things behave
+differently from Detox:
 
-- Actions and single-node reads or assertions need one match; several fail
-  with `LOCATOR_AMBIGUOUS`. Narrow with `.filter()`, `.first()`, or `.nth()`,
-  see [screen](/reference/screen).
-- No `test.setup` or `{ session }` on a device, see
+- Actions and single-node reads or assertions need one match. Several fail
+  with `LOCATOR_AMBIGUOUS`. Narrow with `.filter()`, `.first()`, or `.nth()`.
+  See [screen](/reference/screen).
+- A device has no `test.setup` or `{ session }`. See
   [what differs from the web](/mobile#what-differs-from-the-web).
 
-`by.text` is an exact match in Detox and `getByText` is exact here too.
-
-## What to migrate first
-
-Start with a flow that needs frequent maintenance. If its screens take time
-to settle, configure the engine's
-[`settle` and `transition` options](/reference/mobile#engine).
+## Next
 
 <CardGroup cols={2}>
   <Card title="Mobile" icon="mobile-screen" href="/mobile">
