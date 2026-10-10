@@ -183,7 +183,7 @@ declares `requires: ['device']` and other targets skip it. Calls on `screen`,
 | `setOrientation` | `device.setOrientation('landscape-left')` | device only |
 | `setPermissions` | `device.setPermission(name, 'grant' \| 'deny' \| 'reset')`, one permission per call, on the open app | device only |
 | a second `appId` mid-flow | `device.openApp(id)`; the `open_app` tool lets the agent switch inside a goal, see [Agent tools](/mobile#agent-tools) | device only |
-| platform-specific selectors | `device.locator('role=StaticText label="..."')`, agent-device's selector terms | device only |
+| platform-specific selectors | `device.locator('role=text label="..."')`, agent-device's selector terms | device only |
 
 </Accordion>
 <Accordion title="AI commands and flow control">

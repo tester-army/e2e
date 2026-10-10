@@ -24,7 +24,7 @@ export interface ForegroundApp {
 export interface Device {
   /**
    * A locator from an agent-device selector (`'id=SW_VERSION_SPECIFIER'`,
-   * `'role=StaticText label="26.2"'`), for nodes the closed `screen` query
+   * `'role=text label="26.2"'`), for nodes the closed `screen` query
    * vocabulary cannot name. Same polling and strictness as any locator.
    */
   locator(selector: string): Locator;

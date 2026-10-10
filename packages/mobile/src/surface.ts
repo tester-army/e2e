@@ -991,7 +991,7 @@ export class AgentDeviceSurface {
     const raw = await this.snapshotOrEmpty(operation, false);
     const projected = this.project(raw);
     this.traceScreen(raw, projected);
-    const matches = resolveExpression(expression, projected.index);
+    const matches = resolveExpression(expression, projected.index, this.options.platform);
     for (const entry of matches) this.located.set(entry.id, this.bind(entry, projected.index));
     for (const oldest of this.located.keys()) {
       if (this.located.size <= MAX_LOCATED_REFS) break;

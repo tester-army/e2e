@@ -95,7 +95,7 @@ spread.
   `modifiers` on `tap` or `doubleTap`, focus on a control, and other keys fail with
   `UNSUPPORTED_CAPABILITY`.
 - **Location**: every `screen` query, plus agent-device selectors through
-  `device.locator('role=NavigationBar id=General')`.
+  `device.locator('role=navigation-bar id=General')`.
 - **Viewport swipe**, `app.back()`, `app.restart()`, `app.clearState()`, and
   redacted screenshots under the attempt artifact directory: the bounds of
   every secure field are painted black before the file is kept, and a
@@ -131,7 +131,7 @@ test('shows the version offline in dark mode', async ({ agent, device, screen })
   await device.setNetwork('offline');
   await agent.act('go to General, then About');
   await expect(screen.getByRole('button', /^iOS Version/)).toBeVisible();
-  await expect(device.locator('role=NavigationBar id=About')).toBeVisible();
+  await expect(device.locator('role=navigation-bar id=About')).toBeVisible();
 });
 ```
 
