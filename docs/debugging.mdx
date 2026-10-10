@@ -4,16 +4,16 @@ description: Read the trace page, open the evidence, watch the browser, and see 
 icon: "magnifying-glass"
 ---
 
-A failed test names its trace page in the terminal. The trace page lists
-every step, links the screenshots, downloads, and recordings, and shows the
-screen at failure. For a summary of the whole run, add the `markdown`
-reporter. It writes `.e2e/summary.md`.
+A failed test names its [trace page](#traces) in the terminal. The page
+lists every step, links the evidence, and shows the screen at failure. For a
+summary of the whole run, add the `markdown` reporter. It writes
+`.e2e/summary.md`.
 
 ## Read the failure
 
 The `list` reporter's `Failed Tests` section shows the error, the failing
-line, nearby matches for a failed locator, how many errors the app logged,
-and the trace page:
+line, nearby matches for a failed locator, the app's error count, and the
+trace page:
 
 ```text
  FAIL  |web| tests/todos.e2e.ts > shows the remaining count
@@ -36,28 +36,21 @@ The exit code tells the type of failure:
 
 ## Traces
 
-The trace page, `trace.md`, is in the test's [results directory](#artifacts).
-By default, every run that reaches its tests writes one for each failed,
-timed out, interrupted, or flaky test, and removes the pages of the
-previous run. Open it in an
-editor's markdown preview: its links to screenshots and other files work
-from there.
+By default, each failed, timed out, interrupted, or flaky test gets a trace
+page, `trace.md`, in its [results directory](#artifacts). Open it in an
+editor's markdown preview so its links work. After the browser or device
+the test ran on, it shows:
 
-The page names what the test ran on: the browser and user agent, or the
-device. Then it shows:
-
-- **Steps.** For each step: the node an action landed on, the values an
-  assertion read while it waited, the replay cache's decision, what the app
-  logged, where the page went (`↪ navigated to /login`, a new tab, a frame),
-  and how the screen changed since the step before.
+- **Steps.** The node an action landed on, the values an assertion read
+  while it waited, the replay cache's decision, what the app logged, where
+  the page went, and how the screen changed since the step before.
 - **App log.** Console output, uncaught exceptions, failed requests, and
-  4xx and 5xx responses, each with its step. The page shows up to 50 lines,
-  errors and warnings first. An attempt keeps at most 200 errors and
-  warnings and 100 other lines.
+  4xx and 5xx responses, each with its step: up to 50 lines, errors and
+  warnings first. An attempt keeps at most 200 errors and warnings and 100
+  other lines.
 - **The agent's last turns.**
-- **Screen at failure.** The screenshot and the semantic tree, captured
-  once per failed attempt in at most 5 s. An app that doesn't answer in time
-  gets no screen section.
+- **Screen at failure.** The screenshot and the semantic tree, captured in
+  at most 5 s. An app that doesn't answer in time gets no screen section.
 
 <Accordion title="Example trace page">
 
@@ -127,15 +120,12 @@ An assertion that read one value the whole time has a wrong expectation, or
 the app never reached that state: look in the app log for a failed request.
 An assertion whose readings changed (`"2 remaining" x3 -> at 410ms "1
 remaining"`) raced the app. `screen: unchanged` after an action means the
-action had no visible effect. A step's screen is the last one it saw: on
-web, the screen an action left, and on a device, the screen the step acted
-on.
+action had no visible effect. On web, a step's screen is the one an action
+left. On a device, it's the screen the step acted on.
 
 The [`trace`](/reference/config#trace) mode sets which tests keep a page.
-The default is `retain-on-failure`. `--trace` keeps a page for every test of
-one run, passing ones included (heading `✓`). `--trace off` writes none. A
-test's own `trace` option wins over both. CI uploads the pages with the
-report. See [CI](/ci).
+`--trace` keeps one for every test of a run, passing ones included.
+`--trace off` writes none. A test's own `trace` option wins over both.
 
 ## Artifacts
 
@@ -149,38 +139,30 @@ one `attempt-<n>` per attempt. A serial group's tests share one directory:
 .e2e/results/todos-adds-a-todo-1a2b3c4d5e6f7a8b/attempt-1/screenshots/001-failure.png
 ```
 
-Each run empties `results/` first, so it holds the evidence of the latest
-run. A `--last-failed` rerun keeps the files that the report it reruns
-names, and writes its own attempts under each test's `rerun-<n>/`.
+Each run that reaches its tests empties `results/` first. A `--last-failed`
+rerun keeps the files that the report it reruns names, and writes its own
+attempts under each test's `rerun-<n>/`.
 
 | Artifact | When |
 | --- | --- |
-| Screenshots | A failed attempt captures one when the engine can and pixels are allowed. The built-in `agent.assert` captures one after either verdict, unless `screenshot: false`. `app.screenshot('label')` captures one on request. Capture can fail or be withheld. |
+| Screenshots | A failed attempt captures one when the engine can and pixels are allowed. The built-in `agent.assert` captures one after either verdict, unless `screenshot: false`. `app.screenshot('label')` captures one on request. After a secret fill, the runner takes [none](/reference/security#screenshots-after-a-secret-fill) for the rest of the attempt. |
 | Downloads | Files saved through `browser.waitForDownload`, kind `download`. They are the app's bytes, marked `redaction: "incomplete"`. When the session knows a secret value and the file is text, the runner rewrites it and marks it `complete`. |
-| Videos | When you [record them](#watch-it-happen). |
+| Videos | When you [record them](#watch-it-happen). Videos mask nothing and are marked `redaction: "incomplete"`. See [where redaction stops](/reference/security#where-redaction-stops). |
 | Agent transcripts | With [`--debug`](#agent-steps). |
-
-After a secret fill, the runner takes
-[no screenshots](/reference/security#screenshots-after-a-secret-fill) for
-the rest of the attempt. Videos mask nothing and are marked
-`redaction: "incomplete"`. See
-[where redaction stops](/reference/security#where-redaction-stops).
 
 ## For scripts: report.json
 
-Every run that reaches its tests also writes `.e2e/report.json`. It holds
-the data of the trace pages in a versioned schema, for scripts and
-integrations. `--reporter json` prints it to stdout:
+Every run that reaches its tests also writes `.e2e/report.json`, the trace
+pages' data in a versioned schema. `--reporter json` prints it to stdout:
 
 ```bash
 jq '.run | {status, exitCode, errors}' .e2e/report.json
-jq '.run.results[] | select(.status != "passed") | {titlePath, file, status}' .e2e/report.json
 jq '.run.results[] | select(.status != "passed") | .attempts[-1]
     | {status, error, failure, steps: [.steps[] | select(.status != "passed") | {api, label, source, status, error}], artifacts}' .e2e/report.json
 ```
 
-Look at `run.errors` for run-level failures. Then look at the last attempt
-of each failed result:
+`run.errors` holds run-level failures. The last attempt of each failed
+result holds:
 
 | Field | Holds |
 | --- | --- |
@@ -212,19 +194,18 @@ bunx e2e run --video=retain-on-failure     # record every attempt, keep the fail
 ```
 </CodeGroup>
 
-`--video [mode]` takes an optional value. Put test files before it, or
-write `--video=<mode>`. The flag and the config's `video` apply to the
-targets whose engine can record, and one notice names the other targets.
+`--video` takes an optional mode. Put test files before it, or write
+`--video=<mode>`. The flag and the config's `video` apply to the targets
+whose engine can record, and one notice names the others.
 
-Each recording goes into the artifact directory of its attempt. Playwright
-writes WebM, one file per page the attempt opened. agent-device writes MP4.
-The failure recap prints the path, or the URL when a hosted browser keeps
-the recording. Each recording has a `startedAt`. Subtract it from a step's
-`startedAt` to find that step in the video.
+Each recording goes into its attempt's directory: WebM per page on web, MP4
+on a device. The failure recap prints the path, or the URL when a hosted
+browser keeps the recording. Subtract the recording's `startedAt` from a
+step's `startedAt` to find that step in the video.
 
-To record without the flag, set `video` in the config. In CI, use
-`on-first-retry`: a test that passes the first time records nothing, and a
-flaky test leaves a recording of its retry.
+In CI, set `video: 'on-first-retry'` in the config. A test that passes the
+first time records nothing, and a flaky test leaves a recording of its
+retry.
 
 <Accordion title="Set video in the config, on a target, or on a test">
 
@@ -240,8 +221,7 @@ export default {
 ```
 
 A target's `video` wins over the config's, and `--video` wins over both. A
-test's own option wins over all of them. Use it to record one flow without
-recording the suite:
+test's own option wins over all of them:
 
 ```ts
 test('checkout', { video: 'on' }, async ({ agent }) => {
@@ -249,8 +229,8 @@ test('checkout', { video: 'on' }, async ({ agent }) => {
 });
 ```
 
-A mode on a target or a test is a requirement: when the engine can't record it, the run fails with
-`UNSUPPORTED_ARTIFACT` before any test starts.
+A mode on a target or a test is a requirement. When the engine can't record
+it, the run fails with `UNSUPPORTED_ARTIFACT` before any test starts.
 
 </Accordion>
 
@@ -258,28 +238,27 @@ A mode on a target or a test is a requirement: when the engine can't record it, 
 
 ## Console output
 
-`console.log` and `console.error` in a test print while the test runs, above
-the live view. A heading names the stream, the target, the file, and the
-test:
+`console.log` and `console.error` in a test print while it runs, under a
+heading that names the stream, target, file, and test:
 
 ```text
 stdout | web tests/todos.e2e.ts > adds a todo
 hello from the test
 ```
 
-Output from outside a test, such as the top level of a test file or a
-reporter, prints under `stdout | runner` or `stderr | runner`. Both streams
-print on stdout, also in a pipe or a CI log. Without the `list` reporter,
-output goes to its own stream as written.
+Output from outside a test, such as a file's top level or a reporter,
+prints under `stdout | runner` or `stderr | runner`. Both streams print on
+stdout. Without the `list` reporter, output goes to its own stream as
+written. Output from the config load prints before the run header, or a
+warning replaces it if the load fails.
 
-The runner [redacts](/reference/security#redaction) secret values. Output
-from the config load appears after the load, before the run header, or is replaced by a warning if
-the load fails. The report doesn't include console output, so use `expect`
-or an artifact for anything a later reader needs.
+The runner [redacts](/reference/security#redaction) secret values. The
+report doesn't include console output, so use `expect` or an artifact for
+anything a later reader needs.
 
 ## Agent steps
 
-Use these flags to examine what the agent did:
+These flags show what the agent did:
 
 <CodeGroup>
 ```bash npm
@@ -301,10 +280,10 @@ bunx e2e run --no-cache  # run the agent live instead of replaying
 ```
 </CodeGroup>
 
-`--debug` adds two tables after the reporter's output. The first has the
-phase timings of the run. The second has one row per agent step: duration,
-model calls, tokens, prompt-cache share, and cost when the provider reports
-one. Each planned step also saves its model transcript as an artifact.
+`--debug` adds the run's phase timings and a table with one row per agent
+step: duration, model calls, tokens, prompt-cache share, and cost when the
+provider reports one. Each planned step also saves its model transcript as
+an artifact.
 
 ```console
 [e2e debug] agent steps (execution order, model anthropic/claude-sonnet-4.5, total $0.0312)
@@ -313,12 +292,10 @@ one. Each planned step also saves its model transcript as an artifact.
   assert "the list shows groceries"      1.2s    1.1s     88ms     0ms      1  3120/41        0% (0)       $0.0114
 ```
 
-`--ai-trace` writes model requests and responses to `.e2e/ai-trace.json`.
-Each agent step is one run in the file, with one entry per model call. The
-entries hold the redacted model input, with image bytes replaced by byte
-counts. The file is large. Read it with
-[unbox-ai](https://github.com/tester-army/unbox-ai) to see prompts, tool
-calls, and token usage:
+`--ai-trace` writes `.e2e/ai-trace.json`: one run per agent step, one entry
+per model call, with the redacted input and image bytes replaced by counts.
+Read it with [unbox-ai](https://github.com/tester-army/unbox-ai) to see
+prompts, tool calls, and token usage:
 
 <CodeGroup>
 ```bash npm
@@ -338,19 +315,18 @@ bunx unbox-ai summary .e2e/ai-trace.json --run 1
 </CodeGroup>
 
 A replayed step makes no model call and leaves no AI trace. Add `--no-cache`
-to trace the whole flow or to rule out a stale recording. See
-[Caching](/cache).
+to trace the whole flow or rule out a stale [recording](/cache).
 
 ## Common errors
 
 | Code | Usual cause | Fix |
 | --- | --- | --- |
-| `APP_UNREACHABLE` | Nothing answers at `app.url`, or `app.command` never became ready; on a device, the message may name the iOS automation runner instead (busy, wedged, or a snapshot it could not present) | Set `app.command.log` and read it; check the port; raise `app.command.startupTimeout`. For the runner, follow the recovery in the message: `npx agent-device daemon stop`, reboot the simulator (see [Mobile](/mobile#troubleshooting)) |
+| `APP_UNREACHABLE` | Nothing answers at `app.url`, or `app.command` never became ready. On iOS, the message may name the automation runner instead | Set `app.command.log` and read it; check the port; raise `app.command.startupTimeout`. For the iOS runner, follow the message (see [Mobile](/mobile#troubleshooting)) |
 | `APP_ALREADY_RUNNING` | Something already serves `app.url` when the runner wanted to start `app.command` | Stop it, or set `reuseExisting: true` for local runs |
 | `LOCATOR_NOT_FOUND` | Wrong role or name, text not exact, element inside an iframe, page not open | Read the markup for the accessible name; try `exact: false`; `browser.frameLocator` for iframes; `--headed` to look |
 | `LOCATOR_AMBIGUOUS` | Two matches: a hidden duplicate, a repeated label | Add `{ name }`, scope under a container, `filter`, `first()`, or `{ visible: true }` |
 | `ASSERTION_FAILED` | The expectation is wrong, or the state settles after 5 s; for `agent.assert`, the judgment was false | Compare with the screenshot; `{ timeout }` on the matcher; rewrite the question |
-| `ASSERTION_INCONCLUSIVE` | `agent.assert` asked about, or `agent.extract` asked for, something the screen does not show: the value is on another page, still loading, or only in pixels | Open or wait for the right screen first; ask about what is visible; add `vision: true` when the answer is in pixels (the message says so when the judge read the tree alone) |
+| `ASSERTION_INCONCLUSIVE` | `agent.assert` or `agent.extract` asked about something the screen doesn't show: on another page, still loading, or only in pixels | Open or wait for the right screen first; add `vision: true` when the answer is in pixels (the message says so) |
 | `ACTION_FAILED` | Element covered, disabled, or detached, or an operation timed out | Wait on the right condition with `expect` first; close overlays |
 | `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT` | The agent ran out of actions, model calls, or time | Scope the goal to one step. Raise the agent entry's `maxSteps` or `maxModelCalls` for the budget, the config `timeout` for an `act` step, or the agent's `judgmentTimeout` for `assert`, `waitFor`, and `extract` |
 | `MODEL_UNAVAILABLE` | No model constructed in the config | See [Models](/models) |
