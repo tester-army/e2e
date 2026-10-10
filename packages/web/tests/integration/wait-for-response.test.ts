@@ -88,10 +88,10 @@ describe('browser.waitForResponse bodies', () => {
 
   beforeEach(async () => {
     await surface.startAttempt({ attemptId: 'responses', artifactsDir, signal, resolveSecret: noSecrets, ...ignoreTrace });
-    page = await surface.ensurePage();
-    await page.goto(`${origin}/`);
     operationBudgetMs = 2_000;
     browser = createBrowserFixture(surface, {
+      app: { resolveUrl: (url: string) => new URL(url, `${origin}/`).href },
+      timeouts: { test: 5_000 },
       operation: (timeoutMs = operationBudgetMs) => ({ signal, timeoutMs, runId: 'responses', attemptId: 'responses', origin: 'test' }),
       expectable: (target: object) => target,
       fixture: (_name: string, target: object) => target,
@@ -113,6 +113,8 @@ describe('browser.waitForResponse bodies', () => {
    * returns the response `waitForResponse` observed for it.
    */
   async function observe(pathname: string, options?: { timeout: number }) {
+    page = await surface.ensurePage();
+    await page.goto(`${origin}/`);
     // The harness's step bound, as the fixture recorder applies it to every `browser` call.
     const bound = options?.timeout ?? 2_000;
     const [response] = await Promise.all([
@@ -124,6 +126,18 @@ describe('browser.waitForResponse bodies', () => {
     ]);
     return response;
   }
+
+  it('observes the first navigation before any page is open', async () => {
+    const [response] = await Promise.all([
+      browser.waitForResponse(`${origin}/`),
+      browser.goto('/'),
+    ]);
+    expect(response.url).toBe(`${origin}/`);
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toBe('text/html');
+    await expect(response.text()).resolves.toContain('<h1>Bodies</h1>');
+    expect(surface.requireContext().pages()).toEqual([surface.requirePage()]);
+  });
 
   it('reads a full body as text and JSON', async () => {
     const response = await observe('/api/full');

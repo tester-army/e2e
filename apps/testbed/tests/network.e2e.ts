@@ -1,6 +1,18 @@
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
+test('observes the first navigation response', { requires: ['browser'], tags: ['network'] }, async ({ browser, screen }) => {
+  const [response] = await Promise.all([
+    browser.waitForResponse('**/network'),
+    browser.goto('/network'),
+  ]);
+  expect(response.url).toMatch(/\/network$/);
+  expect(response.status).toBe(200);
+  expect(response.headers['content-type']).toContain('text/html');
+  expect(await response.text()).toContain('<title>Network</title>');
+  await expect(screen.getByRole('heading', 'Network')).toBeVisible();
+});
+
 test.describe('network', { requires: ['browser'], tags: ['network'] }, () => {
   test.beforeEach(async ({ app }) => {
     await app.open('/network');

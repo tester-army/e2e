@@ -143,6 +143,25 @@ describe('AttemptSession', () => {
     await owner.close(cleanup());
   });
 
+  it('shares one pending page between concurrent first-page operations', async () => {
+    const opened = target('opened').page;
+    const pending = deferred<Page>();
+    const newPage = vi.fn(() => pending.promise);
+    const context = { pages: () => [], newPage, close: async () => undefined };
+    const owner = new AttemptSession({
+      artifactsDir: tmpdir(), viewport: { width: 320, height: 200 }, contextOptions: {}, screencast: {},
+      acquire: async () => ({ newContext: async () => context }) as unknown as Browser,
+      configure: async () => undefined,
+    });
+    await owner.start(new AbortController().signal);
+    const opening = expect(Promise.all([owner.ensurePage(), owner.ensurePage()])).resolves.toEqual([opened, opened]);
+    pending.resolve(opened);
+    await opening;
+    expect(newPage).toHaveBeenCalledTimes(1);
+    expect(owner.current().page).toBe(opened);
+    await owner.close(cleanup());
+  });
+
   it('refuses a viewport that is not whole pixels, keeps a copy of the one it accepts, and resizes an open page', async () => {
     const current = remote('current');
     vi.mocked(connectCdp).mockResolvedValue(current.browser);
