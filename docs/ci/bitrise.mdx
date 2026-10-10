@@ -4,14 +4,31 @@ description: Run iOS and Android tests on Bitrise with one workflow for each pla
 icon: "/images/icons/bitrise.svg"
 ---
 
-This setup has one workflow for each platform, in one pipeline. Before you
-start, read [Mobile jobs](/ci#mobile-jobs). That section tells you what each
-job needs on every CI service.
+import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
 
-Bitrise has steps that boot the two devices: `xcode-start-simulator` on
-macOS, and `avd-manager` with `wait-for-android-emulator` on Linux. Start
-the emulator before the Gradle build. Then the emulator boots while the APK
-compiles.
+export const setupPrompt = `Add a Bitrise pipeline that runs this project's e2e tests on iOS and Android. Docs: \`https://e2e.tester.army/docs/ci/bitrise.md\` and \`https://e2e.tester.army/docs/ci.md\`
+
+1. Read both pages.
+2. Add the workflows to \`bitrise.yml\`. Adapt the project paths, scheme, stacks, and Node version to this project.
+3. Ask me to add the model key under Secrets in the Bitrise workflow editor.
+4. After I start a build, read the build log and fix errors until both workflows pass.`;
+
+This setup runs one workflow for each platform in one pipeline. The
+workflows follow the rules in [Mobile jobs](/ci#mobile-jobs).
+
+<SetupPrompt>
+
+<Prompt description={setupPrompt} children={setupPrompt} actions={["copy", "cursor"]} />
+
+</SetupPrompt>
+
+## Workflow
+
+Bitrise steps boot the devices: `xcode-start-simulator` on macOS, and
+`avd-manager` with `wait-for-android-emulator` on Linux. The Android
+workflow starts the emulator before the Gradle build, so the emulator boots
+while the APK compiles. A release APK must have a signature. The React
+Native and Expo templates sign it with the debug keystore.
 
 ```yaml title="bitrise.yml" expandable
 format_version: '25'
@@ -121,19 +138,22 @@ workflows:
     - deploy-to-bitrise-io@2: {}
 ```
 
-## Notes
+## Artifacts and test reports
 
-- **Artifacts.** `deploy-to-bitrise-io` uploads only the top level of
-  `$BITRISE_DEPLOY_DIR`. So the workflow puts `.e2e/` into a zip file in
-  that directory. `custom-test-results-export` sends `junit.xml` to the Test
-  Reports tab. These steps also run after a step fails.
-- **Secrets.** Add the model key under Secrets in the workflow editor of the
-  app. A pull request build gets a secret only when **Expose for Pull
-  Requests** is on. A build of a public app never gets a secret. On such a
-  build the deterministic tests run, but each agent judgment and each
-  `agent.act` step with no recording fails.
-- **Release signing.** A release APK must have a signature. The React
-  Native and Expo templates sign it with the debug keystore.
+`deploy-to-bitrise-io` uploads only the top level of `$BITRISE_DEPLOY_DIR`,
+so each workflow zips `.e2e/` into that directory.
+`custom-test-results-export` sends `junit.xml` to the Test Reports tab.
+These steps also run after a step fails.
+
+## Model key
+
+Add the model key under Secrets in the workflow editor of the app. A pull
+request build gets a secret only when **Expose for Pull Requests** is on.
+A build of a public app never gets a secret. On such a build the
+deterministic tests run, but each agent judgment and each `agent.act` step
+with no recording fails. See [Model credentials](/ci#model-credentials).
+
+## Next
 
 <CardGroup cols={2}>
   <Card title="CI overview" icon="rotate" href="/ci">
