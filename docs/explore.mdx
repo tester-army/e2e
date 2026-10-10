@@ -6,8 +6,21 @@ icon: "compass"
 
 import { Video } from './snippets/video.jsx';
 
-Use `e2e explore` to examine a flow without a test file. You give the agent
-a goal:
+`e2e explore` runs the agent against your app with a goal instead of a test
+file. The agent plans a step, does it, and records findings. It repeats
+until the goal is covered or a budget ends, then writes an assessment. It
+uses the same model, tools, and action rules as `agent.act()`.
+
+<Video>
+  <video src="/images/explore.mp4" aria-label="e2e explore drives the app in a headed browser and reports findings in the terminal." muted loop playsInline controls />
+
+  `e2e explore --headed` drives the app and reports findings as it goes.
+</Video>
+
+## Start an exploration
+
+Give the agent a goal. Name the flow and the user goal, and add limits if
+necessary:
 
 <CodeGroup>
 ```bash npm
@@ -23,23 +36,8 @@ bunx e2e explore 'Explore the checkout flow like a first-time buyer and report a
 ```
 </CodeGroup>
 
-The agent plans a step, does it, and records findings. It repeats until the
-goal is covered or a budget ends, then writes an assessment. A failed step
-does not stop the run. The agent uses the same model, tools, and action rules
-as `agent.act()`.
-
-<Video>
-  <video src="/images/explore.mp4" aria-label="e2e explore drives the app in a headed browser and reports findings in the terminal." muted loop playsInline controls />
-
-  `e2e explore --headed` drives the app and reports findings as it goes.
-</Video>
-
-## Write a good goal
-
-Name the flow and the user goal. For example: "Explore checkout as a
-first-time buyer and check that totals match the cart." Add limits if
-necessary, for example "stop before placing the order." With no goal,
-explore uses `Explore the app and find bugs`.
+A limit can be "stop before placing the order." With no goal, explore uses
+`Explore the app and find bugs`. A failed step does not stop the run.
 
 ## Read the results
 
@@ -59,16 +57,16 @@ when it ends:
 
 An `issue` fails the run with exit code 1. A `warning` does not. The final
 report puts the most severe issues first. Each finding has the steps to
-reproduce and, when possible, a screenshot. Compare each finding with its
-evidence before you act on it.
+reproduce it and, when possible, a screenshot. Compare each finding with
+its evidence before you act on it.
 
 For the other exit codes, the JSON report, and artifact paths, see the
 [CLI reference](/reference/cli#e2e-explore).
 
 ## Start signed in
 
-To explore as a signed-in user, use `--session <name>`. The name is a session
-that a [setup test](/authentication) saves:
+To explore as a signed-in user, add `--session <name>`. The name is a
+session that a [setup test](/authentication) saves:
 
 <CodeGroup>
 ```bash npm
@@ -102,12 +100,12 @@ Explore uses the targets, app command, models, and agents from
 `e2e.config.ts`. Use `--target <name>` and `--agent <name>` to select them.
 Without `--target`, explore uses the first target.
 
-## Explore a whole app
-
-To test a full app or branch, run many explorations at the same time and
-verify their findings. See [Bug bashes](/bug-bash).
+## Next
 
 <CardGroup cols={2}>
+  <Card title="Bug bashes" icon="bug" href="/bug-bash">
+    Explore a whole app or branch with many explorations, and prove each bug with a test.
+  </Card>
   <Card title="CLI reference" icon="terminal" href="/reference/cli#e2e-explore">
     Every flag of `e2e explore`.
   </Card>
