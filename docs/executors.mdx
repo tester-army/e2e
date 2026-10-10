@@ -119,7 +119,7 @@ export default {
 
 | Member | What it is |
 | --- | --- |
-| `ctx.step` | The `kind`, instruction, params, and `index` in the attempt's timeline. A secret value in the instruction or a param reads `<secret:name>`. A `secrets.get()` handle arrives as a name-only placeholder that `typeSecret` fills |
+| `ctx.step` | The `kind`, instruction, params, and `index` in the attempt's timeline. A configured secret's value in the instruction or a param reads `<secret:name>`. A `secrets.get()` handle arrives as a name-only placeholder that `typeSecret` fills |
 | `ctx.observe({ tree, pixels })` | Redacted screen text, with an optional node tree and masked screenshot |
 | `ctx.actions` | Checked and recorded actions: `tap`, `doubleTap`, `longPress`, `secondaryTap`, `hover`, `type`, `typeSecret`, `press`, `select`, `check`, `drag`, `scrollTo`, `scrollUntil`, `upload`, `scroll`, `navigate`, `back`, and the point and keyboard actions below |
 | `ctx.target` | The target's `name`, `platform`, and `verbs`, the actions its engine supports. Offer only these to the model |
