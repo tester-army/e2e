@@ -45,6 +45,40 @@ async function captureByTestId(): Promise<Map<string | undefined, SemanticNode>>
 }
 
 describe('checked and selected', () => {
+  it('lists closed-select choices but excludes explicitly hidden options and optgroups', async () => {
+    await page.setContent(`
+      <select aria-label="Plan">
+        <option data-testid="visible" selected value="internal-token">Visible</option>
+        <option data-testid="disabled" disabled>Disabled</option>
+        <option data-testid="hidden" hidden>Hidden</option>
+        <option data-testid="display" style="display:none">No display</option>
+        <option data-testid="visibility" style="visibility:hidden">No visibility</option>
+        <option data-testid="aria" aria-hidden="true">No aria</option>
+        <optgroup hidden label="Hidden group"><option data-testid="group">Hidden group choice</option></optgroup>
+        <optgroup style="visibility:hidden" label="Restored group"><option data-testid="restored" style="visibility:visible">Restored</option></optgroup>
+      </select>
+    `);
+    const nodes = await captureByTestId();
+    expect(nodes.get('visible')).toMatchObject({ name: 'Visible', states: { selected: true } });
+    expect(nodes.get('visible')?.value).toBeUndefined();
+    expect(nodes.get('visible')?.states?.hidden).toBeUndefined();
+    expect(nodes.get('disabled')).toMatchObject({ name: 'Disabled', states: { disabled: true } });
+    expect(nodes.has('restored')).toBe(true);
+    expect(nodes.has('visibility')).toBe(true);
+    for (const id of ['hidden', 'display', 'aria', 'group']) expect(nodes.has(id)).toBe(false);
+    expect(await page.getByRole('option').allTextContents()).toEqual(['Visible', 'Disabled', 'No visibility', 'Restored']);
+  });
+
+  it('applies the option limit to offered choices after hidden options are excluded', async () => {
+    await page.setContent(`<select aria-label="Many choices">${'<option hidden>Excluded</option>'.repeat(60)}${Array.from({ length: 61 }, (_, index) => `<option data-testid="choice-${index}">Choice ${index}</option>`).join('')}</select>`);
+    const nodes = await captureByTestId();
+    expect(nodes.get('choice-0')?.name).toBe('Choice 0');
+    expect(nodes.get('choice-59')?.name).toBe('Choice 59');
+    expect(nodes.has('choice-60')).toBe(false);
+    expect([...nodes.values()].filter((node) => node.role === 'option')).toHaveLength(60);
+    expect(await page.getByRole('option').count()).toBe(61);
+  });
+
   it('reads selected boolean values without case sensitivity while native option state wins', async () => {
     await page.setContent(`
       <div role="tablist">

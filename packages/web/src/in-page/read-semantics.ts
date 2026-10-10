@@ -1054,6 +1054,15 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   const isInert = (el: Element, style: CSSStyleDeclaration | undefined): boolean =>
     el.hasAttribute('inert') || style?.getPropertyValue('interactivity') === 'inert';
 
+  /** A closed select has no option boxes; explicit exclusions still remove choices it does not offer. */
+  const isOfferedOption = (option: HTMLOptionElement): boolean => {
+    if (isSkippedContent(option)) return false;
+    for (let current: Element | null = option; current !== null && current.tagName.toLowerCase() !== 'select'; current = parentOrHostOf(current)) {
+      if (hidesSubtree(current, styleOf(current))) return false;
+    }
+    return true;
+  };
+
   /** Smallest side, in CSS pixels, an empty box must have to be worth reporting. */
   const MIN_BOX_SIDE = 12;
 
@@ -1496,8 +1505,11 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     // has to guess the labels it may pick. The options are what the control
     // offers, so they are listed under it, bounded like any long list.
     if (tag === 'select') {
-      const choices = Array.from((el as HTMLSelectElement).options).slice(0, MAX_SELECT_OPTIONS);
-      for (const option of choices) {
+      let offered = 0;
+      for (const option of Array.from((el as HTMLSelectElement).options)) {
+        if (offered >= MAX_SELECT_OPTIONS) break;
+        if (!isOfferedOption(option)) continue;
+        offered += 1;
         if (nodes.length >= maxNodes) {
           truncated = true;
           return;

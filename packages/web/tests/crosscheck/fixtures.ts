@@ -38,6 +38,16 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
     `,
   },
   {
+    name: 'explicitly hidden select choices',
+    html: `
+      <select aria-label="Plan" size="8">
+        <option selected>Visible</option><option disabled>Disabled</option>
+        <option hidden>Hidden</option><option style="display:none">No display</option>
+        <optgroup hidden label="Hidden group"><option>Hidden group choice</option></optgroup>
+      </select>
+    `,
+  },
+  {
     name: 'boolean attribute casing',
     html: `
       <div role="tablist"><button role="tab" aria-selected="TRUE">All</button><button role="tab" aria-selected="TrUe">Recent</button><button role="tab" aria-selected="FALSE">Archived</button></div>

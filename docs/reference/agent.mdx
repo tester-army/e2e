@@ -127,6 +127,11 @@ file is `INVALID_ARGUMENT`, an ordinary action failure the model reads and
 corrects. Every refusal and the final allow is a `policy` event named
 `upload.path` on the step. Nothing reaches the engine until every path passed.
 
+The web observation lists a select's offered choices even while its popup
+is closed. Options hidden by `hidden`, `display: none`, `aria-hidden` or inert
+subtrees are excluded before the 60-choice limit. Disabled options remain
+listed with their state, and internal option values are omitted.
+
 The screen the model reads lists the text selected inside the focused field
 as `selection="..."` after its value, when the engine reports one: the web
 engine does for an input, a textarea, and a `contenteditable` editor, and a
