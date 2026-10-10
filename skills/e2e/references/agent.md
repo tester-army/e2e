@@ -283,6 +283,17 @@ matches. Misses and hand-offs use the model; `agent.assert`,
   with `cache.strict` off, then commit. Unrecorded steps still run live;
   retries replay too, and a strict run never writes the cache.
 
+- For a gate with zero model calls, set `cache: { replayOnly: true }` or
+  pass `--replay-only`. This applies to `e2e run`; Explore and MCP sessions
+  do not use the replay cache. It implies strict and read-only and replays on retries.
+  Missing, stale, incomplete, or unavailable recordings fail with
+  `REPLAY_MISSING`, exit 2, without invoking an executor or resolving a model.
+  Entries are never written or evicted. `agent.assert`, `agent.waitFor`, and
+  `agent.extract` cannot replay; use deterministic `expect(screen.*)` checks.
+  Executors with `cache: 'off'` are refused. To re-record, set `cache.mode` to
+  `read-write`, set `cache.replayOnly` and `cache.strict` to `false`, and remove
+  `--replay-only` and `--strict-cache`. `--no-cache` conflicts with replay-only.
+
 ## Inspect what the model did
 
 ```bash

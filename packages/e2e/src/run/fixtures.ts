@@ -163,7 +163,7 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
         `unknown agent "${name}"; configured: ${[...config.agents.keys()].join(', ')}${didYouMean(name, [...config.agents.keys()])}`,
       );
     }
-    environment.models.preflight(resolved, name);
+    if (environment.cache?.replayOnly !== true) environment.models.preflight(resolved, name);
     const selection: AgentSelection = {
       name,
       config: resolved,

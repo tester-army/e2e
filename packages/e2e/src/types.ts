@@ -232,6 +232,7 @@ export type AgentErrorCode =
   | 'ASSERTION_FAILED'
   | 'ASSERTION_INCONCLUSIVE'
   | 'REPLAY_STALE'
+  | 'REPLAY_MISSING'
   | 'CANCELLED';
 
 export interface Agent {
@@ -1206,6 +1207,13 @@ export interface CacheConfig {
    * the mode. `--strict-cache` sets it for one run. Default `false`.
    */
   strict?: boolean;
+  /**
+   * Replays agent.act recordings only, without resolving a model or invoking
+   * an executor. Implies strict and read-only, including on retries. Missing
+   * or non-replayable recordings and agent.assert/waitFor/extract fail with
+   * REPLAY_MISSING. --replay-only enables it for one run. Default false.
+   */
+  replayOnly?: boolean;
 }
 
 /**

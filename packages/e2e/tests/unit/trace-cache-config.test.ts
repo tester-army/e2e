@@ -109,6 +109,18 @@ describe('cache config resolution', () => {
     expect(() => resolve({ cache: { strict: 'yes' as unknown as boolean } })).toThrow(/cache\.strict must be a boolean/);
   });
 
+  it('makes replay-only strict and read-only in config and from the CLI', () => {
+    expect(resolve({ cache: { replayOnly: true, mode: 'read-write' } }).cache).toMatchObject({
+      mode: 'read-only', replayOnly: true, strict: { config: false, flag: false },
+    });
+    expect(resolve({ cache: 'off' }, BASE_ENV, { replayOnly: true }).cache).toMatchObject({
+      mode: 'read-only', replayOnly: true,
+    });
+    expect(resolve({ cache: { replayOnly: false } }).cache.mode).toBe('read-write');
+    expect(() => resolve({ cache: { replayOnly: 'yes' as never } })).toThrow('cache.replayOnly must be a boolean');
+    expect(() => resolve({}, BASE_ENV, { replayOnly: true, cache: 'off' })).toThrow('--replay-only cannot be combined with --no-cache');
+  });
+
   it('rejects unknown modes, unknown keys, and non-store store values', () => {
     expect(() => resolve({ ...APP, cache: 'aggressive' as never })).toThrow(/cache mode/);
     expect(() => resolve({ ...APP, cache: { mode: 'off', ttl: 5 } as never })).toThrow(

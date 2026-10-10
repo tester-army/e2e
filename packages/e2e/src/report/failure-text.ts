@@ -11,7 +11,7 @@
 import path from 'node:path';
 import { isLoopbackHost } from '../internal/urls.ts';
 import type { AppLogSource } from '../engine/index.ts';
-import type { AppLogRecord, StepCacheInfo, StepCacheRecord, StepEvent, StepTurn } from '../run/steps.ts';
+import { replayStopped, type AppLogRecord, type StepCacheInfo, type StepCacheRecord, type StepEvent, type StepTurn } from '../run/steps.ts';
 import type { Report1Document, ReportError, ReportResult, ReportSource, ReportStep } from './build.ts';
 import { cell, code, formatDuration, link, MAX_CELL_CHARS, MAX_ID_CHARS, MAX_LABEL_CHARS, MAX_PATH_CHARS, MAX_TITLE_CHARS, plural } from './markdown-text.ts';
 import { repeatSuffix } from './format.ts';
@@ -313,7 +313,7 @@ function appLogLine(entry: AppLogRecord): string {
  */
 function stepDetailLines(step: ReportStep, appLog: readonly AppLogRecord[], options: Pick<TracePageOptions, 'cacheDir'> = {}): string[] {
   const lines: string[] = [];
-  if (step.cache !== undefined) lines.push(cacheLine(step.cache, options.cacheDir));
+  if (step.cache !== undefined) lines.push(cacheLine(step.cache, options.cacheDir, replayStopped(step)));
   const items: PageItem[] = [
     ...step.events
       .filter((event) => event.kind === 'engine' || event.kind === 'navigation' || (event.kind === 'poll' && ((event.count ?? 0) > 1 || event.status !== 'passed')))
@@ -346,12 +346,12 @@ function appLogLines(steps: readonly ReportStep[], appLog: readonly AppLogRecord
   return [...(left === 0 ? [] : [`${left} ${left === 1 ? 'line' : 'lines'} left out`]), ...shown.map((item) => item.line)];
 }
 
-function cacheLine(cache: StepCacheRecord, cacheDir: string | undefined): string {
+function cacheLine(cache: StepCacheRecord, cacheDir: string | undefined, stopped: boolean): string {
   const how =
     cache.mode === 'self-finalized'
       ? `replayed all ${plural(cache.totalActions, 'recorded action')}, no model call`
       : cache.mode === 'agent-concluded'
-        ? `replayed ${cache.replayedActions} of ${plural(cache.totalActions, 'recorded action')}, then the agent took over: ${CACHE_REASON_TEXT[cache.reason ?? 'action-failed']}`
+        ? `replayed ${cache.replayedActions} of ${plural(cache.totalActions, 'recorded action')}, then ${stopped ? 'stopped without handing the step to the agent' : 'the agent took over'}: ${CACHE_REASON_TEXT[cache.reason ?? 'action-failed']}`
         : `no replay: ${CACHE_REASON_TEXT[cache.reason ?? 'no-entry']}`;
   const parts = [
     `cache: ${how}`,

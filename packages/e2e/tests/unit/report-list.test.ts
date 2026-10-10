@@ -613,12 +613,14 @@ describe('ListReporter', () => {
         step('replayed-1', { mode: 'self-finalized', replayedActions: 3, totalActions: 3 }, 0),
         step('replayed-2', { mode: 'self-finalized', replayedActions: 2, totalActions: 2 }, 0),
         step('handed-off', { mode: 'agent-concluded', reason: 'end-mismatch', replayedActions: 1, totalActions: 3 }, 2),
+        // A partial replay that replay-only stopped never reached the agent: missed, not handed off.
+        { ...step('stopped', { mode: 'agent-concluded', reason: 'target-not-found', replayedActions: 1, totalActions: 2 }, 0), status: 'failed', error: { code: 'REPLAY_MISSING', message: 'stopped' } } as AttemptRecord['steps'][number],
         step('uncached', undefined, 3),
       ];
       reporter.handle(finished(result({ status: 'passed', file: 'tests/a.e2e.ts', attempts: [attempt({ steps })] })));
       reporter.handle(runFinished({ reportPath: 'r.json' }));
       const ai = lines.findIndex((line) => line.trimStart().startsWith('AI'));
-      expect(lines[ai + 1]).toBe('      Cache  2 replayed · 1 handed off');
+      expect(lines[ai + 1]).toBe('      Cache  2 replayed · 1 handed off · 1 missed');
     });
 
     it('names the interrupt from run-finished alone when the host aborted without the event', () => {

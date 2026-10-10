@@ -146,6 +146,18 @@ export type StepCacheRecord = StepCacheInfo & {
   write?: CacheWrite;
 };
 
+/** The errors that end a partly replayed step where the replay stopped (replay-only, `cache.strict`), with no hand-off to the agent. */
+const REPLAY_STOP_CODES: ReadonlySet<string> = new Set(['REPLAY_MISSING', 'REPLAY_STALE']);
+
+/**
+ * True for a step the cache replayed in part and then stopped: its cache
+ * detail reads `agent-concluded`, as the hand-off was decided, but the step
+ * failed there instead of reaching the agent.
+ */
+export function replayStopped(step: { readonly cache?: StepCacheInfo | undefined; readonly error?: { readonly code: string } | undefined }): boolean {
+  return step.cache?.mode === 'agent-concluded' && step.error !== undefined && REPLAY_STOP_CODES.has(step.error.code);
+}
+
 /** Agent-specific step detail attached while the step is still running. */
 export interface StepAgentDetails {
   metrics?: StepMetrics;

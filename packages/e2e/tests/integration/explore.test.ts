@@ -210,6 +210,30 @@ describe('e2e explore', () => {
     expect((outcome as unknown as { notices: string[] }).notices).toEqual([]);
   }, 120_000);
 
+  it('explores with the model when the config sets cache.replayOnly, which gates recorded test runs only', async () => {
+    let plans = 0;
+    const model = installExploreModel({
+      plan: () => {
+        plans += 1;
+        return plans === 1
+          ? { decision: 'step', title: 'Menu', instruction: 'Open the menu' }
+          : { decision: 'finish', summary: 'Nothing found.' };
+      },
+      loop: () => [{ toolName: 'complete_step', input: { status: 'passed', summary: 'Menu toggles' } }],
+    });
+    const outcome = await runExplore(project, app, model, {
+      rawConfig: {
+        targets: [{ name: 'web', engine: web(), app: { url: app.url } }] as never,
+        agents: { default: { model } },
+        cache: { replayOnly: true },
+        actionTimeout: 10_000,
+      },
+    });
+    expect(outcome.exitCode).toBe(0);
+    expect(outcome.status).toBe('passed');
+    expect(loopCalls.length).toBeGreaterThan(0);
+  }, 120_000);
+
   it('redacts a registered secret value the goal spells out from the title, artifact names, report, and model input', async () => {
     const value = 'goal-Secret-5Tq8Wz';
     const goal = `Explore the home page with key ${value}`;

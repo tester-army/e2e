@@ -941,6 +941,8 @@ export interface CacheConfig {
   dir?: string;
   /** Fail a step whose recording no longer replays with `REPLAY_STALE`. Default `false`. */
   strict?: boolean;
+  /** Require replayable agent.act recordings, with no model calls. Implies strict and read-only. Default false. */
+  replayOnly?: boolean;
 }
 
 /** Where the replay cache keeps its entries: the file store by default, or a host's own through `cache.store`. */
@@ -975,6 +977,13 @@ recording that exists but no longer replays into a `REPLAY_STALE` failure
 instead of a hand-off to the agent, and the run then never writes the
 cache; see
 [Fail on a stale recording](/cache#fail-on-a-stale-recording).
+
+`replayOnly: true` (or `--replay-only`) requires a complete replay of every
+`agent.act()` and never resolves a model or invokes an executor. It implies
+strict and `read-only`, including on retries. Missing or non-replayable
+recordings, `agent.assert`, `agent.waitFor`, and `agent.extract` fail with
+`REPLAY_MISSING`, exit 2. Use deterministic assertions. `--no-cache` conflicts
+with this mode. See [Replay-only runs](/cache#replay-only-runs).
 
 ### Commit the replay cache
 
