@@ -15,14 +15,13 @@ export const migrationPrompt = `Migrate this project's Cypress tests to e2e, one
 5. Port \`cypress.config.*\` into the e2e config: \`baseUrl\` and the dev server command become the target's \`app\`, and if the specs select by \`data-cy\`, set \`web({ testIdAttribute: 'data-cy' })\` so \`screen.getByTestId\` reads it. Keep Cypress installed while both suites run.
 6. Install dependencies.
 7. List the Cypress end-to-end specs and ask me which one to move first. Suggest one that breaks often or waits with \`cy.wait(ms)\`. Component tests have no e2e equivalent; leave them in Cypress.
-8. Rewrite that spec as a \`.e2e.ts\` file under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default), with one awaited call per line and no chains. \`cy.contains\` matches a substring and e2e queries match the whole text, so pass \`{ exact: false }\` where the spec relied on a fragment. Replace each \`cy.wait(ms)\` with an assertion on the state the test waits for. Move \`cy.task\`, \`cy.exec\`, and \`cy.request\` into plain Node code, and custom commands into functions or fixtures.
+8. Rewrite that spec as a \`.e2e.ts\` file under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default) with the guide's tables, one awaited call per line. Where \`cy.contains\` matched a fragment, pass \`{ exact: false }\`. Replace each \`cy.wait(ms)\` with an assertion on the state the test waits for.
 9. Keep navigation and the final assertions deterministic, with \`app.open()\` and locator assertions. Where a run of scripted interactions breaks often, propose an \`agent.act\` goal for it instead.
 10. Run the new file with \`npx e2e run <file>\` and fix it until it passes. Keep the Cypress spec until I confirm it can go.
 11. Summarize which tests moved, which stayed in Cypress, and why.`;
 
 e2e replaces Cypress command chains with async TypeScript tests that run in
-Node, so work that went through `cy.task` becomes a plain function call. Both
-suites can stay in the project while you move one spec at a time.
+Node. Both suites can stay in the project while you move one spec at a time.
 
 <SetupPrompt>
 
@@ -34,8 +33,7 @@ suites can stay in the project while you move one spec at a time.
 
 <Note>Install e2e and configure a model with the [quickstart](/quickstart). The example below uses an agent call.</Note>
 
-Most Cypress settings map to the target or the `web()` engine. Keep your
-`data-cy` attributes. The config below reads them as test ids.
+Keep your `data-cy` attributes. The config below reads them as test ids.
 
 | Cypress | e2e |
 | --- | --- |
@@ -63,8 +61,7 @@ export default {
 
 ## Rewrite one spec
 
-Start with a spec that often breaks. Its fixed `cy.wait` calls become
-assertions on the condition the test needs.
+Start with a spec that often breaks.
 
 ```js title="Cypress"
 describe('todos', () => {
@@ -129,11 +126,11 @@ describe('todos', () => {
 | `cy.wait(ms)` | Use a locator assertion for the condition you need |
 | `cypress open` | `npx e2e run --headed`, plus `--debug` for the step table |
 
-Two things behave differently from Cypress:
+Two things differ from Cypress:
 
-- There is no chain. Await each command on its own line. It returns a value,
-  so `const text = await locator.textContent()` works.
-- Actions and single-node reads or assertions need one match. Several fail
+- There is no chain. Await each call on its own line. It returns a value:
+  `const text = await locator.textContent()`.
+- Actions and single-node reads and assertions need one match. Several fail
   with `LOCATOR_AMBIGUOUS`. Narrow with `.filter()`, `.first()`, or `.nth()`.
   See [screen](/reference/screen).
 
