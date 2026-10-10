@@ -398,7 +398,8 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
 - `waitForResponse(pattern, { timeout? })`: resolves once the headers
   arrive, with `{ url, status, headers, json(), text() }`; `text()` and
   `json()` wait for the body (up to the action timeout) and reject with
-  `ACTION_FAILED` when it could not be read.
+  `ACTION_FAILED` when it could not be read. Start the wait before the
+  request, including the first `browser.goto` or `app.open`.
 - `cookies()`, `setCookies([...])`: a target is an http(s) URL or a domain.
 - `setViewport({ width, height })`: resize.
 - `onDialog('accept' | 'dismiss' | handler)`: awaited; resolves to an async

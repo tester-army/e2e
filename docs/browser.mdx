@@ -48,8 +48,8 @@ await expect(screen.getByText('$42.00')).toBeVisible();
 - An `expect` that fails in a handler fails the test, at the next step or
   at the end of the test.
 
-To check a real response, start to wait before the action that sends the
-request:
+Start `browser.waitForResponse` before the request. This also works before
+the first `browser.goto` or `app.open`:
 
 ```ts
 const [response] = await Promise.all([

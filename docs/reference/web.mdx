@@ -483,6 +483,8 @@ or `path`, a file relative to the project root whose extension sets the
 a decision does not take (Playwright's `abort(errorCode)`, a misspelled key) is
 `INVALID_ARGUMENT`: the request is aborted and the next step fails.
 
+Start `waitForResponse` before the request, including the first `browser.goto`
+or `app.open`.
 A `waitForResponse` that nothing matches inside the deadline is
 `ACTION_FAILED`. The deadline bounds the match: the response resolves as soon
 as its headers arrive, and `text()` and `json()` wait for the body on a budget

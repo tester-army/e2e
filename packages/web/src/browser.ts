@@ -481,7 +481,8 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       const wirePattern = toTextPattern(pattern);
       const operation = context.operation(options?.timeout);
       return surface.guard(operation, 'waitForResponse', async (currentOperation) => {
-        const response = await surface.requirePage().waitForResponse(
+        const page = await surface.ensurePage();
+        const response = await page.waitForResponse(
           (candidate) => routePatternMatches(wirePattern, candidate.url()),
           { timeout: currentOperation.timeoutMs },
         );

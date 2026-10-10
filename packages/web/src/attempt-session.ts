@@ -53,6 +53,7 @@ export class AttemptSession {
   /** Until the attempt's first page opens: a persistent browser's own first tab can serve as that page. */
   private firstPage = true;
   private requestedViewport: { readonly width: number; readonly height: number } | undefined;
+  private pendingPage: { readonly binding: SessionBinding; readonly work: Promise<Page> } | undefined;
 
   constructor(private readonly options: SessionOptions) {
     this.video = options.record === undefined
@@ -195,10 +196,22 @@ export class AttemptSession {
     await work;
   }
 
-  /** Creates the attempt's active page and records its exact target before exposing it. */
+  /** Shares active-page creation in call order, so a response wait can register before the first navigation. */
   async ensurePage(): Promise<Page> {
     const binding = this.current();
     if (binding.page !== null && !binding.page.isClosed()) return binding.page;
+    if (this.pendingPage?.binding === binding) return await this.pendingPage.work;
+    const pending = { binding, work: this.openPage(binding) };
+    this.pendingPage = pending;
+    try {
+      return await pending.work;
+    } finally {
+      if (this.pendingPage === pending) this.pendingPage = undefined;
+    }
+  }
+
+  /** Publishes one active page after configuration, generation checks and recording setup. */
+  private async openPage(binding: SessionBinding): Promise<Page> {
     this.invalidate();
     const token = this.token();
     const page = await this.nextPage(binding.context);
