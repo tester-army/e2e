@@ -32,7 +32,7 @@ for (const pair of pairs) {
 | `tags`, `tagMode`, `excludeTags` | The `--tag`, `--tag-mode`, and `--exclude-tag` filters. |
 | `grep`, `grepInvert` | `RegExp` arrays. A test's describe titles and title, joined by spaces, must match one `grep` pattern and no `grepInvert` pattern. |
 | `lastFailed` | Only tests the previous run did not pass, read from `report.json` under `output`. |
-| `shard` | `{ index, total }`, the `--shard index/total` slice. |
+| `shard` | `{ index, total }`, the `--shard index/total` slice. Both must be positive safe integers, with `index` from 1 through `total`; otherwise `INVALID_CONFIG`. |
 | `passWithNoTests` | Resolve with no runnable test instead of throwing `NO_TESTS`. |
 | `output` | Results directory, over the config's `output`. `lastFailed` reads `report.json` there. |
 | `env` | Environment the config resolves against. Defaults to `process.env`. |

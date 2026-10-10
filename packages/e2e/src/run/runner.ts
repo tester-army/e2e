@@ -24,6 +24,7 @@ import {
 } from '../collect/select.ts';
 import {
   classifyError,
+  ConfigurationError,
   combineExitCodes,
   InfrastructureError,
   E2EError,
@@ -1144,15 +1145,22 @@ async function selectionInputs(options: SelectionRunOptions, config: ResolvedCon
   return { filters, lastRun };
 }
 
-/**
- * The run options the CLI parser already bounds, checked again for the SDK
- * path so `run({ maxFailures: 0 })` or `run({ repeatEach: 0 })` is
- * `INVALID_CONFIG` rather than a run that stops at its first failure or
- * runs each test once.
- */
+/** The CLI's scalar selection bounds, also checked for the in-process SDK path. */
 function validateRunOptions(options: SelectionRunOptions): void {
   positiveInt(options.maxFailures, 'maxFailures');
   positiveInt(options.repeatEach, 'repeatEach');
+  const shard = options.shard;
+  if (shard !== undefined && (
+    shard === null ||
+    !Number.isSafeInteger(shard.index) || shard.index <= 0 ||
+    !Number.isSafeInteger(shard.total) || shard.total <= 0 ||
+    shard.index > shard.total
+  )) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      'shard must have positive safe integer index and total, with index from 1 through total',
+    );
+  }
 }
 
 /** Resolves the run's config: a supplied value, or the discovered file. */
