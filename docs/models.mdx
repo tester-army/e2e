@@ -133,8 +133,9 @@ bunx e2e run
 
 The gateway uses a valid `VERCEL_OIDC_TOKEN`. Else it gets a token for the
 project in `.vercel/project.json`, found from the working directory upward.
-A token from `npx vercel env pull` works only when your shell exports it,
-because e2e loads no `.env` file.
+e2e loads no `.env` file. A token from `npx vercel env pull` works when your
+shell exports it, or when the config loads the file with
+[`process.loadEnvFile()`](/reference/config#loading).
 
 An OIDC failure is `MODEL_PROVIDER_FAILED`, and the message names only
 `AI_GATEWAY_API_KEY`. Make sure the Vercel CLI is signed in and
