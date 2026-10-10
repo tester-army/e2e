@@ -14,10 +14,9 @@ enough.
 | `StepExecutor` | `runStep(ctx)`. A model is optional, and the `e2e` and `e2e/engine` types compile without the `ai` package. | The step deadline, redacted observations, checked actions, and the verdict record |
 
 Set either one as `executor` in an agents entry. The entry still reads
-`model`, `judge`, `context`, and the budgets. It rejects `system` and
-`tools`. Pass them to `createToolLoopExecutor` instead. For a provider that
-returns bounded choices instead of text, see the
-[Clef and Jev decision executor](/decision-models).
+`model`, `judge`, `context`, and the budgets, and rejects `system` and
+`tools`: pass those to `createToolLoopExecutor`. For a provider that returns
+bounded choices, see the [decision executor](/decision-models).
 
 ## Keep the loop, change the vocabulary
 
@@ -62,33 +61,28 @@ export default {
 } satisfies E2EConfig;
 ```
 
-The loop uses the entry's `model`, and runs at most `maxModelCalls` model
-turns per step. `createToolLoopExecutor({ model })` can bring its own model
-instead. A custom executor can also bring a `judge`. When the entry sets the
-same option, both must name the same provider and model, or the config load
-fails with `INVALID_CONFIG`.
+The loop runs at most `maxModelCalls` model turns per step with the entry's
+`model`, or its own from `createToolLoopExecutor({ model })`. An executor can
+also bring a `judge`. When the entry sets the same option, both must name the
+same provider and model, or the config load fails with `INVALID_CONFIG`.
 
 `buildPrompt` returns a string or a message history. `prepareMessages` runs
-between turns. Use it to shorten the history, or return
-`{ messages, stop }` when the step makes no progress.
-
-`guard()` stops new tool calls when the step is concluding, and returns a
-failure to the model as text. `ctx.actions` authorizes, counts, and records
-each action, so these steps replay from the [cache](/cache) and run on any
-engine that supports `tap`.
+between turns to shorten the history, or returns `{ messages, stop }` when the
+step makes no progress. `guard()` stops new tool calls when the step is
+concluding and returns a failure to the model as text. `ctx.actions`
+authorizes, counts, and records each action, so these steps replay from the
+[cache](/cache) and run on any engine that supports `tap`.
 
 A tool that works outside `ctx.actions`, such as a call to your test API,
-wraps its body in `ctx.budgets.runTool({ name, mutates })`. That takes an
+wraps its body in `ctx.budgets.runTool({ name, mutates })`, which takes an
 action slot and records the outcome. Don't call `ctx.actions` or
-`ctx.observe` inside `runTool`: the call waits behind its own operation and
-deadlocks. Keep tool bodies short and support cancellation. The step
-deadline can't stop an operation that ignores its signal.
+`ctx.observe` inside `runTool`: the call waits behind itself and deadlocks.
 
 ## Replace the executor
 
 This executor uses no model and supports one assertion,
 `agent.assert('the screen says Ready')`. Any other step returns a blocked
-verdict, so the executor never claims a check it can't do.
+verdict.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig, StepExecutor } from 'e2e';
@@ -123,94 +117,80 @@ export default {
 
 ## What the context holds
 
-`runStep` receives this context:
-
 | Member | What it is |
 | --- | --- |
-| `ctx.step` | The `kind`, instruction, params, and `index` in the attempt's timeline. A registered secret value that the test wrote into the instruction or a param reads `<secret:name>`. A `secrets.get()` handle arrives as a name-only placeholder. `typeSecret` fills it without passing the plaintext through your executor |
+| `ctx.step` | The `kind`, instruction, params, and `index` in the attempt's timeline. A secret value in the instruction or a param reads `<secret:name>`. A `secrets.get()` handle arrives as a name-only placeholder that `typeSecret` fills |
 | `ctx.observe({ tree, pixels })` | Redacted screen text, with an optional node tree and masked screenshot |
 | `ctx.actions` | Checked and recorded actions: `tap`, `doubleTap`, `longPress`, `secondaryTap`, `hover`, `type`, `typeSecret`, `press`, `select`, `check`, `drag`, `scrollTo`, `scrollUntil`, `upload`, `scroll`, `navigate`, `back`, and the point and keyboard actions below |
 | `ctx.target` | The target's `name`, `platform`, and `verbs`, the actions its engine supports. Offer only these to the model |
-| `ctx.pixelsTainted` | True after a [secret fill](/reference/security#screenshots-after-a-secret-fill). Then no screenshots are available. A secret an engine option holds, such as a basic-auth password, is redacted from text only and doesn't set it |
-| `ctx.signal` | Aborts on cancellation, at the step deadline, or on any other hard stop. Stop promptly when it fires |
+| `ctx.pixelsTainted` | True after a [secret fill](/reference/security#screenshots-after-a-secret-fill). Then no screenshots are available |
+| `ctx.signal` | Aborts on cancellation, at the step deadline, or on any other hard stop. The deadline can't stop work that ignores it |
 | `ctx.replayedPrefix` | Set when a cache replay ran part of the step first. See [Replay cache](#replay-cache) |
 | `ctx.model`, `ctx.providerOptions` | The agent's configured model and `providerOptions`, when set |
 | `ctx.agentContext` | The agent's `context` plus the test's `agentContext` |
 | `ctx.ledger` | The completed steps of the test |
 | `ctx.attempt` | Test and attempt ids, retry index, abort signal, and a `memory` map that is never reported |
 | `ctx.budgets` | Accounting for custom tools (`runTool`) and model calls (`recordModelCall`) |
-| `ctx.attachTranscript(text)` | Attaches the model transcript to the step as a `log` artifact under `--debug`. Otherwise it does nothing. Call it one time, at the end |
-| `ctx.attachTurns(turns)` | Keeps a clipped record of the model turns (`{ index, calls, outcome }`) on the step record, with or without `--debug`. The report shows the last ones under a failed step |
+| `ctx.attachTranscript(text)` | Under `--debug`, attaches the model transcript as a `log` artifact. Call it one time, at the end |
+| `ctx.attachTurns(turns)` | Keeps a clipped record of the model turns (`{ index, calls, outcome }`) on the step. The report shows the last ones under a failed step |
 | `ctx.attachScreenshot(pixels, label)` | Keeps observed pixels as a `screenshot` artifact of the step and resolves with its report id |
 
-`tapAt(point)` and `hoverAt(point)` act on a node id when a listed control
-is at the point. Otherwise they call the engine's coordinate action.
-`hitTest(point)` finds the listed control without acting. Engines with a
-keyboard also provide `typeText`, `pressKey`, and `dismissKeyboard` for the
-focused control.
-
-`upload(target, paths)` checks every path against the project root before
-the engine gets it. A path outside the project or a hidden one is
-`POLICY_DENIED`. A missing file is `INVALID_ARGUMENT`.
+`tapAt(point)` and `hoverAt(point)` act on the listed control at the point,
+else call the engine's coordinate action. `hitTest(point)` finds that control
+without acting. Engines with a keyboard add `typeText`, `pressKey`, and
+`dismissKeyboard` for the focused control. `upload(target, paths)` refuses a
+path outside the project root or a hidden one with `POLICY_DENIED`, and a
+missing file with `INVALID_ARGUMENT`.
 
 When semantic capture fails, the observation sets `treeUnavailable: true`,
-has no `tree`, and includes a screenshot if policy allows one. Earlier node
-ids are then invalid, and a missing tree doesn't prove a control is absent.
-Use fresh ids when the tree returns.
+has no `tree`, and includes a screenshot if policy allows. Earlier node ids
+are invalid, and a missing tree doesn't prove a control is absent.
 
 ## What the executor handles
 
-A custom executor runs `act` and `assert` through `runStep`. Both use the
-agent's `maxSteps` and `maxModelCalls`, and the configured `timeout` by
-default.
+`act` and `assert` reach `runStep` with the agent's `maxSteps`,
+`maxModelCalls`, and `timeout`. On `assert`, `vision` arrives as
+`ctx.step.vision` only when the executor declares `vision: true`; otherwise
+the call fails with `UNSUPPORTED_CAPABILITY`. `screenshot` still attaches
+evidence after your verdict.
 
-On `assert`, `vision` reaches `runStep` as `ctx.step.vision` only when the
-executor declares `vision: true`. Otherwise the call fails with
-`UNSUPPORTED_CAPABILITY`, since your executor chooses what it observes.
-`screenshot` still attaches evidence after your verdict.
-
-`waitFor` and `extract` still use the built-in judgments. They need a
-configured model, and fail with `MODEL_UNAVAILABLE` without one.
+`waitFor` and `extract` still use the built-in judgments. Without a
+configured model they fail with `MODEL_UNAVAILABLE`.
 
 ## The verdict
 
 Return `passed`, `failed`, or `blocked` with a summary. A blocked verdict
-needs an error code. A passed verdict has none.
-[How agent steps work](/agent-steps#how-a-step-ends) lists the codes and
-their exits.
-
-`STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`, and `CANCELLED` belong to the
-runner. Return one only when that budget is spent, the deadline has
-passed, or the test was cancelled. The runner refuses any other use, and a
-passed verdict with a code, with `MODEL_OUTPUT_INVALID`.
+needs an error code, and a passed one has none.
+[How agent steps work](/agent-steps#how-a-step-ends) lists the codes.
+Return `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`, or `CANCELLED` only when that
+budget is spent, the deadline passed, or the test was cancelled. The runner
+refuses any other use, and a passed verdict with a code, with
+`MODEL_OUTPUT_INVALID`.
 
 ## Replay cache
 
 `cache` on a `StepExecutor` sets how its `act` steps use the
 [replay cache](/cache). `assert` steps are never cached.
 
-`'inherit'`, the default, follows the configured cache mode. A recorded step
-replays without calling `runStep`. `'off'` never replays or records, so
-every step reaches `runStep`. Use it when the executor's own history or
-memory is the source of truth. The samples on this page set it so their
-code runs on every call.
+`'inherit'`, the default, follows the configured cache mode: a recorded step
+replays without calling `runStep`. `'off'` never replays or records. Use it
+when the executor's own history or memory is the source of truth.
 
 When a replay stops partway, the runner calls `runStep` with
 `ctx.replayedPrefix`: the replayed actions and why replay stopped. Continue
-from the current screen. Don't repeat the replayed actions.
+from the current screen without repeating them.
 
 The cache records what a step does through `ctx.actions`. A mutating tool
-call leaves a gap, which the executor fills on replay. Entries are keyed by
-the configured agent and its context, so an entry one agent recorded never
-replays for another. The executor isn't part of the key, so changing an
-agent's executor keeps its entries.
+call leaves a gap that the executor fills on replay. Entries are keyed by the
+configured agent and its context, not the executor, so changing an agent's
+executor keeps its entries.
 
 ## Driving the page yourself
 
 On the web engine, `surfaceOf(handle)` from `@e2e-dev/web` gives you the
 current attempt's `Page` and `BrowserContext`. Both accessors throw
-`INVALID_STATE` outside an active attempt, and `page()` also throws when no
-page is open.
+`INVALID_STATE` outside an active attempt, and `page()` also when no page is
+open.
 
 ```ts
 import type { E2EConfig, StepExecutor } from 'e2e';
@@ -236,9 +216,9 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Direct Playwright calls skip the runner's action authorization and the
-replay cache, and leave no artifacts. The runner still enforces the step
-deadline and records the verdict.
+Direct Playwright calls skip action authorization and the replay cache,
+and leave no artifacts. The step deadline and the verdict record still
+apply.
 
 ## Next
 
