@@ -13,8 +13,8 @@ export const setupPrompt = `Add Codemagic workflows that run this project's e2e 
 3. Ask me to add the model key to an \`e2e\` environment variable group, marked as secret.
 4. After I start a build, read the build log and fix errors until both workflows pass.`;
 
-This setup runs one workflow for each platform: iOS on a Mac mini
-instance, Android on a Linux instance. The workflows follow the rules in
+This setup runs iOS on a Mac mini instance and Android on a Linux
+instance, one workflow each, following the rules in
 [Mobile jobs](/ci#mobile-jobs).
 
 <SetupPrompt>
@@ -102,10 +102,10 @@ workflows:
 
 ## Model key
 
-Put the model key in the `e2e` environment variable group, and mark it as
-secret. Each build that reads the group can read the key, including a pull
-request build that runs untrusted code. Trigger pull request builds with
-this group only for contributors you trust. See
+Put the model key in the `e2e` environment variable group, marked as
+secret. Each build that reads the group can read the key, untrusted pull
+request code included. Trigger pull request builds with this group only
+for contributors you trust. See
 [Model credentials](/ci#model-credentials).
 
 ## Next
