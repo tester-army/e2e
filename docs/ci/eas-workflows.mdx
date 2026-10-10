@@ -4,15 +4,30 @@ description: Build an Expo app on EAS and run iOS and Android tests on it in an 
 icon: "/images/icons/expo.svg"
 ---
 
+import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
+
+export const setupPrompt = `Add an EAS workflow that builds this Expo app and runs its e2e tests on iOS and Android. Docs: \`https://e2e.tester.army/docs/ci/eas-workflows.md\` and \`https://e2e.tester.army/docs/ci.md\`
+
+1. Read both pages.
+2. Add the \`e2e\` build profile to \`eas.json\`.
+3. Add \`.eas/workflows/e2e.yml\` and adapt it to this project's targets and Node version.
+4. Ask me to add the model key as a secret EAS environment variable, and set \`environment:\` on each test job to match.
+5. After I start the workflow, read the job logs and fix errors until both jobs pass.`;
+
 In an EAS workflow, a `build` job makes the simulator `.app` or the `.apk`.
 A custom job then downloads the build, boots a device, and runs the suite.
-Before you start, read [Mobile jobs](/ci#mobile-jobs). That section tells
-you what each job needs on every CI service.
+The jobs follow the rules in [Mobile jobs](/ci#mobile-jobs).
 
 <Note>
 This page is about EAS Workflows, the CI service. To run tests on hosted
 simulators and emulators from EAS, see [EAS Simulators](/integrations/eas).
 </Note>
+
+<SetupPrompt>
+
+<Prompt description={setupPrompt} children={setupPrompt} actions={["copy", "cursor"]} />
+
+</SetupPrompt>
 
 ## Build profile
 
@@ -33,8 +48,9 @@ Add a build profile that needs no credentials:
 ## Workflow
 
 The iOS job runs on a macOS runner. The Android job needs a
-`nested-virtualization` Linux runner. Only these EAS machines can run the
-emulator.
+`nested-virtualization` Linux runner, the only EAS machines that can run
+the emulator. Use a custom job, as below. The built-in `maestro` job type
+runs Maestro flows, not e2e.
 
 ```yaml title=".eas/workflows/e2e.yml" expandable
 name: e2e
@@ -119,30 +135,35 @@ jobs:
           path: .e2e
 ```
 
-## Notes
+`CI: '1'` turns on the [CI defaults](/ci#what-ci-changes), also on a runner
+that doesn't set `CI`. The iOS job creates its simulator with
+`xcrun simctl` to pin the runtime.
 
-- **Secrets.** Keep `AI_GATEWAY_API_KEY` (or the key of your provider) in an
-  [EAS environment variable](https://docs.expo.dev/eas/environment-variables/)
-  with secret visibility. `environment:` sets the EAS environment that a job
-  reads. Set it in each job, because a custom job reads `production` by
-  default. Each job that reads the environment can read the key, including
-  a job that runs the code of an untrusted pull request. Give the key only
-  to builds of branches that you trust. See [Mobile jobs](/ci#mobile-jobs).
-- **CI mode.** `CI: '1'` turns on the [CI defaults](/ci#what-ci-changes),
-  also on a runner that does not set it.
-- **Emulator function.** `eas/start_android_emulator` is an EAS build
-  function. Its documentation is under
-  [custom builds](https://docs.expo.dev/custom-builds/schema/), not on the
-  Workflows syntax page. It downloads the system image that you name with
-  `sdkmanager`. The iOS job creates its simulator with `xcrun simctl` to pin
-  the runtime.
-- **Fewer builds.** A `fingerprint` job with `get-build` and `repack` reuses
-  the last native build and bundles only the JavaScript. The
-  [agent-device EAS template](https://github.com/callstackincubator/eas-agent-device/blob/main/.eas/workflows/agent-qa-mobile.yml)
-  does this for the two platforms.
+`eas/start_android_emulator` is an EAS build function, documented under
+[custom builds](https://docs.expo.dev/custom-builds/schema/) and not on the
+Workflows syntax page. It downloads the system image you name with
+`sdkmanager`.
 
-EAS Workflows also has a built-in `maestro` job type. That job boots the
-device and runs Maestro flows. For e2e, use a custom job, as above.
+## Model key
+
+Keep `AI_GATEWAY_API_KEY`, or the key of your provider, in an
+[EAS environment variable](https://docs.expo.dev/eas/environment-variables/)
+with secret visibility. `environment:` sets the EAS environment a job
+reads. Set it in each job, because a custom job reads `production` by
+default.
+
+Each job that reads the environment can read the key, including a job that
+runs the code of an untrusted pull request. See
+[Model credentials](/ci#model-credentials).
+
+## Build less often
+
+A `fingerprint` job with `get-build` and `repack` reuses the last native
+build and bundles only the JavaScript. The
+[agent-device EAS template](https://github.com/callstackincubator/eas-agent-device/blob/main/.eas/workflows/agent-qa-mobile.yml)
+does this for both platforms.
+
+## Next
 
 <CardGroup cols={2}>
   <Card title="CI overview" icon="rotate" href="/ci">
