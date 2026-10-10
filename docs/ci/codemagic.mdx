@@ -4,13 +4,30 @@ description: Run iOS and Android tests on Codemagic, on a Mac mini for iOS and a
 icon: "/images/icons/codemagic.svg"
 ---
 
-This setup has one workflow for each platform. Before you start, read
-[Mobile jobs](/ci#mobile-jobs). That section tells you what each job needs
-on every CI service.
+import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
 
-iOS runs on a Mac mini instance. Android runs on a Linux instance. The
-Ubuntu image has AVDs with the names `emulator` (API 34), `emulator-35`, and
-`emulator-36`.
+export const setupPrompt = `Add Codemagic workflows that run this project's e2e tests on iOS and Android. Docs: \`https://e2e.tester.army/docs/ci/codemagic.md\` and \`https://e2e.tester.army/docs/ci.md\`
+
+1. Read both pages.
+2. Add the workflows to \`codemagic.yaml\`. Adapt the project paths, scheme, and Node version to this project.
+3. Ask me to add the model key to an \`e2e\` environment variable group, marked as secret.
+4. After I start a build, read the build log and fix errors until both workflows pass.`;
+
+This setup runs one workflow for each platform: iOS on a Mac mini
+instance, Android on a Linux instance. The workflows follow the rules in
+[Mobile jobs](/ci#mobile-jobs).
+
+<SetupPrompt>
+
+<Prompt description={setupPrompt} children={setupPrompt} actions={["copy", "cursor"]} />
+
+</SetupPrompt>
+
+## Workflow
+
+The Ubuntu image has AVDs named `emulator` (API 34), `emulator-35`, and
+`emulator-36`. Linux instances need billing enabled. `test_report` sends
+`junit.xml` to the Tests tab of the build.
 
 ```yaml title="codemagic.yaml" expandable
 workflows:
@@ -83,16 +100,15 @@ workflows:
       - .e2e/results/**
 ```
 
-## Notes
+## Model key
 
-- **Secrets.** Put the model key in the `e2e` environment variable group,
-  and mark it as secret. Each build that reads the group can read the key,
-  including a pull request build that runs untrusted code. Trigger pull
-  request builds with this group only for contributors that you trust. See
-  [Mobile jobs](/ci#mobile-jobs).
-- **Test reports.** `test_report` sends `junit.xml` to the Tests tab of the
-  build.
-- **Billing.** Linux instances need billing enabled.
+Put the model key in the `e2e` environment variable group, and mark it as
+secret. Each build that reads the group can read the key, including a pull
+request build that runs untrusted code. Trigger pull request builds with
+this group only for contributors you trust. See
+[Model credentials](/ci#model-credentials).
+
+## Next
 
 <CardGroup cols={2}>
   <Card title="CI overview" icon="rotate" href="/ci">
