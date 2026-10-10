@@ -180,8 +180,9 @@ To keep the checks predictable:
 - Give each `agent.act` one goal. Then check its result with a locator
   assertion or `agent.assert`.
 - [Commit the replay cache](/cache#commit-the-replay-cache). A replayed
-  `agent.act` makes no model call. A cache miss, a hand-off, and every agent
-  judgment (`agent.assert`, `agent.waitFor`, `agent.extract`) call the model.
+  `agent.act` makes no model call. With the built-in agent, a cache miss, a
+  hand-off, and every agent judgment (`agent.assert`, `agent.waitFor`,
+  `agent.extract`) call the model.
 - Watch for flaky tests. The report marks a test that passes only on the
   CI retry as flaky.
 - Add `--max-failures <n>` to stop the run after that many failed tests, so
