@@ -5,8 +5,8 @@ icon: "shield-halved"
 ---
 
 e2e trusts the code you write and treats everything the app shows as
-untrusted. Secret values stay out of what the model reads. The runner checks
-every action the model asks for.
+untrusted. App content can't grant the model tools, credentials, or a
+larger budget.
 
 ## How secrets stay out of the model
 
@@ -15,14 +15,13 @@ name and purpose. When the model asks to fill one, the runner checks the
 field and types the value itself.
 
 After a secret fill, the rest of the attempt has no screenshots, because
-the app could show the value anywhere. The runner replaces every known
-secret value with `<secret:name>` in model input, reports, console output,
-and text downloads.
+the app could show the value anywhere. Every known secret value becomes
+`<secret:name>` in model input, reports, console output, and text
+downloads.
 
 ## What can still leak
 
-Redaction matches strings, and only a secret fill turns screenshots off.
-These gaps remain:
+Redaction matches strings, and only a secret fill turns screenshots off:
 
 - **Video and binary downloads.** Neither is masked. If the test typed a
   password, check them before you share them.
@@ -31,13 +30,13 @@ These gaps remain:
 - **Transformed values.** The last four characters of a key, or its base64,
   pass through. Assert the outcome, not the secret.
 - **Values not filled as a secret.** A secret passed as a plain string, or a
-  sign-in that sets a cookie, leaves screenshots on. The text is redacted
-  only when the value is a configured secret.
+  sign-in that sets a cookie, leaves screenshots on. Only a configured
+  secret's value is redacted.
 - **Request credentials.** `basicAuth` answers a `401` from any origin.
   `headers` reach every host under a shared domain such as `vercel.app`.
 - **Committed recordings.** Cache entries store typed values verbatim, except
-  secret fills. They aren't signed, and they replay with your permissions.
-  Review them as you would test code.
+  secret fills. They aren't signed and replay with your permissions, so
+  review them as you would test code.
 
 [Where redaction stops](/reference/security#where-redaction-stops) lists
 every case.
@@ -46,8 +45,7 @@ every case.
 
 The model sees your instruction, the screen as an accessibility tree, the
 redacted URL, and records of earlier steps in the test. It gets a masked
-screenshot when it asks for one or a step sets `vision`. App content can't
-grant tools, credentials, or a larger budget.
+screenshot when it asks for one or a step sets `vision`.
 
 The model acts only through tools. The runner checks each call against a
 closed schema before it runs, and never evaluates model text as code. A call
@@ -58,18 +56,17 @@ to another site and use the step's secrets there.
 ## What runs with your permissions
 
 Your tests, config, engines, tools, reporters, stores, secret providers, and
-app commands run with your operating-system permissions. e2e doesn't sandbox
-them. Run untrusted pull request code in an external sandbox with no secrets
-or write tokens.
+app commands run with your operating-system permissions, unsandboxed. Run
+untrusted pull request code in an external sandbox with no secrets or write
+tokens.
 
 ## What leaves your computer
 
 A run connects to your model provider, the app under test, and, unless you
 opt out, [telemetry](/telemetry) at `eu.i.posthog.com`. There is no crash
 reporting or update check. Integrations such as Kernel, EAS Simulators, and
-smol add their own destinations.
-[Outbound connections](/reference/security#outbound-connections) lists them
-all.
+smol add their own destinations, listed with the rest under
+[Outbound connections](/reference/security#outbound-connections).
 
 ## Report a vulnerability
 
