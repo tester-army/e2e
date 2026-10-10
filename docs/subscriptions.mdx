@@ -207,7 +207,8 @@ The id is not always the name that the vendor's app shows.
 - SuperGrok shows a device code and the URL where you enter it.
 
 Run `npx e2e login` to see the accounts that are signed in. Run
-`npx e2e logout` to remove a login. If a saved login stops working, the step
+`npx e2e logout` to remove a login. Model-call cancellation also applies while waiting for a token refresh.
+If a saved login stops working, the step
 fails with `MODEL_PROVIDER_FAILED`, and the message shows the
 `npx e2e login <provider>` command to run.
 
