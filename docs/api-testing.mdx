@@ -4,9 +4,9 @@ description: Check your API with fetch and value matchers, in the same files and
 icon: "server"
 ---
 
-API tests run in the same files and the same run as UI tests. A test that
-takes only `app` calls no model. Call the API with `fetch` and check the
-response with the value matchers.
+An API test calls your API with `fetch` and checks the response with the
+value matchers. It sits in the same files and the same run as UI tests. A
+test that takes only `app` calls no model.
 
 ```ts title="tests/users-api.e2e.ts"
 import { test, expect } from 'e2e';
@@ -24,23 +24,27 @@ test('GET /api/users returns the seeded users', async ({ app }) => {
 });
 ```
 
-`toMatchSchema` takes any [Standard Schema](/reference/expect#matching-a-schema)
-(Zod, Valibot, ArkType), so the schema your app parses the API with checks
-that the API still matches it, and it returns the value typed.
+`toMatchSchema` takes any [Standard Schema](/reference/expect#matching-a-schema),
+such as Zod, Valibot, or ArkType. It returns the value, typed. Use the
+schema your app parses the API with, and the test fails when the API stops
+matching it.
 
 ## Where the API runs
 
-`app.baseUrl` is the target's `app.url`, with the port the run allocated when
-it declared port 0, so the same file runs against the `app.command` the config
-starts and against a deployed preview. For state the API writes after it
-answers, [`expect.poll`](/reference/expect#polling-a-value) re-reads until a
+`app.baseUrl` is the target's `app.url`. When the URL declares port `0`, it
+has the port the run picked. So one file runs against the `app.command` the
+config starts and against a deployed preview.
+
+When the API writes state after it answers, use
+[`expect.poll`](/reference/expect#polling-a-value). It reads again until a
 matcher passes.
 
 ## Signed-in requests
 
-To call the API as a signed-in user, write [a fixture](/reference/test#your-own-fixtures)
-that sends `browser.cookies()` with each request. Every test registered through
-this `test` acquires `browser`, so it needs a web target:
+To call the API as a signed-in user, write
+[a fixture](/reference/test#your-own-fixtures) that sends
+`browser.cookies()` with each request. Every test that uses this `test`
+gets `browser`, so it needs a web target:
 
 ```ts title="tests/api.ts"
 import { test as base } from '@e2e-dev/web';
@@ -61,6 +65,17 @@ export const test = base.extend<{ api: (path: string, init?: RequestInit) => Pro
 ## Without a browser
 
 On a web target, an API test still opens a browser context. A target
-without an engine opens nothing, but it has no `app.baseUrl`, so read the
-URL from an environment variable. `e2e init` sets up such a target when you
-choose **None** at the engine prompt.
+without an engine opens nothing. It also has no `app.baseUrl`, so read the
+URL from an environment variable. To set up such a target, choose **None**
+at the engine prompt of `e2e init`.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Value matchers" icon="circle-check" href="/reference/expect#value-matchers">
+    Every matcher, `toMatchSchema`, and `expect.poll`.
+  </Card>
+  <Card title="Signing in" icon="key" href="/authentication">
+    Sign in one time and reuse the session in every test.
+  </Card>
+</CardGroup>
