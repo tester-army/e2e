@@ -51,8 +51,20 @@ function signalProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
   }
 }
 
+/** A leader exiting does not mean its descendants have left the process group. */
+function processGroupRunning(child: ChildProcess): boolean {
+  if (process.platform === 'win32') return child.exitCode === null && child.signalCode === null;
+  if (child.pid === undefined) return false;
+  try {
+    process.kill(-child.pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Kills every process group this module spawned and has not yet seen exit,
+ * Kills every process group this module spawned and has not yet released,
  * synchronously and without waiting: the last resort before the process
  * exits on the spot, so nothing it started outlives it. A reused process was
  * never spawned here and is left alone.
@@ -212,7 +224,6 @@ export class ManagedProcess {
     let exit: ExitStatus | undefined;
     const exited = new Promise<void>((resolve) => {
       child.once('exit', (code, exitSignal) => {
-        live.delete(child);
         exit = { code, signal: exitSignal };
         resolve();
       });
@@ -366,12 +377,12 @@ export class ManagedProcess {
     if (this.reusedExisting) return;
     const child = this.child;
     this.child = null;
-    if (child === null || child.exitCode !== null || child.signalCode !== null) return;
+    if (child === null) return;
     const shutdownTimeout = this.command.shutdownTimeout ?? 10_000;
     signalProcessGroup(child, 'SIGTERM');
-    const exited = new Promise<void>((resolve) => {
-      child.once('exit', () => resolve());
-    });
+    const exited = child.exitCode !== null || child.signalCode !== null
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => child.once('exit', () => resolve()));
     // The timer is cancelled once the process is gone: left pending, it kept
     // the event loop alive for the whole timeout after the run had ended.
     const timer = new AbortController();
@@ -379,12 +390,20 @@ export class ManagedProcess {
       () => 'timeout' as const,
       () => 'exited' as const,
     );
-    const winner = await Promise.race([exited.then(() => 'exited' as const), timedOut]);
+    const groupExited = (async () => {
+      while (processGroupRunning(child)) {
+        const poll = sleep(25, timer.signal);
+        // Leader exit wakes each wait; surviving descendants keep the polling cadence.
+        await (child.exitCode === null && child.signalCode === null ? Promise.race([exited, poll]) : poll);
+      }
+    })().catch(() => undefined);
+    const winner = await Promise.race([groupExited.then(() => 'exited' as const), timedOut]);
     timer.abort();
     if (winner === 'timeout') {
       signalProcessGroup(child, 'SIGKILL');
       await exited.catch(() => undefined);
     }
+    live.delete(child);
   }
 }
 

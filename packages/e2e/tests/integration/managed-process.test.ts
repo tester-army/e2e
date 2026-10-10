@@ -1,4 +1,6 @@
 import os from 'node:os';
+import fs from 'node:fs';
+import path from 'node:path';
 import process from 'node:process';
 import { describe, expect, it } from 'vitest';
 import { InfrastructureError } from '../../src/internal/errors.ts';
@@ -61,6 +63,72 @@ describe('ManagedProcess', () => {
     // shutdownTimeout (2s) + kill; anything much longer means the escalation hung.
     expect(Date.now() - stoppedAt).toBeLessThan(10_000);
     expect(await isReachable(`http://127.0.0.1:${port}/`)).toBe(false);
+  });
+
+  it.skipIf(process.platform === 'win32')('stops a surviving child after the command leader exits on SIGTERM', async () => {
+    const port = await freePort();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-process-group-'));
+    const pidFile = path.join(dir, 'child.pid');
+    const wrapper = `
+      const { spawn } = require('node:child_process');
+      const fs = require('node:fs');
+      const child = spawn(process.execPath, ['-e', ${JSON.stringify(SERVER_SCRIPT)}, '${port}', 'ignore-sigterm'], { stdio: 'ignore' });
+      fs.writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));
+      process.on('SIGTERM', () => process.exit(0));
+      setInterval(() => {}, 1000);
+    `;
+    const app = new ManagedProcess('app.command', {
+      executable: process.execPath,
+      args: ['-e', wrapper],
+      shutdownTimeout: 100,
+    }, dir, { readyUrl: `http://127.0.0.1:${port}/` });
+    try {
+      await app.start();
+      await app.stop();
+      expect(await isReachable(`http://127.0.0.1:${port}/`)).toBe(false);
+      await app.stop();
+    } finally {
+      await app.stop();
+      // Also release the owned descendant when the regression runs before the fix.
+      try { process.kill(Number(fs.readFileSync(pidFile, 'utf8')), 'SIGKILL'); } catch { /* already gone */ }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform === 'win32')('lets a child finish its shutdown after the leader exits', async () => {
+    const port = await freePort();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-process-grace-'));
+    const pidFile = path.join(dir, 'child.pid');
+    const finished = path.join(dir, 'finished');
+    const server = `
+      const fs = require('node:fs');
+      require('node:http').createServer((req, res) => res.end('ok')).listen(${port}, '127.0.0.1');
+      process.on('SIGTERM', () => setTimeout(() => {
+        fs.writeFileSync(${JSON.stringify(finished)}, 'finished');
+        process.exit(0);
+      }, 50));
+    `;
+    const wrapper = `
+      const child = require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(server)}], { stdio: 'ignore' });
+      require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));
+      process.on('SIGTERM', () => process.exit(0));
+      setInterval(() => {}, 1000);
+    `;
+    const app = new ManagedProcess('app.command', {
+      executable: process.execPath,
+      args: ['-e', wrapper],
+      shutdownTimeout: 1_000,
+    }, dir, { readyUrl: `http://127.0.0.1:${port}/` });
+    try {
+      await app.start();
+      await app.stop();
+      expect(fs.readFileSync(finished, 'utf8')).toBe('finished');
+      expect(await isReachable(`http://127.0.0.1:${port}/`)).toBe(false);
+    } finally {
+      await app.stop();
+      try { process.kill(Number(fs.readFileSync(pidFile, 'utf8')), 'SIGKILL'); } catch { /* already gone */ }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('fails with APP_UNREACHABLE when the command exits before becoming ready', async () => {
