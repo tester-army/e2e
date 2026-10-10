@@ -210,9 +210,9 @@ the `npx e2e login <provider>` command to run. See the
 ## CI
 
 Use API keys in CI. Claude Max or Team already uses one. For OpenCode
-Console, create a service account API key in the Console (Service Accounts,
-then API Keys) and set it as `OPENCODE_API_KEY`. For ChatGPT, Copilot, and
-SuperGrok, use an [API provider](/models).
+Console, set `OPENCODE_API_KEY` to an OpenCode Go subscription API key, or to
+a service account API key created in the Console (Service Accounts, then API
+Keys). For ChatGPT, Copilot, and SuperGrok, use an [API provider](/models).
 
 [`E2E_OAUTH_CREDENTIALS`](/reference/environment) can give a stored login to
 CI, but e2e doesn't save refreshed tokens back to it. A login with a

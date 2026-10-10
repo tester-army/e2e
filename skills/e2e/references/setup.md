@@ -78,9 +78,11 @@ Switching to OpenCode Console: install `ai`, `@ai-sdk/openai-compatible`,
 `@ai-sdk/openai`, `@ai-sdk/anthropic`, and `@ai-sdk/google`, set
 `model: opencodeConsole('<id>')` from `e2e/oauth/opencode-console`, run
 `npx e2e login opencode-console`. A bare id is an OpenCode Zen model; a `go/` id
-(`go/deepseek-v4.1-flash`) is an OpenCode Go model and needs the workspace's Go
-subscription. `npx e2e models opencode-console` lists the ids, tagged Zen or Go. In CI,
-set a Console service account key as `OPENCODE_API_KEY`.
+(`go/deepseek-v4.1-flash`) is an OpenCode Go model and needs an OpenCode Go
+subscription: the workspace's through the login, or yours through
+`OPENCODE_API_KEY`. `npx e2e models opencode-console` lists
+the ids, tagged Zen or Go. In CI, set a Console service account API key or an OpenCode Go
+subscription API key as `OPENCODE_API_KEY`.
 
 ## The config
 
