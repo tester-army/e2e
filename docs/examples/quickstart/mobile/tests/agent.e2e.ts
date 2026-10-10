@@ -6,5 +6,5 @@ test('the agent opens General', async ({ agent, app, device }) => {
   await agent.act('open {section} settings', { params: { section: 'General' } });
 
   await agent.assert('the General settings screen is showing');
-  await expect(device.locator('role=NavigationBar id=General')).toBeVisible();
+  await expect(device.locator('role=navigation-bar id=General')).toBeVisible();
 });
