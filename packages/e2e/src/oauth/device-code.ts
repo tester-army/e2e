@@ -9,6 +9,7 @@
 import { OAuthError, describeResponse } from './errors.ts';
 import { positiveSeconds, postForm, type TokenResponse } from './token-endpoint.ts';
 import type { OAuthLoginCallbacks } from './types.ts';
+import { withAbort } from '../internal/time.ts';
 
 export interface DeviceAuthorization {
   readonly deviceCode: string;
@@ -69,15 +70,23 @@ export async function runDeviceFlow<T>(options: DeviceFlowOptions<T>): Promise<T
   let intervalMs = Math.max(positiveSeconds(authorization.interval, DEFAULT_INTERVAL_S) * 1000, MIN_INTERVAL_MS);
   while (now() < deadline) {
     await sleep(Math.min(intervalMs, Math.max(0, deadline - now())), callbacks.signal);
+    const remaining = deadline - now();
+    if (remaining <= 0) break;
+    const expiry = new AbortController();
+    const signal = callbacks.signal === undefined ? expiry.signal : AbortSignal.any([callbacks.signal, expiry.signal]);
+    const timer = setTimeout(() => expiry.abort(), remaining);
     let result: DevicePoll<T>;
     try {
-      result = await options.poll(authorization, callbacks.signal);
+      result = await withAbort(() => options.poll(authorization, signal), expiry.signal, deviceCodeExpired);
     } catch (cause) {
       throwIfCancelled(callbacks.signal);
       throw cause;
+    } finally {
+      clearTimeout(timer);
     }
     // A grant that lands after the user cancelled is not a login.
     throwIfCancelled(callbacks.signal);
+    if (now() >= deadline) throw deviceCodeExpired();
     switch (result.status) {
       case 'granted':
         return result.value;
@@ -92,10 +101,14 @@ export async function runDeviceFlow<T>(options: DeviceFlowOptions<T>): Promise<T
       case 'denied':
         throw new OAuthError('CANCELLED', 'the authorization was denied');
       case 'expired':
-        throw new OAuthError('TIMEOUT', 'the device code expired before the login finished; run the login again');
+        throw deviceCodeExpired();
     }
   }
-  throw new OAuthError('TIMEOUT', 'the device code expired before the login finished; run the login again');
+  throw deviceCodeExpired();
+}
+
+function deviceCodeExpired(): OAuthError {
+  return new OAuthError('TIMEOUT', 'the device code expired before the login finished; run the login again');
 }
 
 /** Keeps interrupted device requests and late grants under the login cancellation code. */

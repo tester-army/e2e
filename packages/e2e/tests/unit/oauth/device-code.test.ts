@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { OAuthError } from '../../../src/oauth/errors.ts';
 import { runDeviceFlow, type DevicePoll } from '../../../src/oauth/device-code.ts';
 
@@ -107,6 +107,54 @@ describe('runDeviceFlow', () => {
       now: () => now,
     });
     await expect(promise).rejects.toBeInstanceOf(OAuthError);
+  });
+
+  it('does not begin a poll when the interval uses the remaining lifetime', async () => {
+    let now = 0;
+    const poll = vi.fn(async () => ({ status: 'granted' as const, value: 'late' }));
+    await expect(runDeviceFlow({
+      start: async () => ({ ...authorization, expiresIn: 1 }),
+      poll,
+      callbacks: { onAuth() {}, onPrompt: async () => '' },
+      sleep: async (ms) => void (now += ms),
+      now: () => now,
+    })).rejects.toMatchObject({ code: 'TIMEOUT' });
+    expect(poll).not.toHaveBeenCalled();
+  });
+
+  it('aborts a stalled poll when the device code expires', async () => {
+    vi.useFakeTimers();
+    try {
+      let pollSignal: AbortSignal | undefined;
+      const result = runDeviceFlow({
+        start: async () => ({ ...authorization, expiresIn: 2 }),
+        poll: async (_authorization, signal) => {
+          pollSignal = signal;
+          return new Promise<never>(() => {});
+        },
+        callbacks: { onAuth() {}, onPrompt: async () => '' },
+        sleep: async () => {},
+      }).catch(error => error);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(await result).toMatchObject({ code: 'TIMEOUT' });
+      expect(pollSignal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refuses a grant that arrives after the code lifetime', async () => {
+    let now = 0;
+    await expect(runDeviceFlow({
+      start: async () => ({ ...authorization, expiresIn: 2, interval: 1 }),
+      poll: async () => {
+        now += 1_000;
+        return { status: 'granted' as const, value: 'late' };
+      },
+      callbacks: { onAuth() {}, onPrompt: async () => '' },
+      sleep: async (ms) => void (now += ms),
+      now: () => now,
+    })).rejects.toMatchObject({ code: 'TIMEOUT' });
   });
 
   it('stops at an abort signal', async () => {
