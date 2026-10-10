@@ -11,7 +11,8 @@ handles: the runner types the value, and the model and reports never see it.
 ## Sign in once in a setup test
 
 Save the session in a `test.setup` body. Restore it with the `session`
-option:
+option. The runner runs the setup a test needs, even when you select only
+the test:
 
 <Tabs>
   <Tab title="tests/auth.setup.e2e.ts">
@@ -55,9 +56,6 @@ test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen,
   </Tab>
 </Tabs>
 
-The runner runs the setup a test needs, even when you select only
-`tests/dashboard.e2e.ts`.
-
 <Note>
 `session.save()` doesn't check that sign-in succeeded. Assert the URL or a
 signed-in element before you save.
@@ -73,17 +71,15 @@ signed-in element before you save.
 | Only declared names are saved | `SESSION_CONTRACT` failure |
 | The target's engine saves and restores state | collection error, before any test runs; a hosted browser leased per attempt has none |
 
-Setup tests run before the ordinary tests of the same target. When a setup
-fails, the runner skips its dependents with cause `setup-failed`. Other
-tests keep running.
+When a setup fails, the runner skips its dependents with cause
+`setup-failed`. Other tests keep running.
 
-On a browser target, a session holds cookies, local storage, and IndexedDB.
-It doesn't hold server or database state. A restore replaces the client
-state and leaves no page open, so each test calls `app.open()` first.
+On a browser target, a session holds cookies, local storage, and IndexedDB,
+not server or database state. A restore leaves no page open, so each test
+calls `app.open()` first.
 
-A session lasts one run. A session file is a bearer credential, so the
-runner encrypts it with a key held only in memory and deletes it at cleanup.
-See [Sessions](/reference/security#sessions) for the cipher and binding.
+A session lasts one run. The runner encrypts it with a key held only in
+memory and deletes it at cleanup. See [Sessions](/reference/security#sessions).
 
 ## Credentials
 
@@ -107,11 +103,10 @@ shorter than 6 characters, every command fails with `INVALID_CONFIG`,
 
 <Accordion title="Keep the value out of the environment">
 
-A string from `process.env` is in the environment of the runner and of every
-process it starts, so any code in the run can read it. `password` also
-accepts a function. `username` doesn't. The runner calls the function only
-for an authorized fill, so the value can come from a vault or be a fresh
-one-time code:
+Any process the runner starts can read a string from `process.env`.
+`password` also accepts a function, `username` doesn't. The runner calls the
+function only for an authorized fill, in the runner process, so the value
+can come from a vault or be a fresh one-time code:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -129,45 +124,18 @@ export default {
 } satisfies E2EConfig;
 ```
 
-The function runs in the runner, after the fill is authorized. Its value
-goes to the field and the redaction ledger only. The runner redacts it only
-from its first fill on. If the app can show the value before a test types
-it, use a string. The same applies to a `secrets` entry.
+The value goes to the field and the redaction ledger only, and is redacted
+only from its first fill on. If the app can show the value before a test
+types it, use a string. The same applies to a `secrets` entry.
 
 </Accordion>
 
 ## The password is a handle
 
-`credentials.user()` returns the username as a string and the password as a
-`Secret`:
-
-```ts
-import { credentials } from 'e2e';
-
-const admin = credentials.user('admin');
-
-admin.name;     // 'admin'
-admin.username; // a plain string
-admin.password; // Secret: opaque, named 'admin.password', with no plaintext accessor
-```
-
-The app shows the username on screen, so the agent reads it and tests
-assert on it. The password never shows, so the runner keeps it from test
-code and the model.
-
-A `Secret` has no `.value`. Pass it to a `fill`, to the `params` of an agent
-step, or to an engine option that declares it, such as
-[`basicAuth`](/web#protected-previews):
-
-<Tabs>
-  <Tab title="Deterministic">
-
-```ts
-await screen.getByLabel('Password').fill(admin.password);
-```
-
-  </Tab>
-  <Tab title="Agentic">
+`credentials.user(name)` returns the username as a plain string and the
+password as a `Secret` named `<name>.password`. A `Secret` has no `.value`.
+Pass it to a `fill`, to the `params` of an agent step, or to an engine
+option that declares it, such as [`basicAuth`](/web#protected-previews):
 
 ```ts
 await agent.act('Sign in', {
@@ -175,16 +143,23 @@ await agent.act('Sign in', {
 });
 ```
 
-  </Tab>
-</Tabs>
-
-When the agent fills a password, the runner requires a password field. The
-agent can't read a secure field, so assert that sign-in succeeded instead.
+The model sees only the secret's name. The runner authorizes the fill,
+requires a password field for a password, and types the value. Known
+values become `<secret:name>` in model input, observations, and reports.
+See the [secret fill rules](/reference/security#secret-fills). The agent
+can't read a secure field, so assert that sign-in succeeded instead.
 
 After a secret fill, the runner takes no screenshots for the rest of the
 attempt, or in the tests that restore the session it saved. See
 [screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill)
-for the rule and how to sign in with screenshots kept.
+for how to sign in with screenshots kept.
+
+<Warning>
+Redaction matches full values and their encoded forms. A transformed value,
+such as the last four characters of a key, can still appear. Keep secret
+entry in setup tests, and assert the result of the submit. See
+[where redaction stops](/reference/security#where-redaction-stops).
+</Warning>
 
 ## Secrets that are not passwords
 
@@ -200,8 +175,7 @@ export default {
 } satisfies E2EConfig;
 ```
 
-`secrets.get()` returns a handle. Use it like a password, in `fill` or in
-agent `params`:
+`secrets.get()` returns a handle. Use it like a password:
 
 ```ts
 import { secrets } from 'e2e';
@@ -213,23 +187,17 @@ await agent.act('Connect Stripe with the given key', {
 ```
 
 A `secrets` entry can fill any editable input. An unconfigured name throws
-`SECRET_UNAVAILABLE`.
-
-Credentials and secrets are separate namespaces. `secrets.get()` returns
-`secrets` entries only. A credential's password is
-`credentials.user(name).password`, which the agent and the report know as
-`<name>.password`. So `credentials.admin` and `secrets.admin` can both
-exist.
+`SECRET_UNAVAILABLE`. `secrets.get()` returns `secrets` entries only, so
+`credentials.admin` and `secrets.admin` can both exist.
 
 In `e2e.config.ts`, `secrets.get()` can pass a secret to an engine option,
-such as a [basic-auth password](/web#protected-previews). The config load
-checks the name. This protects text only: screenshots keep the pixels. See
+such as a basic-auth password. The config load checks the name. This
+protects text only: screenshots keep the pixels. See
 [Secrets in engine options](/reference/security#secrets-in-engine-options).
 
 ## Override a value per run
 
-An environment variable replaces a config value for one run, so a CI job can
-supply it without a config change:
+An environment variable replaces a config value for one run:
 
 | Entry | Variable |
 | --- | --- |
@@ -255,21 +223,6 @@ E2E_USER_ADMIN_PASSWORD=... E2E_SECRET_STRIPE_KEY=sk_test_... pnpm exec e2e run
 E2E_USER_ADMIN_PASSWORD=... E2E_SECRET_STRIPE_KEY=sk_test_... bunx e2e run
 ```
 </CodeGroup>
-
-## Where the value goes
-
-The model sees only a secret's name and purpose. When the agent fills a
-secret, the runner authorizes the fill, checks the field, and types the
-value. Known values become
-`<secret:name>` in model input, observations, and reports. See the
-[secret fill rules](/reference/security#secret-fills).
-
-<Warning>
-Redaction matches full values and their encoded forms. A transformed value,
-such as the last four characters of a key, can still appear. Keep secret
-entry in setup tests, and assert the result of the submit. See
-[where redaction stops](/reference/security#where-redaction-stops).
-</Warning>
 
 ## Several signed-in users
 
