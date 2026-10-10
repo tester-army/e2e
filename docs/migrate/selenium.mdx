@@ -21,32 +21,37 @@ export const migrationPrompt = `Migrate this project's Selenium tests to e2e, on
 11. Run the new files with \`npx e2e run <file>\` and fix them until they pass. Keep the Selenium tests until I confirm they can go.
 12. Summarize which flows moved, which stayed in Selenium, and why.`;
 
+e2e replaces a Selenium suite with TypeScript tests. Locators find nodes by
+role and label, and assertions retry until they pass or time out. A Java or
+Python suite needs a rewrite, so run both suites and move one flow at a time.
+
 <SetupPrompt>
 
 <Prompt description={migrationPrompt} children={migrationPrompt} actions={["copy", "cursor"]} />
 
 </SetupPrompt>
 
-e2e tests use TypeScript, locators based on roles and labels, and assertions
-that retry until they pass or time out. A Java or Python suite needs to be
-rewritten. Run both suites while you move one flow at a time.
+## Port the config
 
-Follow the [quickstart](/quickstart) to install e2e. A model is needed only for
-agent calls; the locator-based example below works without one.
+<Note>Install e2e with the [quickstart](/quickstart). Only agent calls need a model. The locator-based example below runs without one.</Note>
 
-## Config
+Each Selenium setting maps to a key on the target, an engine option, or a
+top-level key.
 
 | Selenium | e2e |
 | --- | --- |
 | The URL in every `driver.get` | `app: { url }` on the target, then relative paths |
 | Starting the app in a script | `app: { url, command }`, see [Starting your app](/web#starting-your-app) |
 | One driver per browser | One target per browser, `web({ browser: 'firefox' })` |
-| Selenium Grid | `workers` for parallelism; `connect` attaches to a remote Chromium over CDP, and a [browser provider](/browser#hosted-browsers) such as [Kernel](/integrations/kernel) leases hosted browsers |
+| Selenium Grid | `workers` for parallelism; `web({ connect })` attaches to a remote Chromium over CDP, and a [browser provider](/browser#hosted-browsers) such as [Kernel](/integrations/kernel) leases hosted browsers |
 | `manage().window().setSize` | `web({ viewport })` |
 | Implicit waits | `actionTimeout` and `assertionTimeout` set action and assertion deadlines |
 | A page object for sign-in | `test.setup` and `{ session }`, see [Signing in](/authentication) |
 
-## A test, before and after
+## Rewrite one flow
+
+Start with one page object and the flows that use it. Its setup code can
+become a fixture.
 
 ```java title="Selenium"
 driver.get("http://localhost:3000/login");
@@ -74,11 +79,11 @@ test('signs in', async ({ app, screen, browser }) => {
 });
 ```
 
-The locator actions wait for their targets and the assertions retry. The
-password comes from [configured credentials](/authentication). You can also
-use `agent.act` to perform sign-in from a goal.
+Locator actions wait for their targets, and assertions retry. The password
+comes from [configured credentials](/authentication). An `agent.act` goal can
+also do the sign-in.
 
-## API map
+## Map each WebDriver call
 
 | Selenium | e2e |
 | --- | --- |
@@ -95,7 +100,7 @@ use `agent.act` to perform sign-in from a goal.
 | `.sendKeys(Keys.ENTER)` | `.press('Enter')` |
 | `.clear()` | `.clear()` |
 | `new Select(el).selectByVisibleText` | `.selectOption({ label })` |
-| `.getText()`, `.getAttribute()`, `.isDisplayed()` | `.textContent()`, `.getAttribute()`, `.isVisible()`, no retry |
+| `.getText()`, `.getAttribute()`, `.isDisplayed()` | `.textContent()`, `.getAttribute()`, `.isVisible()`; they read one time, so assert with `toHaveText()`, which retries |
 | `wait.until(visibilityOf(...))` | `await expect(locator).toBeVisible()` |
 | `wait.until(textToBe(...))` | `await expect(locator).toHaveText(...)` |
 | `wait.until(urlContains(...))` | `await expect(browser).toHaveURL(/.../)` |
@@ -111,18 +116,11 @@ use `agent.act` to perform sign-in from a goal.
 | `Thread.sleep` | Use a locator assertion for the condition you need |
 | Page objects | A fixture from `test.extend`, or a goal for `agent.act` |
 
-Where the behavior differs from WebDriver's:
+`findElement` returns the first match, but e2e fails with
+`LOCATOR_AMBIGUOUS` on several. Narrow with `.filter()`, `.first()`, or
+`.nth()`. See [screen](/reference/screen).
 
-- `findElement` returns the first match; e2e fails with `LOCATOR_AMBIGUOUS`.
-  Narrow with `.filter()`, `.first()`, or `.nth()`, see
-  [screen](/reference/screen).
-- `textContent()` reads once and does not retry. Assert with `toHaveText()`,
-  which polls until the deadline.
-
-## What to migrate first
-
-Start with one page object and the flows that use it; its setup code can
-become a fixture.
+## Next
 
 <CardGroup cols={2}>
   <Card title="Core concepts" icon="pen-to-square" href="/core-concepts">
