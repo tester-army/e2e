@@ -16,7 +16,7 @@ export const migrationPrompt = `Migrate this project's Selenium tests to e2e, on
 6. Set the target's \`app\` to the URL every \`driver.get\` used, and the command that starts the app if the suite starts it. Move passwords and tokens into \`credentials\` or \`secrets\`.
 7. Install dependencies.
 8. List the page objects and the flows that use them, and ask me which to move first. Suggest one page object and its flows.
-9. Rewrite those flows as \`.e2e.ts\` files under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default). Prefer role, label, and test id queries on \`screen\` over \`By.id\`, CSS, and XPath. Replace explicit waits, implicit waits, and \`Thread.sleep\` with locator assertions, which retry. \`findElement\` takes the first match and e2e fails on several, so narrow those queries. Turn the page object's setup code into a fixture.
+9. Rewrite those flows as \`.e2e.ts\` files under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default) with the guide's tables. Prefer role, label, and test id queries over CSS and XPath. Replace every wait and \`Thread.sleep\` with a locator assertion. Narrow queries that match several nodes. Turn the page object's setup code into a fixture.
 10. Keep navigation and the final assertions deterministic, with \`app.open()\` and locator assertions. Where a run of scripted interactions breaks often, propose an \`agent.act\` goal for it instead.
 11. Run the new files with \`npx e2e run <file>\` and fix them until they pass. Keep the Selenium tests until I confirm they can go.
 12. Summarize which flows moved, which stayed in Selenium, and why.`;
@@ -33,10 +33,7 @@ Python suite needs a rewrite, so run both suites and move one flow at a time.
 
 ## Port the config
 
-<Note>Install e2e with the [quickstart](/quickstart). Only agent calls need a model. The locator-based example below runs without one.</Note>
-
-Each Selenium setting maps to a key on the target, an engine option, or a
-top-level key.
+<Note>Install e2e with the [quickstart](/quickstart). Only agent calls need a model, so the example below runs without one.</Note>
 
 | Selenium | e2e |
 | --- | --- |
@@ -50,8 +47,7 @@ top-level key.
 
 ## Rewrite one flow
 
-Start with one page object and the flows that use it. Its setup code can
-become a fixture.
+Start with one page object and the flows that use it.
 
 ```java title="Selenium"
 driver.get("http://localhost:3000/login");
@@ -79,9 +75,8 @@ test('signs in', async ({ app, screen, browser }) => {
 });
 ```
 
-Locator actions wait for their targets, and assertions retry. The password
-comes from [configured credentials](/authentication). An `agent.act` goal can
-also do the sign-in.
+Locator actions wait for their targets, so no explicit wait is left. The
+password comes from [configured credentials](/authentication).
 
 ## Map each WebDriver call
 
@@ -100,7 +95,7 @@ also do the sign-in.
 | `.sendKeys(Keys.ENTER)` | `.press('Enter')` |
 | `.clear()` | `.clear()` |
 | `new Select(el).selectByVisibleText` | `.selectOption({ label })` |
-| `.getText()`, `.getAttribute()`, `.isDisplayed()` | `.textContent()`, `.getAttribute()`, `.isVisible()`; they read one time, so assert with `toHaveText()`, which retries |
+| `.getText()`, `.getAttribute()`, `.isDisplayed()` | `.textContent()`, `.getAttribute()`, `.isVisible()` read one time; `toHaveText()` retries |
 | `wait.until(visibilityOf(...))` | `await expect(locator).toBeVisible()` |
 | `wait.until(textToBe(...))` | `await expect(locator).toHaveText(...)` |
 | `wait.until(urlContains(...))` | `await expect(browser).toHaveURL(/.../)` |
@@ -116,9 +111,8 @@ also do the sign-in.
 | `Thread.sleep` | Use a locator assertion for the condition you need |
 | Page objects | A fixture from `test.extend`, or a goal for `agent.act` |
 
-`findElement` returns the first match, but e2e fails with
-`LOCATOR_AMBIGUOUS` on several. Narrow with `.filter()`, `.first()`, or
-`.nth()`. See [screen](/reference/screen).
+`findElement` takes the first match. e2e fails with `LOCATOR_AMBIGUOUS` on
+several, so narrow with `.filter()`, `.first()`, or `.nth()`.
 
 ## Next
 
