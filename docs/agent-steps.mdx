@@ -13,8 +13,7 @@ the step with a verdict. Every step has a deadline and a model-call budget.
 The executor chooses the actions and returns the verdict. The runner
 redacts the screen, authorizes and performs each action, enforces budgets,
 fills secrets, and writes the report. The built-in agent is the executor
-unless the agents entry sets `executor`. [Custom executors](/executors) get
-the same redacted screen and the same checked actions.
+unless the agents entry sets a [custom one](/executors).
 
 ## What the model sees
 
@@ -30,9 +29,8 @@ elements exist. A failed action also returns the current screen, so the
 model can choose its next action.
 
 Judgments from `assert`, `waitFor`, and `extract` see only the instruction
-and the current screen. They don't see completed steps or the acting
-agent's summaries. You can set a separate
-[judge model](/models#a-judge-of-its-own).
+and the current screen, never completed steps or the acting agent's
+summaries. They can use a separate [judge model](/models#a-judge-of-its-own).
 
 `vision: true` adds a masked screenshot, and `vision: 'only'` judges the
 screenshot alone. See the [agent reference](/reference/agent#vision) for
@@ -42,15 +40,18 @@ the modes. After a secret fill, no screenshot reaches the model
 ## What the model may do
 
 The agent gets the tools the target's engine supports, such as `tap`,
-`type`, `press`, `select`, `scroll`, and `navigate`. A step that declares
-credentials also gets `type_secret`. On engines with a keyboard, the agent
-can type and press keys in the focused control. When the text snapshot
-can't describe a control, pixel tools let the agent take a screenshot and
+`type`, `press`, `select`, `scroll`, and `navigate`. On engines with a
+keyboard, it can type and press keys in the focused control. When the text
+snapshot can't describe a control, pixel tools let it take a screenshot and
 act at a point. See the
 [tool reference](/reference/agent#pixel-tools-screenshot-and-the-point-verbs).
 
-The runner checks each built-in action and counts it against the budget. A
-targeted action times out after at most 15 seconds. [Project tools](/tools)
+A step with a `Secret` param also gets `type_secret`. The model sees only
+the secret's name and purpose. The runner checks the field the model
+picked, then fills the value itself. The value never enters prompts,
+transcripts, reports, or AI traces.
+
+A targeted action times out after at most 15 seconds. [Project tools](/tools)
 add your own operations, with declared budgets and platforms.
 
 The loop detects repeated calls and cycles. After three failed actions in a
@@ -68,10 +69,7 @@ A step ends with one of three verdicts:
 - `blocked`: a prerequisite, the environment, or a limit stopped the step
   before a product verdict. The error code sets the exit code.
 
-Only `failed` and `blocked` carry an error code. When the built-in agent's
-model passes a step with a code, e2e drops the code, the step passes, and
-the turn's outcome says so. A [custom executor](/executors) that does this
-gets `MODEL_OUTPUT_INVALID`.
+Only `failed` and `blocked` carry an error code.
 
 | Blocked by | Codes | Exit |
 | --- | --- | ---: |
@@ -87,8 +85,7 @@ verdict can carry.
 ## What a step costs
 
 Each call has a model-call budget and a default timeout. See
-[budgets](/reference/agent#budgets). Past the budget, the step is
-`STEP_BUDGET_EXHAUSTED`. At the deadline, it is `STEP_TIMEOUT`.
+[budgets](/reference/agent#budgets).
 
 - `assert` and `extract` make one judgment, plus one repair call if the
   answer is malformed. When the data is not on screen, `extract` fails with
@@ -103,12 +100,6 @@ Each call has a model-call budget and a default timeout. See
 Use `expect` for exact checks, and give each `act` one goal. When the
 provider caches prompts, `--debug` shows the cached share of input tokens
 per step.
-
-## Where secrets go
-
-For a `Secret` param, the model gets only its name and purpose. The runner
-checks the field the model picked, then fills the value itself. The value
-never enters prompts, transcripts, reports, or AI traces.
 
 ## Next
 
