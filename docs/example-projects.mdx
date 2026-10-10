@@ -5,47 +5,46 @@ icon: "folder-open"
 ---
 
 Each example is a standalone greeting app with three locator tests and two
-agent tests. The tests enter a name, press Greet, and check the result. The
-projects install the published e2e packages from npm and work outside this
-repository.
+agent tests that enter a name, press Greet, and check the result. Each
+installs the published e2e packages from npm.
 
 ## Pick an example
 
 <CardGroup cols={2}>
   <Card title="Vite" icon="/images/examples/vite.svg" href="https://github.com/tester-army/e2e/tree/main/examples/with-vite" cta="View example" arrow>
-    React with Vite. Run locator and agent tests in Chromium.
+    React with Vite, tested in Chromium.
   </Card>
   <Card title="Next.js" icon="/images/examples/nextjs.svg" href="https://github.com/tester-army/e2e/tree/main/examples/with-next" cta="View example" arrow>
-    Next.js App Router. The runner starts the app and tests it in Chromium.
+    Next.js App Router, started by the runner and tested in Chromium.
   </Card>
   <Card title="Astro" icon="/images/examples/astro.svg" href="https://github.com/tester-army/e2e/tree/main/examples/with-astro" cta="View example" arrow>
-    An Astro page with no UI framework. The runner starts the app and tests it in Chromium.
+    An Astro page with no UI framework, started by the runner and tested in Chromium.
   </Card>
   <Card title="Expo" icon="/images/integrations/expo.svg" href="https://github.com/tester-army/e2e/tree/main/examples/with-expo" cta="View example" arrow>
-    React Native with Expo. Run the same tests on web, an iOS simulator, or an Android emulator.
+    React Native with Expo, tested on web, iOS, and Android.
   </Card>
   <Card title="SwiftUI" icon="/images/examples/swiftui.png" href="https://github.com/tester-army/e2e/tree/main/examples/with-swiftui" cta="View example" arrow>
-    A native iOS app with an Xcode project. Run tests on an iPhone simulator.
+    A native iOS app, tested on an iPhone simulator.
   </Card>
   <Card title="Jetpack Compose" icon="/images/examples/jetpack-compose.svg" href="https://github.com/tester-army/e2e/tree/main/examples/with-compose" cta="View example" arrow>
-    A native Android app with a Gradle project. Run tests on an Android emulator.
+    A native Android app, tested on an emulator.
   </Card>
   <Card title="Kotlin Multiplatform" icon="/images/examples/kotlin.svg" href="https://github.com/tester-army/e2e/tree/main/examples/with-kotlin-multiplatform" cta="View example" arrow>
-    One Compose Multiplatform screen for Android and iOS. Run the same tests on an emulator or a simulator.
+    One Compose Multiplatform screen, tested on Android and iOS.
   </Card>
   <Card title="Flutter" icon="/images/examples/flutter.svg" href="https://github.com/tester-army/e2e/tree/main/examples/with-flutter" cta="View example" arrow>
-    A Flutter app for Android and iOS. Run the same tests on an emulator or a simulator.
+    A Flutter app, tested on Android and iOS.
   </Card>
 </CardGroup>
 
 ## Run an example
 
 Follow the project's README to install, build, and run it. The config and
-tests live beside the app. The SwiftUI, Jetpack Compose, Kotlin
-Multiplatform, and Flutter projects keep them in an `e2e/` folder.
+tests live beside the app, in an `e2e/` folder for the native and Flutter
+projects.
 
-The locator tests need no model. The agent tests use Vercel AI Gateway. Set
-`AI_GATEWAY_API_KEY` to run them. Without it, they skip.
+The locator tests need no model. The agent tests use Vercel AI Gateway and
+skip unless `AI_GATEWAY_API_KEY` is set.
 
 ## Next
 
