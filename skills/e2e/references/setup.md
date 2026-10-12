@@ -344,7 +344,7 @@ export default {
 - `screen`, `expect`, `app`, `agent` work unchanged; `test` from
   `@e2e-dev/mobile` types the `device` fixture (`installApp`, `openLink`,
   `setPermission`, `setNetwork`, `setAppearance`, `clearKeychain`, `fold`
-  for an iPhone Duo's hinge, `locator`, more). Portable suites declare
+  for a foldable's hinge (iPhone Duo, Android foldable emulators), `locator`, more). Portable suites declare
   `requires: ['device']`.
 - No `state` capability: `test.setup` and `session` are unavailable; sign in
   per test with `screen` actions or `agent.act`, both fill a `Secret` (topic
