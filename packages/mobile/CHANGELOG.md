@@ -1,5 +1,39 @@
 # @e2e-dev/mobile
 
+## 0.12.0
+
+### Minor Changes
+
+- [#999](https://github.com/tester-army/e2e/pull/999) [`4bb3e42`](https://github.com/tester-army/e2e/commit/4bb3e42f501e69dce9377a40542993d3c808d3e8) Thanks [@reiidoda](https://github.com/reiidoda)! - Breaking: `device.setNetwork('offline')` and `device.setAirplaneMode(true)` now fail with `UNSUPPORTED_CAPABILITY` on iOS. They previously changed only the simulator's status bar while the app stayed online. Restoring the network with `setNetwork('online')` or `setAirplaneMode(false)` does nothing on iOS, so shared cleanup hooks still work.
+  
+  Run offline tests on Android with `platforms: ['android']` and `setAirplaneMode(true)` (Android 11+). `setNetwork('offline')` turns off Wi-Fi only; cellular data can keep the app online.
+
+- [#1059](https://github.com/tester-army/e2e/pull/1059) [`e291f09`](https://github.com/tester-army/e2e/commit/e291f09c6a1c78069cd1a7af3b973a3bf8aca9e5) Thanks [@thiagobrez](https://github.com/thiagobrez)! - `device.fold` works on foldable Android emulators. agent-device 0.21.25 sets the emulator console posture and waits for the device state Android commits, so the engine no longer refuses Android before the command; a fold to the cover display also clears the lock screen the emulator raises. Before, `device.fold` on an Android target failed with `UNSUPPORTED_CAPABILITY`.
+
+- [#1023](https://github.com/tester-army/e2e/pull/1023) [`490a97e`](https://github.com/tester-army/e2e/commit/490a97e7ccdaae259a7808ed23c4cf124946a18a) Thanks [@thymikee](https://github.com/thymikee)! - `device.locator()` and the `selector` locator match with agent-device's own term rules (`listSelectorChainMatches`, 0.21.21) instead of the engine's copy of them, which had drifted. A selector can match different nodes than before:
+  
+  - `role` takes agent-device's kind, the role `agent-device snapshot` prints (`text-field`, `navigation-bar`, `scroll-area`), not the `getByRole` role. `role=textbox` becomes `role=text-field`, `role=navigation` becomes `role=navigation-bar`, `role=search-field` becomes `role=search`, `role=listitem` becomes `role=cell`. Platform type names (`StaticText`, `NavigationBar`) still match through agent-device's deprecated aliases; the docs now use the kind.
+  - Text terms (`id`, `label`, `value`, `text`) compare case-insensitively.
+  - `visible` means hittable or a non-empty frame, and `hidden` its opposite.
+  - `editable` means a fillable type that is enabled; a disabled field is not editable.
+  - `hittable` matches only a node that reports it; one that doesn't say is no longer counted as hittable.
+  - `text` reads the first non-empty label, value, or identifier.
+
+### Patch Changes
+
+- [#1025](https://github.com/tester-army/e2e/pull/1025) [`880ae70`](https://github.com/tester-army/e2e/commit/880ae70c9c6ade9d6f69e7d7a17b7f4a6b4056b3) Thanks [@thymikee](https://github.com/thymikee)! - agent-device 0.21.25: `settings permission --app` resolves a display name to the installed app's id and refuses an app that isn't installed ([callstack/agent-device#3386](https://github.com/callstack/agent-device/pull/3386)), and on iOS a canceled request keeps its session until the runner finishes the canceled command ([callstack/agent-device#3385](https://github.com/callstack/agent-device/pull/3385)).
+
+- [#988](https://github.com/tester-army/e2e/pull/988) [`c807f94`](https://github.com/tester-army/e2e/commit/c807f9480646a13f00d308cdd0a90034908b5543) Thanks [@enesonus](https://github.com/enesonus)! - Add the Limrun device provider with one hosted instance per worker, app
+  installation, recording through agent-device, and cleanup on run exit.
+  Renew retained driver leases while other targets run. Keep provider-owned
+  local daemons isolated from ambient remote-daemon environment settings.
+
+- [#1025](https://github.com/tester-army/e2e/pull/1025) [`880ae70`](https://github.com/tester-army/e2e/commit/880ae70c9c6ade9d6f69e7d7a17b7f4a6b4056b3) Thanks [@thymikee](https://github.com/thymikee)! - Permissions are set on the app by name, with agent-device's `settings permission --app` (0.21.21, with display names resolved since 0.21.25). `device.setPermission()` and the permissions a launch presets no longer open the app first to put agent-device's session on it, so a permission goes in before the app's first launch with no foreground open. `device.setPermission()` always acts on the pinned app, as documented, not on whichever app the session last opened. The warm-up in `prepare` still opens the pinned app, and a worker no longer lists agent-device's sessions at start.
+
+- [#1026](https://github.com/tester-army/e2e/pull/1026) [`62d5524`](https://github.com/tester-army/e2e/commit/62d55249c1348446d5f536ad9474383016075bb1) Thanks [@thymikee](https://github.com/thymikee)! - The mobile engine measures an observation in the viewport agent-device publishes with each snapshot (0.21.21), and infers it from the tree's largest window or rect extent only for a snapshot that publishes none. On a snapshot that publishes one, a tree that doesn't reach the screen's edges no longer shrinks the viewport, so a system panel above the bottom of the screen is no longer taken for the navigation bar.
+
+- [#1024](https://github.com/tester-army/e2e/pull/1024) [`9065cf8`](https://github.com/tester-army/e2e/commit/9065cf8d36ec5616b18c842b577e8bf0ffd6740d) Thanks [@thymikee](https://github.com/thymikee)! - A missing agent-device session is recognized by agent-device's `SESSION_NOT_FOUND` code and its `session_or_device_selector_required` reason (0.21.21) instead of a pattern over the message, so a reworded message can no longer change whether a failure reports as `APP_NOT_OPEN`.
+
 ## 0.11.0
 
 ### Minor Changes
