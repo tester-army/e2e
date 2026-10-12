@@ -180,10 +180,11 @@ function digest(shared: string, page: Page): string {
     .slice(0, 10);
 }
 
-/** Title size by length, so long titles stay on one line. */
+/** Title size by length, so long titles wrap to at most two lines. */
 function titleSize(title: string): number {
-  if (title.length <= 20) return 172;
-  return 140;
+  if (title.length <= 14) return 260;
+  if (title.length <= 20) return 230;
+  return 190;
 }
 
 /** Every `.mdx` page under `dir` as a slug, skipping `node_modules` and snippets. */
