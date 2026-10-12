@@ -94,10 +94,13 @@ export interface WatchScope {
   readonly written: readonly string[];
 }
 
-/** The scope a run leaves behind: its config, or for a config that did not load, the file it would have been. */
-function scopeOf(outcome: RunOutcome, cwd: string, configPath: string | undefined): WatchScope {
-  if (outcome.config !== undefined) {
-    const { projectRoot, configPath: loadedPath, tests, output, cache } = outcome.config;
+/**
+ * The scope a run leaves behind: its config, or before the first run and
+ * for a config that did not load, the config file it would be, alone.
+ */
+function scopeOf(config: RunOutcome['config'], cwd: string, configPath: string | undefined): WatchScope {
+  if (config !== undefined) {
+    const { projectRoot, configPath: loadedPath, tests, output, cache } = config;
     return { projectRoot, configPath: loadedPath, tests, written: [path.resolve(projectRoot, output), cache.dir] };
   }
   try {
@@ -196,7 +199,8 @@ function childDirectories(dir: string, written: readonly string[]): string[] {
     return readdirSync(dir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && !skippedDirectory(entry.name))
       .map((entry) => path.join(dir, entry.name))
-      .filter((child) => !written.some((out) => isInside(out, child)));
+      .filter((child) => !written.some((out) => isInside(out, child)))
+      .toSorted();
   } catch {
     return [];
   }
@@ -230,8 +234,8 @@ export const DEBOUNCE_MS = 100;
  * debounced. Changes that are nothing it watches are dropped where they
  * happen. A directory created under a flat root starts the roots over, so
  * a `tests/` made after the session began is watched too. A root whose
- * watch fails under it (Linux out of inotify watches, a directory gone)
- * is dropped and named to `onLost`; the keys still rerun.
+ * watch fails, at once or later (Linux out of inotify watches, a directory
+ * gone), is dropped and named to `onLost`; the keys still rerun.
  */
 export class ChangeWatcher {
   private readonly watchers: RootWatcher[] = [];
@@ -257,8 +261,8 @@ export class ChangeWatcher {
       let watcher: RootWatcher;
       try {
         watcher = this.watch(root.dir, { recursive: root.recursive }, (event, filename) => this.onEvent(root, event, filename));
-      } catch {
-        // A root that cannot be watched (gone, or too many watchers) is left out; the keys still rerun.
+      } catch (cause) {
+        this.onLost(root.dir, cause instanceof Error ? cause : new Error(String(cause)));
         continue;
       }
       watcher.on('error', (error) => {
@@ -448,6 +452,8 @@ export interface WatchSessionOptions {
   readonly stdin: NodeJS.ReadStream | undefined;
   /** Writes the session's own lines to the terminal. */
   readonly write: (text: string) => void;
+  /** Writes an error to stderr, past a reporter that owns stdout. */
+  readonly writeError: (text: string) => void;
   readonly pc: ReturnType<typeof picocolors.createColors>;
   /** Clears the terminal before a rerun; off when stdout is not a terminal. */
   readonly clear: boolean;
@@ -521,8 +527,28 @@ export async function watchSession(options: WatchSessionOptions): Promise<number
   const waiting = (): void =>
     options.write(`\n${pc.dim('Waiting for file changes...')}\n${keyboard === undefined ? '' : `  ${helpText(pc, false)}`}`);
   const terminal = terminalStream(options.write);
+  let watched: WatchRoot[] = [];
+  /** Watches `next` in place of the scope watched so far, when it differs; answers whether it did. */
+  const rescope = (next: WatchScope): boolean => {
+    if (scope !== undefined && sameScope(scope, next)) return false;
+    watcher?.close();
+    scope = next;
+    watcher = new ChangeWatcher(
+      next,
+      (changes) => {
+        const change = triggerOf(next, changes);
+        if (change !== undefined) arrive(change);
+      },
+      (dir, error) => options.write(`${pc.yellow('stopped watching')} ${dir}: ${error.message}; the keys still rerun\n`),
+      options.watch,
+    );
+    watched = watcher.start();
+    return true;
+  };
 
   try {
+    // The config file is watched from the start; its test directories once it has loaded.
+    rescope(scopeOf(undefined, options.cwd, options.base.configPath));
     for (;;) {
       const cancel = { interrupt: new AbortController(), force: new AbortController() };
       running = cancel;
@@ -542,31 +568,17 @@ export async function watchSession(options: WatchSessionOptions): Promise<number
       if (cancel.interrupt.signal.aborted) options.write(`\n${pc.yellow('run cancelled')}\n`);
       else exitCode = outcome.exitCode;
       if (outcome.config?.reporters.includes('json') === true) {
-        options.write(`${pc.red('error')}: --watch cannot run with the json reporter the config sets: it writes one document to stdout\n`);
+        options.writeError(`${pc.red('error')}: --watch cannot run with the json reporter the config sets: it writes one document to stdout\n`);
         return 2;
       }
 
-      const next = scopeOf(outcome, options.cwd, options.base.configPath);
-      if (scope === undefined || !sameScope(scope, next)) {
-        watcher?.close();
-        scope = next;
-        watcher = new ChangeWatcher(
-          scope,
-          (changes) => {
-            const change = triggerOf(scope!, changes);
-            if (change !== undefined) arrive(change);
-          },
-          (dir, error) => options.write(`${pc.yellow('stopped watching')} ${dir}: ${error.message}; the keys still rerun\n`),
-          options.watch,
-        );
-        const roots = watcher.start();
-        if (roots.length === 0) {
-          if (keyboard === undefined) {
-            options.write(`${pc.yellow('nothing to watch')}: no test directory or config file to watch, and no terminal for the keys\n`);
-            return exitCode;
-          }
-          options.write(`${pc.yellow('nothing to watch')}: no test directory or config file to watch; the keys still rerun\n`);
+      const changed = rescope(scopeOf(outcome.config, options.cwd, options.base.configPath));
+      if ((changed || count === 1) && watched.length === 0) {
+        if (keyboard === undefined) {
+          options.write(`${pc.yellow('nothing to watch')}: no test directory or config file to watch, and no terminal for the keys\n`);
+          return exitCode;
         }
+        options.write(`${pc.yellow('nothing to watch')}: no test directory or config file to watch; the keys still rerun\n`);
       }
 
       let woken: WatchTrigger | 'quit' | undefined;
@@ -617,7 +629,8 @@ type Wake = WatchTrigger | 'quit' | 'p' | 't';
 
 /** Whether two runs left the same thing to watch, so the watcher can stay. */
 function sameScope(a: WatchScope, b: WatchScope): boolean {
-  return a.projectRoot === b.projectRoot && a.configPath === b.configPath && a.tests.length === b.tests.length && a.tests.every((glob, i) => glob === b.tests[i]);
+  const same = (x: readonly string[], y: readonly string[]): boolean => x.length === y.length && x.every((item, i) => item === y[i]);
+  return a.projectRoot === b.projectRoot && a.configPath === b.configPath && same(a.tests, b.tests) && same(a.written, b.written);
 }
 
 /** `p`: the positional the next runs select with; empty clears it. Answers nothing when cancelled or an invalid glob. */

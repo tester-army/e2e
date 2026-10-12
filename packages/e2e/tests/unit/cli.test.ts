@@ -242,8 +242,8 @@ describe('e2e run argument parsing', () => {
       expect(watchMock).toHaveBeenCalledTimes(1);
       const options = watchMock.mock.calls[0]?.[0] as { base: RunOptions; stdin: unknown; clear: boolean };
       expect(options.base).toMatchObject({ files: ['tests/a.e2e.ts'], tags: ['smoke'] });
-      expect(options.stdin).toBeUndefined();
-      expect(options.clear).toBe(false);
+      expect(options.stdin).toBe(process.stdin.isTTY === true ? process.stdin : undefined);
+      expect(options.clear).toBe(process.stdout.isTTY === true);
       expect(process.exitCode).toBe(1);
     } finally {
       if (ci !== undefined) process.env.CI = ci;

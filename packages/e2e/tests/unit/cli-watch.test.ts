@@ -224,7 +224,9 @@ describe('ChangeWatcher', () => {
     const throwing: WatchFn = () => {
       throw new Error('ENOSPC');
     };
-    expect(new ChangeWatcher(scope, () => undefined, () => undefined, throwing).start()).toEqual([]);
+    const lostAtOnce: string[] = [];
+    expect(new ChangeWatcher(scope, () => undefined, (dir, error) => lostAtOnce.push(`${dir}: ${error.message}`), throwing).start()).toEqual([]);
+    expect(lostAtOnce).toEqual([`${path.join(root, 'tests')}: ENOSPC`, `${root}: ENOSPC`]);
 
     const errors = new Map<string, (error: Error) => void>();
     const closed: string[] = [];
@@ -325,14 +327,16 @@ describe('watchSession', () => {
       run,
       stdin: undefined,
       write: (text) => written.push(text),
+      writeError: (text) => written.push(text),
       pc,
       clear: true,
       watch: fakeWatch(listeners, closed),
     });
     await settle();
     expect(runs).toEqual([{ files: [], configPath: undefined, lastFailed: true, freshGraph: true }]);
-    // The tests directory, recursively, and the config's directory, flat.
-    expect([...listeners.keys()]).toEqual([path.join(root, 'tests'), root]);
+    // The config's directory from the start, flat; the tests directory, recursively, once the config loaded.
+    expect(closed).toEqual([root]);
+    expect([...listeners.keys()]).toEqual([root, path.join(root, 'tests')]);
     expect(written.join('')).toContain('Waiting for file changes...');
 
     // File names arrive relative to the watched root.
@@ -352,11 +356,11 @@ describe('watchSession', () => {
     expect(runs).toHaveLength(3);
     expect(runs[2]!.files).toEqual(['tests/b.e2e.ts']);
     // The scope did not change: the watcher stayed.
-    expect(closed).toEqual([]);
+    expect(closed).toEqual([root]);
 
     signals.escalate(() => undefined);
     await expect(session).resolves.toBe(3);
-    expect(closed).toEqual([path.join(root, 'tests'), root]);
+    expect(closed).toEqual([root, path.join(root, 'tests'), root]);
   });
 
   it('a config change reruns the selection; a config that then fails to load swaps the watcher for the config file alone', async () => {
@@ -376,6 +380,7 @@ describe('watchSession', () => {
       run,
       stdin: undefined,
       write: (text) => written.push(text),
+      writeError: (text) => written.push(text),
       pc,
       clear: false,
       watch: fakeWatch(listeners, closed),
@@ -387,10 +392,48 @@ describe('watchSession', () => {
     expect(runs[1]).toEqual({ files: ['signup'], configPath: undefined, lastFailed: false, passWithNoTests: true, freshGraph: true });
     expect(written.join('')).toContain(' RERUN  config changed x2');
     // The config did not load: only its directory is watched now, flat.
-    expect(closed).toEqual([path.join(root, 'tests'), root]);
+    expect(closed).toEqual([root, path.join(root, 'tests'), root]);
     listeners.get(root)!('change', 'e2e.config.ts');
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
     expect(runs).toHaveLength(3);
+    signals.escalate(() => undefined);
+    await expect(session).resolves.toBe(0);
+  });
+
+  it('a config that moves the output swaps the watcher, so the new output is ignored', async () => {
+    const listeners = new Map<string, (event: string, filename: string | null) => void>();
+    const closed: string[] = [];
+    const runs: RunOptions[] = [];
+    const moved = { ...loaded()!, output: 'tests/out' } as RunOutcome['config'];
+    const run = async (options: RunOptions): Promise<RunOutcome> => {
+      runs.push(options);
+      return runs.length === 1 ? passed(0) : outcome(0, moved);
+    };
+    const signals = new SignalLadder();
+    const session = watchSession({
+      base: {},
+      cwd: root,
+      signals,
+      run,
+      stdin: undefined,
+      write: () => undefined,
+      writeError: () => undefined,
+      pc,
+      clear: false,
+      watch: fakeWatch(listeners, closed),
+    });
+    await settle();
+    listeners.get(root)!('change', 'e2e.config.ts');
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    await settle();
+    expect(runs).toHaveLength(2);
+    expect(closed).toEqual([root, path.join(root, 'tests'), root]);
+    mkdirSync(path.join(root, 'tests', 'out'));
+    writeFileSync(path.join(root, 'tests', 'out', 'report.json'), '{}');
+    listeners.get(path.join(root, 'tests'))!('change', path.join('out', 'report.json'));
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    await settle();
+    expect(runs).toHaveLength(2);
     signals.escalate(() => undefined);
     await expect(session).resolves.toBe(0);
   });
@@ -411,6 +454,7 @@ describe('watchSession', () => {
       run,
       stdin,
       write: (text) => written.push(text),
+      writeError: (text) => written.push(text),
       pc,
       clear: false,
       watch: fakeWatch(new Map()),
@@ -467,6 +511,7 @@ describe('watchSession', () => {
       run,
       stdin,
       write: () => undefined,
+      writeError: () => undefined,
       pc,
       clear: false,
       watch: fakeWatch(listeners),
@@ -517,6 +562,7 @@ describe('watchSession', () => {
       run,
       stdin,
       write: (text) => written.push(text),
+      writeError: (text) => written.push(text),
       pc,
       clear: false,
       watch: fakeWatch(new Map()),
@@ -558,6 +604,7 @@ describe('watchSession', () => {
       run,
       stdin: undefined,
       write: () => undefined,
+      writeError: () => undefined,
       pc,
       clear: false,
       watch: fakeWatch(new Map()),
@@ -574,6 +621,7 @@ describe('watchSession', () => {
       run: async () => outcome(0, { ...loaded()!, reporters: ['json'] } as RunOutcome['config']),
       stdin: undefined,
       write: (text) => written.push(text),
+      writeError: (text) => written.push(text),
       pc,
       clear: false,
       watch: fakeWatch(new Map()),
@@ -589,6 +637,7 @@ describe('watchSession', () => {
       run: async () => outcome(1, undefined),
       stdin: undefined,
       write: (text) => written.push(text),
+      writeError: (text) => written.push(text),
       pc,
       clear: false,
       watch: fakeWatch(new Map()),

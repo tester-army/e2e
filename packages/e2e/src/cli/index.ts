@@ -696,6 +696,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
                   }).then(record),
                 stdin: process.stdin.isTTY === true ? process.stdin : undefined,
                 write: output.listOutput.raw,
+                writeError: (text) => void process.stderr.write(text),
                 pc: picocolors.createColors(process.stdout.isTTY === true),
                 clear: process.stdout.isTTY === true,
               }),

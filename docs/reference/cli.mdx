@@ -549,7 +549,9 @@ saved source file next to the tests (a helper, a fixture: `.ts`, `.js`,
 `.json` under the directories the globs name, or beside the config) and a
 saved config run the selection again. Both keep the command line's other
 filters and the `p` and `t` filters. Changes that land during a run wait for
-it and run next, together. On a terminal the screen is cleared before each
+it and run next, together (during the first run, only the config and its
+directory are watched: the test directories come from the config). On a
+terminal the screen is cleared before each
 rerun, and a banner names what triggered it. Each rerun reads the project's
 files afresh, the helpers a test imports included.
 
@@ -573,8 +575,9 @@ interrupts the run and ends the session, from inside a `p` or `t` prompt
 too; escape does the same outside a prompt and only closes the prompt
 inside one. Ctrl-Z suspends the process as usual.
 
-Every rerun is a complete run: it writes `report.json` and the reporter
-files, and starts and stops the app command. To keep a dev server up across
+Every rerun is a complete run: once the config has loaded it writes
+`report.json` and the reporter files, and starts and stops the app command.
+To keep a dev server up across
 reruns, start it yourself and set
 [`reuseExisting`](/reference/config#command) on the command. `--last-failed`
 applies to the first run only; a rerun that selects nothing passes empty.
