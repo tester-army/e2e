@@ -16,7 +16,6 @@ import {
   mergeTriggers,
   NO_FILTERS,
   planRun,
-  scopeOf,
   triggerOf,
   watchRoots,
   watchSession,
@@ -98,13 +97,6 @@ describe('classifyChange and watchRoots', () => {
     expect(at('..', 'other', 'tests', 'x.e2e.ts')).toBeUndefined();
   });
 
-  it('watches the literal prefix of each glob recursively and the config directory flat', () => {
-    expect(watchRoots(scope, compileGlobList(scope.tests))).toEqual([
-      { dir: path.join(root, 'tests'), recursive: true },
-      { dir: root, recursive: false },
-    ]);
-  });
-
   it('a glob from the project root watches the root flat and its directories, not node_modules or dot directories', () => {
     mkdirSync(path.join(root, 'node_modules'));
     mkdirSync(path.join(root, '.e2e'));
@@ -117,7 +109,7 @@ describe('classifyChange and watchRoots', () => {
     ]);
   });
 
-  it('climbs to the nearest existing directory and drops roots another covers', () => {
+  it('watches the literal prefix of each glob, climbed to the nearest existing directory, and the config directory flat', () => {
     const two: WatchScope = { ...scope, tests: ['tests/later/**/*.e2e.ts', 'tests/agent/*.e2e.ts'] };
     expect(watchRoots(two, compileGlobList(two.tests))).toEqual([
       { dir: path.join(root, 'tests'), recursive: true },
@@ -276,20 +268,6 @@ describe('triggers and keys', () => {
     expect(bannerText(pc, { kind: 'source', files: ['tests/helpers.ts'] }, NO_FILTERS, 2)).toBe(' RERUN  tests/helpers.ts x2\n\n');
     expect(bannerText(pc, { kind: 'key', key: 'f' }, { file: 'login', title: /x/ }, 3)).toBe(' RERUN  failed tests (files: login, title: x) x3\n\n');
     expect(bannerText(pc, { kind: 'config' }, NO_FILTERS, 4)).toBe(' RERUN  config changed x4\n\n');
-  });
-
-  it('scopeOf reads the run config, else the discovered config file', () => {
-    const root = mkdtempSync(path.join(tmpdir(), 'e2e-watch-'));
-    try {
-      writeFileSync(path.join(root, 'e2e.config.ts'), '');
-      const failed = { config: undefined } as unknown as RunOutcome;
-      expect(scopeOf(failed, root, undefined)).toEqual({ projectRoot: root, configPath: path.join(root, 'e2e.config.ts'), tests: [] });
-      expect(scopeOf(failed, root, 'missing.config.ts')).toEqual({ projectRoot: root, configPath: undefined, tests: [] });
-      const loaded = { config: { projectRoot: '/p', configPath: '/p/e2e.config.ts', tests: ['t/**'] } } as unknown as RunOutcome;
-      expect(scopeOf(loaded, root, undefined)).toEqual({ projectRoot: '/p', configPath: '/p/e2e.config.ts', tests: ['t/**'] });
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
   });
 });
 

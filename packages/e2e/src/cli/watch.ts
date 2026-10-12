@@ -93,7 +93,7 @@ export interface WatchScope {
 }
 
 /** The scope a run leaves behind: its config, or for a config that did not load, the file it would have been. */
-export function scopeOf(outcome: RunOutcome, cwd: string, configPath: string | undefined): WatchScope {
+function scopeOf(outcome: RunOutcome, cwd: string, configPath: string | undefined): WatchScope {
   if (outcome.config !== undefined) {
     return { projectRoot: outcome.config.projectRoot, configPath: outcome.config.configPath, tests: outcome.config.tests };
   }
