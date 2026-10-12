@@ -18,7 +18,7 @@ import type { ResolvedConfig } from '../config/resolve.ts';
 import type { McpClient } from '../mcp/server.ts';
 import type { McpSessionSummary } from '../mcp/usage.ts';
 import type { Report1Document, ReportError, ReportExplore, ReportStep, ReportUsage } from '../report/build.ts';
-import { STEP_KINDS } from '../run/steps.ts';
+import { replayStopped, STEP_KINDS } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
 import { failureKind } from './failure-kind.ts';
 import { errorCodeToken, plainToken } from './token.ts';
@@ -304,8 +304,8 @@ export function runCompletedEvent(report: Report1Document, context: RunContext):
         STEP_KINDS.map((kind): [string, number] => [`steps_${kind}`, steps.filter((step) => step.kind === kind).length]),
       ),
       agent_steps_replayed: steps.filter((step) => step.cache?.mode === 'self-finalized').length,
-      agent_steps_partial: steps.filter((step) => step.cache?.mode === 'agent-concluded').length,
-      agent_steps_missed: steps.filter((step) => step.cache?.mode === 'missed').length,
+      agent_steps_partial: steps.filter((step) => step.cache?.mode === 'agent-concluded' && !replayStopped(step)).length,
+      agent_steps_missed: steps.filter((step) => step.cache?.mode === 'missed' || replayStopped(step)).length,
       agent_steps_vision: steps.filter((step) => step.visionInput === true).length,
       agent_actions: agentActions(steps),
       model_gateway: first?.provider ?? null,

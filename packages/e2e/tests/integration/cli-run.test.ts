@@ -70,6 +70,29 @@ function reportOf(ran: FixtureProject): Report1Document {
 const test = (title: string, body = '') => `import { test } from 'e2e';\ntest('${title}', async ({ app }) => {\n  await app.open();\n  ${body}\n});\n`;
 
 describe('the run command through the CLI', () => {
+  it('propagates --replay-only to workers and reports missing recordings without model preflight', () => {
+    const { project, exitCode, output } = cli(
+      { 'e2e.config.ts': fakeConfig().replace('workers: 1,', 'workers: 2,'),
+        'tests/replay.e2e.ts': `import { test } from 'e2e';
+          test('missing recording', async ({ agent }) => { await agent.act('submit'); });` },
+      ['run', '--replay-only'],
+    );
+    expect(exitCode).toBe(2);
+    expect(output).toContain('REPLAY_MISSING');
+    expect(output).not.toContain('MODEL_UNAVAILABLE');
+    const report = reportOf(project);
+    expect(report.run.results[0]!.attempts[0]!.error?.code).toBe('REPLAY_MISSING');
+  });
+
+  it('refuses --replay-only with --no-cache before running tests', () => {
+    const { exitCode, output } = cli(
+      { 'e2e.config.ts': fakeConfig(), 'tests/replay.e2e.ts': test('unused') },
+      ['run', '--replay-only', '--no-cache'],
+    );
+    expect(exitCode).toBe(2);
+    expect(output).toContain('--replay-only cannot be combined with --no-cache');
+  });
+
   it('exits 3 when a worker dies under a test', () => {
     const { project, exitCode } = cli(
       { 'e2e.config.ts': fakeConfig(), 'tests/crash.e2e.ts': test('crashes the worker', 'process.exit(7);') },

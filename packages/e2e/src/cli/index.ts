@@ -543,6 +543,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .option('--max-failures <n>', 'stop the run once this many tests have failed; the rest are skipped', parsePositiveInt)
     .option('--repeat-each <n>', 'run every selected test this many times, each run its own result (pair with --no-cache to exercise the model each time)', parsePositiveInt)
     .option('--no-cache', 'run with the replay cache off, whatever the config says')
+    .option('--replay-only', 'replay recordings only; fail missing or non-replayable agent steps without calling a model')
     .option('--strict-cache', 'fail a step whose recording no longer replays (REPLAY_STALE) instead of handing it to the agent; never writes the cache')
     .option('-u, --update-snapshots', 'write the stored screenshots toHaveScreenshot finds missing or different, and pass')
     .optionsGroup('Output:')
@@ -599,6 +600,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           /** Commander negation: `--no-cache` parses as `cache: false`. */
           cache?: boolean;
           strictCache?: boolean;
+          replayOnly?: boolean;
           updateSnapshots?: boolean;
           debug?: boolean;
           aiTrace?: boolean;
@@ -626,6 +628,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
               output: options.output,
               noCache: options.cache === false,
               strictCache: options.strictCache,
+              replayOnly: options.replayOnly,
               updateSnapshots: options.updateSnapshots,
               debug: options.debug,
               aiTrace: options.aiTrace,

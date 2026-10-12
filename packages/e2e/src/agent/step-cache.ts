@@ -146,6 +146,10 @@ const END_WAIT_MARGIN_MS = 10_000;
 const END_PATH_DELAYS_MS = [100, 300, 600, 1_000, 3_000] as const;
 const END_PATH_TIMEOUT_MS = 15_000;
 
+/** How to re-record under replay-only, as `REPLAY_MISSING` in the error reference says. */
+const RE_RECORD_ADVICE =
+  "to re-record, run with cache.mode 'read-write', cache.replayOnly and cache.strict set to false, and neither --replay-only nor --strict-cache";
+
 export class StepTraceSession {
   private readonly host: StepCacheHost;
   private readonly cache: AgentCacheContext;
@@ -249,6 +253,7 @@ export class StepTraceSession {
     if (read.status === 'miss') {
       await this.captureStart(this.recorder === undefined ? 'path-only' : 'baseline');
       this.info = this.missed(read.reason, 0);
+      this.failIfReplayOnly(read.unavailable === true);
       if (read.unavailable !== true) this.failIfStale();
       if (read.reason === 'no-entry') await this.failIfRekeyed();
       return undefined;
@@ -263,9 +268,31 @@ export class StepTraceSession {
     const verdict = await this.replayEntry(read.entry);
     if (verdict === undefined) {
       this.host.replaying(false);
+      this.failIfReplayOnly();
       this.failIfStale();
     }
     return verdict;
+  }
+
+  /**
+   * Refuses every hand-off in replay-only mode, including missing or
+   * unreadable entries. A store that could not be read at all says so: the
+   * recording may be intact, and access to the store is what to restore.
+   */
+  private failIfReplayOnly(unavailable = false): void {
+    if (this.cache.replayOnly !== true) return;
+    if (unavailable) {
+      throw new AgentError(
+        'REPLAY_MISSING',
+        'the cache store could not be read, and replay-only mode never hands a step to the agent; restore access to the store, then rerun',
+      );
+    }
+    const reason = this.info?.reason ?? 'no-entry';
+    const what = reason === 'no-entry' ? 'this step has no recording to replay' : `the recording of this step does not replay (${reason})`;
+    throw new AgentError(
+      'REPLAY_MISSING',
+      `${what}, and replay-only mode never hands a step to the agent; ${RE_RECORD_ADVICE}`,
+    );
   }
 
   /**

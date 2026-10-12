@@ -8,7 +8,7 @@ import { stripVTControlCharacters } from 'node:util';
 import picocolors from 'picocolors';
 import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
 import type { ResultStatus } from '../run/records.ts';
-import type { StepModelInfo, StepRecord } from '../run/steps.ts';
+import { replayStopped, type StepModelInfo, type StepRecord } from '../run/steps.ts';
 
 /** A picocolors instance; the reporter decides whether it emits color. */
 export type Colors = ReturnType<typeof picocolors.createColors>;
@@ -233,7 +233,8 @@ export function usageText(usage: AiUsage): string | undefined {
 
 /**
  * How the trace cache handled a run's agent steps, by step: replayed whole
- * with no model turn, replayed in part before the model took over, or missed.
+ * with no model turn, replayed in part before the model took over, or missed
+ * (a partial replay that replay-only or `cache.strict` stopped counts here).
  * A run with the cache off records no cache detail and tallies nothing.
  */
 export interface CacheTally {
@@ -262,7 +263,8 @@ export function stepsCacheTally(stepLists: readonly (readonly StepRecord[])[]): 
           counts.replayed += 1;
           break;
         case 'agent-concluded':
-          counts.handedOff += 1;
+          if (replayStopped(step)) counts.missed += 1;
+          else counts.handedOff += 1;
           break;
         case 'missed':
           counts.missed += 1;

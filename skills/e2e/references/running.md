@@ -38,6 +38,7 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status or switch
 | `--output <dir>` | Results directory, over the config's `output` (default `.e2e`). |
 | `--no-cache` | Replay cache off for this run. |
 | `--strict-cache` | Fail a step whose committed recording no longer replays (`REPLAY_STALE`, exit 2) instead of handing it to the agent; retries replay too, and the run never writes the cache. |
+| `--replay-only` | Require complete `agent.act` recordings, with zero model calls. Implies strict and read-only, including on retries. Missing or non-replayable steps and judgment methods fail with `REPLAY_MISSING`, exit 2. Conflicts with `--no-cache`. |
 | `-u`, `--update-snapshots` | Write the stored screenshots `toHaveScreenshot` finds missing or different, and pass. |
 | `--pass-with-no-tests` | Exit 0, not `NO_TESTS`, when nothing matches. |
 | `--debug` | Phase timings and an agent step table on stderr; transcripts as artifacts. |

@@ -54,6 +54,7 @@ export const AGENT_CODE_TABLE: Readonly<
   // A stale recording is committed test data to re-record, not a product
   // failure: every attempt replays the same entry, so a retry cannot help.
   REPLAY_STALE: { category: 'configuration' },
+  REPLAY_MISSING: { category: 'configuration' },
 };
 
 /** Exit/result class per code; derived from the one table. */

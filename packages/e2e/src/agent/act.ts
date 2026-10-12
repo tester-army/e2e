@@ -482,6 +482,15 @@ class ActDispatch {
   private async dispatchStep(): Promise<StepVerdict> {
     const replayed = await this.stepCache?.begin();
     if (replayed !== undefined) return replayed;
+    // Replay-only gates a run's recorded tests; a host-driven or in-memory step has no cache to replay from.
+    if (this.runtime.cache?.replayOnly === true) {
+      throw new AgentError(
+        'REPLAY_MISSING',
+        this.spec.kind === 'act'
+          ? `${this.spec.api} runs on executor "${this.agent.executor.name}", which disables caching, so replay-only mode has no recording to replay; switch to a cache-capable executor to record and replay, or run this executor without replay-only`
+          : `${this.spec.api} needs a judgment, which replay-only mode never asks for; use deterministic assertions`,
+      );
+    }
     return this.agent.executor.runStep(this.context());
   }
 

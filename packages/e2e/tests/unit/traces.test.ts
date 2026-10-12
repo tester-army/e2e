@@ -147,6 +147,23 @@ describe('the steps on a trace page', () => {
     expect(stepLines(page!.text, 1)).toEqual(['✗ tap button "Save": **NOT_ACTIONABLE**']);
   });
 
+  it.each(['REPLAY_MISSING', 'REPLAY_STALE'])('say a partial replay stopped, with no agent, when %s ended the step there', async (errorCode) => {
+    const step = reportStep({
+      index: 0,
+      kind: 'agent',
+      api: 'agent.act',
+      label: 'add the coupon',
+      status: 'failed',
+      cache: { mode: 'agent-concluded', reason: 'target-not-found', replayedActions: 1, totalActions: 2, entry: ENTRY },
+      error: reportError({ code: errorCode, message: 'the replay stopped' }),
+      events: [],
+    });
+    const [page] = await pagesOf(reportResult({ id: `cccccccc3${errorCode.length}`, status: 'failed', attempts: [reportAttempt({ status: 'failed', steps: [step] })] }));
+    expect(stepLines(page!.text, 1)[0]).toBe(
+      `cache: replayed 1 of 2 recorded actions, then stopped without handing the step to the agent: a recorded target is not on the screen (\`.e2e/cache/${ENTRY}.json\`)`,
+    );
+  });
+
   it('keep every failure and the latest events of a step with more than the page has room for', async () => {
     const events = Array.from({ length: 30 }, (_, index) => ({
       kind: 'engine' as const,

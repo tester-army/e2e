@@ -119,6 +119,8 @@ export interface RunOptions {
   noCache?: boolean | undefined;
   /** Turns `cache.strict` on (`--strict-cache`): a recording that no longer replays fails its step. */
   strictCache?: boolean | undefined;
+  /** Require replayable recordings and never resolve models (--replay-only). */
+  replayOnly?: boolean | undefined;
   /** Rewrites the stored screenshots `toHaveScreenshot` finds different (`--update-snapshots`). */
   updateSnapshots?: boolean | undefined;
   /**
@@ -380,6 +382,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   if (options.reporters !== undefined) cli.reporters = options.reporters;
   if (options.noCache === true) cli.cache = 'off';
   if (options.strictCache === true) cli.cacheStrict = true;
+  if (options.replayOnly === true) cli.replayOnly = true;
   if (options.updateSnapshots === true) cli.updateSnapshots = true;
   if (options.output !== undefined) cli.output = options.output;
   if (options.trace !== undefined) cli.trace = options.trace;

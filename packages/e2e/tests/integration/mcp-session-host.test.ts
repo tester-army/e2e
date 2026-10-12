@@ -68,6 +68,8 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     readonly tools?: Record<string, ReturnType<typeof defineTool>>;
     /** Secrets the config declares beside the admin credential. */
     readonly secrets?: Record<string, string>;
+    /** The config's `cache` block. */
+    readonly cache?: Record<string, unknown>;
   }
 
   /**
@@ -87,6 +89,7 @@ describe('SessionHost', { timeout: 60_000 }, () => {
             credentials: { admin: { username: 'admin', password: 'kiosk-pw' } },
             ...(options.secrets === undefined ? {} : { secrets: options.secrets }),
             ...(options.video === undefined ? {} : { video: options.video }),
+            ...(options.cache === undefined ? {} : { cache: options.cache }),
             ...(options.tools === undefined ? {} : { agents: { default: { tools: options.tools } } }),
           } as never,
           { projectRoot: dir, env: {}, configPath },
@@ -125,6 +128,14 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     expect(fake.inits[1]?.headed).toBe(false);
     await headless.close('done');
     expect(fake.stats()).toMatchObject({ attemptsStarted: 2, attemptsEnded: 2, disposes: 2 });
+  });
+
+  it('opens a session when the config sets cache.replayOnly, which gates recorded test runs only', async () => {
+    const fake = createFakeEngine();
+    const replayOnly = host(() => fake, { cache: { replayOnly: true } });
+    expect(await replayOnly.open({})).toMatch(/^Session \S+ open/);
+    await replayOnly.close('done');
+    expect(fake.stats()).toMatchObject({ attemptsStarted: 1, attemptsEnded: 1 });
   });
 
   it("lets open_session's headed override the server's default either way", async () => {
