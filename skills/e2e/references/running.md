@@ -47,6 +47,7 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status or switch
 | `--no-cache` | Replay cache off for this run. |
 | `--strict-cache` | Fail a step whose committed recording no longer replays (`REPLAY_STALE`, exit 2) instead of handing it to the agent; retries replay too, and the run never writes the cache. |
 | `-u`, `--update-snapshots` | Write the stored screenshots `toHaveScreenshot` finds missing or different, and pass. |
+| `-w`, `--watch` | Run, then run again when a test file, a source file beside the tests, or the config is saved, or a key asks: `a` or enter all, `r` the current filters, `f` failed, `u` update snapshots, `p` and `t` filter by file and title, `q` quit; a key during a run cancels it. Refused in CI and with `--reporter json`. |
 | `--pass-with-no-tests` | Exit 0, not `NO_TESTS`, when nothing matches. |
 | `--debug` | Phase timings and an agent step table on stderr; transcripts as artifacts. |
 | `--ai-trace` | Every model call, to `<output>/ai-trace.json`. |

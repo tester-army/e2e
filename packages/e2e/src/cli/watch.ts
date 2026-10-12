@@ -6,21 +6,27 @@
  * the keyboard, and the filters the keys set over the command line's.
  */
 
-import { existsSync, watch as fsWatch } from 'node:fs';
+import { existsSync, readdirSync, statSync, watch as fsWatch } from 'node:fs';
 import path from 'node:path';
 import { emitKeypressEvents } from 'node:readline';
 import { Writable } from 'node:stream';
 import * as clack from '@clack/prompts';
 import picocolors from 'picocolors';
 import { discoverConfig } from '../config/load.ts';
-import { compileGlobList, literalPrefix, matchesGlob, type CompiledGlobList } from '../internal/globs.ts';
+import { compileGlob, compileGlobList, GLOB_SYNTAX, literalPrefix, matchesGlob, type CompiledGlobList } from '../internal/globs.ts';
 import type { RunOptions, RunOutcome } from '../run/runner.ts';
 import type { SignalLadder } from './signals.ts';
 
-/** What asks for a run: the terminal names it in the banner above the run. */
+/**
+ * What asks for a run: the terminal names it in the banner above the run.
+ * `files` are saved test files; `source` are other saved project files
+ * under the watched directories (helpers, fixtures), which rerun the
+ * current selection since nothing says which tests import them.
+ */
 export type WatchTrigger =
   | { readonly kind: 'start' }
   | { readonly kind: 'files'; readonly files: readonly string[] }
+  | { readonly kind: 'source'; readonly files: readonly string[] }
   | { readonly kind: 'config' }
   | { readonly kind: 'key'; readonly key: 'a' | 'r' | 'f' | 'u' };
 
@@ -30,6 +36,7 @@ export interface WatchFilters {
   readonly title: RegExp | undefined;
 }
 
+/** No `p` or `t` filter set: the command line's selection alone. */
 export const NO_FILTERS: WatchFilters = { file: undefined, title: undefined };
 
 /**
@@ -40,19 +47,27 @@ export const NO_FILTERS: WatchFilters = { file: undefined, title: undefined };
  * runs whole, inside every other filter of the command line, in place of
  * the positionals; the keys and a config change keep the positionals, or
  * the `p` filter over them, except `a`, which runs the command line's
- * selection whole, as `a` and enter do in vitest.
+ * selection whole, as `a` and enter do in vitest, and `f`, which runs what
+ * the last report has failing wherever it is, since a saved file ran in
+ * place of the positionals. A rerun that selects nothing passes empty: the
+ * session goes on waiting, as vitest's does.
+ * Each rerun reads the project's files afresh (`freshGraph`), so a saved
+ * helper is what the next run collects.
  */
 export function planRun(base: RunOptions, filters: WatchFilters, trigger: WatchTrigger): RunOptions {
-  if (trigger.kind === 'start') return base;
+  if (trigger.kind === 'start') return { ...base, freshGraph: true };
   const filtered: RunOptions = {
     ...base,
+    freshGraph: true,
     lastFailed: false,
+    passWithNoTests: true,
     files: filters.file === undefined ? base.files : [filters.file],
     grep: filters.title === undefined ? base.grep : [filters.title],
   };
   switch (trigger.kind) {
     case 'files':
       return { ...filtered, files: trigger.files };
+    case 'source':
     case 'config':
       return filtered;
     case 'key':
@@ -62,7 +77,7 @@ export function planRun(base: RunOptions, filters: WatchFilters, trigger: WatchT
         case 'r':
           return filtered;
         case 'f':
-          return { ...filtered, lastFailed: true, passWithNoTests: true };
+          return { ...filtered, files: [], lastFailed: true };
         case 'u':
           return { ...filtered, updateSnapshots: true };
       }
@@ -90,17 +105,36 @@ export function scopeOf(outcome: RunOutcome, cwd: string, configPath: string | u
   }
 }
 
-/** One file change the watcher reports: a test file by its project-relative path, or the config. */
-export type WatchChange = { readonly kind: 'test'; readonly file: string } | { readonly kind: 'config' };
+/** One file change the watcher reports, by project-relative path: a test file, another source file, or the config. */
+export type WatchChange =
+  | { readonly kind: 'test'; readonly file: string }
+  | { readonly kind: 'source'; readonly file: string }
+  | { readonly kind: 'config' };
 
-/** What the scope makes of a changed path: a test file, the config, or nothing it watches. */
+/** The extensions of the files a test could import: a save to one reruns the selection. */
+const SOURCE_EXTENSIONS = new Set(['.ts', '.mts', '.cts', '.tsx', '.js', '.mjs', '.cjs', '.jsx', '.json']);
+
+/** A directory the watcher never enters, where discovery never does either: installed packages, and dot directories such as the output. */
+function skippedDirectory(name: string): boolean {
+  return name === 'node_modules' || name.startsWith('.');
+}
+
+/**
+ * What the scope makes of a changed path: a test file, a source file a test
+ * could import, the config, or nothing it watches. Paths under
+ * `node_modules` or a dot directory are nothing, as discovery skips them.
+ */
 export function classifyChange(scope: WatchScope, globs: CompiledGlobList, absolutePath: string): WatchChange | undefined {
   if (scope.configPath !== undefined && path.resolve(absolutePath) === scope.configPath) return { kind: 'config' };
   const relative = path.relative(scope.projectRoot, absolutePath);
   if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) return undefined;
-  const file = relative.split(path.sep).join('/');
-  if (!globs.include.some((glob) => matchesGlob(glob, file)) || globs.exclude.some((glob) => matchesGlob(glob, file))) return undefined;
-  return { kind: 'test', file };
+  const segments = relative.split(path.sep);
+  if (segments.slice(0, -1).some(skippedDirectory)) return undefined;
+  const file = segments.join('/');
+  if (globs.include.some((glob) => matchesGlob(glob, file))) {
+    return globs.exclude.some((glob) => matchesGlob(glob, file)) ? undefined : { kind: 'test', file };
+  }
+  return SOURCE_EXTENSIONS.has(path.extname(file)) ? { kind: 'source', file } : undefined;
 }
 
 /** A directory to watch: recursively where a glob reaches below it, flat where only the config file is there. */
@@ -113,7 +147,11 @@ export interface WatchRoot {
  * The directories the scope's files live under: the literal prefix of each
  * `tests` glob (`tests/**\/*.e2e.ts` watches `tests/`), climbed to the
  * nearest directory that exists so a prefix created later is seen too, and
- * the config's own directory. A root under a recursive root is dropped.
+ * the config's own directory. A glob that starts at the project root
+ * (`**\/*.e2e.ts`) watches the root flat and each of its directories, not
+ * `node_modules` or a dot directory: Linux registers a watch per file
+ * under a recursive root, and installed packages would exhaust them. A
+ * root under a recursive root is dropped.
  */
 export function watchRoots(scope: WatchScope, globs: CompiledGlobList): WatchRoot[] {
   const roots: WatchRoot[] = [];
@@ -121,11 +159,16 @@ export function watchRoots(scope: WatchScope, globs: CompiledGlobList): WatchRoo
     let dir = path.join(scope.projectRoot, ...literalPrefix(glob));
     if (literalPrefix(glob).length === glob.segments.length) dir = path.dirname(dir);
     while (!existsSync(dir) && dir !== scope.projectRoot && dir.startsWith(scope.projectRoot)) dir = path.dirname(dir);
-    roots.push({ dir, recursive: true });
+    if (dir === scope.projectRoot) {
+      roots.push({ dir, recursive: false }, ...childDirectories(dir).map((child) => ({ dir: child, recursive: true })));
+    } else {
+      roots.push({ dir, recursive: true });
+    }
   }
   if (scope.configPath !== undefined) roots.push({ dir: path.dirname(scope.configPath), recursive: false });
   return roots.filter(
     (root, index) =>
+      roots.findIndex((other) => other.dir === root.dir && other.recursive === root.recursive) === index &&
       !roots.some(
         (other, otherIndex) =>
           otherIndex !== index &&
@@ -135,50 +178,84 @@ export function watchRoots(scope: WatchScope, globs: CompiledGlobList): WatchRoo
   );
 }
 
+/** The directories under `dir` worth watching, by absolute path. */
+function childDirectories(dir: string): string[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !skippedDirectory(entry.name))
+      .map((entry) => path.join(dir, entry.name));
+  } catch {
+    return [];
+  }
+}
+
+/** A watcher over one root: closable, and an emitter of `error` when the platform's watch fails under it. */
+export interface RootWatcher {
+  close(): void;
+  on(event: 'error', listener: (error: Error) => void): unknown;
+}
+
 /** `fs.watch` as the watcher uses it, so a test can stand in for the file system. */
 export type WatchFn = (
   dir: string,
   options: { readonly recursive: boolean },
   listener: (event: string, filename: string | Buffer | null) => void,
-) => { close(): void };
+) => RootWatcher;
+
+/** A burst of changes, debounced: the test files and the source files touched, and whether the config was. */
+export interface WatchChanges {
+  readonly files: readonly string[];
+  readonly sources: readonly string[];
+  readonly config: boolean;
+}
 
 /** How long after the last change the watcher reports: an editor's save is several events. */
 export const DEBOUNCE_MS = 100;
 
 /**
- * Watches the scope's roots and reports each burst of changes once, debounced,
- * as the set of test files touched and whether the config was. Changes that
- * are neither are dropped where they happen.
+ * Watches the scope's roots and reports each burst of changes once,
+ * debounced. Changes that are nothing it watches are dropped where they
+ * happen. A directory created under a flat root starts the roots over, so
+ * a `tests/` made after the session began is watched too. A root whose
+ * watch fails under it (Linux out of inotify watches, a directory gone)
+ * is dropped and named to `onLost`; the keys still rerun.
  */
 export class ChangeWatcher {
-  private readonly watchers: { close(): void }[] = [];
+  private readonly watchers: RootWatcher[] = [];
   private readonly files = new Set<string>();
+  private readonly sources = new Set<string>();
   private config = false;
   private timer: NodeJS.Timeout | undefined;
+  private readonly globs: CompiledGlobList;
 
   constructor(
     private readonly scope: WatchScope,
-    private readonly onChanges: (changes: { readonly files: readonly string[]; readonly config: boolean }) => void,
+    private readonly onChanges: (changes: WatchChanges) => void,
+    private readonly onLost: (dir: string, error: Error) => void,
     private readonly watch: WatchFn = fsWatch,
-  ) {}
+  ) {
+    this.globs = compileGlobList(scope.tests);
+  }
 
   /** Starts watching; answers the roots that could be watched. */
   start(): WatchRoot[] {
-    const globs = compileGlobList(this.scope.tests);
     const watched: WatchRoot[] = [];
-    for (const root of watchRoots(this.scope, globs)) {
+    for (const root of watchRoots(this.scope, this.globs)) {
+      let watcher: RootWatcher;
       try {
-        this.watchers.push(
-          this.watch(root.dir, { recursive: root.recursive }, (_event, filename) => {
-            if (filename === null) return;
-            const change = classifyChange(this.scope, globs, path.join(root.dir, filename.toString()));
-            if (change !== undefined) this.record(change);
-          }),
-        );
-        watched.push(root);
+        watcher = this.watch(root.dir, { recursive: root.recursive }, (event, filename) => this.onEvent(root, event, filename));
       } catch {
         // A root that cannot be watched (gone, or too many watchers) is left out; the keys still rerun.
+        continue;
       }
+      watcher.on('error', (error) => {
+        watcher.close();
+        const index = this.watchers.indexOf(watcher);
+        if (index !== -1) this.watchers.splice(index, 1);
+        this.onLost(root.dir, error);
+      });
+      this.watchers.push(watcher);
+      watched.push(root);
     }
     return watched;
   }
@@ -187,38 +264,73 @@ export class ChangeWatcher {
   close(): void {
     if (this.timer !== undefined) clearTimeout(this.timer);
     this.timer = undefined;
+    this.stopWatching();
+  }
+
+  private stopWatching(): void {
     for (const watcher of this.watchers.splice(0)) watcher.close();
+  }
+
+  private onEvent(root: WatchRoot, event: string, filename: string | Buffer | null): void {
+    if (filename === null) return;
+    const absolutePath = path.join(root.dir, filename.toString());
+    if (!root.recursive && event === 'rename' && isDirectory(absolutePath) && !skippedDirectory(path.basename(absolutePath))) {
+      this.stopWatching();
+      this.start();
+      return;
+    }
+    const change = classifyChange(this.scope, this.globs, absolutePath);
+    if (change !== undefined) this.record(change);
   }
 
   private record(change: WatchChange): void {
     if (change.kind === 'config') this.config = true;
-    else this.files.add(change.file);
+    else if (change.kind === 'test') this.files.add(change.file);
+    else this.sources.add(change.file);
     if (this.timer !== undefined) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.timer = undefined;
-      const files = [...this.files].toSorted();
-      const config = this.config;
+      const changes: WatchChanges = { files: [...this.files].toSorted(), sources: [...this.sources].toSorted(), config: this.config };
       this.files.clear();
+      this.sources.clear();
       this.config = false;
-      this.onChanges({ files, config });
+      this.onChanges(changes);
     }, DEBOUNCE_MS);
   }
 }
 
-/** What a burst of changes asks for: the config over everything, else the files that still exist, else nothing. */
-export function triggerOf(scope: WatchScope, changes: { readonly files: readonly string[]; readonly config: boolean }): WatchTrigger | undefined {
+/** Whether `absolutePath` is a directory now; a path gone again is not. */
+function isDirectory(absolutePath: string): boolean {
+  try {
+    return statSync(absolutePath).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What a burst of changes asks for: the config over everything, else a
+ * saved source file over the test files, else the test files that still
+ * exist, else nothing.
+ */
+export function triggerOf(scope: WatchScope, changes: WatchChanges): WatchTrigger | undefined {
   if (changes.config) return { kind: 'config' };
-  const files = changes.files.filter((file) => existsSync(path.join(scope.projectRoot, file)));
+  const existing = (files: readonly string[]): string[] => files.filter((file) => existsSync(path.join(scope.projectRoot, file)));
+  const sources = existing(changes.sources);
+  if (sources.length > 0) return { kind: 'source', files: sources };
+  const files = existing(changes.files);
   return files.length === 0 ? undefined : { kind: 'files', files };
 }
 
-/** Two triggers that arrived before a run could take them, folded into one. */
+/** How triggers rank when two wait for one run: the wider one runs. */
+const TRIGGER_RANK: Record<WatchTrigger['kind'], number> = { start: 0, files: 1, source: 2, key: 3, config: 4 };
+
+/** Two triggers that arrived before a run could take them, folded into one: the wider, or the union of two of a kind. */
 export function mergeTriggers(first: WatchTrigger, second: WatchTrigger): WatchTrigger {
-  if (first.kind === 'files' && second.kind === 'files') {
-    return { kind: 'files', files: [...new Set([...first.files, ...second.files])].toSorted() };
+  if ((first.kind === 'files' && second.kind === 'files') || (first.kind === 'source' && second.kind === 'source')) {
+    return { kind: first.kind, files: [...new Set([...first.files, ...second.files])].toSorted() };
   }
-  if (first.kind === 'files' || first.kind === 'start') return second;
-  return first;
+  return TRIGGER_RANK[second.kind] > TRIGGER_RANK[first.kind] ? second : first;
 }
 
 /** A key the terminal delivers, as `readline` names it. */
@@ -228,18 +340,24 @@ export interface Keypress {
   readonly sequence?: string | undefined;
 }
 
-export type WatchKey = 'a' | 'r' | 'f' | 'u' | 'p' | 't' | 'h' | 'q' | 'cancel' | 'interrupt';
+/** A key the session acts on: vitest's, plus what the terminal cannot deliver as a signal in raw mode. */
+export type WatchKey = 'a' | 'r' | 'f' | 'u' | 'p' | 't' | 'h' | 'q' | 'cancel' | 'interrupt' | 'suspend';
 
 /**
- * The watch key a keypress means, or none. Enter is `a`, as in vitest;
- * space and `c` only cancel a run. Ctrl-C arrives as a keypress in raw
- * mode, not a signal.
+ * The watch key a keypress means, or none. Enter is `a` and escape is
+ * Ctrl-C, as in vitest; space and `c` only cancel a run. Ctrl-C, Ctrl-D
+ * and Ctrl-Z arrive as keypresses in raw mode, not as signals.
  */
 export function keyOf(press: Keypress): WatchKey | undefined {
-  if (press.ctrl) return press.name === 'c' || press.name === 'd' ? 'interrupt' : undefined;
+  if (press.ctrl) {
+    if (press.name === 'c' || press.name === 'd') return 'interrupt';
+    return press.name === 'z' ? 'suspend' : undefined;
+  }
   switch (press.name) {
     case 'return':
       return 'a';
+    case 'escape':
+      return 'interrupt';
     case 'space':
     case 'c':
       return 'cancel';
@@ -277,7 +395,7 @@ function helpText(pc: ReturnType<typeof picocolors.createColors>, full: boolean)
 /** The banner above a rerun: why it runs, and how many runs the session has made. */
 export function bannerText(pc: ReturnType<typeof picocolors.createColors>, trigger: WatchTrigger, filters: WatchFilters, count: number): string {
   const why =
-    trigger.kind === 'files'
+    trigger.kind === 'files' || trigger.kind === 'source'
       ? trigger.files.join(', ')
       : trigger.kind === 'config'
         ? 'config changed'
@@ -295,6 +413,13 @@ export function bannerText(pc: ReturnType<typeof picocolors.createColors>, trigg
 /** ANSI: clear the screen and the scrollback, cursor home; a rerun starts on a clean terminal as vitest's does. */
 const CLEAR_SCREEN = '\x1b[2J\x1b[3J\x1b[H';
 
+/** One run's cancellation, as a key asks for it: the same two rungs the process signals have. */
+export interface RunCancel {
+  readonly interruptSignal: AbortSignal;
+  readonly forceSignal: AbortSignal;
+}
+
+/** What `watchSession` needs from the command: the run, the terminal, and the signals. */
 export interface WatchSessionOptions {
   /** The run options the command line parsed, without the signals and the process output; the session adds those. */
   readonly base: RunOptions;
@@ -302,10 +427,10 @@ export interface WatchSessionOptions {
   readonly signals: SignalLadder;
   /**
    * Executes one run: the real runner, with the session's signals and the
-   * process's output, and the telemetry record. `cancel` aborts this run
-   * alone, as the interrupt would, when a key asks for it.
+   * process's output, and the telemetry record. `cancel` is this run's own
+   * ladder, for the keys: the first interrupts it, the next forces it.
    */
-  readonly run: (options: RunOptions, cancel: AbortSignal) => Promise<RunOutcome>;
+  readonly run: (options: RunOptions, cancel: RunCancel) => Promise<RunOutcome>;
   /** The keyboard, when stdin is a terminal; without it only file changes rerun. */
   readonly stdin: NodeJS.ReadStream | undefined;
   /** Writes the session's own lines to the terminal. */
@@ -321,7 +446,9 @@ export interface WatchSessionOptions {
  * until a quit or a signal. Answers the exit code of the last run that
  * finished. A change that lands during a run is kept and runs next; a key
  * during a run cancels it, as in vitest, and the loop waits again, while
- * Ctrl-C interrupts it as a signal would and ends the session.
+ * Ctrl-C interrupts it as a signal would and ends the session. A config
+ * with the json reporter ends it too: that reporter's stdout is one
+ * document, as `--reporter json` is refused before it starts.
  */
 export async function watchSession(options: WatchSessionOptions): Promise<number> {
   const { pc, signals } = options;
@@ -332,7 +459,7 @@ export async function watchSession(options: WatchSessionOptions): Promise<number
   let count = 0;
   let scope: WatchScope | undefined;
   let watcher: ChangeWatcher | undefined;
-  let running: AbortController | undefined;
+  let running: { readonly interrupt: AbortController; readonly force: AbortController } | undefined;
   let wake: ((value: Wake) => void) | undefined;
   let exitCode = 0;
 
@@ -346,8 +473,13 @@ export async function watchSession(options: WatchSessionOptions): Promise<number
       signals.escalate();
       return;
     }
+    if (key === 'suspend') {
+      keyboard.suspend();
+      return;
+    }
     if (running !== undefined) {
-      running.abort();
+      if (running.interrupt.signal.aborted) running.force.abort();
+      else running.interrupt.abort();
       return;
     }
     switch (key) {
@@ -373,25 +505,33 @@ export async function watchSession(options: WatchSessionOptions): Promise<number
   });
   const quit = (): void => wake?.('quit');
   signals.interruptSignal.addEventListener('abort', quit, { once: true });
-  const waiting = (): void => options.write(`\n${pc.dim('Waiting for file changes...')}\n  ${helpText(pc, false)}`);
+  const waiting = (): void =>
+    options.write(`\n${pc.dim('Waiting for file changes...')}\n${keyboard === undefined ? '' : `  ${helpText(pc, false)}`}`);
   const terminal = terminalStream(options.write);
 
   try {
     for (;;) {
-      const cancel = new AbortController();
+      const cancel = { interrupt: new AbortController(), force: new AbortController() };
       running = cancel;
       count += 1;
       if (trigger.kind !== 'start') {
         options.write(`${options.clear ? CLEAR_SCREEN : '\n'}${bannerText(pc, trigger, filters, count)}`);
       }
-      const outcome = await options.run(planRun(options.base, filters, trigger), cancel.signal);
+      const outcome = await options.run(planRun(options.base, filters, trigger), {
+        interruptSignal: cancel.interrupt.signal,
+        forceSignal: cancel.force.signal,
+      });
       running = undefined;
       if (signals.interruptSignal.aborted) {
         exitCode = outcome.exitCode;
         break;
       }
-      if (cancel.signal.aborted) options.write(`\n${pc.yellow('run cancelled')}\n`);
+      if (cancel.interrupt.signal.aborted) options.write(`\n${pc.yellow('run cancelled')}\n`);
       else exitCode = outcome.exitCode;
+      if (outcome.config?.reporters.includes('json') === true) {
+        options.write(`${pc.red('error')}: --watch cannot run with the json reporter the config sets: it writes one document to stdout\n`);
+        return 2;
+      }
 
       const next = scopeOf(outcome, options.cwd, options.base.configPath);
       if (scope === undefined || !sameScope(scope, next)) {
@@ -403,14 +543,26 @@ export async function watchSession(options: WatchSessionOptions): Promise<number
             const change = triggerOf(scope!, changes);
             if (change !== undefined) arrive(change);
           },
+          (dir, error) => options.write(`${pc.yellow('stopped watching')} ${dir}: ${error.message}; the keys still rerun\n`),
           options.watch,
         );
         const roots = watcher.start();
-        if (roots.length === 0) options.write(`${pc.yellow('nothing to watch')}: no test directory or config file to watch; the keys still rerun\n`);
+        if (roots.length === 0) {
+          if (keyboard === undefined) {
+            options.write(`${pc.yellow('nothing to watch')}: no test directory or config file to watch, and no terminal for the keys\n`);
+            return exitCode;
+          }
+          options.write(`${pc.yellow('nothing to watch')}: no test directory or config file to watch; the keys still rerun\n`);
+        }
       }
 
       let woken: WatchTrigger | 'quit' | undefined;
       while (woken === undefined) {
+        // A signal that landed while a prompt had the terminal, or between runs, ends the session too.
+        if (signals.interruptSignal.aborted) {
+          woken = 'quit';
+          break;
+        }
         if (pending !== undefined) {
           woken = pending;
           pending = undefined;
@@ -431,7 +583,7 @@ export async function watchSession(options: WatchSessionOptions): Promise<number
         keyboard?.pause();
         const answer = await (value === 'p' ? promptFile(filters, terminal) : promptTitle(filters, terminal));
         keyboard?.resume();
-        if (answer !== undefined) {
+        if (answer !== undefined && !signals.interruptSignal.aborted) {
           filters = answer;
           woken = { kind: 'key', key: 'r' };
         }
@@ -450,11 +602,12 @@ export async function watchSession(options: WatchSessionOptions): Promise<number
 /** What ends an idle wait: a trigger, a prompt to open, or the end of the session. */
 type Wake = WatchTrigger | 'quit' | 'p' | 't';
 
+/** Whether two runs left the same thing to watch, so the watcher can stay. */
 function sameScope(a: WatchScope, b: WatchScope): boolean {
   return a.projectRoot === b.projectRoot && a.configPath === b.configPath && a.tests.length === b.tests.length && a.tests.every((glob, i) => glob === b.tests[i]);
 }
 
-/** `p`: the positional the next runs select with; empty clears it. Answers nothing when cancelled. */
+/** `p`: the positional the next runs select with; empty clears it. Answers nothing when cancelled or an invalid glob. */
 async function promptFile(filters: WatchFilters, output: Writable): Promise<WatchFilters | undefined> {
   const answer = await clack.text({
     output,
@@ -462,6 +615,7 @@ async function promptFile(filters: WatchFilters, output: Writable): Promise<Watc
     placeholder: 'signup',
     defaultValue: '',
     initialValue: filters.file ?? '',
+    validate: (value) => invalidGlob(value ?? ''),
   });
   if (clack.isCancel(answer)) return undefined;
   const value = answer.trim();
@@ -500,6 +654,17 @@ function terminalStream(write: (text: string) => void): Writable {
   return stream;
 }
 
+/** Why `value`, when it is a glob, does not compile, or nothing when it does or is a plain name. */
+function invalidGlob(value: string): string | undefined {
+  if (!GLOB_SYNTAX.test(value)) return undefined;
+  try {
+    compileGlob(value);
+    return undefined;
+  } catch (cause) {
+    return cause instanceof Error ? cause.message : String(cause);
+  }
+}
+
 /** Why `source` is not a regular expression, or nothing when it is. */
 function invalidPattern(source: string): string | undefined {
   try {
@@ -518,29 +683,56 @@ class Keyboard {
     const key = keyOf(press);
     if (key !== undefined) this.handler(key);
   };
+  /** While a prompt has the keys, Ctrl-C still ends the session: the prompt only closes on it. */
+  private readonly onInterruptOnly = (_chunk: unknown, press: Keypress | undefined): void => {
+    if (press !== undefined && press.ctrl && keyOf(press) === 'interrupt') this.handler?.('interrupt');
+  };
 
   constructor(private readonly stdin: NodeJS.ReadStream) {
     emitKeypressEvents(stdin);
   }
 
+  /** Starts delivering keys to `handler`, in raw mode. */
   listen(handler: (key: WatchKey) => void): void {
     this.handler = handler;
     this.resume();
   }
 
+  /** Takes the terminal back after a prompt: raw mode on, keys delivered again. */
   resume(): void {
+    this.stdin.off('keypress', this.onInterruptOnly);
     this.stdin.setRawMode?.(true);
     this.stdin.on('keypress', this.onKeypress);
     this.stdin.resume();
   }
 
+  /** Hands the terminal to a prompt: raw mode off, no key but Ctrl-C delivered. */
   pause(): void {
     this.stdin.off('keypress', this.onKeypress);
+    this.stdin.on('keypress', this.onInterruptOnly);
     this.stdin.setRawMode?.(false);
   }
 
-  close(): void {
+  /**
+   * Ctrl-Z: stops the process as the terminal would outside raw mode, with
+   * the terminal restored first. The stop goes to the whole process group,
+   * the job the shell waits on: a `| tee` or a package manager's wrapper
+   * stops with it, and one `fg` resumes them all. Timers do not run while
+   * a process is stopped: the resume fires on the continue, or at once
+   * under a shell without job control, where the stop is ignored.
+   */
+  suspend(): void {
+    if (process.platform === 'win32') return;
     this.pause();
+    setTimeout(() => this.resume(), 0);
+    process.kill(0, 'SIGTSTP');
+  }
+
+  /** Stops for good: raw mode off, stdin paused so it no longer holds the process open. */
+  close(): void {
+    this.stdin.off('keypress', this.onKeypress);
+    this.stdin.off('keypress', this.onInterruptOnly);
+    this.stdin.setRawMode?.(false);
     this.stdin.pause();
   }
 }

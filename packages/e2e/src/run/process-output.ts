@@ -83,7 +83,7 @@ export class RunnerOutput {
   private readonly loadHold = new ConfigLoadHold();
   private view: OutputView | undefined;
   /** The terminal's stdout for the list reporter: its own lines and live window go straight there. */
-  readonly listOutput: ListReporterOutput;
+  readonly listOutput: Required<ListReporterOutput>;
 
   constructor(
     private readonly terminal: Readonly<Record<OutputStream, TerminalWrite>>,

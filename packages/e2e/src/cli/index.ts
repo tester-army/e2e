@@ -372,6 +372,8 @@ async function watchToOutcome(
   try {
     process.exitCode = await start(signals, (outcome) => {
       recordOutcome(telemetry, command, outcome);
+      // A session that a signal's last rung or the terminal ends never reaches the flush: each run's event goes out as it happens.
+      void telemetry.sendQueued();
       return outcome;
     });
   } catch (cause) {
@@ -589,7 +591,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .option('--no-cache', 'run with the replay cache off, whatever the config says')
     .option('--strict-cache', 'fail a step whose recording no longer replays (REPLAY_STALE) instead of handing it to the agent; never writes the cache')
     .option('-u, --update-snapshots', 'write the stored screenshots toHaveScreenshot finds missing or different, and pass')
-    .option('-w, --watch', 'run, then run again whenever a test file or the config changes or a key asks: a (all), r (current), f (failed), u, p, t, q; not in CI')
+    .option('-w, --watch', 'run, then run again whenever a test or source file or the config changes or a key asks: a (all), r (current), f (failed), u, p, t, q; not in CI')
     .optionsGroup('Output:')
     .option('--reporter <ids>', `comma-separated reporters: ${BUILTIN_REPORTERS.join(', ')}`, parseReporters)
     .option('--output <dir>', 'results directory: report, artifacts, sessions (default: output in the config, else .e2e)')
@@ -688,12 +690,12 @@ function createProgram(version: string, telemetry: Telemetry): Command {
                 run: (iteration, cancel) =>
                   run({
                     ...iteration,
-                    interruptSignal: AbortSignal.any([signals.interruptSignal, cancel]),
-                    forceSignal: signals.forceSignal,
+                    interruptSignal: AbortSignal.any([signals.interruptSignal, cancel.interruptSignal]),
+                    forceSignal: AbortSignal.any([signals.forceSignal, cancel.forceSignal]),
                     processOutput: output,
                   }).then(record),
                 stdin: process.stdin.isTTY === true ? process.stdin : undefined,
-                write: output.listOutput.raw!,
+                write: output.listOutput.raw,
                 pc: picocolors.createColors(process.stdout.isTTY === true),
                 clear: process.stdout.isTTY === true,
               }),

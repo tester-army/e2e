@@ -99,10 +99,11 @@ export interface ConfigLoadOptions {
  * the instance is for) plus a process-unique sequence, so a realm never
  * receives another realm's instance of it and a second `run()` in one
  * process sees the file as it is now. The files it imports keep one instance
- * per process; `loadConfigModule` with `graph` refreshes them too.
+ * per process, unless `graph` asks for them afresh too, as
+ * `loadConfigModule` with `graph` does.
  */
-export async function importModule(absolutePath: string, cacheKey = 'module'): Promise<unknown> {
-  return importFresh(absolutePath, cacheKey, false);
+export async function importModule(absolutePath: string, cacheKey = 'module', graph = false): Promise<unknown> {
+  return importFresh(absolutePath, cacheKey, graph);
 }
 
 /** Process-unique sequence that keeps every fresh import's URL distinct. */

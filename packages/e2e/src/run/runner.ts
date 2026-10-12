@@ -87,6 +87,13 @@ export interface RunOptions {
    * `NO_LAST_RUN`; a run with nothing failed selects nothing.
    */
   lastFailed?: boolean | undefined;
+  /**
+   * Evaluates the project's own files afresh for this run, not only the
+   * config and the test files: the helpers they import too. For a loop that
+   * runs again in one process after a save (`--watch`); each such run keeps
+   * its copies for the life of the process.
+   */
+  freshGraph?: boolean | undefined;
   /** One shard of the selection, cut once every other filter applied (`--shard 2/3`). */
   shard?: Shard | undefined;
   targetIds?: readonly string[] | undefined;
@@ -720,7 +727,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         debug.time('collect', async () => {
           const collection =
             options.tests === undefined
-              ? await collect(config, options.files)
+              ? await collect(config, options.files, options.freshGraph === true)
               : collectInMemory(
                   config.projectRoot,
                   options.tests.file,
@@ -1083,6 +1090,7 @@ type SelectionRunOptions = Pick<
   | 'grep'
   | 'grepInvert'
   | 'lastFailed'
+  | 'freshGraph'
   | 'shard'
   | 'targetIds'
   | 'passWithNoTests'
@@ -1170,7 +1178,7 @@ async function loadRunConfig(
   // A run with no config file has nothing to run against: `targets` is
   // required, so resolving an empty config would only report that symptom.
   if (discovered.configPath === undefined) throw missingConfigError(cwd);
-  const raw = await loadConfigModule(discovered.configPath);
+  const raw = await loadConfigModule(discovered.configPath, { graph: options.freshGraph });
   return resolveConfig(raw, {
     projectRoot: discovered.projectRoot,
     configPath: discovered.configPath,
