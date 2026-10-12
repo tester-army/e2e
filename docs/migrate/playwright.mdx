@@ -171,9 +171,9 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `scrollIntoViewIfNeeded()` | `scrollIntoView()` | renamed |
 | `locator.innerText()` | `textContent()`, whitespace collapsed to single spaces | renamed |
 | `locator.textContent()` | the rendered text, what `innerText()` reads, see [What differs on purpose](#what-differs-on-purpose) | by design |
-| `inputValue()`, `getAttribute()`, `isVisible()`, `isEnabled()`, `boundingBox()` | the same | same |
+| `inputValue()`, `getAttribute()`, `isEnabled()`, `isDisabled()`, `boundingBox()` | read once; assert first when the match may appear later, see [What differs on purpose](#what-differs-on-purpose) | by design |
 | `isChecked()` | the same on a checkbox, radio, or `aria-checked` node; `false` on any other, see [What differs on purpose](#what-differs-on-purpose) | by design |
-| `isHidden()`, `isDisabled()` | the same | same |
+| `isVisible()`, `isHidden()` | read once, as in Playwright; `false` and `true` respectively for zero matches | same |
 | `isEditable()` | not yet | missing |
 | `waitFor({ state: 'visible' })`, `'hidden'`, `'attached'`, `'detached'` | the same | same |
 | `locator.evaluate(fn)`, `evaluateAll(fn)` | not yet; `browser.evaluate(fn, selector)` with a CSS selector argument | missing |
@@ -413,6 +413,17 @@ context.
 - `check()` and `uncheck()` read the state back until the action timeout,
   so a controlled checkbox that updates late passes. A click that removes the
   control passes too, where Playwright fails. Assert on what replaced it.
+- Reads do not wait for a match. `inputValue()`, `getAttribute()`,
+  `boundingBox()`, `isEnabled()`, and `isDisabled()` throw `LOCATOR_NOT_FOUND`
+  for zero matches, where Playwright waits for a match. Assert first when
+  the element may appear later. `isVisible()` and `isHidden()` return the
+  current state without waiting in both frameworks.
+
+  ```ts
+  const amount = screen.getByLabel('Amount');
+  await expect(amount).toBeVisible();
+  const value = await amount.inputValue();
+  ```
 - One match or `LOCATOR_AMBIGUOUS`, `isVisible()` included, where Playwright
   reads the first match silently. See [screen](/reference/screen).
 - `browser.evaluate` takes and returns JSON only, so the report can record
