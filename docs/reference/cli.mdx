@@ -387,6 +387,7 @@ or every test was filtered out.
 | `--no-cache` | boolean | `false` | Replay cache off for this run, whatever `config.cache` says. |
 | `--strict-cache` | boolean | `false` | Turns on `cache.strict` for this run: a step whose recording exists but no longer replays fails with `REPLAY_STALE` instead of handing off to the agent, retries replay too, and the run never writes the cache. See [Fail on a stale recording](/cache#fail-on-a-stale-recording). |
 | `-u`, `--update-snapshots` | boolean | `false` | Writes each stored screenshot [`toHaveScreenshot`](/reference/expect#screenshot-matchers) finds missing or different, and passes the matcher. Without it a missing one is written and fails, and in CI it is only attached to the results. |
+| `--watch` | boolean | `false` | Runs, then runs again whenever a test file or the config changes, or a key asks for it; see [Watch mode](#watch-mode). Refused in CI (`CI` set), and with `--reporter json`. |
 | `--pass-with-no-tests` | boolean | `false` | Exit 0 instead of `NO_TESTS` when nothing is selected. |
 | `--debug` | boolean | `false` | Phase timings and an agent step table on stderr after the run. |
 | `--ai-trace` | boolean | `false` | Records every model call to `<output>/ai-trace.json`, an AI SDK devtools database. Open it with [unbox-ai](https://github.com/tester-army/unbox-ai). |
@@ -521,6 +522,55 @@ model round trip with the exact prompt, tool definitions, response, usage,
 and provider metadata. Observations in it are already redacted. Inline image
 and file bytes are replaced with byte counts. Open it with
 `npx unbox-ai .e2e/ai-trace.json` for the default output; see [Debugging a run](/debugging#agent-steps).
+
+### Watch mode
+
+<CodeGroup>
+```bash npm
+npx e2e run --watch
+npx e2e run --watch tests/checkout.e2e.ts --headed
+```
+
+```bash pnpm
+pnpm exec e2e run --watch
+pnpm exec e2e run --watch tests/checkout.e2e.ts --headed
+```
+
+```bash bun
+bunx e2e run --watch
+bunx e2e run --watch tests/checkout.e2e.ts --headed
+```
+</CodeGroup>
+
+`--watch` runs the selection, prints the summary, and waits instead of
+exiting. A saved test file (one the config's [`tests`](/reference/config#tests)
+globs match) runs again on its own, whole, under the command line's other
+filters (`--tag`, `--grep`, `--target`) in place of the positionals; a saved
+config runs the whole selection again. Changes that land during a run wait
+for it and run next, together. The terminal is cleared before each rerun, and
+a banner names what triggered it.
+
+On a terminal, keys drive it as in vitest:
+
+| Key | Runs |
+| --- | --- |
+| `a` | every test the command line selected, with the `p` and `t` filters cleared |
+| `f` | the tests the last run did not pass, as `--last-failed` reads them from its report |
+| `u` | every selected test with `--update-snapshots` |
+| `p` | prompts for a positional (a file, a bare name, a glob) the next runs select with; empty clears it |
+| `t` | prompts for a title pattern, as `--grep`; empty clears it |
+| `enter` | the selection again, under the `p` and `t` filters |
+| `h` | shows the keys |
+| `q` | quits; during a run, interrupts it first, as Ctrl-C does |
+
+Every rerun is a complete run: it writes `report.json` and the reporter
+files, and starts and stops the app command. To keep a dev server up across
+reruns, start it yourself and set
+[`reuseExisting`](/reference/config#command) on the command. `--last-failed`
+applies to the first run only. The exit code on quit is the last run's.
+Without a terminal on stdin, only file changes rerun. Not for CI: a process
+that never exits on its own hangs the job, so `--watch` is refused when `CI`
+is set.
 
 ### Signals
 
