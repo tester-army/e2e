@@ -27,9 +27,9 @@ Or declare it in the client's project config (`.mcp.json` for Claude Code,
 { "mcpServers": { "e2e": { "command": "npx", "args": ["e2e", "mcp"] } } }
 ```
 
-Sessions run on the project's `e2e.config.ts`: in a project without one,
-`open_session` fails with `CONFIG_NOT_FOUND`, so set it up first (topic
-`setup`). No model is needed: without the optional `ai` package, sessions
+Sessions run on the project's config (`e2e.config.ts` or `e2e.config.mts`):
+in a project without one, `open_session` fails with `CONFIG_NOT_FOUND`, so
+set it up first (topic `setup`). No model is needed: without the optional `ai` package, sessions
 open and the deterministic tools work.
 
 Flags: `--config <path>` names the default config file, `--target <name>`
