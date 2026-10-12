@@ -49,6 +49,8 @@ const HEIGHT = 1260;
 /** Pages that show the brand card instead of their own. */
 const BRAND_PAGES = new Set(['index']);
 const BRAND_CARD = `${SITE}/images/og.png`;
+/** Where the mascot's pixels start, so the text lines up under it. */
+const MASCOT_LEFT = 65;
 const META_KEYS = ['og:image', 'twitter:image'] as const;
 /** The faces the cards use, each from a file in `og/fonts/`. */
 const FONTS = [
@@ -141,7 +143,7 @@ function assets(): Buffer[] {
   const og = JSON.parse(readFileSync(fileURLToPath(import.meta.resolve('@vercel/og/package.json')), 'utf8')) as { version: string };
   return [
     Buffer.from(
-      JSON.stringify([og.version, WIDTH, HEIGHT, FONTS, card.toString(), titleSize.toString(), h.toString(), render.toString()]),
+      JSON.stringify([og.version, WIDTH, HEIGHT, MASCOT_LEFT, FONTS, card.toString(), titleSize.toString(), h.toString(), render.toString()]),
     ),
     readFileSync(BACKGROUND),
     readFileSync(join(OG, 'mascot.png')),
@@ -231,11 +233,11 @@ function card(page: Page, background: string, mascot: string): Element {
       {
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         justifyContent: 'center',
         width: '100%',
         height: '100%',
-        padding: '0 220px',
+        padding: `0 220px 0 ${MASCOT_LEFT}px`,
       },
       h(
         'div',
@@ -251,7 +253,7 @@ function card(page: Page, background: string, mascot: string): Element {
           fontWeight: 500,
           lineHeight: 1.05,
           letterSpacing: '-0.01em',
-          textAlign: 'center',
+          textAlign: 'left',
         },
         page.title,
       ),
@@ -266,7 +268,7 @@ function card(page: Page, background: string, mascot: string): Element {
                 fontSize: 60,
                 fontWeight: 400,
                 lineHeight: 1.3,
-                textAlign: 'center',
+                textAlign: 'left',
                 textWrap: 'balance',
                 color: '#a3a3a3',
               },
