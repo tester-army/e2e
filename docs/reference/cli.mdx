@@ -568,9 +568,10 @@ On a terminal, keys drive it as in vitest:
 
 During a run, any of these keys (and space or `c`) cancels it, as an
 interrupt would, a second one forces it, and the session waits again.
-Ctrl-C, Ctrl-D, or escape
-interrupts the run and ends the session; inside a `p` or `t` prompt they
-close the prompt instead. Ctrl-Z suspends the process as usual.
+Ctrl-C or Ctrl-D
+interrupts the run and ends the session, from inside a `p` or `t` prompt
+too; escape does the same outside a prompt and only closes the prompt
+inside one. Ctrl-Z suspends the process as usual.
 
 Every rerun is a complete run: it writes `report.json` and the reporter
 files, and starts and stops the app command. To keep a dev server up across
@@ -581,8 +582,8 @@ The exit code on quit is that of the last run that finished.
 
 Without a terminal on stdin, only file changes rerun. Not for CI: a process
 that never exits on its own hangs the job, so `--watch` is refused when `CI`
-is set. It is refused with `--reporter json` too, and ends after the first
-run when the config's `reporters` include `json`.
+is set. It is refused with `--reporter json` too, and ends with exit code 2
+after the first run when the config's `reporters` include `json`.
 
 ### Signals
 

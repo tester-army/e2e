@@ -79,11 +79,16 @@ describe('classifyChange and watchRoots', () => {
   beforeEach(() => {
     root = mkdtempSync(path.join(tmpdir(), 'e2e-watch-'));
     mkdirSync(path.join(root, 'tests', 'agent'), { recursive: true });
-    scope = { projectRoot: root, configPath: path.join(root, 'e2e.config.ts'), tests: ['tests/**/*.e2e.ts', '!tests/wip/**'] };
+    scope = {
+      projectRoot: root,
+      configPath: path.join(root, 'e2e.config.ts'),
+      tests: ['tests/**/*.e2e.ts', '!tests/wip/**'],
+      written: [path.join(root, 'test-results'), path.join(root, 'tests', 'cache')],
+    };
   });
   afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-  it('names a test file, a source file a test could import, the config, and nothing under node_modules or a dot directory', () => {
+  it('names a test file, a source file a test could import, the config, and nothing under node_modules, a dot directory, or what the run writes', () => {
     const globs = compileGlobList(scope.tests);
     const at = (...segments: string[]) => classifyChange(scope, globs, path.join(root, ...segments));
     expect(at('tests', 'agent', 'signup.e2e.ts')).toEqual({ kind: 'test', file: 'tests/agent/signup.e2e.ts' });
@@ -94,12 +99,15 @@ describe('classifyChange and watchRoots', () => {
     expect(at('tests', 'wip', 'draft.e2e.ts')).toBeUndefined();
     expect(at('node_modules', 'pkg', 'x.e2e.ts')).toBeUndefined();
     expect(at('.e2e', 'results', 'x.ts')).toBeUndefined();
+    expect(at('test-results', 'report.json')).toBeUndefined();
+    expect(at('tests', 'cache', 'abc.json')).toBeUndefined();
     expect(at('..', 'other', 'tests', 'x.e2e.ts')).toBeUndefined();
   });
 
   it('a glob from the project root watches the root flat and its directories, not node_modules or dot directories', () => {
     mkdirSync(path.join(root, 'node_modules'));
     mkdirSync(path.join(root, '.e2e'));
+    mkdirSync(path.join(root, 'test-results'));
     mkdirSync(path.join(root, 'src'));
     const wide: WatchScope = { ...scope, tests: ['**/*.e2e.ts'] };
     expect(watchRoots(wide, compileGlobList(wide.tests))).toEqual([
@@ -150,7 +158,7 @@ describe('ChangeWatcher', () => {
     vi.useFakeTimers();
     root = mkdtempSync(path.join(tmpdir(), 'e2e-watch-'));
     mkdirSync(path.join(root, 'tests'));
-    scope = { projectRoot: root, configPath: path.join(root, 'e2e.config.ts'), tests: ['tests/**/*.e2e.ts'] };
+    scope = { projectRoot: root, configPath: path.join(root, 'e2e.config.ts'), tests: ['tests/**/*.e2e.ts'], written: [] };
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -274,7 +282,8 @@ describe('triggers and keys', () => {
 describe('watchSession', () => {
   let root: string;
   let configPath: string;
-  const loaded = (): RunOutcome['config'] => ({ projectRoot: root, configPath, tests: ['tests/**/*.e2e.ts'], reporters: ['list'] }) as unknown as RunOutcome['config'];
+  const loaded = (): RunOutcome['config'] =>
+    ({ projectRoot: root, configPath, tests: ['tests/**/*.e2e.ts'], reporters: ['list'], output: '.e2e', cache: { dir: path.join(root, '.e2e', 'cache') } }) as unknown as RunOutcome['config'];
   /** A run's outcome: `config` is the loaded one unless the run is one whose config failed to load. */
   const outcome = (exitCode: number, config: RunOutcome['config']): RunOutcome => ({ exitCode, config }) as unknown as RunOutcome;
   const passed = (exitCode = 0): RunOutcome => outcome(exitCode, loaded());

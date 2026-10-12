@@ -90,18 +90,21 @@ export interface WatchScope {
   readonly configPath: string | undefined;
   /** The config's `tests` globs; none when the config did not load. */
   readonly tests: readonly string[];
+  /** Directories the run itself writes, by absolute path: the output and the cache. A change there is the run's own, not a save. */
+  readonly written: readonly string[];
 }
 
 /** The scope a run leaves behind: its config, or for a config that did not load, the file it would have been. */
 function scopeOf(outcome: RunOutcome, cwd: string, configPath: string | undefined): WatchScope {
   if (outcome.config !== undefined) {
-    return { projectRoot: outcome.config.projectRoot, configPath: outcome.config.configPath, tests: outcome.config.tests };
+    const { projectRoot, configPath: loadedPath, tests, output, cache } = outcome.config;
+    return { projectRoot, configPath: loadedPath, tests, written: [path.resolve(projectRoot, output), cache.dir] };
   }
   try {
     const discovered = discoverConfig(cwd, configPath);
-    return { projectRoot: discovered.projectRoot, configPath: discovered.configPath, tests: [] };
+    return { projectRoot: discovered.projectRoot, configPath: discovered.configPath, tests: [], written: [] };
   } catch {
-    return { projectRoot: cwd, configPath: undefined, tests: [] };
+    return { projectRoot: cwd, configPath: undefined, tests: [], written: [] };
   }
 }
 
@@ -119,13 +122,22 @@ function skippedDirectory(name: string): boolean {
   return name === 'node_modules' || name.startsWith('.');
 }
 
+/** Whether `absolutePath` is `dir` or under it. */
+function isInside(dir: string, absolutePath: string): boolean {
+  const relative = path.relative(dir, absolutePath);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
 /**
  * What the scope makes of a changed path: a test file, a source file a test
  * could import, the config, or nothing it watches. Paths under
- * `node_modules` or a dot directory are nothing, as discovery skips them.
+ * `node_modules` or a dot directory are nothing, as discovery skips them;
+ * so is what the run writes (`report.json`, a recording), or the run would
+ * trigger itself.
  */
 export function classifyChange(scope: WatchScope, globs: CompiledGlobList, absolutePath: string): WatchChange | undefined {
   if (scope.configPath !== undefined && path.resolve(absolutePath) === scope.configPath) return { kind: 'config' };
+  if (scope.written.some((dir) => isInside(dir, absolutePath))) return undefined;
   const relative = path.relative(scope.projectRoot, absolutePath);
   if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) return undefined;
   const segments = relative.split(path.sep);
@@ -160,7 +172,7 @@ export function watchRoots(scope: WatchScope, globs: CompiledGlobList): WatchRoo
     if (literalPrefix(glob).length === glob.segments.length) dir = path.dirname(dir);
     while (!existsSync(dir) && dir !== scope.projectRoot && dir.startsWith(scope.projectRoot)) dir = path.dirname(dir);
     if (dir === scope.projectRoot) {
-      roots.push({ dir, recursive: false }, ...childDirectories(dir).map((child) => ({ dir: child, recursive: true })));
+      roots.push({ dir, recursive: false }, ...childDirectories(dir, scope.written).map((child) => ({ dir: child, recursive: true })));
     } else {
       roots.push({ dir, recursive: true });
     }
@@ -178,12 +190,13 @@ export function watchRoots(scope: WatchScope, globs: CompiledGlobList): WatchRoo
   );
 }
 
-/** The directories under `dir` worth watching, by absolute path. */
-function childDirectories(dir: string): string[] {
+/** The directories under `dir` worth watching, by absolute path: not the skipped names, not where the run writes. */
+function childDirectories(dir: string, written: readonly string[]): string[] {
   try {
     return readdirSync(dir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && !skippedDirectory(entry.name))
-      .map((entry) => path.join(dir, entry.name));
+      .map((entry) => path.join(dir, entry.name))
+      .filter((child) => !written.some((out) => isInside(out, child)));
   } catch {
     return [];
   }
