@@ -544,7 +544,7 @@ describe('e2e --version and --help', () => {
       '--no-cache',
       '--strict-cache',
       '-u',
-      '--watch',
+      '-w',
       '--reporter',
       '--output',
       '--debug',

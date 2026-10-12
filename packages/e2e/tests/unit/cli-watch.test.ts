@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { PassThrough } from 'node:stream';
 import picocolors from 'picocolors';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { compileGlobList } from '../../src/internal/globs.ts';
@@ -40,16 +41,16 @@ describe('planRun', () => {
     });
   });
 
-  it('keeps the positionals on a config change and on enter, under the p and t filters', () => {
+  it('keeps the positionals on a config change and on r, under the p and t filters', () => {
     expect(planRun(base, NO_FILTERS, { kind: 'config' })).toEqual({ ...base, lastFailed: false });
     const filters = { file: 'login', title: /signs in/ };
-    expect(planRun(base, filters, { kind: 'key', key: 'enter' })).toEqual({ ...base, lastFailed: false, files: ['login'], grep: [/signs in/] });
+    expect(planRun(base, filters, { kind: 'key', key: 'r' })).toEqual({ ...base, lastFailed: false, files: ['login'], grep: [/signs in/] });
   });
 
-  it('a and u run everything the command line selected; f reruns the last report', () => {
+  it('a runs everything the command line selected; u updates the current pattern; f reruns the last report', () => {
     const filters = { file: 'login', title: /signs in/ };
     expect(planRun(base, filters, { kind: 'key', key: 'a' })).toEqual({ ...base, lastFailed: false });
-    expect(planRun(base, filters, { kind: 'key', key: 'u' })).toEqual({ ...base, lastFailed: false, updateSnapshots: true });
+    expect(planRun(base, filters, { kind: 'key', key: 'u' })).toEqual({ ...base, lastFailed: false, updateSnapshots: true, files: ['login'], grep: [/signs in/] });
     expect(planRun(base, filters, { kind: 'key', key: 'f' })).toEqual({ ...base, lastFailed: true, passWithNoTests: true, files: ['login'], grep: [/signs in/] });
   });
 });
@@ -164,8 +165,11 @@ describe('triggers and keys', () => {
   });
 
   it('maps keypresses, Ctrl-C included', () => {
-    expect(keyOf({ name: 'return', ctrl: false })).toBe('enter');
+    expect(keyOf({ name: 'return', ctrl: false })).toBe('a');
     expect(keyOf({ name: 'a', ctrl: false })).toBe('a');
+    expect(keyOf({ name: 'r', ctrl: false })).toBe('r');
+    expect(keyOf({ name: 'space', ctrl: false })).toBe('cancel');
+    expect(keyOf({ name: 'c', ctrl: false })).toBe('cancel');
     expect(keyOf({ name: 'c', ctrl: true })).toBe('interrupt');
     expect(keyOf({ name: 'd', ctrl: true })).toBe('interrupt');
     expect(keyOf({ name: 'a', ctrl: true })).toBeUndefined();
@@ -262,6 +266,48 @@ describe('watchSession', () => {
 
     signals.escalate(() => undefined);
     await expect(session).resolves.toBe(0);
+  });
+
+  it('cancels the run a key lands on, keeps the exit code of the last finished run, and quits on q', async () => {
+    const stdin = new PassThrough() as unknown as NodeJS.ReadStream;
+    const signals = new SignalLadder();
+    const cancels: AbortSignal[] = [];
+    let release: (() => void) | undefined;
+    const run = async (_options: RunOptions, cancel: AbortSignal): Promise<RunOutcome> => {
+      cancels.push(cancel);
+      if (cancels.length === 2) await new Promise<void>((resolve) => (release = resolve));
+      return { exitCode: cancels.length === 2 ? 130 : 1, config: undefined } as unknown as RunOutcome;
+    };
+    const written: string[] = [];
+    const session = watchSession({
+      base: {},
+      cwd: root,
+      signals,
+      run,
+      stdin,
+      write: (text) => written.push(text),
+      pc,
+      clear: false,
+      watch: () => ({ close: () => undefined }),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(cancels).toHaveLength(1);
+    stdin.write('\r');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(cancels).toHaveLength(2);
+    expect(written.join('')).toContain(' RERUN  all tests x2');
+
+    stdin.write('a');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(cancels[1]!.aborted).toBe(true);
+    release!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(cancels).toHaveLength(2);
+    expect(written.join('')).toContain('run cancelled');
+    expect(signals.interruptSignal.aborted).toBe(false);
+
+    stdin.write('q');
+    await expect(session).resolves.toBe(1);
   });
 
   it('ends after a run the interrupt cut short, with its exit code', async () => {

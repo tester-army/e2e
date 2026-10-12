@@ -22,7 +22,7 @@ export type WatchTrigger =
   | { readonly kind: 'start' }
   | { readonly kind: 'files'; readonly files: readonly string[] }
   | { readonly kind: 'config' }
-  | { readonly kind: 'key'; readonly key: 'enter' | 'a' | 'f' | 'u' };
+  | { readonly kind: 'key'; readonly key: 'a' | 'r' | 'f' | 'u' };
 
 /** The filters the keys set, over the command line's: a positional (`p`) and a title pattern (`t`). */
 export interface WatchFilters {
@@ -39,7 +39,8 @@ export const NO_FILTERS: WatchFilters = { file: undefined, title: undefined };
  * nothing failed is then an empty pass, not `NO_TESTS`. A changed file
  * runs whole, inside every other filter of the command line, in place of
  * the positionals; the keys and a config change keep the positionals, or
- * the `p` filter over them.
+ * the `p` filter over them, except `a`, which runs the command line's
+ * selection whole, as `a` and enter do in vitest.
  */
 export function planRun(base: RunOptions, filters: WatchFilters, trigger: WatchTrigger): RunOptions {
   if (trigger.kind === 'start') return base;
@@ -56,14 +57,14 @@ export function planRun(base: RunOptions, filters: WatchFilters, trigger: WatchT
       return filtered;
     case 'key':
       switch (trigger.key) {
-        case 'enter':
-          return filtered;
         case 'a':
           return { ...filtered, files: base.files, grep: base.grep };
+        case 'r':
+          return filtered;
         case 'f':
           return { ...filtered, lastFailed: true, passWithNoTests: true };
         case 'u':
-          return { ...filtered, files: base.files, grep: base.grep, updateSnapshots: true };
+          return { ...filtered, updateSnapshots: true };
       }
   }
 }
@@ -227,15 +228,23 @@ export interface Keypress {
   readonly sequence?: string | undefined;
 }
 
-export type WatchKey = 'enter' | 'a' | 'f' | 'u' | 'p' | 't' | 'h' | 'q' | 'interrupt';
+export type WatchKey = 'a' | 'r' | 'f' | 'u' | 'p' | 't' | 'h' | 'q' | 'cancel' | 'interrupt';
 
-/** The watch key a keypress means, or none. Ctrl-C arrives as a keypress in raw mode, not a signal. */
+/**
+ * The watch key a keypress means, or none. Enter is `a`, as in vitest;
+ * space and `c` only cancel a run. Ctrl-C arrives as a keypress in raw
+ * mode, not a signal.
+ */
 export function keyOf(press: Keypress): WatchKey | undefined {
   if (press.ctrl) return press.name === 'c' || press.name === 'd' ? 'interrupt' : undefined;
   switch (press.name) {
     case 'return':
-      return 'enter';
+      return 'a';
+    case 'space':
+    case 'c':
+      return 'cancel';
     case 'a':
+    case 'r':
     case 'f':
     case 'u':
     case 'p':
@@ -249,12 +258,12 @@ export function keyOf(press: Keypress): WatchKey | undefined {
 }
 
 const HELP_LINES: readonly (readonly [key: string, meaning: string])[] = [
-  ['a', 'rerun all tests'],
+  ['a, enter', 'rerun all tests'],
+  ['r', 'rerun current pattern tests'],
   ['f', 'rerun only failed tests'],
-  ['u', 'update snapshots'],
+  ['u', 'update snapshot'],
   ['p', 'filter by a filename'],
   ['t', 'filter by a test name regex pattern'],
-  ['enter', 'rerun with the filters'],
   ['q', 'quit'],
 ];
 
@@ -273,7 +282,7 @@ export function bannerText(pc: ReturnType<typeof picocolors.createColors>, trigg
       : trigger.kind === 'config'
         ? 'config changed'
         : trigger.kind === 'key'
-          ? { enter: 'rerun', a: 'all tests', f: 'failed tests', u: 'update snapshots' }[trigger.key]
+          ? { a: 'all tests', r: 'current pattern', f: 'failed tests', u: 'update snapshot' }[trigger.key]
           : 'start';
   const applied = [
     ...(filters.file === undefined ? [] : [`files: ${filters.file}`]),
@@ -291,8 +300,12 @@ export interface WatchSessionOptions {
   readonly base: RunOptions;
   readonly cwd: string;
   readonly signals: SignalLadder;
-  /** Executes one run: the real runner, with the session's signals and the process's output, and the telemetry record. */
-  readonly run: (options: RunOptions) => Promise<RunOutcome>;
+  /**
+   * Executes one run: the real runner, with the session's signals and the
+   * process's output, and the telemetry record. `cancel` aborts this run
+   * alone, as the interrupt would, when a key asks for it.
+   */
+  readonly run: (options: RunOptions, cancel: AbortSignal) => Promise<RunOutcome>;
   /** The keyboard, when stdin is a terminal; without it only file changes rerun. */
   readonly stdin: NodeJS.ReadStream | undefined;
   /** Writes the session's own lines to the terminal. */
@@ -305,9 +318,10 @@ export interface WatchSessionOptions {
 
 /**
  * The watch loop: runs, then waits for a change or a key, and runs again,
- * until a quit or a signal. Answers the last run's exit code. A change that
- * lands during a run is kept and runs next; a key during a run is ignored,
- * except `q` and Ctrl-C, which interrupt it as a signal would.
+ * until a quit or a signal. Answers the exit code of the last run that
+ * finished. A change that lands during a run is kept and runs next; a key
+ * during a run cancels it, as in vitest, and the loop waits again, while
+ * Ctrl-C interrupts it as a signal would and ends the session.
  */
 export async function watchSession(options: WatchSessionOptions): Promise<number> {
   const { pc, signals } = options;
@@ -318,7 +332,7 @@ export async function watchSession(options: WatchSessionOptions): Promise<number
   let count = 0;
   let scope: WatchScope | undefined;
   let watcher: ChangeWatcher | undefined;
-  let running = false;
+  let running: AbortController | undefined;
   let wake: ((value: Wake) => void) | undefined;
   let exitCode = 0;
 
@@ -328,11 +342,14 @@ export async function watchSession(options: WatchSessionOptions): Promise<number
   };
   const keyboard = options.stdin === undefined ? undefined : new Keyboard(options.stdin);
   keyboard?.listen((key) => {
-    if (key === 'interrupt' || (running && key === 'q')) {
+    if (key === 'interrupt') {
       signals.escalate();
       return;
     }
-    if (running) return;
+    if (running !== undefined) {
+      running.abort();
+      return;
+    }
     switch (key) {
       case 'q':
         wake?.('quit');
@@ -345,12 +362,12 @@ export async function watchSession(options: WatchSessionOptions): Promise<number
         wake?.(key);
         return;
       case 'a':
-      case 'u':
         filters = NO_FILTERS;
         arrive({ kind: 'key', key });
         return;
+      case 'r':
       case 'f':
-      case 'enter':
+      case 'u':
         arrive({ kind: 'key', key });
     }
   });
@@ -361,15 +378,20 @@ export async function watchSession(options: WatchSessionOptions): Promise<number
 
   try {
     for (;;) {
-      running = true;
+      const cancel = new AbortController();
+      running = cancel;
       count += 1;
       if (trigger.kind !== 'start') {
         options.write(`${options.clear ? CLEAR_SCREEN : '\n'}${bannerText(pc, trigger, filters, count)}`);
       }
-      const outcome = await options.run(planRun(options.base, filters, trigger));
-      exitCode = outcome.exitCode;
-      running = false;
-      if (signals.interruptSignal.aborted) break;
+      const outcome = await options.run(planRun(options.base, filters, trigger), cancel.signal);
+      running = undefined;
+      if (signals.interruptSignal.aborted) {
+        exitCode = outcome.exitCode;
+        break;
+      }
+      if (cancel.signal.aborted) options.write(`\n${pc.yellow('run cancelled')}\n`);
+      else exitCode = outcome.exitCode;
 
       const next = scopeOf(outcome, options.cwd, options.base.configPath);
       if (scope === undefined || !sameScope(scope, next)) {
@@ -411,7 +433,7 @@ export async function watchSession(options: WatchSessionOptions): Promise<number
         keyboard?.resume();
         if (answer !== undefined) {
           filters = answer;
-          woken = { kind: 'key', key: 'enter' };
+          woken = { kind: 'key', key: 'r' };
         }
       }
       if (woken === 'quit') break;
