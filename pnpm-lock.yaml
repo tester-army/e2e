@@ -524,8 +524,8 @@ importers:
         specifier: 26.6.2
         version: 26.6.2
       agent-device:
-        specifier: 0.21.22
-        version: 0.21.22(ai@7.0.134(zod@4.6.1))
+        specifier: 0.21.25
+        version: 0.21.25(ai@7.0.134(zod@4.6.1))
       e2e:
         specifier: workspace:*
         version: link:../e2e

@@ -51,7 +51,7 @@
     "@e2e-dev/mobile": ">=0.11.1 <1",
     "e2e": ">=0.15.0 <1",
     "@limrun/api": ">=0.59.0 <1",
-    "agent-device": "0.21.22"
+    "agent-device": "0.21.25"
   },
   "devDependencies": {
     "@e2e-dev/mobile": "workspace:*",
@@ -60,7 +60,7 @@
     "typescript": "7.0.2",
     "vitest": "5.0.1",
     "@limrun/api": "0.59.0",
-    "agent-device": "0.21.22"
+    "agent-device": "0.21.25"
   },
   "engines": {
     "node": "^22.22.3 || >=24.8.0"
