@@ -9,6 +9,7 @@
 import { createRequire } from 'node:module';
 import { createAgentDeviceClient } from 'agent-device';
 import { ConfigurationError, defineEngine, obj, type EngineAppCheckInfo, type EngineAppDeclaration, type EngineHandle } from 'e2e/engine';
+import { withinBudget, withinInputBudget } from './support.ts';
 import { createDeviceFixture } from './device.ts';
 import type { ClientFactory, MobileOptions, MobilePlatform } from './options.ts';
 import { isLink } from './links.ts';
@@ -31,30 +32,32 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
     startAttempt: (context) => surface.startAttempt(context),
     endAttempt: (context) => surface.endAttempt(context),
     dispose: (context) => surface.dispose(context),
-    observe: (operation, options) => surface.observe(operation, options),
-    locate: (expression, operation) => surface.locate(expression, operation),
-    perform: (ref, action, operation) => surface.perform(ref, action, operation),
+    // agent-device calls are bounded by the signal alone, and the harness
+    // signal does not abort at an operation's budget: each entry enforces it.
+    observe: (operation, options) => withinBudget(operation, 'observe', (bounded) => surface.observe(bounded, options)),
+    locate: (expression, operation) => withinBudget(operation, 'locate', (bounded) => surface.locate(expression, bounded)),
+    perform: (ref, action, operation) => withinInputBudget(operation, action.kind, (bounded) => surface.perform(ref, action, bounded)),
     actions: DEVICE_ACTIONS,
-    performAt: (point, action, operation) => surface.performAt(point, action, operation),
+    performAt: (point, action, operation) => withinInputBudget(operation, action.kind, (bounded) => surface.performAt(point, action, bounded)),
     pointerActions: DEVICE_POINTER_ACTIONS,
     keyboard: {
-      type: (text, keyboardOptions, operation) => surface.typeText(text, keyboardOptions, operation),
-      press: (key, operation) => surface.pressFocusedKey(key, operation),
-      dismiss: (operation) => surface.dismissKeyboard(operation.signal),
+      type: (text, keyboardOptions, operation) => withinInputBudget(operation, 'type', (bounded) => surface.typeText(text, keyboardOptions, bounded)),
+      press: (key, operation) => withinInputBudget(operation, 'press', (bounded) => surface.pressFocusedKey(key, bounded)),
+      dismiss: (operation) => withinInputBudget(operation, 'keyboard dismiss', (bounded) => surface.dismissKeyboard(bounded.signal)),
     },
     validateApp: (app, info) => validateApp(app, info, surface.options.platform),
     // No `open`: a device app has no URL to open, so the runner serves
     // `app.open()` with `restart`, the fresh launch of the pinned app, which
     // is also the device's "recreate the context".
     session: {
-      back: (operation) => surface.back(operation),
-      restart: (operation) => surface.restart(operation),
-      reset: (operation) => surface.reset(operation),
+      back: (operation) => withinInputBudget(operation, 'back', (bounded) => surface.back(bounded)),
+      restart: (operation) => withinBudget(operation, 'restart', (bounded) => surface.restart(bounded)),
+      reset: (operation) => withinBudget(operation, 'reset', (bounded) => surface.reset(bounded)),
     },
     artifacts: {
-      screenshot: (label, operation) => surface.screenshot(label, operation),
-      startVideo: (operation) => surface.startVideo(operation),
-      stopVideo: (operation) => surface.stopVideo(operation),
+      screenshot: (label, operation) => withinBudget(operation, 'screenshot', (bounded) => surface.screenshot(label, bounded)),
+      startVideo: (operation) => withinBudget(operation, 'start video', (bounded) => surface.startVideo(bounded)),
+      stopVideo: (operation) => withinBudget(operation, 'stop video', (bounded) => surface.stopVideo(bounded)),
     },
     fixtures: {
       device: (context) => createDeviceFixture(surface, context),

@@ -14,8 +14,8 @@
  * | anything else, agent-device's own timeouts included         | ENGINE_FAILURE with the text |
  *
  * `OPERATION_TIMEOUT` is never produced here. In the contract it means the
- * harness budget expired, which `raceAbort` already reports, and core
- * replaces its message with a bare `operation timed out`. A timeout
+ * operation budget expired, which `withinBudget` (support.ts) reports, and
+ * core replaces its message with a bare `operation timed out`. A timeout
  * agent-device itself reports (a simulator boot, the runner connecting, an
  * app launch) is a device-side fault whose text is the diagnosis, so it
  * stays `ENGINE_FAILURE` and keeps its message and hint.

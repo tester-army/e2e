@@ -1,7 +1,44 @@
-import { describe, expect, it } from 'vitest';
-import { sanitizeFilename, screenLocation, swipeWithin } from '../../src/support.ts';
+import { describe, expect, it, vi } from 'vitest';
+import { EngineError, raceAbort, type OperationContext } from 'e2e/engine';
+import { sanitizeFilename, screenLocation, swipeWithin, withinBudget, withinInputBudget } from '../../src/support.ts';
 
 describe('support helpers', () => {
+  it('ends a call at its budget as OPERATION_TIMEOUT, keeps a caller abort CANCELLED, and never aborts a signal kept past the call', async () => {
+    const operation = (signal = new AbortController().signal): OperationContext => ({ signal, timeoutMs: 100, runId: 'run-1', attemptId: 'a1', origin: 'test' });
+    vi.useFakeTimers();
+    try {
+      let kept: AbortSignal | undefined;
+      await withinBudget(operation(), 'read', async (bounded) => {
+        kept = bounded.signal;
+      });
+      await vi.advanceTimersByTimeAsync(200);
+      expect(kept?.aborted).toBe(false);
+
+      // An inner wait that reports its abort as a cancellation is still the budget's timeout.
+      const hung = withinBudget(operation(), 'tap', (bounded) => raceAbort(new Promise<never>(() => undefined), bounded.signal, 'tap'));
+      const timedOut = expect(hung).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT', message: 'tap timed out' });
+      await vi.advanceTimersByTimeAsync(100);
+      await timedOut;
+
+      const caller = new AbortController();
+      const stopped = withinBudget(operation(caller.signal), 'tap', (bounded) => raceAbort(new Promise<never>(() => undefined), bounded.signal, 'tap'));
+      caller.abort();
+      await expect(stopped).rejects.toBeInstanceOf(EngineError);
+      await expect(stopped).rejects.toMatchObject({ code: 'CANCELLED' });
+
+      // An input with no time left to answer is never sent.
+      let sent = false;
+      await expect(
+        withinInputBudget({ ...operation(), timeoutMs: 1 }, 'tap', async () => {
+          sent = true;
+        }),
+      ).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT', message: 'tap timed out before it was sent' });
+      expect(sent).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('reports the app and the screen title as a location that is not a URL', () => {
     expect(screenLocation('com.apple.Preferences', 'General')).toBe('com.apple.Preferences / General');
     expect(screenLocation('com.apple.Preferences', undefined)).toBe('com.apple.Preferences');

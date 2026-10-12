@@ -813,6 +813,37 @@ describe('observation', () => {
     expect(existsSync(path.join(artifactsDir, 'screenshots'))).toBe(false);
   });
 
+  // Every operation entry runs under its budget; an input's timeout is possibly committed, so the runner never repeats it.
+  const BUDGETED: ReadonlyArray<readonly [string, string, 'OPERATION_TIMEOUT' | 'ACTION_MAY_HAVE_COMMITTED', (h: Harness, op: OperationContext) => Promise<unknown>]> = [
+    ['observe', 'capture.snapshot', 'OPERATION_TIMEOUT', (h, op) => h.engine.observe!(op)],
+    ['locate', 'capture.snapshot', 'OPERATION_TIMEOUT', (h, op) => h.engine.locate!({ kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'About', exact: true } } }, op)],
+    ['screenshot', 'capture.screenshot', 'OPERATION_TIMEOUT', (h, op) => h.engine.artifacts!.screenshot('shot', op)],
+    ['restart', 'apps.open', 'OPERATION_TIMEOUT', (h, op) => h.engine.session!.restart!(op)],
+    ['reset', 'settings.update', 'OPERATION_TIMEOUT', (h, op) => h.engine.session!.reset!(op)],
+    ['startVideo', 'recording.record', 'OPERATION_TIMEOUT', (h, op) => h.engine.artifacts!.startVideo!(op)],
+    ['tap', 'interactions.press', 'ACTION_MAY_HAVE_COMMITTED', async (h, op) => h.engine.perform!((await observed(h, 'About')).ref, { kind: 'tap' }, op)],
+    ['tap at point', 'interactions.press', 'ACTION_MAY_HAVE_COMMITTED', (h, op) => h.engine.performAt!({ x: 10, y: 10 }, { kind: 'tap' }, op)],
+    ['type', 'interactions.type', 'ACTION_MAY_HAVE_COMMITTED', (h, op) => h.engine.keyboard!.type('hi', { replace: false }, op)],
+    ['press', 'command.keyboard', 'ACTION_MAY_HAVE_COMMITTED', (h, op) => h.engine.keyboard!.press('Enter', op)],
+    ['keyboard dismiss', 'command.keyboard', 'ACTION_MAY_HAVE_COMMITTED', (h, op) => h.engine.keyboard!.dismiss!(op)],
+    ['back', 'command.back', 'ACTION_MAY_HAVE_COMMITTED', (h, op) => h.engine.session!.back!(op)],
+  ];
+
+  it.each(BUDGETED)('ends %s, hung on %s, at its budget as %s', async (_entry, method, code, call) => {
+    const h = harness();
+    await openAttempt(h);
+    vi.useFakeTimers();
+    try {
+      h.fake.respond(method, () => new Promise(() => undefined));
+      const hung = call(h, { ...operation(), origin: 'test', timeoutMs: 2_000 });
+      const outcome = expect(hung).rejects.toMatchObject({ code });
+      await vi.advanceTimersByTimeAsync(10_000);
+      await outcome;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('cancels a snapshot when the operation aborts', async () => {
     const h = harness();
     h.fake.respond('capture.snapshot', () => new Promise(() => undefined));
