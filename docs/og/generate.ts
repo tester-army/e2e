@@ -50,6 +50,12 @@ const HEIGHT = 1260;
 const BRAND_PAGES = new Set(['index']);
 const BRAND_CARD = `${SITE}/images/og.png`;
 const META_KEYS = ['og:image', 'twitter:image'] as const;
+/** The faces the cards use, each from a file in `og/fonts/`. */
+const FONTS = [
+  { name: 'Stack Sans Notch', weight: 400, file: 'StackSansNotch-400.ttf' },
+  { name: 'Stack Sans Notch', weight: 500, file: 'StackSansNotch-500.ttf' },
+  { name: 'DM Mono', weight: 500, file: 'DMMono-500.ttf' },
+] as const;
 /** The PNG `tEXt` keyword that holds a card's digest. */
 const DIGEST_KEY = 'e2e-og-digest';
 
@@ -132,13 +138,14 @@ function pages(nav: { slug: string; eyebrow: string }[]): Page[] {
  * of the script does not re-render and re-commit every card.
  */
 function assets(): Buffer[] {
-  const fonts = readdirSync(join(OG, 'fonts')).filter((f) => f.endsWith('.ttf')).toSorted();
   const og = JSON.parse(readFileSync(fileURLToPath(import.meta.resolve('@vercel/og/package.json')), 'utf8')) as { version: string };
   return [
-    Buffer.from(JSON.stringify([og.version, WIDTH, HEIGHT, card.toString(), titleSize.toString(), h.toString()])),
+    Buffer.from(
+      JSON.stringify([og.version, WIDTH, HEIGHT, FONTS, card.toString(), titleSize.toString(), h.toString(), render.toString()]),
+    ),
     readFileSync(BACKGROUND),
     readFileSync(join(OG, 'mascot.png')),
-    ...fonts.map((f) => readFileSync(join(OG, 'fonts', f))),
+    ...FONTS.map((f) => readFileSync(join(OG, 'fonts', f.file))),
   ];
 }
 
@@ -335,13 +342,7 @@ if (check) {
     const bytes = readFileSync(join(OG, 'fonts', file));
     return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
   };
-  const options = {
-    fonts: [
-      { name: 'Stack Sans Notch', weight: 400 as const, style: 'normal' as const, data: font('StackSansNotch-400.ttf') },
-      { name: 'Stack Sans Notch', weight: 500 as const, style: 'normal' as const, data: font('StackSansNotch-500.ttf') },
-      { name: 'DM Mono', weight: 500 as const, style: 'normal' as const, data: font('DMMono-500.ttf') },
-    ],
-  };
+  const options = { fonts: FONTS.map(({ name, weight, file }) => ({ name, weight, style: 'normal' as const, data: font(file) })) };
   let rendered = 0;
   for (const { file, url, page, version, image } of stale) {
     if (page && version) {

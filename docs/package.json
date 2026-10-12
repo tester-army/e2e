@@ -26,6 +26,6 @@
     "@e2e-dev/limrun": "workspace:*"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": "^22.22.3 || >=24.8.0"
   }
 }

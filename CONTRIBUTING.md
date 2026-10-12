@@ -96,7 +96,8 @@ preview card under `docs/images/og/`, drawn from its title, description, and
 navigation section by `docs/og/generate.ts` with `@vercel/og`. Mintlify runs
 no build step of ours, so the cards and the `og:image` and `twitter:image`
 lines the script writes into each page's frontmatter are committed. A new
-page, a renamed one, or an edited title or description needs `pnpm docs:og`;
+page, a renamed one, one moved to another navigation section, or an edited
+title or description needs `pnpm docs:og`;
 `pnpm docs:check` fails until it has run. A page with no card falls back to
 the one Mintlify generates from its current title and description, drawn on
 the same background (`thumbnails` in `docs/docs.json`). Never point a page at
