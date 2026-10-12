@@ -165,8 +165,8 @@ suites that consume the built packages the way a user would.
   `@vercel/og` by `docs/og/generate.tsx` (`pnpm docs:og`, also run by
   `docs:dev`) and committed with the `og:image` frontmatter it writes, since
   Mintlify runs no build step of ours; `docs:check` fails on a stale card,
-  and a page without one falls back to Mintlify's own card styled by
-  `thumbnails` in `docs.json` on the same `images/og-background.png`).
+  and a page without one falls back to the brand card `images/og.png` set
+  in `docs.json`).
   The `e2e` build copies the
   pages to `packages/e2e/docs/` (gitignored,
   `packages/e2e/scripts/prepare-build.ts`) so the published package ships

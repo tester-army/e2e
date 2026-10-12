@@ -5,11 +5,11 @@
  * page's `og:image` and `twitter:image` frontmatter at it.
  *
  * The card is `images/og.png` with its text swapped for the page's: the same
- * dotted backdrop (`images/og-background.png`, the brand card with the
+ * dotted backdrop (`og/background.png`, the brand card with the
  * wordmark, tagline, and mascot painted out) with the mascot (`og/mascot.png`)
  * drawn back in a little larger, the e2e logo in the top-right corner, and the
  * page's navigation section, title, and description in the bottom left, all
- * in Stack Sans Notch. The home page points at the brand card itself.
+ * in Stack Sans Notch.
  *
  * Mintlify builds the site from the repository and runs nothing of ours, so
  * the cards are rendered here and committed. Each card's digest covers
@@ -21,12 +21,10 @@
  * rasterizer, and fails when a page or its PNG was committed without the
  * other.
  *
- * A page with no `og:image` falls back to the card Mintlify generates from its
- * live title and description, styled by `thumbnails` in `docs.json` with the
- * same background and font, so a page nobody ran this script for still gets a
- * current, on-brand card. That is also why this script removes the image lines
- * from pages that left the navigation instead of leaving them on a card it
- * deletes.
+ * A page with no `og:image` (the home page, or a page nobody ran this script
+ * for) falls back to the brand card set site-wide in `docs.json`. That is
+ * also why this script removes the image lines from pages that left the
+ * navigation instead of leaving them on a card it deletes.
  *
  * Usage, from `docs/` (`tsx` compiles the JSX, which Node's type stripping
  * does not):
@@ -47,12 +45,11 @@ const DOCS = fileURLToPath(new URL('..', import.meta.url));
 const OG = join(DOCS, 'og');
 const OUT = join(DOCS, 'images', 'og');
 const SITE = 'https://e2e.tester.army/docs';
-const BACKGROUND = join(DOCS, 'images', 'og-background.png');
+const BACKGROUND = join(OG, 'background.png');
 const WIDTH = 2400;
 const HEIGHT = 1260;
-/** Pages that show the brand card instead of their own. */
+/** Pages that keep the brand card (`images/og.png`, set site-wide in `docs.json`). */
 const BRAND_PAGES = new Set(['index']);
-const BRAND_CARD = `${SITE}/images/og.png`;
 /** Where the mascot's pixels start in `og/mascot.png`, as in `images/og.png`. */
 const MASCOT_LEFT = 65;
 const MASCOT_TOP = 62;
@@ -185,8 +182,8 @@ function digest(shared: string, page: Page): string {
 
 /** Title size by length, so long titles stay on one line. */
 function titleSize(title: string): number {
-  if (title.length <= 20) return 120;
-  return 104;
+  if (title.length <= 20) return 172;
+  return 140;
 }
 
 /** Every `.mdx` page under `dir` as a slug, skipping `node_modules` and snippets. */
@@ -259,7 +256,7 @@ function Card({ page, background, mascot }: CardProps): ReactElement {
             display: 'flex',
             fontFamily: 'DM Mono',
             fontWeight: 500,
-            fontSize: 34,
+            fontSize: 46,
             letterSpacing: '0.08em',
             textTransform: 'uppercase',
             color: '#a3a3a3',
@@ -270,7 +267,7 @@ function Card({ page, background, mascot }: CardProps): ReactElement {
         <div
           style={{
             display: 'flex',
-            marginTop: 24,
+            marginTop: 28,
             fontSize: titleSize(page.title),
             fontWeight: 500,
             lineHeight: 1.05,
@@ -283,9 +280,9 @@ function Card({ page, background, mascot }: CardProps): ReactElement {
           <div
             style={{
               display: 'flex',
-              marginTop: 28,
-              maxWidth: 1900,
-              fontSize: 46,
+              marginTop: 32,
+              maxWidth: 2100,
+              fontSize: 62,
               fontWeight: 400,
               lineHeight: 1.3,
               textWrap: 'balance',
@@ -325,11 +322,7 @@ const carded = new Map(all.map((page) => [page.slug, page]));
 const targets = slugs(DOCS).map((slug) => {
   const page = carded.get(slug);
   const version = page ? digest(shared, page) : undefined;
-  const url = version
-    ? `${SITE}/images/og/${slug}.png?v=${version}`
-    : BRAND_PAGES.has(slug) && nav.some((entry) => entry.slug === slug)
-      ? BRAND_CARD
-      : undefined;
+  const url = version ? `${SITE}/images/og/${slug}.png?v=${version}` : undefined;
   return { file: join(DOCS, `${slug}.mdx`), url, page, version, image: join(OUT, `${slug}.png`) };
 });
 const stale = targets.filter(({ file, url, version, image }) => {
