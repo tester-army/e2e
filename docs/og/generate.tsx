@@ -7,9 +7,9 @@
  * The card is `images/og.png` with its text swapped for the page's: the same
  * dotted backdrop (`images/og-background.png`, the brand card with the
  * wordmark, tagline, and mascot painted out) with the mascot (`og/mascot.png`)
- * and the centred wordmark (`og/wordmark.png`) drawn back in a little larger,
- * and the page's navigation section, title, and description in the bottom
- * left in Stack Sans Notch. The home page points at the brand card itself.
+ * drawn back in a little larger, the e2e logo in the top-right corner, and the
+ * page's navigation section, title, and description in the bottom left, all
+ * in Stack Sans Notch. The home page points at the brand card itself.
  *
  * Mintlify builds the site from the repository and runs nothing of ours, so
  * the cards are rendered here and committed. Each card's digest covers
@@ -56,11 +56,10 @@ const BRAND_CARD = `${SITE}/images/og.png`;
 /** Where the mascot's pixels start in `og/mascot.png`, as in `images/og.png`. */
 const MASCOT_LEFT = 65;
 const MASCOT_TOP = 62;
-/** How much larger than in `images/og.png` the mascot and the wordmark are drawn. */
+/** How much larger than in `images/og.png` the mascot is drawn. */
 const MASCOT_SCALE = 1.3;
-const WORDMARK_SCALE = 1.2;
-/** The wordmark cut-out (`og/wordmark.png`): its size and its centre in `images/og.png`. */
-const WORDMARK = { width: 656, height: 301, centerX: 1200, centerY: 558.5 };
+/** The e2e logo in the top-right corner, set in Stack Sans Notch. */
+const LOGO = { size: 132, top: 84, right: 96 };
 const META_KEYS = ['og:image', 'twitter:image'] as const;
 /** The faces the cards use, each from a file in `og/fonts/`. */
 const FONTS = [
@@ -141,11 +140,10 @@ function assets(): Buffer[] {
   const og = JSON.parse(readFileSync(fileURLToPath(import.meta.resolve('@vercel/og/package.json')), 'utf8')) as { version: string };
   return [
     Buffer.from(
-      JSON.stringify([og.version, WIDTH, HEIGHT, MASCOT_LEFT, MASCOT_TOP, MASCOT_SCALE, WORDMARK_SCALE, WORDMARK, FONTS, Card.toString(), titleSize.toString(), render.toString()]),
+      JSON.stringify([og.version, WIDTH, HEIGHT, MASCOT_LEFT, MASCOT_TOP, MASCOT_SCALE, LOGO, FONTS, Card.toString(), titleSize.toString(), render.toString()]),
     ),
     readFileSync(BACKGROUND),
     readFileSync(join(OG, 'mascot.png')),
-    readFileSync(join(OG, 'wordmark.png')),
     ...FONTS.map((f) => readFileSync(join(OG, 'fonts', f.file))),
   ];
 }
@@ -185,7 +183,7 @@ function digest(shared: string, page: Page): string {
     .slice(0, 10);
 }
 
-/** Title size by length, so long titles stay on one line below the wordmark. */
+/** Title size by length, so long titles stay on one line. */
 function titleSize(title: string): number {
   if (title.length <= 20) return 120;
   return 104;
@@ -209,13 +207,10 @@ interface CardProps {
   page: Page;
   background: string;
   mascot: string;
-  wordmark: string;
 }
 
 /** The card for one page. */
-function Card({ page, background, mascot, wordmark }: CardProps): ReactElement {
-  const wordmarkWidth = WORDMARK.width * WORDMARK_SCALE;
-  const wordmarkHeight = WORDMARK.height * WORDMARK_SCALE;
+function Card({ page, background, mascot }: CardProps): ReactElement {
   return (
     <div
       style={{
@@ -235,12 +230,19 @@ function Card({ page, background, mascot, wordmark }: CardProps): ReactElement {
         height={230 * MASCOT_SCALE}
         style={{ position: 'absolute', left: MASCOT_LEFT * (1 - MASCOT_SCALE), top: MASCOT_TOP * (1 - MASCOT_SCALE) }}
       />
-      <img
-        src={wordmark}
-        width={wordmarkWidth}
-        height={wordmarkHeight}
-        style={{ position: 'absolute', left: WORDMARK.centerX - wordmarkWidth / 2, top: WORDMARK.centerY - wordmarkHeight / 2 }}
-      />
+      <div
+        style={{
+          display: 'flex',
+          position: 'absolute',
+          top: LOGO.top,
+          right: LOGO.right,
+          fontSize: LOGO.size,
+          fontWeight: 500,
+          lineHeight: 1,
+        }}
+      >
+        e2e
+      </div>
       <div
         style={{
           display: 'flex',
@@ -358,7 +360,6 @@ if (check) {
 } else {
   const background = dataUrl(BACKGROUND);
   const mascot = dataUrl(join(OG, 'mascot.png'));
-  const wordmark = dataUrl(join(OG, 'wordmark.png'));
   const font = (file: string): ArrayBuffer => {
     const bytes = readFileSync(join(OG, 'fonts', file));
     return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
@@ -368,7 +369,7 @@ if (check) {
   for (const { file, url, page, version, image } of stale) {
     if (page && version) {
       mkdirSync(dirname(image), { recursive: true });
-      writeFileSync(image, withDigest(await render(<Card page={page} background={background} mascot={mascot} wordmark={wordmark} />, options), version));
+      writeFileSync(image, withDigest(await render(<Card page={page} background={background} mascot={mascot} />, options), version));
       process.stdout.write(`og: ${relative(DOCS, image)}\n`);
       rendered++;
     }
