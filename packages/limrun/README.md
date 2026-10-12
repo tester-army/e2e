@@ -10,8 +10,7 @@ import { limrun } from '@e2e-dev/limrun';
 const engine = mobile({ platform: 'ios', device: limrun() });
 ```
 
-Set `LIMRUN_API_KEY` in the run environment. Install `@limrun/api` and the
-same `agent-device` version as `@e2e-dev/mobile`, currently `0.21.22`.
+Set `LIMRUN_API_KEY` in the run environment and install `@limrun/api`.
 Android also requires `adb` on `PATH` for the driver's tunnel.
 
 See the [integration guide](https://e2e.tester.army/docs/integrations/limrun)

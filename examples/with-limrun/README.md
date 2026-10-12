@@ -85,7 +85,7 @@ Change `app.bundleId` and `app.appPath` in [e2e.config.ts](e2e.config.ts).
 Replace the greeting assertions with your app's form, navigation, or other
 user flows. Use test IDs or accessible names that the app exposes on both platforms.
 
-With agent-device 0.21.22, the Limrun iOS transport does not support
+With agent-device 0.21.25, the Limrun iOS transport does not support
 `locator.press('Enter')`. This suite taps the app's Greet button to submit.
 Restarting preserves persisted app data; these greeting apps keep their
 form state in memory.
