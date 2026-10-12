@@ -4,9 +4,10 @@
   "description": "The e2e documentation site, built with Mintlify",
   "type": "module",
   "scripts": {
-    "dev": "mint dev",
-    "check": "node ../scripts/check-docs-examples.ts && node ../scripts/check-docs-package-managers.ts && mint validate && mint broken-links",
-    "typecheck": "tsc --noEmit --project examples/tsconfig.json"
+    "dev": "node og/generate.ts && mint dev",
+    "og": "node og/generate.ts",
+    "check": "node og/generate.ts --check && node ../scripts/check-docs-examples.ts && node ../scripts/check-docs-package-managers.ts && mint validate && mint broken-links",
+    "typecheck": "tsc --noEmit --project examples/tsconfig.json && tsc --noEmit --project og/tsconfig.json"
   },
   "devDependencies": {
     "@ai-sdk/typesafe-ai": "3.0.16",
@@ -15,6 +16,7 @@
     "@e2e-dev/web": "workspace:*",
     "@openrouter/ai-sdk-provider": "3.1.0",
     "@types/node": "26.6.2",
+    "@vercel/og": "0.11.1",
     "agent-device": "0.21.22",
     "ai": "7.0.134",
     "e2e": "workspace:*",

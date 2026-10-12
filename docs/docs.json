@@ -16,11 +16,16 @@
     "light": "/favicon-black.png",
     "dark": "/favicon-white.png"
   },
+  "thumbnails": {
+    "appearance": "dark",
+    "background": "/images/og-background.png",
+    "fonts": {
+      "family": "Stack Sans Notch"
+    }
+  },
   "seo": {
     "metatags": {
-      "og:image": "https://e2e.tester.army/docs/images/og.png",
-      "twitter:card": "summary_large_image",
-      "twitter:image": "https://e2e.tester.army/docs/images/og.png"
+      "twitter:card": "summary_large_image"
     }
   },
   "integrations": {

@@ -160,7 +160,14 @@ suites that consume the built packages the way a user would.
   `scripts/check-docs-examples.ts`; a shell
   block that runs `npx` or `npm install`/`ci` sits in a `<CodeGroup>` of
   `npm`, `pnpm`, and `bun` blocks, which Mintlify syncs site-wide, enforced
-  by `scripts/check-docs-package-managers.ts`). The `e2e` build copies the
+  by `scripts/check-docs-package-managers.ts`; every navigation page but the
+  home page has a social card in `docs/images/og/`, rendered with
+  `@vercel/og` by `docs/og/generate.ts` (`pnpm docs:og`, also run by
+  `docs:dev`) and committed with the `og:image` frontmatter it writes, since
+  Mintlify runs no build step of ours; `docs:check` fails on a stale card,
+  and a page without one falls back to Mintlify's own card styled by
+  `thumbnails` in `docs.json` on the same `images/og-background.png`).
+  The `e2e` build copies the
   pages to `packages/e2e/docs/` (gitignored,
   `packages/e2e/scripts/prepare-build.ts`) so the published package ships
   them for agents to read offline.

@@ -86,9 +86,21 @@ page under `docs/` in the same review, and `skills/e2e/` when the
 skill describes that surface.
 
 ```sh
-pnpm docs:dev     # local preview
-pnpm docs:check   # validate the site, its links, and the quickstart examples
+pnpm docs:dev     # render the Open Graph cards, then preview locally
+pnpm docs:og      # render the Open Graph cards for new or changed pages
+pnpm docs:check   # validate the site, its links, the quickstart examples, and the cards
 ```
+
+Every page in the navigation except the home page has its own social
+preview card under `docs/images/og/`, drawn from its title, description, and
+navigation section by `docs/og/generate.ts` with `@vercel/og`. Mintlify runs
+no build step of ours, so the cards and the `og:image` and `twitter:image`
+lines the script writes into each page's frontmatter are committed. A new
+page, a renamed one, or an edited title or description needs `pnpm docs:og`;
+`pnpm docs:check` fails until it has run. A page with no card falls back to
+the one Mintlify generates from its current title and description, drawn on
+the same background (`thumbnails` in `docs/docs.json`). Never point a page at
+another page's card by hand.
 
 A change that claims to be faster, or that touches the runner, the agent
 loop, or an engine, gets measured against `main` on the benchmark suites:
