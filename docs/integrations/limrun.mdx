@@ -15,15 +15,15 @@ Install the integration alongside the mobile engine and its peers:
 
 <CodeGroup>
 ```bash npm
-npm install --save-dev e2e @e2e-dev/mobile @e2e-dev/limrun @limrun/api agent-device@0.21.22
+npm install --save-dev e2e @e2e-dev/mobile @e2e-dev/limrun @limrun/api agent-device@0.21.25
 ```
 
 ```bash pnpm
-pnpm add -D e2e @e2e-dev/mobile @e2e-dev/limrun @limrun/api agent-device@0.21.22
+pnpm add -D e2e @e2e-dev/mobile @e2e-dev/limrun @limrun/api agent-device@0.21.25
 ```
 
 ```bash bun
-bun add -d e2e @e2e-dev/mobile @e2e-dev/limrun @limrun/api agent-device@0.21.22
+bun add -d e2e @e2e-dev/mobile @e2e-dev/limrun @limrun/api agent-device@0.21.25
 ```
 </CodeGroup>
 
@@ -138,7 +138,7 @@ mobile artifact path, `video/video.mp4` inside each attempt directory.
 
 ## Check app compatibility
 
-With agent-device 0.21.22, the Limrun iOS transport rejects keyboard actions
+With agent-device 0.21.25, the Limrun iOS transport rejects keyboard actions
 such as `locator.press('Enter')` with `UNSUPPORTED_CAPABILITY`.
 Tap the app's submit button when the flow provides one.
 
