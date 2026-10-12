@@ -3,6 +3,14 @@
 Paths below sit under the configured `output` directory; `.e2e` is the
 default.
 
+## Contents
+
+- Read the failure
+- Error codes
+- Tools
+- Flaky tests
+- Is it the app?
+
 ## Read the failure
 
 1. Every failure in the `list` output ends with `❯ trace

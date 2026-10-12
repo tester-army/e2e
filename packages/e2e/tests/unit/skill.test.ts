@@ -27,6 +27,17 @@ describe('the bundled agent skill', () => {
     for (const topic of topics) expect(overview).toContain(`| \`${topic}\` |`);
   });
 
+  it('opens every reference longer than 100 lines with a Contents list of its sections', () => {
+    // Agents sometimes read only the head of a long file; the list shows them what the rest holds.
+    for (const file of readSkillFiles().filter((skillFile) => skillFile.relative.startsWith('references/'))) {
+      if (file.content.split('\n').length <= 100) continue;
+      const [first, ...sections] = sectionHeadings(file.content);
+      expect(first, file.relative).toBe('Contents');
+      const listed = /\n## Contents\n\n((?:- .*\n)+)/.exec(file.content)?.[1] ?? '';
+      expect(listed.trimEnd().split('\n').map((line) => line.slice('- '.length)), file.relative).toEqual(sections);
+    }
+  });
+
   it('prints the overview without its frontmatter and each topic verbatim', () => {
     const overview = readGuide(undefined) ?? '';
     expect(overview.startsWith('# e2e')).toBe(true);
@@ -52,6 +63,15 @@ describe('the bundled agent skill', () => {
     expect(packageJson.files).toContain('docs');
   });
 });
+
+/** The `## ` headings of a markdown file, in order, skipping fenced code blocks. */
+function sectionHeadings(markdown: string): string[] {
+  let fenced = false;
+  return markdown.split('\n').flatMap((line) => {
+    if (line.startsWith('```')) fenced = !fenced;
+    return !fenced && line.startsWith('## ') ? [line.slice('## '.length).trim()] : [];
+  });
+}
 
 /** Every `.md` and `.mdx` file under `dir`, relative to `root`, never descending into `node_modules`. */
 function markdownFiles(root: URL, dir: string): string[] {

@@ -1,5 +1,16 @@
 # Writing tests
 
+## Contents
+
+- A complete file
+- Registration
+- Fixtures
+- Locators
+- expect
+- Sign-in sessions
+- The browser fixture (browser only)
+- Habits
+
 ## A complete file
 
 ```ts

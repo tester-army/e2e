@@ -170,7 +170,10 @@ suites that consume the built packages the way a user would.
   directories. The `e2e` build copies it to `packages/e2e/skills/`
   (gitignored) so the published package ships it; `src/cli/skill.ts` reads
   that copy first and the repo source as the fallback, and `e2e init` writes
-  it into a project's `.agents/skills/` and `.claude/skills/`.
+  it into a project's `.agents/skills/` and `.claude/skills/`. `SKILL.md`
+  opens with a table that routes each job to one reference, and every
+  reference over 100 lines opens with a `## Contents` list of its sections
+  (`tests/unit/skill.test.ts`).
 - `skills/create-verification-skill/`: a generator skill for consumers;
   it writes a project-local `verify-<app>` skill and feature map on top of
   e2e, with the bug bash wired to the map. Installed with `npx skills add

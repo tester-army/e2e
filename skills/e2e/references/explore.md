@@ -13,6 +13,14 @@ npx e2e explore 'Hunt for broken forms' --video
 npx e2e explore --session admin 'Explore the admin settings'
 ```
 
+## Contents
+
+- What a run does
+- Start signed in
+- Flags
+- Reading the result
+- When it does not fit
+
 ## What a run does
 
 1. Opens the app on the target's URL.

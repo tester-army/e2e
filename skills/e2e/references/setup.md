@@ -1,5 +1,16 @@
 # Setting up e2e
 
+## Contents
+
+- Requirements
+- Scaffold
+- Subscriptions and API keys
+- The config
+- The app under test
+- Environment variables the runner reads
+- Mobile targets
+- Done when
+
 ## Requirements
 
 - Node.js 24.8 or newer, or 22.22.3 or newer on Node.js 22.

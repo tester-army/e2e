@@ -5,6 +5,13 @@ coding agent drives the app the way the testing agent does: look at a screen
 before writing a test, check a locator before committing to it. Running tests
 and reading a failed run stay on the CLI (topics `running` and `debugging`).
 
+## Contents
+
+- Setup
+- Tools
+- Workflow
+- Rules
+
 ## Setup
 
 The server ships with `e2e`. `e2e init` offers to register it; by hand:
@@ -31,7 +38,10 @@ sets how many sessions may be open at once (default 4, 1 through 16).
 
 ## Tools
 
-Four tools; everything a session can do is a catalog behind `call`.
+Four tools, all on the server registered as `e2e`; everything a session can
+do is a catalog behind `call`. Clients show them with the server name, such
+as `mcp__e2e__open_session` in Claude Code; when another MCP server offers a
+tool with the same name, use the `e2e` server's.
 
 | Tool | Does |
 | --- | --- |
