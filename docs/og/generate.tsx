@@ -1,3 +1,5 @@
+/** @jsxRuntime automatic @jsxImportSource react */
+
 /**
  * Renders one Open Graph card per docs page with `@vercel/og` and points the
  * page's `og:image` and `twitter:image` frontmatter at it.
@@ -5,9 +7,9 @@
  * The card is `images/og.png` with its text swapped for the page's: the same
  * dotted backdrop (`images/og-background.png`, the brand card with the
  * wordmark, tagline, and mascot painted out) with the mascot (`og/mascot.png`)
- * drawn back in, Stack Sans Notch for the text, the page's navigation section
- * above its title, and its description below. The home page points at the
- * brand card itself.
+ * and the centred wordmark (`og/wordmark.png`) drawn back in a little larger,
+ * and the page's navigation section, title, and description in the bottom
+ * left in Stack Sans Notch. The home page points at the brand card itself.
  *
  * Mintlify builds the site from the repository and runs nothing of ours, so
  * the cards are rendered here and committed. Each card's digest covers
@@ -26,10 +28,11 @@
  * from pages that left the navigation instead of leaving them on a card it
  * deletes.
  *
- * Usage, from `docs/`:
- *   node og/generate.ts           render stale cards, update frontmatter
- *   node og/generate.ts --force   render every card
- *   node og/generate.ts --check   exit 1 listing pages whose card is stale
+ * Usage, from `docs/` (`tsx` compiles the JSX, which Node's type stripping
+ * does not):
+ *   tsx og/generate.tsx           render stale cards, update frontmatter
+ *   tsx og/generate.tsx --force   render every card
+ *   tsx og/generate.tsx --check   exit 1 listing pages whose card is stale
  */
 
 import { createHash } from 'node:crypto';
@@ -38,6 +41,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ImageResponse } from '@vercel/og';
+import type { ReactElement } from 'react';
 
 const DOCS = fileURLToPath(new URL('..', import.meta.url));
 const OG = join(DOCS, 'og');
@@ -49,8 +53,14 @@ const HEIGHT = 1260;
 /** Pages that show the brand card instead of their own. */
 const BRAND_PAGES = new Set(['index']);
 const BRAND_CARD = `${SITE}/images/og.png`;
-/** Where the mascot's pixels start, so the text lines up under it. */
+/** Where the mascot's pixels start in `og/mascot.png`, as in `images/og.png`. */
 const MASCOT_LEFT = 65;
+const MASCOT_TOP = 62;
+/** How much larger than in `images/og.png` the mascot and the wordmark are drawn. */
+const MASCOT_SCALE = 1.3;
+const WORDMARK_SCALE = 1.2;
+/** The wordmark cut-out (`og/wordmark.png`): its size and its centre in `images/og.png`. */
+const WORDMARK = { width: 656, height: 301, centerX: 1200, centerY: 558.5 };
 const META_KEYS = ['og:image', 'twitter:image'] as const;
 /** The faces the cards use, each from a file in `og/fonts/`. */
 const FONTS = [
@@ -61,24 +71,12 @@ const FONTS = [
 /** The PNG `tEXt` keyword that holds a card's digest. */
 const DIGEST_KEY = 'e2e-og-digest';
 
-type Style = Record<string, string | number>;
-type Child = Element | string;
-interface Element {
-  type: string;
-  props: { style?: Style; children?: Child | Child[]; src?: string; width?: number; height?: number };
-}
-
 interface Page {
   slug: string;
   file: string;
   eyebrow: string;
   title: string;
   description: string;
-}
-
-/** A satori element: the plain object JSX would compile to. */
-function h(type: string, style: Style, ...children: Child[]): Element {
-  return { type, props: { style, children } };
 }
 
 /** Every page in `docs.json` navigation, with the tab and group it sits under. */
@@ -143,10 +141,11 @@ function assets(): Buffer[] {
   const og = JSON.parse(readFileSync(fileURLToPath(import.meta.resolve('@vercel/og/package.json')), 'utf8')) as { version: string };
   return [
     Buffer.from(
-      JSON.stringify([og.version, WIDTH, HEIGHT, MASCOT_LEFT, FONTS, card.toString(), titleSize.toString(), h.toString(), render.toString()]),
+      JSON.stringify([og.version, WIDTH, HEIGHT, MASCOT_LEFT, MASCOT_TOP, MASCOT_SCALE, WORDMARK_SCALE, WORDMARK, FONTS, Card.toString(), titleSize.toString(), render.toString()]),
     ),
     readFileSync(BACKGROUND),
     readFileSync(join(OG, 'mascot.png')),
+    readFileSync(join(OG, 'wordmark.png')),
     ...FONTS.map((f) => readFileSync(join(OG, 'fonts', f.file))),
   ];
 }
@@ -186,11 +185,10 @@ function digest(shared: string, page: Page): string {
     .slice(0, 10);
 }
 
-/** Title size by length, so long titles still fit on two lines. */
+/** Title size by length, so long titles stay on one line below the wordmark. */
 function titleSize(title: string): number {
-  if (title.length <= 12) return 220;
-  if (title.length <= 20) return 180;
-  return 150;
+  if (title.length <= 20) return 120;
+  return 104;
 }
 
 /** Every `.mdx` page under `dir` as a slug, skipping `node_modules` and snippets. */
@@ -207,76 +205,96 @@ function dataUrl(path: string): string {
   return `data:image/png;base64,${readFileSync(path).toString('base64')}`;
 }
 
+interface CardProps {
+  page: Page;
+  background: string;
+  mascot: string;
+  wordmark: string;
+}
+
 /** The card for one page. */
-function card(page: Page, background: string, mascot: string): Element {
-  const mono = { fontFamily: 'DM Mono', fontWeight: 500 };
-  return h(
-    'div',
-    {
-      display: 'flex',
-      position: 'relative',
-      width: WIDTH,
-      height: HEIGHT,
-      backgroundColor: '#161616',
-      color: '#ffffff',
-      fontFamily: 'Stack Sans Notch',
-    },
-    { type: 'img', props: { src: background, width: WIDTH, height: HEIGHT, style: { position: 'absolute', left: 0, top: 0 } } },
-    { type: 'img', props: { src: mascot, width: 280, height: 230, style: { position: 'absolute', left: 0, top: 0 } } },
-    h(
-      'div',
-      { display: 'flex', position: 'absolute', top: 92, right: 96, fontSize: 112, fontWeight: 500, lineHeight: 1 },
-      'e2e',
-    ),
-    h(
-      'div',
-      {
+function Card({ page, background, mascot, wordmark }: CardProps): ReactElement {
+  const wordmarkWidth = WORDMARK.width * WORDMARK_SCALE;
+  const wordmarkHeight = WORDMARK.height * WORDMARK_SCALE;
+  return (
+    <div
+      style={{
         display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        width: '100%',
-        height: '100%',
-        padding: `0 220px 0 ${MASCOT_LEFT}px`,
-      },
-      h(
-        'div',
-        { ...mono, display: 'flex', fontSize: 40, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#a3a3a3' },
-        page.eyebrow,
-      ),
-      h(
-        'div',
-        {
+        position: 'relative',
+        width: WIDTH,
+        height: HEIGHT,
+        backgroundColor: '#161616',
+        color: '#ffffff',
+        fontFamily: 'Stack Sans Notch',
+      }}
+    >
+      <img src={background} width={WIDTH} height={HEIGHT} style={{ position: 'absolute', left: 0, top: 0 }} />
+      <img
+        src={mascot}
+        width={280 * MASCOT_SCALE}
+        height={230 * MASCOT_SCALE}
+        style={{ position: 'absolute', left: MASCOT_LEFT * (1 - MASCOT_SCALE), top: MASCOT_TOP * (1 - MASCOT_SCALE) }}
+      />
+      <img
+        src={wordmark}
+        width={wordmarkWidth}
+        height={wordmarkHeight}
+        style={{ position: 'absolute', left: WORDMARK.centerX - wordmarkWidth / 2, top: WORDMARK.centerY - wordmarkHeight / 2 }}
+      />
+      <div
+        style={{
           display: 'flex',
-          marginTop: 40,
-          fontSize: titleSize(page.title),
-          fontWeight: 500,
-          lineHeight: 1.05,
-          letterSpacing: '-0.01em',
-          textAlign: 'left',
-        },
-        page.title,
-      ),
-      ...(page.description
-        ? [
-            h(
-              'div',
-              {
-                display: 'flex',
-                marginTop: 56,
-                maxWidth: 1760,
-                fontSize: 60,
-                fontWeight: 400,
-                lineHeight: 1.3,
-                textAlign: 'left',
-                textWrap: 'balance',
-                color: '#a3a3a3',
-              },
-              page.description,
-            ),
-          ]
-        : []),
-    ),
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          justifyContent: 'flex-end',
+          width: '100%',
+          height: '100%',
+          padding: `0 ${MASCOT_LEFT}px ${MASCOT_TOP + 20}px ${MASCOT_LEFT}px`,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            fontFamily: 'DM Mono',
+            fontWeight: 500,
+            fontSize: 34,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: '#a3a3a3',
+          }}
+        >
+          {page.eyebrow}
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            marginTop: 24,
+            fontSize: titleSize(page.title),
+            fontWeight: 500,
+            lineHeight: 1.05,
+            letterSpacing: '-0.01em',
+          }}
+        >
+          {page.title}
+        </div>
+        {page.description && (
+          <div
+            style={{
+              display: 'flex',
+              marginTop: 28,
+              maxWidth: 1900,
+              fontSize: 46,
+              fontWeight: 400,
+              lineHeight: 1.3,
+              textWrap: 'balance',
+              color: '#a3a3a3',
+            }}
+          >
+            {page.description}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -289,8 +307,8 @@ function withImage(source: string, file: string, url: string | undefined): strin
 }
 
 /** Renders one card to PNG bytes. */
-async function render(element: Element, fonts: ConstructorParameters<typeof ImageResponse>[1]): Promise<Buffer> {
-  const response = new ImageResponse(element as never, { ...fonts, width: WIDTH, height: HEIGHT });
+async function render(element: ReactElement, fonts: ConstructorParameters<typeof ImageResponse>[1]): Promise<Buffer> {
+  const response = new ImageResponse(element, { ...fonts, width: WIDTH, height: HEIGHT });
   return Buffer.from(await response.arrayBuffer());
 }
 
@@ -340,6 +358,7 @@ if (check) {
 } else {
   const background = dataUrl(BACKGROUND);
   const mascot = dataUrl(join(OG, 'mascot.png'));
+  const wordmark = dataUrl(join(OG, 'wordmark.png'));
   const font = (file: string): ArrayBuffer => {
     const bytes = readFileSync(join(OG, 'fonts', file));
     return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
@@ -349,7 +368,7 @@ if (check) {
   for (const { file, url, page, version, image } of stale) {
     if (page && version) {
       mkdirSync(dirname(image), { recursive: true });
-      writeFileSync(image, withDigest(await render(card(page, background, mascot), options), version));
+      writeFileSync(image, withDigest(await render(<Card page={page} background={background} mascot={mascot} wordmark={wordmark} />, options), version));
       process.stdout.write(`og: ${relative(DOCS, image)}\n`);
       rendered++;
     }

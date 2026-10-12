@@ -162,7 +162,7 @@ suites that consume the built packages the way a user would.
   `npm`, `pnpm`, and `bun` blocks, which Mintlify syncs site-wide, enforced
   by `scripts/check-docs-package-managers.ts`; every navigation page but the
   home page has a social card in `docs/images/og/`, rendered with
-  `@vercel/og` by `docs/og/generate.ts` (`pnpm docs:og`, also run by
+  `@vercel/og` by `docs/og/generate.tsx` (`pnpm docs:og`, also run by
   `docs:dev`) and committed with the `og:image` frontmatter it writes, since
   Mintlify runs no build step of ours; `docs:check` fails on a stale card,
   and a page without one falls back to Mintlify's own card styled by

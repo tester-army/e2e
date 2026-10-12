@@ -93,7 +93,7 @@ pnpm docs:check   # validate the site, its links, the quickstart examples, and t
 
 Every page in the navigation except the home page has its own social
 preview card under `docs/images/og/`, drawn from its title, description, and
-navigation section by `docs/og/generate.ts` with `@vercel/og`. Mintlify runs
+navigation section by `docs/og/generate.tsx` with `@vercel/og`. Mintlify runs
 no build step of ours, so the cards and the `og:image` and `twitter:image`
 lines the script writes into each page's frontmatter are committed. A new
 page, a renamed one, one moved to another navigation section, or an edited
