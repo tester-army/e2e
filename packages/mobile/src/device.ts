@@ -24,7 +24,7 @@ export interface ForegroundApp {
 export interface Device {
   /**
    * A locator from an agent-device selector (`'id=SW_VERSION_SPECIFIER'`,
-   * `'role=StaticText label="26.2"'`), for nodes the closed `screen` query
+   * `'role=text label="26.2"'`), for nodes the closed `screen` query
    * vocabulary cannot name. Same polling and strictness as any locator.
    */
   locator(selector: string): Locator;
@@ -47,12 +47,16 @@ export interface Device {
   /** Rotates the device. */
   setOrientation(orientation: DeviceOrientation): Promise<void>;
   /**
-   * Puts a foldable iOS simulator (iPhone Duo) in a hinge pose and resolves
-   * once agent-device reads the angle back from CoreDevice at that pose,
-   * typically 10 to 16 seconds later. `closed` lights the outer display;
-   * `half-open` (a 130° book) and `open` light the inner one, whose app
-   * window has a different size, so the next observation reads a new screen.
-   * Any device without a hinge is `UNSUPPORTED_CAPABILITY`.
+   * Puts a foldable simulator or emulator in a hinge pose. On the iPhone Duo
+   * it resolves once agent-device reads the angle back from CoreDevice at
+   * that pose, typically 10 to 16 seconds later; `closed` lights the outer
+   * display, `half-open` (a 130° book) and `open` light the inner one. On a
+   * foldable Android emulator it sets the emulator console posture and
+   * resolves once the guest commits the matching device state, within a few
+   * seconds; `half-open` is the profile's own angle there (90° on the Pixel
+   * folds), and a fold to the cover display dismisses the lock screen it
+   * raises. Either way the app window changes size, so the next observation
+   * reads a new screen. Any device without a hinge is `UNSUPPORTED_CAPABILITY`.
    */
   fold(pose: FoldPose): Promise<void>;
   /** Simulates one biometric attempt on the open app. */

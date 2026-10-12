@@ -5,6 +5,13 @@ coding agent drives the app the way the testing agent does: look at a screen
 before writing a test, check a locator before committing to it. Running tests
 and reading a failed run stay on the CLI (topics `running` and `debugging`).
 
+## Contents
+
+- Setup
+- Tools
+- Workflow
+- Rules
+
 ## Setup
 
 The server ships with `e2e`. `e2e init` offers to register it; by hand:
@@ -20,8 +27,10 @@ Or declare it in the client's project config (`.mcp.json` for Claude Code,
 { "mcpServers": { "e2e": { "command": "npx", "args": ["e2e", "mcp"] } } }
 ```
 
-No model is needed: without the optional `ai` package, sessions open and the
-deterministic tools work.
+Sessions run on the project's config (`e2e.config.ts` or `e2e.config.mts`):
+in a project without one, `open_session` fails with `CONFIG_NOT_FOUND`, so
+set it up first (topic `setup`). No model is needed: without the optional `ai` package, sessions
+open and the deterministic tools work.
 
 Flags: `--config <path>` names the default config file, `--target <name>`
 fixes the target every session opens on, `--headed` shows the browser or
@@ -31,7 +40,10 @@ sets how many sessions may be open at once (default 4, 1 through 16).
 
 ## Tools
 
-Four tools; everything a session can do is a catalog behind `call`.
+Four tools, all on the server registered as `e2e`; everything a session can
+do is a catalog behind `call`. Clients show them with the server name, such
+as `mcp__e2e__open_session` in Claude Code; when another MCP server offers a
+tool with the same name, use the `e2e` server's.
 
 | Tool | Does |
 | --- | --- |

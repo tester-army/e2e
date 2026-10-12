@@ -939,7 +939,7 @@ export class AgentDeviceSurface {
     const raw = await this.snapshotOrEmpty(operation, false);
     const projected = this.project(raw);
     this.traceScreen(raw, projected);
-    const matches = resolveExpression(expression, projected.index);
+    const matches = resolveExpression(expression, projected.index, this.options.platform);
     for (const entry of matches) this.located.set(entry.id, this.bind(entry, projected.index));
     for (const oldest of this.located.keys()) {
       if (this.located.size <= MAX_LOCATED_REFS) break;
@@ -1370,14 +1370,13 @@ export class AgentDeviceSurface {
   }
 
   /**
-   * Sends a foldable iOS simulator's hinge to a pose; agent-device confirms
-   * the angle through CoreDevice before it answers. The pose moves the app to
-   * another panel, so it counts as an action like a rotation.
+   * Sends a foldable simulator's or emulator's hinge to a pose; agent-device
+   * confirms it before it answers: the hinge angle through CoreDevice on iOS,
+   * the device state the guest commits on Android. The pose moves the app to
+   * another panel, so it counts as an action like a rotation. A device
+   * without a hinge comes back from agent-device as `UNSUPPORTED_OPERATION`.
    */
   async fold(pose: FoldPose, signal: AbortSignal): Promise<void> {
-    if (this.options.platform !== 'ios') {
-      throw unsupported('device.fold drives a foldable iOS simulator (iPhone Duo) through agent-device; it has no Android driver');
-    }
     await this.screenCommand('device.fold', (client) => client.command.fold({ pose }), signal);
   }
 

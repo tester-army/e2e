@@ -5,6 +5,17 @@ verification pass that turns every claimed bug into a repro test that fails
 for the reason reported. Plan the charters, fan them out, merge the findings,
 prove each bug. Report confirmed bugs only, each with its failing test.
 
+## Contents
+
+- 1. Prepare
+- 2. Plan charters
+- 3. Fan out
+- 4. Merge
+- 5. Triage
+- 6. Verify
+- 7. Report
+- Rules
+
 ## 1. Prepare
 
 - A config with a target and an agent that holds a model (topic `setup`),

@@ -1,19 +1,44 @@
 ---
 name: e2e
-description: Agentic end-to-end tests with e2e, the e2e runner. Covers scaffolding e2e.config.ts, picking the Playwright browser engine or the agent-device mobile engine, starting the app under test from the config, driving flows with agent.act, judging with agent.assert, agent.waitFor, and agent.extract, pinning values with screen, app, browser, and expect, shaping the agent (context, system prompt, tools, personas), the replay cache, the e2e CLI, reading .e2e/report.json, and bug bashes (parallel explore runs proven with repro tests). Use when a project depends on e2e, when asked for end-to-end, browser, mobile, or agentic UI tests, to bug bash or hunt for bugs, or when an e2e run fails.
+description: Writes, runs, and debugs end-to-end tests for web and mobile apps with e2e, the agentic test runner, which mixes agent.act goals with exact locator assertions on a Playwright browser or an iOS or Android device. Also drives a project's running app live over the e2e MCP server to look at a screen, check a UI change, take a screenshot or record a video, and try a locator; and runs bug bashes, parallel e2e explore runs with each bug proven by a repro test. Use when a project depends on e2e or has an e2e.config.ts, when asked for end-to-end, browser, mobile, or agentic UI tests, to check a change in the running app, to QA or bug bash an app or branch, or when an e2e run fails.
 ---
 
-# e2e: agentic end-to-end tests in TypeScript
+# e2e: agentic end-to-end tests
 
-e2e runs UI tests with agent goals and exact assertions. `agent.act` drives
+e2e runs UI tests that mix agent goals with exact steps. `agent.act` drives
 one goal; `agent.assert`, `agent.waitFor`, and `agent.extract` judge the
-screen. `screen`, `app`, `browser`, and `expect` make exact interactions and
-checks. The replay cache reruns verified actions and checks their recorded end
-state without a model call; agent judgments still run live. UI targets use
-`@e2e-dev/web` for browsers or `@e2e-dev/mobile` for iOS simulators,
-Android emulators, and connected phones. A test that takes only `app` can check an API with `fetch`
-and `expect` (topic `writing-tests`). Model sign-in commands are in
-[setup](references/setup.md#subscriptions-and-api-keys).
+screen; `screen`, `app`, `browser`, and `expect` act and check exactly. UI
+targets use `@e2e-dev/web` for browsers or `@e2e-dev/mobile` for iOS
+simulators, Android emulators, and connected phones.
+
+## Start here: pick the reference for the job
+
+Read the one reference that matches the request before doing anything else.
+Each stands on its own; a reference names another topic only for a side
+trip. The installed CLI prints the same text with `npx e2e guide <topic>`.
+
+| When you are | Topic | Read |
+| --- | --- | --- |
+| Adding e2e to a project, writing `e2e.config.ts`, starting the app from the config, signing in to a model, setting up mobile targets | `setup` | [references/setup.md](references/setup.md) |
+| Looking at the running app, checking a UI change, taking a screenshot or video, or trying a locator before writing it, over `e2e mcp` | `mcp` | [references/mcp.md](references/mcp.md) |
+| Writing or fixing a test: fixtures, locators, actions, matchers, sign-in sessions, the `browser` fixture, API-only tests | `writing-tests` | [references/writing-tests.md](references/writing-tests.md) |
+| Adding `agent.*` steps, picking a model, cutting cost, budgets, the replay cache | `agent` | [references/agent.md](references/agent.md) |
+| Running tests: CLI flags, CI, reporters, trace pages, `report.json` for scripts, exit codes | `running` | [references/running.md](references/running.md) |
+| Handling a failed run: error codes and their fixes, `--headed`, `--debug`, `--ai-trace` | `debugging` | [references/debugging.md](references/debugging.md) |
+| Exploring an app toward a goal without a test file: `e2e explore`, its budgets and verdict | `explore` | [references/explore.md](references/explore.md) |
+| Asked to bug bash, QA, or hunt for bugs across an app or a branch | `bug-bash` | [references/bug-bash.md](references/bug-bash.md) |
+
+For anything the references do not cover, the full documentation ships in
+the `docs/` directory of the installed `e2e` package
+(`node_modules/e2e/docs` in a single-package project); a link such as
+`/reference/cli` is `docs/reference/cli.mdx`. Complete projects for Vite,
+Next.js, Astro, Expo, SwiftUI, Jetpack Compose, Kotlin Multiplatform, and
+Flutter are in https://github.com/tester-army/e2e/tree/main/examples.
+
+## Quick start
+
+A config with one web target and a model, and a test that drives one goal
+and pins the outcome:
 
 ```ts
 // e2e.config.ts
@@ -54,30 +79,7 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
 });
 ```
 
-## Topics
-
-Read the topic for the job before writing code. The files sit next to this
-one; the installed CLI prints the same text with `npx e2e guide <topic>`
-(`e2e guide` alone prints this page). For anything the topics do not cover,
-the full documentation ships in the `docs/` directory of the installed `e2e`
-package (`node_modules/e2e/docs` in a single-package project); a link such as
-`/reference/cli` is `docs/reference/cli.mdx`. Complete projects for Vite,
-Next.js, Astro, Expo, SwiftUI, Jetpack Compose, Kotlin Multiplatform, and
-Flutter, each with its config, scripts, and a passing suite, are in
-https://github.com/tester-army/e2e/tree/main/examples.
-
-| Topic | File | Read it when |
-| --- | --- | --- |
-| `setup` | [references/setup.md](references/setup.md) | Adding e2e to a project, writing `e2e.config.ts`, starting the app from the config, mobile targets |
-| `writing-tests` | [references/writing-tests.md](references/writing-tests.md) | Writing or fixing tests: fixtures, locators, actions, matchers, sign-in sessions, the `browser` fixture |
-| `agent` | [references/agent.md](references/agent.md) | Adding `agent.*` steps, picking a model, cost and budgets, the replay cache |
-| `running` | [references/running.md](references/running.md) | CLI flags, reporters, trace pages, `report.json` for scripts, exit codes, CI |
-| `explore` | [references/explore.md](references/explore.md) | Exploring an app toward a goal without a test file: `e2e explore`, its budgets, verdict, and `run.explore` |
-| `debugging` | [references/debugging.md](references/debugging.md) | A run failed: error codes and their fixes, `--headed`, `--debug`, `--ai-trace` |
-| `mcp` | [references/mcp.md](references/mcp.md) | Driving the live app from a coding agent over MCP: `e2e mcp`, its tools, and the explore-then-write loop |
-| `bug-bash` | [references/bug-bash.md](references/bug-bash.md) | Asked to bug bash, QA, or hunt for bugs across an app or a branch: parallel `e2e explore` charters, merging findings, proving each with a repro test |
-
-## Workflow
+## Workflow: writing a test
 
 1. Look at what exists: `e2e.config.ts` or `e2e.config.mts`, the `tests` glob
    (default `tests/**/*.e2e.ts`), `e2e` in `package.json`. Nothing there:

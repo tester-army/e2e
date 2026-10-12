@@ -247,6 +247,7 @@ function targetCriterion(element: Element): string {
   const parts = [`[${element.index}] ${element.role === '' ? 'text' : element.role} ${JSON.stringify(element.label)}`];
   if (element.value !== undefined) parts.push(`value=${JSON.stringify(element.value)}`);
   if (element.checked !== undefined) parts.push(element.checked ? 'checked' : 'unchecked');
+  if (element.selected === true) parts.push('selected');
   return parts.join(' ');
 }
 /**

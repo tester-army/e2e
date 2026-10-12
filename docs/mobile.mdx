@@ -2,6 +2,8 @@
 title: Mobile
 description: Set up a simulator, emulator, or connected phone as a target, write a device test, and know what differs from the web.
 icon: "mobile-screen"
+"og:image": "https://e2e.tester.army/docs/images/og/mobile.png?v=0a8bfea0a3"
+"twitter:image": "https://e2e.tester.army/docs/images/og/mobile.png?v=0a8bfea0a3"
 ---
 
 `@e2e-dev/mobile` runs tests on iOS simulators, Android emulators, and
@@ -146,7 +148,7 @@ test('shows the version offline in dark mode', async ({ agent, app, device, scre
   await app.open();
   await agent.act('go to General, then About');
   await expect(screen.getByRole('button', /^iOS Version/)).toBeVisible();
-  await expect(device.locator('role=NavigationBar id=About')).toBeVisible();
+  await expect(device.locator('role=navigation-bar id=About')).toBeVisible();
 });
 ```
 
@@ -205,13 +207,17 @@ await expect(screen.getByText('Order #42')).toBeVisible();
 `app.clearState()` leaves alone, so a stored session token is gone on the
 next launch. It is iOS only.
 
-<Accordion title="Foldable iOS simulators">
-`device.fold(pose)` puts the iPhone Duo simulator in a hinge pose. `closed`
-lights the outer display. `half-open` (a 130° book) and `open` light the
-inner one. The call returns when the hinge reaches the pose, typically after 10 to 16
-seconds, so keep `actionTimeout`
-at 20 seconds or more. The next observation reads the app on the other
-display.
+<Accordion title="Foldable simulators and emulators">
+`device.fold(pose)` puts the iPhone Duo simulator or a foldable Android
+emulator (a Pixel Fold profile, or the generic "7.6in Foldable") in a hinge
+pose. `closed` lights the outer display. `half-open` and `open` light the
+inner one. On the Duo the call returns when the hinge reaches the pose,
+typically after 10 to 16 seconds, so keep `actionTimeout` at 20 seconds or
+more; `half-open` is a 130° book there. On an Android emulator it returns
+within a few seconds, once Android commits the matching device state;
+`half-open` is the profile's own angle (90° on the Pixel folds), and a fold
+to the cover display dismisses the "Swipe up to continue" lock screen the
+emulator raises. The next observation reads the app on the other display.
 
 The engine never resets the pose, so a retry and the next test start where
 the last test left it. Fold back in `afterEach`, which also runs when the
@@ -380,6 +386,9 @@ with agent-device's message.
 </Accordion>
 
 ## Hosted devices
+
+Use [Limrun](/integrations/limrun) for hosted iOS simulators and Android
+emulators with automatic app installation and device cleanup.
 
 Set `device` to a `DeviceProvider` to run on devices a service hosts. Any
 service that runs an agent-device daemon next to a simulator, an emulator,
@@ -594,7 +603,7 @@ export function cloudDevices(options: { provider: string; stateDir: string }): D
   radios, and `toBeChecked` work on both platforms.
 - On iOS, a plain React Native `View` has no children in the tree, so
   `filter({ has })` on it and queries scoped to it match nothing. Scope to
-  the screen's `ScrollView` (`device.locator('role=ScrollView')`), or give
+  the screen's `ScrollView` (`device.locator('role=scroll-area')`), or give
   the children test ids.
 - A Jetpack Compose clickable drawn smaller than 48dp shows as two buttons
   in the tree, and a tap fails with `has no parent-owned touch point`. Make

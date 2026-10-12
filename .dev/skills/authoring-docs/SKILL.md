@@ -114,6 +114,8 @@ Shortening adds claims. Check each new sentence:
 title: <noun the reader searches for>
 description: <one sentence: what the reader can do after this page>
 icon: <font awesome name, or /images/icons/<brand>.svg (see Page icons)>
+"og:image": <written by pnpm docs:og, never by hand>
+"twitter:image": <written by pnpm docs:og, never by hand>
 ---
 
 <lede: 2-4 sentences. What it is, what it does.>
@@ -369,6 +371,8 @@ One page per PR. The reviewer compares old and new side by side.
       `docs/images/icons/` and matches its sidebar neighbors in light and
       dark mode.
 - [ ] Links and anchors resolve. Moved pages have redirects.
+- [ ] A new page, or a changed title or description, has a fresh social
+      card from `pnpm docs:og`. Look at `docs/images/og/<page>.png`.
 - [ ] `pnpm docs:check` passes.
 - [ ] Preview the page with `pnpm docs:dev` and look at it
       the way a skimmer would: scroll fast, stop only at headings and code.

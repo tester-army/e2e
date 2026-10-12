@@ -4,6 +4,20 @@
 Each call is one bounded invocation: fresh redacted observation, deadline,
 model-call budget, no shared transcript. No agent step, no model calls.
 
+## Contents
+
+- Configure a model
+- act: one goal
+- assert, waitFor, extract: one question
+- Write instructions the model can execute
+- What the model sees
+- Budgets and cost
+- The replay cache
+- Inspect what the model did
+- Make the agent yours
+- Beyond the built-in agent
+- In CI
+
 ## Configure a model
 
 Put an AI SDK model under `agents.default`. You can use all AI SDK providers
@@ -25,9 +39,8 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Subscription logins and local models:
-[setup](setup.md#subscriptions-and-api-keys). Keep `ai@^7` installed with
-any provider.
+Subscription logins and local models: topic `setup`, section "Subscriptions
+and API keys". Keep `ai@^7` installed with any provider.
 
 Decision models pick actions from choices the executor builds: install
 `@e2e-dev/decision` and put `decisionExecutor({ model:

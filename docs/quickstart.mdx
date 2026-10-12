@@ -2,6 +2,8 @@
 title: Quickstart
 description: Set up e2e with one prompt to your coding agent, or step by step.
 icon: "rocket"
+"og:image": "https://e2e.tester.army/docs/images/og/quickstart.png?v=4a3569d569"
+"twitter:image": "https://e2e.tester.army/docs/images/og/quickstart.png?v=4a3569d569"
 ---
 
 import { ModelProvider } from './snippets/model-provider.jsx';
@@ -223,7 +225,7 @@ test('the agent opens General', async ({ agent, app, device }) => {
   await agent.act('open {section} settings', { params: { section: 'General' } });
 
   await agent.assert('the General settings screen is showing');
-  await expect(device.locator('role=NavigationBar id=General')).toBeVisible();
+  await expect(device.locator('role=navigation-bar id=General')).toBeVisible();
 });
 ```
 

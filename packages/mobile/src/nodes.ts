@@ -246,7 +246,7 @@ function isAndroidClass(type: string | undefined): boolean {
 }
 
 /** One element-type spelling for `NavigationBar`, `navigation-bar`, and `android.widget.NavigationBar` alike. */
-export function normalizeKind(type: string): string {
+function normalizeKind(type: string): string {
   const simple = type.slice(type.lastIndexOf('.') + 1);
   return simple
     .replaceAll(/([a-z0-9])([A-Z])/g, '$1-$2')

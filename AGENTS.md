@@ -99,6 +99,8 @@ suites that consume the built packages the way a user would.
   Playwright image and Chromium version in sync with `@e2e-dev/web`. Run
   `pnpm --filter @e2e-dev/smol test:unit` and `pnpm check`, then verify live
   machines in both attempt and worker scopes with an app running in the VM.
+- `packages/limrun` — the Limrun hosted mobile device provider. Each worker
+  leases one remote device, installs its app, and releases the device at exit.
 - `packages/decision` — the published `@e2e-dev/decision` package: a
   `StepExecutor` (`decisionExecutor()`) that drives `agent.act` and
   `agent.assert` through an AI SDK *decision* model answering `choice`
@@ -158,7 +160,14 @@ suites that consume the built packages the way a user would.
   `scripts/check-docs-examples.ts`; a shell
   block that runs `npx` or `npm install`/`ci` sits in a `<CodeGroup>` of
   `npm`, `pnpm`, and `bun` blocks, which Mintlify syncs site-wide, enforced
-  by `scripts/check-docs-package-managers.ts`). The `e2e` build copies the
+  by `scripts/check-docs-package-managers.ts`; every navigation page but the
+  home page has a social card in `docs/images/og/`, rendered with
+  `@vercel/og` by `docs/og/generate.tsx` (`pnpm docs:og`, also run by
+  `docs:dev`) and committed with the `og:image` frontmatter it writes, since
+  Mintlify runs no build step of ours; `docs:check` fails on a stale card,
+  and a page without one falls back to the brand card `images/og.png` set
+  in `docs.json`).
+  The `e2e` build copies the
   pages to `packages/e2e/docs/` (gitignored,
   `packages/e2e/scripts/prepare-build.ts`) so the published package ships
   them for agents to read offline.
@@ -168,7 +177,10 @@ suites that consume the built packages the way a user would.
   directories. The `e2e` build copies it to `packages/e2e/skills/`
   (gitignored) so the published package ships it; `src/cli/skill.ts` reads
   that copy first and the repo source as the fallback, and `e2e init` writes
-  it into a project's `.agents/skills/` and `.claude/skills/`.
+  it into a project's `.agents/skills/` and `.claude/skills/`. `SKILL.md`
+  opens with a table that routes each job to one reference, and every
+  reference over 100 lines opens with a `## Contents` list of its sections
+  (`tests/unit/skill.test.ts`).
 - `skills/create-verification-skill/`: a generator skill for consumers;
   it writes a project-local `verify-<app>` skill and feature map on top of
   e2e, with the bug bash wired to the map. Installed with `npx skills add

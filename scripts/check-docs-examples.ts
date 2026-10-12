@@ -18,6 +18,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** Example file to the page that shows it verbatim. */
 const EXAMPLES: Record<string, string> = {
+  'docs/examples/limrun/e2e.config.ts': 'docs/integrations/limrun.mdx',
+  'docs/examples/limrun/greeting.e2e.ts': 'docs/integrations/limrun.mdx',
   'docs/examples/quickstart/e2e.config.ts': 'docs/quickstart.mdx',
   'docs/examples/quickstart/tests/example.e2e.ts': 'docs/quickstart.mdx',
   'docs/examples/quickstart/tests/agent.e2e.ts': 'docs/quickstart.mdx',

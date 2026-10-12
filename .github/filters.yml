@@ -30,6 +30,7 @@ web:
 mobile:
   - *runner
   - 'packages/mobile/**'
+  - 'packages/limrun/**'
   - 'packages/github/**'
   - 'apps/mobile-benchmark/**'
   - '.github/workflows/mobile.yml'

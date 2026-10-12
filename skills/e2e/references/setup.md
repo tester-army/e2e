@@ -1,5 +1,16 @@
 # Setting up e2e
 
+## Contents
+
+- Requirements
+- Scaffold
+- Subscriptions and API keys
+- The config
+- The app under test
+- Environment variables the runner reads
+- Mobile targets
+- Done when
+
 ## Requirements
 
 - Node.js 24.8 or newer, or 22.22.3 or newer on Node.js 22.
@@ -332,13 +343,19 @@ export default {
   the app (omit `app.appPath`). A run must fit one session: `maxDurationMinutes`,
   absent, is the account's cap (40 on a standard plan). `videoTouches: false`
   on the engine for video there.
+- `limrun()` from `@e2e-dev/limrun` leases one device per worker and installs
+  `app.appPath` before tests. Set `LIMRUN_API_KEY`; install `@limrun/api` and
+  matching `agent-device` peers. Android needs `adb` on `PATH` for its tunnel.
+  With agent-device 0.21.22, iOS keyboard actions such as `locator.press('Enter')`
+  return `UNSUPPORTED_CAPABILITY`; tap an app button when available.
+  See `examples/with-limrun` for the same form and restart tests on both platforms.
 - Only a control that appeared or moved with the previous action waits out
   `transition` (default 500 ms); agent actions settle `settle` ms (default
   150) before the next observation, `settle: false` skips it.
 - `screen`, `expect`, `app`, `agent` work unchanged; `test` from
   `@e2e-dev/mobile` types the `device` fixture (`installApp`, `openLink`,
   `setPermission`, `setNetwork`, `setAppearance`, `clearKeychain`, `fold`
-  for an iPhone Duo's hinge, `locator`, more). Portable suites declare
+  for a foldable's hinge (iPhone Duo, Android foldable emulators), `locator`, more). Portable suites declare
   `requires: ['device']`.
 - No `state` capability: `test.setup` and `session` are unavailable; sign in
   per test with `screen` actions or `agent.act`, both fill a `Secret` (topic

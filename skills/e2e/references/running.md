@@ -1,5 +1,13 @@
 # Running tests
 
+## Contents
+
+- Commands
+- The replay cache
+- Output
+- Exit codes
+- Continuous integration
+
 ## Commands
 
 ```bash
