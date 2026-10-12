@@ -7,7 +7,6 @@
     "e2e": "^0.18.0",
     "@e2e-dev/mobile": "^0.11.1",
     "@e2e-dev/limrun": "^0.2.0",
-    "@limrun/api": "^0.59.0",
-    "agent-device": "0.21.22"
+    "@limrun/api": "^0.59.0"
   }
 }
