@@ -1666,7 +1666,7 @@ describe('device fixture', () => {
     expect(android.fake.calls.length).toBe(count);
   });
 
-  it('folds an iOS simulator and refuses Android without a device command', async () => {
+  it('folds an iOS simulator or an Android emulator through the one device command, and maps a hingeless device to UNSUPPORTED_CAPABILITY', async () => {
     const ios = harness();
     await openAttempt(ios);
     ios.fake.respond('command.fold', () => {
@@ -1675,11 +1675,15 @@ describe('device fixture', () => {
     await expect(fixture(ios).fold('open')).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
     expect(declared?.fold?.label?.('half-open')).toBe('half-open');
 
+    // agent-device 0.21.25 poses a foldable Android emulator through the emulator console, so
+    // Android sends the same command instead of being refused before it.
     const android = harness({ platform: 'android', bundleId: 'com.example.app' });
     await openAttempt(android);
     const count = android.fake.calls.length;
-    await expect(fixture(android).fold('half-open')).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
-    expect(android.fake.calls.length).toBe(count);
+    await fixture(android).fold('half-open');
+    expect(android.fake.calls.slice(count).map((call) => [call.method, call.args])).toEqual([
+      ['command.fold', { pose: 'half-open' }],
+    ]);
   });
 
   it('labels openApp and openLink steps without the link query and setClipboard by length, so a token never enters the report', () => {

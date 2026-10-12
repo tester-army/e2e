@@ -1422,14 +1422,13 @@ export class AgentDeviceSurface {
   }
 
   /**
-   * Sends a foldable iOS simulator's hinge to a pose; agent-device confirms
-   * the angle through CoreDevice before it answers. The pose moves the app to
-   * another panel, so it counts as an action like a rotation.
+   * Sends a foldable simulator's or emulator's hinge to a pose; agent-device
+   * confirms it before it answers: the hinge angle through CoreDevice on iOS,
+   * the device state the guest commits on Android. The pose moves the app to
+   * another panel, so it counts as an action like a rotation. A device
+   * without a hinge comes back from agent-device as `UNSUPPORTED_OPERATION`.
    */
   async fold(pose: FoldPose, signal: AbortSignal): Promise<void> {
-    if (this.options.platform !== 'ios') {
-      throw unsupported('device.fold drives a foldable iOS simulator (iPhone Duo) through agent-device; it has no Android driver');
-    }
     await this.screenCommand('device.fold', (client) => client.command.fold({ pose }), signal);
   }
 
