@@ -187,8 +187,8 @@ describe('telemetry events', () => {
   it('counts the tests that ran an agent step, and those that acted, across attempts and serial members', () => {
     const act = reportStep({ kind: 'agent', api: 'agent.act' });
     const judge = reportStep({ kind: 'agent', api: 'agent.assert' });
-    const member = (index: number, steps: readonly ReturnType<typeof reportStep>[]) => ({
-      id: `member-${index}`,
+    const member = (attempt: number, index: number, steps: readonly ReturnType<typeof reportStep>[]) => ({
+      id: `member-${attempt}-${index}`,
       index,
       testId: `tests/flow.e2e.ts::flow::${index}`,
       status: 'passed' as const,
@@ -206,8 +206,8 @@ describe('telemetry events', () => {
         {
           ...sampleReport().run.serialGroups[0]!,
           attempts: [
-            { ...sampleReport().run.serialGroups[0]!.attempts[0]!, members: [member(0, [act]), member(1, [reportStep()])] },
-            { ...sampleReport().run.serialGroups[0]!.attempts[0]!, index: 1, members: [member(0, [act]), member(1, [judge])] },
+            { ...sampleReport().run.serialGroups[0]!.attempts[0]!, members: [member(0, 0, [act]), member(0, 1, [reportStep()])] },
+            { ...sampleReport().run.serialGroups[0]!.attempts[0]!, index: 1, members: [member(1, 0, [act]), member(1, 1, [judge])] },
           ],
         },
       ],
