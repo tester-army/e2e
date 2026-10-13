@@ -31,9 +31,10 @@ import { KEY_CONTEXT_FIELDS, TRACE_SCHEMA_VERSION, type TraceKeyContext } from '
 
 /**
  * Step kinds the trace cache admits. Only `act`: an assert must not change
- * state, so its trace would be action-free, and a judgment always runs live
- * because it is the check that lets a recording be written and trusted. A
- * replayed judgment would verify the recording with the recording.
+ * state, so its trace would be action-free, and a judgment always runs live.
+ * A passing `assert` or `waitFor` is the check that lets a recording be
+ * written and trusted, so replaying one would verify the recording with the
+ * recording; `extract` runs live too, but confirms nothing.
  */
 export type TraceCacheKind = 'act';
 
