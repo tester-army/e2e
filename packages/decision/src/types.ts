@@ -5,8 +5,9 @@ export interface DecisionExecutorOptions {
   /**
    * An AI SDK decision model that answers `choice` questions with a
    * probability distribution, e.g. `typeSafeAi.decisionModel('jev-latest')`.
-   * Evaluation models (`evaluationModel()`) work too. Models that answer
-   * without `probabilities` fail the step with MODEL_OUTPUT_INVALID.
+   * Evaluation models (`evaluationModel()`) work too. An answer without
+   * `probabilities`, as a language model reached through a gateway fallback
+   * returns, counts as a committed choice: probability 1, confidence 0.
    */
   readonly model: Exclude<Experimental_DecisionModel, string>;
   /**

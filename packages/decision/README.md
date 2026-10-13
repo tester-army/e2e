@@ -4,7 +4,9 @@ Run `agent.act` and `agent.assert` through a decision model instead of an
 LLM. Any AI SDK decision model that answers `choice` questions with
 probability distributions works, such as TypeSafe Jev or OpenAI `gpt-6-luna`
 through `@ai-sdk/openai` 4.0.90 or later. A small language model writes
-field values and upload paths. Needs `ai` 7.0.134 or later.
+field values and upload paths. Needs `ai` 7.0.134 or later. An answer with
+no distribution, as a gateway fallback to a language model returns, counts
+as a committed choice with probability 1 and confidence 0.
 
 ```ts
 import type { E2EConfig } from 'e2e';
