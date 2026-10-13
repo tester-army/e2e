@@ -126,7 +126,8 @@ await expect(screen.getByRole('status')).toHaveText('2 remaining');
 - An action, a read, or a single-node assertion fails when its query finds
   more than one node. Use `.filter()`, `.first()`, or `.nth()` to find one
   node.
-- A direct read, such as `textContent()`, does not retry.
+- A direct read, such as `textContent()`, waits for its match, then reads once
+  and does not retry for a value.
 
 See the [screen reference](/reference/screen) and the
 [expect reference](/reference/expect#locator-matchers). For routes, cookies,

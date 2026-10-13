@@ -220,9 +220,10 @@ locator; a point moves with the layout.
 
 ### Reads
 
-Reads resolve once, no retry: `textContent()`, `inputValue()`,
-`getAttribute(name)`, `isVisible()`, `isHidden()`, `isEnabled()`,
-`isDisabled()`, `isChecked()`, `boundingBox()`, `count()`. `all()` gives one
+`textContent()`, `inputValue()`, `getAttribute(name)`, `isEnabled()`,
+`isDisabled()`, `isChecked()`, and `boundingBox()` wait for one match until
+the action timeout, then read once with no retry for a value. `isVisible()`,
+`isHidden()`, and `count()` answer at once. `all()` gives one
 `nth(i)` locator per current match and `allTextContents()` every match's
 text, both `[]` at zero. Text is the rendered text, whitespace collapsed: on
 the web what `innerText` reads (`text-transform` applies, `display: none`

@@ -348,6 +348,11 @@ test('an empty class attribute is an empty class list', async ({ app, browser })
   await expect(browser).toHaveClass(browser.locator('#blank-card'), '');
 });
 
+test('class assertions on a node that never arrives fail as assertions', async ({ app, browser }) => {
+  await app.open('/classes');
+  await expect(browser).toHaveClass(browser.locator('#never-card'), 'card', { timeout: 300 });
+});
+
 test('a missing class attribute is not an empty class list', async ({ app, browser, screen }) => {
   await app.open('/classes');
   await expect(browser).toHaveClass(screen.getByTestId('items'), '', { timeout: 300 });
@@ -668,6 +673,15 @@ describe('web platform integration', () => {
     expect(result.attempts[0]!.error?.code).toBe('LOCATOR_AMBIGUOUS');
     const step = result.attempts[0]!.steps.find((candidate) => candidate.api === 'expect.toHaveClass');
     expect(step?.durationMs).toBeLessThan(1800);
+  });
+
+  it('fails a class assertion on a node that never arrives as ASSERTION_FAILED observing no node', () => {
+    const result = resultByTitle(outcome, 'class assertions on a node that never arrives fail as assertions');
+    expect(result.status).toBe('failed');
+    expect(result.attempts[0]!.error?.code).toBe('ASSERTION_FAILED');
+    expect(result.attempts[0]!.error?.message).toContain('observed: no node');
+    const step = result.attempts[0]!.steps.find((candidate) => candidate.api === 'expect.toHaveClass');
+    expect(step?.durationMs).toBeLessThan(3000);
   });
 
   it('matches an empty class string against no class attribute only when one is present', () => {
