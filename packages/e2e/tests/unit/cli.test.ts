@@ -11,11 +11,13 @@ import { SAMPLE_REPORT_SECRETS, sampleReport } from '../helpers/sample-report.ts
 const runMock = vi.hoisted(() => vi.fn());
 const listMock = vi.hoisted(() => vi.fn());
 const initMock = vi.hoisted(() => vi.fn());
+const watchMock = vi.hoisted(() => vi.fn());
 
 // The suite runs from the repository; these tests cover an installed CLI, where telemetry is on.
 vi.mock('../../src/telemetry/checkout.ts', () => ({ runsFromCheckout: () => false }));
 vi.mock('../../src/runner.ts', () => ({ list: listMock }));
 vi.mock('../../src/run/runner.ts', () => ({ run: runMock }));
+vi.mock('../../src/cli/watch.ts', () => ({ watchSession: watchMock }));
 vi.mock('../../src/cli/init.ts', () => ({
   init: initMock,
 }));
@@ -66,6 +68,8 @@ beforeEach(() => {
   listMock.mockResolvedValue({ pairs: [] });
   initMock.mockReset();
   initMock.mockResolvedValue(initOutcome(0));
+  watchMock.mockReset();
+  watchMock.mockResolvedValue(0);
   process.exitCode = undefined;
   stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
   stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -226,6 +230,48 @@ describe('e2e run argument parsing', () => {
       expect(written(stderrSpy)).toContain('must be index/total');
     }
     expect(runMock).not.toHaveBeenCalled();
+  });
+
+  it('--watch hands the parsed options to the session and takes its exit code', async () => {
+    const ci = process.env.CI;
+    delete process.env.CI;
+    try {
+      watchMock.mockResolvedValue(1);
+      await invoke('run', '-w', 'tests/a.e2e.ts', '--tag', 'smoke');
+      expect(runMock).not.toHaveBeenCalled();
+      expect(watchMock).toHaveBeenCalledTimes(1);
+      const options = watchMock.mock.calls[0]?.[0] as { base: RunOptions; stdin: unknown; clear: boolean };
+      expect(options.base).toMatchObject({ files: ['tests/a.e2e.ts'], tags: ['smoke'] });
+      expect(options.stdin).toBe(process.stdin.isTTY === true ? process.stdin : undefined);
+      expect(options.clear).toBe(process.stdout.isTTY === true);
+      expect(process.exitCode).toBe(1);
+    } finally {
+      if (ci !== undefined) process.env.CI = ci;
+    }
+  });
+
+  it('refuses --watch in CI and with the json reporter, exit code 2, without running', async () => {
+    const ci = process.env.CI;
+    process.env.CI = '1';
+    try {
+      await invoke('run', '--watch');
+      expect(process.exitCode).toBe(2);
+      expect(written(stderrSpy)).toContain('--watch is for a terminal');
+    } finally {
+      if (ci === undefined) delete process.env.CI;
+      else process.env.CI = ci;
+    }
+    delete process.env.CI;
+    process.exitCode = undefined;
+    try {
+      await invoke('run', '--watch', '--reporter', 'list,json');
+      expect(process.exitCode).toBe(2);
+      expect(written(stderrSpy)).toContain('cannot be combined with --reporter json');
+    } finally {
+      if (ci !== undefined) process.env.CI = ci;
+    }
+    expect(runMock).not.toHaveBeenCalled();
+    expect(watchMock).not.toHaveBeenCalled();
   });
 
   it('rejects an invalid --tag-mode with exit code 2 and never runs', async () => {
@@ -544,6 +590,7 @@ describe('e2e --version and --help', () => {
       '--no-cache',
       '--strict-cache',
       '-u',
+      '-w',
       '--reporter',
       '--output',
       '--debug',

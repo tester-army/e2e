@@ -2,6 +2,8 @@
 title: From Detox
 description: Use your existing app build and testIDs with screen, expect, and agent goals.
 icon: "/images/icons/detox.svg"
+"og:image": "https://e2e.tester.army/docs/images/og/migrate/detox.png?v=1715664ae0"
+"twitter:image": "https://e2e.tester.army/docs/images/og/migrate/detox.png?v=1715664ae0"
 ---
 
 import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
@@ -109,7 +111,7 @@ password comes from [configured credentials](/authentication).
 | `by.id('x')` | `screen.getByTestId('x')` |
 | `by.text('t')` | `screen.getByText('t')`; both match the exact text |
 | `by.label('l')` | `screen.getByLabel('l')` |
-| `by.type('RCTImageView')` | `device.locator('role=Image')`, agent-device's selector syntax |
+| `by.type('RCTImageView')` | `device.locator('role=image')`, agent-device's selector syntax |
 | `by.id('x').withAncestor(by.id('row'))` | `screen.getByTestId('row').getByTestId('x')` |
 | `.atIndex(n)` | `.nth(n)` |
 | `.tap()`, `.multiTap(2)`, `.longPress()` | `.tap()`, `.doubleTap()`, `.longPress()` |

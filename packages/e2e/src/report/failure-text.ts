@@ -29,6 +29,8 @@ const MAX_SCREEN_CHARS = 24_000;
 const MAX_SUMMARY_CANDIDATES = 3;
 
 export interface TracePageOptions {
+  /** The page is the whole record of a hosted session: there is no `report.json` to point at. */
+  readonly standalone?: true | undefined;
   /** A link to a source line, when the commit is known. */
   readonly sourceUrl?: ((file: string, line: number) => string) | undefined;
   /** Where the run's artifacts can be fetched; evidence links there. */
@@ -575,6 +577,7 @@ export function renderTracePage(report: Report1Document, result: ReportResult, f
     lines.push('');
   }
 
-  lines.push(`<sub>e2e ${cell(run.runner.version, MAX_ID_CHARS)} · run ${code(run.id, MAX_ID_CHARS)} · the whole run is in \`report.json\`</sub>`);
+  const footer = `e2e ${cell(run.runner.version, MAX_ID_CHARS)} · run ${code(run.id, MAX_ID_CHARS)}`;
+  lines.push(`<sub>${options.standalone === true ? footer : `${footer} · the whole run is in \`report.json\``}</sub>`);
   return `${lines.join('\n')}\n`;
 }

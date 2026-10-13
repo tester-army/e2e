@@ -499,7 +499,48 @@ describe('StepTraceSession', () => {
       replayedActions: 1,
       totalActions: 1,
       entry: 'a'.repeat(64),
-      detail: 'every recorded action ran, but the recorded end state did not show on /customers: expected status "Marker" text="saved"',
+      detail: 'every recorded action ran, but the recorded end state did not show on /customers: missing status "Marker" text="saved"',
+    });
+  });
+
+  it('names the anchors that did not hold on an end-mismatch, not the first ones recorded', async () => {
+    const announcer = { role: 'alert', name: 'Acme Notes' };
+    const declined: SemanticNode = { ref: { id: 'd1', revision: 'r1' }, role: 'alert', name: 'Card declined' };
+    const quiet = makeSession(entryContext({ endPath: '/customers', endAnchors: [announcer, savedAnchor] }), makeHost(['/pricing', '/customers'], [[], [savedMarker]]));
+    expect(await quiet.begin()).toBeUndefined();
+    expect(quiet.cacheInfo).toMatchObject({
+      reason: 'end-mismatch',
+      detail: 'every recorded action ran, but the recorded end state did not show on /customers: missing alert "Acme Notes"',
+    });
+    const raised = makeSession(entryContext({ endPath: '/customers', endAnchors: [savedAnchor] }), makeHost(['/pricing', '/customers'], [[], [savedMarker, declined]]));
+    expect(await raised.begin()).toBeUndefined();
+    expect(raised.cacheInfo).toMatchObject({
+      reason: 'end-mismatch',
+      detail: 'every recorded action ran, but the recorded end state did not show on /customers: unrecorded alert "Card declined"',
+    });
+    const links = ['Alpha', 'Beta', 'Gamma'].map((name) => ({ role: 'link', name }));
+    const kept = makeSession(entryContext({ endPath: '/customers', endAnchors: links, goneAnchors: [savedAnchor] }), makeHost(['/pricing', '/customers'], [[], [savedMarker]]));
+    expect(await kept.begin()).toBeUndefined();
+    expect(kept.cacheInfo).toMatchObject({
+      detail: 'every recorded action ran, but the recorded end state did not show on /customers: missing link "Alpha" and link "Beta" (+1 more), still showing status "Marker" text="saved"',
+    });
+  });
+
+  it('says the outcome already showed when the replay cannot have produced it, rather than that it did not show', async () => {
+    const session = makeSession(entryContext({ endPath: '/customers', endAnchors: [savedAnchor] }), makeHost(['/customers', '/customers'], [[savedMarker]]));
+    expect(await session.begin()).toBeUndefined();
+    expect(session.cacheInfo).toMatchObject({
+      reason: 'end-mismatch',
+      detail: 'every recorded action ran, but the recorded outcome already showed on /customers before the replay acted there, so nothing proves the replay produced it',
+    });
+  });
+
+  it('does not say the outcome already showed when the recording has no delta to show', async () => {
+    const session = makeSession(entryContext({ endPath: '/customers' }), makeHost(['/customers', '/customers'], [[savedMarker]]));
+    expect(await session.begin()).toBeUndefined();
+    expect(session.cacheInfo).toMatchObject({
+      reason: 'end-mismatch',
+      detail: 'every recorded action ran, but the recorded end state did not show on /customers',
     });
   });
 

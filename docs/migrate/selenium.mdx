@@ -2,6 +2,8 @@
 title: From Selenium
 description: Rewrite Selenium flows in TypeScript with locators, retrying assertions, and agent goals.
 icon: "/images/icons/selenium.svg"
+"og:image": "https://e2e.tester.army/docs/images/og/migrate/selenium.png?v=32737f50da"
+"twitter:image": "https://e2e.tester.army/docs/images/og/migrate/selenium.png?v=32737f50da"
 ---
 
 import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
@@ -95,7 +97,7 @@ password comes from [configured credentials](/authentication).
 | `.sendKeys(Keys.ENTER)` | `.press('Enter')` |
 | `.clear()` | `.clear()` |
 | `new Select(el).selectByVisibleText` | `.selectOption({ label })` |
-| `.getText()`, `.getAttribute()`, `.isDisplayed()` | `.textContent()`, `.getAttribute()`, `.isVisible()` read one time; `toHaveText()` retries |
+| `.getText()`, `.getAttribute()`, `.isDisplayed()` | `.textContent()`, `.getAttribute()` wait for the node then read one time, `.isVisible()` reads at once; `toHaveText()` retries |
 | `wait.until(visibilityOf(...))` | `await expect(locator).toBeVisible()` |
 | `wait.until(textToBe(...))` | `await expect(locator).toHaveText(...)` |
 | `wait.until(urlContains(...))` | `await expect(browser).toHaveURL(/.../)` |

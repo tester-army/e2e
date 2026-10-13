@@ -181,7 +181,8 @@
               "integrations/index",
               "integrations/kernel",
               "integrations/eas",
-              "integrations/smol"
+              "integrations/smol",
+              "integrations/limrun"
             ]
           },
           {

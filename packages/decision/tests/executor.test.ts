@@ -498,10 +498,19 @@ describe('assert', () => {
 });
 
 describe('model failures', () => {
-  it('fails without a choice distribution', async () => {
-    const { model } = scriptedDecision(() => ({ choice: 'tap', bare: true }));
+  it('acts on a committed choice without a distribution, even under a probability gate', async () => {
+    const { model } = scriptedDecision((id, keys, call) => ({ choice: id === 'operation' ? (call === 0 ? 'tap' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''), bare: true }));
     const fixture = context({ tree: BUTTONS });
-    await expect(decisionExecutor({ model }).runStep(fixture.ctx)).rejects.toMatchObject({ code: 'MODEL_OUTPUT_INVALID' });
+    const verdict = await decisionExecutor({ model, minProbability: 0.9 }).runStep(fixture.ctx);
+    expect(verdict).toMatchObject({ status: 'passed' });
+    expect(fixture.actions.tap).toHaveBeenCalledTimes(1);
+  });
+  it('blocks a committed choice without a distribution under a confidence gate', async () => {
+    const { model } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'tap' : (keys[0] ?? ''), bare: true }));
+    const fixture = context({ tree: BUTTONS });
+    const verdict = await decisionExecutor({ model, minConfidence: 0.5 }).runStep(fixture.ctx);
+    expect(verdict).toMatchObject({ status: 'blocked', errorCode: 'AUTOMATION_UNSUPPORTED' });
+    expect(fixture.actions.tap).not.toHaveBeenCalled();
   });
   it('fails a probability outside [0, 1]', async () => {
     const { model } = scriptedDecision((id, keys) => {
@@ -727,6 +736,20 @@ describe('context', () => {
     const criteria = requests[1]?.questions['target']?.criteria as Record<string, unknown>;
     expect(Object.values(criteria).slice(0, 2)).toEqual(['[1] checkbox "Buy milk" checked', '[2] checkbox "Walk the dog" unchecked']);
     expect(fixture.actions.check).toHaveBeenCalledWith({ id: 'dog' }, true);
+  });
+  it('shows selected state in tap target criteria, so the model can tell which tab is active', async () => {
+    const tree: ExecutorNode = { id: 'root', children: [
+      { id: 'profile', role: 'tab', name: 'Profile', states: { selected: true } },
+      { id: 'settings', role: 'tab', name: 'Settings', states: { selected: false } },
+    ] };
+    const { model, requests } = scriptedDecision((id, keys, call) => ({
+      choice: id === 'operation' ? (call === 0 ? 'tap' : 'done') : id === 'verdict' ? 'holds' : (keys[1] ?? ''),
+    }));
+    const fixture = context({ tree });
+    await decisionExecutor({ model }).runStep(fixture.ctx);
+    const criteria = requests[1]?.questions['target']?.criteria as Record<string, unknown>;
+    expect(Object.values(criteria).slice(0, 2)).toEqual(['[1] tab "Profile" selected', '[2] tab "Settings"']);
+    expect(fixture.actions.tap).toHaveBeenCalledWith({ id: 'settings' });
   });
   it('rejects an undeclared secret name', async () => {
     const login: ExecutorNode = { id: 'root', children: [{ id: 'pw', role: 'textbox', name: 'Password', inputPurpose: 'password' }] };

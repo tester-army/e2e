@@ -87,6 +87,14 @@ export interface RunOptions {
    * `NO_LAST_RUN`; a run with nothing failed selects nothing.
    */
   lastFailed?: boolean | undefined;
+  /**
+   * Evaluates the project's own files afresh for this run, not only the
+   * config and the test files: the helpers they import too, one copy shared
+   * by the whole run. For a loop that runs again in one process after a
+   * save (`--watch`); each such run keeps its copy for the life of the
+   * process.
+   */
+  freshGraph?: boolean | undefined;
   /** One shard of the selection, cut once every other filter applied (`--shard 2/3`). */
   shard?: Shard | undefined;
   targetIds?: readonly string[] | undefined;
@@ -348,6 +356,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const cwd = options.cwd ?? process.cwd();
   const env = options.env ?? process.env;
   const runId = uuidv7();
+  /** The fresh module graph this run's config and test files load in, when `freshGraph` asks for one. */
+  const graph = options.freshGraph === true ? `run-${runId}` : undefined;
   /**
    * When the run began executing: taken again right before `plan`, once
    * collection and provisioning are done, so a first-run download is never
@@ -398,7 +408,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   // The config's secrets are known to the process before what its top-level
   // code printed is released, so that output is redacted like any other.
   const loadConfig = async (): Promise<ResolvedConfig> => {
-    const config = await loadRunConfig(options, cwd, env, cli);
+    const config = await loadRunConfig(options, cwd, env, cli, graph);
     registerStaticSecrets(config.allSecrets);
     return allocateAppPorts(config);
   };
@@ -720,7 +730,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         debug.time('collect', async () => {
           const collection =
             options.tests === undefined
-              ? await collect(config, options.files)
+              ? await collect(config, options.files, graph)
               : collectInMemory(
                   config.projectRoot,
                   options.tests.file,
@@ -1083,6 +1093,7 @@ type SelectionRunOptions = Pick<
   | 'grep'
   | 'grepInvert'
   | 'lastFailed'
+  | 'freshGraph'
   | 'shard'
   | 'targetIds'
   | 'passWithNoTests'
@@ -1161,6 +1172,7 @@ async function loadRunConfig(
   cwd: string,
   env: NodeJS.ProcessEnv,
   cli: CliOverrides,
+  graph?: string,
 ): Promise<ResolvedConfig> {
   validateRunOptions(options);
   if (options.rawConfig !== undefined) {
@@ -1170,7 +1182,7 @@ async function loadRunConfig(
   // A run with no config file has nothing to run against: `targets` is
   // required, so resolving an empty config would only report that symptom.
   if (discovered.configPath === undefined) throw missingConfigError(cwd);
-  const raw = await loadConfigModule(discovered.configPath);
+  const raw = await loadConfigModule(discovered.configPath, { graph });
   return resolveConfig(raw, {
     projectRoot: discovered.projectRoot,
     configPath: discovered.configPath,

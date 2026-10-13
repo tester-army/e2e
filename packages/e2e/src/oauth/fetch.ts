@@ -8,6 +8,7 @@
  * rotate refresh tokens reject the second concurrent refresh.
  */
 
+import { withAbort } from '../internal/time.ts';
 import { OAuthError, describeResponse } from './errors.ts';
 import type { CredentialStore, FetchFunction, OAuthCredentials, OAuthProvider } from './types.ts';
 
@@ -117,26 +118,29 @@ export function createOAuthFetch<Credentials extends OAuthCredentials>(
   return async (input, init) => {
     // Captured once so the request can be sent again after a refresh; a body stream is read here.
     const base = new Request(input, init);
-    const body = base.method === 'GET' || base.method === 'HEAD' ? undefined : await base.arrayBuffer();
-    const attempt = (credentials: Credentials) => {
-      const headers = new Headers(base.headers);
-      headers.delete('x-api-key');
-      headers.set('authorization', `Bearer ${credentials.access}`);
-      headers.set('user-agent', options.userAgent);
-      const request = new Request(base.url, { method: base.method, headers, signal: base.signal, ...(body === undefined ? {} : { body }) });
-      return provider.send === undefined ? upstream(request) : provider.send(request, credentials, upstream);
-    };
+    return withAbort(async () => {
+      const body = base.method === 'GET' || base.method === 'HEAD' ? undefined : await base.arrayBuffer();
+      const attempt = (credentials: Credentials) => {
+        base.signal.throwIfAborted();
+        const headers = new Headers(base.headers);
+        headers.delete('x-api-key');
+        headers.set('authorization', `Bearer ${credentials.access}`);
+        headers.set('user-agent', options.userAgent);
+        const request = new Request(base.url, { method: base.method, headers, signal: base.signal, ...(body === undefined ? {} : { body }) });
+        return provider.send === undefined ? upstream(request) : provider.send(request, credentials, upstream);
+      };
 
-    let credentials = await current();
-    if (expiring(credentials)) credentials = await refresh(credentials);
-    const response = await attempt(credentials);
-    if (response.status !== 401) return response;
-    // Nothing to refresh (Copilot's GitHub token) means the token is revoked for good.
-    if (credentials.refresh === '') {
-      throw new OAuthError('LOGIN_REQUIRED', `${provider.name} rejected the stored token (${await describeResponse(response)}); ${remedy}`);
-    }
-    await response.body?.cancel();
-    return attempt(await refresh(credentials));
+      let credentials = await current();
+      if (expiring(credentials)) credentials = await refresh(credentials);
+      const response = await attempt(credentials);
+      if (response.status !== 401) return response;
+      // Nothing to refresh (Copilot's GitHub token) means the token is revoked for good.
+      if (credentials.refresh === '') {
+        throw new OAuthError('LOGIN_REQUIRED', `${provider.name} rejected the stored token (${await describeResponse(response)}); ${remedy}`);
+      }
+      await response.body?.cancel();
+      return attempt(await refresh(credentials));
+    }, base.signal, () => base.signal.reason);
   };
 }
 

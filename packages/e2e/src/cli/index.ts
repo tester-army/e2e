@@ -16,6 +16,7 @@ import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { bounded } from '../report/format.ts';
 import type { BuiltinReporter, RecordingMode } from '../types.ts';
 import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES } from '../internal/recording-modes.ts';
+import { isCiMode } from '../config/resolve.ts';
 import { runsFromCheckout } from '../telemetry/checkout.ts';
 import { initCompletedEvent, runCompletedEvent, USAGE_ERROR_CODE } from '../telemetry/events.ts';
 import { Telemetry } from '../telemetry/telemetry.ts';
@@ -30,6 +31,7 @@ import { PROVIDER_IDS } from '../oauth/providers.ts';
 import { runLogin, runLogout, runModels, type LoginFlags } from '../oauth/cli.ts';
 import { SignalLadder } from './signals.ts';
 import { skillTopics } from './skill.ts';
+import { watchSession } from './watch.ts';
 import { telemetry as telemetryCommand, TELEMETRY_ACTIONS, type TelemetryAction } from './telemetry.ts';
 import { wordmarkBanner } from './wordmark.ts';
 
@@ -333,13 +335,57 @@ async function runToOutcome(
   try {
     const outcome = await start(signals);
     process.exitCode = outcome.exitCode;
-    // The run event is the report's own numbers; every run has a report, even one that failed before its first test.
-    telemetry.record(runCompletedEvent(outcome.report, { command: commandPath(command), flags: usedFlags(command), config: outcome.config }));
+    recordOutcome(telemetry, command, outcome);
   } catch (cause) {
     reportFailure(telemetry, cause);
   } finally {
     release();
   }
+}
+
+/**
+ * Where `--watch` cannot work: CI, where a process that never exits on its
+ * own hangs the job, and the json reporter, whose stdout is one document.
+ */
+function rejectWatchIn(command: Command, reporters: readonly Reporter[] | undefined): void {
+  if (isCiMode(process.env)) {
+    command.error('error: --watch is for a terminal: it never exits on its own, so it is refused in CI (CI is set)', { exitCode: 2 });
+  }
+  if (reporters?.includes('json') === true) {
+    command.error('error: --watch cannot be combined with --reporter json: the json reporter writes one document to stdout', { exitCode: 2 });
+  }
+}
+
+/**
+ * Runs the watch loop under the Ctrl-C ladder, armed once for every run of
+ * the session; each run is recorded for telemetry as it ends, and the exit
+ * code is the last run's. What throws before a run starts prints as a
+ * failure, as it does for one run.
+ */
+async function watchToOutcome(
+  telemetry: Telemetry,
+  command: Command,
+  start: (signals: SignalLadder, record: (outcome: RunOutcome) => RunOutcome) => Promise<number>,
+): Promise<void> {
+  const signals = new SignalLadder();
+  const release = signals.arm();
+  try {
+    process.exitCode = await start(signals, (outcome) => {
+      recordOutcome(telemetry, command, outcome);
+      // A session that a signal's last rung or the terminal ends never reaches the flush: each run's event goes out as it happens.
+      void telemetry.sendQueued();
+      return outcome;
+    });
+  } catch (cause) {
+    reportFailure(telemetry, cause);
+  } finally {
+    release();
+  }
+}
+
+/** Records a run for telemetry: the report's own numbers; every run has a report, even one that failed before its first test. */
+function recordOutcome(telemetry: Telemetry, command: Command, outcome: RunOutcome): void {
+  telemetry.record(runCompletedEvent(outcome.report, { command: commandPath(command), flags: usedFlags(command), config: outcome.config }));
 }
 
 /** Prints a failure that stopped a command before it could run, sets the exit code, and names it in the session. */
@@ -545,6 +591,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .option('--no-cache', 'run with the replay cache off, whatever the config says')
     .option('--strict-cache', 'fail a step whose recording no longer replays (REPLAY_STALE) instead of handing it to the agent; never writes the cache')
     .option('-u, --update-snapshots', 'write the stored screenshots toHaveScreenshot finds missing or different, and pass')
+    .option('-w, --watch', 'run, then run again whenever a test or source file or the config changes or a key asks: a (all), r (current), f (failed), u, p, t, q; not in CI')
     .optionsGroup('Output:')
     .option('--reporter <ids>', `comma-separated reporters: ${BUILTIN_REPORTERS.join(', ')}`, parseReporters)
     .option('--output <dir>', 'results directory: report, artifacts, sessions (default: output in the config, else .e2e)')
@@ -560,6 +607,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
         examples([
           'e2e run',
           'e2e run tests/signup.e2e.ts --headed',
+          'e2e run --watch',
           "e2e run 'tests/**/*.smoke.e2e.ts' --target web --tag smoke",
           'e2e run --tag smoke,billing --tag-mode all',
           'e2e run --tag smoke --exclude-tag slow',
@@ -600,6 +648,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           cache?: boolean;
           strictCache?: boolean;
           updateSnapshots?: boolean;
+          watch?: boolean;
           debug?: boolean;
           aiTrace?: boolean;
           trace?: RecordingMode | true;
@@ -608,33 +657,54 @@ function createProgram(version: string, telemetry: Telemetry): Command {
         command: Command,
       ) => {
         rejectForwardedFlags(command, files);
+        const runOptions: RunOptions = {
+          files,
+          configPath: options.config,
+          targetIds: options.target,
+          ...selectionRunOptions(options),
+          headed: options.headed,
+          agent: options.agent,
+          retries: options.retries,
+          workers: options.workers,
+          maxFailures: options.maxFailures,
+          repeatEach: options.repeatEach,
+          reporters: options.reporter,
+          output: options.output,
+          noCache: options.cache === false,
+          strictCache: options.strictCache,
+          updateSnapshots: options.updateSnapshots,
+          debug: options.debug,
+          aiTrace: options.aiTrace,
+          trace: recordingOption(options.trace),
+          video: recordingOption(options.video),
+        };
+        if (options.watch === true) rejectWatchIn(command, options.reporter);
         const output = claimRunnerOutput();
         try {
+          if (options.watch === true) {
+            await watchToOutcome(telemetry, command, (signals, record) =>
+              watchSession({
+                base: runOptions,
+                cwd: process.cwd(),
+                signals,
+                run: (iteration, cancel) =>
+                  run({
+                    ...iteration,
+                    interruptSignal: AbortSignal.any([signals.interruptSignal, cancel.interruptSignal]),
+                    forceSignal: AbortSignal.any([signals.forceSignal, cancel.forceSignal]),
+                    processOutput: output,
+                  }).then(record),
+                stdin: process.stdin.isTTY === true ? process.stdin : undefined,
+                write: output.listOutput.raw,
+                writeError: (text) => void process.stderr.write(text),
+                pc: picocolors.createColors(process.stdout.isTTY === true),
+                clear: process.stdout.isTTY === true,
+              }),
+            );
+            return;
+          }
           await runToOutcome(telemetry, command, (signals) =>
-            run({
-              files,
-              configPath: options.config,
-              targetIds: options.target,
-              ...selectionRunOptions(options),
-              headed: options.headed,
-              agent: options.agent,
-              retries: options.retries,
-              workers: options.workers,
-              maxFailures: options.maxFailures,
-              repeatEach: options.repeatEach,
-              reporters: options.reporter,
-              output: options.output,
-              noCache: options.cache === false,
-              strictCache: options.strictCache,
-              updateSnapshots: options.updateSnapshots,
-              debug: options.debug,
-              aiTrace: options.aiTrace,
-              trace: recordingOption(options.trace),
-              video: recordingOption(options.video),
-              interruptSignal: signals.interruptSignal,
-              forceSignal: signals.forceSignal,
-              processOutput: output,
-            }),
+            run({ ...runOptions, interruptSignal: signals.interruptSignal, forceSignal: signals.forceSignal, processOutput: output }),
           );
         } finally {
           output.end();

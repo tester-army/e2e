@@ -22,16 +22,20 @@ describe('error translation', () => {
       code: 'INVALID_STATE',
       retryable: false,
     });
-    expect(translateError(new Error('No active app session. Run open first.'), 'snapshot')).toMatchObject({
-      code: 'INVALID_STATE',
-    });
     // What `appstate` says once `close` ended the session; the harness reports it as APP_NOT_OPEN.
     expect(
       translateError(
-        new AppError('INVALID_ARGS', 'appstate requires an active session or an explicit device selector (e.g. --platform ios).'),
+        new AppError('INVALID_ARGS', 'appstate requires an active session or an explicit device selector (e.g. --platform ios).', {
+          reason: 'session_or_device_selector_required',
+          dispatched: 'no',
+        }),
         'device.foregroundApp',
       ),
     ).toMatchObject({ code: 'INVALID_STATE', retryable: false });
+    // Keyed on the code and reason, never the text: a message that only reads like a missing session stays an engine failure.
+    expect(translateError(new AppError('INVALID_ARGS', 'appstate requires an active session'), 'device.foregroundApp')).toMatchObject({
+      code: 'ENGINE_FAILURE',
+    });
     expect(
       translateError(
         new AppError('SESSION_NOT_FOUND', 'iOS appstate requires an active session on the target device. Run open first.'),

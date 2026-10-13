@@ -136,6 +136,26 @@ describe('expect.soft', () => {
     }
   });
 
+  it('does not collect a late asynchronous failure on the next attempt', async () => {
+    const first = attempt();
+    let reject!: (cause: unknown) => void;
+    const matcher = soften({
+      toBeVisible: () => new Promise<void>((_resolve, fail) => { reject = fail; }),
+    });
+    const pending = matcher.toBeVisible();
+    first.soft.close();
+    first.end();
+    const second = attempt();
+    try {
+      const rejected = vexpect(pending).rejects.toMatchObject({ code: 'ASSERTION_FAILED' });
+      reject(new TestError('ASSERTION_FAILED', 'late first attempt failure'));
+      await rejected;
+      vexpect(second.soft.close()).toBeUndefined();
+    } finally {
+      second.end();
+    }
+  });
+
   it('soften keeps an async assertion failure, softens .not, and lets other errors through', async () => {
     const live = attempt();
     try {

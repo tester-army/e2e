@@ -1,5 +1,23 @@
 # e2e
 
+## 0.20.0
+
+### Minor Changes
+
+- [#1068](https://github.com/tester-army/e2e/pull/1068) [`9e2a8bf`](https://github.com/tester-army/e2e/commit/9e2a8bf4c71aae5513a1d8b1b3b610b2cf5b88f4) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `e2e run --watch` (`-w`) runs the tests, then runs again whenever a test file, a source file beside the tests, or the config is saved, or a key asks for it, with vitest's keys: `a` or enter for every test, `r` for the current filters, `f` for the failed ones, `u` to update snapshots, `p` and `t` to filter by file and title, `q` to quit. A key during a run cancels it. Refused in CI and with `--reporter json`.
+
+### Patch Changes
+
+- [#944](https://github.com/tester-army/e2e/pull/944) [`9acaa16`](https://github.com/tester-army/e2e/commit/9acaa16f59db8a484091e53d2a9b6979557169c2) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Reject an expired saved session on later restores even when its state is cached in the worker.
+
+- [#933](https://github.com/tester-army/e2e/pull/933) [`e22d8a0`](https://github.com/tester-army/e2e/commit/e22d8a05512f5ecff73b119ce28c7afd8aa10633) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Respect model-call cancellation while waiting for a shared subscription token refresh.
+
+- [#1052](https://github.com/tester-army/e2e/pull/1052) [`29cd745`](https://github.com/tester-army/e2e/commit/29cd745db3bad6f58d6041c87bd2582e260c355d) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Resolve aliases and compiler settings from nested solution-style TypeScript project references.
+
+- [#932](https://github.com/tester-army/e2e/pull/932) [`7bd0dde`](https://github.com/tester-army/e2e/commit/7bd0dde3b23b72c7e5d689df0e901c08cb7e3138) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Stop surviving app-command descendants on POSIX even when the command leader exits first, preserving the shutdown grace period for the entire process group.
+
+- [#1065](https://github.com/tester-army/e2e/pull/1065) [`d6ab2c5`](https://github.com/tester-army/e2e/commit/d6ab2c582479e67ccc9eed5a493e96091701f2f2) Thanks [@KrzysztofMoch](https://github.com/KrzysztofMoch)! - The bundled agent skill routes faster. `SKILL.md` opens with a table that sends each job to one reference, its description now covers checking a change in the running app over `e2e mcp`, and every reference opens with a list of its sections.
+
 ## 0.19.0
 
 ### Minor Changes

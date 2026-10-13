@@ -44,6 +44,27 @@ describe('describeLocate', () => {
     expect(ambiguous).toContain('- and 11 more');
   });
 
+  it('on no match for a role name, points at the text a status shows in observe instead of retrying it as a name', () => {
+    const none = { redact: keep, redactCut: keep };
+    const exact = describeLocate(locateQuery({ role: 'status', name: 'Saved.' }), 0, [], none);
+    expect(exact).toContain('LOCATOR_NOT_FOUND');
+    expect(exact).toContain('screen.getByRole("status").filter({ hasText: "Saved." })');
+    expect(exact).toContain('screen.getByText("Saved.")');
+    expect(exact).not.toContain('Check the accessible name in the observation');
+    const loose = describeLocate(locateQuery({ role: 'status', name: 'Saved.', exact: false }), 0, [], none);
+    expect(loose).toContain('screen.getByRole("status").filter({ hasText: "Saved." })');
+    expect(loose).not.toContain('exact: false');
+    const button = describeLocate(locateQuery({ role: 'button', name: 'Submitt' }), 0, [], none);
+    expect(button).toContain('Check the accessible name in the observation');
+    expect(button).not.toContain('hasText');
+  });
+
+  it('on no match, offers exact: false only when the query is still exact', () => {
+    const none = { redact: keep, redactCut: keep };
+    expect(describeLocate(locateQuery({ text: 'Saved' }), 0, [], none)).toContain('loosen the match with exact: false');
+    expect(describeLocate(locateQuery({ text: 'Saved', exact: false }), 0, [], none)).not.toContain('loosen');
+  });
+
   it('never shows the value of a secure node', () => {
     const query = locateQuery({ label: 'Password' });
     const text = describeLocate(query, 1, [node('textbox', 'Password', { value: 'hunter2', states: { secure: true } })], { redact: keep, redactCut: keep });

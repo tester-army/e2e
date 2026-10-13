@@ -336,3 +336,17 @@ describe('the TypeScript loader', () => {
     expect(await names(true)).toEqual(['other']);
   });
 });
+
+describe('nested TypeScript solution loading', () => {
+  it('loads a config alias through two solution reference levels', async () => {
+    createProject({ type: 'module' });
+    write({
+      'tsconfig.json': JSON.stringify({ files: [], references: [{ path: 'configs/solution.json' }] }),
+      'configs/solution.json': JSON.stringify({ files: [], references: [{ path: 'app.json' }] }),
+      'configs/app.json': JSON.stringify({ compilerOptions: { baseUrl: '..', paths: { '@nested/*': ['lib/*'] } }, include: ['../*.ts', '../lib/*.ts'] }),
+      'e2e.config.ts': "import { targetName } from '@nested/config-helper'; export default { targets: [{ name: targetName, platform: 'test' }] };\n",
+    });
+    const loaded = await loadConfigModule(path.join(dir, 'e2e.config.ts'), { graph: true });
+    expect(loaded.targets?.[0]?.name).toBe('local');
+  });
+});

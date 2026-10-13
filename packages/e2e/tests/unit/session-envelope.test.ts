@@ -130,6 +130,21 @@ describe('session load', () => {
     }
   });
 
+  it('reuses a valid cached state but refuses it at its expiry', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const { store } = await saveEnvelope();
+    try {
+      const saved = await store.load('member', identity);
+      const expiry = Date.parse(saved.state.expiresAt!);
+      vi.setSystemTime(expiry - 1);
+      expect(await store.load('member', identity)).toBe(saved);
+      vi.setSystemTime(expiry);
+      await expect(store.load('member', identity)).rejects.toMatchObject({ code: 'SESSION_EXPIRED' });
+    } finally {
+      store.cleanup();
+    }
+  });
+
   it('refuses a session whose ciphertext, taint, or expiry was edited, or that is not JSON', async () => {
     const edits: ((envelope: Editable) => void)[] = [
       (envelope) => {

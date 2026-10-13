@@ -2,6 +2,8 @@
 title: Caching
 description: Replay verified agent actions without model calls, and let the agent take over when the app changes.
 icon: "box-archive"
+"og:image": "https://e2e.tester.army/docs/images/og/cache.png?v=d035986b13"
+"twitter:image": "https://e2e.tester.army/docs/images/og/cache.png?v=d035986b13"
 ---
 
 The replay cache records the actions of an `agent.act()` step after a later
@@ -150,7 +152,8 @@ page on any other origin is another route.
   already on screen before the actions proves nothing. When the step's last
   action moved to another route, that move is the evidence.
 - An alert that the replay raised and the recording never saw stops the
-  replay.
+  replay. The web engine does not observe Next.js App Router's route
+  announcer, so its title echo never counts.
 - Text that differs on every run, such as a date, a duration, or an id,
   is skipped while a stable change exists. With nothing else, it is kept,
   and a changed value hands the replay off. In an alert, it reads as a placeholder.
@@ -176,7 +179,10 @@ step. `agent.act()` returns it as `result.cache`, without `write`, and the
 | `missed` | `missed` | The agent ran the step from the beginning. |
 
 Both carry `step.cache.reason`, and `step.cache.detail` says where the
-replay stopped and why (`at action 2 of 3, tap button "Apply": ...`).
+replay stopped and why (`at action 2 of 3, tap button "Apply": ...`). After
+an `end-mismatch` it names the recorded nodes that did not show, the ones
+that did not go away, and any alert the recording never saw, or says the
+outcome already showed before the replay acted.
 `step.cache.entry` is the entry's key and its file name (`<entry>.json`) in
 the file store.
 

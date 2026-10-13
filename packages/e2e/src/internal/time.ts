@@ -1,6 +1,6 @@
 /** Deadline and cancellation helpers. */
 
-import { asEngineError, E2EError } from './errors.ts';
+import { asEngineError, E2EError, isE2EError } from './errors.ts';
 
 export class Deadline {
   readonly endsAt: number;
@@ -24,11 +24,25 @@ export class Deadline {
   }
 }
 
+/**
+ * The error an aborted signal stands for: the classified error it was aborted
+ * with, when its owner gave one (a session deadline aborts with its timeout),
+ * else what the caller builds. An owner's bare `abort()` is a cancellation.
+ */
+export function abortError(signal: AbortSignal, fallback: () => Error): Error {
+  return isE2EError(signal.reason) ? signal.reason : fallback();
+}
+
+/** The error a bare cancellation stands for. */
+export function cancelledError(): E2EError {
+  return new E2EError('infrastructure', 'CANCELLED', 'operation cancelled');
+}
+
 /** Sleeps for ms, rejecting early if the signal aborts. */
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
-      reject(new E2EError('infrastructure', 'CANCELLED', 'operation cancelled'));
+      reject(abortError(signal, cancelledError));
       return;
     }
     const timer = setTimeout(() => {
@@ -37,7 +51,7 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     }, ms);
     const onAbort = () => {
       cleanup();
-      reject(new E2EError('infrastructure', 'CANCELLED', 'operation cancelled'));
+      reject(signal === undefined ? cancelledError() : abortError(signal, cancelledError));
     };
     const cleanup = () => {
       clearTimeout(timer);
@@ -187,29 +201,30 @@ export async function withScopedBudget<T>(
 }
 
 /**
- * Races a promise against an abort signal; on abort invokes onAbort to build
- * the error. The promise is left running: the caller is abandoning it.
+ * Races a promise against an abort signal; on abort fails with the signal's
+ * own classified error, else the one `fallback` builds. The promise is left
+ * running: the caller is abandoning it.
  */
 export async function withAbort<T>(
   work: Promise<T> | (() => Promise<T>),
   signal: AbortSignal,
-  onAbort: () => Error,
+  fallback: () => Error,
 ): Promise<T> {
   if (signal.aborted) {
     if (typeof work !== 'function') void work.catch(() => undefined);
-    throw onAbort();
+    throw abortError(signal, fallback);
   }
   const promise = typeof work === 'function' ? work() : work;
   if (signal.aborted) {
     void promise.catch(() => undefined);
-    throw onAbort();
+    throw abortError(signal, fallback);
   }
   let listener: (() => void) | undefined;
   try {
     return await Promise.race([
       promise,
       new Promise<never>((_, reject) => {
-        listener = () => reject(onAbort());
+        listener = () => reject(abortError(signal, fallback));
         signal.addEventListener('abort', listener, { once: true });
       }),
     ]);

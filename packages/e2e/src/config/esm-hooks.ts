@@ -76,12 +76,13 @@ function graphOf(url: string | undefined): string | null {
 
 /**
  * A URL that evaluates `absolutePath` afresh under `key`; with `graph`,
- * every project file it imports by path or `#` import is fresh too.
+ * every project file it imports by path or `#` import is fresh too, shared
+ * with every other module loaded under the same `graph`.
  */
-export function freshModuleURL(absolutePath: string, key: string, graph: boolean): string {
+export function freshModuleURL(absolutePath: string, key: string, graph: string | undefined): string {
   const url = pathToFileURL(absolutePath);
   url.searchParams.set('e2e', key);
-  if (graph) url.searchParams.set(GRAPH_PARAM, key);
+  if (graph !== undefined) url.searchParams.set(GRAPH_PARAM, graph);
   return url.href;
 }
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { assignPorts, resolveConfig, type PortAssignments } from '../../src/config/resolve.ts';
 import { defineEngine } from '../../src/engine/index.ts';
 import type { TargetApp } from '../../src/types.ts';
-import { allocateAppPorts } from '../../src/run/app-ports.ts';
+import { allocateAppPorts, allocateTargetPorts } from '../../src/run/app-ports.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 
 const ROOT = '/tmp/e2e-app-ports';
@@ -127,5 +127,15 @@ describe('allocateAppPorts', () => {
     expect(await allocateAppPorts(allocated)).toBe(allocated);
     // A worker handed the same ports resolves the same URLs.
     expect(configOf(declared, allocated.ports).targets.map((target) => target.app)).toEqual(allocated.targets.map((target) => target.app));
+  });
+
+  it('allocates one target alone when a session opens it', async () => {
+    const start = { executable: 'pnpm', args: ['dev'] };
+    const config = configOf({ a: { url: 'http://127.0.0.1:0', command: start }, b: { url: 'http://127.0.0.1:0', command: start } });
+    const allocated = await allocateTargetPorts(config, config.targets[1]!);
+    expect(Object.keys(allocated.config.ports)).toEqual(['b']);
+    expect(allocated.config.targets[0]!.app.portRequest?.port).toBeUndefined();
+    expect(allocated.target.app.base?.origin).toBe(`http://127.0.0.1:${allocated.config.ports['b']}`);
+    expect(allocated.config.targets[1]).toBe(allocated.target);
   });
 });

@@ -7,37 +7,42 @@
 
 import { EngineError, matchesText, type LocatorExpression, type SemanticQuery } from 'e2e/engine';
 import { isWithin, type ProjectedNode } from './nodes.ts';
+import type { MobilePlatform } from './options.ts';
 import { compileSelector } from './selector.ts';
 
-/** Resolves one expression to the nodes it currently matches. */
-export function resolveExpression(expression: LocatorExpression, index: readonly ProjectedNode[]): ProjectedNode[] {
+/** Resolves one expression to the nodes it currently matches; `platform` is the one agent-device selectors match for. */
+export function resolveExpression(
+  expression: LocatorExpression,
+  index: readonly ProjectedNode[],
+  platform: MobilePlatform,
+): ProjectedNode[] {
   switch (expression.kind) {
     case 'query': {
       const candidates =
-        expression.scope === undefined ? index : descendantsOf(resolveExpression(expression.scope, index), index);
+        expression.scope === undefined ? index : descendantsOf(resolveExpression(expression.scope, index, platform), index);
       const matches = candidates.filter((entry) => matchesQuery(entry, expression.query));
       return ECHOED_QUERY_KINDS.has(expression.query.kind) ? innermostOnly(matches) : matches;
     }
     case 'filter': {
-      const source = resolveExpression(expression.source, index);
+      const source = resolveExpression(expression.source, index, platform);
       return source.filter((entry) => {
         if (expression.hasText !== undefined && !subtreeHasText(entry, index, expression.hasText)) return false;
         if (expression.has !== undefined) {
           const within = descendantsOf([entry], index);
-          if (resolveExpression(expression.has, within).length === 0) return false;
+          if (resolveExpression(expression.has, within, platform).length === 0) return false;
         }
         return true;
       });
     }
     case 'index': {
-      const source = resolveExpression(expression.source, index);
+      const source = resolveExpression(expression.source, index, platform);
       const position =
         expression.index === 'first' ? 0 : expression.index === 'last' ? source.length - 1 : expression.index;
       const picked = source[position];
       return picked === undefined ? [] : [picked];
     }
     case 'selector':
-      return compileSelector(expression.selector)(index);
+      return compileSelector(expression.selector, platform)(index);
     case 'frame':
       throw new EngineError('FRAME_NOT_FOUND', 'a device surface has no nested documents to scope a query into', {
         retryable: false,

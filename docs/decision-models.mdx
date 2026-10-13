@@ -2,6 +2,8 @@
 title: Decision models
 description: Run bounded actions with a decision model and a small text model instead of a full LLM agent.
 icon: "scale-balanced"
+"og:image": "https://e2e.tester.army/docs/images/og/decision-models.png?v=bc0d69c206"
+"twitter:image": "https://e2e.tester.army/docs/images/og/decision-models.png?v=bc0d69c206"
 ---
 
 `@e2e-dev/decision` runs `agent.act` and `agent.assert` through a decision
@@ -194,6 +196,26 @@ const executor = decisionExecutor({
 
 The text model takes the agents entry's `providerOptions`, so a setting
 for one model, such as a gateway fallback list, never reaches the other.
+
+AI Gateway can rerun an uncertain decision on another model. Add the
+conditional entry to `gateway.models`; it reaches every decide call, and a
+triggered fallback bills both models:
+
+```ts title="Executor setup"
+const executor = decisionExecutor({
+  model: gateway.decisionModel('typesafe-ai/jev'),
+  textModel: gateway('openai/gpt-4.1-nano'),
+  providerOptions: {
+    gateway: { models: [{ model: 'openai/gpt-6-luna-decisions', when: { confidenceBelow: 0.6 } }] },
+  },
+});
+```
+
+A decision model fallback keeps the gates: the executor reads the fallback
+model's probabilities and confidence. A language model fallback, such as
+`openai/gpt-5-nano`, answers with a choice and no distribution. The
+executor takes that choice with probability 1 and confidence 0, so a
+`minConfidence` gate blocks every escalated answer.
 
 ## Limits
 

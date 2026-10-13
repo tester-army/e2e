@@ -44,6 +44,9 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     'frameset',
     'object',
     'embed',
+    // Next.js App Router's route announcer echoes the title on a hydration
+    // schedule of its own, which an observation must not read as an alert.
+    'next-route-announcer',
   ];
   const OPAQUE_TAGS = ['svg', 'math', 'canvas', 'video', 'audio'];
   /**

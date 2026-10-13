@@ -156,6 +156,7 @@ describe('operations on a hung page', () => {
     expect(title.error).toMatchObject({ code: 'OPERATION_TIMEOUT' });
     // A locator read waits out the action timeout, as the harness's does.
     const card = {
+      count: async () => 1,
       getAttribute: async () => {
         await engine.locate!(button('Next'), { ...operation(), timeoutMs: ACTION_TIMEOUT_MS });
         return 'card';

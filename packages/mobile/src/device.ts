@@ -8,7 +8,19 @@
 import type { EngineFixtureContext, Locator } from 'e2e/engine';
 import { linkLabel, linkTarget } from './links.ts';
 import type { DevicePermission, PermissionState } from './options.ts';
+import { unsupported } from './support.ts';
 import type { AgentDeviceSurface, FoldPose, InstallAppOptions, InstalledApp, OpenAppOptions } from './surface.ts';
+
+/**
+ * Why iOS refuses to take the device offline, before any device command:
+ * agent-device's iOS `wifi` and `airplane` settings only override a
+ * simulator's status bar, and a physical iPhone takes no settings at all. A
+ * success would let a test read the repainted indicator as the app going
+ * offline. Going back online sends nothing there, like a toggle already in
+ * the wanted state, so a cleanup hook shared with Android still passes.
+ */
+const IOS_OFFLINE =
+  "on iOS agent-device can only repaint a simulator's status bar, since the simulator shares the Mac's network, and cannot switch an iPhone's radios, so the app would stay online";
 
 /** Orientations `setOrientation` accepts. */
 export type DeviceOrientation = 'portrait' | 'portrait-upside-down' | 'landscape-left' | 'landscape-right';
@@ -24,19 +36,29 @@ export interface ForegroundApp {
 export interface Device {
   /**
    * A locator from an agent-device selector (`'id=SW_VERSION_SPECIFIER'`,
-   * `'role=StaticText label="26.2"'`), for nodes the closed `screen` query
+   * `'role=text label="26.2"'`), for nodes the closed `screen` query
    * vocabulary cannot name. Same polling and strictness as any locator.
    */
   locator(selector: string): Locator;
-  /** Toggles the device's Wi-Fi. */
+  /**
+   * Switches an Android device's Wi-Fi. Cellular data stays on, so an
+   * emulator hands the app over to its cellular link; `setAirplaneMode(true)`
+   * cuts both. On iOS `offline` is `UNSUPPORTED_CAPABILITY`, since a
+   * simulator shares the Mac's network and simctl can only repaint its status
+   * bar; `online` sends nothing there, so a cleanup hook shared with Android
+   * passes.
+   */
   setNetwork(state: 'online' | 'offline'): Promise<void>;
-  /** Toggles airplane mode. */
+  /**
+   * Switches an Android device's airplane mode, Wi-Fi and cellular together;
+   * Android 11 or newer. On iOS, as for `setNetwork`, `true` is
+   * `UNSUPPORTED_CAPABILITY` and `false` sends nothing.
+   */
   setAirplaneMode(enabled: boolean): Promise<void>;
   /**
-   * Grants, denies, or resets one permission for the pinned app, brought to
-   * the foreground first when the session is on no app. A change terminates
-   * a running app on iOS, a revoke one on Android, so it goes before the
-   * `app.open()` a test starts with.
+   * Grants, denies, or resets one permission for the pinned app, which need
+   * not be running. A change terminates a running app on iOS, a revoke one
+   * on Android, so it goes before the `app.open()` a test starts with.
    */
   setPermission(permission: DevicePermission, state: PermissionState): Promise<void>;
   /** Sets the simulated location, switching location services on first on Android. */
@@ -48,12 +70,16 @@ export interface Device {
   /** Rotates the device. */
   setOrientation(orientation: DeviceOrientation): Promise<void>;
   /**
-   * Puts a foldable iOS simulator (iPhone Duo) in a hinge pose and resolves
-   * once agent-device reads the angle back from CoreDevice at that pose,
-   * typically 10 to 16 seconds later. `closed` lights the outer display;
-   * `half-open` (a 130° book) and `open` light the inner one, whose app
-   * window has a different size, so the next observation reads a new screen.
-   * Any device without a hinge is `UNSUPPORTED_CAPABILITY`.
+   * Puts a foldable simulator or emulator in a hinge pose. On the iPhone Duo
+   * it resolves once agent-device reads the angle back from CoreDevice at
+   * that pose, typically 10 to 16 seconds later; `closed` lights the outer
+   * display, `half-open` (a 130° book) and `open` light the inner one. On a
+   * foldable Android emulator it sets the emulator console posture and
+   * resolves once the guest commits the matching device state, within a few
+   * seconds; `half-open` is the profile's own angle there (90° on the Pixel
+   * folds), and a fold to the cover display dismisses the lock screen it
+   * raises. Either way the app window changes size, so the next observation
+   * reads a new screen. Any device without a hinge is `UNSUPPORTED_CAPABILITY`.
    */
   fold(pose: FoldPose): Promise<void>;
   /** Simulates one biometric attempt on the open app. */
@@ -128,6 +154,10 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
   const device: Device = {
     locator: (selector) => context.locator({ kind: 'selector', selector }),
     async setNetwork(state) {
+      if (surface.options.platform === 'ios') {
+        if (state === 'offline') throw unsupported(`device.setNetwork('offline') turns off an Android device's Wi-Fi; ${IOS_OFFLINE}`);
+        return;
+      }
       await surface.command(
         'device.setNetwork',
         (client) => client.settings.update({ setting: 'wifi', state: state === 'offline' ? 'off' : 'on' }),
@@ -135,6 +165,10 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
       );
     },
     async setAirplaneMode(enabled) {
+      if (surface.options.platform === 'ios') {
+        if (enabled) throw unsupported(`device.setAirplaneMode(true) cuts an Android device's radios; ${IOS_OFFLINE}`);
+        return;
+      }
       await surface.command(
         'device.setAirplaneMode',
         (client) => client.settings.update({ setting: 'airplane', state: enabled ? 'on' : 'off' }),

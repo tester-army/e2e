@@ -1,5 +1,6 @@
 /** Opaque secret and credential handles. */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { credentialBrand, secretBrand } from './internal/brands.ts';
 import { ConfigurationError } from './internal/errors.ts';
 import { realmSlot } from './internal/realm-slot.ts';
@@ -28,6 +29,19 @@ export interface SecretRegistry {
 /** Global slot so test modules in an isolated realm reach the runner's registry. */
 const registrySlot = realmSlot<SecretRegistry>('e2e.secrets.v1');
 
+/** Config evaluation creates references, never handles bound to another run's registry. */
+const configReferences = realmSlot<AsyncLocalStorage<true>>('e2e.secrets.config-references.v1');
+
+/** Async-local and realm-shared: concurrent attempts keep their own registry untouched. */
+export function withConfigSecretReferences<T>(load: () => T): T {
+  let scope = configReferences.get(globalThis);
+  if (scope === undefined) {
+    scope = new AsyncLocalStorage<true>();
+    configReferences.set(globalThis, scope);
+  }
+  return scope.run(true, load);
+}
+
 /** Installed by the runner once config resolution completes. */
 export function setSecretRegistry(registry: SecretRegistry | undefined): void {
   if (registry === undefined) registrySlot.delete(globalThis);
@@ -35,28 +49,34 @@ export function setSecretRegistry(registry: SecretRegistry | undefined): void {
 }
 
 /** The registries standalone attempts hold, oldest first; the newest is the one installed. */
-const holds: { readonly registry: SecretRegistry }[] = [];
+const holds: { readonly registry: SecretRegistry; readonly live: boolean }[] = [];
+
+/** The newest live hold's registry, else the newest hold's, else none. */
+function installHeld(): void {
+  const newest = holds.findLast((hold) => hold.live) ?? holds.at(-1);
+  if (newest === undefined) registrySlot.delete(globalThis);
+  else registrySlot.set(globalThis, newest.registry);
+}
 
 /**
- * Installs `registry` for a standalone attempt until the returned release
- * runs. Several attempts may hold one at once, as live sessions do: releasing
+ * Installs `registry` for a standalone worker or attempt until the returned
+ * release runs. Several may hold one at once, as live sessions do: releasing
  * one installs the newest registry still held, and releasing the last clears
  * the slot, so closing one session never leaves another resolving against
- * none.
+ * none. A `live` hold is an attempt's: it outranks a worker that opens while
+ * the attempt runs, whose config would otherwise capture the attempt's handles.
  */
-export function holdSecretRegistry(registry: SecretRegistry): () => void {
-  const hold = { registry };
+export function holdSecretRegistry(registry: SecretRegistry, options: { readonly live?: boolean } = {}): () => void {
+  const hold = { registry, live: options.live === true };
   holds.push(hold);
-  registrySlot.set(globalThis, registry);
+  installHeld();
   return () => {
     const index = holds.indexOf(hold);
     if (index === -1) return;
     holds.splice(index, 1);
-    // A registry installed since, by a newer hold or by a run, stays installed.
+    // A registry a run installed since stays installed.
     if (registrySlot.get(globalThis) !== registry) return;
-    const newest = holds.at(-1);
-    if (newest === undefined) registrySlot.delete(globalThis);
-    else registrySlot.set(globalThis, newest.registry);
+    installHeld();
   };
 }
 
@@ -68,8 +88,14 @@ export function unavailableCode(secret: Pick<Secret, 'purpose'>): 'AUTH_CREDENTI
   return secret.purpose === 'password' ? 'AUTH_CREDENTIAL_UNAVAILABLE' : 'SECRET_UNAVAILABLE';
 }
 
+/** The installed registry, unless a config is being evaluated: its handles stay references. */
+function currentRegistry(): SecretRegistry | undefined {
+  if (configReferences.get(globalThis)?.getStore() === true) return undefined;
+  return registrySlot.get(globalThis);
+}
+
 function requireRegistry(caller: string, code: 'AUTH_CREDENTIAL_UNAVAILABLE' | 'SECRET_UNAVAILABLE'): SecretRegistry {
-  const registry = registrySlot.get(globalThis);
+  const registry = currentRegistry();
   if (registry === undefined) {
     throw new ConfigurationError(code, `${caller} is only available while the e2e runner is active`);
   }
@@ -101,7 +127,7 @@ function deferredSecret(name: string): Secret {
   const handle = {
     name,
     get purpose(): SecretPurpose {
-      return registrySlot.get(globalThis)?.allSecrets.get(name)?.purpose ?? 'generic-secret';
+      return currentRegistry()?.allSecrets.get(name)?.purpose ?? 'generic-secret';
     },
     [secretBrand]: true as const,
   };
@@ -143,7 +169,7 @@ export const credentials: Credentials = {
 
 export const secrets: Secrets = {
   get(name: string): Secret {
-    const registry = registrySlot.get(globalThis);
+    const registry = currentRegistry();
     if (registry === undefined) return deferredSecret(name);
     const resolved = registry.secrets.get(name);
     if (resolved === undefined) {

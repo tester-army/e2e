@@ -3,6 +3,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { ConfigurationError, InfrastructureError, isE2EError } from '../internal/errors.ts';
+import { withConfigSecretReferences } from '../secrets.ts';
 import type { E2EConfig } from '../types.ts';
 import { explainModuleError } from './diagnose.ts';
 import { freshModuleURL, registerLoader } from './esm-hooks.ts';
@@ -86,11 +87,13 @@ export interface ConfigLoadOptions {
    * that holds several instances of one config at once, each with its own
    * engines, and sees an edited base config on the next load. Opt-in: in a
    * run, a test file that imports a file the config imports gets the same
-   * instance, and a fresh graph would split them. Every graph load keeps
-   * its own copy of the project's modules for the life of the process, so
-   * it is for loads a person or an agent asks for, not a loop.
+   * instance, and a fresh graph would split them. Every graph keeps its
+   * own copy of the project's modules for the life of the process, so it
+   * is for loads a person or an agent asks for. A string names the graph:
+   * modules loaded under one name share their copies, which is how a
+   * `--watch` run pays one copy of the project per rerun, not one per file.
    */
-  readonly graph?: boolean | undefined;
+  readonly graph?: boolean | string | undefined;
 }
 
 /**
@@ -99,19 +102,21 @@ export interface ConfigLoadOptions {
  * the instance is for) plus a process-unique sequence, so a realm never
  * receives another realm's instance of it and a second `run()` in one
  * process sees the file as it is now. The files it imports keep one instance
- * per process; `loadConfigModule` with `graph` refreshes them too.
+ * per process, unless `graph` names a fresh graph to load them in, shared
+ * by every module loaded under that name.
  */
-export async function importModule(absolutePath: string, cacheKey = 'module'): Promise<unknown> {
-  return importFresh(absolutePath, cacheKey, false);
+export async function importModule(absolutePath: string, cacheKey = 'module', graph?: string): Promise<unknown> {
+  return importFresh(absolutePath, cacheKey, graph ?? false);
 }
 
 /** Process-unique sequence that keeps every fresh import's URL distinct. */
 let imports = 0;
 
-async function importFresh(absolutePath: string, cacheKey: string, graph: boolean): Promise<unknown> {
+async function importFresh(absolutePath: string, cacheKey: string, graph: boolean | string): Promise<unknown> {
   imports += 1;
   registerLoader();
-  return import(freshModuleURL(absolutePath, `${cacheKey}-${imports}`, graph));
+  const key = `${cacheKey}-${imports}`;
+  return import(freshModuleURL(absolutePath, key, graph === true ? key : graph === false ? undefined : graph));
 }
 
 /** Loads and returns the raw default export of a config module. */
@@ -120,7 +125,7 @@ export async function loadConfigModule(configPath: string, options: ConfigLoadOp
   registerLoader();
   let moduleValue: unknown;
   try {
-    moduleValue = await importFresh(configPath, 'module', options.graph === true);
+    moduleValue = await withConfigSecretReferences(() => importFresh(configPath, 'module', options.graph ?? false));
   } catch (cause) {
     // A factory the config calls (web(), mobile()) or
     // `secrets.get()` refusing its options at evaluation is a config error

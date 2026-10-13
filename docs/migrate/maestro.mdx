@@ -2,6 +2,8 @@
 title: From Maestro
 description: Move Maestro flows to TypeScript with locators, assertions, and agent goals.
 icon: "/images/icons/maestro.svg"
+"og:image": "https://e2e.tester.army/docs/images/og/migrate/maestro.png?v=227549ed41"
+"twitter:image": "https://e2e.tester.army/docs/images/og/migrate/maestro.png?v=227549ed41"
 ---
 
 import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
@@ -178,12 +180,12 @@ declares `requires: ['device']` and other targets skip it. Calls on `screen`,
 | --- | --- | --- |
 | `setLocation` | `device.setLocation({ latitude, longitude })` | device only |
 | `travel: { points }` | `device.setLocation` in a loop | device only |
-| `setAirplaneMode`, `toggleAirplaneMode` | `device.setAirplaneMode(true)` or `false`, the state you want | device only |
+| `setAirplaneMode`, `toggleAirplaneMode` | `device.setAirplaneMode(true)` or `false`, the state you want; `true` is Android only | device only |
 | `setDarkMode`, `toggleDarkMode` | `device.setAppearance('dark')` or `'light'` | device only |
 | `setOrientation` | `device.setOrientation('landscape-left')` | device only |
 | `setPermissions` | `device.setPermission(name, 'grant' \| 'deny' \| 'reset')`, one permission per call, on the open app | device only |
 | a second `appId` mid-flow | `device.openApp(id)`; the `open_app` tool lets the agent switch inside a goal, see [Agent tools](/mobile#agent-tools) | device only |
-| platform-specific selectors | `device.locator('role=StaticText label="..."')`, agent-device's selector terms | device only |
+| platform-specific selectors | `device.locator('role=text label="..."')`, agent-device's selector terms | device only |
 
 </Accordion>
 <Accordion title="AI commands and flow control">

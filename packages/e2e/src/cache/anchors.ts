@@ -20,7 +20,7 @@
  * (`deltaEvidenced`), so a status that already read "Submitted" before a
  * submit that did nothing is no proof. An alert the replay raised that the
  * recording never saw is an outcome the recording did not have, whatever
- * else matched (`deltaHolds`).
+ * else matched (`deltaMismatch`).
  */
 
 import type { RedactedNode } from '../agent/observation.ts';
@@ -86,7 +86,7 @@ const ALERT_ROLES: ReadonlySet<string> = new Set(['alert', 'alertdialog']);
  * that screen's data rather than the step's result (`COUNT_TEXT`).
  *
  * A node counts as gone only when no end node matches its anchor the way
- * `deltaHolds` checks one, on the recorded fields alone: a radio label
+ * `deltaMismatch` checks one, on the recorded fields alone: a radio label
  * "Express" the pick replaced with a status reading "Express" vanished, but
  * an anchor of that text would still match the status, and the recording
  * would fail its own check on every replay.
@@ -217,38 +217,54 @@ function alertShape(anchor: TraceTargetDescriptor): TraceTargetDescriptor {
   };
 }
 
+/** What kept a recorded end state from holding on a fresh observation (`deltaMismatch`), anchor by anchor. */
+export interface DeltaMismatch {
+  /** Appeared anchors no node matches. */
+  readonly missing: readonly TraceTargetDescriptor[];
+  /** Gone anchors some node still matches. */
+  readonly present: readonly TraceTargetDescriptor[];
+  /** Alerts on screen that were not there before and the recording never saw appear. */
+  readonly unrecordedAlerts: readonly TraceTargetDescriptor[];
+}
+
 /**
- * Whether the recorded end state holds on a fresh observation: every
- * appeared anchor present (some tier of it, `descriptorTiers`, so a test id
+ * The anchors that keep the recorded end state from holding on a fresh
+ * observation, or undefined when it holds. It holds with every appeared
+ * anchor present (some tier of it, `descriptorTiers`, so a test id
  * that churned per render is forgiven when the remaining fields still
  * identify the node, equal on every anchor field and state), no gone anchor
  * present, and no alert on screen that was not on `beforeNodes` and is not
  * one the recording saw appear. Two nodes matching one anchor are the effect
- * twice over, not an ambiguity.
+ * twice over, not an ambiguity. The report names the anchors that failed,
+ * not the first ones recorded, so it says which part of the outcome did not
+ * happen again.
  */
-export function deltaHolds(
+export function deltaMismatch(
   delta: RecordedDelta,
   nodes: ReadonlyMap<string, RedactedNode>,
   beforeNodes: ReadonlyMap<string, RedactedNode>,
-): boolean {
+): DeltaMismatch | undefined {
   const live = projectAnchors(nodes);
   const appeared = delta.endAnchors ?? [];
-  if (!appeared.every((anchor) => anchorIn(anchor, live))) return false;
-  if ((delta.goneAnchors ?? []).some((anchor) => anchorIn(anchor, live))) return false;
+  const missing = appeared.filter((anchor) => !anchorIn(anchor, live));
+  const present = (delta.goneAnchors ?? []).filter((anchor) => anchorIn(anchor, live));
   const before = projectAnchors(beforeNodes).filter((anchor) => isAlert(anchor.descriptor));
-  return live.every(
-    (anchor) =>
-      !isAlert(anchor.descriptor) ||
-      before.some((earlier) => anchorIn(anchor.descriptor, [earlier])) ||
-      appeared.some((recorded) => anchorIn(recorded, [anchor])),
-  );
+  const unrecordedAlerts = live
+    .filter(
+      (anchor) =>
+        isAlert(anchor.descriptor) &&
+        !before.some((earlier) => anchorIn(anchor.descriptor, [earlier])) &&
+        !appeared.some((recorded) => anchorIn(recorded, [anchor])),
+    )
+    .map((anchor) => anchor.descriptor);
+  return missing.length === 0 && present.length === 0 && unrecordedAlerts.length === 0 ? undefined : { missing, present, unrecordedAlerts };
 }
 
 /**
  * Whether the replay itself produced some of the recorded delta, measured
  * from `baselineNodes`, the first screen the replay saw on the route it
  * ended on: an anchor that appeared was absent there, or a gone one was
- * there. Without that, every check `deltaHolds` makes could have held before
+ * there. Without that, every check `deltaMismatch` makes could have held before
  * the actions that should have produced it: the screen already read the
  * outcome, and nothing the replay did is proven to have done anything. A
  * recording with no delta at all is never evidence. Undefined `baselineNodes`

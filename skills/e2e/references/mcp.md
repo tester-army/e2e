@@ -5,6 +5,13 @@ coding agent drives the app the way the testing agent does: look at a screen
 before writing a test, check a locator before committing to it. Running tests
 and reading a failed run stay on the CLI (topics `running` and `debugging`).
 
+## Contents
+
+- Setup
+- Tools
+- Workflow
+- Rules
+
 ## Setup
 
 The server ships with `e2e`. `e2e init` offers to register it; by hand:
@@ -20,8 +27,10 @@ Or declare it in the client's project config (`.mcp.json` for Claude Code,
 { "mcpServers": { "e2e": { "command": "npx", "args": ["e2e", "mcp"] } } }
 ```
 
-No model is needed: without the optional `ai` package, sessions open and the
-deterministic tools work.
+Sessions run on the project's config (`e2e.config.ts` or `e2e.config.mts`):
+in a project without one, `open_session` fails with `CONFIG_NOT_FOUND`, so
+set it up first (topic `setup`). No model is needed: without the optional `ai` package, sessions
+open and the deterministic tools work.
 
 Flags: `--config <path>` names the default config file, `--target <name>`
 fixes the target every session opens on, `--headed` shows the browser or
@@ -31,7 +40,10 @@ sets how many sessions may be open at once (default 4, 1 through 16).
 
 ## Tools
 
-Four tools; everything a session can do is a catalog behind `call`.
+Four tools, all on the server registered as `e2e`; everything a session can
+do is a catalog behind `call`. Clients show them with the server name, such
+as `mcp__e2e__open_session` in Claude Code; when another MCP server offers a
+tool with the same name, use the `e2e` server's.
 
 | Tool | Does |
 | --- | --- |
@@ -79,7 +91,11 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
 2. `call {tool: "locate", args: {...}}` for each locator you intend to write.
    One match: use the printed `screen.getByRole(...)` call. Zero or several:
    adjust before writing the test; the same failure would hit the test as
-   `LOCATOR_NOT_FOUND` or `LOCATOR_AMBIGUOUS`.
+   `LOCATOR_NOT_FOUND` or `LOCATOR_AMBIGUOUS`. A role query's `name` matches
+   the accessible name only, while `observe` shows a `status`, `alert`, or
+   `listitem` by its text: `status "Saved."` on an unlabelled status is its
+   text, so match it with `getByRole('status').filter({ hasText: 'Saved.' })`
+   or `getByText`.
 3. Write `tests/<feature>.e2e.ts` (topic `writing-tests`). Deterministic steps
    where you saw exact names; `agent.act` where the flow varies.
 4. Run it from the shell: `npx e2e run tests/<feature>.e2e.ts`, read the

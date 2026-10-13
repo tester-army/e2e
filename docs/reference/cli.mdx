@@ -2,6 +2,8 @@
 title: CLI
 description: Commands, flags, output formats, and exit codes.
 icon: "terminal"
+"og:image": "https://e2e.tester.army/docs/images/og/reference/cli.png?v=e0e03be674"
+"twitter:image": "https://e2e.tester.army/docs/images/og/reference/cli.png?v=e0e03be674"
 ---
 
 <CodeGroup>
@@ -385,6 +387,7 @@ or every test was filtered out.
 | `--no-cache` | boolean | `false` | Replay cache off for this run, whatever `config.cache` says. |
 | `--strict-cache` | boolean | `false` | Turns on `cache.strict` for this run: a step whose recording exists but no longer replays fails with `REPLAY_STALE` instead of handing off to the agent, retries replay too, and the run never writes the cache. See [Fail on a stale recording](/cache#fail-on-a-stale-recording). |
 | `-u`, `--update-snapshots` | boolean | `false` | Writes each stored screenshot [`toHaveScreenshot`](/reference/expect#screenshot-matchers) finds missing or different, and passes the matcher. Without it a missing one is written and fails, and in CI it is only attached to the results. |
+| `-w`, `--watch` | boolean | `false` | Runs, then runs again whenever a test file or the config changes, or a key asks for it; see [Watch mode](#watch-mode). Refused in CI (`CI` set), and with `--reporter json`. |
 | `--pass-with-no-tests` | boolean | `false` | Exit 0 instead of `NO_TESTS` when nothing is selected. |
 | `--debug` | boolean | `false` | Phase timings and an agent step table on stderr after the run. |
 | `--ai-trace` | boolean | `false` | Records every model call to `<output>/ai-trace.json`, an AI SDK devtools database. Open it with [unbox-ai](https://github.com/tester-army/unbox-ai). |
@@ -519,6 +522,71 @@ model round trip with the exact prompt, tool definitions, response, usage,
 and provider metadata. Observations in it are already redacted. Inline image
 and file bytes are replaced with byte counts. Open it with
 `npx unbox-ai .e2e/ai-trace.json` for the default output; see [Debugging a run](/debugging#agent-steps).
+
+### Watch mode
+
+<CodeGroup>
+```bash npm
+npx e2e run --watch
+npx e2e run --watch tests/checkout.e2e.ts --headed
+```
+
+```bash pnpm
+pnpm exec e2e run --watch
+pnpm exec e2e run --watch tests/checkout.e2e.ts --headed
+```
+
+```bash bun
+bunx e2e run --watch
+bunx e2e run --watch tests/checkout.e2e.ts --headed
+```
+</CodeGroup>
+
+`--watch` runs the selection, prints the summary, and waits instead of
+exiting. A saved test file (one the config's [`tests`](/reference/config#tests)
+globs match) runs again on its own, whole, in place of the positionals. A
+saved source file next to the tests (a helper, a fixture: `.ts`, `.js`,
+`.json` under the directories the globs name, or beside the config) and a
+saved config run the selection again. Both keep the command line's other
+filters and the `p` and `t` filters. Changes that land during a run wait for
+it and run next, together (during the first run, only the config and its
+directory are watched: the test directories come from the config). On a
+terminal the screen is cleared before each
+rerun, and a banner names what triggered it. Each rerun reads the project's
+files afresh, the helpers a test imports included.
+
+On a terminal, keys drive it as in vitest:
+
+| Key | Runs |
+| --- | --- |
+| `a`, `enter` | every test the command line selected, with the `p` and `t` filters cleared |
+| `r` | the selection again, under the `p` and `t` filters |
+| `f` | the tests the last run did not pass, as `--last-failed` reads them from its report, wherever they are: the positionals and the `p` filter do not narrow it |
+| `u` | the current selection with `--update-snapshots` |
+| `p` | prompts for a positional (a file, a bare name, a glob) the next runs select with; empty clears it |
+| `t` | prompts for a title pattern, as `--grep`; empty clears it |
+| `h` | shows the keys |
+| `q` | quits |
+
+During a run, any of these keys (and space or `c`) cancels it, as an
+interrupt would, a second one forces it, and the session waits again.
+Ctrl-C or Ctrl-D
+interrupts the run and ends the session, from inside a `p` or `t` prompt
+too; escape does the same outside a prompt and only closes the prompt
+inside one. Ctrl-Z suspends the process as usual.
+
+Every rerun is a complete run: once the config has loaded it writes
+`report.json` and the reporter files, and starts and stops the app command.
+To keep a dev server up across
+reruns, start it yourself and set
+[`reuseExisting`](/reference/config#command) on the command. `--last-failed`
+applies to the first run only; a rerun that selects nothing passes empty.
+The exit code on quit is that of the last run that finished.
+
+Without a terminal on stdin, only file changes rerun. Not for CI: a process
+that never exits on its own hangs the job, so `--watch` is refused when `CI`
+is set. It is refused with `--reporter json` too, and ends with exit code 2
+after the first run when the config's `reporters` include `json`.
 
 ### Signals
 

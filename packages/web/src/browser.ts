@@ -746,11 +746,11 @@ function createBrowserExpectation(deps: ExpectationDeps, negated = false): Brows
         'toHaveClass',
         `class ${describePattern(pattern)}`,
         async (deadline) => {
-          let value: string | null;
+          let value: string | null | undefined;
           try {
             // A locator read takes the action timeout; the poll's deadline is the tighter bound.
             value = await withTimeout(
-              target.getAttribute('class'),
+              readClass(target),
               deadline.remaining(),
               () => new EngineError('OPERATION_TIMEOUT', 'class read timed out', { retryable: false }),
             );
@@ -758,6 +758,7 @@ function createBrowserExpectation(deps: ExpectationDeps, negated = false): Brows
             if (isTestErrorCode(error, 'LOCATOR_NOT_FOUND')) return { matches: undefined, observed: 'no node' };
             throw error;
           }
+          if (value === undefined) return { matches: undefined, observed: 'no node' };
           if (value === null) return { matches: false, observed: 'no class attribute' };
           return {
             matches: matchesText(value.trim().split(/\s+/).join(' '), pattern),
@@ -768,6 +769,16 @@ function createBrowserExpectation(deps: ExpectationDeps, negated = false): Brows
       );
     },
   };
+}
+
+/**
+ * The class attribute of one match, `undefined` while nothing matches. A
+ * read waits for its match until the action timeout, so the poll samples
+ * absence first: a node that never arrives stays an assertion failure.
+ */
+async function readClass(target: Locator): Promise<string | null | undefined> {
+  if ((await target.count()) === 0) return undefined;
+  return target.getAttribute('class');
 }
 
 function requireSelector(method: string, selector: unknown): string {

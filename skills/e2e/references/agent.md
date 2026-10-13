@@ -4,6 +4,20 @@
 Each call is one bounded invocation: fresh redacted observation, deadline,
 model-call budget, no shared transcript. No agent step, no model calls.
 
+## Contents
+
+- Configure a model
+- act: one goal
+- assert, waitFor, extract: one question
+- Write instructions the model can execute
+- What the model sees
+- Budgets and cost
+- The replay cache
+- Inspect what the model did
+- Make the agent yours
+- Beyond the built-in agent
+- In CI
+
 ## Configure a model
 
 Put an AI SDK model under `agents.default`. You can use all AI SDK providers
@@ -25,9 +39,8 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Subscription logins and local models:
-[setup](setup.md#subscriptions-and-api-keys). Keep `ai@^7` installed with
-any provider.
+Subscription logins and local models: topic `setup`, section "Subscriptions
+and API keys". Keep `ai@^7` installed with any provider.
 
 Decision models pick actions from choices the executor builds: install
 `@e2e-dev/decision` and put `decisionExecutor({ model:
@@ -263,7 +276,9 @@ matches. Misses and hand-offs use the model; `agent.assert`,
   every control that appeared (with its checked or selected state) is
   there, every one that went away is gone, at least one of those changed
   during the replay, and no new alert showed; otherwise the agent takes
-  over mid-step. Entries are keyed per agent and per `agentContext`. `step.cache.reason` says why: `no-entry`,
+  over mid-step. The web engine does not observe Next.js App Router's route
+  announcer, so its title echo never counts. Entries are keyed per agent and
+  per `agentContext`. `step.cache.reason` says why: `no-entry`,
   `wrong-context`, `target-not-found`, `target-ambiguous`, `end-mismatch`,
   and so on.
 - A step recording no actions, or changing nothing on screen or in the

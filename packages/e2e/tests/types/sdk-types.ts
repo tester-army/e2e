@@ -65,12 +65,36 @@ import { createAgent } from '../../src/agent/public.ts';
 import { BLOCKABLE_CODES } from '../../src/index.ts';
 // @ts-expect-error list is e2e/runner: importing e2e does not load the runner
 import { list as listFromE2E } from '../../src/index.ts';
-import { ConfigurationError, isE2EError, list, type ListedPair, type ListOptions } from '../../src/runner.ts';
+// @ts-expect-error openHost is e2e/runner: importing e2e does not load the runner
+import { openHost as openHostFromE2E } from '../../src/index.ts';
+// @ts-expect-error host types belong to e2e/runner, not the test SDK
+import type { E2EHost as E2EHostFromE2E } from '../../src/index.ts';
+// @ts-expect-error the unpublished top-level openSession was replaced by openHost
+import { openSession as removedOpenSession } from '../../src/runner.ts';
+import {
+  ConfigurationError,
+  type E2EHost,
+  type E2ESession,
+  isE2EError,
+  list,
+  type ListedPair,
+  type ListOptions,
+  openHost,
+  type OpenHostOptions,
+  type OpenSessionOptions,
+  type SerializedError,
+  type StepProgress,
+  type StepRecord,
+} from '../../src/runner.ts';
 
 isDefinedTool;
 createAgent;
 BLOCKABLE_CODES;
 listFromE2E;
+openHostFromE2E;
+removedOpenSession;
+declare const rootHost: E2EHostFromE2E;
+rootHost;
 
 declare const agent: Agent;
 declare const appFixture: App;
@@ -621,3 +645,80 @@ void list({ grep: ['plain'] });
 // @ts-expect-error disposition is run, skip, or filtered
 const disposition: ListedPair['disposition'] = 'pending';
 void disposition;
+
+// `e2e/runner` hosts worker resources and opens a named, test-lifetime session with typed fixtures.
+type HostedFixtures = { device: { tap(): void } };
+declare const host: E2EHost<HostedFixtures>;
+declare const session: E2ESession<HostedFixtures>;
+declare const signal: AbortSignal;
+void (openHost() satisfies Promise<E2EHost>);
+void (openHost<HostedFixtures>({
+  cwd: '.', config: 'e2e.config.ts', target: 'web', env: {}, signal, headed: true,
+  onNotice: (target, message) => {
+    target satisfies string;
+    message satisfies string;
+  },
+} satisfies OpenHostOptions) satisfies Promise<E2EHost<HostedFixtures>>);
+void openHost({ config: { targets } });
+void (host.runId satisfies string);
+void (host.target satisfies string);
+void (host.close() satisfies Promise<readonly SerializedError[]>);
+void (host satisfies AsyncDisposable);
+void (host[Symbol.asyncDispose]() satisfies PromiseLike<void>);
+// @ts-expect-error the deadline belongs to each session, not the host
+void openHost({ timeout: 1000 });
+// @ts-expect-error steps belong to each session, not the host
+void openHost({ onStep: (_step: StepProgress) => {} });
+// @ts-expect-error the default agent is selected per session
+void openHost({ agent: 'buyer' });
+// @ts-expect-error the host has no test fixtures until a session opens
+host.fixtures;
+
+void (host.openSession({ name: 'checkout' }) satisfies Promise<E2ESession<HostedFixtures>>);
+void host.openSession({
+  name: 'checkout', timeout: 30_000, signal, agent: 'buyer',
+  onStep: (step) => {
+    step satisfies StepProgress;
+    if (step.phase === 'end') step.status satisfies StepRecord['status'];
+  },
+} satisfies OpenSessionOptions);
+// @ts-expect-error every hosted session requires options with a name
+void host.openSession();
+// @ts-expect-error name is required even when a timeout is supplied
+void host.openSession({ timeout: 1000 });
+// @ts-expect-error name is a string, not a title path array
+void host.openSession({ name: ['checkout'] });
+// @ts-expect-error the deadline is milliseconds, not a duration string
+void host.openSession({ name: 'checkout', timeout: '30s' });
+// @ts-expect-error a session is opened on its host's config
+void host.openSession({ name: 'checkout', config: { targets } });
+// @ts-expect-error the project directory belongs to the host
+void host.openSession({ name: 'checkout', cwd: '.' });
+// @ts-expect-error a session is opened on its host's target
+void host.openSession({ name: 'checkout', target: 'web' });
+// @ts-expect-error the environment belongs to the host
+void host.openSession({ name: 'checkout', env: {} });
+// @ts-expect-error headed mode belongs to the host
+void host.openSession({ name: 'checkout', headed: true });
+// @ts-expect-error provisioning notices belong to the host
+void host.openSession({ name: 'checkout', onNotice: (_target: string, _message: string) => {} });
+
+void (session.runId satisfies string);
+void (session.attemptId satisfies string);
+void (session.target satisfies string);
+void (session.fixtures.agent satisfies Agent);
+void (session.fixtures.app satisfies App);
+void (session.fixtures.screen satisfies Screen);
+void (session.fixtures.device.tap satisfies () => void);
+void (session.artifactsDir satisfies string);
+void (session.tracePath satisfies string);
+void (session.steps() satisfies readonly StepRecord[]);
+void (session.close() satisfies Promise<readonly SerializedError[]>);
+void (session satisfies AsyncDisposable);
+void (session[Symbol.asyncDispose]() satisfies PromiseLike<void>);
+// @ts-expect-error the session's steps are the report's, read-only
+session.steps().push({} as StepRecord);
+// @ts-expect-error the generated trace path is not caller-controlled
+session.tracePath = '/tmp/trace.md';
+// @ts-expect-error closing returns a read-only list of failures
+(await session.close()).push({} as SerializedError);

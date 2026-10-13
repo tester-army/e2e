@@ -97,9 +97,10 @@ test.describe('device fixture', () => {
   // state (expo-network), a position read on demand (expo-location), and the
   // outcome of a biometric prompt (expo-local-authentication).
 
-  // Android only: on an iOS simulator agent-device's network settings paint
-  // the status bar's indicator and the app keeps its connection, so only the
-  // emulator, whose radios agent-device switches, shows the app a change.
+  // Android only: the engine refuses to take an iOS device offline
+  // (UNSUPPORTED_CAPABILITY), since agent-device's iOS network settings only
+  // paint the simulator's status bar and the app keeps its connection. The
+  // emulator's radios are the ones agent-device switches.
   // setNetwork switches Wi-Fi alone, and the emulator keeps a cellular link,
   // so Wi-Fi off hands the app over to cellular; only airplane mode cuts both.
   // A radio that comes back re-associates and validates before Android makes

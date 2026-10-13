@@ -2,6 +2,8 @@
 title: Errors
 description: Every code you can see, its class, and its exit code.
 icon: "triangle-exclamation"
+"og:image": "https://e2e.tester.army/docs/images/og/reference/errors.png?v=b184354c61"
+"twitter:image": "https://e2e.tester.army/docs/images/og/reference/errors.png?v=b184354c61"
 ---
 
 Every error carries a class. The class determines the exit code; the code
@@ -90,8 +92,8 @@ These appear in terminal output and in the report as plain string codes.
 | `APP_URL_REQUIRED` | A navigation or relative URL on a target that declares no `app.url`, or an `app.command` with no `app.url` or `app.readyUrl` to poll | configuration | 2 |
 | `INVALID_APP_URL` | Base URL with userinfo, a query, a fragment, a non-HTTP scheme, plain HTTP on a non-loopback host, port 0 on a host other than a literal loopback address (`127.0.0.1`, `[::1]`), a loopback address the run could not bind a free port on, or unparseable | configuration | 2 |
 | `INVALID_GLOB` | Empty pattern, a first segment that starts with `!` beyond the one leading `!` of a `tests` exclusion (`!!tests/**`, `./!tests/**`), a bare `!`, braces, character classes, extglobs, a backslash separator, an absolute path, a `..` segment, a trailing `/` or `.`, a `tests` entry with no wildcard that names a directory (the message names the glob to write), a pattern that names only the project root, or a `**` that is not a whole segment | configuration | 2 |
-| `UNKNOWN_TARGET` | `--target` named an ID that is not configured | configuration | 2 |
-| `TARGET_REQUIRED` | `e2e mcp`: the config declares several targets and neither `--target` nor `open_session` named one | configuration | 2 |
+| `UNKNOWN_TARGET` | `--target`, `open_session.target`, or `openHost` (`e2e/runner`) named a target that is not configured | configuration | 2 |
+| `TARGET_REQUIRED` | `e2e mcp` or `openHost` (`e2e/runner`): the config declares several targets and none was named | configuration | 2 |
 | `NO_SESSION` | `e2e mcp`: `call` or `tools` before `open_session` or after the session ended (the message names why), or `call`, `tools`, or `close_session` naming a `session` id that is not open or is closing | configuration | 2 |
 | `SESSION_REQUIRED` | `e2e mcp`: `call`, `tools`, or `close_session` without a `session` while several sessions are open; the message lists them | configuration | 2 |
 | `ENGINE_IN_USE` | `e2e mcp`: `open_session` on a target whose engine instance another open session drives, because the config gets it from a package every session shares; create the engine in the config or a file it imports by path | configuration | 2 |
@@ -125,7 +127,7 @@ These appear in terminal output and in the report as plain string codes.
 | `NODE_UNSUPPORTED` | The runtime cannot run e2e's TypeScript loader: a Node.js outside `^22.22.3 \|\| >=24.8.0`, Bun (no `module.registerHooks`), or Deno. The CLI checks this before it starts and exits 2 with the same sentence; the loader checks it again where it registers its hooks, for a host that runs e2e's runner without the CLI | infrastructure | 3 |
 | `TYPESCRIPT_COMPILER_UNAVAILABLE` | oxc, which compiles e2e's TypeScript, could not be loaded; the message gives the cause. Most often its native bindings for this platform (`@oxc-transform/binding-<platform>-<arch>`, `@oxc-parser/binding-<platform>-<arch>`) are not installed. npm leaves it out with `--omit=optional`, or when `package-lock.json` was written on another platform (npm/cli#4828): install again without `--omit=optional`, or delete `package-lock.json` and `node_modules` and run `npm install` | infrastructure | 3 |
 | `ENGINE_FAILURE` | Any engine fault with no more specific mapping | infrastructure | 3 |
-| `WORKER_PROTOCOL` | A worker reported a unit other than the one it was running, or started an attempt while another was still running | infrastructure | 3 |
+| `WORKER_PROTOCOL` | A worker reported the wrong unit, an attempt overlapped a live attempt, `openHost` tried to acquire an engine instance already owned by another host, or `host.openSession` tried to reuse a closed host or overlap an opening, live, or closing session | infrastructure | 3 |
 | `SESSION_KEY_INVALID` | A worker received a session key that is not 32 bytes. Packaging or IPC fault. | infrastructure | 3 |
 | `REPORT_WRITE_FAILED` | `report.json` or `ai-trace.json` could not be written. Recorded as a run error; the in-memory outcome is still complete. A `junit.xml` that could not be written is the `junit` reporter's stderr line instead | infrastructure | 3 |
 | `EVALUATE_FAILED` | `browser.evaluate` threw inside the page (`@e2e-dev/web`) | test | 1 |

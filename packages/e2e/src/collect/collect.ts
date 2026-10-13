@@ -460,7 +460,7 @@ export function collectInMemory(
  */
 export async function collectSetups(config: ResolvedConfig): Promise<Collection> {
   const discovered = discoverFiles(config.projectRoot, config.tests);
-  const { files, uncollected } = await collectFiles(config, discovered, () => false, true, new Map());
+  const { files, uncollected } = await collectFiles(config, discovered, () => false, true, new Map(), undefined);
   return { files, tests: files.flatMap((entry) => entry.tests), nearMisses: [], unmatchedPositionals: [], uncollected };
 }
 
@@ -478,11 +478,12 @@ export async function collectSetups(config: ResolvedConfig): Promise<Collection>
 export async function collect(
   config: ResolvedConfig,
   positionals: readonly string[] = [],
+  graph?: string,
 ): Promise<Collection> {
   const discovered = discoverFiles(config.projectRoot, config.tests);
   const { files: selectedFiles, unmatched, lines } = selectPositionals(config.projectRoot, discovered, positionals);
   const selected = new Set(selectedFiles);
-  const { files, uncollected } = await collectFiles(config, discovered, (file) => selected.has(file), positionals.length > 0, lines);
+  const { files, uncollected } = await collectFiles(config, discovered, (file) => selected.has(file), positionals.length > 0, lines, graph);
   return {
     files,
     tests: files.flatMap((file) => file.tests),
@@ -498,9 +499,11 @@ function isCollectionError(cause: unknown): cause is Error {
 }
 
 /**
- * Imports each discovered file once in the collection realm. A collection
- * error in a selected file, or in any file of a run nothing narrowed, throws;
- * one in a file a narrowed run left unselected is kept in `uncollected`.
+ * Imports each discovered file once in the collection realm, with the
+ * project files it imports evaluated afresh in `graph` when one is named,
+ * shared by every file of the run. A collection error in a selected file,
+ * or in any file of a run nothing narrowed, throws; one in a file a
+ * narrowed run left unselected is kept in `uncollected`.
  */
 async function collectFiles(
   config: ResolvedConfig,
@@ -508,6 +511,7 @@ async function collectFiles(
   isSelected: (file: string) => boolean,
   narrowed: boolean,
   lines: ReadonlyMap<string, readonly number[]>,
+  graph: string | undefined,
 ): Promise<{ files: CollectedFile[]; uncollected: UncollectedFile[] }> {
   const files: CollectedFile[] = [];
   const uncollected: UncollectedFile[] = [];
@@ -517,7 +521,7 @@ async function collectFiles(
     const skippable = narrowed && !isSelected(file);
     let registration: ModuleRegistration;
     try {
-      registration = await collectModule(() => importModule(absolutePath, 'collect'), absolutePath, redact);
+      registration = await collectModule(() => importModule(absolutePath, 'collect', graph), absolutePath, redact);
     } catch (cause) {
       if (skippable) {
         uncollected.push({ file, reason: isCollectionError(cause) ? cause.message : explainModuleError(cause, absolutePath) });

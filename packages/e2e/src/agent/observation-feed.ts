@@ -70,6 +70,8 @@ export interface ObservationFeedOptions {
   readonly maxObservationBytes: number;
   /** The agent's per-request input token ceiling. */
   readonly maxInputTokens: number;
+  /** Bytes of the step's instruction, which opens the history every turn resends. */
+  readonly instructionBytes: number;
 }
 
 export class ObservationFeed {
@@ -397,7 +399,7 @@ export class ObservationFeed {
    * Bytes one act observation may contribute to a model turn, clamped like a
    * judgment's. The loop's history grows past what any one observation costs,
    * so the fixed part counted here is what every turn resends: the project
-   * context and the prior-step ledger.
+   * context, the prior-step ledger, and the step's instruction.
    */
   private byteBudget(pixels: boolean): number {
     const metrics = this.accounting.metrics;
@@ -406,7 +408,7 @@ export class ObservationFeed {
         maxObservationBytes: this.options.maxObservationBytes,
         maxInputTokens: this.options.maxInputTokens,
       },
-      { fixedBytes: metrics.contextBytes + metrics.ledgerBytes, pixels },
+      { fixedBytes: metrics.contextBytes + metrics.ledgerBytes, instructionBytes: this.options.instructionBytes, pixels },
     );
   }
 

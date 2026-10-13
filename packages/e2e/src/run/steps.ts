@@ -11,6 +11,7 @@ import { markAbandonedRejection, relocateStack } from '../internal/abandoned.ts'
 import { withAiTraceStep } from '../internal/ai-trace.ts';
 import { classifyError, serializeError, TestError, withHint, type SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
+import { withAbort } from '../internal/time.ts';
 import { sourceLocation, type SourceLocation } from '../internal/source.ts';
 import type { AppLogEntry, AppLogSource } from '../engine/index.ts';
 import { APP_LOG_LIMITS } from '../engine/session.ts';
@@ -297,6 +298,8 @@ export interface StepRecorderOptions {
   readonly projectRoot?: string;
   /** Replaces secret values in a step's label, and in its error's message and details, before the record keeps them. */
   readonly redact?: (text: string) => string;
+  /** Cuts every running step when it aborts: the step fails with the signal's error and its body is abandoned. */
+  readonly signal?: AbortSignal;
 }
 
 /** Frames kept when a step captures where it was called from; the user's line is a few frames up. */
@@ -374,6 +377,7 @@ export class StepRecorder {
   private readonly onProgress: ((progress: StepProgress) => void) | undefined;
   private readonly projectRoot: string | undefined;
   private readonly redact: ((text: string) => string) | undefined;
+  private readonly signal: AbortSignal | undefined;
 
   constructor(
     private readonly attemptId: string,
@@ -384,6 +388,7 @@ export class StepRecorder {
     this.onProgress = options.onProgress;
     this.projectRoot = options.projectRoot;
     this.redact = options.redact;
+    this.signal = options.signal;
   }
 
   /** Replaces secret values in text the way every record is redacted; identity without a redactor. */
@@ -450,7 +455,8 @@ export class StepRecorder {
     const startedMs = Date.now();
     try {
       // Model calls made inside the body are attributed to this step.
-      const result = await this.scope.run(record, () => withAiTraceStep(record.api, record.label, body));
+      const work = this.scope.run(record, () => withAiTraceStep(record.api, record.label, body));
+      const result = await (this.signal === undefined ? work : withAbort(work, this.signal, () => new TestError('CANCELLED', `${record.api} cancelled`)));
       if (this.abandoned.has(record.id)) return result;
       record.durationMs = Date.now() - startedMs;
       if (options.verifies === true) this.lastVerified = Math.max(this.lastVerified, record.index);

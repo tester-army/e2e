@@ -497,7 +497,7 @@ export interface Locator extends Screen {
   scrollIntoView(options?: ActionOptions): Promise<void>;
   /** Performs a swipe scoped to exactly one node. */
   swipe(options: SwipeOptions & ActionOptions): Promise<void>;
-  /** Reads normalized text without retrying for a particular value. */
+  /** Reads normalized text once a match exists, without retrying for a particular value. */
   textContent(): Promise<string | null>;
   /** Reads the current input value. */
   inputValue(): Promise<string>;

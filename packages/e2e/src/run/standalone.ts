@@ -1,248 +1,208 @@
-/**
- * A standalone attempt: one engine session on one target, with the full
- * fixture graph, and no test body. This is what a dev-loop host (`e2e mcp`)
- * opens so a coding agent can drive the live app through the same `agent`,
- * `screen`, and `app` surfaces a test would, under the same launch budgets,
- * origin policy, secret handling, and cleanup as a test attempt. The runner
- * proper (`execute.ts`) keeps owning retries, sessions, and records; this
- * module only borrows its session lifecycle.
- */
+/** The worker a hosted test runner or the one-shot MCP path keeps alive between attempts. */
 
-import type { ExecutorAttempt } from '../agent/executor.ts';
-import type { AgentContext } from '../agent/invocation.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import { holdSecretRegistry } from '../secrets.ts';
-import type { TargetSession } from '../engine/surface.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { classifyError, InfrastructureError, serializeError, type SerializedError } from '../internal/errors.ts';
+import { realmSlot } from '../internal/realm-slot.ts';
 import { uuidv7 } from '../internal/ids.ts';
-import { Deadline } from '../internal/time.ts';
-import type { TestFixtures } from '../types.ts';
-import { createAttemptArtifacts } from './artifacts.ts';
-import { AttemptBudget } from './budget.ts';
-import { TargetExecutor, type ClosingRecord } from './execute.ts';
-import { createFixtures } from './fixtures.ts';
-import type { EnginePrepareResult } from '../engine/index.ts';
-import type { ProcessPool } from './process-pool.ts';
+import { holdSecretRegistry } from '../secrets.ts';
+import { TargetExecutor } from './execute.ts';
 import type { AppProcesses } from './managed-process.ts';
-import { PreparedEngines, recordingNotices, startDeclaredProcesses, validateEngine } from './provision.ts';
-import { attemptVideo, type ResolvedRecording, type VideoRecording } from '../internal/recording-modes.ts';
-import { redactForSession, sessionSecrecy } from './secrecy.ts';
-import { SessionStore } from './sessions.ts';
 import { outputLayout } from './output.ts';
-import { StepRecorder, type StepProgress } from './steps.ts';
-import { WorkerModels } from './worker-models.ts';
+import type { ProcessPool } from './process-pool.ts';
+import { PreparedEngines, recordingNotices, startDeclaredProcesses, validateEngine } from './provision.ts';
+import { processSecrets } from './secrecy.ts';
+import { SessionStore } from './sessions.ts';
+import {
+  launchAttempt, reserveAttempt, type AttemptKind, type AttemptReservation, type StandaloneAttempt, type StandaloneSessionOptions,
+} from './standalone-attempt.ts';
 
-export interface StandaloneAttemptOptions {
+export type { StandaloneAttempt, StandaloneSessionOptions } from './standalone-attempt.ts';
+
+export interface StandaloneHostOptions {
   readonly config: ResolvedConfig;
   readonly target: ResolvedTarget;
   readonly headed: boolean;
   readonly env: NodeJS.ProcessEnv;
-  /** Cancels the attempt wherever it is: provisioning, launch, or a fixture call. */
   readonly signal: AbortSignal;
-  /** How long the attempt may live; every fixture operation is capped by it. */
-  readonly timeoutMs: number;
-  /** The configured agent the `agent` fixture runs as when a call names none; default the run's first. */
-  readonly agent?: string | undefined;
-  /** Who starts the declared app processes: each for this attempt alone by default, or a host's `SharedAppProcesses` to share them across attempts. */
   readonly processes?: ProcessPool | undefined;
-  /** Run-level progress outside any step: engine provisioning, an app process. */
   readonly notice?: (target: string, message: string) => void;
-  /** Live step progress, the same feed a run's reporters get. */
-  readonly onProgress?: (progress: StepProgress) => void;
   readonly debug?: DebugTrace;
 }
 
-export interface StandaloneAttempt {
+export interface StandaloneAttemptOptions extends StandaloneHostOptions, StandaloneSessionOptions {}
+
+export interface StandaloneHost {
   readonly runId: string;
-  readonly attemptId: string;
-  /** The attempt's fixtures: `agent`, `app`, `screen`, and whatever the engine contributes. */
-  readonly fixtures: TestFixtures;
-  /** The runtime behind `fixtures.agent`, for a host that opens steps itself. */
-  readonly agentRuntime: AgentContext;
-  readonly session: TargetSession;
-  readonly steps: StepRecorder;
-  /** The attempt's signal and deadline, for a host that drives the session directly. */
-  readonly budget: AttemptBudget;
-  /** Absolute artifact directory of this attempt. */
-  readonly artifactsDir: string;
-  /**
-   * Ends the attempt: stops any video, closes the session, disposes the
-   * engine, stops the app processes, and returns the cleanup failures instead
-   * of throwing them, so a host can always finish tearing down.
-   */
+  /** One attempt at a time: the next may open once the previous close settled. */
+  openAttempt(options: StandaloneSessionOptions): Promise<StandaloneAttempt>;
   close(): Promise<readonly SerializedError[]>;
 }
 
 /**
- * Opens one attempt on the target: grades and prepares the engine, starts the
- * declared app processes, boots the engine, and starts the attempt. On any
- * failure everything that did start is torn down before the error surfaces.
+ * Where the worker is between attempts. `retired` follows an attempt whose
+ * engine cleanup failed: its isolation is uncertain, so no later attempt may
+ * reuse the worker.
  */
-export async function openStandaloneAttempt(options: StandaloneAttemptOptions): Promise<StandaloneAttempt> {
-  const { config, target, signal } = options;
-  const debug = options.debug ?? new DebugTrace(false);
-  const notice = options.notice ?? (() => undefined);
-  const runId = uuidv7();
-  const attemptId = uuidv7();
+type WorkerState =
+  | { readonly phase: 'idle' }
+  | { readonly phase: 'opening'; readonly pending: Promise<StandaloneAttempt> }
+  | { readonly phase: 'live'; readonly attempt: StandaloneAttempt }
+  | { readonly phase: 'retired' };
 
-  // A session says what it will not record, as a run does at plan time.
-  const grade = validateEngine(target);
-  for (const message of recordingNotices([{ target, pairs: [] }], new Map([[target.name, grade]]))) notice(target.name, message);
-  const video = sessionRecording(target.video);
-  // The secret registry is process-wide, as in a run: `credentials.user()` and `secrets.get()`
-  // resolve while the attempt is open.
-  const releaseRegistry = holdSecretRegistry(config);
-  let processes: AppProcesses;
-  let prepared: EnginePrepareResult | void;
-  const engines = new PreparedEngines();
-  /** Releases what `prepare` acquired, under the cleanup budget; every failure goes to `onFailure`. */
-  const finishEngines = (onFailure: (cause: unknown) => void): Promise<void> =>
-    engines.finish({ runId, env: options.env, timeoutMs: config.cleanupTimeout, notice, onFailure });
-  try {
-    // One worker on one target: one slot to provision.
-    prepared = await engines.prepare(target, 1, { runId, projectRoot: config.projectRoot, env: options.env, signal, headed: options.headed, notice });
-    const hooks = { ci: config.ci, notice: (message: string) => notice('app', message) };
-    processes = await startDeclaredProcesses([target], config.projectRoot, () => hooks, signal, debug, options.processes);
-    if (signal.aborted) {
-      // Cancelled before or while the processes started: what did start stops before the open fails.
-      await processes.stop((failure) => notice(target.name, classifyError(failure).message));
-      throw new InfrastructureError('CANCELLED', `opening an attempt on target "${target.name}" was cancelled`);
-    }
-  } catch (cause) {
-    // No attempt exists yet to carry a cleanup error, and the opening error is
-    // the one that surfaces; a release that fails on the way out is narrated.
-    await finishEngines((failure) => notice(target.name, classifyError(failure).message));
-    releaseRegistry();
-    throw cause;
+const engineOwners = realmSlot<WeakSet<object>>('e2e.standalone.engines.v1');
+
+function owners(): WeakSet<object> {
+  let set = engineOwners.get(globalThis);
+  if (set === undefined) {
+    set = new WeakSet<object>();
+    engineOwners.set(globalThis, set);
   }
-
-  const layout = outputLayout(config.output);
-  const sessionStore = SessionStore.create(runId, layout.sessions);
-  const executor = new TargetExecutor({
-    config,
-    target,
-    runId,
-    artifactsRoot: layout.results,
-    sessionStore,
-    headed: options.headed,
-    workerSlot: 0,
-    env: { ...prepared?.env, ...options.env },
-    isolated: false,
-    interruptSignal: signal,
-    debug,
-    events: {
-      onNotice: (message) => notice(target.name, message),
-      ...(options.onProgress === undefined ? {} : { onProgress: (_testId: unknown, progress: StepProgress) => options.onProgress?.(progress) }),
-    },
-  });
-  let session: TargetSession | undefined;
-  const steps = new StepRecorder(attemptId, {
-    maxEventsPerStep: config.limits.maxEventsPerStep,
-    projectRoot: config.projectRoot,
-    redact: (text) => redactForSession(session, config.allSecrets, text),
-    ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
-  });
-  const artifacts = createAttemptArtifacts({
-    artifactsRoot: layout.results,
-    segments: ['mcp', `${target.name}-${attemptId}`],
-    attemptId,
-    currentStepId: () => steps.currentStepId,
-    ...(config.artifactStore === undefined ? {} : { store: config.artifactStore }),
-    secrecy: () => (session === undefined ? undefined : sessionSecrecy(session, config.allSecrets)),
-    identity: { runId, testId: `session:${target.name}`, attemptId },
-  });
-
-  const cleanupErrors: SerializedError[] = [];
-  const recordCleanupFailure = (cause: unknown): void => {
-    cleanupErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
-  };
-  const teardownProcesses = async (): Promise<void> => {
-    await finishEngines(recordCleanupFailure);
-    await processes.stop(recordCleanupFailure);
-    try {
-      sessionStore.cleanup();
-    } catch (cause) {
-      recordCleanupFailure(cause);
-    }
-    releaseRegistry();
-  };
-
-  try {
-    session = await executor.launchSession({ session: undefined, recordings: { trace: undefined, video } }, attemptId, artifacts.dir, signal);
-    session.appLog.route((event, at) => steps.recordAppEvent(event, at));
-  } catch (cause) {
-    await executor.dispose();
-    await teardownProcesses();
-    throw cause;
-  }
-
-  const attemptEnd = new AbortController();
-  const attempt: ExecutorAttempt = {
-    testId: `session:${target.name}`,
-    attemptId,
-    index: 0,
-    signal: attemptEnd.signal,
-    memory: new Map<string, unknown>(),
-  };
-  const budget = new AttemptBudget(signal, new Deadline(options.timeoutMs));
-  const { fixtures, agentRuntime } = createFixtures({
-    config,
-    target,
-    session,
-    steps,
-    budget,
-    runId,
-    attemptId,
-    attempt,
-    artifacts: artifacts.sink,
-    priorSteps: () => steps.completed(),
-    agent: options.agent,
-    agentContext: undefined,
-    saveSession: undefined,
-    // A model preflight failure is a run abort in a test; here it is one more
-    // reason the attempt reports at close.
-    models: new WorkerModels((error) => cleanupErrors.push(serializeError(error))),
-    debug,
-  });
-
-  let closing: Promise<readonly SerializedError[]> | undefined;
-  return {
-    runId,
-    attemptId,
-    fixtures,
-    agentRuntime,
-    session,
-    steps,
-    budget,
-    artifactsDir: artifacts.dir,
-    close: () => {
-      closing ??= (async () => {
-        attemptEnd.abort();
-        const record: ClosingRecord = { status: 'passed', cleanup: 'complete' };
-        try {
-          await executor.closeSession(session, { attemptId, video }, record, artifacts.sink, cleanupErrors);
-          await executor.dispose();
-          cleanupErrors.push(...executor.collectedRunErrors().map((runError) => runError.error));
-          await artifacts.settle();
-        } finally {
-          // Whatever the attempt's own close did, the app processes and every leased device go.
-          await teardownProcesses();
-        }
-        return cleanupErrors;
-      })();
-      return closing;
-    },
-  };
+  return set;
 }
 
-/**
- * What the standalone attempt records: what the mode says a first
- * attempt does, since there is no retry loop. The attempt always closes as
- * passed, so a recording kept only on failure would be made and deleted, and
- * is not made at all.
- */
-function sessionRecording(recording: ResolvedRecording): VideoRecording | undefined {
-  const planned = attemptVideo(recording, 0);
-  return planned?.keep === 'on-failure' ? undefined : planned;
+/** No host may drive an engine instance another host owns. */
+function refuseOwnedEngine(engine: object | undefined): void {
+  if (engine !== undefined && owners().has(engine)) throw new InfrastructureError('WORKER_PROTOCOL', 'the engine instance already belongs to an e2e host');
+}
+
+/** A hosted worker owns its engine from before prepare until its teardown settles cleanly. */
+function claimEngine(engine: object | undefined): () => void {
+  if (engine === undefined) return () => undefined;
+  owners().add(engine);
+  return () => owners().delete(engine);
+}
+
+/** Prepares, starts app processes, and initializes one worker for a hosted test runner. */
+export function openStandaloneHost(options: StandaloneHostOptions): Promise<StandaloneHost> {
+  return openWorker(options, 'hosted');
+}
+
+/** MCP's one attempt on a worker of its own, closed together. MCP keeps its own engine ownership. */
+export async function openStandaloneAttempt(options: StandaloneAttemptOptions): Promise<StandaloneAttempt> {
+  const host = await openWorker(options, 'one-shot');
+  try {
+    return { ...await host.openAttempt(options), close: host.close };
+  } catch (cause) {
+    await host.close();
+    throw cause;
+  }
+}
+
+async function openWorker(options: StandaloneHostOptions, kind: AttemptKind): Promise<StandaloneHost> {
+  const { config, target } = options;
+  const hostEnd = new AbortController();
+  const signal = AbortSignal.any([options.signal, hostEnd.signal]);
+  const debug = options.debug ?? new DebugTrace(false);
+  const notice = (targetName: string, message: string): void => {
+    options.notice?.(processSecrets.redact(targetName), processSecrets.redact(message));
+  };
+  const runId = uuidv7();
+  const grade = validateEngine(target);
+  for (const message of recordingNotices([{ target, pairs: [] }], new Map([[target.name, grade]]))) notice(target.name, message);
+  refuseOwnedEngine(target.engine);
+  const releaseEngine = kind === 'hosted' ? claimEngine(target.engine) : () => undefined;
+  const releaseRegistry = holdSecretRegistry(config);
+  const engines = new PreparedEngines();
+  const layout = outputLayout(config.output);
+  const sessionStore = SessionStore.create(runId, layout.sessions);
+  const errors: SerializedError[] = [];
+  const failure = (cause: unknown): void => {
+    errors.push(serializeError(classifyError(cause), { phase: 'cleanup', projectRoot: config.projectRoot, redact: processSecrets.redact }));
+  };
+  let processes: AppProcesses | undefined;
+  let executor: TargetExecutor | undefined;
+  let tearingDown: Promise<void> | undefined;
+  /** Releases every owner once, whichever of host close or a retiring attempt gets there first. */
+  const teardown = (): Promise<void> => {
+    tearingDown ??= (async () => {
+      // Attempt failures are the caller's to report; only teardown's own decide engine reuse.
+      const priorFailures = errors.length;
+      try {
+        await executor?.dispose();
+        errors.push(...(executor?.collectedRunErrors().map((error) => error.error) ?? []));
+      } catch (cause) { failure(cause); }
+      try {
+        await engines.finish({ runId, env: options.env, timeoutMs: config.cleanupTimeout, notice, onFailure: failure });
+      } catch (cause) { failure(cause); }
+      try { await processes?.stop(failure); } catch (cause) { failure(cause); }
+      try { sessionStore.cleanup(); } catch (cause) { failure(cause); }
+      releaseRegistry();
+      // Failed worker teardown cannot prove this same engine is safe to reuse.
+      if (errors.length === priorFailures) releaseEngine();
+    })();
+    return tearingDown;
+  };
+  try {
+    const prepared = await engines.prepare(target, 1, {
+      runId, projectRoot: config.projectRoot, env: options.env, signal, headed: options.headed, notice,
+    });
+    const hooks = { ci: config.ci, notice: (message: string) => notice('app', message) };
+    processes = await startDeclaredProcesses([target], config.projectRoot, () => hooks, signal, debug, options.processes);
+    if (signal.aborted) throw new InfrastructureError('CANCELLED', `opening a host on target "${target.name}" was cancelled`);
+    executor = new TargetExecutor({
+      config, target, runId, artifactsRoot: layout.results, sessionStore,
+      headed: options.headed, workerSlot: 0, env: { ...prepared?.env, ...options.env },
+      isolated: false, interruptSignal: signal, debug,
+      events: { onNotice: (message) => notice(target.name, message) },
+    });
+    await executor.initEngineOnce();
+    if (signal.aborted) throw new InfrastructureError('CANCELLED', `opening a host on target "${target.name}" was cancelled`);
+  } catch (cause) {
+    hostEnd.abort();
+    await teardown();
+    for (const error of errors) notice(target.name, error.message);
+    throw cause;
+  }
+  const worker = { kind, config, target, runId, executor, resultsDir: layout.results, debug, signal };
+  let state: WorkerState = { phase: 'idle' };
+  let closing: Promise<readonly SerializedError[]> | undefined;
+
+  /** Cancels a launch before awaiting it, then ends the attempt before disposing its worker. */
+  const close = (): Promise<readonly SerializedError[]> => {
+    closing ??= (async () => {
+      hostEnd.abort();
+      if (state.phase === 'opening') await state.pending.catch(() => undefined);
+      if (state.phase === 'live') {
+        try {
+          errors.push(...await state.attempt.close());
+        } catch (cause) { failure(cause); }
+      }
+      await teardown();
+      return errors;
+    })();
+    return closing;
+  };
+
+  /** Reserves the attempt synchronously, before any engine work can run. */
+  const openAttempt = (sessionOptions: StandaloneSessionOptions): Promise<StandaloneAttempt> => {
+    if (closing !== undefined || state.phase === 'retired') return Promise.reject(new InfrastructureError('WORKER_PROTOCOL', 'the e2e host is closed'));
+    if (state.phase !== 'idle') return Promise.reject(new InfrastructureError('WORKER_PROTOCOL', 'the e2e host already has an opening, live, or closing session'));
+    let reservation: AttemptReservation;
+    try {
+      reservation = reserveAttempt(worker, sessionOptions);
+    } catch (cause) { return Promise.reject(cause); }
+    const pending = launchAttempt(worker, reservation, async ({ cleanup }) => {
+      if (cleanup === 'complete') {
+        state = { phase: 'idle' };
+        return;
+      }
+      state = { phase: 'retired' };
+      hostEnd.abort();
+      await teardown();
+    }).then(
+      (attempt) => {
+        state = { phase: 'live', attempt };
+        return attempt;
+      },
+      (cause: unknown) => {
+        reservation.release();
+        state = { phase: 'idle' };
+        throw cause;
+      },
+    );
+    state = { phase: 'opening', pending };
+    return pending;
+  };
+  return { runId, openAttempt, close };
 }

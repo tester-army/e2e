@@ -227,4 +227,20 @@ describe('vision details', () => {
     expect(await decisionExecutor({ model: spread, textModel: wideText.model, vision: true, minProbability: 0.5 }).runStep(wide.ctx)).toMatchObject({ status: 'blocked', summary: expect.stringContaining('tap point is uncertain') });
     expect(wide.actions.tapAt).not.toHaveBeenCalled();
   });
+  it('taps a committed score without a distribution under a probability gate, and blocks it under a confidence gate', async () => {
+    const committed = (): ReturnType<typeof scriptedDecision> =>
+      scriptedDecision((id, keys) => {
+        if (id === 'operation') return { choice: 'tap_at', confidence: 1 };
+        if (id === 'x' || id === 'y') return { choice: '2', score: 2, bare: true };
+        return { choice: keys[0] ?? '', confidence: 1 };
+      }, { supported: ['choice', 'score'] });
+    const text = scriptedOutputs(Array.from({ length: 25 }, () => ({ target: 'the Add key' })));
+    const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() }, model: text.model });
+    await decisionExecutor({ model: committed().model, textModel: text.model, vision: true, minProbability: 0.9 }).runStep(fixture.ctx);
+    expect(fixture.actions.tapAt).toHaveBeenCalled();
+    const gatedText = scriptedOutputs(Array.from({ length: 25 }, () => ({ target: 'the Add key' })));
+    const gated = context({ tree: BUTTONS, observation: { pixels: whitePixels() }, model: gatedText.model });
+    expect(await decisionExecutor({ model: committed().model, textModel: gatedText.model, vision: true, minConfidence: 0.5 }).runStep(gated.ctx)).toMatchObject({ status: 'blocked', summary: expect.stringContaining('tap point is uncertain') });
+    expect(gated.actions.tapAt).not.toHaveBeenCalled();
+  });
 });

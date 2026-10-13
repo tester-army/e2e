@@ -241,17 +241,6 @@ export class LocatorEngine {
     }
   }
 
-  /** Immediate single resolve for direct reads: zero or multiple matches fail immediately. */
-  async resolveForRead(expression: LocatorExpression, deadline: Deadline): Promise<NodeRef> {
-    const ref = assertSingle(await this.resolveOnce(expression, deadline), expression);
-    if (ref === null) {
-      throw new TestError('LOCATOR_NOT_FOUND', `locator matched no nodes: ${describeExpression(expression)}`, {
-        details: locatorDetails(expression),
-      });
-    }
-    return ref;
-  }
-
   /**
    * Resolves every current match for an assertion poll: a missing frame or a
    * stale resolve is retried within the caller's deadline, like a node that
@@ -273,14 +262,16 @@ export class LocatorEngine {
   }
 
   /**
-   * Reads one node snapshot. A concurrent locator can supersede the ref
-   * between resolve and read; that is a repeatable race, so it re-resolves
-   * while the deadline remains instead of failing the test.
+   * Reads one node snapshot. Zero matches poll until the action timeout, as
+   * an action's resolve does, so a read of a node the app is still
+   * rendering answers once it is there. A concurrent locator can supersede
+   * the ref between resolve and read; that is a repeatable race, so it
+   * re-resolves while the deadline remains instead of failing the test.
    */
   async read(expression: LocatorExpression): Promise<SemanticNode> {
     const deadline = this.deadline(this.options.actionTimeout);
     for (;;) {
-      const ref = await this.resolveForRead(expression, deadline);
+      const ref = await this.resolveExactlyOne(expression, deadline);
       try {
         return await this.session.read(ref, this.operationWithin(deadline));
       } catch (cause) {

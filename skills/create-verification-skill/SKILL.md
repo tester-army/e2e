@@ -28,9 +28,9 @@ observe.
 
 | Question | Where the answer is | What it decides |
 | --- | --- | --- |
-| Surface | What a user touches. A web UI, an iOS or Android app, an API | One skill per primary surface; name the others for a later run. Web goes through `@e2e-dev/web`, iOS and Android through `@e2e-dev/mobile`. An API with no UI still gets a `web()` target with `app.url` and `app.command` so the runner starts it, and its tests take only `app` and use `fetch` (topic `writing-tests`). A native desktop app has no e2e engine yet, say so and stop |
+| Surface | What a user touches. A web UI, an iOS or Android app, an API | One skill per primary surface; name the others for a later run. Web goes through `@e2e-dev/web`, iOS and Android through `@e2e-dev/mobile`. An API with no UI still gets a `web()` target with `app.url` and `app.command` so the runner starts it, and its tests take only `app` and use `fetch` (topic `writing-tests`). A native desktop app has no e2e engine yet, say so and stop. So does a project where no engine has a surface to drive: a CLI, a library, or a batch job, and a desktop frontend whose only browser output is a native-runtime notice. An HTTP service with no UI is not one of those; this row drives it through `web()`. Stop on the observation, not after a write: name the entry point, the engine that cannot drive it, and that no skill was generated |
 | Run | The documented dev command, its ports, env vars, seed data, auth | The target's `app.command` (topic `setup`). A dev server that compiles a route on first visit reads as broken to an agent, so prefer a production build command when the repo has one |
-| e2e state | `e2e.config.ts`, the `tests` glob, `e2e` in `package.json`, `.agents/skills/e2e/`, the MCP server in `.mcp.json` or `.cursor/mcp.json`, and any Playwright or Cypress suite | Nothing there means `npx e2e init` first (topic `setup`), which also installs the skill and registers the server. An existing Playwright or Cypress suite is the best source of locators, seeds, and sign-in steps; read it. A config with no model runs the deterministic steps and the MCP tools, and nothing else |
+| e2e state | `e2e.config.ts`, the `tests` glob, `e2e` in `package.json`, `.agents/skills/e2e/`, the MCP server in `.mcp.json` or `.cursor/mcp.json`, and any Playwright or Cypress suite | Nothing there, once the Surface row found something an engine can drive, means `npx e2e init` first (topic `setup`), which also installs the skill and registers the server. An existing Playwright or Cypress suite is the best source of locators, seeds, and sign-in steps; read it. A config with no model runs the deterministic steps and the MCP tools, and nothing else |
 | Observe | The trace page, screenshots, video, the report, and what the app leaves behind in files, rows, sent messages, logs | The side-effect stores the Evidence section names. Find them now |
 | Isolate | Can two instances run side by side? | Port `0` in `app.url` gives each run its own app; `command.reuseExisting: true` attaches to one already running on the port. A shared instance that cannot be duplicated (one database, one simulator) becomes a rule in the generated skill. Refusing to double-drive it beats corrupting the user's session |
 | Name | The package name or the repo name | `<app>` in `verify-<app>`, lowercase, no scope |
@@ -59,7 +59,7 @@ found, no placeholders.
 | --- | --- |
 | Read first | One line that sends the reader to the e2e skill and names the config file and `tests` glob this skill drives |
 | Launch | The exact command that starts the app for verification and how readiness shows. With a target `app.command`, launch is `npx e2e run <smoke file>` or an `open_session` over MCP; the runner starts the app, waits for the URL, and stops it. Without one, a target with `app.url` only, the dev command the user starts by hand, and the line that proves the port answers; or keep the command and set `reuseExisting: true`. Say which ports and env the command needs and what seeds the data |
-| Doctor | One read-only check that answers "is this instance worth driving?". `npx e2e list` loads the config and prints every test-target pair without starting anything, so a config error shows here first. Then the smoke test, a model-free test that opens the app and pins one landmark; exit `0` means the app starts, the engine runs, and the landmark renders. No smoke test in the project: write `tests/smoke.e2e.ts` now. A signed-in app's auth doctor is its session setup test. An agent runs Doctor first whenever anything looks off |
+| Doctor | One read-only check that answers "is this instance worth driving?". `npx e2e list` loads the config and prints every test-target pair without starting anything, so a config error shows here first. Then the smoke test, a model-free test that opens the app and pins one landmark; exit `0` means the app starts, the engine runs, and the landmark renders. No smoke test in the project: write `tests/smoke.e2e.ts` now. A signed-in app's auth doctor is an ordinary signed-in smoke test that consumes a named session: selecting that test runs its setup and checks the restored state, so one command proves the app starts, the session restores, and a signed-in landmark renders. Running the setup file alone selects no test and exits `NO_TESTS`, so it is not the doctor. An agent runs Doctor first whenever anything looks off |
 | Drive | Two lanes and when to use each. Live over MCP: `open_session`, `observe`, the verbs, and `locate` before any locator is written (topic `mcp`); list the project tools and credentials the session's catalog offers. Scripted: a test under the `tests` glob, `screen` where the name on screen is known, `agent.act` where the flow varies (topic `writing-tests`). Prefer stable handles, roles and accessible names, labels, test ids, routes. Name the credentials and sessions a signed-in drive starts from |
 | Evidence | What a proof keeps and where. Every run writes `.e2e/report.json`; a failed test gets `.e2e/results/<test>/trace.md`, `--trace on` gives one to passing tests too, `--video` records the attempt (topic `running`), `app.screenshot('<name>')` saves a named frame (topic `writing-tests`). The next run clears `.e2e/results/`, Doctor included, so a proof that must outlive it runs with `--output .e2e/proof/<name>` or its attempt directory is copied out before anything else runs. State the proof standards (below) |
 | Bug bash | How this app is bashed (topic `bug-bash`): the bug-bash config to write (what the local app cannot do, the postures, the isolation choice from the interview), the accounts to seed, `.e2e/bugbash/` added to `.gitignore`, and the rule that the charters come from the feature map (section 3). The verification bar: a finding is a bug only once `tests/bugbash/<slug>.e2e.ts` fails with `ASSERTION_FAILED` on the assertion that encodes it |
@@ -113,9 +113,15 @@ Run its own instructions end to end once, from a shell in the project.
    --config <bug-bash config> --agent <persona> --max-steps 3 --output
    .e2e/bugbash/<slug>`, plus `--session <name>` when the charter names
    one. Read its `Findings` and triage; do not verify every finding now.
-   This proves the model, the config, and the output directory, not the
-   app. Without a model, skip this step and say in the handover that the
-   bug bash is unproven.
+   Then read the run's `run.explore` in `report.json`: an ending of
+   `aborted`, or steps that ran a generic survey instead of the mapped
+   charter, leaves the bug bash unproven and the handover says so. The
+   steps prove the charter ran, not the exit code: `1` is also what a run
+   that executed no step exits with. A `--max-steps` ending states the
+   coverage the run reached. This
+   proves the model, the config, the charter, and the output directory, not
+   the app. Without a model, skip this step and say in the handover that
+   the bug bash is unproven.
 4. Cleanup, then confirm the evidence still exists at the named location.
    A cleanup that eats the proof fails this step.
 
@@ -134,6 +140,9 @@ paths. Running the map keeps it honest. When a route or label changes and
 a test fails, the feature file changes in the same commit. Rerun this skill
 when the app grows a feature the map lacks; section 1 says how an existing
 map is treated.
+
+A project with no supported surface stops in section 1 instead, and this
+handover reports what you observed and that nothing was written.
 
 ## Rules
 

@@ -297,6 +297,8 @@ export class ListReporter implements Reporter {
    * block, live rows, failure entry, and test counters.
    */
   private explore: ExploreView | undefined;
+  /** The target the exploration's test started on, kept past the test's end for the record. */
+  private exploredTarget: string | undefined;
   /** The stream and source of the output line printed last, while nothing else printed since. */
   private lastOutput: string | undefined;
   /**
@@ -921,9 +923,14 @@ export class ListReporter implements Reporter {
     return this.tree.render(running, this.summaryRows(false), Date.now(), room, this.inFlight);
   }
 
-  /** The badge of the explored target: an exploration runs on exactly one. */
+  /**
+   * The badge of the explored target: an exploration runs on exactly one,
+   * the one its test started on. `targets` lists every configured target,
+   * so the first of those is only right when `--target` named it.
+   */
   private exploreBadge(): string {
-    return this.badge(this.targets[0] ?? '');
+    this.exploredTarget ??= [...this.pairs.values()].find((test) => test.executing)?.group.target;
+    return this.badge(this.exploredTarget ?? this.targets[0] ?? '');
   }
 
   /**

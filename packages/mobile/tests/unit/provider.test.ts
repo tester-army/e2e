@@ -102,8 +102,8 @@ describe('device provider', () => {
     const handed = result?.env ?? {};
     const variable = poolVariableIn(handed, 'IOS');
     expect(JSON.parse(handed[variable]!)).toEqual([
-      { leaseId: 'lease-0', device: 'sim-0', daemon: { baseUrl: 'https://0.example', authToken: 'token-0' }, sessionApp: 'Settings' },
-      { leaseId: 'lease-1', device: 'sim-1', daemon: { baseUrl: 'https://1.example', authToken: 'token-1' }, sessionApp: 'Settings' },
+      { leaseId: 'lease-0', device: 'sim-0', daemon: { baseUrl: 'https://0.example', authToken: 'token-0' } },
+      { leaseId: 'lease-1', device: 'sim-1', daemon: { baseUrl: 'https://1.example', authToken: 'token-1' } },
     ]);
 
     // A child worker reads its binding from the environment and drives that daemon and device.
@@ -204,7 +204,7 @@ describe('device provider', () => {
     const h = harness({ device: bookkeeping });
     const result = await h.prepare(prepareInfo({}, 1));
     const handed = result?.env ?? {};
-    expect(JSON.parse(handed[poolVariableIn(handed, 'IOS')]!)).toEqual([{ leaseId: 'l-0', daemon: { baseUrl: 'https://d.example' }, sessionApp: 'Settings' }]);
+    expect(JSON.parse(handed[poolVariableIn(handed, 'IOS')]!)).toEqual([{ leaseId: 'l-0', daemon: { baseUrl: 'https://d.example' } }]);
     await h.engine.finish!(finishInfo());
     expect(releasedLeases).toEqual(acquiredLeases);
   });
@@ -230,8 +230,8 @@ describe('device provider', () => {
     const handed = result?.env ?? {};
     const variable = poolVariableIn(handed, 'IOS');
     expect(JSON.parse(handed[variable]!)).toEqual([
-      { leaseId: 'l-0', client: scope, sessionApp: 'Settings' },
-      { leaseId: 'l-1', daemon: { baseUrl: 'https://1.example' }, client: { providerOsVersion: '18.0' }, sessionApp: 'Settings' },
+      { leaseId: 'l-0', client: scope },
+      { leaseId: 'l-1', daemon: { baseUrl: 'https://1.example' }, client: { providerOsVersion: '18.0' } },
     ]);
     const worker = harness({ device: scoped });
     await boot(worker, 'ios', 0, { [variable]: handed[variable] });

@@ -2,6 +2,8 @@
 title: Mobile
 description: Set up a simulator, emulator, or connected phone as a target, write a device test, and know what differs from the web.
 icon: "mobile-screen"
+"og:image": "https://e2e.tester.army/docs/images/og/mobile.png?v=0a8bfea0a3"
+"twitter:image": "https://e2e.tester.army/docs/images/og/mobile.png?v=0a8bfea0a3"
 ---
 
 `@e2e-dev/mobile` runs tests on iOS simulators, Android emulators, and
@@ -140,13 +142,12 @@ export default {
 import { test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
 
-test('shows the version offline in dark mode', async ({ agent, app, device, screen }) => {
+test('shows the version in dark mode', async ({ agent, app, device, screen }) => {
   await device.setAppearance('dark');
-  await device.setNetwork('offline');
   await app.open();
   await agent.act('go to General, then About');
   await expect(screen.getByRole('button', /^iOS Version/)).toBeVisible();
-  await expect(device.locator('role=NavigationBar id=About')).toBeVisible();
+  await expect(device.locator('role=navigation-bar id=About')).toBeVisible();
 });
 ```
 
@@ -201,17 +202,48 @@ await device.openLink('myapp://orders/42');
 await expect(screen.getByText('Order #42')).toBeVisible();
 ```
 
+`device.setNetwork('offline')` and `device.setAirplaneMode(true)` work on
+Android only. An iOS simulator shares the Mac's network, and simctl can only
+change its status bar, so on iOS both fail with `UNSUPPORTED_CAPABILITY`.
+`setNetwork('online')` and `setAirplaneMode(false)` do nothing on iOS, so a
+cleanup hook that both platforms run still passes.
+
+On Android, `setNetwork('offline')` turns off Wi-Fi only, and the app can
+stay online over cellular. To take the app offline, use
+`setAirplaneMode(true)`. It needs Android 11 or later. The engine doesn't
+restore the network after a test, so turn it back on in `afterEach`, which
+runs when the test fails too:
+
+```ts
+import { afterEach, test } from '@e2e-dev/mobile';
+import { expect } from 'e2e';
+
+afterEach(async ({ device }) => {
+  await device.setAirplaneMode(false);
+});
+
+test('shows the offline banner', { platforms: ['android'] }, async ({ app, device, screen }) => {
+  await app.open();
+  await device.setAirplaneMode(true);
+  await expect(screen.getByText('You are offline')).toBeVisible();
+});
+```
+
 `device.clearKeychain()` resets the simulator's keychain, which
 `app.clearState()` leaves alone, so a stored session token is gone on the
 next launch. It is iOS only.
 
-<Accordion title="Foldable iOS simulators">
-`device.fold(pose)` puts the iPhone Duo simulator in a hinge pose. `closed`
-lights the outer display. `half-open` (a 130° book) and `open` light the
-inner one. The call returns when the hinge reaches the pose, typically after 10 to 16
-seconds, so keep `actionTimeout`
-at 20 seconds or more. The next observation reads the app on the other
-display.
+<Accordion title="Foldable simulators and emulators">
+`device.fold(pose)` puts the iPhone Duo simulator or a foldable Android
+emulator (a Pixel Fold profile, or the generic "7.6in Foldable") in a hinge
+pose. `closed` lights the outer display. `half-open` and `open` light the
+inner one. On the Duo the call returns when the hinge reaches the pose,
+typically after 10 to 16 seconds, so keep `actionTimeout` at 20 seconds or
+more; `half-open` is a 130° book there. On an Android emulator it returns
+within a few seconds, once Android commits the matching device state;
+`half-open` is the profile's own angle (90° on the Pixel folds), and a fold
+to the cover display dismisses the "Swipe up to continue" lock screen the
+emulator raises. The next observation reads the app on the other display.
 
 The engine never resets the pose, so a retry and the next test start where
 the last test left it. Fold back in `afterEach`, which also runs when the
@@ -359,9 +391,8 @@ Some device controls need a simulator or emulator. On a phone, they fail
 with agent-device's message.
 
 - On an iPhone, every device setting is simulator-only: `app.permissions`,
-  `device.setPermission`, `app.clearState()`, `device.setNetwork`,
-  `device.setAirplaneMode`, `device.setLocation`, `device.clearLocation`,
-  `device.setAppearance`, the biometric methods, and
+  `device.setPermission`, `app.clearState()`, `device.setLocation`,
+  `device.clearLocation`, `device.setAppearance`, the biometric methods, and
   `device.clearKeychain`. So are `device.clipboard`, `device.setClipboard`,
   and `device.fold`.
 - For a fresh start on an iPhone, reinstall with
@@ -380,6 +411,9 @@ with agent-device's message.
 </Accordion>
 
 ## Hosted devices
+
+Use [Limrun](/integrations/limrun) for hosted iOS simulators and Android
+emulators with automatic app installation and device cleanup.
 
 Set `device` to a `DeviceProvider` to run on devices a service hosts. Any
 service that runs an agent-device daemon next to a simulator, an emulator,
@@ -594,7 +628,7 @@ export function cloudDevices(options: { provider: string; stateDir: string }): D
   radios, and `toBeChecked` work on both platforms.
 - On iOS, a plain React Native `View` has no children in the tree, so
   `filter({ has })` on it and queries scoped to it match nothing. Scope to
-  the screen's `ScrollView` (`device.locator('role=ScrollView')`), or give
+  the screen's `ScrollView` (`device.locator('role=scroll-area')`), or give
   the children test ids.
 - A Jetpack Compose clickable drawn smaller than 48dp shows as two buttons
   in the tree, and a tap fails with `has no parent-owned touch point`. Make
@@ -633,6 +667,13 @@ so the next run starts it with the variable.
 launch that times out on the device is `ENGINE_FAILURE` with agent-device's
 message and hint, never `LAUNCH_TIMEOUT`, `ACTION_FAILED`, or
 `STEP_TIMEOUT`.
+
+**An action that outlives its timeout.** A tap, fill, key, swipe, or
+`back` gets its `timeout` (default `actionTimeout`). If the device doesn't
+answer in time, the step fails with `ACTION_FAILED` and isn't retried: the
+input may have landed. A `longPress` that holds at least as long as the
+time left is refused before it's sent; raise its `timeout`. Finding the
+element isn't cut off, so a missing one still fails as `LOCATOR_NOT_FOUND`.
 
 <CodeGroup>
 ```bash npm

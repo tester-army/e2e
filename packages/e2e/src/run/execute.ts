@@ -294,7 +294,7 @@ export class TargetExecutor implements SerialHost {
    * Boot work (simulators, device leases) is bounded by the launch timeout
    * but never charged against a step budget.
    */
-  private initEngineOnce(): Promise<void> {
+  initEngineOnce(): Promise<void> {
     const engine = this.target.engine;
     const init = engine?.init?.bind(engine);
     if (init === undefined) return Promise.resolve();
@@ -686,7 +686,7 @@ export class TargetExecutor implements SerialHost {
    * The error is the test's, thrown as it was so `classifyError` keeps its
    * code: `lifecycle` would name every non-engine error an engine failure.
    */
-  private settleAttempt(session: TargetSession, attemptId: string): Promise<void> {
+  settleAttempt(session: TargetSession, attemptId: string): Promise<void> {
     return withScopedBudget(
       this.config.cleanupTimeout,
       this.interruptSignal,
@@ -1281,8 +1281,8 @@ export class TargetExecutor implements SerialHost {
  * timeout that had already fired: the attempt then timed out, whatever
  * arrived after.
  */
-function classifyAttemptStatus(
-  failure: E2EError,
+export function classifyAttemptStatus(
+  failure: { readonly code: string },
   timedOut: boolean,
   interrupted: boolean,
 ): 'failed' | 'timed-out' | 'interrupted' {

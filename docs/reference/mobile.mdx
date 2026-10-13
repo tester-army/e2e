@@ -2,6 +2,8 @@
 title: Mobile
 description: Mobile engine options and the device fixture for iOS and Android.
 icon: "mobile-screen"
+"og:image": "https://e2e.tester.army/docs/images/og/reference/mobile.png?v=3da450961d"
+"twitter:image": "https://e2e.tester.army/docs/images/og/reference/mobile.png?v=3da450961d"
 ---
 
 `@e2e-dev/mobile` drives iOS simulators, Android emulators, and connected
@@ -161,16 +163,10 @@ process (`ProcessInfo.processInfo.arguments`); Android appends them to
 `am start`, so `['--ez', 'e2e', 'true']` is a boolean intent extra. `deny` is
 a recorded refusal on iOS, where the app is told no without a prompt, and a
 revocation on Android, where the OS asks again when the app requests the
-permission. The permissions are set before the app starts,
-since iOS terminates a running app whose permission changed and Android one
-whose permission was revoked. agent-device sets them on the app its session
-is on, and only an open puts a session on an app: the warm-up's open in
-`prepare` does that under the session the worker resumes, so a worker's
-launches set them straight away. A run without `prepare`, the first launch
-after `device.closeApp`, and an app the session has not opened get one
-foreground open first; that open is the one process start no permission can
-precede, and the relaunch after it has them. The warm-up passes no launch
-argument and touches no permission.
+permission. The permissions are set on the app by name before it starts,
+with no open first, since iOS terminates a running app whose permission
+changed and Android one whose permission was revoked. The warm-up passes no
+launch argument and touches no permission.
 `device.openApp(app, { relaunch: true, launchArguments, permissions })` does
 the same for one launch of any app. A permission name outside
 `DevicePermission` (naming the nearest one when it is a likely typo) or a
@@ -229,19 +225,29 @@ between steps rather than inside one.
 export interface Device {
   /**
    * A locator from an agent-device selector (`'id=SW_VERSION_SPECIFIER'`,
-   * `'role=StaticText label="26.2"'`), for nodes the closed `screen` query
+   * `'role=text label="26.2"'`), for nodes the closed `screen` query
    * vocabulary cannot name. Same polling and strictness as any locator.
    */
   locator(selector: string): Locator;
-  /** Toggles the device's Wi-Fi. */
+  /**
+   * Switches an Android device's Wi-Fi. Cellular data stays on, so an
+   * emulator hands the app over to its cellular link; `setAirplaneMode(true)`
+   * cuts both. On iOS `offline` is `UNSUPPORTED_CAPABILITY`, since a
+   * simulator shares the Mac's network and simctl can only repaint its status
+   * bar; `online` sends nothing there, so a cleanup hook shared with Android
+   * passes.
+   */
   setNetwork(state: 'online' | 'offline'): Promise<void>;
-  /** Toggles airplane mode. */
+  /**
+   * Switches an Android device's airplane mode, Wi-Fi and cellular together;
+   * Android 11 or newer. On iOS, as for `setNetwork`, `true` is
+   * `UNSUPPORTED_CAPABILITY` and `false` sends nothing.
+   */
   setAirplaneMode(enabled: boolean): Promise<void>;
   /**
-   * Grants, denies, or resets one permission for the pinned app, brought to
-   * the foreground first when the session is on no app. A change terminates
-   * a running app on iOS, a revoke one on Android, so it goes before the
-   * `app.open()` a test starts with.
+   * Grants, denies, or resets one permission for the pinned app, which need
+   * not be running. A change terminates a running app on iOS, a revoke one
+   * on Android, so it goes before the `app.open()` a test starts with.
    */
   setPermission(permission: DevicePermission, state: PermissionState): Promise<void>;
   /** Sets the simulated location, switching location services on first on Android. */
@@ -253,12 +259,16 @@ export interface Device {
   /** Rotates the device. */
   setOrientation(orientation: DeviceOrientation): Promise<void>;
   /**
-   * Puts a foldable iOS simulator (iPhone Duo) in a hinge pose and resolves
-   * once agent-device reads the angle back from CoreDevice at that pose,
-   * typically 10 to 16 seconds later. `closed` lights the outer display;
-   * `half-open` (a 130° book) and `open` light the inner one, whose app
-   * window has a different size, so the next observation reads a new screen.
-   * Any device without a hinge is `UNSUPPORTED_CAPABILITY`.
+   * Puts a foldable simulator or emulator in a hinge pose. On the iPhone Duo
+   * it resolves once agent-device reads the angle back from CoreDevice at
+   * that pose, typically 10 to 16 seconds later; `closed` lights the outer
+   * display, `half-open` (a 130° book) and `open` light the inner one. On a
+   * foldable Android emulator it sets the emulator console posture and
+   * resolves once the guest commits the matching device state, within a few
+   * seconds; `half-open` is the profile's own angle there (90° on the Pixel
+   * folds), and a fold to the cover display dismisses the lock screen it
+   * raises. Either way the app window changes size, so the next observation
+   * reads a new screen. Any device without a hinge is `UNSUPPORTED_CAPABILITY`.
    */
   fold(pose: FoldPose): Promise<void>;
   /** Simulates one biometric attempt on the open app. */
@@ -482,15 +492,25 @@ Use `device.locator` for platform-specific selectors that `screen` queries
 cannot express.
 
 ```ts
-await expect(device.locator('role=NavigationBar id=About')).toBeVisible();
-await expect(device.locator('role=StaticText label="iOS Version"')).toHaveText('iOS Version');
-await device.locator('id=SW_VERSION_SPECIFIER role=Button').tap();
+await expect(device.locator('role=navigation-bar id=About')).toBeVisible();
+await expect(device.locator('role=text label="iOS Version"')).toHaveText('iOS Version');
+await device.locator('id=SW_VERSION_SPECIFIER role=button').tap();
 ```
 
-Selector terms are agent-device's: `id`, `role`, `text`, `label`, `value`,
-`appname`, `windowtitle`, and the flags `visible`, `hidden`, `editable`,
-`selected`, `focused`, `enabled`, `hittable`. `role` accepts the platform
-type (`StaticText`) or the contract role (`text`).
+Selector terms and their rules are agent-device's (the ones `agent-device
+find ... list` applies): `id`, `role`, `text`, `label`, `value`, `appname`,
+`windowtitle`, and the flags `visible`, `hidden`, `editable`, `selected`,
+`focused`, `enabled`, `hittable`. Strictness stays the locator's: an action
+on a selector that matches several nodes fails, where an agent-device action
+skips an ambiguous `||` alternative.
+
+- `role` takes agent-device's kind, the role `agent-device snapshot` prints:
+  `button`, `text`, `text-field`, `navigation-bar`, `scroll-area`, `switch`,
+  `image`. It is not the `getByRole` role (`textbox`).
+- Text terms compare case-insensitively after collapsing whitespace.
+- `visible` means the node is hittable or has a non-empty frame;
+  `hidden` is its opposite.
+- `text` reads the first non-empty label, value, or identifier.
 
 ## Agent tools
 

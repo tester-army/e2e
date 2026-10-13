@@ -1,5 +1,16 @@
 # Writing tests
 
+## Contents
+
+- A complete file
+- Registration
+- Fixtures
+- Locators
+- expect
+- Sign-in sessions
+- The browser fixture (browser only)
+- Habits
+
 ## A complete file
 
 ```ts
@@ -158,8 +169,9 @@ echoing its child does not count twice. `exact: false` is a case-insensitive
 substring; a `RegExp` matches as written.
 
 - Exactly one match per action, read, or assertion. Two fail at once with
-  `LOCATOR_AMBIGUOUS`; at zero, actions and assertions poll until the
-  timeout then `LOCATOR_NOT_FOUND`, a read fails at once. Exceptions:
+  `LOCATOR_AMBIGUOUS`; at zero, actions and reads poll until the action
+  timeout then `LOCATOR_NOT_FOUND`, assertions until the assertion timeout
+  then `ASSERTION_FAILED`. Exceptions:
   `toHaveCount`, `toBeVisible`, `toBeHidden`, `toBeAttached`, list-form
   `toHaveText` and `toContainText`, `isVisible()` (false at zero),
   `isHidden()` (true), `count()`, `all()`, `allTextContents()`.
@@ -209,9 +221,10 @@ locator; a point moves with the layout.
 
 ### Reads
 
-Reads resolve once, no retry: `textContent()`, `inputValue()`,
-`getAttribute(name)`, `isVisible()`, `isHidden()`, `isEnabled()`,
-`isDisabled()`, `isChecked()`, `boundingBox()`, `count()`. `all()` gives one
+`textContent()`, `inputValue()`, `getAttribute(name)`, `isEnabled()`,
+`isDisabled()`, `isChecked()`, and `boundingBox()` wait for one match until
+the action timeout, then read once with no retry for a value. `isVisible()`,
+`isHidden()`, and `count()` answer at once. `all()` gives one
 `nth(i)` locator per current match and `allTextContents()` every match's
 text, both `[]` at zero. Text is the rendered text, whitespace collapsed: on
 the web what `innerText` reads (`text-transform` applies, `display: none`

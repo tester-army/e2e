@@ -85,6 +85,21 @@ describe('snapshot projection', () => {
     expect(viewportOf([{ type: 'button' }])).toBeUndefined();
   });
 
+  it('measures system bars against a published viewport, where the tree alone would end the screen at its lowest window', () => {
+    const systemui = 'com.android.systemui';
+    // A panel above the bottom of a 2400 px screen, at the bottom of a tree that reaches only 1800 px.
+    const nodes: RawNode[] = [
+      { ref: '@e1', depth: 0, type: 'android.widget.FrameLayout', bundleId: 'dev.e2e.benchmark', rect: { x: 0, y: 0, width: 1080, height: 1800 } },
+      { ref: '@e2', depth: 0, type: 'android.widget.FrameLayout', bundleId: systemui, rect: { x: 0, y: 1700, width: 1080, height: 100 } },
+    ];
+    const published = projectSnapshot(nodes, { mintId: () => 'n', viewport: { width: 1080, height: 2400 } });
+    expect(published.viewport).toEqual({ width: 1080, height: 2400 });
+    expect(published.roots).toHaveLength(2);
+    const inferred = projectSnapshot(nodes, { mintId: () => 'n' });
+    expect(inferred.viewport).toEqual({ width: 1080, height: 1800 });
+    expect(inferred.roots).toHaveLength(1);
+  });
+
   it('leaves the Android status bar and navigation bar out, with their children, and keeps the app window', () => {
     const systemui = 'com.android.systemui';
     const projected = project([

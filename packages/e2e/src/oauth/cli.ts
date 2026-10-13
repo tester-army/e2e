@@ -211,12 +211,15 @@ function terminalCallbacks(providerName: string, io: CliIo, signal: AbortSignal)
   const callbacks: OAuthLoginCallbacks = {
     signal,
     onAuth(info) {
+      // The URL gets a line of its own with no guide: clack.note would wrap it and border each piece, and a leading bar rides along with a line copy.
       if (io.isTTY) {
-        clack.note(info.userCode === undefined ? info.url : `${info.url}\n\nCode: ${info.userCode}`, info.userCode === undefined ? 'Open this page' : 'Open this page and enter the code');
+        clack.log.step(`Opening your browser. If it does not open, use this link${info.userCode === undefined ? '' : ' and enter the code'}:`);
+        clack.log.message(info.url, { withGuide: false, spacing: 0 });
+        if (info.userCode !== undefined) clack.log.message(`Code: ${pc.bold(info.userCode)}`);
+        clack.log.message(pc.dim(info.instructions));
       } else {
-        io.stdout.write(`${info.url}\n${info.userCode === undefined ? '' : `Code: ${info.userCode}\n`}`);
+        io.stdout.write(`${info.url}\n${info.userCode === undefined ? '' : `Code: ${info.userCode}\n`}${info.instructions}\n`);
       }
-      io.stdout.write(`${info.instructions}\n`);
       (io.openUrl ?? openInBrowser)(info.url);
       spinner?.start('Waiting for the sign-in to finish');
     },

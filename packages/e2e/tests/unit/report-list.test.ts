@@ -1651,6 +1651,34 @@ describe('explore runs', () => {
     });
   });
 
+  it('badges the exploration with the target its test started on, not the first configured one', () => {
+    const { lines, output } = capture();
+    const reporter = plainReporter(output);
+    reporter.handle(runStarted({ targets: ['capacity', 'mixed'] }));
+    reporter.handle(plan([{ file: 'explore', target: 'mixed', tests: 1 }]));
+    reporter.handle(testStarted('t1', GOAL, 'mixed', 'explore'));
+    reporter.handle(explore({ phase: 'started', goal: GOAL, budgets: { maxSteps: 4, timeoutMs: 300_000 } }));
+    const header = lines.find((line) => line.includes('Exploring'));
+    expect(header).toContain('|mixed|');
+    expect(header).not.toContain('|capacity|');
+  });
+
+  it('badges the record with the explored target after its test has finished', () => {
+    const lines: string[] = [];
+    const output = { write: (line: string) => lines.push(line.replace(ANSI_PATTERN, '')), raw: () => {} };
+    const reporter = plainReporter(output, true);
+    reporter.handle(runStarted({ targets: ['capacity', 'mixed'] }));
+    reporter.handle(plan([{ file: 'explore', target: 'mixed', tests: 1 }]));
+    reporter.handle(testStarted('t1', GOAL, 'mixed', 'explore'));
+    reporter.handle(explore({ phase: 'started', goal: GOAL, budgets: { maxSteps: 4, timeoutMs: 300_000 } }));
+    reporter.handle(explore({ phase: 'finished', ended: 'finished', summary: 'Nothing to report.' }));
+    reporter.handle(finished(result({ status: 'passed', id: 't1', file: 'explore', title: [GOAL], target: 'mixed', attempts: [attempt({ status: 'passed' })] })));
+    reporter.handle(runFinished({ status: 'passed', exitCode: 0, reportPath: '/project/.e2e/report.json' }));
+    const header = lines.find((line) => line.includes('Explored'));
+    expect(header).toContain('|mixed|');
+    expect(header).not.toContain('|capacity|');
+  });
+
   it('with a live window, shows the exploration in the window and prints the record with its steps once the run is over', () => {
     const lines: string[] = [];
     const frames: string[] = [];

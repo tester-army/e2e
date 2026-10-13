@@ -1,5 +1,16 @@
 # Setting up e2e
 
+## Contents
+
+- Requirements
+- Scaffold
+- Subscriptions and API keys
+- The config
+- The app under test
+- Environment variables the runner reads
+- Mobile targets
+- Done when
+
 ## Requirements
 
 - Node.js 24.8 or newer, or 22.22.3 or newer on Node.js 22.
@@ -78,10 +89,11 @@ Switching to OpenCode Console: install `ai`, `@ai-sdk/openai-compatible`,
 `@ai-sdk/openai`, `@ai-sdk/anthropic`, and `@ai-sdk/google`, set
 `model: opencodeConsole('<id>')` from `e2e/oauth/opencode-console`, run
 `npx e2e login opencode-console`. A bare id is an OpenCode Zen model; a `go/` id
-(`go/deepseek-v4.1-flash`) is an OpenCode Go model and needs the workspace's Go
-subscription. `npx e2e models opencode-console` lists the ids, tagged Zen or Go. In CI,
-set a Console service account key as `OPENCODE_API_KEY`; the listing reads
-the ids through the key when no login is stored.
+(`go/deepseek-v4.1-flash`) is an OpenCode Go model and needs an OpenCode Go
+subscription: the workspace's through the login, or yours through
+`OPENCODE_API_KEY`. `npx e2e models opencode-console` lists
+the ids, tagged Zen or Go, through the key when it is set. In CI, set a Console service account API key or an OpenCode Go
+subscription API key as `OPENCODE_API_KEY`.
 
 ## The config
 
@@ -333,14 +345,26 @@ export default {
   the app (omit `app.appPath`). A run must fit one session: `maxDurationMinutes`,
   absent, is the account's cap (40 on a standard plan). `videoTouches: false`
   on the engine for video there.
+- `limrun()` from `@e2e-dev/limrun` leases one device per worker and installs
+  `app.appPath` before tests. Set `LIMRUN_API_KEY`; install `@limrun/api` and
+  matching `agent-device` peers. Android needs `adb` on `PATH` for its tunnel.
+  With agent-device 0.21.22, iOS keyboard actions such as `locator.press('Enter')`
+  return `UNSUPPORTED_CAPABILITY`; tap an app button when available.
+  See `examples/with-limrun` for the same form and restart tests on both platforms.
 - Only a control that appeared or moved with the previous action waits out
   `transition` (default 500 ms); agent actions settle `settle` ms (default
   150) before the next observation, `settle: false` skips it.
 - `screen`, `expect`, `app`, `agent` work unchanged; `test` from
   `@e2e-dev/mobile` types the `device` fixture (`installApp`, `openLink`,
   `setPermission`, `setNetwork`, `setAppearance`, `clearKeychain`, `fold`
-  for an iPhone Duo's hinge, `locator`, more). Portable suites declare
+  for a foldable's hinge (iPhone Duo, Android foldable emulators), `locator`, more). Portable suites declare
   `requires: ['device']`.
+- `setNetwork('offline')` and `setAirplaneMode(true)` are Android only: on
+  iOS both are `UNSUPPORTED_CAPABILITY`, since a simulator shares the Mac's
+  network, and `setNetwork('online')` / `setAirplaneMode(false)` do nothing.
+  `setNetwork('offline')` turns off Wi-Fi alone and cellular stays up; an
+  offline test uses `setAirplaneMode(true)` (Android 11+) under
+  `platforms: ['android']` and turns it back off in `afterEach`.
 - No `state` capability: `test.setup` and `session` are unavailable; sign in
   per test with `screen` actions or `agent.act`, both fill a `Secret` (topic
   `writing-tests`, Sign-in sessions).
