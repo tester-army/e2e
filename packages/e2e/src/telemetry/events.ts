@@ -163,6 +163,38 @@ function* scopes(report: Report1Document): Generator<ReportScope> {
   }
 }
 
+/**
+ * The steps of each test the run executed, across its attempts: one entry per
+ * result, and one per serial member by index, since a serial group's attempt
+ * runs every member again.
+ */
+function testSteps(report: Report1Document): ReportStep[][] {
+  const tests: ReportStep[][] = report.run.results.map((result) => result.attempts.flatMap((attempt) => attempt.steps));
+  for (const group of report.run.serialGroups) {
+    const members = new Map<number, ReportStep[]>();
+    for (const attempt of group.attempts) {
+      for (const member of attempt.members) {
+        members.set(member.index, [...(members.get(member.index) ?? []), ...member.steps]);
+      }
+    }
+    tests.push(...members.values());
+  }
+  return tests;
+}
+
+/** The agent's public entry points, as each step names its `api`. */
+const AGENT_APIS = ['agent.act', 'agent.assert', 'agent.extract', 'agent.waitFor'] as const;
+
+/** The agent step counts by api, so a run that only judges is told apart from one that acts; the key is the api's last segment, lower-cased. */
+function agentStepsByApi(steps: readonly ReportStep[]): Record<string, number> {
+  return Object.fromEntries(
+    AGENT_APIS.map((api): [string, number] => [
+      `steps_agent_${api.slice('agent.'.length).toLowerCase()}`,
+      steps.filter((step) => step.kind === 'agent' && step.api === api).length,
+    ]),
+  );
+}
+
 /** The scope's verdict, then the steps that led there, then what cleanup added. */
 function errorsOf(scope: ReportScope): ReportError[] {
   return [
@@ -276,6 +308,7 @@ export function runCompletedEvent(report: Report1Document, context: RunContext):
   const errors = [...run.errors, ...recorded.flatMap(errorsOf)];
   const primary = errors[0];
   const attempts = [...run.results, ...run.serialGroups].map((unit) => unit.attempts.length);
+  const tests = testSteps(report);
 
   return {
     name: EVENT_RUN_COMPLETED,
@@ -303,6 +336,9 @@ export function runCompletedEvent(report: Report1Document, context: RunContext):
       ...Object.fromEntries(
         STEP_KINDS.map((kind): [string, number] => [`steps_${kind}`, steps.filter((step) => step.kind === kind).length]),
       ),
+      ...agentStepsByApi(steps),
+      tests_with_agent_steps: tests.filter((test) => test.some((step) => step.kind === 'agent')).length,
+      tests_with_act: tests.filter((test) => test.some((step) => step.kind === 'agent' && step.api === 'agent.act')).length,
       agent_steps_replayed: steps.filter((step) => step.cache?.mode === 'self-finalized').length,
       agent_steps_partial: steps.filter((step) => step.cache?.mode === 'agent-concluded').length,
       agent_steps_missed: steps.filter((step) => step.cache?.mode === 'missed').length,

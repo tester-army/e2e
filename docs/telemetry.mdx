@@ -123,6 +123,8 @@ hold only the properties below.
 | `attempts_total`, `tests_retried` | How many attempts the run made across tests and serial groups, and how many of these needed more than one |
 | `targets`, `platforms`, `engines` | How many targets, on which platforms, and with which engines and versions: `web`, `ios`, `web@0.6.1`, or your own engine's name and version. A name that isn't a plain token of letters, digits, dots, dashes, and underscores is sent as `other` |
 | `steps_total`, `steps_agent`, `steps_locator`, `steps_assertion`, `steps_screen`, `steps_app`, `steps_session`, `steps_resource` | Step counts by kind |
+| `steps_agent_act`, `steps_agent_assert`, `steps_agent_extract`, `steps_agent_waitfor` | The agent steps by entry point |
+| `tests_with_agent_steps`, `tests_with_act` | How many of the executed tests ran any agent step (the rest are deterministic end to end), and how many of those ran `agent.act` |
 | `agent_steps_replayed`, `agent_steps_partial`, `agent_steps_missed`, `agent_steps_vision` | How the replay cache served the agent steps, and how many used pixel evidence |
 | `agent_actions` | How often the agent took each action, by the runner's own names: `{"tap": 12, "typeText": 3, "scroll": 2}`. A project's own tools count together as `tool`, anything else as `other`. No other name is sent |
 | `model_gateway`, `model_provider`, `model_id`, `model_calls`, `model_tokens`, `model_cached_tokens`, `estimated_cost_usd` | For the first model-backed step: the AI SDK provider that served it (`gateway` for the Vercel AI Gateway, `openrouter.chat`, `openai.chat`, ...), the vendor (the first segment of a `vendor/model` id, else the provider), and the public model id (a fine-tuned or routed id is sent as `other`). Then the run's totals |
