@@ -406,7 +406,8 @@ export class ObservationFeed {
         maxObservationBytes: this.options.maxObservationBytes,
         maxInputTokens: this.options.maxInputTokens,
       },
-      { fixedBytes: metrics.contextBytes + metrics.ledgerBytes, pixels },
+      // The step's instruction opens the loop's history, which no one turn resends with its observation.
+      { fixedBytes: metrics.contextBytes + metrics.ledgerBytes, instructionBytes: 0, pixels },
     );
   }
 
