@@ -113,15 +113,22 @@ describe('isChecked and isEnabled', () => {
     expect(await createScreenFixture([item('x', 'x', { disabled: true })]).getByRole('listitem').isEnabled()).toBe(false);
   });
 
-  it('both fail at once on zero matches, where isVisible answers false, and on several, like isVisible', async () => {
+  it('both wait out the action timeout on zero matches, where isVisible answers false at once', async () => {
     const none = createScreenFixture([]).getByRole('listitem');
-    const several = createScreenFixture(ITEMS).getByRole('listitem');
     const started = Date.now();
+    expect(await none.isVisible()).toBe(false);
+    expect(Date.now() - started).toBeLessThan(SCREEN_FIXTURE_TIMEOUT_MS);
     await expect(none.isChecked()).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND' });
     await expect(none.isEnabled()).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND' });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(SCREEN_FIXTURE_TIMEOUT_MS * 2);
+  });
+
+  it('both fail at once on several matches, like isVisible', async () => {
+    const several = createScreenFixture(ITEMS).getByRole('listitem');
+    const started = Date.now();
     await expect(several.isChecked()).rejects.toMatchObject({ code: 'LOCATOR_AMBIGUOUS' });
     await expect(several.isEnabled()).rejects.toMatchObject({ code: 'LOCATOR_AMBIGUOUS' });
-    expect(await none.isVisible()).toBe(false);
+    await expect(several.isVisible()).rejects.toMatchObject({ code: 'LOCATOR_AMBIGUOUS' });
     expect(Date.now() - started).toBeLessThan(SCREEN_FIXTURE_TIMEOUT_MS);
   });
 });

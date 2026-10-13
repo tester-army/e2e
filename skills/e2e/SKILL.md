@@ -115,9 +115,10 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
   typed with `browser`.
 - Config and tests are ES modules whatever `package.json` sets as `type`.
 - Locators resolve when used. Actions wait for readiness and `expect` retries
-  assertions. Reads such as `textContent()` fail at once on zero matches and
-  `count()` answers from the current screen; nothing waits for a value to
-  change, so use a matcher when a value has to settle.
+  assertions. Reads such as `textContent()` wait for one match until the
+  action timeout, then answer the current value; `count()` and `isVisible()`
+  answer from the current screen. Nothing waits for a value to change, so use
+  a matcher when a value has to settle.
 - A locator that matches two nodes fails with `LOCATOR_AMBIGUOUS`; narrow it
   (topic `writing-tests`).
 - Secrets never appear in test code. Declare accounts under `credentials` and

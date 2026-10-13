@@ -327,6 +327,17 @@ test('class assertions poll for a node that arrives late', async ({ app, browser
   await expect(browser).toHaveClass(browser.locator('#late-card'), 'card late', { timeout: 1800 });
 });
 
+test('reads wait for a node that arrives late', async ({ app, browser, screen }) => {
+  await app.open('/classes');
+  expect(await browser.locator('#late-card').getAttribute('class')).toBe('card late');
+  expect(await screen.getByText('Late card').textContent()).toBe('Late card');
+});
+
+test('a read of a node that never arrives fails with LOCATOR_NOT_FOUND', async ({ app, screen }) => {
+  await app.open('/classes');
+  await screen.getByText('Never card').textContent();
+});
+
 test('class assertions on an ambiguous locator fail at once', async ({ app, browser }) => {
   await app.open('/classes');
   await expect(browser).toHaveClass(browser.locator('.dup'), 'dup', { timeout: 1800 });
@@ -452,6 +463,7 @@ describe('web platform integration', () => {
     'clicks hold the modifiers they name',
     'a viewport set before the first navigation holds through app.open',
     'an empty class attribute is an empty class list',
+    'reads wait for a node that arrives late',
     'toHaveURL ignoreCase folds the comparison',
     'string and RegExp URL patterns match what they name',
   ])('passes %s', (title) => {
@@ -640,6 +652,14 @@ describe('web platform integration', () => {
     expect(result.status, JSON.stringify(result.attempts[0]?.error)).toBe('passed');
     const step = result.attempts[0]!.steps.find((candidate) => candidate.api === 'expect.toHaveClass');
     expect(step?.durationMs).toBeGreaterThan(500);
+  });
+
+  it('fails a read of a node that never arrives with LOCATOR_NOT_FOUND once the action timeout has run', () => {
+    const result = resultByTitle(outcome, 'a read of a node that never arrives fails with LOCATOR_NOT_FOUND');
+    expect(result.status).toBe('failed');
+    expect(result.attempts[0]!.error?.code).toBe('LOCATOR_NOT_FOUND');
+    expect(result.attempts[0]!.error?.message).toContain('Never card');
+    expect(result.attempts[0]!.durationMs).toBeGreaterThanOrEqual(5_000);
   });
 
   it('fails a class assertion on an ambiguous locator with LOCATOR_AMBIGUOUS before the deadline', () => {

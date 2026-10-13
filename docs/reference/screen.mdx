@@ -39,17 +39,17 @@ export interface Screen {
 }
 ```
 
-Most operations require exactly one match. Reads return the current value
-without waiting for it to change: a frame that is not in the document answers
-at once, and a node the engine reports stale (a resolve that raced a
-navigation, or a match the app replaced while it was read) is re-resolved
-within the action timeout, which repairs the race without waiting for a
-match. Use [`expect`](/reference/expect) to wait.
+Most operations require exactly one match. A read polls for its one match
+until the action timeout, as an action does, then returns the current value
+without waiting for it to change. A node the engine reports stale (a resolve
+that raced a navigation, or a match the app replaced while it was read) is
+re-resolved within the same timeout. Use [`expect`](/reference/expect) to
+wait for a value.
 
 | Operation | Zero matches | Multiple matches |
 | --- | --- | --- |
 | Actions | Poll until the timeout, then `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` |
-| Reads | `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` |
+| Reads | Poll until the timeout, then `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` |
 | `count()`, `all()`, `allTextContents()` | `0`, `[]`, `[]` | The count, one locator per match, one text per match |
 | `isVisible()`, `isHidden()` | `false`, `true` | `LOCATOR_AMBIGUOUS` |
 | Assertions | Poll until the timeout | `LOCATOR_AMBIGUOUS` |
@@ -282,7 +282,7 @@ export interface Locator extends Screen {
   scrollIntoView(options?: ActionOptions): Promise<void>;
   /** Performs a swipe scoped to exactly one node. */
   swipe(options: SwipeOptions & ActionOptions): Promise<void>;
-  /** Reads normalized text without retrying for a particular value. */
+  /** Reads normalized text once a match exists, without retrying for a particular value. */
   textContent(): Promise<string | null>;
   /** Reads the current input value. */
   inputValue(): Promise<string>;

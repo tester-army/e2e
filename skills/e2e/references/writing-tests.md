@@ -169,8 +169,8 @@ echoing its child does not count twice. `exact: false` is a case-insensitive
 substring; a `RegExp` matches as written.
 
 - Exactly one match per action, read, or assertion. Two fail at once with
-  `LOCATOR_AMBIGUOUS`; at zero, actions and assertions poll until the
-  timeout then `LOCATOR_NOT_FOUND`, a read fails at once. Exceptions:
+  `LOCATOR_AMBIGUOUS`; at zero, actions, reads, and assertions poll until
+  the timeout then `LOCATOR_NOT_FOUND`. Exceptions:
   `toHaveCount`, `toBeVisible`, `toBeHidden`, `toBeAttached`, list-form
   `toHaveText` and `toContainText`, `isVisible()` (false at zero),
   `isHidden()` (true), `count()`, `all()`, `allTextContents()`.

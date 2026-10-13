@@ -128,6 +128,23 @@ describe('LocatorEngine read retry contract', () => {
     await expect(engine.read(EXPRESSION)).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND' });
     expect(calls.read).toBe(1);
   });
+
+  it('polls zero matches until the node appears, then reads it', async () => {
+    const { engine, calls } = makeEngine({ resolve: [() => [], () => [], () => [REF]] });
+    expect(await engine.read(EXPRESSION)).toEqual(NODE);
+    expect(calls).toMatchObject({ resolve: 3, read: 1 });
+  });
+
+  it('gives zero matches the action timeout, then LOCATOR_NOT_FOUND', async () => {
+    const { engine, calls } = makeEngine(
+      { resolve: Array.from({ length: 50 }, () => () => []) },
+      { actionTimeout: 350 },
+    );
+    const started = Date.now();
+    await expect(engine.read(EXPRESSION)).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND' });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(300);
+    expect(calls.read).toBe(0);
+  });
 });
 
 describe('LocatorEngine resolve retry contract', () => {
@@ -533,7 +550,7 @@ describe('isNodeVisible', () => {
 describe('LocatorEngine retries a cross-realm driver failure', () => {
   it('retries a foreign retryable resolve failure', async () => {
     const { engine, calls } = makeEngine({ resolve: ['foreign-stale', () => [REF]] });
-    await expect(engine.resolveForRead(EXPRESSION, engine.deadline())).resolves.toEqual(REF);
+    await expect(engine.resolveExactlyOne(EXPRESSION, engine.deadline())).resolves.toEqual(REF);
     expect(calls.resolve).toBe(2);
   });
 
