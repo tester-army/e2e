@@ -1,39 +1,31 @@
 import { describe, expect, it, vi } from 'vitest';
-import { EngineError, raceAbort, type OperationContext } from 'e2e/engine';
-import { sanitizeFilename, screenLocation, swipeWithin, withinBudget, withinInputBudget } from '../../src/support.ts';
+import { InputBudget, sanitizeFilename, screenLocation, swipeWithin } from '../../src/support.ts';
 
 describe('support helpers', () => {
-  it('ends a call at its budget as OPERATION_TIMEOUT, keeps a caller abort CANCELLED, and never aborts a signal kept past the call', async () => {
-    const operation = (signal = new AbortController().signal): OperationContext => ({ signal, timeoutMs: 100, runId: 'run-1', attemptId: 'a1', origin: 'test' });
+  it('sends an input with what is left of its budget, and reports one cut off as possibly committed', async () => {
+    const hung = () => new Promise<never>(() => undefined);
     vi.useFakeTimers();
     try {
-      let kept: AbortSignal | undefined;
-      await withinBudget(operation(), 'read', async (bounded) => {
-        kept = bounded.signal;
-      });
+      const cut = new InputBudget('tap', 300, (pending) => pending).send(hung);
+      const committed = expect(cut).rejects.toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED' });
+      await vi.advanceTimersByTimeAsync(300);
+      await committed;
+
+      // Sent with almost nothing left, a tap still gets time to answer.
+      const late = new InputBudget('tap', 10, (pending) => pending).send(() => new Promise((resolve) => setTimeout(() => resolve('tapped'), 200)));
       await vi.advanceTimersByTimeAsync(200);
-      expect(kept?.aborted).toBe(false);
+      await expect(late).resolves.toBe('tapped');
 
-      // An inner wait that reports its abort as a cancellation is still the budget's timeout.
-      const hung = withinBudget(operation(), 'tap', (bounded) => raceAbort(new Promise<never>(() => undefined), bounded.signal, 'tap'));
-      const timedOut = expect(hung).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT', message: 'tap timed out' });
+      // A spent budget sends nothing; after an input went out, the next one is refused as possibly committed.
+      const spent = new InputBudget('tap', 100, (pending) => pending);
       await vi.advanceTimersByTimeAsync(100);
-      await timedOut;
-
-      const caller = new AbortController();
-      const stopped = withinBudget(operation(caller.signal), 'tap', (bounded) => raceAbort(new Promise<never>(() => undefined), bounded.signal, 'tap'));
-      caller.abort();
-      await expect(stopped).rejects.toBeInstanceOf(EngineError);
-      await expect(stopped).rejects.toMatchObject({ code: 'CANCELLED' });
-
-      // An input with no time left to answer is never sent.
-      let sent = false;
-      await expect(
-        withinInputBudget({ ...operation(), timeoutMs: 1 }, 'tap', async () => {
-          sent = true;
-        }),
-      ).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT', message: 'tap timed out before it was sent' });
-      expect(sent).toBe(false);
+      let dispatched = false;
+      await expect(spent.send(async () => (dispatched = true))).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT', message: 'tap timed out before it was sent' });
+      expect(dispatched).toBe(false);
+      const twoStep = new InputBudget('press', 100, (pending) => pending);
+      await twoStep.send(async () => undefined);
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(twoStep.send(async () => undefined)).rejects.toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED' });
     } finally {
       vi.useRealTimers();
     }

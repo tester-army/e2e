@@ -1,7 +1,7 @@
 /** Shared helpers for the agent-device engine: error constructors, filenames, PNG headers, gestures, the screen location and size. */
 
 import type { CaptureScreenshotResult } from 'agent-device';
-import { EngineError, type Momentum, type OperationContext, type ScrollDirection, type ViewportSize } from 'e2e/engine';
+import { EngineError, withTimeout, type Momentum, type ScrollDirection, type ViewportSize } from 'e2e/engine';
 
 export interface Point {
   readonly x: number;
@@ -20,51 +20,51 @@ export function cancelled(text: string): EngineError {
 }
 
 /**
- * Runs one engine call under its operation budget, which the harness signal
- * does not enforce. The call sees a signal that also aborts at `timeoutMs`;
- * whatever it throws after that (an abandoned wait, a cancellation) is the
- * budget's `OPERATION_TIMEOUT`. The timer ends with the call, so a signal the
- * call keeps (a provider's recording) is never aborted after it returns.
+ * The least time an input gets to answer once sent, however little budget
+ * was left: a tap that lands is then not reported as cut off.
  */
-export async function withinBudget<T>(operation: OperationContext, label: string, run: (operation: OperationContext) => Promise<T>): Promise<T> {
-  const expiry = new AbortController();
-  const timer = setTimeout(() => expiry.abort(), operation.timeoutMs);
-  try {
-    return await run({ ...operation, signal: AbortSignal.any([operation.signal, expiry.signal]) });
-  } catch (cause) {
-    if (expiry.signal.aborted && !operation.signal.aborted) {
-      throw new EngineError('OPERATION_TIMEOUT', `${label} timed out`, { retryable: false, cause });
+const MIN_ANSWER_MS = 250;
+
+/**
+ * One input operation's budget (`actionTimeout`, or the call's `timeout`),
+ * which the harness signal does not enforce. Only the device commands that
+ * send input run under it; reads stay unbounded, so a locator poll keeps its
+ * last snapshot and a target settling before a tap is relocated in full.
+ */
+export class InputBudget {
+  private readonly endsAt: number;
+  private sent = false;
+
+  /** `track` keeps the device command itself in flight, past a timeout that abandons it, until it settles. */
+  constructor(
+    private readonly label: string,
+    timeoutMs: number,
+    private readonly track: <T>(pending: Promise<T>) => Promise<T>,
+  ) {
+    this.endsAt = Date.now() + timeoutMs;
+  }
+
+  /**
+   * Sends one input with what is left of the budget. With none left it sends
+   * nothing: `OPERATION_TIMEOUT`, or `ACTION_MAY_HAVE_COMMITTED` once an
+   * earlier input of this operation went out. An input that does not answer
+   * in time may have landed, so it is `ACTION_MAY_HAVE_COMMITTED` and the
+   * runner never repeats it.
+   */
+  send<T>(dispatch: () => Promise<T>): Promise<T> {
+    const remaining = this.endsAt - Date.now();
+    if (remaining <= 0) {
+      return Promise.reject(
+        this.sent ? this.maybeCommitted() : new EngineError('OPERATION_TIMEOUT', `${this.label} timed out before it was sent`, { retryable: false }),
+      );
     }
-    throw cause;
-  } finally {
-    clearTimeout(timer);
+    this.sent = true;
+    return withTimeout(this.track(dispatch()), Math.max(remaining, MIN_ANSWER_MS), () => this.maybeCommitted());
   }
-}
 
-/**
- * The least budget an input is sent with: less leaves the device no time to
- * answer, so the input would land and still be reported as cut off. The web
- * engine leaves Playwright the same lead.
- */
-const MIN_INPUT_BUDGET_MS = 250;
-
-/**
- * {@link withinBudget} for an input: a budget that ran out may have cut the
- * call off after its input reached the device, so the timeout is
- * `ACTION_MAY_HAVE_COMMITTED` and the runner never repeats it. A budget too
- * short to send it in sends nothing and is `OPERATION_TIMEOUT`.
- */
-export async function withinInputBudget<T>(operation: OperationContext, label: string, run: (operation: OperationContext) => Promise<T>): Promise<T> {
-  if (operation.timeoutMs < MIN_INPUT_BUDGET_MS) {
-    throw new EngineError('OPERATION_TIMEOUT', `${label} timed out before it was sent`, { retryable: false });
-  }
-  try {
-    return await withinBudget(operation, label, run);
-  } catch (cause) {
-    if (!(cause instanceof EngineError) || cause.code !== 'OPERATION_TIMEOUT') throw cause;
-    throw new EngineError('ACTION_MAY_HAVE_COMMITTED', `${label} timed out before the device answered; its input may have been dispatched`, {
+  private maybeCommitted(): EngineError {
+    return new EngineError('ACTION_MAY_HAVE_COMMITTED', `${this.label} timed out before the device answered; its input may have been dispatched`, {
       retryable: false,
-      cause,
     });
   }
 }

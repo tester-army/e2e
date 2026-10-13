@@ -813,32 +813,84 @@ describe('observation', () => {
     expect(existsSync(path.join(artifactsDir, 'screenshots'))).toBe(false);
   });
 
-  // Every operation entry runs under its budget; an input's timeout is possibly committed, so the runner never repeats it.
-  const BUDGETED: ReadonlyArray<readonly [string, string, 'OPERATION_TIMEOUT' | 'ACTION_MAY_HAVE_COMMITTED', (h: Harness, op: OperationContext) => Promise<unknown>]> = [
-    ['observe', 'capture.snapshot', 'OPERATION_TIMEOUT', (h, op) => h.engine.observe!(op)],
-    ['locate', 'capture.snapshot', 'OPERATION_TIMEOUT', (h, op) => h.engine.locate!({ kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'About', exact: true } } }, op)],
-    ['screenshot', 'capture.screenshot', 'OPERATION_TIMEOUT', (h, op) => h.engine.artifacts!.screenshot('shot', op)],
-    ['restart', 'apps.open', 'OPERATION_TIMEOUT', (h, op) => h.engine.session!.restart!(op)],
-    ['reset', 'settings.update', 'OPERATION_TIMEOUT', (h, op) => h.engine.session!.reset!(op)],
-    ['startVideo', 'recording.record', 'OPERATION_TIMEOUT', (h, op) => h.engine.artifacts!.startVideo!(op)],
-    ['tap', 'interactions.press', 'ACTION_MAY_HAVE_COMMITTED', async (h, op) => h.engine.perform!((await observed(h, 'About')).ref, { kind: 'tap' }, op)],
-    ['tap at point', 'interactions.press', 'ACTION_MAY_HAVE_COMMITTED', (h, op) => h.engine.performAt!({ x: 10, y: 10 }, { kind: 'tap' }, op)],
-    ['type', 'interactions.type', 'ACTION_MAY_HAVE_COMMITTED', (h, op) => h.engine.keyboard!.type('hi', { replace: false }, op)],
-    ['press', 'command.keyboard', 'ACTION_MAY_HAVE_COMMITTED', (h, op) => h.engine.keyboard!.press('Enter', op)],
-    ['keyboard dismiss', 'command.keyboard', 'ACTION_MAY_HAVE_COMMITTED', (h, op) => h.engine.keyboard!.dismiss!(op)],
-    ['back', 'command.back', 'ACTION_MAY_HAVE_COMMITTED', (h, op) => h.engine.session!.back!(op)],
+  // Every input entry runs under its budget; one that went out and timed out is possibly committed, so the runner never repeats it.
+  const INPUTS: ReadonlyArray<readonly [string, string, (h: Harness, op: OperationContext) => Promise<unknown>]> = [
+    ['tap', 'interactions.press', async (h, op) => h.engine.perform!((await observed(h, 'About')).ref, { kind: 'tap' }, op)],
+    ['screen swipe', 'interactions.scroll', async (h, op) => h.engine.perform!((await h.engine.observe!(operation())).root.ref, { kind: 'swipe', direction: 'down' }, op)],
+    ['tap at point', 'interactions.press', (h, op) => h.engine.performAt!({ x: 10, y: 10 }, { kind: 'tap' }, op)],
+    ['type', 'interactions.type', (h, op) => h.engine.keyboard!.type('hi', { replace: false }, op)],
+    ['press', 'command.keyboard', (h, op) => h.engine.keyboard!.press('Enter', op)],
+    ['keyboard dismiss', 'command.keyboard', (h, op) => h.engine.keyboard!.dismiss!(op)],
+    ['back', 'command.back', (h, op) => h.engine.session!.back!(op)],
   ];
 
-  it.each(BUDGETED)('ends %s, hung on %s, at its budget as %s', async (_entry, method, code, call) => {
+  it.each(INPUTS)('ends %s, hung on %s, at its budget as possibly committed', async (_entry, method, call) => {
     const h = harness();
     await openAttempt(h);
     vi.useFakeTimers();
     try {
       h.fake.respond(method, () => new Promise(() => undefined));
       const hung = call(h, { ...operation(), origin: 'test', timeoutMs: 2_000 });
-      const outcome = expect(hung).rejects.toMatchObject({ code });
+      const outcome = expect(hung).rejects.toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED' });
       await vi.advanceTimersByTimeAsync(10_000);
       await outcome;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('sends nothing once a settling target spent the budget, and no keystroke once a focus tap used it up', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const about = await observed(h, 'About');
+    autoAdvanceTimers();
+    // About moves with the tap, so the next tap relocates it first; a slow relocation spends the whole budget.
+    await h.engine.perform!(about.ref, { kind: 'tap' }, { ...operation(), origin: 'test' });
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      nodes: SETTINGS_NODES.map((node) => (node.label === 'About' && node.type === 'cell' ? { ...node, rect: { x: 0, y: 400, width: 390, height: 44 } } : node)),
+    }));
+    const moved = await observed(h, 'About');
+    h.fake.respond('capture.snapshot', () => new Promise((resolve) => setTimeout(() => resolve(SETTINGS_SNAPSHOT), 3_000)));
+    const presses = (): number => h.fake.methods().filter((method) => method === 'interactions.press').length;
+    const before = presses();
+    await expect(h.engine.perform!(moved.ref, { kind: 'tap' }, { ...operation(), origin: 'test', timeoutMs: 2_000 })).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+    expect(presses()).toBe(before);
+
+    // A key on an unfocused field taps it, then types. The tap answers within its grace but past the budget, so the keystroke is not sent.
+    h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
+    const field = await observed(h, 'Search');
+    h.fake.respond('interactions.press', () => new Promise((resolve) => setTimeout(() => resolve({}), 200)));
+    await expect(h.engine.perform!(field.ref, { kind: 'press', key: 'a' }, { ...operation(), timeoutMs: 100 })).rejects.toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED' });
+    expect(h.fake.methods()).not.toContain('interactions.type');
+  });
+
+  it('keeps a timed-out input in flight: the next attempt waits for the device command to settle', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const about = await observed(h, 'About');
+    autoAdvanceTimers();
+    let settled = false;
+    h.fake.respond('interactions.press', () => new Promise((resolve) => setTimeout(() => {
+      settled = true;
+      resolve({});
+    }, 5_000)));
+    await expect(h.engine.perform!(about.ref, { kind: 'tap' }, { ...operation(), timeoutMs: 2_000 })).rejects.toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED' });
+    expect(settled).toBe(false);
+    await h.engine.endAttempt!(cleanup());
+    await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
+    expect(settled).toBe(true);
+  });
+
+  it('lets a locate outlive its budget: a poll keeps its last read, so a slow screen reads as missing, not as a timeout', async () => {
+    const h = harness();
+    await openAttempt(h);
+    vi.useFakeTimers();
+    try {
+      h.fake.respond('capture.snapshot', () => new Promise((resolve) => setTimeout(() => resolve(SETTINGS_SNAPSHOT), 3_000)));
+      const read = h.engine.locate!({ kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'About', exact: true } } }, { ...operation(), timeoutMs: 1_000 });
+      await vi.advanceTimersByTimeAsync(3_000);
+      await expect(read).resolves.toHaveLength(1);
     } finally {
       vi.useRealTimers();
     }
