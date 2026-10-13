@@ -5,7 +5,7 @@ import { promptCacheKey } from '../../../src/agent/model/provider-hints.ts';
 import { createOAuthFetch } from '../../../src/oauth/fetch.ts';
 import { opencodeConsole } from '../../../src/oauth/opencode-console.ts';
 import { listModels } from '../../../src/oauth/models.ts';
-import { createOpencodeConsoleProvider, OPENCODE_API_KEY_ENV } from '../../../src/oauth/providers/opencode-console.ts';
+import { createOpencodeConsoleProvider } from '../../../src/oauth/providers/opencode-console.ts';
 import type { CodexCredentials } from '../../../src/oauth/providers/openai.ts';
 import { MemoryCredentialStore } from './helpers/store.ts';
 import { json, useServers, useVendor, type Received } from './helpers/server.ts';
@@ -50,7 +50,7 @@ function workspace(answer: Partial<typeof config.config.provider> | undefined = 
   return serve((request, response) => {
     if (request.url === '/console/api/config') return json(response, 200, providers);
     // ChatGPT's own model list, so a test can prove the Console key never reaches another provider.
-    if (request.url.endsWith('/codex/models')) return json(response, 200, { models: [{ slug: 'gpt-6-astra', display_name: 'GPT-6 Astra', visibility: 'list', priority: 0 }] });
+    if (request.url.includes('/codex/models?')) return json(response, 200, { models: [{ slug: 'gpt-6-astra', display_name: 'GPT-6 Astra', visibility: 'list', priority: 0 }] });
     if (request.url.endsWith('/chat/completions')) return json(response, 200, chatCompletion);
     if (request.url.endsWith('/messages')) {
       return json(response, 200, { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-sonnet-5', content: [{ type: 'text', text: 'hello' }], stop_reason: 'end_turn', usage: { input_tokens: 3, output_tokens: 1 } });
@@ -285,33 +285,30 @@ describe('e2e models opencode-console', () => {
     expect(models.map((model) => model.id)).toContain('go/deepseek-v4.1-flash');
   });
 
-  it('a stored login wins over the key, so what works today is unchanged', async () => {
+  it('reads the key over a stored login, as opencodeConsole() does', async () => {
     const api = await workspace();
     vendor(api, {});
     vi.stubEnv('OPENCODE_API_KEY', 'oc_sk_env');
     await listModels('opencode-console', new MemoryCredentialStore({ 'opencode-console': login }));
-    expect(api.requests[0]!.headers['authorization']).toBe('Bearer st_tok');
-    expect(api.requests[0]!.headers['x-org-id']).toBe('org_1');
+    expect(api.requests[0]!.headers['authorization']).toBe('Bearer oc_sk_env');
+    expect(api.requests[0]!.headers).not.toHaveProperty('x-org-id');
   });
 
   it('with neither credential, the message names the key as well as the login', async () => {
-    // No stored login, and no key in the shell: the listing fails before any request.
     vi.stubEnv('OPENCODE_API_KEY', '');
-    const failure = await listModels('opencode-console', new MemoryCredentialStore()).catch((error: unknown) => error);
-    expect(failure).toMatchObject({ code: 'NOT_LOGGED_IN' });
-    expect((failure as Error).message).toContain('OPENCODE_API_KEY');
+    await expect(listModels('opencode-console', new MemoryCredentialStore())).rejects.toMatchObject({
+      code: 'NOT_LOGGED_IN',
+      message: 'no OpenCode Console login is stored; run `npx e2e login opencode-console` or set OPENCODE_API_KEY',
+    });
   });
 
-  it('a rejected stored login does not send the user after a key this listing ignores', async () => {
-    // The stored login outranks OPENCODE_API_KEY here, so naming the key would be a dead end.
-    const api = await serve((_request, response) => json(response, 401, { error: 'token revoked' }));
+  it('a rejected key names the key, not the login it stands in for', async () => {
+    const api = await serve((_request, response) => json(response, 401, { error: 'invalid key' }));
     vendor(api, {});
-    vi.stubEnv(OPENCODE_API_KEY_ENV, 'oc_sk_env');
-    const store = new MemoryCredentialStore({ 'opencode-console': { access: 'st_tok', refresh: '', expires: 0 } });
-    const failure = await listModels('opencode-console', store).catch((error: unknown) => error);
+    vi.stubEnv('OPENCODE_API_KEY', 'oc_sk_env');
+    const failure = await listModels('opencode-console', new MemoryCredentialStore({ 'opencode-console': login })).catch((error: unknown) => error);
     expect(failure).toMatchObject({ code: 'LOGIN_REQUIRED' });
-    expect((failure as Error).message).not.toContain(OPENCODE_API_KEY_ENV);
-    expect((failure as Error).message).toContain('npx e2e login opencode-console');
+    expect((failure as Error).message).toMatch(/; check OPENCODE_API_KEY$/);
   });
 
   it('leaves the other providers on their stored login', async () => {

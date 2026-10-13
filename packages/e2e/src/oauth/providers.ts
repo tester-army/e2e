@@ -4,7 +4,8 @@ import { createCodexProvider, type CodexLoginOptions } from './providers/openai.
 import { createCopilotProvider, type CopilotLoginOptions } from './providers/github-copilot.ts';
 import { createOpencodeConsoleProvider } from './providers/opencode-console.ts';
 import { createXaiProvider } from './providers/xai.ts';
-import type { OAuthProvider } from './types.ts';
+import { EnvCredentialStore, defaultCredentialStore } from './store.ts';
+import type { CredentialStore, OAuthProvider } from './types.ts';
 
 export interface LoginOptionsById {
   readonly openai: CodexLoginOptions;
@@ -33,20 +34,30 @@ export function getProvider(id: ProviderId): OAuthProvider {
   return PROVIDERS[id];
 }
 
-/** The environment credential a provider also accepts, where it has one. */
-const ENV_CREDENTIALS: Partial<Record<ProviderId, string>> = { 'opencode-console': 'OPENCODE_API_KEY' };
+/** How a missing login is described to the user: the CLI command that fixes it, and the API key variable that does too. */
+export function loginHint(id: ProviderId): string {
+  const command = `run \`npx e2e login ${id}\``;
+  const variable = PROVIDERS[id].apiKeyEnv;
+  return variable === undefined ? command : `${command} or set ${variable}`;
+}
+
+/** The provider's API key from its `apiKeyEnv` variable, when that is set. */
+export function apiKeyFor(id: ProviderId): string | undefined {
+  const variable = PROVIDERS[id].apiKeyEnv;
+  const apiKey = variable === undefined ? undefined : process.env[variable]?.trim();
+  return apiKey === '' ? undefined : apiKey;
+}
 
 /**
- * How a missing login is described to the user: the CLI command that fixes
- * it, and the environment credential that does too, so the message never
- * reads as "no credentials" while a working one is set.
- *
- * `environment: false` names the command alone, for the caller whose stored
- * login outranks the environment credential: telling that caller to set a
- * variable the call would ignore sends them down a dead end.
+ * Where `id`'s calls read their credential: the API key, when set, as a
+ * login with nothing to refresh, else `store`. The hint names the remedy for
+ * the credential actually read.
  */
-export function loginHint(id: ProviderId, options: { readonly environment?: boolean } = {}): string {
-  const command = `run \`npx e2e login ${id}\``;
-  const environment = options.environment === false ? undefined : ENV_CREDENTIALS[id];
-  return environment === undefined ? command : `${command} or set ${environment}`;
+export function credentialSource(id: ProviderId, store: CredentialStore = defaultCredentialStore()): { readonly store: CredentialStore; readonly loginHint: string } {
+  const apiKey = apiKeyFor(id);
+  if (apiKey === undefined) return { store, loginHint: loginHint(id) };
+  return {
+    store: new EnvCredentialStore(JSON.stringify({ [id]: { access: apiKey, refresh: '', expires: 0 } })),
+    loginHint: `check ${PROVIDERS[id].apiKeyEnv}`,
+  };
 }

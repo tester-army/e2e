@@ -250,15 +250,16 @@ bunx e2e models openai    # one provider
 ```
 </CodeGroup>
 
-Asks the vendor which models the stored login serves and prints one line per
+Asks the vendor which models the stored login serves, or for OpenCode Console
+`OPENCODE_API_KEY` when set, and prints one line per
 model: the id `chatgpt()`, `copilot()`, `opencodeConsole()`, or `grok()`
 takes, the vendor's name for it, and its notes (reasoning levels, vision,
 preview, hidden, for Copilot `not enabled` or `no chat or responses` when
 `copilot()` cannot call it, and for OpenCode Console the plan, Zen or Go,
-that serves it). Without a
-stored login, or when the named provider has none, exits 1 with the sign-in
-command; when one of several logins fails to list, the others still print and
-the command exits 1. An unknown provider exits 2. See
+that serves it). Without a provider it lists every stored login, plus
+OpenCode Console when only the key is set. Without a credential, or when the
+named provider has none, exits 1 with the sign-in command; when one of
+several fails to list, the others still print and the command exits 1. An unknown provider exits 2. See
 [Pick a model](/subscriptions#pick-a-model).
 
 ## e2e guide

@@ -14,9 +14,8 @@ import { promptCacheKey } from '../agent/model/provider-hints.ts';
 import { OAuthError } from './errors.ts';
 import { createOAuthFetch } from './fetch.ts';
 import { USER_AGENT } from '../internal/client-identity.ts';
-import { loginHint } from './providers.ts';
-import { createOpencodeConsoleProvider, opencodeConsoleApiKeyStore, opencodeConsoleChatRoute, opencodeConsoleRouteFor, OPENCODE_API_KEY_ENV, type OpencodeConsoleRoute } from './providers/opencode-console.ts';
-import { defaultCredentialStore } from './store.ts';
+import { credentialSource } from './providers.ts';
+import { createOpencodeConsoleProvider, opencodeConsoleChatRoute, opencodeConsoleRouteFor, type OpencodeConsoleRoute } from './providers/opencode-console.ts';
 import type { FetchFunction } from './types.ts';
 
 const CONFIG_TIMEOUT_MS = 10_000;
@@ -30,12 +29,7 @@ interface Served {
 }
 
 export function opencodeConsole(modelId: string): LanguageModelV4 {
-  const apiKey = process.env[OPENCODE_API_KEY_ENV]?.trim();
-  const fetch = createOAuthFetch(createOpencodeConsoleProvider(), {
-    store: apiKey ? opencodeConsoleApiKeyStore(apiKey) : defaultCredentialStore(),
-    userAgent: USER_AGENT,
-    loginHint: apiKey ? `check ${OPENCODE_API_KEY_ENV}` : loginHint('opencode-console'),
-  });
+  const fetch = createOAuthFetch(createOpencodeConsoleProvider(), { ...credentialSource('opencode-console'), userAgent: USER_AGENT });
   // One per model, so a worker's calls stay on one upstream and its cache.
   const session = `e2e_${randomUUID()}`;
   const chatRoute = opencodeConsoleChatRoute(modelId);

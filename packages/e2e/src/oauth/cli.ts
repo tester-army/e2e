@@ -11,7 +11,7 @@ import { sanitizeText } from '../internal/errors.ts';
 import { OAuthError } from './errors.ts';
 import { login, logout } from './login.ts';
 import { listModels } from './models.ts';
-import { PROVIDER_IDS, getProvider, isProviderId, type LoginOptionsById, type ProviderId } from './providers.ts';
+import { PROVIDER_IDS, apiKeyFor, getProvider, isProviderId, type LoginOptionsById, type ProviderId } from './providers.ts';
 import { defaultCredentialStore } from './store.ts';
 import type { OAuthLoginCallbacks, SubscriptionModel } from './types.ts';
 
@@ -72,18 +72,20 @@ export async function runLogout(providerId: string | undefined, io: CliIo = defa
 }
 
 /**
- * Lists the models `providerId`'s login serves; without one, every stored
- * login in turn, one provider's failure leaving the others listed. One line
- * per model: the id a config passes to the constructor, the vendor's name for
- * it, and what the vendor says about it. Vendor text is untrusted and has its
- * terminal controls stripped. `list` is a test seam.
+ * Lists the models `providerId`'s login or API key serves; without one,
+ * every stored login and set API key in turn, one provider's failure leaving
+ * the others listed. One line per model: the id a config passes to the
+ * constructor, the vendor's name for it, and what the vendor says about it.
+ * Vendor text is untrusted and has its terminal controls stripped. `list` is
+ * a test seam.
  */
 export async function runModels(providerId: string | undefined, io: CliIo = defaultIo(), list: (id: ProviderId) => Promise<SubscriptionModel[]> = listModels): Promise<number> {
   return report(io, async () => {
     let ids: readonly ProviderId[];
     if (providerId === undefined || providerId === '') {
-      ids = [...(await signedIn()).keys()];
-      if (ids.length === 0) throw new OAuthError('NOT_LOGGED_IN', `no login is stored; sign in with e2e login <${PROVIDER_IDS.join('|')}>`);
+      const stored = await signedIn();
+      ids = PROVIDER_IDS.filter((id) => stored.has(id) || apiKeyFor(id) !== undefined);
+      if (ids.length === 0) throw new OAuthError('NOT_LOGGED_IN', `no login is stored; sign in with e2e login <${PROVIDER_IDS.join('|')}>${apiKeyHint()}`);
     } else {
       ids = [requireProvider(providerId)];
     }
@@ -120,6 +122,12 @@ function printModels(io: CliIo, id: ProviderId, models: readonly SubscriptionMod
     }
     io.stdout.write(`  ${model.id.padEnd(width)}  ${io.isTTY ? pc.dim(rest.join('  ')) : rest.join('  ')}\n`);
   }
+}
+
+/** The API key variables that stand in for a login, as a suffix to the sign-in hint. */
+function apiKeyHint(): string {
+  const variables = PROVIDER_IDS.flatMap((id) => getProvider(id).apiKeyEnv ?? []);
+  return variables.length === 0 ? '' : `, or set ${variables.join(' or ')}`;
 }
 
 /** The providers with a stored login, and how each one stands. */

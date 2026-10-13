@@ -516,7 +516,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .command('models')
     .summary('list the models a stored subscription login serves')
     .description(
-      'Ask the vendor which models the stored login serves and print their ids, the ones chatgpt(), copilot(), opencodeConsole(), and grok() take. Without a provider, every stored login in turn.',
+      'Ask the vendor which models the stored login, or OPENCODE_API_KEY for opencode-console, serves and print their ids, the ones chatgpt(), copilot(), opencodeConsole(), and grok() take. Without a provider, every stored login and set key in turn.',
     )
     .addArgument(new Argument('[provider]', 'openai, github-copilot, opencode-console, or spacexai; omitted, every stored login').choices(PROVIDER_IDS))
     .addHelpText('after', ['', examples(['e2e models', 'e2e models openai']), '', docsLine('/subscriptions#pick-a-model')].join('\n'))
