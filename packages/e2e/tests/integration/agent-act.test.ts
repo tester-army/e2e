@@ -605,6 +605,7 @@ describe('loop guards and transcripts', () => {
       // --debug persists the executor transcript as a step-attributed log artifact.
       const log = attempt.artifacts.find((artifact) => artifact.kind === 'log');
       expect(log).toBeDefined();
+      expect(log!.redaction).toBe('complete');
       expect(log!.producer).toEqual({ kind: 'step', stepId: step.id });
       expect(log!.path).toBeDefined();
       const text = readFileSync(

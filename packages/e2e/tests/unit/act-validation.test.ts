@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { redactParams, validateActOptions, validateParams } from '../../src/agent/act-validation.ts';
+import { redactParams, validateActOptions, validateParams, validateVerdict } from '../../src/agent/act-validation.ts';
 import { templateParams } from '../../src/cache/template.ts';
+import { bound } from '../../src/internal/text.ts';
 import { unique } from '../../src/params.ts';
 import { ConfigurationError } from '../../src/internal/errors.ts';
 
@@ -71,5 +72,35 @@ describe('redactParams', () => {
         message: 'agent.act params has two keys that read "id <secret:probe>" once secret values are redacted; a key cannot be told apart by a secret',
       }),
     );
+  });
+});
+
+describe('verdict summary bounds', () => {
+  it('keeps ordinary trimmed summaries and the verdict shape with the default redactor', () => {
+    expect(validateVerdict({ status: 'passed', summary: '  step passed  ' }, 'executor')).toEqual({ status: 'passed', summary: 'step passed' });
+    expect(validateVerdict({ status: 'failed', summary: 'failed', errorCode: 'ASSERTION_FAILED' }, 'executor')).toEqual({ status: 'failed', summary: 'failed', errorCode: 'ASSERTION_FAILED' });
+  });
+
+  it('redacts known values before the producer cap can leave a fragment', () => {
+    const plaintext = 'PQ7rs9Uv4wx2';
+    const result = validateVerdict({ status: 'passed', summary: 'x'.repeat(1997) + plaintext }, 'executor', (text) => text.replaceAll(plaintext, '<secret:summary>'));
+    expect(result.summary).toHaveLength(2000);
+    expect(result.summary.endsWith('…')).toBe(true);
+    const expected = 'x'.repeat(1997) + '<s…';
+    expect(result.summary).toBe(expected);
+    for (const prefix of ['P', 'PQ', 'PQ7']) expect(result.summary).not.toContain(prefix);
+    // This deliberate bad transform would pass the former !PQ7 oracle.
+    const capFirst = bound('x'.repeat(1997) + plaintext, 2000).replaceAll(plaintext, '<secret:summary>');
+    expect(capFirst).toBe('x'.repeat(1997) + 'PQ…');
+    expect(capFirst).not.toBe(expected);
+  });
+
+  it('explicitly marks producer cuts, including unknown secret prefixes and surrogate boundaries', () => {
+    const summary = validateVerdict({ status: 'passed', summary: 'x'.repeat(1997) + 'PQ7rs9Uv4wx2' }, 'executor').summary;
+    expect(summary).toHaveLength(2000);
+    expect(summary.endsWith('PQ…')).toBe(true);
+    const unicode = validateVerdict({ status: 'passed', summary: 'x'.repeat(1998) + '😀z' }, 'executor').summary;
+    expect(unicode).toBe('x'.repeat(1998) + '…');
+    expect(validateVerdict({ status: 'passed', summary: 'x'.repeat(2000) }, 'executor').summary).toHaveLength(2000);
   });
 });

@@ -16,15 +16,18 @@
  * executor's verdict onto the runner's error taxonomy.
  */
 
+import { randomUUID } from 'node:crypto';
 import type { StepTurn } from '../run/steps.ts';
 import { writeFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { resolveVision } from '../config/agent.ts';
-import { ConfigurationError } from '../internal/errors.ts';
+import { ConfigurationError, truncateUtf8 } from '../internal/errors.ts';
 import { withAbort, withTimeout } from '../internal/time.ts';
 import type { ActOptions, ActResult, AgentErrorCode, JsonValue, ModelInstance, Secret, VisionMode } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, toAgentError } from './error.ts';
+import { prospectiveSecretResolutionsProven, sessionSecrecy } from '../run/secrecy.ts';
+import { bindDebugEvidenceBytes, debugEvidenceBytesProven, debugEvidenceProven, debugEvidenceRegistration, bindDebugEvidenceFile } from '../run/artifacts.ts';
 import { redactParams, validateActOptions, validateInstruction, validateParams, validateVerdict } from './act-validation.ts';
 import { ActionDispatcher } from './action-dispatcher.ts';
 import { resolveBoundedBudget, resolveTimeout } from './call-options.ts';
@@ -165,7 +168,7 @@ export async function dispatchAgentStep(
         throw dispatch.settleThrown(toAgentError(cause));
       }
       const evidence = await dispatch.captureEvidence();
-      dispatch.settle(validateVerdict(verdict, agent.executor.name), evidence);
+      dispatch.settle(validateVerdict(verdict, agent.executor.name, runtime.redact), evidence);
       await dispatch.conclude('passed');
       return dispatch.result();
     } catch (cause) {
@@ -388,14 +391,18 @@ class ActDispatch {
     if (signal.aborted) return undefined;
     try {
       const operation = this.accounting.operation();
+      const registration = debugEvidenceRegistration(this.runtime.artifacts);
+      const deadline = Date.now() + operation.timeoutMs;
       const capture = this.runtime.engine.session.artifacts.screenshot('assert', operation);
       void capture.catch(() => undefined);
-      const relative = await withTimeout(
+      const captured = await withTimeout(
         withAbort(capture, signal, () => new Error('the step ended before its evidence was captured')),
         operation.timeoutMs,
         () => new Error(`evidence capture outlived its ${operation.timeoutMs} ms operation budget`),
       );
-      this.runtime.steps.attachArtifact(this.runtime.artifacts.register('screenshot', relative));
+      const relative = await bindDebugEvidenceFile(this.runtime.artifacts, captured, registration, signal, deadline);
+      if (signal.aborted || Date.now() >= deadline) return undefined;
+      this.runtime.steps.attachArtifact(this.runtime.artifacts.register('screenshot', relative, registration));
       return relative;
     } catch {
       return undefined;
@@ -411,7 +418,11 @@ class ActDispatch {
       if (settled.status === 'passed') {
         // The step ran out of budget or time mid-flight; an executor cannot
         // declare success over the runtime's own accounting.
-        settled = { status: 'blocked', summary: hardStop.message, errorCode: hardStop.code };
+        settled = validateVerdict(
+          { status: 'blocked', summary: hardStop.message, errorCode: hardStop.code },
+          this.agent.executor.name,
+          this.runtime.redact,
+        );
       } else if (settled.errorCode === undefined) {
         // The executor's analysis stands, but runtime exhaustion is never
         // hidden from the report: a code-less failure inherits the hard stop.
@@ -517,9 +528,18 @@ class ActDispatch {
    * is masked as every screenshot artifact is.
    */
   private async attachScreenshot(pixels: ExecutorPixels, label: string): Promise<string> {
-    const name = `${label.replace(/[^A-Za-z0-9_-]+/g, '-')}.png`;
-    await writeFile(join(this.runtime.artifacts.dir, name), pixels.data);
-    const id = this.runtime.artifacts.register('screenshot', name);
+    const name = `screenshot-${randomUUID()}.png`;
+    void label;
+    const registration = this.feed.screenshotRegistration(pixels);
+    // Unsupported custom pictures retain their legacy store metadata, not
+    // SDK export permission. Original unsafe SDK pixels never reach disk here.
+    const canPersist = registration === undefined
+      ? prospectiveSecretResolutionsProven(sessionSecrecy(this.runtime.engine.session, this.runtime.config.allSecrets).ledger) && !this.runtime.exposure.withholdsPixels
+      : debugEvidenceBytesProven(this.runtime.artifacts, registration, pixels.data);
+    if (canPersist) {
+      await writeFile(join(this.runtime.artifacts.dir, name), new Uint8Array(pixels.data), { flag: 'wx' });
+    }
+    const id = this.runtime.artifacts.register('screenshot', name, registration ?? { debugEvidence: true });
     this.runtime.steps.attachArtifact(id);
     return id;
   }
@@ -532,8 +552,19 @@ class ActDispatch {
     try {
       // Model prose and project-tool output are not model input, but they
       // are a log: the same redactor that guards the tree guards the file.
-      writeFileSync(join(this.runtime.artifacts.dir, name), this.runtime.redact(this.transcript), 'utf8');
-      this.runtime.steps.attachArtifact(this.runtime.artifacts.register('log', name));
+      const secrecy = sessionSecrecy(this.runtime.engine.session, this.runtime.config.allSecrets);
+      // A producer's earlier cut cannot certify even a short secret prefix.
+      const cut = /…|\.\.\.|\[[^\]\n]*(?:truncated|cut)[^\]\n]*\]/iu.test(this.transcript);
+      const text = this.runtime.redact(cut && !secrecy.ledger.isEmpty
+        ? '[text withheld: truncated before final redaction]' : this.transcript);
+      const registration = debugEvidenceRegistration(this.runtime.artifacts, 'text');
+      const proven = debugEvidenceProven(this.runtime.artifacts, registration);
+      const final = proven ? text : this.runtime.redact('[text withheld: secret resolution unproven]');
+      const suffix = '…[truncated]';
+      const bounded = Buffer.byteLength(final) <= 262_144 ? final : truncateUtf8(final, 262_144 - Buffer.byteLength(suffix)) + suffix;
+      bindDebugEvidenceBytes(this.runtime.artifacts, registration, Buffer.from(bounded, 'utf8'));
+      writeFileSync(join(this.runtime.artifacts.dir, name), bounded, 'utf8');
+      this.runtime.steps.attachArtifact(this.runtime.artifacts.register('log', name, registration));
     } catch {
       // The transcript is best-effort debug detail; never fail the step for it.
     }

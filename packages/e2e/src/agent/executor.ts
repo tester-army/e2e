@@ -458,7 +458,9 @@ export interface StepExecutorContext {
    * id: what a tool with evidence worth keeping (a defect on screen) calls.
    * The file lands in the attempt's artifact directory and the report's
    * artifact records like every screenshot the runner takes, and reaches a
-   * configured `ArtifactStore`. The label names the file.
+   * configured `ArtifactStore`. The SDK generates an opaque, exclusive
+   * filename. The label is retained for call compatibility, not filename
+   * selection or overwrite authority; repeated labels keep distinct files.
    */
   attachScreenshot(pixels: ExecutorPixels, label: string): Promise<string>;
 }

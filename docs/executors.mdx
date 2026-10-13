@@ -135,7 +135,7 @@ export default {
 | `ctx.budgets` | Accounting for custom tools (`runTool`) and model calls (`recordModelCall`) |
 | `ctx.attachTranscript(text)` | Under `--debug`, attaches the model transcript as a `log` artifact. Call it one time, at the end |
 | `ctx.attachTurns(turns)` | Keeps a clipped record of the model turns (`{ index, calls, outcome }`) on the step. The report shows the last ones under a failed step |
-| `ctx.attachScreenshot(pixels, label)` | Keeps observed pixels as a `screenshot` artifact of the step and resolves with its report id |
+| `ctx.attachScreenshot(pixels, label)` | Keeps observed pixels as a `screenshot` artifact of the step and resolves with its report id. The SDK generates an opaque, exclusive filename; labels do not select names or overwrite earlier files |
 
 `tapAt(point)` and `hoverAt(point)` act on the listed control at the point,
 else call the engine's coordinate action. `hitTest(point)` finds that control

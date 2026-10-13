@@ -105,7 +105,8 @@ const captureEvidence = defineTool(
 - In a `mutates: true` tool, `observe()` fails with `POLICY_DENIED`.
   Observe in a separate read-only tool.
 - `attachScreenshot(pixels, label)` adds the image to the step's artifacts
-  and returns its artifact id. A reused label overwrites the earlier image.
+  and returns its artifact id. The SDK generates an opaque filename; the label
+  does not choose it. Repeated labels keep distinct files.
 
 ## Device toolkits
 

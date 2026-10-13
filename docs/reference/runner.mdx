@@ -214,6 +214,7 @@ An `end` event includes `status`, `durationMs`, `modelCalls`, and a redacted
 | `steps()` | Read-only `StepRecord`s for steps run so far, as the [report](/reference/reporters) records them |
 | `artifactsDir` | Absolute directory for this attempt's screenshots, recordings, and trace |
 | `tracePath` | Absolute string path to `trace.md`; attach or read it after `close()` settles |
+| `exportDebugBundle()` | Deeply frozen `SessionDebugBundle` after close settles, including failed close; `undefined` while live or closing |
 | `close()` | Cancels remaining operations, ends the attempt, and writes its trace. Returns soft expectation and cleanup failures as `Promise<readonly SerializedError[]>` instead of throwing them |
 
 `session.close()` is idempotent and returns the same failures on later calls.
@@ -239,6 +240,237 @@ names and retries get separate directories. With provider-backed secrets,
 the directory uses an identity-only segment because unresolved values cannot
 be redacted from a title slug. The trace still displays the redacted name.
 
+### Closed-session debug export
+
+After `close()` settles, `exportDebugBundle()` returns the same deeply
+read-only, frozen JSON snapshot on every call. It remains available after
+soft failures, deadline expiry, engine cleanup failures, and trace-write
+failure. Export itself writes or uploads nothing.
+
+Reports and traces are finalized only after attempt cleanup and any worker
+retirement have settled. Teardown returning does not prove that a pending
+secret provider finished. The runner tracks actual resolution calls, including
+engine-derived values, and drains them using only the time left in the
+attempt's cleanup window. It never invokes unused providers. If a resolution
+is still pending or failed, potentially secret-bearing prose becomes
+`[text withheld: secret resolution unproven]` and content artifacts are withheld
+as `incomplete-redaction`. An empty resolution queue is not proof against
+a new provider call during publication failure recovery or later disposal.
+With any configured opaque provider, freeform prose is conservatively withheld
+before the first trace bytes are written, even when an earlier call settled.
+Providers compute fresh values. Hosted path selection and finalization classify
+effective private definitions through own data descriptors, never by reading a
+lazy value. Accessors and missing definitions remain opaque; only a requested,
+tracked resolution may evaluate a getter. The exporter adds no calls or waits
+to learn unused values. Effective environment overrides that replace a provider
+with a literal retain ordinary known-value redaction. SDK outcomes, declared
+enum tokens, validated generated identities, timings, and counters remain
+structural facts. Optional unknown
+URLs are omitted. If known-value redaction changes a target origin, that optional
+URI is also omitted. A changed model endpoint withholds the optional model
+record because its endpoint is required; no replacement address is invented.
+Declared `local` and `provider-default` endpoint tokens are preserved.
+Schema-unique arrays are deduplicated after redaction, including known-value
+collisions; ordered steps, events, and turns retain repetitions.
+Later provider completion cannot change the frozen bundle
+or rewrite the trace.
+
+With provider-valued
+secrets, previously truncated prose is withheld when its redaction cannot be
+proven, including cut app logs, model turns, and byte-capped error text. It is
+replaced by `[text withheld: truncated before final redaction]`. This may also
+withhold literal ellipses or cut notices. Uncut text is redacted before the
+report's field-specific length bounds are applied. No raw text is retained
+to recover a cut. Verdict summaries redact known values before their
+2,000-character producer bound and mark cuts explicitly; the report's
+8,192-character explanation bound is not a substitute for that producer proof.
+
+The report projection preserves closed enum tokens only at their declared
+paths. The same words in labels, names, explanations, or external identity
+text still undergo prose redaction. Forwarded accepted-image byte totals
+must be nonnegative safe integers and stay separate from peak image bytes.
+Absent totals are not synthesized; these guards introduce no public report fields.
+
+UUID or digest shape alone grants no redaction exemption. Target names, external
+test IDs, carried declarations, and error details remain user text, and masked
+target IDs still join result target references. SDK run and attempt UUIDs,
+result digests, and attempt-owned step/artifact IDs retain their exact protocol
+locations and validated references. Unknown fields get no identity exemption.
+
+The SDK-minted `run.runner.name` remains the public literal `e2e`, including
+with opaque providers. Only that exact declared path and value are exempt.
+A target, session, fixture, agent, or external runner name spelled `e2e`
+still undergoes prose redaction. The shipped report schema pins the same literal.
+
+Prospective accounting reads own data descriptors, not getters. Every effective
+session or resolution layer seeds all of its literal values before a handoff.
+An accessor or provider permanently marks the ledger opaque, even after a
+successful resolution or a later literal replacement. Missing accounting denies
+publication proof. No definition maps are retained for proof-time inspection.
+
+Media types are facts only for original, sink-bound SDK capture tickets whose
+registered bytes match the producer format. PNG signature, UTF-8 text, and
+parseable checkpoint JSON checks accompany size and hash measurement; filenames
+and caller-declared media types grant no permission. PNG signature validation
+is not full image decoding or masking proof. These media facts survive a
+coinciding configured secret only in report artifact and manifest media fields.
+The same text in labels, logs, names, or external IDs is still masked or withheld.
+An unsafe, unproven required media type removes that optional artifact row and
+its references rather than publishing a redaction marker as a MIME type.
+
+
+Only the private SDK missing-checkpoint protocol can retain fixed unavailable
+facts when opaque secrets deny content publication. It requires the original
+sink-bound, unconsumed ticket, expected byte length and SHA-256, actual owning
+attempt/step joins, original boundary timestamp, and a null capture association.
+The timestamp must match the private association snapshot, not mutable public
+registration fields. Before the first write and again after asynchronous reads,
+the sink checks exactly nine boundary fields,
+closed missing reasons, and canonical compact JSON with zero or one trailing LF.
+Duplicate keys, discarded prose, extra fields, capture data and trailing bytes
+are denied even with a matching receipt. This permission never covers generic
+JSON, text, pixels, engine metadata or caller names. Registered checkpoint
+recordedness is independent of retained-file availability. Consumers still own
+hosting and later file rechecks. This exporter does not enable checkpoint capture.
+
+
+<Note>
+With configured literal secrets, complete prose such as `Waiting… done.` can
+be withheld as a possible earlier cut. Default-agent tool output, loop/overflow
+formatters, decision-executor request/answer serialization, unmarked element
+clips, and custom executor strings do not share trusted completeness provenance.
+Removing one marker check would also expose bare secret prefixes. This export
+keeps the conservative gate; it does not promise complete transcript availability.
+</Note>
+
+
+For an existing session, close and publish before propagating the same body,
+SDK/cleanup, or publisher errors to the enclosing test runner:
+
+```ts
+import type { E2ESession, SessionDebugBundle } from 'e2e/runner';
+
+async function withPublishedDebug(
+  session: E2ESession,
+  body: () => Promise<void>,
+  publish: (bundle: SessionDebugBundle, paths: readonly string[]) => Promise<void>,
+): Promise<void> {
+  const errors: unknown[] = [];
+  try { await body(); } catch (cause) { errors.push(cause); }
+  try { errors.push(...await session.close()); } catch (cause) { errors.push(cause); }
+  const bundle = session.exportDebugBundle();
+  if (bundle !== undefined) {
+    const paths = bundle.artifacts.flatMap((artifact) =>
+      artifact.evidence.status === 'available' ? [artifact.evidence.path] : [],
+    );
+    try { await publish(bundle, paths); } catch (cause) { errors.push(cause); }
+  }
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) throw new AggregateError(errors, 'Test or debug finalization failed');
+}
+```
+
+The publisher owns upload and use-time file verification. The caller owns retries
+and runner reporting; publication must not convert a failed test into a pass.
+
+`SessionDebugBundle`, `DebugArtifact`, and `ImmutableReport` are public types
+from `e2e/runner`. The shipped `schema/session-debug-v1.schema.json` validates
+`session-debug-1` and references the shipped `report-v1.schema.json`.
+
+| Field | Meaning |
+| --- | --- |
+| `schemaVersion` | `session-debug-1` |
+| `report` | The existing `report-1` shape, with one session result and attempt. Includes run, target and attempt identity, SDK outcome, errors, timings, events, bounded reasoning and tool turns when recorded. No stacks, external error objects, raw native trees, or pixel buffers |
+| `artifacts` | SDK registration manifest, in registration order. Each entry has `id`, `kind`, `mediaType`, `stepIds`, `observationRevision`, optional `checkpoint`, and `evidence` |
+| `evidence` | Per-step availability of semantic summaries, reasoning excerpts, turns, and checkpoints |
+| `trace` | `written` or `failed`. A failed write is also recorded as a finalization error in the report |
+
+Only `artifact.evidence.status === 'available'` has a `path`, `size`, and
+`sha256`. Its path is relative to `session.artifactsDir`, not cwd. Nested
+report artifact paths retain their report-relative meaning, but only manifest
+paths are the publication allowlist. Missing or withheld entries have a
+closed `reason` and no file path. `not-retained` covers registrations without
+a retained path and actual ENOENT; no other filesystem-access error maps to
+this reason. `read-failed` means I/O prevented verification. It does not assert absent or
+changed bytes. `changed-file` means original file/root custody could not be
+verified, not necessarily that the content changed. Report artifact locations, store references,
+and external URLs are removed when evidence is not exportable.
+
+The manifest admits runner-created, policy-checked evidence only. Pixels and
+observed semantic text keep a private capture-start ledger proof before any
+asynchronous engine call. Executor screenshots carry the original observation
+ticket and byte identity through model-image sizing and persistence, without
+a new capture. A private, one-use receipt binds the expected SHA-256 and byte
+length before writing. The sink compares those expectations with the actual
+persisted bytes before any store handoff or export admission; a mismatch
+publishes neither bytes nor a file reference. Executor attachment filenames
+use SDK-generated nonces and exclusive creation, not sanitized labels. For
+path-returning engine captures, the SDK holds the original descriptor on return,
+before the first yield, then hashes it asynchronously in bounded chunks.
+Only receipt binding has bounded chunk memory; an ArtifactStore still receives
+a complete buffer. Binding abandons its wait at the existing capture deadline or
+caller cancellation; its ticket cannot regain authority from late bytes. An issued
+read may keep its stream-owned descriptor until safe cleanup. This is not an
+end-to-end memory cap or an atomic I/O abort.
+It registers the original engine path, never copies or restores a file to defeat engine retention. Ordinary
+contained engine filenames may include spaces or Unicode; hosted export still
+requires portable ASCII names. A root may have symlink ancestors, but its own
+entry must be a directory, not a link; reads anchor to its stable physical identity.
+Both binding and hosted reads reject traversal,
+component symlinks, hard links and non-files. The engine
+remains responsible for returning its actual capture; a filename is not
+pixel-masking authority. SDK transcripts get a text ticket after final known-value
+redaction and before writing. Opaque or pending content is withheld before the
+first transcript or failure-summary write. With known secrets, already-cut
+transcripts are withheld because short prefixes cannot be repaired. Transcript
+files are bounded to 262,144 UTF-8 bytes after masking, with an explicit cut notice.
+Checkpoint JSON gets its ticket only after final field redaction. Original tickets are single-use and sink-bound;
+a bare marker, copy, or cross-sink registration is not SDK evidence. Evidence captured
+while resolution was pending, before later values joined the ledger, or
+without a capture proof is
+withheld even if cleanup eventually resolved the provider. Filename checks,
+pixel masking, and prose redaction against an older ledger do not prove
+final redaction. The runner cannot repair opaque pixels or recover clipped
+prose. This evidence policy is applied before the trace renderer can read a
+log or publish a file link. ArtifactStore redaction metadata is separate from private export eligibility.
+Genuine redacted transcripts remain `complete` for ordinary CLI, MCP and serial
+stores. Unsupported custom pictures retain legacy store metadata only when live
+secrecy is proven and the viewport is untainted. The sink rechecks live secrecy,
+ledger growth and pixel taint after asynchronous measurement, before any store
+handoff, including local-only metadata. Failed proof marks the record incomplete
+and prevents a store handoff; it never grants custom pictures SDK export evidence.
+A bare marker never grants capture or pixel-masking permission.
+Locally retained incomplete recordings and
+non-SDK attachments remain on disk, but are no longer links in a hosted trace. Arbitrary
+files in the directory, contributed-fixture attachments, downloads, and
+incompletely redacted recordings are not export paths. It rejects traversal,
+symlinks, hard links, and files changed since registration. Retention still
+decides which files exist; exporting never restores discarded evidence.
+Before later copying files, recheck containment, symlinks, size, and SHA-256.
+The snapshot cannot prevent trusted code from changing the filesystem.
+
+Today's semantic evidence is the bounded screen summary or diff in
+`report.run.results[0].attempts[0].steps[].screen`, not a full observation
+timeline. Reasoning and turns are present only when recorded; provider-private
+reasoning is never promised. `checkpoints` is `recorded` only for an SDK-registered checkpoint belonging to
+that step, even if its file is missing or withheld. Consult each artifact's
+`evidence` before copying. Ordinary captures still omit `checkpoint` and keep
+`observationRevision: null`.
+
+An optional `checkpoint` contains the registered `id`, `phase` of `before` or
+`after`, and `observationId: string | null`. The row's `observationRevision`
+is the actual capture revision, not parsed from an ID or taken from the
+step's last observation. Opaque identities are nonempty, control-free, and
+at most 1,024 UTF-8 bytes. The schema also caps them at 1,024 characters;
+the producer enforces the byte limit. Missing or unproven observation identity
+and revision are both `null`. Known-secret identity is never clipped or
+rewritten into a new association: it withholds the file and omits or nulls
+that metadata. This manifest extension does not enable checkpoint capture.
+
+The report uses the trace's finalized SDK outcome. Trace-write errors remain
+visible even when no trace can be written. External test-body outcomes are
+not accepted by this API.
+
 Opening failures are classified, redacted errors; raw engine causes are not
 exposed. Match them with `isE2EError` and
 `error.code`, as for `list`. `openHost` reports `UNKNOWN_TARGET` for an
@@ -246,8 +478,8 @@ unknown target and `TARGET_REQUIRED` when several targets exist and none
 was named.
 
 <Note>
-A hosted session writes its trace, not a run report. Your runner owns retries
-and reporting; use `onStep`, `steps()`, and `close()`'s failures. Video follows
+A hosted session writes its trace, not a run report file. Your runner owns retries
+and reporting; use `exportDebugBundle()` for structured results and check `close()`'s failures. Video follows
 the target's mode for a first attempt, including retaining failure-only video
 for soft failures and failed, blocked, timed-out, or cancelled steps. Your
 runner's test-body failures are not

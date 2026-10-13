@@ -157,15 +157,17 @@ async function openWorker(options: StandaloneHostOptions, kind: AttemptKind): Pr
   const worker = { kind, config, target, runId, executor, resultsDir: layout.results, debug, signal };
   let state: WorkerState = { phase: 'idle' };
   let closing: Promise<readonly SerializedError[]> | undefined;
+  // Retirement can precede publication. Host close must still await the attempt.
+  let activeAttempt: StandaloneAttempt | undefined;
 
   /** Cancels a launch before awaiting it, then ends the attempt before disposing its worker. */
   const close = (): Promise<readonly SerializedError[]> => {
     closing ??= (async () => {
       hostEnd.abort();
       if (state.phase === 'opening') await state.pending.catch(() => undefined);
-      if (state.phase === 'live') {
+      if (activeAttempt !== undefined) {
         try {
-          errors.push(...await state.attempt.close());
+          errors.push(...await activeAttempt.close());
         } catch (cause) { failure(cause); }
       }
       await teardown();
@@ -183,15 +185,16 @@ async function openWorker(options: StandaloneHostOptions, kind: AttemptKind): Pr
       reservation = reserveAttempt(worker, sessionOptions);
     } catch (cause) { return Promise.reject(cause); }
     const pending = launchAttempt(worker, reservation, async ({ cleanup }) => {
-      if (cleanup === 'complete') {
-        state = { phase: 'idle' };
-        return;
-      }
+      if (cleanup === 'complete') return;
       state = { phase: 'retired' };
       hostEnd.abort();
       await teardown();
+    }, () => {
+      activeAttempt = undefined;
+      if (state.phase === 'live') state = { phase: 'idle' };
     }).then(
       (attempt) => {
+        activeAttempt = attempt;
         state = { phase: 'live', attempt };
         return attempt;
       },

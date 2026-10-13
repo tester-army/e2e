@@ -29,6 +29,7 @@ import {
 import { engineAppInfo } from '../config/app.ts';
 import type { ResolvedAgentConfig, ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type { Agent, App, Expectable, SetupSession, TestFixtures } from '../types.ts';
+import { debugEvidenceRegistration, bindDebugEvidenceFile } from './artifacts.ts';
 import type { StepRecord, StepRecorder } from './steps.ts';
 
 export interface ArtifactSink {
@@ -46,6 +47,10 @@ export interface ArtifactSink {
 
 /** Facts about a produced artifact its file does not carry. */
 export interface ArtifactRegistration {
+  /** Runner-created, policy-checked evidence eligible for the hosted debug manifest. Never supplied by contributed fixtures. */
+  readonly debugEvidence?: boolean;
+  /** SDK-owned checkpoint producer, bound to the original private capture ticket. */
+  readonly stepId?: string;
   /** When a time-based artifact (a video segment) began recording. */
   readonly startedAt?: string;
 }
@@ -504,8 +509,12 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine, expos
             'app.screenshot() is denied after a secret fill because the app may display the secret outside a secure field',
           );
         }
-        const relative = await engine.session.artifacts.screenshot(label, engine.operation());
-        environment.steps.attachArtifact(environment.artifacts.register('screenshot', relative));
+        const registration = debugEvidenceRegistration(environment.artifacts);
+        const operation = engine.operation();
+        const deadline = Date.now() + operation.timeoutMs;
+        const captured = await engine.session.artifacts.screenshot(label, operation);
+        const relative = await bindDebugEvidenceFile(environment.artifacts, captured, registration, operation.signal, deadline);
+        environment.steps.attachArtifact(environment.artifacts.register('screenshot', relative, registration));
         return relative;
       });
     },

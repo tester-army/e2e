@@ -18,10 +18,11 @@ import { createAttemptArtifacts, resultSegment } from './artifacts.ts';
 import { AttemptBudget } from './budget.ts';
 import { classifyAttemptStatus, type ClosingRecord, type TargetExecutor } from './execute.ts';
 import { createFixtures } from './fixtures.ts';
-import { writeHostTrace } from './host-trace.ts';
+import { buildHostReport, writeHostTrace, type HostTraceOptions } from './host-trace.ts';
+import { buildDebugBundle, immutableReport, type SessionDebugBundle } from './host-debug.ts';
 import type { AttemptRecord } from './records.ts';
 import { holdSecretRegistry } from '../secrets.ts';
-import { processSecrets, redactForSession, sessionSecrecy } from './secrecy.ts';
+import { hasOpaqueSecretDefinitions, processSecrets, redactForSession, sessionSecrecy, secretPublicationProven, settleSecretResolutions } from './secrecy.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
 import { WorkerModels } from './worker-models.ts';
 
@@ -53,6 +54,7 @@ export interface StandaloneAttempt {
   readonly budget: AttemptBudget;
   readonly artifactsDir: string;
   readonly tracePath: string;
+  exportDebugBundle(): SessionDebugBundle | undefined;
   close(): Promise<readonly SerializedError[]>;
 }
 
@@ -126,6 +128,7 @@ export async function launchAttempt(
   worker: AttemptWorker,
   reservation: AttemptReservation,
   onClosed: (closed: AttemptClosed) => Promise<void>,
+  onFinalized: () => void,
 ): Promise<StandaloneAttempt> {
   const { config, target, executor, runId } = worker;
   const { attemptId, options, budget, soft, polls, end } = reservation;
@@ -139,7 +142,7 @@ export async function launchAttempt(
     ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
   });
   const artifacts = createAttemptArtifacts({
-    artifactsRoot: worker.resultsDir, segments: identity.segments, attemptId, currentStepId: () => steps.currentStepId,
+    safePaths: worker.kind === 'hosted', artifactsRoot: worker.resultsDir, segments: identity.segments, attemptId, currentStepId: () => steps.currentStepId,
     ...(config.artifactStore === undefined ? {} : { store: config.artifactStore }),
     secrecy: () => session === undefined ? undefined : sessionSecrecy(session, config.allSecrets),
     identity: { runId, testId: identity.testId, attemptId },
@@ -195,8 +198,12 @@ export async function launchAttempt(
   const startedMs = Date.now();
   const tracePath = path.join(artifacts.dir, 'trace.md');
   let ending: Promise<readonly SerializedError[]> | undefined;
+  let bundle: SessionDebugBundle | undefined;
   const close = (): Promise<readonly SerializedError[]> => {
     ending ??= (async () => {
+      // Additional ledger settlement may consume only what remains of this
+      // cleanup window. Engine lifecycle stages keep their existing budgets.
+      const redactionDeadline = Date.now() + config.cleanupTimeout;
       clearTimeout(expiry);
       const abandonedPoll = polls.close();
       const abandonedStep = steps.abandonRunning();
@@ -214,33 +221,64 @@ export async function launchAttempt(
         await closeOpened(record);
       } catch (cause) { recordFailure(cause, 'cleanup'); record.cleanup = 'failed'; }
       try { await artifacts.settle(); } catch (cause) { recordFailure(cause, 'cleanup'); }
-      if (worker.kind === 'hosted') {
-        try {
-          const { error, status } = verdict();
-          await writeHostTrace({
-            config, target, runId, testId: identity.testId, agent, tracePath, redact,
-            title: processSecrets.redact(redact(options.name ?? target.name)),
-            resultsDir: worker.resultsDir, segments: identity.segments,
-            attempt: {
-              id: attemptId, index: 0, status, startedAt, durationMs: Date.now() - startedMs,
-              steps: [...steps.all()], appLog: [...steps.appLog()], artifacts: artifacts.records,
-              ...(error === undefined ? {} : { error }), secondaryErrors: attemptErrors.slice(1), cleanup: record.cleanup,
-            },
-          });
-        } catch (cause) { recordFailure(cause, 'cleanup'); }
-      }
+      const durationMs = Date.now() - startedMs;
+      const reportOptions = (): HostTraceOptions => {
+        const { error, status } = verdict();
+        return {
+          config, target, runId, testId: identity.testId, agent, tracePath, redact, artifacts,
+          title: processSecrets.redact(redact(options.name ?? target.name)),
+          resultsDir: worker.resultsDir, segments: identity.segments,
+          attempt: {
+            id: attemptId, index: 0, status, startedAt, durationMs,
+            steps: [...steps.all()], appLog: [...steps.appLog()], artifacts: artifacts.records,
+            ...(error === undefined ? {} : { error }), secondaryErrors: attemptErrors.filter((candidate) => candidate !== error), cleanup: record.cleanup,
+          },
+        };
+      };
+      let trace: SessionDebugBundle['trace'] = 'written';
+      let finalized: SessionDebugBundle | undefined;
       try {
-        await onClosed({ cleanup: record.cleanup });
+        // Retirement may drain secret providers even when it adds no error.
+        // No report or trace may be published against the earlier ledger.
+        try { await onClosed({ cleanup: record.cleanup }); }
+        catch (cause) { recordFailure(cause, 'cleanup'); }
+        if (worker.kind === 'hosted') {
+          const providerSecrets = hasOpaqueSecretDefinitions(config.allSecrets);
+          const ledger = sessionSecrecy(opened, config.allSecrets).ledger;
+          const unresolvedSecrets = !await settleSecretResolutions(ledger, redactionDeadline - Date.now());
+          // Recovery and later disposal can begin a fresh opaque provider call.
+          // An empty actual queue is not prospective first-byte publication proof.
+          const prospectiveSecrets = !secretPublicationProven(ledger);
+          const finalRedact = (text: string) => processSecrets.redact(redact(text));
+          const snapshot = () => immutableReport(buildHostReport(reportOptions()), finalRedact, { providerSecrets, unresolvedSecrets, prospectiveSecrets, artifacts });
+          const assemble = (report: ReturnType<typeof snapshot>) => buildDebugBundle({
+            report, artifacts, resultsDir: worker.resultsDir, trace, redact: finalRedact, unresolvedSecrets: unresolvedSecrets || prospectiveSecrets,
+          });
+          // Apply the evidence allowlist before the renderer can read a log or
+          // publish a file link. The first bytes written are already safe.
+          finalized = await assemble(snapshot());
+          try { await writeHostTrace(reportOptions(), finalized.report); }
+          catch (cause) {
+            recordFailure(cause, 'cleanup');
+            trace = 'failed';
+            const finishedAt = finalized.report.run.finishedAt;
+            const final = buildHostReport(reportOptions());
+            final.run.finishedAt = finishedAt;
+            finalized = await assemble(immutableReport(final, finalRedact, { providerSecrets, unresolvedSecrets, prospectiveSecrets, artifacts }));
+          }
+        }
       } finally {
         reservation.release();
+        onFinalized();
       }
+      bundle = finalized;
       return attemptErrors;
     })();
     return ending;
   };
   return {
     runId, attemptId, fixtures: acquired.fixtures, agentRuntime: acquired.agentRuntime, session: opened, steps, budget,
-    artifactsDir: artifacts.dir, tracePath, close,
+    artifactsDir: artifacts.dir, tracePath, exportDebugBundle: () => bundle, close,
   };
 }
 
@@ -261,7 +299,7 @@ function attemptIdentity(worker: AttemptWorker, attemptId: string, agent: string
   const { kind, target, config } = worker;
   if (kind === 'one-shot') return { testId: `session:${target.name}`, segments: ['mcp', `${target.name}-${attemptId}`] };
   const testId = `host:${attemptId}`;
-  const providerSecrets = [...config.allSecrets.values()].some((secret) => typeof secret.value === 'function');
+  const providerSecrets = hasOpaqueSecretDefinitions(config.allSecrets);
   const title = providerSecrets ? 'session' : processSecrets.redact(redactedName);
   const segment = resultSegment({ id: resultId(testId, target.name, agent, 0), file: 'host', titlePath: [title] });
   return { testId, segments: ['host', segment] };

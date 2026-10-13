@@ -25,7 +25,11 @@ describe('openHost: trace', { timeout: 60_000 }, () => {
     if (status === 'failed') {
       expect(readFileSync(video).length).toBeGreaterThan(0);
       const links = [...trace.matchAll(/\]\(([^)]+)\)/g)].map((match) => decodeURIComponent(match[1]!));
-      expect(links.some((link) => path.resolve(path.dirname(session.tracePath), link) === video)).toBe(true);
+      // Retention still keeps the raw recording locally, but incomplete
+      // redaction is not a publication path in either the trace or bundle.
+      expect(links.some((link) => path.resolve(path.dirname(session.tracePath), link) === video)).toBe(false);
+      expect(session.exportDebugBundle()!.artifacts[0]!.evidence).toEqual({ status: 'withheld', reason: 'incomplete-redaction' });
+      expect(session.exportDebugBundle()!.report.run.results[0]!.attempts[0]!.artifacts[0]).toMatchObject({ redaction: 'incomplete' });
       expect(trace).toContain('ASSERTION_FAILED');
     } else expect(trace).not.toContain('fake.webm');
     expect(await opened.close()).toEqual([]);

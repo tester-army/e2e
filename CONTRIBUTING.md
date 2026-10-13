@@ -54,7 +54,9 @@ This project is a pnpm monorepo. `packages/` holds what publishes to npm,
 
 On Windows, enable Developer Mode and clone with
 `git clone -c core.symlinks=true` so those symlinks check out as links rather
-than text files.
+than text files. File-symlink security fixtures require the same privilege;
+a directory junction does not prove file-symlink denial. Without that prerequisite,
+report the Windows validation limit rather than skipping those assertions.
 
 Install dependencies from the root:
 

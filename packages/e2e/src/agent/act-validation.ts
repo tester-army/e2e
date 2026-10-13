@@ -5,6 +5,7 @@
  */
 
 import { ConfigurationError, TestError } from '../internal/errors.ts';
+import { bound } from '../internal/text.ts';
 import { validateJsonValue } from '../internal/json-value.ts';
 import { paramPointer, type ParamTemplate } from '../cache/template.ts';
 import { isSecret } from '../secrets.ts';
@@ -212,7 +213,7 @@ function projectParams(value: unknown, pointer: string, found: FoundParams, seen
 }
 
 /** Closes the verdict grammar: the executor cannot invent statuses or codes. */
-export function validateVerdict(verdict: unknown, executorName: string): StepVerdict {
+export function validateVerdict(verdict: unknown, executorName: string, redact: (text: string) => string = (text) => text): StepVerdict {
   const invalid = (issue: string): never => {
     throw new AgentError(
       'MODEL_OUTPUT_INVALID',
@@ -246,7 +247,9 @@ export function validateVerdict(verdict: unknown, executorName: string): StepVer
   }
   return {
     status,
-    summary: summary.trim().slice(0, MAX_SUMMARY_CHARS),
+    // The producer marks its own cut, so a later ledger cannot mistake a
+    // prefix of an unresolved secret for complete prose. Never retain raw text.
+    summary: bound(redact(summary.trim()), MAX_SUMMARY_CHARS),
     ...(code === undefined ? {} : { errorCode: code }),
   };
 }

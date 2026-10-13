@@ -1,0 +1,306 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://e2e.dev/schema/session-debug-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "report",
+    "artifacts",
+    "evidence",
+    "trace"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "session-debug-1"
+    },
+    "report": {
+      "$ref": "report-v1.schema.json"
+    },
+    "trace": {
+      "enum": [
+        "written",
+        "failed"
+      ]
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "mediaType",
+          "stepIds",
+          "observationRevision",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "enum": [
+              "screenshot",
+              "video",
+              "download",
+              "log"
+            ]
+          },
+          "mediaType": {
+            "type": "string",
+            "minLength": 1
+          },
+          "stepIds": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "observationRevision": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024,
+                "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "status",
+                  "path",
+                  "size",
+                  "sha256"
+                ],
+                "properties": {
+                  "status": {
+                    "const": "available"
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$"
+                  },
+                  "size": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "status",
+                  "reason"
+                ],
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "missing",
+                      "withheld"
+                    ]
+                  },
+                  "reason": {
+                    "enum": [
+                      "not-retained",
+                      "unsafe-path",
+                      "changed-file",
+                      "incomplete-redaction",
+                      "non-sdk-evidence",
+                      "read-failed"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "checkpoint": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "phase",
+              "observationId"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024,
+                "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"
+              },
+              "phase": {
+                "enum": [
+                  "before",
+                  "after"
+                ]
+              },
+              "observationId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024,
+                    "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "$comment": "Opaque identities are bounded to 1024 UTF-8 bytes by the producer; maxLength is the wire character ceiling. No inference or clipping."
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "not": {
+                "required": [
+                  "checkpoint"
+                ]
+              }
+            },
+            "then": {
+              "properties": {
+                "observationRevision": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "checkpoint"
+              ]
+            },
+            "then": {
+              "properties": {
+                "stepIds": {
+                  "minItems": 1
+                },
+                "kind": {
+                  "enum": [
+                    "screenshot",
+                    "log"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "checkpoint"
+              ],
+              "properties": {
+                "checkpoint": {
+                  "properties": {
+                    "observationId": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "observationRevision": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "checkpoint"
+              ],
+              "properties": {
+                "checkpoint": {
+                  "properties": {
+                    "observationId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "observationRevision": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024,
+                  "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stepId",
+          "semantic",
+          "reasoning",
+          "turns",
+          "checkpoints"
+        ],
+        "properties": {
+          "stepId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "semantic": {
+            "enum": [
+              "summary",
+              "not-recorded"
+            ]
+          },
+          "reasoning": {
+            "enum": [
+              "recorded",
+              "not-recorded"
+            ]
+          },
+          "turns": {
+            "enum": [
+              "recorded",
+              "not-recorded"
+            ]
+          },
+          "checkpoints": {
+            "enum": [
+              "recorded",
+              "not-recorded"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

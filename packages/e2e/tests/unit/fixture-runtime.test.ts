@@ -58,7 +58,7 @@ describe('explicit screenshot secrecy', () => {
     try {
       await expect(fixtures.app.screenshot('before-fill')).resolves.toBe('screenshots/evidence.png');
       expect(screenshot).toHaveBeenCalledExactlyOnceWith('before-fill', expect.any(Object));
-      expect(registerArtifact).toHaveBeenCalledExactlyOnceWith('screenshot', 'screenshots/evidence.png');
+      expect(registerArtifact).toHaveBeenCalledExactlyOnceWith('screenshot', 'screenshots/evidence.png', { debugEvidence: true });
       screenshot.mockClear();
       registerArtifact.mockClear();
 
@@ -92,7 +92,7 @@ describe('explicit screenshot secrecy', () => {
       });
       await expect(fixtures.app.screenshot()).resolves.toBe('screenshots/evidence.png');
       expect(screenshot).toHaveBeenCalledOnce();
-      expect(registerArtifact).toHaveBeenCalledExactlyOnceWith('screenshot', 'screenshots/evidence.png');
+      expect(registerArtifact).toHaveBeenCalledExactlyOnceWith('screenshot', 'screenshots/evidence.png', { debugEvidence: true });
     } finally {
       setSecretRegistry(undefined);
     }
@@ -800,7 +800,7 @@ describe('assert evidence under a custom executor', () => {
     const { fixtures, steps, registerArtifact } = runtime(engineWith(screenshot), { agents: { default: { executor: judging } } });
     await fixtures.agent.assert('the screen holds');
     expect(screenshot).toHaveBeenCalledExactlyOnceWith('assert', expect.objectContaining({ origin: 'agent' }));
-    expect(registerArtifact).toHaveBeenCalledExactlyOnceWith('screenshot', 'screenshots/assert.png');
+    expect(registerArtifact).toHaveBeenCalledExactlyOnceWith('screenshot', 'screenshots/assert.png', { debugEvidence: true });
     expect(steps.all().at(-1)).toMatchObject({ api: 'agent.assert', status: 'passed', artifacts: ['artifact'] });
   });
 

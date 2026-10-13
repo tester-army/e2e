@@ -8,6 +8,7 @@ import { allocateTargetPorts } from './app-ports.ts';
 import { processSecrets, registerStaticSecrets } from './secrecy.ts';
 import { selectTarget } from './select-target.ts';
 import { openStandaloneHost } from './standalone.ts';
+import type { SessionDebugBundle } from './host-debug.ts';
 import type { StepProgress, StepRecord } from './steps.ts';
 
 export interface OpenHostOptions {
@@ -59,6 +60,8 @@ export interface E2ESession<Fixtures extends object = Record<string, unknown>> e
   /** Absolute per-session trace path. Written before close settles successfully. */
   readonly tracePath: string;
   steps(): readonly StepRecord[];
+  /** Immutable session-debug-1 snapshot after close settles, including failed close. Undefined while live or closing. */
+  exportDebugBundle(): SessionDebugBundle | undefined;
   /** Idempotent. Returns soft assertion, abandoned-operation, and cleanup failures. Disposal throws them as AggregateError. */
   close(): Promise<readonly SerializedError[]>;
 }
@@ -98,7 +101,7 @@ async function openHostWorker<Fixtures extends object>(options: OpenHostOptions)
         runId: attempt.runId, attemptId: attempt.attemptId, target: target.name,
         fixtures: attempt.fixtures as TestFixtures & Fixtures,
         artifactsDir: attempt.artifactsDir, tracePath: attempt.tracePath,
-        steps: () => attempt.steps.all(), close: attempt.close,
+        steps: () => attempt.steps.all(), exportDebugBundle: attempt.exportDebugBundle, close: attempt.close,
         [Symbol.asyncDispose]: () => dispose(attempt.close, 'session'),
       };
     }),

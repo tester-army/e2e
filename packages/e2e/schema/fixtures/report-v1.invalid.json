@@ -2,6 +2,7 @@
   "schemaVersion": "report-1",
   "run": {
     "id": "not-a-uuid",
+    "runner": { "name": "not-the-sdk", "version": "0.20.0" },
     "status": "passed",
     "exitCode": 4,
     "targets": [],

@@ -1,12 +1,16 @@
 /** The per-session `trace.md` a hosted attempt writes at close, through the run report's renderer. */
 
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { closeSync, constants, fstatSync, openSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import { buildReport } from '../report/build.ts';
+import { buildReport, type Report1Document } from '../report/build.ts';
 import { renderTracePage } from '../report/failure-text.ts';
 import { outcome } from '../report/outcome.ts';
 import { toPosixPath, writeTextReport } from '../report/write.ts';
+import type { ImmutableReport } from './host-debug.ts';
+import type { AttemptArtifacts } from './artifacts.ts';
+import { artifactAnchorCurrent, originalArtifactFile, relativeArtifactPath } from './artifact-path.ts';
 import type { AttemptRecord, ResultRecord } from './records.ts';
 
 export interface HostTraceOptions {
@@ -24,29 +28,55 @@ export interface HostTraceOptions {
   readonly segments: readonly string[];
   readonly tracePath: string;
   readonly redact: (text: string) => string;
+  /** The original SDK registry, never the detached report as byte authority. */
+  readonly artifacts: AttemptArtifacts;
 }
 
-/** Writes one session's trace page as a single-result run, so it reads like `e2e run`'s. */
-export async function writeHostTrace(options: HostTraceOptions): Promise<void> {
+/** Builds the one report shared by a hosted trace and its public debug export. */
+export function buildHostReport(options: HostTraceOptions): Report1Document {
   const { config, attempt, title } = options;
   const status = attempt.status;
   const result: ResultRecord = {
     test: { id: options.testId, kind: 'test', title, titlePath: [title], file: 'host', declarationIndex: 0, sessions: [], tags: [], source: undefined, serialId: undefined },
     target: options.target, agent: options.agent, repeat: 0, selected: true, status, attempts: [attempt],
   };
-  const report = buildReport({
+  return buildReport({
     config, runId: options.runId, startedAt: attempt.startedAt,
     status: status === 'interrupted' ? 'interrupted' : status === 'passed' ? 'passed' : 'failed',
     exitCode: status === 'interrupted' ? 130 : status === 'passed' ? 0 : 1,
     results: [result], serialGroups: [], runErrors: [], targetProvenance: new Map(),
   });
+}
+
+/** Writes the session page from its already finalized report. */
+export async function writeHostTrace(options: HostTraceOptions, snapshot: ImmutableReport): Promise<void> {
+  const { config } = options;
+  // The renderer only reads the detached report.
+  const report = snapshot as Report1Document;
   const reported = report.run.results[0]!;
   const page = renderTracePage(report, reported, outcome(reported, new Map()), {
     standalone: true,
     artifactsDir: toPosixPath(path.relative(config.projectRoot, options.resultsDir)),
     pageDir: toPosixPath(path.join(...options.segments)),
     readArtifact: (reportPath) => {
-      try { return readFileSync(path.join(options.resultsDir, reportPath), 'utf8'); } catch { return undefined; }
+      const artifacts = options.artifacts;
+      const record = artifacts.records.find((row) => row.path === reportPath);
+      if (record === undefined || record.kind !== 'log' || record.size === undefined || record.sha256 === undefined ||
+          !artifacts.debugEvidence.has(record.id) || artifacts.debugMediaType(record.id) !== 'text/plain' || !artifacts.debugRedactionProven(record.id)) return undefined;
+      const relative = artifacts.debugPaths.get(record.id);
+      const original = artifacts.debugFiles.get(record.id);
+      if (relative === undefined || !relativeArtifactPath(relative) || original === undefined || !artifactAnchorCurrent(original)) return undefined;
+      let file: number | undefined;
+      try {
+        file = openSync(original.absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
+        const info = fstatSync(file);
+        if (!originalArtifactFile(info, original.info) || info.size !== record.size) return undefined;
+        const bytes = readFileSync(file);
+        if (bytes.length !== record.size || createHash('sha256').update(bytes).digest('hex') !== record.sha256 ||
+            !originalArtifactFile(fstatSync(file), info) || !artifactAnchorCurrent(original) || !artifacts.debugRedactionProven(record.id)) return undefined;
+        return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      } catch { return undefined; }
+      finally { if (file !== undefined) closeSync(file); }
     },
   });
   await writeTextReport(options.tracePath, options.redact(page));

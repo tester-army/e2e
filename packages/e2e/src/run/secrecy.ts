@@ -4,6 +4,7 @@ import type { ResolvedConfig } from '../config/resolve.ts';
 import { MIN_SECRET_LENGTH, secretLength } from '../config/secrets.ts';
 import type { TargetSession } from '../engine/surface.ts';
 import { ConfigurationError, setErrorRedactor } from '../internal/errors.ts';
+import { withTimeout } from '../internal/time.ts';
 import { SecretLedger } from '../internal/redact.ts';
 import { unavailableCode } from '../secrets.ts';
 import type { Secret } from '../types.ts';
@@ -94,7 +95,10 @@ export function staticSecretLedger(secrets: ResolvedConfig['allSecrets']): Pick<
   let ledger = staticLedgers.get(secrets);
   if (ledger === undefined) {
     ledger = new SecretLedger(
-      [...secrets].flatMap(([name, { value }]) => (typeof value === 'string' ? [[name, value] as const] : [])),
+      [...secrets].flatMap(([name, secret]) => {
+        const value = literalSecretValue(secret);
+        return value === undefined ? [] : [[name, value] as const];
+      }),
     );
     staticLedgers.set(secrets, ledger);
   }
@@ -104,8 +108,9 @@ export function staticSecretLedger(secrets: ResolvedConfig['allSecrets']): Pick<
 /** Seeds `processSecrets` with the static values of `secrets` and makes it `serializeError`'s default redactor, so output before any session opens is covered too. */
 export function registerStaticSecrets(secrets: ResolvedConfig['allSecrets']): void {
   setErrorRedactor(processSecrets.redact);
-  for (const [name, { value }] of secrets) {
-    if (typeof value === 'string') processSecrets.register(name, value);
+  for (const [name, secret] of secrets) {
+    const value = literalSecretValue(secret);
+    if (value !== undefined) processSecrets.register(name, value);
   }
 }
 
@@ -118,22 +123,117 @@ export async function resolveSecretValue(
   secret: Secret,
   secrets: ResolvedConfig['allSecrets'],
   ledger: SecretLedger,
+  derived?: (plaintext: string) => readonly string[],
 ): Promise<string> {
+  configureSecretResolutions(ledger, secrets);
   const registered = secrets.get(secret.name);
   if (registered === undefined) {
+    resolutions(ledger).failed = true;
     throw new ConfigurationError(unavailableCode(secret), `secret "${secret.name}" is not configured`);
   }
-  const value = registered.value;
-  const plaintext = typeof value === 'function' ? await value() : value;
-  if (typeof plaintext !== 'string' || secretLength(plaintext) < MIN_SECRET_LENGTH) {
-    throw new ConfigurationError(
-      unavailableCode(secret),
-      `secret "${secret.name}" provider did not return a string of at least ${MIN_SECRET_LENGTH} characters (code points)`,
-    );
+  const state = resolutions(ledger);
+  let finish!: () => void;
+  const pending = new Promise<void>((resolve) => { finish = resolve; });
+  state.pending.add(pending);
+  try {
+    const value = registered.value;
+    const plaintext = typeof value === 'function' ? await value() : value;
+    if (typeof plaintext !== 'string' || secretLength(plaintext) < MIN_SECRET_LENGTH) {
+      throw new ConfigurationError(
+        unavailableCode(secret),
+        `secret "${secret.name}" provider did not return a string of at least ${MIN_SECRET_LENGTH} characters (code points)`,
+      );
+    }
+    ledger.register(secret.name, plaintext);
+    processSecrets.register(secret.name, plaintext);
+    // An engine's derived forms join before its resolution is proven complete.
+    registerDerivedSecrets(secret.name, derived?.(plaintext) ?? [], ledger);
+    return plaintext;
+  } catch (cause) {
+    state.failed = true;
+    throw cause;
+  } finally {
+    state.pending.delete(pending);
+    finish();
   }
-  ledger.register(secret.name, plaintext);
-  processSecrets.register(secret.name, plaintext);
-  return plaintext;
+}
+
+/** Private resolution and effective-definition accounting, never a raw-text buffer. */
+const resolutionsByLedger = new WeakMap<SecretLedger, { pending: Set<Promise<void>>; failed: boolean; configured: boolean; opaque: boolean }>();
+
+/** Shares accounting between bound definitions and actual calls, without invoking providers. */
+function resolutions(ledger: SecretLedger) {
+  let state = resolutionsByLedger.get(ledger);
+  if (state === undefined) {
+    state = { pending: new Set(), failed: false, configured: false, opaque: false };
+    resolutionsByLedger.set(ledger, state);
+  }
+  return state;
+}
+
+/** Reads only an own data descriptor; accessor-backed references remain opaque. */
+function literalSecretValue(secret: unknown): string | undefined {
+  if (typeof secret !== 'object' || secret === null) return undefined;
+  const descriptor = Object.getOwnPropertyDescriptor(secret, 'value');
+  return descriptor !== undefined && 'value' in descriptor && typeof descriptor.value === 'string' ? descriptor.value : undefined;
+}
+
+/** Classifies effective private definitions using own descriptors, never evaluating a lazy value. */
+export function hasOpaqueSecretDefinitions(secrets: ResolvedConfig['allSecrets']): boolean {
+  return [...secrets.values()].some((secret) => literalSecretValue(secret) === undefined);
+}
+
+/** Monotonic effective-layer accounting; seeds EVERY literal before any handoff. */
+function configureSecretResolutions(ledger: SecretLedger, secrets: ResolvedConfig['allSecrets']): void {
+  const state = resolutions(ledger);
+  state.configured = true;
+  for (const [name, secret] of secrets) {
+    const value = literalSecretValue(secret);
+    if (value === undefined) state.opaque = true;
+    else {
+      ledger.register(name, value);
+      processSecrets.register(name, value);
+    }
+  }
+}
+
+/** A failed or still-running resolver cannot prove that every value reached the ledger. */
+export function secretResolutionsProven(ledger: SecretLedger): boolean {
+  const state = resolutionsByLedger.get(ledger);
+  return state === undefined || (!state.failed && state.pending.size === 0);
+}
+
+/**
+ * Prospective content proof for first publication, not just the pending queue.
+ * Opaque providers or lazy values permanently deny content proof. SDK facts
+ * permit only fixed protocol reasons and SDK-minted boundaries, never prose,
+ * pixels or engine metadata. Missing configuration denies both cases.
+ * This predicate never invokes getters, providers, waits or model work.
+ */
+export function prospectiveSecretResolutionsProven(ledger: SecretLedger, evidence: 'content' | 'sdk-facts' = 'content'): boolean {
+  const state = resolutionsByLedger.get(ledger);
+  return state?.configured === true && (evidence === 'sdk-facts' || !state.opaque && secretResolutionsProven(ledger));
+}
+
+/** Private compatibility name for prospective CONTENT proof only. */
+export function secretPublicationProven(ledger: SecretLedger): boolean {
+  return prospectiveSecretResolutionsProven(ledger);
+}
+
+/** Drains actual resolutions within the caller's remaining budget, never a fresh deadline. */
+export async function settleSecretResolutions(ledger: SecretLedger, remainingMs: number): Promise<boolean> {
+  if (secretResolutionsProven(ledger)) return true;
+  if (remainingMs <= 0) return false;
+  const deadline = Date.now() + remainingMs;
+  const state = resolutions(ledger);
+  try {
+    while (state.pending.size > 0) {
+      const left = deadline - Date.now();
+      if (left <= 0) return false;
+      await withTimeout(Promise.all(state.pending), left, () => new Error('secret resolution did not settle'));
+    }
+  } catch { return false; }
+  return secretResolutionsProven(ledger);
 }
 
 /**
@@ -143,7 +243,7 @@ export async function resolveSecretValue(
  * wherever the value is. Registered before the engine hands a form to the
  * app, since the resolve that computes them has not returned yet.
  */
-export function registerDerivedSecrets(name: string, derived: readonly string[], ledger: SecretLedger): void {
+function registerDerivedSecrets(name: string, derived: readonly string[], ledger: SecretLedger): void {
   for (const value of derived) {
     if (typeof value !== 'string' || value === '') continue;
     ledger.register(name, value);
@@ -166,13 +266,14 @@ export function sessionSecrecy(
 ): SessionSecrecy {
   let secrecy = secrecyBySession.get(session);
   if (secrecy === undefined) {
-    registerStaticSecrets(secrets);
     secrecy = {
       ledger: new SecretLedger(staticSecretLedger(secrets).entries()),
       exposure: new SecretExposure(),
     };
     secrecyBySession.set(session, secrecy);
   }
+  registerStaticSecrets(secrets);
+  configureSecretResolutions(secrecy.ledger, secrets);
   return secrecy;
 }
 
@@ -210,7 +311,7 @@ export function carriedSecrecy(
   return {
     secrets: secrecy.ledger
       .entries()
-      .filter(([name, value]) => secrets.get(name)?.value !== value),
+      .filter(([name, value]) => literalSecretValue(secrets.get(name)) !== value),
     tainted: secrecy.exposure.carriesTaint,
   };
 }

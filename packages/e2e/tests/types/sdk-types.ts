@@ -80,6 +80,9 @@ import {
   type ListedPair,
   type ListOptions,
   openHost,
+  type SessionDebugBundle,
+  type DebugArtifact,
+  type ImmutableReport,
   type OpenHostOptions,
   type OpenSessionOptions,
   type SerializedError,
@@ -722,3 +725,42 @@ session.steps().push({} as StepRecord);
 session.tracePath = '/tmp/trace.md';
 // @ts-expect-error closing returns a read-only list of failures
 (await session.close()).push({} as SerializedError);
+
+// Hosted debug snapshots are public, versioned, and deeply read-only.
+void (session.exportDebugBundle() satisfies SessionDebugBundle | undefined);
+declare const debugBundle: SessionDebugBundle;
+void (debugBundle.schemaVersion satisfies 'session-debug-1');
+void (debugBundle.report satisfies ImmutableReport);
+void (debugBundle.artifacts satisfies readonly DebugArtifact[]);
+void (debugBundle.artifacts[0]!.observationRevision satisfies string | null);
+void (debugBundle.evidence[0]!.checkpoints satisfies 'recorded' | 'not-recorded');
+if (debugBundle.artifacts[0]!.checkpoint !== undefined) {
+  void (debugBundle.artifacts[0]!.checkpoint.phase satisfies 'before' | 'after');
+  void (debugBundle.artifacts[0]!.checkpoint.observationId satisfies string | null);
+  // @ts-expect-error capture associations are immutable
+  debugBundle.artifacts[0]!.checkpoint.id = 'invented';
+}
+// @ts-expect-error no private checkpoint accounting escapes on the public bundle
+debugBundle.debugCheckpoints;
+// @ts-expect-error proof is private, not a marker on the manifest
+debugBundle.artifacts[0]!.debugEvidence;
+// @ts-expect-error only the two declared checkpoint phases are valid
+const invalidDebugPhase: NonNullable<DebugArtifact['checkpoint']> = { id: 'x', phase: 'during', observationId: null };
+void invalidDebugPhase;
+// @ts-expect-error reports cannot be edited
+debugBundle.report.run.status = 'passed';
+// @ts-expect-error nested steps cannot be appended
+debugBundle.report.run.results[0]!.attempts[0]!.steps.push({});
+// @ts-expect-error artifact paths have to be narrowed to available evidence
+debugBundle.artifacts[0]!.evidence.path;
+// @ts-expect-error evidence is immutable
+debugBundle.evidence[0]!.reasoning = 'recorded';
+
+const readFailedEvidence: DebugArtifact['evidence'] = { status: 'withheld', reason: 'read-failed' };
+void readFailedEvidence;
+// @ts-expect-error read failure cannot expose a location
+const readFailedPath: DebugArtifact['evidence'] = { status: 'withheld', reason: 'read-failed', path: 'private.txt' };
+void readFailedPath;
+// @ts-expect-error unregistered reasons remain closed
+const unknownDebugReason: DebugArtifact['evidence'] = { status: 'withheld', reason: 'store-outage' };
+void unknownDebugReason;

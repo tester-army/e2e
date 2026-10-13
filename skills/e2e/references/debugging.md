@@ -6,6 +6,7 @@ default.
 ## Contents
 
 - Read the failure
+- Hosted-session debug export
 - Error codes
 - Tools
 - Flaky tests
@@ -66,6 +67,145 @@ jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
    later page `video/video-part<n>.webm` with its own `startedAt`;
    `video/video.mp4` on a device; a provider's file or link); with
    `--debug` every agent step's transcript.
+
+## Hosted-session debug export
+
+For a session from `openHost` in `e2e/runner`, await `session.close()` and
+check its failures. Then `session.exportDebugBundle()` returns the same frozen
+`session-debug-1` snapshot each time, even after timeout, cleanup failure, or
+trace-write failure. It is `undefined` before close settles. Final redaction
+waits for cleanup and worker retirement, but teardown returning is not proof
+that a provider finished. Actual resolution calls drain using only the
+remaining cleanup window; unused providers are not invoked. A pending or failed
+resolution withholds all potentially secret-bearing prose as
+`[text withheld: secret resolution unproven]` and content artifacts as
+`incomplete-redaction`. Configured opaque providers also make prospective
+publication unproven: recovery or later disposal can BEGIN a fresh getter call.
+Even prior completion does not certify its next value. Prose and evidence paths
+are withheld before the first trace write, including partial temporary-file
+writes. Effective literal/environment values still use known-value redaction.
+No eager getter calls or extra waits establish this proof. Enum/status tokens,
+validated SDK IDs, timings and counters remain structural facts. Later provider completion cannot change the frozen
+snapshot or rewrite its trace. With provider-valued secrets,
+previously cut text whose redaction cannot be proven becomes
+`[text withheld: truncated before final redaction]`, even for a short prefix.
+Field lengths are bounded after final redaction; raw text is not kept to
+recover truncated logs, turns, or errors. Verdict summaries redact known
+values before their 2,000-character cap and mark producer cuts explicitly.
+Only declared closed SDK tokens and structural facts at exact protocol
+positions bypass prose redaction, including `run.runner.name: e2e` and validated
+SDK identity/timing joins.
+Matching words in labels, names, explanations, and external identity text
+are still masked. Forwarded accepted-image byte totals must be nonnegative
+safe integers, separate from peak image bytes; absent totals stay absent.
+If masking changes a target origin, omit that optional URI. If it changes a
+model endpoint, omit the optional model record (endpoint is required); never
+invent a replacement address. Declared `local`/`provider-default` tokens stay.
+Schema-unique arrays deduplicate after redaction, even for known-value
+collisions; ordered steps, events, and turns retain repetitions.
+
+Only the SDK's exact `run.runner.name: e2e` literal is preserved. Matching
+target, fixture, session, agent, or external runner names remain prose.
+Effective secret layers use descriptor-only accounting, seed every literal
+before handoff, and never invoke getters to prove publication. Opaque history
+is permanent even after successful resolution; missing accounting denies proof.
+Hosted path selection and close also classify private effective definitions by
+own descriptors. Accessors remain opaque without being read; only actual
+requested resolution evaluates them.
+
+A UUID/digest shape never exempts target names, external IDs, carried declarations,
+or error details. Only exact SDK protocol identity locations and validated joins
+retain generated IDs; masked target IDs still join result references.
+Original SDK tickets plus registered-byte format checks prove PNG, UTF-8 text,
+and checkpoint JSON media facts. Filenames and caller MIME claims do not.
+PNG signature validation is not image decoding or masking proof. Proven MIME
+facts survive coinciding secrets only in artifact media fields, not matching
+prose. Unsafe unproven MIME rows and references are omitted, never turned into
+fake media types.
+
+
+Only the private SDK missing-checkpoint protocol can retain fixed unavailable
+facts when opaque secrets deny content publication. It requires the original
+sink-bound, unconsumed ticket, expected byte length and SHA-256, actual owning
+attempt/step joins, original boundary timestamp, and a null capture association.
+The timestamp must match the private association snapshot, not mutable public
+registration fields. Before the first write and again after asynchronous reads,
+the sink checks exactly nine boundary fields,
+closed missing reasons, and canonical compact JSON with zero or one trailing LF.
+Duplicate keys, discarded prose, extra fields, capture data and trailing bytes
+are denied even with a matching receipt. This permission never covers generic
+JSON, text, pixels, engine metadata or caller names. Registered checkpoint
+recordedness is independent of retained-file availability. Consumers still own
+hosting and later file rechecks. This exporter does not enable checkpoint capture.
+
+
+- `report` reuses `report-1`: SDK outcome, identity, errors without stacks,
+  step timings and events, bounded reasoning and tool turns when recorded.
+- `artifacts` is the registration manifest. Copy only entries whose
+  `evidence.status` is `available`; `evidence.path` resolves against
+  `session.artifactsDir`. Before copying, recheck root containment, symlinks,
+  size and SHA-256. Missing or withheld entries have a reason and no path.
+  `not-retained` covers registrations without a retained path and actual ENOENT,
+  the only filesystem-access error mapped to this reason. `read-failed` means
+  I/O prevented verification, not missing or changed bytes.
+  SDK pixels and semantic captures need a private capture-start ledger proof.
+  Executor screenshots carry the original ticket and byte identity through sizing
+  and persistence, with no extra observation. A private one-use byte receipt binds
+  expected SHA-256 and length before writing; the sink checks actual persisted
+  bytes before store publication or export admission. Attachment names use
+  SDK nonces and exclusive creation, so colliding labels never share a file.
+  Path-returning engine captures hold the original descriptor on return before
+  the first yield and hash it asynchronously in bounded chunks;
+  the original engine path and retention stay authoritative. Binding abandons its
+  wait at the existing capture deadline or caller cancellation, without renewing
+  the ticket. Issued reads may retain their stream-owned descriptor until safe
+  cleanup. Ordinary contained
+  engine filenames may include spaces or Unicode; hosted export still requires
+  portable ASCII names. Binding permits symlink ancestors of a stable physical root but rejects
+  a linked root entry, traversal, descendant symlinks, hard links
+  and non-files without changing or restoring the engine path. Engines still own
+  capture correctness. Consumer containment/hash rechecks
+  remain necessary. Transcripts are ticketed after final
+  known-value masking, before the first write. Opaque content is withheld before
+  transcript/failure-summary writes; known-secret cut transcripts are also withheld.
+  With configured literals, even complete prose such as `Waiting… done.`
+  can be withheld: all earlier cuts lack a shared completeness contract.
+  Do not strip markers to bypass this gate. Transcript bounds apply after
+  masking at 262,144 UTF-8 bytes.
+  Checkpoint JSON is ticketed after final field redaction. Original tickets
+  are single-use and sink-bound. A bare marker or copied ticket is not proof. Evidence
+  captured while resolution was pending, before later values joined the
+  ledger, or without a capture proof is withheld. Opaque pixels and clipped
+  prose cannot be repaired retrospectively. The trace uses this same
+  allowlist before reading a log or linking a file. ArtifactStore completeness is
+  not private export permission: genuine redacted ordinary CLI/MCP/serial transcripts
+  stay complete. Unsupported custom pictures may retain truthful legacy store
+  metadata under proven secrecy, but remain withheld from export. After async
+  measurement, the sink rechecks live secrecy, ledger growth and pixel taint
+  before any store handoff. Failed proof marks even local-only metadata incomplete
+  and prevents a store handoff.
+- Do not scan directories, parse Markdown, derive filenames from artifact IDs,
+  or import private runner modules. Arbitrary consumer files, contributed
+  attachments, downloads, external URLs and incompletely redacted recordings
+  are not export paths. No automatic publication occurs.
+- `evidence` records availability per step. Semantic summaries are bounded
+  screen summaries/diffs. `checkpoints: recorded` means the SDK registered a
+  checkpoint for that step, not that its file is exportable. An optional
+  artifact `checkpoint` has `id`, `phase: before | after`, and
+  `observationId: string | null`; `observationRevision` is the actual capture
+  revision. Opaque IDs are nonempty, control-free, at most 1,024 UTF-8 bytes,
+  never clipped or inferred from filenames or the last step revision.
+  Unknown or unproven observation ID/revision are both null. Secret-bearing
+  identity withholds the file and omits or nulls metadata, never invents a
+  replacement. Ordinary captures omit the association and keep null revision;
+  absent checkpoint registrations remain `not-recorded`. This export
+  extension does not enable capture. Provider reasoning may be unavailable.
+- `SessionDebugBundle`, `DebugArtifact`, and `ImmutableReport` are public types
+  from `e2e/runner`. Validate with the shipped `session-debug-v1.schema.json`
+  and its referenced `report-v1.schema.json`.
+
+Your runner still owns reporting, retries, publication and external test-body
+outcomes. Read the full contract in `docs/reference/runner.mdx`.
 
 ## Error codes
 

@@ -7,13 +7,17 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
+import fs from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { syncBuiltinESMExports } from 'node:module';
 import path from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { defineTool } from '../../src/agent/public.ts';
 import type { StepExecutor } from '../../src/agent/executor.ts';
 import { explore, type ExploreOptions, type ExploreOutcome } from '../../src/explore/index.ts';
 import { FINDING_TOOL_NAME } from '../../src/explore/executor.ts';
 import type { ModelInstance } from '../../src/types.ts';
+import type { ArtifactRecord } from '../../src/run/records.ts';
 import { installFakeLoopModel, loopCalls, nodeIdFor, type LoopCall, type LoopToolCall } from '../helpers/fake-loop-model.ts';
 import { extracted, fakeCalls, installFakeModel, type FakeCall } from '../helpers/fake-model.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
@@ -84,6 +88,47 @@ async function runExplore(
   return Object.assign(outcome, { notices });
 }
 
+const SCREENSHOT_NAME = /^screenshot-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.png$/;
+
+/** Snapshots the real SDK write before IO, without manufacturing or replacing evidence. */
+async function runExploreWithScreenshotWrites(project: FixtureProject, app: FixtureApp, model: ModelInstance) {
+  const originals = new Map<string, Buffer>();
+  const write = fs.writeFile;
+  const writing = vi.spyOn(fs, 'writeFile').mockImplementation(async (...args) => {
+    const file = String(args[0]);
+    if (SCREENSHOT_NAME.test(path.basename(file))) {
+      expect(args[1]).toBeInstanceOf(Uint8Array);
+      expect(args[2]).toEqual({ flag: 'wx' });
+      expect(originals.has(file)).toBe(false);
+      originals.set(file, Buffer.from(args[1] as Uint8Array));
+    }
+    return write(...args);
+  });
+  syncBuiltinESMExports();
+  try {
+    return { outcome: await runExplore(project, app, model), originals };
+  } finally {
+    writing.mockRestore();
+    syncBuiltinESMExports();
+  }
+}
+
+/** Checks retained bytes and the registered digest against the original exclusive SDK write. */
+function assertRetainedScreenshot(project: FixtureProject, artifact: ArtifactRecord, originals: ReadonlyMap<string, Buffer>): void {
+  expect(artifact).toMatchObject({ kind: 'screenshot', mediaType: 'image/png', redaction: 'complete', producer: { kind: 'step' } });
+  expect(artifact.path).toMatch(/^explore-the-home-page-and-find-bugs-[0-9a-f]{16}\/attempt-1\/screenshot-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.png$/);
+  expect(path.posix.basename(artifact.path!)).toMatch(SCREENSHOT_NAME);
+  const file = path.join(project.dir, '.e2e', 'results', ...artifact.path!.split('/'));
+  expect(existsSync(file)).toBe(true);
+  const original = originals.get(file);
+  expect(original).toBeDefined();
+  expect(original!.length).toBeGreaterThan(8);
+  expect(original!.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  expect(readFileSync(file)).toEqual(original);
+  expect(artifact.size).toBe(original!.byteLength);
+  expect(artifact.sha256).toBe(createHash('sha256').update(original!).digest('hex'));
+}
+
 describe('e2e explore', () => {
   let app: FixtureApp;
   let project: FixtureProject;
@@ -116,14 +161,26 @@ describe('e2e explore', () => {
         return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'Looked' } }];
       },
     });
-    const outcome = await runExplore(project, app, model);
+    const { outcome, originals } = await runExploreWithScreenshotWrites(project, app, model);
+    assertValidReport(outcome.report);
     const record = outcome.report.run.explore!;
+    expect(record.findings).toHaveLength(2);
+    expect(originals.size).toBe(2);
     expect(record.findings.map((finding) => finding.title).toSorted()).toEqual([COUNTER_FINDING.title, SECOND_FINDING.title].toSorted());
     const artifacts = outcome.report.run.results[0]!.attempts[0]!.artifacts;
     const paths = record.findings.map((finding) => artifacts.find((artifact) => artifact.id === finding.artifactId)?.path);
     expect(paths.every((entry) => entry !== undefined)).toBe(true);
     expect(new Set(paths).size).toBe(2);
-    expect(paths.map((entry) => entry!.split('/').at(-1)).toSorted()).toEqual(['finding-1.png', 'finding-2.png']);
+    const attempt = outcome.report.run.results[0]!.attempts[0]!;
+    const act = attempt.steps.find((step) => step.api === 'agent.act')!;
+    expect(new Set(record.findings.map((finding) => finding.artifactId)).size).toBe(2);
+    for (const finding of record.findings) {
+      const evidence = artifacts.find((artifact) => artifact.id === finding.artifactId)!;
+      assertRetainedScreenshot(project, evidence, originals);
+      expect(evidence.producer).toEqual({ kind: 'step', stepId: act.id });
+      expect(act.artifacts).toContain(finding.artifactId);
+      expect(finding.observationRevision).toBeDefined();
+    }
   });
 
   it('plans steps, records the finding with its evidence, and fails the run for the issue', async () => {
@@ -140,7 +197,8 @@ describe('e2e explore', () => {
         return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'Counter went to 1' } }];
       },
     });
-    const outcome = await runExplore(project, app, model);
+    const { outcome, originals } = await runExploreWithScreenshotWrites(project, app, model);
+    expect(originals.size).toBe(1);
 
     expect(outcome.report.run.errors).toEqual([]);
     // The planner saw the goal each time, then the record of the step and its finding.
@@ -173,8 +231,8 @@ describe('e2e explore', () => {
     const attempt = result.attempts[0]!;
     const evidence = attempt.artifacts.find((artifact) => artifact.id === finding.artifactId);
     expect(evidence).toMatchObject({ kind: 'screenshot', mediaType: 'image/png', producer: { kind: 'step' } });
-    expect(evidence!.path).toMatch(/^explore-the-home-page-and-find-bugs-[0-9a-f]{16}\/attempt-1\/finding-1\.png$/);
-    expect(existsSync(path.join(project.dir, '.e2e', 'results', ...evidence!.path!.split('/')))).toBe(true);
+    assertRetainedScreenshot(project, evidence!, originals);
+    expect(evidence!.producer).toEqual({ kind: 'step', stepId: attempt.steps.find((step) => step.api === 'agent.act')!.id });
     expect(attempt.steps.find((step) => step.api === 'agent.act')!.artifacts).toContain(finding.artifactId);
     expect(result.titlePath).toEqual(['Explore the home page and find bugs']);
     expect(result.attempts.at(-1)!.error?.message).toContain('exploration found 1 issue(s)');

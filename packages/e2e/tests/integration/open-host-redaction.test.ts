@@ -99,8 +99,8 @@ describe('openHost: redaction', { timeout: 60_000 }, () => {
       expect(session.tracePath).toBe(path.join(session.artifactsDir, 'trace.md'));
       expect(await session.close()).toEqual([]);
       const trace = readFileSync(session.tracePath, 'utf8');
-      expect(trace).toContain('secret:titleToken');
-      expect(trace).toContain('readable suffix');
+      expect(trace).toContain('text withheld: secret resolution unproven');
+      expect(trace).not.toContain('readable suffix');
       expect(trace).not.toContain(plaintext);
       expect(trace).not.toContain(plaintext.slice(0, 18));
       directories.push(session.artifactsDir);

@@ -22,6 +22,7 @@ function readJson(...segments: string[]): unknown {
 describe.each(schemas)('%s schema', (name) => {
   const ajv = new Ajv2020({ allErrors: true, strict: false });
   addFormats.default(ajv);
+  if (name !== 'report-v1') ajv.addSchema(readJson('report-v1.schema.json') as Record<string, unknown>);
   const validate = ajv.compile(readJson(`${name}.schema.json`) as Record<string, unknown>);
 
   it('accepts the valid fixture', () => {
@@ -33,6 +34,34 @@ describe.each(schemas)('%s schema', (name) => {
   it('rejects the invalid fixture', () => {
     expect(validate(readJson('fixtures', `${name}.invalid.json`))).toBe(false);
   });
+
+  if (name === 'session-debug-v1') {
+    it('pins closed evidence states and only portable contained paths for available files', () => {
+      const bundle = readJson('fixtures', 'session-debug-v1.valid.json') as { artifacts: { checkpoint?: Record<string, unknown>; evidence: Record<string, unknown>; observationRevision: unknown }[]; evidence: Record<string, unknown>[] };
+      const artifact = bundle.artifacts[0]!;
+      const valid = structuredClone(artifact.evidence);
+      for (const unsafePath of ['../outside.png', '/tmp/outside.png', 'a/../outside.png', 'a//b.png', 'C:/b.png', 'a' + String.fromCharCode(92) + 'b.png', 'a/./b.png']) {
+        artifact.evidence['path'] = unsafePath;
+        expect(validate(bundle), unsafePath).toBe(false);
+      }
+      artifact.evidence = valid;
+      delete artifact.checkpoint;
+      artifact.observationRevision = 'guessed-last-step-revision';
+      expect(validate(bundle)).toBe(false);
+      artifact.observationRevision = null;
+      bundle.evidence[0]!['checkpoints'] = 'recorded';
+      expect(validate(bundle)).toBe(true);
+      bundle.evidence[0]!['checkpoints'] = 'guessed';
+      expect(validate(bundle)).toBe(false);
+      bundle.evidence[0]!['checkpoints'] = 'not-recorded';
+      artifact.evidence = { status: 'withheld', reason: 'incomplete-redaction', path: 'should-not-exist.png' };
+      expect(validate(bundle)).toBe(false);
+      artifact.evidence = { status: 'missing', reason: 'guessed' };
+      expect(validate(bundle)).toBe(false);
+      artifact.evidence = valid;
+      expect(validate(bundle)).toBe(true);
+    });
+  }
 
   if (name === 'report-v1') {
     it("bounds what a step tells and what the app logged: a log line's source and level, a hook phase, and the cache detail, entry, and write", () => {

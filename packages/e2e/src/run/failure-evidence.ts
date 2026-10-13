@@ -18,6 +18,7 @@ import type { OperationContext, TargetSession } from '../engine/surface.ts';
 import { truncateUtf8, type E2EError } from '../internal/errors.ts';
 import { isTypoOf } from '../internal/suggest.ts';
 import { withAbort } from '../internal/time.ts';
+import { bindDebugEvidenceBytes, debugEvidenceProven, debugEvidenceRegistration, bindDebugEvidenceFile } from './artifacts.ts';
 import type { ArtifactSink } from './fixtures.ts';
 import type { FailureEvidence } from './records.ts';
 import type { SessionSecrecy } from './secrecy.ts';
@@ -57,12 +58,14 @@ export async function captureFailureEvidence(options: FailureEvidenceOptions): P
   const signal = AbortSignal.any([options.interrupt, timeout]);
   if (signal.aborted) return finish(evidence);
   const operation = options.operation(signal, EVIDENCE_TIMEOUT_MS);
+  const deadline = Date.now() + operation.timeoutMs;
   const { redact, redactCut } = options.secrecy.ledger;
 
   // The engine is handed the budget, and the wait is abandoned at its end
   // either way: an engine stuck on a hung app may never honor it.
   const bounded = <T>(work: () => Promise<T>): Promise<T> => withAbort(work, signal, () => new Error('failure evidence ran out of budget'));
 
+  const semanticRegistration = debugEvidenceRegistration(options.artifacts, 'text');
   let observation: AgentObservation | undefined;
   try {
     const raw = await bounded(() => options.session.observe(operation));
@@ -87,8 +90,11 @@ export async function captureFailureEvidence(options: FailureEvidenceOptions): P
       mkdirSync(path.dirname(file), { recursive: true });
       // An earlier run's file at the same path is overwritten: attempt
       // directories are named by test and attempt index, not by run.
-      writeFileSync(file, `${observation.text}\n`);
-      evidence.screen = options.artifacts.register('log', SCREEN_FILE);
+      const text = debugEvidenceProven(options.artifacts, semanticRegistration)
+        ? `${observation.text}\n` : redact('[text withheld: secret resolution unproven]') + '\n';
+      bindDebugEvidenceBytes(options.artifacts, semanticRegistration, Buffer.from(text));
+      writeFileSync(file, text);
+      evidence.screen = options.artifacts.register('log', SCREEN_FILE, semanticRegistration);
     } catch {
       // An unwritable directory: the tree stays unrecorded.
     }
@@ -100,8 +106,11 @@ export async function captureFailureEvidence(options: FailureEvidenceOptions): P
   // prove a tainted viewport redacted.
   if (!options.secrecy.exposure.withholdsPixels && !signal.aborted) {
     try {
-      const relative = await bounded(() => options.session.artifacts.screenshot('failure', operation));
-      evidence.screenshot = options.artifacts.register('screenshot', relative);
+      const registration = debugEvidenceRegistration(options.artifacts);
+      const captured = await bounded(() => options.session.artifacts.screenshot('failure', operation));
+      const relative = await bindDebugEvidenceFile(options.artifacts, captured, registration, signal, deadline);
+      if (signal.aborted) return finish(evidence);
+      evidence.screenshot = options.artifacts.register('screenshot', relative, registration);
     } catch {
       // A screenshot the engine could not take is not evidence the report claims.
     }

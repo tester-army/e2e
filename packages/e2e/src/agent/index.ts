@@ -14,6 +14,7 @@ import { TestError, withHint } from '../internal/errors.ts';
 import { rejectUnknownOptions } from '../internal/options.ts';
 import { describeIssue, requireStandardSchema } from '../internal/standard-schema.ts';
 import { sleep } from '../internal/time.ts';
+import { debugEvidenceRegistration, bindDebugEvidenceFile } from '../run/artifacts.ts';
 import type { StepRunOptions } from '../run/steps.ts';
 import type { Agent, StandardSchemaV1, VisionMode } from '../types.ts';
 import { AgentError, isAgentError, toAgentError } from './error.ts';
@@ -299,11 +300,13 @@ export function createAgentFixture(runtime: AgentContext): Agent {
   /** Captures redacted judgment evidence; best-effort, never fails the step. */
   async function captureEvidence(invocation: Invocation): Promise<string | undefined> {
     try {
-      const relative = await invocation.session.artifacts.screenshot(
-        'assert',
-        invocation.operation(),
-      );
-      runtime.steps.attachArtifact(runtime.artifacts.register('screenshot', relative));
+      const registration = debugEvidenceRegistration(runtime.artifacts);
+      const operation = invocation.operation();
+      const deadline = Date.now() + operation.timeoutMs;
+      const captured = await invocation.session.artifacts.screenshot('assert', operation);
+      const relative = await bindDebugEvidenceFile(runtime.artifacts, captured, registration, operation.signal, deadline);
+      if (operation.signal.aborted || Date.now() >= deadline) return undefined;
+      runtime.steps.attachArtifact(runtime.artifacts.register('screenshot', relative, registration));
       return relative;
     } catch {
       return undefined;

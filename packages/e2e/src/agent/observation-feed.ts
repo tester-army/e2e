@@ -8,6 +8,9 @@
  * the engine; the dispatcher and the pixel tier ask the feed.
  */
 
+import { createHash } from 'node:crypto';
+import { bindDebugEvidenceBytes, debugEvidenceRegistration } from '../run/artifacts.ts';
+import type { ArtifactRegistration } from '../run/fixtures.ts';
 import type { SemanticNode } from '../engine/surface.ts';
 import { relocateDescriptor } from '../cache/relocate.ts';
 import { TestError } from '../internal/errors.ts';
@@ -15,7 +18,7 @@ import { isEditable } from '../internal/roles.ts';
 import type { StepAgentDetails, VisionDegradation } from '../run/steps.ts';
 import { describeTarget } from './actions.ts';
 import { AgentError } from './error.ts';
-import type { ExecutorObservation, ExecutorObserveOptions, ExecutorTarget } from './executor.ts';
+import type { ExecutorObservation, ExecutorObserveOptions, ExecutorPixels, ExecutorTarget } from './executor.ts';
 import type { AgentContext } from './invocation.ts';
 import {
   changeShape,
@@ -76,6 +79,25 @@ export interface ObservationFeedOptions {
 
 export class ObservationFeed {
   private newest: AgentObservation | undefined;
+  private readonly captureProofs = new WeakMap<AgentObservation, { registration: ArtifactRegistration; digest: string }>();
+  private readonly screenshotProofs = new WeakMap<ExecutorPixels, { registration: ArtifactRegistration; digest: string }>();
+
+  private readonly consumedScreenshots = new WeakSet<ExecutorPixels>();
+
+  /** Consumes only the original SDK capture handoff, never infers pixel proof from public fields. */
+  screenshotRegistration(pixels: ExecutorPixels): ArtifactRegistration | undefined {
+    const proof = this.screenshotProofs.get(pixels);
+    if (proof === undefined) {
+      if (this.consumedScreenshots.has(pixels)) throw new TestError('POLICY_DENIED', 'executor screenshot capture was already consumed');
+      return undefined;
+    }
+    this.screenshotProofs.delete(pixels);
+    this.consumedScreenshots.add(pixels);
+    if (proof.digest !== createHash('sha256').update(pixels.data).digest('hex')) {
+      throw new TestError('POLICY_DENIED', 'executor screenshot bytes changed after the SDK capture');
+    }
+    return proof.registration;
+  }
   /** A cache probe may supply the executor's first look, once, before any action. */
   private opening: AgentObservation | undefined;
   private semanticHistory = true;
@@ -371,6 +393,7 @@ export class ObservationFeed {
   /** One raw observation capture: retried at the engine, then redacted and bounded. */
   private async capture(pixels: boolean): Promise<AgentObservation> {
     this.opening = undefined;
+    const registration = debugEvidenceRegistration(this.runtime.artifacts);
     const raw = await retryingObserve({
       observe: (operation, pixelFallback) => this.runtime.engine.session.observe(operation, { pixels, pixelFallback }),
       operation: () => this.accounting.operation(),
@@ -392,6 +415,9 @@ export class ObservationFeed {
       pixelsAllowed: !this.runtime.exposure.withholdsPixels,
       appOrigin: this.runtime.app.base?.origin,
     });
+    if (prepared.pixels !== undefined) {
+      this.captureProofs.set(prepared, { registration, digest: createHash('sha256').update(prepared.pixels.data).digest('hex') });
+    }
     return prepared;
   }
 
@@ -431,6 +457,14 @@ export class ObservationFeed {
     this.pixelsSent = true;
     const metrics = this.accounting.metrics;
     metrics.pixelBytes = Math.max(metrics.pixelBytes ?? 0, outcome.pixels.data.byteLength);
+    const proof = this.captureProofs.get(observation);
+    if (proof !== undefined && observation.pixels !== undefined &&
+        proof.digest === createHash('sha256').update(observation.pixels.data).digest('hex')) {
+      bindDebugEvidenceBytes(this.runtime.artifacts, proof.registration, outcome.pixels.data);
+      this.screenshotProofs.set(outcome.pixels, {
+        registration: proof.registration, digest: createHash('sha256').update(outcome.pixels.data).digest('hex'),
+      });
+    }
     return { pixels: outcome.pixels };
   }
 

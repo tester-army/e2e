@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { defineEngine, LOCATOR_ACTION_KINDS } from '../../src/engine/index.ts';
 import type { EngineState } from '../../src/engine/index.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
-import { createProject, runExisting } from '../helpers/run-project.ts';
+import { contentsUnder, createProject, runExisting } from '../helpers/run-project.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 
 const SENTINEL = 'synthetic-session-token-3141';
@@ -35,6 +35,8 @@ describe('session secrecy across save and restore', () => {
     'redacts a %s secret the restored state echoes back, in the failure, the report, and the failure screen',
     async (source) => {
       let echo = '';
+      let captures = 0, restores = 0, providerCalls = 0;
+      const events: string[] = [];
       const observations: { secretVisible: boolean; withheld: string | undefined }[] = [];
       const engine = defineEngine({
         name: 'fake',
@@ -59,8 +61,12 @@ describe('session secrecy across save and restore', () => {
           if (action.kind === 'fill') echo = action.value;
         },
         state: {
-          capture: async (): Promise<EngineState> => ({ format: 'fake-state', version: 1, data: { stored: echo } }),
+          capture: async (): Promise<EngineState> => {
+            captures += 1;
+            return { format: 'fake-state', version: 1, data: { stored: echo } };
+          },
           restore: async (state) => {
+            restores += 1;
             echo = (state.data as { stored: string }).stored;
           },
         },
@@ -69,10 +75,11 @@ describe('session secrecy across save and restore', () => {
       try {
         const outcome = await runExisting(project, {
           appUrl: 'http://127.0.0.1:4599',
+          runOptions: { onEvent: (event) => { events.push(event.type); } },
           config: {
             targets: [{ name: 'fake', platform: 'custom', engine }],
             cache: 'off',
-            secrets: { token: source === 'static' ? SENTINEL : () => SENTINEL },
+            secrets: { token: source === 'static' ? SENTINEL : () => { providerCalls += 1; return SENTINEL; } },
             agents: {
               default: {
                 executor: {
@@ -88,9 +95,18 @@ describe('session secrecy across save and restore', () => {
           },
         });
         assertValidReport(outcome.report);
+        expect(outcome.report.run.errors).toEqual([]);
+        expect(captures).toBe(1);
+        expect(restores).toBe(1);
+        expect(providerCalls).toBe(source === 'provider' ? 1 : 0);
+        expect(events.filter((type) => type === 'test-started')).toHaveLength(2);
+        expect(events.filter((type) => type === 'test-finished')).toHaveLength(2);
+        expect(outcome.report.run.results.find((entry) => entry.titlePath.at(-1) === 'stores the token')!.status).toBe('passed');
         const result = outcome.report.run.results.find((entry) => entry.titlePath.at(-1) === 'meets the stored token again')!;
         expect(result.status).toBe('failed');
         const attempt = result.attempts.at(-1)!;
+        expect(attempt.error?.code).toBe('ASSERTION_FAILED');
+        expect(attempt.steps.at(-1)!.status).toBe('failed');
         expect(attempt.error?.message).toContain('<secret:token>');
         expect(observations).toEqual([{ secretVisible: false, withheld: 'PIXEL_TAINTED' }]);
         const screen = attempt.artifacts.find((artifact) => artifact.id === attempt.failure?.screen);
@@ -98,9 +114,19 @@ describe('session secrecy across save and restore', () => {
         const screenFile = path.join(project.dir, '.e2e', 'results', screen!.path!);
         expect(existsSync(screenFile)).toBe(true);
         const screenText = readFileSync(screenFile, 'utf8');
-        expect(screenText).toContain('<secret:token>');
+        // Opaque history denies prospective content proof even after resolution and restore.
+        if (source === 'provider') {
+          expect(screenText).toBe('[text withheld: secret resolution unproven]\n');
+        } else {
+          expect(screenText).toContain('<secret:token>');
+          expect(screenText).not.toContain('[text withheld: secret resolution unproven]');
+          expect(screen?.redaction).toBe('complete');
+        }
         expect(screenText).not.toContain(SENTINEL);
         expect(JSON.stringify(outcome.report)).not.toContain(SENTINEL);
+        for (const [, contents] of contentsUnder(path.join(project.dir, '.e2e'))) {
+          expect(contents).not.toContain(SENTINEL);
+        }
       } finally {
         project.cleanup();
       }
