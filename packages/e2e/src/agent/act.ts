@@ -31,6 +31,7 @@ import { resolveBoundedBudget, resolveTimeout } from './call-options.ts';
 import { RUNTIME_CODES, type ExecutorPixels, type StepExecutorContext, type StepVerdict } from './executor.ts';
 import type { AgentContext, AgentSelection } from './invocation.ts';
 import { projectPriorSteps, serializeLedger } from './ledger.ts';
+import { tokenUpperBound } from './model/adapter.ts';
 import { instantiateLanguageModel } from './model/sdk.ts';
 import type { AgentObservation } from './observation.ts';
 import { ObservationFeed } from './observation-feed.ts';
@@ -224,6 +225,7 @@ class ActDispatch {
     this.feed = new ObservationFeed(runtime, this.accounting, queue, {
       maxObservationBytes: agent.config.maxObservationBytes,
       maxInputTokens: agent.config.maxInputTokens,
+      instructionBytes: tokenUpperBound(spec.instruction),
     });
     this.dispatcher = new ActionDispatcher(runtime, this.accounting, this.feed, queue, {
       instruction: spec.instruction,
