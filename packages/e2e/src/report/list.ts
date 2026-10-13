@@ -921,9 +921,14 @@ export class ListReporter implements Reporter {
     return this.tree.render(running, this.summaryRows(false), Date.now(), room, this.inFlight);
   }
 
-  /** The badge of the explored target: an exploration runs on exactly one. */
+  /**
+   * The badge of the explored target: an exploration runs on exactly one,
+   * the one its test started on. `targets` lists every configured target,
+   * so the first of those is only right when `--target` named it.
+   */
   private exploreBadge(): string {
-    return this.badge(this.targets[0] ?? '');
+    const explored = [...this.pairs.values()].find((test) => test.executing)?.group.target;
+    return this.badge(explored ?? this.targets[0] ?? '');
   }
 
   /**
