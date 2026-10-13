@@ -294,6 +294,15 @@ describe('e2e models opencode-console', () => {
     expect(api.requests[0]!.headers).not.toHaveProperty('x-org-id');
   });
 
+  it('reads the key when the stored logins are unreadable', async () => {
+    const api = await workspace();
+    vendor(api, {});
+    vi.stubEnv('E2E_OAUTH_CREDENTIALS', '{not json');
+    vi.stubEnv('OPENCODE_API_KEY', 'oc_sk_env');
+    await listModels('opencode-console');
+    expect(api.requests[0]!.headers['authorization']).toBe('Bearer oc_sk_env');
+  });
+
   it('with neither credential, the message names the key as well as the login', async () => {
     vi.stubEnv('OPENCODE_API_KEY', '');
     await expect(listModels('opencode-console', new MemoryCredentialStore())).rejects.toMatchObject({

@@ -50,12 +50,14 @@ export function apiKeyFor(id: ProviderId): string | undefined {
 
 /**
  * Where `id`'s calls read their credential: the API key, when set, as a
- * login with nothing to refresh, else `store`. The hint names the remedy for
- * the credential actually read.
+ * login with nothing to refresh, else `store`, the default store unless
+ * given. The default store is only opened without a key, so a malformed
+ * `E2E_OAUTH_CREDENTIALS` does not block the key. The hint names the remedy
+ * for the credential actually read.
  */
-export function credentialSource(id: ProviderId, store: CredentialStore = defaultCredentialStore()): { readonly store: CredentialStore; readonly loginHint: string } {
+export function credentialSource(id: ProviderId, store?: CredentialStore): { readonly store: CredentialStore; readonly loginHint: string } {
   const apiKey = apiKeyFor(id);
-  if (apiKey === undefined) return { store, loginHint: loginHint(id) };
+  if (apiKey === undefined) return { store: store ?? defaultCredentialStore(), loginHint: loginHint(id) };
   return {
     store: new EnvCredentialStore(JSON.stringify({ [id]: { access: apiKey, refresh: '', expires: 0 } })),
     loginHint: `check ${PROVIDERS[id].apiKeyEnv}`,
