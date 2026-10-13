@@ -30,9 +30,10 @@ import type { JsonValue } from '../types.ts';
 import { KEY_CONTEXT_FIELDS, TRACE_SCHEMA_VERSION, type TraceKeyContext } from './trace.ts';
 
 /**
- * Step kinds the trace cache admits. Only `act` today: an assert must not
- * change state, so its trace would be action-free, and judgments are made
- * fresh per run by normative rule (spec 10).
+ * Step kinds the trace cache admits. Only `act`: an assert must not change
+ * state, so its trace would be action-free, and a judgment always runs live
+ * because it is the check that lets a recording be written and trusted. A
+ * replayed judgment would verify the recording with the recording.
  */
 export type TraceCacheKind = 'act';
 
