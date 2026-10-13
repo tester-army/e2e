@@ -97,16 +97,22 @@ export async function decide(
   }
   return decisions;
 }
-/** The chosen option and its probability; anything without a valid distribution is MODEL_OUTPUT_INVALID. */
+/**
+ * The chosen option and its probability. An answer with no distribution,
+ * as a language model answering through a gateway fallback returns, is a
+ * committed choice: all the mass on it, and no confidence to report.
+ * Anything else without a valid distribution is MODEL_OUTPUT_INVALID.
+ */
 function selected(answer: RawAnswer | undefined): { choice: string; probability: number; score?: number } {
-  if (answer === undefined || answer.probabilities === undefined || (answer.type !== 'choice' && answer.type !== 'score')) {
-    throw new AgentError('MODEL_OUTPUT_INVALID', 'The decision model returned an answer without a choice distribution.');
+  if (answer === undefined || (answer.type !== 'choice' && answer.type !== 'score')) {
+    throw new AgentError('MODEL_OUTPUT_INVALID', 'The decision model returned no choice or score answer.');
   }
   if (answer.type === 'score') {
     const score = answer.score;
     if (typeof score !== 'number' || !Number.isFinite(score)) {
       throw new AgentError('MODEL_OUTPUT_INVALID', 'The decision model returned a score answer without a score.');
     }
+    if (answer.probabilities === undefined) return { choice: String(score), probability: 1, score };
     let top: { choice: string; probability: number } = { choice: '', probability: -1 };
     let nearby = 0;
     for (const [level, probability] of Object.entries(answer.probabilities)) {
@@ -115,11 +121,13 @@ function selected(answer: RawAnswer | undefined): { choice: string; probability:
     }
     return { choice: top.choice, probability: Math.min(1, nearby), score };
   }
-  const probability = answer.choice === undefined ? 0 : (answer.probabilities[answer.choice] ?? 0);
+  const choice = answer.choice ?? '';
+  if (answer.probabilities === undefined) return { choice, probability: 1 };
+  const probability = answer.probabilities[choice] ?? 0;
   if (!Number.isFinite(probability) || probability < 0 || probability > 1) {
     throw new AgentError('MODEL_OUTPUT_INVALID', 'The decision model returned a probability outside [0, 1].');
   }
-  return { choice: answer.choice ?? '', probability };
+  return { choice, probability };
 }
 /** Provider-reported confidence for one question, or 0 when absent. */
 function reportedConfidence(metadata: Record<string, Record<string, unknown>> | undefined, id: string): number {

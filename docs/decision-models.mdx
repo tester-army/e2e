@@ -197,6 +197,26 @@ const executor = decisionExecutor({
 The text model takes the agents entry's `providerOptions`, so a setting
 for one model, such as a gateway fallback list, never reaches the other.
 
+AI Gateway can rerun an uncertain decision on another model. Add the
+conditional entry to `gateway.models`; it reaches every decide call, and a
+triggered fallback bills both models:
+
+```ts title="Executor setup"
+const executor = decisionExecutor({
+  model: gateway.decisionModel('typesafe-ai/jev'),
+  textModel: gateway('openai/gpt-4.1-nano'),
+  providerOptions: {
+    gateway: { models: [{ model: 'openai/gpt-6-luna-decisions', when: { confidenceBelow: 0.6 } }] },
+  },
+});
+```
+
+A decision model fallback keeps the gates: the executor reads the fallback
+model's probabilities and confidence. A language model fallback, such as
+`openai/gpt-5-nano`, answers with a choice and no distribution. The
+executor takes that choice with probability 1 and confidence 0, so a
+`minConfidence` gate blocks every escalated answer.
+
 ## Limits
 
 - No `navigate`. In-app navigation is a `tap` on a link. URLs belong in
