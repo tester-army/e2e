@@ -35,7 +35,11 @@ export class InputBudget {
   private readonly endsAt: number;
   private sent = false;
 
-  /** `track` keeps the device command itself in flight, past a timeout that abandons it, until it settles. */
+  /**
+   * `track` keeps the device command itself in flight, past a timeout that
+   * abandons it, until it settles. The callers' own tracking settles with the
+   * race, so this is the registration the next attempt waits on.
+   */
   constructor(
     private readonly label: string,
     timeoutMs: number,
@@ -47,19 +51,30 @@ export class InputBudget {
   /**
    * Sends one input with what is left of the budget. With none left it sends
    * nothing: `OPERATION_TIMEOUT`, or `ACTION_MAY_HAVE_COMMITTED` once an
-   * earlier input of this operation went out. An input that does not answer
-   * in time may have landed, so it is `ACTION_MAY_HAVE_COMMITTED` and the
-   * runner never repeats it.
+   * earlier input of this operation went out. A gesture that holds (`holdMs`)
+   * at least as long as the budget left could only be cut off mid-gesture, so
+   * it is refused unsent. An input that does not answer in time may have
+   * landed, so it is `ACTION_MAY_HAVE_COMMITTED` and the runner never repeats it.
    */
-  send<T>(dispatch: () => Promise<T>): Promise<T> {
+  send<T>(dispatch: () => Promise<T>, holdMs = 0): Promise<T> {
     const remaining = this.endsAt - Date.now();
     if (remaining <= 0) {
       return Promise.reject(
         this.sent ? this.maybeCommitted() : new EngineError('OPERATION_TIMEOUT', `${this.label} timed out before it was sent`, { retryable: false }),
       );
     }
+    if (holdMs >= remaining) {
+      return Promise.reject(
+        new EngineError(
+          'NOT_ACTIONABLE',
+          `${this.label} holds for ${holdMs} ms, but only ${Math.floor(remaining)} ms of its timeout are left; raise the timeout or shorten the hold`,
+          { retryable: false },
+        ),
+      );
+    }
+    const pending = this.track(dispatch());
     this.sent = true;
-    return withTimeout(this.track(dispatch()), Math.max(remaining, MIN_ANSWER_MS), () => this.maybeCommitted());
+    return withTimeout(pending, Math.max(remaining, MIN_ANSWER_MS), () => this.maybeCommitted());
   }
 
   private maybeCommitted(): EngineError {

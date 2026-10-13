@@ -668,6 +668,13 @@ launch that times out on the device is `ENGINE_FAILURE` with agent-device's
 message and hint, never `LAUNCH_TIMEOUT`, `ACTION_FAILED`, or
 `STEP_TIMEOUT`.
 
+**An action that outlives its timeout.** A tap, fill, key, swipe, or
+`back` gets its `timeout` (default `actionTimeout`). If the device doesn't
+answer in time, the step fails with `ACTION_FAILED` and isn't retried: the
+input may have landed. A `longPress` that holds at least as long as the
+time left is refused before it's sent; raise its `timeout`. Finding the
+element isn't cut off, so a missing one still fails as `LOCATOR_NOT_FOUND`.
+
 <CodeGroup>
 ```bash npm
 npx agent-device doctor          # the toolchain, the daemon, the booted devices

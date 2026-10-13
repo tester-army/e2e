@@ -1146,8 +1146,9 @@ export class AgentDeviceSurface {
         case 'doubleTap':
           return input.send(() => client.interactions.press({ ...this.actionTarget(target), count: 2, ...settle }));
         case 'longPress':
-          return input.send(() =>
-            client.interactions.longPress({ ...this.actionTarget(target), ...settle, durationMs: action.durationMs ?? DEFAULT_LONG_PRESS_MS }),
+          return input.send(
+            () => client.interactions.longPress({ ...this.actionTarget(target), ...settle, durationMs: action.durationMs ?? DEFAULT_LONG_PRESS_MS }),
+            action.durationMs ?? DEFAULT_LONG_PRESS_MS,
           );
         case 'hover':
           return input.send(() => client.interactions.hover(this.actionTarget(target)));
@@ -1238,7 +1239,8 @@ export class AgentDeviceSurface {
   async performAt(point: ViewportPoint, action: PointerAction, operation: OperationContext, input: InputBudget): Promise<void> {
     const settle = operation.origin === 'test' ? {} : this.settleOptions;
     const before = this.latestIndex;
-    await this.command(`${action.kind} at point`, (client) => input.send(() => pointerInteraction(client, point, action, settle)), operation.signal);
+    const holdMs = action.kind === 'longPress' ? (action.durationMs ?? DEFAULT_LONG_PRESS_MS) : action.kind === 'swipeTo' ? action.durationMs : undefined;
+    await this.command(`${action.kind} at point`, (client) => input.send(() => pointerInteraction(client, point, action, settle), holdMs), operation.signal);
     this.markAction(before);
   }
 

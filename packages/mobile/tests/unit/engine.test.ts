@@ -865,6 +865,16 @@ describe('observation', () => {
     expect(h.fake.methods()).not.toContain('interactions.type');
   });
 
+  it('refuses a long press that holds longer than its timeout leaves, before sending it', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const about = await observed(h, 'About');
+    const op = { ...operation(), origin: 'test' as const, timeoutMs: 2_000 };
+    await expect(h.engine.perform!(about.ref, { kind: 'longPress', durationMs: 3_000 }, op)).rejects.toMatchObject({ code: 'NOT_ACTIONABLE' });
+    await expect(h.engine.performAt!({ x: 10, y: 10 }, { kind: 'longPress', durationMs: 3_000 }, op)).rejects.toMatchObject({ code: 'NOT_ACTIONABLE' });
+    expect(h.fake.methods()).not.toContain('interactions.longPress');
+  });
+
   it('keeps a timed-out input in flight: the next attempt waits for the device command to settle', async () => {
     const h = harness();
     await openAttempt(h);

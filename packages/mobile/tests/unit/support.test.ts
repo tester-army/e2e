@@ -26,6 +26,22 @@ describe('support helpers', () => {
       await twoStep.send(async () => undefined);
       await vi.advanceTimersByTimeAsync(100);
       await expect(twoStep.send(async () => undefined)).rejects.toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED' });
+
+      // A command that throws before it is sent does not count as sent.
+      const refused = new InputBudget('press', 100, (pending) => pending);
+      expect(() => refused.send(() => {
+        throw new Error('no target');
+      })).toThrow('no target');
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(refused.send(async () => undefined)).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+
+      // A hold the budget cannot cover is refused unsent, with the reason.
+      let held = false;
+      await expect(new InputBudget('longPress', 2_000, (pending) => pending).send(async () => (held = true), 3_000)).rejects.toMatchObject({
+        code: 'NOT_ACTIONABLE',
+        message: expect.stringMatching(/^longPress holds for 3000 ms, but only 2000 ms of its timeout are left/),
+      });
+      expect(held).toBe(false);
     } finally {
       vi.useRealTimers();
     }
