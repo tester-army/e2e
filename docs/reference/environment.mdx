@@ -58,7 +58,7 @@ short would take ordinary text with it.
 
 | Variable | Reading | Effect |
 | --- | --- | --- |
-| `E2E_CACHE_DIR` | value | Replaces [`cache.dir`](/reference/config#cache) for `e2e run` and `e2e cache`, resolved from the project root; a leading `~` is the home directory. `--cache-dir` wins over it, a custom `cache.store` ignores it, the cache mode stays as configured, and `--no-cache` still turns the cache off |
+| `E2E_CACHE_DIR` | value | Replaces [`cache.dir`](/reference/config#cache) for `e2e run` and `e2e cache`, resolved from the project root; `~` or a leading `~/` is the home directory. `--cache-dir` wins over it, a custom `cache.store` ignores it, the cache mode stays as configured, and `--no-cache` still turns the cache off |
 
 ## Diagnostics
 
