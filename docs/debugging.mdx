@@ -321,7 +321,7 @@ to trace the whole flow or rule out a stale [recording](/cache).
 | `ASSERTION_INCONCLUSIVE` | `agent.assert` or `agent.extract` asked about something the screen doesn't show: on another page, still loading, or only in pixels | Open or wait for the right screen first; add `vision: true` when the answer is in pixels (the message says so) |
 | `ACTION_FAILED` | Element covered, disabled, or detached, or an operation timed out | Wait on the right condition with `expect` first; close overlays |
 | `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT` | The agent ran out of actions, model calls, or time | Scope the goal to one step. Raise the agent entry's `maxSteps` or `maxModelCalls` for the budget, the config `timeout` for an `act` step, or the agent's `judgmentTimeout` for `assert`, `waitFor`, and `extract` |
-| `MODEL_UNAVAILABLE` | No model constructed in the config | See [Models](/models) |
+| `MODEL_UNAVAILABLE` | No model constructed in the config, or GitHub Copilot doesn't serve the configured model to your account | See [Models](/models); for Copilot, [Pick a model](/subscriptions#pick-a-model) |
 | `MODEL_PROVIDER_FAILED` | Bad key, rate limit, no credits, or every try of one request went 120 s without an answer | Check the key the provider reads and the quota; for a slow local model, a smaller screen (`agents.<name>.maxObservationBytes`) or a faster model |
 
 The [errors reference](/reference/errors) lists every code, its class, and

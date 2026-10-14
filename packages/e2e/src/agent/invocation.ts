@@ -93,6 +93,11 @@ export interface AgentContext {
    * the run's. An unknown name is `INVALID_ARGUMENT`.
    */
   readonly select: (name: string | undefined) => AgentSelection;
+  /**
+   * A model the provider does not serve to this account, met by a step's
+   * call: the run stops once over it, as it does over a missing model.
+   */
+  readonly reportUnservedModel: (error: AgentError) => void;
   readonly config: ResolvedConfig;
   /** The target this attempt runs on. */
   readonly target: StepExecutorContext['target'];

@@ -59,9 +59,11 @@ gates, and limits.
   for a custom brain; none inherits `model` or `context` from `default`.
 - `model` drives `agent.act`. Judgments use `judge` when set, else `model`.
 - A missing model for the built-in agent raises one run-level
-  `MODEL_UNAVAILABLE` when the first test acquires `agent`, exit 2; auth
-  failures surface on the first model call as `MODEL_PROVIDER_FAILED`, or as
-  `CONFIG_LOAD_FAILED` for a provider that reads its key when the config loads.
+  `MODEL_UNAVAILABLE` when the first test acquires `agent`, exit 2, and so
+  does a model GitHub Copilot does not serve to the account, at the first
+  call; auth failures surface on the first model call as
+  `MODEL_PROVIDER_FAILED`, or as `CONFIG_LOAD_FAILED` for a provider that
+  reads its key when the config loads.
 - `context` is what the app calls things, sent to every model call, judges
   included; `system` is how the acting agent works, read only by the act
   loop. Both live on the agents entry; `agentContext` on a test or group
