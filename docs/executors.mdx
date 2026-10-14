@@ -70,7 +70,10 @@ same provider and model, or the config load fails with `INVALID_CONFIG`.
 
 `buildPrompt` returns a string or a message history. `prepareMessages` runs
 between turns to shorten the history, or returns `{ messages, stop }` when the
-step makes no progress. `guard()` stops new tool calls when the step is
+step makes no progress. Return the messages you did not change as the same
+objects: a rewritten message edits the request prefix, and on Anthropic
+models, whose thinking is bound to it, the loop then stops sending the
+reasoning from that message on. `guard()` stops new tool calls when the step is
 concluding and returns a failure to the model as text. `ctx.actions`
 authorizes, counts, and records each action, so these steps replay from the
 [cache](/cache) and run on any engine that supports `tap`.
