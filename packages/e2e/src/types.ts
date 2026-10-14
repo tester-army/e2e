@@ -1021,6 +1021,12 @@ export interface CommandConfig {
   cwd?: string;
   /** Added to the inherited set; `{port}` expands in values. */
   env?: Readonly<Record<string, string>>;
+  /**
+   * Variables copied from the runner's environment when set: exact names, or
+   * prefixes ending in `*` (`'STRIPE_*'`). `env` wins over an inherited value.
+   * A bare `'*'` is `INVALID_CONFIG`.
+   */
+  inheritEnv?: readonly string[];
   /** Ready-probe budget in milliseconds; default 60000. Expiry is `APP_UNREACHABLE`. */
   startupTimeout?: number;
   /** Grace period before force-kill in milliseconds; default 10000. */
@@ -1103,10 +1109,10 @@ export interface TargetApp {
    * Process the runner starts before the first test and stops at the end of
    * the run (a dev server, Metro for a debug build). Structured, never
    * shell-interpreted; the child inherits only `PATH`, `HOME`, the
-   * temp-directory variables, and `command.env`. `{port}` in it is the port
-   * of `url`, fixed or free. Targets declaring the same command share one
-   * process, probed at the first declaring target's `readyUrl`. A release
-   * build has no command.
+   * temp-directory variables, `command.inheritEnv`, and `command.env`.
+   * `{port}` in it is the port of `url`, fixed or free. Targets declaring the
+   * same command share one process, probed at the first declaring target's
+   * `readyUrl`. A release build has no command.
    */
   command?: CommandConfig | undefined;
   /**
@@ -1194,7 +1200,7 @@ export interface CacheConfig {
   mode?: CacheMode;
   /** Custom entry store; omit it to use the file store at `dir`. */
   store?: CacheStore;
-  /** File store directory, resolved against the project root. */
+  /** File store directory, resolved against the project root. `--cache-dir` and `E2E_CACHE_DIR` replace it. */
   dir?: string;
   /**
    * Fails a step whose recording exists but no longer replays (a control

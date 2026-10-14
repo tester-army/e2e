@@ -1,5 +1,6 @@
 /** Cache config resolution and the staged-write settlement. */
 
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createAgentCacheContext, settleStagedTraces } from '../../src/cache/context.ts';
@@ -82,6 +83,44 @@ describe('cache config resolution', () => {
     expect(resolve(APP, { ...BASE_ENV, CI: '1' }, { cache: 'off' }).cache.mode).toBe('off');
   });
 
+  it('takes the directory from --cache-dir, then E2E_CACHE_DIR, then cache.dir, from the project root', () => {
+    const configured = { ...APP, cache: { mode: 'read-only' as const, dir: 'configured' } };
+    const env = { ...BASE_ENV, E2E_CACHE_DIR: '../shared/e2e' };
+    expect(resolve(configured, env, { cacheDir: '/abs/flag' }).cache.dir).toBe(path.resolve('/abs/flag'));
+    expect(resolve(configured, env).cache.dir).toBe(path.resolve(ROOT, '../shared/e2e'));
+    expect(resolve(configured, { ...BASE_ENV, E2E_CACHE_DIR: ' ' }).cache.dir).toBe(path.join(ROOT, 'configured'));
+    expect(resolve(APP, env).cache.dir).toBe(path.resolve(ROOT, '../shared/e2e'));
+  });
+
+  it('leaves the mode to the config and --no-cache when the directory is overridden', () => {
+    const env = { ...BASE_ENV, E2E_CACHE_DIR: '/abs/shared' };
+    expect(resolve({ ...APP, cache: 'read-only' }, env).cache).toMatchObject({ mode: 'read-only', dir: path.resolve('/abs/shared') });
+    expect(resolve(APP, env, { cache: 'off', cacheDir: 'flag' }).cache).toMatchObject({ mode: 'off', dir: path.join(ROOT, 'flag') });
+    expect(resolve(APP, { ...env, CI: '1' }).cache.mode).toBe('read-only');
+  });
+
+  it('refuses --cache-dir beside a cache.store and ignores E2E_CACHE_DIR there, even one the output would overlap', () => {
+    const stored = { cache: { store: memoryStore() } };
+    expect(() => resolve(stored, BASE_ENV, { cacheDir: 'shared' })).toThrow(
+      '--cache-dir names a file store directory, but cache.store replaces the file store; drop one',
+    );
+    expect(resolve(stored, { ...BASE_ENV, E2E_CACHE_DIR: '.e2e' }).cache).toMatchObject({ store: stored.cache.store, dir: path.join(ROOT, '.e2e', 'cache') });
+  });
+
+  it('reads a leading ~ in --cache-dir and E2E_CACHE_DIR as the home directory', () => {
+    expect(resolve(APP, { ...BASE_ENV, E2E_CACHE_DIR: '~/x' }).cache.dir).toBe(path.join(os.homedir(), 'x'));
+    expect(resolve(APP, BASE_ENV, { cacheDir: '~' }).cache.dir).toBe(os.homedir());
+    expect(resolve(APP, BASE_ENV, { cacheDir: '~x' }).cache.dir).toBe(path.join(ROOT, '~x'));
+  });
+
+  it('rejects a blank --cache-dir, and an output the overridden cache directory overlaps', () => {
+    expect(() => resolve(APP, BASE_ENV, { cacheDir: ' ' })).toThrow('--cache-dir must be a non-empty path');
+    expect(() => resolve(APP, { ...BASE_ENV, E2E_CACHE_DIR: '.e2e' })).toThrow('output ".e2e" (the default) is the cache directory .e2e or inside it');
+    expect(() => resolve(APP, BASE_ENV, { cacheDir: '.e2e/results/cache' })).toThrow(
+      'output ".e2e" (the default) would hold --cache-dir .e2e/results/cache under results/, which the run owns; move --cache-dir or the output',
+    );
+  });
+
   it('demotes only an unset mode in CI; an explicit read-write or off is honored', () => {
     const ci = { ...BASE_ENV, CI: '1' };
     expect(resolve(APP, ci).cache.mode).toBe('read-only');
@@ -146,6 +185,12 @@ describe('REPLAY_STALE advice', () => {
       're-record it with a read-write run with cache.strict set to false and commit the changed entry under recordings/replays',
     );
     expect(adviceFor({ cache: { strict: true } }, { cacheStrict: true })).toContain('without --strict-cache and with cache.strict set to false');
+  });
+
+  it('names a cache directory outside the project without asking for a commit', () => {
+    expect(adviceFor({}, { cacheStrict: true, cacheDir: '/shared/e2e' })).toBe(
+      `re-record it with a read-write run without --strict-cache; the run writes the new entry under ${path.resolve('/shared/e2e').split(path.sep).join('/')}`,
+    );
   });
 
   it('points at the configured store rather than a directory when a custom store holds the entries', () => {

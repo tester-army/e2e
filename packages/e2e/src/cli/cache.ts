@@ -13,18 +13,26 @@
 
 import { readdir, rm, rmdir } from 'node:fs/promises';
 import path from 'node:path';
+import type { Command } from 'commander';
 import picocolors from 'picocolors';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from '../cache/store.ts';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
 import { resolveConfig } from '../config/resolve.ts';
 import { errorMessage } from '../internal/errors.ts';
 import { visibleWidth } from '../report/format.ts';
+import { docsLine, examples } from './help.ts';
 
-export type CacheCommand = 'ls' | 'clear' | 'stats';
+type CacheCommand = 'ls' | 'clear' | 'stats';
 
-export interface CacheOptions {
+/** The `--cache-dir` help line `e2e run` and every `e2e cache` command share. */
+export const CACHE_DIR_DESCRIPTION =
+  'replay cache directory, relative to the project root (default: E2E_CACHE_DIR, else cache.dir in the config, else .e2e/cache)';
+
+interface CacheOptions {
   /** Explicit config path; the nearest `e2e.config.ts` when absent. */
   readonly config?: string;
+  /** `--cache-dir`: the store directory, over `E2E_CACHE_DIR` and `cache.dir`. */
+  readonly cacheDir?: string;
   readonly cwd?: string;
 }
 
@@ -62,7 +70,7 @@ const DIGEST_PREFIX_CHARS = 12;
  * Returns the process exit code: 2 for a config or filesystem error, 0
  * otherwise — an empty or absent cache is a fact, not a failure.
  */
-export async function cache(command: CacheCommand, options: CacheOptions = {}): Promise<number> {
+async function cache(command: CacheCommand, options: CacheOptions = {}): Promise<number> {
   let directory: string;
   try {
     directory = await resolveCacheDirectory(options);
@@ -87,9 +95,43 @@ export async function cache(command: CacheCommand, options: CacheOptions = {}): 
   }
 }
 
+/** Registers `e2e cache` and its `ls`, `clear`, and `stats` subcommands on `program`. */
+export function registerCacheCommand(program: Command): void {
+  const cacheCommand = program
+    .command('cache')
+    .summary('inspect, measure, and clear the replay cache')
+    .description(
+      'Read the replay cache the runs write, under .e2e/cache by default: what a committed cache holds, how much room it takes, and how to empty it. Reads the same config as e2e run, so --cache-dir, E2E_CACHE_DIR, cache.dir, and --config decide which store is meant.',
+    )
+    .addHelpText(
+      'after',
+      ['', examples(['e2e cache ls', 'e2e cache stats', 'e2e cache clear']), '', docsLine('/reference/cli#e2e-cache')].join('\n'),
+    );
+
+  const cacheSubcommand = (name: CacheCommand, summary: string, description: string): void => {
+    cacheCommand
+      .command(name)
+      .summary(summary)
+      .description(description)
+      .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
+      .option('--cache-dir <dir>', CACHE_DIR_DESCRIPTION)
+      .action(async (options: { config?: string; cacheDir?: string }) => {
+        process.exitCode = await cache(name, options);
+      });
+  };
+
+  cacheSubcommand(
+    'ls',
+    'list the cached traces',
+    'Print one row per cached trace: the test and target it was recorded for, the digest of its instruction, its age, and how many actions a replay would run.',
+  );
+  cacheSubcommand('clear', 'delete every cached trace', 'Delete the cache files and the directory itself; files the runner never wrote are left alone.');
+  cacheSubcommand('stats', 'print the entry count and size', 'Print the store directory, how many readable entries it holds, and how many bytes they take.');
+}
+
 /**
- * The store directory from the project's resolved config, so `cache.dir` and
- * `--config` mean here what they mean to a run.
+ * The store directory from the project's resolved config, so `--cache-dir`,
+ * `E2E_CACHE_DIR`, `cache.dir`, and `--config` mean here what they mean to a run.
  */
 async function resolveCacheDirectory(options: CacheOptions): Promise<string> {
   const cwd = options.cwd ?? process.cwd();
@@ -100,6 +142,7 @@ async function resolveCacheDirectory(options: CacheOptions): Promise<string> {
     projectRoot: discovered.projectRoot,
     configPath: discovered.configPath,
     env: process.env,
+    cli: options.cacheDir === undefined ? {} : { cacheDir: options.cacheDir },
   });
   if (config.cache.store !== undefined) {
     throw new Error(

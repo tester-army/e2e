@@ -5,6 +5,11 @@
  * entry here.
  */
 
+import { isLoopbackHost } from '../../internal/urls.ts';
+
+/** The local server an OpenAI-compatible gateway points at unless an endpoint is given. */
+export const DEFAULT_ENDPOINT = 'http://127.0.0.1:11434/v1';
+
 export type GatewayId = 'vercel' | 'openrouter' | 'openai-compatible' | 'chatgpt' | 'copilot' | 'opencode-console' | 'grok';
 
 export interface GatewayPreset {
@@ -51,7 +56,7 @@ export const GATEWAYS: readonly GatewayPreset[] = [
     model: (endpoint) =>
       `createOpenAICompatible({
         name: 'openai-compatible',
-        baseURL: ${quote(endpoint ?? 'http://127.0.0.1:11434/v1')},
+        baseURL: ${quote(endpoint ?? DEFAULT_ENDPOINT)},
         // apiKey: process.env.LLM_API_KEY,
       }).chatModel('gpt-6-luna')`,
   },
@@ -101,6 +106,23 @@ export function getGatewayPreset(id: GatewayId): GatewayPreset {
   const preset = GATEWAYS.find((gateway) => gateway.id === id);
   if (preset === undefined) throw new Error(`unknown gateway: ${id}`);
   return preset;
+}
+
+/**
+ * Why an OpenAI-compatible base URL is refused, by the rule config resolution
+ * applies: HTTPS, or HTTP on a loopback host. Undefined when it is accepted.
+ */
+export function validateEndpoint(value: string | undefined): string | undefined {
+  const trimmed = value?.trim() ?? '';
+  if (trimmed === '') return `Enter the base URL, e.g. ${DEFAULT_ENDPOINT}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return `Not a URL: ${trimmed}`;
+  }
+  if (parsed.protocol === 'https:' || (parsed.protocol === 'http:' && isLoopbackHost(parsed.hostname))) return undefined;
+  return 'Must use HTTPS unless the host is loopback';
 }
 
 /** A single-quoted TypeScript string literal. */

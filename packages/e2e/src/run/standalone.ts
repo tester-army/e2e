@@ -137,7 +137,7 @@ async function openWorker(options: StandaloneHostOptions, kind: AttemptKind): Pr
     const prepared = await engines.prepare(target, 1, {
       runId, projectRoot: config.projectRoot, env: options.env, signal, headed: options.headed, notice,
     });
-    const hooks = { ci: config.ci, notice: (message: string) => notice('app', message) };
+    const hooks = { ci: config.ci, env: options.env, notice: (message: string) => notice('app', message) };
     processes = await startDeclaredProcesses([target], config.projectRoot, () => hooks, signal, debug, options.processes);
     if (signal.aborted) throw new InfrastructureError('CANCELLED', `opening a host on target "${target.name}" was cancelled`);
     executor = new TargetExecutor({

@@ -20,12 +20,14 @@ import { isCiMode } from '../config/resolve.ts';
 import { runsFromCheckout } from '../telemetry/checkout.ts';
 import { initCompletedEvent, runCompletedEvent, USAGE_ERROR_CODE } from '../telemetry/events.ts';
 import { Telemetry } from '../telemetry/telemetry.ts';
-import { cache, type CacheCommand } from './cache.ts';
-import { DOCS_URL } from './docs-url.ts';
-import { feedback, FEEDBACK_LIMITS, FEEDBACK_TYPES, type FeedbackReport } from './feedback.ts';
+import { CACHE_DIR_DESCRIPTION, registerCacheCommand } from './cache.ts';
+import { docsLine, examples, helpSection, pc } from './help.ts';
+import { ERROR_CODE_LIMIT, feedback, FEEDBACK_LIMITS, FEEDBACK_TYPES, type FeedbackReport } from './feedback.ts';
 import { guide } from './guide.ts';
 import { init } from './init.ts';
+import { addInitOptions, checkInitFlags, type InitFlagValues } from './init/flags.ts';
 import { mcp } from './mcp.ts';
+import { parseList, parseNames } from './parse-names.ts';
 import { SESSION_BOUNDS } from '../mcp/session.ts';
 import { PROVIDER_IDS } from '../oauth/providers.ts';
 import { runLogin, runLogout, runModels, type LoginFlags } from '../oauth/cli.ts';
@@ -34,13 +36,6 @@ import { skillTopics } from './skill.ts';
 import { watchSession } from './watch.ts';
 import { telemetry as telemetryCommand, TELEMETRY_ACTIONS, type TelemetryAction } from './telemetry.ts';
 import { wordmarkBanner } from './wordmark.ts';
-
-/**
- * Help text always carries color; commander strips it when the stream it
- * writes to has none (not a TTY, `NO_COLOR`), so the decision is made once,
- * per stream, by the writer.
- */
-const pc = picocolors.createColors(true);
 
 /** An integer of at least one, for `--max-failures` and `--max-duration`. */
 function parsePositiveInt(value: string): number {
@@ -56,26 +51,6 @@ function parseNonNegativeInt(value: string): number {
     throw new InvalidArgumentError('must be a nonnegative integer');
   }
   return parsed;
-}
-
-function parseList(value: string): string[] {
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter((item) => item !== '');
-}
-
-/**
- * Names, comma-separated or repeated, each once. An empty value is a usage
- * error rather than an empty list: `--tag "$TAGS"` with the variable unset
- * must not select every test, and `--target ''` must not select every target.
- */
-function parseNames(noun: string): (value: string, previous?: string[]) => string[] {
-  return (value, previous = []) => {
-    const names = parseList(value);
-    if (names.length === 0) throw new InvalidArgumentError(`must name at least one ${noun}`);
-    return [...new Set([...previous, ...names])];
-  };
 }
 
 /**
@@ -125,6 +100,15 @@ function parseText(limit: number): (value: string) => string {
     if (length > limit) throw new InvalidArgumentError(`must be at most ${limit} characters, got ${length}`);
     return text;
   };
+}
+
+/** An e2e error code for `e2e feedback --error-code`: upper-case words joined by underscores. */
+function parseErrorCode(value: string): string {
+  const code = value.trim();
+  if (!/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/u.test(code) || code.length > ERROR_CODE_LIMIT) {
+    throw new InvalidArgumentError(`must be an e2e error code such as LOCATOR_AMBIGUOUS, at most ${ERROR_CODE_LIMIT} characters`);
+  }
+  return code;
 }
 
 const FILES_DESCRIPTION =
@@ -277,27 +261,11 @@ const EXPLORE_EXIT_MEANINGS: Readonly<Record<string, string>> = {
 };
 const EXPLORE_EXIT_CODES = EXIT_CODES.map(([code, meaning]) => [code, EXPLORE_EXIT_MEANINGS[code] ?? meaning] as const);
 
-/** A titled block indented like commander's own help sections. */
-function helpSection(title: string, lines: readonly string[]): string {
-  return [pc.bold(title), ...lines.map((line) => `  ${line}`)].join('\n');
-}
-
 function exitCodesSection(codes: readonly (readonly [code: string, meaning: string])[]): string {
   return helpSection(
     'Exit codes:',
     codes.map(([code, meaning]) => `${pc.cyan(code.padEnd(3))}  ${meaning}`),
   );
-}
-
-function examples(commands: readonly string[]): string {
-  return helpSection(
-    'Examples:',
-    commands.map((command) => `${pc.dim('$')} ${command}`),
-  );
-}
-
-function docsLine(path = ''): string {
-  return `Docs: ${pc.underline(`${DOCS_URL}${path}`)}`;
 }
 
 /** `run`, `cache ls`: the command path below the root, as the session event names it. */
@@ -309,11 +277,19 @@ function commandPath(command: Command): string {
   return names.join(' ');
 }
 
-/** The long names of the flags given on the command line: a closed set, never their values. */
+/**
+ * The long names of the flags given on the command line: a closed set, never
+ * their values. Of a `--x`/`--no-x` pair, which share one value, only the one
+ * that set it.
+ */
 function usedFlags(command: Command): string[] {
   return command.options
     .flatMap((option) =>
-      option.long !== undefined && command.getOptionValueSource(option.attributeName()) === 'cli' ? [option.long] : [],
+      option.long !== undefined &&
+      command.getOptionValueSource(option.attributeName()) === 'cli' &&
+      option.negate === (command.getOptionValue(option.attributeName()) === false)
+        ? [option.long]
+        : [],
     )
     .toSorted();
 }
@@ -460,21 +436,27 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     telemetry.session(command, usedFlags(actionCommand));
   });
 
-  program
+  const initCommand = program
     .command('init')
     .summary('scaffold an ESM package, e2e.config.ts, an example test, .gitignore entries, and the agent skill')
     .description(
       'Scaffold a project without touching existing files: an ESM package.json, e2e.config.ts, tests/example.e2e.ts, .gitignore entries, and the e2e skill for coding agents. Prompts for the engine, for AI support, and for the skill directories, then offers to install the dependencies; --yes takes the defaults, with the skill in .agents/skills and .claude/skills linked to it.',
     )
     .argument('[directory]', 'project directory, created when missing (default: the current directory)')
-    .option('-y, --yes', 'skip the prompts: Playwright, AI on, no installation')
+    .option('-y, --yes', 'skip the prompts; each answer not given as a flag takes its default: web, vercel, every skill and MCP location, no installation');
+  addInitOptions(initCommand)
     .addHelpText(
       'after',
-      ['', examples(['e2e init', 'e2e init my-app', 'e2e init --yes']), '', docsLine('/reference/cli')].join('\n'),
+      [
+        '',
+        examples(['e2e init', 'e2e init my-app', 'e2e init --yes', 'e2e init --yes --gateway openrouter --skills .agents/skills --mcp none --install']),
+        '',
+        docsLine('/reference/cli'),
+      ].join('\n'),
     )
-    .action(async (directory: string | undefined, options: { yes?: boolean }) => {
+    .action(async (directory: string | undefined, options: InitFlagValues, command: Command) => {
       const { exitCode, ...outcome } = await init(resolvePath(process.cwd(), directory ?? '.'), {
-        ...options,
+        ...checkInitFlags(options, command),
         ...(directory === undefined ? {} : { directory }),
         // Prompts need a terminal on both ends; a pipe or a CI log has neither.
         interactive: process.stdin.isTTY === true && process.stdout.isTTY === true,
@@ -596,6 +578,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .optionsGroup('Output:')
     .option('--reporter <ids>', `comma-separated reporters: ${BUILTIN_REPORTERS.join(', ')}`, parseReporters)
     .option('--output <dir>', 'results directory: report, artifacts, sessions (default: output in the config, else .e2e)')
+    .option('--cache-dir <dir>', CACHE_DIR_DESCRIPTION)
     .addOption(new Option('--artifacts <dir>').hideHelp().argParser(removedArtifactsFlag))
     .option('--debug', 'print phase timings and the agent step table to stderr')
     .option('--ai-trace', 'record every model call to <output>/ai-trace.json (unbox-ai)')
@@ -619,6 +602,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e run --max-failures 3',
           'e2e run --max-duration 900000',
           'e2e run --repeat-each 5 --no-cache tests/checkout.e2e.ts',
+          'E2E_CACHE_DIR=~/.cache/my-app/e2e e2e run',
           'CI=1 e2e run --strict-cache',
           'e2e run --update-snapshots tests/home.e2e.ts',
           'e2e run --agent ux tests/onboarding.e2e.ts',
@@ -647,6 +631,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           repeatEach?: number;
           reporter?: Reporter[];
           output?: string;
+          cacheDir?: string;
           /** Commander negation: `--no-cache` parses as `cache: false`. */
           cache?: boolean;
           strictCache?: boolean;
@@ -674,6 +659,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           repeatEach: options.repeatEach,
           reporters: options.reporter,
           output: options.output,
+          cacheDir: options.cacheDir,
           noCache: options.cache === false,
           strictCache: options.strictCache,
           updateSnapshots: options.updateSnapshots,
@@ -877,59 +863,34 @@ function createProgram(version: string, telemetry: Telemetry): Command {
       },
     );
 
-  const cacheCommand = program
-    .command('cache')
-    .summary('inspect, measure, and clear the replay cache')
-    .description(
-      'Read the replay cache the runs write under .e2e/cache: what a committed cache holds, how much room it takes, and how to empty it. Reads the same config as e2e run, so cache.dir and --config decide which store is meant.',
-    )
-    .addHelpText(
-      'after',
-      ['', examples(['e2e cache ls', 'e2e cache stats', 'e2e cache clear']), '', docsLine('/reference/cli#e2e-cache')].join('\n'),
-    );
-
-  const cacheSubcommand = (name: CacheCommand, summary: string, description: string): void => {
-    cacheCommand
-      .command(name)
-      .summary(summary)
-      .description(description)
-      .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
-      .action(async (options: { config?: string }) => {
-        process.exitCode = await cache(name, options);
-      });
-  };
-
-  cacheSubcommand(
-    'ls',
-    'list the cached traces',
-    'Print one row per cached trace: the test and target it was recorded for, the digest of its instruction, its age, and how many actions a replay would run.',
-  );
-  cacheSubcommand('clear', 'delete every cached trace', 'Delete the cache files and the directory itself; files the runner never wrote are left alone.');
-  cacheSubcommand('stats', 'print the entry count and size', 'Print the store directory, how many readable entries it holds, and how many bytes they take.');
+  registerCacheCommand(program);
 
   program
     .command('feedback')
     .summary('send a bug report, docs problem, or feature request to the e2e team')
     .description(
-      'Send one report about e2e itself to the e2e team. Coding agents may send one when e2e breaks, the docs mislead, or a capability is missing, after the user agrees to the --dry-run output. The report and the anonymous machine facts telemetry carries go to PostHog as one event; secret-named environment variable values and well-known token shapes are redacted first. Sent only when asked for, so e2e telemetry disable does not stop it; E2E_TELEMETRY_DISABLED and DO_NOT_TRACK do. --dry-run prints the event and sends nothing.',
+      'Send one report about e2e itself to the e2e team. Coding agents may send one when e2e breaks, the docs mislead, or a capability is missing, after the user agrees to the --dry-run output. The report and the anonymous machine facts telemetry carries go to PostHog as one event; secret-named environment variable values and well-known token shapes are redacted first. A bug needs --repro, steps that reproduce it every time; without them the command prints a prefilled GitHub issue to finish there and sends nothing. A report from an e2e older than the latest release exits 2 unless --allow-outdated. Sent only when asked for, so e2e telemetry disable does not stop it; E2E_TELEMETRY_DISABLED and DO_NOT_TRACK do. --dry-run prints the event and sends nothing.',
     )
     .optionsGroup('Report:')
     .addOption(new Option('--type <type>', 'what kind of report').choices(FEEDBACK_TYPES).default('other'))
     .requiredOption('-m, --message <text>', 'one or two sentences on the problem', parseText(FEEDBACK_LIMITS.message))
     .option('--task <text>', 'what you were trying to do', parseText(FEEDBACK_LIMITS.task))
     .option('--expected <text>', 'what you expected to happen', parseText(FEEDBACK_LIMITS.expected))
-    .option('--actual <text>', 'what happened instead, with the error code and message', parseText(FEEDBACK_LIMITS.actual))
+    .option('--actual <text>', 'what happened instead, with the error message', parseText(FEEDBACK_LIMITS.actual))
+    .option('--error-code <code>', 'the e2e error code involved, such as LOCATOR_AMBIGUOUS', parseErrorCode)
+    .option('--repro <text>', 'for a bug: steps that reproduce it every time, without app content; a bug without them goes to GitHub', parseText(FEEDBACK_LIMITS.repro))
     .option('--approach <text>', 'what you tried, workarounds included', parseText(FEEDBACK_LIMITS.approach))
     .option('--command <text>', 'the e2e command or API involved, such as "e2e run --shard 2/3"', parseText(FEEDBACK_LIMITS.command))
     .option('--agent <text>', 'the coding agent and model sending it, such as "Claude Code / claude-opus-5-5"', parseText(FEEDBACK_LIMITS.agent))
     .optionsGroup('Output:')
     .option('--dry-run', 'print the event that would be sent and send nothing')
+    .option('--allow-outdated', 'send even when a newer e2e release exists')
     .addHelpText(
       'after',
       [
         '',
         examples([
-          'e2e feedback --type bug -m "list ignores --grep" --command "e2e list --grep checkout"',
+          'e2e feedback --type bug -m "list ignores --grep" --command "e2e list --grep checkout" --repro "e2e list --grep checkout lists every test"',
           'e2e feedback --type docs -m "The mcp topic never says how to close a session"',
           'e2e feedback --type feature -m "Need a way to set the viewport per test" --dry-run',
         ]),
@@ -937,9 +898,14 @@ function createProgram(version: string, telemetry: Telemetry): Command {
         docsLine('/reference/cli#e2e-feedback'),
       ].join('\n'),
     )
-    .action(async (options: FeedbackReport & { dryRun?: boolean }) => {
-      const { dryRun, ...report } = options;
-      process.exitCode = await feedback(report, { version, telemetry, ...(dryRun === undefined ? {} : { dryRun }) });
+    .action(async (options: FeedbackReport & { dryRun?: boolean; allowOutdated?: boolean }) => {
+      const { dryRun, allowOutdated, ...report } = options;
+      process.exitCode = await feedback(report, {
+        version,
+        telemetry,
+        ...(dryRun === undefined ? {} : { dryRun }),
+        ...(allowOutdated === undefined ? {} : { allowOutdated }),
+      });
     });
 
   program

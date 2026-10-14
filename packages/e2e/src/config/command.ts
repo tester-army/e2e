@@ -25,6 +25,7 @@ const COMMAND_KEYS: readonly string[] = Object.keys({
   args: true,
   cwd: true,
   env: true,
+  inheritEnv: true,
   startupTimeout: true,
   shutdownTimeout: true,
   log: true,
@@ -53,19 +54,42 @@ function commandString(value: unknown, label: string): string {
 }
 
 /**
+ * One `inheritEnv` entry: a variable name, or a prefix ending in `*`. A `*`
+ * anywhere else, an `=` or whitespace, and a bare `*` are `INVALID_CONFIG`;
+ * a bare `*` would pass every variable, model keys included.
+ */
+function inheritPattern(value: unknown, label: string): string {
+  if (typeof value !== 'string') throw new ConfigurationError('INVALID_CONFIG', `${label} must be a string, got ${describeValue(value)}`);
+  if (value === '*') {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${label} cannot be "*": it would pass every variable to the app, model keys included; list the names or prefixes it needs`,
+    );
+  }
+  if (!/^[^*=\s]+\*?$/.test(value)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${label} must be a variable name or a prefix ending in * (such as "STRIPE_*"), got ${JSON.stringify(value)}`,
+    );
+  }
+  return value;
+}
+
+/**
  * Checks the shape of one command and returns a frozen copy: only the keys a
- * command takes, a non-empty executable, string args and env values, when
- * set positive integer timeouts, a non-empty `log`, and a boolean
- * `reuseExisting`. A misspelled key would otherwise be dropped without a
- * word; a NaN or infinite budget would make the readiness loop spin without
- * a deadline. An `env` entry whose value is `undefined` is dropped, as
- * `spawn` drops it: `env: { KEY: process.env.KEY }` with the variable unset
- * starts the process without it.
+ * command takes, a non-empty executable, string args and env values,
+ * `inheritEnv` names and trailing-`*` prefixes, when set positive integer
+ * timeouts, a non-empty `log`, and a boolean `reuseExisting`. A misspelled
+ * key would otherwise be dropped without a word; a NaN or infinite budget
+ * would make the readiness loop spin without a deadline. An `env` entry
+ * whose value is `undefined` is dropped, as `spawn` drops it:
+ * `env: { KEY: process.env.KEY }` with the variable unset starts the process
+ * without it.
  */
 export function normalizeCommand(command: CommandConfig, label: string): CommandConfig {
   if (!isRecord(command)) throw new ConfigurationError('INVALID_CONFIG', `${label} must be an object`);
   rejectUnknownKeys(label, command, COMMAND_KEYS);
-  const { executable, args, cwd, env, startupTimeout, shutdownTimeout, log, reuseExisting } = command;
+  const { executable, args, cwd, env, inheritEnv, startupTimeout, shutdownTimeout, log, reuseExisting } = command;
   if (typeof executable !== 'string' || executable.trim().length === 0) {
     throw new ConfigurationError('INVALID_CONFIG', `${label}.executable is required`);
   }
@@ -82,6 +106,10 @@ export function normalizeCommand(command: CommandConfig, label: string): Command
       : Object.entries(env)
           .filter(([, entry]) => entry !== undefined)
           .map(([key, entry]) => [key, commandString(entry, `${label}.env.${key}`)] as const);
+  if (inheritEnv !== undefined && !Array.isArray(inheritEnv)) {
+    throw new ConfigurationError('INVALID_CONFIG', `${label}.inheritEnv must be an array of variable names`);
+  }
+  const inherit = inheritEnv?.map((entry: unknown, index) => inheritPattern(entry, `${label}.inheritEnv[${index}]`));
   if (cwd !== undefined && typeof cwd !== 'string') throw new ConfigurationError('INVALID_CONFIG', `${label}.cwd must be a string`);
   positiveInt(startupTimeout, `${label}.startupTimeout`, 'milliseconds');
   positiveInt(shutdownTimeout, `${label}.shutdownTimeout`, 'milliseconds');
@@ -97,6 +125,7 @@ export function normalizeCommand(command: CommandConfig, label: string): Command
       args: strings === undefined ? undefined : Object.freeze(strings),
       cwd,
       env: variables === undefined ? undefined : Object.freeze(Object.fromEntries(variables)),
+      inheritEnv: inherit === undefined ? undefined : Object.freeze(inherit),
       startupTimeout,
       shutdownTimeout,
       log,

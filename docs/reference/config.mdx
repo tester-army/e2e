@@ -386,6 +386,12 @@ export interface CommandConfig {
   cwd?: string;
   /** Added to the inherited set; `{port}` expands in values. */
   env?: Readonly<Record<string, string>>;
+  /**
+   * Variables copied from the runner's environment when set: exact names, or
+   * prefixes ending in `*` (`'STRIPE_*'`). `env` wins over an inherited value.
+   * A bare `'*'` is `INVALID_CONFIG`.
+   */
+  inheritEnv?: readonly string[];
   /** Ready-probe budget in milliseconds; default 60000. Expiry is `APP_UNREACHABLE`. */
   startupTimeout?: number;
   /** Grace period before force-kill in milliseconds; default 10000. */
@@ -405,17 +411,21 @@ export interface CommandConfig {
 
 `log` must stay inside the project root and holds the raw, unredacted
 output, so keep it in an ignored directory. A startup failure quotes the last
-20 lines appended since the command started, with `command.env` values
-replaced by `<secret:NAME>` markers. Without `reuseExisting`, a `readyUrl`
-that already answers is `APP_ALREADY_RUNNING`. `reuseExisting` on an app
-whose `app.url` asks for port 0 is `INVALID_CONFIG`: a process already
-running cannot serve the port the run assigns.
+20 lines appended since the command started, with `command.env` and
+`inheritEnv` values replaced by `<secret:NAME>` markers. Without
+`reuseExisting`, a `readyUrl` that already answers is `APP_ALREADY_RUNNING`.
+`reuseExisting` on an app whose `app.url` asks for port 0 is
+`INVALID_CONFIG`: a process already running cannot serve the port the run
+assigns.
 
-The child inherits only `PATH`, `HOME`, the temp-directory variables, and
-`command.env`, so pass what the app needs explicitly. Every `args` entry and
-`env` value is a string; anything else, a number or a `secrets.get()` handle
-included, is `INVALID_CONFIG`, except an `undefined` `env` value, which is
-dropped. The runner never terminates a process it did not start.
+The child inherits only `PATH`, `HOME`, the temp-directory variables, the
+variables `inheritEnv` matches, and `command.env`, so pass what the app needs
+explicitly. `inheritEnv` takes names or trailing-`*` prefixes and copies a
+variable only when it is set; `env` wins. A bare `*` is `INVALID_CONFIG`.
+Every `args` entry and `env` value is a string; anything else, a number or a
+`secrets.get()` handle included, is `INVALID_CONFIG`, except an `undefined`
+`env` value, which is dropped. The runner never terminates a process it did
+not start.
 
 ### services
 
@@ -463,8 +473,8 @@ owns part of it, the output directory fails the config load with
 
 - is the project root, or outside it;
 - is a file, or a path under one (a missing directory is created);
-- is `cache.dir` or inside it, or would hold `cache.dir` under `results/`,
-  `sessions/`, or `videos/`;
+- is the cache directory (`cache.dir`, `--cache-dir`, or `E2E_CACHE_DIR`) or
+  inside it, or would hold it under `results/`, `sessions/`, or `videos/`;
 - holds a directory a `tests` glob scans (`output: 'tests'` with the default
   `tests/**/*.e2e.ts`).
 
@@ -961,7 +971,7 @@ export interface CacheConfig {
   mode?: CacheMode;
   /** Custom entry store; omit it to use the file store at `dir`. */
   store?: CacheStore;
-  /** File store directory, resolved against the project root; default `.e2e/cache`, whatever `output` says. */
+  /** File store directory, resolved against the project root; default `.e2e/cache`, whatever `output` says. `--cache-dir` and `E2E_CACHE_DIR` replace it. */
   dir?: string;
   /** Fail a step whose recording no longer replays with `REPLAY_STALE`. Default `false`. */
   strict?: boolean;

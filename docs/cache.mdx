@@ -266,6 +266,28 @@ until a `read-write` run replaces them. A custom `cache.store` replaces the
 file store and doesn't default to `read-only` in CI. `e2e explore` and
 `e2e mcp` don't use the cache.
 
+## Share the cache across checkouts
+
+Point every checkout of a project at one directory with `E2E_CACHE_DIR`, or
+`--cache-dir` for one run. Either replaces `cache.dir`, resolves from the
+project root (`~` or a leading `~/` is your home directory), and leaves the mode
+alone. With a custom `cache.store`, `--cache-dir` is an error and
+`E2E_CACHE_DIR` is ignored. Parallel runs can share the directory: each write
+replaces its file atomically. Entries are keyed by project, so give every
+checkout the same `projectId` (or `package.json` `name`); without either,
+each checkout's path becomes its identity and nothing replays across them.
+
+- Checkouts share entries: a failing run in any of them evicts the entry, and
+  checkouts with the same app identity but different app code overwrite each
+  other's entries (the last write wins).
+- While the override is set, a cache committed under `cache.dir` isn't read.
+- Use one directory per project. Two projects in one directory can fail with
+  a false `REPLAY_STALE` under `cache.strict`.
+
+```bash
+E2E_CACHE_DIR=~/.cache/my-app/e2e npx e2e run
+```
+
 ## Commit the replay cache
 
 <span id="commit-your-traces" />

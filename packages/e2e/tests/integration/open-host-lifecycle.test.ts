@@ -120,6 +120,23 @@ describe('openHost: lifecycle', { timeout: 60_000 }, () => {
     await expect(fetch(app.url)).rejects.toThrow();
   });
 
+  it('copies inheritEnv variables from the env the host is given', async () => {
+    const port = await freePort();
+    const script = `require('node:http').createServer((_req, res) => res.end(String(process.env.E2E_TEST_HOST_VALUE)))
+      .listen(${port}, '127.0.0.1');`;
+    const app = {
+      url: `http://127.0.0.1:${port}`,
+      command: { executable: process.execPath, args: ['-e', script], inheritEnv: ['E2E_TEST_HOST_VALUE'], shutdownTimeout: 2_000 },
+    };
+    const fake = createFakeEngine();
+    const opened = await host(fake.engine, {
+      env: { E2E_TEST_HOST_VALUE: 'per-host' },
+      config: { targets: [{ name: 'kiosk', platform: 'kiosk', engine: fake.engine, app }] },
+    });
+    expect(await (await fetch(app.url)).text()).toBe('per-host');
+    await opened.close();
+  });
+
   it('loads an explicit config path and selects only the named target', async () => {
     const one = createFakeEngine();
     const two = createFakeEngine();

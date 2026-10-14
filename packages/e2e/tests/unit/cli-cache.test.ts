@@ -149,6 +149,19 @@ describe('e2e cache stats', () => {
     expect(output).toContain('entries    2');
     expect(output).toMatch(/size {7}\d+(\.\d)? (B|KiB)/);
   });
+
+  it('reads the directory --cache-dir or E2E_CACHE_DIR names over cache.dir', async () => {
+    await invoke('cache', 'stats', '--cache-dir', 'from-flag');
+    expect(written(stdoutSpy)).toContain(`directory  ${path.join(root, 'from-flag')}`);
+    stdoutSpy.mockClear();
+    vi.stubEnv('E2E_CACHE_DIR', 'from-env');
+    try {
+      await invoke('cache', 'stats');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(written(stdoutSpy)).toContain(`directory  ${path.join(root, 'from-env')}`);
+  });
 });
 
 describe('e2e cache clear', () => {

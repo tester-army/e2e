@@ -54,6 +54,12 @@ short would take ordinary text with it.
 | --- | --- | --- |
 | `CI` | flag | CI mode: `retries` defaults to 1 and `workers` to 1, `cache` defaults to `read-only`, a focused test is `ONLY_IN_CI`, and `reuseExisting` on an app command is ignored |
 
+## Replay cache
+
+| Variable | Reading | Effect |
+| --- | --- | --- |
+| `E2E_CACHE_DIR` | value | Replaces [`cache.dir`](/reference/config#cache) for `e2e run` and `e2e cache`, resolved from the project root; `~` or a leading `~/` is the home directory. `--cache-dir` wins over it, a custom `cache.store` ignores it, the cache mode stays as configured, and `--no-cache` still turns the cache off |
+
 ## Diagnostics
 
 | Variable | Reading | Effect |

@@ -10,9 +10,9 @@
  * or evicted, whatever the configured mode.
  */
 
-import path from 'node:path';
 import type { CacheStrictSource, ResolvedCacheConfig } from '../config/resolve.ts';
 import { canonicalJson } from '../internal/ids.ts';
+import { displayPath, insideProjectRoot } from '../internal/paths.ts';
 import { REPLAY_POLICY_VERSION } from './relocate.ts';
 import {
   buildTraceCacheKey,
@@ -312,7 +312,8 @@ function staleAdvice(cache: ResolvedCacheConfig, source: CacheStrictSource, proj
   ].join(' and ');
   const run = `re-record it with a read-write run ${off}`;
   if (cache.store !== undefined) return `${run}; the run writes the new entry to the configured cache.store`;
-  const relative = path.relative(projectRoot, cache.dir);
-  const where = relative === '' || relative.startsWith('..') || path.isAbsolute(relative) ? cache.dir : relative;
-  return `${run} and commit the changed entry under ${where.split(path.sep).join('/')}`;
+  const where = displayPath(projectRoot, cache.dir);
+  return insideProjectRoot(projectRoot, cache.dir)
+    ? `${run} and commit the changed entry under ${where}`
+    : `${run}; the run writes the new entry under ${where}`;
 }

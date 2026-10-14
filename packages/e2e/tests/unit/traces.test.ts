@@ -81,6 +81,15 @@ describe('writeTracePages', () => {
     expect(text).toContain('**ENGINE_FAILURE** in cleanup: the browser closed early');
   });
 
+  it('names a cache directory outside the project by its absolute path', async () => {
+    const root = project();
+    const dir = path.join(root, '.e2e', 'results');
+    const shared = path.join(project(), 'shared');
+    await writeTracePages(reportDocument({ status: 'failed', results: [failing] }), new Set([failing.id]), { projectRoot: root, resultsRoot: dir, cacheDir: shared });
+    const text = readFileSync(path.join(dir, 'checkout-applies-the-coupon-1a2b3c4d5e6f7a8b', 'trace.md'), 'utf8');
+    expect(text).toContain(`(\`${shared.split(path.sep).join('/')}/${ENTRY}.json\`)`);
+  });
+
   it('tells a traced passing result as its steps, with no failure to look at', async () => {
     const opened = reportResult({ id: 'f'.repeat(12), titlePath: ['opens'], status: 'passed', attempts: [reportAttempt({ status: 'passed', steps: [reportStep({ index: 0, api: 'app.open', label: '/' })] })] });
     const [page] = await pagesOf(opened);

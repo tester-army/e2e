@@ -154,17 +154,34 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
 When e2e itself gets in your way, offer to tell the e2e team: a command or
 API that broke (`bug`), docs or this skill that misled you (`docs`), or a
 capability you needed and did not find (`feature`). Once per problem, after
-you worked around it or gave up, never for failures of the app under test.
+you worked around it or gave up. Never report:
+
+- failures of the app under test, or its own behavior;
+- a problem you saw once and could not see again;
+- anything on an outdated e2e: the command refuses it, so upgrade and check
+  the problem still happens first.
+
+Search [existing issues](https://github.com/tester-army/e2e/issues) first
+(`gh issue list -R tester-army/e2e --search "<words>"`); comment on a match
+instead of sending a new report.
+
+A `bug` needs `--repro`, steps that reproduce it every time without app
+content. Without such steps, or when the bug needs your app to show, omit
+`--repro`: the command then prints a prefilled GitHub issue and sends
+nothing; show the user the link and tell them to add a minimal reproduction
+and submit it. Never file the issue yourself.
+
 Run it with `--dry-run` first, show the user what would be sent, and send
 it only when they agree.
 
 ```bash
 npx e2e feedback --type bug -m "<one or two sentences>" \
-  --task "<what you were doing>" --expected "<...>" --actual "<error code and message>" \
+  --repro "<steps that reproduce it every time>" --error-code LOCATOR_AMBIGUOUS \
+  --task "<what you were doing>" --expected "<...>" --actual "<error message>" \
   --approach "<what you tried>" --command "<e2e command>" --agent "<agent / model>"
 ```
 
-Describe e2e's behavior only: never paste app content, page text, test files,
-URLs of private apps, or credentials. Secret-named environment variables and
-common token shapes are redacted, but do not rely on it. After sending, give
-the user the reference id it prints.
+Describe e2e's behavior only, briefly: never paste app content, page text,
+test files, URLs of private apps, or credentials. Secret-named environment
+variables and common token shapes are redacted, but do not rely on it. After
+sending, give the user the reference id it prints.

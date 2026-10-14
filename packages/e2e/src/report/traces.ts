@@ -11,6 +11,7 @@
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { displayPath } from '../internal/paths.ts';
 import { resultSegment } from '../run/artifacts.ts';
 import type { Report1Document, ReportExplore, ReportResult } from './build.ts';
 import { renderTracePage } from './failure-text.ts';
@@ -76,7 +77,7 @@ export async function writeTracePages(report: Report1Document, traced: ReadonlyS
       artifactsDir: relative(options.resultsRoot),
       pageDir: dir,
       readArtifact,
-      ...(options.cacheDir === undefined ? {} : { cacheDir: relative(options.cacheDir) }),
+      ...(options.cacheDir === undefined ? {} : { cacheDir: displayPath(options.projectRoot, options.cacheDir) }),
     });
     await writeTextReport(file, page);
     pages.set(result.id, relative(file));

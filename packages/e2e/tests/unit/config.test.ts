@@ -252,6 +252,32 @@ describe('resolveConfig', () => {
     );
   });
 
+  it('takes inheritEnv names and trailing-* prefixes, refusing a bare * and a * anywhere else', () => {
+    const url = 'http://localhost:3000';
+    const inheritEnv = (patterns: unknown) => ({ url, command: { executable: 'node', inheritEnv: patterns } }) as never;
+    expect(commandOf(inheritEnv(['DATABASE_URL', 'STRIPE_*'])).command.inheritEnv).toEqual(['DATABASE_URL', 'STRIPE_*']);
+    expect(() => resolveApp(inheritEnv('DATABASE_URL'))).toThrow(
+      expect.objectContaining({ code: 'INVALID_CONFIG', message: 'target "web" app.command.inheritEnv must be an array of variable names' }),
+    );
+    expect(() => resolveApp(inheritEnv(['*']))).toThrow(
+      expect.objectContaining({
+        code: 'INVALID_CONFIG',
+        message: 'target "web" app.command.inheritEnv[0] cannot be "*": it would pass every variable to the app, model keys included; list the names or prefixes it needs',
+      }),
+    );
+    for (const [entry, shown] of [['', '""'], ['STR*PE', '"STR*PE"'], ['*_KEY', '"*_KEY"'], ['STRIPE_**', '"STRIPE_**"'], ['A=B', '"A=B"'], [' DATABASE_URL', '" DATABASE_URL"']]) {
+      expect(() => resolveApp(inheritEnv(['DATABASE_URL', entry]))).toThrow(
+        expect.objectContaining({
+          code: 'INVALID_CONFIG',
+          message: `target "web" app.command.inheritEnv[1] must be a variable name or a prefix ending in * (such as "STRIPE_*"), got ${shown}`,
+        }),
+      );
+    }
+    expect(() => resolveApp(inheritEnv([42]))).toThrow(
+      expect.objectContaining({ code: 'INVALID_CONFIG', message: 'target "web" app.command.inheritEnv[0] must be a string, got 42' }),
+    );
+  });
+
   it('rejects an app or command key the contract does not know, naming the nearest', () => {
     const url = 'http://localhost:3000';
     expect(() => resolveApp({ url, readyURL: url } as never)).toThrow(
@@ -261,7 +287,7 @@ describe('resolveConfig', () => {
       expect.objectContaining({ code: 'INVALID_CONFIG', message: 'target "web" app.command has unknown key "arg"; did you mean "args"?' }),
     );
     expect(() => resolveApp({ url, command: { executable: 'node', readyUrl: url } } as never)).toThrow(
-      /app\.command has unknown key "readyUrl"; expected one of executable, args, cwd, env, startupTimeout, shutdownTimeout, log, reuseExisting$/,
+      /app\.command has unknown key "readyUrl"; expected one of executable, args, cwd, env, inheritEnv, startupTimeout, shutdownTimeout, log, reuseExisting$/,
     );
   });
 

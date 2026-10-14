@@ -23,6 +23,7 @@ vi.mock('../../src/cli/init.ts', () => ({
 }));
 
 const { main } = await import('../../src/cli/index.ts');
+const { olderThan } = await import('../../src/cli/feedback.ts');
 
 const { version: packageVersion } = JSON.parse(
   readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
@@ -349,6 +350,8 @@ describe('e2e run argument parsing', () => {
       'custom.config.ts',
       '--output',
       'out',
+      '--cache-dir',
+      'shared/cache',
       '--tag-mode',
       'all',
     );
@@ -360,6 +363,7 @@ describe('e2e run argument parsing', () => {
     expect(options.passWithNoTests).toBe(true);
     expect(options.configPath).toBe('custom.config.ts');
     expect(options.output).toBe('out');
+    expect(options.cacheDir).toBe('shared/cache');
   });
 
   it('parses --trace and --video modes, a bare flag as on', async () => {
@@ -542,6 +546,62 @@ describe('e2e init argument parsing', () => {
     );
     expect(process.exitCode).toBe(2);
   });
+
+  it('passes every wizard answer given as a flag', async () => {
+    await invoke(
+      'init', '--yes', '--engine', 'mobile', '--gateway', 'openai-compatible', '--endpoint', ' http://127.0.0.1:11434/v1 ',
+      '--skills', '.agents/skills/,.claude/skills,.agents/skills', '--mcp', '.mcp.json', '--install',
+    );
+    expect(initMock).toHaveBeenCalledExactlyOnceWith(process.cwd(), {
+      yes: true,
+      engine: 'mobile',
+      gateway: 'openai-compatible',
+      endpoint: ' http://127.0.0.1:11434/v1 ',
+      skills: ['.agents/skills', '.claude/skills'],
+      mcp: ['.mcp.json'],
+      install: true,
+      interactive: process.stdin.isTTY === true && process.stdout.isTTY === true,
+    });
+  });
+
+  it('merges repeated --skills and --mcp flags like comma-separated ones', async () => {
+    await invoke('init', '--yes', '--skills', '.agents/skills', '--skills', '.claude/skills', '--mcp', '.cursor/mcp.json', '--mcp', '.mcp.json');
+    expect(initMock).toHaveBeenCalledExactlyOnceWith(
+      process.cwd(),
+      expect.objectContaining({ skills: ['.agents/skills', '.claude/skills'], mcp: ['.cursor/mcp.json', '.mcp.json'] }),
+    );
+  });
+
+  it('reads --endpoint alone as --gateway openai-compatible', async () => {
+    await invoke('init', '--endpoint', 'https://llm.example/v1');
+    expect(initMock).toHaveBeenCalledExactlyOnceWith(
+      process.cwd(),
+      expect.objectContaining({ gateway: 'openai-compatible', endpoint: 'https://llm.example/v1' }),
+    );
+  });
+
+  it('reads none as no location, and --no-install as declining the install', async () => {
+    await invoke('init', '--gateway', 'none', '--skills', 'none', '--mcp', 'none', '--no-install');
+    expect(initMock).toHaveBeenCalledExactlyOnceWith(process.cwd(), expect.objectContaining({ gateway: 'none', skills: [], mcp: [], install: false }));
+  });
+
+  it.each([
+    [['--engine', 'playwright'], "option '--engine <id>' argument 'playwright' is invalid. Allowed choices are web, mobile, none."],
+    [['--gateway', 'anthropic'], 'Allowed choices are vercel, openrouter, openai-compatible, chatgpt, copilot, opencode-console, grok, none.'],
+    [['--skills', '.cursor/skills'], 'error: --skills: unknown skill directory ".cursor/skills"; expected .agents/skills, .claude/skills, none'],
+    [['--skills', ''], 'must name at least one skill directory'],
+    [['--mcp', 'claude'], 'error: --mcp: unknown MCP config file "claude"; expected .mcp.json, .cursor/mcp.json, none'],
+    [['--mcp', 'none,.mcp.json'], 'error: --mcp: none cannot be combined with other values'],
+    [['--mcp', 'none', '--mcp', '.mcp.json'], 'error: --mcp: none cannot be combined with other values'],
+    [['--skills', '.claude/skills', '--skills', 'none'], 'error: --skills: none cannot be combined with other values'],
+    [['--gateway', 'openai-compatible', '--endpoint', 'http://llm.example/v1'], 'Must use HTTPS unless the host is loopback'],
+    [['--gateway', 'openrouter', '--endpoint', 'https://llm.example/v1'], 'error: --endpoint is the base URL for --gateway openai-compatible, not --gateway openrouter'],
+  ])('rejects %j before init runs, naming the valid values', async (flags, message) => {
+    await invoke('init', '--yes', ...flags);
+    expect(initMock).not.toHaveBeenCalled();
+    expect(written(stderrSpy)).toContain(message);
+    expect(process.exitCode).toBe(2);
+  });
 });
 
 describe('e2e --version and --help', () => {
@@ -608,6 +668,7 @@ describe('e2e --version and --help', () => {
       '-w',
       '--reporter',
       '--output',
+      '--cache-dir',
       '--debug',
       '--ai-trace',
       '--trace',
@@ -661,6 +722,7 @@ describe('e2e feedback', () => {
   /** Every feedback event a request carried; the telemetry flush posts its own batch beside them. */
   function sentFeedback(): SentEvent[] {
     return fetchMock.mock.calls
+      .filter((call: readonly unknown[]) => String(call[0]).startsWith('https://eu.i.posthog.com/'))
       .flatMap((call: readonly unknown[]) => (JSON.parse((call[1] as { body: string }).body) as { batch: SentEvent[] }).batch)
       .filter((event) => event.event === 'e2e_feedback');
   }
@@ -683,15 +745,32 @@ describe('e2e feedback', () => {
     rmSync(configHome, { recursive: true, force: true });
   });
 
+  /** Answers the npm registry's `latest` request with `version`, and every other request with 200. */
+  function latestIs(version: string): void {
+    fetchMock.mockImplementation(async (url: unknown) =>
+      String(url) === 'https://registry.npmjs.org/e2e/latest' ? Response.json({ version }) : new Response('{}', { status: 200 }),
+    );
+  }
+
   it('sends one event with the report, the machine facts, and the telemetry id', async () => {
-    await invoke('feedback', '--type', 'bug', '-m', ' list ignores --grep ', '--command', 'e2e list --grep x');
+    latestIs(packageVersion);
+    await invoke(
+      'feedback',
+      '--type', 'bug',
+      '-m', ' list ignores --grep ',
+      '--command', 'e2e list --grep x',
+      '--repro', 'e2e list --grep x lists every test',
+      '--error-code', 'LOCATOR_AMBIGUOUS',
+    );
     expect(process.exitCode).toBe(0);
-    expect(String(fetchMock.mock.calls[0]?.[0])).toBe('https://eu.i.posthog.com/batch/');
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe('https://registry.npmjs.org/e2e/latest');
     const [event] = sentFeedback();
     expect(event?.properties).toMatchObject({
       type: 'bug',
       message: 'list ignores --grep',
       command: 'e2e list --grep x',
+      repro: 'e2e list --grep x lists every test',
+      error_code: 'LOCATOR_AMBIGUOUS',
       task: null,
       e2e_version: packageVersion,
       $process_person_profile: false,
@@ -752,18 +831,76 @@ describe('e2e feedback', () => {
     expect(written(stderrSpy)).toContain(`feedback not confirmed: PostHog did not acknowledge report ${event?.uuid}, so it may not have arrived.`);
   });
 
+  it('sends a bug without --repro to GitHub as a prefilled, redacted issue and posts nothing', async () => {
+    vi.stubEnv('MY_SERVICE_TOKEN', 'hunter2-hunter2');
+    await invoke('feedback', '--type', 'bug', '-m', 'tap lands on the wrong tab', '--actual', 'token hunter2-hunter2 leaked', '--error-code', 'TARGET_NOT_FOUND');
+    expect(process.exitCode).toBe(0);
+    expect(sentFeedback()).toEqual([]);
+    const output = written(stdoutSpy);
+    expect(output).toContain('Not sent: a bug without --repro goes to GitHub');
+    const url = new URL(output.trim().split('\n').at(-1) ?? '');
+    expect(`${url.origin}${url.pathname}`).toBe('https://github.com/tester-army/e2e/issues/new');
+    expect(url.searchParams.get('template')).toBe('bug_report.yml');
+    expect(url.searchParams.get('title')).toBe('tap lands on the wrong tab');
+    expect(url.searchParams.get('what')).toBe('tap lands on the wrong tab\n\nActual: token <secret:MY_SERVICE_TOKEN> leaked\nError code: TARGET_NOT_FOUND');
+    expect(url.searchParams.get('versions')).toContain(`e2e ${packageVersion}, node `);
+  });
+
+  it('keeps the GitHub link under the length GitHub accepts', async () => {
+    const long = 'x'.repeat(1500);
+    await invoke('feedback', '--type', 'bug', '-m', 'y'.repeat(2000), '--task', long, '--expected', long, '--actual', long, '--approach', long);
+    const link = written(stdoutSpy).trim().split('\n').at(-1) ?? '';
+    expect(link.length).toBeLessThanOrEqual(8000);
+    expect(new URL(link).searchParams.get('what')).toMatch(/…$/u);
+  });
+
+  it('refuses a report from an outdated e2e with exit 2 unless --allow-outdated', async () => {
+    latestIs('999.0.0');
+    await invoke('feedback', '-m', 'broken');
+    expect(process.exitCode).toBe(2);
+    expect(sentFeedback()).toEqual([]);
+    expect(written(stderrSpy)).toContain(`feedback not sent: e2e ${packageVersion} is older than the latest release 999.0.0`);
+    process.exitCode = undefined;
+    await invoke('feedback', '-m', 'broken', '--allow-outdated');
+    expect(process.exitCode).toBe(0);
+    expect(sentFeedback()).toHaveLength(1);
+  });
+
+  it('sends when the registry fails or does not answer with a version', async () => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (String(url).startsWith('https://registry.npmjs.org/')) throw new TypeError('fetch failed');
+      return new Response('{}', { status: 200 });
+    });
+    await invoke('feedback', '-m', 'broken');
+    expect(process.exitCode).toBe(0);
+    expect(sentFeedback()).toHaveLength(1);
+  });
+
   it('counts the length limit in characters, not UTF-16 units', async () => {
     await invoke('feedback', '-m', '🐛'.repeat(2000), '--dry-run');
     expect(process.exitCode).toBe(0);
   });
 
   it('rejects a missing message, a blank one, one over the limit, and an unknown type with exit 2', async () => {
-    for (const args of [[], ['-m', '  '], ['-m', 'x'.repeat(2001)], ['--type', 'rant', '-m', 'x']]) {
+    for (const args of [[], ['-m', '  '], ['-m', 'x'.repeat(2001)], ['--type', 'rant', '-m', 'x'], ['-m', 'x', '--error-code', 'not a code'], ['-m', 'x', '--actual', 'x'.repeat(1501)]]) {
       process.exitCode = undefined;
       await invoke('feedback', ...args);
       expect(process.exitCode).toBe(2);
     }
     expect(sentFeedback()).toEqual([]);
+  });
+});
+
+describe('olderThan', () => {
+  it.each([
+    ['0.19.0', '0.20.0', true],
+    ['0.20.0', '0.20.0', false],
+    ['0.21.0-nightly-20261014080557', '0.20.0', false],
+    ['0.20.1-nightly-20261013094930', '0.20.1', true],
+    ['1.0.0', '0.99.99', false],
+    ['0.0.0', 'garbage', false],
+  ] as const)('%s before %s is %s', (version, latest, older) => {
+    expect(olderThan(version, latest)).toBe(older);
   });
 });
 
@@ -928,6 +1065,14 @@ describe('e2e telemetry', () => {
     }
     expect(printedEvents()).toEqual([]);
     expect(runMock).not.toHaveBeenCalled();
+  });
+
+  it('records the init flag names, never their values, and only the half of --install/--no-install given', async () => {
+    await invoke('init', '--yes', '--gateway', 'openai-compatible', '--endpoint', 'https://llm.secret.example/v1', '--skills', '.claude/skills', '--no-install');
+    const [session] = printedEvents();
+    expect(session!.properties['flags']).toEqual(['--endpoint', '--gateway', '--no-install', '--skills', '--yes']);
+    expect(JSON.stringify(printedEvents())).not.toContain('secret');
+    expect(JSON.stringify(printedEvents())).not.toContain('.claude');
   });
 
   it('records the init event from the outcome init returns', async () => {

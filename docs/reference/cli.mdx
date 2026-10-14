@@ -17,7 +17,7 @@ npx e2e mcp [options]
 npx e2e run [files...] [options]
 npx e2e explore [goal] [options]
 npx e2e list [files...] [options]
-npx e2e cache ls|clear|stats [--config <path>]
+npx e2e cache ls|clear|stats [--config <path>] [--cache-dir <dir>]
 npx e2e feedback -m <text> [options]
 npx e2e telemetry [status|enable|disable]
 npx e2e --help
@@ -34,7 +34,7 @@ pnpm exec e2e mcp [options]
 pnpm exec e2e run [files...] [options]
 pnpm exec e2e explore [goal] [options]
 pnpm exec e2e list [files...] [options]
-pnpm exec e2e cache ls|clear|stats [--config <path>]
+pnpm exec e2e cache ls|clear|stats [--config <path>] [--cache-dir <dir>]
 pnpm exec e2e feedback -m <text> [options]
 pnpm exec e2e telemetry [status|enable|disable]
 pnpm exec e2e --help
@@ -51,7 +51,7 @@ bunx e2e mcp [options]
 bunx e2e run [files...] [options]
 bunx e2e explore [goal] [options]
 bunx e2e list [files...] [options]
-bunx e2e cache ls|clear|stats [--config <path>]
+bunx e2e cache ls|clear|stats [--config <path>] [--cache-dir <dir>]
 bunx e2e feedback -m <text> [options]
 bunx e2e telemetry [status|enable|disable]
 bunx e2e --help
@@ -118,7 +118,18 @@ lockfile, then the invoking package manager, then npm.
 | Argument or flag | Type | Default | Behavior |
 | --- | --- | --- | --- |
 | `[directory]` | path | the working directory | Where to scaffold; created when missing |
-| `-y`, `--yes` | boolean | `false` | Uses the Web engine and Vercel AI Gateway, installs the skill and MCP config in both locations, and skips dependency installation |
+| `-y`, `--yes` | boolean | `false` | Skips the prompts. Each answer not given as a flag takes its default: Web engine, Vercel AI Gateway, the skill and MCP config in both locations, no dependency installation |
+| `--engine <id>` | `web`, `mobile`, `none` | asked | The engine for a new config |
+| `--gateway <id>` | `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `opencode-console`, `grok`, `none` | asked | The model gateway for agent steps in a new config |
+| `--endpoint <url>` | URL | asked; `http://127.0.0.1:11434/v1` with `--yes` | Base URL for `--gateway openai-compatible`, which it implies: HTTPS, or HTTP on a loopback host |
+| `--skills <dirs>` | `.agents/skills`, `.claude/skills`, comma-separated or repeated, or `none` | asked | Where to install the agent skill |
+| `--mcp <files>` | `.mcp.json`, `.cursor/mcp.json`, comma-separated or repeated, or `none` | asked | Where to register the MCP server |
+| `--install`, `--no-install` | boolean | asked; `--no-install` with `--yes` | Whether to install dependencies |
+
+A flag answers its question and skips that prompt.
+Without a terminal, pass `--yes`.
+An unknown value exits 2 before any write and lists the valid ones.
+`--engine`, `--gateway`, and `--endpoint` apply only to a new config.
 
 | Creates | Content |
 | --- | --- |
@@ -132,14 +143,17 @@ lockfile, then the invoking package manager, then npm.
 <CodeGroup>
 ```bash npm
 npx e2e init --yes
+npx e2e init --yes --gateway openrouter --skills .agents/skills --mcp .mcp.json --install
 ```
 
 ```bash pnpm
 pnpm dlx e2e init --yes
+pnpm dlx e2e init --yes --gateway openrouter --skills .agents/skills --mcp .mcp.json --install
 ```
 
 ```bash bun
 bunx e2e init --yes
+bunx e2e init --yes --gateway openrouter --skills .agents/skills --mcp .mcp.json --install
 ```
 </CodeGroup>
 
@@ -148,7 +162,9 @@ registration keeps extra settings on the e2e server, such as environment
 variables and client timeouts, even when repairing its launch command. A
 current registration is left byte-for-byte unchanged. Once
 a skill directory exists, later runs refresh copies that differ from the
-installed version and never add a directory the project did not choose. A
+installed version and never add a directory the project did not choose.
+`--skills` and `--mcp` name the exact locations instead; others are left as
+they are. A
 `.claude/skills/e2e/` copy from an earlier version becomes the symlink when
 it holds nothing but the shipped files; one with other files in it stays a
 copy and is refreshed. A skill directory that is a symlink elsewhere, or sits
@@ -386,6 +402,7 @@ or every test was filtered out.
 | `--max-duration <ms>` | integer 1-2147483647 | config | Overrides [`maxDuration`](/reference/config#maxduration) for one run. Exits 1, not 130. |
 | `--reporter <ids>` | comma-separated list | config | Replaces the built-in IDs in `config.reporters`: `list`, `json`, `junit`, `markdown`. `json` with `list` is `INVALID_CONFIG`. [Reporter objects](/reference/reporters) in the config keep running. |
 | `--output <dir>` | string | config, else `.e2e` | The results directory for this run, over the config's [`output`](/reference/config#output): the report, the reporter files, the AI trace, `results/` (cleared once the run's tests start, down to what the previous report names on a `--last-failed` rerun), and `sessions/`. Resolved from the project root; one the run cannot own is `INVALID_CONFIG`. The removed `--artifacts <dir>` fails with the `--output` it maps to: `--artifacts out/artifacts` is `--output out`, and a directory whose parent is the project root or outside it maps to `--output .e2e`. |
+| `--cache-dir <dir>` | string | `E2E_CACHE_DIR`, else `cache.dir`, else `.e2e/cache` | The replay cache directory for this run, over [`E2E_CACHE_DIR`](/reference/environment#replay-cache) and [`cache.dir`](/reference/config#cache). Resolved from the project root, `~` or a leading `~/` as the home directory; the cache mode stays as configured. With a custom `cache.store` it is `INVALID_CONFIG`. |
 | `--no-cache` | boolean | `false` | Replay cache off for this run, whatever `config.cache` says. |
 | `--strict-cache` | boolean | `false` | Turns on `cache.strict` for this run: a step whose recording exists but no longer replays fails with `REPLAY_STALE` instead of handing off to the agent, retries replay too, and the run never writes the cache. See [Fail on a stale recording](/cache#fail-on-a-stale-recording). |
 | `-u`, `--update-snapshots` | boolean | `false` | Writes each stored screenshot [`toHaveScreenshot`](/reference/expect#screenshot-matchers) finds missing or different, and passes the matcher. Without it a missing one is written and fails, and in CI it is only attached to the results. |
@@ -757,7 +774,8 @@ bunx e2e list --reporter json
 ## e2e cache
 
 Inspect or clear the replay cache. These commands load the discovered config
-or `--config <path>`, honor `cache.dir`, and exit 0 on an empty store. The
+or `--config <path>`, read the directory a run would (`--cache-dir`, else
+`E2E_CACHE_DIR`, else `cache.dir`), and exit 0 on an empty store. The
 default directory is `.e2e/cache/`.
 
 | Command | Prints |
@@ -833,30 +851,46 @@ the user the `--dry-run` output and getting their agreement.
 | `--type <type>` | `bug`, `docs`, `feature`, or `other` (default) |
 | `--task <text>` | What you were trying to do |
 | `--expected <text>` | What you expected to happen |
-| `--actual <text>` | What happened instead, with the error code and message |
+| `--actual <text>` | What happened instead, with the error message |
+| `--error-code <code>` | The e2e error code involved, such as `LOCATOR_AMBIGUOUS` |
+| `--repro <text>` | For a bug: steps that reproduce it every time, without app content |
 | `--approach <text>` | What you tried, workarounds included |
 | `--command <text>` | The e2e command or API involved, at most 200 characters |
 | `--agent <text>` | The coding agent and model sending it, at most 200 characters |
+| `--allow-outdated` | Send even when a newer e2e release exists |
 | `--dry-run` | Print the event that would be sent and send nothing |
 
-`--task`, `--expected`, `--actual`, and `--approach` take up to 4000
-characters each. A blank or longer value exits 2.
+`--task`, `--expected`, `--actual`, `--approach`, and `--repro` take up to
+1500 characters each. A blank or longer value exits 2.
+
+A bug without `--repro` isn't sent. The command prints a prefilled
+[GitHub issue](https://github.com/tester-army/e2e/issues/new?template=bug_report.yml)
+instead, where the e2e team can ask for a reproduction. Add a minimal one and
+submit it yourself.
+
+Before sending, the command asks the npm registry for the latest e2e
+release. When yours is older, it exits 2 and sends nothing, since the problem
+may already be fixed: upgrade, check it still happens, and send it again, or
+pass `--allow-outdated`.
 
 <CodeGroup>
 ```bash npm
-npx e2e feedback --type bug -m "list ignores --grep" --command "e2e list --grep checkout"
+npx e2e feedback --type bug -m "list ignores --grep" --command "e2e list --grep checkout" \
+  --repro "e2e list --grep checkout lists every test"
 npx e2e feedback --type docs -m "The mcp topic never says how to close a session"
 npx e2e feedback --type feature -m "Need a way to set the viewport per test" --dry-run
 ```
 
 ```bash pnpm
-pnpm exec e2e feedback --type bug -m "list ignores --grep" --command "e2e list --grep checkout"
+pnpm exec e2e feedback --type bug -m "list ignores --grep" --command "e2e list --grep checkout" \
+  --repro "e2e list --grep checkout lists every test"
 pnpm exec e2e feedback --type docs -m "The mcp topic never says how to close a session"
 pnpm exec e2e feedback --type feature -m "Need a way to set the viewport per test" --dry-run
 ```
 
 ```bash bun
-bunx e2e feedback --type bug -m "list ignores --grep" --command "e2e list --grep checkout"
+bunx e2e feedback --type bug -m "list ignores --grep" --command "e2e list --grep checkout" \
+  --repro "e2e list --grep checkout lists every test"
 bunx e2e feedback --type docs -m "The mcp topic never says how to close a session"
 bunx e2e feedback --type feature -m "Need a way to set the viewport per test" --dry-run
 ```

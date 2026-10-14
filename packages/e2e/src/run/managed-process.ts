@@ -27,11 +27,39 @@ const PROGRESS_NOTICE_MIN_MS = 5_000;
 const OUTPUT_TAIL_LINES = 20;
 const OUTPUT_TAIL_BYTES = 4_096;
 /**
- * `command.env` values this long are redacted from the quoted output; shorter
- * ones (a port, a flag) would blank ordinary text without hiding anything.
- * The shared redactor has no floor of its own.
+ * `command.env` and `inheritEnv` values this long are redacted from the quoted
+ * output; shorter ones (a port, a flag) would blank ordinary text without
+ * hiding anything. The shared redactor has no floor of its own.
  */
 const REDACTED_ENV_MIN_LENGTH = 4;
+
+/**
+ * The child's environment: the default names from `process.env`, what
+ * `inheritEnv` matches in `source` (only variables that are set), then
+ * `command.env`, each layer replacing the one before. Windows reads names
+ * case-insensitively (`Path`), so there names match and replace that way
+ * too. `inherited` is what `inheritEnv` copied.
+ */
+function childEnv(
+  command: CommandConfig,
+  source: NodeJS.ProcessEnv,
+): { env: Record<string, string>; inherited: [string, string][] } {
+  const fold = process.platform === 'win32' ? (name: string) => name.toUpperCase() : (name: string) => name;
+  const patterns = (command.inheritEnv ?? []).map(fold);
+  const names = new Set(patterns.filter((pattern) => !pattern.endsWith('*')));
+  const prefixes = patterns.filter((pattern) => pattern.endsWith('*')).map((pattern) => pattern.slice(0, -1));
+  const inherited = Object.entries(source).filter((entry): entry is [string, string] => {
+    const name = fold(entry[0]);
+    return entry[1] !== undefined && (names.has(name) || prefixes.some((prefix) => name.startsWith(prefix)));
+  });
+  const defaults = INHERITED_ENV.flatMap((key) => {
+    const value = process.env[key];
+    return value === undefined ? [] : [[key, value] as const];
+  });
+  const byName = new Map<string, readonly [string, string]>();
+  for (const entry of [...defaults, ...inherited, ...Object.entries(command.env ?? {})]) byName.set(fold(entry[0]), entry);
+  return { env: Object.fromEntries(byName.values()), inherited };
+}
 
 /** Every spawned process group still running, for the forced exit that cannot wait on `stop`. */
 const live = new Set<ChildProcess>();
@@ -95,12 +123,14 @@ async function answers(url: string, timeoutMs: number, signal?: AbortSignal): Pr
 
 /**
  * What the runner tells a managed process about the run: whether CI mode is
- * active (where `reuseExisting` is ignored), where to narrate run-level
- * progress such as a reused app, and where to report the process starting
- * and becoming ready.
+ * active (where `reuseExisting` is ignored), the environment the run resolves
+ * against (what `inheritEnv` copies from; default `process.env`), where to
+ * narrate run-level progress such as a reused app, and where to report the
+ * process starting and becoming ready.
  */
 export interface ManagedProcessHooks {
   readonly ci?: boolean;
+  readonly env?: NodeJS.ProcessEnv;
   readonly notice?: (message: string) => void;
   readonly starting?: (label: string) => void;
   /** `reused` when the process attached to one already serving the URL instead of spawning. */
@@ -116,6 +146,8 @@ export class ManagedProcess {
   private child: ChildProcess | null = null;
   private reusedExisting = false;
   private spawnedProcess = false;
+  /** Hides `command.env` and `inheritEnv` values in a quoted startup failure; built at spawn. */
+  private redact: (text: string) => string = (text) => text;
 
   constructor(
     private readonly label: string,
@@ -188,12 +220,10 @@ export class ManagedProcess {
       }
       if (aborted()) return;
     }
-    const env: Record<string, string> = {};
-    for (const key of INHERITED_ENV) {
-      const value = process.env[key];
-      if (value !== undefined) env[key] = value;
-    }
-    Object.assign(env, this.command.env ?? {});
+    const { env, inherited } = childEnv(this.command, this.hooks.env ?? process.env);
+    this.redact = createRedactor(
+      [...inherited, ...Object.entries(this.command.env ?? {})].filter(([, value]) => value.length >= REDACTED_ENV_MIN_LENGTH),
+    );
 
     const logFd = this.openLog();
     // The log appends across commands and runs; a failure quotes what landed
@@ -290,19 +320,16 @@ export class ManagedProcess {
   /**
    * The startup failure with the log's tail under it, so the report alone
    * says what the process was doing when it stalled or died. The message
-   * lands in the report, so `command.env` values are redacted from the quote
-   * with the same redactor and markers as the traces, the way the log itself
-   * never is. Without a log there is nothing to quote, and the message says
-   * how to get one.
+   * lands in the report, so `command.env` and `inheritEnv` values are
+   * redacted from the quote with the same redactor and markers as the traces,
+   * the way the log itself never is. Without a log there is nothing to quote,
+   * and the message says how to get one.
    */
   private unreachable(message: string, logOffset: number | undefined): InfrastructureError {
     if (logOffset === undefined) {
       return new InfrastructureError('APP_UNREACHABLE', `${message}\nset log on this command to keep its output`);
     }
-    const redact = createRedactor(
-      Object.entries(this.command.env ?? {}).filter(([, value]) => value.length >= REDACTED_ENV_MIN_LENGTH),
-    );
-    const lines = this.outputSince(logOffset).map(redact);
+    const lines = this.outputSince(logOffset).map(this.redact);
     const detail =
       lines.length === 0
         ? `no output in ${this.logDisplayPath()}`
