@@ -24,7 +24,7 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "e2e",
-    "shortDescription": "Agentic end-to-end tests for web and mobile apps",
+    "shortDescription": "Agentic tests for web & mobile",
     "longDescription": "Use e2e to add end-to-end tests to a project, write tests that mix agent goals with exact locator assertions, run them in a browser or on an iOS simulator, Android emulator, or phone, and fix failures from the run's trace. Drive the running app over the e2e MCP server to check a UI change, explore an app toward a goal, or bug bash a branch with each bug proven by a repro test.",
     "developerName": "TesterArmy",
     "category": "Developer Tools",
@@ -45,7 +45,6 @@
     "brandColor": "#111111",
     "composerIcon": "./assets/icon.png",
     "logo": "./assets/logo.png",
-    "logoDark": "./assets/logo-dark.png",
-    "screenshots": []
+    "logoDark": "./assets/logo-dark.png"
   }
 }
