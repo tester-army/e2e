@@ -96,9 +96,9 @@ Switching to OpenCode Console: install `ai`, `@ai-sdk/openai-compatible`,
 `npx e2e login opencode-console`. A bare id is an OpenCode Zen model; a `go/` id
 (`go/deepseek-v4.1-flash`) is an OpenCode Go model and needs an OpenCode Go
 subscription: the workspace's through the login, or yours through
-`OPENCODE_API_KEY`. `npx e2e models opencode-console` lists
-the ids, tagged Zen or Go. In CI, set a Console service account API key or an OpenCode Go
-subscription API key as `OPENCODE_API_KEY`.
+`OPENCODE_API_KEY`. `npx e2e models opencode-console` lists the ids, tagged
+Zen or Go, through the key when it is set. In CI, set a Console service account
+API key or an OpenCode Go subscription API key as `OPENCODE_API_KEY`.
 
 ## The config
 
@@ -206,6 +206,7 @@ start a script that brings them up and serves the app.
 | `basicAuth` | `{ username, password }` for a `401` challenge; `password` may be `secrets.get('name')`, resolved per attempt and redacted like any secret, the base64 `Authorization` credential too. |
 | `userAgent` | The `User-Agent` every attempt sends and `navigator.userAgent` reports. |
 | `locale`, `timezoneId` | The language (`'de-DE'`: `navigator.language`, `Intl`, `Accept-Language`) and IANA time zone (`'Europe/Berlin'`) every attempt runs in. |
+| `colorScheme`, `reducedMotion` | The `prefers-color-scheme` (`'light'`, `'dark'`, `'no-preference'`) and `prefers-reduced-motion` (`'reduce'`, `'no-preference'`) every page reports to its `@media` rules and `matchMedia`, from first paint. |
 | `initScripts` | Scripts every document runs before the page's own: source, `{ path }`, or a function with no closures. |
 | `testIdAttribute` | What `getByTestId` reads; default `data-testid`. |
 | `screencast` | `{ size?, quality? }` for the engine's own video: frame size (default the viewport's), JPEG quality 0 to 100. |
@@ -353,8 +354,8 @@ export default {
 - `limrun()` from `@e2e-dev/limrun` leases one device per worker and installs
   `app.appPath` before tests. Set `LIMRUN_API_KEY`; install `@limrun/api` and
   matching `agent-device` peers. Android needs `adb` on `PATH` for its tunnel.
-  With agent-device 0.21.22, iOS keyboard actions such as `locator.press('Enter')`
-  return `UNSUPPORTED_CAPABILITY`; tap an app button when available.
+  iOS keyboard actions such as `locator.press('Enter')` return
+  `UNSUPPORTED_CAPABILITY`; tap an app button when available.
   See `examples/with-limrun` for the same form and restart tests on both platforms.
 - Only a control that appeared or moved with the previous action waits out
   `transition` (default 500 ms); agent actions settle `settle` ms (default

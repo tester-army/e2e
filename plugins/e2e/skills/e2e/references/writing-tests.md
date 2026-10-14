@@ -414,6 +414,9 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
   `ACTION_FAILED` when it could not be read.
 - `cookies()`, `setCookies([...])`: a target is an http(s) URL or a domain.
 - `setViewport({ width, height })`: resize.
+- `emulateMedia({ colorScheme?, reducedMotion? })`: what the page's `@media`
+  rules and `matchMedia` read, for the rest of the test. Call it before
+  `app.open` to load the page with it; a feature left out keeps its value.
 - `onDialog('accept' | 'dismiss' | handler)`: awaited; resolves to an async
   unsubscribe. Register it before the tap that opens the dialog. A handler
   gets `{ message, accept(text?), dismiss() }`, `accept` taking the prompt

@@ -91,8 +91,9 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
    the components, open the page with `--headed`, or drive the live app over
    a connected `e2e mcp` server (topic `mcp`): `open_session`, `observe`,
    and `locate` show exact names and check a locator before you write it.
-3. Write `tests/<feature>.e2e.ts`. Drive the flow with `agent.act`, one goal
-   per call, and pin each outcome right after with `expect` or `agent.assert`.
+3. Write `tests/<feature>.e2e.ts`. Drive the flow with `agent.act`, one
+   atomic goal per call, and pin each outcome right after with `expect` or
+   `agent.assert`. A test with three goals makes three calls.
    Exact values go through `screen`: a sign-in form in a setup test, a field
    that must receive one specific string, a count that must be one number.
 4. Run one file: `npx e2e run tests/<feature>.e2e.ts`. Agent steps need a
@@ -133,8 +134,11 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
   namespaces: `secrets.get` never returns a password), and hand the opaque
   `Secret` only to `fill()` or `agent.act` params.
 - Agent instructions: one goal per `act`, the wording on screen, real values
-  in params. Judge meaning, not phrasing: `toContain('Pro')`, not an exact
-  sentence a model produced.
+  in params. A goal is atomic: one outcome that one check confirms. Two
+  outcomes worth checking are two goals, so split them into two `act` calls
+  (topic `agent`). Bad: `'add a todo and mark it done'`. Good: `'add a
+  todo'`, check, then `'mark the todo as done'`, check. Judge meaning, not
+  phrasing: `toContain('Pro')`, not an exact sentence a model produced.
 - Check each agent goal's outcome. A passing `act` with a recorded check can
   be cached and replayed without model calls (topic `agent`).
 - Shape the agent for this app: `context` for vocabulary the screens use,
