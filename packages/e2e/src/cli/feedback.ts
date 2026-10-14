@@ -124,7 +124,7 @@ function feedbackEvent(report: FeedbackReport, options: FeedbackOptions, environ
       ...environment,
       type: report.type,
       ...fields,
-      error_code: report.errorCode ?? null,
+      error_code: report.errorCode === undefined ? null : redact(report.errorCode),
       // The telemetry id when telemetry is on, so a report can be read beside the sessions around it.
       distinct_id: options.telemetry.distinctId ?? `feedback:${id}`,
       $lib: 'e2e',

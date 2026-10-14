@@ -166,17 +166,17 @@ Search [existing issues](https://github.com/tester-army/e2e/issues) first
 instead of sending a new report.
 
 A `bug` needs `--repro`, steps that reproduce it every time without app
-content. Without it, or when it needs your app to show, the command prints a
-prefilled GitHub issue and sends nothing: show the user the link and tell
-them to add a minimal reproduction and submit it. Never file the issue
-yourself.
+content. Without such steps, or when the bug needs your app to show, omit
+`--repro`: the command then prints a prefilled GitHub issue and sends
+nothing; show the user the link and tell them to add a minimal reproduction
+and submit it. Never file the issue yourself.
 
 Run it with `--dry-run` first, show the user what would be sent, and send
 it only when they agree.
 
 ```bash
 npx e2e feedback --type bug -m "<one or two sentences>" \
-  --repro "<steps that reproduce it every time>" --error-code <CODE> \
+  --repro "<steps that reproduce it every time>" --error-code LOCATOR_AMBIGUOUS \
   --task "<what you were doing>" --expected "<...>" --actual "<error message>" \
   --approach "<what you tried>" --command "<e2e command>" --agent "<agent / model>"
 ```
