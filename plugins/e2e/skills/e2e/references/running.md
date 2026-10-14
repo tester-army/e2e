@@ -86,6 +86,9 @@ With npm, use `npm exec -- e2e run --headed` to pass flags to e2e.
 ## The replay cache
 
 Entries live under `.e2e/cache/`, one file per key, named by key digest.
+`E2E_CACHE_DIR` or `--cache-dir <dir>` (on `run` and `cache`) replaces
+`cache.dir` (file store only), so worktrees can share one directory; the mode
+stays as configured.
 `cache` commands read the same config as `run` (`--config`, `cache.dir`);
 with a custom `cache.store` they refuse (exit 2), inspect that store with
 its own tools.

@@ -1,5 +1,6 @@
 /** Cache config resolution and the staged-write settlement. */
 
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createAgentCacheContext, settleStagedTraces } from '../../src/cache/context.ts';
@@ -98,12 +99,22 @@ describe('cache config resolution', () => {
     expect(resolve(APP, { ...env, CI: '1' }).cache.mode).toBe('read-only');
   });
 
-  it('rejects a blank --cache-dir, and an output the overridden cache directory overlaps', () => {
-    expect(() => resolve(APP, BASE_ENV, { cacheDir: ' ' })).toThrow('--cache-dir must be a non-empty path');
-    expect(() => resolve({ cache: { store: memoryStore() } }, BASE_ENV, { cacheDir: 'shared' })).toThrow(
+  it('refuses --cache-dir beside a cache.store and ignores E2E_CACHE_DIR there, even one the output would overlap', () => {
+    const stored = { cache: { store: memoryStore() } };
+    expect(() => resolve(stored, BASE_ENV, { cacheDir: 'shared' })).toThrow(
       '--cache-dir names a file store directory, but cache.store replaces the file store; drop one',
     );
-    expect(resolve({ cache: { store: memoryStore() } }, { ...BASE_ENV, E2E_CACHE_DIR: 'shared' }).cache.store).toBeDefined();
+    expect(resolve(stored, { ...BASE_ENV, E2E_CACHE_DIR: '.e2e' }).cache).toMatchObject({ store: stored.cache.store, dir: path.join(ROOT, '.e2e', 'cache') });
+  });
+
+  it('reads a leading ~ in --cache-dir and E2E_CACHE_DIR as the home directory', () => {
+    expect(resolve(APP, { ...BASE_ENV, E2E_CACHE_DIR: '~/x' }).cache.dir).toBe(path.join(os.homedir(), 'x'));
+    expect(resolve(APP, BASE_ENV, { cacheDir: '~' }).cache.dir).toBe(os.homedir());
+    expect(resolve(APP, BASE_ENV, { cacheDir: '~x' }).cache.dir).toBe(path.join(ROOT, '~x'));
+  });
+
+  it('rejects a blank --cache-dir, and an output the overridden cache directory overlaps', () => {
+    expect(() => resolve(APP, BASE_ENV, { cacheDir: ' ' })).toThrow('--cache-dir must be a non-empty path');
     expect(() => resolve(APP, { ...BASE_ENV, E2E_CACHE_DIR: '.e2e' })).toThrow('output ".e2e" (the default) is the cache directory .e2e or inside it');
     expect(() => resolve(APP, BASE_ENV, { cacheDir: '.e2e/results/cache' })).toThrow(
       'output ".e2e" (the default) would hold --cache-dir .e2e/results/cache under results/, which the run owns; move --cache-dir or the output',

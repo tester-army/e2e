@@ -288,9 +288,8 @@ export function resolveConfig(
   checkEngineSecrets(targets, secrets, credentials);
   const { agents, agentNames, agent } = resolveAgents(raw.agents, cli.agents);
   const limits = runLimits(agents.values());
-  const cacheDir = cacheDirOverride(cli, env);
-  const cache = resolveCacheConfig(raw, ci, options.projectRoot, cli.cache, cli.cacheStrict === true, cacheDir);
-  const output = resolveOutput(raw.output, cli.output, options.projectRoot, cache.dir, cacheDir?.where ?? 'cache.dir', tests);
+  const { cache, source: cacheSource } = resolveCacheConfig(raw, ci, options.projectRoot, cli, env);
+  const output = resolveOutput(raw.output, cli.output, options.projectRoot, cache.dir, cacheSource, tests);
 
   const resolved: ResolvedConfig = {
     projectId,
@@ -345,17 +344,16 @@ export function assignPorts(config: ResolvedConfig, ports: PortAssignments): Res
  * learned unless the project says so. An explicit
  * `read-write` in the config is that statement of trust and is honored as
  * written, as is a host-supplied `cache.store`, which states its own trust
- * through the store's `writable` flag. An override replaces `dir` alone;
- * `--cache-dir` beside a `cache.store` is refused, since it would name nothing.
+ * through the store's `writable` flag. The directory comes from
+ * `resolveCacheDir`, with what named it.
  */
 function resolveCacheConfig(
   raw: E2EConfig,
   ci: boolean,
   projectRoot: string,
-  cliMode: CacheMode | undefined,
-  cliStrict: boolean,
-  override: CacheDirOverride | undefined,
-): ResolvedCacheConfig {
+  cli: CliOverrides,
+  env: NodeJS.ProcessEnv,
+): { readonly cache: ResolvedCacheConfig; readonly source: CacheDirSource } {
   const value = raw.cache;
   let mode: CacheMode = 'read-write';
   /** Whether the config named a mode; only a defaulted mode is demoted in CI. */
@@ -390,9 +388,6 @@ function resolveCacheConfig(
         'cache.store must implement CacheStore: { writable, read(keyHash), write(keyHash, payload) }',
       );
     }
-    if (store !== undefined && override?.where === '--cache-dir') {
-      throw new ConfigurationError('INVALID_CONFIG', '--cache-dir names a file store directory, but cache.store replaces the file store; drop one');
-    }
     if (value.dir !== undefined) {
       if (typeof value.dir !== 'string' || value.dir.trim() === '') {
         throw new ConfigurationError('INVALID_CONFIG', 'cache.dir must be a non-empty path');
@@ -412,34 +407,52 @@ function resolveCacheConfig(
       `cache mode must be 'off', 'read-only', or 'read-write', got ${JSON.stringify(mode)}`,
     );
   }
-  if (cliMode !== undefined) mode = cliMode;
+  if (cli.cache !== undefined) mode = cli.cache;
   if (ci && mode === 'read-write' && !explicit && store === undefined) mode = 'read-only';
+  const cliStrict = cli.cacheStrict === true;
+  const cacheDir = resolveCacheDir(projectRoot, dir, store, cli.cacheDir, env);
   return {
-    mode,
-    store,
-    dir: path.resolve(projectRoot, override?.dir ?? dir ?? path.join('.e2e', 'cache')),
-    strict: strict || cliStrict ? { config: strict, flag: cliStrict } : false,
+    cache: { mode, store, dir: cacheDir.dir, strict: strict || cliStrict ? { config: strict, flag: cliStrict } : false },
+    source: cacheDir.source,
   };
 }
 
-/** A directory that replaces `cache.dir`, and the flag or variable that named it. */
-interface CacheDirOverride {
-  readonly dir: string;
-  readonly where: '--cache-dir' | 'E2E_CACHE_DIR';
-}
+/** What named the file store directory, for the errors that point at it. */
+type CacheDirSource = 'cache.dir' | '--cache-dir' | 'E2E_CACHE_DIR';
 
 /**
- * The directory that replaces `cache.dir`, and what named it: `--cache-dir`,
- * else a non-blank `E2E_CACHE_DIR`. It resolves from the project root, as
- * `cache.dir` and `--output` do, and leaves the cache mode alone.
+ * The absolute file store directory and what named it: `--cache-dir`, else a
+ * non-blank `E2E_CACHE_DIR`, else `cache.dir`, else `.e2e/cache`, from the
+ * project root, with a leading `~` read as the home directory in the flag
+ * and the variable. A `cache.store` has no directory, so `--cache-dir`
+ * beside it is refused and the ambient `E2E_CACHE_DIR` is ignored.
  */
-function cacheDirOverride(cli: CliOverrides, env: NodeJS.ProcessEnv): CacheDirOverride | undefined {
-  if (cli.cacheDir !== undefined) {
-    if (cli.cacheDir.trim() === '') throw new ConfigurationError('INVALID_CONFIG', '--cache-dir must be a non-empty path');
-    return { dir: cli.cacheDir, where: '--cache-dir' };
+function resolveCacheDir(
+  projectRoot: string,
+  configured: string | undefined,
+  store: CacheStore | undefined,
+  flag: string | undefined,
+  env: NodeJS.ProcessEnv,
+): { readonly dir: string; readonly source: CacheDirSource } {
+  if (flag !== undefined) {
+    if (flag.trim() === '') throw new ConfigurationError('INVALID_CONFIG', '--cache-dir must be a non-empty path');
+    if (store !== undefined) {
+      throw new ConfigurationError('INVALID_CONFIG', '--cache-dir names a file store directory, but cache.store replaces the file store; drop one');
+    }
+    return { dir: path.resolve(projectRoot, expandHome(flag)), source: '--cache-dir' };
   }
-  const dir = envValue(env, 'E2E_CACHE_DIR');
-  return dir === undefined ? undefined : { dir, where: 'E2E_CACHE_DIR' };
+  const variable = envValue(env, 'E2E_CACHE_DIR');
+  if (variable !== undefined && store === undefined) {
+    return { dir: path.resolve(projectRoot, expandHome(variable)), source: 'E2E_CACHE_DIR' };
+  }
+  return { dir: path.resolve(projectRoot, configured ?? path.join('.e2e', 'cache')), source: 'cache.dir' };
+}
+
+/** `value` with a leading `~` or `~/` read as the home directory, which no shell expands in an env file or `--flag=~/x`. */
+function expandHome(value: string): string {
+  if (value === '~') return os.homedir();
+  if (value.startsWith('~/') || value.startsWith(`~${path.sep}`)) return path.join(os.homedir(), value.slice(2));
+  return value;
 }
 
 /** The directories under the output a run clears or owns, which nothing else may live in. */
@@ -476,7 +489,7 @@ function resolveOutput(
   flag: string | undefined,
   projectRoot: string,
   cacheDir: string,
-  cacheWhere: string,
+  cacheSource: CacheDirSource,
   tests: readonly string[],
 ): string {
   const where = flag === undefined ? 'output' : '--output';
@@ -505,7 +518,7 @@ function resolveOutput(
   if (isWithin(real, cache)) refuse(`is the cache directory ${path.relative(root, cache)} or inside it; keep results and the replay cache apart`);
   for (const owned of OUTPUT_OWNED_DIRS) {
     if (isWithin(cache, realpathOfExisting(path.join(output, owned)))) {
-      refuse(`would hold ${cacheWhere} ${path.relative(root, cache)} under ${owned}/, which the run owns; move ${cacheWhere} or the output`);
+      refuse(`would hold ${cacheSource} ${path.relative(root, cache)} under ${owned}/, which the run owns; move ${cacheSource} or the output`);
     }
   }
   for (const pattern of tests) {

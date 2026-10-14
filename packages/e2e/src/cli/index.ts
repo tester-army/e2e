@@ -20,8 +20,8 @@ import { isCiMode } from '../config/resolve.ts';
 import { runsFromCheckout } from '../telemetry/checkout.ts';
 import { initCompletedEvent, runCompletedEvent, USAGE_ERROR_CODE } from '../telemetry/events.ts';
 import { Telemetry } from '../telemetry/telemetry.ts';
-import { cache, type CacheCommand } from './cache.ts';
-import { DOCS_URL } from './docs-url.ts';
+import { CACHE_DIR_DESCRIPTION, registerCacheCommand } from './cache.ts';
+import { docsLine, examples, helpSection, pc } from './help.ts';
 import { feedback, FEEDBACK_LIMITS, FEEDBACK_TYPES, type FeedbackReport } from './feedback.ts';
 import { guide } from './guide.ts';
 import { init } from './init.ts';
@@ -34,13 +34,6 @@ import { skillTopics } from './skill.ts';
 import { watchSession } from './watch.ts';
 import { telemetry as telemetryCommand, TELEMETRY_ACTIONS, type TelemetryAction } from './telemetry.ts';
 import { wordmarkBanner } from './wordmark.ts';
-
-/**
- * Help text always carries color; commander strips it when the stream it
- * writes to has none (not a TTY, `NO_COLOR`), so the decision is made once,
- * per stream, by the writer.
- */
-const pc = picocolors.createColors(true);
 
 /** A count of at least one, for `--max-failures`. */
 function parsePositiveInt(value: string): number {
@@ -126,9 +119,6 @@ function parseText(limit: number): (value: string) => string {
     return text;
   };
 }
-
-const CACHE_DIR_DESCRIPTION =
-  'replay cache directory, relative to the project root (default: E2E_CACHE_DIR, else cache.dir in the config, else .e2e/cache)';
 
 const FILES_DESCRIPTION =
   'test files, directories, or globs relative to the project root; a bare file name (signup.e2e.ts, signup) or a trailing part of the path (agent/signup.e2e.ts) also selects the file, and file:line (tests/signup.e2e.ts:12) selects the test declared at that line';
@@ -280,27 +270,11 @@ const EXPLORE_EXIT_MEANINGS: Readonly<Record<string, string>> = {
 };
 const EXPLORE_EXIT_CODES = EXIT_CODES.map(([code, meaning]) => [code, EXPLORE_EXIT_MEANINGS[code] ?? meaning] as const);
 
-/** A titled block indented like commander's own help sections. */
-function helpSection(title: string, lines: readonly string[]): string {
-  return [pc.bold(title), ...lines.map((line) => `  ${line}`)].join('\n');
-}
-
 function exitCodesSection(codes: readonly (readonly [code: string, meaning: string])[]): string {
   return helpSection(
     'Exit codes:',
     codes.map(([code, meaning]) => `${pc.cyan(code.padEnd(3))}  ${meaning}`),
   );
-}
-
-function examples(commands: readonly string[]): string {
-  return helpSection(
-    'Examples:',
-    commands.map((command) => `${pc.dim('$')} ${command}`),
-  );
-}
-
-function docsLine(path = ''): string {
-  return `Docs: ${pc.underline(`${DOCS_URL}${path}`)}`;
 }
 
 /** `run`, `cache ls`: the command path below the root, as the session event names it. */
@@ -880,36 +854,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
       },
     );
 
-  const cacheCommand = program
-    .command('cache')
-    .summary('inspect, measure, and clear the replay cache')
-    .description(
-      'Read the replay cache the runs write under .e2e/cache: what a committed cache holds, how much room it takes, and how to empty it. Reads the same config as e2e run, so --cache-dir, E2E_CACHE_DIR, cache.dir, and --config decide which store is meant.',
-    )
-    .addHelpText(
-      'after',
-      ['', examples(['e2e cache ls', 'e2e cache stats', 'e2e cache clear']), '', docsLine('/reference/cli#e2e-cache')].join('\n'),
-    );
-
-  const cacheSubcommand = (name: CacheCommand, summary: string, description: string): void => {
-    cacheCommand
-      .command(name)
-      .summary(summary)
-      .description(description)
-      .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
-      .option('--cache-dir <dir>', CACHE_DIR_DESCRIPTION)
-      .action(async (options: { config?: string; cacheDir?: string }) => {
-        process.exitCode = await cache(name, options);
-      });
-  };
-
-  cacheSubcommand(
-    'ls',
-    'list the cached traces',
-    'Print one row per cached trace: the test and target it was recorded for, the digest of its instruction, its age, and how many actions a replay would run.',
-  );
-  cacheSubcommand('clear', 'delete every cached trace', 'Delete the cache files and the directory itself; files the runner never wrote are left alone.');
-  cacheSubcommand('stats', 'print the entry count and size', 'Print the store directory, how many readable entries it holds, and how many bytes they take.');
+  registerCacheCommand(program);
 
   program
     .command('feedback')
