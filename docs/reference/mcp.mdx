@@ -34,15 +34,15 @@ The server ships with `e2e`. `e2e init` offers to register it in
 
 <CodeGroup>
 ```bash npm
-claude mcp add e2e -- npx e2e mcp
+claude mcp add --scope project e2e -- npx e2e mcp
 ```
 
 ```bash pnpm
-claude mcp add e2e -- pnpm exec e2e mcp
+claude mcp add --scope project e2e -- pnpm exec e2e mcp
 ```
 
 ```bash bun
-claude mcp add e2e -- bunx e2e mcp
+claude mcp add --scope project e2e -- bunx e2e mcp
 ```
 </CodeGroup>
 
@@ -54,6 +54,14 @@ For clients that use a `mcpServers` config, add:
     "e2e": { "command": "npx", "args": ["e2e", "mcp"] }
   }
 }
+```
+
+Codex reads the project's `.codex/config.toml` once the project is trusted:
+
+```toml
+[mcp_servers.e2e]
+command = "npx"
+args = ["e2e", "mcp"]
 ```
 
 The server needs no model: a project without the optional `ai` package

@@ -33,6 +33,8 @@ use the same simulator or emulator while you move one flow at a time.
 
 </SetupPrompt>
 
+For a migration that spans several sessions, the [`migrate-to-e2e` skill](/coding-agents#migrate-an-existing-suite) records what moved in a progress file and keeps the old suite running until you retire each test.
+
 ## Port the config
 
 <Note>Set up a target with the [mobile guide](/mobile) and a model with the [quickstart](/quickstart).</Note>
@@ -210,10 +212,12 @@ declares `requires: ['device']` and other targets skip it. Calls on `screen`,
 
 Four differences from Maestro's selectors cause most edits.
 
-- Maestro reads text and id as regular expressions, so `tapOn: ".*Save.*"`
-  matches any text with Save in it. `getByText` and `getByTestId` match the
-  whole string. Write `getByText(/Save/)` or `getByTestId(/^row-/)` for a
-  pattern, or `{ exact: false }` for a case-insensitive substring of text.
+- Maestro reads text and id as case-insensitive regular expressions, so
+  `tapOn: ".*Save.*"` matches any text with Save in it, and `"Mute Account"`
+  matches `Mute account`. `getByText` and `getByTestId` match the whole
+  string, case included. Write `getByText(/^mute account$/i)` or
+  `getByTestId(/^row-/)` for a pattern, or `{ exact: false }` for a
+  case-insensitive substring of text.
 - Maestro taps the first of several matches. e2e fails with
   `LOCATOR_AMBIGUOUS`, so write `.first()` when the first match is what you
   mean.

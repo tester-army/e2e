@@ -651,7 +651,7 @@ describe('e2e init', () => {
     expect(existsSync(path.join(dir, '.claude'))).toBe(false);
     expect(existsSync(path.join(dir, '.mcp.json'))).toBe(false);
     expect(output()).toContain('npm exec -- e2e guide');
-    expect(output()).toContain('claude mcp add e2e -- npx e2e mcp');
+    expect(output()).toContain('claude mcp add --scope project e2e -- npx e2e mcp');
   });
 
   it('is idempotent', async () => {

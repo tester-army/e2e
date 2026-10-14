@@ -14,10 +14,24 @@ and reading a failed run stay on the CLI (topics `running` and `debugging`).
 
 ## Setup
 
-The server ships with `e2e`. `e2e init` offers to register it; by hand:
+The server ships with the project's `e2e` dependency, separately from the
+skills-only plugin. `e2e init` offers to register it for Claude Code and
+Cursor. Reuse an existing registration; when adding one, use the project's
+config so it starts in the project it drives.
+
+Codex reads `.codex/config.toml` in a trusted project:
+
+```toml
+[mcp_servers.e2e]
+command = "npx"
+args = ["e2e", "mcp"]
+```
+
+`codex mcp list`, run in the project, shows the server. Start a new session
+after registering it so the tools load. Claude Code can register it with:
 
 ```bash
-claude mcp add e2e -- npx e2e mcp   # Claude Code
+claude mcp add --scope project e2e -- npx e2e mcp
 ```
 
 Or declare it in the client's project config (`.mcp.json` for Claude Code,

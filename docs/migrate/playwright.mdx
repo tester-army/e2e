@@ -33,6 +33,8 @@ at a time. `@e2e-dev/web` brings its own pinned `playwright-core`, so your
 
 </SetupPrompt>
 
+For a migration that spans several sessions, the [`migrate-to-e2e` skill](/coding-agents#migrate-an-existing-suite) records what moved in a progress file and keeps the old suite running until you retire each test.
+
 ## Port the config
 
 <Note>Install e2e and configure a model with the [quickstart](/quickstart).</Note>
@@ -74,6 +76,7 @@ A Playwright key such as `testDir`, `baseURL`, `use`, `webServer`, or
 | `use.actionTimeout` | `actionTimeout` | renamed |
 | `use.navigationTimeout` | `timeout`, the test budget; `browser.goto(url, { timeout })` overrides one call | renamed |
 | `use.storageState`, `projects[].dependencies` for sign-in | `test.setup` and `{ session }`, see [Signing in](/authentication); no file import, see [What differs on purpose](#what-differs-on-purpose) | by design |
+| `use.storageState: { cookies }` with fixed values | `browser.setCookies(cookies)` in a fixture | renamed |
 | `use.trace` | `trace` with the modes `'off'`, `'on'`, `'retain-on-failure'`, `'on-first-retry'`, and `'on-all-retries'`, at the top of the config, per target, `test('x', { trace }, ...)`, or `--trace [mode]` for one run. A trace is a markdown page, `trace.md`, in each test's directory under `.e2e/results/`, not a zip; the default differs, see [below](#defaults-that-differ) | same |
 | `use.video` | `video`, with the modes and places of `trace`, and `--video [mode]` | same |
 | `use.headless: false` | `--headed` on the CLI | renamed |
@@ -145,6 +148,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `locator.all()`, `allTextContents()` | the same; `allInnerTexts()` is `allTextContents()` | same |
 | `page.locator('css')`, `page.locator('xpath=...')` | `browser.locator('css')`: the string is a Playwright selector, so `xpath=` (or a leading `//`) and `>>` chains work too | web only |
 | `page.waitForSelector(selector)` | `browser.locator(selector).waitFor()`; a locator is strict, so narrow a selector with several matches with a `>> visible=true` step or `first()` | renamed |
+| `page.click(selector)`, `page.fill(selector, value)`, `page.getAttribute(selector, name)`, and the other `page` methods that take a selector | `browser.locator(selector).tap()`, `.fill(value)`, `.getAttribute(name)`. Playwright runs these on the first match; a locator is strict, so narrow a selector with several matches with `>> visible=true` or `first()`, which is what Playwright did | renamed |
 | `locator.locator('css')` | not yet; a semantic query inside the scope (`cell.getByRole('textbox')` for `cell.locator('input')`), `browser.locator('css').getByRole(...)` the other way round, or one `browser.locator` selector for the whole path | missing |
 | `page.frameLocator('#frame')` | `browser.frameLocator('#frame')`, then `screen` queries inside it | web only |
 
@@ -234,7 +238,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `page.goBack()` | `app.back()`, or `browser.back()` | renamed |
 | `page.goForward()`, `page.reload()` | `browser.forward()`, `browser.reload()` | web only |
 | `page.url()`, `page.title()` | `browser.url()`, `browser.title()` | web only |
-| `page.waitForURL()` | `browser.waitForURL()`; a string or `RegExp`, no predicate function, and `timeout` is its only option, so `waitUntil` is `INVALID_ARGUMENT` | web only |
+| `page.waitForURL()` | `browser.waitForURL()`; a string or `RegExp`, no predicate function, and `timeout` is its only option, so `waitUntil` is `INVALID_ARGUMENT`. A string is one URL, a relative one resolved against `app.url`, matched exactly and not as a glob: `'**/orders'` never matches, so pass a `RegExp` | web only |
 | `page.waitForLoadState()` | not yet; `browser.goto(url, { waitUntil })` on the navigation itself | missing |
 | `page.waitForFunction(fn)` | `expect.poll(() => browser.evaluate(fn)).toBeTruthy()` | missing |
 | `page.waitForTimeout(ms)` | a locator assertion on the state you are waiting for: `toBeVisible()` on what appears, `toBeHidden()` on what goes away | by design |
@@ -254,7 +258,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `route.continue({ url, method, headers, postData })`, `route.fallback()` | the same; a `url` goes through the navigation rule, and `fallback()` takes no overrides | web only |
 | `route.fetch()`, `route.abort(code)`, `route.fallback(overrides)` | not yet; `abort()` takes no error code | missing |
 | `page.unroute()` | `browser.unroute()` | web only |
-| `page.waitForResponse(pattern)` | `browser.waitForResponse(pattern)`: a string or `RegExp`, no predicate function; `url`, `status`, `headers`, `json()`, `text()` | web only |
+| `page.waitForResponse(pattern)` | `browser.waitForResponse(pattern)`: a string or `RegExp`, no predicate function; `url`, `status`, `headers`, `json()`, `text()`. A string is a glob tested against the whole URL, query included, and never resolved against `app.url`: Playwright's `'/api/orders'` is the full URL or `'**/api/orders'`, and `?` matches any one character (write `'\\?'` for a literal one) | web only |
 | `response.ok()`, `response.body()`, `response.request()` | not yet; `status` and `text()` | missing |
 | `page.waitForRequest()`, `request.postDataJSON()` | not yet; `route.request.postData` is a string | missing |
 | `routeFromHAR()`, `routeWebSocket()` | not yet | missing |

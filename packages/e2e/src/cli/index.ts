@@ -543,7 +543,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .command('mcp')
     .summary('serve the project to a coding agent over MCP')
     .description(
-      'Serve an MCP server over stdio for a coding agent such as Claude Code or Cursor: open_session opens a live session on one target of any config the agent names, call runs the session\'s tools (observe, tap, type, press, select, scroll, navigate, type_secret, locate, screenshot, and the project\'s own), tools describes them, close_session ends it. The agent explores the real app before writing a test. Register it with the client, e.g. claude mcp add e2e -- npx e2e mcp.',
+      'Serve an MCP server over stdio for a coding agent such as Claude Code or Cursor: open_session opens a live session on one target of any config the agent names, call runs the session\'s tools (observe, tap, type, press, select, scroll, navigate, type_secret, locate, screenshot, and the project\'s own), tools describes them, close_session ends it. The agent explores the real app before writing a test. Register it with the client, e.g. claude mcp add --scope project e2e -- npx e2e mcp.',
     )
     .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
     .option('--target <name>', 'target every session opens on (default: the only target, or the one open_session names)')
@@ -560,7 +560,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
       'after',
       [
         '',
-        examples(['e2e mcp', 'e2e mcp --target web --headed', 'e2e mcp --max-sessions 8', 'claude mcp add e2e -- npx e2e mcp']),
+        examples(['e2e mcp', 'e2e mcp --target web --headed', 'e2e mcp --max-sessions 8', 'claude mcp add --scope project e2e -- npx e2e mcp']),
         '',
         docsLine('/reference/mcp'),
       ].join('\n'),
@@ -915,7 +915,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .command('feedback')
     .summary('send a bug report, docs problem, or feature request to the e2e team')
     .description(
-      'Send one report about e2e itself to the e2e team. Coding agents are welcome to send one when e2e breaks, the docs mislead, or a capability is missing. The report and the anonymous machine facts telemetry carries go to PostHog as one event; secret-named environment variable values and well-known token shapes are redacted first. Sent only when asked for, so e2e telemetry disable does not stop it; E2E_TELEMETRY_DISABLED and DO_NOT_TRACK do. --dry-run prints the event and sends nothing.',
+      'Send one report about e2e itself to the e2e team. Coding agents may send one when e2e breaks, the docs mislead, or a capability is missing, after the user agrees to the --dry-run output. The report and the anonymous machine facts telemetry carries go to PostHog as one event; secret-named environment variable values and well-known token shapes are redacted first. Sent only when asked for, so e2e telemetry disable does not stop it; E2E_TELEMETRY_DISABLED and DO_NOT_TRACK do. --dry-run prints the event and sends nothing.',
     )
     .optionsGroup('Report:')
     .addOption(new Option('--type <type>', 'what kind of report').choices(FEEDBACK_TYPES).default('other'))

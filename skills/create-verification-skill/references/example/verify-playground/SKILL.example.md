@@ -5,7 +5,7 @@ description: Launch, check, drive, prove, and bug bash the e2e playground web ap
 
 # Verify the playground
 
-Read `.agents/skills/e2e/SKILL.md` first. This skill only says what is true
+Read the e2e skill first (`npx e2e guide` prints it). This skill only says what is true
 of this app. The config is `e2e.config.ts` (target `web`, tests
 `tests/**/*.e2e.ts`); the bug bash uses `e2e.bugbash.config.ts`.
 

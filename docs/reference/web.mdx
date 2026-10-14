@@ -475,9 +475,10 @@ A script added after the page opened runs from the next navigation or reload.
 ### Routing
 
 `route`, `unroute`, and `waitForResponse` take a string pattern (`*` within a
-path segment, `**` across `/`) or a `RegExp`, both tested against the full
-URL; a predicate function is `INVALID_ARGUMENT`. A route survives
-`app.restart()`, `app.clearState()`, and session restore.
+path segment, `**` across `/`, `?` for any one character, `\` to escape the
+next) or a `RegExp`, both tested against the full URL; a predicate function
+is `INVALID_ARGUMENT`. A route survives `app.restart()`, `app.clearState()`,
+and session restore.
 The handler must decide exactly once with `fulfill`, `continue`, `fallback`,
 or `abort`; deciding twice or not at all is `ACTION_FAILED`. Routes run newest
 first. `continue` sends the request to the network and no other route sees

@@ -196,6 +196,13 @@ suites that consume the built packages the way a user would.
   package and not read by `e2e guide`. `references/example/` is the skill
   it generated and ran for `apps/testbed`: regenerate it when a playground
   route, label, or test it names changes.
+- `skills/migrate-to-e2e/`: a consumer skill that ports a Playwright,
+  Cypress, Selenium, Detox, or Maestro suite one slice per session, the old
+  suite running beside the new one, with a `MIGRATION.md` progress file the next
+  session resumes from. It routes to `docs/migrate/<runner>.mdx` for the
+  API mapping, so a mapping change edits the guide, not the skill. Installed
+  with `npx skills add tester-army/e2e --skill migrate-to-e2e`; not shipped
+  in the package and not read by `e2e guide`.
 - `.dev/skills/` — the skills we use to work on this repo (`authoring-docs`,
   `babysit`, `ship-pr`, `verify`, `writing-pr`). `npx skills add tester-army/e2e`
   offers only `skills/*`: its default scan never looks in `.dev/`, and it skips
@@ -207,13 +214,25 @@ suites that consume the built packages the way a user would.
   `core.symlinks=true` (CONTRIBUTING.md). The vendored third-party skills in `.claude/skills/` (`unbox-ai`,
   `unslop`, tracked by `skills-lock.json`) stay where they are: the CLI
   skips them as installed project skills.
+- `plugins/e2e/` — one skills-only package for Codex and Claude Code. The
+  root `.agents/plugins/marketplace.json` and `.claude-plugin/marketplace.json`
+  both point here. Edit skill Markdown in `skills/`, then run
+  `pnpm plugins:sync`; `pnpm plugins:check` checks the generated copies,
+  license, Claude manifest, and both manifests' `version`, which is the
+  runner's (`version-packages` syncs it, so plugin
+  installs update once per release). The Codex manifest's other fields,
+  assets, README, and per-skill `agents/openai.yaml` are maintained in the
+  plugin. Keep the
+  package self-contained and leave the repository's development MCP
+  configuration outside it. Example skills use `SKILL.example.md` so clients
+  do not discover them as additional skills.
 
 ## Commands
 
 Build first — nearly everything downstream consumes `dist`.
 
 ```bash
-pnpm check          # lint -> check:dead-code -> typecheck -> docs:check-errors -> check:peer-ranges -> check:install-scripts -> docs:check (full gate)
+pnpm check          # lint -> check:dead-code -> typecheck -> docs:check-errors -> check:peer-ranges -> check:install-scripts -> plugins:check -> docs:check (full gate)
 pnpm test           # builds, then vitest unit + integration
 pnpm test:testbed   # builds, then runs the real CLI against the playground app
 pnpm test:web-benchmark   # builds, then runs the real CLI against the benchmark scenarios

@@ -34,7 +34,8 @@ bunx e2e init
 The copy holds `SKILL.md` and topic references. After you upgrade e2e, run
 `init` again to update it. Without `init`, `npx skills add tester-army/e2e`
 installs the skill, and `npx e2e guide [topic]` prints it from the
-installed package.
+installed package. The Claude Code and Codex plugin below installs all
+three e2e skills for every project.
 
 `init` leaves your project instructions unchanged. For agents that need a
 pointer, add this line:
@@ -46,6 +47,43 @@ End-to-end tests use e2e; read .agents/skills/e2e/SKILL.md before writing or run
 The package also ships these docs as `.mdx` pages for offline reading, in
 `node_modules/e2e/docs` in a single-package project. A link such as
 `/reference/cli` is `docs/reference/cli.mdx`.
+
+<Accordion title="Install the Claude Code or Codex plugin">
+
+The e2e repository is a plugin marketplace for both clients:
+
+<CodeGroup>
+```bash Claude
+claude plugin marketplace add tester-army/e2e
+claude plugin install e2e@e2e
+```
+
+```bash Codex
+codex plugin marketplace add tester-army/e2e
+codex plugin add e2e@e2e
+```
+</CodeGroup>
+
+Start a new session. The plugin adds the `e2e`,
+`create-verification-skill`, and `migrate-to-e2e` skills, not the npm
+package or the MCP server. Invoke the other two under the plugin's name:
+`/e2e:<skill>` in Claude Code, `$e2e:<skill>` in Codex.
+
+The plugin's version follows e2e releases. To update it, run these and
+start a new session:
+
+<CodeGroup>
+```bash Claude
+claude plugin marketplace update e2e
+claude plugin update e2e@e2e
+```
+
+```bash Codex
+codex plugin marketplace upgrade e2e
+```
+</CodeGroup>
+
+</Accordion>
 
 ## Let the agent use the app
 
@@ -59,17 +97,26 @@ current app and returns the test code when exactly one element matches.
 
 <CodeGroup>
 ```bash npm
-claude mcp add e2e -- npx e2e mcp
+claude mcp add --scope project e2e -- npx e2e mcp
 ```
 
 ```bash pnpm
-claude mcp add e2e -- pnpm exec e2e mcp
+claude mcp add --scope project e2e -- pnpm exec e2e mcp
 ```
 
 ```bash bun
-claude mcp add e2e -- bunx e2e mcp
+claude mcp add --scope project e2e -- bunx e2e mcp
 ```
 </CodeGroup>
+
+For Codex, add the server to the project's `.codex/config.toml`, trust the
+project, and start a new session:
+
+```toml
+[mcp_servers.e2e]
+command = "npx"
+args = ["e2e", "mcp"]
+```
 
 The server does not run tests. See the [MCP server reference](/reference/mcp)
 for its tools, session rules, and flags.
@@ -181,6 +228,34 @@ skill for the rest. It is based on
 [create-verification-skill](https://github.com/cursor/plugins/tree/main/pstack/skills/create-verification-skill)
 from poteto's pstack, with e2e in place of a hand-rolled harness.
 </Accordion>
+
+## Migrate an existing suite
+
+The `migrate-to-e2e` skill moves a Playwright, Cypress, Selenium, Detox,
+or Maestro suite to e2e one slice per session. The old suite keeps
+running beside the new tests, so you can stop after any session.
+
+<CodeGroup>
+```bash npm
+npx skills add tester-army/e2e --skill migrate-to-e2e
+```
+
+```bash pnpm
+pnpm dlx skills add tester-army/e2e --skill migrate-to-e2e
+```
+
+```bash bun
+bunx skills add tester-army/e2e --skill migrate-to-e2e
+```
+</CodeGroup>
+
+Then ask the agent for `/migrate-to-e2e`. It ports the slice you pick and
+runs each ported test three times on every target. A `MIGRATION.md` file
+records progress for the next session. The agent deletes an old test only
+when you confirm. It first reads the migration guide for your runner:
+[Playwright](/migrate/playwright), [Cypress](/migrate/cypress),
+[Selenium](/migrate/selenium), [Detox](/migrate/detox), or
+[Maestro](/migrate/maestro).
 
 ## Next
 

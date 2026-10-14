@@ -43,6 +43,8 @@ jobs:
         run: pnpm check:peer-ranges
       - name: No install scripts in published dependency trees
         run: pnpm check:install-scripts
+      - name: Plugin package matches its sources
+        run: pnpm plugins:check
       - name: Agent skill scripts
         run: |
           pnpm exec tsc -p .dev/skills/babysit/scripts
