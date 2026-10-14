@@ -12,7 +12,7 @@ import { smolMachines, type SmolMachine, type SmolMachines } from './machines.ts
  * published that port too. A TCP relay listens here before the browser is
  * ready and stays alive in every branch of the warm machine.
  */
-const IMAGE = 'mcr.microsoft.com/playwright:v1.63.0-noble';
+const IMAGE = 'mcr.microsoft.com/playwright:v1.64.0-noble';
 const GUEST_PORT = 80;
 /** Chromium's new headless mode binds DevTools to loopback whatever it is told, hence the relay. */
 const CHROMIUM_CDP_PORT = 9229;
