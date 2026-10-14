@@ -178,8 +178,9 @@ Then each test, one at a time:
   too, with its own comment saying why.
 - Where the guide marks a step `missing` or "No equivalent", use its
   workaround. When there is none, the test stays in the old runner: mark it
-  `stays` with the reason and send
-  `npx e2e feedback --type feature -m "<the gap>"` once (the e2e skill,
+  `stays` with the reason and offer to send
+  `npx e2e feedback --type feature -m "<the gap>"` once: preview it with
+  `--dry-run` and send it only when the user agrees (the e2e skill,
   Feedback).
 - Do not change app code. A test that needs a test id the app lacks gets
   `agent.act` or a different locator; propose the app change to the user
