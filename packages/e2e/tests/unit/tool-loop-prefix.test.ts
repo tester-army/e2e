@@ -9,7 +9,10 @@
  */
 
 import { createAnthropic } from '@ai-sdk/anthropic';
+import { tool } from 'ai';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import { createToolLoopExecutor } from '../../src/agent/tool-loop.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
 import { defineEngine, type EngineHandle } from '../../src/engine/index.ts';
 import { createEngineSession } from '../../src/engine/session.ts';
@@ -195,7 +198,7 @@ describe('the request prefix of an agent step on Anthropic', () => {
     const [first] = requests as [Body];
     expect(JSON.stringify(first.system)).toContain('Reply with tool calls only');
     expect(requests.map((body) => JSON.stringify(body.system))).toEqual(Array<string>(4).fill(JSON.stringify(first.system)));
-    expect(requests.map((body) => body.tools!.map((tool) => tool.name).join(','))).toEqual(Array<string>(4).fill('observe,screenshot,complete_step'));
+    expect(requests.map((body) => body.tools!.map((entry) => entry.name).join(','))).toEqual(Array<string>(4).fill('observe,screenshot,complete_step'));
     // Nothing before any block changed, so every block is replayed.
     expect(replayedThinking(requests[3]!)).toEqual(['messages.1.content.0=sig-1', 'messages.3.content.0=sig-2', 'messages.5.content.0=sig-3']);
   });
@@ -224,6 +227,32 @@ describe('the request prefix of an agent step on Anthropic', () => {
     expect(firstUserText(third)).toBe(firstUserText(second));
     expect(replayedThinking(third)).toEqual(['messages.3.content.0=sig-2']);
     expect(steps.all()[0]!.turns!.some((turn) => turn.outcome.includes('message 1 was rewritten, so the reasoning after it is not sent again'))).toBe(true);
+  });
+
+  it('notices a message a custom executor edits in place, not only one it replaces', async () => {
+    const look = { name: 'look', input: {} };
+    const { model, requests } = capturingModel((n) => (n <= 2 ? look : conclude));
+    const executor = createToolLoopExecutor({
+      name: 'editing',
+      tools: () => ({ look: tool({ description: 'Looks.', inputSchema: z.object({}), execute: async () => 'looked' }) }),
+      buildPrompt: () => 'Execute this test step: look twice, then conclude.',
+      // Before the third turn, the opening message is edited through the
+      // object the loop handed over, and the same array comes back.
+      prepareMessages: (messages, { stepNumber }) => {
+        const opening = messages[0];
+        if (stepNumber === 2 && opening?.role === 'user') opening.content = 'Execute this test step: look twice, then conclude. [edited in place]';
+        return messages;
+      },
+    });
+    const { fixtures, steps } = runtime(changingScreen(20, () => 1), { agents: { default: { executor, model } } });
+
+    await fixtures.agent.act('look twice, then conclude');
+
+    expect(steps.all()[0]!.status).toBe('passed');
+    expect(requests).toHaveLength(3);
+    expect(replayedThinking(requests[1]!)).toEqual(['messages.1.content.0=sig-1']);
+    expect(firstUserText(requests[2]!)).toContain('[edited in place]');
+    expect(replayedThinking(requests[2]!)).toEqual([]);
   });
 });
 

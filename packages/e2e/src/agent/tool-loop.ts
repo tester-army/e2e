@@ -239,6 +239,8 @@ class LoopRun {
   private readonly hints: ProviderHints;
   /** The history the last request went out with, for shrinking after an overflow. */
   private lastRequest: ModelMessage[] | undefined;
+  /** What each message of the last request held, by reference, for telling a rewritten message from a carried one. */
+  private lastShape: MessageShape[] | undefined;
   /** Turns spent by earlier generate calls of this step; nonzero only after an overflow retry. */
   private turnOffset = 0;
   /**
@@ -674,6 +676,7 @@ class LoopRun {
     // next turn moves it again.
     const outgoing = this.hints.markLatest(prepared);
     this.lastRequest = outgoing;
+    this.lastShape = outgoing.map(shapeOf);
     // A model that rejects forced choices is offered the conclusion tool
     // alone under `auto`; the notices above already tell it to call it.
     return {
@@ -689,15 +692,18 @@ class LoopRun {
   }
 
   /**
-   * The index of the first message that is not the one the last request sent
-   * at that position, if any: a message the executor's `prepareMessages` or
-   * the overflow shrink rewrote. An untouched message carries forward as the
-   * same object, so identity is the test.
+   * The index of the first message whose content is not what the last
+   * request sent at that position, if any: a message the executor's
+   * `prepareMessages` or the overflow shrink rewrote. The comparison is by
+   * reference, part by part, against the references kept from the last
+   * request rather than against its message objects: an executor that
+   * edits a message in place leaves the object in both histories, and only
+   * the kept references still show what went out.
    */
   private firstRewritten(messages: readonly ModelMessage[]): number | undefined {
-    const last = this.lastRequest;
+    const last = this.lastShape;
     if (last === undefined) return undefined;
-    const index = messages.findIndex((message, position) => position < last.length && message !== last[position]);
+    const index = messages.findIndex((message, position) => position < last.length && !sameShape(shapeOf(message), last[position]!));
     return index === -1 ? undefined : index;
   }
 
@@ -785,6 +791,24 @@ function reportedOutcome(turn: LoopTurn): string {
 
 function appendNotice(messages: ModelMessage[], content: string): ModelMessage[] {
   return [...messages, { role: 'user', content }];
+}
+
+/**
+ * What a message holds, by reference: its string content, or the text of
+ * each text part and every other part itself. A rewrite replaces one of
+ * these references; an in-place edit of the message object does too, since
+ * strings are immutable and a new part is a new object.
+ */
+type MessageShape = string | readonly unknown[];
+
+function shapeOf(message: ModelMessage): MessageShape {
+  if (typeof message.content === 'string') return message.content;
+  return message.content.map((part) => (part.type === 'text' ? part.text : part));
+}
+
+function sameShape(a: MessageShape, b: MessageShape): boolean {
+  if (typeof a === 'string' || typeof b === 'string') return a === b;
+  return a.length === b.length && a.every((item, index) => item === b[index]);
 }
 
 /** Longest text a message part keeps after an overflow; the head of a screen still names its controls. */
