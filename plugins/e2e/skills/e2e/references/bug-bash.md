@@ -71,6 +71,22 @@ import base from './e2e.config.ts';
 
 const shared: E2EConfig = base;
 
+// Where the repro tests go, inside the directory the config's `tests` glob covers.
+const repro = 'tests/bugbash';
+
+// The project's tests, so a repro can use its setup tests' sessions, plus the
+// repro tests from step 6. A base `tests` that excludes the repro directory is
+// dropped from its exclusions first: a `!` exclusion applies whatever its order,
+// so appending the repro directory after `!tests/bugbash/**` would never select
+// it. A base that excludes the repro directory is valid and common — it keeps
+// intentionally failing repros out of the run that gates merges.
+const baseTests = [shared.tests ?? 'tests/**/*.e2e.ts'].flat();
+const hidesRepro = (glob: string): boolean => {
+  if (!glob.startsWith('!')) return false;
+  const path = glob.slice(1).replace(/^\.\//, '');
+  return path === repro || path.startsWith(`${repro}/`);
+};
+
 // What the local app cannot do, plus the explorer's blind spots (step 5's artifact bucket).
 const context =
   'Sign in with the credential the goal names. The local app sends no email and has no AI key. Never start a paid run or connect an integration. ' +
@@ -79,8 +95,9 @@ const persona = { model: gateway('openai/gpt-6-luna-fast'), maxSteps: 40, maxMod
 
 export default {
   ...shared,
-  // The project's tests, so a repro can use its setup tests' sessions, plus the repro tests from step 6.
-  tests: [shared.tests ?? 'tests/**/*.e2e.ts', 'tests/bugbash/**/*.e2e.ts'].flat(),
+  // The project's tests, so a repro can use its setup tests' sessions, plus the
+  // repro tests from step 6.
+  tests: [...baseTests.filter((glob) => !hidesRepro(glob)), `${repro}/**/*.e2e.ts`],
   // The app already runs: no command.
   targets: [{ name: 'web', engine: web(), app: { url: 'http://127.0.0.1:3000' } }],
   retries: 0,
@@ -99,6 +116,12 @@ export default {
   },
 } satisfies E2EConfig;
 ```
+
+The template drops a base `tests` exclusion that hides the repro directory
+(`!tests/bugbash/**`): a `!` exclusion applies whatever its order, so a base
+config that keeps repros out of the merge-gating run would otherwise hide the
+repro from the bug-bash config too, and listing it by path would exit
+`NO_TESTS`. Any other base exclusion is kept.
 
 Set `BUGBASH_PASSWORD` to 6 or more characters first, or the config fails to
 load. Pass `--config e2e.bugbash.config.ts` to every command below, and
