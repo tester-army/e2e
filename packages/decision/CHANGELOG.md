@@ -1,5 +1,13 @@
 # @e2e-dev/decision
 
+## 0.2.2
+
+### Patch Changes
+
+- [#1101](https://github.com/tester-army/e2e/pull/1101) [`4b4b297`](https://github.com/tester-army/e2e/commit/4b4b29727dde17eb135b030c031c10607a2d6299) Thanks [@okwasniewski](https://github.com/okwasniewski)! - A decision answer with no probability distribution, as a language model answering through an AI Gateway decision fallback returns, now counts as a committed choice with probability 1 and confidence 0 instead of failing the step with `MODEL_OUTPUT_INVALID`. The docs show how to set a confidence-based gateway fallback on the executor.
+
+- [#942](https://github.com/tester-army/e2e/pull/942) [`aedc393`](https://github.com/tester-army/e2e/commit/aedc393108b50be6741d936901db2a6018496889) Thanks [@HoneyTyagii](https://github.com/HoneyTyagii)! - The completion check now sees the step origin path when it differs from the current page.
+
 ## 0.2.1
 
 ### Patch Changes

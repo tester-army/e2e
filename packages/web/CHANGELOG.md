@@ -1,5 +1,21 @@
 # @e2e-dev/web
 
+## 0.15.0
+
+### Minor Changes
+
+- [#1043](https://github.com/tester-army/e2e/pull/1043) [`edf3423`](https://github.com/tester-army/e2e/commit/edf34236412c52a665270e6e9b819a22cd799c0f) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Expose the saved runner-side absolutePath from browser.waitForDownload so tests can inspect downloaded contents on local and hosted browsers.
+
+- [#1030](https://github.com/tester-army/e2e/pull/1030) [`ea0737f`](https://github.com/tester-army/e2e/commit/ea0737f6547b5e1fe7c6480dda255070c8ad20c3) Thanks [@reiidoda](https://github.com/reiidoda)! - The web engine emulates `prefers-color-scheme` and `prefers-reduced-motion`. `web({ colorScheme, reducedMotion })` sets them for every page, and `browser.emulateMedia({ colorScheme, reducedMotion })` changes them for the rest of one test, before the first navigation too. The page's own `@media` rules see them from the first paint, not only `matchMedia`.
+
+### Patch Changes
+
+- [#1130](https://github.com/tester-army/e2e/pull/1130) [`2536ed3`](https://github.com/tester-army/e2e/commit/2536ed34545920941d8a401796715e6c7b48e3af) Thanks [@kacperkapusciak](https://github.com/kacperkapusciak)! - Update dependencies: the web engine drives Playwright 1.64.0 (and the Chromium it installs), and smol machines boot the matching `mcr.microsoft.com/playwright:v1.64.0-noble` image. The runner moves to `oxc-parser`, `oxc-transform`, and `@oxc-project/runtime` 0.153.0, `@modelcontextprotocol/server` 2.3.1, and `@ai-sdk/provider` 4.0.26.
+
+- [#1061](https://github.com/tester-army/e2e/pull/1061) [`88143fe`](https://github.com/tester-army/e2e/commit/88143fe68538561f287022adbf00d85a5b395198) Thanks [@Ethereal49](https://github.com/Ethereal49)! - The web engine no longer observes Next.js App Router's route announcer, so its hydration-timed title echo cannot stop a replay. Older entries that recorded it re-record on the next read-write run.
+
+- [#1097](https://github.com/tester-army/e2e/pull/1097) [`a869c06`](https://github.com/tester-army/e2e/commit/a869c06304941a8e883dde267f9ca10ead856088) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `expect(browser).toHaveClass` on a node that never arrives still fails as `ASSERTION_FAILED` observing `no node`, now that a locator read waits for its match until the action timeout.
+
 ## 0.14.0
 
 ### Minor Changes

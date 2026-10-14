@@ -424,7 +424,8 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
   next step with `INVALID_STATE`. A throwing handler's unanswered dialog is
   dismissed too, and its error fails the next step.
 - `waitForDownload(() => trigger, { timeout? })`: returns
-  `{ path, suggestedFilename }`.
+  `{ path, absolutePath, suggestedFilename }`; `absolutePath` names the saved
+  runner-side file for reading its contents, including with a hosted browser.
 - `keyboard.press(key)`, `keyboard.type(text)`, `mouse.*`: unfocused input;
   prefer `locator.press` and `locator.fill`.
 
