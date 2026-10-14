@@ -12,36 +12,44 @@ Android emulator, or phone.
   toward a goal, and bug bash a branch with each bug proven by a repro test.
 - **create-verification-skill**: generate a project-local `verify-<app>`
   skill and feature map on top of e2e. Invoke it with
-  `$e2e:create-verification-skill` in Codex or
-  `/e2e:create-verification-skill` in Claude Code. It loads only when invoked.
+  `/e2e:create-verification-skill` in Claude Code or
+  `$e2e:create-verification-skill` in Codex. It loads only when invoked.
 - **migrate-to-e2e**: port a Playwright, Cypress, Selenium, Detox, or Maestro
   suite to e2e one slice at a time, with the old suite running beside the
   new one and a `MIGRATION.md` file the next session resumes from.
 
-## Install from this checkout
+## Install
 
-Run these commands from the monorepo root. The catalogs both point to
-`plugins/e2e`; installation copies this directory into the client's cache.
-
-Codex:
-
-```bash
-codex plugin marketplace add ./
-codex plugin add e2e@e2e
-```
+The [tester-army/e2e](https://github.com/tester-army/e2e) repository is a
+marketplace for both clients. Both marketplace files point to
+`plugins/e2e`, and installation copies this directory into the client's
+cache.
 
 Claude Code:
 
 ```bash
-claude plugin marketplace add ./
+claude plugin marketplace add tester-army/e2e
 claude plugin install e2e@e2e
 ```
 
-Start a new session after installing. For a one-session Claude preview,
-run `claude --plugin-dir ./plugins/e2e` from the monorepo root.
+Codex:
 
-These commands use the local checkout. The plugin has not been submitted
-to either public directory as part of this import.
+```bash
+codex plugin marketplace add tester-army/e2e
+codex plugin add e2e@e2e
+```
+
+Start a new session after installing. The plugin's version follows e2e
+releases. Update it with `claude plugin marketplace update e2e` followed by
+`claude plugin update e2e@e2e`, or in Codex with
+`codex plugin marketplace upgrade e2e`, then start a new session.
+
+To try local changes, run the same commands from the monorepo root with
+`./` in place of `tester-army/e2e`. Claude Code reads a local marketplace
+in place, so edits show at the next session start or `/reload-plugins`. For
+a one-session Claude preview, run `claude --plugin-dir ./plugins/e2e`.
+
+The plugin is not listed in either client's public directory.
 
 ## Requirements
 

@@ -34,7 +34,8 @@ bunx e2e init
 The copy holds `SKILL.md` and topic references. After you upgrade e2e, run
 `init` again to update it. Without `init`, `npx skills add tester-army/e2e`
 installs the skill, and `npx e2e guide [topic]` prints it from the
-installed package.
+installed package. The Claude Code and Codex plugin below installs all
+three e2e skills for every project.
 
 `init` leaves your project instructions unchanged. For agents that need a
 pointer, add this line:
@@ -47,26 +48,40 @@ The package also ships these docs as `.mdx` pages for offline reading, in
 `node_modules/e2e/docs` in a single-package project. A link such as
 `/reference/cli` is `docs/reference/cli.mdx`.
 
-<Accordion title="Try the local Claude or Codex plugin">
+<Accordion title="Install the Claude Code or Codex plugin">
 
-From a checkout of the e2e repository:
+The e2e repository is a plugin marketplace for both clients:
 
 <CodeGroup>
-```bash Codex
-codex plugin marketplace add ./
-codex plugin add e2e@e2e
+```bash Claude
+claude plugin marketplace add tester-army/e2e
+claude plugin install e2e@e2e
 ```
 
-```bash Claude
-claude plugin marketplace add ./
-claude plugin install e2e@e2e
+```bash Codex
+codex plugin marketplace add tester-army/e2e
+codex plugin add e2e@e2e
 ```
 </CodeGroup>
 
 Start a new session. The plugin adds the `e2e`,
 `create-verification-skill`, and `migrate-to-e2e` skills, not the npm
 package or the MCP server. Invoke the other two under the plugin's name:
-`$e2e:<skill>` in Codex, `/e2e:<skill>` in Claude Code.
+`/e2e:<skill>` in Claude Code, `$e2e:<skill>` in Codex.
+
+The plugin's version follows e2e releases. To update it, run these and
+start a new session:
+
+<CodeGroup>
+```bash Claude
+claude plugin marketplace update e2e
+claude plugin update e2e@e2e
+```
+
+```bash Codex
+codex plugin marketplace upgrade e2e
+```
+</CodeGroup>
 
 </Accordion>
 

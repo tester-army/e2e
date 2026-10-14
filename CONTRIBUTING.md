@@ -51,6 +51,7 @@ This project is a pnpm monorepo. `packages/` holds what publishes to npm,
 - `skills/e2e/`: the agent skill shipped with the package and installed by `e2e init`
 - `skills/create-verification-skill/`: the generator of a project-local `verify-<app>` skill, installed with `npx skills add tester-army/e2e --skill create-verification-skill`
 - `skills/migrate-to-e2e/`: ports an existing Playwright, Cypress, Selenium, Detox, or Maestro suite one slice at a time, installed with `npx skills add tester-army/e2e --skill migrate-to-e2e`
+- `plugins/e2e/`: the Claude Code and Codex plugin of the three skills, installed from this repository as a marketplace with `claude plugin marketplace add tester-army/e2e` or `codex plugin marketplace add tester-army/e2e`
 - `.dev/skills/`: the skills coding agents use to work on this repo, symlinked from `.claude/skills/` so `npx skills add tester-army/e2e` offers only `skills/*`
 
 On Windows, enable Developer Mode and clone with
