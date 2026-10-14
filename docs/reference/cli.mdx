@@ -850,30 +850,46 @@ the user the `--dry-run` output and getting their agreement.
 | `--type <type>` | `bug`, `docs`, `feature`, or `other` (default) |
 | `--task <text>` | What you were trying to do |
 | `--expected <text>` | What you expected to happen |
-| `--actual <text>` | What happened instead, with the error code and message |
+| `--actual <text>` | What happened instead, with the error message |
+| `--error-code <code>` | The e2e error code involved, such as `LOCATOR_AMBIGUOUS` |
+| `--repro <text>` | For a bug: steps that reproduce it every time, without app content |
 | `--approach <text>` | What you tried, workarounds included |
 | `--command <text>` | The e2e command or API involved, at most 200 characters |
 | `--agent <text>` | The coding agent and model sending it, at most 200 characters |
+| `--allow-outdated` | Send even when a newer e2e release exists |
 | `--dry-run` | Print the event that would be sent and send nothing |
 
-`--task`, `--expected`, `--actual`, and `--approach` take up to 4000
-characters each. A blank or longer value exits 2.
+`--task`, `--expected`, `--actual`, `--approach`, and `--repro` take up to
+1500 characters each. A blank or longer value exits 2.
+
+A bug without `--repro` isn't sent. The command prints a prefilled
+[GitHub issue](https://github.com/tester-army/e2e/issues/new?template=bug_report.yml)
+instead, where the e2e team can ask for a reproduction. Add a minimal one and
+submit it yourself.
+
+Before sending, the command asks the npm registry for the latest e2e
+release. When yours is older, it exits 2 and sends nothing, since the problem
+may already be fixed: upgrade, check it still happens, and send it again, or
+pass `--allow-outdated`.
 
 <CodeGroup>
 ```bash npm
-npx e2e feedback --type bug -m "list ignores --grep" --command "e2e list --grep checkout"
+npx e2e feedback --type bug -m "list ignores --grep" --command "e2e list --grep checkout" \
+  --repro "e2e list --grep checkout lists every test"
 npx e2e feedback --type docs -m "The mcp topic never says how to close a session"
 npx e2e feedback --type feature -m "Need a way to set the viewport per test" --dry-run
 ```
 
 ```bash pnpm
-pnpm exec e2e feedback --type bug -m "list ignores --grep" --command "e2e list --grep checkout"
+pnpm exec e2e feedback --type bug -m "list ignores --grep" --command "e2e list --grep checkout" \
+  --repro "e2e list --grep checkout lists every test"
 pnpm exec e2e feedback --type docs -m "The mcp topic never says how to close a session"
 pnpm exec e2e feedback --type feature -m "Need a way to set the viewport per test" --dry-run
 ```
 
 ```bash bun
-bunx e2e feedback --type bug -m "list ignores --grep" --command "e2e list --grep checkout"
+bunx e2e feedback --type bug -m "list ignores --grep" --command "e2e list --grep checkout" \
+  --repro "e2e list --grep checkout lists every test"
 bunx e2e feedback --type docs -m "The mcp topic never says how to close a session"
 bunx e2e feedback --type feature -m "Need a way to set the viewport per test" --dry-run
 ```

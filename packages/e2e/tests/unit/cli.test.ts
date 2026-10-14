@@ -23,6 +23,7 @@ vi.mock('../../src/cli/init.ts', () => ({
 }));
 
 const { main } = await import('../../src/cli/index.ts');
+const { olderThan } = await import('../../src/cli/feedback.ts');
 
 const { version: packageVersion } = JSON.parse(
   readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
@@ -706,6 +707,7 @@ describe('e2e feedback', () => {
   /** Every feedback event a request carried; the telemetry flush posts its own batch beside them. */
   function sentFeedback(): SentEvent[] {
     return fetchMock.mock.calls
+      .filter((call: readonly unknown[]) => String(call[0]).startsWith('https://eu.i.posthog.com/'))
       .flatMap((call: readonly unknown[]) => (JSON.parse((call[1] as { body: string }).body) as { batch: SentEvent[] }).batch)
       .filter((event) => event.event === 'e2e_feedback');
   }
@@ -728,15 +730,32 @@ describe('e2e feedback', () => {
     rmSync(configHome, { recursive: true, force: true });
   });
 
+  /** Answers the npm registry's `latest` request with `version`, and every other request with 200. */
+  function latestIs(version: string): void {
+    fetchMock.mockImplementation(async (url: unknown) =>
+      String(url) === 'https://registry.npmjs.org/e2e/latest' ? Response.json({ version }) : new Response('{}', { status: 200 }),
+    );
+  }
+
   it('sends one event with the report, the machine facts, and the telemetry id', async () => {
-    await invoke('feedback', '--type', 'bug', '-m', ' list ignores --grep ', '--command', 'e2e list --grep x');
+    latestIs(packageVersion);
+    await invoke(
+      'feedback',
+      '--type', 'bug',
+      '-m', ' list ignores --grep ',
+      '--command', 'e2e list --grep x',
+      '--repro', 'e2e list --grep x lists every test',
+      '--error-code', 'LOCATOR_AMBIGUOUS',
+    );
     expect(process.exitCode).toBe(0);
-    expect(String(fetchMock.mock.calls[0]?.[0])).toBe('https://eu.i.posthog.com/batch/');
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe('https://registry.npmjs.org/e2e/latest');
     const [event] = sentFeedback();
     expect(event?.properties).toMatchObject({
       type: 'bug',
       message: 'list ignores --grep',
       command: 'e2e list --grep x',
+      repro: 'e2e list --grep x lists every test',
+      error_code: 'LOCATOR_AMBIGUOUS',
       task: null,
       e2e_version: packageVersion,
       $process_person_profile: false,
@@ -797,18 +816,76 @@ describe('e2e feedback', () => {
     expect(written(stderrSpy)).toContain(`feedback not confirmed: PostHog did not acknowledge report ${event?.uuid}, so it may not have arrived.`);
   });
 
+  it('sends a bug without --repro to GitHub as a prefilled, redacted issue and posts nothing', async () => {
+    vi.stubEnv('MY_SERVICE_TOKEN', 'hunter2-hunter2');
+    await invoke('feedback', '--type', 'bug', '-m', 'tap lands on the wrong tab', '--actual', 'token hunter2-hunter2 leaked', '--error-code', 'TARGET_NOT_FOUND');
+    expect(process.exitCode).toBe(0);
+    expect(sentFeedback()).toEqual([]);
+    const output = written(stdoutSpy);
+    expect(output).toContain('Not sent: a bug without --repro goes to GitHub');
+    const url = new URL(output.trim().split('\n').at(-1) ?? '');
+    expect(`${url.origin}${url.pathname}`).toBe('https://github.com/tester-army/e2e/issues/new');
+    expect(url.searchParams.get('template')).toBe('bug_report.yml');
+    expect(url.searchParams.get('title')).toBe('tap lands on the wrong tab');
+    expect(url.searchParams.get('what')).toBe('tap lands on the wrong tab\n\nActual: token <secret:MY_SERVICE_TOKEN> leaked\nError code: TARGET_NOT_FOUND');
+    expect(url.searchParams.get('versions')).toContain(`e2e ${packageVersion}, node `);
+  });
+
+  it('keeps the GitHub link under the length GitHub accepts', async () => {
+    const long = 'x'.repeat(1500);
+    await invoke('feedback', '--type', 'bug', '-m', 'y'.repeat(2000), '--task', long, '--expected', long, '--actual', long, '--approach', long);
+    const link = written(stdoutSpy).trim().split('\n').at(-1) ?? '';
+    expect(link.length).toBeLessThanOrEqual(8000);
+    expect(new URL(link).searchParams.get('what')).toMatch(/…$/u);
+  });
+
+  it('refuses a report from an outdated e2e with exit 2 unless --allow-outdated', async () => {
+    latestIs('999.0.0');
+    await invoke('feedback', '-m', 'broken');
+    expect(process.exitCode).toBe(2);
+    expect(sentFeedback()).toEqual([]);
+    expect(written(stderrSpy)).toContain(`feedback not sent: e2e ${packageVersion} is older than the latest release 999.0.0`);
+    process.exitCode = undefined;
+    await invoke('feedback', '-m', 'broken', '--allow-outdated');
+    expect(process.exitCode).toBe(0);
+    expect(sentFeedback()).toHaveLength(1);
+  });
+
+  it('sends when the registry fails or does not answer with a version', async () => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (String(url).startsWith('https://registry.npmjs.org/')) throw new TypeError('fetch failed');
+      return new Response('{}', { status: 200 });
+    });
+    await invoke('feedback', '-m', 'broken');
+    expect(process.exitCode).toBe(0);
+    expect(sentFeedback()).toHaveLength(1);
+  });
+
   it('counts the length limit in characters, not UTF-16 units', async () => {
     await invoke('feedback', '-m', '🐛'.repeat(2000), '--dry-run');
     expect(process.exitCode).toBe(0);
   });
 
   it('rejects a missing message, a blank one, one over the limit, and an unknown type with exit 2', async () => {
-    for (const args of [[], ['-m', '  '], ['-m', 'x'.repeat(2001)], ['--type', 'rant', '-m', 'x']]) {
+    for (const args of [[], ['-m', '  '], ['-m', 'x'.repeat(2001)], ['--type', 'rant', '-m', 'x'], ['-m', 'x', '--error-code', 'not a code'], ['-m', 'x', '--actual', 'x'.repeat(1501)]]) {
       process.exitCode = undefined;
       await invoke('feedback', ...args);
       expect(process.exitCode).toBe(2);
     }
     expect(sentFeedback()).toEqual([]);
+  });
+});
+
+describe('olderThan', () => {
+  it.each([
+    ['0.19.0', '0.20.0', true],
+    ['0.20.0', '0.20.0', false],
+    ['0.21.0-nightly-20261014080557', '0.20.0', false],
+    ['0.20.1-nightly-20261013094930', '0.20.1', true],
+    ['1.0.0', '0.99.99', false],
+    ['0.0.0', 'garbage', false],
+  ] as const)('%s before %s is %s', (version, latest, older) => {
+    expect(olderThan(version, latest)).toBe(older);
   });
 });
 
