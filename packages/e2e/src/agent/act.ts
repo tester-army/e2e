@@ -255,7 +255,17 @@ class ActDispatch {
               ...(agent.executor.version === undefined ? {} : { version: agent.executor.version }),
             },
             // Redacted already (`dispatchAgentStep`): the key digests the context the executor reads.
-            agent: { name: agent.name, context: agent.agentContext },
+            agent: {
+              name: agent.name,
+              context: agent.agentContext,
+              ...(agent.config.model?.cacheByModel === true ? {
+                model: {
+                  provider: agent.config.model.provider,
+                  modelId: agent.config.model.id,
+                  specificationVersion: agent.config.model.model.specificationVersion,
+                },
+              } : {}),
+            },
             redact: runtime.redact,
             redactCut: runtime.redactCut,
             maxActions: this.accounting.maxActions,

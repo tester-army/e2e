@@ -97,6 +97,27 @@ describe('traceCacheKeyHash', () => {
     expect(traceCacheKeyHash(buildTraceCacheKey(withParams))).toBe('400b6e2625b0feb2483a87adcd90ab7ddb03a83ef47ed5409e57680cbb1d0caf');
   });
 
+  it('keys an explicit model by identity without reading its credentials', () => {
+    const model = {
+      provider: 'fixture', modelId: 'model-a', specificationVersion: 'v4',
+      get credentials(): never { throw new Error('Credentials must not enter the key.'); },
+    };
+    const keyed = (selected = model) => buildTraceCacheKey({ ...parts, agent: { ...parts.agent, model: selected } });
+    const key = keyed();
+    const hash = traceCacheKeyHash(key);
+    expect(key.modelIdentityDigest).toMatch(/^[a-f0-9]{64}$/);
+    expect(hash).not.toBe(traceCacheKeyHash(buildTraceCacheKey(parts)));
+    for (const change of [
+      { provider: 'other' }, { modelId: 'model-b' }, { specificationVersion: 'v3' },
+    ]) {
+      const selected = Object.assign(Object.create(null), {
+        provider: model.provider, modelId: model.modelId, specificationVersion: model.specificationVersion,
+      }, change);
+      expect(traceCacheKeyHash(keyed(selected))).not.toBe(hash);
+    }
+    expect(traceCacheKeyHash(keyed(model))).toBe(hash);
+  });
+
   it('keys the agent context by digest, never by its text', () => {
     const key = buildTraceCacheKey({ ...parts, agent: { name: 'buyer', context: 'Pay with <secret:card>.' } });
     expect(key.agent).toBe('buyer');
@@ -122,6 +143,14 @@ describe('keyContextChanges', () => {
       'the engine contract (0 -> 1)',
       "the app's identity (app.identity, else its URL) or environment",
     ]);
+  });
+
+  it('names a selected-model change in both directions', () => {
+    const keyed = { ...context, modelIdentityDigest: 'd'.repeat(64) };
+    expect(keyContextChanges(keyed, keyed)).toEqual([]);
+    expect(keyContextChanges(keyed, context)).toEqual(['the selected model']);
+    expect(keyContextChanges(context, keyed)).toEqual(['the selected model']);
+    expect(keyContextChanges(keyed, { ...keyed, modelIdentityDigest: 'e'.repeat(64) })).toEqual(['the selected model']);
   });
 
   it('says nothing for an entry that recorded no context, or the same one', () => {

@@ -446,6 +446,7 @@ export const KEY_CONTEXT_FIELDS = [
   'engineSpiVersion',
   'appIdentity',
   'agentContextDigest',
+  'modelIdentityDigest',
 ] as const;
 
 /** The one numeric part; every other is text. */
@@ -453,8 +454,8 @@ type KeyContextNumber = 'engineSpiVersion';
 
 /** The parts of a cache key outside the step's own identity (`KEY_CONTEXT_FIELDS`). */
 export type TraceKeyContext = {
-  readonly [Field in (typeof KEY_CONTEXT_FIELDS)[number]]: Field extends KeyContextNumber ? number : string;
-};
+  readonly [Field in Exclude<(typeof KEY_CONTEXT_FIELDS)[number], 'modelIdentityDigest'>]: Field extends KeyContextNumber ? number : string;
+} & { readonly modelIdentityDigest?: string };
 
 /** A stored `keyedBy`, or undefined for anything else; a malformed one is dropped, never failing the entry. */
 function readKeyContext(document: unknown): TraceKeyContext | undefined {
@@ -462,6 +463,12 @@ function readKeyContext(document: unknown): TraceKeyContext | undefined {
   const raw = document as Record<string, unknown>;
   const read: Record<string, string | number> = {};
   for (const field of KEY_CONTEXT_FIELDS) {
+    if (field === 'modelIdentityDigest') {
+      if (raw[field] === undefined) continue;
+      if (typeof raw[field] !== 'string' || !SHA256_HEX.test(raw[field])) continue;
+      read[field] = raw[field];
+      continue;
+    }
     const value: string | number | undefined =
       field === 'engineSpiVersion'
         ? typeof raw[field] === 'number' && Number.isSafeInteger(raw[field]) ? raw[field] : undefined

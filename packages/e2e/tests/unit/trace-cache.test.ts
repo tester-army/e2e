@@ -99,6 +99,21 @@ describe('trace-1 entry', () => {
     expect(entryOf(trace({ goneAnchors: [] })).payload.goneAnchors).toBeUndefined();
   });
 
+  it('preserves old key contexts and optional model identity across serialization', () => {
+    const keyedBy = {
+      cacheSchema: 'trace-1', policyVersion: 'conservative/6', project: 'p'.repeat(64),
+      platform: 'web', engineName: 'fixture', engineSpiVersion: 1,
+      appIdentity: 'a'.repeat(64), agentContextDigest: 'c'.repeat(64),
+    };
+    expect(entryOf(trace({ keyedBy })).payload.keyedBy).toEqual(keyedBy);
+    const withModel = { ...keyedBy, modelIdentityDigest: 'd'.repeat(64) };
+    expect(entryOf(trace({ keyedBy: withModel })).payload.keyedBy).toEqual(withModel);
+    for (const modelIdentityDigest of ['', 'not-a-digest', null, 42]) {
+      const raw = withPayload({ keyedBy: { ...keyedBy, modelIdentityDigest } });
+      expect(readTraceEntry(raw)?.payload.keyedBy).toEqual(keyedBy);
+    }
+  });
+
   it('drops unknown fields instead of carrying them', () => {
     const document = roundTrip(trace()) as Record<string, unknown>;
     document['extra'] = 'x';

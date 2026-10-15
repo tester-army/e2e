@@ -58,6 +58,8 @@ export interface TraceCacheKey {
   readonly agent: string;
   /** SHA-256 of the agent's redacted context (its `context` then the test's `agentContext`), or of the empty string. */
   readonly agentContextDigest: string;
+  /** SHA-256 of the model `firstAvailable` selected. Absent for any other model. */
+  readonly modelIdentityDigest?: string;
   readonly policyVersion: string;
 }
 
@@ -66,6 +68,12 @@ export interface CacheAgentIdentity {
   readonly name: string;
   /** The context the agent reads, already redacted. */
   readonly context: string | undefined;
+  /** Set when `firstAvailable` selected this model. */
+  readonly model?: {
+    readonly provider: string;
+    readonly modelId: string;
+    readonly specificationVersion: string;
+  };
 }
 
 /** Identity of the target/engine/app a trace was recorded against. */
@@ -187,6 +195,13 @@ export function buildTraceCacheKey(parts: {
     appIdentity: parts.target.appIdentity,
     agent: parts.agent.name,
     agentContextDigest: sha256Hex(parts.agent.context ?? ''),
+    ...(parts.agent.model === undefined ? {} : {
+      modelIdentityDigest: canonicalDigest({
+        provider: parts.agent.model.provider,
+        modelId: parts.agent.model.modelId,
+        specificationVersion: parts.agent.model.specificationVersion,
+      }),
+    }),
     policyVersion: parts.policyVersion,
   };
 }
@@ -198,7 +213,7 @@ export function traceCacheKeyHash(key: TraceCacheKey): string {
 
 /** The parts of a key outside the step's own identity, as an entry records them (`ActionTrace.keyedBy`). */
 export function keyContext(key: TraceKeyContext): TraceKeyContext {
-  return Object.fromEntries(KEY_CONTEXT_FIELDS.map((field) => [field, key[field]])) as TraceKeyContext;
+  return Object.fromEntries(KEY_CONTEXT_FIELDS.filter((field) => key[field] !== undefined).map((field) => [field, key[field]])) as TraceKeyContext;
 }
 
 /** How each part of a key's context reads in a sentence, and whether its value means anything to a reader. */
@@ -211,6 +226,7 @@ const KEY_CONTEXT_WORDS: Readonly<Record<keyof TraceKeyContext, { readonly name:
   engineSpiVersion: { name: 'the engine contract', shown: true },
   appIdentity: { name: "the app's identity (app.identity, else its URL) or environment", shown: false },
   agentContextDigest: { name: "the agent's context (its context, or the test's agentContext)", shown: false },
+  modelIdentityDigest: { name: 'the selected model', shown: false },
 };
 
 /**
