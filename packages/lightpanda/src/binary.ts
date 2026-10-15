@@ -1,6 +1,6 @@
 /** Where the `lightpanda` binary is when the config does not say. */
 
-import { accessSync, constants } from 'node:fs';
+import { accessSync, constants, statSync } from 'node:fs';
 import path from 'node:path';
 
 const INSTALL_URL = 'https://lightpanda.io/docs/open-source/installation';
@@ -29,10 +29,11 @@ export function findBinary(env: Readonly<Record<string, string | undefined>>): s
   return found;
 }
 
+/** A regular file the process may execute; a directory of that name on `PATH` is skipped. */
 function isExecutable(file: string): boolean {
   try {
     accessSync(file, constants.X_OK);
-    return true;
+    return statSync(file).isFile();
   } catch {
     return false;
   }

@@ -39,7 +39,7 @@ export function lightpanda(options: LightpandaOptions = {}): BrowserProvider {
     name: 'lightpanda',
     async acquire(request: BrowserRequest): Promise<BrowserLease> {
       const binary = options.binary ?? findBinary(request.env);
-      const server = await serve({ binary, loadResources, args, startupTimeoutMs: STARTUP_TIMEOUT_MS, signal: request.signal });
+      const server = await serve({ binary, env: request.env, loadResources, args, startupTimeoutMs: STARTUP_TIMEOUT_MS, signal: request.signal });
       request.log(`lightpanda ${server.version} at ${server.cdpEndpoint}`);
       const lease: BrowserLease = { id: server.cdpEndpoint, cdpEndpoint: server.cdpEndpoint };
       servers.set(lease, server);

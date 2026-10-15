@@ -122,16 +122,18 @@ describe('lightpanda()', () => {
     await provider.release(lease, releaseContext);
   });
 
-  it('finds the binary on PATH, then under the home directory, and names the install page otherwise', async () => {
+  it('finds the binary on PATH, skipping a directory of that name, then under the home directory, and names the install page otherwise', async () => {
     const home = path.join(dir, 'home');
     mkdirSync(path.join(home, '.lightpanda'), { recursive: true });
+    const shadow = path.join(dir, 'shadow');
+    mkdirSync(path.join(shadow, 'lightpanda'), { recursive: true });
     copyFileSync(binary, path.join(home, '.lightpanda', 'lightpanda'));
     const provider = lightpanda();
     const fromHome = await provider.acquire(request({ env: { HOME: home, PATH: path.join(dir, 'empty') } }));
     expect(await serverArgs(fromHome)).toBeDefined();
     await provider.release(fromHome, releaseContext);
 
-    const fromPath = await provider.acquire(request({ env: { HOME: path.join(dir, 'nohome'), PATH: dir } }));
+    const fromPath = await provider.acquire(request({ env: { HOME: path.join(dir, 'nohome'), PATH: [shadow, dir].join(path.delimiter) } }));
     expect(await serverArgs(fromPath)).toBeDefined();
     await provider.release(fromPath, releaseContext);
 

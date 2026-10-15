@@ -12,8 +12,10 @@ import { createServer } from 'node:net';
 export type LightpandaResource = 'iframe' | 'image' | 'stylesheet';
 
 export interface ServeOptions {
-  /** The binary to run, as `spawn` resolves it: a path, or a name on `PATH`. */
+  /** The binary to run, as `spawn` resolves it: a path, or a name on `env`'s `PATH`. */
   readonly binary: string;
+  /** The run's environment, which the server starts in. */
+  readonly env: Readonly<Record<string, string | undefined>>;
   readonly loadResources: readonly LightpandaResource[];
   /** Further `serve` flags, after the ones the provider sets. */
   readonly args: readonly string[];
@@ -42,7 +44,7 @@ const STDERR_CAP = 64 * 1024;
  * terminal Ctrl-C reaches the runner, which owns the interrupt, and not the
  * browser; `stop` signals the group. Rejects, with the process ended, when
  * it exits first (its stderr in the message), when `startupTimeoutMs`
- * passes, or when `signal` aborts.
+ * passes, or when `signal` aborts; either way the port is polled no longer.
  */
 export async function serve(options: ServeOptions): Promise<LightpandaServer> {
   const port = await freePort();
@@ -55,7 +57,7 @@ export async function serve(options: ServeOptions): Promise<LightpandaServer> {
     ...options.loadResources.flatMap((resource) => ['--load-resources', resource]),
     ...options.args,
   ];
-  const child = spawn(options.binary, args, { detached: process.platform !== 'win32', stdio: ['ignore', 'ignore', 'pipe'] });
+  const child = spawn(options.binary, args, { env: options.env, detached: process.platform !== 'win32', stdio: ['ignore', 'ignore', 'pipe'] });
   const stderr = captureStderr(child);
   const exitReason = new Promise<string>((resolve) => {
     child.once('error', (cause) => resolve(`could not start ${options.binary}: ${cause.message}`));
@@ -65,9 +67,10 @@ export async function serve(options: ServeOptions): Promise<LightpandaServer> {
     });
   });
   const cdpEndpoint = `ws://${HOST}:${port}/`;
+  const polling = new AbortController();
   try {
     const version = await Promise.race([
-      waitForVersion(`http://${HOST}:${port}/json/version`, options.startupTimeoutMs, options.signal),
+      waitForVersion(`http://${HOST}:${port}/json/version`, options.startupTimeoutMs, AbortSignal.any([options.signal, polling.signal])),
       exitReason.then((reason) => {
         throw new Error(reason);
       }),
@@ -76,6 +79,8 @@ export async function serve(options: ServeOptions): Promise<LightpandaServer> {
   } catch (cause) {
     await stop(child, 1_000);
     throw cause;
+  } finally {
+    polling.abort();
   }
 }
 
