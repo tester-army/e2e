@@ -1,5 +1,15 @@
 # @e2e-dev/mobile
 
+## 0.12.2
+
+### Patch Changes
+
+- [#1133](https://github.com/tester-army/e2e/pull/1133) [`3f9a7d8`](https://github.com/tester-army/e2e/commit/3f9a7d8cb448e3390acedd27fa4d13b60e50fb0c) Thanks [@amankansal-lt](https://github.com/amankansal-lt)! - iOS sessions on agent-device's WebDriver runtime now map `XCUIElementType*` element types onto roles, so `getByRole` matches and a shown keyboard is detected.
+
+- [#883](https://github.com/tester-army/e2e/pull/883) [`5fce7b2`](https://github.com/tester-army/e2e/commit/5fce7b2bfecc2d912223198ce6bcf4c13d0e707c) Thanks [@pvedula7](https://github.com/pvedula7)! - Executor observations carry `keyboardVisible`, the engine's measured on-screen keyboard state, absent when it can't tell. The mobile engine sets it, and the decision executor uses it to offer `dismiss_keyboard`.
+
+- [#962](https://github.com/tester-army/e2e/pull/962) [`0d3f75e`](https://github.com/tester-army/e2e/commit/0d3f75e9f67ead71fda0e0e8ec2465bb95b36904) Thanks [@reiidoda](https://github.com/reiidoda)! - Forward the worker's device selection with video recording, app state resets, device settings, alerts (including the agent's `alert` tool), and clipboard requests. `device.closeApp()`, and commands that run without an open app, stay on the selected device after `device.closeApp()` ends the session, even when several simulators or emulators are booted.
+
 ## 0.12.1
 
 ### Patch Changes

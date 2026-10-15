@@ -1,5 +1,15 @@
 # @e2e-dev/web
 
+## 0.15.1
+
+### Patch Changes
+
+- [#1042](https://github.com/tester-army/e2e/pull/1042) [`d863b52`](https://github.com/tester-army/e2e/commit/d863b52517655d0d7b3820bd24cdb3c5e629876a) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Add browser.keyboard.down and up for held keys, repeat events, and modifier sequences.
+
+- [#883](https://github.com/tester-army/e2e/pull/883) [`5fce7b2`](https://github.com/tester-army/e2e/commit/5fce7b2bfecc2d912223198ce6bcf4c13d0e707c) Thanks [@pvedula7](https://github.com/pvedula7)! - Executor observations carry `keyboardVisible`, the engine's measured on-screen keyboard state, absent when it can't tell. The mobile engine sets it, and the decision executor uses it to offer `dismiss_keyboard`.
+
+- [#895](https://github.com/tester-army/e2e/pull/895) [`6b691c9`](https://github.com/tester-army/e2e/commit/6b691c91e48ab1b2e23791b2b6890a66d15fef39) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Read the first recognized ARIA role token and retain native semantics when a role attribute contains no recognized role.
+
 ## 0.15.0
 
 ### Minor Changes

@@ -1,5 +1,13 @@
 # @e2e-dev/decision
 
+## 0.2.3
+
+### Patch Changes
+
+- [#1160](https://github.com/tester-army/e2e/pull/1160) [`7086ac3`](https://github.com/tester-army/e2e/commit/7086ac34f962c66666d3ee415d4d4780b85ed370) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `vision: true` works with TypeSafe Jev through `@ai-sdk/typesafe-ai` 3.0.19 or later. `tap_at` takes a third, tighter look before it taps, so it hits small drawn controls such as map pins. New `type_at` fills a field drawn on a canvas: the text model names the field and its value, the screenshot locates it, and the keyboard types into it.
+
+- [#883](https://github.com/tester-army/e2e/pull/883) [`5fce7b2`](https://github.com/tester-army/e2e/commit/5fce7b2bfecc2d912223198ce6bcf4c13d0e707c) Thanks [@pvedula7](https://github.com/pvedula7)! - Executor observations carry `keyboardVisible`, the engine's measured on-screen keyboard state, absent when it can't tell. The mobile engine sets it, and the decision executor uses it to offer `dismiss_keyboard`.
+
 ## 0.2.2
 
 ### Patch Changes

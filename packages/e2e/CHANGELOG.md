@@ -1,5 +1,27 @@
 # e2e
 
+## 0.21.1
+
+### Patch Changes
+
+- [#1139](https://github.com/tester-army/e2e/pull/1139) [`b292019`](https://github.com/tester-army/e2e/commit/b292019ba7be1a59d41882cacec5030436a4e472) Thanks [@Anmol202005](https://github.com/Anmol202005)! - The bug-bash skill's config example removes its repro-directory exclusion before adding the repro glob, so projects that exclude `tests/bugbash/` from regular runs can still select bug-bash tests.
+
+- [#1149](https://github.com/tester-army/e2e/pull/1149) [`6d686f1`](https://github.com/tester-army/e2e/commit/6d686f1cbfafbcc76c856a8f3cc43010edd59785) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Piping CLI output into a reader that stops early, such as `e2e --help | head -1`, no longer crashes with an EPIPE stack trace. The command finishes quietly with its usual exit code, and `e2e run` still tears down and writes its report.
+
+- [#1150](https://github.com/tester-army/e2e/pull/1150) [`93bf5d8`](https://github.com/tester-army/e2e/commit/93bf5d84da38ba0d0b6b76fc24aeed98697da7f2) Thanks [@okwasniewski](https://github.com/okwasniewski)! - An `openHost()` session closed after its deadline now always ends as timed out: `close()` returns the `TEST_TIMEOUT` and the trace says timed out, even when the deadline passed just before `close()` ran.
+
+- [#883](https://github.com/tester-army/e2e/pull/883) [`5fce7b2`](https://github.com/tester-army/e2e/commit/5fce7b2bfecc2d912223198ce6bcf4c13d0e707c) Thanks [@pvedula7](https://github.com/pvedula7)! - Executor observations carry `keyboardVisible`, the engine's measured on-screen keyboard state, absent when it can't tell. The mobile engine sets it, and the decision executor uses it to offer `dismiss_keyboard`.
+
+- [#1147](https://github.com/tester-army/e2e/pull/1147) [`5e9597c`](https://github.com/tester-army/e2e/commit/5e9597c92fd01783e7c3f6a4cd1707d9b4f5e429) Thanks [@okwasniewski](https://github.com/okwasniewski)! - MCP `locate` advice for a status, alert, or list item with no match now suggests `getByText(..., { exact: false })` when the query used `exact: false`.
+
+- [#1148](https://github.com/tester-army/e2e/pull/1148) [`9351d12`](https://github.com/tester-army/e2e/commit/9351d12387640f9c5dc79d9f6e0b906a389e0838) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `e2e run --max-duration` above 2147483647 is now a flag usage error naming `--max-duration`, not a config error. In `e2e run`, a test cut short by the time limit or `--max-failures` now says which limit stopped it, such as `run interrupted in phase body: run stopped at its time limit of 60000 ms (--max-duration)`.
+
+- [#1152](https://github.com/tester-army/e2e/pull/1152) [`2bbeb32`](https://github.com/tester-army/e2e/commit/2bbeb32d4c93fbe98f9a7d6442d71b183ad87ea2) Thanks [@adc77](https://github.com/adc77)! - Expose `run()` from `e2e/runner` to execute suites with a config file or runtime configuration, stream progress, cancel execution, and return the completed report without exiting the caller.
+  
+  `openHost` called while a suite is running now fails early with `RUNNER_BUSY`.
+  
+  Each `run()` that returns a report sends one anonymous `e2e_run_completed` telemetry event with `command: 'runner.run'`, under the same opt-outs as the CLI.
+
 ## 0.21.0
 
 ### Minor Changes

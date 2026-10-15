@@ -1,5 +1,11 @@
 # @e2e-dev/github
 
+## 0.4.1
+
+### Patch Changes
+
+- [#1161](https://github.com/tester-army/e2e/pull/1161) [`ce4dac3`](https://github.com/tester-army/e2e/commit/ce4dac373784f87fade6808119ba537a0b4965fc) Thanks [@okwasniewski](https://github.com/okwasniewski)! - The reporter now updates a pull request comment only when its token's user wrote it. With `GITHUB_TOKEN` or a GitHub App token, which can't look up their user, any bot account's comment matches.
+
 ## 0.4.0
 
 ### Minor Changes
