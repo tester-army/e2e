@@ -276,8 +276,9 @@ function isError(value: unknown): value is ReportError {
 
 /**
  * How long each file took for each target in the previous run, keyed by
- * `pairKey`-style `target::file`: every attempt of every result summed. No
- * readable report is no history, never an error.
+ * `target::file`: every attempt of every result and serial group summed. A
+ * file with no attempt (skipped, or never reached) has no entry. No readable
+ * report is no history, never an error.
  */
 export async function previousFileDurations(reportPath: string): Promise<ReadonlyMap<string, number>> {
   const durations = new Map<string, number>();
@@ -287,9 +288,10 @@ export async function previousFileDurations(reportPath: string): Promise<Readonl
   } catch {
     return durations;
   }
-  for (const result of report.run.results) {
-    const key = fileDurationKey(result.targetId, result.file);
-    const ms = result.attempts.reduce((sum, attempt) => sum + attempt.durationMs, 0);
+  for (const unit of [...report.run.results, ...report.run.serialGroups]) {
+    if (unit.attempts.length === 0) continue;
+    const key = fileDurationKey(unit.targetId, unit.file);
+    const ms = unit.attempts.reduce((sum, attempt) => sum + attempt.durationMs, 0);
     durations.set(key, (durations.get(key) ?? 0) + ms);
   }
   return durations;

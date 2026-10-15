@@ -316,6 +316,33 @@ describe('previousFileDurations', () => {
     expect(durations.get(fileDurationKey('mobile', 'tests/a.e2e.ts'))).toBe(9);
   });
 
+  it('times a serial file by its group and leaves a file that never ran untimed', async () => {
+    const durations = await previousFileDurations(
+      reportFile(
+        report(
+          [
+            { id: 'member', status: 'passed', file: 'tests/serial.e2e.ts' },
+            { id: 'skipped', status: 'skipped', file: 'tests/skipped.e2e.ts' },
+          ],
+          [],
+          {
+            serialGroups: [
+              {
+                id: 'group',
+                file: 'tests/serial.e2e.ts',
+                targetId: 'web',
+                status: 'passed',
+                attempts: [{ durationMs: 300, artifacts: [], members: [] }],
+              },
+            ],
+          },
+        ),
+      ),
+    );
+    expect(durations.get(fileDurationKey('web', 'tests/serial.e2e.ts'))).toBe(300);
+    expect(durations.has(fileDurationKey('web', 'tests/skipped.e2e.ts'))).toBe(false);
+  });
+
   it('is no history, not an error, without a readable report', async () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-last-run-'));
     tempRoots.push(dir);
