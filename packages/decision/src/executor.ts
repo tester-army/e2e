@@ -5,12 +5,12 @@ import { ConfigurationError } from 'e2e/engine';
 import { decide, requireDecide, type Decision } from './decide.ts';
 import { perform, type Action } from './dispatch.ts';
 import { actionSpace, type ActionSpace, type Control, type Element, type Operation, type Target } from './elements.ts';
-import { PointLocator } from './locator.ts';
-import type { Screenshot } from './overlay.ts';
+import { PointLocator, type Aim } from './locator.ts';
+import type { Point, Screenshot } from './overlay.ts';
 import { nonSecretParams } from './params.ts';
 import { describe, gated, invalid, need, pick, verdictOf, type Gates, type Verdict } from './picks.ts';
 import { assertionRequest, completionRequest, operationRequest, targetRequest, type DecisionRequest, type HistoryEntry } from './questions.ts';
-import { askText, PATHS, TARGET, TEXT, type Ask, type FieldInput } from './text.ts';
+import { askText, DRAWN_FIELD, PATHS, TARGET, TEXT, type Ask, type FieldInput } from './text.ts';
 import type { DecisionExecutorOptions } from './types.ts';
 /** Error codes the runtime owns: rethrown untouched, never absorbed as history. */
 const RUNTIME_CODES = new Set(['STEP_BUDGET_EXHAUSTED', 'STEP_TIMEOUT', 'CANCELLED']);
@@ -276,6 +276,7 @@ class Step {
     const operation = space.operation(op.choice);
     if (operation === undefined) throw invalid('The decision model chose an unavailable operation.');
     if (operation === 'tap_at') return this.prepareTapAt(view);
+    if (operation === 'type_at') return this.prepareTypeAt(view);
     const group = space.targets.get(operation);
     if (group === undefined) throw invalid('The decision model chose an unavailable operation.');
     // The target depends on the operation: its own request, after the operation settled.
@@ -323,17 +324,33 @@ class Step {
     }
   }
   /** A point tap: the text model names the drawn control, the locator finds it or recalls where it last landed. */
-  private async prepareTapAt({ space, screenshot, path }: Acting): Promise<Next> {
-    if (screenshot === undefined) throw invalid('The decision model chose tap_at with no screenshot.');
-    const named = await this.askText(TARGET, 'tap_at', space.pageText);
+  private async prepareTapAt(view: Acting): Promise<Next> {
+    if (view.screenshot === undefined) throw invalid('The decision model chose tap_at with no screenshot.');
+    const named = await this.askText(TARGET, 'tap_at', view.space.pageText);
     if (named === undefined) return { verdict: blocked(this.budgetMessage()) };
-    const wanted = named.target;
-    const point = this.locator.known(path, wanted) ?? (await this.locator.locate(screenshot, path, wanted));
+    const found = await this.pointFor(view, view.screenshot, named.target, 'control');
+    if ('verdict' in found) return found;
+    const label = `tap ${named.target} at (${found.x}, ${found.y})`;
+    return { action: { operation: 'tap_at', point: found }, label, description: label };
+  }
+  /** A drawn field fill: the text model names the field and its value, the locator finds the field to tap and type into. */
+  private async prepareTypeAt(view: Acting): Promise<Next> {
+    if (view.screenshot === undefined) throw invalid('The decision model chose type_at with no screenshot.');
+    const named = await this.askText(DRAWN_FIELD, 'type_at', view.space.pageText);
+    if (named === undefined) return { verdict: blocked(this.budgetMessage()) };
+    if (named.text === null || named.text === '') return { skip: named.target, because: 'no value for this field' };
+    const found = await this.pointFor(view, view.screenshot, named.target, 'field');
+    if ('verdict' in found) return found;
+    const label = `type into ${named.target} at (${found.x}, ${found.y})`;
+    return { action: { operation: 'type_at', point: found, text: named.text }, label, description: label, typed: named.text };
+  }
+  /** Where a drawn control is: recalled from a tap that landed, or located afresh, and recorded for the next look to settle. */
+  private async pointFor({ path }: Acting, screenshot: Screenshot, wanted: string, aim: Aim): Promise<Point | { verdict: StepVerdict }> {
+    const point = this.locator.known(path, wanted) ?? (await this.locator.locate(screenshot, path, wanted, aim));
     if (point === undefined) return { verdict: blocked(this.budgetMessage()) };
     if ('uncertain' in point) return { verdict: blocked(`The tap point is uncertain (${point.uncertain}).`) };
     this.locator.tapped(path, wanted, point, screenshot);
-    const label = `tap ${wanted} at (${point.x}, ${point.y})`;
-    return { action: { operation: 'tap_at', point }, label, description: label };
+    return point;
   }
   /**
    * Performs a prepared action and records the turn and the history entry.

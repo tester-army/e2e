@@ -5,6 +5,8 @@ import { describe, gated, invalid, need, type Gates } from './picks.ts';
 import { pointRequest, type DecisionRequest } from './questions.ts';
 /** Asks the decision model one request, or nothing once the step budget is spent. */
 export type AskDecision = (request: DecisionRequest) => Promise<Record<string, Decision> | undefined>;
+/** What a point look is after: a control to tap, or a field to type into. */
+export type Aim = 'control' | 'field';
 /** Where a drawn control is, or why the looks could not say. */
 export type Located = Point | { readonly uncertain: string };
 /**
@@ -14,6 +16,13 @@ export type Located = Point | { readonly uncertain: string };
  * runner's 768px capture, the second zoom lifts hits from 47-49 to 53-54.
  */
 const ZOOM_BOXES = [400, 200] as const;
+/**
+ * The zoomed looks per aim. A field is wide enough for the full screenshot
+ * alone; a crop around it also holds its neighbors, and measured on Jev over
+ * a drawn form the zooms split their mass between two stacked fields and
+ * landed between them (about 4 in 5 hit), where the first look hit 72 of 72.
+ */
+const LOOKS: Readonly<Record<Aim, readonly number[]>> = { control: ZOOM_BOXES, field: [] };
 /** How much each zoomed region is enlarged. */
 const ZOOM_FACTOR = 2;
 /** Columns and rows of the grid drawn on a zoomed region. */
@@ -22,7 +31,7 @@ const ZOOM_CELLS = 8;
  * Locates drawn controls on the screenshot and remembers the ones a tap
  * found: three looks per control, the column and row on the plain full
  * screenshot, then again on two ever tighter zoomed crops with a grid drawn
- * on them. A tap that changed the pixels around it found its control; the
+ * on them; a field takes the first look alone. A tap that changed the pixels around it found its control; the
  * same control on the same page is tapped there again with no new looks.
  */
 export class PointLocator {
@@ -51,23 +60,23 @@ export class PointLocator {
     else this.landed.delete(this.pending.key);
     this.pending = undefined;
   }
-  /** Three looks for the control, or undefined once the budget is spent. */
-  async locate(screenshot: Screenshot, path: string, wanted: string): Promise<Located | undefined> {
+  /** The looks for the control or field, or undefined once the budget is spent. */
+  async locate(screenshot: Screenshot, path: string, wanted: string, aim: Aim): Promise<Located | undefined> {
     const grid = gridFor(screenshot.width / screenshot.scale, screenshot.height / screenshot.scale, CELL_TARGET);
     const coarse = await this.ask(pointRequest(this.ctx, path, screenshot, grid, 'This image is the full screenshot; no grid is drawn on it.', wanted));
     if (coarse === undefined) return undefined;
     const first = this.scored(coarse);
     if ('uncertain' in first) return first;
     let point = pointOf(grid, first.x, first.y);
-    for (const box of ZOOM_BOXES) {
-      const closer = await this.closer(screenshot, path, wanted, point, box);
+    for (const box of LOOKS[aim]) {
+      const closer = await this.closer(screenshot, path, wanted, aim, point, box);
       if (closer === undefined || 'uncertain' in closer) return closer;
       point = closer;
     }
     return point;
   }
   /** One zoomed look: the `box` CSS-pixel region around `point`, enlarged with a grid drawn on it. */
-  private async closer(screenshot: Screenshot, path: string, wanted: string, point: Point, box: number): Promise<Located | undefined> {
+  private async closer(screenshot: Screenshot, path: string, wanted: string, aim: Aim, point: Point, box: number): Promise<Located | undefined> {
     const zoom = zoomAround(screenshot, point, box, ZOOM_FACTOR);
     if (zoom === undefined) return point;
     const side = zoom.screenshot.width;

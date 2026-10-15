@@ -37,6 +37,45 @@ describe('vision', () => {
     expect(fixture.transcripts[0]).toContain('"screenshot":"800x600"');
     expect(fixture.turns[0]?.calls[0]).toBe('tap the Add key at (240, 263)');
   });
+  it('types into a drawn field: one text ask names it and its value, the locator finds it, a tap focuses it', async () => {
+    const { model, requests } = scriptedDecision((id, keys, call) => {
+      if (id === 'operation') return { choice: call === 0 ? 'type_at' : 'done' };
+      if (id === 'verdict') return { choice: 'holds' };
+      if (id === 'x') return { choice: '2', score: 2.5 };
+      if (id === 'y') return { choice: '3', score: 3 };
+      return { choice: keys[0] ?? '' };
+    }, { supported: ['choice', 'score'] });
+    const text = scriptedOutputs([{ target: 'the Name field', text: 'Ada' }]);
+    const fixture = context({ tree: BUTTONS, observation: { pixels: PIXELS }, model: text.model });
+    const verdict = await decisionExecutor({ model, textModel: text.model, vision: true }).runStep(fixture.ctx);
+    expect(verdict).toMatchObject({ status: 'passed' });
+    expect(Object.keys(requests[0]?.questions['operation']?.criteria as object)).toContain('type_at');
+    expect(requests[1]?.state).toMatchObject({ target: 'the Name field' });
+    expect(fixture.actions.tapAt).toHaveBeenCalledWith({ x: 240, y: 263 });
+    expect(fixture.actions.typeText).toHaveBeenCalledWith('Ada', { replace: true });
+    expect(text.prompts).toHaveLength(1);
+    expect(fixture.turns[0]?.calls[0]).toBe('type into the Name field at (240, 263)');
+  });
+  it('skips a drawn field the goal gives no value for, and never taps it', async () => {
+    const { model } = scriptedDecision((id, keys, call) => {
+      if (id === 'operation') return { choice: call === 0 ? 'type_at' : 'blocked' };
+      return { choice: keys[0] ?? '' };
+    }, { supported: ['choice', 'score'] });
+    const text = scriptedOutputs([{ target: 'the City field', text: null }]);
+    const fixture = context({ tree: BUTTONS, observation: { pixels: PIXELS }, model: text.model });
+    await decisionExecutor({ model, textModel: text.model, vision: true }).runStep(fixture.ctx);
+    expect(fixture.actions.tapAt).not.toHaveBeenCalled();
+    expect(fixture.actions.typeText).not.toHaveBeenCalled();
+  });
+  it('offers type_at only when the engine types into whatever holds focus', async () => {
+    const { model, requests } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'blocked' : (keys[0] ?? '') }), { supported: ['choice', 'score'] });
+    const text = scriptedOutputs([]);
+    const fixture = context({ tree: BUTTONS, observation: { pixels: PIXELS }, model: text.model, verbs: ['tap', 'tapAt'] });
+    await decisionExecutor({ model, textModel: text.model, vision: true }).runStep(fixture.ctx);
+    const offered = Object.keys(requests[0]?.questions['operation']?.criteria as object);
+    expect(offered).toContain('tap_at');
+    expect(offered).not.toContain('type_at');
+  });
   it('never offers tap_at to a model that does not score', async () => {
     const { model, requests } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'blocked' : (keys[0] ?? '') }));
     const fixture = context({ tree: BUTTONS, observation: { pixels: PIXELS } });

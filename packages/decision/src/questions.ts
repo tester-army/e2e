@@ -59,6 +59,7 @@ const OPERATIONS: Readonly<Record<Operation | Control, string>> = {
   scroll_to: 'Bring an element outside the viewport into view.',
   upload: 'Attach the files the goal names to a file input.',
   tap_at: 'Tap a point in the screenshot where the element table lists nothing, such as a drawn control.',
+  type_at: 'Type text into a field drawn in the screenshot that the element table does not list.',
   scroll_up: 'Scroll the viewport up.',
   scroll_down: 'Scroll the viewport down.',
   back: 'Go back to the previous page, as the browser back button does.',
@@ -91,6 +92,7 @@ export function operationRequest(
   const criteria: Record<string, string> = {};
   for (const operation of space.targets.keys()) criteria[operation] = OPERATIONS[operation];
   if (space.tapAt) criteria['tap_at'] = OPERATIONS.tap_at;
+  if (space.typeAt) criteria['type_at'] = OPERATIONS.type_at;
   for (const control of space.controls.keys()) criteria[control] = OPERATIONS[control];
   for (const [terminal, description] of Object.entries(TERMINALS)) criteria[terminal] = description;
   const recent = history.slice(-RECENT_ACTIONS);

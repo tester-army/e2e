@@ -130,7 +130,7 @@ secret, from its declared handle.
 
 The text model also answers `waitFor` and `extract`. Instead of
 `textModel`, you can set `model` on the agents entry. With neither, the
-executor never offers `type`, `upload`, or `tap_at`.
+executor never offers `type`, `upload`, `tap_at`, or `type_at`.
 
 ## Finishing a step
 
@@ -191,6 +191,12 @@ doesn't list. The text model names the control, such as "the 3 key on the
 keypad", and the decision model finds it on the screenshot, then on two
 zoomed crops. A point tap costs four decide calls and one text call, or one
 of each to repeat a tap on the same page.
+
+When the engine can type into whatever has focus, vision also offers
+`type_at` for a drawn field. The text model names the field and the value
+from the goal, the decision model finds the field on the screenshot, and
+the executor taps it and types the value, replacing any text there. It costs
+two decide calls and one text call.
 
 ## Provider options
 

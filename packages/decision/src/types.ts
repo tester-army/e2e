@@ -34,7 +34,8 @@ export interface DecisionExecutorOptions {
    * checks see the screenshot beside the page, and `tap_at` is offered for
    * a drawn control when the engine taps points and a text model is set:
    * the text model names it, and score questions over the screenshot
-   * locate it. The screenshot goes
+   * locate it. With an engine that types into whatever has focus,
+   * `type_at` fills a drawn field the same way. The screenshot goes
    * as a file part of the decision state, so the model must take images and
    * answer `score` questions, e.g. `typeSafeAi.decisionModel('jev-latest')`
    * with `@ai-sdk/typesafe-ai` 3.0.19 or later, or

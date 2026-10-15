@@ -16,7 +16,8 @@ export type Operation =
   | 'drag'
   | 'scroll_to'
   | 'upload'
-  | 'tap_at';
+  | 'tap_at'
+  | 'type_at';
 /**
  * Viewport, history, and keyboard controls, offered when the engine declares
  * the verb; `dismiss_keyboard` only while an on-screen keyboard is showing.
@@ -69,6 +70,8 @@ export interface ActionSpace {
   readonly destinations: ReadonlyMap<string, Destination>;
   /** Whether `tap_at` is offered: a screenshot, the `tapAt` verb, and a step that locates. */
   readonly tapAt: boolean;
+  /** Whether `type_at` is offered: `tap_at` is, and the engine types into whatever holds focus. */
+  readonly typeAt: boolean;
   /** Elements left out to stay under the per-question cap; scrolling can bring them into view. */
   readonly omitted: number;
   /** Non-interactive page text from the tree, without node ids, clipped to 6000 chars. */
@@ -281,6 +284,7 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
     return element;
   });
   const tapAt = observation.pixels !== undefined && observation.locates === true && verbs.has('tapAt');
+  const typeAt = tapAt && verbs.has('typeText');
   const controls = new Set<Control>();
   if (verbs.has('scroll')) {
     controls.add('scroll_up');
@@ -293,10 +297,12 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
     element: (key) => byIndex.get(targetKeyIndex(key)),
     targets,
     controls,
-    operation: (choice) => (targets.has(choice as Operation) || (tapAt && choice === 'tap_at') ? (choice as Operation) : undefined),
+    operation: (choice) =>
+      targets.has(choice as Operation) || (tapAt && choice === 'tap_at') || (typeAt && choice === 'type_at') ? (choice as Operation) : undefined,
     control: (choice) => (controls.has(choice as Control) ? (choice as Control) : undefined),
     destinations,
     tapAt,
+    typeAt,
     omitted,
     pageText: clip(pageText.join('\n'), 6000),
     statuses,
@@ -317,6 +323,7 @@ function named(role: string, label: string): string {
 const VERBS: Readonly<Record<Operation, string>> = {
   select: 'select',
   tap_at: 'tap at',
+  type_at: 'type at',
   tap: 'tap',
   type: 'type into',
   typeSecret: 'typeSecret into',
