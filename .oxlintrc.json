@@ -33,7 +33,14 @@
     // Conflicts with the conditional-spread idiom exactOptionalPropertyTypes forces.
     "oxc/no-map-spread": "off"
   },
+  "jsPlugins": [{ "name": "e2e", "specifier": "./scripts/oxlint-plugin/index.ts" }],
   "overrides": [
+    {
+      "files": ["packages/*/src/**"],
+      "rules": {
+        "e2e/no-chained-type-assertions": "error"
+      }
+    },
     {
       "files": ["packages/e2e/tests/types/*.ts"],
       "rules": {

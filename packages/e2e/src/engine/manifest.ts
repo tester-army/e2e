@@ -302,7 +302,7 @@ export function defineEngine(spec: Engine): EngineHandle {
   if (spec.secrets !== undefined) handle['secrets'] = declaredSecrets(name, spec.secrets);
   if (spec.session !== undefined) handle['session'] = hookManifest(name, 'session', spec.session);
 
-  // Assembled key by key above, so the record is an Engine by construction.
+  // oxlint-disable-next-line e2e/no-chained-type-assertions -- assembled key by key above, so the record is an Engine by construction
   return Object.freeze({
     ...handle,
     [engineBrand]: true as const,

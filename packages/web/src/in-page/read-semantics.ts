@@ -930,7 +930,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * Closed shadow roots the context's init script recorded, when it ran in this
    * document. Same literal as `CLOSED_SHADOW_ROOTS_KEY`; the reader cannot import it.
    */
-  const closedShadowRoots = (globalThis as unknown as Record<symbol, WeakMap<Element, ShadowRoot> | undefined>)[
+  const closedShadowRoots = (globalThis as Record<symbol, WeakMap<Element, ShadowRoot> | undefined>)[
     Symbol.for('e2e.closedShadowRoots')
   ];
   const shadowRootOf = (el: Element): ShadowRoot | null =>

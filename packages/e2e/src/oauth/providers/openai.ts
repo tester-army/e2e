@@ -111,7 +111,7 @@ function claimsOf(token: string | undefined): Record<string, unknown> | undefine
   return token === undefined ? undefined : decodeJwtPayload(token);
 }
 
-export function extractAccountId(tokens: { id_token?: string; access_token?: string }): string | undefined {
+export function extractAccountId(tokens: { id_token?: string | undefined; access_token?: string | undefined }): string | undefined {
   for (const claims of [claimsOf(tokens.id_token), claimsOf(tokens.access_token)]) {
     if (claims === undefined) continue;
     const nested = claims[AUTH_CLAIM] as Record<string, unknown> | undefined;

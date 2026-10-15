@@ -148,7 +148,8 @@ export function isAgentError(value: unknown): value is AgentError {
   return (
     value instanceof Error &&
     AGENT_ERROR_MARKER in value &&
-    typeof (value as unknown as { code?: unknown }).code === 'string' &&
-    (value as unknown as { code: string }).code in CATEGORY_BY_CODE
+    'code' in value &&
+    typeof value.code === 'string' &&
+    value.code in CATEGORY_BY_CODE
   );
 }

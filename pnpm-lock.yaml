@@ -125,6 +125,9 @@ importers:
       '@changesets/parse':
         specifier: 1.0.0
         version: 1.0.0
+      '@oxlint/plugins':
+        specifier: 1.83.0
+        version: 1.83.0
       '@sindresorhus/slugify':
         specifier: 2.2.0
         version: 2.2.0
@@ -2870,6 +2873,10 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [win32]
+
+  '@oxlint/plugins@1.83.0':
+    resolution: {integrity: sha512-qD64wr6SS1DL7YbJQ8WWjyUfFfrJsvAy9Vo0sG/PYUQy30w0uemN2h6j4xuvj4noyETDpzcGC20sv+FH7GrN5A==}
+    engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
 
   '@pnpm/deps.graph-sequencer@1100.0.1':
     resolution: {integrity: sha512-pOr5+q1fLYKwFN3LAJuGZEnfXDcQ73zqgDHMtGy+K+uIoUqyY+6MeDCWFwfu+4EFuq76I5EPFofoNAI+Bmmq4A==}
@@ -10455,6 +10462,8 @@ snapshots:
 
   '@oxlint/binding-win32-x64-msvc@1.83.0':
     optional: true
+
+  '@oxlint/plugins@1.83.0': {}
 
   '@pnpm/deps.graph-sequencer@1100.0.1': {}
 

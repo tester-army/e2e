@@ -7,7 +7,7 @@
  */
 
 import { OAuthError, describeResponse } from './errors.ts';
-import { positiveSeconds, postForm, type TokenResponse } from './token-endpoint.ts';
+import { parseTokens, positiveSeconds, postForm, type TokenResponse } from './token-endpoint.ts';
 import type { OAuthLoginCallbacks } from './types.ts';
 
 export interface DeviceAuthorization {
@@ -142,7 +142,8 @@ export function rfc8628Flow(options: Rfc8628Options): Promise<TokenResponse> {
         signal,
       );
       const json = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-      if (typeof json['access_token'] === 'string' && json['access_token'] !== '') return { status: 'granted', value: json as unknown as TokenResponse };
+      const tokens = parseTokens(json);
+      if (tokens !== undefined) return { status: 'granted', value: tokens };
       switch (json['error']) {
         case 'authorization_pending':
           return { status: 'pending' };

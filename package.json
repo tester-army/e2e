@@ -45,6 +45,7 @@
     "@changesets/changelog-github": "1.0.1",
     "@changesets/cli": "3.0.3",
     "@changesets/parse": "1.0.0",
+    "@oxlint/plugins": "1.83.0",
     "@sindresorhus/slugify": "2.2.0",
     "@types/node": "26.6.2",
     "fallow": "3.27.0",

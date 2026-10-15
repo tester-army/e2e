@@ -188,7 +188,7 @@ export async function opencodeConsoleRouteFor(modelId: string, fetch: FetchFunct
 
 /** A refresh keeps the workspace and the refresh token when the grant omits them. */
 function toCredentials(tokens: TokenResponse, previous?: OpencodeConsoleCredentials): OpencodeConsoleCredentials {
-  const orgId = (tokens as TokenResponse & { readonly org_id?: unknown }).org_id;
+  const orgId = tokens['org_id'];
   const workspace = typeof orgId === 'string' && orgId !== '' ? orgId : previous?.orgId;
   return {
     access: tokens.access_token,
