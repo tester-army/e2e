@@ -143,9 +143,12 @@ Against the e2e testbed's local suite on a Lightpanda nightly from mid-October
 - `browser.setCookies` from a test, after a page is open.
 - `app.screenshot` and the screenshot of a failure. Lightpanda paints a plain
   render of the DOM, not the page as Chrome would show it.
-- Agent steps: `agent.act` and `agent.extract` read the screen tree, which
-  Lightpanda provides in full. A judgment on pixels sees the plain render,
-  so keep the agent on the tree.
+- Agent steps: `agent.act`, `agent.assert`, `agent.extract`, and
+  `agent.waitFor` read the screen tree, which Lightpanda provides in full.
+  The testbed's agent suite passes its tree-driven flows (todos, wizard,
+  sign-in, hover, context menu, long press, upload); what fails is drawn on a
+  canvas, dragged, or below the fold. A judgment on pixels sees the plain
+  render, so keep the agent on the tree.
 
 A test that asserts on what the user sees, not where it is drawn, moves
 over as is.
@@ -166,7 +169,8 @@ tracks most of them.
 | Drags: `screen.swipe`, `locator.swipeTo`, and `browser.mouse` moves with a button down | `ENGINE_FAILURE` naming `Input.setInterceptDrags`. | Playwright needs that command for a drag and Lightpanda has not implemented it. |
 | `browser.setViewport` | The page measures the new size, but a `resize` listener never runs. | No `resize` event is dispatched. |
 | [Media emulation](/reference/web#media-emulation): `colorScheme`, `reducedMotion`, `browser.emulateMedia` | The page keeps reporting `light` and full motion. | `Emulation.setEmulatedMedia` does not change what `matchMedia` answers. |
-| Scrolling: `scrollIntoView`, `scrollUntilVisible`, and an action on a node "outside of the viewport" | The scroll is a no-op, and an actionability wait can time out. | Without layout there is no scroll position to move. |
+| Scrolling: `scrollIntoView`, `scrollUntilVisible`, and an action on a node "outside of the viewport" | The scroll is a no-op, and an actionability wait can time out. | Without layout there is no scroll position to move. The plain render stacks every block in one column, so more of a page sits below the fold than in Chrome, and nothing below it can be reached. |
+| `<canvas>` content: a pin, keypad, or chart drawn with the 2D context | A screenshot shows no drawing, and the canvas takes no space. The agent's pixel tier (`tap_at`, `type_at`, a vision judgment) has nothing to see. | `getContext('2d')` returns a context that records nothing the painter draws. |
 
 A Lightpanda release that closes one of these makes the row above go away
 with no change on the e2e side; the engine sends the same CDP commands it
