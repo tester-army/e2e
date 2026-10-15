@@ -5,7 +5,7 @@
  * polling, strictness, and staleness stay with the runner.
  */
 
-import { EngineError, matchesText, type LocatorExpression, type SemanticQuery } from 'e2e/engine';
+import { EngineError, matchesText, type LocatorExpression, type SemanticQuery, type TextPattern } from 'e2e/engine';
 import { isWithin, type ProjectedNode } from './nodes.ts';
 import type { MobilePlatform } from './options.ts';
 import { compileSelector } from './selector.ts';
@@ -20,7 +20,7 @@ export function resolveExpression(
     case 'query': {
       const candidates =
         expression.scope === undefined ? index : descendantsOf(resolveExpression(expression.scope, index, platform), index);
-      const matches = candidates.filter((entry) => matchesQuery(entry, expression.query));
+      const matches = candidates.filter((entry) => matchesQuery(entry, expression.query, platform));
       return ECHOED_QUERY_KINDS.has(expression.query.kind) ? innermostOnly(matches) : matches;
     }
     case 'filter': {
@@ -48,6 +48,25 @@ export function resolveExpression(
         retryable: false,
       });
   }
+}
+
+/**
+ * An Android resource id without its `<package>:id/` prefix. UIAutomator
+ * reports a native `android:id` with the package of the resource table, the
+ * build's namespace even when `applicationIdSuffix` renames the app, and a
+ * .NET MAUI `AutomationId` as `<package>:id/<AutomationId>`. React Native,
+ * Flutter, and Compose report the id the app set, and iOS never prefixes one,
+ * so a test names its views by that id on both platforms. The framework's own
+ * ids (`android:id/content`) keep their prefix, and an id that two views share
+ * this way is ambiguous to the runner's strictness check.
+ */
+const ANDROID_RESOURCE_ID = /^([A-Za-z][\w.]*):id\/(.+)$/;
+
+/** Whether a test id matches `pattern` once its Android package prefix is left off. */
+function matchesWithoutPackage(testId: string, pattern: TextPattern, platform: MobilePlatform): boolean {
+  if (platform !== 'android') return false;
+  const [, owner, name] = ANDROID_RESOURCE_ID.exec(testId) ?? [];
+  return owner !== undefined && owner !== 'android' && name !== undefined && matchesText(name, pattern);
 }
 
 /** The query kinds a device answers with the innermost match, because it echoes what they match on up the tree. */
@@ -91,8 +110,9 @@ const STATE_KEYS = ['checked', 'disabled', 'selected', 'expanded', 'pressed'] as
  * browser's role query does; the other kinds
  * answer with every node and leave visibility to the action or assertion,
  * unless the query says `visible`, which drops hidden nodes for every kind.
+ * On Android a test id also matches without its package (`ANDROID_RESOURCE_ID`).
  */
-function matchesQuery(entry: ProjectedNode, query: SemanticQuery): boolean {
+function matchesQuery(entry: ProjectedNode, query: SemanticQuery, platform: MobilePlatform): boolean {
   const node = entry.node;
   if (query.visible === true && node.states?.hidden === true) return false;
   switch (query.kind) {
@@ -126,6 +146,9 @@ function matchesQuery(entry: ProjectedNode, query: SemanticQuery): boolean {
     case 'displayValue':
       return node.value !== undefined && matchesText(node.value, query.value);
     case 'testId':
-      return node.testId !== undefined && matchesText(node.testId, query.value);
+      return (
+        node.testId !== undefined &&
+        (matchesText(node.testId, query.value) || matchesWithoutPackage(node.testId, query.value, platform))
+      );
   }
 }

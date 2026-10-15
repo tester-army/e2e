@@ -25,7 +25,7 @@ export interface Screen {
   getByText(text: TextMatch, options?: TextMatchOptions): Locator;
   /** Creates a lazy displayed-value query. */
   getByDisplayValue(value: TextMatch, options?: TextMatchOptions): Locator;
-  /** Creates a lazy test-id query: a string matches the whole id, case-sensitive; a RegExp tests it. */
+  /** Creates a lazy test-id query: a string matches the whole id, case-sensitive; a RegExp tests it. An engine may also match an id without its platform's namespacing. */
   getByTestId(id: TextMatch, options?: { visible?: boolean }): Locator;
   /** Taps a viewport point, with no node behind it. */
   tapAt(point: Point, options?: ActionOptions): Promise<void>;
@@ -76,7 +76,9 @@ substring match, and a `RegExp` matches as written.
 engine's test-id attribute (`web({ testIdAttribute })`, default
 `data-testid`), on a device the accessibility identifier or resource id. A
 string matches the whole id, case-sensitive; a `RegExp` such as
-`/total-budgeted$/` matches as written.
+`/total-budgeted$/` matches as written. An engine may also match an id
+without its platform's namespacing, such as the mobile engine's
+[Android resource ids](/reference/mobile#capabilities).
 
 ```ts
 screen.getByRole('button', 'Save');
