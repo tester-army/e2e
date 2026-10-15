@@ -298,10 +298,10 @@ export class AttemptSession {
   /**
    * Emulates the attempt's media on each tab as it appears, so a tab the app
    * opens itself follows a test's change too, on a persistent context as
-   * well, where the engine sets no context options. It paints with the
-   * context's configured values first: Playwright emulates per page, so a
-   * test's change reaches it once it exists. A tab the attempt opens awaits
-   * the same work in `ensurePage`; a tab the app opens is not awaited.
+   * well, where the engine sets no context options. Playwright emulates per
+   * page, so a test's change reaches it once it exists: its scripts may read
+   * the context's configured values until then. A tab the attempt opens
+   * awaits the same work in `ensurePage`; a tab the app opens is not awaited.
    */
   private watchPages(context: BrowserContext): void {
     context.on('page', (page) => {

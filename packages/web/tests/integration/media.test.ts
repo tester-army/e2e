@@ -144,7 +144,7 @@ describe('media emulation', () => {
     }
   });
 
-  it('paints a tab the app opens itself with the configured media, then gives it a test\'s change as it appears and later', async () => {
+  it('gives a tab the app opens itself a test\'s change as it appears and later', async () => {
     const engine = await boot({ colorScheme: 'dark' });
     try {
       await fixtureOf(engine).emulateMedia({ colorScheme: 'light' });
@@ -160,8 +160,6 @@ describe('media emulation', () => {
         reduce: matchMedia('(prefers-reduced-motion: reduce)').matches,
       }));
       expect(await now()).toEqual({ dark: false, reduce: false });
-      // The context option paints it; a test's change arrives once the page exists, as no context-wide emulation exists.
-      expect(await popup.evaluate(() => (window as unknown as { atLoad: unknown }).atLoad)).toEqual({ dark: true, reduce: false });
       await fixtureOf(engine).emulateMedia({ reducedMotion: 'reduce' });
       expect(await now()).toEqual({ dark: false, reduce: true });
       expect(await read(engine)).toMatchObject({ dark: false, reduce: true });

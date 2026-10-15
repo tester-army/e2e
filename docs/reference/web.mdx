@@ -632,9 +632,9 @@ page it opens. Each defaults to the browser's own.
 every open tab and every tab opened after them, through `app.restart()` and
 `app.clearState()`. It works before the first navigation, so the next
 `app.open` loads with them. A feature it leaves out keeps its value. A tab
-the app opens itself paints with the configured values and gets a test's
-change as it appears, on a persistent context too. A
-feature or value outside `WebMedia` is `INVALID_CONFIG` in `web()` and
+the app opens itself gets a test's change as it appears, on a persistent
+context too, so a script it runs at load may still read the configured
+values. A feature or value outside `WebMedia` is `INVALID_CONFIG` in `web()` and
 `INVALID_ARGUMENT` in `emulateMedia`.
 
 ```ts
