@@ -6,7 +6,7 @@
  * cancelled request.
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -36,11 +36,12 @@ process.on('SIGTERM', () => process.exit(0));
 `;
 
 let dir: string;
+let script: string;
 let binary: string;
 
 beforeAll(() => {
   dir = mkdtempSync(path.join(tmpdir(), 'e2e-lightpanda-'));
-  const script = path.join(dir, 'fake-lightpanda.cjs');
+  script = path.join(dir, 'fake-lightpanda.cjs');
   writeFileSync(script, FAKE_SERVER);
   binary = path.join(dir, 'lightpanda');
   writeFileSync(binary, `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`);
@@ -84,10 +85,10 @@ async function serverArgs(lease: BrowserLease): Promise<string[] | undefined> {
   }
 }
 
-/** How many fake servers are running right now, whatever port they took. */
+/** How many fake servers are running right now, whatever port they took. Matched by the script's unique path: the bare name shows up in other command lines (a CI step, a shell wrapper). */
 function runningFakes(): number {
   try {
-    return execSync('pgrep -f fake-lightpanda.cjs', { encoding: 'utf8' }).trim().split('\n').length;
+    return execFileSync('pgrep', ['-f', script], { encoding: 'utf8' }).trim().split('\n').length;
   } catch {
     return 0;
   }
