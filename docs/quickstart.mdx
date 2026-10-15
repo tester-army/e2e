@@ -184,7 +184,7 @@ test('Settings opens', async ({ app, screen }) => {
 
   The wizard writes the config for Vercel AI Gateway, OpenRouter, and
   OpenAI-compatible endpoints. For another provider, replace the model import
-  in `e2e.config.ts` and set `agents.default.model` to its model:
+  and `model` value in `e2e.config.ts`, and use `agent` as `agents.default`:
 
   <ModelProvider show="model" />
 

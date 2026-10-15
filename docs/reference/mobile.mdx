@@ -154,7 +154,7 @@ so its first launch is paid before the first test, then brings the target's
 `app.bundleId` up once per device when it is installed; a build the suite
 installs itself comes up with the first `app.open()`, which relaunches it
 fresh whenever a test asks. A device that cannot boot, or a runner that is
-busy or wedged from an earlier run, ends the run in `prepare`. A runner that
+busy, wedged, or past its watchdog, ends the run in `prepare`. A runner that
 does not start for another reason is logged and left to the first attempt,
 and that device's app is not opened there.
 

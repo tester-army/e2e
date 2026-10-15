@@ -1142,7 +1142,7 @@ The runner calls `startVideo` only for an attempt whose
 session restore. It uses the launch budget and stops before `endAttempt`,
 within the cleanup budget. When the video mode is set explicitly, a
 `startVideo` that fails fails the launch and a `stopVideo` that fails fails
-cleanup. With the default mode, the runner drops the video. Return
+cleanup. With the default mode, a failure of either drops the video quietly. Return
 segments in recording order from `stopVideo`. The runner decides which recordings are kept and deletes a file an
 attempt does not keep.
 

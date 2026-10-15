@@ -5,7 +5,8 @@
  * `mint broken-links` checks pages, not anchors. A broken anchor still opens
  * the page on the site, but a coding agent reading the docs offline from the
  * `e2e` package can't find the section it was sent to. Slugs follow Mintlify:
- * `@sindresorhus/slugify` with a per-page counter for repeated titles.
+ * `@sindresorhus/slugify` with a per-page counter for repeated titles. Only
+ * site-relative (`/page#anchor`) and same-page (`#anchor`) links are checked.
  *
  * Usage: `node scripts/check-docs-anchors.ts`, part of `pnpm docs:check`.
  * Exits 1 listing every broken anchor.
@@ -18,10 +19,11 @@ import slugify, { slugifyWithCounter } from '@sindresorhus/slugify';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const DOCS = join(ROOT, 'docs');
-const FENCE = /^\s*```/;
-const HEADING = /^(#{1,4})\s+(.+?)\s*#*\s*$/;
-const TITLED = /<(Tab|Accordion)\b[^>]*?\btitle="([^"]*)"/g;
-const EXPLICIT_ID = /<[A-Z][A-Za-z]*\b[^>]*?\bid="([^"]+)"/g;
+const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+const HEADING = /^ {0,3}(#{1,4})\s+(.+?)\s*#*\s*$/;
+const CUSTOM_ID = /\s*\{#([^}]+)\}$/;
+const COMPONENT = /<(Tab|Accordion|[a-z][\w-]*|ShowMore)\b([^>]*)>/g;
+const ATTRIBUTE = (name: string) => new RegExp(`\\b${name}="([^"]*)"`);
 const LINK = /\]\(((?:\/[^)\s#]*)?)#([^)\s]+)\)|href="((?:\/[^"#]*)?)#([^"]+)"/g;
 
 /** Every `.mdx` page under `dir`, skipping `node_modules`. */
@@ -33,16 +35,35 @@ function pages(dir: string): string[] {
   });
 }
 
-/** The page's lines outside code fences, so code samples add no headings or links. */
-function prose(source: string): string[] {
-  let fenced = false;
-  return source.split('\n').filter((line) => {
-    if (FENCE.test(line)) {
-      fenced = !fenced;
-      return false;
+/**
+ * The page's lines outside code fences, with their line numbers, so code
+ * samples add no headings or links. A fence closes only on the same character
+ * at least as long, as in CommonMark, so a four-backtick block can hold a
+ * three-backtick one.
+ */
+function prose(source: string): [number, string][] {
+  const lines: [number, string][] = [];
+  let open: string | undefined;
+  source.split('\n').forEach((line, i) => {
+    const fence = FENCE.exec(line)?.[1];
+    if (open) {
+      if (fence && fence[0] === open[0] && fence.length >= open.length && line.trim() === fence) open = undefined;
+    } else if (fence) {
+      open = fence;
+    } else {
+      lines.push([i + 1, line]);
     }
-    return !fenced;
   });
+  return lines;
+}
+
+/** Decodes a percent-encoded anchor, keeping a malformed one as written. */
+function decode(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
 }
 
 /** Mintlify's id for a heading or tab title, from its plain text. */
@@ -55,24 +76,42 @@ function headingSlug(text: string, counter: ReturnType<typeof slugifyWithCounter
   const slug = /%[0-9A-F]{2}/.test(id)
     ? counter(id, { decamelize: false, preserveCharacters: ['%', '_'], lowercase: false })
     : counter(id, { decamelize: false, preserveCharacters: ['_'] });
-  return decodeURIComponent(slug).replace(/[?,;:!'"()[\]{}]/g, '');
+  return decode(slug).replace(/[?,;:!'"()[\]{}]/g, '');
 }
 
-/** Every anchor a page answers to: headings, tab and accordion titles, and explicit ids. */
+/**
+ * Every anchor a page answers to: headings, tab and accordion titles, and the
+ * `id` of an HTML element, a tab, an accordion, or a `ShowMore`. Mintlify
+ * drops the `id` of other components, such as `Card` or `Steps`.
+ */
 function anchors(source: string): Set<string> {
   const lines = prose(source);
   const ids = new Set<string>();
   const headings = slugifyWithCounter();
-  for (const line of lines) {
+  for (const [, line] of lines) {
     const heading = HEADING.exec(line);
-    if (heading) ids.add(headingSlug(heading[2]!, headings));
+    if (!heading) continue;
+    const custom = CUSTOM_ID.exec(heading[2]!);
+    ids.add(custom ? custom[1]! : headingSlug(heading[2]!, headings));
   }
-  const text = lines.join('\n');
   const tabs = slugifyWithCounter();
-  for (const [, component, title] of text.matchAll(TITLED)) {
-    ids.add(component === 'Tab' ? headingSlug(title!, tabs) : slugify(title!.replace(':', '-'), { decamelize: false }));
+  const accordions = new Map<string, number>();
+  for (const [, component, attributes] of lines.map(([, line]) => line).join('\n').matchAll(COMPONENT)) {
+    const id = ATTRIBUTE('id').exec(attributes!)?.[1];
+    if (id) {
+      ids.add(id);
+      continue;
+    }
+    const title = ATTRIBUTE('title').exec(attributes!)?.[1];
+    if (!title) continue;
+    if (component === 'Tab') ids.add(headingSlug(title, tabs));
+    if (component === 'Accordion') {
+      const base = slugify(title.replace(':', '-'), { decamelize: false });
+      const count = accordions.get(base) ?? 0;
+      accordions.set(base, count + 1);
+      ids.add(count > 0 ? `${base}-${count}` : base);
+    }
   }
-  for (const [, id] of text.matchAll(EXPLICIT_ID)) ids.add(id!);
   return ids;
 }
 
@@ -94,22 +133,18 @@ function anchorsOf(page: string): Set<string> {
 const problems: string[] = [];
 let checked = 0;
 for (const page of all) {
-  const lines = readFileSync(page, 'utf8').split('\n');
-  let fenced = false;
-  lines.forEach((line, i) => {
-    if (FENCE.test(line)) fenced = !fenced;
-    if (fenced) return;
-    for (const match of line.matchAll(LINK)) {
+  for (const [line, text] of prose(readFileSync(page, 'utf8'))) {
+    for (const match of text.matchAll(LINK)) {
       const path = match[1] ?? match[3] ?? '';
-      const anchor = decodeURIComponent(match[2] ?? match[4] ?? '');
+      const anchor = decode(match[2] ?? match[4] ?? '');
       const target = path === '' ? page : pageFor(path);
       if (!target) continue;
       checked++;
       if (!anchorsOf(target).has(anchor)) {
-        problems.push(`${relative(ROOT, page)}:${i + 1}: no #${anchor} in ${relative(ROOT, target)}`);
+        problems.push(`${relative(ROOT, page)}:${line}: no #${anchor} in ${relative(ROOT, target)}`);
       }
     }
-  });
+  }
 }
 
 if (problems.length > 0) {
