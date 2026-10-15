@@ -30,11 +30,9 @@ capture() {
     for (let attempt = 0; attempt < 6; attempt += 1) {
       execFileSync("sleep", ["0.5"]);
       const next = take();
-      if (shape(next) === shape(last)) {
-        last = next;
-        break;
-      }
+      const settled = shape(next) === shape(last);
       last = next;
+      if (settled) break;
     }
     const keys = ["nodes", "viewport", "truncated", "appName", "appBundleId"];
     const kept = Object.fromEntries(keys.filter((key) => last[key] !== undefined).map((key) => [key, last[key]]));

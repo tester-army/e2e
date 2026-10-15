@@ -283,9 +283,9 @@ function describedRole(source: RawNode): string | undefined {
   return REACT_NATIVE_ROLE_DESCRIPTIONS[source.roleDescription.toLowerCase()];
 }
 
-/** The string itself, or undefined for an absent or empty one. */
+/** The string itself, or undefined for an absent one or one that is only whitespace. */
 function nonEmpty(value: string | undefined): string | undefined {
-  return value === undefined || value === '' ? undefined : value;
+  return value === undefined || value.trim() === '' ? undefined : value;
 }
 
 /**
@@ -563,21 +563,16 @@ export function screenTitle(snapshot: ProjectedSnapshot): string | undefined {
     snapshot.index.find((entry) => ANDROID_TITLE_IDS.some((suffix) => entry.raw.identifier?.endsWith(suffix) === true));
   if (bar === undefined) return undefined;
   if (bar.kind === 'navigation-bar') {
-    const identifier = nonBlank(bar.raw.identifier);
+    const identifier = nonEmpty(bar.raw.identifier);
     const shown =
       identifier !== undefined &&
       snapshot.index.some((entry) => entry.node.role === 'text' && entry.raw.label === identifier && isWithin(entry, bar));
     return shown ? identifier : undefined;
   }
-  const label = nonBlank(bar.raw.label);
+  const label = nonEmpty(bar.raw.label);
   if (label !== undefined) return label;
-  const text = snapshot.index.find((entry) => entry.node.role === 'text' && nonBlank(entry.raw.label) !== undefined && isWithin(entry, bar));
+  const text = snapshot.index.find((entry) => entry.node.role === 'text' && nonEmpty(entry.raw.label) !== undefined && isWithin(entry, bar));
   return text?.raw.label;
-}
-
-/** A string with something other than whitespace, or undefined. */
-function nonBlank(value: string | undefined): string | undefined {
-  return value === undefined || value.trim() === '' ? undefined : value;
 }
 
 /** True when `entry` is a strict descendant of `ancestor`. */

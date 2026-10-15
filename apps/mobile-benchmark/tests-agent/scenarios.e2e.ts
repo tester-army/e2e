@@ -36,19 +36,17 @@ interface Scenario {
    */
   readonly pixels?: true;
   /** Puts the device in the state the scenario expects before it opens. */
-  readonly prepare?: () => void;
+  readonly prepare?: (fixtures: { device: Device; platform: string }) => void | Promise<void>;
   /** Values the goal refers to; a `Secret` is filled by the runner, never shown to the model. */
   readonly params?: () => Readonly<Record<string, AgentParam>>;
 }
 
-/** A reused simulator keeps an earlier grant, and the recorded Allow tap then has no button. */
-function resetMicrophonePermission(): void {
-  if (process.platform !== 'darwin') return;
-  try {
-    execFileSync('xcrun', ['simctl', 'privacy', 'booted', 'reset', 'microphone', 'dev.e2e.benchmark'], { stdio: 'ignore' });
-  } catch {
-    // No booted simulator on this run.
-  }
+/**
+ * A reused simulator keeps an earlier grant, and the recorded Allow tap then
+ * has no button. CI's Android emulator starts without the grant.
+ */
+async function resetMicrophonePermission({ device, platform }: { device: Device; platform: string }): Promise<void> {
+  if (platform === 'ios') await device.setPermission('microphone', 'reset');
 }
 
 /**
@@ -258,9 +256,9 @@ const SCENARIOS: readonly Scenario[] = [
 
 async function complete(
   scenario: Scenario,
-  { agent, app, device, screen }: { agent: Agent; app: App; device: Device; screen: Screen },
+  { agent, app, device, platform, screen }: { agent: Agent; app: App; device: Device; platform: string; screen: Screen },
 ): Promise<void> {
-  scenario.prepare?.();
+  await scenario.prepare?.({ device, platform });
   await openScenario({ app, device, screen }, scenario.name);
   const instruction = scenario.pixels === true
     ? `Complete this scenario as the screen instructs: ${scenario.goal}. The screen lists nothing useful; take a screenshot and work from it.`

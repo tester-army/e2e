@@ -39,8 +39,8 @@ function render(node: SemanticNode, depth = 0, out: string[] = []): string[] {
  * The title each iOS capture's location carries. A pushed screen's bar is
  * labelled with the back button (`Benchmark Examples`) and identified by its
  * own title; the tab bar and the PaymentSheet show no navigation bar. The
- * `swiftui-*` captures (`tests-capture/swiftui-bar`) label the bar with a
- * toolbar item, and identify an untitled screen's bar by a Swift class name.
+ * `swiftui-*` captures (`tests-capture/swiftui-bar`) give the bar no label,
+ * and identify an untitled screen's bar by a Swift class name.
  */
 const IOS_TITLES: Record<string, string | undefined> = {
   'apple-pay': 'Apple Pay',
