@@ -18,7 +18,7 @@ export const migrationPrompt = `Migrate this project's Maestro flows to e2e, one
 6. Port the flows' \`appId\` and \`.maestro/config.yaml\` into the e2e config: one target per platform with \`mobile({ platform })\`, \`app: { bundleId }\` on each target, and tags as \`{ tags }\` on tests. Move passwords and tokens from \`env\` into \`credentials\` or \`secrets\`.
 7. Install dependencies, then run \`npx agent-device doctor\` and fix what it reports.
 8. List the flows and ask me which one to move first. Suggest one whose \`optional\` steps and \`runFlow: { when }\` branches often need updating.
-9. Rewrite that flow as a \`.e2e.ts\` test under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default), with one awaited call per command. Start it with \`app.open()\`, since nothing launches on its own. Follow the guide's "Rewrite selectors" section: e2e matches the whole string and fails on several matches. Where the guide marks a command missing, use the workaround it gives, or leave that flow in Maestro and tell me why.
+9. Rewrite that flow as a \`.e2e.ts\` test under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default), with one awaited call per command. Start it with \`app.open()\`, since nothing launches on its own. Follow the guide's "Rewrite selectors" section: e2e matches the whole string and fails on several matches. Where the guide says "Not yet" or "No equivalent", use the workaround it gives, or leave that flow in Maestro and tell me why.
 10. Keep the launch and the final assertions deterministic, with \`app.open()\` and locator assertions. Where a run of scripted taps breaks often, propose an \`agent.act\` goal for it instead.
 11. Build and install the app, run the new file with \`npx e2e run <file>\` on each platform target, and fix it until it passes. Keep the Maestro flow until I confirm it can go.
 12. Summarize which flows moved, which stayed in Maestro, and why.`;
@@ -43,26 +43,26 @@ The reference pages hold the details: [screen](/reference/screen),
 [expect](/reference/expect), [test](/reference/test), and the
 [mobile engine](/reference/mobile).
 
-| Maestro | e2e | Status |
-| --- | --- | --- |
-| `appId` at the top of every flow | `app: { bundleId: 'com.example.app' }` on the target, the app `app.open()` launches | renamed |
-| a different `appId` per flow | `device.openApp(id)` inside the test, or separate app-specific configs and runs; every test runs on every selected target | renamed |
-| `--platform ios` | `mobile({ platform: 'ios' })`, one engine per platform | renamed |
-| `--device` | `mobile({ device: 'iPhone 17' })`; a list is a pool, one worker per device | renamed |
-| `.maestro/config.yaml` `flows` | `tests`, default `tests/**/*.e2e.ts`; Maestro runs one folder level, e2e recurses | renamed |
-| `flows: ['!helper.yaml']` | a `tests` entry with a leading `!`: `tests: ['tests/**/*.e2e.ts', '!tests/helpers/**']` | renamed |
-| `tags` and `--include-tags` | `{ tags: [...] }` on a test or group, `--tag` on the CLI | renamed |
-| `--exclude-tags` | `--exclude-tag` | renamed |
-| `env` and `${VAR}` | module constants, and `params` in a goal: `agent.act('sign in as {email}', { params: { email } })` | renamed |
-| `MAESTRO_*` variables | `process.env` in the config; a password or token goes under `credentials` or `secrets`, which the model never sees, see [Signing in](/authentication) | renamed |
-| `--format junit`, `--output` | `--reporter list,junit`, written to `.e2e/junit.xml` | renamed |
-| `--format html` | no equivalent; `markdown` writes `.e2e/summary.md`, and each failed test gets a `trace.md` page under `.e2e/results/` | missing |
-| `properties` (JUnit `<property>`) | not yet | missing |
-| `--shards`, `--shard-split` | `device: [...]` plus `workers` on one machine; `--shard <index/total>` across machines, see [Sharding](/ci#sharding) | renamed |
-| `maestro record` | `npx e2e run --video`, one MP4 of the device per attempt, or `video` in the config | renamed |
-| `maestro test -c`, Maestro Studio | not yet; `npx e2e mcp` gives a coding agent a live session on the device, see [Coding agents](/coding-agents) | missing |
-| `maestro hierarchy` | not yet; `device.locator` takes agent-device selectors for nodes `screen` cannot name | missing |
-| Maestro Cloud | your CI, see [Continuous integration](/ci) | by design |
+| Maestro | e2e |
+| --- | --- |
+| `appId` at the top of every flow | `app: { bundleId: 'com.example.app' }` on the target, the app `app.open()` launches |
+| a different `appId` per flow, or a second one mid-flow | `device.openApp(id)` inside the test, or separate app-specific configs and runs; every test runs on every selected target. With `mobileTools`, the agent's `open_app` tool switches apps inside a goal, see [Agent tools](/mobile#agent-tools) |
+| `--platform ios` | `mobile({ platform: 'ios' })`, one engine per platform |
+| `--device` | `mobile({ device: 'iPhone 17' })`; a list is a pool, one worker per device |
+| `.maestro/config.yaml` `flows` | `tests`, default `tests/**/*.e2e.ts`; Maestro runs one folder level, e2e recurses |
+| `flows: ['!helper.yaml']` | a `tests` entry with a leading `!`: `tests: ['tests/**/*.e2e.ts', '!tests/helpers/**']` |
+| `tags` and `--include-tags` | `{ tags: [...] }` on a test or group, `--tag` on the CLI |
+| `--exclude-tags` | `--exclude-tag` |
+| `env` and `${VAR}` | module constants, and `params` in a goal: `agent.act('sign in as {email}', { params: { email } })` |
+| `MAESTRO_*` variables | `process.env` in the config; a password or token goes under `credentials` or `secrets`, which the model never sees, see [Signing in](/authentication) |
+| `--format junit`, `--output` | `--reporter list,junit`, written to `.e2e/junit.xml` |
+| `--format html` | Not yet. `markdown` writes `.e2e/summary.md`, and each failed test gets a `trace.md` page under `.e2e/results/` |
+| `properties` (JUnit `<property>`) | Not yet |
+| `--shards`, `--shard-split` | `device: [...]` plus `workers` on one machine; `--shard <index/total>` across machines, see [Sharding](/ci#sharding) |
+| `maestro record` | `npx e2e run --video`, one MP4 of the device per attempt, or `video` in the config |
+| `maestro test -c`, Maestro Studio | Not yet. `npx e2e mcp` gives a coding agent a live session on the device, see [Coding agents](/coding-agents) |
+| `maestro hierarchy` | Not yet. `device.locator` takes agent-device selectors for nodes `screen` cannot name |
+| Maestro Cloud | your CI, see [Continuous integration](/ci) |
 
 ## Rewrite one flow
 
@@ -99,111 +99,108 @@ test('asks for the email', async ({ app, agent, screen }) => {
 });
 ```
 
-A flow can also stay fully deterministic, with a `screen.getBy*(...).tap()`
-line for every `tapOn`.
-
 ## Map each command
 
-`Status` is `renamed`, `device only`, `by design`, or `missing` with what to
-do today. Calls on `device` run only on a device, so a test that uses it
-declares `requires: ['device']` and other targets skip it. Calls on `screen`,
-`app`, `agent`, and `expect(locator)` run on every target.
+Calls on `device` run only on a device, so a test that uses it declares
+`requires: ['device']` and other targets skip it. Calls on `screen`, `app`,
+`agent`, and `expect(locator)` run on every target. "Not yet" marks a
+command e2e doesn't have today, and "No equivalent" one it leaves out on
+purpose.
 
 <AccordionGroup>
 <Accordion title="App lifecycle">
 
-| Maestro | e2e | Status |
-| --- | --- | --- |
-| `launchApp` | `app.open()`, the fresh launch of the target's `app.bundleId`; nothing launches on its own | renamed |
-| `launchApp: { clearState: true }`, `clearState` | `app.clearState()` | renamed |
-| `launchApp: { stopApp: false }` | `device.openApp(id)` without `relaunch` | device only |
-| `launchApp: { arguments }` | `app.launchArguments` on the target, or `device.openApp(app, { relaunch: true, launchArguments })` for one launch; a list of strings, not a map | renamed |
-| `launchApp: { permissions }` | `app.permissions` on the target, set before every fresh launch, or `device.openApp(app, { relaunch: true, permissions })` for one; `grant`, `deny`, `reset` for `allow`, `deny`, `unset`; no `all`, nothing is granted unless named | renamed |
-| `stopApp`, `killApp` | `device.closeApp()` | device only |
-| `stopApp`, then `launchApp` | `app.restart()` | renamed |
-| `clearKeychain` | `device.clearKeychain()`, the whole simulator's keychain; iOS only | renamed |
-| `openLink` | `device.openLink(url, { app })`; on iOS the link opens into `app`, default the pinned app | renamed |
-| `addMedia` | not yet | missing |
-| `back` | `app.back()`, or `device.back()` | renamed |
+| Maestro | e2e |
+| --- | --- |
+| `launchApp` | `app.open()`, the fresh launch of the target's `app.bundleId`; nothing launches on its own |
+| `launchApp: { clearState: true }`, `clearState` | `app.clearState()` |
+| `launchApp: { stopApp: false }` | `device.openApp(id)` without `relaunch` |
+| `launchApp: { arguments }` | `app.launchArguments` on the target, or `device.openApp(app, { relaunch: true, launchArguments })` for one launch; a list of strings, not a map |
+| `launchApp: { permissions }` | `app.permissions` on the target, set before every fresh launch, or `device.openApp(app, { relaunch: true, permissions })` for one; `grant`, `deny`, `reset` for `allow`, `deny`, `unset`; no `all`, nothing is granted unless named |
+| `stopApp`, `killApp` | `device.closeApp()` |
+| `stopApp`, then `launchApp` | `app.restart()` |
+| `clearKeychain` | `device.clearKeychain()`, the whole simulator's keychain; iOS only |
+| `openLink` | `device.openLink(url, { app })`; on iOS the link opens into `app`, default the pinned app |
+| `addMedia` | Not yet |
+| `back` | `app.back()`, or `device.back()` |
 
 </Accordion>
 <Accordion title="Taps and input">
 
-| Maestro | e2e | Status |
-| --- | --- | --- |
-| `tapOn: "Text"` | `screen.getByText('Text').tap()`; exact, see [Rewrite selectors](#rewrite-selectors) | renamed |
-| `tapOn: { id: x }` | `screen.getByTestId('x').tap()` | renamed |
-| `tapOn: { text, index: 2 }` | `.nth(2)` | renamed |
-| `tapOn: { below: "Email" }`, `above`, `leftOf`, `rightOf`, `containsDescendants` | no equivalent, see [Rewrite selectors](#rewrite-selectors) | by design |
-| `tapOn: { point: "x,y" }` | `screen.tapAt({ x, y })`; inside a node, `.tap({ position: { x, y } })` | renamed |
-| `retryTapIfNoChange`, `waitToSettleTimeoutMs` | `mobile({ settle, transition })`, engine-wide; no per-call knob | renamed |
-| `doubleTapOn`, `longPressOn` | `.doubleTap()`, `.longPress({ duration })` | renamed |
-| `inputText` | `screen.getByTestId('field').fill('text')` | renamed |
-| `inputRandomEmail`, `inputRandomText`, `faker` | `unique()` around a value in `act` params so the cache still replays; any npm faker for the rest | renamed |
-| `eraseText` | `.clear()` | renamed |
-| `hideKeyboard` | `device.dismissKeyboard()` | renamed |
-| `pressKey: Enter` | `.press('Enter')` on the field | renamed |
-| `pressKey: Home`, `back` | `device.home()`, `device.back()` | device only |
-| `pressKey: lock`, `power`, `volume up`, TV remote keys | not yet | missing |
-| `copyTextFrom`, `pasteText` | `await locator.textContent()`, then `.fill(text)` | renamed |
-| `setClipboard` | `device.setClipboard(text)`; `device.clipboard()` reads it | device only |
-| `label: "..."` on a command | not yet; every `screen`, `device`, and `agent` call is a report step named by the call | missing |
+| Maestro | e2e |
+| --- | --- |
+| `tapOn: "Text"` | `screen.getByText('Text').tap()`; exact, see [Rewrite selectors](#rewrite-selectors) |
+| `tapOn: { id: x }` | `screen.getByTestId('x').tap()` |
+| `tapOn: { text, index: 2 }` | `.nth(2)` |
+| `tapOn: { below: "Email" }`, `above`, `leftOf`, `rightOf`, `containsDescendants` | No equivalent, see [Rewrite selectors](#rewrite-selectors) |
+| `tapOn: { point: "x,y" }` | `screen.tapAt({ x, y })`; inside a node, `.tap({ position: { x, y } })` |
+| `retryTapIfNoChange`, `waitToSettleTimeoutMs` | `mobile({ settle, transition })`, engine-wide; no per-call knob |
+| `doubleTapOn`, `longPressOn` | `.doubleTap()`, `.longPress({ duration })` |
+| `inputText` | `screen.getByTestId('field').fill('text')` |
+| `inputRandomEmail`, `inputRandomText`, `faker` | `unique()` around a value in `act` params so the cache still replays; any npm faker for the rest |
+| `eraseText` | `.clear()` |
+| `hideKeyboard` | `device.dismissKeyboard()` |
+| `pressKey: Enter` | `.press('Enter')` on the field |
+| `pressKey: Home`, `back` | `device.home()`, `device.back()` |
+| `pressKey: lock`, `power`, `volume up`, TV remote keys | Not yet |
+| `copyTextFrom`, `pasteText` | `await locator.textContent()`, then `.fill(text)` |
+| `setClipboard` | `device.setClipboard(text)`; `device.clipboard()` reads it |
+| `label: "..."` on a command | Not yet. Every `screen`, `device`, and `agent` call is a report step named by the call |
 
 </Accordion>
 <Accordion title="Gestures">
 
-| Maestro | e2e | Status |
-| --- | --- | --- |
-| `swipe: { direction: UP }` | `screen.swipe({ direction: 'down' })`, or `locator.swipe(...)` inside one node; Maestro names the finger's direction, e2e the content's | renamed |
-| `swipe: { start, end }` | `screen.swipe({ from: { x, y }, to: { x, y } })` | renamed |
-| `scroll` | `screen.swipe({ direction: 'down' })` | renamed |
-| `scrollUntilVisible: { element }` | `screen.scrollUntilVisible(locator, { direction })` | renamed |
-| `waitForAnimationToEnd` | an assertion on the settled state; `mobile({ settle, transition })` for the engine | renamed |
+| Maestro | e2e |
+| --- | --- |
+| `swipe: { direction: UP }` | `screen.swipe({ direction: 'down' })`, or `locator.swipe(...)` inside one node; Maestro names the finger's direction, e2e the content's |
+| `swipe: { start, end }` | `screen.swipe({ from: { x, y }, to: { x, y } })` |
+| `scroll` | `screen.swipe({ direction: 'down' })` |
+| `scrollUntilVisible: { element }` | `screen.scrollUntilVisible(locator, { direction })` |
+| `waitForAnimationToEnd` | an assertion on the settled state; `mobile({ settle, transition })` for the engine |
 
 </Accordion>
 <Accordion title="Assertions and waits">
 
-| Maestro | e2e | Status |
-| --- | --- | --- |
-| `assertVisible`, `assertNotVisible` | `await expect(locator).toBeVisible()`, `.toBeHidden()` | renamed |
-| `assertVisible: { text, enabled: true }` | `.toBeVisible()` and `.toBeEnabled()` | renamed |
-| `assertVisible: { checked, selected, focused }` | `.toBeChecked()`, `.toBeSelected()`, `.toBeFocused()` | renamed |
-| `assertTrue: ${...}` | `expect(value).toBe(true)`, or `expect.poll` for a value that is still changing | renamed |
-| `extendedWaitUntil: { visible, timeout }` | `.toBeVisible({ timeout })` | renamed |
-| `assertScreenshot: { path, thresholdPercentage }` | `await expect(screen).toHaveScreenshot(name, { maxDiffPixelRatio })`, see [Visual comparison](/visual-testing) | renamed |
-| `assertDarkMode`, `assertLightMode` | not yet; assert on a themed control | missing |
-| `retry: { maxRetries, commands }` | `expect.poll` for a value, `{ retries }` on the test for the flow | renamed |
-| `takeScreenshot` | `app.screenshot('label')`, redacted, withheld after a secret fill | renamed |
+| Maestro | e2e |
+| --- | --- |
+| `assertVisible`, `assertNotVisible` | `await expect(locator).toBeVisible()`, `.toBeHidden()` |
+| `assertVisible: { text, enabled: true }` | `.toBeVisible()` and `.toBeEnabled()` |
+| `assertVisible: { checked, selected, focused }` | `.toBeChecked()`, `.toBeSelected()`, `.toBeFocused()` |
+| `assertTrue: ${...}` | `expect(value).toBe(true)`, or `expect.poll` for a value that is still changing |
+| `extendedWaitUntil: { visible, timeout }` | `.toBeVisible({ timeout })` |
+| `assertScreenshot: { path, thresholdPercentage }` | `await expect(screen).toHaveScreenshot(name, { maxDiffPixelRatio })`, see [Visual comparison](/visual-testing) |
+| `assertDarkMode`, `assertLightMode` | Not yet. Assert on a themed control |
+| `retry: { maxRetries, commands }` | `expect.poll` for a value, `{ retries }` on the test for the flow |
+| `takeScreenshot` | `app.screenshot('label')`, redacted, withheld after a secret fill |
 
 </Accordion>
 <Accordion title="Device">
 
-| Maestro | e2e | Status |
-| --- | --- | --- |
-| `setLocation` | `device.setLocation({ latitude, longitude })` | device only |
-| `travel: { points }` | `device.setLocation` in a loop | device only |
-| `setAirplaneMode`, `toggleAirplaneMode` | `device.setAirplaneMode(true)` or `false`, the state you want; `true` is Android only | device only |
-| `setDarkMode`, `toggleDarkMode` | `device.setAppearance('dark')` or `'light'` | device only |
-| `setOrientation` | `device.setOrientation('landscape-left')` | device only |
-| `setPermissions` | `device.setPermission(name, 'grant' \| 'deny' \| 'reset')`, one permission per call, on the target's app, which need not be running; call it before `app.open()` | device only |
-| a second `appId` mid-flow | `device.openApp(id)`; the `open_app` tool lets the agent switch inside a goal, see [Agent tools](/mobile#agent-tools) | device only |
-| platform-specific selectors | `device.locator('role=text label="..."')`, agent-device's selector terms | device only |
+| Maestro | e2e |
+| --- | --- |
+| `setLocation` | `device.setLocation({ latitude, longitude })` |
+| `travel: { points }` | `device.setLocation` in a loop |
+| `setAirplaneMode`, `toggleAirplaneMode` | `device.setAirplaneMode(true)` or `false`, the state you want; `true` is Android only |
+| `setDarkMode`, `toggleDarkMode` | `device.setAppearance('dark')` or `'light'` |
+| `setOrientation` | `device.setOrientation('landscape-left')` |
+| `setPermissions` | `device.setPermission(name, 'grant' \| 'deny' \| 'reset')`, one permission per call, on the target's app, which need not be running; call it before `app.open()` |
+| platform-specific selectors | `device.locator('role=text label="..."')`, agent-device's selector terms |
 
 </Accordion>
 <Accordion title="AI commands and flow control">
 
-| Maestro | e2e | Status |
-| --- | --- | --- |
-| `assertWithAI`, `assertNoDefectsWithAI` | `agent.assert('...')`, `agent.assert('...', { vision: true })` | renamed |
-| `extractTextWithAI` | `agent.extract('...', { schema })` | renamed |
-| `runFlow: file.yaml` | a function, or a fixture from `test.extend` | renamed |
-| `runFlow: { when: { visible } }` | `if (await locator.isVisible()) { ... }`, see [Rewrite selectors](#rewrite-selectors) | renamed |
-| `optional: true` on a command | the same `isVisible()` check | renamed |
-| `repeat: { times: n }`, `repeat: { while }` | a `for` or `while` loop | renamed |
-| `runScript`, `evalScript`, `${output.x}` | TypeScript in the test | renamed |
-| `http.get`, `http.post`, `json()` | Node `fetch`, see [API](/api-testing) | renamed |
-| `onFlowStart`, `onFlowComplete` | `beforeEach`, `afterEach` | renamed |
-| `startRecording`, `stopRecording` | `test('x', { video: 'on' }, ...)` records that test's whole attempts; no start and stop inside a test | renamed |
+| Maestro | e2e |
+| --- | --- |
+| `assertWithAI`, `assertNoDefectsWithAI` | `agent.assert('...')`, `agent.assert('...', { vision: true })` |
+| `extractTextWithAI` | `agent.extract('...', { schema })` |
+| `runFlow: file.yaml` | a function, or a fixture from `test.extend` |
+| `runFlow: { when: { visible } }` | `if (await locator.isVisible()) { ... }`, see [Rewrite selectors](#rewrite-selectors) |
+| `optional: true` on a command | the same `isVisible()` check |
+| `repeat: { times: n }`, `repeat: { while }` | a `for` or `while` loop |
+| `runScript`, `evalScript`, `${output.x}` | TypeScript in the test |
+| `http.get`, `http.post`, `json()` | Node `fetch`, see [API](/api-testing) |
+| `onFlowStart`, `onFlowComplete` | `beforeEach`, `afterEach` |
+| `startRecording`, `stopRecording` | `test('x', { video: 'on' }, ...)` records that test's whole attempts; no start and stop inside a test |
 
 </Accordion>
 </AccordionGroup>
@@ -231,10 +228,9 @@ Four differences from Maestro's selectors cause most edits.
 
 ## What differs on purpose
 
-- No agent-device client in tests. `device.locator` covers platform-specific
-  selectors. Everything else goes through `screen`, `app`, `device`, and the
-  agent, so it is recorded and redacted.
-- No `test.setup` or `session:` on a device, see
+- Tests get no agent-device client. Every call goes through `screen`, `app`,
+  `device`, or the agent, so e2e records and redacts it.
+- A device has no `test.setup` or `{ session }`, see
   [what differs from the web](/mobile#what-differs-from-the-web).
 
 ## Next
