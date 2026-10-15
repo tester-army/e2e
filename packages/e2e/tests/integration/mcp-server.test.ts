@@ -255,7 +255,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
       'start_recording',
       'stop_recording',
     ]);
-    expect(opened.text).toMatch(/^- tap \{target\}: Tap or click one node: the gesture for a button, link, menu item, tab, checkbox, row, or field\.$/m);
+    expect(opened.text).toMatch(/^- tap \{target, modifiers\?\}: Tap or click one node: the gesture for a button, link, menu item, tab, checkbox, row, or field\.$/m);
     expect(opened.text).toMatch(/^- locate \{role\?, name\?, text\?, label\?, placeholder\?, testId\?, exact\?\}: .* \[read-only\]$/m);
     expect(opened.text).toMatch(/Current screen \(revision b\d+, path \/, \d+ nodes\):/);
     expect(opened.text).toContain('button "Increment"');
