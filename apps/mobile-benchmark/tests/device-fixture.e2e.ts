@@ -77,6 +77,17 @@ test.describe('device fixture', () => {
     await expect(screen.getByTestId('inventory-header')).toBeHidden();
   });
 
+  // closeApp ends agent-device's session, so what follows reaches this
+  // worker's device only by naming it. CI boots two iOS simulators, where a
+  // command that named none failed with "2 devices match this request equally".
+  test('closeApp leaves the next commands on the same device', async ({ app, device, platform, screen }) => {
+    await device.closeApp();
+    if (platform === 'ios') await device.clearKeychain();
+    await app.clearState();
+    expect((await device.foregroundApp()).bundleId).toBe(APP_ID);
+    await expect(screen.getByTestId('Login Form')).toBeVisible();
+  });
+
   // The reference promises APP_NOT_OPEN for a lost session.
   test('foregroundApp after closeApp reports the closed session as APP_NOT_OPEN', async ({ device }) => {
     await device.closeApp();

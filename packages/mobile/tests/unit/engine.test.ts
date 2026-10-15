@@ -1587,6 +1587,39 @@ describe('device fixture', () => {
     ]);
   });
 
+  it('names the pinned device on device commands, so the ones after closeApp still reach it when other devices are booted, and leaves app commands to the session', async () => {
+    const udid = '2BBF3F07-AF66-4F95-82AB-BF442506FC89';
+    const h = harness({ device: udid });
+    h.fake.respond('recording.record', () => ({ recording: 'started' }));
+    h.fake.respond('command.appState', () => ({ platform: 'ios', appName: 'Settings', appBundleId: 'com.apple.Preferences' }));
+    await openAttempt(h);
+    const device = fixture(h);
+    // closeApp ends agent-device's session, so from here on only the selection says which device is meant.
+    await device.closeApp();
+    await device.clearKeychain();
+    await device.setAppearance('dark');
+    await h.engine.artifacts!.startVideo!(operation());
+    await h.engine.session!.reset!(operation());
+    // These read the app the session has open: with a selection, Android would answer for the launcher after a closeApp.
+    await device.foregroundApp();
+    await h.engine.observe!(operation());
+    await h.engine.dispose!(cleanup());
+    const selection = { platform: 'ios', udid };
+    expect(h.fake.calls.map((call) => [call.method, call.args])).toEqual([
+      ['devices.boot', selection],
+      ['apps.open', { ...selection, app: 'Settings', relaunch: true }],
+      ['apps.close', { ...selection, app: 'com.apple.Preferences' }],
+      ['settings.update', { ...selection, setting: 'reset-keychain', state: 'clear' }],
+      ['settings.update', { ...selection, setting: 'appearance', state: 'dark' }],
+      ['recording.record', expect.objectContaining({ ...selection, action: 'start' })],
+      ['settings.update', { ...selection, setting: 'clear-app-state', state: 'clear', app: 'Settings' }],
+      ['apps.open', { ...selection, app: 'Settings', relaunch: true }],
+      ['command.appState', {}],
+      ['capture.snapshot', { interactiveOnly: false }],
+      ['sessions.close', undefined],
+    ]);
+  });
+
   it("leaves the app to agent-device's session when the target pins none", async () => {
     const h = harness({}, false);
     await openAttempt(h);
