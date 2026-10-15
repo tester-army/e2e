@@ -8,8 +8,9 @@ icon: "key"
 
 A setup test signs in one time and saves a named session. Other tests
 restore that session and start signed in. Passwords and other secrets are
-handles: the runner types the value and redacts it from model input and
-reports, with [some limits](/reference/security#where-redaction-stops).
+handles: the runner types the value and shows `<secret:name>` in its place
+in model input and reports, with
+[some limits](/reference/security#where-redaction-stops).
 
 ## Sign in once in a setup test
 
@@ -131,10 +132,9 @@ export default {
 } satisfies E2EConfig;
 ```
 
-The value goes to the field, the redaction ledger, and the encrypted payload
-of a [saved session](/reference/security#sessions). It's redacted only from
-its first fill on. If the app can show the value before a test
-types it, use a string. The same applies to a `secrets` entry.
+The value is redacted only from its first fill on. If the app can show the
+value before a test types it, use a string. The same applies to a `secrets`
+entry.
 
 </Accordion>
 
@@ -142,8 +142,7 @@ types it, use a string. The same applies to a `secrets` entry.
 
 `credentials.user(name)` returns the username as a plain string and the
 password as a `Secret` named `<name>.password`. A `Secret` has no `.value`.
-Pass it to a `fill`, to the `params` of an agent step, or to an engine
-option that declares it, such as [`basicAuth`](/web#protected-previews):
+Pass it to a `fill` or to the `params` of an agent step:
 
 ```ts
 await agent.act('Sign in', {
@@ -151,21 +150,19 @@ await agent.act('Sign in', {
 });
 ```
 
-The model sees only the secret's name and purpose. The runner authorizes the fill,
-requires a password field for a password, and types the value. Known
-values become `<secret:name>` in model input, observations, and reports.
-See the [secret fill rules](/reference/security#secret-fills). The agent
-can't read a secure field, so assert that sign-in succeeded instead.
+The model sees only the secret's name and purpose. When the model fills a
+password, the runner requires a password field and types the value. See the
+[secret fill rules](/reference/security#secret-fills). The agent can't read
+a secure field, so assert that sign-in succeeded instead.
 
 After a secret fill, the runner takes no screenshots for the rest of the
-attempt, or in the tests that restore the session it saved. See
-[screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill)
-for how to sign in with screenshots kept.
+attempt, or in the tests that restore the session it saved. To keep them, see
+[screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill).
 
 <Warning>
-Redaction matches full values and their encoded forms. A transformed value,
-such as the last four characters of a key, can still appear. Keep secret
-entry in setup tests, and assert the result of the submit. See
+Redaction matches strings. A transformed value, such as the last four
+characters of a key, can still appear. Keep secret entry in setup tests, and
+assert the result of the submit. See
 [where redaction stops](/reference/security#where-redaction-stops).
 </Warning>
 
@@ -201,10 +198,10 @@ A `secrets` entry can fill any editable input. An unconfigured name throws
 `SECRET_UNAVAILABLE`. `secrets.get()` returns `secrets` entries only, so
 `credentials.admin` and `secrets.admin` can both exist.
 
-In `e2e.config.ts`, `secrets.get()` can pass a secret to an engine option,
-such as a basic-auth password. The config load checks the name. This
-protects text only: screenshots keep the pixels. See
-[Secrets in engine options](/reference/security#secrets-in-engine-options).
+In `e2e.config.ts`, `secrets.get()` can pass a secret to an engine option
+that declares it, such as [`basicAuth`](/web#protected-previews). The config
+load checks the name. Screenshots stay on, so the app's pixels aren't masked.
+See [Secrets in engine options](/reference/security#secrets-in-engine-options).
 
 ## Override a value per run
 
