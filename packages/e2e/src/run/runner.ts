@@ -48,13 +48,13 @@ import { allocateAppPorts } from './app-ports.ts';
 import { inProcessSpawner } from './in-process.ts';
 import { someSkippedAfterFailure, tracedResultIds, type ResultRecord, type RunError, type SerialGroupRecord } from './records.ts';
 import { runUnits } from './scheduler.ts';
-import { buildWorkPlans, plannedSlots, type TargetWorkPlan, type TimeLimit } from './units.ts';
+import { buildWorkPlans, longestFirst, plannedSlots, type TargetWorkPlan, type TimeLimit } from './units.ts';
 import { SessionStore } from './sessions.ts';
 import { outputLayout } from './output.ts';
 import type { RunnerOutput } from './process-output.ts';
 import { registerStaticSecrets } from './secrecy.ts';
 import { nextRerunDir, pruneArtifacts } from './artifacts.ts';
-import { carryForward, lastFailedIds, readLastRun, reportArtifactPaths, type RerunCollection } from './last-run.ts';
+import { carryForward, fileDurationKey, lastFailedIds, previousFileDurations, readLastRun, reportArtifactPaths, type RerunCollection } from './last-run.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setSecretRegistry } from '../secrets.ts';
 import { withAbort } from '../internal/time.ts';
@@ -804,6 +804,10 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     const workerConfigPath = options.tests === undefined ? config.configPath : undefined;
     const inProcess = workerConfigPath === undefined;
     const runWorkers = inProcess ? 1 : config.workers;
+    if (runWorkers > 1) {
+      const previous = await previousFileDurations(outputLayout(config.output).report);
+      plans = longestFirst(plans, (targetName, file) => previous.get(fileDurationKey(targetName, file)));
+    }
     const timeLimit: TimeLimit | undefined =
       options.maxDuration !== undefined
         ? { ms: options.maxDuration, source: '--max-duration' }

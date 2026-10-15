@@ -6,7 +6,7 @@ import type {
   TestTargetPair,
 } from '../../src/collect/select.ts';
 import type { ResolvedTarget } from '../../src/config/resolve.ts';
-import { buildWorkPlans, failureLimitSkip, interruptedInPhase, nonRunResult, timeLimitSkip, unstartedResult } from '../../src/run/units.ts';
+import { buildWorkPlans, failureLimitSkip, longestFirst, interruptedInPhase, nonRunResult, timeLimitSkip, unstartedResult } from '../../src/run/units.ts';
 import { decodeResult } from '../../src/run/worker/protocol.ts';
 import { encodeResult, type ResultRecord } from '../../src/run/records.ts';
 
@@ -163,6 +163,37 @@ describe('buildWorkPlans', () => {
     const plans = buildWorkPlans(selection, collection, '/project');
     expect(plans[0]!.fileUnits).toHaveLength(0);
     expect(plans[0]!.immediate).toHaveLength(1);
+  });
+});
+
+describe('longestFirst', () => {
+  it('dispatches the files the previous run spent longest in first, untimed ones before them, ties in collection order', () => {
+    const files = ['tests/a.e2e.ts', 'tests/b.e2e.ts', 'tests/c.e2e.ts', 'tests/d.e2e.ts', 'tests/e.e2e.ts'];
+    const tests = files.map((file) => makeTest(file, file, 0));
+    const pairs = tests.map((test) => makePair(test));
+    const selection: Selection = { pairs, perTarget: [{ target, pairs }] };
+    const collection: Collection = {
+      files: files.map((file, index) => makeFile(file, [tests[index]!])),
+      tests,
+      nearMisses: [],
+      unmatchedPositionals: [],
+      uncollected: [],
+    };
+    const previous = new Map([
+      ['tests/a.e2e.ts', 100],
+      ['tests/b.e2e.ts', 900],
+      ['tests/d.e2e.ts', 100],
+    ]);
+    const [plan] = longestFirst(buildWorkPlans(selection, collection, '/project'), (targetName, file) =>
+      targetName === 'web' ? previous.get(file) : undefined,
+    );
+    expect(plan!.fileUnits.map((unit) => unit.file)).toEqual([
+      'tests/c.e2e.ts',
+      'tests/e.e2e.ts',
+      'tests/b.e2e.ts',
+      'tests/a.e2e.ts',
+      'tests/d.e2e.ts',
+    ]);
   });
 });
 

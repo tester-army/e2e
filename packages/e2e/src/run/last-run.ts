@@ -273,3 +273,29 @@ function isError(value: unknown): value is ReportError {
         Array.isArray(scope.titlePath)))
   );
 }
+
+/**
+ * How long each file took for each target in the previous run, keyed by
+ * `pairKey`-style `target::file`: every attempt of every result summed. No
+ * readable report is no history, never an error.
+ */
+export async function previousFileDurations(reportPath: string): Promise<ReadonlyMap<string, number>> {
+  const durations = new Map<string, number>();
+  let report: Report1Document;
+  try {
+    report = await readLastRun(reportPath);
+  } catch {
+    return durations;
+  }
+  for (const result of report.run.results) {
+    const key = fileDurationKey(result.targetId, result.file);
+    const ms = result.attempts.reduce((sum, attempt) => sum + attempt.durationMs, 0);
+    durations.set(key, (durations.get(key) ?? 0) + ms);
+  }
+  return durations;
+}
+
+/** The key `previousFileDurations` files one target's file under. */
+export function fileDurationKey(targetName: string, file: string): string {
+  return `${targetName}::${file}`;
+}
