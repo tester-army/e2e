@@ -44,7 +44,9 @@ export function projectRelativePath(projectRoot: string, file: string): string |
 export function userFrame(stack: string | undefined, projectRoot: string | undefined): StackFrame | undefined {
   if (stack === undefined || projectRoot === undefined) return undefined;
   for (const raw of stack.split('\n')) {
-    const [, location, line, column] = FRAME_PATTERN.exec(raw) ?? [];
+    const match = FRAME_PATTERN.exec(raw);
+    if (match === null) continue;
+    const [, location, line, column] = match;
     if (location === undefined || line === undefined || column === undefined) continue;
     const withoutQuery = location.split('?')[0]!;
     let file: string;
