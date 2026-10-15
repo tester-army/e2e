@@ -154,8 +154,13 @@ needs `app.url` and refuses the device keys (`bundleId`, `appPath`,
 A target with `app.url` is a `browser` target, so `requires: ['browser']`
 selects web targets.
 
-`connect` needs chromium; `cdpEndpoint(signal)` is called once per worker and
-again at an attempt start after a disconnect. A `browser` provider object leases hosted
+`connect` needs chromium and `cdpEndpoint`, a resolver `(signal) => url`, as
+is `reconnectEndpoint`: a `connect` without `cdpEndpoint`, or one given as a
+string, is `INVALID_CONFIG` at config load. `cdpEndpoint(signal)` is called
+once per worker and again at an attempt start after a disconnect; with
+`reconnectEndpoint` it is called at every attempt start instead, for a fresh
+browser each time ([Recovering a CDP transport](#recovering-a-cdp-transport)).
+A `browser` provider object leases hosted
 browsers and releases them when the run or the attempt ends; see
 [Hosted browsers](/browser#hosted-browsers) for the `BrowserProvider`
 contract and an example provider. `browser: provider` together with
@@ -180,9 +185,12 @@ else, or another key, is `INVALID_CONFIG` at config load. The old
 ### Recovering a CDP transport
 
 `connect.reconnectEndpoint(signal)` opts into recovery of the same remote
-browser after its CDP transport disconnects. This mode uses the browser's
-persistent default context because Chrome deletes ordinary Playwright contexts
-when their transport detaches.
+browser after its CDP transport disconnects. Every attempt, retries included,
+then needs its own fresh browser: `cdpEndpoint` provisions one at each attempt
+start, and a browser an earlier attempt used is refused, so one long-lived
+browser cannot serve a suite. This mode uses the browser's persistent default
+context because Chrome deletes ordinary Playwright contexts when their
+transport detaches.
 
 ```ts
 interface WebConnectOptions {
@@ -191,11 +199,15 @@ interface WebConnectOptions {
 }
 ```
 
-In this mode, `cdpEndpoint` provisions a fresh, dedicated browser at every
-attempt start, including retries. The engine rejects a browser reused by a
-previous attempt. The remote must have only its default context, and the host
-must delete the browser when the attempt ends. Engine cleanup detaches its
-connection; it does not terminate the host's browser.
+The remote must have only its default context, and the host must delete the
+browser when the attempt ends. Engine cleanup detaches its connection; it does
+not terminate the host's browser.
+
+To reuse one sign-in across files, share the session, not the browser: saved
+sessions are unavailable in this mode, so keep `connect` to `cdpEndpoint`
+alone, or launch locally, and
+[sign in once in a setup test](/authentication#sign-in-once-in-a-setup-test).
+Every test that restores that session starts signed in on its own context.
 
 After a disconnect, the next operation calls `reconnectEndpoint` once, bounded
 by that operation's timeout and abort signal. This resolver must return the

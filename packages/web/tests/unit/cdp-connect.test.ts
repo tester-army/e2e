@@ -6,7 +6,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { EngineInitInfo } from 'e2e/engine';
-import { web } from '../../src/index.ts';
+import { web, type WebConnectOptions } from '../../src/index.ts';
 import { PlaywrightSurface } from '../../src/surface.ts';
 
 function initInfo(signal = new AbortController().signal): EngineInitInfo {
@@ -48,6 +48,24 @@ describe('web({ connect })', () => {
       expect(() => web({ browser, connect: { cdpEndpoint: () => 'ws://x' } })).toThrowError(
         /chromium-only/,
       );
+    }
+  });
+
+  it('rejects connect without a cdpEndpoint resolver as INVALID_CONFIG at config load, never echoing an endpoint', () => {
+    const refused = (message: RegExp) => expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringMatching(message) });
+    const resolver = () => 'ws://localhost:0';
+    const url = 'ws://host/devtools/browser/session-token';
+    const connect = (value: unknown) => () => web({ connect: value as WebConnectOptions });
+    // reconnectEndpoint alone used to pass load and fail every attempt with "resolve is not a function".
+    expect(connect({ reconnectEndpoint: resolver })).toThrow(refused(/requires cdpEndpoint.*reconnectEndpoint only reconnects/));
+    expect(connect({})).toThrow(refused(/requires cdpEndpoint, the resolver that provisions the browser/));
+    expect(connect({ cdpEndpoint: url })).toThrow(refused(/cdpEndpoint.*must be a resolver function.*got a string$/));
+    expect(connect({ cdpEndpoint: resolver, reconnectEndpoint: url })).toThrow(refused(/reconnectEndpoint.*must be a resolver function.*got a string$/));
+    expect(connect(url)).toThrow(refused(/connect.*must be a plain object.*got a string$/));
+    expect(connect(null)).toThrow(refused(/must be a plain object.*got null$/));
+    expect(connect([resolver])).toThrow(refused(/must be a plain object.*got an array$/));
+    for (const value of [{ cdpEndpoint: url }, { cdpEndpoint: resolver, reconnectEndpoint: url }, url]) {
+      expect(connect(value)).toThrow(expect.objectContaining({ message: expect.not.stringContaining('session-token') }));
     }
   });
 });

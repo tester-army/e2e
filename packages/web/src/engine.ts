@@ -73,7 +73,7 @@ export function web(options: WebOptions = {}): EngineHandle {
       `web({ browser, connect }) names two browser sources; browser provider "${provider.name}" leases its own browsers, so remove connect`,
     );
   }
-  if (isRecord(options.connect)) rejectUnknownKeys('web({ connect })', options.connect, ['cdpEndpoint', 'reconnectEndpoint']);
+  if (options.connect !== undefined) validateConnect(options.connect);
   if (options.connect !== undefined && typeof options.browser === 'string' && options.browser !== 'chromium') {
     throw new ConfigurationError(
       'INVALID_CONFIG',
@@ -90,9 +90,6 @@ export function web(options: WebOptions = {}): EngineHandle {
   if (options.initScripts !== undefined) validateInitScripts(options.initScripts);
   if (options.screencast !== undefined) validateScreencast(options.screencast);
   const reconnecting = options.connect?.reconnectEndpoint !== undefined;
-  if (reconnecting && typeof options.connect?.reconnectEndpoint !== 'function') {
-    throw new ConfigurationError('INVALID_CONFIG', 'connect.reconnectEndpoint must be a function');
-  }
   // A per-attempt lease rides the same persistent context as `reconnectEndpoint`, with the same limits.
   const recoverable = reconnecting || provider?.scope === 'attempt';
   const mode = provider === undefined ? 'connect.reconnectEndpoint' : `browser provider "${provider.name}" with scope "attempt"`;
@@ -195,6 +192,43 @@ function persistentContextLimit(what: string, mode: string, leased: boolean): Co
 /** True for a plain object; the shape both options take. Config runs as JavaScript, so the types alone are no guard. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Names a value's kind for a config error without echoing it: a CDP URL can carry a session token. */
+function kindOf(value: unknown): string {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'an array';
+  const type = typeof value;
+  return type === 'object' ? 'an object' : `a ${type}`;
+}
+
+/**
+ * `cdpEndpoint` is the one resolver every connect mode needs: the shared
+ * browser's source at init, and the fresh browser each persistent attempt
+ * provisions. Without it the attach would call an undefined resolver, so a
+ * config missing it fails here, at load, instead of at worker init or on
+ * every attempt with `ENGINE_FAILURE: ... resolve is not a function`.
+ */
+function validateConnect(connect: unknown): void {
+  if (!isRecord(connect)) {
+    throw new ConfigurationError('INVALID_CONFIG', `web({ connect }) must be a plain object: { cdpEndpoint, reconnectEndpoint? }, got ${kindOf(connect)}`);
+  }
+  rejectUnknownKeys('web({ connect })', connect, ['cdpEndpoint', 'reconnectEndpoint']);
+  const { cdpEndpoint, reconnectEndpoint } = connect;
+  if (cdpEndpoint === undefined) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `web({ connect }) requires cdpEndpoint, the resolver that provisions the browser: (signal) => url${
+        reconnectEndpoint === undefined ? '' : '; reconnectEndpoint only reconnects to the browser cdpEndpoint provisioned'
+      }`,
+    );
+  }
+  if (typeof cdpEndpoint !== 'function') {
+    throw new ConfigurationError('INVALID_CONFIG', `web({ connect: { cdpEndpoint } }) must be a resolver function (signal) => url, got ${kindOf(cdpEndpoint)}`);
+  }
+  if (reconnectEndpoint !== undefined && typeof reconnectEndpoint !== 'function') {
+    throw new ConfigurationError('INVALID_CONFIG', `web({ connect: { reconnectEndpoint } }) must be a resolver function (signal) => url, got ${kindOf(reconnectEndpoint)}`);
+  }
 }
 
 /**
