@@ -131,7 +131,7 @@ headers so `load` and `error` reflect the real status.
 
 ## What works
 
-Against the e2e testbed's local suite on a Lightpanda nightly from October
+Against the e2e testbed's local suite on a Lightpanda nightly from mid-October
 2026, these pass unchanged:
 
 - `app.open`, `app.back`, and `expect(browser).toHaveURL` and `toHaveTitle`.
@@ -165,6 +165,7 @@ tracks most of them.
 | [Iframes](/browser#reach-into-an-iframe) | `frameLocator` finds nothing. | Iframes are not loaded by default. `loadResources: ['iframe']` loads them; queries and fills then work, but a listener in the host page on an element the frame created does not fire. |
 | Drags: `screen.swipe`, `locator.swipeTo`, and `browser.mouse` moves with a button down | `ENGINE_FAILURE` naming `Input.setInterceptDrags`. | Playwright needs that command for a drag and Lightpanda has not implemented it. |
 | `browser.setViewport` | The page measures the new size, but a `resize` listener never runs. | No `resize` event is dispatched. |
+| [Media emulation](/reference/web#media-emulation): `colorScheme`, `reducedMotion`, `browser.emulateMedia` | The page keeps reporting `light` and full motion. | `Emulation.setEmulatedMedia` does not change what `matchMedia` answers. |
 | Scrolling: `scrollIntoView`, `scrollUntilVisible`, and an action on a node "outside of the viewport" | The scroll is a no-op, and an actionability wait can time out. | Without layout there is no scroll position to move. |
 
 A Lightpanda release that closes one of these makes the row above go away
