@@ -2,6 +2,7 @@
   "name": "e2e",
   "version": "0.21.1",
   "description": "SDK, runner, and CLI for agentic end-to-end testing",
+  "mcpName": "io.github.tester-army/e2e",
   "keywords": [
     "e2e",
     "end-to-end",

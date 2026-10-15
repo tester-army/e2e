@@ -1,0 +1,31 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.tester-army/e2e",
+  "title": "e2e",
+  "description": "Open live web and mobile app sessions from an e2e project to inspect the app and try locators.",
+  "websiteUrl": "https://e2e.tester.army/docs/reference/mcp",
+  "repository": {
+    "url": "https://github.com/tester-army/e2e",
+    "source": "github",
+    "subfolder": "packages/e2e"
+  },
+  "version": "0.21.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "e2e",
+      "version": "0.21.1",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}

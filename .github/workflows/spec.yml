@@ -47,6 +47,8 @@ jobs:
         run: pnpm check:install-scripts
       - name: Plugin package matches its sources
         run: pnpm plugins:check
+      - name: MCP Registry entry matches the runner
+        run: pnpm mcp-server:check
       - name: Agent skill scripts
         run: |
           pnpm exec tsc -p .dev/skills/babysit/scripts

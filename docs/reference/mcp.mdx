@@ -65,6 +65,13 @@ command = "npx"
 args = ["e2e", "mcp"]
 ```
 
+The server is also listed in the
+[MCP Registry](https://registry.modelcontextprotocol.io) as
+`io.github.tester-army/e2e`. A client that installs it from there runs the
+listed release with `npx`, which can differ from the project's e2e. The
+project still needs e2e and its engine installed, since the config imports
+them.
+
 The server needs no model: a project without the optional `ai` package
 opens sessions and drives the app with the deterministic tools.
 

@@ -1,0 +1,94 @@
+name: mcp-registry
+
+# Lists one e2e release in the official MCP Registry as
+# io.github.tester-army/e2e, from packages/e2e/server.json at that release's
+# tag. `release.yml` calls it after each release that published e2e; dispatch
+# it by hand with the version to retry a failed publish. A registry version
+# cannot be changed once published, so a version already listed is skipped.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: e2e version to list, e.g. 0.22.0
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: e2e version to list, e.g. 0.22.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-registry-${{ inputs.version }}
+  cancel-in-progress: false
+
+env:
+  VERSION: ${{ inputs.version }}
+  SERVER_NAME: io.github.tester-army/e2e
+  MCP_PUBLISHER_VERSION: v1.8.1
+  MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
+
+jobs:
+  publish:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # OIDC for `mcp-publisher login github-oidc`.
+      id-token: write
+    steps:
+      - name: Check the version
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::version must be a release version like 0.22.0, got: $VERSION"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: e2e@${{ inputs.version }}
+
+      - name: Skip a version already listed
+        id: listed
+        run: |
+          status="$(curl -sS -o /dev/null -w '%{http_code}' "https://registry.modelcontextprotocol.io/v0.1/servers/${SERVER_NAME/\//%2F}/versions/$VERSION")"
+          case "$status" in
+            200) echo "$SERVER_NAME@$VERSION is already listed"; echo "skip=true" >> "$GITHUB_OUTPUT" ;;
+            404) ;;
+            *) echo "::error::registry answered $status for $SERVER_NAME@$VERSION"; exit 1 ;;
+          esac
+
+      - name: Check the entry matches the release
+        if: ${{ steps.listed.outputs.skip != 'true' }}
+        run: |
+          jq -e --arg name "$SERVER_NAME" --arg v "$VERSION" \
+            '.name == $name and .version == $v and all(.packages[]; .version == $v)' packages/e2e/server.json \
+            || { echo "::error::packages/e2e/server.json at e2e@$VERSION does not list $SERVER_NAME@$VERSION"; exit 1; }
+
+      # The registry checks `mcpName` on the published package; npm can take a
+      # moment to serve a version it just accepted.
+      - name: Wait for the package on npm
+        if: ${{ steps.listed.outputs.skip != 'true' }}
+        run: |
+          for _ in $(seq 1 30); do
+            name="$(npm view "e2e@$VERSION" mcpName 2>/dev/null || true)"
+            [ "$name" = "$SERVER_NAME" ] && exit 0
+            sleep 10
+          done
+          echo "::error::npm does not serve e2e@$VERSION with mcpName $SERVER_NAME"
+          exit 1
+
+      - name: Install mcp-publisher
+        if: ${{ steps.listed.outputs.skip != 'true' }}
+        run: |
+          curl -sSfL -o mcp-publisher.tar.gz \
+            "https://github.com/modelcontextprotocol/registry/releases/download/$MCP_PUBLISHER_VERSION/mcp-publisher_linux_amd64.tar.gz"
+          echo "$MCP_PUBLISHER_SHA256  mcp-publisher.tar.gz" | sha256sum -c -
+          tar xzf mcp-publisher.tar.gz -C "$RUNNER_TEMP" mcp-publisher
+
+      - name: Publish
+        if: ${{ steps.listed.outputs.skip != 'true' }}
+        run: |
+          "$RUNNER_TEMP/mcp-publisher" login github-oidc
+          "$RUNNER_TEMP/mcp-publisher" publish packages/e2e/server.json
