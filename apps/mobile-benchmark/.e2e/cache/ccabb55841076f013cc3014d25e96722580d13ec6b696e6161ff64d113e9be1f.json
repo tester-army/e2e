@@ -1,16 +1,12 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T07:04:43.228Z",
+  "createdAt": "2026-10-15T16:01:56.350Z",
   "payload": {
     "actions": [
       {
-        "name": "type",
-        "summary": "type \"TA-BENCH-50\" into textbox \"Coupon code\"",
-        "target": {
-          "role": "textbox",
-          "name": "Coupon code"
-        },
-        "value": "TA-BENCH-50"
+        "name": "tool",
+        "summary": "tool type (run-time value)",
+        "derived": "pixels"
       },
       {
         "name": "check",
@@ -42,10 +38,35 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Read coupon code TA-BENCH-50, entered it, accepted the terms, and applied it. The web view now displays “Coupon applied.”",
-    "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "summary": "Read coupon code TA-BENCH-50 from the web view, entered it, accepted the terms, and applied it. The web view shows “Coupon applied.”",
+    "startPath": "dev.e2e.benchmark / WebView Accessibility",
+    "endPath": "dev.e2e.benchmark / WebView Accessibility",
     "endAnchors": [
+      {
+        "role": "text",
+        "name": "Checkout coupon",
+        "value": "Checkout coupon"
+      },
+      {
+        "role": "text",
+        "name": "Your coupon code is",
+        "value": "Your coupon code is"
+      },
+      {
+        "role": "text",
+        "name": "TA-BENCH-50",
+        "value": "TA-BENCH-50"
+      },
+      {
+        "role": "text",
+        "name": ".",
+        "value": "."
+      },
+      {
+        "role": "text",
+        "name": "Coupon code",
+        "value": "Coupon code"
+      },
       {
         "role": "textbox",
         "name": "Coupon code",
@@ -60,42 +81,15 @@
         ]
       },
       {
-        "role": "other",
-        "name": "Vertical scroll bar, 2 pages",
-        "value": "0%"
-      },
-      {
-        "role": "other",
-        "name": "Coupon applied"
-      },
-      {
         "role": "text",
-        "name": "Coupon applied",
-        "testId": "success-message"
-      },
-      {
-        "role": "other",
-        "name": "Vertical scroll bar, 2 pages",
-        "testId": "coupon-webview"
-      },
-      {
-        "role": "web-view",
-        "name": "Vertical scroll bar, 2 pages"
+        "name": "I accept the terms",
+        "value": "I accept the terms"
       }
     ],
     "goneAnchors": [
       {
         "role": "text",
         "name": "Apply the coupon shown inside the web page (accept the terms first)"
-      },
-      {
-        "role": "textbox",
-        "name": "Coupon code"
-      },
-      {
-        "role": "switch",
-        "name": "I accept the terms",
-        "value": "0"
       },
       {
         "role": "other",
@@ -116,7 +110,7 @@
         "name": "Vertical scroll bar, 1 page"
       }
     ],
-    "endWaitMs": 12286,
+    "endWaitMs": 17551,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

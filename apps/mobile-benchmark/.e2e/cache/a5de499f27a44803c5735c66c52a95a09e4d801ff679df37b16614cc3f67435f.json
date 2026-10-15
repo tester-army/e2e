@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T07:00:06.193Z",
+  "createdAt": "2026-10-15T15:55:59.087Z",
   "payload": {
     "actions": [
       {
@@ -34,9 +34,9 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Waited for the reward area to load, pulled down on it to refresh and reveal the claim control, then tapped Claim reward. The screen now shows “Reward claimed.”",
-    "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "summary": "Waited for the reward area to load, pulled down on it to refresh and reveal the Claim reward button, then tapped it. The screen now shows “Reward claimed.”",
+    "startPath": "dev.e2e.benchmark / Async States",
+    "endPath": "dev.e2e.benchmark / Async States",
     "endAnchors": [
       {
         "role": "other",
@@ -86,7 +86,7 @@
         "name": "In progress"
       }
     ],
-    "endWaitMs": 17354,
+    "endWaitMs": 15245,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

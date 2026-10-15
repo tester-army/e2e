@@ -1,0 +1,150 @@
+{
+  "nodes": [
+    {
+      "index": 0,
+      "type": "Other",
+      "role": "_TtC7SwiftUIP33_ACC2C5639A7D76F611E170E831FCA49118SwiftUIApplication",
+      "subrole": "UIApplication",
+      "label": "SwiftUIBar",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 402,
+        "height": 874
+      },
+      "enabled": true,
+      "depth": 0,
+      "pid": 42914,
+      "hittable": false,
+      "ref": "e1",
+      "kind": "other"
+    },
+    {
+      "index": 1,
+      "parentIndex": 0,
+      "type": "NavigationBar",
+      "role": "SwiftUI.UIKitNavigationBar",
+      "subrole": "UINavigationBar",
+      "identifier": "Message",
+      "rect": {
+        "x": 0,
+        "y": 62,
+        "width": 402,
+        "height": 54
+      },
+      "enabled": true,
+      "depth": 1,
+      "pid": 42914,
+      "hittable": true,
+      "ref": "e2",
+      "kind": "navigation-bar"
+    },
+    {
+      "index": 2,
+      "parentIndex": 1,
+      "type": "Button",
+      "role": "UIAccessibilityBackButtonElement",
+      "subrole": "UIAccessibilityElement",
+      "label": "Inbox",
+      "identifier": "BackButton",
+      "rect": {
+        "x": 16,
+        "y": 62,
+        "width": 44,
+        "height": 44
+      },
+      "enabled": true,
+      "depth": 2,
+      "pid": 42914,
+      "hittable": true,
+      "ref": "e3",
+      "kind": "button"
+    },
+    {
+      "index": 3,
+      "parentIndex": 1,
+      "type": "StaticText",
+      "role": "UILabel",
+      "label": "Message",
+      "rect": {
+        "x": 165,
+        "y": 73.66666666666666,
+        "width": 71.66666666666669,
+        "height": 20.66666666666667
+      },
+      "enabled": true,
+      "depth": 2,
+      "pid": 42914,
+      "hittable": true,
+      "ref": "e4",
+      "kind": "text"
+    },
+    {
+      "index": 4,
+      "parentIndex": 1,
+      "type": "Other",
+      "role": "_TtGC7SwiftUI16UIKitBarItemHostVS_11BarItemView_",
+      "subrole": "UIView",
+      "label": "Reply",
+      "rect": {
+        "x": 315.6666666666667,
+        "y": 66,
+        "width": 66.33333333333331,
+        "height": 36
+      },
+      "enabled": true,
+      "depth": 2,
+      "pid": 42914,
+      "hittable": true,
+      "ref": "e5",
+      "kind": "other"
+    },
+    {
+      "index": 5,
+      "parentIndex": 4,
+      "type": "Button",
+      "role": "SwiftUI.AccessibilityNode",
+      "subrole": "UIResponder",
+      "label": "Reply",
+      "rect": {
+        "x": 315.66666666666674,
+        "y": 66,
+        "width": 66.33333333333331,
+        "height": 36
+      },
+      "enabled": true,
+      "depth": 3,
+      "pid": 42914,
+      "hittable": true,
+      "ref": "e6",
+      "kind": "button"
+    },
+    {
+      "index": 6,
+      "parentIndex": 0,
+      "type": "StaticText",
+      "role": "SwiftUI.AccessibilityNode",
+      "subrole": "UIResponder",
+      "label": "Message body",
+      "rect": {
+        "x": 145.16666666666669,
+        "y": 467.8333333333333,
+        "width": 111.66666666666669,
+        "height": 20.333333333333314
+      },
+      "enabled": true,
+      "depth": 1,
+      "pid": 42914,
+      "hittable": true,
+      "ref": "e7",
+      "kind": "text"
+    }
+  ],
+  "viewport": {
+    "width": 402,
+    "height": 874
+  },
+  "truncated": false,
+  "appName": "dev.e2e.swiftuibar",
+  "appBundleId": "dev.e2e.swiftuibar"
+}

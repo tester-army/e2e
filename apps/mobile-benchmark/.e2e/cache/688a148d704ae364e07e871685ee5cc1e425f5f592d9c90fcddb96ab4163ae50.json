@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T06:55:48.722Z",
+  "createdAt": "2026-10-15T15:49:37.909Z",
   "payload": {
     "actions": [
       {
@@ -37,14 +37,16 @@
         }
       },
       {
-        "name": "tap",
-        "summary": "tap button \"return\"",
+        "name": "press",
+        "summary": "press \"Enter\" on textbox \"Password\"",
         "target": {
-          "role": "button",
-          "name": "return",
-          "testId": "Return",
-          "selector": "id=Return"
-        }
+          "role": "textbox",
+          "testId": "password-input",
+          "placeholder": "Password",
+          "selector": "id=password-input",
+          "inputPurpose": "password"
+        },
+        "key": "Enter"
       },
       {
         "name": "tap",
@@ -77,18 +79,14 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Entered tester@tester.army and the provided password, submitted the login form, dismissed the Save Password prompt, and verified the screen shows “Logged in successfully.”",
-    "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "summary": "Entered tester@tester.army and the provided password, submitted the login form, dismissed the system password-save prompt, and verified the screen shows “Logged in successfully” with a Log out control.",
+    "startPath": "dev.e2e.benchmark / Login Form",
+    "endPath": "dev.e2e.benchmark / Login Form",
     "endAnchors": [
       {
         "role": "other",
         "name": "Log out",
         "testId": "logout-button"
-      },
-      {
-        "role": "other",
-        "name": "Logged in successfully"
       },
       {
         "role": "text",
@@ -98,13 +96,10 @@
     ],
     "goneAnchors": [
       {
-        "role": "text",
-        "name": "Use tester@tester.army / <secret:benchmark.password>"
-      },
-      {
         "role": "textbox",
         "testId": "email-input",
-        "placeholder": "Email"
+        "placeholder": "Email",
+        "value": "Email"
       },
       {
         "role": "textbox",
@@ -118,11 +113,11 @@
         "testId": "login-button"
       },
       {
-        "role": "other",
+        "role": "text",
         "name": "Use tester@tester.army / <secret:benchmark.password>"
       }
     ],
-    "endWaitMs": 12276,
+    "endWaitMs": 13558,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

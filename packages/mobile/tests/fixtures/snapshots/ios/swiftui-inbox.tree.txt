@@ -1,0 +1,21 @@
+screen
+  other "SwiftUIBar"
+    navigation #Inbox
+      other "Edit"
+        button "Edit"
+      other "New"
+        button "New"
+      text "Inbox"
+    collection-view
+      listitem
+        button "Open message"
+          text "Open message"
+          image #chevron.forward
+      listitem
+        button "Open untitled"
+          text "Open untitled"
+          image #chevron.forward
+      listitem
+        button "Compose"
+      other "Vertical scroll bar, 1 page" value="0%"
+      other "Vertical scroll bar, 1 page" value="0%"

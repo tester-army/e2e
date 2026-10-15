@@ -1,42 +1,28 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T07:21:42.138Z",
+  "createdAt": "2026-10-15T16:31:10.692Z",
   "payload": {
     "actions": [
       {
         "name": "tap",
-        "summary": "tap button \"Card\"",
+        "summary": "tap button \"New card\"",
         "target": {
           "role": "button",
-          "name": "Card",
-          "testId": "Card",
-          "selector": "id=Card"
+          "name": "New card",
+          "testId": "New card",
+          "selector": "id=\"New card\""
         }
       },
       {
-        "name": "type",
-        "summary": "type \"4242424242424242\" into textbox \"Card number\"",
-        "target": {
-          "role": "textbox",
-          "name": "Card number"
-        },
-        "value": "4242424242424242"
-      },
-      {
-        "name": "type",
-        "summary": "type \"123\" into textbox \"CVC\"",
-        "target": {
-          "role": "textbox",
-          "name": "CVC"
-        },
-        "value": "123"
+        "name": "dismissKeyboard",
+        "summary": "dismiss the keyboard"
       },
       {
         "name": "tap",
-        "summary": "tap button \"Pay 10,99 US$\"",
+        "summary": "tap button \"Pay $10.99\"",
         "target": {
           "role": "button",
-          "name": "Pay 10,99 US$"
+          "name": "Pay $10.99"
         }
       }
     ],
@@ -52,9 +38,9 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Completed checkout with Stripe test card 4242 4242 4242 4242, expiry 12/34, CVC 123, and postal code SW1A 1AA. The screen confirms “Stripe test payment completed.”",
+    "summary": "Entered the Stripe test card 4242 4242 4242 4242, expiry 12/34, CVC 123, and billing postal code. The app now displays “Stripe test payment completed.”",
     "startPath": "dev.e2e.benchmark",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Stripe PaymentSheet",
     "endAnchors": [
       {
         "role": "button",
@@ -128,7 +114,7 @@
         "name": "TEST"
       }
     ],
-    "endWaitMs": 16347,
+    "endWaitMs": 16288,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

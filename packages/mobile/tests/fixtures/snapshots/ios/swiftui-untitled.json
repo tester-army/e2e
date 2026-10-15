@@ -1,0 +1,131 @@
+{
+  "nodes": [
+    {
+      "index": 0,
+      "type": "Other",
+      "role": "_TtC7SwiftUIP33_ACC2C5639A7D76F611E170E831FCA49118SwiftUIApplication",
+      "subrole": "UIApplication",
+      "label": "SwiftUIBar",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 402,
+        "height": 874
+      },
+      "enabled": true,
+      "depth": 0,
+      "pid": 42914,
+      "hittable": false,
+      "ref": "e1",
+      "kind": "other"
+    },
+    {
+      "index": 1,
+      "parentIndex": 0,
+      "type": "NavigationBar",
+      "role": "SwiftUI.UIKitNavigationBar",
+      "subrole": "UINavigationBar",
+      "identifier": "_TtGC7SwiftUI32NavigationStackHosting",
+      "rect": {
+        "x": 0,
+        "y": 62,
+        "width": 402,
+        "height": 54
+      },
+      "enabled": true,
+      "depth": 1,
+      "pid": 42914,
+      "hittable": true,
+      "ref": "e2",
+      "kind": "navigation-bar"
+    },
+    {
+      "index": 2,
+      "parentIndex": 1,
+      "type": "Button",
+      "role": "UIAccessibilityBackButtonElement",
+      "subrole": "UIAccessibilityElement",
+      "label": "Inbox",
+      "identifier": "BackButton",
+      "rect": {
+        "x": 16,
+        "y": 62,
+        "width": 44,
+        "height": 44
+      },
+      "enabled": true,
+      "depth": 2,
+      "pid": 42914,
+      "hittable": true,
+      "ref": "e3",
+      "kind": "button"
+    },
+    {
+      "index": 3,
+      "parentIndex": 1,
+      "type": "Other",
+      "role": "_TtGC7SwiftUI16UIKitBarItemHostVS_11BarItemView_",
+      "subrole": "UIView",
+      "label": "Share",
+      "rect": {
+        "x": 314,
+        "y": 66,
+        "width": 68,
+        "height": 36
+      },
+      "enabled": true,
+      "depth": 2,
+      "pid": 42914,
+      "hittable": true,
+      "ref": "e4",
+      "kind": "other"
+    },
+    {
+      "index": 4,
+      "parentIndex": 3,
+      "type": "Button",
+      "role": "SwiftUI.AccessibilityNode",
+      "subrole": "UIResponder",
+      "label": "Share",
+      "rect": {
+        "x": 314,
+        "y": 66,
+        "width": 68,
+        "height": 36
+      },
+      "enabled": true,
+      "depth": 3,
+      "pid": 42914,
+      "hittable": true,
+      "ref": "e5",
+      "kind": "button"
+    },
+    {
+      "index": 5,
+      "parentIndex": 0,
+      "type": "StaticText",
+      "role": "SwiftUI.AccessibilityNode",
+      "subrole": "UIResponder",
+      "label": "Untitled body",
+      "rect": {
+        "x": 149.5,
+        "y": 467.8333333333333,
+        "width": 103,
+        "height": 20.333333333333314
+      },
+      "enabled": true,
+      "depth": 1,
+      "pid": 42914,
+      "hittable": true,
+      "ref": "e6",
+      "kind": "text"
+    }
+  ],
+  "viewport": {
+    "width": 402,
+    "height": 874
+  },
+  "truncated": false,
+  "appName": "dev.e2e.swiftuibar",
+  "appBundleId": "dev.e2e.swiftuibar"
+}

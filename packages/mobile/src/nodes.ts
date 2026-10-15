@@ -548,9 +548,11 @@ export function screenRoot(roots: readonly SemanticNode[], viewport: ViewportSiz
 }
 
 /**
- * The visible screen's title: the navigation bar's (iOS) or toolbar's
- * (Android) own label, else the first text inside it, else its identifier
- * (UIKit names the bar after its title). Undefined when the screen has no
+ * The visible screen's title: the iOS navigation bar's identifier, which
+ * UIKit and SwiftUI set to the title while its label can be a back button or
+ * toolbar item, unless it is a Swift class name (an untitled SwiftUI screen);
+ * else the bar's or Android toolbar's own label, else the first text inside
+ * it. A toolbar's resource id is never a title. Undefined when the screen has no
  * title bar, which is the honest answer for a launch screen, a full-screen
  * sheet, or Android's Settings home.
  */
@@ -559,12 +561,19 @@ export function screenTitle(snapshot: ProjectedSnapshot): string | undefined {
     snapshot.index.find((entry) => entry.kind === 'navigation-bar') ??
     snapshot.index.find((entry) => ANDROID_TITLE_IDS.some((suffix) => entry.raw.identifier?.endsWith(suffix) === true));
   if (bar === undefined) return undefined;
-  if (bar.raw.label !== undefined && bar.raw.label.trim() !== '') return bar.raw.label;
-  const text = snapshot.index.find(
-    (entry) => entry.node.role === 'text' && entry.raw.label !== undefined && entry.raw.label.trim() !== '' && isWithin(entry, bar),
-  );
-  if (text !== undefined) return text.raw.label;
-  return bar.raw.identifier === undefined || bar.raw.identifier.trim() === '' ? undefined : bar.raw.identifier;
+  const identifier = bar.kind === 'navigation-bar' ? nonBlank(bar.raw.identifier) : undefined;
+  if (identifier !== undefined && !SWIFT_CLASS_NAME.test(identifier)) return identifier;
+  const label = nonBlank(bar.raw.label);
+  if (label !== undefined) return label;
+  const text = snapshot.index.find((entry) => entry.node.role === 'text' && nonBlank(entry.raw.label) !== undefined && isWithin(entry, bar));
+  return text?.raw.label;
+}
+
+/** A mangled Swift class name, which UIKit puts in a bar's identifier when the screen sets no title. */
+const SWIFT_CLASS_NAME = /^_Tt/;
+
+function nonBlank(value: string | undefined): string | undefined {
+  return value === undefined || value.trim() === '' ? undefined : value;
 }
 
 /** True when `entry` is a strict descendant of `ancestor`. */

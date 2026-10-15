@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T07:04:52.150Z",
+  "createdAt": "2026-10-15T16:28:56.782Z",
   "payload": {
     "actions": [
       {
@@ -11,6 +11,14 @@
           "name": "Enable microphone",
           "testId": "request-permission",
           "selector": "id=request-permission"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Allow\"",
+        "target": {
+          "role": "button",
+          "name": "Allow"
         }
       }
     ],
@@ -26,9 +34,9 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Requested microphone access and allowed it in the system dialog. The screen now confirms “Microphone enabled.”",
-    "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "summary": "Requested microphone access and selected Allow in the system dialog. The app now shows “Microphone enabled.”",
+    "startPath": "dev.e2e.benchmark / Permission Prompt",
+    "endPath": "dev.e2e.benchmark / Permission Prompt",
     "endAnchors": [
       {
         "role": "other",
@@ -59,7 +67,7 @@
         "name": "Voice notes"
       }
     ],
-    "endWaitMs": 11960,
+    "endWaitMs": 12356,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T06:56:34.302Z",
+  "createdAt": "2026-10-15T15:50:49.471Z",
   "payload": {
     "actions": [
       {
@@ -33,8 +33,8 @@
       "agent": "default"
     },
     "summary": "Scrolled the paginated list until Item 137 appeared and tapped it. The screen now shows “Found item 137.”",
-    "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "startPath": "dev.e2e.benchmark / Infinite Scroll List",
+    "endPath": "dev.e2e.benchmark / Infinite Scroll List",
     "endAnchors": [
       {
         "role": "other",
@@ -87,7 +87,7 @@
         "testId": "item-8"
       }
     ],
-    "endWaitMs": 11718,
+    "endWaitMs": 12399,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

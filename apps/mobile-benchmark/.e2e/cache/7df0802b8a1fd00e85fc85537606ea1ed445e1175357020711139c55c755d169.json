@@ -1,18 +1,8 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T07:20:27.371Z",
+  "createdAt": "2026-10-15T16:28:27.984Z",
   "payload": {
     "actions": [
-      {
-        "name": "tap",
-        "summary": "tap textbox \"Search…\"",
-        "target": {
-          "role": "textbox",
-          "testId": "search-input",
-          "placeholder": "Search…",
-          "selector": "id=search-input"
-        }
-      },
       {
         "name": "type",
         "summary": "type \"Benchmark Target\" into textbox \"Search…\"",
@@ -57,9 +47,9 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Searched for “Benchmark Target,” waited for the exact result to load, and selected it once. The screen confirms “Selected Benchmark Target.”",
-    "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "summary": "Searched for “Benchmark Target,” waited for the matching result to load, and selected that exact result once. The screen confirms “Selected Benchmark Target.”",
+    "startPath": "dev.e2e.benchmark / Debounced Search",
+    "endPath": "dev.e2e.benchmark / Debounced Search",
     "endAnchors": [
       {
         "role": "other",
@@ -105,7 +95,7 @@
         "name": "Vertical scroll bar, 1 page"
       }
     ],
-    "endWaitMs": 12017,
+    "endWaitMs": 12756,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

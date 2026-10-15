@@ -1,0 +1,9 @@
+screen
+  other "SwiftUIBar"
+    navigation #Compose
+      other "Cancel"
+        button "Cancel"
+      text "Compose"
+      other "Send"
+        button "Send"
+    text "Compose body"

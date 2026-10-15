@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T07:07:33.267Z",
+  "createdAt": "2026-10-15T16:31:43.492Z",
   "payload": {
     "actions": [
       {
@@ -36,9 +36,9 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Started the Apple Pay payment, authorized it with Pay with Passcode in the sheet, and verified the app displays “Payment complete: $8.99.”",
-    "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "summary": "Started the Apple Pay payment and authorized it in the payment sheet using Pay with Passcode. The app now displays “Payment complete: $8.99.”",
+    "startPath": "dev.e2e.benchmark / Apple Pay",
+    "endPath": "dev.e2e.benchmark / Apple Pay",
     "endAnchors": [
       {
         "role": "other",
@@ -77,7 +77,7 @@
         "name": "Order summary"
       }
     ],
-    "endWaitMs": 24774,
+    "endWaitMs": 16797,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

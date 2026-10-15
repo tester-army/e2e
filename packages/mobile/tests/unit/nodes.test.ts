@@ -536,4 +536,26 @@ describe('snapshot projection', () => {
     expect(screenTitle(innerText)).toBe('About');
     expect(screenTitle(project([{ ref: '@e1', type: 'button', label: 'Go' }]))).toBeUndefined();
   });
+
+  it("prefers an iOS bar's identifier, which names the screen, over a label a toolbar item lends it", () => {
+    const toolbar = project([
+      { ref: '@e1', depth: 0, type: 'NavigationBar', label: 'New', identifier: 'Today' },
+      { ref: '@e2', depth: 1, type: 'Button', label: 'New' },
+    ]);
+    expect(screenTitle(toolbar)).toBe('Today');
+    expect(screenTitle(project([{ ref: '@e1', type: 'NavigationBar', label: 'Settings', identifier: ' ' }]))).toBe('Settings');
+  });
+
+  it('never reads the Swift class name an untitled SwiftUI screen leaves in its bar identifier', () => {
+    const untitled = project([
+      { ref: '@e1', depth: 0, type: 'NavigationBar', identifier: '_TtGC7SwiftUI32NavigationStackHosting' },
+      { ref: '@e2', depth: 1, type: 'Button', label: 'Share' },
+    ]);
+    expect(screenTitle(untitled)).toBeUndefined();
+  });
+
+  it("never reads an Android toolbar's resource id as its title", () => {
+    const untitled = project([{ ref: 'e1', type: 'android.view.ViewGroup', identifier: 'com.example:id/toolbar' }]);
+    expect(screenTitle(untitled)).toBeUndefined();
+  });
 });

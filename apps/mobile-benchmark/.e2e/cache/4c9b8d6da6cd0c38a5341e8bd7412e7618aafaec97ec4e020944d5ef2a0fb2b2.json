@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T07:05:42.732Z",
+  "createdAt": "2026-10-15T16:04:01.372Z",
   "payload": {
     "actions": [
       {
@@ -46,13 +46,13 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Retried the failed draft load, which succeeded and displayed the untitled draft. Deleted the draft and confirmed; the screen now shows “Draft deleted.”",
-    "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "summary": "Retried the failed draft load, waited for the draft list to appear, then deleted the untitled draft and confirmed. The screen shows “Draft deleted.”",
+    "startPath": "dev.e2e.benchmark / Error Recovery",
+    "endPath": "dev.e2e.benchmark / Error Recovery",
     "endAnchors": [
       {
-        "role": "other",
-        "name": "Draft deleted"
+        "role": "navigation",
+        "testId": "Error Recovery"
       },
       {
         "role": "text",
@@ -72,6 +72,15 @@
       },
       {
         "role": "other",
+        "name": "Benchmark Examples"
+      },
+      {
+        "role": "navigation",
+        "name": "Benchmark Examples",
+        "testId": "Error Recovery"
+      },
+      {
+        "role": "other",
         "name": "Loading drafts…"
       },
       {
@@ -79,7 +88,7 @@
         "name": "In progress"
       }
     ],
-    "endWaitMs": 12242,
+    "endWaitMs": 13545,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",
