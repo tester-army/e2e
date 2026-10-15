@@ -143,7 +143,8 @@ async function latestRelease(fetchImpl: typeof fetch): Promise<string | undefine
   try {
     const response = await fetchImpl(LATEST_URL, { signal: AbortSignal.timeout(LATEST_TIMEOUT_MS) });
     if (!response.ok) return undefined;
-    const { version } = (await response.json()) as { version?: unknown };
+    const body: unknown = await response.json();
+    const version = typeof body === 'object' && body !== null && 'version' in body ? body.version : undefined;
     return typeof version === 'string' && RELEASE.test(version) ? version : undefined;
   } catch {
     return undefined;

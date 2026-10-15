@@ -114,6 +114,7 @@ export function validateParams(params: AgentParams | undefined): {
     );
   }
   return {
+    // oxlint-disable-next-line e2e/no-unchecked-json -- canonical is this function's own JSON.stringify of a plain object validateJsonValue just checked
     projected: JSON.parse(canonical) as Readonly<Record<string, JsonValue>>,
     secrets: found.secrets,
     templates: found.templates,

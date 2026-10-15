@@ -10,6 +10,7 @@ import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { envValue } from './env.ts';
+import { isRecord } from './json.ts';
 
 export const EXPO_TOKEN = 'EXPO_TOKEN';
 
@@ -31,14 +32,15 @@ export async function expoCredentials(env: Readonly<Record<string, string | unde
     if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
     throw new Error(`could not read the eas-cli login at ${path}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
   }
-  let state: { auth?: { sessionSecret?: unknown } | null } | null;
+  let state: unknown;
   try {
-    state = JSON.parse(text) as typeof state;
+    state = JSON.parse(text);
   } catch {
     // No cause: a JSON parse error quotes the text around the fault, which can be the secret.
     throw new Error(`the eas-cli login at ${path} is not valid JSON; run \`eas login\` again, or set ${EXPO_TOKEN}`);
   }
-  const sessionSecret = state?.auth?.sessionSecret;
+  const auth = isRecord(state) ? state['auth'] : undefined;
+  const sessionSecret = isRecord(auth) ? auth['sessionSecret'] : undefined;
   return typeof sessionSecret === 'string' && sessionSecret.trim() !== '' ? { sessionSecret: sessionSecret.trim() } : undefined;
 }
 

@@ -11,14 +11,26 @@ const exec = promisify(execFile);
 function installation(): { version: string; bin: string } {
   let directory = path.dirname(fileURLToPath(import.meta.resolve('agent-device')));
   while (true) {
+    const file = path.join(directory, 'package.json');
+    let manifest: unknown;
     try {
-      const manifest = JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8')) as { name?: string; version: string; bin: Record<string, string> };
-      if (manifest.name === 'agent-device') return { version: manifest.version, bin: path.join(directory, manifest.bin['agent-device']!) };
+      manifest = JSON.parse(readFileSync(file, 'utf8'));
     } catch { /* The entry may be several directories below its package. */ }
+    if (isRecord(manifest) && manifest['name'] === 'agent-device') {
+      const version = manifest['version'];
+      const bin = isRecord(manifest['bin']) ? manifest['bin']['agent-device'] : undefined;
+      if (typeof version !== 'string' || typeof bin !== 'string') throw new Error(`Cannot find the installed agent-device CLI: ${file} declares no version or agent-device bin`);
+      return { version, bin: path.join(directory, bin) };
+    }
     const parent = path.dirname(directory);
     if (parent === directory) throw new Error('Cannot find the installed agent-device CLI');
     directory = parent;
   }
+}
+
+/** A plain JSON object, not an array or `null`. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function assertDriverVersion(expected: string): void {

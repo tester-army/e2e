@@ -6,7 +6,7 @@
  */
 
 import { z } from 'zod';
-import { OAuthError, describeResponse, type OAuthErrorCode } from './errors.ts';
+import { OAuthError, describeResponse, readJsonBody, type OAuthErrorCode } from './errors.ts';
 
 /**
  * A token response. Vendor-specific fields ride along; an optional token of the
@@ -48,9 +48,7 @@ export async function requestTokens(
     const code = response.status === 400 || response.status === 401 ? rejected : 'FLOW_FAILED';
     throw new OAuthError(code, `${vendor} token request failed (${await describeResponse(response)})`);
   }
-  const tokens = parseTokens(await response.json());
-  if (tokens === undefined) throw new OAuthError('FLOW_FAILED', `the ${vendor} token response is missing access_token`);
-  return tokens;
+  return readJsonBody(response, TokenResponseSchema, `the ${vendor} token response`, 'is missing access_token');
 }
 
 /** The tokens in a token endpoint's JSON body, or undefined when it carries no access token. */

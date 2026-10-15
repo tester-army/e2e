@@ -9,6 +9,7 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
+import { isRecord } from './json.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -94,9 +95,4 @@ function projectIdOf(config: unknown, source: string): string {
   const projectId = isRecord(eas) ? eas['projectId'] : undefined;
   if (typeof projectId === 'string' && projectId.trim() !== '') return projectId.trim();
   throw new Error(`${source} has no \`extra.eas.projectId\`; ${PASS_IT}`);
-}
-
-/** A plain JSON object, not an array or `null`. */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

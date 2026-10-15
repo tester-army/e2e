@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { OAuthError } from '../../../src/oauth/errors.ts';
-import { runDeviceFlow, type DevicePoll } from '../../../src/oauth/device-code.ts';
+import { rfc8628Flow, runDeviceFlow, type DevicePoll } from '../../../src/oauth/device-code.ts';
+import { json, useServers, type Handler } from './helpers/server.ts';
+import { onFakeTimeouts } from './helpers/time.ts';
+
+const serve = useServers(afterEach);
 
 const authorization = { deviceCode: 'dev', userCode: 'ABCD-1234', verificationUri: 'https://x/device', expiresIn: 60, interval: 5 };
 
@@ -117,5 +121,36 @@ describe('runDeviceFlow', () => {
       callbacks: { onAuth: () => controller.abort(), onPrompt: async () => '', signal: controller.signal },
     });
     await expect(promise).rejects.toMatchObject({ code: 'CANCELLED' });
+  });
+});
+
+describe('rfc8628Flow', () => {
+  const deviceCode = { device_code: 'dc', user_code: 'ABCD-1234', verification_uri: 'https://x/device', interval: 0.001 };
+
+  /** Runs the flow against a local server answering the device code request with `start` and every poll with `poll`. */
+  async function login(start: Handler, poll: Handler = (_request, response) => json(response, 400, { error: 'authorization_pending' })) {
+    const server = await serve((request, response) => (request.url === '/code' ? start(request, response) : poll(request, response)));
+    return onFakeTimeouts(() =>
+      rfc8628Flow({ vendor: 'Acme', deviceCodeUrl: `${server.url}/code`, tokenUrl: `${server.url}/token`, clientId: 'c', request: {}, callbacks: { onAuth() {}, onPrompt: async () => '' } }),
+    );
+  }
+
+  it('fails the flow on a device code response that is not JSON or not an object', async () => {
+    await expect(login((_request, response) => void response.writeHead(200).end('<html>'))).rejects.toMatchObject({
+      code: 'FLOW_FAILED',
+      message: 'the Acme device code response is not JSON',
+    });
+    await expect(login((_request, response) => json(response, 200, null))).rejects.toMatchObject({
+      code: 'FLOW_FAILED',
+      message: 'the Acme device code response is missing fields',
+    });
+  });
+
+  it('fails the flow on a poll answer that is not an object, naming the status', async () => {
+    const start: Handler = (_request, response) => json(response, 200, deviceCode);
+    await expect(login(start, (_request, response) => json(response, 400, null))).rejects.toMatchObject({
+      code: 'FLOW_FAILED',
+      message: 'Acme device login failed: 400',
+    });
   });
 });

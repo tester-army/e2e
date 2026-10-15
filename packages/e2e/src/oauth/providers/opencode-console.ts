@@ -7,8 +7,9 @@
  * only for the Go subscriber. Go ids take a `go/` prefix here.
  */
 
+import { z } from 'zod';
 import { rfc8628Flow } from '../device-code.ts';
-import { OAuthError, describeResponse } from '../errors.ts';
+import { OAuthError, describeResponse, readJsonBody } from '../errors.ts';
 import { expiryFrom, requestTokens, type TokenResponse } from '../token-endpoint.ts';
 import type { FetchFunction, OAuthCredentials, OAuthProvider, SubscriptionModel } from '../types.ts';
 
@@ -88,45 +89,55 @@ async function sendOpencodeConsoleRequest(request: Request, credentials: Opencod
   return upstream(new Request(request.url, { method: request.method, headers, signal: request.signal, ...(body === undefined ? {} : { body }) }));
 }
 
-interface ConfigModel {
-  readonly id?: unknown;
-  readonly name?: unknown;
-  readonly disabled?: unknown;
-  readonly cost?: { readonly input?: unknown; readonly output?: unknown };
-  readonly modalities?: { readonly input?: unknown };
-  readonly provider?: { readonly npm?: unknown; readonly api?: unknown };
-}
+/** The npm package and base URL a provider or one of its models is served through; a field of another type reads as absent. */
+const ConfigRouteSchema = z.object({
+  npm: z.string().optional().catch(undefined),
+  api: z.string().optional().catch(undefined),
+});
 
-interface ConfigProvider {
-  readonly npm?: unknown;
-  readonly api?: unknown;
-  readonly models?: Readonly<Record<string, ConfigModel>>;
-}
+/** One model of a workspace provider, as far as routing and the listing read it; a field of another type reads as absent. */
+const ConfigModelSchema = z.object({
+  id: z.string().optional().catch(undefined),
+  name: z.string().optional().catch(undefined),
+  disabled: z.unknown().optional(),
+  cost: z.object({ input: z.number().optional().catch(undefined), output: z.number().optional().catch(undefined) }).optional().catch(undefined),
+  modalities: z.object({ input: z.array(z.unknown()).optional().catch(undefined) }).optional().catch(undefined),
+  provider: ConfigRouteSchema.optional().catch(undefined),
+});
 
-type ConfigProviders = Readonly<Record<string, ConfigProvider | undefined>>;
+type ConfigModel = z.infer<typeof ConfigModelSchema>;
+
+/** One provider of the workspace config; a model that is not an object is left out. */
+const ConfigProviderSchema = ConfigRouteSchema.extend({
+  models: z.record(z.string(), ConfigModelSchema.optional().catch(undefined)).optional().catch(undefined),
+});
+
+/** The providers of the Console's `/api/config` body by id; a body that names none has none, and a provider that is not an object is left out. */
+const ConfigSchema = z
+  .object({ config: z.object({ provider: z.record(z.string(), ConfigProviderSchema.optional().catch(undefined)).nullish() }).nullish() })
+  .transform(({ config }) => config?.provider ?? {});
+
+type ConfigProviders = z.infer<typeof ConfigSchema>;
 
 async function readConfig(fetch: FetchFunction, consoleUrl: string, signal?: AbortSignal): Promise<ConfigProviders> {
   const response = await fetch(new Request(`${consoleUrl}/api/config`, signal === undefined ? {} : { signal }));
   if (!response.ok) throw new OAuthError('FLOW_FAILED', `OpenCode Console did not return the workspace config: ${await describeResponse(response)}`);
-  const payload = (await response.json()) as { config?: { provider?: unknown } };
-  const providers = payload.config?.provider;
-  return typeof providers === 'object' && providers !== null ? (providers as ConfigProviders) : {};
+  return readJsonBody(response, ConfigSchema, 'the OpenCode Console workspace config');
 }
 
 /** Leaves out disabled models and Zen's free ones, which only OpenCode's own clients may use. */
 async function listOpencodeConsoleModels(fetch: FetchFunction, consoleUrl: string): Promise<SubscriptionModel[]> {
   const providers = await readConfig(fetch, consoleUrl);
   const listed = (key: string, prefix: string, plan: string) =>
-    Object.entries(providers[key]?.models ?? {})
-      .filter(([, model]) => model.disabled !== true && (key === GO_PROVIDER || !isFree(model)))
-      .map(([id, model]): SubscriptionModel => {
-        const detail = [
-          plan,
-          typeof model.cost?.input === 'number' && typeof model.cost.output === 'number' && key === ZEN_PROVIDER ? `$${model.cost.input} in, $${model.cost.output} out per 1M` : undefined,
-          Array.isArray(model.modalities?.input) && model.modalities.input.includes('image') ? 'vision' : undefined,
-        ].filter((part) => part !== undefined);
-        return { id: `${prefix}${id}`, ...(typeof model.name === 'string' && model.name !== '' ? { name: model.name } : {}), detail: detail.join(', ') };
-      });
+    Object.entries(providers[key]?.models ?? {}).flatMap(([id, model]): SubscriptionModel[] => {
+      if (model === undefined || model.disabled === true || (key !== GO_PROVIDER && isFree(model))) return [];
+      const detail = [
+        plan,
+        model.cost?.input !== undefined && model.cost.output !== undefined && key === ZEN_PROVIDER ? `$${model.cost.input} in, $${model.cost.output} out per 1M` : undefined,
+        model.modalities?.input?.includes('image') === true ? 'vision' : undefined,
+      ].filter((part) => part !== undefined);
+      return [{ id: `${prefix}${id}`, ...(model.name === undefined || model.name === '' ? {} : { name: model.name }), detail: detail.join(', ') }];
+    });
   return [...listed(ZEN_PROVIDER, '', 'Zen'), ...listed(GO_PROVIDER, GO_PREFIX, 'Go')];
 }
 
@@ -180,10 +191,10 @@ export async function opencodeConsoleRouteFor(modelId: string, fetch: FetchFunct
   if (model === undefined || model.disabled === true) {
     throw new OAuthError('MISCONFIGURED', `the OpenCode Console workspace does not serve ${modelId}; \`npx e2e models opencode-console\` lists the ids`);
   }
-  const npm = typeof model.provider?.npm === 'string' ? model.provider.npm : provider.npm;
-  const baseURL = typeof model.provider?.api === 'string' ? model.provider.api : provider.api;
-  if (typeof npm !== 'string' || typeof baseURL !== 'string') return undefined;
-  return { go, npm, baseURL, modelId: typeof model.id === 'string' && model.id !== '' ? model.id : id };
+  const npm = model.provider?.npm ?? provider.npm;
+  const baseURL = model.provider?.api ?? provider.api;
+  if (npm === undefined || baseURL === undefined) return undefined;
+  return { go, npm, baseURL, modelId: model.id === undefined || model.id === '' ? id : model.id };
 }
 
 /** A refresh keeps the workspace and the refresh token when the grant omits them. */

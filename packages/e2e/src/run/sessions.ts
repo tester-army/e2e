@@ -374,14 +374,14 @@ function parseEnvelope(rawText: string, name: string): SessionEnvelope {
 
 /** Parses an authenticated payload; one this runner did not write is SESSION_INVALID. */
 function parsePayload(text: string, name: string): SessionPayload {
-  const parsed = JSON.parse(text) as { data?: unknown; secrets?: unknown } | null;
-  const secrets = parsed?.secrets;
+  const parsed: unknown = JSON.parse(text);
   if (
     typeof parsed !== 'object' ||
     parsed === null ||
     !('data' in parsed) ||
-    !Array.isArray(secrets) ||
-    !secrets.every(
+    !('secrets' in parsed) ||
+    !Array.isArray(parsed.secrets) ||
+    !parsed.secrets.every(
       (entry) => Array.isArray(entry) && entry.length === 2 && entry.every((part) => typeof part === 'string'),
     )
   ) {

@@ -38,7 +38,8 @@
     {
       "files": ["packages/*/src/**"],
       "rules": {
-        "e2e/no-chained-type-assertions": "error"
+        "e2e/no-chained-type-assertions": "error",
+        "e2e/no-unchecked-json": "error"
       }
     },
     {

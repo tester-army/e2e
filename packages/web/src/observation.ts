@@ -160,6 +160,7 @@ async function captureInto(
     return data;
   }));
   const decoded = typeof metadata === 'string'
+    // oxlint-disable-next-line e2e/no-unchecked-json -- page-reported metadata, as unchecked as the structured branch; only the ids and nodes alignment below is checked
     ? JSON.parse(metadata) as Omit<ReturnType<typeof readDocumentSemanticsFunction>, 'elements'>
     : metadata;
   const { nodes, ids, truncated: walkTruncated } = decoded;

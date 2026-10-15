@@ -105,4 +105,11 @@ describe('SpaceXAI login', () => {
       { id: 'grok-4-fast' },
     ]);
   });
+
+  it('lists past an entry it cannot read, and fails on a list that is not one', async () => {
+    const list = (body: string) => createXaiProvider().models!(async () => new Response(body));
+    expect(await list(JSON.stringify({ models: [null, { id: 'grok-4', aliases: 'grok', input_modalities: ['image'] }] }))).toEqual([{ id: 'grok-4', detail: 'vision' }]);
+    await expect(list(JSON.stringify({ models: 'grok-4' }))).rejects.toMatchObject({ code: 'FLOW_FAILED', message: 'the SpaceXAI model list is malformed' });
+    await expect(list('<html>')).rejects.toMatchObject({ code: 'FLOW_FAILED', message: 'the SpaceXAI model list is not JSON' });
+  });
 });

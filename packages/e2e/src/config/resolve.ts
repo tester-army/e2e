@@ -799,8 +799,9 @@ function resolveProjectId(explicit: string | undefined, projectRoot: string): st
   const packageJsonPath = path.join(projectRoot, 'package.json');
   if (existsSync(packageJsonPath)) {
     try {
-      const parsed = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as { name?: unknown };
-      if (typeof parsed.name === 'string' && parsed.name.length > 0) return parsed.name;
+      const parsed: unknown = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+      const name = isRecord(parsed) ? parsed['name'] : undefined;
+      if (typeof name === 'string' && name.length > 0) return name;
     } catch {
       // fall through to hashed identity
     }

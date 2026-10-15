@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { withHint } from '../internal/errors.ts';
+import { isPlainObject } from '../internal/options.ts';
 import { addDevDependencyCommand, detectPackageManager } from '../internal/package-manager.ts';
 import { didYouMean, suggest } from '../internal/suggest.ts';
 
@@ -118,16 +119,18 @@ function missingPackageHint(name: string, importer: string): string {
 }
 
 function subpathHint(subpath: string, manifestPath: string): string {
-  let parsed: { name?: unknown; exports?: unknown };
+  let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as typeof parsed;
+    parsed = JSON.parse(readFileSync(manifestPath, 'utf8'));
   } catch {
     return '';
   }
-  const name = typeof parsed.name === 'string' ? parsed.name : path.basename(path.dirname(manifestPath));
+  if (!isPlainObject(parsed)) return '';
+  const name = typeof parsed['name'] === 'string' ? parsed['name'] : path.basename(path.dirname(manifestPath));
+  const exported = parsed['exports'];
   const entries =
-    typeof parsed.exports === 'object' && parsed.exports !== null && !Array.isArray(parsed.exports)
-      ? Object.keys(parsed.exports).filter((key) => key.startsWith('.'))
+    typeof exported === 'object' && exported !== null && !Array.isArray(exported)
+      ? Object.keys(exported).filter((key) => key.startsWith('.'))
       : ['.'];
   const specifiers = entries.map((entry) => (entry === '.' ? name : `${name}/${entry.slice(2)}`));
   const attempted = `${name}/${subpath.replace(/^\.\//, '')}`;
@@ -155,7 +158,8 @@ function nearestManifest(dir: string): Manifest | undefined {
     const manifestPath = path.join(current, 'package.json');
     if (existsSync(manifestPath)) {
       try {
-        const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
+        const parsed: unknown = JSON.parse(readFileSync(manifestPath, 'utf8'));
+        if (!isPlainObject(parsed)) return undefined;
         const dependencies = new Set<string>();
         for (const block of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
           const section = parsed[block];

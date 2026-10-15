@@ -127,6 +127,22 @@ describe('Copilot requests', () => {
     expect(sentPlain.headers['copilot-vision-request']).toBeUndefined();
   });
 
+  it('reads the turns around one that is not an object', async () => {
+    const odd = new Request('https://api.githubcopilot.com/chat/completions', {
+      method: 'POST',
+      body: JSON.stringify({ messages: [null, { role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }] }] }),
+    });
+    const sent = (await (await sendCopilotRequest(odd, { access: 'a', refresh: '', expires: 0 }, echoUpstream)).json()) as Echo;
+    expect(sent.headers).toMatchObject({ 'x-initiator': 'user', 'copilot-vision-request': 'true' });
+  });
+
+  it('lists past an entry it cannot read, and fails on a listing that is not one', async () => {
+    const list = (body: string) => createCopilotProvider().models!(async () => new Response(body));
+    expect(await list(JSON.stringify({ data: [null, { id: 'gpt-4.1', vendor: 7, policy: 'enabled' }] }))).toEqual([{ id: 'gpt-4.1' }]);
+    await expect(list('null')).rejects.toMatchObject({ code: 'FLOW_FAILED', message: 'the GitHub Copilot model list is malformed' });
+    await expect(list('<html>')).rejects.toMatchObject({ code: 'FLOW_FAILED', message: 'the GitHub Copilot model list is not JSON' });
+  });
+
   it('names the login command when GitHub rejects the stored token, which has nothing to refresh it', async () => {
     const api = await serve((_request, response) => json(response, 401, { message: 'Bad credentials' }));
     vendor(api, { 'github-copilot': { access: 'gho_revoked', refresh: '', expires: 0 } });
@@ -231,6 +247,10 @@ describe('Copilot endpoint selection', () => {
       ['not in the listing', [{ id: 'other', supported_endpoints: ['/responses'] }]],
     ];
     for (const [name, data] of cases) expect(await copilotProtocolFor('m', listing(data), signal()), name).toBe('chat');
+  });
+
+  it('reads the endpoint past an entry it cannot read', async () => {
+    expect(await copilotProtocolFor('m', listing([null, entry(['/responses'])]), signal())).toBe('responses');
   });
 
   it('answers undefined when the listing cannot be read, so nothing is remembered', async () => {

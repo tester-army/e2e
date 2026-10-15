@@ -5,8 +5,9 @@
  * refresh token replaces the stored one at once.
  */
 
+import { z } from 'zod';
 import { rfc8628Flow } from '../device-code.ts';
-import { OAuthError, describeResponse } from '../errors.ts';
+import { OAuthError, describeResponse, readJsonBody } from '../errors.ts';
 import { decodeJwtPayload } from '../jwt.ts';
 import { expiryFrom, requestTokens, type TokenResponse } from '../token-endpoint.ts';
 import type { FetchFunction, OAuthCredentials, OAuthProvider, SubscriptionModel } from '../types.ts';
@@ -59,30 +60,34 @@ export function createXaiProvider(options: XaiProviderOptions = {}): OAuthProvid
   };
 }
 
-/** One entry of SpaceXAI's language-model list, as far as the listing reads it. */
-interface XaiModel {
-  readonly id?: unknown;
-  readonly aliases?: unknown;
-  readonly input_modalities?: unknown;
-}
+/** One entry of SpaceXAI's language-model list, as far as the listing reads it; a field of another type reads as absent. */
+const XaiModelSchema = z.object({
+  id: z.string().min(1),
+  aliases: z.array(z.unknown()).optional().catch(undefined),
+  input_modalities: z.array(z.unknown()).optional().catch(undefined),
+});
+
+/** One of the two keys SpaceXAI lists models under; an entry that does not fit reads as `undefined`. */
+const XaiModelsSchema = z.array(XaiModelSchema.optional().catch(undefined)).nullish();
+
+/** The models in SpaceXAI's list body, under `models` or `data`; a body that names none has none, and an entry without an id is left out. */
+const XaiModelListSchema = z
+  .object({ models: XaiModelsSchema, data: XaiModelsSchema })
+  .transform(({ models, data }) => (models ?? data ?? []).filter((model) => model !== undefined));
 
 /** The language models the subscription's token reaches; aliases are listed with their target. */
 async function listXaiModels(fetch: FetchFunction, url: string): Promise<SubscriptionModel[]> {
   const response = await fetch(url);
   if (!response.ok) throw new OAuthError('FLOW_FAILED', `SpaceXAI did not list its models: ${await describeResponse(response)}`);
-  const payload = (await response.json()) as { models?: unknown; data?: unknown };
-  const models = (Array.isArray(payload.models) ? payload.models : Array.isArray(payload.data) ? payload.data : []) as XaiModel[];
-  return models
-    .filter((model) => typeof model.id === 'string' && model.id !== '')
-    .map((model) => {
-      const aliases = Array.isArray(model.aliases) ? model.aliases.filter((alias): alias is string => typeof alias === 'string') : [];
-      const modalities = Array.isArray(model.input_modalities) ? model.input_modalities.filter((kind): kind is string => typeof kind === 'string') : [];
-      const detail = [
-        modalities.includes('image') ? 'vision' : undefined,
-        aliases.length === 0 ? undefined : `also ${aliases.join(', ')}`,
-      ].filter((part) => part !== undefined);
-      return { id: model.id as string, ...(detail.length === 0 ? {} : { detail: detail.join('; ') }) };
-    });
+  const models = await readJsonBody(response, XaiModelListSchema, 'the SpaceXAI model list');
+  return models.map((model) => {
+    const aliases = (model.aliases ?? []).filter((alias) => typeof alias === 'string');
+    const detail = [
+      model.input_modalities?.includes('image') === true ? 'vision' : undefined,
+      aliases.length === 0 ? undefined : `also ${aliases.join(', ')}`,
+    ].filter((part) => part !== undefined);
+    return { id: model.id, ...(detail.length === 0 ? {} : { detail: detail.join('; ') }) };
+  });
 }
 
 /** Expiry from the JWT when it carries one, else from `expires_in`; a refresh without a new refresh token keeps the old one. */

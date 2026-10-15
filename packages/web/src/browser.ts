@@ -518,6 +518,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           url: response.url(),
           status: response.status(),
           headers: response.headers(),
+          // oxlint-disable-next-line e2e/no-unchecked-json -- public API: the caller names T, unknown by default
           json: async <T = unknown>() => JSON.parse(await text()) as T,
           text,
         };

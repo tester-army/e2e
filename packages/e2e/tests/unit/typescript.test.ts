@@ -176,3 +176,36 @@ describe('compileTypeScript', () => {
     expect(() => compileTypeScript(file, 'const s = "żółć";\nconst a: = 1;\n', KINDS['.ts']!, {})).toThrow(new SyntaxError(`${file}:2:10: Unexpected token`));
   });
 });
+
+/** Compiles a module that an earlier loader left `map` (raw text) inlined on, and returns the source map of the output. */
+function outputMap(file: string, map: string): unknown {
+  const source = `export const result: number = 1;\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(map).toString('base64')}\n`;
+  const compiled = compileTypeScript(file, source, KINDS['.ts']!, {});
+  const encoded = /\/\/# sourceMappingURL=data:application\/json;base64,([A-Za-z0-9+/=]+)\n$/.exec(compiled)?.[1];
+  return JSON.parse(Buffer.from(encoded!, 'base64').toString('utf8')) as unknown;
+}
+
+describe('compileTypeScript with an earlier loader inline source map', () => {
+  it.each([
+    ['text that is not JSON', 'not json'],
+    ['null', 'null'],
+    ['an object without mappings', '{"version":3}'],
+    ['sources that are not a list', '{"version":3,"mappings":"AAAA","sources":"a.ts"}'],
+    ['an ignoreList that is not a list', '{"version":3,"mappings":"AAAA","sources":["a.ts"],"ignoreList":5}'],
+  ])('leaves out %s and maps to the code it was handed', (_case, map) => {
+    const file = path.join(dir, 'chained.ts');
+    expect(outputMap(file, map)).toMatchObject({ version: 3, sources: [pathToFileURL(file).href] });
+  });
+
+  it('composes a map whose sourceRoot and sourcesContent are null', () => {
+    const file = path.join(dir, 'chained.ts');
+    const map = JSON.stringify({ version: 3, mappings: 'AAAA', names: [], sources: ['original.ts'], sourceRoot: null, sourcesContent: null });
+    expect(outputMap(file, map)).toMatchObject({ sources: ['original.ts'] });
+  });
+
+  it('composes a well-formed map, keeping its x_google_ignoreList', () => {
+    const file = path.join(dir, 'chained.ts');
+    const map = JSON.stringify({ version: 3, mappings: 'AAAA', names: [], sources: ['original.ts'], x_google_ignoreList: [0] });
+    expect(outputMap(file, map)).toMatchObject({ sources: ['original.ts'], ignoreList: [0] });
+  });
+});
