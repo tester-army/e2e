@@ -665,9 +665,11 @@ so the next run starts it with the variable.
 
 **Android reports insufficient foreground app content.** agent-device
 couldn't read the screen yet, often an app still loading after a cold
-start. A locator or `expect` waits through it, as for an element not there
-yet. If the screen is still unreadable when the wait runs out, the step
-fails with this message. An observation, such as the agent's next turn,
+start. A waiting locator action or `expect` waits through it, as for an
+element not there yet. If the screen is still unreadable when the wait runs
+out, the step fails with this message. Immediate reads like `count()` and
+`isVisible()` see no matches instead, so `not.toBeVisible()` can pass while
+the screen is unreadable. An observation, such as the agent's next turn,
 fails on it at once.
 
 **A timeout on the device.** A simulator boot, runner connection, or app
