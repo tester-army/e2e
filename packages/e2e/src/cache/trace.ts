@@ -176,6 +176,12 @@ export type NodeActionName = (typeof NODE_ACTION_NAMES)[number];
 
 const isNodeActionName = oneOf(NODE_ACTION_NAMES);
 
+/** The node verbs that click: the only ones that may hold key modifiers. */
+const TAP_ACTION_NAMES = ['tap', 'doubleTap', 'secondaryTap'] as const satisfies readonly NodeActionName[];
+
+/** Whether a node verb clicks, so it may carry `modifiers`. */
+export const isTapActionName = oneOf(TAP_ACTION_NAMES);
+
 /**
  * Whether an action is one of the node verbs. The every-layer switches over
  * an action union (prose, recording, templating, replay) take these six
@@ -575,9 +581,8 @@ function readAnchors(document: unknown): TraceTargetDescriptor[] | undefined {
   return each(document, readDescriptor);
 }
 
-/** The `modifiers` of a recorded tap-family action: a list of distinct key modifiers, or undefined when absent. */
+/** The `modifiers` of a recorded tap-family action: a non-empty list of distinct key modifiers, or undefined when malformed. */
 function readModifiers(document: unknown): readonly KeyModifier[] | undefined {
-  if (document === undefined) return undefined;
   if (!Array.isArray(document) || document.length === 0 || document.length > KEY_MODIFIERS.length) return undefined;
   const modifiers: KeyModifier[] = [];
   for (const value of document) {
@@ -599,8 +604,9 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
   if (isNodeActionName(name)) {
     const target = readDescriptor(raw['target']);
     if (target === undefined) return undefined;
-    const modifiers = readModifiers(raw['modifiers']);
-    return modifiers === undefined ? { name, summary, target } : { name, summary, target, modifiers };
+    if (raw['modifiers'] === undefined) return { name, summary, target };
+    const modifiers = isTapActionName(name) ? readModifiers(raw['modifiers']) : undefined;
+    return modifiers === undefined ? undefined : { name, summary, target, modifiers };
   }
   switch (name) {
     case 'type': {

@@ -20,7 +20,7 @@ import type { ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from 
 import { PROJECT_TOOL_EVENT_PREFIX, type GrammarActionName } from './action-names.ts';
 import { containerKey, describeAction, type Placement, type RecordableAction } from './actions.ts';
 import { describePosition } from '../cache/relocate.ts';
-import type { NodeActionName, PointActionName, RecordedAction } from '../cache/trace.ts';
+import { isTapActionName, type NodeActionName, type PointActionName, type RecordedAction } from '../cache/trace.ts';
 import { derivedReason } from './derived.ts';
 import { AgentError } from './error.ts';
 import type { ExecutorActions, ExecutorTarget, PointHit, PointTapResult } from './executor.ts';
@@ -212,7 +212,7 @@ export class ActionDispatcher {
   }
 
   /** One node verb that carries nothing but its target: a tap or one of its variants, a hover, a scroll into view. */
-  private nodeVerb(name: NodeActionName, target: ExecutorTarget, options?: ClickOptions): Promise<void> {
+  private nodeVerb(name: NodeActionName, target: ExecutorTarget, options?: Pick<ClickOptions, 'modifiers'>): Promise<void> {
     const modifiers = options?.modifiers === undefined ? undefined : requireClickModifiers(options.modifiers, name);
     return this.commitTargeted(NODE_ACTION_KINDS[name], target, (node) => this.performNode(name, node, modifiers));
   }
@@ -298,12 +298,7 @@ export class ActionDispatcher {
 
   private async performNode(name: NodeActionName, node: RedactedNode, modifiers?: readonly KeyModifier[]): Promise<RecordableAction> {
     const kind = NODE_ACTION_KINDS[name];
-    // Only the tap family declares `modifiers` on its `LocatorAction`; a
-    // session whose engine did not declare `tapModifiers` refuses them.
-    const action: LocatorAction =
-      modifiers === undefined || (kind !== 'tap' && kind !== 'doubleTap' && kind !== 'secondaryTap')
-        ? { kind }
-        : { kind, modifiers };
+    const action: LocatorAction = modifiers !== undefined && isTapActionName(kind) ? { kind, modifiers } : { kind };
     await this.session.perform(node.ref, action, this.accounting.actionOperation());
     return { name, node, ...(modifiers === undefined ? {} : { modifiers }) };
   }

@@ -193,6 +193,7 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
       name: environment.target.name,
       platform: environment.target.platform,
       verbs: environment.session.verbs,
+      tapModifiers: environment.session.tapModifiers,
     },
     app: environment.target.app,
     attempt: environment.attempt,

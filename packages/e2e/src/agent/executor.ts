@@ -172,16 +172,16 @@ export interface ExecutorTarget {
 export interface ExecutorActions {
   /**
    * Taps one node. `options.modifiers` holds keys for the click, as a
-   * Shift-click extends a selection; needs an engine that declares
-   * `tapModifiers`, which refuses them otherwise.
+   * Shift-click extends a selection; needs `target.tapModifiers`,
+   * `UNSUPPORTED_CAPABILITY` otherwise.
    */
-  tap(target: ExecutorTarget, options?: ClickOptions): Promise<void>;
+  tap(target: ExecutorTarget, options?: Pick<ClickOptions, 'modifiers'>): Promise<void>;
   /** Double-taps one node (`doubleTap` in `target.verbs`). Takes the tap's `options.modifiers`. */
-  doubleTap(target: ExecutorTarget, options?: ClickOptions): Promise<void>;
+  doubleTap(target: ExecutorTarget, options?: Pick<ClickOptions, 'modifiers'>): Promise<void>;
   /** Presses one node and holds for the engine's default duration (`longPress` in `target.verbs`). */
   longPress(target: ExecutorTarget): Promise<void>;
   /** A right-click on a pointer surface (`secondaryTap` in `target.verbs`). Takes the tap's `options.modifiers`. */
-  secondaryTap(target: ExecutorTarget, options?: ClickOptions): Promise<void>;
+  secondaryTap(target: ExecutorTarget, options?: Pick<ClickOptions, 'modifiers'>): Promise<void>;
   /** Moves the pointer over one node without pressing (`hover` in `target.verbs`). */
   hover(target: ExecutorTarget): Promise<void>;
   type(target: ExecutorTarget, value: string): Promise<void>;
@@ -399,11 +399,14 @@ export interface StepExecutorContext {
    * The target this step runs on. Tool packs scope themselves by its platform;
    * `verbs` is the subset of the action grammar the engine declared, so an
    * executor offers a model exactly the vocabulary the surface can honor.
+   * `tapModifiers` is true when `tap`, `doubleTap`, and `secondaryTap` accept
+   * `modifiers`.
    */
   readonly target: {
     readonly name: string;
     readonly platform: string;
     readonly verbs: ReadonlySet<ExecutorVerb>;
+    readonly tapModifiers: boolean;
   };
   /**
    * Present when a cached replay ran part of this step before handing it

@@ -92,14 +92,17 @@ caching is off).
 The built-in agent offers one tool per verb the target's engine declares.
 Every tool takes node ids from the newest observation, returns what changed
 on screen, and is recorded for the [replay cache](/cache) with the node it
-acted on. A verb the engine does not declare is not offered.
+acted on. A verb the engine does not declare is not offered. On an engine that
+declares `tapModifiers`, `tap`, `double_tap`, and `right_click` take
+`modifiers` (`Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`) to hold keys
+for the click, as a Shift-click extends a selection.
 
 | Tool | Engine action | What it does |
 | --- | --- | --- |
-| `tap({ target })` | `tap` | Taps or clicks one node: the gesture for a button, link, menu item, tab, checkbox, row, or field. |
-| `double_tap({ target })` | `doubleTap` | Double-clicks one node, for an item that opens or enters editing on the second click. |
+| `tap({ target, modifiers? })` | `tap` | Taps or clicks one node: the gesture for a button, link, menu item, tab, checkbox, row, or field. |
+| `double_tap({ target, modifiers? })` | `doubleTap` | Double-clicks one node, for an item that opens or enters editing on the second click. |
 | `long_press({ target })` | `longPress` | Presses one node and holds, for a long-press menu or action. |
-| `right_click({ target })` | `secondaryTap` | Right-clicks one node to open its context menu. |
+| `right_click({ target, modifiers? })` | `secondaryTap` | Right-clicks one node to open its context menu. |
 | `hover({ target })` | `hover` | Moves the pointer over one node without pressing: hover menus, flyouts, tooltips, controls revealed on mouse-over. |
 | `type({ target?, value, replace? })` | `fill`; without `target`, `keyboard` | Replaces the node's value; without a target, types into whatever has focus. |
 | `type_secret({ target, name })` | `fill` | Fills a secret declared in the step's params. Offered only when the step declares one. |

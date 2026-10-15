@@ -1,7 +1,7 @@
 /**
  * The tap family holds modifier keys: `tap`, `double_tap`, and `right_click`
- * take an optional `modifiers` argument when the target's engine declares
- * `tapModifiers`, and thread it to the engine like the test API's
+ * take an optional `modifiers` argument when the target declares
+ * `tapModifiers`, for `agent.act` and the MCP server alike, and thread it to the engine like the test API's
  * `tap({ modifiers })` does (#953). Engines without the declaration never
  * see the field, and refuse it below when one arrives anyway.
  */
@@ -27,7 +27,7 @@ function schemaOf(tools: ToolSet, name: string): z.ZodType {
 
 /** A context whose tap-family actions record their arguments instead of refusing, so the tools' threading is observable. */
 function recordingContext() {
-  const fake = fakeExecutorContext();
+  const fake = fakeExecutorContext({ tapModifiers: true });
   const seen: { readonly name: string; readonly args: readonly unknown[] }[] = [];
   const record =
     (name: string) =>
@@ -58,9 +58,9 @@ function execute(tools: ToolSet, name: string, input: unknown): Promise<unknown>
 
 const TAP_FAMILY = ['tap', 'double_tap', 'right_click'] as const;
 
-describe('tap modifiers in the MCP grammar tools', () => {
+describe('tap modifiers in the grammar tools', () => {
   it('offers modifiers on the tap family only when the engine declares tapModifiers', () => {
-    const holding = createGrammarTools(fakeExecutorContext().context, { tapModifiers: true });
+    const holding = createGrammarTools(fakeExecutorContext({ tapModifiers: true }).context);
     for (const name of TAP_FAMILY) {
       const schema = schemaOf(holding, name);
       expect(schema.safeParse({ target: 'n1', modifiers: ['Shift'] }).success, `${name} accepts modifiers`).toBe(true);
@@ -90,14 +90,14 @@ describe('tap modifiers in the MCP grammar tools', () => {
 
   it('threads modifiers through to the tap-family actions', async () => {
     const { context, seen } = recordingContext();
-    const tools = createGrammarTools(context, { tapModifiers: true });
+    const tools = createGrammarTools(context);
     await expect(execute(tools, 'tap', { target: 'n1', modifiers: ['Shift'] })).rejects.toThrow('observe sentinel');
     await expect(execute(tools, 'double_tap', { target: 'n2', modifiers: ['Control'] })).rejects.toThrow('observe sentinel');
     await expect(execute(tools, 'right_click', { target: 'n3' })).rejects.toThrow('observe sentinel');
     expect(seen).toEqual([
       { name: 'tap', args: [{ id: 'n1' }, { modifiers: ['Shift'] }] },
       { name: 'doubleTap', args: [{ id: 'n2' }, { modifiers: ['Control'] }] },
-      { name: 'secondaryTap', args: [{ id: 'n3' }, undefined] },
+      { name: 'secondaryTap', args: [{ id: 'n3' }] },
     ]);
   });
 
@@ -123,6 +123,28 @@ describe('tap modifiers in the MCP grammar tools', () => {
     expect(entry?.payload.actions).toHaveLength(2);
     expect(entry?.payload.actions[0]).toMatchObject({ name: 'tap', modifiers: ['Shift'] });
     expect(entry?.payload.actions[1]).not.toHaveProperty('modifiers');
+  });
+
+  it('rejects a trace whose modifiers are malformed or on a verb that cannot hold them', () => {
+    const recorder = new TraceRecorder({ redact: (text) => text, redactCut: (text) => text });
+    const node = redacted({ ref: { id: 'n1', revision: 'r1' }, role: 'button', name: 'Save' });
+    recorder.record({ name: 'tap', node, modifiers: ['Shift'] });
+    const trace = recorder.finalize({
+      executor: { name: 'test' },
+      recordedFor: { testId: 't', targetId: 'web', instructionDigest: 'c'.repeat(64) },
+      summary: 'done',
+    });
+    const document = JSON.parse(JSON.stringify(buildTraceEntry(trace!))) as { payload: { actions: Record<string, unknown>[] } };
+    const withAction = (patch: Record<string, unknown>) => {
+      const copy = structuredClone(document);
+      copy.payload.actions[0] = { ...copy.payload.actions[0], ...patch };
+      return copy;
+    };
+    expect(readTraceEntry(withAction({}))).toBeDefined();
+    for (const modifiers of [[], ['shift'], ['Shift', 'Shift'], 'Shift', null]) {
+      expect(readTraceEntry(withAction({ modifiers })), JSON.stringify(modifiers)).toBeUndefined();
+    }
+    expect(readTraceEntry(withAction({ name: 'hover' }))).toBeUndefined();
   });
 
   it('replays a recorded tap with the keys it held', async () => {

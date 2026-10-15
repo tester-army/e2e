@@ -13,7 +13,7 @@
  */
 
 import { isRelocatableDescriptor, MAIN_LIST_SHARE, relocateDescriptor, type RelocationFailure, type RelocationResult } from '../cache/relocate.ts';
-import { isNodeAction, type ActionTrace, type DerivedReason, type RecordedAction, type TraceTargetDescriptor, type TraceViewport } from '../cache/trace.ts';
+import { isNodeAction, isTapActionName, type ActionTrace, type DerivedReason, type RecordedAction, type TraceTargetDescriptor, type TraceViewport } from '../cache/trace.ts';
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
 import type { RedactedNode } from './observation.ts';
 import { hasCause } from '../internal/errors.ts';
@@ -157,13 +157,11 @@ type PointInvoke = (point: ViewportPoint) => Promise<unknown>;
 
 function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall {
   if (isNodeAction(action)) {
-    // Only the tap family records modifiers; replay holds the same keys.
-    const modifiers = action.name === 'tap' || action.name === 'doubleTap' || action.name === 'secondaryTap' ? action.modifiers : undefined;
+    const { name, modifiers } = action;
     return {
       kind: 'targeted',
       descriptor: action.target,
-      invoke: (t) =>
-        modifiers === undefined ? actions[action.name](t) : actions[action.name](t, { modifiers }),
+      invoke: (t) => (isTapActionName(name) && modifiers !== undefined ? actions[name](t, { modifiers }) : actions[name](t)),
     };
   }
   switch (action.name) {
