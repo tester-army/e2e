@@ -65,4 +65,9 @@ describe('easSessions()', () => {
     answer({ data: { deviceRunSession: {} } });
     await expect(client.stop('s1', signal)).rejects.toThrow(new Error('EAS: unexpected response to ensureDeviceRunSessionStopped'));
   });
+
+  it('rejects a stop answer that leaves out the job, rather than skip cancelling it', async () => {
+    answer({ data: { deviceRunSession: { ensureDeviceRunSessionStopped: {} } } });
+    await expect(client.stop('s1', signal)).rejects.toThrow(new Error('EAS: unexpected response to ensureDeviceRunSessionStopped'));
+  });
 });

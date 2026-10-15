@@ -163,7 +163,7 @@ export function easSessions(credentials: ExpoCredentials): EasSessions {
       const stopped = field(field(data, 'deviceRunSession'), 'ensureDeviceRunSessionStopped');
       if (!isRecord(stopped)) throw unexpected('ensureDeviceRunSessionStopped');
       const job = stopped['turtleJobRun'];
-      if (job == null) return;
+      if (job === null) return;
       const jobId = field(job, 'id');
       const jobStatus = field(job, 'status');
       if (typeof jobId !== 'string' || typeof jobStatus !== 'string') throw unexpected('ensureDeviceRunSessionStopped');

@@ -19,6 +19,7 @@ tester.run('e2e/no-unchecked-json', noUncheckedJson, {
     'function load(): unknown { return JSON.parse(text); }',
     'async function load(): Promise<unknown> { return response.json(); }',
     'const value: unknown = await fetch(url).then((r) => r.json());',
+    'const value: unknown = await fetch(url).then(function (r) { return r.json(); });',
     'const value = parser.parse(text) as User;',
     'const response = Response.json(body) as Response;',
     'const value = JSON.stringify(user) as string;',
@@ -39,5 +40,8 @@ tester.run('e2e/no-unchecked-json', noUncheckedJson, {
     { code: 'let value: User; value = JSON.parse(text);', errors: [unchecked] },
     { code: 'function load(): User { return JSON.parse(text); }', errors: [unchecked] },
     { code: 'const load = async (): Promise<User> => response.json();', errors: [unchecked] },
+    { code: 'function load() { return JSON.parse(text); }', errors: [unchecked] },
+    { code: 'const load = () => JSON.parse(text);', errors: [unchecked] },
+    { code: 'class Store { load() { return JSON.parse(text); } }', errors: [unchecked] },
   ],
 });

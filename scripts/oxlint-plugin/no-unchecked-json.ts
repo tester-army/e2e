@@ -67,6 +67,12 @@ function enclosingFunction(node: ESTree.Node): ESTree.Function | ESTree.ArrowFun
   return undefined;
 }
 
+/** True for a function passed inline to a call, such as `.then((r) => r.json())`, which the call's own landing site types. */
+function isCallback(fn: ESTree.Function | ESTree.ArrowFunctionExpression): boolean {
+  const { parent } = fn;
+  return (parent.type === 'CallExpression' || parent.type === 'NewExpression') && parent.arguments.some((argument) => argument === fn);
+}
+
 /** Requires parsed JSON to be typed `unknown` wherever it lands, so it is parsed or narrowed before use. */
 export const noUncheckedJson = defineRule({
   meta: {
@@ -82,8 +88,9 @@ export const noUncheckedJson = defineRule({
       if (!isUnknown(node.typeAnnotation) && isJson(node.expression)) report(node);
     };
     const checkReturn = (fn: ESTree.Function | ESTree.ArrowFunctionExpression | undefined, value: ESTree.Expression) => {
-      const type = fn?.returnType?.typeAnnotation;
-      if (type !== undefined && !isUnknown(type) && isJson(value)) report(value);
+      if (fn === undefined || isUnknown(fn.returnType?.typeAnnotation) || !isJson(value)) return;
+      if (fn.returnType === null && isCallback(fn)) return;
+      report(value);
     };
     return {
       TSAsExpression: checkAssertion,
