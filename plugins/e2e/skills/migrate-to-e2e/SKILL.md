@@ -224,12 +224,13 @@ With `Defect check: on`, show both suites fail on the same bug:
    asserts (a checkout showing the wrong total), in a file with no
    uncommitted changes. Note the file under `Next` until it is reverted.
 2. Rebuild, confirm the app shows the bug, then run `Run old` on the slice
-   and `npx e2e run <files> --no-cache`.
+   (when it runs here) and `npx e2e run <files> --no-cache`.
 3. Revert only that file (`git checkout -- <file>`), rebuild, and confirm
    `git diff -- <file>` is empty.
 4. Both fail at the step that checks the planted state: record it. Only
-   e2e passes: the port lost an assertion, so it is not done. Neither
-   fails: pick another bug. A failure before that step is not a catch.
+   the old suite passes: record that the source was weaker. Only e2e
+   passes: the port lost an assertion, so it is not done. Neither fails:
+   pick another bug. A failure before that step is not a catch.
 5. Fill the row's `Defect check` cell, for example `total +1: both fail`,
    or `old not run` when the old suite cannot run here.
 

@@ -252,8 +252,8 @@ bunx skills add tester-army/e2e --skill migrate-to-e2e
 Then ask the agent for `/migrate-to-e2e`. It ports the slice you pick and
 runs each ported test three times on every target. A `MIGRATION.md` file
 records progress for the next session. Optionally, the agent plants a temporary bug
-in the app, such as a wrong checkout total, and shows that both suites
-fail on it. The agent deletes an old test only when you confirm. It first reads the migration guide for your runner:
+in the app, such as a wrong checkout total, and checks whether both
+suites fail on it. The agent deletes an old test only when you confirm. It first reads the migration guide for your runner:
 [Playwright](/migrate/playwright), [Cypress](/migrate/cypress),
 [Selenium](/migrate/selenium), [Detox](/migrate/detox), or
 [Maestro](/migrate/maestro).
