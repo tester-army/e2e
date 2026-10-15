@@ -39,6 +39,24 @@ export default {
 } satisfies E2EConfig;
 ```
 
+`firstAvailable()` picks the first model whose environment variable is set
+when the config loads. Install every candidate's provider package; the
+constructors run before the pick. See
+[Select by available credentials](https://e2e.tester.army/docs/models#select-by-available-credentials).
+
+```ts
+import { firstAvailable } from 'e2e';
+import { gateway } from 'ai';
+import { anthropic } from '@ai-sdk/anthropic';
+
+const agent = {
+  model: firstAvailable([
+    { env: 'AI_GATEWAY_API_KEY', model: gateway('openai/gpt-6-luna-fast') },
+    { env: 'ANTHROPIC_API_KEY', model: anthropic('claude-sonnet-5') },
+  ]),
+};
+```
+
 Subscription logins and local models: topic `setup`, section "Subscriptions
 and API keys". Keep `ai@^7` installed with any provider.
 

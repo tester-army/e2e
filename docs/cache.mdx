@@ -92,6 +92,10 @@ agent. Each of these changes causes a miss:
 
 Changing the model doesn't cause a miss, and neither does upgrading the
 engine: a node the new version resolves differently misses at replay.
+A model from [`firstAvailable()`](/models#select-by-available-credentials)
+is the exception. Its provider, model id, and specification version are
+part of the key, so a different selection misses. Rotating the credential
+value does not.
 
 A timestamp or a fresh email address would miss on every run. Wrap such
 values in `unique()`, and the runner puts in the current value at replay:
@@ -341,8 +345,8 @@ CI=1 bunx e2e run --strict-cache
 | | A step whose store read fails |
 
 A recording under another key comes from an `e2e` upgrade that changed the
-keys, or a change to the project id, the app's identity, or the agent's
-context. The message names that file and, for a recording made by a
+keys, or a change to the project id, the app's identity, the agent's
+context, or the model `firstAvailable()` selected. The message names that file and, for a recording made by a
 current version, what changed. Delete the file when nothing replays it. This check doesn't cover a
 custom `cache.store`.
 

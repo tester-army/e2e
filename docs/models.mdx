@@ -187,6 +187,35 @@ const agent = {
 };
 ```
 
+### Select by available credentials
+
+`firstAvailable()` picks the first model whose environment variable is set,
+in list order. It runs when the config loads and returns that instance:
+
+```ts title="Agent setup"
+import { firstAvailable } from 'e2e';
+import { gateway } from 'ai';
+import { anthropic } from '@ai-sdk/anthropic';
+
+const agent = {
+  model: firstAvailable([
+    { env: 'AI_GATEWAY_API_KEY', model: gateway('openai/gpt-6-luna-fast') },
+    { env: 'ANTHROPIC_API_KEY', model: anthropic('claude-sonnet-5') },
+  ]),
+};
+```
+
+A blank value counts as unset. With none set, config load fails with
+`MODEL_UNAVAILABLE` and names every variable it checked. `env` has to be
+a variable name. A value in that slot is `INVALID_CONFIG`, and the message
+does not repeat it.
+
+The constructors run before the pick, so install every candidate's
+provider package. It does not probe the network, does not see a
+subscription login, and does not switch after a provider error. The
+report names the model it picked, and that model is part of the
+[replay cache key](/cache#what-must-match).
+
 ### A judge of its own
 
 By default, one model drives `agent.act` and answers `agent.assert`,
