@@ -1,6 +1,6 @@
 ---
 name: migrate-to-e2e
-description: Moves an existing Playwright, Cypress, Selenium, Detox, or Maestro suite to e2e one slice at a time, with the old suite running beside the new one until each ported test is proven. Keeps a MIGRATION.md progress file so any later session resumes where the last stopped. Use for /migrate-to-e2e, "migrate our tests to e2e", "port these Maestro flows", or when a project has an e2e config and an older suite still running.
+description: Moves an existing Playwright, Cypress, Selenium, Detox, or Maestro suite to e2e one slice at a time, with the old suite running beside the new one until each ported test is proven. Keeps a MIGRATION.md progress file so any later session resumes where the last stopped. Optionally plants a defect to show both suites catch it. Use for /migrate-to-e2e, "migrate our tests to e2e", "port these Maestro flows", or when a project has an e2e config and an older suite still running.
 ---
 
 # Migrate a suite to e2e
@@ -52,7 +52,8 @@ one exists, this is a later session:
 2. Check it against the repo before trusting it: every `ported` test still
    exists in both suites, every source file or test it lists still exists
    (except `retired` ones, deleted on purpose), and no new source file or
-   test is missing from it (add those as `todo`).
+   test is missing from it (add those as `todo`). No `Defect check:` line: ask
+   as in step 2. A planted bug noted under `Next`: revert it first (step 6).
 3. Run the file's `Run new` command once. A ported test that fails now is
    the first thing to fix, before any new slice.
 4. Unless the progress file's `Harness:` line says `done`, go to step 3, Build
@@ -74,6 +75,9 @@ Answer these from the repo; ask the user only what you cannot observe.
 | Can the old suite run here | The source runner installed, the build it needs, the services | Whether parity is checked against a live old run (step 6) or only against the source text |
 
 Write `MIGRATION.md` now (format in step 8), every source file `todo`.
+
+Ask whether each slice should also run against a planted defect (step 6)
+and record the answer as `Defect check: on` or `off`.
 
 ## 3. Build the harness (once)
 
@@ -184,7 +188,8 @@ Then each test, one at a time:
   Feedback).
 - Do not change app code. A test that needs a test id the app lacks gets
   `agent.act` or a different locator; propose the app change to the user
-  instead of making it.
+  instead of making it. A defect check's planted bug (step 6) is
+  the exception, reverted the same session.
 
 `agent.act` comes after the literal port passes, never instead of it, and
 only with a model configured. Propose it for a stretch the source kept
@@ -210,6 +215,23 @@ A port is done when it is as strict as the source and passes every time.
    failed.
 4. Read the trace page of any failure before changing the test
    (topic `debugging`).
+
+### Defect check (optional)
+
+With `Defect check: on`, show both suites fail on the same bug:
+
+1. With the user's agreement, plant a small bug in an end state the source
+   asserts (a checkout showing the wrong total), in a file with no
+   uncommitted changes. Note the file under `Next` until it is reverted.
+2. Rebuild, confirm the app shows the bug, then run `Run old` on the slice
+   and `npx e2e run <files> --no-cache`.
+3. Revert only that file (`git checkout -- <file>`), rebuild, and confirm
+   `git diff -- <file>` is empty.
+4. Both fail at the step that checks the planted state: record it. Only
+   e2e passes: the port lost an assertion, so it is not done. Neither
+   fails: pick another bug. A failure before that step is not a catch.
+5. Fill the row's `Defect check` cell, for example `total +1: both fail`,
+   or `old not run` when the old suite cannot run here.
 
 ## 7. Run both suites
 
@@ -242,12 +264,13 @@ Start dependencies: `pnpm e2e:mock-server`
 Run old: `maestro test __e2e__`
 Run new: `npx e2e run`
 Harness: done, smoke `tests/login.e2e.ts` on ios and android
+Defect check: on
 
-| Source | e2e | Status | Assertions (source → e2e) | Passing | Notes |
-| --- | --- | --- | --- | --- | --- |
-| flows/login.yml | tests/login.e2e.ts | ported | 3 → 3 | ios 3/3, android 3/3 | |
-| flows/create-account.yml | | blocked | 6 → | | date picker spin fails on android, trace in .e2e/results |
-| flows/search-screen.yml | | todo | 4 → | | |
+| Source | e2e | Status | Assertions (source → e2e) | Passing | Defect check | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| flows/login.yml | tests/login.e2e.ts | ported | 3 → 3 | ios 3/3, android 3/3 | wrong screen: both fail | |
+| flows/create-account.yml | | blocked | 6 → | | | date picker spin fails on android, trace in .e2e/results |
+| flows/search-screen.yml | | todo | 4 → | | | |
 
 ## Shared helpers
 
@@ -277,9 +300,9 @@ runner on purpose, with why).
 ## 9. Hand over
 
 Tell the user what this session moved and what it proved: the tests ported
-and their pass counts per target, the helpers ported, what is blocked or
-stays and why, the gaps reported, and the next slice. Ask which `ported`
-source tests may be retired. List every file you created or changed.
+and their pass counts per target, defect check results, the helpers ported,
+what is blocked or stays and why, the gaps reported, and the next slice.
+Ask which `ported` source tests may be retired. List every file you created or changed.
 
 ## Rules
 
