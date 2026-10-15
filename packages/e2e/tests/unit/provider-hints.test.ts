@@ -1,6 +1,9 @@
+import { createOpenAI } from '@ai-sdk/openai';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import type { LanguageModelV4 } from '@ai-sdk/provider';
 import type { ModelMessage } from 'ai';
 import { describe, expect, it } from 'vitest';
-import { promptCacheKey, providerHints } from '../../src/agent/model/provider-hints.ts';
+import { promptCacheKey, providerHints, type ProviderModelRef } from '../../src/agent/model/provider-hints.ts';
 
 const BREAKPOINT = { cacheControl: { type: 'ephemeral' } };
 
@@ -81,9 +84,40 @@ describe('providerHints for OpenAI-shaped providers', () => {
   });
 });
 
+/** The request body a hinted call sends through a provider built with `create`, which receives the capturing fetch. */
+async function hintedBody(create: (fetch: typeof globalThis.fetch) => LanguageModelV4): Promise<Record<string, unknown>> {
+  let body: Record<string, unknown> = {};
+  const model = create((_url, init) => {
+    body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return Promise.reject(new Error('captured'));
+  });
+  const providerOptions = providerHints(model as ProviderModelRef).providerOptions(undefined, 'rules');
+  const call = model.doGenerate({
+    prompt: [{ role: 'user', content: [{ type: 'text', text: 'step' }] }],
+    ...(providerOptions === undefined ? {} : { providerOptions: providerOptions as never }),
+  });
+  await expect(call).rejects.toThrow();
+  return body;
+}
+
+describe('providerHints for chat completions providers', () => {
+  it.each(['openai', 'openai-proxy'])('adds nothing to the body of an OpenAI-compatible provider named %s', async (name) => {
+    const body = await hintedBody((fetch) => createOpenAICompatible({ name, baseURL: 'http://127.0.0.1:1/v1', fetch })('m'));
+    expect(body).toEqual({ model: 'm', messages: [{ role: 'user', content: 'step' }] });
+  });
+
+  it.each(['openai', 'openai-eu'])('keeps the cache key on an OpenAI Responses model named %s', async (name) => {
+    const body = await hintedBody((fetch) => createOpenAI({ name, apiKey: 'test-key', fetch }).responses('gpt-6-luna'));
+    expect(body).toMatchObject({ prompt_cache_key: promptCacheKey('rules'), store: false });
+  });
+});
+
 describe('providerHints for other providers', () => {
   it.each([
     { provider: 'gateway', modelId: 'google/gemini-3-flash' },
+    { provider: 'openai.chat', modelId: 'gpt-4o' },
+    { provider: 'azure.chat', modelId: 'my-deployment' },
+    { provider: 'openai-proxy.chat', modelId: 'openai/gpt-4o' },
     { provider: 'mock-provider', modelId: 'mock-model' },
     undefined,
   ])('changes nothing for %j', (model) => {

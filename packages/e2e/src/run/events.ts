@@ -226,6 +226,11 @@ export type RunEventFact =
       readonly reportPath?: string;
       /** Where `--ai-trace` wrote the run's model calls, once the file exists. */
       readonly aiTracePath?: string;
+      /**
+       * The trace page written for each test that kept a trace, by report
+       * result id, as a path from the project root.
+       */
+      readonly traces?: Readonly<Record<string, string>>;
     };
 
 /** Envelope stamped by the emitter: monotonic order and wall-clock time. */

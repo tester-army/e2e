@@ -1,3 +1,4 @@
+import { APICallError } from '@ai-sdk/provider';
 import { describe, expect, it } from 'vitest';
 import {
   AiTraceCollector,
@@ -12,7 +13,7 @@ import { gate } from '../helpers/gate.ts';
 const SCOPE = { test: 'todos › adds one', testId: 't1', target: 'web', agent: 'default', attempt: 0 };
 
 /** Drives one two-step generation through the recorder the way the SDK does. */
-async function generation(recorder: AiTraceRecorder, callId: string, options: { fail?: boolean } = {}) {
+async function generation(recorder: AiTraceRecorder, callId: string, options: { fail?: Error } = {}) {
   const t = recorder.telemetry;
   const fire = <E>(callback: ((event: E) => unknown) | undefined, event: E) => callback?.(event);
   await fire(t.onStart, { callId, operationId: 'ai.generateText' } as never);
@@ -39,8 +40,8 @@ async function generation(recorder: AiTraceRecorder, callId: string, options: { 
     toolChoice: { type: 'required' },
   } as never);
   await fire(t.onLanguageModelCallEnd, { callId, performance: { responseTimeMs: 321 } } as never);
-  if (options.fail === true) {
-    await fire(t.onError, { callId, error: new Error('provider exploded') });
+  if (options.fail !== undefined) {
+    await fire(t.onError, { callId, error: options.fail });
     return;
   }
   await fire(t.onStepEnd, {
@@ -110,12 +111,20 @@ describe('AiTraceRecorder', () => {
 
   it('closes an open step with the error when the generation fails', async () => {
     const recorder = new AiTraceRecorder();
-    await generation(recorder, 'call-1', { fail: true });
+    await generation(recorder, 'call-1', { fail: new Error('provider exploded') });
     const { steps } = recorder.drain();
     expect(steps).toHaveLength(1);
     expect(steps[0]!.error).toBe('provider exploded');
     expect(steps[0]!.output).toBeNull();
     expect(recorder.pending).toBe(false);
+  });
+
+  it('records the status and the body of a provider error the SDK could not parse', async () => {
+    const recorder = new AiTraceRecorder();
+    const body = '{"detail":"Unsupported service_tier: fast"}';
+    const fail = new APICallError({ message: '', url: 'https://provider.test', requestBodyValues: {}, statusCode: 400, responseBody: body });
+    await generation(recorder, 'call-1', { fail });
+    expect(recorder.drain().steps[0]!.error).toBe(`HTTP 400: ${body}`);
   });
 
   it('names a run after the scope; outside a scope it keeps the SDK function id', async () => {

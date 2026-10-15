@@ -5,13 +5,11 @@
  * when an attempt starts, to answer a basic-auth challenge. The value comes
  * from a provider, so nothing registered it up front: the attempt's
  * resolution alone is what makes the page's echo of it redacted in the
- * failure message, the report, and every file the reporters write, and what
- * has the trace, which records the credentials, rewritten. The engine also
+ * failure message, the report, and every file the reporters write. The engine also
  * registers the base64 credential the `Authorization` header carries, which
  * a page echoing its request headers shows instead of the password. The
  * protection is text only: text downloads are rewritten too, but
- * screenshots, the trace's screencast frames, and the model's pixels are
- * kept, as with no secret. Over the fake engine: only a secret the engine
+ * screenshots and the model's pixels are kept, as with no secret. Over the fake engine: only a secret the engine
  * declared resolves.
  */
 
@@ -42,7 +40,6 @@ export default {
     },
   ],
   workers: 2,
-  trace: 'on',
   reporters: ['markdown', 'junit'],
   secrets: { stagingPassword: () => ${JSON.stringify(PASSWORD)} },
 } satisfies E2EConfig;
@@ -102,37 +99,28 @@ describe('a secret in an engine option', () => {
     const error = resultByTitle(outcome, 'fails on the echoed password').attempts[0]!.error!;
     expect(error.message).toContain('<secret:stagingPassword>');
     expect(JSON.stringify(outcome.report)).not.toContain(PASSWORD);
-    // A trace archive is searched entry by entry: its own bytes are compressed.
-    const contents = contentsUnder(`${project.dir}/.e2e`).filter(([name]) => !name.endsWith('.zip'));
-    expect(contents.some(([name]) => name.includes('.zip!'))).toBe(true);
+    const contents = contentsUnder(`${project.dir}/.e2e`);
     for (const [file, text] of contents) expect(text, file).not.toContain(PASSWORD);
   });
 
-  it('redacts the base64 credential of the echoed header everywhere: failure, screen, failure pages, trace, download', () => {
+  it('redacts the base64 credential of the echoed header everywhere: failure, screen, trace pages, download', () => {
     const error = resultByTitle(outcome, 'fails on the echoed Authorization header').attempts[0]!.error!;
     expect(error.message).toContain('Basic <secret:stagingPassword>');
     expect(JSON.stringify(outcome.report)).not.toContain(CREDENTIAL);
-    const contents = contentsUnder(`${project.dir}/.e2e`).filter(([name]) => !name.endsWith('.zip'));
-    for (const written of ['/failure/screen.txt', '/failures/', '.zip!', '/downloads/']) {
+    const contents = contentsUnder(`${project.dir}/.e2e`);
+    for (const written of ['/screen-at-failure.txt', '/trace.md', '/downloads/']) {
       expect(contents.some(([name]) => name.includes(written)), written).toBe(true);
     }
     for (const [file, text] of contents) expect(text, file).not.toContain(CREDENTIAL);
   });
 
-  it('protects the secret as text only: screenshots and trace frames are kept, the text download rewritten', () => {
+  it('protects the secret as text only: screenshots are kept, the text download rewritten', () => {
     const shot = resultByTitle(outcome, 'takes a screenshot of the page, an engine-held secret tainting no pixels');
     expect(shot.status, JSON.stringify(shot.attempts[0]?.error)).toBe('passed');
     const failure = resultByTitle(outcome, 'fails on the echoed Authorization header').attempts[0]!;
     expect(failure.artifacts.filter((artifact) => artifact.kind === 'screenshot')).toHaveLength(1);
-    expect(contentsUnder(`${project.dir}/.e2e`).some(([name]) => name.includes('.zip!screencast/'))).toBe(true);
     const download = resultByTitle(outcome, 'downloads the echoed headers').attempts[0]!.artifacts.find((artifact) => artifact.kind === 'download')!;
     expect(download.redaction).toBe('complete');
-  });
-
-  it('rewrites each trace, which records the credentials the attempt opened with, though nothing was filled', () => {
-    const traces = outcome.results.flatMap((result) => result.attempts.flatMap((attempt) => attempt.artifacts.filter((artifact) => artifact.kind === 'trace')));
-    expect(traces).toHaveLength(5);
-    for (const trace of traces) expect(trace.redaction).toBe('complete');
   });
 });
 

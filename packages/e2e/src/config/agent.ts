@@ -5,7 +5,7 @@ import { GRAMMAR_TOOL_NAMES, HARNESS_TOOL_NAMES } from '../agent/action-names.ts
 import { AgentError } from '../agent/error.ts';
 import { isDefinedTool } from '../agent/tool.ts';
 import { boundedInt, positiveInt } from './validate.ts';
-import { ConfigurationError } from '../internal/errors.ts';
+import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { didYouMean } from '../internal/suggest.ts';
 import type {
   AgentConfig,
@@ -369,8 +369,15 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /** True for the closed judgment `vision` value set, wherever it is supplied. */
-export function isVisionMode(value: unknown): value is VisionMode {
+function isVisionMode(value: unknown): value is VisionMode {
   return typeof value === 'boolean' || value === 'only';
+}
+
+/** A judgment's `vision` option as called: the tree unless the call asks for pixels; anything else is INVALID_ARGUMENT. */
+export function resolveVision(requested: unknown): VisionMode {
+  if (requested === undefined) return false;
+  if (!isVisionMode(requested)) throw new TestError('INVALID_ARGUMENT', "vision must be true, false, or 'only'");
+  return requested;
 }
 
 /**

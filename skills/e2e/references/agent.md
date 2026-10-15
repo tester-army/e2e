@@ -4,6 +4,20 @@
 Each call is one bounded invocation: fresh redacted observation, deadline,
 model-call budget, no shared transcript. No agent step, no model calls.
 
+## Contents
+
+- Configure a model
+- act: one goal
+- assert, waitFor, extract: one question
+- Write instructions the model can execute
+- What the model sees
+- Budgets and cost
+- The replay cache
+- Inspect what the model did
+- Make the agent yours
+- Beyond the built-in agent
+- In CI
+
 ## Configure a model
 
 Put an AI SDK model under `agents.default`. You can use all AI SDK providers
@@ -25,15 +39,16 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Subscription logins and local models:
-[setup](setup.md#subscriptions-and-api-keys). Keep `ai@^7` installed with
-any provider.
+Subscription logins and local models: topic `setup`, section "Subscriptions
+and API keys". Keep `ai@^7` installed with any provider.
 
 Decision models pick actions from choices the executor builds: install
 `@e2e-dev/decision` and put `decisionExecutor({ model:
 typeSafeAi.decisionModel('jev-latest'), textModel: openrouter('inception/mercury-2.5') })`
-under `executor`. Tests stay plain language with no params; the text model
-writes field values. See the shipped `docs/decision-models.mdx` or
+under `executor`. `openai.decisionModel('gpt-6-luna')` from `@ai-sdk/openai`
+4.0.90 or later works too and takes the `vision: true` screenshot.
+Tests stay plain language with no params. The text model writes field values
+and upload paths. See the shipped `docs/decision-models.mdx` or
 [the online guide](https://e2e.tester.army/docs/decision-models) for setup,
 gates, and limits.
 
@@ -70,9 +85,12 @@ context, so each persona records and replays its own steps.
 ## act: one goal
 
 ```ts
-import { credentials } from 'e2e';
+import { credentials, expect } from 'e2e';
 
-await agent.act('add a todo named "Buy milk" and mark it done');
+await agent.act('add a todo named "Buy milk"');
+await expect(screen.getByRole('listitem', 'Buy milk')).toBeVisible();
+await agent.act('mark the "Buy milk" todo as done');
+await expect(screen.getByRole('checkbox', 'Buy milk')).toBeChecked();
 await agent.act('invite {email} as an editor', { params: { email: 'ada@example.test' } });
 
 const member = credentials.user('member');
@@ -191,6 +209,28 @@ masked pixels fail with `POLICY_DENIED`.
 ## Write instructions the model can execute
 
 - One goal per `act`; goal order is the test's, the path the model's.
+- Keep each goal atomic: one outcome that one check confirms. When two
+  parts of an instruction each leave a state worth checking, they are two
+  goals: give each its own `act` and check. Steps toward a single outcome
+  are the path, not more goals: scrolling to a control, closing a banner,
+  opening the menu that holds it, filling the fields of one form.
+- A split flow fails at the goal that broke. Each goal replays from its own
+  recording and gets its own `maxSteps` and `maxModelCalls`; the test
+  timeout still caps them all.
+
+```ts
+// BAD: three goals in one instruction, one recording, no check between them.
+await agent.act('open the Pro plan, set the seats to {seats}, and check out', { params: { seats: 3 } });
+
+// GOOD: three atomic goals, each pinned before the next.
+await agent.act('open the Pro plan');
+await expect(screen.getByRole('heading', 'Pro plan')).toBeVisible();
+await agent.act('set the seats to {seats}', { params: { seats: 3 } });
+await expect(screen.getByRole('status', 'Seats')).toHaveText('3 seats');
+await agent.act('check out');
+await expect(screen.getByText('Order confirmed')).toBeVisible();
+```
+
 - Use the words on screen: `'open the Billing tab'`, not `'upgrade'`.
 - Values go in `params`, never expanded: `act('rename to {name}', { params })`.
 - Do not describe mechanics the runner handles: waiting, scrolling, retries.
@@ -261,7 +301,9 @@ matches. Misses and hand-offs use the model; `agent.assert`,
   every control that appeared (with its checked or selected state) is
   there, every one that went away is gone, at least one of those changed
   during the replay, and no new alert showed; otherwise the agent takes
-  over mid-step. Entries are keyed per agent and per `agentContext`. `step.cache.reason` says why: `no-entry`,
+  over mid-step. The web engine does not observe Next.js App Router's route
+  announcer, so its title echo never counts. Entries are keyed per agent and
+  per `agentContext`. `step.cache.reason` says why: `no-entry`,
   `wrong-context`, `target-not-found`, `target-ambiguous`, `end-mismatch`,
   and so on.
 - A step recording no actions, or changing nothing on screen or in the
@@ -277,8 +319,9 @@ matches. Misses and hand-offs use the model; `agent.assert`,
   and evict nothing.
 - With committed recordings, `--strict-cache` in CI fails a recording that
   no longer replays with `REPLAY_STALE` instead of quietly spending model
-  calls every run; re-record locally and commit. Unrecorded steps still run
-  live.
+  calls every run; re-record with a `read-write` run without the flag and
+  with `cache.strict` off, then commit. Unrecorded steps still run live;
+  retries replay too, and a strict run never writes the cache.
 
 ## Inspect what the model did
 

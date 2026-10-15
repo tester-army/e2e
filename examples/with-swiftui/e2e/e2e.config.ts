@@ -4,7 +4,7 @@ import { gateway } from 'ai';
 
 export default {
   // The Vercel AI Gateway serves the model and reads AI_GATEWAY_API_KEY.
-  // Only tests that use `agent` need it; tests/greeting.e2e.ts runs without one.
+  // Only tests that use `agent` need it; tests/deterministic.e2e.ts runs without one.
   agents: {
     default: {
       model: gateway('openai/gpt-6-luna-fast'),

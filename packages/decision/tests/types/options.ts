@@ -27,6 +27,8 @@ decisionExecutor({
   },
 });
 
+decisionExecutor({ model: typeSafeAi.decisionModel('jev-latest'), providerOptions: { gateway: { zeroDataRetention: true } } });
+
 // @ts-expect-error A decision executor requires a decision model, not a model id.
 decisionExecutor({ model: 'jev-latest' });
 // @ts-expect-error The text model is an instance, never an id string.

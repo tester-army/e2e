@@ -177,7 +177,7 @@ async function captureInto(
   elements.forEach((element, index) => stage(ids[index] as string, element));
   let nodeCount = nodes.length;
   let truncated = walkTruncated === true;
-  const frameChildren = new Map<number, SemanticNode>();
+  const frameChildren = new Map<number, FrameChild>();
   for (let index = 0; index < nodes.length; index += 1) {
     const selector = nodes[index]!.frameSelector;
     if (selector === undefined) continue;
@@ -202,6 +202,11 @@ async function captureInto(
       truncated = true;
       continue;
     }
+    const inset = await scope.read(() => elements[index]!.evaluate(frameContentInset).catch(() => undefined));
+    if (inset === undefined) {
+      truncated = true;
+      continue;
+    }
     const child = await scope.read(() => captureDocument({ ...deps, commit: stage }, frame, {
       framePath: [...framePath, selector],
       budget: remaining,
@@ -212,7 +217,7 @@ async function captureInto(
       truncated = true;
       continue;
     }
-    frameChildren.set(index, child.tree);
+    frameChildren.set(index, { tree: child.tree, inset });
     nodeCount += child.nodeCount;
     truncated ||= child.truncated;
   }
@@ -275,7 +280,7 @@ function assembleTree(
   nodes: readonly RawObservedNode[],
   ids: readonly string[],
   framePath: readonly string[],
-  frameChildren: ReadonlyMap<number, SemanticNode>,
+  frameChildren: ReadonlyMap<number, FrameChild>,
 ): SemanticNode {
   if (nodes.length === 0 || ids.length === 0) {
     // An empty document is what a navigation in flight looks like; a real page
@@ -287,15 +292,16 @@ function assembleTree(
   for (let index = nodes.length - 1; index >= 0; index -= 1) {
     const raw = nodes[index]!;
     const embedded = frameChildren.get(index);
-    // A child document measured its nodes against its own viewport. Shifted by
-    // the boundary element's box and clipped to it, every box in the tree is
-    // in the top-level viewport's CSS pixels, the space the screenshot and a
-    // point tap share, and a child that overflows its frame cannot claim a
-    // point over the page around it. The shift is the frame's border box; a
-    // bordered iframe is off by its border width, which is within a tap
-    // target. A frame under a CSS transform is not unwound: its boxes are
-    // where the untransformed frame would put them.
-    if (embedded !== undefined && raw.rect !== null) childLists[index]!.unshift(placeInFrame(embedded, raw.rect));
+    // A child document measured its nodes against its own viewport, which
+    // starts at the frame element's content box. Shifted by that box and
+    // clipped to it, every box in the tree is in the top-level viewport's CSS
+    // pixels, the space the screenshot and a point tap share, and a child that
+    // overflows its frame cannot claim a point over the page around it. A
+    // frame under a CSS transform is not unwound: its boxes are where the
+    // untransformed frame would put them.
+    if (embedded !== undefined && raw.rect !== null) {
+      childLists[index]!.unshift(placeInFrame(embedded.tree, contentBox(raw.rect, embedded.inset)));
+    }
     const node = toSemanticNode({ id: ids[index]!, revision: '' }, raw, childLists[index]!, framePath);
     built[index] = node;
     if (raw.parent >= 0) childLists[raw.parent]!.unshift(node);
@@ -305,15 +311,54 @@ function assembleTree(
 
 type Rect = NonNullable<SemanticNode['rect']>;
 
+/** A child document's tree, and where its viewport sits inside the frame element's border box. */
+interface FrameChild {
+  readonly tree: SemanticNode;
+  readonly inset: Rect;
+}
+
+/**
+ * Where a frame element's content box, the box its document's viewport
+ * fills, sits inside its border box: past the border and the padding. Runs in
+ * the page.
+ */
+export function frameContentInset(element: Element): Rect {
+  const style = getComputedStyle(element);
+  const left = Number.parseFloat(style.paddingLeft) || 0;
+  const top = Number.parseFloat(style.paddingTop) || 0;
+  const right = Number.parseFloat(style.paddingRight) || 0;
+  const bottom = Number.parseFloat(style.paddingBottom) || 0;
+  return {
+    x: element.clientLeft + left,
+    y: element.clientTop + top,
+    width: Math.max(0, element.clientWidth - left - right),
+    height: Math.max(0, element.clientHeight - top - bottom),
+  };
+}
+
+/** A frame element's content box, from its border box and `frameContentInset`. */
+export function contentBox(border: Rect, inset: Rect): Rect {
+  return { x: border.x + inset.x, y: border.y + inset.y, width: inset.width, height: inset.height };
+}
+
 /** The tree with every box translated into the frame's space and clipped to its box; a box left empty by the clip is dropped. */
 function placeInFrame(node: SemanticNode, frame: Rect): SemanticNode {
   const { rect, ...rest } = node;
-  const placed = rect === undefined ? undefined : clipRect(offsetRect(rect, frame), frame);
+  const placed = rect === undefined ? undefined : placeRectInFrame(rect, frame);
   return {
     ...rest,
     ...(placed === undefined ? {} : { rect: placed }),
     ...(node.children === undefined ? {} : { children: node.children.map((child) => placeInFrame(child, frame)) }),
   };
+}
+
+/**
+ * A box a child document measured against its own viewport, in the top-level
+ * viewport's space: shifted by the frame's box and clipped to it; undefined
+ * when nothing of it is inside the frame.
+ */
+export function placeRectInFrame(rect: Rect, frame: Rect): Rect | undefined {
+  return clipRect(offsetRect(rect, frame), frame);
 }
 
 function offsetRect(rect: Rect, by: Rect): Rect {

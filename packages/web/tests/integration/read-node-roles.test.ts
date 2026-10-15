@@ -4,6 +4,7 @@ import { chromium, type Browser, type ElementHandle, type Page } from 'playwrigh
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SemanticNode } from 'e2e/engine';
 import { captureDocument } from '../../src/observation.ts';
+import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/closed-shadow.ts';
 
 let browser: Browser;
 let page: Page;
@@ -57,6 +58,51 @@ const PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAA
 const EMPTY_BOXES = '[data-testid]:empty { min-width: 1px; min-height: 1px }';
 
 describe('role mapping', () => {
+  it('uses the first recognized role token and falls back to native semantics', async () => {
+    await page.setContent(`
+      <button role="unknown button" data-testid="fallback">Save</button>
+      <button role="unknown widget" data-testid="native">Submit</button>
+      <a href="/next" role="unknown button link" data-testid="first">Continue</a>
+      <div role="unknown img" aria-label="Chart" data-testid="image" style="width:10px;height:10px"></div>
+      <div role="unknown\u00a0button" aria-label="Not a role" data-testid="nbsp" style="width:10px;height:10px"></div>
+      <table role="unknown grid"><tr><td data-testid="grid-cell">Cell</td></tr></table>
+    `);
+    const nodes = await rolesByTestId();
+    expect(nodes.get('fallback')).toMatchObject({ role: 'button', name: 'Save' });
+    expect(nodes.get('native')).toMatchObject({ role: 'button', name: 'Submit' });
+    expect(nodes.get('first')).toMatchObject({ role: 'button', name: 'Continue' });
+    expect(nodes.get('image')).toMatchObject({ role: 'image', name: 'Chart' });
+    expect(nodes.get('grid-cell')).toMatchObject({ role: 'gridcell', name: 'Cell' });
+    expect(nodes.has('nbsp')).toBe(true);
+    expect(nodes.get('nbsp')?.role).toBeUndefined();
+    expect(await page.getByRole('button').allTextContents()).toEqual(['Save', 'Submit', 'Continue']);
+    expect(await page.getByRole('gridcell').allTextContents()).toEqual(['Cell']);
+  });
+
+  it.each(['open', 'closed'] as const)('scopes nested shadow landmarks to their outer article (%s)', async (mode) => {
+    await page.setContent('<article><div id="card"></div></article><div id="page"></div>');
+    await page.evaluate(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
+    await page.evaluate((shadowMode) => {
+      const card = document.querySelector('#card')!.attachShadow({ mode: shadowMode });
+      card.innerHTML = '<div id="nested"></div>';
+      card.querySelector('#nested')!.attachShadow({ mode: shadowMode }).innerHTML =
+        '<header aria-label="Card" data-testid="card-header">Card</header><footer aria-label="Card footer" data-testid="card-footer">Foot</footer>';
+      document.querySelector('#page')!.attachShadow({ mode: shadowMode }).innerHTML =
+        '<header aria-label="Page" data-testid="page-header">Page</header><footer aria-label="Page footer" data-testid="page-footer">Legal</footer>';
+    }, mode);
+    const nodes = await rolesByTestId();
+    expect(nodes.get('card-header')).toBeDefined();
+    expect(nodes.get('card-footer')).toBeDefined();
+    expect(nodes.get('card-header')?.role).toBeUndefined();
+    expect(nodes.get('card-footer')?.role).toBeUndefined();
+    expect(nodes.get('page-header')?.role).toBe('banner');
+    expect(nodes.get('page-footer')?.role).toBe('contentinfo');
+    if (mode === 'open') {
+      expect(await page.getByRole('banner').count()).toBe(1);
+      expect(await page.getByRole('contentinfo').count()).toBe(1);
+    }
+  });
+
   it('reports ARIA img as image, alongside the img element', async () => {
     await page.setContent(`
       <style>${EMPTY_BOXES}</style>

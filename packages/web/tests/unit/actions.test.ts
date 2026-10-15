@@ -177,6 +177,7 @@ describe('dispatchLocatorAction', () => {
   const lookup = () => {
     throw new Error('no second target in these cases');
   };
+  const OPERATION = { timeoutMs: 7, signal: new AbortController().signal };
 
   it.each([
     [{ kind: 'longPress', durationMs: 900 }, 'click', [{ timeout: 7, delay: 900 }]],
@@ -187,7 +188,7 @@ describe('dispatchLocatorAction', () => {
     'dispatches %j to locator.%s',
     async (action, method, args) => {
       const { locator, target } = stubLocator();
-      await dispatchLocatorAction(target, action, 7, lookup);
+      await dispatchLocatorAction(target, action, OPERATION, lookup);
       const spy = locator[method as keyof typeof locator] as ReturnType<typeof vi.fn>;
       expect(spy).toHaveBeenCalledTimes(1);
       expect(spy.mock.calls[0]).toEqual(args);
@@ -196,11 +197,11 @@ describe('dispatchLocatorAction', () => {
 
   it('scrolls a node with a wheel gesture sized by its own box: the agent node scroll', async () => {
     const { locator, target, wheel } = stubLocator({ x: 0, y: 0, width: 400, height: 300 });
-    await dispatchLocatorAction(target, { kind: 'swipe', direction: 'down' }, 7, lookup);
+    await dispatchLocatorAction(target, { kind: 'swipe', direction: 'down' }, OPERATION, lookup);
     expect(locator.hover).toHaveBeenCalledWith({ timeout: 7 });
     expect(wheel).toHaveBeenCalledWith(0, 150);
 
-    await dispatchLocatorAction(target, { kind: 'swipe', direction: 'left', momentum: 'fast' }, 7, lookup);
+    await dispatchLocatorAction(target, { kind: 'swipe', direction: 'left', momentum: 'fast' }, OPERATION, lookup);
     expect(wheel).toHaveBeenLastCalledWith(-600, 0);
   });
 
@@ -208,7 +209,7 @@ describe('dispatchLocatorAction', () => {
     const { locator, target } = stubLocator();
     locator.boundingBox.mockResolvedValueOnce(null as never);
     await expect(
-      dispatchLocatorAction(target, { kind: 'swipe', direction: 'up' }, 7, lookup),
+      dispatchLocatorAction(target, { kind: 'swipe', direction: 'up' }, OPERATION, lookup),
     ).rejects.toMatchObject({ code: 'NOT_ACTIONABLE' });
   });
 
@@ -218,7 +219,7 @@ describe('dispatchLocatorAction', () => {
     await dispatchLocatorAction(
       source.target,
       { kind: 'dragTo', target: { id: 'n2', revision: 'r' } },
-      7,
+      OPERATION,
       () => destination.target,
     );
     expect(source.locator.dragTo).toHaveBeenCalledWith(destination.target.locator, { timeout: 7 });

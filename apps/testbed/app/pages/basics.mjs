@@ -1,5 +1,6 @@
 /**
- * The everyday pages: the landing page, a todo list kept in localStorage, a
+ * The everyday pages: the landing page, a plans page of copy with inline
+ * links and emphasis (unlisted in the nav), a todo list kept in localStorage, a
  * profile form, the cookie-session login and the dashboard behind it, a
  * three-step wizard, and a checkout with one planted bug. What queries,
  * fills, sessions, polling assertions, and judgments are dogfooded against.
@@ -20,6 +21,13 @@ const pages = {
     title: 'Playground',
     body: `<h1>Playground</h1>
        <p>A tiny app exercised by the e2e dogfood suite.</p>`,
+  }),
+
+  '/plans': () => ({
+    title: 'Plans',
+    body: `<h1>Plans</h1>
+       <p>We ship every week. Read the <a href="/release-notes">release notes</a> for what changed this week.</p>
+       <p>Plans start at <strong>$12</strong> per seat, billed <em>annually</em>, and include the <code>e2e</code> CLI.</p>`,
   }),
 
   '/todos': () => ({

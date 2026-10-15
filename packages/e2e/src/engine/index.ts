@@ -225,7 +225,7 @@ export interface EngineFixtureContext {
   operation(timeoutMs?: number): OperationContext;
   /** Registers a file the current step produced under the attempt artifact directory. */
   attachArtifact(
-    kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log',
+    kind: 'screenshot' | 'video' | 'download' | 'log',
     relativePath: string,
   ): void;
   /** Records the viewport the current step established. */
@@ -297,16 +297,6 @@ export interface EngineStateCapability {
 export interface EngineArtifacts {
   /** Captures a redacted screenshot; secure fields are masked at the source. */
   screenshot(label: string | undefined, context: OperationContext): Promise<string>;
-  /** Starts recording an execution trace for the attempt. */
-  startTrace?(context: OperationContext): Promise<void>;
-  /**
-   * Stops the trace and returns its relative path, or every archive written,
-   * in order, when the trace had to be cut: a trace bound to one context
-   * closes as a segment when a restart or a state reset replaces the
-   * context, and a new one records on from there. The harness registers and
-   * redacts each returned archive.
-   */
-  stopTrace?(context: OperationContext): Promise<string | readonly string[]>;
   /**
    * Starts recording the surface for the attempt. Declared together with
    * `stopVideo`. A surface that has nothing to show yet (no page open) may
@@ -513,7 +503,7 @@ export interface EngineAttemptContext {
    * provider runs again on every call. The value, and every value
    * `options.derived` computes from it, join the attempt's redaction before
    * this resolves, so reports, logs, and every observation redact them, and
-   * the attempt's trace and text downloads are rewritten. The protection is
+   * the attempt's text downloads are rewritten. The protection is
    * text only: unlike a fill, it withholds no screenshot or model pixels.
    * A secret the engine did not declare is `SECRET_UNAVAILABLE`.
    */
@@ -524,6 +514,56 @@ export interface EngineAttemptContext {
    * harness ends the attempt's isolation right behind it and may retry.
    */
   readonly signal: AbortSignal;
+  /**
+   * Reports something the app did on its own while the attempt ran: a
+   * console line, an uncaught exception, a request that failed. The harness
+   * redacts the text, keeps it with the step that was running (from an event
+   * callback outside any step, the step that started last; before the first
+   * step, with none), and shows it on the trace page. Call it from the moment `startAttempt` begins until
+   * `endAttempt`; entries past a per-attempt cap are dropped.
+   */
+  readonly appLog: (entry: AppLogEntry) => void;
+  /**
+   * Reports where the app went on its own, as one line (`navigated to
+   * /login`, `the app opened a new tab at /help`, `frame "pay" loaded
+   * /embed`): a navigation the engine did not start, a tab, a frame. The
+   * harness redacts it and shows it under the step that was running.
+   */
+  readonly navigation: (line: string) => void;
+  /**
+   * Hands the harness a screen for the trace: the capture a `locate`
+   * matched against, or one read right after an action. The harness redacts
+   * it and keeps, for each step, how the screen changed since the step
+   * before, which the trace page shows. It never becomes an observation:
+   * refs it holds are not valid for `perform`. An engine that reads one after
+   * an action does so on the action's path, so it bounds the read (the web
+   * engine allows one second and gives up silently) and skips it where a
+   * read is expensive; an action never fails because of it. Absent when the
+   * attempt keeps no trace; the engine then reads nothing for it.
+   */
+  readonly screen?: (snapshot: EngineSnapshot) => void;
+  /**
+   * What the attempt runs on, such as `{ browser: 'chromium 141.0.7390.37' }`
+   * or `{ device: 'iPhone 16', os: 'iOS 26.0' }`, for the trace page. A
+   * later call adds to and overwrites earlier facts; the harness redacts and
+   * clips them and keeps a handful.
+   */
+  readonly environment: (facts: Readonly<Record<string, string>>) => void;
+}
+
+/** Where an app log entry came from. */
+export type AppLogSource = 'console' | 'error' | 'network' | 'system';
+
+/** One line of what the app did during an attempt, as `EngineAttemptContext.appLog` takes it. */
+export interface AppLogEntry {
+  /**
+   * Where it came from: the app's `console`, an `error` nothing caught, the
+   * `network`, or the `system` the app runs on (a crash, an OS log).
+   */
+  readonly source: AppLogSource;
+  readonly level: 'error' | 'warning' | 'info';
+  /** One line, such as `GET /api/todos 500` or `TypeError: x is undefined`; the harness clips it. */
+  readonly text: string;
 }
 
 /** How `EngineAttemptContext.resolveSecret` treats what the engine makes of the value. */
@@ -554,6 +594,12 @@ export interface EngineObserveOptions {
   readonly pixels?: boolean;
   /** Allows independently masked pixels to replace a failed semantic capture. Never granted after a secret fill. */
   readonly pixelFallback?: boolean;
+  /**
+   * The pixels are compared against a stored screenshot (`toHaveScreenshot`).
+   * Where the platform can, render what changes on its own outside the app
+   * in a fixed state: a status bar's clock, battery, and signal.
+   */
+  readonly comparable?: boolean;
 }
 
 /**
@@ -591,6 +637,13 @@ export interface EngineSnapshot {
    * read whole.
    */
   readonly truncated?: boolean;
+  /**
+   * Whether an on-screen keyboard is showing, as the engine measured it apart
+   * from `root`: a platform can raise a keyboard the tree lists only in part,
+   * or not at all. Set `false` when it measured none, and omit it only when
+   * the engine did not measure it; consumers then fall back to the tree.
+   */
+  readonly keyboardVisible?: boolean;
   /**
    * Semantic capture timed out. Return only the stable root reference, with no other fields,
    * and fresh pixels whose masking was proven independently of the failed
@@ -716,7 +769,7 @@ export interface Engine {
   readonly fixtures?: Readonly<Record<string, EngineFixtureFactory>>;
   /** capability: state - opaque snapshot capture/restore for session reuse. */
   readonly state?: EngineStateCapability;
-  /** capability: artifacts - screenshots and traces under the attempt directory. */
+  /** capability: artifacts - screenshots under the attempt directory, and videos there or at a provider. */
   readonly artifacts?: EngineArtifacts;
   /**
    * Checks the app a target declares against what this engine can drive, at

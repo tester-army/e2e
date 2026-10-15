@@ -134,7 +134,7 @@
               "index",
               "quickstart",
               "core-concepts",
-              "explore"
+              "coding-agents"
             ]
           },
           {
@@ -146,29 +146,43 @@
             ]
           },
           {
+            "group": "Features",
+            "pages": [
+              "cache",
+              "explore",
+              "visual-testing",
+              "authentication",
+              "bug-bash",
+              "agents"
+            ]
+          },
+          {
             "group": "Models and agents",
             "pages": [
               "models",
               "decision-models",
-              "subscriptions",
-              "cache"
+              "subscriptions"
             ]
           },
           {
-            "group": "Automate",
+            "group": "Run in CI",
             "pages": [
-              "coding-agents",
               "ci",
-              "mobile-ci",
+              "ci/github-actions",
+              "ci/eas-workflows",
+              "ci/bitrise",
+              "ci/codemagic",
               "github"
             ]
           },
           {
-            "group": "Integrations",
+            "group": "Hosted browsers and devices",
             "pages": [
               "integrations/index",
               "integrations/kernel",
-              "integrations/eas"
+              "integrations/eas",
+              "integrations/smol",
+              "integrations/limrun"
             ]
           },
           {
@@ -183,12 +197,9 @@
             "group": "Deep dive",
             "pages": [
               "browser",
-              "bug-bash",
-              "authentication",
               "security",
               "telemetry",
               "debugging",
-              "agents",
               "agent-steps"
             ]
           },
@@ -223,10 +234,12 @@
             "pages": [
               "reference/config",
               "reference/cli",
+              "reference/runner",
               "reference/mcp",
               "reference/reporters",
               "reference/environment",
-              "reference/errors"
+              "reference/errors",
+              "reference/security"
             ]
           },
           {
@@ -260,10 +273,15 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/tester-army/e2e"
+      "github": "https://github.com/tester-army/e2e",
+      "website": "https://tester.army/?utm_source=e2e&utm_medium=docs&utm_campaign=docs_footer"
     }
   },
   "redirects": [
+    {
+      "source": "/mobile-ci",
+      "destination": "/ci#mobile-jobs"
+    },
     {
       "source": "/introduction",
       "destination": "/"

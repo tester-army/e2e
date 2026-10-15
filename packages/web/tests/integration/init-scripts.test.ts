@@ -15,7 +15,7 @@ import { secrets } from 'e2e';
 import type { EngineCleanupContext, EngineFixtureContext, OperationContext } from 'e2e/engine';
 import { createBrowserFixture, type Browser } from '../../src/browser.ts';
 import { PlaywrightSurface, type WebOptions } from '../../src/surface.ts';
-import { noSecrets } from '../helpers/secrets.ts';
+import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 declare global {
   interface Window {
@@ -62,7 +62,7 @@ describe('init scripts', () => {
     try {
       await surface.init({ runId: 'init-scripts', targetName: 'web', projectRoot, app: { site: '127.0.0.1' },
         env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
-      await surface.startAttempt({ attemptId: 'a', artifactsDir, signal, resolveSecret: noSecrets });
+      await surface.startAttempt({ attemptId: 'a', artifactsDir, signal, resolveSecret: noSecrets, ...ignoreTrace });
       const browser = createBrowserFixture(surface, {
         operation,
         app: { resolveUrl: (target: string) => new URL(target, url).href },
@@ -85,9 +85,10 @@ describe('init scripts', () => {
       "(window.trail ??= []).push('source');",
       { path: 'from-file.js' },
       () => { (window.trail ??= []).push('function'); },
+      { method() { (window.trail ??= []).push('method'); } }.method,
     ];
     await attempt({ initScripts }, async (browser, surface) => {
-      const expected = ['source', 'file', 'function'];
+      const expected = ['source', 'file', 'function', 'method'];
       await browser.goto('/framed');
       expect(await seenAtBoot(browser)).toEqual(expected);
       const frame = surface.requirePage().frames()[1]!;

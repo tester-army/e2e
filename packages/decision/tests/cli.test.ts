@@ -80,25 +80,26 @@ describe('decision executor through the built CLI and real Chromium', () => {
       '  }',
       '  return "blocked";',
       '}',
-      'function pickTarget(id: string, criteria: Record<string, any>, goal: string): string {',
+      'function pickTarget(id: string, instructions: string, criteria: Record<string, any>, goal: string): string {',
       '  const entries = Object.entries(criteria);',
       '  const labelOf = (value: any): string => typeof value === "string" ? value : String(value.element ?? "");',
       '  if (goal.indexOf("target 5") !== -1) {',
       '    const hit = entries.find((entry) => labelOf(entry[1]).indexOf("target 5") !== -1);',
       '    if (hit !== undefined) return hit[0];',
       '  }',
-      '  const op = id.slice(0, -7);',
+      '  const op = (/The next operation is "([a-zA-Z_]+)"/.exec(instructions) ?? [])[1] ?? "";',
       '  if (op === "typeSecret") {',
       '    const secret = entries.find((entry) => labelOf(entry[1]).toLowerCase().indexOf("password") !== -1);',
       '    return ((secret ?? entries[0]) as [string, unknown])[0];',
       '  }',
       '  const role = op === "type" || op === "typeSecret" ? "textbox" : op === "tap" ? "button" : "";',
-      '  const hit = entries.find((entry) => { const record = entry[1]; return typeof record !== "string" && record.role === role; });',
+      '  const hit = entries.find((entry) => { const record = entry[1]; return typeof record === "string" ? record.indexOf("] " + role + " ") !== -1 : record.role === role; });',
       '  return (hit ?? entries[0] as [string, unknown])[0];',
       '}',
       'export const decisionModel: DecisionExecutorOptions["model"] = {',
       '  specificationVersion: "v4", provider: "scripted", modelId: "scripted-1", supportedQuestionTypes: ["choice"],',
-      '  async doDecide({ state, questions }) {',
+      '  async doDecide({ state: parts, questions }) {',
+      '    const state = (parts as { type: string; value?: unknown }[]).find((part) => part.type === "json")?.value;',
       '    record({ state, questions });',
       '    const view = state as { goal?: unknown; recentActions?: { action?: unknown }[]; page?: { text?: unknown } };',
       '    const goal = typeof view.goal === "string" ? view.goal : "";',
@@ -111,7 +112,7 @@ describe('decision executor through the built CLI and real Chromium', () => {
       '      if (id === "operation") { const choice = pickOp(goal, done, keys); answers[id] = { type: "choice", choice, probabilities: unanimous(choice, keys) }; }',
       '      else if (id === "verdict") { const page = typeof view.page === "object" && view.page !== null ? String((view.page as { text?: unknown }).text ?? "") : ""; const holds = page.indexOf("Buy milk") !== -1 || page.indexOf("Saved Ada") !== -1 || page.indexOf("picked 5") !== -1; const choice = holds ? "holds" : "fails"; answers[id] = { type: "choice", choice, probabilities: unanimous(choice, keys) }; }',
       '      else if (id === "secret") { answers[id] = { type: "choice", choice: "password", probabilities: unanimous("password", keys) }; }',
-      '      else { const choice = pickTarget(id, question.criteria, goal); answers[id] = { type: "choice", choice, probabilities: unanimous(choice, keys) }; }',
+      '      else { const choice = pickTarget(id, String(question.instructions), question.criteria, goal); answers[id] = { type: "choice", choice, probabilities: unanimous(choice, keys) }; }',
       '    }',
       '    return { answers, warnings: [], usage: { inputTokens: 5, outputTokens: 0 }, response: { modelId: "scripted-1" } };',
       '  },',
@@ -196,10 +197,11 @@ describe('decision executor through the built CLI and real Chromium', () => {
   it('completes a long page past the choice cap', () => {
     expect(report.run.results.find((result) => result.titlePath.at(-1) === 'long page')?.status).toBe('passed');
   });
-  it('fans operation and target questions out in one call', () => {
-    const fanned = requests
+  it('asks the operation first and the target in its own call', () => {
+    const asked = requests
       .filter((request) => typeof (request as { questions?: unknown }).questions === 'object')
       .map((request) => Object.keys((request as { questions: Record<string, unknown> }).questions).toSorted());
-    expect(fanned).toContainEqual(['operation', 'tap_target']);
+    expect(asked).toContainEqual(['operation']);
+    expect(asked).toContainEqual(['target']);
   });
 });

@@ -167,4 +167,3 @@ ASSERTION_FAILED: ban button missing
       Tests  1 failed | 3 passed (4)
    Start at  10:00:00
    Duration  1000ms (startup 900ms)
-     Report  .e2e/report.json

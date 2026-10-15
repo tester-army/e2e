@@ -6,7 +6,7 @@ import type {
   TestTargetPair,
 } from '../../src/collect/select.ts';
 import type { ResolvedTarget } from '../../src/config/resolve.ts';
-import { buildWorkPlans, nonRunResult, unstartedResult } from '../../src/run/units.ts';
+import { buildWorkPlans, failureLimitSkip, interruptedInPhase, nonRunResult, timeLimitSkip, unstartedResult } from '../../src/run/units.ts';
 import { decodeResult } from '../../src/run/worker/protocol.ts';
 import { encodeResult, type ResultRecord } from '../../src/run/records.ts';
 
@@ -191,6 +191,21 @@ describe('result helpers', () => {
     expect(record.status).toBe('skipped');
     expect(record.selected).toBe(true);
     expect(record.skip?.reason).toBe('worker crashed');
+  });
+
+  it('interruptedInPhase names the limit that stopped the run, and only the phase for a plain interrupt', () => {
+    const interrupt = (reason?: unknown): AbortSignal => {
+      const controller = new AbortController();
+      controller.abort(reason);
+      return controller.signal;
+    };
+    expect(interruptedInPhase(interrupt(), 'body')).toBe('run interrupted in phase body');
+    expect(interruptedInPhase(interrupt(timeLimitSkip({ ms: 2000, source: '--max-duration' })), 'body')).toBe(
+      'run interrupted in phase body: run stopped at its time limit of 2000 ms (--max-duration)',
+    );
+    expect(interruptedInPhase(interrupt(failureLimitSkip(1, 1)), 'body')).toBe(
+      'run interrupted in phase body: run stopped after 1 failure (--max-failures 1)',
+    );
   });
 });
 

@@ -7,7 +7,7 @@ import { EngineError, TestError, type OperationContext, type SemanticNode } from
 import { isRunnerFailure, isSnapshotPresentationFailure, staleOr, translateError } from '../../src/errors.ts';
 import { SETTINGS_SNAPSHOT } from '../helpers/fake-client.ts';
 import { boot, harness, PROJECT_ROOT, type Harness } from '../helpers/harness.ts';
-import { noSecrets } from '../helpers/secrets.ts';
+import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 describe('error translation', () => {
   it('passes classified errors through untouched', () => {
@@ -22,16 +22,20 @@ describe('error translation', () => {
       code: 'INVALID_STATE',
       retryable: false,
     });
-    expect(translateError(new Error('No active app session. Run open first.'), 'snapshot')).toMatchObject({
-      code: 'INVALID_STATE',
-    });
     // What `appstate` says once `close` ended the session; the harness reports it as APP_NOT_OPEN.
     expect(
       translateError(
-        new AppError('INVALID_ARGS', 'appstate requires an active session or an explicit device selector (e.g. --platform ios).'),
+        new AppError('INVALID_ARGS', 'appstate requires an active session or an explicit device selector (e.g. --platform ios).', {
+          reason: 'session_or_device_selector_required',
+          dispatched: 'no',
+        }),
         'device.foregroundApp',
       ),
     ).toMatchObject({ code: 'INVALID_STATE', retryable: false });
+    // Keyed on the code and reason, never the text: a message that only reads like a missing session stays an engine failure.
+    expect(translateError(new AppError('INVALID_ARGS', 'appstate requires an active session'), 'device.foregroundApp')).toMatchObject({
+      code: 'ENGINE_FAILURE',
+    });
     expect(
       translateError(
         new AppError('SESSION_NOT_FOUND', 'iOS appstate requires an active session on the target device. Run open first.'),
@@ -248,7 +252,7 @@ describe('automation runner failures through the engine', () => {
   async function openAttempt(h: Harness): Promise<void> {
     artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-mobile-errors-'));
     await boot(h, 'ios');
-    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
   }
 
   /** Every node under the root, the root excluded. */

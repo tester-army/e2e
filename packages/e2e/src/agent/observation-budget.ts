@@ -7,8 +7,12 @@
 import { imageTokenUpperBound } from './model/adapter.ts';
 
 /**
- * Headroom reserved for the method instruction and parameters, in the
- * byte-scaled units `tokenUpperBound` works in.
+ * Headroom reserved for what travels with the instruction, in the byte-scaled
+ * units `tokenUpperBound` works in: the request text, the prompt's markup, and
+ * a repair section quoting a rejected response. The instruction itself is
+ * measured, not reserved for: an explore planner's record of earlier steps or
+ * a long extract instruction outgrows any fixed figure, and the adapter's
+ * pre-flight refuses the request instead of the screen being cut to fit.
  */
 const INSTRUCTION_RESERVE = 4_096;
 
@@ -42,6 +46,8 @@ export interface ObservationBudgetLimits {
 export interface ObservationBudgetRequest {
   /** Bytes the rest of the request already costs: system message, ledger, context. */
   readonly fixedBytes: number;
+  /** Bytes of the caller's instruction as the prompt carries it; 0 when it is not sent with the observation. */
+  readonly instructionBytes: number;
   /** Whether a screenshot travels with the tree, reserving its token cost too. */
   readonly pixels: boolean;
 }
@@ -58,7 +64,7 @@ export function observationByteBudget(
   limits: ObservationBudgetLimits,
   request: ObservationBudgetRequest,
 ): number {
-  const overhead = request.fixedBytes + INSTRUCTION_RESERVE + (request.pixels ? PIXEL_RESERVE : 0);
+  const overhead = request.fixedBytes + request.instructionBytes + INSTRUCTION_RESERVE + (request.pixels ? PIXEL_RESERVE : 0);
   const withinTokenCeiling = Math.max(
     MIN_OBSERVATION_BYTES,
     limits.maxInputTokens - overhead,

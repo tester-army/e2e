@@ -13,8 +13,10 @@
  *   and a directory names its index the same way.
  * - A bare specifier the project's tsconfig.json maps through `paths` or
  *   `baseUrl` names the mapped file, before any package of that name.
- * - A `#` import or package export that names a missing `./x.js` (or `.jsx`,
- *   `.mjs`, `.cjs`) names the TypeScript file behind it, for an `import`.
+ * - A `#` import or package subpath whose target is not a file names the
+ *   TypeScript file behind it, for an `import`: `x.ts` for a missing `./x.js`
+ *   (or `.jsx`, `.mjs`, `.cjs`) or `./x`, and for a directory (one a map
+ *   names, or a subpath of a package without `exports`) its `main` or index.
  *
  * Format: `.ts`, `.mts`, `.tsx`, and `.jsx` are ES modules wherever they are
  * and whatever the nearest package.json says, so a Next.js app, or any
@@ -76,12 +78,13 @@ function graphOf(url: string | undefined): string | null {
 
 /**
  * A URL that evaluates `absolutePath` afresh under `key`; with `graph`,
- * every project file it imports by path or `#` import is fresh too.
+ * every project file it imports by path or `#` import is fresh too, shared
+ * with every other module loaded under the same `graph`.
  */
-export function freshModuleURL(absolutePath: string, key: string, graph: boolean): string {
+export function freshModuleURL(absolutePath: string, key: string, graph: string | undefined): string {
   const url = pathToFileURL(absolutePath);
   url.searchParams.set('e2e', key);
-  if (graph) url.searchParams.set(GRAPH_PARAM, key);
+  if (graph !== undefined) url.searchParams.set(GRAPH_PARAM, graph);
   return url.href;
 }
 
@@ -186,12 +189,20 @@ function typeScriptFileFor(missing: URL, view: ProjectView): string | undefined 
 }
 
 /**
- * The resolution of `request`, a `#` import or package export written in a
+ * The codes Node.js throws for an `import` whose target is not a file: a
+ * missing one, or a directory (an ES module never loads a directory's index).
+ */
+const UNRESOLVED_TARGET: ReadonlySet<unknown> = new Set(['ERR_MODULE_NOT_FOUND', 'ERR_UNSUPPORTED_DIR_IMPORT']);
+
+/**
+ * The resolution of `request`, a `#` import or package subpath written in a
  * compiled file, moved to the file TypeScript's rules find when the target
- * the map names is not there (`x.ts` for a mapped `./x.js` or `./x`, a
- * directory's index). Node.js throws for such a target, naming it on the
- * error of an `import` (not of a `require()`); a resolver earlier in the
- * chain may return it anyway (Yarn PnP's does), to fail when it loads.
+ * is not a file (`x.ts` for a mapped `./x.js` or `./x`, a directory's index,
+ * whether a map names the directory or a package without `exports` has it).
+ * Node.js throws for such a target, naming it on the error of an `import`
+ * (not of a `require()`). Yarn PnP's resolver returns a `#` target anyway,
+ * to fail when it loads; for a package subpath it throws without naming the
+ * target, so that import still fails.
  */
 function resolveExport(request: string, context: ResolveHookContext, nextResolve: NextResolve, view: ProjectView): Resolution {
   let resolution: Resolution;
@@ -199,7 +210,7 @@ function resolveExport(request: string, context: ResolveHookContext, nextResolve
     resolution = nextResolve(request, context);
   } catch (error) {
     const { code, url } = error as { code?: unknown; url?: unknown };
-    const file = code === 'ERR_MODULE_NOT_FOUND' && typeof url === 'string' && url.startsWith('file:') ? typeScriptFileFor(new URL(url), view) : undefined;
+    const file = UNRESOLVED_TARGET.has(code) && typeof url === 'string' && url.startsWith('file:') ? typeScriptFileFor(new URL(url), view) : undefined;
     if (file === undefined) throw error;
     return nextResolve(file, context);
   }

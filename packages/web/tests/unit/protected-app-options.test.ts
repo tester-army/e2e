@@ -1,5 +1,5 @@
 /**
- * The `headers`, `basicAuth`, `testIdAttribute`, `userAgent`, `locale`, `timezoneId`, `initScripts`, and `screencast` options are checked at
+ * The `headers`, `basicAuth`, `testIdAttribute`, `userAgent`, `locale`, `timezoneId`, `colorScheme`, `reducedMotion`, `initScripts`, and `screencast` options are checked at
  * config load, so a header the browser could never send or an attribute no
  * element could carry fails the run before a browser launches. What the
  * browser does with valid ones is in tests/integration.
@@ -109,6 +109,36 @@ describe('web({ locale, timezoneId })', () => {
   });
 });
 
+describe('web({ colorScheme, reducedMotion })', () => {
+  it('accepts every value the browser emulates, on a persistent context too', () => {
+    for (const colorScheme of ['light', 'dark', 'no-preference'] as const) expect(() => web({ colorScheme })).not.toThrow();
+    for (const reducedMotion of ['reduce', 'no-preference'] as const) expect(() => web({ reducedMotion })).not.toThrow();
+    const connect = { cdpEndpoint: () => 'ws://127.0.0.1:9222', reconnectEndpoint: () => 'ws://127.0.0.1:9222' };
+    expect(() => web({ connect, colorScheme: 'dark', reducedMotion: 'reduce' })).not.toThrow();
+  });
+
+  it('rejects any other value as INVALID_CONFIG, listing the ones it takes', () => {
+    const refused = (message: string) => expect.objectContaining({ code: 'INVALID_CONFIG', message });
+    expect(() => web({ colorScheme: 'Dark' } as unknown as WebOptions)).toThrow(
+      refused('web({ colorScheme }) must be "light", "dark", or "no-preference", got "Dark"'),
+    );
+    expect(() => web({ reducedMotion: true } as unknown as WebOptions)).toThrow(
+      refused('web({ reducedMotion }) must be "reduce" or "no-preference", got true'),
+    );
+    expect(() => web({ reducedMotion: null } as unknown as WebOptions)).toThrow(refused('web({ reducedMotion }) must be "reduce" or "no-preference", got null'));
+    // A value no message could serialize still gets the configuration error, not a TypeError.
+    const circular: Record<string, unknown> = {};
+    circular['self'] = circular;
+    expect(() => web({ colorScheme: circular } as unknown as WebOptions)).toThrow(
+      refused('web({ colorScheme }) must be "light", "dark", or "no-preference", got an object'),
+    );
+    expect(() => web({ colorScheme: ['dark'] } as unknown as WebOptions)).toThrow(
+      refused('web({ colorScheme }) must be "light", "dark", or "no-preference", got an array'),
+    );
+    expect(() => web({ reducedMotion: 10n } as unknown as WebOptions)).toThrow(refused('web({ reducedMotion }) must be "reduce" or "no-preference", got bigint'));
+  });
+});
+
 describe('web({ initScripts })', () => {
   it('rejects anything else, naming the entry', () => {
     const refused = (message: RegExp) => expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringMatching(message) });
@@ -160,7 +190,7 @@ describe('web() option keys', () => {
       refused('web() has unknown key "viewprt"; did you mean "viewport"?'),
     );
     expect(() => web({ launchOptions: {} } as unknown as Parameters<typeof web>[0])).toThrow(
-      refused('web() has unknown key "launchOptions"; expected one of browser, viewport, screencast, connect, headers, basicAuth, testIdAttribute, userAgent, locale, timezoneId, initScripts'),
+      refused('web() has unknown key "launchOptions"; expected one of browser, viewport, screencast, connect, headers, basicAuth, testIdAttribute, userAgent, locale, timezoneId, colorScheme, reducedMotion, initScripts'),
     );
   });
 

@@ -13,6 +13,7 @@ import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError, errorMessage, InfrastructureError, TestError } from '../internal/errors.ts';
 import { Deadline } from '../internal/time.ts';
 import { didYouMean } from '../internal/suggest.ts';
+import { createScreenshotContext, type WrittenScreenshots } from './screenshots.ts';
 import { resolveSecretValue, sessionSecrecy, type SecretExposure } from './secrecy.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import { FixtureRecorder } from './fixture-recording.ts';
@@ -28,7 +29,6 @@ import {
 import { engineAppInfo } from '../config/app.ts';
 import type { ResolvedAgentConfig, ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type { Agent, App, Expectable, SetupSession, TestFixtures } from '../types.ts';
-import type { ArtifactRecord } from './records.ts';
 import type { StepRecord, StepRecorder } from './steps.ts';
 
 export interface ArtifactSink {
@@ -36,7 +36,7 @@ export interface ArtifactSink {
   readonly dir: string;
   /** Registers a produced artifact and returns its report artifact ID. */
   register(
-    kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log',
+    kind: 'screenshot' | 'video' | 'download' | 'log',
     relativePath: string,
     options?: ArtifactRegistration,
   ): string;
@@ -48,12 +48,6 @@ export interface ArtifactSink {
 export interface ArtifactRegistration {
   /** When a time-based artifact (a video segment) began recording. */
   readonly startedAt?: string;
-  /**
-   * How much of the file the runner masked, when that was decided per
-   * artifact (a trace, rewritten or found to need no rewriting) rather than
-   * per kind.
-   */
-  readonly redaction?: ArtifactRecord['redaction'];
 }
 
 export interface AttemptEnvironment {
@@ -82,6 +76,12 @@ export interface AttemptEnvironment {
   readonly debug?: DebugTrace;
   /** The worker's model adapters, checked once on the first `agent` acquisition. */
   readonly models: WorkerModels;
+  /**
+   * The test the attempt runs, which `toHaveScreenshot` keeps its screenshots
+   * beside, and the screenshots the run wrote; absent for a session with no
+   * test (`e2e mcp`).
+   */
+  readonly test?: { readonly file: string; readonly titlePath: readonly string[]; readonly writtenScreenshots: WrittenScreenshots };
 }
 
 /** Builds the lazy fixture graph for one attempt. */
@@ -99,6 +99,8 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     attemptId: environment.attemptId,
     actionTimeout: environment.config.actionTimeout,
     assertionTimeout: environment.config.assertionTimeout,
+    recordEvent: (event) => environment.steps.recordEvent(event),
+    redact: (text) => environment.steps.redactText(text),
   });
 
   const { ledger, exposure } = sessionSecrecy(environment.session, environment.config.allSecrets);
@@ -117,6 +119,21 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     steps: environment.steps,
     secrets,
     projectRoot: environment.config.projectRoot,
+    ...(environment.test === undefined
+      ? {}
+      : {
+          screenshots: createScreenshotContext({
+            projectRoot: environment.config.projectRoot,
+            ci: environment.config.ci,
+            update: environment.config.updateSnapshots,
+            targetName: environment.target.name,
+            file: environment.test.file,
+            titlePath: environment.test.titlePath,
+            written: environment.test.writtenScreenshots,
+            artifacts: environment.artifacts,
+            withholdsPixels: () => exposure.withholdsPixels,
+          }),
+        }),
   };
   const screen = createScreen(screenContext);
   const app = createApp(environment, engine, exposure);

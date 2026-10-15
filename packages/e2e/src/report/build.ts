@@ -26,7 +26,8 @@ import type {
   SerialMemberRecord,
 } from '../run/records.ts';
 import type {
-  StepCacheInfo,
+  AppLogRecord,
+  StepCacheRecord,
   StepEvent,
   StepMetrics,
   StepModelInfo,
@@ -44,8 +45,8 @@ export interface ReportSource {
 export interface TargetProvenance {
   engine: { name: string; version: string; spiVersion: EngineSpiVersion };
   capabilities: string[];
-  /** What the engine can capture: screenshots (a failure's among them), a trace, a video. */
-  artifactCapabilities: ('screenshot' | 'trace' | 'video')[];
+  /** What the engine can capture: screenshots (a failure's among them), a video. */
+  artifactCapabilities: ('screenshot' | 'video')[];
   stateCapability: boolean;
 }
 
@@ -59,7 +60,6 @@ export function describeTarget(target: ResolvedTarget): TargetProvenance {
   const artifactCapabilities: TargetProvenance['artifactCapabilities'] = [];
   if (engine?.artifacts !== undefined) {
     artifactCapabilities.push('screenshot');
-    if (engine.artifacts.startTrace !== undefined) artifactCapabilities.push('trace');
     if (engine.artifacts.startVideo !== undefined) artifactCapabilities.push('video');
   }
   return {
@@ -179,13 +179,17 @@ export interface ReportStep {
   visionOnly?: boolean | undefined;
   viewport?: { width: number; height: number; scale: number } | undefined;
   metrics?: StepMetrics | undefined;
-  cache?: StepCacheInfo | undefined;
+  cache?: StepCacheRecord | undefined;
   events: readonly StepEvent[];
   /** The last model turns of an agent step, oldest first. */
   turns?: readonly StepTurn[] | undefined;
   model?: StepModelInfo | undefined;
   /** The configured agent an agent step ran with, by name. */
   agent?: string | undefined;
+  /** The hook the step ran in; absent for a step of the test body. */
+  phase?: StepRecord['phase'];
+  /** How the last screen the step saw differs from the step before's; absent when it saw none. */
+  screen?: StepRecord['screen'];
   error?: ReportError | undefined;
   artifacts: readonly string[];
 }
@@ -200,13 +204,17 @@ interface ReportAttemptBase {
   error?: ReportError | undefined;
   secondaryErrors: readonly ReportError[];
   cleanup: AttemptRecord['cleanup'];
+  /** What the engine said the attempt ran on, such as `browser` or `device`; absent when it said nothing. */
+  environment?: Readonly<Record<string, string>> | undefined;
 }
 
 export interface ReportAttempt extends ReportAttemptBase {
   steps: readonly ReportStep[];
+  /** What the app logged during the attempt, each line with the index of its step; absent when it logged nothing. */
+  appLog?: readonly AppLogRecord[] | undefined;
   /** What the runner saw when the failure landed; absent on a pass or when nothing could be captured. */
   failure?: FailureEvidence | undefined;
-  /** Why the body skipped itself; present exactly when `status` is `skipped`. */
+  /** Why the body skipped itself; present when `status` is `skipped`, and on an attempt that failed after skipping. */
   skip?: SkipInfo | undefined;
 }
 
@@ -218,6 +226,8 @@ export interface ReportSerialMember {
   startedAt: string;
   durationMs: number;
   steps: readonly ReportStep[];
+  /** What the app logged during this member, as on an attempt. */
+  appLog?: readonly AppLogRecord[] | undefined;
   error?: ReportError | undefined;
   /** What the runner saw when this member's failure landed. */
   failure?: FailureEvidence | undefined;
@@ -397,10 +407,23 @@ function relativeSource(
   source: { file: string; line: number; column: number } | undefined,
   fallbackFile: string,
 ): ReportSource {
-  if (source === undefined) return { file: fallbackFile, line: 1, column: 1 };
+  return projectSource(config?.projectRoot, source, fallbackFile) ?? { file: fallbackFile, line: 1, column: 1 };
+}
+
+/**
+ * A recorded declaration as the report writes it: project-relative, line and
+ * column at least 1. A file outside the project becomes `fallbackFile`; no
+ * recorded source stays `undefined`.
+ */
+export function projectSource(
+  projectRoot: string | undefined,
+  source: { readonly file: string; readonly line: number; readonly column: number } | undefined,
+  fallbackFile: string,
+): ReportSource | undefined {
+  if (source === undefined) return undefined;
   let file = source.file;
-  if (config !== undefined && path.isAbsolute(file)) {
-    file = projectRelativePath(config.projectRoot, file) ?? fallbackFile;
+  if (projectRoot !== undefined && path.isAbsolute(file)) {
+    file = projectRelativePath(projectRoot, file) ?? fallbackFile;
   }
   if (file.startsWith('/') || /^[A-Za-z]:/.test(file)) {
     file = fallbackFile;
@@ -438,6 +461,7 @@ function serializeAttemptBase(attempt: AttemptRecord | SerialAttemptRecord): Rep
     error: attempt.error === undefined ? undefined : serializeErrorRecord(attempt.error),
     secondaryErrors: attempt.secondaryErrors.map(serializeErrorRecord),
     cleanup: attempt.cleanup,
+    ...(attempt.environment === undefined ? {} : { environment: attempt.environment }),
   };
 }
 
@@ -447,6 +471,7 @@ function serializeAttempt(attempt: AttemptRecord): ReportAttempt {
     ...(attempt.failure === undefined ? {} : { failure: attempt.failure }),
     ...(attempt.skip === undefined ? {} : { skip: attempt.skip }),
     steps: attempt.steps.map(serializeStep),
+    ...(attempt.appLog === undefined ? {} : { appLog: attempt.appLog }),
   };
 }
 
@@ -460,9 +485,10 @@ function serializeSerialMember(member: SerialMemberRecord): ReportSerialMember {
     durationMs: member.durationMs,
     // A member skipped at selection has no steps; one that skipped itself keeps the steps that ran.
     steps: member.steps.map(serializeStep),
+    ...(member.appLog === undefined ? {} : { appLog: member.appLog }),
     error: member.error === undefined ? undefined : serializeErrorRecord(member.error),
     ...(member.failure === undefined ? {} : { failure: member.failure }),
-    skip: member.status === 'skipped' ? member.skip : undefined,
+    ...(member.skip === undefined ? {} : { skip: member.skip }),
     secondaryErrors: member.secondaryErrors.map(serializeErrorRecord),
   };
 }

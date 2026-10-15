@@ -11,4 +11,3 @@ stopped after 3 failures (--max-failures 3): the running tests end as interrupte
       Tests  none executed (interrupted)
    Start at  10:00:00
    Duration  0ms
-     Report  .e2e/report.json

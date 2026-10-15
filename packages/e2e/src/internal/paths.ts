@@ -61,6 +61,15 @@ export function relativeToProjectRoot(projectRoot: string, target: string): stri
   return inside ? relative : undefined;
 }
 
+/**
+ * `target` as a message shows it, with `/` separators: relative to the
+ * project root when strictly below it (see `relativeToProjectRoot`), else
+ * absolute.
+ */
+export function displayPath(projectRoot: string, target: string): string {
+  return (relativeToProjectRoot(projectRoot, target) ?? target).split(path.sep).join('/');
+}
+
 /** Whether `target` is a path strictly below the project root; see `relativeToProjectRoot`. */
 export function insideProjectRoot(projectRoot: string, target: string): boolean {
   return relativeToProjectRoot(projectRoot, target) !== undefined;

@@ -15,7 +15,7 @@ const SETTLE_TIMEOUT_MS = 5_000;
 /** Leave time for a fresh masked screenshot after semantic capture expires. */
 const PIXEL_FALLBACK_RESERVE_MS = 2_000;
 
-interface CaptureSettings {
+export interface CaptureSettings {
   readonly testIdAttribute: string;
   readonly site: string | undefined;
 }

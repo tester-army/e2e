@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import type { LoadHookContext, ResolveHookContext } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -30,7 +30,7 @@ const url = (relative: string): string => pathToFileURL(path.join(project, relat
  * Resolves `specifier` from `parentURL` through the hook. The stand-in for
  * Node.js's own resolution records what it was asked, resolves relative
  * specifiers and paths, and fails like Node.js for a file that is not on
- * disk; `exports` maps a bare or `#` specifier to the URL a package's map
+ * disk or is a directory; `exports` maps a bare or `#` specifier to the URL a package's map
  * names, existing or not.
  */
 function resolveFrom(
@@ -45,10 +45,10 @@ function resolveFrom(
     const target =
       exports[next] ?? (/^(?:node|data):/.test(next) ? next : path.isAbsolute(next) ? pathToFileURL(next).href : new URL(next, nextContext?.parentURL ?? 'file:///').href);
     if (target.startsWith('file:') && !target.startsWith('file:///app/')) {
-      try {
-        readFileSync(fileURLToPath(target));
-      } catch {
-        throw Object.assign(new Error(`Cannot find module '${target}'`), { code: 'ERR_MODULE_NOT_FOUND', url: target });
+      const stat = statSync(fileURLToPath(target), { throwIfNoEntry: false });
+      if (stat === undefined) throw Object.assign(new Error(`Cannot find module '${target}'`), { code: 'ERR_MODULE_NOT_FOUND', url: target });
+      if (stat.isDirectory()) {
+        throw Object.assign(new Error(`Directory import '${target}' is not supported`), { code: 'ERR_UNSUPPORTED_DIR_IMPORT', url: target });
       }
     }
     return { url: target, format };
@@ -110,14 +110,14 @@ describe('resolve', () => {
   });
 
   it.each([
-    ['an extensionless import', '../lib/util'],
-    ['an extensionless TypeScript import', '../lib/helper'],
-    ['an extensionless JSON import', '../lib/data'],
-    ['a directory import', '../lib/dir'],
-    ['./x.js naming x.ts', '../lib/helper.js'],
-    ['a tsconfig alias', '@lib/helper'],
-  ])('gives JavaScript Node.js resolution: %s fails as Node.js reports it', (_case, specifier) => {
-    expect(() => resolveFrom(url('tests/plain.js'), specifier)).toThrow('Cannot find module');
+    ['an extensionless import', '../lib/util', 'Cannot find module'],
+    ['an extensionless TypeScript import', '../lib/helper', 'Cannot find module'],
+    ['an extensionless JSON import', '../lib/data', 'Cannot find module'],
+    ['a directory import', '../lib/dir', 'Directory import'],
+    ['./x.js naming x.ts', '../lib/helper.js', 'Cannot find module'],
+    ['a tsconfig alias', '@lib/helper', 'Cannot find module'],
+  ])('gives JavaScript Node.js resolution: %s fails as Node.js reports it', (_case, specifier, message) => {
+    expect(() => resolveFrom(url('tests/plain.js'), specifier)).toThrow(message);
   });
 
   it('keeps ./x.js as written when x.jsx sits beside x.js, as TypeScript does', () => {
@@ -153,6 +153,11 @@ describe('resolve', () => {
     expect(resolveFrom(url('tests/example.e2e.ts'), '@ws/lib/sub', { exports: { '@ws/lib/sub': url('internal/sub') } }).asked).toEqual([
       '@ws/lib/sub',
       url('internal/sub.ts'),
+    ]);
+    // A package without `exports` resolves a subpath to the directory itself.
+    expect(resolveFrom(url('tests/example.e2e.ts'), '@ws/legacy/dir', { exports: { '@ws/legacy/dir': url('lib/dir') } }).asked).toEqual([
+      '@ws/legacy/dir',
+      url('lib/dir/index.ts'),
     ]);
     const withQuery = { '#js/sub': `${url('internal/sub.js')}?v=1#h` };
     expect(resolveFrom(url('tests/example.e2e.ts'), '#js/sub', { exports: withQuery }).asked).toEqual(['#js/sub', `${url('internal/sub.ts')}?v=1#h`]);

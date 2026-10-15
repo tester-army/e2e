@@ -50,6 +50,26 @@ describe('target process selection', () => {
     }
   });
 
+  it('copies inheritEnv variables from the environment the run is given', async () => {
+    const project = createProject(FILES);
+    const port = await freePort();
+    const script = `require('node:fs').writeFileSync('inherited.txt', String(process.env.E2E_TEST_RUN_VALUE));
+require('node:http').createServer((_request, response) => response.end('ready')).listen(${port}, '127.0.0.1');`;
+    const url = `http://127.0.0.1:${port}`;
+    const app: TargetApp = { url, command: { executable: process.execPath, args: ['-e', script], inheritEnv: ['E2E_TEST_RUN_VALUE'] } };
+    try {
+      const outcome = await runExisting(project, {
+        appUrl: url,
+        config: { targets: [{ name: 'fake', platform: 'fake', engine: createFakeEngine().engine, app }] },
+        runOptions: { env: { ...process.env, CI: '', E2E_TEST_RUN_VALUE: 'per-run' } },
+      });
+      expect(outcome.report.run.errors).toEqual([]);
+      expect(readFileSync(path.join(project.dir, 'inherited.txt'), 'utf8')).toBe('per-run');
+    } finally {
+      project.cleanup();
+    }
+  });
+
   it('rejects an unknown target with its suggestion before starting any process', async () => {
     const project = createProject(FILES);
     const port = await freePort();

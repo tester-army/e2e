@@ -12,6 +12,22 @@ export interface FixturePage {
 
 export const FIXTURE_PAGES: readonly FixturePage[] = [
   {
+    name: 'shadow section landmarks',
+    html: `
+      <article><div id="article-shadow"></div></article>
+      <div role="region" aria-label="News"><div id="region-shadow"></div></div>
+      <div id="page-shadow"></div>
+      <script>
+        for (const id of ['article-shadow', 'region-shadow', 'page-shadow']) {
+          const root = document.getElementById(id).attachShadow({ mode: 'open' });
+          root.innerHTML = '<div></div>';
+          root.firstElementChild.attachShadow({ mode: 'open' }).innerHTML =
+            '<header aria-label="' + id + ' header">Heading</header><footer aria-label="' + id + ' footer">Footer</footer>';
+        }
+      </script>
+    `,
+  },
+  {
     name: 'inferred table headers',
     html: `
       <table><tr><th>Item</th><td>Value</td></tr></table>
@@ -19,6 +35,29 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
       <table><tr><th>Column</th><th>Other column</th></tr></table>
       <table><tr><th scope="col">Explicit column</th><td>Value</td></tr></table>
       <table><tr><th scope="row">Explicit row</th><th>Column</th></tr></table>
+    `,
+  },
+  {
+    name: 'role fallback tokens',
+    html: `
+      <button role="unknown button">Save</button>
+      <button role="unknown widget">Submit</button>
+      <a href="/next" role="unknown button link">Continue</a>
+      <div role="unknown img" aria-label="Chart" style="width:10px;height:10px"></div>
+      <div role="unknown\u00a0button" aria-label="Not a role" style="width:10px;height:10px"></div>
+      <table role="unknown grid"><tr><td>Cell</td></tr></table>
+    `,
+  },
+  {
+    name: 'boolean attribute casing',
+    html: `
+      <div role="tablist"><button role="tab" aria-selected="TRUE">All</button><button role="tab" aria-selected="TrUe">Recent</button><button role="tab" aria-selected="FALSE">Archived</button></div>
+      <div aria-hidden="TRUE"><button aria-hidden="false">Hidden action</button></div>
+      <button>Save<span aria-hidden="TrUe"> decoration</span></button>
+      <button aria-hidden="FALSE">Shown</button>
+      <button aria-labelledby="upper-reference">Fallback</button>
+      <div aria-hidden="TRUE"><span id="upper-reference">Label <i style="display:none">whole</i></span></div>
+      <div role="button">Pick <div role="listbox"><div role="option" aria-selected="true">Chosen</div><div role="option" aria-selected="false">Other</div></div></div>
     `,
   },
   {

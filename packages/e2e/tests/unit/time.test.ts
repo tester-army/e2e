@@ -113,6 +113,25 @@ describe('pollCondition', () => {
     await assertion;
   });
 
+  it('takes its last read at the deadline, not a poll tick past it', async () => {
+    vi.useFakeTimers();
+    const startedAt = Date.now();
+    const readsAt: number[] = [];
+    const promise = pollCondition(
+      makeOptions({
+        timeoutMs: 350,
+        evaluate: async () => {
+          readsAt.push(Date.now() - startedAt);
+          return Date.now() - startedAt > 350;
+        },
+      }),
+    );
+    const assertion = expect(promise).rejects.toThrow('poll timed out');
+    await vi.advanceTimersByTimeAsync(1000);
+    await assertion;
+    expect(readsAt).toEqual([0, 100, 200, 300, 350]);
+  });
+
   it('negated: a budget shorter than the grace window is still satisfiable', async () => {
     vi.useFakeTimers();
     let resolved = false;

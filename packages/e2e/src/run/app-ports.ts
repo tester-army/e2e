@@ -6,7 +6,7 @@
  */
 
 import net from 'node:net';
-import { assignPorts, type ResolvedConfig } from '../config/resolve.ts';
+import { assignPorts, type ResolvedConfig, type ResolvedTarget } from '../config/resolve.ts';
 import { ConfigurationError, errorMessage } from '../internal/errors.ts';
 
 /**
@@ -17,7 +17,20 @@ import { ConfigurationError, errorMessage } from '../internal/errors.ts';
  * anything starts.
  */
 export async function allocateAppPorts(config: ResolvedConfig): Promise<ResolvedConfig> {
-  const pending = config.targets.filter((target) => target.app.portRequest !== undefined && !Object.hasOwn(config.ports, target.name));
+  return allocatePorts(config, config.targets);
+}
+
+/**
+ * A port for one target alone, for a session that opens it and must not
+ * fail on another target's URL. Returns the config and the target as it now reads.
+ */
+export async function allocateTargetPorts(config: ResolvedConfig, target: ResolvedTarget): Promise<{ config: ResolvedConfig; target: ResolvedTarget }> {
+  const allocated = await allocatePorts(config, [target]);
+  return { config: allocated, target: allocated.targets.find((candidate) => candidate.name === target.name)! };
+}
+
+async function allocatePorts(config: ResolvedConfig, among: readonly ResolvedTarget[]): Promise<ResolvedConfig> {
+  const pending = among.filter((target) => target.app.portRequest !== undefined && !Object.hasOwn(config.ports, target.name));
   if (pending.length === 0) return config;
 
   const reserved: net.Server[] = [];

@@ -1,12 +1,13 @@
 /** Public expect() dispatcher (spec api/e2e.d.ts). */
 
 import { Any, Anything, ArrayContaining, ObjectContaining, StringContaining, StringMatching } from '@vitest/expect';
-import type { AsymmetricMatcher, AsyncExpectation, Class, Expect, Expectable, Locator, SoftValueExpectation, ValueExpectation } from '../types.ts';
+import type { AsymmetricMatcher, AsyncExpectation, Class, Expect, Expectable, Locator, Screen, ScreenExpectation, SoftValueExpectation, ValueExpectation } from '../types.ts';
 import { expectationBrand } from '../internal/brands.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
-import { locatorInternals } from '../locator/screen.ts';
+import { locatorInternals, screenInternals } from '../locator/screen.ts';
 import { createAsyncExpectation } from './async.ts';
 import { createPollExpectation } from './poll.ts';
+import { createScreenExpectation } from './screenshot.ts';
 import { soften } from './soft.ts';
 import { createValueExpectation } from './values.ts';
 
@@ -19,20 +20,24 @@ import { createValueExpectation } from './values.ts';
 const expectationSlot = realmSlot<object>(expectationBrand);
 
 function dispatch(actual: Locator): AsyncExpectation;
+function dispatch(actual: Screen): ScreenExpectation;
 function dispatch<E extends object>(actual: Expectable<E>): E;
 function dispatch<T>(actual: T, message?: string): ValueExpectation<T>;
-function dispatch(actual: unknown, message?: string): AsyncExpectation | object | ValueExpectation<unknown> {
+function dispatch(actual: unknown, message?: string): AsyncExpectation | ScreenExpectation | object | ValueExpectation<unknown> {
   const internals = locatorInternals(actual);
   if (internals !== undefined) return createAsyncExpectation(internals);
   const attached = expectationSlot.get(actual);
   if (attached !== undefined) return attached;
+  const screen = screenInternals(actual);
+  if (screen !== undefined) return createScreenExpectation(screen.context, screen.scoped);
   return createValueExpectation(actual, message);
 }
 
 function soft(actual: Locator): AsyncExpectation;
+function soft(actual: Screen): ScreenExpectation;
 function soft<E extends object>(actual: Expectable<E>): E;
 function soft<T>(actual: T, message?: string): SoftValueExpectation<T>;
-function soft(actual: unknown, message?: string): AsyncExpectation | object | SoftValueExpectation<unknown> {
+function soft(actual: unknown, message?: string): AsyncExpectation | ScreenExpectation | object | SoftValueExpectation<unknown> {
   return soften(dispatch(actual, message));
 }
 

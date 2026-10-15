@@ -76,6 +76,20 @@ test('assert holds for the named instance when another instance is stale', async
   await agent.assert('the order summary total is $42.00');
 });
 
+test('assert reads a sentence whole across its inline link and emphasis', async ({
+  browser,
+  agent,
+  screen,
+}) => {
+  await browser.goto('/plans');
+  await expect(screen.getByText('Read the release notes for what changed this week.', { exact: false })).toBeVisible();
+  await expect(screen.getByRole('link', 'release notes')).toBeVisible();
+  await expect(screen.getByText('Plans start at $12 per seat, billed annually, and include the e2e CLI.')).toBeVisible();
+  await agent.assert(
+    'the page says "Read the release notes for what changed this week." and "Plans start at $12 per seat, billed annually, and include the e2e CLI."',
+  );
+});
+
 test('waitFor polls until the loaded users appear', async ({ browser, agent, screen }) => {
   await browser.goto('/network');
   await screen.getByRole('button', 'Load users').click();

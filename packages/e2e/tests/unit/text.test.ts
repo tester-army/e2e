@@ -1,12 +1,6 @@
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
-import {
-  compareText,
-  matchesText,
-  normalizeRegexpFlags,
-  normalizeText,
-  toTextPattern,
-} from '../../src/internal/text.ts';
+import { bound, compareText, matchesText, normalizeRegexpFlags, normalizeText, toTextPattern } from '../../src/internal/text.ts';
 
 describe('normalizeText', () => {
   it('trims and collapses unicode whitespace runs to one ASCII space', () => {
@@ -80,5 +74,15 @@ describe('normalizeRegexpFlags', () => {
   it('sorts into canonical d,g,i,m,s,u,v,y order and de-duplicates', () => {
     expect(normalizeRegexpFlags('gid')).toBe('dgi');
     expect(normalizeRegexpFlags('yusmig')).toBe('gimsuy');
+  });
+});
+
+describe('bound', () => {
+  it('keeps text within its cap whole, and cuts longer text with an ellipsis, never through a surrogate pair', () => {
+    expect(bound('short', 10)).toBe('short');
+    expect(bound('abcdefghij', 5)).toBe('abcd…');
+    // The cut lands between the halves of 😀; it steps back rather than leave half a character.
+    expect(bound(`abc😀def`, 5)).toBe('abc…');
+    expect(bound(`ab😀def`, 5)).toBe('ab😀…');
   });
 });

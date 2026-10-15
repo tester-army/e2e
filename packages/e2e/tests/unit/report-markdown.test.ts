@@ -3,10 +3,11 @@
  * failed with the step it went wrong at, the flaky tests folded, every test
  * folded as one table with a row per file above its tests, an exploration rendered as its
  * findings, untrusted text escaped, and a body that never outgrows a pull
- * request comment. The `markdown` reporter writes it beside the report.
+ * request comment. The `markdown` reporter writes it beside the report and
+ * links each failure to the page the runner wrote for it.
  */
 
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -98,7 +99,7 @@ const failing = named({
     attempt({
       status: 'failed',
       error: { code: 'ASSERTION_FAILED', message: 'expected heading "Welcome, Ada" to be visible' },
-      artifacts: ['trace', 'screenshot', 'video'],
+      artifacts: ['screenshot', 'video'],
       steps: [
         step({ index: 0, kind: 'app', api: 'app.open', label: 'open /' }),
         step({ index: 1, kind: 'agent', api: 'agent.act', label: 'Sign in as the owner', metrics: metrics(4), cache: { mode: 'self-finalized', replayedActions: 3, totalActions: 3 } }),
@@ -166,7 +167,7 @@ describe('renderMarkdownReport', () => {
           '**🔴 members › an email invitation is accepted by the invited account only**  \n[tests/members.e2e.ts:41](https://github.com/o/r/blob/abc/tests/members.e2e.ts#L41)',
           '**ASSERTION_FAILED** at step 4 of 6: `agent.act` "Accept the invitation from the email", after 38.0s and 12 model calls',
           '> expected heading "Welcome, Ada" to be visible\n> The Accept button opened a page that still shows Sign in.',
-          'Evidence: [screenshot](https://github.com/o/r/actions/runs/9), [video](https://github.com/o/r/actions/runs/9), [trace](https://github.com/o/r/actions/runs/9)',
+          'Evidence: [screenshot](https://github.com/o/r/actions/runs/9), [video](https://github.com/o/r/actions/runs/9)',
         ].join('\n\n'),
         '',
         // A flaky test is folded: the run is green, and its story is the attempt that failed, not the retry that passed.
@@ -470,7 +471,7 @@ describe('renderMarkdownReport', () => {
       memberTestIds: [member.testId],
       status: 'failed',
       attempts: [
-        { ...attempt({ status: 'failed', artifacts: ['trace'] }), members: [] },
+        { ...attempt({ status: 'failed', artifacts: ['video'] }), members: [] },
         {
           ...attempt({ status: 'failed', artifacts: ['screenshot'] }),
           members: [
@@ -491,7 +492,7 @@ describe('renderMarkdownReport', () => {
       ],
     };
     const body = renderMarkdownReport(page({ status: 'failed', results: [member], serialGroups: [group] }));
-    // The evidence is the failing group attempt's own, not an earlier attempt's trace.
+    // The evidence is the failing group attempt's own, not an earlier attempt's video.
     expect(body).toContain(
       '**ASSERTION_FAILED** at step 1 of 1: `screen.tap tap Next`, after 900ms\n\n> nope\n\n- Screen: `http://app.test/wizard`\n- Closest to the locator: `#n3 button "Next step"`\n\nEvidence: screenshot',
     );
@@ -720,11 +721,11 @@ describe('renderMarkdownReport for an exploration', () => {
 
 describe('renderMarkdownReport evidence paths', () => {
   it('lists one artifact path per kind under artifactsDir when there is no run page, in kind order, and names kinds when no path was kept', () => {
-    const evidence = attempt({ status: 'failed', error: { code: 'E', message: 'm' }, artifacts: ['trace', 'screenshot', 'video', 'log', 'download'] });
+    const evidence = attempt({ status: 'failed', error: { code: 'E', message: 'm' }, artifacts: ['download', 'screenshot', 'video', 'log'] });
     const body = renderMarkdownReport(page({ status: 'failed', results: [named({ title: 't', status: 'failed', attempts: [evidence] })] }), { artifactsDir: '.e2e/artifacts' });
     // One artifact per kind of the attempt the block tells, named by kind; a log is not evidence unless the failure captured it.
     expect(body).toContain(
-      '\n\nEvidence: screenshot `.e2e/artifacts/t/attempt-0/screenshot-1.bin`, video `.e2e/artifacts/t/attempt-0/video-2.bin`, trace `.e2e/artifacts/t/attempt-0/trace-0.bin`, download `.e2e/artifacts/t/attempt-0/download-4.bin`\n',
+      '\n\nEvidence: screenshot `.e2e/artifacts/t/attempt-0/screenshot-1.bin`, video `.e2e/artifacts/t/attempt-0/video-2.bin`, download `.e2e/artifacts/t/attempt-0/download-0.bin`\n',
     );
     const withheld = attempt({ status: 'failed', error: { code: 'E', message: 'm' }, artifacts: ['screenshot'] });
     withheld.artifacts = withheld.artifacts.map(({ path: _path, ...artifact }) => artifact);
@@ -803,6 +804,7 @@ describe('markdownReporter', () => {
       reportPath: path.join(root, '.e2e', 'report.json'),
       artifactsRoot,
       aiTracePath: undefined,
+      traces: new Map(),
     };
   }
 
@@ -819,37 +821,15 @@ describe('markdownReporter', () => {
     expect(readFileSync(path.join(root, '.e2e', 'summary.md'), 'utf8')).toContain('   Evidence: screenshot `web/explore-checkout-d287e8aead677d36/default/attempt-0/finding-0.png`');
   });
 
-  it('writes one page per failed test under failures/, links each block to its page, and clears what an earlier run left there', async () => {
+  it('links each failure block to the page the runner wrote for it', async () => {
     const root = mkdtempSync(path.join(tmpdir(), 'e2e-markdown-'));
     dirs.push(root);
-    const stale = path.join(root, '.e2e', 'failures', 'stale.md');
-    mkdirSync(path.dirname(stale), { recursive: true });
-    writeFileSync(stale, 'old');
     const document = page({ status: 'failed', results: [passing, failing] });
-    const rows = await markdownReporter.onRunFinished!(finished(document, root), new AbortController().signal);
-    expect(rows).toEqual([
-      { label: 'Markdown', text: path.join('.e2e', 'summary.md') },
-      { label: 'Failures', text: `${path.join('.e2e', 'failures')}/ (1 page)` },
-    ]);
-    const pages = readdirSync(path.join(root, '.e2e', 'failures'));
-    expect(pages).toHaveLength(1);
-    const [name] = pages;
-    // The file and title as one path segment (rewritten into the safe alphabet, so it ends in the segment digest), then the result id's first characters.
-    expect(name).toMatch(/^tests_members\.e2e\.ts-members-an_email_invitation_is_accepted_by_the_invited_account_only-[0-9a-f]{8}-[A-Za-z0-9-]{1,8}\.md$/);
-    const summary = readFileSync(path.join(root, '.e2e', 'summary.md'), 'utf8');
-    expect(summary).toContain(`Details: \`.e2e/failures/${name}\``);
-    const text = readFileSync(path.join(root, '.e2e', 'failures', name!), 'utf8');
-    expect(text.startsWith('# ✗ members › an email invitation is accepted by the invited account only\n')).toBe(true);
-    expect(text).toContain('## Steps');
-    expect(text).toContain('- screenshot `.e2e/artifacts/t/attempt-0/screenshot-1.bin`');
-  });
-
-  it('writes no page for an interrupted test, which reached no verdict', async () => {
-    const root = mkdtempSync(path.join(tmpdir(), 'e2e-markdown-'));
-    dirs.push(root);
-    const cut = named({ title: 'cut short', status: 'interrupted', attempts: [attempt({ status: 'interrupted' })] });
-    const rows = await markdownReporter.onRunFinished!(finished(page({ status: 'interrupted', results: [passing, cut] }), root), new AbortController().signal);
+    const pages = new Map([[failing.id, '.e2e/traces/members-an-email-invitation-1a2b3c4d.md']]);
+    const rows = await markdownReporter.onRunFinished!({ ...finished(document, root), traces: pages }, new AbortController().signal);
     expect(rows).toEqual([{ label: 'Markdown', text: path.join('.e2e', 'summary.md') }]);
+    const summary = readFileSync(path.join(root, '.e2e', 'summary.md'), 'utf8');
+    expect(summary).toContain('Trace: `.e2e/traces/members-an-email-invitation-1a2b3c4d.md`');
     expect(readdirSync(path.join(root, '.e2e'))).toEqual(['summary.md']);
   });
 

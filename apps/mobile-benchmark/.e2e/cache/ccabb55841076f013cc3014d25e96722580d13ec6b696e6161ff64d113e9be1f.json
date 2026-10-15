@@ -1,0 +1,131 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-09T07:04:43.228Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"TA-BENCH-50\" into textbox \"Coupon code\"",
+        "target": {
+          "role": "textbox",
+          "name": "Coupon code"
+        },
+        "value": "TA-BENCH-50"
+      },
+      {
+        "name": "check",
+        "summary": "check switch \"I accept the terms\"",
+        "target": {
+          "role": "switch",
+          "name": "I accept the terms"
+        },
+        "checked": true
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Apply coupon\"",
+        "target": {
+          "role": "button",
+          "name": "Apply coupon"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20WebView%20Accessibility",
+      "targetId": "ios-simulator",
+      "instructionDigest": "60e9576a643a70f4d33968ccc19d845112ca2ed50212584e9e7aadc34707e5c8",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Read coupon code TA-BENCH-50, entered it, accepted the terms, and applied it. The web view now displays “Coupon applied.”",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "textbox",
+        "name": "Coupon code",
+        "value": "TA-BENCH-50"
+      },
+      {
+        "role": "switch",
+        "name": "I accept the terms",
+        "value": "1",
+        "states": [
+          "checked"
+        ]
+      },
+      {
+        "role": "other",
+        "name": "Vertical scroll bar, 2 pages",
+        "value": "0%"
+      },
+      {
+        "role": "other",
+        "name": "Coupon applied"
+      },
+      {
+        "role": "text",
+        "name": "Coupon applied",
+        "testId": "success-message"
+      },
+      {
+        "role": "other",
+        "name": "Vertical scroll bar, 2 pages",
+        "testId": "coupon-webview"
+      },
+      {
+        "role": "web-view",
+        "name": "Vertical scroll bar, 2 pages"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Apply the coupon shown inside the web page (accept the terms first)"
+      },
+      {
+        "role": "textbox",
+        "name": "Coupon code"
+      },
+      {
+        "role": "switch",
+        "name": "I accept the terms",
+        "value": "0"
+      },
+      {
+        "role": "other",
+        "name": "Vertical scroll bar, 1 page",
+        "value": "0%"
+      },
+      {
+        "role": "other",
+        "name": "Apply the coupon shown inside the web page (accept the terms first)"
+      },
+      {
+        "role": "other",
+        "name": "Vertical scroll bar, 1 page",
+        "testId": "coupon-webview"
+      },
+      {
+        "role": "web-view",
+        "name": "Vertical scroll bar, 1 page"
+      }
+    ],
+    "endWaitMs": 12286,
+    "keyedBy": {
+      "cacheSchema": "trace-1",
+      "policyVersion": "conservative/6",
+      "project": "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643",
+      "platform": "ios",
+      "engineName": "mobile",
+      "engineSpiVersion": 1,
+      "appIdentity": "873e96a3c0364ffd8e603a0fb9ccef7bb32dd2c64eb8bddaa76d36fdfbf446ae",
+      "agentContextDigest": "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+    }
+  }
+}

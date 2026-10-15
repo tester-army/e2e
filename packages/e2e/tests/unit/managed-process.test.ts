@@ -10,6 +10,50 @@ import { ManagedProcess } from '../../src/run/managed-process.ts';
 import type { CommandConfig } from '../../src/types.ts';
 
 describe('ManagedProcess', () => {
+  it.each(['preflight', 'startup'] as const)('cancels an in-flight %s readiness probe', async (phase) => {
+    let probing!: () => void;
+    const probeStarted = new Promise<void>((resolve) => { probing = resolve; });
+    let requests = 0;
+    const server = http.createServer((_request, response) => {
+      requests += 1;
+      if (phase === 'startup' && requests === 1) response.writeHead(503).end();
+      else probing(); // Keep the actual HTTP response pending until cancellation.
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (address === null || typeof address === 'string') throw new Error('no port');
+    const app = new ManagedProcess('app.command', {
+      executable: process.execPath,
+      args: ['-e', 'setInterval(() => {}, 1000)'],
+      startupTimeout: 10_000,
+      shutdownTimeout: 1_000,
+    }, process.cwd(), { readyUrl: `http://127.0.0.1:${address.port}/` });
+    const controller = new AbortController();
+    const pending = app.start(controller.signal);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        probeStarted,
+        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error(`no ${phase} probe was issued`)), 2_000); }),
+      ]);
+      clearTimeout(timer);
+      controller.abort();
+      const completed = await Promise.race([
+        pending.then(() => true),
+        new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(false), 500); }),
+      ]);
+      expect(completed).toBe(true);
+      expect(app.spawned).toBe(phase === 'startup');
+    } finally {
+      clearTimeout(timer);
+      controller.abort();
+      server.closeAllConnections();
+      await pending;
+      await app.stop();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it('stops waiting for readiness and takes the process down when the signal aborts', async () => {
     const app = new ManagedProcess(
       'app.command',
@@ -210,6 +254,25 @@ describe('ManagedProcess stall diagnostics', () => {
       `service "compose" did not exit within 1000 ms\noutput in ${log} since service "compose" started:\n  token=<secret:SECRET> port=443`,
     );
     expect(fs.readFileSync(path.join(dir, log), 'utf8')).toContain('token=hunter2-hunter2');
+  });
+
+  it('redacts inheritEnv values from the quoted output too', async () => {
+    vi.stubEnv('E2E_TEST_INHERITED_TOKEN', 'inherited-token-value');
+    try {
+      const app = new ManagedProcess(
+        'service "compose"',
+        stalled(`process.stdout.write('token=' + process.env.E2E_TEST_INHERITED_TOKEN + '\\n'); setInterval(() => {}, 1000);`, {
+          log,
+          inheritEnv: ['E2E_TEST_INHERITED_*'],
+        }),
+        dir,
+        { waitForExit: true },
+      );
+      const failure = await failureOf(app, 'token=');
+      expect(failure.message).toContain('  token=<secret:E2E_TEST_INHERITED_TOKEN>');
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('points at log when the command has none', async () => {
@@ -423,4 +486,74 @@ describe('ManagedProcess reuseExisting', () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   }, 20_000);
+});
+
+describe('ManagedProcess env', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-process-env-'));
+    vi.stubEnv('E2E_TEST_DATABASE_URL', 'postgres://from-host');
+    vi.stubEnv('E2E_TEST_STRIPE_KEY', 'sk_host');
+    vi.stubEnv('E2E_TEST_STRIPE_HOOK', 'wh_host');
+    vi.stubEnv('E2E_TEST_MODEL_KEY', 'model-key');
+    vi.stubEnv('E2E_TEST_DATABASE_URL_RO', 'postgres://replica');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** Runs a command that writes its own environment to `env.json` in the project root, and reads it back. */
+  const envOf = async (extra: Partial<CommandConfig>, runEnv?: NodeJS.ProcessEnv): Promise<Record<string, string>> => {
+    await new ManagedProcess(
+      'app.command',
+      { executable: process.execPath, args: ['-e', `require('node:fs').writeFileSync('env.json', JSON.stringify(process.env))`], cwd: dir, ...extra },
+      dir,
+      { waitForExit: true },
+      runEnv === undefined ? {} : { env: runEnv },
+    ).start();
+    return JSON.parse(fs.readFileSync(path.join(dir, 'env.json'), 'utf8')) as Record<string, string>;
+  };
+
+  it('passes only the default set without inheritEnv', async () => {
+    const env = await envOf({});
+    expect(Object.keys(env).filter((key) => key.startsWith('E2E_TEST_'))).toEqual([]);
+  });
+
+  it('copies listed variables, leaves the rest out, and lets command.env win', async () => {
+    const env = await envOf({
+      inheritEnv: ['E2E_TEST_DATABASE_URL', 'E2E_TEST_STRIPE_*'],
+      env: { E2E_TEST_STRIPE_HOOK: 'wh_config' },
+    });
+    expect(env).toMatchObject({
+      E2E_TEST_DATABASE_URL: 'postgres://from-host',
+      E2E_TEST_STRIPE_KEY: 'sk_host',
+      E2E_TEST_STRIPE_HOOK: 'wh_config',
+    });
+    expect(env).not.toHaveProperty('E2E_TEST_MODEL_KEY');
+    expect(env).not.toHaveProperty('E2E_TEST_DATABASE_URL_RO');
+  });
+
+  it('copies from the environment the run resolves against, not process.env, when one is passed', async () => {
+    const env = await envOf({ inheritEnv: ['E2E_TEST_DATABASE_URL', 'E2E_TEST_STRIPE_*'] }, { E2E_TEST_DATABASE_URL: 'postgres://per-task' });
+    expect(env).toMatchObject({ E2E_TEST_DATABASE_URL: 'postgres://per-task' });
+    expect(env).not.toHaveProperty('E2E_TEST_STRIPE_KEY');
+  });
+
+  it('matches and replaces names case-insensitively on Windows', async () => {
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    try {
+      const env = await envOf(
+        { inheritEnv: ['E2E_TEST_DATABASE_URL', 'E2E_TEST_STRIPE_*'], env: { e2e_test_stripe_key: 'sk_config' } },
+        { E2e_Test_Database_Url: 'postgres://host', E2E_Test_Stripe_Key: 'sk_host' },
+      );
+      expect(Object.entries(env).filter(([key]) => key.toUpperCase().startsWith('E2E_TEST_'))).toEqual([
+        ['E2e_Test_Database_Url', 'postgres://host'],
+        ['e2e_test_stripe_key', 'sk_config'],
+      ]);
+    } finally {
+      Object.defineProperty(process, 'platform', platform);
+    }
+  });
 });

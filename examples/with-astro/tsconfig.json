@@ -1,0 +1,7 @@
+{
+  "extends": "astro/tsconfigs/strict",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": [".astro/types.d.ts", "src", "tests", "e2e.config.ts"]
+}

@@ -50,6 +50,24 @@ describe('describeToolDetail and toolJsonSchema', () => {
 });
 
 describe('invokeTool', () => {
+  it('does not run a tool whose request was cancelled while queued', async () => {
+    const execute = vi.fn(async () => 'never');
+    const reason = new Error('cancelled before dispatch');
+    await expect(invokeTool('tap', { ...tap, execute }, { target: 'n4' }, { signal: AbortSignal.abort(reason) })).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('does not run a tool cancelled while its async schema validates', async () => {
+    const controller = new AbortController();
+    const reason = new Error('cancelled during validation');
+    const execute = vi.fn(async () => 'never');
+    const inputSchema = z.object({ target: z.string() }).superRefine(async () => {
+      controller.abort(reason);
+    });
+    await expect(invokeTool('tap', { ...tap, inputSchema, execute }, { target: 'n4' }, { signal: controller.signal })).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it('validates the arguments against the tool schema and runs the tool', async () => {
     await expect(invokeTool('tap', tap, { target: 'n4' }, extra)).resolves.toEqual({ content: [{ type: 'text', text: 'Tapped #n4.' }] });
   });

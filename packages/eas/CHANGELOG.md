@@ -1,5 +1,11 @@
 # @e2e-dev/eas
 
+## 0.3.1
+
+### Patch Changes
+
+- [#906](https://github.com/tester-army/e2e/pull/906) [`9236bea`](https://github.com/tester-army/e2e/commit/9236bea370579ee149981ec6f938f151df35a434) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Avoid creating billed simulator sessions for acquisition requests cancelled before creation starts.
+
 ## 0.3.0
 
 ### Minor Changes

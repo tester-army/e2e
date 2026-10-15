@@ -2,6 +2,8 @@
 title: From Cypress
 description: Replace Cypress command chains with async tests and keep your data-cy attributes.
 icon: "/images/icons/cypress.svg"
+"og:image": "https://e2e.tester.army/docs/images/og/migrate/cypress.png?v=e4e71f42dc"
+"twitter:image": "https://e2e.tester.army/docs/images/og/migrate/cypress.png?v=e4e71f42dc"
 ---
 
 import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
@@ -15,10 +17,13 @@ export const migrationPrompt = `Migrate this project's Cypress tests to e2e, one
 5. Port \`cypress.config.*\` into the e2e config: \`baseUrl\` and the dev server command become the target's \`app\`, and if the specs select by \`data-cy\`, set \`web({ testIdAttribute: 'data-cy' })\` so \`screen.getByTestId\` reads it. Keep Cypress installed while both suites run.
 6. Install dependencies.
 7. List the Cypress end-to-end specs and ask me which one to move first. Suggest one that breaks often or waits with \`cy.wait(ms)\`. Component tests have no e2e equivalent; leave them in Cypress.
-8. Rewrite that spec as a \`.e2e.ts\` file under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default), with one awaited call per line and no chains. \`cy.contains\` matches a substring and e2e queries match the whole text, so pass \`{ exact: false }\` where the spec relied on a fragment. Replace each \`cy.wait(ms)\` with an assertion on the state the test waits for. Move \`cy.task\`, \`cy.exec\`, and \`cy.request\` into plain Node code, and custom commands into functions or fixtures.
+8. Rewrite that spec as a \`.e2e.ts\` file under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default) with the guide's tables, one awaited call per line. Where \`cy.contains\` matched a fragment, pass \`{ exact: false }\`. Replace each \`cy.wait(ms)\` with an assertion on the state the test waits for.
 9. Keep navigation and the final assertions deterministic, with \`app.open()\` and locator assertions. Where a run of scripted interactions breaks often, propose an \`agent.act\` goal for it instead.
 10. Run the new file with \`npx e2e run <file>\` and fix it until it passes. Keep the Cypress spec until I confirm it can go.
 11. Summarize which tests moved, which stayed in Cypress, and why.`;
+
+e2e replaces Cypress command chains with async TypeScript tests that run in
+Node. Both suites can stay in the project while you move one spec at a time.
 
 <SetupPrompt>
 
@@ -26,14 +31,13 @@ export const migrationPrompt = `Migrate this project's Cypress tests to e2e, one
 
 </SetupPrompt>
 
-e2e tests run in Node. Use `await` for UI actions and call Node functions
-directly for work previously handled by `cy.task`. Both suites can stay in
-the project while you migrate one spec at a time.
+For a migration that spans several sessions, the [`migrate-to-e2e` skill](/coding-agents#migrate-an-existing-suite) records what moved in a progress file and keeps the old suite running until you retire each test.
 
-Start with the [quickstart](/quickstart) to install e2e and configure a model
-for the agent calls shown below.
+## Port the config
 
-## Config
+<Note>Install e2e and configure a model with the [quickstart](/quickstart). The example below uses an agent call.</Note>
+
+Keep your `data-cy` attributes. The config below reads them as test ids.
 
 | Cypress | e2e |
 | --- | --- |
@@ -44,7 +48,7 @@ for the agent calls shown below.
 | `retries` | `retries` |
 | `env`, `Cypress.env()` | `process.env` |
 | `cypress.env.json` secrets | `credentials` and `secrets`, see [Signing in](/authentication) |
-| `cypress run --browser firefox` | A second target with `browser: 'firefox'` |
+| `cypress run --browser firefox` | A second target with `web({ browser: 'firefox' })` |
 | Component testing | No equivalent |
 
 ```ts title="e2e.config.ts"
@@ -59,7 +63,9 @@ export default {
 } satisfies E2EConfig;
 ```
 
-## A test, before and after
+## Rewrite one spec
+
+Start with a spec that often breaks.
 
 ```js title="Cypress"
 describe('todos', () => {
@@ -81,14 +87,15 @@ import { expect } from 'e2e';
 describe('todos', () => {
   test('completes one', async ({ app, agent, screen }) => {
     await app.open('/todos');
-    await agent.act('add todos "Buy milk" and "Walk the dog", then complete "Buy milk"');
+    await agent.act('add todos "Buy milk" and "Walk the dog"');
     await expect(screen.getByTestId('todo')).toHaveCount(2);
+    await agent.act('complete "Buy milk"');
     await expect(screen.getByText('1 item left')).toBeVisible();
   });
 });
 ```
 
-## API map
+## Map each command
 
 | Cypress | e2e |
 | --- | --- |
@@ -99,7 +106,7 @@ describe('todos', () => {
 | `cy.contains('li', 'text')` | `screen.getByRole('listitem').filter({ hasText: 'text' })` |
 | `.find()`, `.within()` | Chain a query off the locator: `row.getByRole(...)` |
 | `.first()`, `.eq(n)` | `.first()`, `.nth(n)` |
-| `.click()`, `.dblclick()`, `.rightclick()` | `.tap()`, `.doubleTap()`, `.secondaryTap()` |
+| `.click()`, `.dblclick()`, `.rightclick()` | `.tap()`, `.doubleTap()` (or `.dblclick()`), `.secondaryTap()` |
 | `.type('text')` | `.fill('text')` replaces the content |
 | `.type('{enter}')` | `.press('Enter')` |
 | `.clear()`, `.check()`, `.select()` | `.clear()`, `.check()`, `.selectOption()` |
@@ -124,18 +131,15 @@ describe('todos', () => {
 | `cy.wait(ms)` | Use a locator assertion for the condition you need |
 | `cypress open` | `npx e2e run --headed`, plus `--debug` for the step table |
 
-Where the behavior differs from Cypress's:
+Two things differ from Cypress:
 
-- There is no chain. Each command is awaited on its own line and returns a
-  value, so `const text = await locator.textContent()` works.
-- Actions and single-node reads or assertions need one match; several fail
-  with `LOCATOR_AMBIGUOUS`. Narrow with `.filter()`, `.first()`, or `.nth()`,
-  see [screen](/reference/screen).
+- There is no chain. Await each call on its own line. It returns a value:
+  `const text = await locator.textContent()`.
+- Actions and single-node reads and assertions need one match. Several fail
+  with `LOCATOR_AMBIGUOUS`. Narrow with `.filter()`, `.first()`, or `.nth()`.
+  See [screen](/reference/screen).
 
-## What to migrate first
-
-Start with a spec that often breaks and whose fixed `cy.wait` calls can
-become assertions on the condition the test needs.
+## Next
 
 <CardGroup cols={2}>
   <Card title="Core concepts" icon="pen-to-square" href="/core-concepts">

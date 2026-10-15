@@ -19,6 +19,7 @@ function attempt(options: { assertionTimeout: number; deadlineMs: number }) {
   publishAttempt(
     {
       attemptId: 'attempt',
+      owner: 'suite',
       testKind: 'test',
       assertionTimeout: options.assertionTimeout,
       budget: new AttemptBudget(cancel.signal, new Deadline(options.deadlineMs)),

@@ -207,7 +207,7 @@ describe('resolveOptions', () => {
     expect(pairRecording({ options: resolveOptions(inherits!, plain), target }, 'trace')).toEqual({ mode: 'on-all-retries', source: 'test' });
     expect(pairRecording({ options: resolveOptions(own!, plain), target }, 'trace')).toEqual({ mode: 'off', source: 'test' });
     const pair = { options: resolveOptions(inherits!, plain), target };
-    expect([0, 1, 2].map((index) => pairRecordings(pair, index).trace?.keep)).toEqual([undefined, 'always', 'always']);
+    expect([0, 1, 2].map((index) => pairRecordings(pair, index).trace)).toEqual([undefined, 'always', 'always']);
     expect(pairRecordings(pair, 0).video).toBeUndefined();
   });
 

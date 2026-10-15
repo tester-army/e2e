@@ -27,6 +27,10 @@ describe('glob grammar', () => {
     expect(matches('a?.ts', 'ab.ts')).toBe(true);
     expect(matches('a?.ts', 'a.ts')).toBe(false);
     expect(matches('a?.ts', 'a/b.ts')).toBe(false);
+    expect(matches('?.ts', '🐟.ts')).toBe(true);
+    expect(matches('??.ts', '🐟.ts')).toBe(false);
+    expect(matches('?🐟.ts', 'a🐟.ts')).toBe(true);
+    expect(matches('hello (world) ?.ts', 'hello (world) 🐟.ts')).toBe(true);
   });
 
   it('a complete ** segment matches zero or more path segments', () => {

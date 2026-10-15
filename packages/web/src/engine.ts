@@ -23,6 +23,7 @@ import { asBrowserProvider } from './provider.ts';
 import { PlaywrightSurface, type WebOptions } from './surface.ts';
 import { createBrowserFixture } from './browser.ts';
 import { validateInitScripts } from './init-scripts.ts';
+import { MEDIA_KEYS, mediaProblem } from './media.ts';
 import { FIELD_VALUE_CONTROL, headerProblem } from './protected-app.ts';
 
 /** App fields only a device target reads. */
@@ -85,6 +86,7 @@ export function web(options: WebOptions = {}): EngineHandle {
   if (options.userAgent !== undefined) validateUserAgent(options.userAgent, options.headers);
   if (options.locale !== undefined) validateLocale(options.locale, options.headers);
   if (options.timezoneId !== undefined) validateTimezoneId(options.timezoneId);
+  validateMedia(options);
   if (options.initScripts !== undefined) validateInitScripts(options.initScripts);
   if (options.screencast !== undefined) validateScreencast(options.screencast);
   const reconnecting = options.connect?.reconnectEndpoint !== undefined;
@@ -138,8 +140,6 @@ export function web(options: WebOptions = {}): EngineHandle {
     },
     artifacts: {
       screenshot: (label, operation) => surface.screenshot(label, operation),
-      startTrace: (operation) => surface.startTrace(operation),
-      stopTrace: (operation) => surface.stopTrace(operation),
       startVideo: (operation) => surface.startVideo(operation),
       stopVideo: (operation) => surface.stopVideo(operation),
     },
@@ -171,6 +171,8 @@ const WEB_OPTION_KEYS: readonly string[] = Object.keys({
   userAgent: true,
   locale: true,
   timezoneId: true,
+  colorScheme: true,
+  reducedMotion: true,
   initScripts: true,
 } satisfies Record<keyof WebOptions, true>);
 
@@ -283,6 +285,18 @@ function isLanguageTag(tag: string): boolean {
 function validateTimezoneId(timezoneId: unknown): void {
   if (typeof timezoneId !== 'string' || timezoneId === '' || !isTimeZone(timezoneId)) {
     throw new ConfigurationError('INVALID_CONFIG', `web({ timezoneId }) must be an IANA time zone such as "Europe/Berlin", got ${JSON.stringify(timezoneId)}`);
+  }
+}
+
+/**
+ * Refuses a media feature value the browser does not emulate, at config load
+ * rather than at the first page. A persistent context takes these too: they
+ * are set on each page, not only on a context the engine creates.
+ */
+function validateMedia(options: WebOptions): void {
+  for (const key of MEDIA_KEYS) {
+    const problem = mediaProblem((name) => `web({ ${name} })`, key, options[key]);
+    if (problem !== undefined) throw new ConfigurationError('INVALID_CONFIG', problem);
   }
 }
 

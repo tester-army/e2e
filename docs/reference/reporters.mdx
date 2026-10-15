@@ -2,6 +2,8 @@
 title: Reporters
 description: Receive run events and publish results with a custom reporter.
 icon: "file-lines"
+"og:image": "https://e2e.tester.army/docs/images/og/reference/reporters.png?v=6f74d2a2a5"
+"twitter:image": "https://e2e.tester.army/docs/images/og/reference/reporters.png?v=6f74d2a2a5"
 ---
 
 Add reporter objects to `reporters` in `e2e.config.ts`, alongside the
@@ -47,6 +49,7 @@ interface FinishedRun {
   readonly reportPath: string | undefined; // absent when the write failed
   readonly artifactsRoot: string;          // what the report's artifact paths are relative to
   readonly aiTracePath: string | undefined;
+  readonly traces: ReadonlyMap<string, string>;      // result id -> its trace page, from the project root
   readonly lastRun?: Report;               // with --last-failed, the report the rerun selected from
 }
 
@@ -60,9 +63,9 @@ The built-in `junit` reporter is the smallest complete example: it reads
 `run.report`, writes `junit.xml` beside `run.reportPath`, and returns one row
 naming the file. `markdown` does the same with `summary.md` through
 `renderMarkdownReport(report, options)`, also exported, so your own reporter
-can post the same page elsewhere; `failurePages` links each block to a page
-by result id. The built-in reporter also writes one page per failed or flaky
-test under `failures/`, with the screen at failure inline. [`@e2e-dev/github`](/github) is that
+can post the same page elsewhere; `traces` links each block to its trace
+page by result id. The runner writes the trace pages, `results/<test>/trace.md`, before
+`onRunFinished` is called. [`@e2e-dev/github`](/github) is that
 reporter for GitHub Actions.
 
 A name and at least one handler are required; anything else is
@@ -90,7 +93,7 @@ type RunEventFact =
   | { type: 'run-error'; error: SerializedError }
   | { type: 'run-interrupted'; mode: 'graceful' | 'forced' }
   | { type: 'run-stopped'; failures; limit }
-  | { type: 'run-finished'; status; exitCode; reportPath?; aiTracePath? };
+  | { type: 'run-finished'; status; exitCode; reportPath?; aiTracePath?; traces? };
 ```
 
 `output` is one write a test made to stdout or stderr; `pair` names the test
@@ -190,14 +193,13 @@ counts a carried failure or hook error against the outcome. The artifacts
 both reports name are on disk under `artifactsRoot`.
 
 The rows a reporter resolves with print under the `list` summary in the same
-layout as `Report`; the `json` reporter does not carry them:
+layout as its own rows; the `json` reporter does not carry them:
 
 ```
    Test Files  2 passed (2)
         Tests  6 passed (6)
      Start at  14:02:11
      Duration  8.41s
-       Report  .e2e/report.json
 
         JUnit  .e2e/junit.xml
       Results  https://example.test/runs/0192c…

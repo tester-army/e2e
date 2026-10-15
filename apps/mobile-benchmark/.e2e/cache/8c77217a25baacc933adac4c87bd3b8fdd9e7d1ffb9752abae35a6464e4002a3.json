@@ -1,0 +1,148 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-09T06:59:24.265Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "check",
+        "summary": "check checkbox \"Cheese\" in \"Order a Medium pizza with exactly Chees…\"",
+        "target": {
+          "role": "checkbox",
+          "name": "Cheese",
+          "testId": "topping-cheese",
+          "selector": "id=topping-cheese",
+          "within": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…"
+        },
+        "checked": true
+      },
+      {
+        "name": "check",
+        "summary": "check checkbox \"Olives\" in \"Order a Medium pizza with exactly Chees…\"",
+        "target": {
+          "role": "checkbox",
+          "name": "Olives",
+          "testId": "topping-olives",
+          "selector": "id=topping-olives",
+          "within": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…"
+        },
+        "checked": true
+      },
+      {
+        "name": "check",
+        "summary": "check switch \"rush-delivery\" in \"Order a Medium pizza with exactly Chees…\"",
+        "target": {
+          "role": "switch",
+          "testId": "rush-delivery",
+          "selector": "id=rush-delivery",
+          "within": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…"
+        },
+        "checked": true
+      },
+      {
+        "name": "tap",
+        "summary": "tap radio \"Medium\" in \"Order a Medium pizza with exactly Chees…\"",
+        "target": {
+          "role": "radio",
+          "name": "Medium",
+          "testId": "size-medium",
+          "selector": "id=size-medium",
+          "within": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap textbox \"Ring the doorbell twice\" in \"Order a Medium pizza with exactly Chees…\"",
+        "target": {
+          "role": "textbox",
+          "name": "Ring the doorbell twice",
+          "testId": "delivery-notes",
+          "placeholder": "Ring the doorbell twice",
+          "selector": "id=delivery-notes",
+          "within": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…"
+        }
+      },
+      {
+        "name": "dismissKeyboard",
+        "summary": "dismiss the keyboard"
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Place order\" in \"Order a Medium pizza with exactly Chees…\"",
+        "target": {
+          "role": "group",
+          "name": "Place order",
+          "testId": "place-order",
+          "selector": "id=place-order",
+          "within": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Choice%20Controls",
+      "targetId": "android-emulator",
+      "instructionDigest": "e45bc3c8dfe206c28355448b56384192428222d9ab9b304cefdfa5b86f6da188",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Selected Medium, enabled Cheese and Olives only, turned on rush delivery, dismissed the keyboard, and placed the order. The screen confirms: “Order placed: Medium with Cheese, Olives (rush).”",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Order placed: Medium with Cheese, Olives (rush)",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then place the order (dismiss the keyboard first)."
+      },
+      {
+        "role": "text",
+        "name": "Size"
+      },
+      {
+        "role": "text",
+        "name": "Small"
+      },
+      {
+        "role": "text",
+        "name": "Medium"
+      },
+      {
+        "role": "text",
+        "name": "Large"
+      },
+      {
+        "role": "text",
+        "name": "Toppings"
+      },
+      {
+        "role": "text",
+        "name": "Cheese"
+      },
+      {
+        "role": "text",
+        "name": "Olives"
+      }
+    ],
+    "endWaitMs": 11772,
+    "keyedBy": {
+      "cacheSchema": "trace-1",
+      "policyVersion": "conservative/6",
+      "project": "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643",
+      "platform": "android",
+      "engineName": "mobile",
+      "engineSpiVersion": 1,
+      "appIdentity": "e18e9835187bab993e11f2dd7ff5624429bc26890c846accacf0057b525e92a0",
+      "agentContextDigest": "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+    }
+  }
+}

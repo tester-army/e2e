@@ -2,6 +2,8 @@
 title: Browser
 description: The browser engine, its options, and the browser fixture it contributes.
 icon: "globe"
+"og:image": "https://e2e.tester.army/docs/images/og/reference/web.png?v=66fee465a4"
+"twitter:image": "https://e2e.tester.army/docs/images/og/reference/web.png?v=66fee465a4"
 ---
 
 `@e2e-dev/web` drives Chromium, Firefox, and WebKit through Playwright.
@@ -87,7 +89,7 @@ export interface WebOptions {
    * Useful for preview-protection tokens. Other sites never receive them.
    * Names are case-insensitive and replace existing headers of the same name.
    * This enables request routing, disables the browser's HTTP cache, and
-   * blocks service workers. Playwright traces record request headers.
+   * blocks service workers.
    */
   readonly headers?: Readonly<Record<string, string>>;
   /**
@@ -123,6 +125,10 @@ export interface WebOptions {
    * Defaults to the machine's. A persistent context is `INVALID_CONFIG`.
    */
   readonly timezoneId?: string;
+  /** The `prefers-color-scheme` every page reports. See [Media emulation](#media-emulation). */
+  readonly colorScheme?: WebMedia['colorScheme'];
+  /** The `prefers-reduced-motion` every page reports. See [Media emulation](#media-emulation). */
+  readonly reducedMotion?: WebMedia['reducedMotion'];
   /** Scripts every document runs before the page's own. See [Init scripts](#init-scripts). */
   readonly initScripts?: readonly WebInitScript[];
 }
@@ -161,7 +167,7 @@ engine resolves when each attempt starts, redacted like any configured one,
 and so is the base64 credential of the `Authorization` header it becomes.
 That protection is text only: unlike a fill, it withholds no screenshot or
 model pixels, so a page that renders the password on screen is not masked in
-them ([Security](/security#secrets)).
+them ([Security rules](/reference/security#secrets-in-engine-options)).
 
 `headers` and `basicAuth` are how a test reaches a [protected preview](/web#protected-previews).
 
@@ -221,8 +227,8 @@ geometry and focus with `browser.evaluate` before acting.
 
 Recovery preserves the page's unsaved state, storage, the attempt's secret
 taint, and the agent ledger. Operations already dispatched
-are never retried. Dialog and route handlers are reattached. Video and trace
-recording resume, but a segment lost during the disconnect cannot be recovered.
+are never retried. Dialog and route handlers are reattached. Video recording
+resumes, but a segment lost during the disconnect cannot be recovered.
 Code using `surfaceOf(engine)` must read its accessors again after recovery;
 previously retained Playwright objects belong to the disconnected transport.
 
@@ -249,7 +255,8 @@ a page acts on that tab: `goto`, `reload`, `back`, `forward`, `url`, `title`,
 `waitForDownload`, `keyboard`, `mouse`, the `expect(browser)` matchers, and
 every `screen` query. What belongs to the browser covers every tab:
 `cookies`, `setCookies`, `route`, `unroute`, `onDialog`, and `addInitScript`. `setViewport`
-sizes the active tab and every tab opened after it.
+sizes the active tab and every tab opened after it, and `emulateMedia` sets
+its media the same way.
 
 A tab the app opens itself, from a `target="_blank"` link or `window.open`,
 is not followed: the active tab stays the one the attempt opened, so assert
@@ -321,17 +328,23 @@ export interface Browser extends Expectable<BrowserExpectation> {
   setCookies(cookies: readonly Cookie[]): Promise<void>;
   /** Sets the viewport size. */
   setViewport(size: { width: number; height: number }): Promise<void>;
+  /** Emulates CSS media features on every open tab and every tab opened after them. */
+  emulateMedia(media: WebMedia): Promise<void>;
   /** Registers an attempt-scoped dialog handler and returns an unsubscribe function. */
   onDialog(handler: DialogHandler): Promise<() => Promise<void>>;
   /** Runs a trigger and waits for its download. */
   waitForDownload(
     trigger: () => Promise<void>,
     options?: { timeout?: number },
-  ): Promise<{ path: string; suggestedFilename: string }>;
+  ): Promise<{ path: string; absolutePath: string; suggestedFilename: string }>;
   /** Viewport-level keyboard, for whatever has focus. */
   readonly keyboard: {
     /** Sends one key. */
     press(key: string): Promise<void>;
+    /** Holds a key or modifier until up, with repeat on another down. */
+    down(key: string): Promise<void>;
+    /** Releases a held key. */
+    up(key: string): Promise<void>;
     /** Types plain text. */
     type(text: string): Promise<void>;
   };
@@ -358,7 +371,7 @@ export interface Browser extends Expectable<BrowserExpectation> {
 | `goto`, `reload`, `back`, `forward` | `config.timeout`, 120000 ms, the same budget `app.open()` uses; `{ timeout }` overrides, capped by the test deadline |
 | `waitForResponse`, `waitForDownload` | `config.actionTimeout`, 30000 ms; `{ timeout }` overrides, capped by the test deadline |
 | `waitForURL` | `config.assertionTimeout`, 5000 ms |
-| `url`, `title`, `evaluate`, `addInitScript`, `route`, `unroute`, `cookies`, `setCookies`, `setViewport`, `onDialog`, `keyboard.*`, `mouse.*` | `config.actionTimeout`, 30000 ms, not overridable |
+| `url`, `title`, `evaluate`, `addInitScript`, `route`, `unroute`, `cookies`, `setCookies`, `setViewport`, `emulateMedia`, `onDialog`, `keyboard.*`, `mouse.*` | `config.actionTimeout`, 30000 ms, not overridable |
 
 Every `browser` call is a recorded `browser.<method>` step, except `locator` and
 `frameLocator`: they build a locator without touching the page, and the
@@ -466,9 +479,10 @@ A script added after the page opened runs from the next navigation or reload.
 ### Routing
 
 `route`, `unroute`, and `waitForResponse` take a string pattern (`*` within a
-path segment, `**` across `/`) or a `RegExp`, both tested against the full
-URL; a predicate function is `INVALID_ARGUMENT`. A route survives
-`app.restart()`, `app.clearState()`, and session restore.
+path segment, `**` across `/`, `?` for any one character, `\` to escape the
+next) or a `RegExp`, both tested against the full URL; a predicate function
+is `INVALID_ARGUMENT`. A route survives `app.restart()`, `app.clearState()`,
+and session restore.
 The handler must decide exactly once with `fulfill`, `continue`, `fallback`,
 or `abort`; deciding twice or not at all is `ACTION_FAILED`. Routes run newest
 first. `continue` sends the request to the network and no other route sees
@@ -610,6 +624,33 @@ export type Cookie = CookieFields &
 await browser.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }]);
 ```
 
+### Media emulation
+
+`web({ colorScheme, reducedMotion })` sets the media features every page
+of every attempt reports, as Playwright's context options of the same names
+do. The page's `@media` rules and `matchMedia` read them from the first
+paint. A persistent context takes them too: the engine sets them on each
+page it opens. Each defaults to the browser's own.
+
+`browser.emulateMedia(media)` changes them for the rest of the attempt, on
+every open tab and every tab opened after them, through `app.restart()` and
+`app.clearState()`. It works before the first navigation, so the next
+`app.open` loads with them. A feature it leaves out keeps its value. A tab
+the app opens itself gets a test's change as it appears, on a persistent
+context too, so a script it runs at load may still read the configured
+values. A feature or value outside `WebMedia` is `INVALID_CONFIG` in `web()` and
+`INVALID_ARGUMENT` in `emulateMedia`.
+
+```ts
+/** User preferences a page reads through `@media` rules and `matchMedia`. */
+export interface WebMedia {
+  /** `prefers-color-scheme`. */
+  readonly colorScheme?: 'light' | 'dark' | 'no-preference';
+  /** `prefers-reduced-motion`. */
+  readonly reducedMotion?: 'reduce' | 'no-preference';
+}
+```
+
 ### Dialogs and downloads
 
 A function handler must call `accept` or `dismiss`; one that does neither
@@ -618,7 +659,10 @@ unhandled dialog does. One that throws fails the next step, or the attempt at
 its end when no step follows, with its error: a failed `expect` stays
 `ASSERTION_FAILED`, an unclassified throw is `ENGINE_FAILURE`.
 `waitForDownload` registers the file as a `download`
-artifact and throws `ACTION_FAILED` when it does not complete in time. A
+artifact and returns its relative `path`, readable runner-side `absolutePath`,
+and `suggestedFilename`. Use `absolutePath` with file APIs to inspect its
+contents, including on a hosted browser. It throws `ACTION_FAILED` when it
+does not complete in time. A
 trigger that resolves in time but starts no download fails with
 `no download started within <n>ms; the trigger resolved after <m>ms`, where
 the wait includes the trigger's own time. A trigger still running at the
@@ -647,6 +691,8 @@ const file = await browser.waitForDownload(() =>
   screen.getByRole('link', 'Export CSV').tap(),
 );
 ```
+
+A handler that throws before answering has its dialog dismissed, and its error fails the next step.
 
 ### keyboard and mouse
 
@@ -692,7 +738,7 @@ cannot reuse node IDs or publish handles over a newer observation.
 
 ## Exported types
 
-`WebOptions`, `WebScreencastOptions`, `WebConnectOptions`, `WebBasicAuth`, `BrowserName`,
+`WebOptions`, `WebMedia`, `WebScreencastOptions`, `WebConnectOptions`, `WebBasicAuth`, `BrowserName`,
 `BrowserProvider`, `BrowserProviderScope`, `BrowserRequest`, `BrowserLease`,
 `BrowserReleaseContext`, `BrowserProviderDownloads`, `BrowserDownloadContext`,
 `PlaywrightLiveSurface`, `Browser`, `FrameScreen`,

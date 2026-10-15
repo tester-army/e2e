@@ -22,8 +22,9 @@ export function opensWithNavigate(trace: ActionTrace): boolean {
 
 /**
  * The full miss vocabulary of the report. `retry` is assigned before any read:
- * a retry attempt records but never replays. `no-entry` and `invalid-entry`
- * are assigned by the store-read path; this decision produces the other two.
+ * outside `cache.strict`, a retry attempt records but never replays (a strict
+ * retry replays and records nothing). `no-entry` and `invalid-entry` are
+ * assigned by the store-read path; this decision produces the other two.
  */
 export type TraceReplayMissReason = 'retry' | 'no-entry' | 'invalid-entry' | 'truncated' | 'wrong-context';
 

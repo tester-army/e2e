@@ -18,7 +18,7 @@ import { classifyError, serializeError } from '../../src/internal/errors.ts';
 import type { AttemptRecord, ResultRecord, RunError, SerialGroupRecord, SerialMemberRecord } from '../../src/run/records.ts';
 import { runUnits } from '../../src/run/scheduler.ts';
 import { serialGroupId, type SerialAttemptRun } from '../../src/run/serial.ts';
-import { buildWorkPlans, type TargetWorkPlan } from '../../src/run/units.ts';
+import { buildWorkPlans, type TargetWorkPlan, type TimeLimit } from '../../src/run/units.ts';
 import type { SpawnUnitRunner, UnitRunner, UnitRunnerEvents } from '../../src/run/unit-runner.ts';
 import type { MainToWorker, RunUnitMessage } from '../../src/run/worker/protocol.ts';
 
@@ -149,6 +149,8 @@ interface FakeBehaviour {
   readonly attemptsBeforeHang?: readonly AttemptRecord[];
   /** The hung pair starts its next attempt after `attemptsBeforeHang`, and the worker exits on its own once interrupted. */
   readonly exitDuringNextAttemptOnInterrupt?: boolean;
+  /** The hung pair starts its next attempt after `attemptsBeforeHang` and keeps running through an interrupt. */
+  readonly startAttemptBeforeHang?: boolean;
   /** Serial group attempts the unit's pairs (one group) finish before the worker hangs. */
   readonly serialRunsBeforeHang?: readonly SerialAttemptRun[];
   /** Members the group's next attempt finishes before the worker hangs. */
@@ -314,7 +316,7 @@ class FakeRunner implements UnitRunner {
         }
       }
       const attempts = this.behaviour.attemptsBeforeHang ?? [];
-      const nextAttempt = this.behaviour.exitDuringNextAttemptOnInterrupt === true;
+      const nextAttempt = this.behaviour.exitDuringNextAttemptOnInterrupt === true || this.behaviour.startAttemptBeforeHang === true;
       if ((attempts.length > 0 || nextAttempt) && first !== undefined) {
         const pair = { testId: first.test.id, agent: first.agent, repeat: first.repeat };
         this.events.onMessage({ type: 'pair-start', ...pair, title: first.test.id, file: first.test.file, serialId: undefined });
@@ -397,6 +399,8 @@ interface Collected {
   readonly runErrors: RunError[];
   /** `onFailureLimit` calls, as `[failures, limit]`. */
   readonly failureLimits: [number, number][];
+  /** `onTimeLimit` calls. */
+  timeLimits: number;
 }
 
 async function run(
@@ -412,11 +416,13 @@ async function run(
     interruptGraceMs?: number;
     forceGraceMs?: number;
     maxFailures?: number;
+    timeLimit?: TimeLimit;
   } = {},
 ): Promise<Collected> {
-  const collected: Collected = { results: [], serialGroups: [], runErrors: [], failureLimits: [] };
+  const collected: Collected = { results: [], serialGroups: [], runErrors: [], failureLimits: [], timeLimits: 0 };
   await runUnits({
     ...(overrides.maxFailures === undefined ? {} : { maxFailures: overrides.maxFailures }),
+    ...(overrides.timeLimit === undefined ? {} : { timeLimit: overrides.timeLimit }),
     plans: buildWorkPlans(selection, collection, '/project').map((plan): TargetWorkPlan => {
       const workers = overrides.preparedWorkers?.[plan.target.name];
       return workers === undefined ? plan : { ...plan, workers };
@@ -433,6 +439,9 @@ async function run(
       onRunError: (error) => collected.runErrors.push(error),
       onRunAbort: (error) => collected.runErrors.push(error),
       onFailureLimit: (failures, limit) => collected.failureLimits.push([failures, limit]),
+      onTimeLimit: () => {
+        collected.timeLimits += 1;
+      },
     },
   });
   return collected;
@@ -494,6 +503,67 @@ describe('failure limit', () => {
     expect(collected.results.map((result) => result.status)).toEqual(['timed-out', 'failed', 'passed']);
     expect(collected.failureLimits).toEqual([]);
     expect(fleet.interruptSkips).toEqual([]);
+  });
+});
+
+describe('time limit', () => {
+  const skip = { cause: 'time-limit', reason: 'run stopped at its time limit of 30 ms (--max-duration)' };
+
+  it('stops dispatching once the time is spent, interrupts the worker running a test, skips every queued pair, and records RUN_TIMEOUT', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = ['hangs', 'b', 'c'].map((name) => makePair(makeTest(`tests/${name}.e2e.ts`, name), target));
+    const fleet = new FakeFleet({ hangOn: ['file::web::tests/hangs.e2e.ts'], startAttemptBeforeHang: true });
+    const collected = await run(makeSelection([{ target, pairs }]), makeCollection(pairs.map((pair) => pair.test.file), pairs), fleet, {
+      workers: 1,
+      timeLimit: { ms: 30, source: '--max-duration' },
+      interruptGraceMs: 10,
+    });
+    expect(collected.results.map((result) => [result.test.title, result.status, result.skip])).toEqual([
+      ['b', 'skipped', skip],
+      ['c', 'skipped', skip],
+      ['hangs', 'skipped', skip],
+    ]);
+    expect(fleet.controlMessages).toEqual(['interrupt']);
+    expect(collected.timeLimits).toBe(1);
+    expect(collected.failureLimits).toEqual([]);
+    expect(fleet.interruptSkips).toEqual([skip]);
+    expect(fleet.unitsByWorker.flat()).toHaveLength(1);
+    expect(collected.runErrors.map((runError) => [runError.error.code, runError.error.message])).toEqual([
+      ['RUN_TIMEOUT', 'run stopped at its time limit of 30 ms (--max-duration): the running tests end as interrupted, the rest are skipped'],
+    ]);
+  });
+
+  it('lets a run that ends within the time finish whole', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = ['a', 'b'].map((name) => makePair(makeTest(`tests/${name}.e2e.ts`, name), target));
+    const fleet = new FakeFleet();
+    const collected = await run(makeSelection([{ target, pairs }]), makeCollection(pairs.map((pair) => pair.test.file), pairs), fleet, {
+      workers: 1,
+      timeLimit: { ms: 60_000, source: 'maxDuration' },
+    });
+    expect(collected.results.map((result) => result.status)).toEqual(['passed', 'passed']);
+    expect(collected.timeLimits).toBe(0);
+    expect(fleet.interruptSkips).toEqual([]);
+    expect(collected.runErrors).toEqual([]);
+  });
+
+  it('leaves a run the failure limit already stopped to that limit', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = ['fails', 'hangs'].map((name) => makePair(makeTest(`tests/${name}.e2e.ts`, name), target));
+    const fleet = new FakeFleet({ status: { [pairs[0]!.test.id]: 'failed' }, hangOn: ['file::web::tests/hangs.e2e.ts'] });
+    const collected = await run(makeSelection([{ target, pairs }]), makeCollection(pairs.map((pair) => pair.test.file), pairs), fleet, {
+      workers: 2,
+      maxFailures: 1,
+      timeLimit: { ms: 200, source: 'maxDuration' },
+      interruptGraceMs: 1_000,
+    });
+    expect(collected.failureLimits).toEqual([[1, 1]]);
+    expect(collected.timeLimits).toBe(0);
+    expect(collected.runErrors).toEqual([]);
+    expect(collected.results.map((result) => [result.test.title, result.skip?.cause])).toEqual([
+      ['fails', undefined],
+      ['hangs', 'failure-limit'],
+    ]);
   });
 });
 

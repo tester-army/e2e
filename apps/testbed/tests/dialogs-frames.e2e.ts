@@ -1,5 +1,6 @@
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
+import { failure } from './helpers.ts';
 
 test.describe('dialogs', { requires: ['browser'] }, () => {
   test('accepting a confirm dialog', async ({ app, screen, browser }) => {
@@ -16,6 +17,14 @@ test.describe('dialogs', { requires: ['browser'] }, () => {
     await screen.getByRole('button', 'Delete everything').tap();
     await expect(screen.getByRole('status', 'Decision')).toHaveText('kept');
     await dispose();
+  });
+
+  test('a throwing handler dismisses its unanswered dialog', async ({ app, browser }) => {
+    await app.open('/dialogs');
+    await browser.onDialog(() => { throw new Error('handler exploded'); });
+    expect(await browser.evaluate('confirm("Really delete everything?")')).toBe(false);
+    expect(await failure(() => browser.title())).toHaveProperty('code', 'ENGINE_FAILURE');
+    expect(await browser.title()).toBe('Dialogs');
   });
 
   test('custom dialog handlers read the message', async ({ app, screen, browser }) => {

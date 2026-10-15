@@ -27,12 +27,14 @@
 
 import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
 import type { JsonValue } from '../types.ts';
-import { TRACE_SCHEMA_VERSION } from './trace.ts';
+import { KEY_CONTEXT_FIELDS, TRACE_SCHEMA_VERSION, type TraceKeyContext } from './trace.ts';
 
 /**
- * Step kinds the trace cache admits. Only `act` today: an assert must not
- * change state, so its trace would be action-free, and judgments are made
- * fresh per run by normative rule (spec 10).
+ * Step kinds the trace cache admits. Only `act`: an assert must not change
+ * state, so its trace would be action-free, and a judgment always runs live.
+ * A passing `assert` or `waitFor` is the check that lets a recording be
+ * written and trusted, so replaying one would verify the recording with the
+ * recording; `extract` runs live too, but confirms nothing.
  */
 export type TraceCacheKind = 'act';
 
@@ -192,4 +194,35 @@ export function buildTraceCacheKey(parts: {
 /** SHA-256/JCS of one key, used as both the entry digest and its file name. */
 export function traceCacheKeyHash(key: TraceCacheKey): string {
   return canonicalDigest(key);
+}
+
+/** The parts of a key outside the step's own identity, as an entry records them (`ActionTrace.keyedBy`). */
+export function keyContext(key: TraceKeyContext): TraceKeyContext {
+  return Object.fromEntries(KEY_CONTEXT_FIELDS.map((field) => [field, key[field]])) as TraceKeyContext;
+}
+
+/** How each part of a key's context reads in a sentence, and whether its value means anything to a reader. */
+const KEY_CONTEXT_WORDS: Readonly<Record<keyof TraceKeyContext, { readonly name: string; readonly shown: boolean }>> = {
+  cacheSchema: { name: 'the cache format', shown: true },
+  policyVersion: { name: 'the replay policy', shown: true },
+  project: { name: 'the projectId', shown: false },
+  platform: { name: 'the platform', shown: true },
+  engineName: { name: 'the engine', shown: true },
+  engineSpiVersion: { name: 'the engine contract', shown: true },
+  appIdentity: { name: "the app's identity (app.identity, else its URL) or environment", shown: false },
+  agentContextDigest: { name: "the agent's context (its context, or the test's agentContext)", shown: false },
+};
+
+/**
+ * What differs between the context an entry was recorded under and this
+ * run's: `the engine contract (1 -> 2)`, `the app's identity ...`. Empty
+ * when nothing differs or the entry recorded no context.
+ */
+export function keyContextChanges(recorded: TraceKeyContext | undefined, now: TraceKeyContext): string[] {
+  if (recorded === undefined) return [];
+  return KEY_CONTEXT_FIELDS.flatMap((field) => {
+    if (recorded[field] === now[field]) return [];
+    const { name, shown } = KEY_CONTEXT_WORDS[field];
+    return [shown ? `${name} (${String(recorded[field])} -> ${String(now[field])})` : name];
+  });
 }

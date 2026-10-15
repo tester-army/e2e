@@ -1,5 +1,11 @@
 # @e2e-dev/integrations
 
+## 0.2.1
+
+### Patch Changes
+
+- [#904](https://github.com/tester-army/e2e/pull/904) [`34b90ae`](https://github.com/tester-army/e2e/commit/34b90ae647cf7989793c858e37e22ffb63594dc0) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Keep the documented 600-second idle timeout when a JavaScript config passes an undefined timeout_seconds option.
+
 ## 0.2.0
 
 ### Minor Changes

@@ -33,21 +33,23 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
     dispose: (context) => surface.dispose(context),
     observe: (operation, options) => surface.observe(operation, options),
     locate: (expression, operation) => surface.locate(expression, operation),
-    perform: (ref, action, operation) => surface.perform(ref, action, operation),
+    // The harness signal does not abort at an operation's budget, so each
+    // input enforces its own; see InputBudget in support.ts.
+    perform: (ref, action, operation) => surface.perform(ref, action, operation, surface.inputBudget(action.kind, operation.timeoutMs)),
     actions: DEVICE_ACTIONS,
-    performAt: (point, action, operation) => surface.performAt(point, action, operation),
+    performAt: (point, action, operation) => surface.performAt(point, action, operation, surface.inputBudget(action.kind, operation.timeoutMs)),
     pointerActions: DEVICE_POINTER_ACTIONS,
     keyboard: {
-      type: (text, keyboardOptions, operation) => surface.typeText(text, keyboardOptions, operation),
-      press: (key, operation) => surface.pressFocusedKey(key, operation),
-      dismiss: (operation) => surface.dismissKeyboard(operation.signal),
+      type: (text, keyboardOptions, operation) => surface.typeText(text, keyboardOptions, operation, surface.inputBudget('type', operation.timeoutMs)),
+      press: (key, operation) => surface.pressFocusedKey(key, operation, surface.inputBudget('press', operation.timeoutMs)),
+      dismiss: (operation) => surface.dismissKeyboard(operation.signal, surface.inputBudget('keyboard dismiss', operation.timeoutMs)),
     },
     validateApp: (app, info) => validateApp(app, info, surface.options.platform),
     // No `open`: a device app has no URL to open, so the runner serves
     // `app.open()` with `restart`, the fresh launch of the pinned app, which
     // is also the device's "recreate the context".
     session: {
-      back: (operation) => surface.back(operation),
+      back: (operation) => surface.back(operation, surface.inputBudget('back', operation.timeoutMs)),
       restart: (operation) => surface.restart(operation),
       reset: (operation) => surface.reset(operation),
     },
@@ -66,15 +68,19 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
 
 /** Creates one agent-device engine: one device session per worker; a test launches the pinned app with `app.open()`. */
 export function mobile(options: MobileOptions): EngineHandle {
-  const factory: ClientFactory = (session, connection) =>
-    createAgentDeviceClient(
+  const factory: ClientFactory = (session, connection) => {
+    // A provider's local daemon must not inherit the user's remote-daemon connection.
+    const local = connection?.client?.stateDir !== undefined && connection.daemon === undefined;
+    return createAgentDeviceClient(
       obj({
         ...connection?.client,
         session,
-        daemonBaseUrl: connection?.daemon?.baseUrl,
-        daemonAuthToken: connection?.daemon?.authToken,
+        daemonBaseUrl: local ? '' : connection?.daemon?.baseUrl,
+        daemonAuthToken: local ? '' : connection?.daemon?.authToken,
+        daemonTransport: local ? 'auto' as const : undefined,
       }),
     );
+  };
   return buildEngine(new AgentDeviceSurface(options, factory));
 }
 

@@ -5,7 +5,7 @@
  * | ----------------------------------------------------------- | ---------------------------- |
  * | already an EngineError / runner error                       | passed through untouched     |
  * | AbortError                                                  | CANCELLED                    |
- * | no active session / session not found / requires a session  | INVALID_STATE                |
+ * | SESSION_NOT_FOUND, or a session-or-device-selector refusal  | INVALID_STATE                |
  * | UNSUPPORTED_OPERATION, NOT_IMPLEMENTED, UNSUPPORTED_PLATFORM | UNSUPPORTED_CAPABILITY      |
  * | "not supported on this device" under any code                | UNSUPPORTED_CAPABILITY       |
  * | a stale-ref refusal, by `details.reason` (action paths only) | NODE_STALE (retryable)      |
@@ -14,8 +14,10 @@
  * | anything else, agent-device's own timeouts included         | ENGINE_FAILURE with the text |
  *
  * `OPERATION_TIMEOUT` is never produced here. In the contract it means the
- * harness budget expired, which `raceAbort` already reports, and core
- * replaces its message with a bare `operation timed out`. A timeout
+ * operation budget expired: `InputBudget` (support.ts) reports it for an input
+ * the budget ran out before, and `ACTION_MAY_HAVE_COMMITTED` for one sent that
+ * did not answer in time. Core replaces the timeout's message with a bare
+ * `operation timed out`. A timeout
  * agent-device itself reports (a simulator boot, the runner connecting, an
  * app launch) is a device-side fault whose text is the diagnosis, so it
  * stays `ENGINE_FAILURE` and keeps its message and hint.
@@ -62,10 +64,14 @@ function withHint(cause: unknown, text: string): string {
 /** agent-device's generic hint (`Check command arguments and run --help`) is CLI advice, and stays out too. */
 const CLI_ADVICE = /--help|command arguments/i;
 
-const NO_SESSION_PATTERN =
-  /no active (?:app )?session|requires an active session|session\b.*\bnot found|open an app first|no app (?:is )?open/i;
 const UNSUPPORTED_CODES = new Set(['UNSUPPORTED_OPERATION', 'NOT_IMPLEMENTED', 'UNSUPPORTED_PLATFORM']);
 const UNSUPPORTED_PATTERN = /\b(?:is )?not supported\b|\bunsupported\b/i;
+
+/**
+ * The `details.reason` agent-device refuses a command with when it has no
+ * session and no device selector to fall back on (0.21.21).
+ */
+const NO_SESSION_REASON = 'session_or_device_selector_required';
 
 /**
  * The `details.reason` values agent-device refuses an `@ref` with: the ref
@@ -183,7 +189,7 @@ export function translateError(cause: unknown, operation: string, where?: string
   const normalized = normalizeAgentDeviceError(cause);
   const text = `${operation} failed: ${withHint(cause, normalized.message)}`;
   const options = { retryable: false, cause };
-  if (normalized.code === 'SESSION_NOT_FOUND' || NO_SESSION_PATTERN.test(normalized.message)) {
+  if (normalized.code === 'SESSION_NOT_FOUND' || details(cause).reason === NO_SESSION_REASON) {
     return new EngineError('INVALID_STATE', text, options);
   }
   if (UNSUPPORTED_CODES.has(normalized.code) || UNSUPPORTED_PATTERN.test(normalized.message)) {
@@ -205,17 +211,6 @@ export function translateError(cause: unknown, operation: string, where?: string
  */
 export function isRunnerFailure(error: unknown): boolean {
   return error instanceof Error && runnerState(error.cause) !== undefined;
-}
-
-const NO_SESSION_APP_PATTERN = /requires an active app in (?:the )?session/i;
-
-/**
- * True for a translated settings command agent-device refused because its
- * session is on no app: the one refusal a foreground open of the pinned app
- * answers.
- */
-export function isNoSessionApp(error: unknown): boolean {
-  return error instanceof Error && NO_SESSION_APP_PATTERN.test(normalizeAgentDeviceError(error.cause).message);
 }
 
 /**

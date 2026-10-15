@@ -85,6 +85,21 @@ describe('snapshot projection', () => {
     expect(viewportOf([{ type: 'button' }])).toBeUndefined();
   });
 
+  it('measures system bars against a published viewport, where the tree alone would end the screen at its lowest window', () => {
+    const systemui = 'com.android.systemui';
+    // A panel above the bottom of a 2400 px screen, at the bottom of a tree that reaches only 1800 px.
+    const nodes: RawNode[] = [
+      { ref: '@e1', depth: 0, type: 'android.widget.FrameLayout', bundleId: 'dev.e2e.benchmark', rect: { x: 0, y: 0, width: 1080, height: 1800 } },
+      { ref: '@e2', depth: 0, type: 'android.widget.FrameLayout', bundleId: systemui, rect: { x: 0, y: 1700, width: 1080, height: 100 } },
+    ];
+    const published = projectSnapshot(nodes, { mintId: () => 'n', viewport: { width: 1080, height: 2400 } });
+    expect(published.viewport).toEqual({ width: 1080, height: 2400 });
+    expect(published.roots).toHaveLength(2);
+    const inferred = projectSnapshot(nodes, { mintId: () => 'n' });
+    expect(inferred.viewport).toEqual({ width: 1080, height: 1800 });
+    expect(inferred.roots).toHaveLength(1);
+  });
+
   it('leaves the Android status bar and navigation bar out, with their children, and keeps the app window', () => {
     const systemui = 'com.android.systemui';
     const projected = project([
@@ -191,6 +206,23 @@ describe('snapshot projection', () => {
     expect(projected.index[6]?.node.states).toEqual({ secure: true });
     expect(projected.viewport).toEqual({ width: 390, height: 844 });
     expect(screenTitle(projected)).toBe('Settings');
+  });
+
+  it('reads the XCUIElementType class names a WebDriver session reports as the native XCTest types', () => {
+    const native: RawNode[] = [
+      { ref: 'e1', index: 0, depth: 0, type: 'Application', label: 'Profiler', rect: { x: 0, y: 0, width: 390, height: 844 } },
+      { ref: 'e2', index: 1, parentIndex: 0, depth: 1, type: 'NavigationBar', identifier: 'Profiler' },
+      { ref: 'e3', index: 2, parentIndex: 1, depth: 2, type: 'StaticText', label: 'Profiler' },
+      { ref: 'e4', index: 3, parentIndex: 0, depth: 1, type: 'Button', label: 'CPU Load' },
+      { ref: 'e5', index: 4, parentIndex: 0, depth: 1, type: 'TextView', label: 'Notes', value: 'idle' },
+      { ref: 'e6', index: 5, parentIndex: 0, depth: 1, type: 'TabBar' },
+      { ref: 'e7', index: 6, parentIndex: 5, depth: 2, type: 'Button', label: 'Home', selected: true },
+      { ref: 'e8', index: 7, parentIndex: 5, depth: 2, type: 'Button', label: 'Settings' },
+    ];
+    const webDriver = native.map((node) => ({ ...node, type: `XCUIElementType${node.type}` }));
+    const kindsAndRoles = (nodes: readonly RawNode[]) => project(nodes).index.map((entry) => [entry.kind, entry.node.role]);
+    expect(kindsAndRoles(webDriver)).toEqual(kindsAndRoles(native));
+    expect(project(webDriver).viewport).toEqual({ width: 390, height: 844 });
   });
 
   it('maps iOS composite widgets onto the vocabulary roles a browser reports for them', () => {

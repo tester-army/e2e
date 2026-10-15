@@ -57,28 +57,53 @@ const RETRY_SKIP = `
   });`;
 
 describe('a runtime skip after a failure', () => {
-  it('keeps soft failures and prints them without changing the default exit code', () => {
+  it('fails on a soft failure before the skip, keeping the skip reason beside it', () => {
     const { report, output, project, exitCode } = runSkipped(SOFT_SKIP);
-    expect(exitCode).toBe(0);
+    expect(exitCode).toBe(1);
+    expect(report.run.status).toBe('failed');
     const result = report.run.results[0]!;
-    expect(result.status).toBe('skipped');
-    expect(result.skip?.reason).toBe('feature disabled');
-    expect(result.attempts[0]?.secondaryErrors).toMatchObject([
-      { code: 'ASSERTION_FAILED', phase: 'body', message: '2 soft assertions failed\n1. the count: expected 1 to be 2\n2. the version: expected "old" to be "new"' },
-    ]);
-    expect(output).toContain('Skipped After Failure 1');
+    expect(result.status).toBe('failed');
+    expect(result.skip).toBeUndefined();
+    expect(result.attempts[0]).toMatchObject({
+      status: 'failed',
+      error: { code: 'ASSERTION_FAILED', phase: 'body', message: '2 soft assertions failed\n1. the count: expected 1 to be 2\n2. the version: expected "old" to be "new"' },
+      skip: { cause: 'explicit', reason: 'feature disabled' },
+      secondaryErrors: [],
+    });
+    expect(output).toContain('Failed Tests 1');
     expect(output).toContain('the count: expected 1 to be 2');
     expect(output).toContain('the version: expected "old" to be "new"');
+    expect(output).toContain('skipped feature disabled');
+    expect(output).not.toContain('Skipped After Failure');
     expect(readFileSync(path.join(project.dir, 'teardown.txt'), 'utf8')).toBe('ran');
   });
 
-  it('can fail CI on a soft failure followed by skip without retrying the skip', () => {
-    const { report, exitCode, output } = runSkipped(SOFT_SKIP, 'failOnSkippedFailure: true,', 2);
+  it('retries a soft failure before the skip like any failure', () => {
+    const { report, exitCode } = runSkipped(SOFT_SKIP, '', 2);
     expect(exitCode).toBe(1);
-    expect(report.run.status).toBe('failed');
-    expect(report.run.results[0]?.attempts).toHaveLength(1);
-    expect(report.run.results[0]?.status).toBe('skipped');
+    expect(report.run.results[0]?.attempts.map((attempt) => [attempt.status, attempt.skip?.reason])).toEqual([
+      ['failed', 'feature disabled'],
+      ['failed', 'feature disabled'],
+      ['failed', 'feature disabled'],
+    ]);
+  });
+
+  it('shows a soft failure before the skip when a retry then skips cleanly', () => {
+    const { report, output } = runSkipped(`
+      test('soft skip, then clean skip', () => {
+        const first = !existsSync('first-attempt.txt');
+        writeFileSync('first-attempt.txt', 'ran');
+        if (first) expect.soft(1, 'the count').toBe(2);
+        test.skip('feature disabled');
+      });`, '', 1);
+    const result = report.run.results[0]!;
+    expect(result.status).toBe('skipped');
+    expect(result.attempts.map((attempt) => [attempt.status, attempt.error?.code, attempt.skip?.reason])).toEqual([
+      ['failed', 'ASSERTION_FAILED', 'feature disabled'],
+      ['skipped', undefined, 'feature disabled'],
+    ]);
     expect(output).toContain('Skipped After Failure 1');
+    expect(output).toContain('the count: expected 1 to be 2');
   });
 
   it('shows the original failure when a retry skips', () => {
@@ -103,17 +128,21 @@ describe('a runtime skip after a failure', () => {
     expect(output).not.toContain('Skipped After Failure');
   });
 
-  it('finds a serial member failure without blaming another skipped member', () => {
+  it('fails a serial member on a soft failure before its skip without blaming another skipped member', () => {
     const { report, output, exitCode } = runSkipped(`
       test.describe('serial', { serial: true }, () => {
         test('clean skip', () => { test.skip('not applicable'); });
         test('soft skip', () => { expect.soft(1).toBe(2); test.skip('feature disabled'); });
         test('next member', () => { expect(1).toBe(1); });
-      });`, 'failOnSkippedFailure: true,');
+      });`);
     expect(exitCode).toBe(1);
-    expect(report.run.results.map((result) => result.status)).toEqual(['skipped', 'skipped', 'passed']);
-    expect(output).toContain('Skipped After Failure 1');
+    expect(report.run.results.map((result) => result.status)).toEqual(['skipped', 'failed', 'skipped']);
+    const members = report.run.serialGroups[0]?.attempts[0]?.members;
+    expect(members?.[1]).toMatchObject({ status: 'failed', error: { code: 'ASSERTION_FAILED' }, skip: { reason: 'feature disabled' } });
+    expect(output).toContain('Failed Tests 1');
     expect(output).toContain('1 soft assertion failed');
+    expect(output).toContain('skipped feature disabled');
+    expect(output).not.toContain('Skipped After Failure');
   });
 
   it('does not turn post-skip cleanup diagnostics into a test failure', () => {

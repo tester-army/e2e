@@ -5,6 +5,7 @@ import {
   buildTraceCacheKey,
   createCallIndexer,
   instructionDigest,
+  keyContextChanges,
   normalizeInstruction,
   paramsDigest,
   traceCacheKeyHash,
@@ -101,5 +102,30 @@ describe('traceCacheKeyHash', () => {
     expect(key.agent).toBe('buyer');
     expect(key.agentContextDigest).toMatch(/^[a-f0-9]{64}$/);
     expect(JSON.stringify(key)).not.toContain('Pay with');
+  });
+});
+
+describe('keyContextChanges', () => {
+  const context = {
+    cacheSchema: 'trace-1',
+    policyVersion: 'conservative/6',
+    project: 'p'.repeat(64),
+    platform: 'web',
+    engineName: 'web',
+    engineSpiVersion: 1,
+    appIdentity: 'a'.repeat(64),
+    agentContextDigest: 'c'.repeat(64),
+  } as const;
+
+  it('names what changed since the recording, with the values a reader can act on', () => {
+    expect(keyContextChanges({ ...context, engineSpiVersion: 0, appIdentity: 'b'.repeat(64) }, context)).toEqual([
+      'the engine contract (0 -> 1)',
+      "the app's identity (app.identity, else its URL) or environment",
+    ]);
+  });
+
+  it('says nothing for an entry that recorded no context, or the same one', () => {
+    expect(keyContextChanges(undefined, context)).toEqual([]);
+    expect(keyContextChanges(context, context)).toEqual([]);
   });
 });

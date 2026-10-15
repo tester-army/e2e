@@ -112,9 +112,9 @@ describe('the run command through the CLI', () => {
     expect(executed.map((result) => result.titlePath.at(-1)).toSorted()).toEqual(['sign in', ...tests(second)].toSorted());
   });
 
-  it('under CI, refuses a focused test and records a trace only on the first retry', () => {
+  it('under CI, refuses a focused test and retries a failure once', () => {
     const focused = cli(
-      { 'e2e.config.ts': fakeConfig('{ trace: true }'), 'tests/only.e2e.ts': `import { test } from 'e2e';\ntest.only('focused', async () => {});\ntest('other', async () => {});\n` },
+      { 'e2e.config.ts': fakeConfig(), 'tests/only.e2e.ts': `import { test } from 'e2e';\ntest.only('focused', async () => {});\ntest('other', async () => {});\n` },
       ['run'],
       { CI: 'true' },
     );
@@ -123,10 +123,10 @@ describe('the run command through the CLI', () => {
 
     const flaky = cli(
       {
-        'e2e.config.ts': fakeConfig('{ trace: true }'),
+        'e2e.config.ts': fakeConfig(),
         'tests/flaky.e2e.ts': `import { existsSync, writeFileSync } from 'node:fs';
 import { test } from 'e2e';
-test('fails once', { retries: 1 }, async ({ app }) => {
+test('fails once', async ({ app }) => {
   await app.open();
   const marker = new URL('./failed-once', import.meta.url);
   if (!existsSync(marker)) {
@@ -142,6 +142,6 @@ test('fails once', { retries: 1 }, async ({ app }) => {
     expect(flaky.exitCode).toBe(0);
     const [result] = reportOf(flaky.project).run.results;
     expect(result?.status).toBe('flaky');
-    expect(result?.attempts.map((attempt) => attempt.artifacts.some((artifact) => artifact.kind === 'trace'))).toEqual([false, true]);
+    expect(result?.attempts.map((attempt) => attempt.status)).toEqual(['failed', 'passed']);
   });
 });

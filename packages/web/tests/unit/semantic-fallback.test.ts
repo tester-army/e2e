@@ -5,7 +5,7 @@ import { EngineError, TestError, type OperationContext } from 'e2e/engine';
 import { captureDocument, ROOT_NODE_ID } from '../../src/observation.ts';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { BrowserConnection } from '../../src/browser-connection.ts';
-import { noSecrets } from '../helpers/secrets.ts';
+import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 vi.mock('../../src/observation.ts', async (original) => ({
   ...await original<typeof import('../../src/observation.ts')>(),
@@ -38,6 +38,7 @@ async function setup() {
     newContext: async () => ({
       newPage: async () => page,
       addInitScript: async () => undefined,
+      pages: () => [],
       setDefaultTimeout: () => undefined,
       on: () => undefined,
       close: async () => undefined,
@@ -51,7 +52,7 @@ async function setup() {
     runId: 'run', targetName: 'fixture', projectRoot: process.cwd(), app: {}, env: {},
     headed: false, workerSlot: 0, signal, log: () => undefined,
   });
-  await surface.startAttempt({ attemptId: 'attempt', artifactsDir: tmpdir(), signal, resolveSecret: noSecrets });
+  await surface.startAttempt({ attemptId: 'attempt', artifactsDir: tmpdir(), signal, resolveSecret: noSecrets, ...ignoreTrace });
   await surface.ensurePage();
   vi.mocked(captureDocument).mockRejectedValue(TIMEOUT);
   return { surface, masks, screenshot };

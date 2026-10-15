@@ -11,12 +11,17 @@
  * secret-named environment variable and every well-known token shape is
  * rewritten, so an error message pasted whole does not carry a key along.
  * `--dry-run` prints the event and sends nothing.
+ *
+ * A report from a version older than the latest release is refused, since the
+ * problem may already be fixed. A bug without a deterministic reproduction
+ * goes to GitHub instead, where the team can ask the reporter for one: the
+ * command prints a prefilled issue link and sends nothing.
  */
 
 import { uuidv7, timestamp } from '../internal/ids.ts';
 import { createRedactor } from '../internal/redact.ts';
 import { MIN_SECRET_LENGTH, secretLength } from '../config/secrets.ts';
-import { collectEnvironment } from '../telemetry/environment.ts';
+import { collectEnvironment, type TelemetryEnvironment } from '../telemetry/environment.ts';
 import { postBatch, type PostHogEvent } from '../telemetry/posthog.ts';
 import type { Telemetry, TelemetryDisabledBy } from '../telemetry/telemetry.ts';
 
@@ -26,19 +31,25 @@ export type FeedbackType = (typeof FEEDBACK_TYPES)[number];
 /** The most characters each text field may hold. */
 export const FEEDBACK_LIMITS = {
   message: 2000,
-  task: 4000,
-  expected: 4000,
-  actual: 4000,
-  approach: 4000,
+  task: 1500,
+  expected: 1500,
+  actual: 1500,
+  approach: 1500,
+  repro: 1500,
   command: 200,
   agent: 200,
 } as const;
 
 export type FeedbackField = keyof typeof FEEDBACK_LIMITS;
 
+/** The most characters an error code may hold. */
+export const ERROR_CODE_LIMIT = 64;
+
 export interface FeedbackReport extends Partial<Record<FeedbackField, string>> {
   readonly type: FeedbackType;
   readonly message: string;
+  /** The e2e error code involved, such as `LOCATOR_AMBIGUOUS`. */
+  readonly errorCode?: string;
 }
 
 export interface FeedbackOptions {
@@ -46,6 +57,8 @@ export interface FeedbackOptions {
   readonly telemetry: Telemetry;
   /** Print the event instead of sending it. */
   readonly dryRun?: boolean;
+  /** Send even when a newer e2e release exists. */
+  readonly allowOutdated?: boolean;
   readonly env?: NodeJS.ProcessEnv;
   readonly cwd?: string;
   readonly fetch?: typeof fetch;
@@ -55,6 +68,14 @@ const EVENT = 'e2e_feedback';
 /** A person waits on this request, so it gets longer than the telemetry flush, but never hangs. */
 const SEND_TIMEOUT_MS = 10_000;
 const ISSUES_URL = 'https://github.com/tester-army/e2e/issues';
+const NEW_BUG_URL = `${ISSUES_URL}/new`;
+/** The `latest` dist-tag's manifest; small, and public. */
+const LATEST_URL = 'https://registry.npmjs.org/e2e/latest';
+/** The registry check never holds the report up for long; a slow or failed one is skipped. */
+const LATEST_TIMEOUT_MS = 3000;
+/** GitHub rejects longer new-issue URLs. */
+const MAX_ISSUE_URL_LENGTH = 8000;
+const RELEASE = /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 
 /** Environment variable names whose values are treated as secrets. */
 const SECRET_NAME = /KEY|TOKEN|SECRET|PASS|_PWD|CREDENTIAL|AUTH|COOKIE|PRIVATE/i;
@@ -87,9 +108,8 @@ function feedbackRedactor(env: NodeJS.ProcessEnv): (text: string) => string {
 }
 
 /** The event as PostHog receives it: the report redacted, the machine facts, and no person profile or location. */
-function feedbackEvent(report: FeedbackReport, options: FeedbackOptions, env: NodeJS.ProcessEnv): PostHogEvent {
+function feedbackEvent(report: FeedbackReport, options: FeedbackOptions, environment: TelemetryEnvironment, redact: (text: string) => string): PostHogEvent {
   const id = uuidv7();
-  const redact = feedbackRedactor(env);
   const fields = Object.fromEntries(
     Object.keys(FEEDBACK_LIMITS).map((field) => {
       const value = report[field as FeedbackField];
@@ -101,9 +121,10 @@ function feedbackEvent(report: FeedbackReport, options: FeedbackOptions, env: No
     uuid: id,
     timestamp: timestamp(),
     properties: {
-      ...collectEnvironment({ env, cwd: options.cwd ?? process.cwd(), version: options.version }),
+      ...environment,
       type: report.type,
       ...fields,
+      error_code: report.errorCode === undefined ? null : redact(report.errorCode),
       // The telemetry id when telemetry is on, so a report can be read beside the sessions around it.
       distinct_id: options.telemetry.distinctId ?? `feedback:${id}`,
       $lib: 'e2e',
@@ -114,28 +135,103 @@ function feedbackEvent(report: FeedbackReport, options: FeedbackOptions, env: No
   };
 }
 
+/**
+ * The version `latest` points at, or undefined when the registry did not
+ * answer in time or answered with something else.
+ */
+async function latestRelease(fetchImpl: typeof fetch): Promise<string | undefined> {
+  try {
+    const response = await fetchImpl(LATEST_URL, { signal: AbortSignal.timeout(LATEST_TIMEOUT_MS) });
+    if (!response.ok) return undefined;
+    const { version } = (await response.json()) as { version?: unknown };
+    return typeof version === 'string' && RELEASE.test(version) ? version : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Whether `version` comes before `latest`; a prerelease comes before its release. Unparsable versions never do. */
+export function olderThan(version: string, latest: string): boolean {
+  const a = RELEASE.exec(version);
+  const b = RELEASE.exec(latest);
+  if (a === null || b === null) return false;
+  for (const index of [1, 2, 3]) {
+    const difference = Number(a[index]) - Number(b[index]);
+    if (difference !== 0) return difference < 0;
+  }
+  return a[4] !== undefined && b[4] === undefined;
+}
+
+/**
+ * A prefilled link to the repository's bug form. The report fills "What
+ * happened" and "Versions"; the reproduction is left for the reporter.
+ */
+function bugIssueUrl(report: FeedbackReport, environment: TelemetryEnvironment, redact: (text: string) => string): string {
+  const lines = [
+    report.message,
+    '',
+    ...([
+      ['Task', report.task],
+      ['Expected', report.expected],
+      ['Actual', report.actual],
+      ['Error code', report.errorCode],
+      ['Command', report.command],
+      ['Tried', report.approach],
+      ['Agent', report.agent],
+    ] as const).flatMap(([label, value]) => (value === undefined ? [] : [`${label}: ${value}`])),
+  ];
+  const versions = `e2e ${environment.e2e_version}, node ${environment.node_version}, ${environment.os} ${environment.os_release}`;
+  const url = (what: string): string => {
+    const query = new URLSearchParams({ template: 'bug_report.yml', labels: 'bug', title: redact(report.message).slice(0, 120), what, versions });
+    return `${NEW_BUG_URL}?${query.toString()}`;
+  };
+  let what = redact(lines.join('\n').trim());
+  while (url(what).length > MAX_ISSUE_URL_LENGTH) what = `${[...what].slice(0, Math.floor([...what].length * 0.9)).join('')}…`;
+  return url(what);
+}
+
 /** The variables that switch feedback off along with telemetry. */
 const BLOCKING: ReadonlySet<TelemetryDisabledBy> = new Set(['E2E_TELEMETRY_DISABLED', 'DO_NOT_TRACK']);
 
 /**
  * Sends the report, or prints it under `--dry-run` or `E2E_TELEMETRY_DEBUG`.
- * Exit 0 when PostHog accepted it, 2 when an opt-out variable forbids
+ * Exit 0 when PostHog accepted it or a bug without `--repro` got its GitHub
+ * link, 2 when the installed e2e is outdated or an opt-out variable forbids
  * sending, 3 when PostHog did not confirm it: a timeout can follow delivery,
  * so the message names the reference and never claims nothing arrived.
  */
 export async function feedback(report: FeedbackReport, options: FeedbackOptions): Promise<number> {
   const env = options.env ?? process.env;
-  const event = feedbackEvent(report, options, env);
+  const fetchImpl = options.fetch ?? fetch;
+  const disabledBy = options.telemetry.disabledBy;
+  const blocked = disabledBy !== undefined && BLOCKING.has(disabledBy);
+  if (!blocked && options.allowOutdated !== true) {
+    const latest = await latestRelease(fetchImpl);
+    if (latest !== undefined && olderThan(options.version, latest)) {
+      process.stderr.write(
+        `feedback not sent: e2e ${options.version} is older than the latest release ${latest}, which may already fix this. Upgrade e2e, check the problem still happens, and send it again; --allow-outdated sends it anyway.\n`,
+      );
+      return 2;
+    }
+  }
+  const environment = collectEnvironment({ env, cwd: options.cwd ?? process.cwd(), version: options.version });
+  const redact = feedbackRedactor(env);
+  if (report.type === 'bug' && report.repro === undefined) {
+    process.stdout.write(
+      `Not sent: a bug without --repro goes to GitHub, where the e2e team can ask for a reproduction. Open this prefilled issue, add a minimal reproduction, and submit it:\n${bugIssueUrl(report, environment, redact)}\n`,
+    );
+    return 0;
+  }
+  const event = feedbackEvent(report, options, environment, redact);
   if (options.dryRun === true || options.telemetry.debug) {
     process.stdout.write(`${JSON.stringify(event, null, 2)}\n`);
     return 0;
   }
-  const disabledBy = options.telemetry.disabledBy;
-  if (disabledBy !== undefined && BLOCKING.has(disabledBy)) {
+  if (blocked) {
     process.stderr.write(`feedback not sent: ${disabledBy} is set, which switches off everything e2e sends. Unset it for this command to send the report.\n`);
     return 2;
   }
-  const sent = await postBatch([event], { signal: AbortSignal.timeout(SEND_TIMEOUT_MS), fetch: options.fetch ?? fetch });
+  const sent = await postBatch([event], { signal: AbortSignal.timeout(SEND_TIMEOUT_MS), fetch: fetchImpl });
   if (!sent) {
     process.stderr.write(
       `feedback not confirmed: PostHog did not acknowledge report ${event.uuid}, so it may not have arrived. Try again, or open an issue: ${ISSUES_URL}\n`,

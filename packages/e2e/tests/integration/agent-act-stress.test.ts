@@ -116,7 +116,7 @@ describe('secret fill policy under a hostile model', () => {
       const log = result.attempts.at(-1)!.artifacts.find((a) => a.kind === 'log');
       expect(log?.path).toBeDefined();
       const transcript = readFileSync(
-        path.join(project.dir, '.e2e', 'artifacts', ...log!.path!.split('/')),
+        path.join(project.dir, '.e2e', 'results', ...log!.path!.split('/')),
         'utf8',
       );
       expect(transcript).not.toContain('admin-pass');

@@ -63,17 +63,17 @@ describe('output', () => {
       const fake = createFakeEngine({ artifacts: true });
       const { outcome, project } = await runProject(
         { 'tests/fail.e2e.ts': FAILING_TEST },
-        { appUrl: FAKE_APP_URL, config: engineConfig(fake.engine, { output: 'results', reporters: ['list', 'junit', 'markdown'] }) },
+        { appUrl: FAKE_APP_URL, config: engineConfig(fake.engine, { output: 'out', reporters: ['list', 'junit', 'markdown'] }) },
       );
       try {
         assertValidReport(outcome.report);
-        const output = path.join(project.dir, 'results');
+        const output = path.join(project.dir, 'out');
         expect(outcome.reportPath).toBe(path.join(output, 'report.json'));
         for (const file of ['report.json', 'junit.xml', 'summary.md']) expect(existsSync(path.join(output, file)), file).toBe(true);
         const screenshot = resultByTitle(outcome, 'fails on purpose').attempts[0]!.artifacts.find((artifact) => artifact.kind === 'screenshot')!;
-        expect(existsSync(path.join(output, 'artifacts', screenshot.path!))).toBe(true);
+        expect(existsSync(path.join(output, 'results', screenshot.path!))).toBe(true);
         expect(existsSync(path.join(project.dir, '.e2e', 'report.json'))).toBe(false);
-        expect(existsSync(path.join(project.dir, '.e2e', 'artifacts'))).toBe(false);
+        expect(existsSync(path.join(project.dir, '.e2e', 'results'))).toBe(false);
       } finally {
         project.cleanup();
       }
@@ -86,10 +86,10 @@ describe('output', () => {
     async () => {
       const project = createProject({ 'tests/pass.e2e.ts': PASSING_TEST, 'tests/fail.e2e.ts': FAILING_TEST });
       try {
-        const config = engineConfig(createFakeEngine({ artifacts: true }).engine, { output: 'results' });
+        const config = engineConfig(createFakeEngine({ artifacts: true }).engine, { output: 'out' });
         const first = await runExisting(project, { appUrl: FAKE_APP_URL, config });
         expect(first.status).toBe('failed');
-        const stale = path.join(project.dir, 'results', 'artifacts', 'stale', 'left-over.txt');
+        const stale = path.join(project.dir, 'out', 'results', 'stale', 'left-over.txt');
         mkdirSync(path.dirname(stale), { recursive: true });
         writeFileSync(stale, 'from a run long ago');
 
@@ -100,7 +100,7 @@ describe('output', () => {
         // --output over the config: no report there yet, so nothing to rerun from.
         const elsewhere = await runExisting(project, { appUrl: FAKE_APP_URL, config, runOptions: { lastFailed: true, output: 'other' } });
         expect(elsewhere.report.run.errors.map((error) => error.code)).toEqual(['NO_LAST_RUN']);
-        expect(rerun.reportPath).toBe(path.join(project.dir, 'results', 'report.json'));
+        expect(rerun.reportPath).toBe(path.join(project.dir, 'out', 'report.json'));
       } finally {
         project.cleanup();
       }
@@ -114,7 +114,7 @@ describe('output', () => {
       const project = createProject({ 'tests/pass.e2e.ts': PASSING_TEST, 'tests/fail.e2e.ts': FAILING_TEST });
       try {
         const config = engineConfig(createFakeEngine({ artifacts: true }).engine);
-        const artifacts = path.join(project.dir, '.e2e', 'artifacts');
+        const artifacts = path.join(project.dir, '.e2e', 'results');
         const screenshotOf = (outcome: RunOutcome) =>
           resultByTitle(outcome, 'fails on purpose').attempts[0]!.artifacts.find((artifact) => artifact.kind === 'screenshot')!;
         const onDisk = (artifact: { path?: string | undefined; sha256?: string | undefined }) =>
@@ -122,14 +122,15 @@ describe('output', () => {
 
         const first = await runExisting(project, { appUrl: FAKE_APP_URL, config });
         const firstShot = screenshotOf(first);
-        expect(firstShot.path).toMatch(/^fake\/.*\/attempt-0\//);
-        const planted = path.join(artifacts, 'fake', 'planted.txt');
+        expect(firstShot.path).toMatch(/^fail-fails-on-purpose-[0-9a-f]{16}\/attempt-1\//);
+        const planted = path.join(artifacts, 'planted.txt');
         writeFileSync(planted, 'named by no report');
 
         const rerun = await runExisting(project, { appUrl: FAKE_APP_URL, config, runOptions: { lastFailed: true } });
         expect(rerun.status).toBe('failed');
         const rerunShot = screenshotOf(rerun);
-        expect(rerunShot.path).toBe(`rerun-1/${firstShot.path}`);
+        const inRerun = (n: number) => firstShot.path!.replace('/attempt-1/', `/rerun-${n}/attempt-1/`);
+        expect(rerunShot.path).toBe(inRerun(1));
         expect(onDisk(firstShot)).toBe(true);
         expect(onDisk(rerunShot)).toBe(true);
         expect(existsSync(planted)).toBe(false);
@@ -137,14 +138,14 @@ describe('output', () => {
 
         // The next rerun keeps what the report it reruns names, the first run's evidence no more.
         const again = await runExisting(project, { appUrl: FAKE_APP_URL, config, runOptions: { lastFailed: true } });
-        expect(screenshotOf(again).path).toBe(`rerun-2/${firstShot.path}`);
+        expect(screenshotOf(again).path).toBe(inRerun(2));
         expect(onDisk(rerunShot)).toBe(true);
         expect(existsSync(path.join(artifacts, firstShot.path!))).toBe(false);
 
-        // A full run starts from an empty tree, at the root again.
+        // A full run starts from an empty tree, with no rerun directory left.
         const full = await runExisting(project, { appUrl: FAKE_APP_URL, config });
         expect(screenshotOf(full).path).toBe(firstShot.path);
-        expect(readdirSync(artifacts)).toEqual(['fake']);
+        expect(readdirSync(path.join(artifacts, firstShot.path!.split('/')[0]!)).filter((entry) => entry.startsWith('rerun-'))).toEqual([]);
       } finally {
         project.cleanup();
       }
@@ -169,9 +170,9 @@ describe('output', () => {
         const reportFile = path.join(project.dir, '.e2e', 'report.json');
         const report = readFileSync(reportFile, 'utf8');
         const screenshot = resultByTitle(first, 'fails on purpose').attempts[0]!.artifacts.find((artifact) => artifact.kind === 'screenshot')!;
-        const evidence = path.join(project.dir, '.e2e', 'artifacts', screenshot.path!);
+        const evidence = path.join(project.dir, '.e2e', 'results', screenshot.path!);
         expect(existsSync(evidence)).toBe(true);
-        const planted = path.join(project.dir, '.e2e', 'artifacts', 'planted.txt');
+        const planted = path.join(project.dir, '.e2e', 'results', 'planted.txt');
         writeFileSync(planted, 'left by the last run');
 
         const stopped = [
@@ -189,7 +190,7 @@ describe('output', () => {
         }
         const unrecordable = await runExisting(project, {
           appUrl: FAKE_APP_URL,
-          config: { targets: [{ name: 'fake', platform: 'fake', engine: fake.engine, app: FAKE_APP, trace: 'on' }] },
+          config: { targets: [{ name: 'fake', platform: 'fake', engine: fake.engine, app: FAKE_APP, video: 'on' }] },
           runOptions: { files },
         });
         expect(unrecordable.report.run.errors.map((error) => error.code)).toEqual(['UNSUPPORTED_ARTIFACT']);

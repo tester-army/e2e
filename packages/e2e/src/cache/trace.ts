@@ -19,6 +19,7 @@
 import { isKeyModifier, KEY_MODIFIERS, type KeyModifier } from '../engine/contract.ts';
 import { timestamp } from '../internal/ids.ts';
 import type { ScrollDirection } from '../types.ts';
+import { bound } from '../internal/text.ts';
 
 export const TRACE_SCHEMA_VERSION = 'trace-1';
 
@@ -37,9 +38,16 @@ export const MAX_TRACE_DESCRIPTOR_CHARS = 300;
  */
 export const MAX_TRACE_INPUT_CHARS = 4_096;
 
-/** Caps prose at `maxChars`, marking the cut with an ellipsis. */
-export function bound(text: string, maxChars: number): string {
-  return text.length <= maxChars ? text : `${text.slice(0, maxChars - 1)}…`;
+/**
+ * A node as one line of prose names it, `button "Save"`: its role and its
+ * best label (name, text, placeholder, then test id), the label bounded.
+ * Every report line that names a node an action or a recording points at
+ * reads it this way.
+ */
+export function targetLabel(target: Pick<TraceTargetDescriptor, 'role' | 'name' | 'text' | 'placeholder' | 'testId'>): string {
+  const label = target.name ?? target.text ?? target.placeholder ?? target.testId ?? '';
+  const role = target.role ?? 'node';
+  return label === '' ? role : `${role} ${JSON.stringify(bound(label, 40))}`;
 }
 
 /**
@@ -407,6 +415,55 @@ export interface ActionTrace {
   readonly endWaitMs?: number;
   /** Set when recording overflowed a cap; the trace documents, never replays. */
   readonly truncated?: boolean;
+  /**
+   * The parts of the key that are not the step itself, as they were when it
+   * was recorded: provenance, never read by a replay. When a step's key no
+   * longer finds this entry, comparing them with the run's says what changed
+   * (an engine minor, the replay policy, the app's identity); absent on older
+   * entries.
+   */
+  readonly keyedBy?: TraceKeyContext;
+}
+
+/**
+ * Every part of a cache key outside the step's own identity (the runner, the
+ * engine, the app, and the agent's context), in the order an entry records
+ * them and a changed key names them. One list drives the type, the copy of a
+ * key, the read of a stored one, and the comparison of two.
+ */
+export const KEY_CONTEXT_FIELDS = [
+  'cacheSchema',
+  'policyVersion',
+  'project',
+  'platform',
+  'engineName',
+  'engineSpiVersion',
+  'appIdentity',
+  'agentContextDigest',
+] as const;
+
+/** The one numeric part; every other is text. */
+type KeyContextNumber = 'engineSpiVersion';
+
+/** The parts of a cache key outside the step's own identity (`KEY_CONTEXT_FIELDS`). */
+export type TraceKeyContext = {
+  readonly [Field in (typeof KEY_CONTEXT_FIELDS)[number]]: Field extends KeyContextNumber ? number : string;
+};
+
+/** A stored `keyedBy`, or undefined for anything else; a malformed one is dropped, never failing the entry. */
+function readKeyContext(document: unknown): TraceKeyContext | undefined {
+  if (typeof document !== 'object' || document === null || Array.isArray(document)) return undefined;
+  const raw = document as Record<string, unknown>;
+  const read: Record<string, string | number> = {};
+  for (const field of KEY_CONTEXT_FIELDS) {
+    const value: string | number | undefined =
+      field === 'engineSpiVersion'
+        ? typeof raw[field] === 'number' && Number.isSafeInteger(raw[field]) ? raw[field] : undefined
+        : readBoundedText(raw[field], MAX_TRACE_DESCRIPTOR_CHARS);
+    if (value === undefined) return undefined;
+    read[field] = value;
+  }
+  return read as TraceKeyContext;
 }
 
 export interface TraceEntry {
@@ -491,6 +548,7 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
   }
   const actions = each(actionsRaw, readRecordedAction);
   if (actions === undefined) return undefined;
+  const keyedBy = readKeyContext(raw['keyedBy']);
 
   return {
     actions,
@@ -506,6 +564,7 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
     ...(goneAnchors.length === 0 ? {} : { goneAnchors }),
     ...(endWaitMs === undefined ? {} : { endWaitMs }),
     ...(truncated === undefined ? {} : { truncated }),
+    ...(keyedBy === undefined ? {} : { keyedBy }),
   };
 }
 

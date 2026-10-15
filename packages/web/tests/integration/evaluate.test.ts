@@ -6,7 +6,7 @@ import type { Page } from 'playwright-core';
 import type { EngineFixtureContext } from 'e2e/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { createBrowserFixture, type Browser } from '../../src/browser.ts';
-import { noSecrets } from '../helpers/secrets.ts';
+import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 describe('browser.evaluate error boundaries', () => {
   const surface = new PlaywrightSurface({});
@@ -21,7 +21,7 @@ describe('browser.evaluate error boundaries', () => {
   });
 
   beforeEach(async () => {
-    await surface.startAttempt({ attemptId: 'evaluate', artifactsDir, signal, resolveSecret: noSecrets });
+    await surface.startAttempt({ attemptId: 'evaluate', artifactsDir, signal, resolveSecret: noSecrets, ...ignoreTrace });
     page = await surface.ensurePage();
     browser = createBrowserFixture(surface, {
       operation: () => ({ signal, timeoutMs: 1_000, runId: 'evaluate', attemptId: 'evaluate', origin: 'test' }),

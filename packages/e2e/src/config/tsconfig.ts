@@ -78,11 +78,20 @@ export class ProjectView {
     const nearest = this.nearest.get(directory);
     const root = nearest === undefined ? undefined : this.readTsconfig(nearest);
     if (root === undefined || root.references.length === 0 || root.includes(file) !== undefined) return root?.tsconfig;
-    for (const reference of root.references) {
-      const referenced = this.readTsconfig(reference);
-      if (referenced !== undefined && referenced.includes(file) !== undefined) return referenced.tsconfig;
-    }
-    return root.tsconfig;
+    const visited = new Set([nearest]);
+    const find = (references: readonly string[]): ProjectTsconfig | undefined => {
+      for (const reference of references) {
+        if (visited.has(reference)) continue;
+        visited.add(reference);
+        const referenced = this.readTsconfig(reference);
+        if (referenced === undefined) continue;
+        if (referenced.includes(file) !== undefined) return referenced.tsconfig;
+        const nested = find(referenced.references);
+        if (nested !== undefined) return nested;
+      }
+      return undefined;
+    };
+    return find(root.references) ?? root.tsconfig;
   }
 
   /**

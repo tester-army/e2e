@@ -35,4 +35,3 @@
       Steps  2 of 4 · 1 passed · 1 failed · the agent covered the goal
    Start at  10:00:00
    Duration  0ms
-     Report  .e2e/report.json

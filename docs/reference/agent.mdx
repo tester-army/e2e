@@ -2,6 +2,8 @@
 title: agent
 description: Run agent actions, check conditions, and extract structured data.
 icon: "robot"
+"og:image": "https://e2e.tester.army/docs/images/og/reference/agent.png?v=9a239b0466"
+"twitter:image": "https://e2e.tester.army/docs/images/og/reference/agent.png?v=9a239b0466"
 ---
 
 Use `act` to interact with the app, `assert` to check the current screen,
@@ -181,7 +183,9 @@ older images are removed in batches, keeping the newest two.
 On engines with a keyboard, including the browser and device engines, `type`
 and `press` can omit `target` to act on the focused field. `type` inserts at
 the caret; `replace: true` clears first. The browser engine rejects typing
-when no editable field has focus. Device engines also offer `dismiss_keyboard`.
+when no editable field has focus. The focused element is checked inside shadow
+roots and frames, so focus on a button there is refused. Device engines also
+offer `dismiss_keyboard`.
 When an action closes an on-screen keyboard, the result says so: on a touch
 screen that tap was often spent on closing it, and the model acts on the
 control again.

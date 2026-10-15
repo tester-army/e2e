@@ -2,6 +2,8 @@
 title: e2e/engine
 description: Build an engine with observations, actions, lifecycle hooks, and fixtures.
 icon: "gear"
+"og:image": "https://e2e.tester.army/docs/images/og/reference/engine.png?v=d82cf186db"
+"twitter:image": "https://e2e.tester.army/docs/images/og/reference/engine.png?v=d82cf186db"
 ---
 
 Import engine types and helpers from `e2e/engine`. `defineEngine` validates
@@ -39,7 +41,9 @@ Validation fails with `INVALID_CONFIG` for:
 - a `keyboard`, `state`, `artifacts`, or `session` manifest with an unknown
   key or a non-function member. `keyboard` needs `type` and `press`; `state`
   needs both `capture` and `restore`; `artifacts` needs `screenshot`;
-  `startTrace`/`stopTrace` and `startVideo`/`stopVideo` come in pairs;
+  `startVideo` and `stopVideo` come as a pair (the removed `startTrace` and
+  `stopTrace` an engine published before their removal declares are
+  accepted and never called);
 - a `secrets` that is not an array of `secrets.get()` handles;
 - an `app` member: the app under test is declared on the target, and an
   engine checks what it needs in `validateApp`;
@@ -151,7 +155,7 @@ export interface Engine {
   readonly fixtures?: Readonly<Record<string, EngineFixtureFactory>>;
   /** capability: state - opaque snapshot capture/restore for session reuse. */
   readonly state?: EngineStateCapability;
-  /** capability: artifacts - screenshots and traces under the attempt directory. */
+  /** capability: artifacts - screenshots under the attempt directory, and videos there or at a provider. */
   readonly artifacts?: EngineArtifacts;
   /**
    * Checks the app a target declares against what this engine can drive, at
@@ -222,7 +226,10 @@ export interface Engine {
 ```ts
 /** What every engine call carries: budget, ids, and who is acting. */
 export interface OperationContext {
-  /** Aborts with the attempt or when the operation budget is spent. */
+  /**
+   * Aborts when the attempt, or the hook running the call, ends. It does not
+   * abort at `timeoutMs`: bound each call by that budget yourself.
+   */
   readonly signal: AbortSignal;
   /** Remaining operation budget when the call starts. */
   readonly timeoutMs: number;
@@ -253,7 +260,7 @@ export interface OperationContext {
 | `keyboard.{type,press,dismiss?}` | `keyboard` | `observe` | the agent's `type` and `press` without a target, the keyboard fallback of `type_at` and `press_at` on a point the tree lists nothing at, and `dismiss_keyboard` when `dismiss` exists: input to whatever holds focus, for a field drawn on a canvas or flattened out of a platform's tree; with the `focus` action, `locator.pressSequentially`, which the harness composes as `focus` then `keyboard.type` |
 | `fixtures.<name>` | `<name>` | - | a contributed fixture; `requires: ['<name>']` gates at selection |
 | `state` | `state` | - | `test.setup` sessions and the `session:` option |
-| `artifacts` | `artifacts` | - | `app.screenshot()`, assertion evidence, the failure screenshot, and every [`trace` and `video` mode](/reference/config#recording) but `off`, from the config, a target, a test, `--trace`, or `--video` |
+| `artifacts` | `artifacts` | - | `app.screenshot()`, assertion evidence, the failure screenshot, and every [`video` mode](/reference/config#recording) but `off`, from the config, a target, a test, or `--video` |
 | `validateApp` | - | - | a config-load check of the target's `app` |
 | `session` | - | - | `app.open()` and the agent's `navigate` verb (`open`), `app.back()` and the agent's `back` verb (`back`), `app.restart()` (`restart`), `app.clearState()` (`reset`) |
 
@@ -503,7 +510,7 @@ export interface EngineAttemptContext {
    * provider runs again on every call. The value, and every value
    * `options.derived` computes from it, join the attempt's redaction before
    * this resolves, so reports, logs, and every observation redact them, and
-   * the attempt's trace and text downloads are rewritten. The protection is
+   * the attempt's text downloads are rewritten. The protection is
    * text only: unlike a fill, it withholds no screenshot or model pixels.
    * A secret the engine did not declare is `SECRET_UNAVAILABLE`.
    */
@@ -514,6 +521,48 @@ export interface EngineAttemptContext {
    * harness ends the attempt's isolation right behind it and may retry.
    */
   readonly signal: AbortSignal;
+  /**
+   * Reports something the app did on its own while the attempt ran: a
+   * console line, an uncaught exception, a request that failed. The harness
+   * redacts the text, keeps it with the step that was running (from an event
+   * callback outside any step, the step that started last; before the first
+   * step, with none), and shows it on the trace page. Call it from the moment `startAttempt` begins until
+   * `endAttempt`; entries past a per-attempt cap are dropped.
+   */
+  readonly appLog: (entry: AppLogEntry) => void;
+  /**
+   * Reports where the app went on its own, as one line (`navigated to
+   * /login`, `the app opened a new tab at /help`): a navigation the engine
+   * did not start, a tab, a frame. Shown under the step that was running.
+   */
+  readonly navigation: (line: string) => void;
+  /**
+   * Hands the harness a screen for the trace: the capture a `locate`
+   * matched against, or one read right after an action. A read after an
+   * action is on the action's path, so bound it and skip it where it is
+   * expensive; it never fails the action. The trace page shows how each
+   * step's screen changed. Refs in it are not valid for `perform`. Absent
+   * when the attempt keeps no trace.
+   */
+  readonly screen?: (snapshot: EngineSnapshot) => void;
+  /**
+   * What the attempt runs on, such as `{ browser: 'chromium 141.0' }` or
+   * `{ device: 'iPhone 16', os: 'iOS 26.0' }`, for the trace page. Later
+   * calls add to and overwrite earlier facts.
+   */
+  readonly environment: (facts: Readonly<Record<string, string>>) => void;
+}
+
+/** One line of what the app did during an attempt, as `EngineAttemptContext.appLog` takes it. */
+export interface AppLogEntry {
+  /**
+   * Where it came from: the app's `console`, an `error` nothing caught, the
+   * `network`, or the `system` the app runs on (a crash, an OS log).
+   */
+  readonly source: 'console' | 'error' | 'network' | 'system';
+  readonly level: 'error' | 'warning' | 'info';
+  /** One line, such as `GET /api/todos 500` or `TypeError: x is undefined`; the harness clips it. */
+  readonly text: string;
 }
 
 /** How `EngineAttemptContext.resolveSecret` treats what the engine makes of the value. */
@@ -580,6 +629,12 @@ export interface EngineSnapshot {
    * read whole.
    */
   readonly truncated?: boolean;
+  /**
+   * Whether an on-screen keyboard is showing, as the engine measured it apart
+   * from `root`. Set `false` when it measured none, and omit it only when the
+   * engine did not measure it.
+   */
+  readonly keyboardVisible?: boolean;
   /** Semantic capture failed; only fresh, independently masked pixels are evidence. */
   readonly treeUnavailable?: true;
   /** Masked pixels, when requested and producible; omitted otherwise. */
@@ -593,6 +648,8 @@ export interface EngineObserveOptions {
   readonly pixels?: boolean;
   /** Permits independently masked pixels to replace a failed semantic capture. */
   readonly pixelFallback?: boolean;
+  /** The pixels are compared against a stored screenshot: hold system chrome (a status bar's clock and battery) in a fixed state where the platform can. */
+  readonly comparable?: boolean;
 }
 ```
 
@@ -1036,16 +1093,6 @@ export interface EngineStateCapability {
 export interface EngineArtifacts {
   /** Captures a redacted screenshot; secure fields are masked at the source. */
   screenshot(label: string | undefined, context: OperationContext): Promise<string>;
-  /** Starts recording an execution trace for the attempt. */
-  startTrace?(context: OperationContext): Promise<void>;
-  /**
-   * Stops the trace and returns its relative path, or every archive written,
-   * in order, when the trace had to be cut: a trace bound to one context
-   * closes as a segment when a restart or a state reset replaces the
-   * context, and a new one records on from there. The harness registers and
-   * redacts each returned archive.
-   */
-  stopTrace?(context: OperationContext): Promise<string | readonly string[]>;
   /**
    * Starts recording the surface for the attempt. Declared together with
    * `stopVideo`. A surface that has nothing to show yet (no page open) may
@@ -1088,12 +1135,10 @@ export interface VideoLink {
 ```
 
 The runner calls `startVideo` only for an attempt whose
-[video mode](/reference/config#video) records, then `startTrace` for one whose
-[trace mode](/reference/config#trace) records, after
-`startAttempt` and any session restore. Both use the launch budget and stop
-before `endAttempt`, within the cleanup budget; a `startVideo` that fails
-fails the launch. Return segments in recording order from `stopVideo` and
-`stopTrace`. The runner decides which recordings are kept and deletes a file an
+[video mode](/reference/config#video) records, after `startAttempt` and any
+session restore. It uses the launch budget and stops before `endAttempt`,
+within the cleanup budget; a `startVideo` that fails fails the launch. Return
+segments in recording order from `stopVideo`. The runner decides which recordings are kept and deletes a file an
 attempt does not keep.
 
 ### Provider recordings
@@ -1164,14 +1209,7 @@ startedAt }` for `stopVideo` to hand back. A `stop` that throws or returns
 anything else is `ENGINE_FAILURE`, naming the provider and the lease. The
 target argument's type is exported as `ProviderRecordingTarget`.
 
-When the session knows a secret value, the runner redacts every text entry in
-each trace archive, so a value a test spelled into a URL or the options the
-engine opened the attempt with (`resolveSecret`) never stay in it. After a
-secret fill it also drops the screencast frames: every `screencast/` entry,
-each `screencast-frame` record in a `.trace` entry, and any image a record
-names.
-If redaction fails, it deletes the archives and records
-`TRACE_WITHHELD`. Videos are unmasked and carry `redaction: 'incomplete'`.
+Videos are unmasked and carry `redaction: 'incomplete'`.
 A `download` an engine attaches is the app's bytes: when the session knows
 a secret value, the runner rewrites a text one (`.txt`,
 `.csv`, `.json`, `.html`) through the ledger and labels it `complete`; every
@@ -1220,7 +1258,7 @@ export interface EngineFixtureContext {
   operation(timeoutMs?: number): OperationContext;
   /** Registers a file the current step produced under the attempt artifact directory. */
   attachArtifact(
-    kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log',
+    kind: 'screenshot' | 'video' | 'download' | 'log',
     relativePath: string,
   ): void;
   /** Records the viewport the current step established. */

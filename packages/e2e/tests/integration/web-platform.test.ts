@@ -250,11 +250,11 @@ test('forbidden URL schemes are refused', async ({ app }) => {
 });
 
 test('a route handler assertion that no step follows', async ({ app, browser }) => {
-  await browser.route('**/api/flags', async (route) => {
-    await route.fulfill({ json: { betaBoard: true } });
+  await browser.route('**/api/flags.js', async (route) => {
+    await route.fulfill({ body: '', contentType: 'text/javascript' });
     expect(route.request.method).toBe('POST');
   });
-  await app.open('/flags');
+  await app.open('/script-flags');
 });
 
 test('a dialog handler assertion that no step follows', async ({ app, browser, screen }) => {
@@ -276,11 +276,11 @@ test.afterEach(async ({ app }) => {
 });
 
 test('a route handler assertion that no step follows, then a teardown that navigates', async ({ app, browser }) => {
-  await browser.route('**/api/flags', async (route) => {
-    await route.fulfill({ json: { betaBoard: true } });
+  await browser.route('**/api/flags.js', async (route) => {
+    await route.fulfill({ body: '', contentType: 'text/javascript' });
     expect(route.request.method).toBe('POST');
   });
-  await app.open('/flags');
+  await app.open('/script-flags');
 });
 `;
 
@@ -327,6 +327,17 @@ test('class assertions poll for a node that arrives late', async ({ app, browser
   await expect(browser).toHaveClass(browser.locator('#late-card'), 'card late', { timeout: 1800 });
 });
 
+test('reads wait for a node that arrives late', async ({ app, browser, screen }) => {
+  await app.open('/classes');
+  expect(await browser.locator('#late-card').getAttribute('class')).toBe('card late');
+  expect(await screen.getByText('Late card').textContent()).toBe('Late card');
+});
+
+test('a read of a node that never arrives fails with LOCATOR_NOT_FOUND', async ({ app, screen }) => {
+  await app.open('/classes');
+  await screen.getByText('Never card').textContent();
+});
+
 test('class assertions on an ambiguous locator fail at once', async ({ app, browser }) => {
   await app.open('/classes');
   await expect(browser).toHaveClass(browser.locator('.dup'), 'dup', { timeout: 1800 });
@@ -335,6 +346,11 @@ test('class assertions on an ambiguous locator fail at once', async ({ app, brow
 test('an empty class attribute is an empty class list', async ({ app, browser }) => {
   await app.open('/classes');
   await expect(browser).toHaveClass(browser.locator('#blank-card'), '');
+});
+
+test('class assertions on a node that never arrives fail as assertions', async ({ app, browser }) => {
+  await app.open('/classes');
+  await expect(browser).toHaveClass(browser.locator('#never-card'), 'card', { timeout: 300 });
 });
 
 test('a missing class attribute is not an empty class list', async ({ app, browser, screen }) => {
@@ -452,6 +468,7 @@ describe('web platform integration', () => {
     'clicks hold the modifiers they name',
     'a viewport set before the first navigation holds through app.open',
     'an empty class attribute is an empty class list',
+    'reads wait for a node that arrives late',
     'toHaveURL ignoreCase folds the comparison',
     'string and RegExp URL patterns match what they name',
   ])('passes %s', (title) => {
@@ -480,7 +497,13 @@ describe('web platform integration', () => {
     expect(result.status).toBe('failed');
     const error = result.attempts[0]!.error;
     expect(error?.code).toBe('ACTION_FAILED');
-    const triggerMs = Number(/^no download started within 500ms; the trigger resolved after (\d+)ms$/.exec(error?.message ?? '')?.[1]);
+    const timing = /^no download started within (\d+)ms; the trigger resolved after (\d+)ms$/.exec(error?.message ?? '');
+    expect(timing).not.toBeNull();
+    // The operation reports its remaining budget after setup, capped by the requested 500ms.
+    const waitMs = Number(timing?.[1]);
+    expect(waitMs).toBeGreaterThan(0);
+    expect(waitMs).toBeLessThanOrEqual(500);
+    const triggerMs = Number(timing?.[2]);
     // The trigger sleeps 200ms; a timer can fire a millisecond or two early.
     expect(triggerMs).toBeGreaterThanOrEqual(190);
   });
@@ -558,9 +581,9 @@ describe('web platform integration', () => {
     expect(attempt.error).toMatchObject({ code: 'ASSERTION_FAILED', phase: 'body' });
     expect(attempt.steps.map((step) => step.api)).toEqual(['browser.route', 'app.open', 'app.open']);
     const failure = attempt.failure!;
-    expect(failure.url).toMatch(/\/flags$/);
+    expect(failure.url).toMatch(/\/script-flags$/);
     const screen = attempt.artifacts.find((artifact) => artifact.id === failure.screen)!;
-    const text = readFileSync(path.join(project.dir, '.e2e', 'artifacts', screen.path!), 'utf8');
+    const text = readFileSync(path.join(project.dir, '.e2e', 'results', screen.path!), 'utf8');
     expect(text).toContain('heading "Flags"');
     expect(text).not.toContain('heading "Home"');
   });
@@ -636,12 +659,29 @@ describe('web platform integration', () => {
     expect(step?.durationMs).toBeGreaterThan(500);
   });
 
+  it('fails a read of a node that never arrives with LOCATOR_NOT_FOUND once the action timeout has run', () => {
+    const result = resultByTitle(outcome, 'a read of a node that never arrives fails with LOCATOR_NOT_FOUND');
+    expect(result.status).toBe('failed');
+    expect(result.attempts[0]!.error?.code).toBe('LOCATOR_NOT_FOUND');
+    expect(result.attempts[0]!.error?.message).toContain('Never card');
+    expect(result.attempts[0]!.durationMs).toBeGreaterThanOrEqual(5_000);
+  });
+
   it('fails a class assertion on an ambiguous locator with LOCATOR_AMBIGUOUS before the deadline', () => {
     const result = resultByTitle(outcome, 'class assertions on an ambiguous locator fail at once');
     expect(result.status).toBe('failed');
     expect(result.attempts[0]!.error?.code).toBe('LOCATOR_AMBIGUOUS');
     const step = result.attempts[0]!.steps.find((candidate) => candidate.api === 'expect.toHaveClass');
     expect(step?.durationMs).toBeLessThan(1800);
+  });
+
+  it('fails a class assertion on a node that never arrives as ASSERTION_FAILED observing no node', () => {
+    const result = resultByTitle(outcome, 'class assertions on a node that never arrives fail as assertions');
+    expect(result.status).toBe('failed');
+    expect(result.attempts[0]!.error?.code).toBe('ASSERTION_FAILED');
+    expect(result.attempts[0]!.error?.message).toContain('observed: no node');
+    const step = result.attempts[0]!.steps.find((candidate) => candidate.api === 'expect.toHaveClass');
+    expect(step?.durationMs).toBeLessThan(3000);
   });
 
   it('matches an empty class string against no class attribute only when one is present', () => {

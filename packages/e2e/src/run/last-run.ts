@@ -17,6 +17,7 @@ const UNDELIVERED_SKIPS = new Set<NonNullable<ReportResult['skip']>['cause']>([
   'hook-failed',
   'infrastructure-unavailable',
   'failure-limit',
+  'time-limit',
 ]);
 
 /** The id `--last-failed` names a result by: its test, target, and agent, whichever its repeat. */

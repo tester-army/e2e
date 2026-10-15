@@ -44,7 +44,6 @@
         ],
         "artifactCapabilities": [
           "screenshot",
-          "trace",
           "video"
         ],
         "stateCapability": true
@@ -116,6 +115,22 @@
                     "status": "passed",
                     "name": "tap",
                     "detail": "tap button \"Close\""
+                  },
+                  {
+                    "kind": "navigation",
+                    "startedAt": "2026-07-24T12:00:03.100Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "detail": "navigated to /cart"
+                  },
+                  {
+                    "kind": "poll",
+                    "startedAt": "2026-07-24T12:00:03.200Z",
+                    "durationMs": 400,
+                    "status": "passed",
+                    "name": "expect",
+                    "count": 4,
+                    "detail": "text \"0 items\" (1 match) x3 -> at 300ms text \"1 item\" (1 match)"
                   }
                 ],
                 "metrics": {
@@ -130,7 +145,10 @@
                   "reason": "gap",
                   "derived": "minted-token",
                   "replayedActions": 0,
-                  "totalActions": 2
+                  "totalActions": 2,
+                  "entry": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                  "detail": "at action 1 of 2, type a value read off the screen",
+                  "write": "saved"
                 },
                 "artifacts": [],
                 "turns": [
@@ -153,6 +171,16 @@
                   "file": "tests/example.e2e.ts",
                   "line": 3,
                   "column": 1
+                },
+                "phase": "afterEach",
+                "screen": {
+                  "location": "https://app.example.com/results",
+                  "nodes": 12,
+                  "since": 0,
+                  "changes": [
+                    "added heading \"Results\"",
+                    "changed status text=\"3 found\" (was: status text=\"searching\")"
+                  ]
                 },
                 "status": "failed",
                 "startedAt": "2026-07-24T12:00:00.000Z",
@@ -202,6 +230,9 @@
             ],
             "secondaryErrors": [],
             "cleanup": "complete",
+            "environment": {
+              "browser": "chromium 141.0.7390.37"
+            },
             "failure": {
               "url": "http://127.0.0.1:3000/todos",
               "screen": "018f0f5c-7b2a-7abc-8abc-1123456789ab:artifact:0",
@@ -226,7 +257,16 @@
                 "line": 9,
                 "column": 3
               }
-            }
+            },
+            "appLog": [
+              {
+                "source": "network",
+                "level": "error",
+                "text": "POST /api/cart 500 Internal Server Error",
+                "at": "2026-07-24T12:00:03.100Z",
+                "step": 0
+              }
+            ]
           }
         ]
       },

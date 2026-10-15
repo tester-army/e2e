@@ -266,7 +266,7 @@ describe('semantic fallback handoff', () => {
       expect(attempt?.error).toBeUndefined();
       expect(outcome.report.run.results[0]?.status).toBe('passed');
       // The report says how far the replay got and why it stopped.
-      expect(attempt?.steps.find((step) => step.api === 'agent.act')?.cache).toEqual(expected.cache);
+      expect(attempt?.steps.find((step) => step.api === 'agent.act')?.cache).toMatchObject(expected.cache);
       assertValidReport(outcome.report);
     } finally {
       project.cleanup();

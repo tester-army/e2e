@@ -279,6 +279,21 @@ describe('easSimulators()', () => {
     await expect(easSimulators({ projectId: 'p1' }).acquire(request())).rejects.toThrow('did not become ready: session errored; stopped it');
   });
 
+  it('starts no session for an already cancelled request', async () => {
+    const reason = new Error('cancel before acquire');
+    await expect(easSimulators({ projectId: 'p1' }).acquire(request({ signal: AbortSignal.abort(reason) }))).rejects.toBe(reason);
+    expect(eas.calls).toEqual([]);
+  });
+
+  it('starts no session when cancellation arrives during prerequisite resolution', async () => {
+    const controller = new AbortController();
+    const reason = new Error('cancel during acquire');
+    const acquiring = easSimulators({ projectId: 'p1' }).acquire(request({ signal: controller.signal }));
+    queueMicrotask(() => controller.abort(reason));
+    await expect(acquiring).rejects.toBe(reason);
+    expect(eas.calls).toEqual([]);
+  });
+
   it('stops a session whose request was cancelled while it started, and says when stopping failed too', async () => {
     const controller = new AbortController();
     eas.states = [{ status: 'NEW', turtleJobRun: { status: 'IN_QUEUE' }, remoteConfig: null }];
@@ -450,9 +465,10 @@ describe('easSimulators()', () => {
   });
 
   it('stops reading the app config when the run is interrupted', async () => {
-    await expect(easSimulators({}).acquire(request({ projectRoot: projectWith({ 'app.json': linked('p1') }), signal: AbortSignal.abort() }))).rejects.toThrow(
-      'could not read the Expo app config at',
-    );
+    const controller = new AbortController();
+    const acquiring = easSimulators({}).acquire(request({ projectRoot: projectWith({ 'app.json': linked('p1') }), signal: controller.signal }));
+    queueMicrotask(() => controller.abort());
+    await expect(acquiring).rejects.toThrow('could not read the Expo app config at');
     expect(eas.calls).toEqual([]);
   });
 

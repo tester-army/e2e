@@ -2,6 +2,8 @@
 title: Environment variables
 description: Every variable the runner and the first-party engines read, and what each one does.
 icon: "dollar-sign"
+"og:image": "https://e2e.tester.army/docs/images/og/reference/environment.png?v=67a4d71e70"
+"twitter:image": "https://e2e.tester.army/docs/images/og/reference/environment.png?v=67a4d71e70"
 ---
 
 These variables configure the runner and first-party packages. In the tables,
@@ -22,7 +24,7 @@ See [Models](/models) and [Subscriptions](/subscriptions).
 | Variable | Reading | Effect |
 | --- | --- | --- |
 | `E2E_OAUTH_CREDENTIALS` | value | The stored subscription logins as JSON, the contents of `oauth.json`, for a machine nobody can sign in on. The `e2e/oauth/*` models and `e2e models` read it in place of `$XDG_CONFIG_HOME/e2e/oauth.json`; `e2e login` and `e2e logout` refuse to change it, and refreshed tokens are not written back |
-| `OPENCODE_API_KEY` | value | An OpenCode Console service account key; `opencodeConsole()` uses it in place of the stored `opencode-console` login; `e2e models` still reads the stored login. OpenCode reads the same variable |
+| `OPENCODE_API_KEY` | value | An OpenCode Console service account API key or an OpenCode Go subscription API key; `opencodeConsole()` and `e2e models opencode-console` use it in place of the stored `opencode-console` login. OpenCode reads the same variable |
 | `XDG_CONFIG_HOME` | value | Directory of the stored logins, `$XDG_CONFIG_HOME/e2e/oauth.json`; default `~/.config/e2e/oauth.json` |
 
 ## Credentials and secrets
@@ -51,6 +53,12 @@ short would take ordinary text with it.
 | Variable | Reading | Effect |
 | --- | --- | --- |
 | `CI` | flag | CI mode: `retries` defaults to 1 and `workers` to 1, `cache` defaults to `read-only`, a focused test is `ONLY_IN_CI`, and `reuseExisting` on an app command is ignored |
+
+## Replay cache
+
+| Variable | Reading | Effect |
+| --- | --- | --- |
+| `E2E_CACHE_DIR` | value | Replaces [`cache.dir`](/reference/config#cache) for `e2e run` and `e2e cache`, resolved from the project root; `~` or a leading `~/` is the home directory. `--cache-dir` wins over it, a custom `cache.store` ignores it, the cache mode stays as configured, and `--no-cache` still turns the cache off |
 
 ## Diagnostics
 

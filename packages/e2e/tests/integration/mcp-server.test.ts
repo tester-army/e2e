@@ -442,7 +442,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     const result = await invoke('open_session', { config: 'custom.config.ts' });
     expect(result.isError).toBe(true);
     expect(result.text).toContain('TARGET_REQUIRED');
-    expect(result.text).toContain('web, kiosk');
+    expect(result.text).toContain('"web", "kiosk"');
   });
 
   it('renders project tool model output and preserves failed results over MCP', async () => {

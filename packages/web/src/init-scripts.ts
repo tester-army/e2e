@@ -7,7 +7,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ConfigurationError, TestError, validateJsonValue, type JsonValue } from 'e2e/engine';
-import { KEEP_NAMES_HELPER } from './evaluation.ts';
+import { KEEP_NAMES_HELPER, pageFunctionSource } from './evaluation.ts';
 import { message } from './support.ts';
 
 /**
@@ -106,7 +106,7 @@ async function initScriptSource(
 ): Promise<string> {
   if (typeof script === 'string') return script;
   if (typeof script === 'function') {
-    return `(() => {\n${KEEP_NAMES_HELPER}\n(${script.toString()}\n)(${arg === undefined ? '' : `JSON.parse(${JSON.stringify(JSON.stringify(arg))})`});\n})();`;
+    return `(() => {\n${KEEP_NAMES_HELPER}\n(${pageFunctionSource(script)}\n)(${arg === undefined ? '' : `JSON.parse(${JSON.stringify(JSON.stringify(arg))})`});\n})();`;
   }
   const file = resolvePath(script.path);
   try {

@@ -21,7 +21,7 @@ import type {
 } from 'e2e/engine';
 import { web } from '../../src/index.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
-import { noSecrets } from '../helpers/secrets.ts';
+import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 function cleanup(): EngineCleanupContext {
   return { signal: new AbortController().signal, timeoutMs: 30_000 };
@@ -91,7 +91,7 @@ describe('locators inside closed shadow roots', () => {
     app = await startFixtureApp();
     artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-closed-'));
     await boot(engine, app);
-    await engine.startAttempt!({ attemptId: 'closed-1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await engine.startAttempt!({ attemptId: 'closed-1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
     await engine.session!.open!(`${app.url}/closed-form`, op);
   });
 
@@ -242,7 +242,7 @@ describe('match order across one closed root', () => {
     app = await startFixtureApp();
     artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-closed-order-'));
     await boot(engine, app);
-    await engine.startAttempt!({ attemptId: 'closed-order', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await engine.startAttempt!({ attemptId: 'closed-order', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
     await engine.session!.open!(`${app.url}/closed-order`, op);
   });
 

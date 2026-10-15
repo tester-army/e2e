@@ -36,6 +36,53 @@ function provider(overrides: Partial<OAuthProvider<OAuthCredentials, never>> = {
 }
 
 describe('createOAuthFetch', () => {
+  it('does not refresh or send a request whose signal was already aborted', async () => {
+    const api = await serve((_request, response) => json(response, 200, {}));
+    const store = new MemoryCredentialStore({ test: { access: 'stale', refresh: 'rt-0', expires: 1 } });
+    const testProvider = provider();
+    const fetch = createOAuthFetch(testProvider, { store, userAgent: 'p' });
+    const controller = new AbortController();
+    controller.abort();
+    await expect(fetch(api.url, { signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(testProvider.refreshes).toEqual([]);
+    expect(api.requests).toEqual([]);
+  });
+
+  it('cancels one refresh waiter without cancelling the shared refresh another request needs', async () => {
+    const api = await serve((_request, response) => json(response, 200, { ok: true }));
+    const store = new MemoryCredentialStore({ test: { access: 'stale', refresh: 'rt-0', expires: 1 } });
+    let refreshCount = 0;
+    let release!: (credentials: OAuthCredentials) => void;
+    let started!: () => void;
+    const refreshStarted = new Promise<void>(resolve => { started = resolve; });
+    const testProvider = provider({ refresh: () => {
+      refreshCount += 1;
+      started();
+      return new Promise<OAuthCredentials>(resolve => { release = resolve; });
+    } });
+    const first = createOAuthFetch(testProvider, { store, userAgent: 'p' });
+    const second = createOAuthFetch(testProvider, { store, userAgent: 'p' });
+    const controller = new AbortController();
+    let cancelled: unknown;
+    const abandoned = first(api.url, { signal: controller.signal }).catch(error => { cancelled = error; });
+    await refreshStarted;
+    const active = second(api.url);
+    controller.abort();
+    await new Promise(resolve => setImmediate(resolve));
+    try {
+      expect(cancelled).toBe(controller.signal.reason);
+      expect(api.requests).toEqual([]);
+    } finally {
+      release({ access: 'fresh', refresh: 'rotated', expires: Date.now() + 3_600_000 });
+      await abandoned;
+    }
+    expect(await (await active).json()).toEqual({ ok: true });
+    expect(refreshCount).toBe(1);
+    expect(api.requests).toHaveLength(1);
+    expect(api.requests[0]?.headers.authorization).toBe('Bearer fresh');
+    expect(await store.get('test')).toMatchObject({ access: 'fresh', refresh: 'rotated' });
+  });
+
   it('swaps the SDK key header for the bearer token and names the product', async () => {
     const api = await serve((_request, response) => json(response, 200, { ok: true }));
     const store = new MemoryCredentialStore({ test: { access: 'tok', refresh: 'r', expires: 0 } });

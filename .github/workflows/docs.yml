@@ -1,43 +1,68 @@
 name: docs
 
+# Mintlify builds and hosts the site from main through its GitHub app, so
+# this workflow is only the check, on pull requests and merge queue entries
+# that touch the docs (the `changes` job says which); a manual dispatch
+# always runs it. The ruleset requires `docs gate` alone.
 on:
   pull_request:
-    paths:
-      - 'docs/**'
-      - 'skills/e2e/**'
-      - 'scripts/check-docs-*.ts'
-      - 'pnpm-lock.yaml'
-      - '.github/workflows/docs.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'docs/**'
-      - 'skills/e2e/**'
-      - 'scripts/check-docs-*.ts'
-      - 'pnpm-lock.yaml'
-      - '.github/workflows/docs.yml'
+  merge_group:
+  workflow_dispatch:
 
 permissions:
   contents: read
+  # The `changes` job reads the pull request's files.
+  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    outputs:
+      docs: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.docs == 'true' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        if: ${{ github.event_name != 'workflow_dispatch' }}
+        with:
+          filters: .github/filters.yml
+          predicate-quantifier: some-with-excludes
+
   build:
+    needs: changes
+    if: ${{ needs.changes.outputs.docs == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Mintlify builds and hosts the site from main through its GitHub app.
-      # This job is the check: it fails on an invalid page, a broken link, or a
-      # docs or skill code block that drifted from docs/examples.
+      # Fails on an invalid page, a broken link, or a docs or skill code
+      # block that drifted from docs/examples.
       - name: Check docs
         run: pnpm run docs:check
+
+  # The one check the ruleset requires from this workflow. A skipped job
+  # passes (the change cannot reach it); a failed or cancelled one fails it.
+  gate:
+    name: docs gate
+    needs: [changes, build]
+    if: ${{ always() }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: Require every job to pass or skip
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          failed="$(jq -r '[to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key) \(.value.result)"] | join(", ")' <<< "$RESULTS")"
+          [ -z "$failed" ] || { echo "::error::$failed"; exit 1; }

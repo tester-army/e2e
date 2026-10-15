@@ -1,20 +1,16 @@
 import type { LanguageModel } from 'ai';
 import type { ExecutorObservation, StepExecutor, StepExecutorContext, StepTurn, StepVerdict } from 'e2e';
-import { AgentError, isAgentError } from 'e2e/agent';
+import { isAgentError } from 'e2e/agent';
 import { ConfigurationError } from 'e2e/engine';
 import { decide, requireDecide, type Decision } from './decide.ts';
-import { actionSpace, type ActionSpace, type Control, type Operation, type Target } from './elements.ts';
-import {
-  assertionRequest,
-  completionRequest,
-  decisionRequest,
-  elementRecords,
-  nonSecretParams,
-  targetKeyIndex,
-  type DecisionRequest,
-  type HistoryEntry,
-} from './questions.ts';
-import { fieldText, type FieldInput } from './text.ts';
+import { perform, type Action } from './dispatch.ts';
+import { actionSpace, type ActionSpace, type Control, type Element, type Operation, type Target } from './elements.ts';
+import { PointLocator, type Aim } from './locator.ts';
+import type { Point, Screenshot } from './overlay.ts';
+import { nonSecretParams } from './params.ts';
+import { describe, gated, invalid, need, pick, verdictOf, type Gates, type Verdict } from './picks.ts';
+import { assertionRequest, completionRequest, operationRequest, targetRequest, type DecisionRequest, type HistoryEntry } from './questions.ts';
+import { askText, DRAWN_FIELD, PATHS, TARGET, TEXT, type Ask, type FieldInput } from './text.ts';
 import type { DecisionExecutorOptions } from './types.ts';
 /** Error codes the runtime owns: rethrown untouched, never absorbed as history. */
 const RUNTIME_CODES = new Set(['STEP_BUDGET_EXHAUSTED', 'STEP_TIMEOUT', 'CANCELLED']);
@@ -27,19 +23,25 @@ export function decisionExecutor(options: DecisionExecutorOptions): StepExecutor
   }
   requireDecide();
   checkModel(options.model);
-  const minProbability = options.minProbability ?? 0;
-  const minConfidence = options.minConfidence ?? 0;
-  if (!inUnit(minProbability) || !inUnit(minConfidence)) {
+  const gates: Gates = { minProbability: options.minProbability ?? 0, minConfidence: options.minConfidence ?? 0 };
+  if (!inUnit(gates.minProbability) || !inUnit(gates.minConfidence)) {
     throw new ConfigurationError('INVALID_CONFIG', 'decisionExecutor({ minProbability, minConfidence }) must be between 0 and 1');
+  }
+  if (options.providerOptions !== undefined && !isOptionsRecord(options.providerOptions)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'decisionExecutor({ providerOptions }) maps provider names to option objects, e.g. { gateway: { zeroDataRetention: true } }');
+  }
+  if (options.vision !== undefined && typeof options.vision !== 'boolean') {
+    throw new ConfigurationError('INVALID_CONFIG', 'decisionExecutor({ vision }) must be a boolean');
   }
   const textModel = options.textModel;
   return {
     name: 'decision',
-    version: '1',
+    version: '2',
     cache: 'inherit',
     ...(textModel === undefined ? {} : { model: textModel }),
+    ...(options.vision === true ? { vision: true } : {}),
     async runStep(ctx) {
-      return run(ctx, options, minProbability, minConfidence);
+      return new Step(ctx, options, gates).run();
     },
   };
 }
@@ -74,267 +76,357 @@ function checkModel(model: unknown): void {
     throw new ConfigurationError('INVALID_CONFIG', `decisionExecutor({ model }) got ${name}, which does not answer choice questions`);
   }
 }
+/** A plain object whose every value is a plain object: the shape the AI SDK takes as providerOptions. */
+function isOptionsRecord(value: unknown): boolean {
+  const isRecord = (v: unknown): boolean => {
+    if (typeof v !== 'object' || v === null) return false;
+    const prototype: unknown = Object.getPrototypeOf(v);
+    return prototype === Object.prototype || prototype === null;
+  };
+  return isRecord(value) && Object.values(value as object).every(isRecord);
+}
 function inUnit(value: number): boolean {
   return Number.isFinite(value) && value >= 0 && value <= 1;
 }
-/** An action the loop dispatched, still open to its outcome suffix. */
-interface Taken {
-  readonly target: Target;
-  readonly operation: string;
-  readonly elementKey: string;
+/** One look at the app: the path, the action space when the tree had nodes, and the pixels the step may show. */
+interface View {
+  readonly path: string;
+  readonly space: ActionSpace | undefined;
+  readonly screenshot: Screenshot | undefined;
 }
-async function run(
-  ctx: StepExecutorContext,
-  options: DecisionExecutorOptions,
-  minProbability: number,
-  minConfidence: number,
-): Promise<StepVerdict> {
-  const model = options.model;
-  let calls = 0;
-  const turns: StepTurn[] = [];
-  const transcript: string[] = [];
-  const history: HistoryEntry[] = seedHistory(ctx);
-  const language = ctx.model as Exclude<LanguageModel, string> | undefined;
-  const canType = language !== undefined && ctx.target.verbs.has('type');
-  let previousFingerprint: string | undefined;
-  let lastTurn: StepTurn | undefined;
-  let rejectedTerminals = 0;
-  const finish = (verdict: StepVerdict): StepVerdict => {
-    ctx.attachTurns(turns);
-    ctx.attachTranscript(transcript.join('\n'));
-    return verdict;
-  };
-  const gated = (decision: Decision): boolean =>
-    decision.probability >= minProbability && decision.confidence >= minConfidence;
-  const describe = (decision: Decision): string =>
-    `p=${decision.probability.toFixed(3)}, confidence ${decision.confidence.toFixed(3)}`;
-  const budgetMessage = (): string =>
-    `The step did not conclude within its ${ctx.budgets.maxModelCalls} decision calls.`;
-  /**
-   * The action space of a complete observation; undefined when the tree is
-   * missing or empty. Verdict views pass `typing: true` so a field the step
-   * filled keeps its row and value even when the step itself cannot type.
-   */
-  const spaceOf = (observation: ExecutorObservation, typing: boolean): ActionSpace | undefined => {
-    const tree = observation.tree;
-    if (observation.treeUnavailable || tree === undefined || emptyTree(observation)) return undefined;
-    return actionSpace(ctx, { path: observation.path ?? '', viewport: observation.viewport, tree }, typing);
-  };
-  const ask = async (request: DecisionRequest): Promise<Record<string, Decision> | undefined> => {
-    if (calls >= ctx.budgets.maxModelCalls) return undefined;
-    transcript.push(JSON.stringify({ state: request.state, questions: request.questions }));
-    calls += 1;
-    const answers = await decide(ctx, model, request);
-    transcript.push(JSON.stringify(answers));
-    return answers;
-  };
-  const askText = async (field: FieldInput['field'], page: string): Promise<string | null | undefined> => {
-    if (calls >= ctx.budgets.maxModelCalls) return undefined;
-    if (language === undefined) throw invalid('The decision model chose type with no text model configured.');
-    calls += 1;
-    return fieldText(ctx, language, {
-      goal: ctx.step.instruction,
-      context: ctx.agentContext ?? null,
-      params: nonSecretParams(ctx.step.params),
-      field,
-      page,
-      recentActions: history.slice(-6),
-    });
-  };
-  if (ctx.step.kind === 'assert') {
-    const observation = await ctx.observe({ tree: true });
-    const space = spaceOf(observation, true);
-    if (space === undefined) return finish(inconclusive('A complete semantic observation is required.'));
-    const request = assertionRequest(ctx.step.instruction, observation.path ?? '', space.pageText, elementRecords(space));
-    const answers = await ask(request);
-    if (answers === undefined) return finish(blocked(budgetMessage()));
-    const verdict = need(answers.verdict, 'verdict');
-    const evidence = describe(verdict);
-    if (gated(verdict) && verdict.choice === 'holds') {
-      return finish({ status: 'passed', summary: `The screen shows the assertion holds (${evidence}).` });
-    }
-    if (gated(verdict) && verdict.choice === 'fails') {
-      const summary = `The screen contradicts the assertion (${evidence}).`;
-      return finish({ status: 'failed', errorCode: 'ASSERTION_FAILED', summary });
-    }
-    return finish(inconclusive(`The screen does not settle the assertion (${evidence}).`));
+/** A look with nodes to act on. */
+type Acting = View & { readonly space: ActionSpace };
+/** An action the loop settled on, with how it reads in the turn and in history. */
+interface Prepared {
+  readonly action: Action;
+  /** The turn's call label, e.g. `type [3] textbox "New todo" = "Buy milk"`. */
+  readonly label: string;
+  /** The history line, e.g. `type into New todo [n3]`. */
+  readonly description: string;
+  readonly targetAnswer?: Decision;
+  readonly typed?: string;
+}
+/** What the loop settled an operation into: an action, a verdict to finish with, or a turn to skip with its reason. */
+type Next = Prepared | { readonly verdict: StepVerdict } | { readonly skip: string; readonly because: string };
+/** What a terminal check found: a verdict, or why the screen could not be judged. */
+type Check = Verdict | 'below gate' | 'incomplete observation';
+/**
+ * One `agent.act` or `agent.assert` step: the loop, the budget, the history
+ * the model reads, and the turns and transcript the runner keeps.
+ */
+class Step {
+  private calls = 0;
+  private readonly turns: StepTurn[] = [];
+  private readonly transcript: string[] = [];
+  private readonly history: HistoryEntry[];
+  private readonly language: Exclude<LanguageModel, string> | undefined;
+  private readonly canType: boolean;
+  private readonly vision: boolean;
+  /** Whether the step can locate a drawn control: the decision model scores and the text model names it. */
+  private readonly locates: boolean;
+  private readonly locator: PointLocator;
+  private previousFingerprint: string | undefined;
+  private origin: string | undefined;
+  /** The turn of the last action taken, settled by the next observation. */
+  private pendingTurn: StepTurn | undefined;
+  private rejectedTerminals = 0;
+  private attached = false;
+  constructor(
+    private readonly ctx: StepExecutorContext,
+    private readonly options: DecisionExecutorOptions,
+    private readonly gates: Gates,
+  ) {
+    this.history = seedHistory(ctx);
+    this.language = ctx.model as Exclude<LanguageModel, string> | undefined;
+    this.canType = this.language !== undefined && ctx.target.verbs.has('type');
+    this.vision = options.vision === true;
+    this.locates = this.language !== undefined && options.model.supportedQuestionTypes.includes('score');
+    this.locator = new PointLocator(ctx, (request) => this.ask(request), gates);
   }
-  for (;;) {
-    const observation = await ctx.observe({ tree: true });
-    const space = spaceOf(observation, canType);
-    if (space === undefined) return finish(blocked('A complete semantic observation is required.'));
-    const changed = space.fingerprint !== previousFingerprint;
-    if (lastTurn !== undefined) {
-      lastTurn.outcome += changed ? ', page changed' : ', page unchanged';
-      lastTurn = undefined;
+  async run(): Promise<StepVerdict> {
+    try {
+      return await (this.ctx.step.kind === 'assert' ? this.judge() : this.act());
+    } finally {
+      // A thrown step keeps its evidence too: the transcript is what explains a refusal or a bad answer.
+      this.attach();
     }
-    const previous = history.at(-1);
-    if (previous !== undefined) history[history.length - 1] = { ...previous, pageChanged: changed };
-    previousFingerprint = space.fingerprint;
-    if (stalled(history)) return finish(blocked('Three actions in a row changed nothing on screen.'));
-    const answers = await ask(decisionRequest(ctx, space, history, observation.path ?? ''));
-    if (answers === undefined) return finish(blocked(budgetMessage()));
-    const op = need(answers.operation, 'operation');
-    if (!gated(op)) return finish(blocked(`The next operation is uncertain (${describe(op)}).`));
-    if (op.choice === 'blocked') return finish(blocked('The decision model cannot make progress.'));
-    if (op.choice === 'done' || op.choice === 'failed') {
-      const terminal = await terminalCheck(op.choice);
-      if (terminal !== undefined) return finish(terminal);
-      continue;
-    }
-    const { taken, targetAnswer } = resolveTarget(op.choice, answers, space);
-    if (targetAnswer !== undefined && !gated(targetAnswer)) {
-      return finish(blocked(`The next target is uncertain (${describe(targetAnswer)}).`));
-    }
-    if (op.choice === 'type') {
-      const text = await askText(elementField(space, taken.elementKey), space.pageText);
-      if (text === undefined) return finish(blocked(budgetMessage()));
-      if (text === null || text === '') {
-        history.push({ action: taken.target.description, error: 'no value for this field' });
+  }
+  /** Whether this step may show pixels: vision is on and no secret has been filled in the attempt. */
+  private get pixelsAllowed(): boolean {
+    return this.vision && !this.ctx.pixelsTainted;
+  }
+  /**
+   * A fresh look: the tree, and masked pixels when allowed. `typing` keeps a
+   * filled field's row for verdict views.
+   */
+  private async view(typing: boolean): Promise<View> {
+    const observation = await this.ctx.observe({ tree: true, pixels: this.pixelsAllowed });
+    const path = observation.path ?? '';
+    const screenshot = this.pixelsAllowed ? observation.pixels : undefined;
+    const tree = observation.tree;
+    if (observation.treeUnavailable || tree === undefined || emptyTree(observation)) return { path, space: undefined, screenshot };
+    const base = { path, viewport: observation.viewport, tree, keyboardVisible: observation.keyboardVisible };
+    const seen = screenshot === undefined ? base : { ...base, pixels: screenshot, locates: this.locates };
+    return { path, space: actionSpace(this.ctx, seen, typing), screenshot };
+  }
+  /** One decide call under the step budget, or undefined once it is spent. */
+  private async ask(request: DecisionRequest): Promise<Record<string, Decision> | undefined> {
+    if (!this.spend()) return undefined;
+    this.transcript.push(transcriptLine(request));
+    const answers = await decide(this.ctx, this.options.model, request, this.options.providerOptions);
+    this.transcript.push(JSON.stringify(answers));
+    return answers;
+  }
+  /** One text-model call under the step budget, or undefined once it is spent. */
+  private async askText<T>(spec: Ask<T>, operation: string, page: string, field?: FieldInput['field']): Promise<T | undefined> {
+    if (this.language === undefined) throw invalid(`The decision model chose ${operation} with no text model configured.`);
+    if (!this.spend()) return undefined;
+    return askText(this.ctx, this.language, spec, {
+      goal: this.ctx.step.instruction,
+      context: this.ctx.agentContext ?? null,
+      params: nonSecretParams(this.ctx.step.params),
+      ...(field === undefined ? {} : { field }),
+      page,
+      recentActions: this.history.slice(-spec.history),
+    });
+  }
+  private spend(): boolean {
+    if (this.calls >= this.ctx.budgets.maxModelCalls) return false;
+    this.calls += 1;
+    return true;
+  }
+  private budgetMessage(): string {
+    return `The step did not conclude within its ${this.ctx.budgets.maxModelCalls} decision calls.`;
+  }
+  private attach(): void {
+    if (this.attached) return;
+    this.attached = true;
+    this.ctx.attachTurns(this.turns);
+    this.ctx.attachTranscript(this.transcript.join('\n'));
+  }
+  /** An assertion: one verdict on the current screen. */
+  private async judge(): Promise<StepVerdict> {
+    const { path, space, screenshot } = await this.view(true);
+    // `vision: 'only'` judges the pixels alone, tree or no tree; without granted pixels the tree still decides.
+    const pixelsOnly = this.ctx.step.vision === 'only' && screenshot !== undefined;
+    if (space === undefined && !pixelsOnly) return inconclusive('A complete semantic observation is required.');
+    const answers = await this.ask(assertionRequest(this.ctx.step.instruction, path, pixelsOnly ? undefined : space, screenshot));
+    if (answers === undefined) return blocked(this.budgetMessage());
+    const evidence = describe(need(answers.verdict, 'verdict'));
+    const settled = verdictOf(answers.verdict, this.gates);
+    if (settled === 'holds') return { status: 'passed', summary: `The screen shows the assertion holds (${evidence}).` };
+    if (settled === 'fails') return { status: 'failed', errorCode: 'ASSERTION_FAILED', summary: `The screen contradicts the assertion (${evidence}).` };
+    return inconclusive(`The screen does not settle the assertion (${evidence}).`);
+  }
+  /** The act loop: observe, decide, perform, until a terminal claim is confirmed or the step cannot go on. */
+  private async act(): Promise<StepVerdict> {
+    for (;;) {
+      const view = await this.view(this.canType);
+      this.origin ??= view.path;
+      if (view.space === undefined) return blocked('A complete semantic observation is required.');
+      const acting: Acting = { ...view, space: view.space };
+      this.settle(acting);
+      if (stalled(this.history)) return blocked('Three actions in a row failed or changed nothing on screen.');
+      const decided = await this.ask(operationRequest(this.ctx, acting.space, this.history, acting.path));
+      if (decided === undefined) return blocked(this.budgetMessage());
+      const op = need(decided.operation, 'operation');
+      if (!gated(op, this.gates)) return blocked(`The next operation is uncertain (${describe(op)}).`);
+      if (op.choice === 'blocked') return blocked('The decision model cannot make progress.');
+      if (op.choice === 'done' || op.choice === 'failed') {
+        const terminal = await this.terminalCheck(op.choice);
+        if (terminal !== undefined) return terminal;
         continue;
       }
-      await runTarget(taken, op, targetAnswer, space, text, text);
-      continue;
-    }
-    let secret: string | undefined;
-    if (op.choice === 'typeSecret') {
-      const resolved = resolveSecret(answers.secret);
-      if (resolved.answer !== undefined && !gated(resolved.answer)) {
-        return finish(blocked(`The next secret is uncertain (${describe(resolved.answer)}).`));
+      const next = await this.prepare(op, acting);
+      if ('verdict' in next) return next.verdict;
+      if ('skip' in next) {
+        this.history.push({ action: next.skip, error: next.because });
+        continue;
       }
-      secret = resolved.name;
+      await this.take(next, op);
     }
-    await runTarget(taken, op, targetAnswer, space, secret);
-  }
-  /** Resolves the chosen operation to a bound target. Throws MODEL_OUTPUT_INVALID for anything not offered. */
-  function resolveTarget(
-    choice: string,
-    answers: Record<string, Decision>,
-    space: ActionSpace,
-  ): { taken: Taken; targetAnswer?: Decision } {
-    const control = space.controls.get(choice as Control);
-    if (control !== undefined) return { taken: { target: control, operation: choice, elementKey: '' } };
-    const group = space.targets.get(choice as Operation);
-    if (group === undefined) throw invalid('The decision model chose an unavailable operation.');
-    if (group.size === 1) {
-      const only = group.entries().next();
-      if (only.done === true) throw invalid('The decision model chose an unavailable target.');
-      return { taken: { target: only.value[1], operation: choice, elementKey: only.value[0] } };
-    }
-    const answer = answers[`${choice}_target`];
-    if (answer === undefined) throw invalid('The decision model returned no target answer.');
-    const target = group.get(answer.choice);
-    if (target === undefined) throw invalid('The decision model chose an unavailable target.');
-    return { taken: { target, operation: choice, elementKey: answer.choice }, targetAnswer: answer };
-  }
-  /** Resolves the secret fill: the declared secret, or the gated secret answer with 2+ secrets. */
-  function resolveSecret(answer: Decision | undefined): { name: string; answer?: Decision } {
-    const secrets = ctx.step.secrets;
-    if (secrets.length === 1 && secrets[0] !== undefined) return { name: secrets[0].name };
-    if (answer === undefined) throw invalid('The decision model returned no secret answer.');
-    const found = secrets.find((secret) => secret.name === answer.choice);
-    if (found === undefined) throw invalid('The decision model chose an undeclared secret.');
-    return { name: found.name, answer };
   }
   /**
-   * Dispatches a bound target and records the turn and the history entry.
+   * Settles the last action against a fresh look: whether the page changed
+   * goes on its turn and its history entry, and the locator learns whether
+   * a point tap landed.
+   */
+  private settle({ space, screenshot }: Acting): void {
+    const changed = space.fingerprint !== this.previousFingerprint;
+    this.previousFingerprint = space.fingerprint;
+    if (this.pendingTurn !== undefined) {
+      this.pendingTurn.outcome += changed ? ', page changed' : ', page unchanged';
+      this.pendingTurn = undefined;
+    }
+    const previous = this.history.at(-1);
+    if (previous !== undefined) this.history[this.history.length - 1] = { ...previous, pageChanged: changed };
+    this.locator.settle(screenshot);
+  }
+  /**
+   * Turns the chosen operation into an action: a control as is, a point
+   * through the locator, anything else through its target question and
+   * what the operation needs beside the target.
+   */
+  private async prepare(op: Decision, view: Acting): Promise<Next> {
+    const { space } = view;
+    const control = space.control(op.choice);
+    if (control !== undefined) {
+      return { action: { operation: control }, label: CONTROL_LABELS[control], description: CONTROL_LABELS[control] };
+    }
+    const operation = space.operation(op.choice);
+    if (operation === undefined) throw invalid('The decision model chose an unavailable operation.');
+    if (operation === 'tap_at') return this.prepareTapAt(view);
+    if (operation === 'type_at') return this.prepareTypeAt(view);
+    const group = space.targets.get(operation);
+    if (group === undefined) throw invalid('The decision model chose an unavailable operation.');
+    // The target depends on the operation: its own request, after the operation settled.
+    const request = targetRequest(this.ctx, space, operation, this.history, view.path);
+    const answers = Object.keys(request.questions).length === 0 ? {} : await this.ask(request);
+    if (answers === undefined) return { verdict: blocked(this.budgetMessage()) };
+    const chosen = pick(answers.target, group, this.gates, 'target', operation);
+    if ('blocked' in chosen) return { verdict: blocked(chosen.blocked) };
+    const { key, value: target } = chosen;
+    const element = space.element(key);
+    const field = fieldOf(key, element);
+    const prepared = (action: Action, typed?: string): Prepared => ({
+      action,
+      label: callLabel(element, operation, target, typed),
+      description: target.description,
+      ...(chosen.answer === undefined ? {} : { targetAnswer: chosen.answer }),
+      ...(typed === undefined ? {} : { typed }),
+    });
+    switch (operation) {
+      case 'type': {
+        const answer = await this.askText(TEXT, operation, space.pageText, field);
+        if (answer === undefined) return { verdict: blocked(this.budgetMessage()) };
+        if (answer.text === null || answer.text === '') return { skip: target.description, because: 'no value for this field' };
+        return prepared({ operation, target, text: answer.text }, answer.text);
+      }
+      case 'upload': {
+        const answer = await this.askText(PATHS, operation, space.pageText, field);
+        if (answer === undefined) return { verdict: blocked(this.budgetMessage()) };
+        if (answer.paths.length === 0) return { skip: target.description, because: 'no files for this input' };
+        return prepared({ operation, target, paths: answer.paths }, answer.paths.join(', '));
+      }
+      case 'drag': {
+        const destination = pick(answers.destination, space.destinations, this.gates, 'destination', operation);
+        if ('blocked' in destination) return { verdict: blocked(destination.blocked) };
+        if (destination.value.id === target.id) return { verdict: blocked('The decision model chose to drag an element onto itself.') };
+        return prepared({ operation, target, destinationId: destination.value.id }, `onto ${destination.value.label}`);
+      }
+      case 'typeSecret': {
+        const secret = pick(answers.secret, new Map(this.ctx.step.secrets.map((entry) => [entry.name, entry])), this.gates, 'secret', operation);
+        if ('blocked' in secret) return { verdict: blocked(secret.blocked) };
+        return prepared({ operation, target, name: secret.value.name });
+      }
+      default:
+        return prepared({ operation, target });
+    }
+  }
+  /** A point tap: the text model names the drawn control, the locator finds it or recalls where it last landed. */
+  private async prepareTapAt(view: Acting): Promise<Next> {
+    if (view.screenshot === undefined) throw invalid('The decision model chose tap_at with no screenshot.');
+    const named = await this.askText(TARGET, 'tap_at', view.space.pageText);
+    if (named === undefined) return { verdict: blocked(this.budgetMessage()) };
+    const found = await this.pointFor(view, view.screenshot, named.target, 'control');
+    if ('verdict' in found) return found;
+    const label = `tap ${named.target} at (${found.x}, ${found.y})`;
+    return { action: { operation: 'tap_at', point: found }, label, description: label };
+  }
+  /** A drawn field fill: the text model names the field and its value, the locator finds the field to tap and type into. */
+  private async prepareTypeAt(view: Acting): Promise<Next> {
+    if (view.screenshot === undefined) throw invalid('The decision model chose type_at with no screenshot.');
+    const named = await this.askText(DRAWN_FIELD, 'type_at', view.space.pageText);
+    if (named === undefined) return { verdict: blocked(this.budgetMessage()) };
+    if (named.text === null || named.text === '') return { skip: named.target, because: 'no value for this field' };
+    const found = await this.pointFor(view, view.screenshot, named.target, 'field');
+    if ('verdict' in found) return found;
+    const label = `type into ${named.target} at (${found.x}, ${found.y})`;
+    return { action: { operation: 'type_at', point: found, text: named.text }, label, description: label, typed: named.text };
+  }
+  /** Where a drawn control is: recalled from a tap that landed, or located afresh, and recorded for the next look to settle. */
+  private async pointFor({ path }: Acting, screenshot: Screenshot, wanted: string, aim: Aim): Promise<Point | { verdict: StepVerdict }> {
+    const point = this.locator.known(path, wanted, aim) ?? (await this.locator.locate(screenshot, path, wanted, aim));
+    if (point === undefined) return { verdict: blocked(this.budgetMessage()) };
+    if ('uncertain' in point) return { verdict: blocked(`The tap point is uncertain (${point.uncertain}).`) };
+    this.locator.tapped(path, wanted, aim, point, screenshot);
+    return point;
+  }
+  /**
+   * Performs a prepared action and records the turn and the history entry.
    * Action failures go back to the model as history; only the runtime's own
    * stop codes propagate.
    */
-  async function runTarget(
-    taken: Taken,
-    op: Decision,
-    targetAnswer: Decision | undefined,
-    space: ActionSpace,
-    argument?: string,
-    typedText?: string,
-  ): Promise<void> {
+  private async take({ action, label, description, targetAnswer, typed }: Prepared, op: Decision): Promise<void> {
     const targetPart = targetAnswer === undefined ? '' : `, target p=${targetAnswer.probability.toFixed(3)}`;
-    const turn: StepTurn = {
-      index: turns.length + 1,
-      calls: [callLabel(space, taken, op.choice, argument)],
-      outcome: `op p=${op.probability.toFixed(3)}${targetPart}`,
-    };
-    turns.push(turn);
-    lastTurn = turn;
-    const typed = typedText === undefined ? {} : { text: typedText };
+    const turn: StepTurn = { index: this.turns.length + 1, calls: [label], outcome: `op p=${op.probability.toFixed(3)}${targetPart}` };
+    this.turns.push(turn);
+    this.pendingTurn = turn;
+    const entry: HistoryEntry = { action: description, ...(typed === undefined ? {} : { text: typed }) };
     try {
-      await taken.target.run(argument);
+      const note = await perform(this.ctx, action);
+      this.history.push(note === undefined ? entry : { ...entry, note });
     } catch (error) {
       if (isAgentError(error) && RUNTIME_CODES.has(error.code)) throw error;
       const code = isAgentError(error) ? error.code : error instanceof Error ? error.name : 'unknown';
-      history.push({ action: taken.target.description, ...typed, error: code });
-      return;
+      this.history.push({ ...entry, error: code });
     }
-    history.push({ action: taken.target.description, ...typed });
-  }
-  /** One turn call label, e.g. type [3] textbox "New todo" = "Buy milk". */
-  function callLabel(space: ActionSpace, taken: Taken, operation: string, text?: string): string {
-    if (taken.elementKey === '') return taken.target.description;
-    const element = space.elements.find((item) => item.index === targetKeyIndex(taken.elementKey));
-    if (element === undefined) return taken.target.description;
-    const value = text === undefined ? '' : ` = ${JSON.stringify(text)}`;
-    return `${operation} [${element.index}] ${element.role} ${JSON.stringify(element.label)}${value}`;
-  }
-  /** Field the text helper writes, falling back to the key when the element is gone. */
-  function elementField(space: ActionSpace, key: string): FieldInput['field'] {
-    const element = space.elements.find((item) => item.index === targetKeyIndex(key));
-    if (element === undefined) return { label: key, role: 'textbox' };
-    return { label: element.label, role: element.role, ...(element.value === undefined ? {} : { value: element.value }) };
   }
   /**
    * Verifies a done/failed claim on a fresh screen with the actions taken so
    * far, but no model reasoning. Returns a verdict, or undefined to continue
    * the loop. A verdict under the gates confirms nothing.
    */
-  async function terminalCheck(claim: 'done' | 'failed'): Promise<StepVerdict | undefined> {
-    const observation = await ctx.observe({ tree: true });
-    const space = spaceOf(observation, true);
-    if (space === undefined) return rejectClaim(claim, 'incomplete observation');
-    const request = completionRequest({
-      goal: ctx.step.instruction,
-      params: nonSecretParams(ctx.step.params),
-      path: observation.path ?? '',
-      pageText: space.pageText,
-      elements: elementRecords(space),
-      history,
-    });
-    const answers = await ask(request);
-    if (answers === undefined) return blocked(budgetMessage());
-    const verdict = need(answers.verdict, 'verdict');
-    const settled = gated(verdict) ? verdict.choice : 'below gate';
-    if (claim === 'done' && settled === 'holds') {
-      return { status: 'passed', summary: `The screen shows the step is done (${describe(verdict)}).` };
-    }
+  private async terminalCheck(claim: 'done' | 'failed'): Promise<StepVerdict | undefined> {
+    const { path, space, screenshot } = await this.view(true);
+    if (space === undefined) return this.rejectClaim(claim, 'incomplete observation');
+    const answers = await this.ask(completionRequest(this.ctx, space, this.history, path, screenshot, this.origin));
+    if (answers === undefined) return blocked(this.budgetMessage());
+    const evidence = describe(need(answers.verdict, 'verdict'));
+    const settled = verdictOf(answers.verdict, this.gates);
+    if (claim === 'done' && settled === 'holds') return { status: 'passed', summary: `The screen shows the step is done (${evidence}).` };
     if (claim === 'failed' && settled === 'fails') {
-      const summary = `The screen shows the step failed (${describe(verdict)}).`;
-      return { status: 'failed', errorCode: 'ACTION_FAILED', summary };
+      return { status: 'failed', errorCode: 'ACTION_FAILED', summary: `The screen shows the step failed (${evidence}).` };
     }
-    return rejectClaim(claim, settled);
+    return this.rejectClaim(claim, settled);
   }
   /**
    * Records a rejected terminal claim and continues the loop. The second
    * rejected claim in a step ends it, decided by the check: visible
    * counter-evidence is a product failure, anything else an automation limit.
    */
-  function rejectClaim(claim: 'done' | 'failed', check: string): StepVerdict | undefined {
-    rejectedTerminals += 1;
-    history.push({ action: claim, error: `check: ${check}` });
-    if (rejectedTerminals < 2) return undefined;
+  private rejectClaim(claim: 'done' | 'failed', check: Check): StepVerdict | undefined {
+    this.rejectedTerminals += 1;
+    this.history.push({ action: claim, error: `check: ${check}` });
+    if (this.rejectedTerminals < 2) return undefined;
     if (check === 'fails') {
       return { status: 'failed', errorCode: 'ACTION_FAILED', summary: `The screen contradicts the ${claim} claim.` };
     }
     return blocked(`The screen does not confirm the ${claim} claim (check: ${check}).`);
   }
 }
-/** A model answer the request never offered: our validation, never the provider's text. */
-function invalid(message: string): AgentError {
-  return new AgentError('MODEL_OUTPUT_INVALID', message);
+/** How a control reads in a turn and in history. */
+const CONTROL_LABELS: Readonly<Record<Control, string>> = {
+  scroll_up: 'scroll viewport up',
+  scroll_down: 'scroll viewport down',
+  back: 'back one step in history',
+  dismiss_keyboard: 'dismiss the keyboard',
+};
+/** The field a text ask describes: the element's label, role, and value; a textbox named by its key when the table has no row. */
+function fieldOf(key: string, element: Element | undefined): NonNullable<FieldInput['field']> {
+  if (element === undefined) return { label: key, role: 'textbox' };
+  return { label: element.label, role: element.role, ...(element.value === undefined ? {} : { value: element.value }) };
 }
-/** Requires an answer the model returned; its absence is our bug or a broken transport. */
-function need(answer: Decision | undefined, what: string): Decision {
-  if (answer === undefined) throw invalid(`The decision model returned no ${what} answer.`);
-  return answer;
+/** One turn call label, e.g. type [3] textbox "New todo" = "Buy milk". */
+function callLabel(element: Element | undefined, operation: Operation, target: Target, text?: string): string {
+  if (element === undefined) return target.description;
+  const value = text === undefined ? '' : ` = ${JSON.stringify(text)}`;
+  return `${operation} [${element.index}] ${element.role} ${JSON.stringify(element.label)}${value}`;
+}
+/** One transcript line: the request without its pixels, which are named by size. */
+function transcriptLine(request: DecisionRequest): string {
+  const { screenshot, ...rest } = request;
+  return JSON.stringify(screenshot === undefined ? rest : { ...rest, screenshot: `${screenshot.width}x${screenshot.height}` });
 }
 /**
  * Seeds history from a replayed prefix, flagging the uncertain action. The
@@ -353,10 +445,14 @@ function seedHistory(ctx: StepExecutorContext): HistoryEntry[] {
   }
   return seeded;
 }
-/** Three recorded actions in a row with no page change. */
+/**
+ * Three recorded actions in a row that failed or left the page unchanged. A
+ * failed action is no progress even when the page changed on its own, as a
+ * ticking timer does.
+ */
 function stalled(history: readonly HistoryEntry[]): boolean {
   if (history.length < 3) return false;
-  return history.slice(-3).every((entry) => entry.pageChanged === false);
+  return history.slice(-3).every((entry) => entry.error !== undefined || entry.pageChanged === false);
 }
 /** No nodes to build an action space from. A truncated observation still acts on what is there. */
 function emptyTree(observation: ExecutorObservation): boolean {

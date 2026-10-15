@@ -2,6 +2,8 @@
 title: screen and Locator
 description: Queries, refinement, actions, and reads.
 icon: "display"
+"og:image": "https://e2e.tester.army/docs/images/og/reference/screen.png?v=1b21c45d37"
+"twitter:image": "https://e2e.tester.army/docs/images/og/reference/screen.png?v=1b21c45d37"
 ---
 
 A `Locator` stores a query and resolves it when an action, read, or assertion
@@ -37,17 +39,17 @@ export interface Screen {
 }
 ```
 
-Most operations require exactly one match. Reads return the current value
-without waiting for it to change: a frame that is not in the document answers
-at once, and a node the engine reports stale (a resolve that raced a
-navigation, or a match the app replaced while it was read) is re-resolved
-within the action timeout, which repairs the race without waiting for a
-match. Use [`expect`](/reference/expect) to wait.
+Most operations require exactly one match. A read polls for its one match
+until the action timeout, as an action does, then returns the current value
+without waiting for it to change. A node the engine reports stale (a resolve
+that raced a navigation, or a match the app replaced while it was read) is
+re-resolved within the same timeout. Use [`expect`](/reference/expect) to
+wait for a value.
 
 | Operation | Zero matches | Multiple matches |
 | --- | --- | --- |
 | Actions | Poll until the timeout, then `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` |
-| Reads | `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` |
+| Reads | Poll until the timeout, then `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` |
 | `count()`, `all()`, `allTextContents()` | `0`, `[]`, `[]` | The count, one locator per match, one text per match |
 | `isVisible()`, `isHidden()` | `false`, `true` | `LOCATOR_AMBIGUOUS` |
 | Assertions | Poll until the timeout | `LOCATOR_AMBIGUOUS` |
@@ -244,6 +246,8 @@ export interface Locator extends Screen {
   click(options?: TapOptions): Promise<void>;
   /** Double-taps exactly one matching actionable node. */
   doubleTap(options?: ClickOptions): Promise<void>;
+  /** Alias of doubleTap. */
+  dblclick(options?: ClickOptions): Promise<void>;
   /** Performs a secondary tap, such as a right click or two-finger tap. */
   secondaryTap(options?: ClickOptions): Promise<void>;
   /** Long-presses exactly one matching actionable node. */
@@ -278,7 +282,7 @@ export interface Locator extends Screen {
   scrollIntoView(options?: ActionOptions): Promise<void>;
   /** Performs a swipe scoped to exactly one node. */
   swipe(options: SwipeOptions & ActionOptions): Promise<void>;
-  /** Reads normalized text without retrying for a particular value. */
+  /** Reads normalized text once a match exists, without retrying for a particular value. */
   textContent(): Promise<string | null>;
   /** Reads the current input value. */
   inputValue(): Promise<string>;
@@ -325,8 +329,8 @@ export interface Locator extends Screen {
   Playwright's `trial`, `force`, or `noWaitAfter` included, throws
   `INVALID_ARGUMENT` before the node is resolved, so the control is never
   touched.
-- `click` is an alias of `tap`.
-- `tap`, `doubleTap`, and `secondaryTap` take `modifiers`, the keys held for
+- `click` is an alias of `tap`, and `dblclick` of `doubleTap`.
+- `tap`, `doubleTap`, `dblclick`, and `secondaryTap` take `modifiers`, the keys held for
   the click, as a Shift-click extends a selection:
   `row.click({ modifiers: ['Shift'] })`. `ControlOrMeta` is Control on Windows
   and Linux, Meta on macOS. An unknown or repeated modifier is
@@ -610,7 +614,7 @@ export interface SwipePathOptions {
  */
 export type Point = ViewportPoint; // { x: number; y: number }
 
-/** `tap`, `click`, `doubleTap`, and `secondaryTap` options: the action timeout and the keys held for the click. */
+/** `tap`, `click`, `doubleTap`, `dblclick`, and `secondaryTap` options: the action timeout and the keys held for the click. */
 export interface ClickOptions extends ActionOptions {
   /**
    * Keys held while the pointer clicks, as a Shift-click extends a selection:

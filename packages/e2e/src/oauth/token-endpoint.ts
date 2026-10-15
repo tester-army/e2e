@@ -34,8 +34,9 @@ export async function requestTokens(
   url: string,
   params: Record<string, string>,
   rejected: OAuthErrorCode = 'FLOW_FAILED',
+  signal?: AbortSignal,
 ): Promise<TokenResponse> {
-  const response = await postForm(url, params);
+  const response = await postForm(url, params, signal);
   if (!response.ok) {
     const code = response.status === 400 || response.status === 401 ? rejected : 'FLOW_FAILED';
     throw new OAuthError(code, `${vendor} token request failed (${await describeResponse(response)})`);

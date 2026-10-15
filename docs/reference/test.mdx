@@ -2,6 +2,8 @@
 title: test
 description: Tests, setup tests, groups, hooks, options, and fixtures.
 icon: "flask-vial"
+"og:image": "https://e2e.tester.army/docs/images/og/reference/test.png?v=d1ad3b01c3"
+"twitter:image": "https://e2e.tester.army/docs/images/og/reference/test.png?v=d1ad3b01c3"
 ---
 
 Declare tests, groups, and hooks synchronously while the test file is
@@ -103,18 +105,19 @@ are reported as `filtered`, and a CI run fails with `ONLY_IN_CI`.
 
 Call `test.skip(condition, reason)` inside a test for conditions you learn at
 runtime, such as a disabled feature flag. When the condition is true, the call
-throws: the body stops at that line, as Playwright's does, and the test is
-reported `skipped` with `reason`, with no retry. Nothing after the call runs.
-Steps before it stay in the report as they ran. Soft failures before the call
-remain in the attempt's `secondaryErrors`, and the CLI lists the test under
-`Skipped After Failure`. A failed attempt followed by a skip on retry appears
-there too, with its original error. Hooks and fixtures still run their teardown.
-When the condition is a precondition, call it first, before any step.
+throws: the body stops at that line, as Playwright's does. Nothing after the
+call runs. With no failure before it, the test is reported `skipped` with
+`reason`, with no retry.
+Steps before it stay in the report as they ran. A failed `expect.soft` before
+the call still fails the attempt, as in Playwright: the attempt is `failed`
+with the soft failures as its error and the skip reason in its `skip`, and it
+retries like any failure. Hooks and fixtures still run their teardown. When
+the condition is a precondition, call it first, before any step.
 
-Set [`failOnSkippedFailure: true`](/reference/config) to fail the run with exit
-code 1 when a runtime skip follows a failure in that test. The test remains
-`skipped` with its reason, and the skip does not trigger another retry. Clean
-skips and retries that pass are unaffected. The default is `false`.
+A failed attempt followed by a skip on retry leaves the test `skipped`, and
+the CLI lists it under `Skipped After Failure` with its original error. Set
+[`failOnSkippedFailure: true`](/reference/config) to fail the run with exit
+code 1 in that case. The default is `false`.
 
 A setup test cannot skip because other tests depend on its sessions; the
 call fails with `INVALID_ARGUMENT`. Outside a test body, the conditional
@@ -241,10 +244,9 @@ export interface TestOptions {
    */
   agent?: string | readonly string[];
   /**
-   * Which of the test's attempts record a trace, in place of the run's: the
-   * same modes as the config's `trace`. Innermost wins, over `--trace` too;
-   * inside a serial group the group's value applies, since the group
-   * records as one unit. A mode set here is required of the target's engine.
+   * Whether the test keeps a trace page, in place of the run's: the same
+   * modes as the config's `trace`. Innermost wins, over `--trace` too;
+   * inside a serial group the group's value applies.
    */
   trace?: RecordingMode;
   /**
@@ -299,9 +301,9 @@ selection, before any test runs.
 `off`, `on`, `retain-on-failure`, `on-first-retry`, or `on-all-retries`. A
 test's or group's own value wins over `--trace` / `--video`, the target's,
 and the config's, so one test can record on a run that records nothing, or
-opt out of one that records everything. A mode set here is required: when it
-records on some attempt and the target's engine cannot record that kind, the
-run fails with `UNSUPPORTED_ARTIFACT` before any test starts, naming the
+opt out of one that records everything. A `video` mode set here is required:
+when it records on some attempt and the target's engine cannot record video,
+the run fails with `UNSUPPORTED_ARTIFACT` before any test starts, naming the
 test:
 
 ```ts
@@ -314,9 +316,9 @@ test('checkout', { video: 'on' }, async ({ agent }) => {
 and shared secret state: a secret fill withholds pixels for the rest of the
 group's attempt. A retry starts fresh. Inside it, `retries`, `trace`,
 `video`, `session`, `platforms`, `requires`, `skip`, `only`, and a nested
-`serial` on a member are collection errors. Set them on the group. The group
-records one trace and one video per group attempt, from the `trace` and
-`video` on the serial `describe` or a group around it. A group attempt that
+`serial` on a member are collection errors. Set them on the group. Members
+take the `trace` and `video` on the serial `describe` or a group around it,
+and the group records one video per group attempt. A group attempt that
 cannot start, because its file fails to load or its session fails to launch,
 fails the first member with that error and skips the rest with cause
 `serial-predecessor-failed`. When the run is interrupted during the launch,
@@ -446,6 +448,7 @@ A body or hook that hits the test `timeout` is abandoned, not cancelled, so
 teardown starts while it may still be running. A setup abandoned this way
 that reaches `use` later gets an immediate resolve, and its teardown runs
 detached from the run, so what it allocated is still released.
+Later fixtures, hooks, and the test body do not start after an abandoned setup or hook finishes.
 
 ## Function types
 

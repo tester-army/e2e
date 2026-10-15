@@ -1,6 +1,7 @@
 /** Scalar validators shared by the config resolvers; one message per rule. */
 
 import { ConfigurationError } from '../internal/errors.ts';
+import { MAX_TIMER_MS } from '../internal/time.ts';
 
 /**
  * A positive safe integer, or undefined when the value is absent. Durations
@@ -21,6 +22,18 @@ export function positiveInt(
     );
   }
   return value;
+}
+
+/**
+ * A positive duration in milliseconds no longer than a timer can wait, or
+ * undefined when the value is absent: `setTimeout` fires a longer delay at once.
+ */
+export function timerMs(value: number | undefined, label: string): number | undefined {
+  const ms = positiveInt(value, label, 'milliseconds');
+  if (ms !== undefined && ms > MAX_TIMER_MS) {
+    throw new ConfigurationError('INVALID_CONFIG', `${label} must be at most ${MAX_TIMER_MS} milliseconds, got ${ms}`);
+  }
+  return ms;
 }
 
 /** A value as the author wrote it, for messages that quote the offending input. */

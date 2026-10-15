@@ -6,7 +6,9 @@
  * (JUnit, markdown) share this one reading.
  */
 
+import type { SkipInfo } from '../collect/select.ts';
 import type { FailureEvidence } from '../run/records.ts';
+import type { AppLogRecord } from '../run/steps.ts';
 import type { ReportError, ReportResult, ReportSerialGroup, ReportStep } from './build.ts';
 
 type ReportArtifact = ReportResult['attempts'][number]['artifacts'][number];
@@ -16,10 +18,18 @@ export interface AttemptView {
   readonly status: ReportResult['attempts'][number]['status'] | 'skipped';
   readonly error: ReportError | undefined;
   readonly steps: readonly ReportStep[];
+  /** What the app logged during the attempt (for a serial member, during its part of it), each line with its step. */
+  readonly appLog: readonly AppLogRecord[];
   /** What the runner saw when the failure landed, when it captured anything. */
   readonly failure: FailureEvidence | undefined;
   /** The attempt's own artifacts; for a serial member, the group attempt's. */
   readonly artifacts: readonly ReportArtifact[];
+  /** What else failed after the error: a teardown hook, the engine's cleanup. */
+  readonly secondaryErrors: readonly ReportError[];
+  /** What the engine said the attempt ran on; for a serial member, the group attempt's. */
+  readonly environment?: Readonly<Record<string, string>> | undefined;
+  /** Why the body skipped itself; on a failed attempt, a skip the failure outranked. */
+  readonly skip: SkipInfo | undefined;
 }
 
 export interface Outcome {
@@ -36,7 +46,7 @@ export interface Outcome {
 }
 
 /** What a result that never ran an attempt reads as. */
-const NO_ATTEMPT: AttemptView = { status: 'skipped', error: undefined, steps: [], failure: undefined, artifacts: [] };
+const NO_ATTEMPT: AttemptView = { status: 'skipped', error: undefined, steps: [], appLog: [], failure: undefined, artifacts: [], secondaryErrors: [], skip: undefined };
 
 export function outcome(result: ReportResult, groups: ReadonlyMap<string, ReportSerialGroup>): Outcome {
   const views = attemptViews(result, groups);
@@ -57,8 +67,12 @@ function attemptViews(result: ReportResult, groups: ReadonlyMap<string, ReportSe
       status: attempt.status,
       error: attempt.error,
       steps: attempt.steps,
+      appLog: attempt.appLog ?? [],
       failure: attempt.failure,
       artifacts: attempt.artifacts,
+      secondaryErrors: attempt.secondaryErrors,
+      environment: attempt.environment,
+      skip: attempt.skip,
     }));
   }
   const attempts = groups.get(result.serialGroupId)?.attempts ?? [];
@@ -68,8 +82,13 @@ function attemptViews(result: ReportResult, groups: ReadonlyMap<string, ReportSe
       status: member?.status ?? attempt.status,
       error: member?.error ?? attempt.error,
       steps: member?.steps ?? [],
+      appLog: member?.appLog ?? [],
       failure: member?.failure,
       artifacts: attempt.artifacts,
+      // The member's own, then the shared session's: its cleanup errors land on the group attempt.
+      secondaryErrors: [...(member?.secondaryErrors ?? []), ...attempt.secondaryErrors],
+      environment: attempt.environment,
+      skip: member?.skip,
     };
   });
 }

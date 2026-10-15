@@ -25,6 +25,7 @@ const CALLS: Record<string, Call> = {
   tap: (locator, options) => locator.tap(options),
   click: (locator, options) => locator.click(options),
   doubleTap: (locator, options) => locator.doubleTap(options),
+  dblclick: (locator, options) => locator.dblclick(options),
   secondaryTap: (locator, options) => locator.secondaryTap(options),
   longPress: (locator, options) => locator.longPress(options),
   fill: (locator, options) => locator.fill('yes', options),
@@ -96,11 +97,12 @@ describe('locator action options', () => {
       ['tap', (locator: Locator) => locator.tap({ modifiers: ['Shift'] })],
       ['click', (locator: Locator) => locator.click({ modifiers: ['Shift'] })],
       ['doubleTap', (locator: Locator) => locator.doubleTap({ modifiers: ['Shift'] })],
+      ['dblclick', (locator: Locator) => locator.dblclick({ modifiers: ['Shift'] })],
       ['secondaryTap', (locator: Locator) => locator.secondaryTap({ modifiers: ['Shift'] })],
     ] as const)('%s hands the held keys to an engine that declares tapModifiers', async (verb, call) => {
       const { screen, steps, received } = modifierScreen(true);
       await call(screen.getByLabel('Agree'));
-      expect(received).toEqual([{ kind: verb === 'click' ? 'tap' : verb, modifiers: ['Shift'] }]);
+      expect(received).toEqual([{ kind: verb === 'click' ? 'tap' : verb === 'dblclick' ? 'doubleTap' : verb, modifiers: ['Shift'] }]);
       expect(steps.all()).toEqual([
         expect.objectContaining({ api: `locator.${verb}`, label: 'getByLabel("Agree") with Shift', status: 'passed' }),
       ]);

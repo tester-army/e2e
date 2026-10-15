@@ -33,7 +33,6 @@ import {
   failureSource,
   lastTurnLines,
   MAX_DETAIL_CHARS,
-  renderFailurePage,
   screenLines,
   sourceText,
   stepLabel,
@@ -41,10 +40,9 @@ import {
 } from './failure-text.ts';
 import { cell, code, formatDuration, link, MAX_ID_CHARS, MAX_PATH_CHARS, MAX_TITLE_CHARS, plural } from './markdown-text.ts';
 import { outcome, type Outcome } from './outcome.ts';
-import { sanitizePathSegment } from '../run/artifacts.ts';
+import { isExploreVerdict } from './traces.ts';
 import { toPosixPath, writeTextReport } from './write.ts';
 import type { Reporter, ReporterSummary } from '../types.ts';
-import { readFileSync, rmSync } from 'node:fs';
 
 type ReportRun = Report1Document['run'];
 type ReportArtifact = ReportResult['attempts'][number]['artifacts'][number];
@@ -56,18 +54,18 @@ export interface MarkdownReportOptions {
   readonly artifactsUrl?: string | undefined;
   /**
    * The directory the report's artifact paths are relative to, as the reader
-   * should see it (`.e2e/artifacts` for a file the project root is read
+   * should see it (`.e2e/results` for a file the project root is read
    * from). Without `artifactsUrl`, evidence is listed as paths under it.
    */
   readonly artifactsDir?: string | undefined;
   /** A link to a source line, when the commit is known. */
   readonly sourceUrl?: ((file: string, line: number) => string) | undefined;
   /**
-   * Where each failed or flaky result's own page is, by result id, as the
-   * reader should see the path; the block links there. The `markdown`
-   * reporter writes the pages under `failures/` beside the report.
+   * Where each traced result's page is, by result id, as the reader should
+   * see the path; the block links there. The runner writes each as
+   * `trace.md` in its test's directory under `results/`.
    */
-  readonly failurePages?: ReadonlyMap<string, string> | undefined;
+  readonly traces?: ReadonlyMap<string, string> | undefined;
   /**
    * Tells this run's page apart from another's on the same pull request in
    * the headline: `e2e regression: 77 passed`. The GitHub reporter passes
@@ -98,8 +96,8 @@ interface Entry {
   readonly final: Outcome;
 }
 
-/** Screenshots first, then the recording, then the trace; the compiler fails when a kind is missing here. */
-const KIND_RANK: Record<ArtifactKind, number> = { screenshot: 0, video: 1, trace: 2, download: 3, log: 4 };
+/** Screenshots first, then the recording; the compiler fails when a kind is missing here. */
+const KIND_RANK: Record<ArtifactKind, number> = { screenshot: 0, video: 1, download: 2, log: 3 };
 
 const ICON: Record<Bucket, string> = { failed: '🔴', interrupted: '⏹️', flaky: '⚠️', skipped: '⏭️', passed: '🟢' };
 /** Worst first: the order failures are listed, files are sorted, and a file's glyph is chosen in. */
@@ -179,7 +177,7 @@ function spendLine(run: ReportRun, entries: readonly Entry[]): string | undefine
   return parts.join(' · ');
 }
 
-/** `screenshot \`.e2e/artifacts/web/.../001-failure.png\``: each file as the reader finds it under `artifactsDir`, capped. */
+/** `screenshot \`.e2e/results/<test>/attempt-1/screenshots/001-failure.png\``: each file as the reader finds it under `artifactsDir`, capped. */
 function evidencePaths(sorted: readonly ReportArtifact[], dir: string): string[] {
   const files = sorted.flatMap((artifact) => (artifact.path === undefined ? [] : [{ artifact, file: path.posix.join(dir, artifact.path) }]));
   const shown = files.slice(0, MAX_EVIDENCE_PATHS).map(({ artifact, file }) => `${artifact.kind} ${code(file)}`);
@@ -265,8 +263,8 @@ function runErrorLine(error: ReportError): string {
  * quoted; the facts as a list (expected and observed, whether every attempt
  * failed alike, the last turns, the screen); and the evidence. The file is
  * named once, in the source link. The steps before the failed one are not
- * retold: the lead says where in the flow it was, and the trace has the
- * rest. A flaky test's story is its last failed attempt, not the retry that
+ * retold: the lead says where in the flow it was, and the trace page has
+ * the rest. A flaky test's story is its last failed attempt, not the retry that
  * passed.
  */
 function failureBlock({ result, final }: Entry, manyTargets: boolean, options: MarkdownReportOptions): string {
@@ -279,9 +277,9 @@ function failureBlock({ result, final }: Entry, manyTargets: boolean, options: M
   const alike = attemptsLine(result, final);
   const facts = [...detailLines(error), ...(alike === undefined ? [] : [alike]), ...lastTurnLines(at?.step), ...screenLines(told)];
   const where = evidence(evidenceOf(told), options);
-  const page = options.failurePages?.get(result.id);
+  const page = options.traces?.get(result.id);
   const about = [sourceText(failureSource(result, told), options.sourceUrl), ...(manyTargets ? [cell(result.targetId, MAX_ID_CHARS)] : [])];
-  const tail = [...(where === '' ? [] : [`Evidence: ${where}`]), ...(page === undefined ? [] : [`Details: ${code(page, MAX_PATH_CHARS)}`])];
+  const tail = [...(where === '' ? [] : [`Evidence: ${where}`]), ...(page === undefined ? [] : [`Trace: ${code(page, MAX_PATH_CHARS)}`])];
   const paragraphs = [
     // Two trailing spaces: a hard break, so the title and its line stay two lines wherever the page is rendered.
     `**${ICON[kind]} ${testName(result)}**  \n${about.join(' · ')}`,
@@ -493,14 +491,6 @@ function findingsSection(run: ReportRun, explore: ReportExplore, options: Markdo
 }
 
 /**
- * Whether a result's failure is the exploration's verdict, which the findings
- * already express; only a failure that is not gets a block of its own.
- */
-function isVerdict(entry: Entry, explore: ReportExplore): boolean {
-  return entry.final.final.error?.code === 'ASSERTION_FAILED' && explore.findings.some((finding) => finding.kind === 'issue');
-}
-
-/**
  * Greedy fit: keeps whole parts in order while they fit under the budget,
  * then says what was cut. `parts` are lines or indivisible blocks, already
  * separated by blank lines.
@@ -539,7 +529,7 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
   if (run.errors.length > errors.length) errors.push(`> and ${run.errors.length - errors.length} more`);
   // An exploration is the run's one test and its failure is the verdict the
   // findings express, so that block gives way to them; any other failure stays.
-  const notPassed = entries.filter((entry) => explore === undefined || !isVerdict(entry, explore));
+  const notPassed = entries.filter((entry) => explore === undefined || !isExploreVerdict(entry.final, explore));
   const failed = notPassed.filter(({ result }) => statusBucket(result.status) === 'failed');
   const failures = failed.slice(0, MAX_FAILURE_BLOCKS).map((entry) => [failureBlock(entry, manyTargets, options)]);
   if (failed.length > failures.length) failures.push([`and ${failed.length - failures.length} more failed`]);
@@ -567,65 +557,22 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
   return fit(head, body.length === 0 ? [] : [...body, ''], footer(run, targets, options));
 }
 
-/** Where a result's page goes under `failures/`: the file and title, made a path segment, made unique by the result id. */
-function failurePageName(result: ReportResult): string {
-  return `${sanitizePathSegment(`${result.file}-${result.titlePath.join('-')}`)}-${result.id.slice(0, 8)}.md`;
-}
-
-/**
- * The results that get a page: every one that failed, timed out, or was
- * flaky, except an exploration's own verdict, which its findings already
- * tell. An interrupted test reached no verdict, so it has no failure to tell.
- */
-function pagedResults(report: Report1Document): ReportResult[] {
-  const explore = report.run.explore;
-  const serialGroups = new Map(report.run.serialGroups.map((group) => [group.id, group]));
-  return report.run.results.filter((result) => {
-    const bucket = statusBucket(result.status);
-    if (bucket !== 'failed' && bucket !== 'flaky') return false;
-    return explore === undefined || !isVerdict({ result, final: outcome(result, serialGroups) }, explore);
-  });
-}
-
 /**
  * The built-in `markdown` reporter: the report as one markdown page in
  * `summary.md` beside `report.json`, with evidence listed as paths from the
  * project root, for a reader with the checkout in front of it: a pull
- * request description, a coding agent's handoff, a wiki page. Every test
- * that failed or was flaky gets a page of its own under `failures/`, with the
- * screen at failure inline; the run page links each block to its page. The
- * directory is the reporter's: what an earlier run left there is removed
- * first, so a stale page never describes a failure this run did not have.
+ * request description, a coding agent's handoff, a wiki page. Each failure
+ * block links to the trace page the runner wrote for it in the test's
+ * directory under `results/`.
  */
 export const markdownReporter: Reporter = {
   name: 'markdown',
   async onRunFinished(run) {
     if (run.reportPath === undefined) return;
-    const reportDir = path.dirname(run.reportPath);
     const artifactsDir = toPosixPath(path.relative(run.projectRoot, run.artifactsRoot)) || '.';
-    const failuresDir = path.join(reportDir, 'failures');
-    rmSync(failuresDir, { recursive: true, force: true });
-    const serialGroups = new Map(run.report.run.serialGroups.map((group) => [group.id, group]));
-    const readArtifact = (reportPath: string): string | undefined => {
-      try {
-        return readFileSync(path.join(run.artifactsRoot, reportPath), 'utf8');
-      } catch {
-        return undefined;
-      }
-    };
-    const pages = new Map<string, string>();
-    for (const result of pagedResults(run.report)) {
-      const file = path.join(failuresDir, failurePageName(result));
-      const page = renderFailurePage(run.report, result, outcome(result, serialGroups), { artifactsDir, readArtifact });
-      await writeTextReport(file, page);
-      pages.set(result.id, toPosixPath(path.relative(run.projectRoot, file)));
-    }
-    const summary = path.join(reportDir, 'summary.md');
-    await writeTextReport(summary, renderMarkdownReport(run.report, { artifactsDir, failurePages: pages }));
-    const rows: ReporterSummary = [
-      { label: 'Markdown', text: path.relative(run.projectRoot, summary) || summary },
-      ...(pages.size === 0 ? [] : [{ label: 'Failures', text: `${path.relative(run.projectRoot, failuresDir) || failuresDir}/ (${plural(pages.size, 'page')})` }]),
-    ];
+    const summary = path.join(path.dirname(run.reportPath), 'summary.md');
+    await writeTextReport(summary, renderMarkdownReport(run.report, { artifactsDir, traces: run.traces }));
+    const rows: ReporterSummary = [{ label: 'Markdown', text: path.relative(run.projectRoot, summary) || summary }];
     return rows;
   },
 };

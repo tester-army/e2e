@@ -15,7 +15,7 @@ import { connectCdp } from '../../src/browser-connection.ts';
 import { web } from '../../src/index.ts';
 import { LeasedBrowsers, type BrowserLease, type BrowserProvider, type BrowserReleaseContext, type BrowserRequest } from '../../src/provider.ts';
 import { PlaywrightSurface } from '../../src/surface.ts';
-import { noSecrets } from '../helpers/secrets.ts';
+import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 vi.mock('../../src/browser-connection.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/browser-connection.ts')>()),
@@ -29,7 +29,7 @@ function fakeBrowser(contextId: string) {
     isClosed: () => false,
     close: async () => undefined,
     viewportSize: () => ({ width: 1280, height: 720 }),
-    screencast: { start: vi.fn(async ({ path: file }: { path: string }) => { writeFileSync(file, 'webm'); }), stop: async () => undefined },
+    screencast: { start: vi.fn(async ({ path: file, onFrame }: { path: string; onFrame?: () => void }) => { writeFileSync(file, 'webm'); onFrame?.(); }), stop: async () => undefined },
   } as unknown as Page;
   const context = {
     newPage: async () => page,
@@ -39,7 +39,6 @@ function fakeBrowser(contextId: string) {
     route: async () => undefined,
     close: async () => undefined,
     pages: () => [],
-    tracing: { start: async () => undefined, stop: async () => undefined },
     _channel: { registerSelectorEngine: async () => undefined },
   };
   const browser = {
@@ -130,7 +129,7 @@ const initInfo = (workerSlot: number, env: Readonly<Record<string, string | unde
   signal: new AbortController().signal,
   log,
 });
-const attempt = (attemptId: string): EngineAttemptContext => ({ attemptId, artifactsDir: '/tmp/e2e-provider-artifacts', signal: new AbortController().signal, resolveSecret: noSecrets });
+const attempt = (attemptId: string): EngineAttemptContext => ({ attemptId, artifactsDir: '/tmp/e2e-provider-artifacts', signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
 const cleanup = (): EngineCleanupContext => ({ timeoutMs: 1_000, signal: new AbortController().signal });
 const operation = (): OperationContext => ({ timeoutMs: 1_000, signal: new AbortController().signal, runId: 'run-1', attemptId: 'a1', origin: 'test' });
 
@@ -421,8 +420,8 @@ describe('worker scope', () => {
     fake.drop();
     await worker.startAttempt(attempt('a1'));
     expect(cloud.acquired).toHaveLength(2);
-    vi.spyOn(worker, 'endAttempt').mockRejectedValueOnce(new Error('trace flush failed'));
-    await expect(worker.dispose(cleanup())).rejects.toThrow(/trace flush failed/);
+    vi.spyOn(worker, 'endAttempt').mockRejectedValueOnce(new Error('video flush failed'));
+    await expect(worker.dispose(cleanup())).rejects.toThrow(/video flush failed/);
     expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-1']);
   });
 
@@ -558,7 +557,7 @@ describe('attempt scope', () => {
     const worker = new PlaywrightSurface({ browser: cloud.impl });
     await worker.init(initInfo(0, (await prepared(provider({ scope: 'attempt' }).impl, 1)).env));
     const controller = new AbortController();
-    const starting = worker.startAttempt({ attemptId: 'a1', artifactsDir: '/tmp/e2e-provider-artifacts', signal: controller.signal, resolveSecret: noSecrets });
+    const starting = worker.startAttempt({ attemptId: 'a1', artifactsDir: '/tmp/e2e-provider-artifacts', signal: controller.signal, resolveSecret: noSecrets, ...ignoreTrace });
     controller.abort();
     await expect(starting).rejects.toMatchObject({ code: 'CANCELLED' });
     await worker.endAttempt(cleanup());
@@ -575,7 +574,7 @@ describe('attempt scope', () => {
       const worker = new PlaywrightSurface({ browser: cloud.impl });
       await worker.init(initInfo(0, (await prepared(provider({ scope: 'attempt' }).impl, 1)).env));
       const controller = new AbortController();
-      const starting = worker.startAttempt({ attemptId: 'a1', artifactsDir: '/tmp/e2e-provider-artifacts', signal: controller.signal, resolveSecret: noSecrets });
+      const starting = worker.startAttempt({ attemptId: 'a1', artifactsDir: '/tmp/e2e-provider-artifacts', signal: controller.signal, resolveSecret: noSecrets, ...ignoreTrace });
       if (how === 'aborted') controller.abort();
       else await worker.endAttempt(cleanup());
       grant();
@@ -747,7 +746,7 @@ describe('recording', () => {
     await worker.init(initInfo(0, env));
     const artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-provider-recording-'));
     artifactDirs.push(artifactsDir);
-    await worker.startAttempt({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await worker.startAttempt({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
     return { worker, artifactsDir };
   }
 

@@ -52,9 +52,9 @@ export class SoftFailures {
  * of the error module, so the failure is classified rather than checked with
  * `instanceof`.
  */
-function keepOrThrow(error: unknown): void {
+function keepOrThrow(error: unknown, soft: SoftFailures | undefined): void {
   const classified = classifyError(error);
-  if (classified.code !== 'ASSERTION_FAILED' || currentAttempt()?.soft.keep(classified) !== true) throw error;
+  if (classified.code !== 'ASSERTION_FAILED' || soft?.keep(classified) !== true) throw error;
 }
 
 /**
@@ -71,14 +71,16 @@ export function soften<E extends object>(expectation: E): E {
       if (key === 'not' && typeof value === 'object' && value !== null) return soften(value);
       if (typeof value !== 'function') return value;
       return (...args: unknown[]): unknown => {
+        // An asynchronous matcher belongs to the attempt that called it, not a later session.
+        const soft = currentAttempt()?.soft;
         let result: unknown;
         try {
           result = (value as (...args: unknown[]) => unknown).apply(target, args);
         } catch (error) {
-          keepOrThrow(error);
+          keepOrThrow(error, soft);
           return undefined;
         }
-        if (result instanceof Promise) return result.catch(keepOrThrow);
+        if (result instanceof Promise) return result.catch((error: unknown) => keepOrThrow(error, soft));
         return result;
       };
     },

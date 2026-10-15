@@ -61,6 +61,44 @@ describe('Codex login', () => {
     expect(credentials.expires).toBeGreaterThan(Date.now());
   });
 
+  it('cancels a held authorization-code exchange after the browser returns', async () => {
+    let received!: () => void;
+    const exchangeStarted = new Promise<void>((resolve) => { received = resolve; });
+    const issuer = await serve(() => received());
+    const provider = createCodexProvider({ issuer: issuer.url, callbackPort: await freePort() });
+    const controller = new AbortController();
+    let browser: Promise<Response> | undefined;
+    const pending = provider.login({
+      onAuth(info) { browser = browserReturns(info.url, { code: 'the-code', state: '$state' }); },
+      onPrompt: async () => '',
+      signal: controller.signal,
+    });
+    const cancelled = expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    await exchangeStarted;
+    controller.abort();
+    await cancelled;
+    expect((await browser!).status).toBe(200);
+    expect(issuer.requests).toHaveLength(1);
+  });
+
+  it('cancels a held authorization-code exchange after the device code is granted', async () => {
+    let received!: () => void;
+    const exchangeStarted = new Promise<void>((resolve) => { received = resolve; });
+    const issuer = await serve((request, response) => {
+      if (request.url === '/api/accounts/deviceauth/usercode') return json(response, 200, { device_auth_id: 'dev-1', user_code: 'LOCAL', interval: '0.001' });
+      if (request.url === '/api/accounts/deviceauth/token') return json(response, 200, { authorization_code: 'granted-code', code_verifier: 'verifier' });
+      received();
+    });
+    const provider = createCodexProvider({ issuer: issuer.url });
+    const controller = new AbortController();
+    const pending = provider.login({ onAuth() {}, onPrompt: async () => '', signal: controller.signal }, { method: 'device' });
+    const cancelled = expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    await exchangeStarted;
+    controller.abort();
+    await cancelled;
+    expect(issuer.requests).toHaveLength(3);
+  });
+
   it('ignores a callback with the wrong state and treats a declined sign-in as cancelled', async () => {
     const issuer = await serve((_request, response) => json(response, 200, tokenReply));
     const provider = createCodexProvider({ issuer: issuer.url, callbackPort: await freePort() });

@@ -232,9 +232,10 @@ const ANDROID_TITLE_IDS = [':id/collapsing_toolbar', ':id/action_bar', ':id/tool
 
 /**
  * Platform element type of one raw node as a kebab-case token: XCTest sends
- * `NavigationBar` and `StaticText`, Android sends `android.widget.TextView`;
- * both read as one vocabulary here, the Android package prefix dropped.
- * `role` is the fallback some platforms send instead.
+ * `NavigationBar` and `StaticText` (`XCUIElementTypeNavigationBar` over
+ * WebDriver), Android sends `android.widget.TextView`; all read as one
+ * vocabulary here, the class and package prefixes dropped. `role` is the
+ * fallback some platforms send instead.
  */
 function kindOf(raw: RawNode): string {
   return normalizeKind(raw.type ?? raw.role ?? '');
@@ -245,9 +246,9 @@ function isAndroidClass(type: string | undefined): boolean {
   return type !== undefined && type.includes('.');
 }
 
-/** One element-type spelling for `NavigationBar`, `navigation-bar`, and `android.widget.NavigationBar` alike. */
+/** One element-type spelling for `NavigationBar`, `XCUIElementTypeNavigationBar`, `navigation-bar`, and `android.widget.NavigationBar` alike. */
 export function normalizeKind(type: string): string {
-  const simple = type.slice(type.lastIndexOf('.') + 1);
+  const simple = type.slice(type.lastIndexOf('.') + 1).replace(/^XCUIElementType(?=[A-Z])/, '');
   return simple
     .replaceAll(/([a-z0-9])([A-Z])/g, '$1-$2')
     .replaceAll(/[\s_]+/g, '-')
@@ -382,11 +383,16 @@ function isSystemBar(node: RawNode, screen: ViewportSize | undefined, displayOnl
 
 /**
  * Projects one snapshot. `mintId` is called once per node in document order,
- * so the surface's id space stays unique across observations. Android's
- * system bars are left out with their children, see `isSystemBar`.
+ * so the surface's id space stays unique across observations. `viewport` is
+ * the one agent-device published with the snapshot; a producer that measured
+ * none leaves it to `viewportOf`. Android's system bars are left out with
+ * their children, see `isSystemBar`.
  */
-export function projectSnapshot(raw: readonly RawNode[], options: { readonly mintId: () => string }): ProjectedSnapshot {
-  const viewport = viewportOf(raw);
+export function projectSnapshot(
+  raw: readonly RawNode[],
+  options: { readonly mintId: () => string; readonly viewport?: ViewportSize | undefined },
+): ProjectedSnapshot {
+  const viewport = options.viewport ?? viewportOf(raw);
   const parents = parentPositions(raw);
   const children = new Map<number, number[]>();
   const roots: number[] = [];

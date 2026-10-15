@@ -5,9 +5,8 @@ import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { web } from '@e2e-dev/web';
-import type { ListOptions, ListedPair, RunOptions, RunOutcome } from '../../src/run/runner.ts';
+import type { ListOptions, ListedPair, ListResult, RunOptions, RunOutcome } from '../../src/run/runner.ts';
 import type { E2EConfig } from '../../src/index.ts';
-import { inflateEntry, readZip } from '../../src/internal/zip.ts';
 import { createFakeEngine, FAKE_APP } from './fake-engine.ts';
 
 export type { RunOptions, RunOutcome };
@@ -77,20 +76,9 @@ function filesUnder(dir: string): string[] {
   });
 }
 
-/**
- * The bytes of every file under `dir` as latin1 text keyed by path, and of
- * every entry inside a zip archive among them, inflated and keyed
- * `archive!entry`: a compressed trace hides what it holds from a scan of the
- * archive's own bytes.
- */
+/** The bytes of every file under `dir` as latin1 text keyed by path. */
 export function contentsUnder(dir: string): [string, string][] {
-  return filesUnder(dir).flatMap((file) => {
-    const bytes = readFileSync(file);
-    const entries = file.endsWith('.zip')
-      ? readZip(bytes).map((entry) => [`${file}!${entry.name}`, inflateEntry(entry).toString('latin1')] as [string, string])
-      : [];
-    return [[file, bytes.toString('latin1')], ...entries];
-  });
+  return filesUnder(dir).map((file) => [file, readFileSync(file).toString('latin1')]);
 }
 
 export interface RunProjectOptions {
@@ -133,15 +121,25 @@ export async function runExisting(
 export async function listProject(
   files: Readonly<Record<string, string>>,
   options: RunProjectOptions & { listOptions?: Partial<ListOptions> },
-): Promise<{ pairs: ListedPair[]; project: FixtureProject }> {
+): Promise<{
+  pairs: readonly ListedPair[];
+  unmatched: readonly string[];
+  targets: readonly string[];
+  project: FixtureProject;
+}> {
   const project = createProject(files);
-  const { pairs } = await list({
+  const listed = await list({
     cwd: project.dir,
-    rawConfig: { targets: defaultTargets(options.appUrl), ...options.config },
+    config: { targets: defaultTargets(options.appUrl), ...options.config },
     env: fixtureEnv(options.appUrl),
     ...options.listOptions,
   });
-  return { pairs, project };
+  return { ...listed, project };
+}
+
+/** Lists an existing project, so a test can edit its files between calls. */
+export async function listExisting(project: FixtureProject, options: Partial<ListOptions> = {}): Promise<ListResult> {
+  return list({ cwd: project.dir, env: fixtureEnv(undefined), ...options });
 }
 
 /** Default file-backed config used by worker-path integration tests that open the fixture app. */

@@ -8,7 +8,7 @@
  */
 
 import type { ModelMessage } from 'ai';
-import { withHint } from '../../internal/errors.ts';
+import { providerFailureMessage, withHint } from '../../internal/errors.ts';
 import { missingModelError, type ResolvedModel } from '../../config/agent.ts';
 import { aiSdk, asSdkLanguageModel, loadAiSdk, type SdkLanguageModel } from '../ai-sdk.ts';
 import { MODEL_REQUEST_HEADERS } from '../../internal/client-identity.ts';
@@ -292,20 +292,20 @@ function translateModelError(
   if (isContextOverflow(cause)) {
     return new AgentError(
       'CONTEXT_OVERFLOW',
-      `the model request exceeded the context window: ${cause instanceof Error ? cause.message : String(cause)}`,
+      `the model request exceeded the context window: ${providerFailureMessage(cause)}`,
       { cause },
     );
   }
   if (APICallError.isInstance(cause)) {
     return new AgentError(
       'MODEL_PROVIDER_FAILED',
-      withHint(`model provider failed: ${cause.message}`, failureHint(cause)),
+      withHint(`model provider failed: ${providerFailureMessage(cause)}`, failureHint(cause)),
       { cause },
     );
   }
   return new AgentError(
     'MODEL_PROVIDER_FAILED',
-    `model provider failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+    `model provider failed: ${providerFailureMessage(cause)}`,
     { cause },
   );
 }

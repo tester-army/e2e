@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-04T08:33:55.168Z",
+  "createdAt": "2026-10-06T13:56:40.741Z",
   "payload": {
     "actions": [
       {
@@ -26,7 +26,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Bought the Wireless Headphones. The page now shows “Order confirmed.”",
+    "summary": "The current screen shows Wireless Headphones with an “Order confirmed” success message, so the recorded purchase took effect.",
     "startPath": "/e/promo-storefront",
     "endPath": "/e/promo-storefront",
     "endAnchors": [
@@ -35,21 +35,15 @@
         "testId": "success-message"
       },
       {
-        "text": "Jonas"
+        "text": "Jonas ★★★★★ Great bass and the battery lasts all week."
       },
       {
-        "text": "Amelia"
+        "text": "Amelia ★★★★ Comfortable fit, pairing was instant."
       },
       {
         "role": "listitem",
         "name": "Wireless Headphones $80.00 $40.00 50% OFF Order confirmed",
         "testId": "deal-headphones"
-      },
-      {
-        "text": "★★★★★ Great bass and the battery lasts all week."
-      },
-      {
-        "text": "★★★★ Comfortable fit, pairing was instant."
       }
     ],
     "goneAnchors": [
@@ -59,6 +53,6 @@
         "testId": "deal-headphones"
       }
     ],
-    "endWaitMs": 11574
+    "endWaitMs": 25883
   }
 }

@@ -12,7 +12,8 @@
  * after the publish, before the output is committed.
  *
  * Usage: `node scripts/canary-changeset.ts`, right before
- * `changeset version --snapshot canary`. The file it writes is git-ignored and
+ * `changeset version --snapshot <tag>`; `pnpm run canary` and the `nightly`
+ * job in `release.yml` both run it. The file it writes is git-ignored and
  * consumed by that command.
  */
 

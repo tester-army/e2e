@@ -114,7 +114,7 @@ function compileSegment(segment: string, pattern: string): GlobSegment {
     else if (ch === '?') source += '[^/]';
     else source += escapeRegexpChar(ch);
   }
-  return { kind: 'wildcard', regexp: new RegExp(`${source}$`), allowsDot: segment.startsWith('.') };
+  return { kind: 'wildcard', regexp: new RegExp(`${source}$`, 'u'), allowsDot: segment.startsWith('.') };
 }
 
 /** The names a glob starts with before its first wildcard or `**`: the directory a scan for it can stay inside. */

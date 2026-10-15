@@ -102,6 +102,9 @@ export const size = Size.M;
   // Export and import maps that name TypeScript sources without an extension.
   'packages/noext/package.json': JSON.stringify({ name: '@scope/noext', type: 'module', exports: { './*': './src/*' } }),
   'packages/noext/src/foo.ts': "export const foo = 'no-extension export';\n",
+  // A package without `exports` whose subpath names a directory of TypeScript.
+  'packages/legacy/package.json': JSON.stringify({ name: '@scope/legacy' }),
+  'packages/legacy/enums/index.ts': "export const Role = { Owner: 'OWNER' } as const;\n",
   'tests/features.e2e.ts': `import { expect, test } from 'e2e';
 import type { E2EConfig } from 'e2e';
 import { alias } from '@lib/alias';
@@ -123,6 +126,8 @@ import attributed from '../lib/data.json' with { type: 'json' };
 import { month } from '@scope/core';
 import { foo } from '@scope/noext/foo';
 import { foo as fooImport } from '#noext/foo';
+import { Role } from '@scope/legacy/enums';
+import { Role as RoleImport } from '#legacy/enums';
 
 const awaited = await Promise.resolve('top-level await');
 const typed: E2EConfig | undefined = undefined;
@@ -130,6 +135,7 @@ const typed: E2EConfig | undefined = undefined;
 test('imports resolve', () => {
   expect([alias, base, plain, suffixed, index, sub, viaJs, month(7)]).toEqual(['paths', 'baseUrl', 'extensionless', 'js-suffix', 'dir-index', 'hash-import', 'hash-import', '07']);
   expect([foo, fooImport]).toEqual(['no-extension export', 'no-extension export']);
+  expect([Role.Owner, RoleImport.Owner]).toEqual(['OWNER', 'OWNER']);
 });
 
 test('module formats load', () => {
@@ -174,11 +180,11 @@ function write(files: Readonly<Record<string, string>>): void {
 
 /** A project whose package.json is `manifest`, with e2e and a workspace package linked into node_modules. */
 function createProject(manifest: Record<string, unknown>): void {
-  const imports = { '#internal/*': './internal/*.ts', '#js/*': './internal/*.js', '#noext/*': './packages/noext/src/*' };
+  const imports = { '#internal/*': './internal/*.ts', '#js/*': './internal/*.js', '#noext/*': './packages/noext/src/*', '#legacy/*': './packages/legacy/*' };
   write({ ...FILES, 'package.json': JSON.stringify({ name: 'loader-fixture', imports, ...manifest }) });
   mkdirSync(path.join(dir, 'node_modules', '@scope'), { recursive: true });
   symlinkSync(PACKAGE_ROOT, path.join(dir, 'node_modules', 'e2e'), 'junction');
-  for (const name of ['core', 'noext']) symlinkSync(path.join(dir, 'packages', name), path.join(dir, 'node_modules', '@scope', name), 'junction');
+  for (const name of ['core', 'noext', 'legacy']) symlinkSync(path.join(dir, 'packages', name), path.join(dir, 'node_modules', '@scope', name), 'junction');
 }
 
 /**
@@ -334,5 +340,19 @@ describe('the TypeScript loader', () => {
 
     write({ 'tsconfig.json': JSON.stringify({ compilerOptions: { paths: { '@lib/config-helper': ['./lib/other.ts'] } } }) });
     expect(await names(true)).toEqual(['other']);
+  });
+});
+
+describe('nested TypeScript solution loading', () => {
+  it('loads a config alias through two solution reference levels', async () => {
+    createProject({ type: 'module' });
+    write({
+      'tsconfig.json': JSON.stringify({ files: [], references: [{ path: 'configs/solution.json' }] }),
+      'configs/solution.json': JSON.stringify({ files: [], references: [{ path: 'app.json' }] }),
+      'configs/app.json': JSON.stringify({ compilerOptions: { baseUrl: '..', paths: { '@nested/*': ['lib/*'] } }, include: ['../*.ts', '../lib/*.ts'] }),
+      'e2e.config.ts': "import { targetName } from '@nested/config-helper'; export default { targets: [{ name: targetName, platform: 'test' }] };\n",
+    });
+    const loaded = await loadConfigModule(path.join(dir, 'e2e.config.ts'), { graph: true });
+    expect(loaded.targets?.[0]?.name).toBe('local');
   });
 });

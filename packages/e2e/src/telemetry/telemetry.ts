@@ -6,8 +6,8 @@
  * command never waits on telemetry for more than the flush budget and never
  * fails because of it. A long-lived command (`e2e mcp`) sends what it has
  * queued as it goes with `sendQueued`, so a client that kills it loses only
- * what was still in progress. Telemetry is a CLI concern only: the runner
- * never constructs this class.
+ * what was still in progress. Besides the CLI, only the public `run()` on
+ * `e2e/runner` constructs this class, one per call.
  *
  * Off means off at every step. `E2E_TELEMETRY_DISABLED`, `DO_NOT_TRACK`, a
  * source checkout of the repository, an `e2e telemetry disable`, or a

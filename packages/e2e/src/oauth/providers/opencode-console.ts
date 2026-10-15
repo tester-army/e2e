@@ -36,6 +36,7 @@ export function createOpencodeConsoleProvider(options: OpencodeConsoleProviderOp
   return {
     id: 'opencode-console',
     name: 'OpenCode Console',
+    apiKeyEnv: 'OPENCODE_API_KEY',
     async login(callbacks) {
       const deviceCodeUrl = `${consoleUrl}/auth/device/code`;
       const tokens = await rfc8628Flow({

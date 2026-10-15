@@ -2,19 +2,23 @@
 title: expect
 description: "Locator assertions, fixture assertions, and plain value matchers."
 icon: "circle-check"
+"og:image": "https://e2e.tester.army/docs/images/og/reference/expect.png?v=118436cc41"
+"twitter:image": "https://e2e.tester.army/docs/images/og/reference/expect.png?v=118436cc41"
 ---
 
-Use `expect(locator)` to wait for an app condition and `expect(value)` to
-check a value immediately. `expect.poll` repeatedly reads a value until its
+Use `expect(locator)` to wait for an app condition, `expect(screen)` to
+compare the screen against a stored screenshot, and `expect(value)` to check
+a value immediately. `expect.poll` repeatedly reads a value until its
 matcher passes. `expect.soft` keeps a failure for the end of the test body
 instead of throwing it, and `expect.any` and the other
 [asymmetric matchers](#asymmetric-matchers) stand in for values inside a
 structural comparison.
 
 ```ts
-/** The `expect(actual)` call: a locator, an engine fixture, or a value, told apart by the argument. */
+/** The `expect(actual)` call: a locator, `screen`, an engine fixture, or a value, told apart by the argument. */
 export interface ExpectCall {
   (actual: Locator): AsyncExpectation;
+  (actual: Screen): ScreenExpectation;
   <E extends object>(actual: Expectable<E>): E;
   <T>(actual: T, message?: string): ValueExpectation<T>;
 }
@@ -22,6 +26,7 @@ export interface ExpectCall {
 /** The `expect.soft(actual)` call: `expect(actual)` whose failures are kept instead of thrown. */
 export interface SoftExpectCall {
   (actual: Locator): AsyncExpectation;
+  (actual: Screen): ScreenExpectation;
   <E extends object>(actual: Expectable<E>): E;
   <T>(actual: T, message?: string): SoftValueExpectation<T>;
 }
@@ -129,6 +134,9 @@ export interface AsyncExpectation {
   toHaveCount(expected: number, options?: { timeout?: number }): Promise<void>;
   /** Waits for an accessible name. */
   toHaveAccessibleName(expected: TextMatch, options?: TextMatcherOptions): Promise<void>;
+  /** Waits for the one match to look like its stored screenshot; see [Screenshot matchers](#screenshot-matchers). */
+  toHaveScreenshot(name: string, options?: ScreenshotOptions): Promise<void>;
+  toHaveScreenshot(options?: ScreenshotOptions): Promise<void>;
 }
 
 /** Options of a locator matcher that compares text. */
@@ -194,6 +202,60 @@ await expect(screen.getByTestId('todo')).toContainText(['spec', 'runner', 'Relea
 await expect(screen.getByTestId('todo')).toContainText(['spec', 'Release']);
 await expect(screen.getByText('Loaded')).toBeAttached();
 await expect(screen.getByRole('dialog')).not.toBeVisible({ timeout: 10_000 });
+```
+
+## Screenshot matchers
+
+`expect(screen)` and `expect(locator)` compare against a PNG stored beside
+the test file, on every engine that captures pixels. The
+[Visual comparison](/visual-testing) guide shows the workflow.
+
+```ts
+export interface ScreenExpectation {
+  /** Inverts the matcher: waits for the screen to differ from its stored screenshot. */
+  readonly not: ScreenExpectation;
+  /** Waits for the screen to look like its stored screenshot, `name` or one named after the test. */
+  toHaveScreenshot(name: string, options?: ScreenshotOptions): Promise<void>;
+  toHaveScreenshot(options?: ScreenshotOptions): Promise<void>;
+}
+
+export interface ScreenshotOptions {
+  /** How far one pixel's color may drift and still count as the same, from 0 (exact) to 1. Default `0.2`. */
+  threshold?: number;
+  /** How many pixels may differ. Default `0`. */
+  maxDiffPixels?: number;
+  /** What share of the pixels may differ, from 0 to 1. Default `0`. */
+  maxDiffPixelRatio?: number;
+  /** Locators painted over before comparing, for content that changes from run to run. */
+  mask?: readonly Locator[];
+  /** Color of the `mask` boxes, `#rrggbb`. Default `#ff00ff`. */
+  maskColor?: string;
+  /** Assertion budget in milliseconds. */
+  timeout?: number;
+}
+```
+
+| Property | Value |
+| --- | --- |
+| Stored at | `<test file>-snapshots/<name>-<target>-<os>.png`; `.png` is added to a name without it |
+| Unnamed | The test's title path, lowercase, and a count: `checkout-pays-by-card-1` |
+| Missing | Taken from two screenshots in a row that are the same within the tolerance, then `ASSERTION_FAILED`. Written beside the test; in CI without `--update-snapshots` only attached to the results, at `snapshots/<path in the project>` |
+| Written earlier in the run | No comparison, `.not` included, passes against a screenshot the same run wrote (a retry, a repeat, another test naming it): `ASSERTION_FAILED` until the next run |
+| Different | Retried until one matches or the timeout; then `ASSERTION_FAILED` with `-expected`, `-actual`, and `-diff` images on the step |
+| `--update-snapshots`, `-u` | A missing or different stored screenshot is written from a screen that holds still, and the matcher passes |
+| `.not` | Passes once the screen differs; with nothing stored it is `ASSERTION_FAILED` |
+| Tolerance | Both `maxDiffPixels` and `maxDiffPixelRatio` set: the smaller wins |
+| After a secret fill | `POLICY_DENIED`, as for `app.screenshot()` |
+
+A name with a path separator, an option the matcher does not take (Playwright's
+`fullPage`, `animations`, `clip`), or a value out of range is
+`INVALID_ARGUMENT` before the screen is read, and so is `expect` on a screen
+scoped to a frame: compare a locator inside it instead.
+
+```ts
+await expect(screen).toHaveScreenshot('home.png');
+await expect(screen.getByRole('navigation')).toHaveScreenshot();
+await expect(screen).toHaveScreenshot('feed.png', { mask: [screen.getByTestId('timestamp')], maxDiffPixels: 50 });
 ```
 
 ## browser matchers
@@ -467,11 +529,9 @@ attempt's error records.
 
 When the body throws on its own, or times out, that error stays the
 attempt's verdict and the soft failures are recorded beside it under
-`secondaryErrors`. A body that skips itself with `test.skip(...)` keeps them
-there too. The CLI shows `Skipped After Failure`; set
-[`failOnSkippedFailure: true`](/reference/config) to make that run fail with
-exit code 1. Without that option, the test stays skipped and does not affect
-the exit code.
+`secondaryErrors`. A body that skips itself with `test.skip(...)` after a
+soft failure still fails: the soft failures are the attempt's error, and the
+skip reason is kept in the attempt's `skip`.
 
 A soft `toMatchSchema` returns the schema's output when the value matches
 and `undefined` after a kept failure, and its type says so.

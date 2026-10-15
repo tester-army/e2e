@@ -9,7 +9,7 @@ describe('an ai release without experimental_decide', () => {
     const { model } = scriptedDecision(() => ({ choice: 'done' }));
     expect(() => decisionExecutor({ model })).toThrow(expect.objectContaining({
       code: 'INVALID_CONFIG',
-      message: 'decisionExecutor() needs ai 7.0.128 or later; update the ai package',
+      message: 'decisionExecutor() needs ai 7.0.134 or later; update the ai package',
     }));
   });
 });

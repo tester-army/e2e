@@ -2,9 +2,8 @@
  * A selection inside a plain field that holds a secret is withheld.
  * Through the real Playwright engine: a filled credential with 40 of its
  * characters selected in a text (not password) field reaches neither the
- * model, the failure screen, the report, nor any file under `.e2e` (the
- * entries of the Playwright trace included), while the same selection over a
- * plain value is still shown, in the trace too.
+ * model, the failure screen, the report, nor any file under `.e2e`, while
+ * the same selection over a plain value is still shown.
  */
 
 import { readFileSync } from 'node:fs';
@@ -66,18 +65,15 @@ describe('selections inside a field that holds a secret', () => {
     expect(secret).not.toContain(FRAGMENT);
   });
 
-  it('keeps the selected fragment out of the failure screen, the report, the trace, and every file under .e2e', () => {
+  it('keeps the selected fragment out of the failure screen, the report, and every file under .e2e', () => {
     const attempt = resultByTitle(outcome, 'selects part of a secret in a plain field').attempts.at(-1)!;
     expect(attempt.error?.code).toBe('LOCATOR_NOT_FOUND');
     const screen = attempt.artifacts.find((artifact) => artifact.id === attempt.failure?.screen)!;
-    const screenText = readFileSync(path.join(project.dir, '.e2e', 'artifacts', screen.path!), 'utf8');
+    const screenText = readFileSync(path.join(project.dir, '.e2e', 'results', screen.path!), 'utf8');
     expect(screenText).toContain('value="<secret:member.password>"');
     expect(screenText).not.toContain(FRAGMENT);
     expect(JSON.stringify(outcome.report)).not.toContain(FRAGMENT);
     const contents = contentsUnder(path.join(project.dir, '.e2e'));
     for (const [file, text] of contents) expect(text.includes(FRAGMENT), file).toBe(false);
-    // The trace was scanned inside, and the plain selection survived its rewrite.
-    const trace = contents.filter(([file]) => file.includes('.zip!'));
-    expect(trace.some(([, text]) => text.includes(PLAIN.slice(5, 45)))).toBe(true);
   });
 });

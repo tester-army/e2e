@@ -1,5 +1,55 @@
 # @e2e-dev/mobile
 
+## 0.12.1
+
+### Patch Changes
+
+- [#1073](https://github.com/tester-army/e2e/pull/1073) [`14b77d3`](https://github.com/tester-army/e2e/commit/14b77d320e73921e84234bfad05c92ebc4693b73) Thanks [@thymikee](https://github.com/thymikee)! - The mobile engine now bounds each input (a tap or other node action, a point action, typing, a key, `back`, a keyboard dismissal) by its budget (`actionTimeout`, or the call's `timeout`). An input that outlived it used to hold the step until the test timeout. Now an input sent that does not answer in time fails with `ACTION_MAY_HAVE_COMMITTED`, which the runner never repeats, as on the web engine; one sent with almost no budget left still gets 250 ms to answer. An input the budget ran out before, while its target was still settling, is not sent and fails with `OPERATION_TIMEOUT`. A long press or timed swipe that holds at least as long as the budget left is refused before it is sent, naming the hold and the time left. Reads (observe, locate, the relocation before a tap), launches, artifacts, and `device.*` fixture calls are unchanged: a locator poll still lets its last read finish. The `OperationContext.signal` docs in `e2e/engine` now say what it does: it aborts with the attempt or the running hook, not at `timeoutMs`.
+
+## 0.12.0
+
+### Minor Changes
+
+- [#999](https://github.com/tester-army/e2e/pull/999) [`4bb3e42`](https://github.com/tester-army/e2e/commit/4bb3e42f501e69dce9377a40542993d3c808d3e8) Thanks [@reiidoda](https://github.com/reiidoda)! - Breaking: `device.setNetwork('offline')` and `device.setAirplaneMode(true)` now fail with `UNSUPPORTED_CAPABILITY` on iOS. They previously changed only the simulator's status bar while the app stayed online. Restoring the network with `setNetwork('online')` or `setAirplaneMode(false)` does nothing on iOS, so shared cleanup hooks still work.
+  
+  Run offline tests on Android with `platforms: ['android']` and `setAirplaneMode(true)` (Android 11+). `setNetwork('offline')` turns off Wi-Fi only; cellular data can keep the app online.
+
+- [#1059](https://github.com/tester-army/e2e/pull/1059) [`e291f09`](https://github.com/tester-army/e2e/commit/e291f09c6a1c78069cd1a7af3b973a3bf8aca9e5) Thanks [@thiagobrez](https://github.com/thiagobrez)! - `device.fold` works on foldable Android emulators. agent-device 0.21.25 sets the emulator console posture and waits for the device state Android commits, so the engine no longer refuses Android before the command; a fold to the cover display also clears the lock screen the emulator raises. Before, `device.fold` on an Android target failed with `UNSUPPORTED_CAPABILITY`.
+
+- [#1023](https://github.com/tester-army/e2e/pull/1023) [`490a97e`](https://github.com/tester-army/e2e/commit/490a97e7ccdaae259a7808ed23c4cf124946a18a) Thanks [@thymikee](https://github.com/thymikee)! - `device.locator()` and the `selector` locator match with agent-device's own term rules (`listSelectorChainMatches`, 0.21.21) instead of the engine's copy of them, which had drifted. A selector can match different nodes than before:
+  
+  - `role` takes agent-device's kind, the role `agent-device snapshot` prints (`text-field`, `navigation-bar`, `scroll-area`), not the `getByRole` role. `role=textbox` becomes `role=text-field`, `role=navigation` becomes `role=navigation-bar`, `role=search-field` becomes `role=search`, `role=listitem` becomes `role=cell`. Platform type names (`StaticText`, `NavigationBar`) still match through agent-device's deprecated aliases; the docs now use the kind.
+  - Text terms (`id`, `label`, `value`, `text`) compare case-insensitively.
+  - `visible` means hittable or a non-empty frame, and `hidden` its opposite.
+  - `editable` means a fillable type that is enabled; a disabled field is not editable.
+  - `hittable` matches only a node that reports it; one that doesn't say is no longer counted as hittable.
+  - `text` reads the first non-empty label, value, or identifier.
+
+### Patch Changes
+
+- [#1025](https://github.com/tester-army/e2e/pull/1025) [`880ae70`](https://github.com/tester-army/e2e/commit/880ae70c9c6ade9d6f69e7d7a17b7f4a6b4056b3) Thanks [@thymikee](https://github.com/thymikee)! - agent-device 0.21.25: `settings permission --app` resolves a display name to the installed app's id and refuses an app that isn't installed ([callstack/agent-device#3386](https://github.com/callstack/agent-device/pull/3386)), and on iOS a canceled request keeps its session until the runner finishes the canceled command ([callstack/agent-device#3385](https://github.com/callstack/agent-device/pull/3385)).
+
+- [#988](https://github.com/tester-army/e2e/pull/988) [`c807f94`](https://github.com/tester-army/e2e/commit/c807f9480646a13f00d308cdd0a90034908b5543) Thanks [@enesonus](https://github.com/enesonus)! - Add the Limrun device provider with one hosted instance per worker, app
+  installation, recording through agent-device, and cleanup on run exit.
+  Renew retained driver leases while other targets run. Keep provider-owned
+  local daemons isolated from ambient remote-daemon environment settings.
+
+- [#1025](https://github.com/tester-army/e2e/pull/1025) [`880ae70`](https://github.com/tester-army/e2e/commit/880ae70c9c6ade9d6f69e7d7a17b7f4a6b4056b3) Thanks [@thymikee](https://github.com/thymikee)! - Permissions are set on the app by name, with agent-device's `settings permission --app` (0.21.21, with display names resolved since 0.21.25). `device.setPermission()` and the permissions a launch presets no longer open the app first to put agent-device's session on it, so a permission goes in before the app's first launch with no foreground open. `device.setPermission()` always acts on the pinned app, as documented, not on whichever app the session last opened. The warm-up in `prepare` still opens the pinned app, and a worker no longer lists agent-device's sessions at start.
+
+- [#1026](https://github.com/tester-army/e2e/pull/1026) [`62d5524`](https://github.com/tester-army/e2e/commit/62d55249c1348446d5f536ad9474383016075bb1) Thanks [@thymikee](https://github.com/thymikee)! - The mobile engine measures an observation in the viewport agent-device publishes with each snapshot (0.21.21), and infers it from the tree's largest window or rect extent only for a snapshot that publishes none. On a snapshot that publishes one, a tree that doesn't reach the screen's edges no longer shrinks the viewport, so a system panel above the bottom of the screen is no longer taken for the navigation bar.
+
+- [#1024](https://github.com/tester-army/e2e/pull/1024) [`9065cf8`](https://github.com/tester-army/e2e/commit/9065cf8d36ec5616b18c842b577e8bf0ffd6740d) Thanks [@thymikee](https://github.com/thymikee)! - A missing agent-device session is recognized by agent-device's `SESSION_NOT_FOUND` code and its `session_or_device_selector_required` reason (0.21.21) instead of a pattern over the message, so a reworded message can no longer change whether a failure reports as `APP_NOT_OPEN`.
+
+## 0.11.0
+
+### Minor Changes
+
+- [#869](https://github.com/tester-army/e2e/pull/869) [`1b92a6d`](https://github.com/tester-army/e2e/commit/1b92a6ddfa8768c303953548e1b1e6cc5afbac8d) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `trace` keeps its modes but now writes e2e's own trace instead of a Playwright zip: a markdown page per test, on every engine, and the terminal names it under each failed test (`❯ trace .e2e/results/<test>/trace.md`). The default is `retain-on-failure`, locally and in CI. Each step on the page shows what it did: the node an action landed on, the values an assertion or `waitFor` read while it waited, the replay cache's decision (where a replay stopped and why, what became of the recording, the entry file), what the app logged meanwhile (console output, uncaught exceptions, failed requests, and 4xx and 5xx responses, also gathered in one App log section with each line's step), where the page went (a navigation, a new tab, a frame), and how the screen changed since the step before. The page also names the browser and user agent, or the device, the test ran on. The `markdown` reporter's `summary.md` names each failure's trace page when one was kept. `report.json` is still written for scripts, but the `list` summary no longer prints its path (`--debug` does), and prints `Report (not written)` only when it is missing. Everything a test left now sits in one directory, `<output>/results/<test>/` (`.e2e` by default): its `trace.md` (which shows the failure screenshot inline and links each file) and an `attempt-<n>/` per attempt, numbered from 1, with the screen at failure as `screen-at-failure.txt`. It replaces `.e2e/artifacts/<target>/<test id>/<agent>/attempt-<n>/`; a `--last-failed` rerun writes under each test's `rerun-<n>/`. Point CI uploads at `.e2e/results`, and add `.e2e/results/` to `.gitignore` (or rerun `e2e init`). A stale recording made from this version on names what changed in its key under `--strict-cache`, such as the agent's context. For engine authors: `startTrace` and `stopTrace` are no longer called, `trace` leaves `artifactCapabilities`, `EngineAttemptContext.appLog` takes what the app logs, `navigation` where it went on its own, `screen` takes a screen for the trace (one a `locate` matched against, or one read right after an action, bounded), and `environment` takes what the attempt runs on. report-1 drops the `trace` artifact kind and the `not-required` redaction (`StoredArtifact.kind` and `redaction` narrow the same way), drops `TRACE_WITHHELD`, and adds `attempt.appLog` (each line with its step), `navigation` events, `failure.viewport` and `failure.nodes`, `step.phase`, `step.screen`, `attempt.environment`, and `step.cache.entry`, `detail`, and `write` (report only; `result.cache` from `agent.act()` gains `entry` and `detail`). `FinishedRun.traces` maps results to their pages.
+
+### Patch Changes
+
+- [#977](https://github.com/tester-army/e2e/pull/977) [`5137778`](https://github.com/tester-army/e2e/commit/5137778251928c42a736510fda002a984e924d17) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Add `toHaveScreenshot` for visual comparison on every engine that captures pixels: `await expect(screen).toHaveScreenshot('home.png')` compares the screen and `expect(locator).toHaveScreenshot()` one element against a PNG stored beside the test file, one per target and operating system. A missing one fails the test and is written beside it, or in CI attached to the results instead; `--update-snapshots` (`-u`) writes missing and different ones and passes. Options: `threshold`, `maxDiffPixels`, `maxDiffPixelRatio`, `mask`, `maskColor`, `timeout`. A mismatch attaches the expected, actual, and diff images to the step. On iOS and Android the status bar is held in a fixed state for these screenshots.
+
 ## 0.10.0
 
 ### Minor Changes

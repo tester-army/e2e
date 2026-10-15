@@ -57,3 +57,16 @@ test.describe('browser fixture', { requires: ['browser'], tags: ['browser'] }, (
     expect(theme?.value).toBe('dark');
   });
 });
+
+test('emulated media reaches the page\'s own @media rules, from the first paint on', { requires: ['browser'], tags: ['browser'] }, async ({ app, screen, browser }) => {
+  await browser.emulateMedia({ colorScheme: 'dark' });
+  await app.open('/browser');
+  await expect(screen.getByLabel('Media')).toHaveText('dark, full motion');
+  await browser.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(screen.getByLabel('Media')).toHaveText('dark, reduced motion');
+  await app.restart();
+  await app.open('/browser');
+  await expect(screen.getByLabel('Media')).toHaveText('dark, reduced motion');
+  await browser.emulateMedia({ colorScheme: 'light', reducedMotion: 'no-preference' });
+  await expect(screen.getByLabel('Media')).toHaveText('light, full motion');
+});

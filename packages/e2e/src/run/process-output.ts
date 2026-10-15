@@ -8,12 +8,80 @@
  */
 
 import { StreamRedactor, type SecretLedger } from '../internal/redact.ts';
+import { AsyncLocalStorage, AsyncResource } from 'node:async_hooks';
+import { realmSlot } from '../internal/realm-slot.ts';
 import type { ListReporterOutput } from '../report/list.ts';
 
 export type OutputStream = 'stdout' | 'stderr';
 
 /** Writes text to one stream of the terminal; the callback fires once the stream took it. Answers false while the stream is backed up, like `Writable.write`. */
 export type TerminalWrite = (text: string, callback?: () => void) => boolean;
+
+const BYTE_ENCODINGS: ReadonlySet<BufferEncoding> = new Set(['hex', 'base64', 'base64url']);
+
+interface OutputRouting {
+  readonly scope: AsyncLocalStorage<RunnerOutput | null>;
+  readonly terminal: Record<OutputStream, TerminalWrite>;
+  readonly dispatchers: Partial<Record<OutputStream, typeof process.stdout.write>>;
+  process: RunnerOutput | undefined;
+}
+
+const routingSlot = realmSlot<OutputRouting>('e2e.process-output.routing.v1');
+
+/** One process dispatcher preserves redaction for asynchronous work that outlives a suite. */
+function routing(): OutputRouting {
+  const streams = { stdout: process.stdout, stderr: process.stderr } as const;
+  let state = routingSlot.get(process);
+  if (state === undefined) {
+    state = {
+      scope: new AsyncLocalStorage(),
+      terminal: {
+        stdout: streams.stdout.write.bind(streams.stdout) as TerminalWrite,
+        stderr: streams.stderr.write.bind(streams.stderr) as TerminalWrite,
+      },
+      dispatchers: {},
+      process: undefined,
+    };
+    routingSlot.set(process, state);
+  }
+  for (const name of ['stdout', 'stderr'] as const) {
+    if (streams[name].write === state.dispatchers[name]) continue;
+    const forward = streams[name].write.bind(streams[name]) as (chunk: string | Uint8Array, encoding?: BufferEncoding | (() => void), callback?: () => void) => boolean;
+    state.terminal[name] = (text, callback) => {
+      const done = callback === undefined ? undefined : AsyncResource.bind(callback);
+      return state.scope.run(null, () => forward(text, done));
+    };
+    const dispatch = ((chunk: string | Uint8Array, encoding?: BufferEncoding | (() => void), callback?: () => void): boolean => {
+      const context = state.scope.getStore();
+      const output = context === null ? undefined : context ?? state.process;
+      if (output === undefined) return forward(chunk, encoding, callback);
+      const done = typeof encoding === 'function' ? encoding : callback;
+      const bytes = typeof chunk === 'string' && typeof encoding === 'string' && BYTE_ENCODINGS.has(encoding);
+      return output.write(name, bytes ? Buffer.from(chunk, encoding) : chunk, done);
+    }) as typeof process.stdout.write;
+    state.dispatchers[name] = dispatch;
+    streams[name].write = dispatch;
+  }
+  return state;
+}
+
+/** The CLI owns every process write, including timers that print after a run ends. */
+export function claimProcessOutput(ledger: SecretLedger): RunnerOutput {
+  const state = routing();
+  state.process ??= new RunnerOutput(state.terminal, ledger);
+  return state.process;
+}
+
+/** Embedded runs own their async output; caller output resumes once cleanup ends. */
+export async function withProcessOutput<T>(ledger: SecretLedger, run: (output: RunnerOutput) => Promise<T>): Promise<T> {
+  const state = routing();
+  const output = new RunnerOutput(state.terminal, ledger);
+  try {
+    return await state.scope.run(output, () => run(output));
+  } finally {
+    output.end();
+  }
+}
 
 /** Where runner output goes instead of the terminal while the list reporter shows the run. */
 export interface OutputView {
@@ -83,7 +151,7 @@ export class RunnerOutput {
   private readonly loadHold = new ConfigLoadHold();
   private view: OutputView | undefined;
   /** The terminal's stdout for the list reporter: its own lines and live window go straight there. */
-  readonly listOutput: ListReporterOutput;
+  readonly listOutput: Required<ListReporterOutput>;
 
   constructor(
     private readonly terminal: Readonly<Record<OutputStream, TerminalWrite>>,

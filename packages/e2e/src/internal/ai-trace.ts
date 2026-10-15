@@ -19,6 +19,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import type { Telemetry } from 'ai';
+import { providerFailureMessage } from './errors.ts';
 
 /** Longest step label quoted in a run name before truncation. */
 const MAX_LABEL_CHARS = 80;
@@ -396,7 +397,7 @@ export class AiTraceRecorder {
     const state = this.calls.get(callId);
     if (state === undefined) return;
     const cause = event?.error;
-    const message = cause instanceof Error ? cause.message : String(cause ?? 'unknown error');
+    const message = cause === undefined || cause === null ? 'unknown error' : providerFailureMessage(cause);
     for (const open of state.openSteps.values()) {
       this.steps.push(this.closeStep(open, { error: message }));
     }

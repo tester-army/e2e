@@ -6,7 +6,7 @@ import { isKeyModifier, KEY_MODIFIERS, type KeyModifier } from '../engine/contra
 import type { LocatorAction, LocatorExpression, SemanticNode } from '../engine/surface.ts';
 import { locatorBrand } from '../internal/brands.ts';
 import { isSecret } from '../secrets.ts';
-import { asEngineError, TestError } from '../internal/errors.ts';
+import { TestError } from '../internal/errors.ts';
 import { requireFinitePoint } from '../internal/geometry.ts';
 import { isPlainObject, rejectUnknownOptions } from '../internal/options.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
@@ -43,7 +43,9 @@ import {
   testIdQuery,
   textQuery,
 } from './expression.ts';
-import { cutOffAtDeadline, type Deadline, POLL_INTERVAL_MS, pollCondition, sleep } from '../internal/time.ts';
+import { cutOffAtDeadline, type Deadline, isOperationTimeout, POLL_INTERVAL_MS, pollCondition, sleep } from '../internal/time.ts';
+import { SampleHistory } from '../expect/samples.ts';
+import type { ScreenshotContext } from '../run/screenshots.ts';
 
 export interface SecretResolver {
   /**
@@ -59,6 +61,8 @@ export interface ScreenContext {
   readonly secrets: SecretResolver;
   /** Base directory for resolving relative file paths, e.g. uploads. */
   readonly projectRoot?: string;
+  /** Where `toHaveScreenshot` keeps screenshots; absent outside a test. */
+  readonly screenshots?: ScreenshotContext;
 }
 
 /** Internal accessor used by expect() to reach a locator's expression/engine. */
@@ -72,6 +76,20 @@ export interface LocatorInternals {
  * an expect() imported in an isolated test-module realm can still reach them.
  */
 const internalsSlot = realmSlot<LocatorInternals>('e2e.locatorInternals.v1');
+
+/** What `expect(screen)` reads off a screen object: its context, and whether it is scoped to part of the screen (a frame). */
+interface ScreenInternals {
+  readonly context: ScreenContext;
+  readonly scoped: boolean;
+}
+
+/** A screen's internals, for `expect(screen)`, under the same kind of slot as a locator's. */
+const screenSlot = realmSlot<ScreenInternals>('e2e.screenInternals.v1');
+
+/** The internals behind a screen object; undefined for anything else. */
+export function screenInternals(screen: unknown): ScreenInternals | undefined {
+  return screenSlot.get(screen);
+}
 
 export function locatorInternals(locator: unknown): LocatorInternals | undefined {
   if (typeof locator !== 'object' || locator === null) return undefined;
@@ -100,15 +118,6 @@ export function createLocator(context: ScreenContext, expression: LocatorExpress
   return new LocatorImpl(context, expression);
 }
 
-/**
- * Whether a swipe failed because the operation budget it was given ran out:
- * the engine's `OPERATION_TIMEOUT` as a viewport swipe raises it, or wrapped
- * as the `ACTION_FAILED` the locator engine translates it into.
- */
-function timedOut(cause: unknown): boolean {
-  const engineError = asEngineError(cause) ?? asEngineError(cause instanceof Error ? cause.cause : undefined);
-  return engineError?.code === 'OPERATION_TIMEOUT';
-}
 
 /** The keys of `TextMatchOptions`, what every text-family query takes. */
 const TEXT_OPTION_KEYS = ['exact', 'visible'] as const;
@@ -151,7 +160,9 @@ class ScreenImpl implements Screen {
     protected readonly scope: LocatorExpression | undefined,
     /** When set, every query expression is passed through it before use. */
     protected readonly wrap: ((expression: LocatorExpression) => LocatorExpression) | undefined = undefined,
-  ) {}
+  ) {
+    screenSlot.set(this, { context, scoped: wrap !== undefined });
+  }
 
   private build(expression: LocatorExpression): LocatorExpression {
     return this.wrap === undefined ? expression : this.wrap(expression);
@@ -282,7 +293,7 @@ class ScreenImpl implements Screen {
           // engine's timer can wake a millisecond before this clock reads the
           // deadline, so a swipe that ran out of its budget within a poll
           // interval of the deadline is the deadline too, whichever timer fired first.
-          if (deadline.expired() || (timedOut(cause) && deadline.remaining() < POLL_INTERVAL_MS)) {
+          if (deadline.expired() || (isOperationTimeout(cause) && deadline.remaining() < POLL_INTERVAL_MS)) {
             throw notVisible(cause);
           }
           throw cause;
@@ -376,17 +387,25 @@ class LocatorImpl extends ScreenImpl implements Locator {
   }
 
   doubleTap(options?: ClickOptions): Promise<void> {
-    return this.clickWith('doubleTap', options);
+    return this.clickWith('doubleTap', 'doubleTap', options);
+  }
+
+  dblclick(options?: ClickOptions): Promise<void> {
+    return this.clickWith('dblclick', 'doubleTap', options);
   }
 
   secondaryTap(options?: ClickOptions): Promise<void> {
-    return this.clickWith('secondaryTap', options);
+    return this.clickWith('secondaryTap', 'secondaryTap', options);
   }
 
   /** A double or secondary tap, with the keys `modifiers` holds for it. */
-  private clickWith(verb: 'doubleTap' | 'secondaryTap', options: ClickOptions | undefined): Promise<void> {
-    rejectUnknownOptions(verb, options, ['timeout', 'modifiers']);
-    return this.dispatchTap(verb, verb, requireModifiers(options?.modifiers, verb), options?.timeout);
+  private clickWith(
+    api: 'doubleTap' | 'dblclick' | 'secondaryTap',
+    kind: 'doubleTap' | 'secondaryTap',
+    options: ClickOptions | undefined,
+  ): Promise<void> {
+    rejectUnknownOptions(api, options, ['timeout', 'modifiers']);
+    return this.dispatchTap(api, kind, requireModifiers(options?.modifiers, api), options?.timeout);
   }
 
   /** One tap kind with the keys it holds, named after the node in the step label. */
@@ -585,20 +604,24 @@ class LocatorImpl extends ScreenImpl implements Locator {
       const { engine } = this.context;
       const deadline = engine.deadline(options?.timeout);
       const startedMs = Date.now();
-      await pollCondition({
-        deadline,
-        signal: engine.signal,
-        negated: false,
-        evaluate: async () => {
-          const { node } = await engine.tryRead(this.expression, deadline, ABSENCE_STATES.has(state) ? 'empty' : 'wait');
-          return inWaitForState(node, state);
-        },
-        onTimeout: (cause) =>
-          new TestError('LOCATOR_NOT_FOUND', `locator did not become ${state}: ${this.label}`, {
-            details: locatorDetails(this.expression, Date.now() - startedMs),
-            ...(cause === undefined ? {} : { cause }),
-          }),
-      });
+      const samples = new SampleHistory('waitFor', (text) => engine.redact(text));
+      await samples.record(engine, () =>
+        pollCondition({
+          deadline,
+          signal: engine.signal,
+          negated: false,
+          evaluate: async () => {
+            const { node } = await engine.tryRead(this.expression, deadline, ABSENCE_STATES.has(state) ? 'empty' : 'wait');
+            samples.add(node === null ? 'absent' : isNodeVisible(node) ? 'visible' : 'hidden');
+            return inWaitForState(node, state);
+          },
+          onTimeout: (cause) =>
+            new TestError('LOCATOR_NOT_FOUND', `locator did not become ${state}: ${this.label}`, {
+              details: locatorDetails(this.expression, Date.now() - startedMs),
+              ...(cause === undefined ? {} : { cause }),
+            }),
+        }),
+      );
     }, { verifies: true });
   }
 

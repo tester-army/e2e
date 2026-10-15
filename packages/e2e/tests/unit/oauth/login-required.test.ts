@@ -38,7 +38,7 @@ describe.each([
     model: () => opencodeConsole('deepseek-v4.1-flash'),
     id: 'opencode-console',
     tokenPath: '/console/auth/device/token',
-    message: 'OpenCode Console token request failed (401: invalid_grant); run `npx e2e login opencode-console`',
+    message: 'OpenCode Console token request failed (401: invalid_grant); run `npx e2e login opencode-console` or set OPENCODE_API_KEY',
   },
 ])('$constructor()', ({ model, id, tokenPath, message }) => {
   it('fails with LOGIN_REQUIRED naming the login command when the token endpoint rejects the refresh', async () => {

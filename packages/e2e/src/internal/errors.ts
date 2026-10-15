@@ -24,6 +24,36 @@ export function setErrorRedactor(redact: ((text: string) => string) | undefined)
   else redactorSlot.set(globalThis, redact);
 }
 
+/** Response body bytes `providerFailureMessage` quotes. */
+const MAX_PROVIDER_BODY_BYTES = 1024;
+
+/**
+ * The message of a failed model call; for a spent retry chain, that of its
+ * last attempt. When a provider's error body does not match the AI SDK's
+ * error schema, the SDK leaves it unparsed and keeps only the HTTP status
+ * text, empty over HTTP/2, as the message. The status and the body,
+ * secret-redacted and cut short, then say what went wrong.
+ */
+export function providerFailureMessage(cause: unknown): string {
+  if (!(cause instanceof Error)) return errorMessage(cause);
+  const failure = cause as Error & { reason?: unknown; lastError?: unknown };
+  if (failure.name === 'AI_RetryError' && failure.reason !== 'abort' && failure.lastError !== undefined) {
+    return providerFailureMessage(failure.lastError);
+  }
+  if (failure.name !== 'AI_APICallError') return failure.message;
+  const { statusCode, responseBody, data } = failure as { statusCode?: unknown; responseBody?: unknown; data?: unknown };
+  if (typeof statusCode !== 'number' || statusCode < 400 || typeof responseBody !== 'string' || data !== undefined) {
+    return failure.message;
+  }
+  const status = `HTTP ${String(statusCode)}${failure.message === '' ? '' : ` ${failure.message}`}`;
+  const body = responseBody.trim();
+  if (body === '') return status;
+  const redact = redactorSlot.get(globalThis) ?? ((text: string): string => text);
+  const redacted = redact(body);
+  const quoted = truncateUtf8(redacted, MAX_PROVIDER_BODY_BYTES);
+  return `${status}: ${quoted}${quoted.length < redacted.length ? '…' : ''}`;
+}
+
 /**
  * The message of a thrown value led by its code when it is an e2e error, as
  * the CLI prints one: `POLICY_DENIED: forbidden URL scheme: file:`. Any

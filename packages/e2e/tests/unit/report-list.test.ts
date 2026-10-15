@@ -691,7 +691,7 @@ describe('ListReporter', () => {
       const { lines, output } = capture();
       const reporter = plainReporter(output);
       reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 2 }]));
-      const step = { model: { provider: 'typesafe-ai', model: 'jev', calls: 1, inputTokens: 600, outputTokens: 400 } } as never;
+      const step = { events: [], model: { provider: 'typesafe-ai', model: 'jev', calls: 1, inputTokens: 600, outputTokens: 400 } } as never;
       reporter.handle(serialGroup('g1', [
         { members: [serialMember('m1', { durationMs: 300, steps: [step] }), serialMember('m2', { status: 'failed', durationMs: 200, error: memberError })], error: memberError },
         { members: [serialMember('m1', { durationMs: 100 }), serialMember('m2', { status: 'failed', durationMs: 50, error: memberError })], error: memberError },
@@ -718,7 +718,7 @@ describe('ListReporter', () => {
       reporter.handle(runStarted({ model: 'openai/gpt-5.6-luna-fast' }));
       reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 3 }]));
       const step = (provider: string, model: string, calls: number) =>
-        ({ model: { provider, model, calls, inputTokens: 500, outputTokens: 100 } }) as never;
+        ({ events: [], model: { provider, model, calls, inputTokens: 500, outputTokens: 100 } }) as never;
       reporter.handle(serialGroup('g1', [
         { members: [serialMember('m1', { steps: [step('typesafe-ai', 'jev', 2)] }), serialMember('m2', { steps: [step('openai', 'gpt-5.6-luna-fast', 1)] })] },
       ]));
@@ -1445,7 +1445,7 @@ describe('ListReporter goldens', () => {
       failed.failure = { url: 'https://app.test/login', candidates: ['heading "Sign in"'], screen: 'attempt-1:artifact:2' };
       failed.artifacts = [
         { id: 'attempt-1:artifact:0', kind: 'video', mediaType: 'video/webm', path: 'chromium/login/attempt-0/video/video.webm', startedAt: new Date(0).toISOString(), redaction: 'incomplete', producer: { kind: 'attempt' } },
-        { id: 'attempt-1:artifact:1', kind: 'trace', mediaType: 'application/zip', path: 'chromium/login/attempt-0/trace/trace.zip', redaction: 'complete', producer: { kind: 'attempt' } },
+        { id: 'attempt-1:artifact:1', kind: 'download', mediaType: 'text/csv', path: 'chromium/login/attempt-0/downloads/export.csv', redaction: 'complete', producer: { kind: 'attempt' } },
         { id: 'attempt-1:artifact:2', kind: 'log', mediaType: 'text/plain', path: 'chromium/login/attempt-0/screen.txt', redaction: 'complete', producer: { kind: 'attempt' } },
       ];
       reporter.handle(finished(result({ status: 'passed', id: 'opens', file: 'tests/login.e2e.ts', title: ['login', 'opens'] })));
@@ -1649,6 +1649,34 @@ describe('explore runs', () => {
       play(plainReporter(output));
       expectGolden('list-explore.txt', stable(lines.join('\n')));
     });
+  });
+
+  it('badges the exploration with the target its test started on, not the first configured one', () => {
+    const { lines, output } = capture();
+    const reporter = plainReporter(output);
+    reporter.handle(runStarted({ targets: ['capacity', 'mixed'] }));
+    reporter.handle(plan([{ file: 'explore', target: 'mixed', tests: 1 }]));
+    reporter.handle(testStarted('t1', GOAL, 'mixed', 'explore'));
+    reporter.handle(explore({ phase: 'started', goal: GOAL, budgets: { maxSteps: 4, timeoutMs: 300_000 } }));
+    const header = lines.find((line) => line.includes('Exploring'));
+    expect(header).toContain('|mixed|');
+    expect(header).not.toContain('|capacity|');
+  });
+
+  it('badges the record with the explored target after its test has finished', () => {
+    const lines: string[] = [];
+    const output = { write: (line: string) => lines.push(line.replace(ANSI_PATTERN, '')), raw: () => {} };
+    const reporter = plainReporter(output, true);
+    reporter.handle(runStarted({ targets: ['capacity', 'mixed'] }));
+    reporter.handle(plan([{ file: 'explore', target: 'mixed', tests: 1 }]));
+    reporter.handle(testStarted('t1', GOAL, 'mixed', 'explore'));
+    reporter.handle(explore({ phase: 'started', goal: GOAL, budgets: { maxSteps: 4, timeoutMs: 300_000 } }));
+    reporter.handle(explore({ phase: 'finished', ended: 'finished', summary: 'Nothing to report.' }));
+    reporter.handle(finished(result({ status: 'passed', id: 't1', file: 'explore', title: [GOAL], target: 'mixed', attempts: [attempt({ status: 'passed' })] })));
+    reporter.handle(runFinished({ status: 'passed', exitCode: 0, reportPath: '/project/.e2e/report.json' }));
+    const header = lines.find((line) => line.includes('Explored'));
+    expect(header).toContain('|mixed|');
+    expect(header).not.toContain('|capacity|');
   });
 
   it('with a live window, shows the exploration in the window and prints the record with its steps once the run is over', () => {

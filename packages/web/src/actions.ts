@@ -1,7 +1,7 @@
 /** Locator action dispatch for the Playwright engine. */
 
 import type { ElementHandle, Page } from 'playwright-core';
-import { EngineError, type KeyModifier, type LocatorAction, type NodeRef, type PointerAction, type ViewportPoint } from 'e2e/engine';
+import { Deadline, EngineError, pollCondition, type KeyModifier, type LocatorAction, type NodeRef, type PointerAction, type ViewportPoint } from 'e2e/engine';
 import {
   asActionable,
   isClassified,
@@ -17,6 +17,7 @@ import {
   translatePwError,
   type ActionTarget,
 } from './support.ts';
+import type { ConnectionBudget } from './operation-budget.ts';
 
 /** How long a long press holds the button when the action names no duration. */
 const DEFAULT_LONG_PRESS_MS = 500;
@@ -31,19 +32,26 @@ const DETACHED_PATTERN = /element (is |was )?(detached|not attached)/i;
 
 /**
  * Sets a checkbox, switch, or radio to `checked` with one click, as
- * Playwright's `check` does, apart from the read after the click: a control
- * that is gone by then (an app that swaps a picked radio for its selected
- * view, or navigates on change) took the click, so the action is done, where
- * Playwright reports it detached as if the click never happened. Whatever
- * took its place is not read: the next observation or assertion shows it,
- * as it does after a tap. The reads and the click share one element, so the state before and after the click
- * is one control's.
+ * Playwright's `check` does, apart from the reads after the click. Playwright
+ * reads the state once; here it is polled until the operation's deadline, so
+ * a control that commits its new state after an await or a timer passes, and
+ * one that never changes fails at the deadline. A control that is gone by
+ * the first read (an app that swaps a picked radio for its selected view, or
+ * navigates on change) took the click, so the action is done, where
+ * Playwright reports it detached as if the click never happened. One that
+ * goes later, still in its old state, may have been replaced for any reason,
+ * so it fails rather than passing on a click the app rejected. Whatever took
+ * its place is not read: the next observation or assertion shows it, as it
+ * does after a tap.
+ * The reads and the click share one element, so the state before and after
+ * the click is one control's.
  */
-async function setChecked(target: ActionTarget, checked: boolean, timeout: number): Promise<void> {
-  const deadline = Date.now() + timeout;
+async function setChecked(target: ActionTarget, checked: boolean, operation: ConnectionBudget): Promise<void> {
+  const deadline = new Deadline(operation.timeoutMs);
   // Playwright reads a timeout of 0 as no timeout at all.
-  const remaining = (): number => Math.max(1, deadline - Date.now());
-  const element = target.kind === 'element' ? target.element : await target.locator.elementHandle({ timeout });
+  const remaining = (): number => Math.max(1, deadline.remaining());
+  const element =
+    target.kind === 'element' ? target.element : await target.locator.elementHandle({ timeout: operation.timeoutMs });
   const verb = checked ? 'check' : 'uncheck';
   try {
     if ((await element.isChecked()) === checked) return;
@@ -53,18 +61,28 @@ async function setChecked(target: ActionTarget, checked: boolean, timeout: numbe
       });
     }
     await element.click({ timeout: remaining() });
-    let after: boolean;
-    try {
-      after = await element.isChecked();
-    } catch (cause) {
-      if (DETACHED_PATTERN.test(message(cause)) || isNavigationRace(cause)) return;
-      throw cause;
-    }
-    if (after !== checked) {
-      throw new EngineError('NOT_ACTIONABLE', `${verb} clicked the control but its checked state did not change`, {
+    const unchanged = (detail = ''): EngineError =>
+      new EngineError('NOT_ACTIONABLE', `${verb} clicked the control but its checked state did not change${detail}`, {
         retryable: false,
       });
-    }
+    let firstRead = true;
+    await pollCondition({
+      deadline,
+      signal: operation.signal,
+      negated: false,
+      evaluate: async () => {
+        const first = firstRead;
+        firstRead = false;
+        try {
+          return (await element.isChecked()) === checked;
+        } catch (cause) {
+          if (!DETACHED_PATTERN.test(message(cause)) && !isNavigationRace(cause)) throw cause;
+          if (first) return true;
+          throw unchanged(' before the control was replaced');
+        }
+      },
+      onTimeout: () => unchanged(),
+    });
   } finally {
     if (target.kind === 'locator') void element.dispose().catch(() => undefined);
   }
@@ -85,9 +103,10 @@ function isRadio(element: ElementHandle<Element>): Promise<boolean> {
 export async function dispatchLocatorAction(
   target: ActionTarget,
   action: LocatorAction,
-  timeout: number,
+  operation: ConnectionBudget,
   lookup: (ref: NodeRef) => ActionTarget,
 ): Promise<void> {
+  const timeout = operation.timeoutMs;
   const locator = asActionable(target);
   switch (action.kind) {
     case 'tap':
@@ -115,7 +134,7 @@ export async function dispatchLocatorAction(
       return;
     case 'check':
     case 'uncheck':
-      await setChecked(target, action.kind === 'check', timeout);
+      await setChecked(target, action.kind === 'check', operation);
       return;
     case 'focus':
       // ElementHandle.focus takes no timeout: the element is already resolved.

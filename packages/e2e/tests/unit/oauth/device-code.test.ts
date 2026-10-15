@@ -20,6 +20,62 @@ function flow(polls: DevicePoll<string>[], sleeps: number[]) {
 }
 
 describe('runDeviceFlow', () => {
+  it('does not start or display a device flow already cancelled', async () => {
+    let starts = 0;
+    let displays = 0;
+    await expect(runDeviceFlow({
+      start: async () => { starts += 1; return authorization; },
+      poll: async () => ({ status: 'pending' }),
+      callbacks: { onAuth: () => { displays += 1; }, onPrompt: async () => '', signal: AbortSignal.abort() },
+    })).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(starts).toBe(0);
+    expect(displays).toBe(0);
+  });
+
+  it('passes cancellation to the initial request and reports a cancelled login', async () => {
+    const controller = new AbortController();
+    const promise = runDeviceFlow({
+      start: async (signal) => new Promise<typeof authorization>((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+        controller.abort();
+        if (signal === undefined) reject(new Error('initial request received no signal'));
+      }),
+      poll: async () => ({ status: 'pending' }),
+      callbacks: { onAuth() {}, onPrompt: async () => '', signal: controller.signal },
+    });
+    await expect(promise).rejects.toMatchObject({ code: 'CANCELLED' });
+  });
+
+  it('does not display a device code received after cancellation', async () => {
+    const controller = new AbortController();
+    let displays = 0;
+    await expect(runDeviceFlow({
+      start: async () => { controller.abort(); return authorization; },
+      poll: async () => ({ status: 'pending' }),
+      callbacks: { onAuth: () => { displays += 1; }, onPrompt: async () => '', signal: controller.signal },
+    })).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(displays).toBe(0);
+  });
+
+  it('reports cancellation when an in-flight approval poll rejects', async () => {
+    const controller = new AbortController();
+    await expect(runDeviceFlow({
+      start: async () => authorization,
+      poll: async () => { controller.abort(); throw new DOMException('aborted', 'AbortError'); },
+      sleep: async () => {},
+      callbacks: { onAuth() {}, onPrompt: async () => '', signal: controller.signal },
+    })).rejects.toMatchObject({ code: 'CANCELLED' });
+  });
+
+  it('preserves a non-cancellation initial request failure', async () => {
+    const failure = new Error('device endpoint failed');
+    await expect(runDeviceFlow({
+      start: async () => { throw failure; },
+      poll: async () => ({ status: 'pending' }),
+      callbacks: { onAuth() {}, onPrompt: async () => '' },
+    })).rejects.toBe(failure);
+  });
+
   it('polls through pending and slow_down, then returns the grant', async () => {
     const sleeps: number[] = [];
     const { run, info } = flow([{ status: 'pending' }, { status: 'slow_down' }, { status: 'pending' }, { status: 'granted', value: 'tok' }], sleeps);

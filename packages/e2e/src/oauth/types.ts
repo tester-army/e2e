@@ -59,6 +59,8 @@ export interface OAuthProvider<Credentials extends OAuthCredentials = OAuthCrede
    * publishes no list.
    */
   models?(fetch: FetchFunction): Promise<SubscriptionModel[]>;
+  /** The variable whose API key the provider's calls and model list read in place of the stored login. */
+  readonly apiKeyEnv?: string;
 }
 
 /** One model a subscription serves: the id a config passes to the constructor, and how the vendor describes it. */

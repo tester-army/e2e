@@ -31,8 +31,6 @@ import { currentViewport, message } from './support.ts';
 export interface AttemptVideo {
   /** True while pages the attempt opens start segments of their own. */
   readonly isArmed: boolean;
-  /** True when `arm` would start a screencast on the page, which a running trace sized for itself. */
-  readonly startsScreencast: boolean;
   arm(page: Page, signal: AbortSignal): Promise<void>;
   pageOpened(page: Page): Promise<void>;
   pageClosing(): Promise<void>;
@@ -41,13 +39,24 @@ export interface AttemptVideo {
   abandon(signal: AbortSignal): Promise<void>;
 }
 
-/** One segment in progress: the page it records and where its file lands. */
+/** One segment in progress: the page it records, where its file lands, and whether a frame reached it yet. */
 interface Segment {
   readonly page: Page;
   readonly relative: string;
   readonly absolute: string;
   readonly startedAt: string;
+  /** Resolves with the segment's first frame. */
+  readonly framed: Promise<void>;
 }
+
+/**
+ * How long a segment that has not received a frame yet waits for one before
+ * it ends. A screencast sends a frame only when the page repaints, and on
+ * Linux the frame of a page that just painted arrives after the paint: a
+ * segment stopped right after a navigation would otherwise end with no frame,
+ * which Playwright writes as a white video.
+ */
+const FIRST_FRAME_WAIT_MS = 1_000;
 
 export class VideoRecorder implements AttemptVideo {
   /** Set by `arm`, cleared by `stop`; pages the attempt opens in between start segments. */
@@ -68,11 +77,6 @@ export class VideoRecorder implements AttemptVideo {
   /** True between `arm` and `stop`: a page the attempt opens then starts a segment. */
   get isArmed(): boolean {
     return this.armed;
-  }
-
-  /** True while no segment records: `arm` then starts one on the page it is given. */
-  get startsScreencast(): boolean {
-    return this.current === null;
   }
 
   /** Starts the recording on `page`, unless a segment already records, and arms it. */
@@ -131,12 +135,15 @@ export class VideoRecorder implements AttemptVideo {
     mkdirSync(path.dirname(absolute), { recursive: true });
     const { quality } = this.options;
     const size = this.options.size ?? await currentViewport(page);
+    let framedOnce: () => void = () => undefined;
+    const framed = new Promise<void>((resolve) => (framedOnce = resolve));
     await page.screencast.start({
       path: absolute,
       size: { width: size.width, height: size.height },
       ...(quality === undefined ? {} : { quality }),
+      onFrame: () => framedOnce(),
     });
-    this.current = { page, relative, absolute, startedAt: new Date().toISOString() };
+    this.current = { page, relative, absolute, startedAt: new Date().toISOString(), framed };
   }
 
   /**
@@ -149,6 +156,7 @@ export class VideoRecorder implements AttemptVideo {
     const segment = this.current;
     if (segment === null) return;
     this.current = null;
+    await waitForFrame(segment, FIRST_FRAME_WAIT_MS);
     try {
       await segment.page.screencast.stop();
     } catch (cause) {
@@ -160,5 +168,15 @@ export class VideoRecorder implements AttemptVideo {
     if (existsSync(segment.absolute)) {
       this.finished.push({ path: segment.relative, startedAt: segment.startedAt });
     }
+  }
+}
+
+/** Waits up to `timeoutMs` for the segment's first frame. */
+async function waitForFrame(segment: Segment, timeoutMs: number): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([segment.framed, new Promise<void>((resolve) => (timer = setTimeout(resolve, timeoutMs)))]);
+  } finally {
+    clearTimeout(timer);
   }
 }

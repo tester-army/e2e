@@ -2,22 +2,20 @@
 
 import { createHash } from 'node:crypto';
 import { createReadStream, mkdirSync } from 'node:fs';
-import { mkdir, readdir, readFile, rm, rmdir, stat } from 'node:fs/promises';
+import { readdir, readFile, rm, rmdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { writeFileAtomic } from '../internal/atomic-write.ts';
 import type { ArtifactStore } from '../types.ts';
 import type { ArtifactRegistration, ArtifactSink } from './fixtures.ts';
 import type { ArtifactRecord } from './records.ts';
-import { redactsRecordings, type SessionSecrecy } from './secrecy.ts';
+import { redactsDownloads, type SessionSecrecy } from './secrecy.ts';
 
 /**
- * How much of each kind the runner masked, unless the registration says. A
+ * How much of each kind the runner masked. A
  * screenshot masks secure fields at the source; a log passes through the
  * secret redactor. A recording masks nothing: a secure field renders its own
- * dots, but anything else the screen showed is in the frames. A trace is
- * decided per attempt by whoever stops it (see `redactTraceArchives`): one
- * registered without that verdict was not rewritten, and says so. A download
+ * dots, but anything else the screen showed is in the frames. A download
  * is whatever the app served, bytes the runner did not write and does not
  * rewrite: it is `incomplete` unless the sink scanned it (see
  * `redactDownload`), so a store exporting only vouched-for artifacts holds it
@@ -25,7 +23,6 @@ import { redactsRecordings, type SessionSecrecy } from './secrecy.ts';
  */
 const REDACTION_BY_KIND: Readonly<Record<ArtifactRecord['kind'], ArtifactRecord['redaction']>> = {
   screenshot: 'complete',
-  trace: 'incomplete',
   video: 'incomplete',
   download: 'incomplete',
   log: 'complete',
@@ -45,7 +42,7 @@ export interface AttemptArtifacts {
   /**
    * Resolves once every registered file has been measured and hashed.
    * Registration itself is synchronous and cheap; the size and digest of a
-   * file (a trace zip can be tens of megabytes) are filled in off the event
+   * file (a video can be tens of megabytes) are filled in off the event
    * loop, so awaiting this before the record is read is what makes them
    * complete.
    */
@@ -62,7 +59,7 @@ export interface AttemptArtifacts {
  */
 export function createAttemptArtifacts(options: {
   artifactsRoot: string;
-  /** Report path segments, e.g. [targetName, sanitizedTestId, attempt-N]. */
+  /** Report path segments, e.g. [resultSegment(result), attempt-N]. */
   segments: readonly string[];
   attemptId: string;
   /** When provided, artifacts are attributed to the currently running step. */
@@ -72,7 +69,7 @@ export function createAttemptArtifacts(options: {
   /**
    * The secrecy of the session the attempt runs on, read when a download is
    * registered; undefined (no session open yet) leaves every download as
-   * served. While its ledger holds a value (`redactsRecordings`), a
+   * served. While its ledger holds a value (`redactsDownloads`), a
    * text-like download is rewritten through it before it is hashed or
    * stored.
    */
@@ -103,15 +100,15 @@ export function createAttemptArtifacts(options: {
         kind,
         mediaType: mediaTypeFor(relativePath),
         ...(startedAt === undefined ? {} : { startedAt }),
-        redaction: registration?.redaction ?? REDACTION_BY_KIND[kind],
+        redaction: REDACTION_BY_KIND[kind],
         producer: stepId === undefined ? { kind: 'attempt' } : { kind: 'step', stepId },
       };
       records.push(record);
       const reportPath = path.posix.join(...options.segments, relativePath);
-      const secrecy: SessionSecrecy | undefined = kind === 'download' && registration?.redaction === undefined ? options.secrecy?.() : undefined;
+      const secrecy: SessionSecrecy | undefined = kind === 'download' ? options.secrecy?.() : undefined;
       pending.push(
         (async () => {
-          if (secrecy !== undefined && redactsRecordings(secrecy) && isTextLike(record.mediaType)) {
+          if (secrecy !== undefined && redactsDownloads(secrecy) && isTextLike(record.mediaType)) {
             record.redaction = await redactDownload(absolute, secrecy);
           }
           // Without a store the file is streamed for its size and digest only;
@@ -244,34 +241,34 @@ export async function pruneArtifacts(root: string, keep: ReadonlySet<string>): P
 }
 
 /**
- * Claims the directory a `--last-failed` rerun's attempts write under, beside
- * the evidence it kept, and returns its name: `rerun-<n>`, past every number
- * already there, so the tree reads in run order. The directory is created
- * exclusively, so no attempt of the rerun writes into a directory an earlier
- * run's report still names.
+ * The directory a `--last-failed` rerun's attempts write under inside each
+ * test's directory, beside the evidence it kept: `rerun-<n>`, past every
+ * number any test's directory already holds, so one rerun has one number
+ * across the tree and no attempt of it writes into a directory an earlier
+ * run's report still names. The number is read, not claimed: two runs on one
+ * output at once already share its report and empty each other's results, so
+ * a run owns its output alone, and a rerun is no exception.
  */
-export async function claimRerunDir(root: string): Promise<string> {
-  await mkdir(root, { recursive: true });
-  const taken = (await readdir(root)).map((name) => Number(RERUN_DIR.exec(name)?.[1] ?? 0));
-  for (let n = Math.max(0, ...taken) + 1; ; n += 1) {
-    const name = `rerun-${n}`;
-    try {
-      await mkdir(path.join(root, name));
-      return name;
-    } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code !== 'EEXIST') throw cause;
-    }
+export async function nextRerunDir(root: string): Promise<string> {
+  let taken = 0;
+  for (const test of await readdir(root, { withFileTypes: true }).catch(() => [])) {
+    if (!test.isDirectory()) continue;
+    for (const name of await readdir(path.join(root, test.name))) taken = Math.max(taken, Number(RERUN_DIR.exec(name)?.[1] ?? 0));
   }
-}
-
-/** An attempt's report segments, under the rerun's directory on a `--last-failed` rerun. */
-export function attemptSegments(rerunDir: string | undefined, segments: readonly string[]): readonly string[] {
-  return rerunDir === undefined ? segments : [rerunDir, ...segments];
+  return `rerun-${taken + 1}`;
 }
 
 /**
- * Rewrites a text-like download through the session's ledger, the way a
- * trace's text entries are, and returns the redaction the record can claim:
+ * An attempt's report segments: its owner's directory (`resultSegment` of the
+ * result, or of the serial group its members share), the rerun's directory on
+ * a `--last-failed` rerun, and `attempt-<n>`, numbered from 1.
+ */
+export function attemptSegments(rerunDir: string | undefined, owner: string, attemptIndex: number): readonly string[] {
+  return [owner, ...(rerunDir === undefined ? [] : [rerunDir]), `attempt-${attemptIndex + 1}`];
+}
+
+/**
+ * Rewrites a text-like download through the session's ledger, and returns the redaction the record can claim:
  * `complete` once every registered value is gone from it, changed or not, and
  * `incomplete` when the file is not UTF-8 text or cannot be read or written,
  * in which case it is left as served. A leading byte order mark is kept as
@@ -301,65 +298,54 @@ async function measure(absolute: string): Promise<{ size: number; sha256: string
   }
 }
 
-/** Longest report path segment the runner writes: a name every common filesystem accepts. */
-const MAX_SEGMENT_CHARS = 120;
-/** Hex characters of the digest a rewritten or cut segment ends in. */
-const SEGMENT_DIGEST_CHARS = 8;
-
+/** Characters of the test file's name a result's segment keeps. */
+const MAX_FILE_SLUG_CHARS = 40;
+/** Characters of the title's first words a result's segment keeps. */
+const MAX_TITLE_SLUG_CHARS = 32;
 /**
- * Restricts a report path segment to a safe filename alphabet and length. A
- * value that is already safe and within the cap is unchanged. Any other value
- * ends in a digest of the whole original: one the alphabet rewrote (a test id
- * with a `/`, a `::`, a percent-encoded space), one that is only dots (which
- * would name the directory or its parent), or one past the cap, which is cut
- * first. The digest is what keeps two ids that sanitize alike (`artifact%20a`
- * and `artifact_20a`, or two long ids with a shared prefix) in directories of
- * their own instead of writing over each other's evidence.
+ * Hex characters of the result id a result's segment ends in. Results whose
+ * file and first title words agree differ only in it, and 32 bits collide
+ * within a short search, so it keeps 64.
  */
-export function sanitizePathSegment(value: string): string {
-  const sanitized = /^\.+$/.test(value) ? '_' : value.replaceAll(/[^A-Za-z0-9._-]/g, '_');
-  if (sanitized === value && sanitized.length <= MAX_SEGMENT_CHARS) return sanitized;
-  const digest = createHash('sha256').update(value).digest('hex').slice(0, SEGMENT_DIGEST_CHARS);
-  return `${sanitized.slice(0, MAX_SEGMENT_CHARS - SEGMENT_DIGEST_CHARS - 1)}-${digest}`;
-}
-
-/** Longest slug of a label's first words that `labelSegment` keeps. */
-const LABEL_SLUG_CHARS = 32;
-/**
- * Hex characters of a label's digest. Labels that share their first words
- * differ only in it, and 32 bits collide within a short search, so a label
- * gets 64.
- */
-const LABEL_DIGEST_CHARS = 16;
+const RESULT_DIGEST_CHARS = 16;
 /** Latin letters NFKD leaves whole, spelled the way a slug reads them. */
 const LATIN_LETTERS: Readonly<Record<string, string>> = {
   æ: 'ae', ð: 'd', đ: 'd', ı: 'i', ł: 'l', ø: 'o', œ: 'oe', ß: 'ss', þ: 'th',
 };
 
 /**
- * A short report path segment for free text such as an exploration goal:
- * `prefix`, a lowercase ASCII slug of the label's first words, and a digest
- * of the whole label, e.g. `explore-check-the-cart-totals-1a2b3c4d5e6f7a8b`. A
- * first word equal to the prefix is left out rather than said twice. The
- * slug is for reading only; the digest keeps two labels with the same first
- * words apart, and one label always maps to the same segment.
+ * The name a result goes by on disk, its trace page's and its artifact
+ * directory's alike: the test file's name, a lowercase ASCII slug of the
+ * title's first words, and the head of the result id, e.g.
+ * `checkout-applies-the-coupon-1a2b3c4d5e6f7a8b`. A first title word equal to
+ * the file's name is left out rather than said twice. The slugs are for
+ * reading only; the id keeps two results with the same words (another
+ * target, agent, or repeat) apart.
  */
-export function labelSegment(prefix: string, label: string): string {
+export function resultSegment(result: { readonly id: string; readonly file: string; readonly titlePath: readonly string[] }): string {
+  const file = path.posix
+    .basename(result.file)
+    .replace(/(\.e2e)?\.[cm]?[jt]sx?$/u, '')
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, '-')
+    .replaceAll(/^-+|-+$/g, '')
+    .slice(0, MAX_FILE_SLUG_CHARS);
   // Accents come off first, so `café` reads `cafe` and `żółć` reads `zolc`, not words split at each accent.
-  const ascii = label
+  const words = result.titlePath
+    .join(' ')
     .normalize('NFKD')
     .replaceAll(/\p{M}/gu, '')
     .toLowerCase()
-    .replaceAll(/[æðđıłøœßþ]/g, (letter) => LATIN_LETTERS[letter] ?? letter);
-  const words = ascii.split(/[^a-z0-9]+/).filter((word) => word !== '');
-  if (words[0] === prefix) words.shift();
-  let slug = words[0]?.slice(0, LABEL_SLUG_CHARS) ?? '';
+    .replaceAll(/[æðđıłøœßþ]/g, (letter) => LATIN_LETTERS[letter] ?? letter)
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word !== '');
+  if (words[0] === file) words.shift();
+  let title = words[0]?.slice(0, MAX_TITLE_SLUG_CHARS) ?? '';
   for (const word of words.slice(1)) {
-    if (slug.length + 1 + word.length > LABEL_SLUG_CHARS) break;
-    slug = `${slug}-${word}`;
+    if (title.length + 1 + word.length > MAX_TITLE_SLUG_CHARS) break;
+    title = `${title}-${word}`;
   }
-  const digest = createHash('sha256').update(label).digest('hex').slice(0, LABEL_DIGEST_CHARS);
-  return [prefix, slug, digest].filter((part) => part !== '').join('-');
+  return [file, title, result.id.slice(0, RESULT_DIGEST_CHARS)].filter((part) => part !== '').join('-');
 }
 
 function mediaTypeFor(relativePath: string): string {

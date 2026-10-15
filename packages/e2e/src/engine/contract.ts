@@ -27,7 +27,10 @@ export type EngineSpiVersion = typeof ENGINE_SPI_VERSION;
 
 /** What every engine call carries: budget, ids, and who is acting. */
 export interface OperationContext {
-  /** Aborts with the attempt or when the operation budget is spent. */
+  /**
+   * Aborts when the attempt, or the hook running the call, ends. It does not
+   * abort at `timeoutMs`: bound each call by that budget yourself.
+   */
   readonly signal: AbortSignal;
   /** Remaining operation budget when the call starts. */
   readonly timeoutMs: number;
