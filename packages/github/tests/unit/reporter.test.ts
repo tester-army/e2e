@@ -64,7 +64,11 @@ describe('reportRun', () => {
     const summary = d.written['/summary.md'];
     expect(summary).toContain('### 🔴 e2e: 1 failed');
     expect(summary).not.toContain('<!-- e2e-github');
-    expect(d.calls.map((call) => call.method)).toEqual(['GET', 'POST']);
+    expect(d.calls.map((call) => `${call.method} ${new URL(call.url).pathname}`)).toEqual([
+      'GET /user',
+      'GET /repos/octo/app/issues/41/comments',
+      'POST /repos/octo/app/issues/41/comments',
+    ]);
     const body = postedBody(d.calls);
     expect(body.startsWith('<!-- e2e-github project=dev.example.shop workflow=e2e job=test -->\n')).toBe(true);
     expect(body).toContain('[tests/shop flows/cart.e2e.ts:9](https://github.com/octo/app/blob/head-sha/tests/shop%20flows/cart.e2e.ts#L9)');
@@ -152,11 +156,11 @@ describe('reportRun', () => {
     expect(markers[0]).toMatch(/^<!-- e2e-github .* key=android-x+#[0-9a-f]{16} -->$/);
     expect(markers[0]).not.toBe(markers[1]);
     // B does not take over the comment A posted; it posts its own.
-    const comments = [{ id: 1, body: `${markers[0]}\n### e2e android A` }];
+    const comments = [{ id: 1, user: { login: 'github-actions[bot]', type: 'Bot' }, body: `${markers[0]}\n### e2e android A` }];
     const gh = fakeGitHub({ 'GET *': () => json(200, comments), 'POST *': () => posted.clone() });
     const d = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs' }, gh.fetch);
     await reportRun(failedRun, signal, { key: `android-${'x'.repeat(200)}-B` }, d.deps);
-    expect(gh.calls.map((call) => call.method)).toEqual(['GET', 'POST']);
+    expect(gh.calls.map((call) => call.method)).toEqual(['GET', 'GET', 'POST']);
   });
 
   it.each([
