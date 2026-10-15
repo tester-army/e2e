@@ -105,7 +105,7 @@ describe('element table', () => {
     expect(space.targets.get('tap')).toBeUndefined();
     expect(space.pageText).toBe('Todos');
   });
-  it('offers pointer operations on labeled passive nodes and drag only with a drop target', () => {
+  it('offers pointer operations on labeled passive nodes, and drag onto any of them', () => {
     const space = spaceFor([
       { id: 'menu', text: 'Card actions' },
       { id: 'list', role: 'list', name: 'Todo column', children: [{ id: 'card', role: 'listitem', name: 'Design review' }] },
@@ -116,7 +116,7 @@ describe('element table', () => {
     expect([...(space.targets.get('hover')?.keys() ?? [])]).toEqual(['1', '2', '3', '4']);
     expect([...(space.targets.get('secondary_tap')?.keys() ?? [])]).toEqual(['1', '2', '3', '4']);
     expect([...(space.targets.get('drag')?.keys() ?? [])]).toEqual(['1', '2', '3', '4']);
-    expect([...space.destinations.entries()].map(([key, destination]) => [key, destination.label])).toEqual([['2', 'Todo column'], ['3', 'Design review'], ['4', 'Done column']]);
+    expect([...space.destinations.entries()].map(([key, destination]) => [key, destination.label])).toEqual([['1', 'Card actions'], ['2', 'Todo column'], ['3', 'Design review'], ['4', 'Done column']]);
     expect(space.pageText).toBe('Card actions\nTodo column\nDesign review\nDone column');
     const noDrop = spaceFor([{ id: 'menu', text: 'Card actions' }]);
     expect(noDrop.targets.get('drag')).toBeUndefined();
@@ -160,7 +160,7 @@ describe('element table', () => {
     expect(space.control('back')).toBe('back');
     expect(space.control('tap')).toBeUndefined();
   });
-  it('never offers drag when the only droppable node is the root or fell past the cap', () => {
+  it('never offers drag with no second node to drop on, nor onto the root or past the cap', () => {
     const fixture = context();
     const root = actionSpace(fixture.ctx, { path: '/', viewport: { width: 800, height: 600 }, tree: { id: 'root', role: 'region', name: 'Main', children: [{ id: 'go', role: 'button', name: 'Go' }] } }, true);
     expect(root.targets.get('drag')).toBeUndefined();
@@ -168,8 +168,7 @@ describe('element table', () => {
     const children = Array.from({ length: 256 }, (_, index) => ({ id: `b${index}`, role: 'button', name: `Button ${index}`, rect: { x: 0, y: 10, width: 50, height: 20 } }));
     const capped = spaceFor([...children, { id: 'done', role: 'region', name: 'Done column' }]);
     expect(capped.elements).toHaveLength(255);
-    expect(capped.destinations.size).toBe(0);
-    expect(capped.targets.get('drag')).toBeUndefined();
+    expect([...capped.destinations.values()].map((destination) => destination.id)).not.toContain('done');
   });
   it('uses the placeholder as the label when there is no name', () => {
     const space = spaceFor([{ id: 'q', role: 'searchbox', attributes: { placeholder: 'Search todos' } }]);
@@ -191,7 +190,8 @@ describe('element table', () => {
     );
     expect(space.targets.get('type')).toBeUndefined();
     expect(space.controls.size).toBe(0);
-    expect([...(space.targets.get('tap')?.keys() ?? [])]).toEqual(['1']);
+    // A field takes a tap too: it focuses the field and opens what the app attaches there.
+    expect([...(space.targets.get('tap')?.keys() ?? [])]).toEqual(['1', '2']);
   });
   it('caps the table past 255, viewport first, and counts the omitted', () => {
     // Out-of-viewport nodes come first in tree order, so only a real

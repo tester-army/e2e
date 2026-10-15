@@ -109,10 +109,13 @@ newest screen: `tap`, `type`, `typeSecret`, `submit`, `select`, `check`,
 `upload`, `hover`, `secondary_tap` (a right-click), `double_tap`,
 `long_press`, `drag`, `scroll_to`, `scroll_up`, `scroll_down`, and `back`.
 Hover, right-click, drag, and scroll-to also reach labeled nodes that are
-not controls, such as a card that opens a menu on hover. While an on-screen
+not controls, such as a card that opens a menu on hover, and a drag can drop
+onto any of them. `tap` also reaches text fields, to open a date picker or a
+suggestion list. While an on-screen
 keyboard shows on an engine that can dismiss it, such as the mobile engine,
 the executor also offers `dismiss_keyboard`.
 
+Every operation asks for its target, even when only one element fits it.
 Every target question has a `none` option, so a provider with no fitting
 target answers `none` instead of refusing. `none` blocks the step.
 

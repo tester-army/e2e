@@ -93,7 +93,7 @@ describe('decision executor through the built CLI and real Chromium', () => {
       '    return ((secret ?? entries[0]) as [string, unknown])[0];',
       '  }',
       '  const role = op === "type" || op === "typeSecret" ? "textbox" : op === "tap" ? "button" : "";',
-      '  const hit = entries.find((entry) => { const record = entry[1]; return typeof record !== "string" && record.role === role; });',
+      '  const hit = entries.find((entry) => { const record = entry[1]; return typeof record === "string" ? record.indexOf("] " + role + " ") !== -1 : record.role === role; });',
       '  return (hit ?? entries[0] as [string, unknown])[0];',
       '}',
       'export const decisionModel: DecisionExecutorOptions["model"] = {',

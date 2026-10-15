@@ -104,8 +104,6 @@ const keyboardRoles = new Set(['keyboard', 'key']);
 const liveRegions = new Set(['status', 'alert', 'log']);
 const MAX_STATUSES = 20;
 const MAX_STATUS_LENGTH = 300;
-/** Roles that can receive a dropped node. */
-const droppable = new Set(['region', 'list', 'listitem', 'group', 'cell', 'gridcell', 'row', 'article', 'section', 'tabpanel']);
 /**
  * Roles of nodes that are no control yet take a pointer: a card that opens
  * a menu on hover, a file row that takes a right-click, a paragraph to
@@ -165,8 +163,10 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
       const fileInput = node.attributes?.['type'] === 'file';
       const inViewport = intersects(node, observation.viewport);
       const pressable = tappable.has(role) && !checkable.has(role) && !(role === 'option' && childSelect) && !fileInput;
-      if (verbs.has('tap') && pressable) operations.push('tap');
-      if (typable.has(role) && !nativeSelect) {
+      const field = typable.has(role) && !nativeSelect;
+      // A tap on a field focuses it and opens what the app attaches there: a date picker, a suggestion list.
+      if (verbs.has('tap') && (pressable || field)) operations.push('tap');
+      if (field) {
         if (!password && verbs.has('type') && canType) operations.push('type');
         if (verbs.has('typeSecret') && secretTypable.has(role) && ctx.step.secrets.length > 0) {
           operations.push('typeSecret');
@@ -221,14 +221,17 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
     .map(({ row }) => row);
   const omitted = Math.max(0, ordered.length - MAX_CHOICES);
   const kept = ordered.slice(0, MAX_CHOICES);
-  // Drop targets come from the kept rows: a drag with nowhere to drop is no operation.
+  // Drop targets come from the kept rows a pointer reaches, whatever their
+  // role: a board whose columns are bare text takes a drop on the column's
+  // title. A drag needs a second row to drop on, or it is no operation.
   const destinations = new Map<string, Destination>();
   if (verbs.has('drag')) {
     for (const [position, row] of kept.entries()) {
       const role = row.node.role ?? '';
       const label = clip(nodeLabel(row.node), 120);
-      if (droppable.has(role) && label !== '') destinations.set(String(position + 1), { id: row.node.id, label, role });
+      if (row.operations.includes('drag')) destinations.set(String(position + 1), { id: row.node.id, label, role });
     }
+    if (destinations.size < 2) destinations.clear();
   }
   const targets = new Map<Operation, Map<string, Target>>();
   const byIndex = new Map<string, Element>();

@@ -3,7 +3,7 @@ import { InvalidArgumentError, InvalidResponseDataError, LoadAPIKeyError } from 
 import { AgentError } from 'e2e/agent';
 import type { ExecutorNode } from 'e2e';
 import { decisionExecutor } from '../src/index.ts';
-import { BUTTONS, FIELD, context, invalidConfig, scriptedDecision, scriptedOutputs, scriptedText } from './helpers.ts';
+import { BUTTONS, FIELD, context, inTurn, invalidConfig, scriptedDecision, scriptedOutputs, scriptedText } from './helpers.ts';
 
 
 /** Construction-time validation: gates and model support. */
@@ -195,8 +195,9 @@ describe('field text', () => {
     expect(JSON.stringify(text.prompts)).not.toContain('admin.password');
   });
   it('continues with history when the goal supplies no value', async () => {
-    const scripted = scriptedDecision((id, keys, call) => ({
-      choice: id === 'operation' ? (call === 0 ? 'type' : call === 1 ? 'tap' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
+    const operation = inTurn(['type', 'tap'], 'done');
+    const scripted = scriptedDecision((id, keys) => ({
+      choice: id === 'operation' ? operation() : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const text = scriptedText([null]);
     const fixture = context({ tree: FIELD, model: text.model });
@@ -390,8 +391,9 @@ describe('guard rails', () => {
     expect(fixture.actions.scroll).toHaveBeenCalledTimes(3);
   });
   it('never trips the guard when pages keep changing', async () => {
-    const { model } = scriptedDecision((id, keys, call) => ({
-      choice: id === 'operation' ? (call < 4 ? 'tap' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
+    const operation = inTurn(['tap', 'tap', 'tap', 'tap'], 'done');
+    const { model } = scriptedDecision((id, keys) => ({
+      choice: id === 'operation' ? operation() : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({ tree: BUTTONS });
     let n = 0;
@@ -654,8 +656,9 @@ describe('context', () => {
     expect(JSON.stringify(requests.map((request) => request.state))).not.toContain('secret \\"password\\"');
   });
   it('sends only the last 10 actions', async () => {
-    const { model, requests } = scriptedDecision((id, keys, call) => ({
-      choice: id === 'operation' ? (call < 12 ? 'tap' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
+    const operation = inTurn(Array.from({ length: 12 }, () => 'tap'), 'done');
+    const { model, requests } = scriptedDecision((id, keys) => ({
+      choice: id === 'operation' ? operation() : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const fixture = context({ tree: BUTTONS });
     let capture = 0;
@@ -665,15 +668,17 @@ describe('context', () => {
       return { revision: String(capture), text: '#a button', truncated: false, viewport: { width: 800, height: 600 }, tree };
     });
     await decisionExecutor({ model }).runStep(fixture.ctx);
-    const state = requests[12]?.state as { recentActions?: unknown[] } | undefined;
+    const state = requests.filter((request) => 'operation' in request.questions)[12]?.state as { recentActions?: unknown[] } | undefined;
     expect(fixture.actions.tap).toHaveBeenCalledTimes(12);
     const actions = (state?.recentActions as { action: string }[] | undefined)?.map((entry) => entry.action);
     expect(actions).toEqual(Array.from({ length: 10 }, (_, index) => `tap button "Page ${index + 3}"`));
   });
   it('gives the completion check the inputs, typed values, and actions, never claims or secrets', async () => {
-    const { model, requests } = scriptedDecision((id, keys, call) => {
-      if (id === 'operation') return { choice: call === 0 ? 'type' : 'done' };
-      if (id === 'verdict') return { choice: call === 2 ? 'inconclusive' : 'holds' };
+    const operation = inTurn(['type'], 'done');
+    const check = inTurn(['inconclusive'], 'holds');
+    const { model, requests } = scriptedDecision((id, keys) => {
+      if (id === 'operation') return { choice: operation() };
+      if (id === 'verdict') return { choice: check() };
       return { choice: keys[0] ?? '' };
     });
     const text = scriptedText(['Ada']);
@@ -714,12 +719,12 @@ describe('context', () => {
     const { model, requests } = scriptedDecision((id, keys) => ({
       choice: id === 'operation' ? 'done' : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
-    // No text model and no press verb: in the act loop the field offers no operation.
+    // No text model and no press verb: in the act loop the field takes a tap only.
     const fixture = context({ tree, verbs: ['tap', 'type'] });
     const verdict = await decisionExecutor({ model }).runStep(fixture.ctx);
     expect(verdict).toMatchObject({ status: 'passed' });
-    const decision = requests[0]?.state as { elements: { label: string }[] };
-    expect(decision.elements.map((element) => element.label)).toEqual(['Save']);
+    const decision = requests[0]?.state as { elements: { label: string; operations: string[] }[] };
+    expect(decision.elements.map((element) => [element.label, element.operations])).toEqual([['Name', ['tap']], ['Save', ['tap']]]);
     const check = requests[1]?.state as { elements: { label: string; value?: string }[] };
     expect(check.elements).toContainEqual(expect.objectContaining({ label: 'Name', value: 'Ada' }));
   });
@@ -837,6 +842,32 @@ describe('grammar', () => {
     expect(Object.keys(requests[1]?.questions['destination']?.criteria as object)).toEqual(['1', '2', '3', 'none']);
     expect(fixture.turns[0]?.calls[0]).toBe('drag [2] listitem "Design review" = "onto Done column"');
   });
+  it('asks a lone target too, so none stops an operation that fits only the wrong element', async () => {
+    const tree: ExecutorNode = { id: 'root', children: [
+      { id: 'back', role: 'link', name: 'Back to examples' },
+      { id: 'card', text: 'Banana' },
+    ] };
+    const { model, requests } = scriptedDecision((id) => ({ choice: id === 'operation' ? 'long_press' : 'none' }));
+    const fixture = context({ tree });
+    const verdict = await decisionExecutor({ model }).runStep(fixture.ctx);
+    expect(verdict).toMatchObject({ status: 'blocked', summary: expect.stringContaining('no target') });
+    expect(Object.keys(requests[1]?.questions['target']?.criteria as object)).toEqual(['1', 'none']);
+    expect(fixture.actions.longPress).not.toHaveBeenCalled();
+  });
+  it('drags a card onto a column that is bare text', async () => {
+    const tree: ExecutorNode = { id: 'root', children: [
+      { id: 'card', text: 'Fix payment bug' },
+      { id: 'done', text: 'Done' },
+    ] };
+    const operation = inTurn(['drag'], 'done');
+    const { model } = scriptedDecision((id) => ({
+      choice: id === 'operation' ? operation() : id === 'verdict' ? 'holds' : id === 'destination' ? '2' : '1',
+    }));
+    const fixture = context({ tree });
+    const verdict = await decisionExecutor({ model }).runStep(fixture.ctx);
+    expect(verdict).toMatchObject({ status: 'passed' });
+    expect(fixture.actions.drag).toHaveBeenCalledWith({ id: 'card' }, { id: 'done' });
+  });
   it('blocks a drag whose destination is none', async () => {
     const tree: ExecutorNode = { id: 'root', children: [
       { id: 'card', role: 'listitem', name: 'Design review' },
@@ -850,8 +881,9 @@ describe('grammar', () => {
   });
   it('uploads the paths the text model names, and skips an empty list', async () => {
     const tree: ExecutorNode = { id: 'root', children: [{ id: 'f', role: 'button', name: 'Attachments', attributes: { type: 'file' } }] };
-    const { model } = scriptedDecision((id, keys, call) => ({
-      choice: id === 'operation' ? (call < 2 ? 'upload' : 'done') : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
+    const operation = inTurn(['upload', 'upload'], 'done');
+    const { model } = scriptedDecision((id, keys) => ({
+      choice: id === 'operation' ? operation() : id === 'verdict' ? 'holds' : (keys[0] ?? ''),
     }));
     const text = scriptedOutputs([{ paths: [] }, { paths: ['fixtures/a.txt', 'fixtures/b.txt'] }]);
     const fixture = context({ tree, model: text.model, params: { files: ['fixtures/a.txt', 'fixtures/b.txt'] } });
@@ -874,10 +906,14 @@ describe('grammar', () => {
       { id: 'p', role: 'paragraph', name: 'Footnote', rect: { x: 0, y: 5000, width: 50, height: 20 } },
     ] };
     const operations = ['hover', 'secondary_tap', 'double_tap', 'long_press', 'scroll_to'];
-    const { model } = scriptedDecision((id, keys, call) => {
-      if (id === 'operation') return { choice: operations[call] ?? 'done' };
+    const operation = inTurn(operations, 'done');
+    let current = '';
+    const { model } = scriptedDecision((id, keys) => {
+      if (id === 'operation') return { choice: (current = operation()) };
       if (id === 'verdict') return { choice: 'holds' };
-      return { choice: id === 'target' ? '2' : '1' };
+      // Hold me is row 1 and Footnote row 2: scroll_to aims at the footnote, everything else at the button.
+      const wanted = current === 'scroll_to' ? '2' : '1';
+      return { choice: keys.includes(wanted) ? wanted : (keys[0] ?? '') };
     });
     const fixture = context({ tree });
     // Every action changes nothing on this scripted screen; the stall guard must not fire before the fifth.
