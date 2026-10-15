@@ -87,39 +87,10 @@ codex plugin marketplace upgrade e2e
 
 ## Let the agent use the app
 
-`e2e mcp` lets the coding agent open the app and use it. Each agent,
-subagents included, opens its own session, so several can use the app at
-the same time. The `locate` tool checks a `screen.*` locator against the
-current app and returns the test code when exactly one element matches.
-
-`init` registers the server in `.mcp.json` for Claude Code and
-`.cursor/mcp.json` for Cursor. To register it with Claude Code by hand:
-
-<CodeGroup>
-```bash npm
-claude mcp add --scope project e2e -- npx e2e mcp
-```
-
-```bash pnpm
-claude mcp add --scope project e2e -- pnpm exec e2e mcp
-```
-
-```bash bun
-claude mcp add --scope project e2e -- bunx e2e mcp
-```
-</CodeGroup>
-
-For Codex, add the server to the project's `.codex/config.toml`, trust the
-project, and start a new session:
-
-```toml
-[mcp_servers.e2e]
-command = "npx"
-args = ["e2e", "mcp"]
-```
-
-The server does not run tests. See the [MCP server reference](/reference/mcp)
-for its tools, session rules, and flags.
+`e2e mcp` gives the agent a live session on your app. It checks each
+locator against the screen before it writes the test, and checks its own UI
+changes. `init` registers the server. See [MCP server](/mcp) for setup and
+prompts.
 
 ## How an agent writes and runs a test
 

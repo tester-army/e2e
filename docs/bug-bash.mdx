@@ -78,7 +78,7 @@ Bug bash the checkout and account settings on this branch.
    environment, the intended design, or the seed data.
 6. Writes a repro test that asserts the expected behavior for each
    remaining finding. It can start one subagent per area, each with its own
-   [`e2e mcp` session](/reference/mcp#several-sessions) to check locators.
+   [`e2e mcp` session](/mcp) to check locators.
 7. Runs each repro test. The finding is a bug only when the test fails with
    `ASSERTION_FAILED`.
 8. Reports, in this order: confirmed bugs, production risks that it cannot
@@ -124,7 +124,7 @@ regression test.
   <Card title="Exploring without a test" icon="compass" href="/explore">
     What one `e2e explore` run does, its budgets, and its report.
   </Card>
-  <Card title="MCP server" icon="plug" href="/reference/mcp">
+  <Card title="MCP server" icon="plug" href="/mcp">
     Live sessions for coding agents, several at once.
   </Card>
 </CardGroup>
