@@ -810,7 +810,7 @@ export class AgentDeviceSurface {
    */
   async closeApp(signal: AbortSignal): Promise<void> {
     const app = this.appIdentity ?? this.pinnedApp;
-    await this.command('device.closeApp', (client) => client.apps.close(app === undefined ? {} : { app }), signal);
+    await this.command('device.closeApp', (client) => client.apps.close({ ...this.selection(), ...(app === undefined ? {} : { app }) }), signal);
     this.screenReplaced();
   }
 

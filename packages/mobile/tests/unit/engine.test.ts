@@ -1557,7 +1557,7 @@ describe('device fixture', () => {
       ['settings.update', { platform: 'ios', setting: 'touchid', state: 'enroll' }],
       ['apps.open', { app: 'Reminders', platform: 'ios', relaunch: true }],
       // The close names the app the session observed, so agent-device terminates it before the session ends.
-      ['apps.close', { app: 'com.apple.Preferences' }],
+      ['apps.close', { platform: 'ios', app: 'com.apple.Preferences' }],
       ['command.appState', {}],
       ['command.home', { platform: 'ios' }],
       ['command.back', { settle: true, settleQuietMs: 150 }],
@@ -1582,7 +1582,7 @@ describe('device fixture', () => {
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
       ['settings.update', { setting: 'permission', permission: 'microphone', state: 'reset', platform: 'ios', device: 'iPhone 16e', app: 'Settings' }],
       ['apps.open', { app: 'com.other', platform: 'ios', device: 'iPhone 16e', relaunch: true }],
-      ['apps.close', { app: 'com.apple.Preferences' }],
+      ['apps.close', { platform: 'ios', device: 'iPhone 16e', app: 'com.apple.Preferences' }],
       ['settings.update', { setting: 'permission', permission: 'camera', state: 'grant', platform: 'ios', device: 'iPhone 16e', app: 'Settings' }],
     ]);
   });
@@ -1713,7 +1713,9 @@ describe('device fixture', () => {
       ]),
     ];
     for (const command of commands) {
+      // With no session open, the close itself picks the device from the selection.
       await h.surface.closeApp(operation().signal);
+      expect(h.fake.lastArgs('apps.close')).toMatchObject(selection);
       const before = h.fake.calls.length;
       await command();
       expect(h.fake.calls.length).toBeGreaterThan(before);
@@ -1766,7 +1768,7 @@ describe('device fixture', () => {
       // A foreground-only open, and another app, take none of the engine's options.
       open({ app: 'com.example.app' }),
       open({ app: 'com.other', relaunch: true }),
-      ['apps.close', { app: 'com.example.app' }],
+      ['apps.close', { platform: 'ios', app: 'com.example.app' }],
       permission('camera', 'grant'),
       permission('location', 'deny'),
       fresh,
