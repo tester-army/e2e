@@ -40,7 +40,7 @@
   },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.90",
-    "@ai-sdk/typesafe-ai": "3.0.16",
+    "@ai-sdk/typesafe-ai": "3.0.19",
     "@e2e-dev/web": "workspace:*",
     "@types/node": "26.6.2",
     "@types/pngjs": "6.0.5",

@@ -167,15 +167,29 @@ doesn't show. The operation and target questions read the tree only.
 `agent.assert(..., { vision: true })` and `vision: 'only'` work too. After a
 secret fill in the attempt, the executor gets no pixels.
 
-The model must accept images and answer `score` questions, as
-`openai.decisionModel('gpt-6-luna')` does. A text-only model such as Jev
-refuses the screenshot. Vercel AI Gateway rejects it too, so keep `vision`
-off there.
+The model must accept images and answer `score` questions. TypeSafe Jev
+does with `@ai-sdk/typesafe-ai` 3.0.19 or later and a TypeSafe API key in
+`TYPESAFE_AI_API_KEY`:
+
+```ts title="e2e.config.ts"
+import { typeSafeAi } from '@ai-sdk/typesafe-ai';
+import { openrouter } from '@openrouter/ai-sdk-provider';
+
+const executor = decisionExecutor({
+  model: typeSafeAi.decisionModel('jev-latest'),
+  textModel: openrouter('inception/mercury-2.5'),
+  vision: true,
+});
+```
+
+`openai.decisionModel('gpt-6-luna')` takes images too. Vercel AI Gateway
+rejects the screenshot for every decision model, so keep `vision` off
+there.
 
 With a text model, vision also offers `tap_at` for a control the tree
 doesn't list. The text model names the control, such as "the 3 key on the
-keypad", and the decision model finds it on the screenshot, then on a
-zoomed crop. A point tap costs three decide calls and one text call, or one
+keypad", and the decision model finds it on the screenshot, then on two
+zoomed crops. A point tap costs four decide calls and one text call, or one
 of each to repeat a tap on the same page.
 
 ## Provider options

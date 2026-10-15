@@ -30,7 +30,8 @@ Tests stay plain natural language, with no params. Each turn asks the
 operation, then the target for it. Every operation the engine declares is
 offered, and every target question carries a `none` option. With
 `vision: true` and a model that takes images, such as
-`openai.decisionModel('gpt-6-luna')`, verdicts see a masked screenshot and
+`typeSafeAi.decisionModel('jev-latest')` with `@ai-sdk/typesafe-ai` 3.0.19
+or later, verdicts see a masked screenshot and
 `tap_at` reaches a drawn control. The runner authorizes every action and
 records every model call against the step budget. Secrets stay declared
 handles that only `typeSecret` fills.

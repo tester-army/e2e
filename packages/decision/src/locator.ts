@@ -8,20 +8,22 @@ export type AskDecision = (request: DecisionRequest) => Promise<Record<string, D
 /** Where a drawn control is, or why the looks could not say. */
 export type Located = Point | { readonly uncertain: string };
 /**
- * CSS pixels of the region the second look zooms into, and how much it is
- * enlarged: wide enough to hold a first look one column off. A tighter
- * third look was measured to drift on the runner's 768px capture.
+ * CSS pixels of the regions the zoomed looks enlarge, in turn: the first
+ * wide enough to hold a first look one column off, the second for a target
+ * as small as a 32px map pin. Measured on Jev over 54 drawn targets at the
+ * runner's 768px capture, the second zoom lifts hits from 47-49 to 53-54.
  */
-const ZOOM_BOX = 400;
+const ZOOM_BOXES = [400, 200] as const;
+/** How much each zoomed region is enlarged. */
 const ZOOM_FACTOR = 2;
-/** Columns and rows of the grid drawn on the zoomed region. */
+/** Columns and rows of the grid drawn on a zoomed region. */
 const ZOOM_CELLS = 8;
 /**
  * Locates drawn controls on the screenshot and remembers the ones a tap
- * found: two looks per control, the column and row on the plain full
- * screenshot, then again on a zoomed crop with a grid drawn on it. A tap
- * that changed the pixels around it found its control; the same control on
- * the same page is tapped there again with no new looks.
+ * found: three looks per control, the column and row on the plain full
+ * screenshot, then again on two ever tighter zoomed crops with a grid drawn
+ * on them. A tap that changed the pixels around it found its control; the
+ * same control on the same page is tapped there again with no new looks.
  */
 export class PointLocator {
   /** Points that landed, by path and the control the text model named. */
@@ -39,35 +41,44 @@ export class PointLocator {
   }
   /** Records a point tap, to be settled by the next observation. */
   tapped(path: string, wanted: string, point: Point, screenshot: Screenshot): void {
-    this.pending = { key: key(path, wanted), point, before: regionHash(screenshot, point, ZOOM_BOX) };
+    this.pending = { key: key(path, wanted), point, before: regionHash(screenshot, point, ZOOM_BOXES[0]) };
   }
   /** Settles the last point tap against the newest pixels: changed means it landed. */
   settle(screenshot: Screenshot | undefined): void {
     if (this.pending === undefined) return;
-    const after = regionHash(screenshot, this.pending.point, ZOOM_BOX);
+    const after = regionHash(screenshot, this.pending.point, ZOOM_BOXES[0]);
     if (after !== undefined && after !== this.pending.before) this.landed.set(this.pending.key, this.pending.point);
     else this.landed.delete(this.pending.key);
     this.pending = undefined;
   }
-  /** Two looks for the control, or undefined once the budget is spent. */
+  /** Three looks for the control, or undefined once the budget is spent. */
   async locate(screenshot: Screenshot, path: string, wanted: string): Promise<Located | undefined> {
     const grid = gridFor(screenshot.width / screenshot.scale, screenshot.height / screenshot.scale, CELL_TARGET);
     const coarse = await this.ask(pointRequest(this.ctx, path, screenshot, grid, 'This image is the full screenshot; no grid is drawn on it.', wanted));
     if (coarse === undefined) return undefined;
     const first = this.scored(coarse);
     if ('uncertain' in first) return first;
-    const rough = pointOf(grid, first.x, first.y);
-    const zoom = zoomAround(screenshot, rough, ZOOM_BOX, ZOOM_FACTOR);
-    if (zoom === undefined) return rough;
+    let point = pointOf(grid, first.x, first.y);
+    for (const box of ZOOM_BOXES) {
+      const closer = await this.closer(screenshot, path, wanted, point, box);
+      if (closer === undefined || 'uncertain' in closer) return closer;
+      point = closer;
+    }
+    return point;
+  }
+  /** One zoomed look: the `box` CSS-pixel region around `point`, enlarged with a grid drawn on it. */
+  private async closer(screenshot: Screenshot, path: string, wanted: string, point: Point, box: number): Promise<Located | undefined> {
+    const zoom = zoomAround(screenshot, point, box, ZOOM_FACTOR);
+    if (zoom === undefined) return point;
     const side = zoom.screenshot.width;
     const fine: Grid = { columns: ZOOM_CELLS, rows: ZOOM_CELLS, cellWidth: side / ZOOM_CELLS, cellHeight: side / ZOOM_CELLS };
     const region = Math.round(side / ZOOM_FACTOR);
     const framing = `This image is a ${ZOOM_FACTOR}x zoom of a ${region} by ${region} pixel region of the screen.`;
-    const closer = await this.ask(pointRequest(this.ctx, path, withGrid(zoom.screenshot, fine), fine, framing, wanted));
-    if (closer === undefined) return undefined;
-    const second = this.scored(closer);
-    if ('uncertain' in second) return second;
-    const inZoom = pointOf(fine, second.x, second.y);
+    const answers = await this.ask(pointRequest(this.ctx, path, withGrid(zoom.screenshot, fine), fine, framing, wanted));
+    if (answers === undefined) return undefined;
+    const scored = this.scored(answers);
+    if ('uncertain' in scored) return scored;
+    const inZoom = pointOf(fine, scored.x, scored.y);
     return { x: Math.round(zoom.origin.x + inZoom.x / zoom.factor), y: Math.round(zoom.origin.y + inZoom.y / zoom.factor) };
   }
   /** The column and row scores of a point request, gated like any answer. */

@@ -54,7 +54,7 @@ export interface Zoom {
 /**
  * The `box` by `box` CSS-pixel region around `center`, kept inside the
  * screenshot and enlarged `factor` times (nearest neighbor), for a finer
- * second look at a drawn control. Undefined when the pixels cannot be decoded.
+ * closer look at a drawn control. Undefined when the pixels cannot be decoded.
  */
 export function zoomAround(screenshot: Screenshot, center: Point, box: number, factor: number): Zoom | undefined {
   const png = decode(screenshot);

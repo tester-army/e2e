@@ -36,9 +36,10 @@ export interface DecisionExecutorOptions {
    * the text model names it, and score questions over the screenshot
    * locate it. The screenshot goes
    * as a file part of the decision state, so the model must take images and
-   * answer `score` questions, e.g. `openai.decisionModel('gpt-6-luna')` with
-   * `@ai-sdk/openai` 4.0.90 or later; a text-only model such as Jev refuses
-   * the file. Also honors `agent.assert(..., { vision })`. Default off.
+   * answer `score` questions, e.g. `typeSafeAi.decisionModel('jev-latest')`
+   * with `@ai-sdk/typesafe-ai` 3.0.19 or later, or
+   * `openai.decisionModel('gpt-6-luna')` with `@ai-sdk/openai` 4.0.90 or
+   * later. Also honors `agent.assert(..., { vision })`. Default off.
    */
   readonly vision?: boolean;
 }

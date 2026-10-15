@@ -72,7 +72,7 @@ describe('vision', () => {
 });
 
 describe('vision details', () => {
-  it('sends the plain screenshot to the first look and draws the grid only on the zoomed look', async () => {
+  it('sends the plain screenshot to the first look and draws the grid only on the zoomed looks', async () => {
     const { model, requests } = scriptedDecision((id, keys, call) => {
       if (id === 'operation') return { choice: call === 0 ? 'tap_at' : 'blocked' };
       if (id === 'x' || id === 'y') return { choice: '4' };
@@ -96,10 +96,12 @@ describe('vision details', () => {
     expect(zoomed.at(2, 2)).toEqual([255, 255, 255]);
     expect(zoomed.at(250, 250)).toEqual([255, 255, 255]);
     // Column 4 of 10 over 800px and row 4 of 8 over 600px is (360, 338); the 400px zoom around it starts at (160, 138)
-    // and settles on its cell 4 center (385, 363).
+    // and settles on its cell 4 center (385, 363); the 200px zoom around that starts at (285, 263) and settles 112.5px in.
     expect(requests[1]?.questions['x']?.instructions).toContain('The image is 800 pixels wide and 600 pixels tall');
     expect(requests[2]?.questions['x']?.instructions).toContain('2x zoom of a 400 by 400 pixel region');
-    expect(fixture.actions.tapAt).toHaveBeenCalledWith({ x: 160 + 225, y: 138 + 225 });
+    expect(sent(3).png.width).toBe(400);
+    expect(requests[3]?.questions['x']?.instructions).toContain('2x zoom of a 200 by 200 pixel region');
+    expect(fixture.actions.tapAt).toHaveBeenCalledWith({ x: 398, y: 376 });
   });
   it('never asks for pixels once a secret was filled, and offers no tap_at', async () => {
     const { model, requests } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'blocked' : (keys[0] ?? '') }));
@@ -127,12 +129,12 @@ describe('vision details', () => {
     const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() }, model: text.model });
     fixture.actions.tapAt.mockResolvedValue({ point: { x: 80, y: 80 }, target: { id: 'n9' }, summary: 'tapped button "Add"' });
     await decisionExecutor({ model, textModel: text.model, vision: true }).runStep(fixture.ctx);
-    // Operation, coarse point, zoomed point, then the next operation.
-    expect(requests.slice(0, 4).map((request) => Object.keys(request.questions))).toEqual([['operation'], ['x', 'y'], ['x', 'y'], ['operation']]);
+    // Operation, coarse point, two zoomed points, then the next operation.
+    expect(requests.slice(0, 5).map((request) => Object.keys(request.questions))).toEqual([['operation'], ['x', 'y'], ['x', 'y'], ['x', 'y'], ['operation']]);
     expect(requests[2]?.questions['x']?.instructions).toContain('2x zoom of a 400 by 400 pixel region');
-    const state = requests[3]?.state as { recentActions: { note?: string }[] } | undefined;
+    const state = requests[4]?.state as { recentActions: { note?: string }[] } | undefined;
     expect(state?.recentActions.at(-1)?.note).toBe('landed on listed control n9');
-    expect(requests[3]?.questions['operation']?.instructions).toContain('(landed on listed control n9)');
+    expect(requests[4]?.questions['operation']?.instructions).toContain('(landed on listed control n9)');
   });
   it('lets the text model name the drawn control the point looks locate', async () => {
     const { model, requests } = scriptedDecision((id, keys, call) => {
@@ -148,8 +150,8 @@ describe('vision details', () => {
     expect(requests[1]?.questions['x']?.instructions).toContain('The control to tap now: the 3 key on the keypad');
     expect(requests[1]?.state).toMatchObject({ target: 'the 3 key on the keypad' });
     expect(fixture.turns[0]?.calls[0]).toMatch(/^tap the 3 key on the keypad at \(\d+, \d+\)$/);
-    // Operation, sub-target, two looks, next operation: five model calls recorded.
-    expect(fixture.usage).toHaveLength(5);
+    // Operation, sub-target, three looks, next operation: six model calls recorded.
+    expect(fixture.usage).toHaveLength(6);
   });
   it('replays a landed point for the same control on the same page, and relocates one that missed', async () => {
     /** Two screenshots that differ only inside the tapped region. */
@@ -174,12 +176,12 @@ describe('vision details', () => {
     }));
     await decisionExecutor({ model, textModel: text.model, vision: true }).runStep(fixture.ctx);
     const kinds = requests.map((request) => Object.keys(request.questions).join('+'));
-    // Tap 1 locates (two looks) and lands; tap 2 replays the point with no looks; tap 2 misses, so tap 3 locates again.
-    expect(kinds.slice(0, 8)).toEqual(['operation', 'x+y', 'x+y', 'operation', 'operation', 'x+y', 'x+y', 'operation']);
+    // Tap 1 locates (three looks) and lands; tap 2 replays the point with no looks; tap 2 misses, so tap 3 locates again.
+    expect(kinds.slice(0, 10)).toEqual(['operation', 'x+y', 'x+y', 'x+y', 'operation', 'operation', 'x+y', 'x+y', 'x+y', 'operation']);
     // Level 1 of 10 over 800px and of 8 over 600px is (120, 113); the 400px zoom around it clamps to the corner,
-    // and level 1 of its 8 cells is (150, 150) at 2x, so (75, 75).
-    expect(fixture.actions.tapAt).toHaveBeenNthCalledWith(1, { x: 75, y: 75 });
-    expect(fixture.actions.tapAt).toHaveBeenNthCalledWith(2, { x: 75, y: 75 });
+    // and level 1 of its 8 cells is (150, 150) at 2x, so (75, 75); the 200px zoom clamps too, and its level 1 is (38, 38).
+    expect(fixture.actions.tapAt).toHaveBeenNthCalledWith(1, { x: 38, y: 38 });
+    expect(fixture.actions.tapAt).toHaveBeenNthCalledWith(2, { x: 38, y: 38 });
   });
   it('counts a pixel change as a page change under vision, so a drawn control is progress', async () => {
     const { model } = scriptedDecision((id, keys, call) => {
