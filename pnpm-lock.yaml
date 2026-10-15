@@ -315,8 +315,8 @@ importers:
         specifier: 0.11.1
         version: 0.11.1
       agent-device:
-        specifier: 0.21.25
-        version: 0.21.25(ai@7.0.134(zod@4.6.1))
+        specifier: 0.21.28
+        version: 0.21.28(ai@7.0.134(zod@4.6.1))
       ai:
         specifier: 7.0.134
         version: 7.0.134(zod@4.6.1)
@@ -533,8 +533,8 @@ importers:
   packages/limrun:
     dependencies:
       agent-device:
-        specifier: 0.21.25
-        version: 0.21.25(ai@7.0.134(zod@4.6.1))
+        specifier: 0.21.28
+        version: 0.21.28(ai@7.0.134(zod@4.6.1))
     devDependencies:
       '@e2e-dev/mobile':
         specifier: workspace:*
@@ -558,8 +558,8 @@ importers:
   packages/mobile:
     dependencies:
       agent-device:
-        specifier: 0.21.25
-        version: 0.21.25(ai@7.0.107(zod@4.6.1))
+        specifier: 0.21.28
+        version: 0.21.28(ai@7.0.107(zod@4.6.1))
       pngjs:
         specifier: 7.0.0
         version: 7.0.0
@@ -3582,8 +3582,8 @@ packages:
     engines: {node: '>=18.18'}
     hasBin: true
 
-  agent-device@0.21.25:
-    resolution: {integrity: sha512-JFmAD5AqM03dVU6BVQW1DQ2Kz+MThmbCYBbDxpGw2lka91LcoXHdrb4IjF9NNg4DEQUu41Pg8WnB/7crM3ig2w==}
+  agent-device@0.21.28:
+    resolution: {integrity: sha512-uGEENVhPzSpIACrVlt16O1mloODWJyAemTCT0boDb4L006JXN2rG747u1TRoQJudOpdP/Pm2urxNRHeECLMLfg==}
     engines: {node: '>=22.12'}
     hasBin: true
     peerDependencies:
@@ -11218,11 +11218,11 @@ snapshots:
 
   agent-cli-detector@0.1.7: {}
 
-  agent-device@0.21.25(ai@7.0.107(zod@4.6.1)):
+  agent-device@0.21.28(ai@7.0.107(zod@4.6.1)):
     optionalDependencies:
       ai: 7.0.107(zod@4.6.1)
 
-  agent-device@0.21.25(ai@7.0.134(zod@4.6.1)):
+  agent-device@0.21.28(ai@7.0.134(zod@4.6.1)):
     optionalDependencies:
       ai: 7.0.134(zod@4.6.1)
 
