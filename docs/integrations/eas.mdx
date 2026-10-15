@@ -191,9 +191,9 @@ or when a session fails to start. A session fails when it errors, stays
 queued too long (see [Sessions](#sessions)), or still boots 15 minutes after
 it leaves the queue.
 
-The provider stops the failed session and the run's other sessions. It
-cancels the job of a queued one, so EAS doesn't start it later and bill the
-account.
+The provider stops the failed session and the run's other sessions. EAS
+cancels the job of a stopped session that is still queued, so it doesn't
+start later and bill the account.
 
 ## Next
 

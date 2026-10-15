@@ -92,7 +92,8 @@ suites that consume the built packages the way a user would.
 - `packages/eas` - the published `@e2e-dev/eas` package: EAS Simulators
   hosted iOS simulators and Android emulators for the mobile engine
   (`DeviceProvider`). Expo publishes no SDK for the sessions API, so it calls
-  Expo's GraphQL API with `fetch`, and `@e2e-dev/mobile` is its only peer.
+  Expo's REST API (`/v2/device-run-sessions`) with `fetch`, and
+  `@e2e-dev/mobile` is its only peer.
 - `packages/smol` - the published `@e2e-dev/smol` package: Chromium in
   smol machines microVMs on the runner's own computer for the web engine
   (`BrowserProvider`), through the `smolmachines` SDK's embedded engine

@@ -1,11 +1,15 @@
 /**
- * EAS Simulators' sessions through Expo's GraphQL API over `fetch`, the API
- * `eas simulator:*` uses, so the integration installs no SDK.
+ * EAS Simulators' sessions through Expo's REST API over `fetch`, so the
+ * integration installs no SDK.
  */
 
+import { createRequire } from 'node:module';
 import type { ExpoCredentials } from './credentials.ts';
 
-const GRAPHQL_URL = 'https://api.expo.dev/graphql';
+const SESSIONS_URL = 'https://api.expo.dev/v2/device-run-sessions';
+
+/** This package as `name@version`, the format EAS records a session's client in. */
+const CLIENT = `@e2e-dev/eas@${ownVersion()}`;
 
 /** What the provider asks EAS for: one agent-device session on one platform. */
 export interface EasSessionParams {
@@ -53,34 +57,16 @@ export interface EasSessions {
   stop(id: string, signal: AbortSignal): Promise<void>;
 }
 
-const CREATE = `mutation ($input: CreateDeviceRunSessionInput!) {
-  deviceRunSession { createDeviceRunSession(deviceRunSessionInput: $input) { id app { slug ownerAccount { name } } } }
-}`;
-
-const STATE = `query ($id: ID!) {
-  deviceRunSessions { byId(deviceRunSessionId: $id) {
-    status
-    turtleJobRun { status }
-    remoteConfig { ... on AgentDeviceRunSessionRemoteConfig { agentDeviceRemoteSessionUrl agentDeviceRemoteSessionToken webPreviewUrl webPreviewToken } }
-  } }
-}`;
-
-const STOP = `mutation ($id: ID!) {
-  deviceRunSession { ensureDeviceRunSessionStopped(deviceRunSessionId: $id) { turtleJobRun { id status } } }
-}`;
-
-const CANCEL_JOB = `mutation ($id: ID!) {
-  jobRun { cancelJobRun(jobRunId: $id) { id } }
-}`;
-
-interface GraphqlError {
+interface RestError {
+  readonly code?: string;
   readonly message?: string;
-  readonly extensions?: { readonly errorCode?: string };
 }
 
-interface SessionById {
-  readonly status: 'NEW' | 'IN_PROGRESS' | 'STOPPED' | 'ERRORED';
-  readonly turtleJobRun: { readonly status: string } | null;
+interface RestSession {
+  readonly id: string;
+  /** The session's page on expo.dev. */
+  readonly url: string;
+  readonly status: 'new' | 'queued' | 'starting' | 'in-progress' | 'stopped' | 'errored';
   readonly remoteConfig: {
     readonly agentDeviceRemoteSessionUrl?: string;
     readonly agentDeviceRemoteSessionToken?: string;
@@ -89,76 +75,71 @@ interface SessionById {
   } | null;
 }
 
-/** Job run states before the job picks the session up: waiting for the account's concurrency. */
-const QUEUED_JOB = new Set(['NEW', 'IN_QUEUE']);
-/** Job run states after which the session never becomes ready. */
-const ENDED_JOB = new Set(['ERRORED', 'CANCELED', 'FINISHED', 'PENDING_CANCEL']);
-
 /** EAS Simulators sessions for one Expo access token or eas-cli session. */
 export function easSessions(credentials: ExpoCredentials): EasSessions {
   const auth: Record<string, string> =
     'accessToken' in credentials ? { Authorization: `Bearer ${credentials.accessToken}` } : { 'expo-session': credentials.sessionSecret };
-  /** Runs one operation; a GraphQL error throws with EAS's message and error code. */
-  const graphql = async <T>(query: string, variables: Record<string, unknown>, signal: AbortSignal): Promise<T> => {
-    const response = await fetch(GRAPHQL_URL, {
-      method: 'POST',
-      headers: { ...auth, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, variables }),
+  /** Sends one request; an error EAS answers with throws with its message and error code. */
+  const rest = async <T>(method: 'GET' | 'POST', path: string, body: Record<string, unknown> | undefined, signal: AbortSignal): Promise<T> => {
+    const response = await fetch(`${SESSIONS_URL}${path}`, {
+      method,
+      headers: body === undefined ? auth : { ...auth, 'Content-Type': 'application/json' },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal,
     });
     const text = await response.text();
-    let body: { data?: T | null; errors?: readonly GraphqlError[] };
+    let parsed: { data?: T | null; errors?: readonly RestError[] };
     try {
-      body = JSON.parse(text) as typeof body;
+      parsed = JSON.parse(text) as typeof parsed;
     } catch {
       throw new Error(`EAS: HTTP ${response.status}, ${text.trim().slice(0, 200)}`);
     }
-    const error = body.errors?.[0];
-    if (error !== undefined) throw new EasError(error.message ?? `HTTP ${response.status}`, error.extensions?.errorCode);
-    if (!response.ok || body.data == null) throw new Error(`EAS: HTTP ${response.status}, no data`);
-    return body.data;
+    const error = parsed.errors?.[0];
+    if (error !== undefined) throw new EasError(error.message ?? `HTTP ${response.status}`, error.code);
+    if (!response.ok || parsed.data == null) throw new Error(`EAS: HTTP ${response.status}, no data`);
+    return parsed.data;
   };
+  const sessionPath = (id: string): string => `/${encodeURIComponent(id)}`;
   return {
-    async create({ platform, deviceIdentifier, ...fields }, signal) {
-      const input = {
-        ...fields,
-        platform: platform.toUpperCase(),
-        type: 'AGENT_DEVICE',
-        ...(deviceIdentifier === undefined ? {} : { [platform]: { deviceIdentifier } }),
-      };
-      const data = await graphql<{ deviceRunSession: { createDeviceRunSession: { id: string; app: { slug: string; ownerAccount: { name: string } } } } }>(CREATE, { input }, signal);
-      const { id, app } = data.deviceRunSession.createDeviceRunSession;
-      return { id, url: `https://expo.dev/accounts/${encodeURIComponent(app.ownerAccount.name)}/projects/${encodeURIComponent(app.slug)}/simulator-sessions/${id}` };
+    async create({ maxRunTimeMinutes, ...fields }, signal) {
+      const body = { ...fields, maxDurationMinutes: maxRunTimeMinutes, type: 'agent-device', client: CLIENT };
+      const { id, url } = await rest<RestSession>('POST', '', body, signal);
+      return { id, url };
     },
     async state(id, signal) {
-      const data = await graphql<{ deviceRunSessions: { byId: SessionById } }>(STATE, { id }, signal);
-      const session = data.deviceRunSessions.byId;
-      const job = session.turtleJobRun?.status;
+      const session = await rest<RestSession>('GET', sessionPath(id), undefined, signal);
       const config = session.remoteConfig;
-      if (session.status === 'STOPPED' || session.status === 'ERRORED') return { phase: 'ended', status: session.status.toLowerCase() };
-      // A job that ended keeps the daemon address it had, which no longer answers.
-      if (job !== undefined && ENDED_JOB.has(job)) return { phase: 'ended', status: `job ${job.toLowerCase()}` };
+      // EAS ends the session when its job ends; an ended session keeps a daemon address that no longer answers.
+      if (session.status === 'stopped' || session.status === 'errored') return { phase: 'ended', status: session.status };
       if (config?.agentDeviceRemoteSessionUrl !== undefined && config.agentDeviceRemoteSessionToken !== undefined) {
         const openPreviewUrl = config.webPreviewToken == null ? (config.webPreviewUrl ?? undefined) : undefined;
         return { phase: 'ready', daemonUrl: config.agentDeviceRemoteSessionUrl, daemonToken: config.agentDeviceRemoteSessionToken, openPreviewUrl };
       }
-      return { phase: job === undefined || QUEUED_JOB.has(job) ? 'queued' : 'starting' };
+      // `new` until the job enters the queue, `queued` while it waits for the account's concurrency.
+      return { phase: session.status === 'new' || session.status === 'queued' ? 'queued' : 'starting' };
     },
     async stop(id, signal) {
-      let job: { id: string; status: string } | null;
+      // EAS cancels the session's job too when it is still queued.
       try {
-        const data = await graphql<{ deviceRunSession: { ensureDeviceRunSessionStopped: { turtleJobRun: { id: string; status: string } | null } } }>(STOP, { id }, signal);
-        job = data.deviceRunSession.ensureDeviceRunSessionStopped.turtleJobRun;
+        await rest('POST', `${sessionPath(id)}/stop`, undefined, signal);
       } catch (cause) {
         if (cause instanceof EasError && cause.code === 'NOT_FOUND_ERROR') return;
         throw cause;
       }
-      if (job !== null && QUEUED_JOB.has(job.status)) await graphql(CANCEL_JOB, { id: job.id }, signal);
     },
   };
 }
 
-/** An error EAS answered with, its `errorCode` kept. */
+/** This package's published version, read through require resolution. */
+function ownVersion(): string {
+  try {
+    return (createRequire(import.meta.url)('../package.json') as { version: string }).version;
+  } catch {
+    return 'unknown';
+  }
+}
+
+/** An error EAS answered with, its error code kept. */
 class EasError extends Error {
   constructor(
     message: string,
