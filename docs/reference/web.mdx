@@ -196,7 +196,8 @@ The remote must have only its default context, and the host must delete the
 browser when the attempt ends. Engine cleanup detaches its connection; it does
 not terminate the host's browser.
 
-To reuse one sign-in across files, leave `reconnectEndpoint` out and
+To reuse one sign-in across files, keep isolated contexts (no
+`reconnectEndpoint`, no provider `scope: 'attempt'`) and
 [sign in once in a setup test](/authentication#sign-in-once-in-a-setup-test);
 a saved session, not a shared browser, carries it.
 
