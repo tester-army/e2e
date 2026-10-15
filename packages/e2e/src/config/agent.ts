@@ -7,6 +7,7 @@ import { isDefinedTool } from '../agent/tool.ts';
 import { boundedInt, positiveInt } from './validate.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { didYouMean } from '../internal/suggest.ts';
+import { realmSlot } from '../internal/realm-slot.ts';
 import type {
   AgentConfig,
   AgentTool,
@@ -33,11 +34,51 @@ export interface ResolvedModel {
    * nothing from the optional `ai` peer.
    */
   readonly model: ModelInstance;
+  readonly cacheByModel?: true;
 }
 
 /** A resolved model as reports and diagnostics name it: the instance's `provider/model-id`. */
 export function modelLabel(model: ResolvedModel): string {
   return `${model.provider}/${model.id}`;
+}
+
+const selectedModelsSlot = realmSlot<WeakSet<ModelInstance>>('e2e.first-available.models.v1');
+const selectedModels = selectedModelsSlot.get(globalThis) ?? new WeakSet<ModelInstance>();
+selectedModelsSlot.set(globalThis, selectedModels);
+
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** The first model whose named environment variable is set, in list order. */
+export function firstAvailable<const Candidates extends readonly {
+  readonly env: string;
+  readonly model: ModelInstance;
+}[]>(candidates: Candidates): Candidates[number]['model'] {
+  if (!Array.isArray(candidates)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'firstAvailable requires an array of { env, model } entries.');
+  }
+  for (const candidate of candidates) {
+    if (
+      typeof candidate !== 'object' || candidate === null ||
+      typeof candidate.env !== 'string' || !ENV_NAME.test(candidate.env) ||
+      !isModelInstance(candidate.model)
+    ) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        'Each firstAvailable entry requires an environment variable name (letters, digits, and underscores, not a credential value) and a model instance.',
+      );
+    }
+  }
+  for (const { env, model } of candidates) {
+    if ((process.env[env]?.trim() ?? '') === '') continue;
+    selectedModels.add(model);
+    return model;
+  }
+  throw new ConfigurationError(
+    'MODEL_UNAVAILABLE',
+    candidates.length === 0
+      ? 'firstAvailable has no candidates. Add an { env, model } entry.'
+      : `firstAvailable found no credential. Set one of these environment variables: ${candidates.map(({ env }) => env).join(', ')}.`,
+  );
 }
 
 export interface ResolvedAgentConfig {
@@ -419,7 +460,7 @@ function resolveCanonicalModel(
       `${key} (${modelLabel(explicit)}) and the executor's own ${slot} (${modelLabel(own)}) differ; configure the ${slot} in one place`,
     );
   }
-  return own;
+  return explicit.cacheByModel === true ? { ...own, cacheByModel: true } : own;
 }
 
 /**
@@ -442,7 +483,12 @@ function resolveModel(model: ModelInstance | undefined, label: string): Resolved
       `${label} must be an AI SDK model instance, e.g. gateway('openai/gpt-6-luna-fast') from 'ai'`,
     );
   }
-  return { provider: model.provider, id: model.modelId, model };
+  return {
+    provider: model.provider,
+    id: model.modelId,
+    model,
+    ...(selectedModels.has(model) ? { cacheByModel: true as const } : {}),
+  };
 }
 
 /** The agent's app vocabulary: a string within the trusted context budget. */

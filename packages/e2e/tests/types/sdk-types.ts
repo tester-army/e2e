@@ -7,6 +7,7 @@
 import { z } from 'zod';
 import {
   credentials,
+  firstAvailable,
   expect,
   secrets,
   unique,
@@ -171,6 +172,22 @@ modelV2 satisfies ModelInstance;
 modelV3 satisfies ModelInstance;
 modelV4 satisfies ModelInstance;
 subscriptionModel satisfies ModelInstance;
+firstAvailable([{ env: 'PRIMARY_KEY', model: modelV4 }]) satisfies LanguageModelV4;
+firstAvailable([
+  { env: 'PRIMARY_KEY', model: modelV2 },
+  { env: 'SECONDARY_KEY', model: modelV3 },
+  { env: 'THIRD_KEY', model: modelV4 },
+]) satisfies LanguageModelV2 | LanguageModelV3 | LanguageModelV4;
+firstAvailable([{ env: 'PRIMARY_KEY', model: subscriptionModel }]) satisfies typeof subscriptionModel;
+firstAvailable([]) satisfies never;
+// @ts-expect-error the env slot takes a variable name, not a number
+void firstAvailable([{ env: 1, model }]);
+// @ts-expect-error every candidate requires an env name
+void firstAvailable([{ model }]);
+// @ts-expect-error a model id string alone is not a model instance
+void firstAvailable([{ env: 'PRIMARY_KEY', model: 'openai/gpt-6-luna' }]);
+// @ts-expect-error candidates are an array
+void firstAvailable(null);
 // @ts-expect-error the three id strings alone are not a model; the loader rejects an object without doGenerate
 ({ specificationVersion: 'v4', provider: 'openai', modelId: 'gpt-5.6-luna' }) satisfies ModelInstance;
 
