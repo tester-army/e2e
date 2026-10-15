@@ -30,7 +30,10 @@ capture() {
     for (let attempt = 0; attempt < 6; attempt += 1) {
       execFileSync("sleep", ["0.5"]);
       const next = take();
-      if (shape(next) === shape(last)) break;
+      if (shape(next) === shape(last)) {
+        last = next;
+        break;
+      }
       last = next;
     }
     const keys = ["nodes", "viewport", "truncated", "appName", "appBundleId"];

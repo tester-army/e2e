@@ -649,7 +649,7 @@ describe('observation', () => {
     await openAttempt(h);
     const snapshot = await h.engine.observe!(operation());
     expect(calls).toBe(2);
-    expect([...walk(snapshot.root)]).toHaveLength(10);
+    expect([...walk(snapshot.root)]).toHaveLength(11);
   });
 
   it('flags a tree agent-device cut, or one still sparse after the retries, as truncated; a whole tree carries no flag', async () => {

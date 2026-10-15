@@ -4,9 +4,13 @@
   "payload": {
     "actions": [
       {
-        "name": "tool",
-        "summary": "tool type (run-time value)",
-        "derived": "pixels"
+        "name": "type",
+        "summary": "type \"TA-BENCH-50\" into textbox \"Coupon code\"",
+        "target": {
+          "role": "textbox",
+          "name": "Coupon code"
+        },
+        "value": "TA-BENCH-50"
       },
       {
         "name": "check",

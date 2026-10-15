@@ -41,6 +41,16 @@ interface Scenario {
   readonly params?: () => Readonly<Record<string, AgentParam>>;
 }
 
+/** A reused simulator keeps an earlier grant, and the recorded Allow tap then has no button. */
+function resetMicrophonePermission(): void {
+  if (process.platform !== 'darwin') return;
+  try {
+    execFileSync('xcrun', ['simctl', 'privacy', 'booted', 'reset', 'microphone', 'dev.e2e.benchmark'], { stdio: 'ignore' });
+  } catch {
+    // No booted simulator on this run.
+  }
+}
+
 /**
  * The photo the picker scenario expects in the library, added once to every
  * booted simulator. A marker in the simulator's own data directory keeps a
@@ -175,6 +185,7 @@ const SCENARIOS: readonly Scenario[] = [
     name: 'Permission Prompt',
     goal: 'request microphone access and allow it in the system dialog',
     success: 'Microphone enabled',
+    prepare: resetMicrophonePermission,
   },
   {
     name: 'Photo Picker',

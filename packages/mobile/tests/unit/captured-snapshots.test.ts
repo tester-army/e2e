@@ -75,6 +75,7 @@ const IOS_TITLES: Record<string, string | undefined> = {
   'webview-accessibility': 'WebView Accessibility',
 };
 
+/** A captured snapshot projected the way `observe` projects it. */
 function project(file: string) {
   const raw = JSON.parse(readFileSync(file, 'utf8')) as { nodes: RawNode[]; viewport?: ViewportSize; truncated?: boolean };
   let counter = 0;
