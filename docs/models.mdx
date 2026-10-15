@@ -9,7 +9,7 @@ icon: "brain"
 import { ModelProvider } from './snippets/model-provider.jsx';
 
 Agent steps use the model you set in `e2e.config.ts`. There is no default.
-The model comes from an [AI SDK](https://ai-sdk.dev/providers) provider: a
+The model comes from an [AI SDK](https://ai-sdk.dev/providers/ai-sdk-providers) provider: a
 gateway, a direct API key, a local server, or your
 [subscription](/subscriptions). For a first setup, `e2e init` writes the
 config. See the [quickstart](/quickstart#use-a-subscription-or-api-key).
@@ -140,7 +140,8 @@ when your shell exports it, or when the config loads the file with
 
 ## AI SDK providers
 
-Every AI SDK provider that supports tool calls works. Select yours:
+Every AI SDK provider that supports tool calls works. Each provider's
+package and variables are on its [AI SDK provider page](https://ai-sdk.dev/providers/ai-sdk-providers). Select yours:
 
 <ModelProvider show="select" />
 

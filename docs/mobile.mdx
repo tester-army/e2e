@@ -464,7 +464,7 @@ export interface DeviceLease {
 ```
 
 **`acquire`** runs for every worker slot at once, in the runner process.
-The request carries `platform`, `runId`, `targetName`, `slot`, `app` (the
+The request carries `platform`, `runId`, `targetName`, `slot`, `slots`, `app` (the
 target's `app.bundleId`), the resolved `appPath`, `agentDeviceVersion` (for
 a service that starts a daemon of a chosen version), `projectRoot`, `env`,
 an interrupt `signal`, and a `log` that reaches the reporter.

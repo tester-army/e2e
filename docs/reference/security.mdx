@@ -28,7 +28,9 @@ larger budget. [How agent steps work](/agent-steps) explains a step in full.
 - Built-in tools have closed schemas and appear only when the engine
   supports them.
 - Project tools must use `defineTool` with an `execute` and can't replace a
-  built-in name. Any other tool fails the config load with `INVALID_CONFIG`.
+  built-in name. `defineTool` without an `execute` fails the config load with
+  `CONFIG_LOAD_FAILED`. A tool `defineTool` didn't build, or a built-in name,
+  is `INVALID_CONFIG`.
 - Only read-only project tools may request an observation.
 - A call to a tool the step doesn't offer, or with an undeclared argument,
   never runs. The model reads the refusal as the call's result and tries
@@ -53,6 +55,7 @@ These calls fail with `POLICY_DENIED`.
 | A password into a field that isn't a password field | Purpose must match. A generic secret fills any editable input. |
 | A mutating project tool requesting an observation | Observe in a separate call. |
 | `vision: 'only'` when pixels are withheld | There is nothing to fall back to. |
+| `browser.setCookies` with a cookie URL that isn't `http:` or `https:` | Only a web origin holds cookies. |
 | `app.screenshot()` or `toHaveScreenshot()` after a secret fill | The app may show the secret outside a secure field. |
 | `toHaveScreenshot()` when the engine can't prove every secure field is masked | The screenshot isn't kept. |
 | An agent, executor, or MCP `upload` of a file outside the project root, a hidden file, or a file under a hidden directory | Only project files can leave the computer through a form. |
@@ -186,8 +189,8 @@ Redaction matches strings. These pass through:
 ## Downloads
 
 A download is what the app served. When the session knows a secret value,
-the runner rewrites a text download (`text/*` or JSON, by file extension) and
-labels it `redaction: "complete"`. It replaces with `<secret:name>`:
+the runner rewrites a text download (`.txt`, `.csv`, `.json`, `.html`, or
+`.htm`) and labels it `redaction: "complete"`. It replaces with `<secret:name>`:
 
 - every whole occurrence of a value,
 - any run of 8 or more of its characters, whitespace collapsed or not, so
@@ -195,15 +198,15 @@ labels it `redaction: "complete"`. It replaces with `<secret:name>`:
 - a base64 or base64url run that decodes to either.
 
 Every other download is kept as served and labeled
-`redaction: "incomplete"`: a binary, one that isn't valid UTF-8 or can't be
-rewritten, and any download from a session that knows no secret value.
+`redaction: "incomplete"`: any other extension, one that isn't valid UTF-8
+or can't be rewritten, and any download from a session that knows no secret value.
 
 ## Sessions
 
 A saved session holds authentication state. It also carries, in the same
-ciphertext, the secret values the setup test resolved from a provider and
-whether a secret was filled. The test that restores it redacts those values
-and keeps its pixels withheld. The envelope names the secrets in the clear,
+ciphertext, the secret values the setup test resolved from a provider. The
+test that restores it redacts those values and keeps its pixels withheld. The
+envelope holds the secret names and whether a secret was filled in the clear,
 authenticated.
 
 | Property | Value |
@@ -263,7 +266,7 @@ after download redaction, with the `redaction` label the report records.
 
 | Destination | When |
 | --- | --- |
-| `eu.i.posthog.com` | One telemetry request per CLI invocation, plus at most one per session `e2e mcp` serves, unless you opt out ([Telemetry](/telemetry)). One request per `e2e feedback` you run. |
+| `eu.i.posthog.com` | One telemetry request per CLI invocation or `run()` from `e2e/runner`, plus at most one per session `e2e mcp` serves, unless you opt out ([Telemetry](/telemetry)). One request per `e2e feedback` report sent: none under `--dry-run` or `E2E_TELEMETRY_DEBUG`, for a bug without `--repro`, or under `E2E_TELEMETRY_DISABLED` or `DO_NOT_TRACK`. |
 | Your model provider | Agent steps that call a model. Deterministic tests and fully replayed steps make no model call. |
 | A subscription provider's sign-in and model-list endpoints | `e2e login` and `e2e models` ([Subscriptions](/subscriptions)). |
 | The app's `readyUrl` | Readiness probes for an app the runner starts. |
@@ -271,6 +274,7 @@ after download redaction, with the `redaction` label the report records.
 | The DevTools endpoint in `web({ connect })` | Every run of that target. |
 | The GitHub API | Only from the `@e2e-dev/github` reporter. |
 | `registry.npmjs.org` | One request per `e2e feedback` you run, to check for a newer e2e release. Skipped with `--allow-outdated` and under `E2E_TELEMETRY_DISABLED` or `DO_NOT_TRACK`. |
+| `api.limrun.com` (or `LIMRUN_BASE_URL`) and its devices | Only from [`limrun()`](/integrations/limrun). It signs in with `LIMRUN_API_KEY`. |
 | The Kernel API and its hosted browsers | Only from [`kernel()`](/integrations/kernel). |
 | The Expo API and the simulators' agent-device daemons | Only from [`easSimulators()`](/integrations/eas). It signs in with `EXPO_TOKEN`, else with the eas-cli login in `~/.expo/state.json`. On a CI runner, set `EXPO_TOKEN` or keep that login out of the runner's home. |
 | `mcr.microsoft.com` | Only from [`smol()`](/integrations/smol), to pull the Playwright image. The machines then have unrestricted network access, and reach every port on your computer's loopback through `host.smolvm.internal`, not only `hostPorts` ([Set up the provider](/integrations/smol#set-up-the-provider)). |

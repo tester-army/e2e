@@ -89,6 +89,9 @@ memory and deletes it at cleanup. See [Sessions](/reference/security#sessions).
 Declare each account in config. Read the password from the environment:
 
 ```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+
 export default {
   targets: [{ engine: web(), app: { url: 'http://127.0.0.1:3000' } }],
   credentials: {
@@ -171,6 +174,9 @@ entry in setup tests, and assert the result of the submit. See
 Use `secrets` for API keys, webhook tokens, and other values a test types:
 
 ```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+
 export default {
   targets: [{ engine: web(), app: { url: 'http://127.0.0.1:3000' } }],
   secrets: {

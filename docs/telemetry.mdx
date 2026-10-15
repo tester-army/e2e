@@ -72,7 +72,8 @@ nothing, also on a command. `run()` from `e2e/runner` sends one
 first call can print the notice below on stderr.
 
 The events go in one request when the command ends, with a two-second
-deadline. `e2e mcp` sends each MCP session event in its own request. Events
+deadline. `e2e mcp` sends each MCP session event in its own request.
+`e2e run --watch` sends each run's event when that run ends. Events
 hold only the properties below.
 
 <AccordionGroup>

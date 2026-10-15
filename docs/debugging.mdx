@@ -176,6 +176,14 @@ result holds:
 | `appLog` | What the app logged. Each line's `step` is the `index` of its step, absent before the first step. |
 | `artifacts` | The captured files |
 
+A serial group's tests have no `attempts` of their own. Their results are in
+`run.serialGroups`, one member for each test in each attempt:
+
+```bash
+jq '.run.serialGroups[] | .attempts[-1].members[]? | select(.status != "passed")
+    | {testId, status, error, failure}' .e2e/report.json
+```
+
 ## Watch it happen
 
 <CodeGroup>
@@ -246,7 +254,7 @@ it, the run fails with `UNSUPPORTED_ARTIFACT` before any test starts.
 heading that names the stream, target, file, and test:
 
 ```text
-stdout | web tests/todos.e2e.ts > adds a todo
+stdout | |web| tests/todos.e2e.ts > adds a todo
 hello from the test
 ```
 
@@ -304,17 +312,17 @@ prompts, tool calls, and token usage:
 <CodeGroup>
 ```bash npm
 npx unbox-ai runs .e2e/ai-trace.json
-npx unbox-ai summary .e2e/ai-trace.json --run 1
+npx unbox-ai summary .e2e/ai-trace.json --run 0
 ```
 
 ```bash pnpm
 pnpm dlx unbox-ai runs .e2e/ai-trace.json
-pnpm dlx unbox-ai summary .e2e/ai-trace.json --run 1
+pnpm dlx unbox-ai summary .e2e/ai-trace.json --run 0
 ```
 
 ```bash bun
 bunx unbox-ai runs .e2e/ai-trace.json
-bunx unbox-ai summary .e2e/ai-trace.json --run 1
+bunx unbox-ai summary .e2e/ai-trace.json --run 0
 ```
 </CodeGroup>
 

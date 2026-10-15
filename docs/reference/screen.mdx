@@ -161,7 +161,7 @@ negative or non-finite coordinate and `UNSUPPORTED_CAPABILITY` when the
 engine does not list `tap` in its pointer actions.
 
 ```ts
-const map = await screen.getByRole('image', 'Map').boundingBox();
+const map = (await screen.getByRole('image', 'Map').boundingBox())!;
 await screen.tapAt({ x: map.x + 360, y: map.y + 70 });
 ```
 
@@ -184,8 +184,8 @@ engine's.
 `{ from, to, duration? }` is a swipe along a path between two viewport points:
 a touch swipe on a device, a pointer drag on a document platform, which is
 what reveals a row action, dismisses a sheet, or drags a card between
-columns. `duration` sets how long the gesture takes in milliseconds; omitted
-leaves the duration to the engine's default. Uses `config.actionTimeout`.
+columns. `duration` sets how long the gesture takes, an integer from 16
+through 10000 ms; omitted leaves it to the engine's default. Uses `config.actionTimeout`.
 Throws `ACTION_FAILED` when the gesture is rejected, `INVALID_ARGUMENT` for
 a mix of the two shapes, an out-of-range duration, or a coordinate off the
 plane, and `UNSUPPORTED_CAPABILITY` when the engine does not list `swipe` in
@@ -194,7 +194,7 @@ its actions (a direction) or `swipeTo` in its pointer actions (a path).
 ```ts
 await screen.swipe({ direction: 'up', momentum: 'fast' });
 
-const row = await screen.getByText('Design review').boundingBox();
+const row = (await screen.getByText('Design review').boundingBox())!;
 await screen.swipe({
   from: { x: row.x + row.width - 10, y: row.y + row.height / 2 },
   to: { x: row.x + 10, y: row.y + row.height / 2 },
@@ -601,7 +601,7 @@ export interface SwipePathOptions {
   from: Point;
   /** Where it lifts. */
   to: Point;
-  /** Gesture duration in milliseconds; omitted = the engine's default. */
+  /** Gesture duration, an integer from 16 through 10000 ms; omitted = the engine's default. */
   duration?: number;
   direction?: never;
   momentum?: never;

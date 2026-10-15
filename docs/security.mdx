@@ -18,14 +18,14 @@ field and types the value itself.
 
 After a secret fill, the rest of the attempt has no screenshots, because
 the app could show the value anywhere. Every known secret value becomes
-`<secret:name>` in model input, reports, console output, and text
-downloads.
+`<secret:name>` in model input, reports, console output, and `.txt`,
+`.csv`, `.json`, `.html`, and `.htm` downloads.
 
 ## What can still leak
 
 Redaction matches strings, and only a secret fill turns screenshots off:
 
-- **Video and binary downloads.** Neither is masked. If the test typed a
+- **Video and other downloads.** Neither is masked. If the test typed a
   password, check them before you share them.
 - **`command.log`.** It holds your app's stdout and stderr verbatim. Keep
   secrets out of your app's output.
@@ -66,8 +66,9 @@ tokens.
 
 A run connects to your model provider, the app under test, and, unless you
 opt out, [telemetry](/telemetry) at `eu.i.posthog.com`. There is no crash
-reporting or update check. Integrations such as Kernel, EAS Simulators, and
-smol add their own destinations, listed with the rest under
+reporting. Only `e2e feedback` checks `registry.npmjs.org` for a newer
+release. Integrations such as Kernel, EAS Simulators, Limrun, and smol add
+their own destinations, listed with the rest under
 [Outbound connections](/reference/security#outbound-connections).
 
 ## Report a vulnerability

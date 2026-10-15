@@ -80,9 +80,9 @@ Write `MIGRATION.md` now (format in step 8), every source file `todo`.
 The harness is the config, the app launch, and one green test. It is done
 once and the progress file says so; later sessions skip this step.
 
-1. No e2e config: `npx e2e init --yes` (topic `setup`). On a device project, swap
-   `@e2e-dev/web` for `@e2e-dev/mobile` and delete or rewrite the example
-   test. One target per platform or browser the source suite covers.
+1. No e2e config: `npx e2e init --yes` (topic `setup`), with `--engine mobile`
+   on a device project. Delete or rewrite the example test. One target per
+   platform or browser the source suite covers.
 2. Ask the user which model agent steps use, and configure it (topic
    `agent`). A literal port needs none: every test can be deterministic, and
    a config without a model runs those.

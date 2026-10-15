@@ -515,7 +515,7 @@ test('checkout summary', async ({ agent, screen }) => {
 
 ```text
 ASSERTION_FAILED: 2 soft assertions failed
-1. expected "$40.00" to be "$41.00"
+1. expected "$41.00" to be "$40.00"
 2. expect.toBeEnabled failed
    locator: getByRole('button', 'Pay')
    expected: enabled
@@ -598,9 +598,9 @@ At the deadline it throws `ASSERTION_FAILED` naming the matcher, then
 last `read` error, or `no read completed`.
 
 ```text
-expect.poll(...).toBe(...) timed out after 5000 ms
+expect.poll(...).not.toBe(...) timed out after 5000 ms
 the batch never finished
-last: expected "running" to be "done"
+last: expected "running" not to be "running"
 ```
 
 ```ts

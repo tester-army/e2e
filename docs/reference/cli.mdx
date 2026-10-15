@@ -539,8 +539,8 @@ results that ran at least one attempt.
 With `--ai-trace`, the run also writes `<output>/ai-trace.json`: one entry per
 model round trip with the exact prompt, tool definitions, response, usage,
 and provider metadata. Observations in it are already redacted. Inline image
-and file bytes are replaced with byte counts. Open it with
-`npx unbox-ai .e2e/ai-trace.json` for the default output; see [Debugging a run](/debugging#agent-steps).
+and file bytes are replaced with byte counts. List its runs with
+`npx unbox-ai runs .e2e/ai-trace.json`; see [Debugging a run](/debugging#agent-steps).
 
 ### Watch mode
 
@@ -562,7 +562,7 @@ bunx e2e run --watch tests/checkout.e2e.ts --headed
 </CodeGroup>
 
 `--watch` runs the selection, prints the summary, and waits instead of
-exiting. A saved test file (one the config's [`tests`](/reference/config#tests)
+exiting. A saved test file (one the config's [`tests`](/reference/config#top-level)
 globs match) runs again on its own, whole, in place of the positionals. A
 saved source file next to the tests (a helper, a fixture: `.ts`, `.js`,
 `.json` under the directories the globs name, or beside the config) and a

@@ -222,5 +222,7 @@ A queued call cancelled by the client does not execute when its turn arrives.
 
 `e2e mcp` exits 0 when the client disconnects, with or without a session
 open, or a signal ends it, and 2
-when the command line is invalid. Config and engine failures come back as
-tool errors with the same codes the CLI prints.
+when the command line is invalid. It exits 1 when an uncaught error shuts the
+server down. A startup failure exits with its error's
+[category code](/reference/cli#exit-codes). Config and engine failures come
+back as tool errors with the same codes the CLI prints.

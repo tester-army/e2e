@@ -12,7 +12,7 @@ export const migrationPrompt = `Migrate this project's Maestro flows to e2e, one
 
 1. Read the migration guide above. It maps every Maestro config option and command to e2e and marks what e2e does not have yet. The mobile guide covers devices and app builds.
 2. e2e tests are TypeScript. If the project has no \`package.json\`, as in a native iOS or Android project, create the test project in an \`e2e/\` folder beside the app.
-3. If the test project has no e2e config (\`e2e.config.ts\` or \`e2e.config.mts\`), run \`npx e2e init --yes\` (or the pnpm or bun equivalent) there. It writes a web config and an example test, and installs nothing yet. Replace @e2e-dev/web with @e2e-dev/mobile, and rewrite \`tests/example.e2e.ts\` for the mobile engine or delete it.
+3. If the test project has no e2e config (\`e2e.config.ts\` or \`e2e.config.mts\`), run \`npx e2e init --yes --engine mobile\` (or the pnpm or bun equivalent) there. It writes a mobile config with one target for this machine's platform and an example test against the Settings app, and installs nothing yet. Rewrite \`tests/example.e2e.ts\` for your app or delete it.
 4. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
 5. If you ran init, ask me which model to use for agent steps: a ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, an API key, or a local model. Configure it with its provider package. If it needs a sign-in, give me the \`npx e2e login\` command and wait until I confirm.
 6. Port the flows' \`appId\` and \`.maestro/config.yaml\` into the e2e config: one target per platform with \`mobile({ platform })\`, \`app: { bundleId }\` on each target, and tags as \`{ tags }\` on tests. Move passwords and tokens from \`env\` into \`credentials\` or \`secrets\`.
@@ -185,7 +185,7 @@ declares `requires: ['device']` and other targets skip it. Calls on `screen`,
 | `setAirplaneMode`, `toggleAirplaneMode` | `device.setAirplaneMode(true)` or `false`, the state you want; `true` is Android only | device only |
 | `setDarkMode`, `toggleDarkMode` | `device.setAppearance('dark')` or `'light'` | device only |
 | `setOrientation` | `device.setOrientation('landscape-left')` | device only |
-| `setPermissions` | `device.setPermission(name, 'grant' \| 'deny' \| 'reset')`, one permission per call, on the open app | device only |
+| `setPermissions` | `device.setPermission(name, 'grant' \| 'deny' \| 'reset')`, one permission per call, on the target's app, which need not be running; call it before `app.open()` | device only |
 | a second `appId` mid-flow | `device.openApp(id)`; the `open_app` tool lets the agent switch inside a goal, see [Agent tools](/mobile#agent-tools) | device only |
 | platform-specific selectors | `device.locator('role=text label="..."')`, agent-device's selector terms | device only |
 

@@ -51,8 +51,8 @@ is `INVALID_ARGUMENT`. All durations are in milliseconds.
 The `assert` row holds for the built-in agent. When the selected agent has a
 custom `executor`, `assert` is dispatched to it as a step: its budget is the
 agent's `maxSteps` and `maxModelCalls`, its default timeout is
-`config.timeout`, and `vision` on the call is `UNSUPPORTED_CAPABILITY`;
-`screenshot` still applies.
+`config.timeout`, and `vision` on the call is `UNSUPPORTED_CAPABILITY`
+unless the executor declares `vision: true`; `screenshot` still applies.
 
 ## agent.act
 
@@ -149,7 +149,7 @@ plain tap instead.
 Mobile engines declare `hover`, `doubleTap`, `longPress`, `check`,
 `uncheck`, `dragTo`, and `session.back`, so a device offers `hover`,
 `double_tap`, `long_press`, `check`, `drag`, and `back`; they declare no
-`secondaryTap`, `scrollIntoView`, or `setInputFiles`. Tab switching has no
+`secondaryTap`, `selectOption`, `scrollIntoView`, or `setInputFiles`. Tab switching has no
 verb yet: a new tab is invisible to the model.
 
 ### Pixel tools: screenshot and the point verbs
@@ -266,8 +266,8 @@ executor's explanation alone. No evidence is captured with
 `screenshot` controls failure evidence attached after the judgment; `vision`
 controls what the model is shown before it. A custom `StepExecutor` judges
 the assertion itself: it honors `screenshot`, since the runner takes that
-evidence after the verdict, and rejects `vision` with
-`UNSUPPORTED_CAPABILITY`, since the executor decides what its model sees.
+evidence after the verdict. It receives `vision` as `step.vision` when it
+declares `vision: true`; otherwise `vision` is `UNSUPPORTED_CAPABILITY`.
 
 ```ts
 await agent.assert('the dashboard shows a trial badge');
@@ -471,6 +471,14 @@ export interface StepCacheInfo {
   notRecorded?: 'param-collision';
   replayedActions: number;
   totalActions: number;
+  /** The step's cache key, which names its entry file (`<cache.dir>/<entry>.json` in the file store). */
+  entry?: string;
+  /**
+   * Why the replay missed or handed off, past what the reason token says:
+   * the recorded action it stopped at and what went wrong there, or the
+   * screen the recording started on against the one the step did.
+   */
+  detail?: string;
 }
 
 type TraceReplayMissReason = 'retry' | 'no-entry' | 'invalid-entry' | 'truncated' | 'wrong-context';

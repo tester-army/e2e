@@ -29,8 +29,9 @@ Validation fails with `INVALID_CONFIG` for:
 - a hook (`observe`, `locate`, `perform`, `performAt`, `prepare`, `finish`,
   `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`,
   `validateApp`) that is not a function;
-- an unknown top-level key on an object literal (a class instance's own
-  fields are not checked);
+- an unknown top-level key on an object literal, `app` included (declare
+  the app on the target and check it in `validateApp`); a class instance's
+  own fields are not checked;
 - `perform`, `locate`, `performAt`, or `keyboard` without `observe`;
 - `perform` without `actions` or the reverse; an `actions` list that is
   empty, repeats a kind, or names one outside `LOCATOR_ACTION_KINDS`;
@@ -45,8 +46,6 @@ Validation fails with `INVALID_CONFIG` for:
   `stopTrace` an engine published before their removal declares are
   accepted and never called);
 - a `secrets` that is not an array of `secrets.get()` handles;
-- an `app` member: the app under test is declared on the target, and an
-  engine checks what it needs in `validateApp`;
 - a `fixtures` that is not an object, a fixture that is not a factory
   function, or a fixture name that is not a lower-camel identifier or shadows
   `agent`, `app`, `screen`, `platform`, or `session`.
@@ -253,7 +252,7 @@ export interface OperationContext {
 | Member | Capability | Requires | Unlocks |
 | --- | --- | --- | --- |
 | `observe` | `observation` | - | judgment tier, prompt snapshots, trace replay, the viewport swipe's root |
-| `perform` + `actions` | `actions` | `observe` | the agent's grammar verbs (`tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `type_secret`, `scroll`, `scroll_to`, `drag`, `upload`, and `tap_at` or `hover_at` when the point lands on a listed node) and the `screen`/`Locator` action set with platform actionability checks, each only for a kind listed in `actions` |
+| `perform` + `actions` | `actions` | `observe` | the agent's grammar verbs (`tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `type_secret`, `scroll`, `scroll_to`, `drag`, `upload`, and `tap_at`, `hover_at`, `type_at`, `press_at`, or `select_at` when the point lands on a listed node) and the `screen`/`Locator` action set with platform actionability checks, each only for a kind listed in `actions` |
 | `locate` | `location` | `observe` | `screen`, `Locator`, `expect(locator)` |
 | `tapModifiers: true` | - | `perform` | `modifiers` on `tap`, `doubleTap`, and `secondaryTap` (`row.click({ modifiers: ['Shift'] })`), held for the click; without it such a call is `UNSUPPORTED_CAPABILITY` |
 | `performAt` + `pointerActions` | `pointer` | `observe` | the agent's `tap_at` and `hover_at` verbs when the point lands on nothing the tree lists (the `tap` and `hover` pointer kinds), and the test's `screen.tapAt` and `tap({ position })` (the `tap` kind) and `screen.swipe({ from, to })` (the `swipeTo` kind): one pointer action at a viewport point in the CSS pixels of `SemanticNode.rect`, with no node behind it |
@@ -272,7 +271,9 @@ The agent offers the model only what `actions` declares: `tap` needs the
 `scroll` and `scroll_to({ text })` need `swipe`; `scroll_to({ target })` needs `scrollIntoView`; `drag` needs
 `dragTo`; `upload` needs `setInputFiles`; `navigate` needs `session.open`;
 `back` needs `session.back`; `tap_at` and `hover_at` need the `tap` or
-`hover` kind in `actions` or in `pointerActions`. `clear` and `focus` unlock
+`hover` kind in `actions` or in `pointerActions`; `type_at` needs `fill` or
+`keyboard`; `press_at` needs `press` or `keyboard`; `select_at` needs
+`selectOption`. `clear` and `focus` unlock
 no verb. An undeclared verb is absent from the toolset, and a
 `screen`/`Locator` method for an undeclared kind fails with
 `UNSUPPORTED_CAPABILITY` before reaching the engine.
@@ -402,6 +403,8 @@ export interface EnginePrepareInfo {
    * fail every test behind it.
    */
   readonly signal: AbortSignal;
+  /** Whether the run asked for a visible surface (`--headed`), as `EngineInitInfo` declares it. */
+  readonly headed: boolean;
   /**
    * Reports one line of progress. The runner streams it as a `notice` run
    * event, so it reaches the reporter and every host sink instead of being
@@ -1137,7 +1140,9 @@ export interface VideoLink {
 The runner calls `startVideo` only for an attempt whose
 [video mode](/reference/config#video) records, after `startAttempt` and any
 session restore. It uses the launch budget and stops before `endAttempt`,
-within the cleanup budget; a `startVideo` that fails fails the launch. Return
+within the cleanup budget. When the video mode is set explicitly, a
+`startVideo` that fails fails the launch and a `stopVideo` that fails fails
+cleanup. With the default mode, the runner drops the video. Return
 segments in recording order from `stopVideo`. The runner decides which recordings are kept and deletes a file an
 attempt does not keep.
 

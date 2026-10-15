@@ -29,9 +29,12 @@ Unknown keys are rejected with `INVALID_CONFIG` at every level. There is no
 top-level `app` key: each target declares the app it tests (see
 [the app under test](#the-app-under-test)).
 
-An optional key takes a value or is left out; `undefined` is not a value, so
-`store: process.env.CACHE_URL && createStore(...)` fails to compile. Spread a
-key that depends on the environment in only when it has a value:
+An optional key takes a value or is left out. Under
+`exactOptionalPropertyTypes`, `undefined` is a type error, so
+`store: process.env.CACHE_URL && createStore(...)` fails to compile. At
+runtime, `undefined` counts as unset. The target's `app` fields also accept
+`undefined` in their types, so they can read `process.env` directly. Spread
+any other key that depends on the environment in only when it has a value:
 
 ```ts
 export default {
@@ -460,7 +463,7 @@ run.
 A run that stops before its tests start writes nothing here: a selection
 that matches no test (`NO_TESTS`, a mistyped `--grep`), a collection error,
 a target that cannot record what it asks for (`UNSUPPORTED_ARTIFACT`),
-`NO_LAST_RUN`, an app or service that fails to start, or an interrupt
+`NO_LAST_RUN`, an app command that fails to start, or an interrupt
 leaves the previous run's `report.json`, `ai-trace.json`, and `results/`
 as they were, so `--last-failed` still reads the last run that executed. An `e2e mcp` session writes its attempt's artifacts under
 `results/mcp/` and never clears it.

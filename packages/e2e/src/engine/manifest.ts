@@ -172,7 +172,7 @@ export function defineEngine(spec: Engine): EngineHandle {
   }
   const name = spec.name;
   if (typeof spec.version !== 'string' || spec.version.trim() === '') {
-    throw invalid(name, 'version must be a non-empty string; it is provenance and keys the replay cache');
+    throw invalid(name, 'version must be a non-empty string; it is recorded in reports and keys saved sessions');
   }
   if (spec.spiVersion !== ENGINE_SPI_VERSION) {
     throw invalid(
