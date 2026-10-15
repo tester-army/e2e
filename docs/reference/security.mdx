@@ -29,8 +29,8 @@ larger budget. [How agent steps work](/agent-steps) explains a step in full.
   supports them.
 - Project tools must use `defineTool` with an `execute` and can't replace a
   built-in name. `defineTool` without an `execute` fails the config load with
-  `CONFIG_LOAD_FAILED`. A tool `defineTool` didn't build, or a built-in name,
-  is `INVALID_CONFIG`.
+  `CONFIG_LOAD_FAILED`. A tool not created with `defineTool`, or one named
+  after a built-in or harness tool, is `INVALID_CONFIG`.
 - Only read-only project tools may request an observation.
 - A call to a tool the step doesn't offer, or with an undeclared argument,
   never runs. The model reads the refusal as the call's result and tries

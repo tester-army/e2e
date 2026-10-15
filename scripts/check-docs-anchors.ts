@@ -23,8 +23,8 @@ const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 const HEADING = /^ {0,3}(#{1,4})\s+(.+?)\s*#*\s*$/;
 const CUSTOM_ID = /\s*\{#([^}]+)\}$/;
 const COMPONENT = /<(Tab|Accordion|[a-z][\w-]*|ShowMore)\b([^>]*)>/g;
-const ATTRIBUTE = (name: string) => new RegExp(`\\b${name}="([^"]*)"`);
-const LINK = /\]\(((?:\/[^)\s#]*)?)#([^)\s]+)\)|href="((?:\/[^"#]*)?)#([^"]+)"/g;
+const ATTRIBUTE = (name: string) => new RegExp(`(?:^|\\s)${name}="([^"]*)"`);
+const LINK = /\]\(((?:\/[^)\s#?]*)?)(?:\?[^)\s#]*)?#([^)\s]+)\)|href="((?:\/[^"#?]*)?)(?:\?[^"#]*)?#([^"]+)"/g;
 
 /** Every `.mdx` page under `dir`, skipping `node_modules`. */
 function pages(dir: string): string[] {
