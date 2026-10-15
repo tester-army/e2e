@@ -52,7 +52,7 @@ describe('vision', () => {
     expect(Object.keys(requests[0]?.questions['operation']?.criteria as object)).toContain('type_at');
     expect(requests[1]?.state).toMatchObject({ target: 'the Name field' });
     expect(fixture.actions.tapAt).toHaveBeenCalledWith({ x: 240, y: 263 });
-    expect(fixture.actions.typeText).toHaveBeenCalledWith('Ada', { replace: true });
+    expect(fixture.actions.typeText).toHaveBeenCalledWith('Ada');
     expect(text.prompts).toHaveLength(1);
     expect(fixture.turns[0]?.calls[0]).toBe('type into the Name field at (240, 263)');
   });
@@ -138,7 +138,10 @@ describe('vision details', () => {
     // and settles on its cell 4 center (385, 363); the 200px zoom around that starts at (285, 263) and settles 112.5px in.
     expect(requests[1]?.questions['x']?.instructions).toContain('The image is 800 pixels wide and 600 pixels tall');
     expect(requests[2]?.questions['x']?.instructions).toContain('2x zoom of a 400 by 400 pixel region');
-    expect(sent(3).png.width).toBe(400);
+    const closest = sent(3);
+    expect([closest.png.width, closest.png.height]).toEqual([400, 400]);
+    expect(closest.at(50, 150)).toEqual([255, 0, 255]);
+    expect(closest.at(125, 125)).toEqual([255, 255, 255]);
     expect(requests[3]?.questions['x']?.instructions).toContain('2x zoom of a 200 by 200 pixel region');
     expect(fixture.actions.tapAt).toHaveBeenCalledWith({ x: 398, y: 376 });
   });

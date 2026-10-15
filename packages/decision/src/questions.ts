@@ -45,6 +45,8 @@ const TERMINALS: Readonly<Record<Terminal, string>> = {
   blocked: 'No supported operation can make progress from here.',
 };
 const OPERATIONS: Readonly<Record<Operation | Control, string>> = {
+  // Fields take a tap too, unnamed here: measured on Jev, naming them moved taps onto fields the goal types into
+  // (async-states and debounced-search 0/3 on the web benchmark).
   tap: 'Activate a button, link, tab, or option.',
   type: 'Enter text into a field.',
   typeSecret: 'Fill a declared secret into its field.',

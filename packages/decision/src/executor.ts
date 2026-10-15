@@ -346,10 +346,10 @@ class Step {
   }
   /** Where a drawn control is: recalled from a tap that landed, or located afresh, and recorded for the next look to settle. */
   private async pointFor({ path }: Acting, screenshot: Screenshot, wanted: string, aim: Aim): Promise<Point | { verdict: StepVerdict }> {
-    const point = this.locator.known(path, wanted) ?? (await this.locator.locate(screenshot, path, wanted, aim));
+    const point = this.locator.known(path, wanted, aim) ?? (await this.locator.locate(screenshot, path, wanted, aim));
     if (point === undefined) return { verdict: blocked(this.budgetMessage()) };
     if ('uncertain' in point) return { verdict: blocked(`The tap point is uncertain (${point.uncertain}).`) };
-    this.locator.tapped(path, wanted, point, screenshot);
+    this.locator.tapped(path, wanted, aim, point, screenshot);
     return point;
   }
   /**

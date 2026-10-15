@@ -80,8 +80,9 @@ export async function perform(ctx: StepExecutorContext, action: Action): Promise
     }
     case 'type_at':
       // The tap gives the drawn field focus; the keyboard then types into whatever took it.
+      // No replace: a device cannot clear a focused field without a node, so text goes in at the caret everywhere.
       await actions.tapAt(action.point);
-      await actions.typeText(action.text, { replace: true });
+      await actions.typeText(action.text);
       return undefined;
   }
 }

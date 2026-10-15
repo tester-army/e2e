@@ -45,12 +45,12 @@ export class PointLocator {
     private readonly gates: Gates,
   ) {}
   /** A point already known for this control on this page. */
-  known(path: string, wanted: string): Point | undefined {
-    return this.landed.get(key(path, wanted));
+  known(path: string, wanted: string, aim: Aim): Point | undefined {
+    return this.landed.get(key(path, wanted, aim));
   }
   /** Records a point tap, to be settled by the next observation. */
-  tapped(path: string, wanted: string, point: Point, screenshot: Screenshot): void {
-    this.pending = { key: key(path, wanted), point, before: regionHash(screenshot, point, ZOOM_BOXES[0]) };
+  tapped(path: string, wanted: string, aim: Aim, point: Point, screenshot: Screenshot): void {
+    this.pending = { key: key(path, wanted, aim), point, before: regionHash(screenshot, point, ZOOM_BOXES[0]) };
   }
   /** Settles the last point tap against the newest pixels: changed means it landed. */
   settle(screenshot: Screenshot | undefined): void {
@@ -99,6 +99,7 @@ export class PointLocator {
     return { x: x.score, y: y.score };
   }
 }
-function key(path: string, wanted: string): string {
-  return `${path}\0${wanted}`;
+/** A landed point's key: a field and a control the text model named alike are located apart. */
+function key(path: string, wanted: string, aim: Aim): string {
+  return `${path}\0${aim}\0${wanted}`;
 }

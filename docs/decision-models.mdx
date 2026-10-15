@@ -115,7 +115,8 @@ suggestion list. While an on-screen
 keyboard shows on an engine that can dismiss it, such as the mobile engine,
 the executor also offers `dismiss_keyboard`.
 
-Every operation asks for its target, even when only one element fits it.
+Every operation that acts on an element asks for its target, even when only
+one element fits it.
 Every target question has a `none` option, so a provider with no fitting
 target answers `none` instead of refusing. `none` blocks the step.
 
@@ -198,8 +199,8 @@ of each to repeat a tap on the same page.
 When the engine can type into whatever has focus, vision also offers
 `type_at` for a drawn field. The text model names the field and the value
 from the goal, the decision model finds the field on the screenshot, and
-the executor taps it and types the value, replacing any text there. It costs
-two decide calls and one text call.
+the executor taps it and types the value at the caret, after any text
+already there. It costs two decide calls and one text call.
 
 ## Provider options
 
@@ -244,8 +245,8 @@ executor takes that choice with probability 1 and confidence 0, so a
 
 - No `navigate`. In-app navigation is a `tap` on a link. URLs belong in
   test code (`browser.goto`, `app.open`).
-- No multi-select `listbox`, no `scrollUntil`, and no typing at a point
-  (`type_at`).
+- No multi-select `listbox` and no `scrollUntil`. `type_at` never clears a
+  drawn field first, so it suits empty fields.
 - The text model that names a drawn control doesn't see pixels. It can't
   follow an instruction that exists only as drawn text, such as a wizard
   that paints "tap the circle".
