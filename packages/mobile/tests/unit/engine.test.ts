@@ -936,6 +936,57 @@ describe('location', () => {
   });
 });
 
+describe('a screen agent-device cannot read yet', () => {
+  const ABOUT = { kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'About', exact: true } } } as const;
+  const insufficientContent = () =>
+    new AppError('COMMAND_FAILED', 'Android snapshot helper returned insufficient foreground app content', {
+      androidSnapshotHelperFailureReason: 'content-poor-app-window',
+    });
+  const unreadable = () => {
+    throw insufficientContent();
+  };
+
+  it('locates nothing on it, so the poll waits for the app to render', async () => {
+    const h = harness({ platform: 'android' });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', unreadable);
+    await expect(h.engine.locate!(ABOUT, operation())).resolves.toEqual([]);
+    h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
+    await expect(h.engine.locate!(ABOUT, operation())).resolves.toHaveLength(1);
+  });
+
+  it('fails a locate whose capture spent the budget with the reason, so the wait ends saying why', async () => {
+    const h = harness({ platform: 'android' });
+    await openAttempt(h);
+    vi.useFakeTimers();
+    try {
+      h.fake.respond('capture.snapshot', () => new Promise((_, reject) => setTimeout(() => reject(insufficientContent()), 3_000)));
+      const located = h.engine.locate!(ABOUT, { ...operation(), timeoutMs: 1_000 });
+      const settled = expect(located).rejects.toMatchObject({ code: 'ENGINE_FAILURE', message: expect.stringContaining('insufficient foreground app content') });
+      await vi.advanceTimersByTimeAsync(3_000);
+      await settled;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('still fails an observation on it', async () => {
+    const h = harness({ platform: 'android' });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', unreadable);
+    await expect(h.engine.observe!(operation())).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+  });
+
+  it('fails a locate on any other snapshot failure', async () => {
+    const h = harness({ platform: 'android' });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => {
+      throw new AppError('COMMAND_FAILED', 'adb went away');
+    });
+    await expect(h.engine.locate!(ABOUT, operation())).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+  });
+});
+
 describe('the trace', () => {
   it('hands the harness the capture a locate matched against, with no snapshot of its own, and the device it runs on', async () => {
     const h = harness({ device: 'iPhone 16' });

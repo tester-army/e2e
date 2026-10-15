@@ -44,7 +44,7 @@ import {
   ConfigurationError,
   TestError,
 } from 'e2e/engine';
-import { isSnapshotPresentationFailure, runCommand, staleOr } from './errors.ts';
+import { isSnapshotPresentationFailure, isUnreadableCapture, runCommand, staleOr } from './errors.ts';
 import { pointerInteraction, DEFAULT_LONG_PRESS_MS } from './actions.ts';
 import { resolveExpression } from './locate.ts';
 import {
@@ -897,6 +897,23 @@ export class AgentDeviceSurface {
     }
   }
 
+  /**
+   * Snapshot for a locate; undefined for a screen agent-device could not read
+   * yet (an app still on its splash). The harness polls a locate until its
+   * deadline, so that screen matches nothing and the poll waits for it to
+   * render. A capture that leaves no budget for another poll fails with the
+   * reason instead, so a wait that ends on an unreadable screen says so.
+   */
+  private async locateSnapshot(operation: OperationContext): Promise<RawSnapshot | undefined> {
+    const startedMs = Date.now();
+    try {
+      return await this.snapshotOrEmpty(operation, false);
+    } catch (cause) {
+      if (operation.signal.aborted || !isUnreadableCapture(cause) || Date.now() - startedMs >= operation.timeoutMs) throw cause;
+      return undefined;
+    }
+  }
+
   private project(raw: RawSnapshot): ProjectedSnapshot {
     const projected = projectSnapshot(raw.nodes ?? [], {
       mintId: () => {
@@ -956,7 +973,8 @@ export class AgentDeviceSurface {
 
   /** Retains only action bindings for matches, independently of the observation generation. */
   async locate(expression: LocatorExpression, operation: OperationContext): Promise<readonly SemanticNode[]> {
-    const raw = await this.snapshotOrEmpty(operation, false);
+    const raw = await this.locateSnapshot(operation);
+    if (raw === undefined) return [];
     const projected = this.project(raw);
     this.traceScreen(raw, projected);
     const matches = resolveExpression(expression, projected.index, this.options.platform);

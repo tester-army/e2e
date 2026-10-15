@@ -144,6 +144,20 @@ const PRESENTATION = {
   firstMove: 'Rerun.',
 };
 
+/**
+ * The `details.androidSnapshotHelperFailureReason` values agent-device gives
+ * up on a capture with when the foreground holds too little to read: the
+ * helper returned nothing, only a system window, or an app window with almost
+ * no content. A cold-starting app on a slow emulator does this until it
+ * renders. Mirrors agent-device's `isUnreadableCaptureContentError`, which
+ * its root entry does not export (0.21.25).
+ */
+const UNREADABLE_CAPTURE_REASONS: ReadonlySet<string> = new Set([
+  'empty-helper-output',
+  'system-window-only',
+  'content-poor-app-window',
+]);
+
 const RUNNER_RECOVERY =
   'If the next run meets it again, stop the daemon (`npx agent-device daemon stop`) and reboot the simulator (`xcrun simctl shutdown <udid>`, then `boot`).';
 
@@ -220,6 +234,17 @@ export function isRunnerFailure(error: unknown): boolean {
  */
 export function isSnapshotPresentationFailure(error: unknown): boolean {
   return error instanceof Error && isPresentationFailure(error.cause);
+}
+
+/**
+ * True for a translated snapshot agent-device took on Android but found too
+ * little foreground content in to read. The screen is still arriving, so a
+ * caller that polls may read it as nothing there yet.
+ */
+export function isUnreadableCapture(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const reason = details(error.cause).androidSnapshotHelperFailureReason;
+  return typeof reason === 'string' && UNREADABLE_CAPTURE_REASONS.has(reason);
 }
 
 /**
