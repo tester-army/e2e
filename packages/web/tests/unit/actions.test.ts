@@ -169,7 +169,7 @@ function stubLocator(box = { x: 10, y: 20, width: 200, height: 100 }, aim: 'poin
     setInputFiles: vi.fn(async () => undefined),
     dragTo: vi.fn(async () => undefined),
     boundingBox: vi.fn(async () => box),
-    evaluate: vi.fn(async () => aim),
+    evaluate: vi.fn(async () => (aim === 'blocked' ? { aim } : { aim, box })),
     page: () => ({ viewportSize: () => ({ width: 1280, height: 720 }), mouse: { wheel, move }, evaluate: frame }),
   };
   const target: ActionTarget = { kind: 'locator', locator: locator as unknown as PwLocator };
@@ -209,11 +209,13 @@ describe('dispatchLocatorAction', () => {
     expect(wheel).toHaveBeenLastCalledWith(-600, 0);
   });
 
-  it('wheels a node hit at its centre there without hovering it first', async () => {
+  it('wheels a node hit at its centre there, at the box the hit test read, without hovering it first', async () => {
     const { locator, target, wheel, move } = stubLocator({ x: 0, y: 0, width: 400, height: 300 }, 'centre');
     await dispatchLocatorAction(target, { kind: 'swipe', direction: 'down' }, OPERATION, lookup);
     expect(locator.hover).not.toHaveBeenCalled();
+    expect(locator.boundingBox).not.toHaveBeenCalled();
     expect(move).toHaveBeenCalledWith(200, 150);
+    expect(move.mock.invocationCallOrder[0]).toBeLessThan(wheel.mock.invocationCallOrder[0]!);
     expect(wheel).toHaveBeenCalledWith(0, 150);
   });
 

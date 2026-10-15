@@ -454,13 +454,14 @@ export async function performElementSwipe(
   timeout: number,
 ): Promise<void> {
   // A node the pointer already hovers takes the wheel where it is; one hit at
-  // its centre takes it there; otherwise hover waits for it to be actionable,
-  // scrolls it into view, and reports whatever intercepts the pointer.
-  const aim = await (target.kind === 'locator'
+  // its centre takes it there, at the box that hit test read; otherwise hover
+  // waits for it to be actionable, scrolls it into view, and reports whatever
+  // intercepts the pointer.
+  const aimed = await (target.kind === 'locator'
     ? target.locator.evaluate(wheelAim, undefined, { timeout })
     : target.element.evaluate(wheelAim));
-  if (aim === 'blocked') await asActionable(target).hover({ timeout });
-  const box = await targetBoundingBox(target, timeout);
+  if (aimed.aim === 'blocked') await asActionable(target).hover({ timeout });
+  const box = aimed.aim === 'blocked' ? await targetBoundingBox(target, timeout) : aimed.box;
   if (box === null) {
     throw new EngineError('NOT_ACTIONABLE', 'element has no visible bounding box', {
       retryable: false,
@@ -472,7 +473,7 @@ export async function performElementSwipe(
   );
   const [deltaX, deltaY] = wheelDelta(direction, distance);
   const page = await targetPage(target);
-  if (aim === 'centre') await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  if (aimed.aim === 'centre') await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await wheelRendered(page, deltaX, deltaY);
 }
 
@@ -493,18 +494,24 @@ function nextRenderedFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => window.setTimeout(resolve, 0)));
 }
 
+/** Where a wheel reaches a node, and the box it read when it was not blocked. */
+type WheelAim =
+  | { readonly aim: 'pointer' | 'centre'; readonly box: { x: number; y: number; width: number; height: number } }
+  | { readonly aim: 'blocked' };
+
 /**
  * Page-side: where a wheel reaches `element` in a top-level document, whose
  * box is the page's: at the pointer when it already hovers the element, at
  * its centre when the hit target there is the element or inside it, or
  * `blocked` when neither holds.
  */
-function wheelAim(element: Element): 'pointer' | 'centre' | 'blocked' {
-  if (window !== window.top) return 'blocked';
-  if (element.matches(':hover')) return 'pointer';
+function wheelAim(element: Element): WheelAim {
+  if (window !== window.top) return { aim: 'blocked' };
   const rect = element.getBoundingClientRect();
+  const box = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  if (element.matches(':hover')) return { aim: 'pointer', box };
   const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
-  return hit !== null && element.contains(hit) ? 'centre' : 'blocked';
+  return hit !== null && element.contains(hit) ? { aim: 'centre', box } : { aim: 'blocked' };
 }
 
 function swipeDistance(extent: number, momentum: Momentum): number {
