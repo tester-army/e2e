@@ -453,9 +453,13 @@ export async function performElementSwipe(
   momentum: Momentum,
   timeout: number,
 ): Promise<void> {
-  // Hover first: it auto-waits for visibility on both target kinds, so the
-  // immediate box read below observes a settled element.
-  await asActionable(target).hover({ timeout });
+  // A node the pointer already hovers takes the wheel where it is; one hit at
+  // its centre takes it there; otherwise hover waits for it to be actionable,
+  // scrolls it into view, and reports whatever intercepts the pointer.
+  const aim = await (target.kind === 'locator'
+    ? target.locator.evaluate(wheelAim, undefined, { timeout })
+    : target.element.evaluate(wheelAim));
+  if (aim === 'blocked') await asActionable(target).hover({ timeout });
   const box = await targetBoundingBox(target, timeout);
   if (box === null) {
     throw new EngineError('NOT_ACTIONABLE', 'element has no visible bounding box', {
@@ -468,6 +472,7 @@ export async function performElementSwipe(
   );
   const [deltaX, deltaY] = wheelDelta(direction, distance);
   const page = await targetPage(target);
+  if (aim === 'centre') await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await wheelRendered(page, deltaX, deltaY);
 }
 
@@ -486,6 +491,20 @@ async function wheelRendered(page: Page, deltaX: number, deltaY: number): Promis
 function nextRenderedFrame(): Promise<void> {
   if (document.visibilityState === 'hidden') return Promise.resolve();
   return new Promise((resolve) => requestAnimationFrame(() => window.setTimeout(resolve, 0)));
+}
+
+/**
+ * Page-side: where a wheel reaches `element` in a top-level document, whose
+ * box is the page's: at the pointer when it already hovers the element, at
+ * its centre when the hit target there is the element or inside it, or
+ * `blocked` when neither holds.
+ */
+function wheelAim(element: Element): 'pointer' | 'centre' | 'blocked' {
+  if (window !== window.top) return 'blocked';
+  if (element.matches(':hover')) return 'pointer';
+  const rect = element.getBoundingClientRect();
+  const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+  return hit !== null && element.contains(hit) ? 'centre' : 'blocked';
 }
 
 function swipeDistance(extent: number, momentum: Momentum): number {
