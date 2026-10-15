@@ -72,7 +72,7 @@ jobs:
         if: ${{ steps.changesets.outputs.published == 'true' }}
         run: echo "e2e-version=$(jq -r '.[] | select(.name == "e2e") | .version' <<< "$PUBLISHED")" >> "$GITHUB_OUTPUT"
         env:
-          PUBLISHED: ${{ steps.changesets.outputs.publishedPackages }}
+          PUBLISHED: ${{ steps.changesets.outputs.published-packages }}
 
   # Lists the e2e release that just published in the MCP Registry.
   mcp-registry:

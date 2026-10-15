@@ -166,7 +166,9 @@ workflow opens a `chore: version packages` pull request that applies the
 pending changesets. That PR gets no CI of its own (it is opened with
 `GITHUB_TOKEN`), so check `main` is green before merging it. Merging it checks
 peer ranges, builds, publishes the new versions, and creates the matching
-GitHub release. `@e2edev/e2e` is the
+GitHub release. A release that published `e2e` then lists it in the MCP
+Registry (`mcp-registry.yml`); to retry a failed listing, run that workflow
+by hand with the version. `@e2edev/e2e` is the
 runner's retired name, and the `@e2edev` scope is the engines' and reporters'
 retired scope; both are deprecated on npm.
 

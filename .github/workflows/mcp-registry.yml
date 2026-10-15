@@ -29,8 +29,6 @@ concurrency:
 env:
   VERSION: ${{ inputs.version }}
   SERVER_NAME: io.github.tester-army/e2e
-  MCP_PUBLISHER_VERSION: v1.8.1
-  MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
 
 jobs:
   publish:
@@ -48,11 +46,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: e2e@${{ inputs.version }}
+          persist-credentials: false
 
       - name: Skip a version already listed
         id: listed
         run: |
-          status="$(curl -sS -o /dev/null -w '%{http_code}' "https://registry.modelcontextprotocol.io/v0.1/servers/${SERVER_NAME/\//%2F}/versions/$VERSION")"
+          status="$(curl -sS --retry 3 --retry-all-errors -o /dev/null -w '%{http_code}' "https://registry.modelcontextprotocol.io/v0.1/servers/${SERVER_NAME/\//%2F}/versions/$VERSION")"
           case "$status" in
             200) echo "$SERVER_NAME@$VERSION is already listed"; echo "skip=true" >> "$GITHUB_OUTPUT" ;;
             404) ;;
@@ -63,29 +62,24 @@ jobs:
         if: ${{ steps.listed.outputs.skip != 'true' }}
         run: |
           jq -e --arg name "$SERVER_NAME" --arg v "$VERSION" \
-            '.name == $name and .version == $v and all(.packages[]; .version == $v)' packages/e2e/server.json \
+            '.name == $name and .version == $v and .packages != [] and all(.packages[]; .version == $v)' packages/e2e/server.json \
             || { echo "::error::packages/e2e/server.json at e2e@$VERSION does not list $SERVER_NAME@$VERSION"; exit 1; }
 
-      # The registry checks `mcpName` on the published package; npm can take a
-      # moment to serve a version it just accepted.
+      # The registry reads `mcpName` from this URL; npm can take a moment to
+      # serve a version it just accepted.
       - name: Wait for the package on npm
         if: ${{ steps.listed.outputs.skip != 'true' }}
         run: |
           for _ in $(seq 1 30); do
-            name="$(npm view "e2e@$VERSION" mcpName 2>/dev/null || true)"
+            name="$(curl -sSf "https://registry.npmjs.org/e2e/$VERSION" 2>/dev/null | jq -r '.mcpName // empty' || true)"
             [ "$name" = "$SERVER_NAME" ] && exit 0
             sleep 10
           done
           echo "::error::npm does not serve e2e@$VERSION with mcpName $SERVER_NAME"
           exit 1
 
-      - name: Install mcp-publisher
+      - uses: ./.github/actions/mcp-publisher
         if: ${{ steps.listed.outputs.skip != 'true' }}
-        run: |
-          curl -sSfL -o mcp-publisher.tar.gz \
-            "https://github.com/modelcontextprotocol/registry/releases/download/$MCP_PUBLISHER_VERSION/mcp-publisher_linux_amd64.tar.gz"
-          echo "$MCP_PUBLISHER_SHA256  mcp-publisher.tar.gz" | sha256sum -c -
-          tar xzf mcp-publisher.tar.gz -C "$RUNNER_TEMP" mcp-publisher
 
       - name: Publish
         if: ${{ steps.listed.outputs.skip != 'true' }}

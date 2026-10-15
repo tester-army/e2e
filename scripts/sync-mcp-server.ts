@@ -19,11 +19,17 @@ interface ServerEntry {
 
 const current = readFileSync(path, 'utf8');
 const server = JSON.parse(current) as ServerEntry;
+if (!server.packages.some((entry) => entry.identifier === runner.name)) {
+  process.stderr.write(`packages/e2e/server.json lists no ${runner.name} package\n`);
+  process.exit(1);
+}
 const synced: ServerEntry = {
   ...server,
   name: runner.mcpName,
   version: runner.version,
-  packages: server.packages.map((entry) => (entry.identifier === runner.name ? { ...entry, version: runner.version } : entry)),
+  packages: server.packages.map((entry) =>
+    entry.identifier === runner.name ? { ...entry, version: runner.version } : entry,
+  ),
 };
 const next = `${JSON.stringify(synced, null, 2)}\n`;
 

@@ -227,7 +227,8 @@ suites that consume the built packages the way a user would.
   `pnpm plugins:sync`; `pnpm plugins:check` checks the generated copies,
   license, Claude manifest, and both manifests' `version`, which is the
   runner's (`version-packages` syncs it, so plugin
-  installs update once per release). The Codex manifest's other fields,
+  installs update once per release; it does the same for
+  `packages/e2e/server.json`, the MCP Registry entry). The Codex manifest's other fields,
   assets, README, and per-skill `agents/openai.yaml` are maintained in the
   plugin. Keep the
   package self-contained and leave the repository's development MCP
@@ -239,7 +240,7 @@ suites that consume the built packages the way a user would.
 Build first — nearly everything downstream consumes `dist`.
 
 ```bash
-pnpm check          # lint -> check:dead-code -> typecheck -> docs:check-errors -> check:peer-ranges -> check:install-scripts -> plugins:check -> docs:check (full gate)
+pnpm check          # lint -> check:dead-code -> typecheck -> docs:check-errors -> check:peer-ranges -> check:install-scripts -> plugins:check -> mcp-server:check -> docs:check (full gate)
 pnpm test           # builds, then vitest unit + integration
 pnpm test:testbed   # builds, then runs the real CLI against the playground app
 pnpm test:web-benchmark   # builds, then runs the real CLI against the benchmark scenarios

@@ -49,6 +49,11 @@ jobs:
         run: pnpm plugins:check
       - name: MCP Registry entry matches the runner
         run: pnpm mcp-server:check
+      # The registry rejects an invalid entry only at publish, from a release
+      # tag that can no longer change.
+      - uses: ./.github/actions/mcp-publisher
+      - name: MCP Registry accepts the entry
+        run: '"$RUNNER_TEMP/mcp-publisher" validate packages/e2e/server.json'
       - name: Agent skill scripts
         run: |
           pnpm exec tsc -p .dev/skills/babysit/scripts
