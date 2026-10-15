@@ -13,7 +13,7 @@ import { BUILT_IN_AGENT } from './agent-brand.ts';
 import { AgentError } from './error.ts';
 import type { ReplayedPrefix, StepExecutor, StepExecutorContext } from './executor.ts';
 import { interactiveNodeCount } from './observation.ts';
-import { createGrammarTools } from './primitives.ts';
+import { grammarTools } from './primitives.ts';
 import { ScreenPresenter } from './screen-update.ts';
 import { compactScreenHistory, compactScreenshotHistory } from './transcript-compaction.ts';
 import { createToolLoopExecutor, type ToolLoopHelpers } from './tool-loop.ts';
@@ -21,7 +21,13 @@ import { toolAppliesTo, withToolContext } from './tool.ts';
 import { boundToolOutput } from './tool-output.ts';
 import type { AgentTool } from '../types.ts';
 
-const BASE_RULES = `You are an autonomous end-to-end testing agent executing exactly one test step against a real application.
+/**
+ * The built-in agent's rules for its action tools (`createGrammarTools`): how
+ * to read the screen and its changes, when to batch actions, and when a step
+ * has passed. Exported for an executor that offers the same tools to a
+ * model of its own.
+ */
+export const BASE_RULES = `You are an autonomous end-to-end testing agent executing exactly one test step against a real application.
 
 Rules:
 - Work only toward the given step; do not start the next step or explore beyond it.
@@ -68,7 +74,7 @@ export function createBuiltInAgent(options: BuiltInAgentOptions = {}): StepExecu
     prepareMessages: (messages) => compactScreenshotHistory(compactScreenHistory(messages)),
     tools: (context, helpers) => ({
       ...guardedTools(helpers, projectTools(context, userTools)),
-      ...createGrammarTools(context, { guard: helpers.guard, screen: presenterFor(context) }),
+      ...grammarTools(context, { guard: helpers.guard, screen: presenterFor(context) }),
     }),
     buildPrompt: async (context) => {
       // The opening look is tree-only, unless pixels are allowed and no
