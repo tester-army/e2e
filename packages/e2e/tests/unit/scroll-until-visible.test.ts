@@ -25,6 +25,7 @@ const feed = (...children: readonly SemanticNode[]): SemanticNode => ({
 });
 const ROOT: NodeRef = { id: 'root', revision: '' };
 const VIEWPORT = { width: 390, height: 844 } as const;
+const SWIPE_MS = 16;
 type ScrollOptions = Parameters<Screen['scrollUntilVisible']>[1];
 
 interface Swipe {
@@ -68,6 +69,8 @@ function scrollScreen(script: ScrollScript) {
               await sleep(budget);
               throw new EngineError('OPERATION_TIMEOUT', `swipe exceeded ${budget} ms`, { retryable: false });
             }
+            // A swipe resolves once the scroll it caused is on screen, a frame or more later.
+            await sleep(SWIPE_MS);
             swipes.push({ ref: ref.id, direction: action.direction, momentum: action.momentum });
           },
         }),

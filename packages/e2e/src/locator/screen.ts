@@ -43,7 +43,7 @@ import {
   testIdQuery,
   textQuery,
 } from './expression.ts';
-import { cutOffAtDeadline, type Deadline, isOperationTimeout, POLL_INTERVAL_MS, pollCondition, sleep } from '../internal/time.ts';
+import { cutOffAtDeadline, type Deadline, isOperationTimeout, POLL_INTERVAL_MS, pollCondition } from '../internal/time.ts';
 import { SampleHistory } from '../expect/samples.ts';
 import type { ScreenshotContext } from '../run/screenshots.ts';
 
@@ -298,7 +298,6 @@ class ScreenImpl implements Screen {
           }
           throw cause;
         }
-        await sleep(Math.min(POLL_INTERVAL_MS, deadline.remaining()), engine.signal);
       }
     });
   }

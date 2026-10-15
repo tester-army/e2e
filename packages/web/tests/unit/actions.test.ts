@@ -167,7 +167,7 @@ function stubLocator(box = { x: 10, y: 20, width: 200, height: 100 }) {
     setInputFiles: vi.fn(async () => undefined),
     dragTo: vi.fn(async () => undefined),
     boundingBox: vi.fn(async () => box),
-    page: () => ({ viewportSize: () => ({ width: 1280, height: 720 }), mouse: { wheel } }),
+    page: () => ({ viewportSize: () => ({ width: 1280, height: 720 }), mouse: { wheel }, evaluate: async () => undefined }),
   };
   const target: ActionTarget = { kind: 'locator', locator: locator as unknown as PwLocator };
   return { locator, target, wheel };
@@ -242,7 +242,7 @@ describe('dispatchPointerAction', () => {
       dblclick: async (x: number, y: number) => { calls.push(`dblclick ${x},${y}`); },
       wheel: async (dx: number, dy: number) => { calls.push(`wheel ${dx},${dy}`); },
     };
-    const page = { mouse, viewportSize: () => ({ width: 800, height: 600 }) } as unknown as Page;
+    const page = { mouse, evaluate: async () => undefined, viewportSize: () => ({ width: 800, height: 600 }) } as unknown as Page;
     return { page, calls };
   }
 
