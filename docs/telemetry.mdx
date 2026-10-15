@@ -76,8 +76,9 @@ and `e2e run --watch` sends each run's event when that run ends.
 
 Events hold only the properties below. An error code that isn't an upper-case
 token is sent as `OTHER`. An engine, platform, model, fleet, or MCP client
-name or version that isn't a plain token of letters, digits, dots, dashes, and
-underscores is sent as `other`. In action and tool call counts, a project's
+name, or an MCP client version, that isn't a plain token of letters, digits,
+dots, dashes, and underscores is sent as `other`. An engine version that isn't
+semver is sent as `unversioned`. In action and tool call counts, a project's
 own tools count together as `tool`, and any other name as `other`.
 
 <AccordionGroup>
