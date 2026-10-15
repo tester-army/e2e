@@ -2,10 +2,7 @@
 
 import type { BrowserLease, BrowserProvider, BrowserRequest } from '@e2e-dev/web';
 import { findBinary } from './binary.ts';
-import { envValue } from './env.ts';
 import { serve, type LightpandaResource, type LightpandaServer } from './server.ts';
-
-const LIGHTPANDA_PATH = 'LIGHTPANDA_PATH';
 
 /** How long a server gets to answer on its port before the lease fails. */
 const STARTUP_TIMEOUT_MS = 10_000;
@@ -41,7 +38,7 @@ export function lightpanda(options: LightpandaOptions = {}): BrowserProvider {
   return {
     name: 'lightpanda',
     async acquire(request: BrowserRequest): Promise<BrowserLease> {
-      const binary = options.binary ?? envValue(request.env, LIGHTPANDA_PATH) ?? findBinary(request.env);
+      const binary = options.binary ?? findBinary(request.env);
       const server = await serve({ binary, loadResources, args, startupTimeoutMs: STARTUP_TIMEOUT_MS, signal: request.signal });
       request.log(`lightpanda ${server.version} at ${server.cdpEndpoint}`);
       const lease: BrowserLease = { id: server.cdpEndpoint, cdpEndpoint: server.cdpEndpoint };

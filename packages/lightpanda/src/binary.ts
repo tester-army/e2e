@@ -5,14 +5,17 @@ import path from 'node:path';
 
 const INSTALL_URL = 'https://lightpanda.io/docs/open-source/installation';
 const NAME = 'lightpanda';
+const PATH_VARIABLE = 'LIGHTPANDA_PATH';
 
 /**
- * The binary to start: `lightpanda` on `PATH`, else the places the install
- * guides and agent-browser put it, `~/.lightpanda/lightpanda` and
- * `~/.local/bin/lightpanda`. Throws, naming the install page and
- * `LIGHTPANDA_PATH`, when none exists.
+ * The binary to start: `LIGHTPANDA_PATH` when set, else `lightpanda` on
+ * `PATH`, then the places the install guides and agent-browser put it,
+ * `~/.lightpanda/lightpanda` and `~/.local/bin/lightpanda`. Throws, naming
+ * the install page and `LIGHTPANDA_PATH`, when none exists.
  */
 export function findBinary(env: Readonly<Record<string, string | undefined>>): string {
+  const named = env[PATH_VARIABLE]?.trim();
+  if (named !== undefined && named !== '') return named;
   const onPath = (env['PATH'] ?? '').split(path.delimiter).filter((dir) => dir !== '');
   const home = env['HOME'] ?? env['USERPROFILE'];
   const candidates = [
@@ -21,7 +24,7 @@ export function findBinary(env: Readonly<Record<string, string | undefined>>): s
   ];
   const found = candidates.find(isExecutable);
   if (found === undefined) {
-    throw new Error(`lightpanda is not on PATH, in ~/.lightpanda, or in ~/.local/bin; install it (${INSTALL_URL}) or set LIGHTPANDA_PATH`);
+    throw new Error(`lightpanda is not on PATH, in ~/.lightpanda, or in ~/.local/bin; install it (${INSTALL_URL}) or set ${PATH_VARIABLE}`);
   }
   return found;
 }
