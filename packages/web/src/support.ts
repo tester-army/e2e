@@ -474,11 +474,18 @@ export async function performElementSwipe(
 /**
  * Wheels the page and resolves once a frame rendered the scroll it caused.
  * The scroll lands on the compositor and reaches script on the next frame, so
- * a read right after a bare `mouse.wheel` can see the document it left.
+ * a read right after a bare `mouse.wheel` can see the document it left. A
+ * hidden document renders no frames, so it resolves at once.
  */
 async function wheelRendered(page: Page, deltaX: number, deltaY: number): Promise<void> {
   await page.mouse.wheel(deltaX, deltaY);
-  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => window.setTimeout(resolve, 0))));
+  await page.evaluate(nextRenderedFrame);
+}
+
+/** Page-side: resolves after the next rendered frame, or at once in a hidden document. */
+function nextRenderedFrame(): Promise<void> {
+  if (document.visibilityState === 'hidden') return Promise.resolve();
+  return new Promise((resolve) => requestAnimationFrame(() => window.setTimeout(resolve, 0)));
 }
 
 function swipeDistance(extent: number, momentum: Momentum): number {
