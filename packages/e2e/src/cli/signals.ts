@@ -30,16 +30,22 @@ export class SignalLadder {
     return this.forced.signal;
   }
 
+  /**
+   * Climbs one rung, as a signal does. For a Ctrl-C the terminal delivers as
+   * a keypress instead of a signal (stdin in raw mode, for watch mode).
+   */
+  escalate(exit: (code: number) => void = (code) => process.exit(code)): void {
+    if (!this.graceful.signal.aborted) this.graceful.abort();
+    else if (!this.forced.signal.aborted) this.forced.abort();
+    else {
+      killManagedProcessGroups();
+      exit(130);
+    }
+  }
+
   /** Installs the process handlers; returns their removal. */
   arm(exit: (code: number) => void = (code) => process.exit(code)): () => void {
-    const escalate = (): void => {
-      if (!this.graceful.signal.aborted) this.graceful.abort();
-      else if (!this.forced.signal.aborted) this.forced.abort();
-      else {
-        killManagedProcessGroups();
-        exit(130);
-      }
-    };
+    const escalate = (): void => this.escalate(exit);
     process.on('SIGINT', escalate);
     process.on('SIGTERM', escalate);
     return () => {

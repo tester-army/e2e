@@ -1,6 +1,9 @@
 ---
 title: agent
 description: Run agent actions, check conditions, and extract structured data.
+icon: "robot"
+"og:image": "https://e2e.tester.army/docs/images/og/reference/agent.png?v=9a239b0466"
+"twitter:image": "https://e2e.tester.army/docs/images/og/reference/agent.png?v=9a239b0466"
 ---
 
 Use `act` to interact with the app, `assert` to check the current screen,
@@ -48,8 +51,8 @@ is `INVALID_ARGUMENT`. All durations are in milliseconds.
 The `assert` row holds for the built-in agent. When the selected agent has a
 custom `executor`, `assert` is dispatched to it as a step: its budget is the
 agent's `maxSteps` and `maxModelCalls`, its default timeout is
-`config.timeout`, and `vision` on the call is `UNSUPPORTED_CAPABILITY`;
-`screenshot` still applies.
+`config.timeout`, and `vision` on the call is `UNSUPPORTED_CAPABILITY`
+unless the executor declares `vision: true`; `screenshot` still applies.
 
 ## agent.act
 
@@ -89,14 +92,17 @@ caching is off).
 The built-in agent offers one tool per verb the target's engine declares.
 Every tool takes node ids from the newest observation, returns what changed
 on screen, and is recorded for the [replay cache](/cache) with the node it
-acted on. A verb the engine does not declare is not offered.
+acted on. A verb the engine does not declare is not offered. On an engine that
+declares `tapModifiers`, `tap`, `double_tap`, and `right_click` take
+`modifiers` (`Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`) to hold keys
+for the click, as a Shift-click extends a selection.
 
 | Tool | Engine action | What it does |
 | --- | --- | --- |
-| `tap({ target })` | `tap` | Taps or clicks one node: the gesture for a button, link, menu item, tab, checkbox, row, or field. |
-| `double_tap({ target })` | `doubleTap` | Double-clicks one node, for an item that opens or enters editing on the second click. |
+| `tap({ target, modifiers? })` | `tap` | Taps or clicks one node: the gesture for a button, link, menu item, tab, checkbox, row, or field. |
+| `double_tap({ target, modifiers? })` | `doubleTap` | Double-clicks one node, for an item that opens or enters editing on the second click. |
 | `long_press({ target })` | `longPress` | Presses one node and holds, for a long-press menu or action. |
-| `right_click({ target })` | `secondaryTap` | Right-clicks one node to open its context menu. |
+| `right_click({ target, modifiers? })` | `secondaryTap` | Right-clicks one node to open its context menu. |
 | `hover({ target })` | `hover` | Moves the pointer over one node without pressing: hover menus, flyouts, tooltips, controls revealed on mouse-over. |
 | `type({ target?, value, replace? })` | `fill`; without `target`, `keyboard` | Replaces the node's value; without a target, types into whatever has focus. |
 | `type_secret({ target, name })` | `fill` | Fills a secret declared in the step's params. Offered only when the step declares one. |
@@ -146,7 +152,7 @@ plain tap instead.
 Mobile engines declare `hover`, `doubleTap`, `longPress`, `check`,
 `uncheck`, `dragTo`, and `session.back`, so a device offers `hover`,
 `double_tap`, `long_press`, `check`, `drag`, and `back`; they declare no
-`secondaryTap`, `scrollIntoView`, or `setInputFiles`. Tab switching has no
+`secondaryTap`, `selectOption`, `scrollIntoView`, or `setInputFiles`. Tab switching has no
 verb yet: a new tab is invisible to the model.
 
 ### Pixel tools: screenshot and the point verbs
@@ -180,7 +186,9 @@ older images are removed in batches, keeping the newest two.
 On engines with a keyboard, including the browser and device engines, `type`
 and `press` can omit `target` to act on the focused field. `type` inserts at
 the caret; `replace: true` clears first. The browser engine rejects typing
-when no editable field has focus. Device engines also offer `dismiss_keyboard`.
+when no editable field has focus. The focused element is checked inside shadow
+roots and frames, so focus on a button there is refused. Device engines also
+offer `dismiss_keyboard`.
 When an action closes an on-screen keyboard, the result says so: on a touch
 screen that tap was often spent on closing it, and the model acts on the
 control again.
@@ -240,7 +248,12 @@ assert(assertion: string, options?: AssertOptions): Promise<void>;
 
 Checks one fresh observation without polling. The judge sees only the
 assertion and current observation, never prior steps or `act` summaries.
-It answers `holds`, `fails`, or `inconclusive`.
+It answers `holds`, `fails`, or `inconclusive`. When what the assertion is
+about appears more than once, such as a total in a summary and on a pay
+button, every instance must agree: one that contradicts it fails. Name
+the place (`the order summary total is $42.00`) to judge only that one. A
+claim about some item, such as `a todo is marked done`, still holds when one
+item matches.
 
 Throws `ASSERTION_FAILED` on a false judgment and `ASSERTION_INCONCLUSIVE`
 when the screen did not show enough to decide. Both carry the explanation
@@ -256,8 +269,8 @@ executor's explanation alone. No evidence is captured with
 `screenshot` controls failure evidence attached after the judgment; `vision`
 controls what the model is shown before it. A custom `StepExecutor` judges
 the assertion itself: it honors `screenshot`, since the runner takes that
-evidence after the verdict, and rejects `vision` with
-`UNSUPPORTED_CAPABILITY`, since the executor decides what its model sees.
+evidence after the verdict. It receives `vision` as `step.vision` when it
+declares `vision: true`; otherwise `vision` is `UNSUPPORTED_CAPABILITY`.
 
 ```ts
 await agent.assert('the dashboard shows a trial badge');
@@ -273,7 +286,9 @@ Observes and judges at once. After a false or inconclusive judgment it
 waits out `interval`, then observes every 500 ms (or every `interval`, when
 shorter) without a model call, and judges again only once the screen
 differs from the one last judged, pixels included under `vision`. Succeeds
-on the first judgment that holds.
+on the first judgment that holds. Judgments follow the `agent.assert`
+rules, so a value shown in more than one place holds only once every
+instance agrees.
 
 Throws `STEP_TIMEOUT` on deadline expiry and `STEP_BUDGET_EXHAUSTED` on
 budget exhaustion, each carrying the last judgment (with the same vision
@@ -459,6 +474,16 @@ export interface StepCacheInfo {
   notRecorded?: 'param-collision';
   replayedActions: number;
   totalActions: number;
+  /** The step's cache key, which names its entry file (`<cache.dir>/<entry>.json` in the file store). */
+  entry?: string;
+  /**
+   * Why the replay missed or handed off, past what the reason token says:
+   * the recorded action it stopped at and what went wrong there, or the
+   * screen the recording started on against the one the step did.
+   */
+  detail?: string;
+  /** Configured model when the consulted entry was recorded; absent on older entries. */
+  recordedBy?: { readonly provider: string; readonly model: string };
 }
 
 type TraceReplayMissReason = 'retry' | 'no-entry' | 'invalid-entry' | 'truncated' | 'wrong-context';

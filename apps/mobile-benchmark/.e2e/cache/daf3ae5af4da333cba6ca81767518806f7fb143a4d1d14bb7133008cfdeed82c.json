@@ -1,0 +1,134 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-09T08:20:40.923Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap group \"Trail Mix, 500 g · $6.99\" in \"Add exactly 2 × Trail Mix 500 g to the …\"",
+        "target": {
+          "role": "group",
+          "name": "Trail Mix, 500 g · $6.99",
+          "testId": "product-trail-mix-500",
+          "selector": "id=product-trail-mix-500",
+          "within": "Add exactly 2 × Trail Mix 500 g to the cart, then review the cart"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"+\"",
+        "target": {
+          "role": "group",
+          "name": "+",
+          "testId": "quantity-increase",
+          "selector": "id=quantity-increase"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Add to cart\"",
+        "target": {
+          "role": "group",
+          "name": "Add to cart",
+          "testId": "add-to-cart",
+          "selector": "id=add-to-cart"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Cart (2)\" in \"Add exactly 2 × Trail Mix 500 g to the …\"",
+        "target": {
+          "role": "group",
+          "name": "Cart (2)",
+          "testId": "open-cart",
+          "selector": "id=open-cart",
+          "within": "Add exactly 2 × Trail Mix 500 g to the cart, then review the cart"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Product%20Catalog",
+      "targetId": "android-emulator",
+      "instructionDigest": "df6d87ed0275359863ecaf58d94669a7d2b9881afd75c25cb6af7327bb4e052d",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Opened the specific Trail Mix 500 g product, increased quantity to 2, added it to the cart, and opened the cart. The cart shows “2 × Trail Mix 500 g” and “Order ready: 2 × Trail Mix 500 g”.",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "‹ Back to catalog"
+      },
+      {
+        "role": "text",
+        "name": "Cart"
+      },
+      {
+        "role": "text",
+        "name": "2 × Trail Mix 500 g"
+      },
+      {
+        "role": "text",
+        "name": "Order ready: 2 × Trail Mix 500 g",
+        "testId": "success-message"
+      },
+      {
+        "role": "group",
+        "name": "‹ Back to catalog",
+        "testId": "back-to-list"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "text",
+        "name": "Add exactly 2 × Trail Mix 500 g to the cart, then review the cart"
+      },
+      {
+        "role": "text",
+        "name": "Cart (0)"
+      },
+      {
+        "role": "text",
+        "name": "Trail Mix"
+      },
+      {
+        "role": "text",
+        "name": "250 g · $3.99"
+      },
+      {
+        "role": "text",
+        "name": "♡"
+      },
+      {
+        "role": "text",
+        "name": "500 g · $6.99"
+      },
+      {
+        "role": "text",
+        "name": "1 kg · $11.99"
+      },
+      {
+        "role": "text",
+        "name": "Granola"
+      }
+    ],
+    "endWaitMs": 11915,
+    "keyedBy": {
+      "cacheSchema": "trace-1",
+      "policyVersion": "conservative/6",
+      "project": "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643",
+      "platform": "android",
+      "engineName": "mobile",
+      "engineSpiVersion": 1,
+      "appIdentity": "e18e9835187bab993e11f2dd7ff5624429bc26890c846accacf0057b525e92a0",
+      "agentContextDigest": "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+    }
+  }
+}

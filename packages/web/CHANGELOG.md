@@ -1,5 +1,79 @@
 # @e2e-dev/web
 
+## 0.15.1
+
+### Patch Changes
+
+- [#1042](https://github.com/tester-army/e2e/pull/1042) [`d863b52`](https://github.com/tester-army/e2e/commit/d863b52517655d0d7b3820bd24cdb3c5e629876a) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Add browser.keyboard.down and up for held keys, repeat events, and modifier sequences.
+
+- [#883](https://github.com/tester-army/e2e/pull/883) [`5fce7b2`](https://github.com/tester-army/e2e/commit/5fce7b2bfecc2d912223198ce6bcf4c13d0e707c) Thanks [@pvedula7](https://github.com/pvedula7)! - Executor observations carry `keyboardVisible`, the engine's measured on-screen keyboard state, absent when it can't tell. The mobile engine sets it, and the decision executor uses it to offer `dismiss_keyboard`.
+
+- [#895](https://github.com/tester-army/e2e/pull/895) [`6b691c9`](https://github.com/tester-army/e2e/commit/6b691c91e48ab1b2e23791b2b6890a66d15fef39) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Read the first recognized ARIA role token and retain native semantics when a role attribute contains no recognized role.
+
+## 0.15.0
+
+### Minor Changes
+
+- [#1043](https://github.com/tester-army/e2e/pull/1043) [`edf3423`](https://github.com/tester-army/e2e/commit/edf34236412c52a665270e6e9b819a22cd799c0f) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Expose the saved runner-side absolutePath from browser.waitForDownload so tests can inspect downloaded contents on local and hosted browsers.
+
+- [#1030](https://github.com/tester-army/e2e/pull/1030) [`ea0737f`](https://github.com/tester-army/e2e/commit/ea0737f6547b5e1fe7c6480dda255070c8ad20c3) Thanks [@reiidoda](https://github.com/reiidoda)! - The web engine emulates `prefers-color-scheme` and `prefers-reduced-motion`. `web({ colorScheme, reducedMotion })` sets them for every page, and `browser.emulateMedia({ colorScheme, reducedMotion })` changes them for the rest of one test, before the first navigation too. The page's own `@media` rules see them from the first paint, not only `matchMedia`.
+
+### Patch Changes
+
+- [#1130](https://github.com/tester-army/e2e/pull/1130) [`2536ed3`](https://github.com/tester-army/e2e/commit/2536ed34545920941d8a401796715e6c7b48e3af) Thanks [@kacperkapusciak](https://github.com/kacperkapusciak)! - Update dependencies: the web engine drives Playwright 1.64.0 (and the Chromium it installs), and smol machines boot the matching `mcr.microsoft.com/playwright:v1.64.0-noble` image. The runner moves to `oxc-parser`, `oxc-transform`, and `@oxc-project/runtime` 0.153.0, `@modelcontextprotocol/server` 2.3.1, and `@ai-sdk/provider` 4.0.26.
+
+- [#1061](https://github.com/tester-army/e2e/pull/1061) [`88143fe`](https://github.com/tester-army/e2e/commit/88143fe68538561f287022adbf00d85a5b395198) Thanks [@Ethereal49](https://github.com/Ethereal49)! - The web engine no longer observes Next.js App Router's route announcer, so its hydration-timed title echo cannot stop a replay. Older entries that recorded it re-record on the next read-write run.
+
+- [#1097](https://github.com/tester-army/e2e/pull/1097) [`a869c06`](https://github.com/tester-army/e2e/commit/a869c06304941a8e883dde267f9ca10ead856088) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `expect(browser).toHaveClass` on a node that never arrives still fails as `ASSERTION_FAILED` observing `no node`, now that a locator read waits for its match until the action timeout.
+
+## 0.14.0
+
+### Minor Changes
+
+- [#869](https://github.com/tester-army/e2e/pull/869) [`1b92a6d`](https://github.com/tester-army/e2e/commit/1b92a6ddfa8768c303953548e1b1e6cc5afbac8d) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `trace` keeps its modes but now writes e2e's own trace instead of a Playwright zip: a markdown page per test, on every engine, and the terminal names it under each failed test (`❯ trace .e2e/results/<test>/trace.md`). The default is `retain-on-failure`, locally and in CI. Each step on the page shows what it did: the node an action landed on, the values an assertion or `waitFor` read while it waited, the replay cache's decision (where a replay stopped and why, what became of the recording, the entry file), what the app logged meanwhile (console output, uncaught exceptions, failed requests, and 4xx and 5xx responses, also gathered in one App log section with each line's step), where the page went (a navigation, a new tab, a frame), and how the screen changed since the step before. The page also names the browser and user agent, or the device, the test ran on. The `markdown` reporter's `summary.md` names each failure's trace page when one was kept. `report.json` is still written for scripts, but the `list` summary no longer prints its path (`--debug` does), and prints `Report (not written)` only when it is missing. Everything a test left now sits in one directory, `<output>/results/<test>/` (`.e2e` by default): its `trace.md` (which shows the failure screenshot inline and links each file) and an `attempt-<n>/` per attempt, numbered from 1, with the screen at failure as `screen-at-failure.txt`. It replaces `.e2e/artifacts/<target>/<test id>/<agent>/attempt-<n>/`; a `--last-failed` rerun writes under each test's `rerun-<n>/`. Point CI uploads at `.e2e/results`, and add `.e2e/results/` to `.gitignore` (or rerun `e2e init`). A stale recording made from this version on names what changed in its key under `--strict-cache`, such as the agent's context. For engine authors: `startTrace` and `stopTrace` are no longer called, `trace` leaves `artifactCapabilities`, `EngineAttemptContext.appLog` takes what the app logs, `navigation` where it went on its own, `screen` takes a screen for the trace (one a `locate` matched against, or one read right after an action, bounded), and `environment` takes what the attempt runs on. report-1 drops the `trace` artifact kind and the `not-required` redaction (`StoredArtifact.kind` and `redaction` narrow the same way), drops `TRACE_WITHHELD`, and adds `attempt.appLog` (each line with its step), `navigation` events, `failure.viewport` and `failure.nodes`, `step.phase`, `step.screen`, `attempt.environment`, and `step.cache.entry`, `detail`, and `write` (report only; `result.cache` from `agent.act()` gains `entry` and `detail`). `FinishedRun.traces` maps results to their pages.
+
+### Patch Changes
+
+- [#898](https://github.com/tester-army/e2e/pull/898) [`b36ea5c`](https://github.com/tester-army/e2e/commit/b36ea5c4410d99df96d12ccc4d1a60d044846c1a) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Read ARIA selected states and hidden-content flags without letter-case sensitivity. Native option selection still takes precedence.
+
+- [#903](https://github.com/tester-army/e2e/pull/903) [`7949c25`](https://github.com/tester-army/e2e/commit/7949c25c8b47d1cadd3c2f6f91a6907f64dd0a6f) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Check the focused element inside shadow roots and frames, so focus on a button there is refused.
+
+- [#926](https://github.com/tester-army/e2e/pull/926) [`5fb69de`](https://github.com/tester-army/e2e/commit/5fb69de2ce829a7b3a84dbd965d3d2a99c313138) Thanks [@okwasniewski](https://github.com/okwasniewski)! - The agent now reads a sentence with an inline link, emphasis, or code as one line of text, so `<p>Read our <a>privacy policy</a> for details.</p>` no longer reads "Read our for details." The link is still listed as its own control.
+
+- [#977](https://github.com/tester-army/e2e/pull/977) [`5137778`](https://github.com/tester-army/e2e/commit/5137778251928c42a736510fda002a984e924d17) Thanks [@okwasniewski](https://github.com/okwasniewski)! - A node inside a frame reports its box in the page's viewport, past the frame's border and padding, whether it was located or observed, so `tap({ position })`, a point the agent taps, and `toHaveScreenshot` on it land on the node.
+
+- [#941](https://github.com/tester-army/e2e/pull/941) [`56c25bd`](https://github.com/tester-army/e2e/commit/56c25bd37a2210a94f01fdd2ec6b6e4e16aedfe3) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Serialize method shorthand passed to browser.evaluate and function init scripts as runnable function expressions.
+
+- [#889](https://github.com/tester-army/e2e/pull/889) [`0dffb3b`](https://github.com/tester-army/e2e/commit/0dffb3baad1378f6bd95f75cc5f972f66ade45af) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Dismiss an unanswered native dialog when its handler throws, so the page operation completes and the handler error reaches the next step.
+
+- [#943](https://github.com/tester-army/e2e/pull/943) [`9e33593`](https://github.com/tester-army/e2e/commit/9e33593d211ec704b1ccdea99a046e70e6cb3b90) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Keep shadow-root headers and footers scoped to their surrounding article or section instead of reporting them as page landmarks.
+
+- [#920](https://github.com/tester-army/e2e/pull/920) [`745b353`](https://github.com/tester-army/e2e/commit/745b353b7a9e4686e7e996369725bd0f48a1b5d6) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `check()`, `uncheck()`, and the agent's `check` verb wait until the action timeout for the control's checked state to change after the click, so a controlled checkbox or switch that updates asynchronously passes instead of failing with `ACTION_FAILED`.
+
+## 0.13.0
+
+### Minor Changes
+
+- [#790](https://github.com/tester-army/e2e/pull/790) [`0d1ed15`](https://github.com/tester-army/e2e/commit/0d1ed15871674aafd0ee3eff92c17eb39f6012bd) Thanks [@okwasniewski](https://github.com/okwasniewski)! - **Breaking: e2e and every `@e2e-dev` package now need Node.js 22.22.3 or newer on Node.js 22, or 24.8.0 or newer** (`engines.node` is `^22.22.3 || >=24.8.0`). Node.js 22.12 through 22.22.2, 23, and 24.0 through 24.7 are no longer supported, and the CLI refuses to start on them, naming the versions to upgrade to. Those releases fail when a CommonJS file a test imports requires TypeScript through the new loader's `module.registerHooks` (nodejs/node#59679 fixed it in 22.22.3 and 24.8.0).
+  
+  e2e now loads TypeScript with its own loader, built on oxc, instead of tsx. tsx brought in esbuild, whose postinstall script made every `pnpm install` on pnpm 11 and later fail with `ERR_PNPM_IGNORED_BUILDS` until the project approved the build; nothing e2e installs runs an install script now. Config and tests load as before: ESM whatever `package.json` says, `./x.js` and `./x` resolve to `x.ts` and `./x.jsx` to `x.tsx`, directory index imports, tsconfig `paths` and `baseUrl`, workspace packages exporting `.ts` source, JSX in `.tsx` and `.jsx`, enums, namespaces, `experimentalDecorators`, and source-mapped stack traces. JSON imported without `with { type: 'json' }` still loads. A test file whose name holds `%`, `#`, or a space now collects with its source location instead of failing with "URI malformed" or losing the location. Each file reads its nearest `tsconfig.json` rather than the one in the working directory. What changes: `import` statements in a `.cts` file are no longer compiled into `require` calls (write `import x = require()`); standard decorators without `experimentalDecorators`, auto-accessors, and ES module `import` and value `export` declarations in `.cts` are refused with their line (`import type`, `export type`, `import x = require()`, and `export =` work); the CLI refuses the Bun (`bun --bun`) and Deno runtimes (install with any package manager, run on Node.js); a type imported without `import type` that stays in the output (a decorated member's type under `emitDecoratorMetadata`) fails to load, with an error naming the import; a `.ts` file a CommonJS file requires runs as an ES module like every other `.ts`, so one written with `module.exports` needs the `.cts` extension; and an import written in a JavaScript file resolves as Node.js resolves it, without TypeScript's extension rules or tsconfig `paths`. TypeScript inside an installed package compiles without the project's `tsconfig.json`.
+
+- [#840](https://github.com/tester-army/e2e/pull/840) [`b33398f`](https://github.com/tester-army/e2e/commit/b33398fc380a1ecd8a0784d1c5c2fcbdeefaf841) Thanks [@Mohit20057](https://github.com/Mohit20057)! - `screen.swipe({ from, to, duration })` adds an optional `duration` for path swipes, controlling how long the gesture takes in milliseconds.
+
+### Patch Changes
+
+- [#803](https://github.com/tester-army/e2e/pull/803) [`f2f9a53`](https://github.com/tester-army/e2e/commit/f2f9a5373d520c35514da713c3f0c18a343b96ff) Thanks [@fecolinhares](https://github.com/fecolinhares)! - A headless run no longer downloads the full Chromium when the headless shell is installed, and the install no longer removes other browsers in the cache. Set `PLAYWRIGHT_SKIP_BROWSER_GC=0` to restore cleanup.
+
+- [#860](https://github.com/tester-army/e2e/pull/860) [`60bf04d`](https://github.com/tester-army/e2e/commit/60bf04d576df1619854a91fd424f22f52e5d8441) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `browser.evaluate` evaluates a string as an expression: `browser.evaluate('document.title')` and `browser.evaluate('(() => document.title)()')` return the title instead of failing with `EVALUATE_FAILED: ... is not a function`. A string that evaluates to a function, such as `'() => document.title'`, is still called with the argument.
+
+- [#859](https://github.com/tester-army/e2e/pull/859) [`432e9bf`](https://github.com/tester-army/e2e/commit/432e9bff7c7d6f97b37412e1f4d1f3053057fb15) Thanks [@okwasniewski](https://github.com/okwasniewski)! - An action whose locator gains a second match just before it runs, such as a screen transition that briefly shows the old and new page together, no longer fails with `ENGINE_FAILURE` and a Playwright strict mode violation. The locator resolves again: two matches still fail with `LOCATOR_AMBIGUOUS`, and a duplicate that went away lets the action run. A drag whose drop target gains a second match after the press fails with `ACTION_FAILED` and is not repeated.
+
+- [#891](https://github.com/tester-army/e2e/pull/891) [`a0e5142`](https://github.com/tester-army/e2e/commit/a0e5142f619916a3d9648653f295600ab2f8b5dc) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Infer scope-less table headers from neighboring data cells, matching native row headers in semantic observations.
+
+- [#828](https://github.com/tester-army/e2e/pull/828) [`c83b86f`](https://github.com/tester-army/e2e/commit/c83b86f4917d41cf5cf5941d909fb5f087916b88) Thanks [@okwasniewski](https://github.com/okwasniewski)! - A page whose script never yields no longer holds a web test until its test timeout: a tap, a locate, or a navigation on it now fails with `ACTION_FAILED` at its action or navigation timeout, also while a trace records. A tap or keystroke cut off that way may have reached the page and is never repeated by a replay. `expect(browser)` matchers on such a page end at their own timeout instead of the action timeout.
+
+- [#913](https://github.com/tester-army/e2e/pull/913) [`7c158ee`](https://github.com/tester-army/e2e/commit/7c158ee63761248180e2a97a00d2e6d5583ba374) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Requires `e2e` 0.18.0 or later. With an older runner the engine failed to load, or a headed run failed to launch the browser.
+
 ## 0.12.0
 
 ### Minor Changes

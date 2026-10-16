@@ -139,6 +139,8 @@ export interface LocateArgs {
 export interface LocateQuery {
   readonly expression: LocatorExpression;
   readonly code: string;
+  /** What to try when nothing matches. */
+  readonly notFound: string;
 }
 
 /** Builds the expression and the matching `screen.*` call from the tool arguments. */
@@ -149,26 +151,43 @@ export function locateQuery(args: LocateArgs): LocateQuery {
   if (given !== 1) {
     throw new ConfigurationError('INVALID_ARGUMENT', 'locate needs exactly one of role, text, label, placeholder, or testId');
   }
+  const notFound = `Check the accessible name in the observation (observe)${exact ? ', or loosen the match with exact: false' : ''}.`;
   if (role !== undefined) {
     const options = name === undefined ? '' : `, ${JSON.stringify(name)}${exact ? '' : ', { exact: false }'}`;
     return {
       expression: roleQuery(role as Role, name === undefined ? undefined : { name, exact }, undefined),
       code: `screen.getByRole(${JSON.stringify(role)}${options})`,
+      notFound: name !== undefined && CONTENT_NAMED_ROLES.has(role) ? contentNameNotFound(role, name, exact) : notFound,
     };
   }
   if (name !== undefined) throw new ConfigurationError('INVALID_ARGUMENT', 'name only narrows a role query');
-  if (testId !== undefined) return { expression: testIdQuery(testId, undefined, undefined), code: `screen.getByTestId(${JSON.stringify(testId)})` };
+  if (testId !== undefined) return { expression: testIdQuery(testId, undefined, undefined), code: `screen.getByTestId(${JSON.stringify(testId)})`, notFound };
   const options = exact ? '' : `, { exact: false }`;
-  if (text !== undefined) return { expression: textQuery('text', text, { exact }, undefined), code: `screen.getByText(${JSON.stringify(text)}${options})` };
-  if (label !== undefined) return { expression: textQuery('label', label, { exact }, undefined), code: `screen.getByLabel(${JSON.stringify(label)}${options})` };
-  return { expression: textQuery('placeholder', placeholder!, { exact }, undefined), code: `screen.getByPlaceholder(${JSON.stringify(placeholder)}${options})` };
+  if (text !== undefined) return { expression: textQuery('text', text, { exact }, undefined), code: `screen.getByText(${JSON.stringify(text)}${options})`, notFound };
+  if (label !== undefined) return { expression: textQuery('label', label, { exact }, undefined), code: `screen.getByLabel(${JSON.stringify(label)}${options})`, notFound };
+  return { expression: textQuery('placeholder', placeholder!, { exact }, undefined), code: `screen.getByPlaceholder(${JSON.stringify(placeholder)}${options})`, notFound };
+}
+
+/**
+ * Roles `observe` names from their text even though the platform gives them no
+ * accessible name, so a message or list row reads as one line. A name read off
+ * such a node is text no role query matches.
+ */
+const CONTENT_NAMED_ROLES: ReadonlySet<string> = new Set(['status', 'alert', 'listitem']);
+
+/** The zero-match advice for a content-named role: match the text instead of retrying it as a name. */
+function contentNameNotFound(role: string, name: string, exact: boolean): string {
+  const quoted = JSON.stringify(name);
+  const article = /^[aeiou]/.test(role) ? 'an' : 'a';
+  const text = `screen.getByText(${quoted}${exact ? '' : ', { exact: false }'})`;
+  return `A role query matches the accessible name only, and observe shows ${article} ${role} by its text in its place. If ${quoted} is that text, use screen.getByRole(${JSON.stringify(role)}).filter({ hasText: ${quoted} }) or ${text}.${exact ? ' Otherwise loosen the match with exact: false.' : ''}`;
 }
 
 /** Renders a locate result: the count, the verdict a test would get, and the nodes, each through the attempt's redactor. */
 export function describeLocate(query: LocateQuery, count: number, nodes: readonly SemanticNode[], redaction: NodeRedaction): string {
   const lines = [`${count === 1 ? '1 node matches' : `${count} nodes match`} ${describeExpression(query.expression)}.`];
   if (count === 1) lines.push(`Use: ${query.code}`);
-  else if (count === 0) lines.push('A test using this locator would fail with LOCATOR_NOT_FOUND. Check the accessible name in the observation (observe), or loosen the match with exact: false.');
+  else if (count === 0) lines.push(`A test using this locator would fail with LOCATOR_NOT_FOUND. ${query.notFound}`);
   else lines.push(`A test action on ${query.code} would fail with LOCATOR_AMBIGUOUS. Narrow it with a name, getByRole(role, name), .filter({ hasText }), .first(), or .nth(i), or scope it under a container.`);
   for (const node of nodes) lines.push(`- ${describeNode(projectTree(redactNode(node, redaction)))}`);
   if (count > nodes.length) lines.push(`- and ${count - nodes.length} more`);

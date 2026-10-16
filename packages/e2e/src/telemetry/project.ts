@@ -8,11 +8,9 @@
  * commit, which every clone shares and no one can produce without the
  * repository itself; a commit hash carries no name, path, or remote. A
  * shallow clone has no root to offer: its boundary commits pose as roots and
- * move with every fetch, so it is treated like a directory outside git.
- * There, the project root path is hashed together with the machine's local
- * salt, so the id is stable on that machine and unrecoverable anywhere else.
- * In CI there is no salt, so a runner without a full history has no id: its
- * working directory is not a project.
+ * move with every fetch, so it has no id, like a directory outside git: a
+ * path is the same project on one machine only, so it cannot be told apart
+ * from a scratch directory nobody returns to.
  */
 
 import { COMMIT_HASH, git } from '../internal/git.ts';
@@ -33,12 +31,8 @@ async function rootCommit(cwd: string): Promise<string | undefined> {
     .toSorted()[0];
 }
 
-export async function anonymousProjectId(
-  projectRoot: string,
-  salt: string | undefined,
-): Promise<string | undefined> {
+/** The hashed root commit of the repository at `projectRoot`; undefined outside git and in a shallow clone. */
+export async function anonymousProjectId(projectRoot: string): Promise<string | undefined> {
   const commit = await rootCommit(projectRoot);
-  if (commit !== undefined) return sha256Hex(`git\n${commit}`);
-  if (salt === undefined) return undefined;
-  return sha256Hex(`path\n${salt}\n${projectRoot}`);
+  return commit === undefined ? undefined : sha256Hex(`git\n${commit}`);
 }

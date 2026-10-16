@@ -23,6 +23,20 @@ describe('SignalLadder', () => {
     }
   });
 
+  it('escalate climbs the same rungs without a signal, for a Ctrl-C delivered as a keypress', () => {
+    const exits: number[] = [];
+    const ladder = new SignalLadder();
+    const exit = (code: number): void => void exits.push(code);
+    ladder.escalate(exit);
+    expect(ladder.interruptSignal.aborted).toBe(true);
+    expect(ladder.forceSignal.aborted).toBe(false);
+    ladder.escalate(exit);
+    expect(ladder.forceSignal.aborted).toBe(true);
+    expect(exits).toEqual([]);
+    ladder.escalate(exit);
+    expect(exits).toEqual([130]);
+  });
+
   it('release removes its handlers', () => {
     const before = process.listenerCount('SIGINT');
     const release = new SignalLadder().arm(() => undefined);

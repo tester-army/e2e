@@ -1,10 +1,15 @@
 ---
 title: Quickstart
 description: Set up e2e with one prompt to your coding agent, or step by step.
+icon: "rocket"
+"og:image": "https://e2e.tester.army/docs/images/og/quickstart.png?v=4a3569d569"
+"twitter:image": "https://e2e.tester.army/docs/images/og/quickstart.png?v=4a3569d569"
 ---
 
 import { ModelProvider } from './snippets/model-provider.jsx';
 import { SetupPrompt } from './snippets/setup-prompt-card.jsx';
+import { Video } from './snippets/video.jsx';
+import { VideoCard } from './snippets/video-card.jsx';
 
 export const setupPrompt = `Set up e2e end-to-end tests in this project. Docs: \`https://e2e.tester.army/docs/quickstart.md\`
 
@@ -15,10 +20,16 @@ export const setupPrompt = `Set up e2e end-to-end tests in this project. Docs: \
 5. Install dependencies, run the example test, and fix setup errors until it passes.
 6. Write one test for the most important user flow in this app, run it, and iterate until it passes.`;
 
+<VideoCard
+  id="4_9z6QWShLc"
+  title="Getting Started with Agentic e2e in 4 Minutes"
+  subtitle="In this video, Kacper takes a simple Next.js app from zero to a working agentic test suite."
+/>
+
 ## Set up with your coding agent
 
-Open Claude Code, Codex, Cursor, or another coding agent in your app's
-directory and paste this prompt:
+Paste this prompt into Claude Code, Codex, Cursor, or another coding agent
+in your app's directory:
 
 <SetupPrompt>
 
@@ -26,8 +37,8 @@ directory and paste this prompt:
 
 </SetupPrompt>
 
-The agent installs the [e2e skill](/coding-agents), so later prompts like
-"add a test for checkout" or "why did this run fail" work without more setup.
+The agent installs the [e2e skill](/coding-agents), so later prompts such as
+"add a test for checkout" need no more setup.
 
 <Note>
 Use Node.js 24.8 or newer (22.22.3 or newer on Node.js 22). On Windows, run inside WSL. Mobile tests also
@@ -57,14 +68,14 @@ need Xcode with an iOS simulator runtime, or the Android SDK with an emulator.
   </CodeGroup>
 
   Choose **Web (Playwright)** or **Mobile (iOS/Android)**, then a
-  subscription or model provider, or **None** for tests without AI. The
+  subscription, a model provider, or **None** for tests without AI. The
   wizard writes a config and an example test, adds dependencies, and offers
-  to set up your coding agent. Existing files stay intact.
+  to set up your coding agent. It keeps existing files.
 
   <Tabs>
     <Tab title="Web">
     Start your app's dev server at `http://localhost:3000`, or set its address
-    in `e2e.config.ts`. You can also [let e2e start it](/starting-your-app).
+    in `e2e.config.ts`. You can also [let e2e start it](/web#starting-your-app).
 
     <Accordion title="Example web config and test">
     This config uses Vercel AI Gateway. The wizard configures the provider you chose.
@@ -92,9 +103,8 @@ test('app opens', async ({ app, browser }) => {
     </Accordion>
     </Tab>
     <Tab title="Mobile">
-    Run `npx agent-device doctor` to check your setup. The example opens
-    Settings so you can try it before installing your own app. The wizard
-    chooses iOS on macOS and Android elsewhere.
+    Run `npx agent-device doctor` to check your setup. The wizard picks iOS
+    on macOS and Android elsewhere. The example opens the Settings app.
 
     <Accordion title="Example iOS config and test">
     This config uses Vercel AI Gateway. For Android, the wizard sets
@@ -123,7 +133,7 @@ test('Settings opens', async ({ app, screen }) => {
 ```
     </Accordion>
 
-    See [Testing iOS and Android](/mobile) to use your own app.
+    See [Mobile](/mobile) to use your own app.
     </Tab>
   </Tabs>
   </Step>
@@ -143,28 +153,31 @@ test('Settings opens', async ({ app, screen }) => {
   </CodeGroup>
 
   e2e downloads a browser or boots the simulator or emulator, checks that
-  the app opens, and writes `.e2e/report.json`. No model calls yet, so no
-  sign-in or API key needed.
+  the app opens, and prints the result. The example makes no model calls,
+  so it needs no sign-in or API key.
   </Step>
 </Steps>
 
-### Use a subscription or API key
+<Video>
+  <video src="/images/init.mp4" aria-label="npx e2e init asks for an engine, a model gateway, and coding agent setup, then lists the files it will write." muted loop playsInline controls />
 
-Connect the provider you chose in the wizard.
+  `npx e2e init` asks a few questions, then shows every change before it writes anything.
+</Video>
+
+### Use a subscription or API key
 
 <Tabs>
   <Tab title="Subscription">
-  Sign in to your existing plan. No API key needed.
-
-  | Subscription | Command |
+  | Plan | How to connect |
   | --- | --- |
   | ChatGPT Plus or Pro | `npx e2e login openai` |
   | GitHub Copilot | `npx e2e login github-copilot` |
   | OpenCode Console (OpenCode Zen and OpenCode Go) | `npx e2e login opencode-console` |
   | SuperGrok or X Premium+ | `npx e2e login spacexai` |
+  | Claude Max or Team (Claude Code) | API key from the plan's monthly API credits. See [Claude Max or Team](/subscriptions#claude-max-or-team). |
 
-  Copilot reuses your GitHub CLI login if available. See
-  [Subscriptions](/subscriptions) for details.
+  Copilot uses your GitHub CLI login if you have one. See
+  [Subscriptions](/subscriptions).
   </Tab>
   <Tab title="API key">
   Select your provider. Install its package and set the variables it reads,
@@ -175,10 +188,6 @@ Connect the provider you chose in the wizard.
   <ModelProvider show="install" />
 
   <ModelProvider show="env" />
-
-  Vercel AI Gateway reads `AI_GATEWAY_API_KEY`, or a
-  [Vercel OIDC token](/models#vercel-oidc-instead-of-a-key) in a project
-  linked with `vercel link`. OpenRouter reads `OPENROUTER_API_KEY`.
 
   The wizard writes the config for Vercel AI Gateway, OpenRouter, and
   OpenAI-compatible endpoints. For another provider, replace the model import
@@ -192,8 +201,8 @@ Connect the provider you chose in the wizard.
 
 ### Add an agent step
 
-Give `agent.act` one goal per call, then check the result. Adapt the
-example to a flow in your app:
+Give `agent.act` one [atomic goal](/core-concepts#goals) per call, then
+check the result. Adapt the example to a flow in your app:
 
 <Tabs>
   <Tab title="Web">
@@ -223,17 +232,17 @@ test('the agent opens General', async ({ agent, app, device }) => {
   await agent.act('open {section} settings', { params: { section: 'General' } });
 
   await agent.assert('the General settings screen is showing');
-  await expect(device.locator('role=NavigationBar id=General')).toBeVisible();
+  await expect(device.locator('role=navigation-bar id=General')).toBeVisible();
 });
 ```
 
-  `app.open()` launches the configured app fresh; without it, a test starts
-  where the previous one left the device. `device.locator` uses
+  `app.open()` launches the app fresh. Without it, a test starts where the
+  previous one left the device. `device.locator` takes
   [agent-device selectors](/mobile#the-device-fixture).
   </Tab>
 </Tabs>
 
-`params` fill the goal's placeholders. `agent.assert` judges the screen;
+`params` fill the goal's placeholders. `agent.assert` judges the screen.
 `expect` checks an exact value.
 
 <CodeGroup>
@@ -250,14 +259,14 @@ bunx e2e run tests/agent.e2e.ts
 ```
 </CodeGroup>
 
-Chose **None** in the wizard? [Add a model](/models) first. Add `--headed`
-to watch a web test, `--no-cache` to skip replaying cached actions.
+If you chose **None** in the wizard, [add a model](/models) first. Add
+`--headed` to watch a web test. Add `--no-cache` to skip cached actions.
 
 ## Next
 
 <CardGroup cols={2}>
-  <Card title="Goals" icon="pen-to-square" href="/goals">
-    Write test steps as goals in natural language.
+  <Card title="Core concepts" icon="pen-to-square" href="/core-concepts">
+    Goals, assertions, and locators.
   </Card>
   <Card title="Signing in" icon="key" href="/authentication">
     Reuse an app login and keep passwords out of model input.
@@ -266,6 +275,6 @@ to watch a web test, `--no-cache` to skip replaying cached actions.
     Read failures, screenshots, and traces.
   </Card>
   <Card title="Continuous integration" icon="code-branch" href="/ci">
-    Run your tests in CI.
+    Run your tests on GitHub Actions, EAS Workflows, Bitrise, or Codemagic.
   </Card>
 </CardGroup>

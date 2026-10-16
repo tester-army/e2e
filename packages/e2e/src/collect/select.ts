@@ -4,7 +4,7 @@ import { ConfigurationError, CollectionError } from '../internal/errors.ts';
 import { resultId } from '../internal/ids.ts';
 import { didYouMean, suggestionNote } from '../internal/suggest.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import { attemptRecording, type AttemptRecordings, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
+import { attemptKeep, attemptVideo, type AttemptRecordings, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
 import type { Capability, RecordingMode, TestOptions } from '../types.ts';
 import { excludingEntry, type Collection, type CollectedTest, type UncollectedFile } from './collect.ts';
 import { groupChain } from './registry.ts';
@@ -45,7 +45,8 @@ export interface SkipInfo {
     | 'serial-predecessor-failed'
     | 'hook-failed'
     | 'infrastructure-unavailable'
-    | 'failure-limit';
+    | 'failure-limit'
+    | 'time-limit';
   readonly reason: string;
   readonly relatedId?: string;
 }
@@ -212,11 +213,11 @@ export function pairRecording(pair: Pick<TestTargetPair, 'options' | 'target'>, 
   return own === undefined ? pair.target[kind] : { mode: own, source: 'test' };
 }
 
-/** What an attempt of a pair at `attemptIndex` records: one decision for the trace and the video alike. */
+/** What an attempt of a pair at `attemptIndex` captures: one keep decision for the trace and the video alike. */
 export function pairRecordings(pair: Pick<TestTargetPair, 'options' | 'target'>, attemptIndex: number): AttemptRecordings {
   return {
-    trace: attemptRecording(pairRecording(pair, 'trace'), attemptIndex),
-    video: attemptRecording(pairRecording(pair, 'video'), attemptIndex),
+    trace: attemptKeep(pairRecording(pair, 'trace').mode, attemptIndex),
+    video: attemptVideo(pairRecording(pair, 'video'), attemptIndex),
   };
 }
 
@@ -771,7 +772,9 @@ function shardItem(pair: TestTargetPair): string {
  * come from as few files as possible; the slices differ in size by at most
  * one item, the first shards taking the remainder. Applied after every other
  * filter and the serial closure, before the setup tests are chosen, so each
- * shard brings only the setups it needs.
+ * shard brings only the setups it needs. A skipped test is not an item: the
+ * shard holding the item before it in report order reports it, the first
+ * shard when none comes before, so the shards together report it once.
  */
 function applyShard(pairs: readonly TestTargetPair[], shard: Shard): TestTargetPair[] {
   const items = shardItems(pairs);
@@ -780,8 +783,13 @@ function applyShard(pairs: readonly TestTargetPair[], shard: Shard): TestTargetP
   const from = (shard.index - 1) * size + Math.min(shard.index - 1, remainder);
   const to = from + size + (shard.index - 1 < remainder ? 1 : 0);
   const kept = new Set(items.slice(from, to));
+  let previousKept = shard.index === 1;
   return pairs.map((pair) => {
-    if (pair.disposition !== 'run' || pair.test.kind !== 'test' || kept.has(shardItem(pair))) return pair;
+    if (pair.test.kind !== 'test') return pair;
+    if (pair.disposition === 'filtered') return pair;
+    if (pair.disposition === 'skip') return previousKept ? pair : { ...pair, disposition: 'filtered' as const };
+    previousKept = kept.has(shardItem(pair));
+    if (previousKept) return pair;
     return { ...pair, disposition: 'filtered' as const, skip: { cause: 'filtered' as const, reason: FILTERED_REASON.shard } };
   });
 }

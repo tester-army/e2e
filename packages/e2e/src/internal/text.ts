@@ -8,6 +8,15 @@ import { testPattern } from './regexp.ts';
 
 export type { TextPattern };
 
+/** Caps prose at `maxChars`, marking the cut with an ellipsis; a cut never splits a character in two (a surrogate pair). */
+export function bound(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars - 1;
+  const last = text.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+  return `${text.slice(0, end)}…`;
+}
+
 /**
  * Normalizes text by trimming leading/trailing whitespace and replacing every
  * nonempty run of Unicode whitespace with one ASCII space.

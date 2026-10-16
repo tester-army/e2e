@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject, type FixtureProject, type RunOutcome } from '../helpers/run-project.ts';
@@ -40,7 +42,7 @@ describe('expect.soft in a run', () => {
   let project: FixtureProject;
 
   beforeAll(async () => {
-    ({ outcome, project } = await runProject({ 'tests/soft.e2e.ts': SOFT_SUITE }, {}));
+    ({ outcome, project } = await runProject({ 'tests/soft.e2e.ts': SOFT_SUITE }, { config: { reporters: ['markdown'] } }));
   }, 180_000);
 
   afterAll(async () => {
@@ -71,6 +73,12 @@ describe('expect.soft in a run', () => {
     ]);
     expect(attempt.steps[1]?.error?.code).toBe('ASSERTION_FAILED');
     expect(attempt.secondaryErrors).toEqual([]);
+  });
+
+  it('names no step in the summary, since the error unwound through a value matcher, and points at its line', () => {
+    const attempt = resultByTitle(outcome, 'soft failures let the body run on').attempts[0]!;
+    const summary = readFileSync(path.join(project.dir, '.e2e', 'summary.md'), 'utf8');
+    expect(summary).toContain(`**🔴 soft failures let the body run on**  \n\`tests/soft.e2e.ts:${attempt.error!.source!.line}\`\n\n**ASSERTION_FAILED**\n\n`);
   });
 
   it('keeps the body error primary and notes the soft failures beside it', () => {

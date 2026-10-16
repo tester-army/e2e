@@ -100,6 +100,28 @@ describe('e2e cache ls', () => {
     expect(written(stdoutSpy).trimEnd().split('\n')[1]).toMatch(/ 2 \(truncated\)$/);
   });
 
+  it.each([
+    { testId: 'tests/中文.e2e.ts::passes', padding: 2, asciiPadding: 5 },
+    { testId: 'tests/e\u0301.e2e.ts::passes', padding: 2, asciiPadding: 2 },
+    { testId: 'tests/👩‍💻.e2e.ts::passes', padding: 2, asciiPadding: 3 },
+  ])('aligns columns for $testId by displayed width', async ({ testId, padding, asciiPadding }) => {
+    const asciiId = 'tests/a.e2e.ts::passes';
+    await seed([
+      { keyHash: 'a'.repeat(64), trace: trace({ testId: asciiId, targetId: 'web', instructionDigest: 'd'.repeat(64) }, 1) },
+      { keyHash: 'b'.repeat(64), trace: trace({ testId, targetId: 'web', instructionDigest: 'e'.repeat(64) }, 1) },
+    ]);
+    await invoke('cache', 'ls');
+    const lines = written(stdoutSpy).trimEnd().split('\n');
+    expect(process.exitCode).toBe(0);
+    expect(lines).toHaveLength(3);
+    expect(lines.find((line) => line.startsWith(asciiId))).toBe(
+      `${asciiId}${' '.repeat(asciiPadding)}web     dddddddddddd  <1m  1`,
+    );
+    expect(lines.find((line) => line.startsWith(testId))).toBe(
+      `${testId}${' '.repeat(padding)}web     eeeeeeeeeeee  <1m  1`,
+    );
+  });
+
   it('reports an empty store instead of failing', async () => {
     await invoke('cache', 'ls');
     expect(written(stdoutSpy)).toContain('no replay cache entries in');
@@ -126,6 +148,19 @@ describe('e2e cache stats', () => {
     expect(output).toContain(`directory  ${path.join(root, CACHE_DIR)}`);
     expect(output).toContain('entries    2');
     expect(output).toMatch(/size {7}\d+(\.\d)? (B|KiB)/);
+  });
+
+  it('reads the directory --cache-dir or E2E_CACHE_DIR names over cache.dir', async () => {
+    await invoke('cache', 'stats', '--cache-dir', 'from-flag');
+    expect(written(stdoutSpy)).toContain(`directory  ${path.join(root, 'from-flag')}`);
+    stdoutSpy.mockClear();
+    vi.stubEnv('E2E_CACHE_DIR', 'from-env');
+    try {
+      await invoke('cache', 'stats');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(written(stdoutSpy)).toContain(`directory  ${path.join(root, 'from-env')}`);
   });
 });
 

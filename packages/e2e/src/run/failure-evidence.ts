@@ -31,7 +31,7 @@ const MAX_CANDIDATE_BYTES = 1024;
 const MAX_NEAR_WORD_LENGTH = 24;
 const MAX_URL_BYTES = 2048;
 /** Report-relative path of the screen text under the attempt's artifact directory. */
-const SCREEN_FILE = 'failure/screen.txt';
+const SCREEN_FILE = 'screen-at-failure.txt';
 
 export interface FailureEvidenceOptions {
   readonly session: TargetSession;
@@ -80,12 +80,14 @@ export async function captureFailureEvidence(options: FailureEvidenceOptions): P
   if (observation?.location !== undefined) evidence.url = truncateUtf8(observation.location, MAX_URL_BYTES);
 
   if (observation !== undefined) {
+    evidence.viewport = { width: observation.viewport.width, height: observation.viewport.height };
+    if (observation.kind === 'semantic') evidence.nodes = observation.nodes.size;
     try {
       const file = path.join(options.artifacts.dir, SCREEN_FILE);
       mkdirSync(path.dirname(file), { recursive: true });
       // An earlier run's file at the same path is overwritten: attempt
       // directories are named by test and attempt index, not by run.
-      writeFileSync(file, screenText(observation, evidence.url));
+      writeFileSync(file, `${observation.text}\n`);
       evidence.screen = options.artifacts.register('log', SCREEN_FILE);
     } catch {
       // An unwritable directory: the tree stays unrecorded.
@@ -109,20 +111,6 @@ export async function captureFailureEvidence(options: FailureEvidenceOptions): P
 
 function finish(evidence: FailureEvidence): FailureEvidence | undefined {
   return Object.keys(evidence).length === 0 ? undefined : evidence;
-}
-
-/** The screen file: a header a reader can trust, then the tree exactly as the model reads it. */
-function screenText(observation: AgentObservation, url: string | undefined): string {
-  const header = [
-    `# Screen at failure`,
-    ...(url === undefined ? [] : [`url: ${url}`]),
-    `revision: ${observation.revision}`,
-    `viewport: ${observation.viewport.width}x${observation.viewport.height}`,
-    observation.kind === 'semantic'
-      ? `nodes: ${observation.nodes.size}${observation.truncated ? ' (listing truncated)' : ''}`
-      : 'nodes: unavailable',
-  ];
-  return `${header.join('\n')}\n\n${observation.text}\n`;
 }
 
 /**

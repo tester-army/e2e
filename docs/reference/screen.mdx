@@ -1,6 +1,9 @@
 ---
 title: screen and Locator
 description: Queries, refinement, actions, and reads.
+icon: "display"
+"og:image": "https://e2e.tester.army/docs/images/og/reference/screen.png?v=1b21c45d37"
+"twitter:image": "https://e2e.tester.army/docs/images/og/reference/screen.png?v=1b21c45d37"
 ---
 
 A `Locator` stores a query and resolves it when an action, read, or assertion
@@ -22,7 +25,7 @@ export interface Screen {
   getByText(text: TextMatch, options?: TextMatchOptions): Locator;
   /** Creates a lazy displayed-value query. */
   getByDisplayValue(value: TextMatch, options?: TextMatchOptions): Locator;
-  /** Creates a lazy test-id query: a string matches the whole id, case-sensitive; a RegExp tests it. */
+  /** Creates a lazy test-id query: a string matches the whole id, case-sensitive; a RegExp tests it. An engine may also match an id without its platform's namespacing. */
   getByTestId(id: TextMatch, options?: { visible?: boolean }): Locator;
   /** Taps a viewport point, with no node behind it. */
   tapAt(point: Point, options?: ActionOptions): Promise<void>;
@@ -36,17 +39,17 @@ export interface Screen {
 }
 ```
 
-Most operations require exactly one match. Reads return the current value
-without waiting for it to change: a frame that is not in the document answers
-at once, and a node the engine reports stale (a resolve that raced a
-navigation, or a match the app replaced while it was read) is re-resolved
-within the action timeout, which repairs the race without waiting for a
-match. Use [`expect`](/reference/expect) to wait.
+Most operations require exactly one match. A read polls for its one match
+until the action timeout, as an action does, then returns the current value
+without waiting for it to change. A node the engine reports stale (a resolve
+that raced a navigation, or a match the app replaced while it was read) is
+re-resolved within the same timeout. Use [`expect`](/reference/expect) to
+wait for a value.
 
 | Operation | Zero matches | Multiple matches |
 | --- | --- | --- |
 | Actions | Poll until the timeout, then `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` |
-| Reads | `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` |
+| Reads | Poll until the timeout, then `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` |
 | `count()`, `all()`, `allTextContents()` | `0`, `[]`, `[]` | The count, one locator per match, one text per match |
 | `isVisible()`, `isHidden()` | `false`, `true` | `LOCATOR_AMBIGUOUS` |
 | Assertions | Poll until the timeout | `LOCATOR_AMBIGUOUS` |
@@ -73,7 +76,9 @@ substring match, and a `RegExp` matches as written.
 engine's test-id attribute (`web({ testIdAttribute })`, default
 `data-testid`), on a device the accessibility identifier or resource id. A
 string matches the whole id, case-sensitive; a `RegExp` such as
-`/total-budgeted$/` matches as written.
+`/total-budgeted$/` matches as written. An engine may also match an id
+without its platform's namespacing, such as the mobile engine's
+[Android resource ids](/reference/mobile#capabilities).
 
 ```ts
 screen.getByRole('button', 'Save');
@@ -158,7 +163,7 @@ negative or non-finite coordinate and `UNSUPPORTED_CAPABILITY` when the
 engine does not list `tap` in its pointer actions.
 
 ```ts
-const map = await screen.getByRole('image', 'Map').boundingBox();
+const map = (await screen.getByRole('image', 'Map').boundingBox())!;
 await screen.tapAt({ x: map.x + 360, y: map.y + 70 });
 ```
 
@@ -181,8 +186,8 @@ engine's.
 `{ from, to, duration? }` is a swipe along a path between two viewport points:
 a touch swipe on a device, a pointer drag on a document platform, which is
 what reveals a row action, dismisses a sheet, or drags a card between
-columns. `duration` sets how long the gesture takes in milliseconds; omitted
-leaves the duration to the engine's default. Uses `config.actionTimeout`.
+columns. `duration` sets how long the gesture takes, an integer from 16
+through 10000 ms; omitted leaves it to the engine's default. Uses `config.actionTimeout`.
 Throws `ACTION_FAILED` when the gesture is rejected, `INVALID_ARGUMENT` for
 a mix of the two shapes, an out-of-range duration, or a coordinate off the
 plane, and `UNSUPPORTED_CAPABILITY` when the engine does not list `swipe` in
@@ -191,7 +196,7 @@ its actions (a direction) or `swipeTo` in its pointer actions (a path).
 ```ts
 await screen.swipe({ direction: 'up', momentum: 'fast' });
 
-const row = await screen.getByText('Design review').boundingBox();
+const row = (await screen.getByText('Design review').boundingBox())!;
 await screen.swipe({
   from: { x: row.x + row.width - 10, y: row.y + row.height / 2 },
   to: { x: row.x + 10, y: row.y + row.height / 2 },
@@ -243,6 +248,8 @@ export interface Locator extends Screen {
   click(options?: TapOptions): Promise<void>;
   /** Double-taps exactly one matching actionable node. */
   doubleTap(options?: ClickOptions): Promise<void>;
+  /** Alias of doubleTap. */
+  dblclick(options?: ClickOptions): Promise<void>;
   /** Performs a secondary tap, such as a right click or two-finger tap. */
   secondaryTap(options?: ClickOptions): Promise<void>;
   /** Long-presses exactly one matching actionable node. */
@@ -277,7 +284,7 @@ export interface Locator extends Screen {
   scrollIntoView(options?: ActionOptions): Promise<void>;
   /** Performs a swipe scoped to exactly one node. */
   swipe(options: SwipeOptions & ActionOptions): Promise<void>;
-  /** Reads normalized text without retrying for a particular value. */
+  /** Reads normalized text once a match exists, without retrying for a particular value. */
   textContent(): Promise<string | null>;
   /** Reads the current input value. */
   inputValue(): Promise<string>;
@@ -324,8 +331,8 @@ export interface Locator extends Screen {
   Playwright's `trial`, `force`, or `noWaitAfter` included, throws
   `INVALID_ARGUMENT` before the node is resolved, so the control is never
   touched.
-- `click` is an alias of `tap`.
-- `tap`, `doubleTap`, and `secondaryTap` take `modifiers`, the keys held for
+- `click` is an alias of `tap`, and `dblclick` of `doubleTap`.
+- `tap`, `doubleTap`, `dblclick`, and `secondaryTap` take `modifiers`, the keys held for
   the click, as a Shift-click extends a selection:
   `row.click({ modifiers: ['Shift'] })`. `ControlOrMeta` is Control on Windows
   and Linux, Meta on macOS. An unknown or repeated modifier is
@@ -596,7 +603,7 @@ export interface SwipePathOptions {
   from: Point;
   /** Where it lifts. */
   to: Point;
-  /** Gesture duration in milliseconds; omitted = the engine's default. */
+  /** Gesture duration, an integer from 16 through 10000 ms; omitted = the engine's default. */
   duration?: number;
   direction?: never;
   momentum?: never;
@@ -609,7 +616,7 @@ export interface SwipePathOptions {
  */
 export type Point = ViewportPoint; // { x: number; y: number }
 
-/** `tap`, `click`, `doubleTap`, and `secondaryTap` options: the action timeout and the keys held for the click. */
+/** `tap`, `click`, `doubleTap`, `dblclick`, and `secondaryTap` options: the action timeout and the keys held for the click. */
 export interface ClickOptions extends ActionOptions {
   /**
    * Keys held while the pointer clicks, as a Shift-click extends a selection:
@@ -661,16 +668,10 @@ its spelling while engines, the replay cache, and reports see `image`. On the
 web, `image` covers `<img>` with alt text and any element with `role="img"`;
 an `<img alt="">` is decoration and matches nothing.
 
-Decoration is only that while the element is: `role="presentation"` and
-`role="none"` are ignored on a control a person can focus (a negative
-`tabindex` included) or an element carrying a global ARIA state or property
-Chromium counts for the conflict, so `<button role="none">` is still a
-`button` and `<a href role="presentation">` keeps its link role and name. An
-`<img alt="">` that is focusable or carries any `aria-*` attribute is an
-`image` rather than decoration. An empty inline link that renders is listed
-too: a zero-size element a person can focus stays in the tree with its
-`hidden` state set, so `toBeVisible` calls it hidden while a role or test-id
-locator still reaches it.
+`role="presentation"` and `role="none"` are ignored on a focusable element
+or one with a global ARIA attribute such as `aria-label`, as `getByRole` reads
+them: `<button role="none">` is still a `button`. An `<img alt="">` with a
+`title`, a `tabindex`, or a global ARIA attribute is an `image`.
 
 The web engine derives the roles from HTML the way HTML-AAM does: `<progress>`
 is `progressbar`, `<meter>` is `meter`, `<hr>` is `separator`, `<fieldset>`
@@ -679,7 +680,11 @@ and `<details>` are `group`, `<input type="number">` is `spinbutton`,
 `<select size="3">` is a `listbox` like a `multiple` one, an `<input list>`
 naming a `<datalist>` is a `combobox`, a `<td>` of a `role="grid"` table is a
 `gridcell`,
-`<thead>` and `<tbody>` are `rowgroup`, `<th scope="row">` is `rowheader`,
+`<thead>` and `<tbody>` are `rowgroup`, `<th scope="row">` is `rowheader`.
+A scope-less `<th>` beside a data cell with text or children is also a
+`rowheader`; header-only rows keep `columnheader`. A lone scope-less header in a one-row
+table has no header role, while `scope="col"` and `scope="colgroup"` explicitly
+keep `columnheader`.
 `<figure>` is `figure`, `<article>` is `article`, `<header>` and `<footer>` are
 `banner` and `contentinfo` only outside sectioning content or an element with
 a sectioning role (`article`, `complementary`, `main`, `navigation`, `region`),

@@ -7,8 +7,9 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { z } from 'zod';
 import { rfc8628Flow } from '../device-code.ts';
-import { OAuthError, describeResponse } from '../errors.ts';
+import { OAuthError, describeResponse, readJsonBody } from '../errors.ts';
 import type { FetchFunction, OAuthCredentials, OAuthProvider, SubscriptionModel } from '../types.ts';
 
 const execFileAsync = promisify(execFile);
@@ -130,11 +131,14 @@ export async function sendCopilotRequest(request: Request, credentials: CopilotC
   return upstream(new Request(url, { method: request.method, headers, signal: request.signal, ...(text === undefined ? {} : { body: text }) }));
 }
 
-/** One turn of either protocol: a chat `messages[]` entry or a Responses `input[]` item. */
-interface CopilotTurn {
-  readonly role?: unknown;
-  readonly content?: unknown;
-}
+/** One turn of either protocol, a chat `messages[]` entry or a Responses `input[]` item; one that is not an object reads as empty. */
+const CopilotTurnSchema = z.object({ role: z.unknown().optional(), content: z.unknown().optional() }).catch({});
+
+/** The turns of a chat or Responses body; a list of another type reads as absent. */
+const CopilotBodySchema = z.object({
+  messages: z.array(CopilotTurnSchema).optional().catch(undefined),
+  input: z.array(CopilotTurnSchema).optional().catch(undefined),
+});
 
 /**
  * Reads who initiated the turn and whether images are present, whichever
@@ -145,16 +149,15 @@ interface CopilotTurn {
 function copilotTurn(text: string | undefined): { initiator: 'user' | 'agent'; vision: boolean } {
   if (text === undefined) return { initiator: 'user', vision: false };
   try {
-    const body = JSON.parse(text) as { messages?: unknown; input?: unknown };
+    const { messages, input } = CopilotBodySchema.parse(JSON.parse(text));
     // A Responses body has `input` and no `messages`; anything else stays on the chat path.
-    if (!Array.isArray(body.messages) && Array.isArray(body.input)) {
-      const input = body.input as CopilotTurn[];
+    if (messages === undefined && input !== undefined) {
       return { initiator: input.at(-1)?.role === 'user' ? 'user' : 'agent', vision: input.some((item) => hasPart(item.content, 'input_image')) };
     }
-    const messages = Array.isArray(body.messages) ? (body.messages as CopilotTurn[]) : [];
-    return { initiator: messages.at(-1)?.role === 'user' ? 'user' : 'agent', vision: messages.some((message) => hasPart(message.content, 'image_url')) };
+    const turns = messages ?? [];
+    return { initiator: turns.at(-1)?.role === 'user' ? 'user' : 'agent', vision: turns.some((message) => hasPart(message.content, 'image_url')) };
   } catch {
-    // Not JSON; the headers stay at their defaults.
+    // Not a JSON object; the headers stay at their defaults.
     return { initiator: 'user', vision: false };
   }
 }
@@ -164,16 +167,29 @@ function hasPart(content: unknown, type: string): boolean {
   return Array.isArray(content) && content.some((part: { type?: string }) => part?.type === type);
 }
 
-/** One entry of the Copilot API's `/models`, as far as the listing reads it. */
-interface CopilotModel {
-  readonly id?: unknown;
-  readonly name?: unknown;
-  readonly vendor?: unknown;
-  readonly preview?: unknown;
-  readonly policy?: { readonly state?: unknown };
-  readonly supported_endpoints?: unknown;
-  readonly capabilities?: { readonly type?: unknown; readonly supports?: { readonly tool_calls?: unknown; readonly vision?: unknown } };
-}
+/** One entry of the Copilot API's `/models`, as far as the listing reads it; a field of another type reads as absent. */
+const CopilotModelSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().optional().catch(undefined),
+  vendor: z.string().optional().catch(undefined),
+  preview: z.unknown().optional(),
+  policy: z.object({ state: z.string().optional().catch(undefined) }).optional().catch(undefined),
+  supported_endpoints: z.array(z.unknown()).optional().catch(undefined),
+  capabilities: z
+    .object({
+      type: z.unknown().optional(),
+      supports: z.object({ tool_calls: z.unknown().optional(), vision: z.unknown().optional() }).optional().catch(undefined),
+    })
+    .optional()
+    .catch(undefined),
+});
+
+type CopilotModel = z.infer<typeof CopilotModelSchema>;
+
+/** The models in a Copilot API `/models` body, `undefined` when it names none; an entry without an id is left out. */
+const CopilotModelListSchema = z
+  .object({ data: z.array(CopilotModelSchema.optional().catch(undefined)).nullish() })
+  .transform(({ data }) => data?.filter((model) => model !== undefined));
 
 /**
  * The chat models the Copilot plan serves; embeddings and other kinds are
@@ -185,23 +201,22 @@ interface CopilotModel {
 async function listCopilotModels(fetch: FetchFunction): Promise<SubscriptionModel[]> {
   const response = await fetch(`${COPILOT_API_URL}/models`);
   if (!response.ok) throw new OAuthError('FLOW_FAILED', `GitHub Copilot did not list its models: ${await describeResponse(response)}`);
-  const payload = (await response.json()) as { data?: unknown };
-  const models = Array.isArray(payload.data) ? (payload.data as CopilotModel[]) : [];
+  const models = (await readJsonBody(response, CopilotModelListSchema, 'the GitHub Copilot model list')) ?? [];
   return models
-    .filter((model) => typeof model.id === 'string' && model.id !== '' && (model.capabilities?.type === undefined || model.capabilities.type === 'chat'))
+    .filter((model) => model.capabilities?.type === undefined || model.capabilities.type === 'chat')
     .map((model) => {
       const supports = model.capabilities?.supports;
       const detail = [
-        typeof model.vendor === 'string' ? model.vendor : undefined,
+        model.vendor,
         supports?.tool_calls === true ? 'tools' : undefined,
         supports?.vision === true ? 'vision' : undefined,
         model.preview === true ? 'preview' : undefined,
-        typeof model.policy?.state === 'string' && model.policy.state !== 'enabled' ? 'not enabled' : undefined,
+        model.policy?.state !== undefined && model.policy.state !== 'enabled' ? 'not enabled' : undefined,
         copilotProtocol(model) === undefined ? 'no chat or responses' : undefined,
       ].filter((part) => part !== undefined);
       return {
-        id: model.id as string,
-        ...(typeof model.name === 'string' && model.name !== '' ? { name: model.name } : {}),
+        id: model.id,
+        ...(model.name === undefined || model.name === '' ? {} : { name: model.name }),
         ...(detail.length === 0 ? {} : { detail: detail.join(', ') }),
       };
     });
@@ -223,9 +238,9 @@ export async function copilotProtocolFor(modelId: string, fetch: FetchFunction, 
   try {
     const response = await fetch(new Request(`${COPILOT_API_URL}/models`, { signal }));
     if (!response.ok) return undefined;
-    const payload = (await response.json()) as { data?: unknown };
-    if (!Array.isArray(payload.data)) return undefined;
-    return copilotProtocol((payload.data as CopilotModel[]).find((model) => model.id === modelId)) ?? 'chat';
+    const listing = CopilotModelListSchema.safeParse(await response.json());
+    if (!listing.success || listing.data === undefined) return undefined;
+    return copilotProtocol(listing.data.find((model) => model.id === modelId)) ?? 'chat';
   } catch (error) {
     if (error instanceof OAuthError) throw error;
     return undefined;
@@ -246,4 +261,26 @@ function copilotProtocol(model: CopilotModel | undefined): CopilotProtocol | und
   if (endpoints.includes('/chat/completions')) return 'chat';
   if (endpoints.includes('/responses')) return 'responses';
   return undefined;
+}
+
+/** Why `modelId` cannot be used, as the run error reads it, once Copilot answered `model_not_supported`. */
+export function copilotRefusal(modelId: string): string {
+  return `GitHub Copilot does not serve ${modelId} to this account: the plan does not include it, it is turned off in Copilot settings on GitHub, or Copilot lists no such id; npx e2e models github-copilot lists the ids, and the listing cannot see plan limits`;
+}
+
+/** True for the AI SDK's error over a 4xx whose body code is `model_not_supported`; a wrong endpoint (`unsupported_api_for_model`) is not this. */
+export function isCopilotRefusal(cause: unknown): cause is Error {
+  if (!(cause instanceof Error) || cause.name !== 'AI_APICallError') return false;
+  const { statusCode, data, responseBody } = cause as { statusCode?: unknown; data?: unknown; responseBody?: unknown };
+  if (typeof statusCode !== 'number' || statusCode < 400 || statusCode >= 500) return false;
+  const parsed = data ?? (typeof responseBody === 'string' ? parseJson(responseBody) : undefined);
+  return (parsed as { error?: { code?: unknown } } | undefined)?.error?.code === 'model_not_supported';
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
 }

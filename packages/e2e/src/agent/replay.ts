@@ -13,7 +13,7 @@
  */
 
 import { isRelocatableDescriptor, MAIN_LIST_SHARE, relocateDescriptor, type RelocationFailure, type RelocationResult } from '../cache/relocate.ts';
-import { isNodeAction, type ActionTrace, type DerivedReason, type RecordedAction, type TraceTargetDescriptor, type TraceViewport } from '../cache/trace.ts';
+import { isNodeAction, isTapActionName, type ActionTrace, type DerivedReason, type RecordedAction, type TraceTargetDescriptor, type TraceViewport } from '../cache/trace.ts';
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
 import type { RedactedNode } from './observation.ts';
 import { hasCause } from '../internal/errors.ts';
@@ -83,6 +83,15 @@ export interface ReplayOutcome {
   readonly uncertainAction?: string;
   /** On a `gap` at a typed value: the rule that made the value this run's data. */
   readonly derived?: DerivedReason;
+  /** The recorded action the replay stopped at, one-based, and what went wrong there when more than the reason says. */
+  readonly stoppedAt?: ReplayStop;
+}
+
+/** Where a replay that did not complete stopped; see `ReplayOutcome.stoppedAt`. */
+export interface ReplayStop {
+  readonly index: number;
+  readonly summary: string;
+  readonly why?: string;
 }
 
 /** The list a recorded scroll moved, and the share of the viewport it covered. */
@@ -147,7 +156,14 @@ type PlannedCall =
 type PointInvoke = (point: ViewportPoint) => Promise<unknown>;
 
 function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall {
-  if (isNodeAction(action)) return { kind: 'targeted', descriptor: action.target, invoke: (t) => actions[action.name](t) };
+  if (isNodeAction(action)) {
+    const { name, modifiers } = action;
+    return {
+      kind: 'targeted',
+      descriptor: action.target,
+      invoke: (t) => (isTapActionName(name) && modifiers !== undefined ? actions[name](t, { modifiers }) : actions[name](t)),
+    };
+  }
   switch (action.name) {
     case 'tool':
       return { kind: 'gap', ...(action.derived === undefined ? {} : { derived: action.derived }) };
@@ -252,13 +268,16 @@ export async function replayTrace(
 ): Promise<ReplayOutcome> {
   const summaries: string[] = [];
   const total = trace.actions.length;
-  const stop = (stopReason: ReplayHandOffReason, partial?: string): ReplayOutcome => {
+  let current: ReplayStop | undefined;
+  const stop = (stopReason: ReplayHandOffReason, partial?: string, why?: string): ReplayOutcome => {
+    const stoppedAt = current === undefined ? undefined : { ...current, ...(why === undefined ? {} : { why }) };
     if (partial !== undefined) summaries.push(partial);
-    return { completed: false, executed: summaries.length, total, summaries, stopReason };
+    return { completed: false, executed: summaries.length, total, summaries, stopReason, ...(stoppedAt === undefined ? {} : { stoppedAt }) };
   };
 
   let previous: RecordedAction | undefined;
-  for (const action of trace.actions) {
+  for (const [position, action] of trace.actions.entries()) {
+    current = { index: position + 1, summary: action.summary };
     if (!host.traceEligible) return stop('action-failed');
     const planned = planCall(action, host.actions);
     if (planned.kind === 'gap') {
@@ -333,7 +352,7 @@ export async function replayTrace(
           if (screen.kind === 'pixels') return stop('action-failed');
           const { viewport } = screen;
           if (viewport.width !== planned.viewport.width || viewport.height !== planned.viewport.height) {
-            return stop('viewport-changed');
+            return stop('viewport-changed', undefined, `recorded at ${planned.viewport.width}x${planned.viewport.height}, the screen is ${viewport.width}x${viewport.height}`);
           }
           await planned.invoke(planned.point);
           break;
@@ -354,7 +373,7 @@ export async function replayTrace(
         // the runner never repeats an unknown-commit operation itself.
         return { ...stop('action-uncertain', partial()), uncertainAction: action.summary };
       }
-      return stop('action-failed', partial());
+      return stop('action-failed', partial(), firstLine(cause));
     }
     summaries.push(action.summary);
     previous = action;
@@ -611,4 +630,11 @@ function isUncertainCommit(cause: unknown): boolean {
  */
 function isReplayFatal(cause: unknown, signal: AbortSignal): boolean {
   return signal.aborted || isRuntimeHardStop(cause);
+}
+
+/** The first line of what a failed replayed action threw, for the report's cache detail. */
+function firstLine(cause: unknown): string | undefined {
+  const message = cause instanceof Error ? cause.message : typeof cause === 'string' ? cause : undefined;
+  const line = message?.split('\n')[0]?.trim();
+  return line === undefined || line === '' ? undefined : line;
 }

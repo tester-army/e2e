@@ -11,8 +11,15 @@ export interface OutputLayout {
   readonly report: string;
   /** The `--ai-trace` recording, `ai-trace.json`. */
   readonly aiTrace: string;
-  /** The artifact tree the report's paths are relative to; a run clears it when it starts. */
-  readonly artifacts: string;
+  /**
+   * One directory per test, `results/<test>/`, holding its trace page
+   * (`trace.md`) and its attempts' artifacts (`attempt-<n>/`); the report's
+   * artifact paths are relative to it. The members of a serial group keep
+   * their pages in their own directories, and their attempts in the group's,
+   * named the same way after the group, since one session ran them all. A run
+   * clears it when its tests start.
+   */
+  readonly results: string;
   /** The per-run encrypted session stores. */
   readonly sessions: string;
   /** Where `e2e mcp` saves one session's recordings. */
@@ -24,7 +31,7 @@ export function outputLayout(output: string): OutputLayout {
   return {
     report: path.join(output, 'report.json'),
     aiTrace: path.join(output, 'ai-trace.json'),
-    artifacts: path.join(output, 'artifacts'),
+    results: path.join(output, 'results'),
     sessions: path.join(output, 'sessions'),
     videos: (sessionId) => path.join(output, 'videos', sessionId),
   };

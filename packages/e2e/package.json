@@ -1,7 +1,8 @@
 {
   "name": "e2e",
-  "version": "0.17.0",
+  "version": "0.21.1",
   "description": "SDK, runner, and CLI for agentic end-to-end testing",
+  "mcpName": "io.github.tester-army/e2e",
   "keywords": [
     "e2e",
     "end-to-end",
@@ -51,6 +52,10 @@
       "types": "./dist/engine/index.d.ts",
       "default": "./dist/engine/index.js"
     },
+    "./runner": {
+      "types": "./dist/runner.d.ts",
+      "default": "./dist/runner.js"
+    },
     "./oauth/chatgpt": {
       "types": "./dist/oauth/chatgpt.d.ts",
       "default": "./dist/oauth/chatgpt.js"
@@ -87,18 +92,19 @@
     "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
-    "@ai-sdk/provider": "4.0.18",
+    "@ai-sdk/provider": "4.0.26",
     "@clack/prompts": "1.8.1",
     "@jridgewell/remapping": "2.3.5",
-    "@modelcontextprotocol/server": "2.2.0",
-    "@oxc-project/runtime": "0.152.0",
-    "@vitest/expect": "5.0.2",
+    "@modelcontextprotocol/server": "2.3.1",
+    "@oxc-project/runtime": "0.153.0",
+    "@vitest/expect": "5.0.3",
     "commander": "15.0.0",
+    "fast-png": "8.0.0",
     "get-tsconfig": "4.14.3",
-    "oxc-parser": "0.152.0",
-    "oxc-transform": "0.152.0",
+    "oxc-parser": "0.153.0",
+    "oxc-transform": "0.153.0",
     "picocolors": "1.1.1",
-    "pngjs": "7.0.0",
+    "pixelmatch": "8.0.0",
     "zod": "4.6.1"
   },
   "peerDependencies": {
@@ -132,7 +138,7 @@
   "devDependencies": {
     "@ai-sdk/anthropic": "4.0.58",
     "@ai-sdk/google": "4.0.77",
-    "@ai-sdk/openai": "4.0.71",
+    "@ai-sdk/openai": "4.0.90",
     "@ai-sdk/openai-compatible": "3.0.53",
     "@ai-sdk/xai": "5.0.4",
     "@e2e-dev/web": "workspace:*",
@@ -143,6 +149,7 @@
     "ai": "7.0.107",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
+    "pngjs": "7.0.0",
     "typescript": "7.0.2",
     "vitest": "5.0.1"
   },

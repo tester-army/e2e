@@ -1,0 +1,152 @@
+---
+title: TestMu AI
+sidebarTitle: TestMu AI
+description: Run mobile targets on TestMu AI (formerly LambdaTest) Android emulators, iOS simulators, and real devices with the testmu() device provider from @e2e-dev/testmu.
+icon: "/images/icons/testmu.svg"
+"og:image": "https://e2e.tester.army/docs/images/og/integrations/testmu.png?v=6ef69e0285"
+"twitter:image": "https://e2e.tester.army/docs/images/og/integrations/testmu.png?v=6ef69e0285"
+---
+
+`testmu()` from `@e2e-dev/testmu` is a
+[device provider](/mobile#hosted-devices) for
+[TestMu AI](https://www.lambdatest.com) (formerly LambdaTest) Android
+emulators, iOS simulators, and real devices. Each worker slot leases one
+device when the run starts and releases it when the run ends.
+
+<Tip>
+No Mac, Xcode, or Android SDK on the machine that runs e2e.
+</Tip>
+
+## Setup
+
+Install the integration alongside the mobile engine:
+
+<CodeGroup>
+```bash npm
+npm install --save-dev e2e @e2e-dev/mobile @e2e-dev/testmu
+```
+
+```bash pnpm
+pnpm add -D e2e @e2e-dev/mobile @e2e-dev/testmu
+```
+
+```bash bun
+bun add -d e2e @e2e-dev/mobile @e2e-dev/testmu
+```
+</CodeGroup>
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { mobile } from '@e2e-dev/mobile';
+import { testmu } from '@e2e-dev/testmu';
+
+const apk = 'https://prod-mobile-artefacts.lambdatest.com/assets/docs/proverbial_android.apk';
+const ipa = 'https://prod-mobile-artefacts.lambdatest.com/assets/docs/proverbial_ios.ipa';
+
+export default {
+  targets: [
+    {
+      name: 'android-emulator',
+      engine: mobile({
+        platform: 'android',
+        device: testmu({ device: 'Galaxy S22 Ultra 5G', osVersion: '14', app: apk }),
+      }),
+      app: { bundleId: 'com.lambdatest.proverbial' },
+    },
+    {
+      name: 'ios-real',
+      engine: mobile({
+        platform: 'ios',
+        device: testmu({ device: 'iPhone 16', osVersion: '18', app: ipa, deviceType: 'real' }),
+      }),
+      app: { bundleId: 'proverbial' },
+    },
+    {
+      name: 'android-real',
+      engine: mobile({
+        platform: 'android',
+        device: testmu({ device: 'Pixel 6', osVersion: '14', app: apk, deviceType: 'real' }),
+      }),
+      app: { bundleId: 'com.lambdatest.proverbial' },
+    },
+  ],
+  workers: 1,
+} satisfies E2EConfig;
+```
+
+`device` and `osVersion` must match TestMu AI's catalog exactly, as the
+[capabilities generator](https://www.lambdatest.com/capabilities-generator)
+lists them: `18.0` for a virtual iOS device, `18` for a real one, `14` for
+Android. Real and virtual devices have separate catalogs.
+
+`app` is the build TestMu AI installs on every session: an `lt://` app id,
+an `https` URL, or a local path, resolved against the directory of
+`e2e.config.ts` and uploaded. Use an `.apk` or `.aab` on Android, a zipped
+`.app` on an iOS simulator, and a signed `.ipa` on a real iOS device. Leave
+the target's `app.appPath` out, and keep `app.bundleId` for `app.open()`.
+
+Tests are the same as on a local device:
+
+```ts title="tests/home.e2e.ts"
+import { test } from '@e2e-dev/mobile';
+import { expect } from 'e2e';
+
+test('Proverbial home screen', async ({ app, screen }) => {
+  await app.open();
+  await expect(screen.getByText('Proverbial')).toBeVisible();
+  // Android labels the button GEOLOCATION, iOS GeoLocation.
+  await expect(screen.getByRole('button', /^geolocation$/i)).toBeVisible();
+});
+```
+
+## Authenticate
+
+Set `LT_USERNAME` and `LT_ACCESS_KEY` in the environment `e2e run` starts
+in, such as CI secrets. Copy them from **Account Settings → Password &
+Security → Username and Access Key**
+([accounts.lambdatest.com/security/username-accesskey](https://accounts.lambdatest.com/security/username-accesskey)).
+Without either, the lease fails before anything starts.
+
+## Options
+
+| Option        | Default         | Meaning |
+| ------------- | --------------- | ------- |
+| `device`      | required        | Device name as TestMu AI's catalog lists it (`'Galaxy S22 Ultra 5G'`, `'iPhone 16'`). |
+| `osVersion`   | required        | OS version as the catalog lists it for that device. |
+| `app`         | required        | The build TestMu AI installs: an `lt://` app id, an `https` URL, or a local path. |
+| `deviceType`  | `'virtual'`     | `'virtual'` for an emulator or simulator, `'real'` for a real device. |
+| `project`     | `'e2e'`         | Dashboard project the sessions are grouped under. |
+| `build`       | the run id      | Dashboard build the sessions are grouped under. |
+| `sessionName` | `e2e-<run id>-<target>-<slot>` | Session name on the dashboard. With more than one worker slot, `-<slot>` is appended. |
+| `orientation` | the device's    | `'portrait'` or `'landscape'`. |
+| `geoLocation` | TestMu AI's     | Country code the device's IP geolocates to (`'US'`). |
+| `timezone`    | the device's    | Time zone (`'UTC+05:30'`). |
+| `language`    | the device's    | Language code (`'fr'`). |
+| `locale`      | the device's    | Locale (`'fr_FR'`). |
+| `appiumVersion` | TestMu AI's   | Appium version for the session (`'2.16.2'`). |
+
+Device features are set when the session starts and hold for the whole
+session. An unknown option or an invalid value fails the config load with
+`INVALID_CONFIG`.
+
+An attempt that records [video](/reference/config#video) links TestMu AI's
+recording of the session, found by its `build` and `sessionName`. The
+recording covers the whole session, so every attempt on a worker slot links
+the same video. Runs that overlap and share a fixed `build` and
+`sessionName` can link each other's videos; the defaults never do.
+
+## Limits
+
+- Each session starts when its slot is leased, which takes about 30 to 75
+  seconds, and is billed until the run releases it, even when no test runs
+  on it. Keep `workers` times the number of TestMu AI targets within your
+  plan's parallel sessions.
+- If the runner is killed before it releases a device, nothing sends the
+  session another command, so TestMu AI's
+  [idle timeout](https://www.lambdatest.com/support/docs/desired-capabilities-in-appium/)
+  (120 seconds by default) ends it, which takes about three minutes after its
+  last command.
+- Device settings (permissions, location, network, appearance), system
+  alerts, recording and device logs through agent-device, and port reverse
+  are not available. Read logs on the TestMu AI dashboard, and use TestMu AI
+  Tunnel to reach a server on your network.

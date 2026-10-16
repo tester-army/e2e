@@ -13,7 +13,7 @@ import { groupTitles, type RegisteredTest } from '../collect/registry.ts';
 import { pairRecordings, type SkipInfo, type TestTargetPair } from '../collect/select.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
 import type { ArtifactStore } from '../types.ts';
-import { attemptSegments, createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
+import { attemptSegments, createAttemptArtifacts, resultSegment } from './artifacts.ts';
 import type { AttemptContext, ClosingRecord, SessionClose, SessionPlan } from './execute.ts';
 import type { ArtifactSink } from './fixtures.ts';
 import type { StepRecord } from './steps.ts';
@@ -21,7 +21,7 @@ import { findRegistered, type FileRef, type Realm, RealmManager } from './realm.
 import type { AttemptRecord, ResultRecord, ResultStatus, SerialAttemptRecord, SerialGroupRecord, SerialMemberRecord, FailedStatus } from './records.ts';
 import { isFailedStatus } from './records.ts';
 import { isRetryEligible, retryVerdict, runWithRetries } from './retry.ts';
-import { interruptedSkip, pairResult, repeatSegment } from './units.ts';
+import { interruptedSkip, pairResult } from './units.ts';
 
 /**
  * One shared session for a serial-group attempt: members preserve app state,
@@ -378,21 +378,20 @@ async function runSerialAttempt(
   const memberRecords: SerialMemberRecord[] = [];
   const first = members[0]!;
   const recordings = pairRecordings(first, attemptIndex);
-  const artifactSegments = attemptSegments(host.rerunDir, [
-    host.target.name,
-    sanitizePathSegment(first.test.serialId ?? first.test.id),
-    first.agent,
-    ...repeatSegment(first.repeat),
-    `attempt-${attemptIndex}`,
-  ]);
+  const artifactSegments = attemptSegments(
+    host.rerunDir,
+    // The group's own directory, named like a result's from the group's id and describe titles: one session ran every member.
+    resultSegment({ id: groupId, file: first.test.file, titlePath: serialTitlePath(first.test) }),
+    attemptIndex,
+  );
   const artifacts = createAttemptArtifacts({
     artifactsRoot: host.artifactsRoot,
     segments: artifactSegments,
     attemptId,
     ...(host.artifactStore === undefined ? {} : { store: host.artifactStore }),
-    // A group-owned artifact (the shared trace) is identified by the group,
-    // the same identity its report path uses.
-    identity: { runId: host.runId, testId: first.test.serialId ?? first.test.id, attemptId },
+    // A group-owned artifact is identified by the group, the same identity
+    // its report path uses.
+    identity: { runId: host.runId, testId: first.test.serialId!, attemptId },
   });
   const record: SerialAttemptRecord = {
     id: attemptId,
@@ -403,6 +402,7 @@ async function runSerialAttempt(
     members: memberRecords,
     artifacts: artifacts.records,
     secondaryErrors: [],
+    trace: recordings.trace,
     cleanup: 'complete',
   };
   const start: SerialAttemptStart = { id: attemptId, index: attemptIndex, startedAt };
@@ -491,12 +491,14 @@ async function runSerialAttempt(
       startedAt: memberAttempt.startedAt,
       durationMs: memberAttempt.durationMs,
       steps: memberAttempt.steps,
+      ...(memberAttempt.appLog !== undefined ? { appLog: memberAttempt.appLog } : {}),
       ...(memberAttempt.error !== undefined ? { error: memberAttempt.error } : {}),
       ...(memberAttempt.failure !== undefined ? { failure: memberAttempt.failure } : {}),
       ...(memberAttempt.skip !== undefined ? { skip: memberAttempt.skip } : {}),
       secondaryErrors: memberAttempt.secondaryErrors,
     });
     record.artifacts.push(...memberAttempt.artifacts);
+    if (memberAttempt.environment !== undefined) record.environment = memberAttempt.environment;
     // A member that skipped itself decided nothing about the shared state; the rest run on.
     if (isFailedStatus(memberAttempt.status)) skipRemaining = predecessorFailed(memberIndex);
     // Nested scopes close when their last member is done, as for ordinary
@@ -526,7 +528,7 @@ async function runSerialAttempt(
     record.status = failedMember.status;
     if (failedMember.error !== undefined) record.error = failedMember.error;
   }
-  await host.closeSession(shared.session, { attemptId, recordings }, record, artifacts.sink, record.secondaryErrors);
+  await host.closeSession(shared.session, { attemptId, video: recordings.video }, record, artifacts.sink, record.secondaryErrors);
   await artifacts.settle();
   record.durationMs = Date.now() - startedMs;
   return { record, reachedMembers: true };

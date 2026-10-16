@@ -3,8 +3,10 @@ import { defineConfig } from 'vitest/config';
 /**
  * Telemetry stays off for every test and every CLI the tests spawn, which
  * inherit the environment. The telemetry suite opts back in per instance.
+ * A blank `E2E_CACHE_DIR` keeps a developer's shared cache out of the
+ * fixture projects, which read and write their own `.e2e/cache`.
  */
-const env = { E2E_TELEMETRY_DISABLED: '1' };
+const env = { E2E_TELEMETRY_DISABLED: '1', E2E_CACHE_DIR: '' };
 
 /**
  * Unit tests are pure and run fully in parallel. Integration tests own real

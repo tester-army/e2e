@@ -1,0 +1,297 @@
+---
+title: Web
+description: Point the web engine at your app or let the runner start it, and run a suite at several viewport sizes.
+icon: "globe"
+"og:image": "https://e2e.tester.army/docs/images/og/web.png?v=e860636537"
+"twitter:image": "https://e2e.tester.army/docs/images/og/web.png?v=e860636537"
+---
+
+`@e2e-dev/web` runs tests in a browser against your app's URL. For routes,
+cookies, dialogs, and downloads, see [Working with the browser](/browser).
+
+## Starting your app
+
+Set your app's URL in the target's `app`. `app.open('/path')` resolves
+against it:
+
+```ts title="Target fragment"
+engine: web(),
+app: { url: process.env.APP_URL ?? 'http://localhost:3000' },
+```
+
+A URL without a scheme uses HTTPS, or HTTP for a loopback host. Plain HTTP
+works only on a loopback host.
+
+### Let the runner start it
+
+Add `app.command` and the runner starts the dev server. It waits until
+`app.url` answers, and stops a server it started when the run ends, fails, or
+is interrupted:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+
+export default {
+  targets: [{
+    engine: web(),
+    app: {
+      url: process.env.APP_URL ?? 'http://localhost:3000',
+      command: {
+        executable: 'npm',
+        args: ['run', 'dev'],
+        reuseExisting: true,
+        log: '.e2e/logs/app.log',
+      },
+    },
+  }],
+} satisfies E2EConfig;
+```
+
+```text
+ ✓ target "web" command ready 1.20s
+```
+
+The command runs without a shell: `executable` comes from `PATH` and `args`
+pass as written. The child gets only `PATH`, `HOME`, the temp-directory
+variables, `inheritEnv`, and `env`.
+
+| Option | Purpose |
+| --- | --- |
+| `reuseExisting: true` | Use a server that already runs. In CI, e2e ignores it, and a server that already answers is `APP_ALREADY_RUNNING`. |
+| `log` | Save the app's stdout and stderr to a project-relative file. A startup error quotes the last 20 lines any process appended to the file since the command started, with `command.env` and `inheritEnv` values redacted. The file itself is not redacted. |
+| `env` | Environment variables for the app. |
+| `inheritEnv` | Host variables to pass through when set, by name or prefix: `['DATABASE_URL', 'STRIPE_*']`. `env` wins over them. |
+| `startupTimeout` | How long to wait for the app to answer. Default 60 seconds. |
+| `readyUrl` | Set beside `command`, not in it, to probe a health endpoint instead of `app.url`. |
+
+See the [command reference](/reference/config#command) for all options.
+
+<Note>
+The runner starts only `app.command`. Start databases, mocks, and other
+services before the run, or make `app.command` a script that starts them
+and serves the app. A services API returns in a later release.
+</Note>
+
+### Let the runner pick the port
+
+Use port `0` to run several checkouts without a port conflict. The runner
+picks a free port and replaces `{port}` in the command's `args` and `env`:
+
+```ts title="Target fragment"
+engine: web(),
+app: {
+  url: 'http://127.0.0.1:0',
+  command: { executable: 'pnpm', args: ['dev', '--port', '{port}'], env: { PORT: '{port}' } },
+},
+```
+
+- Write `127.0.0.1` or `[::1]`, the address the command binds.
+  `localhost:0` is rejected.
+- Tests read the URL with the real port from `app.baseUrl`.
+- Cache entries stay valid when the port changes.
+- `reuseExisting` doesn't work with port `0`.
+
+See [free ports](/reference/config#free-ports).
+
+<Accordion title="Next.js dev server renders but never hydrates">
+Next.js 16 blocks cross-origin requests to its dev resources. When the
+target opens `127.0.0.1` or `[::1]`, `next dev` still identifies as
+`localhost`. The page renders, locators resolve, and clicks land, but no
+React handler runs.
+
+Add the host the target opens to `allowedDevOrigins`. Use `'[::1]'` when
+`app.url` opens `http://[::1]:0`:
+
+```ts title="next.config.ts"
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
+  allowedDevOrigins: ['127.0.0.1'],
+};
+
+export default nextConfig;
+```
+
+A `localhost` target and a production `next start` target need no entry.
+</Accordion>
+
+## Protected previews
+
+Use `headers` to open a protected preview or skip a tunnel's warning page.
+For example, a Vercel preview takes a protection bypass header:
+
+```ts title="Target fragment"
+engine: web({
+  headers: {
+    'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET ?? '',
+  },
+}),
+app: {
+  url: process.env.PREVIEW_URL ?? 'http://localhost:3000',
+  identity: 'storefront',
+},
+```
+
+The browser sends `headers` only to the target's site: its hostname, its
+subdomains, and every host under a shared suffix such as `vercel.app`. Read
+[header scope](/reference/security#site-check) before you use a bypass
+secret. For ngrok, use `'ngrok-skip-browser-warning': '1'`.
+`app.identity` keeps the cache identity stable when the preview URL changes.
+
+<Note>
+Setting `headers` turns off the browser's HTTP cache and blocks service
+workers.
+</Note>
+
+Use `basicAuth` for HTTP basic authentication. The browser sends the
+credentials to any origin that answers with a `401` challenge. Declare the
+password under `secrets` and pass `secrets.get(name)`:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { secrets } from 'e2e';
+import { web } from '@e2e-dev/web';
+
+export default {
+  targets: [
+    {
+      engine: web({
+        basicAuth: { username: 'preview', password: secrets.get('previewPassword') },
+      }),
+      app: { url: 'https://staging.example.com' },
+    },
+  ],
+  secrets: { previewPassword: () => process.env.PREVIEW_PASSWORD ?? '' },
+} satisfies E2EConfig;
+```
+
+The engine resolves the secret when each attempt starts, and the runner
+keeps it out of reports, logs, and what the agent reads. An undeclared name
+fails the config load with `INVALID_CONFIG`. A plain string password also
+works, but e2e redacts only a `secrets.get` password.
+
+## Viewports
+
+Set a viewport on the target to run a suite at that size, or call
+`browser.setViewport()` during a test. The agent can't resize.
+
+### One size per target
+
+`viewport` sets the initial size of each attempt, in pixels. The default is
+1280 by 720. Add one target for each size:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+
+const app = { url: 'http://localhost:3000' };
+
+export default {
+  targets: [
+    { name: 'desktop', engine: web(), app },
+    { name: 'tablet', engine: web({ viewport: { width: 820, height: 1180 } }), app },
+    { name: 'phone', engine: web({ browser: 'webkit', viewport: { width: 390, height: 844 } }), app },
+  ],
+} satisfies E2EConfig;
+```
+
+Every test runs on every target, with a separate result per target name.
+Every retry starts at the target's size.
+
+- Run one size with `npx e2e run --target phone`. List the test-target
+  pairs with `npx e2e list`.
+- Targets that declare the same `app.command` share one dev server.
+- A device target can sit in the same list. See the
+  [Mobile engine reference](/reference/mobile).
+
+### Fill the window
+
+`viewport: null` sets no size, so the page fills the browser window, and the
+agent, screenshots, and videos use that size. Use it in a headed run, or
+with a hosted browser whose live view would show a 1280 by 720 page in one
+corner:
+
+```ts title="Target fragment"
+{ name: 'window', engine: web({ viewport: null }), app }
+```
+
+A local headed launch opens a small window. A hosted browser uses the
+window size you requested from the service. `browser.setViewport` still
+works.
+
+### Resize inside a test
+
+`browser.setViewport` resizes the page for the rest of the attempt, also
+after `app.restart()` and `app.clearState()`. Use it when one test checks a
+layout before and after a resize:
+
+```ts
+import { test } from '@e2e-dev/web';
+import { expect } from 'e2e';
+
+test('the menu collapses on a narrow screen', async ({ app, screen, browser }) => {
+  await app.open('/');
+  await expect(screen.getByRole('navigation')).toBeVisible();
+
+  await browser.setViewport({ width: 390, height: 844 });
+  await expect(screen.getByRole('button', 'Menu')).toBeVisible();
+  await expect(screen.getByRole('navigation')).toBeHidden();
+});
+```
+
+Call it before `app.open` to load the first page at that size, with no
+desktop render first.
+
+### What the agent sees
+
+The agent gets the current viewport size with each observation, so resize
+before `agent.act`. Screenshots cover the viewport. Off-screen elements can
+still be in the tree, a tap scrolls them into view, and the agent can
+scroll to load lazy content.
+
+A sentence with a link, emphasis, or code reaches the agent whole, and the
+link is also listed as a control. The agent reads the first 512 characters
+of each block of text. In a longer block, e2e also lists its links and
+emphasized text on their own.
+
+### Scoping a test to one size
+
+`platforms` and `requires` can't select a viewport, because every browser
+target has platform `web`. To skip a test at some sizes, read the width in
+the test:
+
+```ts
+test('the sidebar stays open', async ({ app, screen, browser }) => {
+  await app.open('/');
+  test.skip((await browser.evaluate(() => window.innerWidth)) < 768, 'desktop layout only');
+  await expect(screen.getByRole('complementary')).toBeVisible();
+});
+```
+
+To keep a group of size-specific tests apart, give them their own config
+and run it with `--config`.
+
+### Limits
+
+A narrow viewport tests responsive layout only. The browser is still a
+desktop browser: scale factor 1, desktop pointer, and its usual user agent.
+It doesn't emulate touch. To test on a simulator or emulator, use the
+[mobile engine](/mobile). For dark mode and reduced motion, see
+[Emulate dark mode and reduced motion](/browser#emulate-dark-mode-and-reduced-motion).
+
+A video keeps the size the page had when recording started. Set
+`web({ screencast: { size } })` for one fixed size. A browser provider that
+records, such as [Kernel](/integrations/kernel#recordings), records the
+whole screen instead.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Working with the browser" icon="globe" href="/browser">
+    Mock routes, set cookies, handle dialogs, and download files.
+  </Card>
+  <Card title="Web engine reference" icon="masks-theater" href="/reference/web">
+    Every `web()` option and every `browser` method.
+  </Card>
+</CardGroup>

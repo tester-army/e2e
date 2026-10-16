@@ -291,6 +291,103 @@ describe('e2e init', () => {
     expect(output()).toContain(`e2e login ${provider}, then`);
   });
 
+  it('takes every answer from flags under --yes and writes only the chosen locations', async () => {
+    const outcome = await init(dir, {
+      yes: true,
+      engine: 'mobile',
+      gateway: 'openrouter',
+      skills: ['.agents/skills'],
+      mcp: ['.mcp.json'],
+      install: true,
+    });
+    expect(outcome).toEqual({
+      exitCode: 0,
+      result: 'scaffolded',
+      yes: true,
+      existingConfig: false,
+      engine: 'mobile',
+      gateway: 'openrouter',
+      skill: true,
+      mcp: true,
+      install: true,
+    });
+    expect(clack.select).not.toHaveBeenCalled();
+    expect(clack.multiselect).not.toHaveBeenCalled();
+    expect(clack.confirm).not.toHaveBeenCalled();
+    expect(read('e2e.config.ts')).toContain('@e2e-dev/mobile');
+    expect(read('e2e.config.ts')).toContain("model: openrouter('openai/gpt-6-luna-fast'),");
+    expect(existsSync(path.join(dir, '.agents/skills/e2e/SKILL.md'))).toBe(true);
+    expect(existsSync(path.join(dir, '.claude'))).toBe(false);
+    expect(existsSync(path.join(dir, '.mcp.json'))).toBe(true);
+    expect(existsSync(path.join(dir, '.cursor'))).toBe(false);
+    expect(spawnSync).toHaveBeenCalledExactlyOnceWith('npm', ['install'], expect.objectContaining({ cwd: dir }));
+  });
+
+  it('writes no model, skill, or MCP config when each flag says none', async () => {
+    expect(await init(dir, { yes: true, engine: 'none', gateway: 'none', skills: [], mcp: [] })).toMatchObject({
+      exitCode: 0,
+      engine: 'none',
+      gateway: 'none',
+      skill: false,
+      mcp: false,
+      install: false,
+    });
+    expect(read('e2e.config.ts')).not.toContain('agents: {');
+    expect(JSON.parse(read('package.json')).devDependencies).not.toHaveProperty('ai');
+    expect(readdirSync(dir).toSorted()).toEqual(['.gitignore', 'e2e.config.ts', 'package.json', 'tests']);
+    expect(output()).toContain('Skipped the agent skill');
+    expect(output()).toContain('Skipped the MCP server');
+  });
+
+  it.each([
+    { endpoint: ' https://llm.example/v1 ', written: 'https://llm.example/v1' },
+    { endpoint: undefined, written: 'http://127.0.0.1:11434/v1' },
+  ])('writes the --endpoint of an OpenAI-compatible gateway under --yes, else the local placeholder ($endpoint)', async ({ endpoint, written }) => {
+    expect((await init(dir, { yes: true, gateway: 'openai-compatible', ...(endpoint === undefined ? {} : { endpoint }) })).exitCode).toBe(0);
+    expect(clack.text).not.toHaveBeenCalled();
+    expect(read('e2e.config.ts')).toContain(`baseURL: '${written}',`);
+  });
+
+  it('asks only the questions no flag answered', async () => {
+    vi.mocked(clack.select).mockResolvedValueOnce('none');
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true);
+    expect(await init(dir, { engine: 'web', skills: ['.claude/skills'], mcp: [], install: false })).toMatchObject({
+      exitCode: 0,
+      engine: 'web',
+      gateway: 'none',
+      install: false,
+    });
+    expect(clack.select).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ message: expect.stringContaining('Which model gateway') }));
+    expect(clack.multiselect).not.toHaveBeenCalled();
+    expect(clack.confirm).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ message: 'Apply these changes?' }));
+    expect(existsSync(path.join(dir, '.claude/skills/e2e/SKILL.md'))).toBe(true);
+    expect(existsSync(path.join(dir, '.agents'))).toBe(false);
+    expect(spawnSync).not.toHaveBeenCalled();
+  });
+
+  it('warns that engine and gateway flags do not apply to an existing config', async () => {
+    writeFileSync(path.join(dir, 'e2e.config.ts'), 'export default {};\n');
+    expect(await init(dir, { yes: true, engine: 'mobile', gateway: 'openrouter' })).toMatchObject({ exitCode: 0, engine: null, gateway: null });
+    expect(read('e2e.config.ts')).toBe('export default {};\n');
+    expect(output()).toContain('Ignoring --engine, --gateway: e2e.config.ts exists, and these apply to a new config only');
+  });
+
+  it('installs the skill exactly where --skills says on a re-run, leaving earlier locations untouched', async () => {
+    writeCopy('.agents/skills', 'stale');
+    expect((await init(dir, { yes: true, skills: ['.claude/skills'], mcp: [] })).exitCode).toBe(0);
+    expect(read('.claude/skills/e2e/SKILL.md')).toBe(readSkillFiles().find((file) => file.relative === 'SKILL.md')!.content);
+    expect(lstatSync(path.join(dir, '.claude/skills/e2e')).isSymbolicLink()).toBe(false);
+    expect(read('.agents/skills/e2e/SKILL.md')).toBe('stale');
+  });
+
+  it('refuses to run without a terminal and without --yes even when flags answer every question', async () => {
+    const flags = { engine: 'web', gateway: 'none', skills: [], mcp: [], install: false } as const;
+    expect(await init(dir, { interactive: false, ...flags })).toMatchObject({ exitCode: 2, result: 'not-interactive' });
+    expect(readdirSync(dir)).toEqual([]);
+    expect(clack.confirm).not.toHaveBeenCalled();
+    expect(output()).toContain('needs an interactive terminal');
+  });
+
   it('validates the endpoint the way config resolution will', async () => {
     vi.mocked(clack.select).mockResolvedValueOnce('web').mockResolvedValueOnce('openai-compatible');
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
@@ -430,7 +527,7 @@ describe('e2e init', () => {
     expect(clack.select).not.toHaveBeenCalled();
     expect(clack.confirm).not.toHaveBeenCalled();
     expect(output()).toContain('needs an interactive terminal');
-    expect(output()).toContain('pass --yes to accept the defaults (Playwright, the Vercel AI Gateway, no installation)');
+    expect(output()).toContain('pass --yes to accept the defaults (the web engine, the Vercel AI Gateway, no installation) or --yes with flags such as --engine for other answers');
   });
 
   it('creates a named directory and starts the next steps with cd into it', async () => {
@@ -503,7 +600,7 @@ describe('e2e init', () => {
     await init(dir, { yes: true });
     expect(read('e2e.config.ts')).toBe('// custom config\n');
     expect(read('tests/example.e2e.ts')).toBe('// custom test\n');
-    expect(read('.gitignore')).toBe(`${older}.e2e/ai-trace.json\n.e2e/junit.xml\n.e2e/summary.md\n.e2e/failures/\n.e2e/logs/\n.e2e/videos/\n`);
+    expect(read('.gitignore')).toBe(`${older}.e2e/results/\n.e2e/ai-trace.json\n.e2e/junit.xml\n.e2e/summary.md\n.e2e/logs/\n.e2e/videos/\n`);
     expect(output()).not.toContain('commit-the-replay-cache');
   });
 
@@ -651,7 +748,7 @@ describe('e2e init', () => {
     expect(existsSync(path.join(dir, '.claude'))).toBe(false);
     expect(existsSync(path.join(dir, '.mcp.json'))).toBe(false);
     expect(output()).toContain('npm exec -- e2e guide');
-    expect(output()).toContain('claude mcp add e2e -- npx e2e mcp');
+    expect(output()).toContain('claude mcp add --scope project e2e -- npx e2e mcp');
   });
 
   it('is idempotent', async () => {
@@ -892,6 +989,45 @@ describe('e2e init', () => {
       expect(output()).toContain(`Symlink, not touching: .claude/skills/e2e/ (.claude/skills -> ${realpathSync(shared)})`);
       untouched(target);
       expect(lstatSync(path.join(dir, '.claude/skills')).isSymbolicLink()).toBe(true);
+    });
+  });
+
+  describe('a linked MCP config', () => {
+    // A junction works on Windows without the symlink privilege, and a symlink on POSIX.
+    const dirLink = process.platform === 'win32' ? 'junction' : 'dir';
+    // A junction needs no privilege, so the directory case runs on Windows whatever `symlinks` says; POSIX still needs it.
+    const canLinkDir = process.platform === 'win32' || symlinks;
+
+    it.skipIf(!symlinks)('is left alone under --yes, the warning names it, and the target keeps its own servers', async () => {
+      const elsewhere = mkdtempSync(path.join(os.tmpdir(), 'e2e-init-elsewhere-'));
+      try {
+        const target = path.join(elsewhere, 'mcp.json');
+        const original = '{"mcpServers":{"figma":{"command":"figma-mcp"}}}\n';
+        writeFileSync(target, original);
+        symlinkSync(target, path.join(dir, '.mcp.json'), 'file');
+        expect((await init(dir, { yes: true })).exitCode).toBe(0);
+        expect(output()).toContain(`Symlink, not touching: .mcp.json -> ${realpathSync(target)} (e2e mcp server)`);
+        expect(output()).not.toContain('Updated .mcp.json');
+        // The linked file is untouched and still a link; the other location is written normally.
+        expect(readFileSync(target, 'utf8')).toBe(original);
+        expect(lstatSync(path.join(dir, '.mcp.json')).isSymbolicLink()).toBe(true);
+        expect(JSON.parse(read('.cursor/mcp.json'))).toHaveProperty('mcpServers.e2e');
+      } finally {
+        rmSync(elsewhere, { recursive: true, force: true });
+      }
+    });
+
+    it.skipIf(!canLinkDir)('is left alone when a parent directory is the link, and nothing is written through it', async () => {
+      const elsewhere = mkdtempSync(path.join(os.tmpdir(), 'e2e-init-elsewhere-'));
+      try {
+        symlinkSync(elsewhere, path.join(dir, '.cursor'), dirLink);
+        expect((await init(dir, { yes: true })).exitCode).toBe(0);
+        expect(output()).toContain(`Symlink, not touching: .cursor -> ${realpathSync(elsewhere)} (e2e mcp server)`);
+        expect(readdirSync(elsewhere)).toEqual([]);
+        expect(JSON.parse(read('.mcp.json'))).toHaveProperty('mcpServers.e2e');
+      } finally {
+        rmSync(elsewhere, { recursive: true, force: true });
+      }
     });
   });
 });

@@ -18,7 +18,12 @@
     "packages/*/tests/conformance/*/**",
     "packages/*/tests/tmp-projects/**",
     // Standalone user-facing projects with their own installs; nothing here builds them.
-    "examples/**"
+    "examples/**",
+    // Symlinks into .dev/skills, which is linted at its real path.
+    ".claude/skills/babysit/**",
+    ".claude/skills/ship-pr/**",
+    ".claude/skills/verify/**",
+    ".claude/skills/writing-pr/**"
   ],
   "rules": {
     // Sequential execution is the contract of a test runner, not a perf bug.
@@ -28,7 +33,15 @@
     // Conflicts with the conditional-spread idiom exactOptionalPropertyTypes forces.
     "oxc/no-map-spread": "off"
   },
+  "jsPlugins": [{ "name": "e2e", "specifier": "./scripts/oxlint-plugin/index.ts" }],
   "overrides": [
+    {
+      "files": ["packages/*/src/**"],
+      "rules": {
+        "e2e/no-chained-type-assertions": "error",
+        "e2e/no-unchecked-json": "error"
+      }
+    },
     {
       "files": ["packages/e2e/tests/types/*.ts"],
       "rules": {

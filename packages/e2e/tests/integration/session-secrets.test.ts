@@ -95,7 +95,7 @@ describe('session secrecy across save and restore', () => {
         expect(observations).toEqual([{ secretVisible: false, withheld: 'PIXEL_TAINTED' }]);
         const screen = attempt.artifacts.find((artifact) => artifact.id === attempt.failure?.screen);
         expect(screen?.path).toBeDefined();
-        const screenFile = path.join(project.dir, '.e2e', 'artifacts', screen!.path!);
+        const screenFile = path.join(project.dir, '.e2e', 'results', screen!.path!);
         expect(existsSync(screenFile)).toBe(true);
         const screenText = readFileSync(screenFile, 'utf8');
         expect(screenText).toContain('<secret:token>');

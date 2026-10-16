@@ -1,6 +1,9 @@
 ---
 title: E2EConfig
 description: Every configuration key, its default, its valid range, and the environment variables.
+icon: "sliders"
+"og:image": "https://e2e.tester.army/docs/images/og/reference/config.png?v=6c4dead1fc"
+"twitter:image": "https://e2e.tester.army/docs/images/og/reference/config.png?v=6c4dead1fc"
 ---
 
 Export an object from `e2e.config.ts` and use `satisfies E2EConfig` to check
@@ -26,9 +29,12 @@ Unknown keys are rejected with `INVALID_CONFIG` at every level. There is no
 top-level `app` key: each target declares the app it tests (see
 [the app under test](#the-app-under-test)).
 
-An optional key takes a value or is left out; `undefined` is not a value, so
-`store: process.env.CACHE_URL && createStore(...)` fails to compile. Spread a
-key that depends on the environment in only when it has a value:
+An optional key takes a value or is left out. Under
+`exactOptionalPropertyTypes`, `undefined` is a type error, so
+`store: process.env.CACHE_URL && createStore(...)` fails to compile. At
+runtime, `undefined` counts as unset. The target's `app` fields also accept
+`undefined` in their types, so they can read `process.env` directly. Spread
+any other key that depends on the environment in only when it has a value:
 
 ```ts
 export default {
@@ -56,6 +62,7 @@ entry. Discovery visits
 only directories that could match, never enters one an exclusion takes whole,
 skips `node_modules`, and ignores symlinks. A dot directory is included only
 when a glob segment explicitly starts with a dot.
+`?` matches one Unicode code point, including an emoji.
 
 e2e loads no `.env` file itself. Load one at the top of `e2e.config.ts` with
 Node's `process.loadEnvFile()`; every worker imports the config again, so the
@@ -79,16 +86,21 @@ its package declares.
 
 e2e compiles TypeScript and JSX itself, and an import written in such a file
 resolves the way TypeScript resolves it: `./helper.js` and `./helper` load
-`helper.ts`, `./lib` loads the file `lib/package.json` names as `main`, else
-`lib/index.ts`, a bare import that `tsconfig.json` maps through `paths` or
-`baseUrl` loads the mapped file, and a `#` import or package export that names
-a missing `./x.js` or `./x` loads `x.ts` when imported (a `require()` of it
-fails as Node.js reports it). An import written in a JavaScript file resolves
+`helper.ts`, `./view.jsx` loads `view.tsx`, `./lib` loads the file
+`lib/package.json` names as `main`, else `lib/index.ts`, a bare import that
+`tsconfig.json` maps through `paths` or `baseUrl` loads the mapped file, and
+a `#` import or package export that names a missing `./x.js`, `./x.jsx`, or
+`./x` loads its `x.ts` or `x.tsx` source when imported. One that names a
+directory, or a subpath of a package without `exports` that is a directory
+(`@acme/db/enums`), loads the directory the way `./lib` does: the file its
+`package.json` names as `main`, else its `index.ts`. Under
+Yarn PnP that package subpath still fails. A `require()` of either fails as
+Node.js reports it. An import written in a JavaScript file resolves
 as Node.js resolves it.
 
 The `tsconfig.json` is the nearest one above the file, or, when that one has
 `references` and does not include the file itself (as Vite writes it), the
-directly referenced one that does. e2e reads its `paths`, `baseUrl`, `jsx`, `jsxFactory`,
+transitively referenced one that does. References are visited in declaration order; cycles are skipped and, if none owns the file, the nearest config remains the fallback. e2e reads its `paths`, `baseUrl`, `jsx`, `jsxFactory`,
 `jsxFragmentFactory`, `jsxImportSource`, `experimentalDecorators`,
 `emitDecoratorMetadata`, `useDefineForClassFields` (and `target`, which sets
 its default), and `verbatimModuleSyntax`, once per process and again for each
@@ -130,16 +142,19 @@ export interface E2EConfig {
   cleanupTimeout?: number;
   /** Retries per test, 0 through 10; default 1 in CI, else 0. */
   retries?: number;
-  /** Fail the run when a test skips itself after a soft failure or an earlier failed attempt; default false. */
+  /** Fail the run when a test skips a retry after an earlier failed attempt; default false. */
   failOnSkippedFailure?: boolean;
+  /** Wall-clock budget for running the tests, in milliseconds; default none. */
+  maxDuration?: number;
   /** Parallel workers, 1 through 1024; default 1 in CI, else half the cores. An engine may cap it lower. */
   workers?: number;
   /** `{ store }` hands every artifact to a host store as it is produced. */
   artifacts?: ArtifactsConfig;
   /**
-   * Which attempts record a trace; default `on`, `on-first-retry` in CI. A
-   * target's `trace` wins over it, `--trace [mode]` over both, and a test's
-   * own `trace` over all. Applies to the targets whose engine can trace.
+   * Which tests keep a trace page, `trace.md` in the test's directory under
+   * `<output>/results/`; default
+   * `retain-on-failure`. A target's `trace` wins over it, `--trace [mode]`
+   * over both, and a test's own `trace` over all.
    */
   trace?: RecordingMode;
   /**
@@ -197,13 +212,29 @@ targeted agent action is bounded by the smaller of `actionTimeout` and 15 s.
 ## failOnSkippedFailure
 
 Set `failOnSkippedFailure: true` to fail the run with exit code 1 when a test
-skips after a soft assertion failure or skips a retry after an earlier failed
-attempt. The default is `false`.
+skips a retry after an earlier failed attempt. The default is `false`.
 
 The test keeps its `skipped` status and reason. Its failures remain in the
 report, and the CLI shows them under `Skipped After Failure` with either
 setting. Clean skips, successful retries, and engine cleanup diagnostics do
-not trigger this policy. A skip still stops the body and does not retry.
+not trigger this policy. A skip after a failed `expect.soft` needs no option:
+it [fails the attempt](/reference/test#members).
+
+## maxDuration
+
+Set `maxDuration` to stop a run that takes too long, in milliseconds, at most 2147483647 (about 24 days):
+
+```ts
+export default { targets, maxDuration: 900_000 } satisfies E2EConfig;
+```
+
+The clock starts when the tests start; app startup is bounded by the app
+command's [`startupTimeout`](#command) instead. Once the time is spent, nothing more is
+dispatched, the running tests end as `interrupted`, and the tests not
+started are skipped with cause `time-limit`. The run records a
+`RUN_TIMEOUT` error and exits 1. `--last-failed` runs the interrupted and
+skipped tests next. `--max-duration <ms>` overrides it for one run.
+`e2e explore` ignores it and keeps its own `--timeout`.
 
 ## targets
 
@@ -225,10 +256,8 @@ export interface Target {
   /** The app under test: what it is, where it is served, and the command that starts it. */
   app?: TargetApp;
   /**
-   * Which attempts on this target record a trace, in place of the config's
-   * `trace`; `--trace` and a test's own `trace` win over it. A mode set here
-   * is required of the engine: one that cannot trace fails the run with
-   * `UNSUPPORTED_ARTIFACT`.
+   * Which tests on this target keep a trace page, in place of the config's
+   * `trace`; `--trace` and a test's own `trace` win over it.
    */
   trace?: RecordingMode;
   /**
@@ -360,6 +389,12 @@ export interface CommandConfig {
   cwd?: string;
   /** Added to the inherited set; `{port}` expands in values. */
   env?: Readonly<Record<string, string>>;
+  /**
+   * Variables copied from the runner's environment when set: exact names, or
+   * prefixes ending in `*` (`'STRIPE_*'`). `env` wins over an inherited value.
+   * A bare `'*'` is `INVALID_CONFIG`.
+   */
+  inheritEnv?: readonly string[];
   /** Ready-probe budget in milliseconds; default 60000. Expiry is `APP_UNREACHABLE`. */
   startupTimeout?: number;
   /** Grace period before force-kill in milliseconds; default 10000. */
@@ -379,17 +414,21 @@ export interface CommandConfig {
 
 `log` must stay inside the project root and holds the raw, unredacted
 output, so keep it in an ignored directory. A startup failure quotes the last
-20 lines appended since the command started, with `command.env` values
-replaced by `<secret:NAME>` markers. Without `reuseExisting`, a `readyUrl`
-that already answers is `APP_ALREADY_RUNNING`. `reuseExisting` on an app
-whose `app.url` asks for port 0 is `INVALID_CONFIG`: a process already
-running cannot serve the port the run assigns.
+20 lines appended since the command started, with `command.env` and
+`inheritEnv` values replaced by `<secret:NAME>` markers. Without
+`reuseExisting`, a `readyUrl` that already answers is `APP_ALREADY_RUNNING`.
+`reuseExisting` on an app whose `app.url` asks for port 0 is
+`INVALID_CONFIG`: a process already running cannot serve the port the run
+assigns.
 
-The child inherits only `PATH`, `HOME`, the temp-directory variables, and
-`command.env`, so pass what the app needs explicitly. Every `args` entry and
-`env` value is a string; anything else, a number or a `secrets.get()` handle
-included, is `INVALID_CONFIG`, except an `undefined` `env` value, which is
-dropped. The runner never terminates a process it did not start.
+The child inherits only `PATH`, `HOME`, the temp-directory variables, the
+variables `inheritEnv` matches, and `command.env`, so pass what the app needs
+explicitly. `inheritEnv` takes names or trailing-`*` prefixes and copies a
+variable only when it is set; `env` wins. A bare `*` is `INVALID_CONFIG`.
+Every `args` entry and `env` value is a string; anything else, a number or a
+`secrets.get()` handle included, is `INVALID_CONFIG`, except an `undefined`
+`env` value, which is dropped. The runner never terminates a process it did
+not start.
 
 ### services
 
@@ -415,19 +454,19 @@ run.
 | Path under the output | What |
 | --- | --- |
 | `report.json` | The canonical report; `--last-failed` reads the one here |
-| `junit.xml`, `summary.md`, `failures/` | The `junit` and `markdown` reporters' files |
+| `junit.xml`, `summary.md` | The `junit` and `markdown` reporters' files |
 | `ai-trace.json` | `--ai-trace` |
-| `artifacts/` | Screenshots, traces, videos, downloads, and logs, one directory per attempt. Cleared once a run's tests start, so it holds the latest run's evidence and nothing its report no longer names. A `--last-failed` rerun keeps the files the report it reruns names and writes its own attempts under `artifacts/rerun-<n>/` |
+| `results/` | One directory per test: its [trace page](/debugging#traces), `trace.md`, when the [`trace`](#trace) mode keeps one, and its screenshots, videos, downloads, and logs, one `attempt-<n>/` per attempt. Cleared once a run's tests start, so it holds the latest run's evidence and nothing its report no longer names. A `--last-failed` rerun keeps the files the report it reruns names and writes its own attempts under each test's `rerun-<n>/` |
 | `sessions/` | The run's encrypted `test.setup` sessions, deleted when it ends |
 | `videos/<session>/` | [`e2e mcp`](/reference/mcp#recording) session recordings |
 
 A run that stops before its tests start writes nothing here: a selection
 that matches no test (`NO_TESTS`, a mistyped `--grep`), a collection error,
 a target that cannot record what it asks for (`UNSUPPORTED_ARTIFACT`),
-`NO_LAST_RUN`, an app or service that fails to start, or an interrupt
-leaves the previous run's `report.json`, `ai-trace.json`, and `artifacts/`
-as they were, so `--last-failed` still reads the last run that executed. An `e2e mcp` session writes its attempt's artifacts under the same
-`artifacts/` and never clears it.
+`NO_LAST_RUN`, an app command that fails to start, or an interrupt
+leaves the previous run's `report.json`, `ai-trace.json`, and `results/`
+as they were, so `--last-failed` still reads the last run that executed. An `e2e mcp` session writes its attempt's artifacts under
+`results/mcp/` and never clears it.
 
 The replay cache is independent: [`cache.dir`](#cache) defaults to
 `.e2e/cache` and resolves from the project root whatever `output` says, so
@@ -437,8 +476,8 @@ owns part of it, the output directory fails the config load with
 
 - is the project root, or outside it;
 - is a file, or a path under one (a missing directory is created);
-- is `cache.dir` or inside it, or would hold `cache.dir` under `artifacts/`,
-  `sessions/`, or `videos/`;
+- is the cache directory (`cache.dir`, `--cache-dir`, or `E2E_CACHE_DIR`) or
+  inside it, or would hold it under `results/`, `sessions/`, or `videos/`;
 - holds a directory a `tests` glob scans (`output: 'tests'` with the default
   `tests/**/*.e2e.ts`).
 
@@ -472,7 +511,9 @@ artifacts: {
 `artifacts` says where artifacts go, not which are made: [`trace` and
 `video`](#recording) choose the recordings, and a failure's screenshot and
 screen text are captured whenever the engine can (never after a secret
-fill, see [Security](/security)). The removed forms fail with
+fill, see
+[Security rules](/reference/security#screenshots-after-a-secret-fill)). The
+removed forms fail with
 `INVALID_CONFIG` naming what replaced them: a kinds list (`artifacts:
 ['screenshot', 'trace']` or `artifacts.kinds`) names the `trace` mode it
 meant, `artifacts.trace` names `trace: 'on-all-retries'` for `record:
@@ -520,7 +561,7 @@ export interface ArtifactStore {
 
 /** One produced artifact, handed to `store.put` once it is complete on disk. */
 export interface StoredArtifact {
-  readonly kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log';
+  readonly kind: 'screenshot' | 'video' | 'download' | 'log';
   readonly mediaType: string;
   readonly bytes: Uint8Array;
   readonly size: number;
@@ -528,7 +569,7 @@ export interface StoredArtifact {
   /** Report-relative path with `/` separators, stable across runs of the same test. */
   readonly path: string;
   /** How much of the file the runner masked, as the report records it. */
-  readonly redaction: 'complete' | 'not-required' | 'incomplete';
+  readonly redaction: 'complete' | 'incomplete';
   readonly runId: string;
   readonly testId: string;
   readonly attemptId: string;
@@ -559,7 +600,7 @@ export interface StoredArtifactLink {
 ## Recording
 
 ```ts
-trace: 'on-first-retry',
+trace: 'on',
 video: 'retain-on-failure',
 targets: [
   { name: 'chromium', engine: web(), app: { url } },
@@ -567,26 +608,26 @@ targets: [
 ],
 ```
 
-`trace` and `video` choose which attempts record, with one set of modes:
+`trace` and `video` choose what is recorded, with one set of modes:
 
 ```ts
-/** Which attempts record a trace or a video, and which recordings are kept. */
+/** Which tests keep a trace page, or which attempts record a video. */
 export type RecordingMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry' | 'on-all-retries';
 ```
 
-| Mode | Records | Keeps |
+| Mode | Trace page | Video |
 | --- | --- | --- |
-| `off` | nothing | nothing |
-| `on` | every attempt | every recording |
-| `retain-on-failure` | every attempt | the recordings of attempts that did not pass; a passed attempt's files are deleted once its verdict is in |
-| `on-first-retry` | the first retry only, the second attempt | that recording. A test that passes first time records nothing |
-| `on-all-retries` | every attempt after the first | every recording. A test that passes first time records nothing |
+| `off` | none | none |
+| `on` | every test, passing ones included | every attempt |
+| `retain-on-failure` | each failed, timed-out, interrupted, or flaky test | every attempt, keeping those that did not pass |
+| `on-first-retry` | each test whose first retry ran | the first retry only, the second attempt |
+| `on-all-retries` | each test that was retried | every attempt after the first |
 
 The names are Playwright's `use.trace` and `use.video` modes. Under a retry
 mode a test with `retries: 0` records nothing, and neither does a failure the
-runner does not retry, such as `LAUNCH_TIMEOUT`. When a test whose engine can
-record runs that way, the run prints one notice per kind at plan time saying
-no traces (or videos) will be recorded for it.
+runner does not retry, such as `LAUNCH_TIMEOUT`. When such a test runs, the
+run prints one notice per kind at plan time saying no traces (or videos) will
+be recorded for it.
 
 The old trace spellings fail with `INVALID_CONFIG` naming the mode they
 meant, wherever a mode goes (the config, a target, a test, `--trace`):
@@ -603,19 +644,14 @@ The same rule holds for `trace` and `video`:
 4. A test's or describe's own [`trace` or `video` option](/reference/test#options),
    innermost wins: `test('checkout', { video: 'on' }, ...)`.
 
-A serial group records one trace and one video per group attempt, so its
-members cannot set `trace` or `video` (a `COLLECTION_ERROR`, like `retries`).
-The value on the serial `describe`, or on a group around it, applies to every
-member.
+A serial group records as one unit, so its members cannot set `trace` or
+`video` (a `COLLECTION_ERROR`, like `retries`). The value on the serial
+`describe`, or on a group around it, applies to every member.
 
-`e2e explore` and an `e2e mcp` session are one attempt each and use the
-target's mode, `--trace` and `--video` included for `explore`, so a retry
-mode records nothing there. That includes the CI default: `CI=1 e2e explore`
-records no trace unless you pass `--trace on`, and its plan-time notice says
-so. An `e2e mcp` session always closes as passed, so
-it keeps a trace only under `on`. It never records video from the configured
-mode: its recordings are the ones `start_recording` and `stop_recording`
-make.
+`e2e explore` is one attempt and uses the target's mode, `--trace` and
+`--video` included, so a retry mode records nothing there. An `e2e mcp`
+session writes no trace, and never records video from the configured mode:
+its recordings are the ones `start_recording` and `stop_recording` make.
 
 Neither `trace` nor `video`, at the top or on a target, enters the config
 digest, and neither is part of a replay's
@@ -624,27 +660,24 @@ invalidates cached replays.
 
 ### trace
 
-The default is `on` locally and `on-first-retry` in CI (the same `CI`
-detection that makes `retries` default to 1 there). Recording a trace costs
-CPU for the whole attempt: on a 141-test suite, every-attempt traces added
-about a quarter to the run's wall time, which is why CI records only the
-retry a flaky test leaves behind.
-
-The web engine writes a Playwright trace per attempt, `trace/trace.zip` under
-the attempt's artifact directory, which the runner redacts after a secret
-fill; [Debugging](/debugging#artifacts) shows how to open it.
+The default is `retain-on-failure`, locally and in CI. A trace page is
+markdown, `trace.md` in the test's directory under `<output>/results/`, such as
+`.e2e/results/checkout-applies-the-coupon-1a2b3c4d5e6f7a8b/trace.md`: every step
+with what it did, the cache's decisions, what the app logged, and the screen
+at failure. It works on every engine. [Debugging](/debugging#traces) shows
+one.
 
 ### video
 
-The default is `off`. A video costs more than a trace and holds what the
-screen showed, secrets included, so it is always asked for.
+The default is `off`. A video costs CPU and holds what the screen showed,
+secrets included, so it is always asked for.
 
 ### Engines that cannot record
 
-Before any test starts, the run grades every target. Where a mode was set
-decides what an engine that cannot record that kind does:
+Before any test starts, the run grades every target. Where a `video` mode
+was set decides what an engine that cannot record video does:
 
-- Set at the top of the config or with `--trace` / `--video`: the mode applies
+- Set at the top of the config or with `--video`: the mode applies
   to the targets whose engine can record it. The run prints one notice at
   plan time naming the targets that cannot, and runs them without.
 - Set on a target, or on a test that will run on that target: the mode is
@@ -702,8 +735,8 @@ export interface AgentOptions {
   maxInputTokens?: number;
   /**
    * Provider options every model call carries, e.g. a reasoning effort.
-   * OpenAI and Azure OpenAI calls also carry `store: false` and a prompt
-   * cache key unless set here.
+   * OpenAI and Azure OpenAI Responses calls also carry `store: false` and a
+   * prompt cache key unless set here.
    */
   providerOptions?: ProviderOptions;
 }
@@ -929,7 +962,7 @@ See [Secrets that are not passwords](/authentication#secrets-that-are-not-passwo
 In `read-write` mode the replay cache records an `agent.act()` only after a
 later verification passes, such as a locator assertion or `agent.assert()`.
 `read-only` replays existing entries and writes none; `off` disables both.
-See [Caching agent steps](/cache).
+See [Caching](/cache).
 
 ```ts
 /**
@@ -941,7 +974,7 @@ export interface CacheConfig {
   mode?: CacheMode;
   /** Custom entry store; omit it to use the file store at `dir`. */
   store?: CacheStore;
-  /** File store directory, resolved against the project root; default `.e2e/cache`, whatever `output` says. */
+  /** File store directory, resolved against the project root; default `.e2e/cache`, whatever `output` says. `--cache-dir` and `E2E_CACHE_DIR` replace it. */
   dir?: string;
   /** Fail a step whose recording no longer replays with `REPLAY_STALE`. Default `false`. */
   strict?: boolean;
@@ -976,7 +1009,8 @@ CI restores the cache from its own cache service; `--no-cache` wins over
 both. A custom `store` is exempt from the CI demotion and states its own
 trust through `writable`. `strict` (or `--strict-cache` for one run) turns a
 recording that exists but no longer replays into a `REPLAY_STALE` failure
-instead of a hand-off to the agent; see
+instead of a hand-off to the agent, and the run then never writes the
+cache; see
 [Fail on a stale recording](/cache#fail-on-a-stale-recording).
 
 ### Commit the replay cache
@@ -984,7 +1018,7 @@ instead of a hand-off to the agent; see
 `e2e init` adds `.e2e/cache/` to `.gitignore`, so committing entries is
 opt-in. Remove that line to share replays with CI and teammates; CI stays
 `read-only` unless `cache: 'read-write'` is set. See
-[Caching agent steps](/cache#commit-the-replay-cache).
+[Caching](/cache#commit-the-replay-cache).
 
 ## Run limits
 

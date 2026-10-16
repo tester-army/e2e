@@ -5,7 +5,7 @@
  * | ----------------------------------------------------------- | ---------------------------- |
  * | already an EngineError / runner error                       | passed through untouched     |
  * | AbortError                                                  | CANCELLED                    |
- * | no active session / session not found / requires a session  | INVALID_STATE                |
+ * | SESSION_NOT_FOUND, or a session-or-device-selector refusal  | INVALID_STATE                |
  * | UNSUPPORTED_OPERATION, NOT_IMPLEMENTED, UNSUPPORTED_PLATFORM | UNSUPPORTED_CAPABILITY      |
  * | "not supported on this device" under any code                | UNSUPPORTED_CAPABILITY       |
  * | a stale-ref refusal, by `details.reason` (action paths only) | NODE_STALE (retryable)      |
@@ -14,8 +14,10 @@
  * | anything else, agent-device's own timeouts included         | ENGINE_FAILURE with the text |
  *
  * `OPERATION_TIMEOUT` is never produced here. In the contract it means the
- * harness budget expired, which `raceAbort` already reports, and core
- * replaces its message with a bare `operation timed out`. A timeout
+ * operation budget expired: `InputBudget` (support.ts) reports it for an input
+ * the budget ran out before, and `ACTION_MAY_HAVE_COMMITTED` for one sent that
+ * did not answer in time. Core replaces the timeout's message with a bare
+ * `operation timed out`. A timeout
  * agent-device itself reports (a simulator boot, the runner connecting, an
  * app launch) is a device-side fault whose text is the diagnosis, so it
  * stays `ENGINE_FAILURE` and keeps its message and hint.
@@ -62,10 +64,14 @@ function withHint(cause: unknown, text: string): string {
 /** agent-device's generic hint (`Check command arguments and run --help`) is CLI advice, and stays out too. */
 const CLI_ADVICE = /--help|command arguments/i;
 
-const NO_SESSION_PATTERN =
-  /no active (?:app )?session|requires an active session|session\b.*\bnot found|open an app first|no app (?:is )?open/i;
 const UNSUPPORTED_CODES = new Set(['UNSUPPORTED_OPERATION', 'NOT_IMPLEMENTED', 'UNSUPPORTED_PLATFORM']);
 const UNSUPPORTED_PATTERN = /\b(?:is )?not supported\b|\bunsupported\b/i;
+
+/**
+ * The `details.reason` agent-device refuses a command with when it has no
+ * session and no device selector to fall back on (0.21.21).
+ */
+const NO_SESSION_REASON = 'session_or_device_selector_required';
 
 /**
  * The `details.reason` values agent-device refuses an `@ref` with: the ref
@@ -138,6 +144,20 @@ const PRESENTATION = {
   firstMove: 'Rerun.',
 };
 
+/**
+ * The `details.androidSnapshotHelperFailureReason` values agent-device gives
+ * up on a capture with when the foreground holds too little to read: the
+ * helper returned nothing, only a system window, or an app window with almost
+ * no content. A cold-starting app on a slow emulator does this until it
+ * renders. Mirrors agent-device's `isUnreadableCaptureContentError`, which
+ * its root entry does not export (0.21.25).
+ */
+const UNREADABLE_CAPTURE_REASONS: ReadonlySet<string> = new Set([
+  'empty-helper-output',
+  'system-window-only',
+  'content-poor-app-window',
+]);
+
 const RUNNER_RECOVERY =
   'If the next run meets it again, stop the daemon (`npx agent-device daemon stop`) and reboot the simulator (`xcrun simctl shutdown <udid>`, then `boot`).';
 
@@ -183,7 +203,7 @@ export function translateError(cause: unknown, operation: string, where?: string
   const normalized = normalizeAgentDeviceError(cause);
   const text = `${operation} failed: ${withHint(cause, normalized.message)}`;
   const options = { retryable: false, cause };
-  if (normalized.code === 'SESSION_NOT_FOUND' || NO_SESSION_PATTERN.test(normalized.message)) {
+  if (normalized.code === 'SESSION_NOT_FOUND' || details(cause).reason === NO_SESSION_REASON) {
     return new EngineError('INVALID_STATE', text, options);
   }
   if (UNSUPPORTED_CODES.has(normalized.code) || UNSUPPORTED_PATTERN.test(normalized.message)) {
@@ -207,17 +227,6 @@ export function isRunnerFailure(error: unknown): boolean {
   return error instanceof Error && runnerState(error.cause) !== undefined;
 }
 
-const NO_SESSION_APP_PATTERN = /requires an active app in (?:the )?session/i;
-
-/**
- * True for a translated settings command agent-device refused because its
- * session is on no app: the one refusal a foreground open of the pinned app
- * answers.
- */
-export function isNoSessionApp(error: unknown): boolean {
-  return error instanceof Error && NO_SESSION_APP_PATTERN.test(normalizeAgentDeviceError(error.cause).message);
-}
-
 /**
  * True for a translated snapshot the iOS runner acquired but could not
  * present. The check is per capture and the capture is a read, so one retry
@@ -225,6 +234,17 @@ export function isNoSessionApp(error: unknown): boolean {
  */
 export function isSnapshotPresentationFailure(error: unknown): boolean {
   return error instanceof Error && isPresentationFailure(error.cause);
+}
+
+/**
+ * True for a translated snapshot agent-device took on Android but found too
+ * little foreground content in to read. The screen is still arriving, so a
+ * caller that polls may read it as nothing there yet.
+ */
+export function isUnreadableCapture(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const reason = details(error.cause).androidSnapshotHelperFailureReason;
+  return typeof reason === 'string' && UNREADABLE_CAPTURE_REASONS.has(reason);
 }
 
 /**
@@ -244,7 +264,8 @@ export async function runCommand<T>(label: string, work: () => Promise<T>, signa
  * retryable `NODE_STALE`: nothing was dispatched, so the harness may
  * re-observe and re-resolve the node instead of failing the action. Keyed on
  * the reason alone: agent-device marks a drag's stale ref `dispatched:
- * 'unknown'` although it refuses it before the gesture.
+ * 'unknown'` after Android blocking-dialog recovery, although it refuses it
+ * before the gesture.
  */
 export function staleOr(cause: unknown, operation: string, where?: string): Error {
   if (isClassified(cause)) return cause;

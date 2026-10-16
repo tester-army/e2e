@@ -6,8 +6,8 @@
  * command never waits on telemetry for more than the flush budget and never
  * fails because of it. A long-lived command (`e2e mcp`) sends what it has
  * queued as it goes with `sendQueued`, so a client that kills it loses only
- * what was still in progress. Telemetry is a CLI concern only: the runner
- * never constructs this class.
+ * what was still in progress. Besides the CLI, only the public `run()` on
+ * `e2e/runner` constructs this class, one per call.
  *
  * Off means off at every step. `E2E_TELEMETRY_DISABLED`, `DO_NOT_TRACK`, a
  * source checkout of the repository, an `e2e telemetry disable`, or a
@@ -57,7 +57,7 @@ export interface TelemetryOptions {
   readonly fetch?: typeof fetch;
   /** Where the notice and the debug output go; stderr when absent. */
   readonly write?: (text: string) => void;
-  /** Resolves the anonymous project id; git and the salted path when absent. */
+  /** Resolves the anonymous project id; the hashed root commit when absent. */
   readonly projectId?: typeof anonymousProjectId;
 }
 
@@ -216,12 +216,10 @@ export class Telemetry {
 
   /**
    * Git is asked for the project id now, while the command runs, so the
-   * flush at the end waits on the network alone. A fleet or CI has no
-   * store, so a path outside git has nothing to salt it and yields no id.
+   * flush at the end waits on the network alone.
    */
   private lookUpProject(): void {
-    const store: TelemetryStore | undefined = this.statedId === undefined ? this.store() : undefined;
-    this.project ??= this.projectId(this.cwd, store?.pathSalt);
+    this.project ??= this.projectId(this.cwd);
   }
 
   /** The session event, first in the batch; absent for an invocation that never reached a command. */

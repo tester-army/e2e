@@ -1,24 +1,42 @@
 ---
-title: Integrations
+title: Hosted browsers and devices
 sidebarTitle: Overview
-description: Official integrations with hosted services, one package per service.
+description: Official integrations with hosted browser and device services, one package per service.
+icon: "plug"
+"og:image": "https://e2e.tester.army/docs/images/og/integrations/index.png?v=324a20a30f"
+"twitter:image": "https://e2e.tester.army/docs/images/og/integrations/index.png?v=324a20a30f"
 ---
 
-Official integrations connect e2e to hosted services through the engines'
-provider seams, one package per service. Tests and CI stay the same, and the
-config changes only where a target names its `browser` or `device`: the
-integration decides where it comes from.
+An official integration is one package that gives a target its `browser` or
+`device` from a hosted service, through the engine's provider interface.
+Only the target's `browser` or `device` in the config changes.
 
 <CardGroup cols={2}>
   <Card title="Kernel" icon="/images/integrations/kernel.svg" href="/integrations/kernel">
     `@e2e-dev/kernel`: hosted Chromium for web targets, one browser per worker or per test.
   </Card>
+  <Card title="Lightpanda" icon="/images/integrations/lightpanda.svg" href="/integrations/lightpanda">
+    `@e2e-dev/lightpanda`: the open-source headless browser, started per worker slot on your own machine, no Chromium.
+  </Card>
   <Card title="EAS Simulators" icon="/images/integrations/expo.svg" href="/integrations/eas">
     `@e2e-dev/eas`: hosted iOS simulators and Android emulators for mobile targets.
   </Card>
+  <Card title="smol machines" icon="/images/integrations/smol.png" href="/integrations/smol">
+    `@e2e-dev/smol`: Chromium microVMs on your computer, each test in a branch of a warm browser.
+  </Card>
+  <Card title="Limrun" icon="/images/integrations/limrun.svg" href="/integrations/limrun">
+    `@e2e-dev/limrun`: hosted iOS simulators and Android emulators, with app installation and device cleanup.
+  </Card>
+  <Card title="TestMu AI" icon="/images/integrations/testmu.svg" href="/integrations/testmu">
+    `@e2e-dev/testmu`: hosted Android emulators, iOS simulators, and real devices for mobile targets.
+  </Card>
 </CardGroup>
 
-A service without an integration is one small provider in your project:
-see [Hosted browsers](/browser#hosted-browsers) for the web engine's
-`BrowserProvider` and [Hosted devices](/mobile#hosted-devices) for the mobile engine's
-`DeviceProvider`.
+## Use a service with no integration
+
+For any other service, write a small provider in your project: a
+[`BrowserProvider`](/browser#hosted-browsers) for the web engine, or a
+[`DeviceProvider`](/mobile#hosted-devices) for the mobile engine.
+
+To run e2e on a CI service such as GitHub Actions or EAS Workflows, see
+[Continuous integration](/ci).

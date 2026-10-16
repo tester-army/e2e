@@ -21,7 +21,7 @@ export interface ExtendedFixtures {
   /**
    * The teardowns of the fixtures whose setup completed, last set up first.
    * Each releases its `use` and waits for the function to finish. Taking them
-   * ends setup: a definition still running (the attempt timed out under it)
+   * ends setup, as does the attempt's abort signal: a definition still running
    * that reaches `use` afterwards gets no attempt to hand its value to, so
    * `use` resolves at once and its teardown runs detached.
    */
@@ -50,9 +50,19 @@ export function createExtendedFixtures(
   definitions: readonly FixtureDefinition[],
   fixtures: object,
   engineName: string,
+  signal?: AbortSignal,
 ): ExtendedFixtures {
   const active: FixtureState[] = [];
-  let abandoned = false;
+  let abandoned = signal?.aborted === true;
+  const abandon = (): void => { abandoned = true; };
+  if (!abandoned) signal?.addEventListener('abort', abandon, { once: true });
+
+  /** Stops setup once its attempt has given up on it. */
+  const requireActive = (): void => {
+    if (abandoned) {
+      throw new ConfigurationError('TEST_SETUP_FAILED', 'fixture setup ended after the attempt was abandoned');
+    }
+  };
 
   const setUpOne = async (definition: FixtureDefinition): Promise<void> => {
     const { name } = definition;
@@ -97,6 +107,7 @@ export function createExtendedFixtures(
         return released;
       }
       Object.defineProperty(fixtures, name, { value, enumerable: true });
+      active.push({ name, run, release, polls, misuse: () => misuse });
       ready();
       return released;
     };
@@ -125,15 +136,19 @@ export function createExtendedFixtures(
     // its rejection; a torn-down one is awaited below.
     run.catch(() => undefined);
     await provided;
-    if (!abandoned) active.push({ name, run, release, polls, misuse: () => misuse });
   };
 
   return {
     async setUp(): Promise<void> {
-      for (const definition of definitions) await setUpOne(definition);
+      requireActive();
+      for (const definition of definitions) {
+        await setUpOne(definition);
+        requireActive();
+      }
     },
     teardowns(): readonly FixtureTeardown[] {
-      abandoned = true;
+      abandon();
+      signal?.removeEventListener('abort', abandon);
       return active.toReversed().map((state) => ({
         name: state.name,
         run: async () => {

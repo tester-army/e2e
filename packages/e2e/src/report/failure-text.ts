@@ -3,13 +3,16 @@
  * the error said in structured form, whether the attempts failed alike, the
  * line to look at, the last turns, the screen), and the page that tells the
  * whole story, with every step, every kept turn, and the screen at failure
- * inline. The `markdown` reporter writes one page per failed or flaky test
- * under `failures/` beside the report; the run page links each block to its
- * page. Both read the facts from here, so the two never disagree.
+ * inline. The runner writes one such page per test that kept a trace, as
+ * `trace.md` in the test's directory under `results/`; the run page links
+ * each block to its page. Both read the facts from here, so the two never disagree.
  */
 
+import path from 'node:path';
+import { modelLabel } from '../config/agent.ts';
 import { isLoopbackHost } from '../internal/urls.ts';
-import type { StepTurn } from '../run/steps.ts';
+import type { AppLogSource } from '../engine/index.ts';
+import type { AppLogRecord, StepCacheInfo, StepCacheRecord, StepEvent, StepTurn } from '../run/steps.ts';
 import type { Report1Document, ReportError, ReportResult, ReportSource, ReportStep } from './build.ts';
 import { cell, code, formatDuration, link, MAX_CELL_CHARS, MAX_ID_CHARS, MAX_LABEL_CHARS, MAX_PATH_CHARS, MAX_TITLE_CHARS, plural } from './markdown-text.ts';
 import { repeatSuffix } from './format.ts';
@@ -26,15 +29,25 @@ const MAX_SCREEN_CHARS = 24_000;
 /** Candidate nodes named on the run page; the page lists every one. */
 const MAX_SUMMARY_CANDIDATES = 3;
 
-export interface FailurePageOptions {
+export interface TracePageOptions {
+  /** The page is the whole record of a hosted session: there is no `report.json` to point at. */
+  readonly standalone?: true | undefined;
   /** A link to a source line, when the commit is known. */
   readonly sourceUrl?: ((file: string, line: number) => string) | undefined;
   /** Where the run's artifacts can be fetched; evidence links there. */
   readonly artifactsUrl?: string | undefined;
   /** The directory the report's artifact paths are relative to, as the reader should see it. */
   readonly artifactsDir?: string | undefined;
+  /**
+   * The page's own directory, relative to the one the report's artifact
+   * paths are: each file then links from the page, and the screenshot at
+   * failure shows inline, wherever the page is read.
+   */
+  readonly pageDir?: string | undefined;
   /** Reads one artifact by its report path, for inlining the screen text; absent when the files are not at hand. */
   readonly readArtifact?: ((reportPath: string) => string | undefined) | undefined;
+  /** The replay cache directory as the reader should see it; a step's entry is named as a file there. */
+  readonly cacheDir?: string | undefined;
 }
 
 // --- facts shared with the run page ---
@@ -69,6 +82,7 @@ export function detailLines(error: ReportError | undefined): string[] {
  * called with, which reads as code.
  */
 export function stepLabel(step: ReportStep, max = MAX_LABEL_CHARS): string {
+  if (step.label === '') return '';
   return step.kind === 'agent' ? `"${cell(step.label, max)}"` : code(step.label, max);
 }
 
@@ -102,11 +116,26 @@ export function toldAttempt(result: ReportResult, final: Outcome): AttemptView {
 /** A step that did not pass. */
 export type FailedStep = ReportStep & { readonly status: Exclude<ReportStep['status'], 'passed'> };
 
-/** The step a failure happened at: the first that did not pass, with its position. */
-export function failedStepOf(steps: readonly ReportStep[]): { index: number; step: FailedStep } | undefined {
-  const index = steps.findIndex((step) => step.status !== 'passed');
-  const step = steps[index];
-  return step === undefined || step.status === 'passed' ? undefined : { index, step: step as FailedStep };
+/**
+ * The step whose error ended the attempt, with its position: the step in the
+ * error's phase whose own error carries its code and line, else the last with
+ * its code, since a caught failure comes earlier, else the step a timeout or
+ * interrupt cut.
+ */
+export function failedStepOf(attempt: { readonly steps: readonly ReportStep[]; readonly error?: ReportError | undefined }): { index: number; step: FailedStep } | undefined {
+  const error = attempt.error;
+  if (error === undefined) return undefined;
+  const phase = error.phase;
+  const candidates = attempt.steps.flatMap((step, index) =>
+    step.status !== 'passed' && (phase === undefined || (step.phase ?? 'body') === phase) ? [{ index, step: step as FailedStep }] : [],
+  );
+  const alike = candidates.filter(({ step }) => step.error?.code === error.code);
+  const line = error.source;
+  if (line !== undefined && alike.length > 0) {
+    // The step's own error, not its source: that is the call site, a line below the `await` of a split call.
+    return alike.findLast(({ step }) => step.error?.source?.file === line.file && step.error.source.line === line.line);
+  }
+  return alike.at(-1) ?? candidates.findLast(({ step }) => step.status === 'cancelled');
 }
 
 /**
@@ -122,7 +151,7 @@ export function attemptsLine(result: ReportResult, final: Outcome): string | und
     .filter((attempt) => attempt.status !== 'passed' && attempt.status !== 'skipped' && attempt.status !== 'interrupted' && (attempt.error !== undefined || attempt.steps.length > 0))
     .map((attempt) => ({
       code: cell(attempt.error?.code ?? attempt.status, 128),
-      step: failedStepOf(attempt.steps)?.index,
+      step: failedStepOf(attempt)?.index,
     }));
   const [first] = failed;
   if (first === undefined || final.attempts.length < 2 || failed.length < 2) return undefined;
@@ -153,13 +182,13 @@ export function attemptsLine(result: ReportResult, final: Outcome): string | und
 export function failureSource(result: ReportResult, told: AttemptView): ReportSource {
   const fromError = told.error?.source;
   if (fromError !== undefined) return fromError;
-  const step = failedStepOf(told.steps)?.step;
+  const step = failedStepOf(told)?.step;
   if (step !== undefined && step.source.file !== 'unknown') return step.source;
   return result.source;
 }
 
 /** `file:line`, linked to the commit when known, else in backticks. */
-export function sourceText(source: ReportSource, sourceUrl: FailurePageOptions['sourceUrl']): string {
+export function sourceText(source: ReportSource, sourceUrl: TracePageOptions['sourceUrl']): string {
   const text = `${source.file}:${source.line}`;
   return sourceUrl === undefined ? code(text) : link(cell(text), sourceUrl(source.file, source.line));
 }
@@ -209,6 +238,207 @@ export function evidenceOf(told: AttemptView): ReportArtifact[] {
   return [...own, ...rest];
 }
 
+/** Result lines of one turn a page quotes; the loop's own notes are quoted past them. */
+const MAX_TURN_LINES = 12;
+/** How the agent loop marks a note it wrote onto a turn: a loop guard, a wind-down, a retry. */
+const LOOP_NOTE_PREFIX = '[loop] ';
+
+/** A turn's outcome as the page quotes it: the first result lines, then every loop note, which come last and say why the step ended. */
+function turnOutcomeLines(outcome: string): string[] {
+  const lines = outcome.split('\n');
+  const notes = lines.filter((line) => line.startsWith(LOOP_NOTE_PREFIX));
+  const results = lines.filter((line) => !line.startsWith(LOOP_NOTE_PREFIX));
+  return [...results.slice(0, MAX_TURN_LINES), ...(results.length > MAX_TURN_LINES ? ['…'] : []), ...notes];
+}
+
+// --- what each step did ---
+
+/** Events a page lists under one step before saying how many more there were. */
+const MAX_STEP_EVENTS = 20;
+
+/** Why a step's replay missed or handed off, in words. */
+const CACHE_REASON_TEXT: Readonly<Record<NonNullable<StepCacheInfo['reason']>, string>> = {
+  retry: 'a retry never replays',
+  'no-entry': 'nothing recorded for this step yet',
+  'invalid-entry': 'the entry could not be read',
+  truncated: 'the recording is incomplete',
+  'wrong-context': 'the recording started on another screen',
+  gap: 'the recording reached an action it cannot replay',
+  'target-not-found': 'a recorded target is not on the screen',
+  'target-ambiguous': 'a recorded target matches several nodes',
+  'viewport-changed': 'the viewport changed size',
+  'action-failed': 'a recorded action failed',
+  'action-uncertain': 'a recorded action may or may not have landed',
+  'end-mismatch': 'the recorded end state did not show',
+};
+
+/** What became of a step's recording, in words. */
+const CACHE_WRITE_TEXT: Readonly<Record<NonNullable<StepCacheRecord['write']>, string>> = {
+  saved: 'recording saved',
+  kept: 'recording kept',
+  unconfirmed: 'recording not saved: no check passed after this step',
+  evicted: 'recording deleted: its replay ended in a failure or a repair, or no check confirmed it',
+  'no-change': 'nothing recorded: the step changed nothing a replay could check',
+  'not-written': 'recording not saved: the cache store did not write it',
+};
+
+/** Where an app log line came from, as the page names it. */
+const APP_SOURCE_TEXT: Readonly<Record<AppLogSource, string>> = {
+  console: 'console',
+  error: 'uncaught',
+  network: 'network',
+  system: 'system',
+};
+
+/** One line a page lists, when it happened, and whether it outranks the rest when there is no room for all. */
+interface PageItem {
+  readonly at: string;
+  readonly important: boolean;
+  readonly line: string;
+}
+
+/**
+ * The items a page has room for, in the order they happened: past `max`,
+ * the important ones take the slots first (the latest of them when they
+ * alone pass it), then the latest of the rest. The end is where it went
+ * wrong. Also says how many it left out.
+ */
+function importantThenLatest(items: readonly PageItem[], max: number): { readonly shown: readonly PageItem[]; readonly left: number } {
+  const ordered = items.toSorted((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  if (ordered.length <= max) return { shown: ordered, left: 0 };
+  const kept = new Set(ordered.filter((item) => item.important).slice(-max));
+  for (const item of ordered.toReversed()) {
+    if (kept.size >= max) break;
+    kept.add(item);
+  }
+  const shown = ordered.filter((item) => kept.has(item));
+  return { shown, left: ordered.length - shown.length };
+}
+
+/** One app log line as a page shows it: `✗ network error: \`GET /api 500\``. */
+function appLogLine(entry: AppLogRecord): string {
+  const glyph = entry.level === 'error' ? '✗' : entry.level === 'warning' ? '⚠' : 'ℹ';
+  const text = code(shortenLoopback(entry.text), MAX_DETAIL_CHARS);
+  const source = APP_SOURCE_TEXT[entry.source];
+  return entry.level === 'info' ? `${glyph} ${source}: ${text}` : `${glyph} ${source} ${entry.level}: ${text}`;
+}
+
+/**
+ * The lines under one step on the page, oldest first: the cache's decision
+ * for an agent step, then each action it took (the node it landed on), each
+ * poll that waited or failed (the values it read in order), where the app
+ * went, and every line the app logged while it ran (`appLog`, the attempt's).
+ */
+function stepDetailLines(step: ReportStep, appLog: readonly AppLogRecord[], options: Pick<TracePageOptions, 'cacheDir'> = {}): string[] {
+  const lines: string[] = [];
+  if (step.cache !== undefined) lines.push(cacheLine(step.cache, options.cacheDir));
+  const items: PageItem[] = [
+    ...step.events
+      .filter((event) => event.kind === 'engine' || event.kind === 'navigation' || (event.kind === 'poll' && ((event.count ?? 0) > 1 || event.status !== 'passed')))
+      .map((event) => ({ at: event.startedAt, important: event.status !== 'passed', line: eventLine(event) })),
+    ...appLog.filter((entry) => entry.step === step.index).map((entry) => ({ at: entry.at, important: entry.level !== 'info', line: appLogLine(entry) })),
+  ];
+  const { shown, left } = importantThenLatest(items, MAX_STEP_EVENTS);
+  if (left > 0) lines.push(`${left} ${left === 1 ? 'event' : 'events'} left out`);
+  for (const item of shown) lines.push(item.line);
+  return lines;
+}
+
+/** App log lines the page lists in its own section; errors and warnings take the slots first, then the latest of the rest. */
+const MAX_APP_LOG_LINES = 50;
+
+/**
+ * The lines the app logged across the attempt (console output, uncaught
+ * errors, failed requests), oldest first, each with its step's number on the
+ * page, so a reader finds the log in one place rather than spread across
+ * steps. Past the cap, errors and warnings take the slots first, and a line
+ * counts what was left out.
+ */
+function appLogLines(steps: readonly ReportStep[], appLog: readonly AppLogRecord[]): string[] {
+  const numbers = new Map(steps.map((step, position) => [step.index, position + 1]));
+  const items = appLog.map((entry) => {
+    const number = entry.step === undefined ? undefined : numbers.get(entry.step);
+    return { at: entry.at, important: entry.level !== 'info', line: `${number === undefined ? 'before step 1' : `step ${number}`} · ${appLogLine(entry)}` };
+  });
+  const { shown, left } = importantThenLatest(items, MAX_APP_LOG_LINES);
+  return [...(left === 0 ? [] : [`${left} ${left === 1 ? 'line' : 'lines'} left out`]), ...shown.map((item) => item.line)];
+}
+
+function cacheLine(cache: StepCacheRecord, cacheDir: string | undefined): string {
+  const how =
+    cache.mode === 'self-finalized'
+      ? `replayed all ${plural(cache.totalActions, 'recorded action')}, no model call`
+      : cache.mode === 'agent-concluded'
+        ? `replayed ${cache.replayedActions} of ${plural(cache.totalActions, 'recorded action')}, then the agent took over: ${CACHE_REASON_TEXT[cache.reason ?? 'action-failed']}`
+        : `no replay: ${CACHE_REASON_TEXT[cache.reason ?? 'no-entry']}`;
+  const parts = [
+    `cache: ${how}`,
+    ...(cache.recordedBy === undefined ? [] : [`recorded with ${code(modelLabel({ provider: cache.recordedBy.provider, id: cache.recordedBy.model }), MAX_DETAIL_CHARS)}`]),
+    ...(cache.detail === undefined ? [] : [cell(cache.detail, MAX_DETAIL_CHARS)]),
+    ...(cache.write === undefined ? [] : [CACHE_WRITE_TEXT[cache.write]]),
+    ...(cache.notRecorded === 'param-collision' ? ['nothing recorded: a unique() value collides with another param'] : []),
+  ];
+  const entry = cache.entry === undefined || cacheDir === undefined ? '' : ` (${code(`${cacheDir}/${cache.entry}.json`, MAX_PATH_CHARS)})`;
+  return `${parts.join('; ')}${entry}`;
+}
+
+function eventLine(event: StepEvent): string {
+  const detail = event.detail === undefined ? undefined : cell(shortenLoopback(event.detail), MAX_DETAIL_CHARS);
+  switch (event.kind) {
+    case 'navigation':
+      // The page moving on, told in the engine's own words.
+      return `↪ ${cell(shortenLoopback(event.detail ?? 'navigated'), MAX_DETAIL_CHARS)}`;
+    case 'poll': {
+      const verb = event.status === 'passed' ? 'passed after' : 'gave up after';
+      return `${event.name === undefined ? 'poll' : cell(event.name, MAX_ID_CHARS)} ${verb} ${plural(event.count ?? 1, 'read')} in ${formatDuration(event.durationMs)}${detail === undefined ? '' : `: ${detail}`}`;
+    }
+    default: {
+      const what = detail ?? cell(event.name ?? event.kind, MAX_ID_CHARS);
+      if (event.status === 'passed') return `${what} (${formatDuration(event.durationMs)})`;
+      return `${event.status === 'cancelled' ? '–' : '✗'} ${what}${event.code === undefined ? '' : `: **${cell(event.code, 128)}**`}`;
+    }
+  }
+}
+
+/**
+ * How the screen changed by the step, as page lines under it: the first
+ * screen's size, `unchanged`, or the nodes added, removed, and changed since
+ * the step before that saw one. Nothing for a step that saw no screen.
+ */
+function stepScreenLines(screen: ReportStep['screen']): string[] {
+  if (screen === undefined) return [];
+  const where = screen.location === undefined ? '' : ` at ${code(shortenLoopback(screen.location), MAX_CELL_CHARS)}`;
+  if (screen.since === undefined) return [`   - screen: ${plural(screen.nodes, 'node')}${where}`];
+  const since = `step ${screen.since + 1}`;
+  if (screen.changes.length === 0) return [`   - screen: unchanged since ${since}${where}`];
+  const total = screen.changes.length + (screen.more ?? 0);
+  return [
+    `   - screen: ${plural(total, 'change')} since ${since}${where}, ${plural(screen.nodes, 'node')}`,
+    ...screen.changes.map((change) => `     - ${code(shortenLoopback(change), MAX_DETAIL_CHARS)}`),
+    ...(screen.more === undefined ? [] : [`     - ${screen.more} more`]),
+  ];
+}
+
+/** Drops a loopback origin from the URLs in a line: nobody reading the page can open it, and the path says the rest. */
+function shortenLoopback(text: string): string {
+  return text.replaceAll(/https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(?=\/)/g, '');
+}
+
+/**
+ * `, video 0:12`: where the step starts in the recording that was running
+ * then, the last segment that began before it. An attempt cut into several
+ * segments (a restart opens a new page) names the segment too:
+ * `, video-part2 0:03`. Nothing without a recording.
+ */
+function videoOffset(step: ReportStep, videos: readonly ReportArtifact[]): string {
+  const at = Date.parse(step.startedAt);
+  const video = videos.findLast((candidate) => Date.parse(candidate.startedAt!) <= at) ?? videos[0];
+  if (video === undefined) return '';
+  const seconds = Math.max(0, Math.floor((at - Date.parse(video.startedAt!)) / 1000));
+  const name = videos.length > 1 && video.path !== undefined ? (video.path.split('/').at(-1) ?? 'video').replace(/\.[^.]+$/u, '') : 'video';
+  return `, ${name} ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
 // --- the page ---
 
 const STATUS_WORD: Record<ReportResult['status'], string> = {
@@ -222,24 +452,30 @@ const STATUS_WORD: Record<ReportResult['status'], string> = {
 
 const STEP_GLYPH: Record<ReportStep['status'], string> = { passed: '✓', failed: '✗', blocked: '✗', 'timed-out': '✗', cancelled: '–' };
 
-/** `[screenshot](run#artifacts) \`web/.../screenshot-1.png\``: the kind, linked to the run's artifacts when there is a URL, and the file's path so the reader finds it. */
-function artifactPath(artifact: ReportArtifact, options: FailurePageOptions): string {
-  const kind = cell(artifact.kind, MAX_ID_CHARS);
+/** `[screenshot](run#artifacts) \`todos-adds-a-todo-1a2b…/attempt-1/screenshots/001-failure.png\``: the kind (or `label`), linked to the run's artifacts when there is a URL, and the file's path so the reader finds it. */
+function artifactPath(artifact: ReportArtifact, options: TracePageOptions, label: string = artifact.kind): string {
+  const kind = cell(label, MAX_ID_CHARS);
   // A video a hosted service keeps is its own link, wherever the run's files are.
   if (artifact.url !== undefined) return link(kind, artifact.url);
-  const named = options.artifactsUrl === undefined ? kind : link(kind, options.artifactsUrl);
+  const fromPage = artifact.path === undefined ? undefined : pageHref(artifact.path, options);
+  const named = options.artifactsUrl !== undefined ? link(kind, options.artifactsUrl) : fromPage !== undefined ? link(kind, fromPage) : kind;
   if (artifact.path === undefined) return named;
   const shown = options.artifactsDir === undefined ? artifact.path : `${options.artifactsDir}/${artifact.path}`;
   return `${named} ${code(shown, MAX_PATH_CHARS)}`;
 }
 
-/** Renders one failed or flaky result as its own markdown page. */
-export function renderFailurePage(report: Report1Document, result: ReportResult, final: Outcome, options: FailurePageOptions = {}): string {
+/** An artifact's path from the page's directory, when the page knows where it is. */
+function pageHref(reportPath: string, options: TracePageOptions): string | undefined {
+  return options.pageDir === undefined ? undefined : path.posix.relative(options.pageDir, reportPath);
+}
+
+/** Renders one traced result as its own markdown page: a failed or flaky one tells its failure, a passing one its steps. */
+export function renderTracePage(report: Report1Document, result: ReportResult, final: Outcome, options: TracePageOptions = {}): string {
   const run = report.run;
   const told = toldAttempt(result, final);
   const manyTargets = run.targets.length > 1;
   const title = `${result.titlePath.map((part) => cell(part, MAX_TITLE_CHARS)).join(' › ')}${repeatSuffix(result.repeat)}`;
-  const lines: string[] = [`# ✗ ${title}`, ''];
+  const lines: string[] = [`# ${result.status === 'passed' ? '✓' : '✗'} ${title}`, ''];
   const about = [
     code(result.file, MAX_PATH_CHARS),
     ...(manyTargets ? [`target ${code(result.targetId, MAX_ID_CHARS)}`] : []),
@@ -248,6 +484,8 @@ export function renderFailurePage(report: Report1Document, result: ReportResult,
     formatDuration(final.durationMs),
   ];
   lines.push(about.join(' · '), '');
+  const ranOn = Object.entries(told.environment ?? {});
+  if (ranOn.length > 0) lines.push(`Ran on: ${ranOn.map(([name, value]) => `${cell(name, MAX_ID_CHARS)} ${code(value, MAX_CELL_CHARS)}`).join(' · ')}`, '');
 
   const error = told.error;
   if (error !== undefined) {
@@ -257,27 +495,46 @@ export function renderFailurePage(report: Report1Document, result: ReportResult,
     const { expected, observed } = error.details ?? {};
     const spelled = expected !== undefined && observed !== undefined && error.message.includes(expected) && error.message.includes(observed);
     if (!spelled) for (const line of detailLines(error)) lines.push(`${line}  `);
-  } else {
+  } else if (result.status !== 'passed') {
     lines.push(`_${STATUS_WORD[result.status]}: no error was recorded._`);
   }
-  lines.push(`Look at: ${sourceText(failureSource(result, told), options.sourceUrl)}  `);
+  if (result.status !== 'passed') lines.push(`Look at: ${sourceText(failureSource(result, told), options.sourceUrl)}  `);
+  if (told.status !== 'skipped' && told.skip !== undefined) lines.push(`Also skipped: ${cell(told.skip.reason)}  `);
   const attempts = attemptsLine(result, final);
   if (attempts !== undefined) lines.push(`${attempts}  `);
   if (result.status === 'flaky') lines.push(`Passed after ${plural(final.failedAttempts, 'failed attempt')}; this page tells the last failure.  `);
-  lines.push('');
+  if (lines.at(-1) !== '') lines.push('');
 
-  const at = failedStepOf(told.steps);
+  const at = failedStepOf(told);
   if (told.steps.length > 0) {
+    const videos = told.artifacts
+      .filter((artifact) => artifact.kind === 'video' && artifact.startedAt !== undefined)
+      .toSorted((a, b) => Date.parse(a.startedAt!) - Date.parse(b.startedAt!));
     lines.push('## Steps', '');
     told.steps.forEach((step, index) => {
       const own = step.source.file === 'unknown' ? '' : ` — ${code(`${step.source.file}:${step.source.line}`, MAX_PATH_CHARS)}`;
       const calls = step.metrics === undefined || step.metrics.modelCalls === 0 ? '' : `, ${plural(step.metrics.modelCalls, 'model call')}`;
       const failed = step.status === 'passed' ? '' : ` — **${cell(step.error?.code ?? step.status, 128)}**`;
-      lines.push(`${index + 1}. ${STEP_GLYPH[step.status]} ${code(step.api, MAX_ID_CHARS)} ${stepLabel(step, MAX_CELL_CHARS)} (${formatDuration(step.durationMs)}${calls})${failed}${own}`);
+      const offset = videoOffset(step, videos);
+      const hook = step.phase === undefined ? '' : ` in ${step.phase}`;
+      const label = stepLabel(step, MAX_CELL_CHARS);
+      lines.push(`${index + 1}. ${STEP_GLYPH[step.status]} ${code(step.api, MAX_ID_CHARS)}${label === '' ? '' : ` ${label}`} (${formatDuration(step.durationMs)}${calls}${offset}${hook})${failed}${own}`);
       if (step.status !== 'passed' && step.explanation !== undefined && step.explanation.trim() !== '') {
         lines.push(`   > ${cell(step.explanation, MAX_DETAIL_CHARS)}`);
       }
+      for (const line of stepDetailLines(step, told.appLog, options)) lines.push(`   - ${line}`);
+      for (const artifact of told.artifacts) {
+        if (artifact.kind === 'screenshot' && step.artifacts.includes(artifact.id)) lines.push(`   - ${artifactPath(artifact, options)}`);
+      }
+      lines.push(...stepScreenLines(step.screen));
     });
+    lines.push('');
+  }
+
+  const appLog = appLogLines(told.steps, told.appLog);
+  if (appLog.length > 0) {
+    lines.push('## App log', '', 'What the app logged, oldest first, with the step it happened in.', '');
+    for (const line of appLog) lines.push(`- ${line}`);
     lines.push('');
   }
 
@@ -288,7 +545,7 @@ export function renderFailurePage(report: Report1Document, result: ReportResult,
     for (const turn of turns) {
       const calls = turn.calls.length === 0 ? '_no tool call_' : turn.calls.map((call) => code(call, MAX_CELL_CHARS)).join(', ');
       lines.push(`**Turn ${turn.index}** ${calls}  `);
-      for (const line of turn.outcome.split('\n').slice(0, 12)) lines.push(`> ${cell(line, MAX_CELL_CHARS)}`);
+      for (const line of turnOutcomeLines(turn.outcome)) lines.push(`> ${cell(line, MAX_CELL_CHARS)}`);
       lines.push('');
     }
   }
@@ -296,18 +553,36 @@ export function renderFailurePage(report: Report1Document, result: ReportResult,
   const failure = told.failure;
   if (failure !== undefined) {
     lines.push('## Screen at failure', '');
-    if (failure.url !== undefined) lines.push(`URL: ${code(failure.url, MAX_PATH_CHARS)}  `);
+    const screen = failure.screen === undefined ? undefined : told.artifacts.find((artifact) => artifact.id === failure.screen);
+    const listing = screen?.path === undefined ? undefined : options.readArtifact?.(screen.path);
+    const where = [
+      ...(failure.url === undefined ? [] : [code(failure.url, MAX_PATH_CHARS)]),
+      ...(failure.viewport === undefined ? [] : [`viewport ${failure.viewport.width}x${failure.viewport.height}`]),
+      ...(failure.nodes === undefined ? [] : [plural(failure.nodes, 'node')]),
+    ];
+    if (where.length > 0) lines.push(`${where.join(' · ')}  `);
+    const shot = failure.screenshot === undefined ? undefined : told.artifacts.find((artifact) => artifact.id === failure.screenshot);
+    const shotHref = shot?.path === undefined ? undefined : pageHref(shot.path, options);
+    if (shotHref !== undefined) lines.push('', `!${link('screenshot at failure', shotHref)}`, '');
     if (failure.candidates !== undefined && failure.candidates.length > 0) {
       lines.push('Closest to what the locator asked for:  ');
       for (const candidate of failure.candidates) lines.push(`- ${code(candidate, MAX_CELL_CHARS)}`);
     }
-    const screen = failure.screen === undefined ? undefined : told.artifacts.find((artifact) => artifact.id === failure.screen);
-    const text = screen?.path === undefined ? undefined : options.readArtifact?.(screen.path);
-    if (text !== undefined) {
-      const body = text.length > MAX_SCREEN_CHARS ? `${text.slice(0, MAX_SCREEN_CHARS)}\n…[cut at ${MAX_SCREEN_CHARS} characters; the file has the rest]` : text;
-      lines.push('', 'The screen as the agent reads it, one node per line: `#id role "name" text="…" [states]`.', '', '```text', body.replaceAll('```', "'''").trimEnd(), '```');
+    if (listing !== undefined) {
+      const body = listing.length > MAX_SCREEN_CHARS ? `${listing.slice(0, MAX_SCREEN_CHARS)}\n…[cut at ${MAX_SCREEN_CHARS} characters; the file has the rest]` : listing;
+      if (lines.at(-1) !== '') lines.push('');
+      lines.push('The screen as the agent reads it, one node per line: `#id role "name" text="…" [states]`.', '', '```text', body.replaceAll('```', "'''").trimEnd(), '```');
     } else if (screen !== undefined) {
-      lines.push(`Screen text: ${artifactPath(screen, options)}  `);
+      lines.push(`${artifactPath(screen, options, 'screen')}  `);
+    }
+    lines.push('');
+  }
+
+  if (told.secondaryErrors.length > 0) {
+    lines.push('## Also failed', '');
+    for (const secondary of told.secondaryErrors) {
+      const phase = secondary.phase === undefined ? '' : ` in ${cell(secondary.phase, MAX_ID_CHARS)}`;
+      lines.push(`- **${cell(secondary.code, 128)}**${phase}: ${cell(secondary.message, MAX_DETAIL_CHARS)}`);
     }
     lines.push('');
   }
@@ -315,10 +590,11 @@ export function renderFailurePage(report: Report1Document, result: ReportResult,
   const evidence = evidenceOf(told);
   if (evidence.length > 0) {
     lines.push('## Evidence', '');
-    for (const artifact of evidence) lines.push(`- ${artifactPath(artifact, options)}`);
+    for (const artifact of evidence) lines.push(`- ${artifactPath(artifact, options, artifact.id === failure?.screen ? 'screen' : artifact.kind)}`);
     lines.push('');
   }
 
-  lines.push(`<sub>e2e ${cell(run.runner.version, MAX_ID_CHARS)} · run ${code(run.id, MAX_ID_CHARS)} · the whole run is in \`report.json\`</sub>`);
+  const footer = `e2e ${cell(run.runner.version, MAX_ID_CHARS)} · run ${code(run.id, MAX_ID_CHARS)}`;
+  lines.push(`<sub>${options.standalone === true ? footer : `${footer} · the whole run is in \`report.json\``}</sub>`);
   return `${lines.join('\n')}\n`;
 }

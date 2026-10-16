@@ -8,7 +8,7 @@ import type { EngineFixtureContext, OperationContext } from 'e2e/engine';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { createBrowserFixture } from '../../src/browser.ts';
-import { noSecrets } from '../helpers/secrets.ts';
+import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 const acquire = vi.hoisted(() => vi.fn());
 vi.mock('../../src/browser-connection.ts', () => ({
@@ -40,7 +40,7 @@ beforeEach(async () => {
     frames: () => [{ evaluate: focus }],
     keyboard: { press, type },
     screencast: {
-      start: async ({ path: file }: { path: string }) => { writeFileSync(file, 'recording'); },
+      start: async ({ path: file, onFrame }: { path: string; onFrame?: () => void }) => { writeFileSync(file, 'recording'); onFrame?.(); },
       stop: async () => undefined,
     },
   };
@@ -48,21 +48,18 @@ beforeEach(async () => {
     isConnected: () => true,
     newContext: vi.fn(async () => ({
       addInitScript: async () => undefined,
+      pages: () => [],
       setDefaultTimeout: () => undefined,
       on: () => undefined,
       route: async (_predicate: unknown, handler: (route: Route) => Promise<void>) => { registered = handler; },
       close: async () => undefined,
       newPage: async () => page,
-      tracing: {
-        start: async () => undefined,
-        stop: async (options?: { path: string }) => { if (options !== undefined) writeFileSync(options.path, 'trace'); },
-      },
     })),
   } as unknown as Browser;
   acquire.mockResolvedValue(browser);
   surface = new PlaywrightSurface({});
   await surface.init({ runId: 'run', targetName: 'web', projectRoot: process.cwd(), app: {}, env: {}, headed: false, workerSlot: 0, signal: new AbortController().signal, log: () => undefined });
-  await surface.startAttempt({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+  await surface.startAttempt({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
 });
 
 afterEach(async () => {
@@ -92,23 +89,20 @@ it.each(['dialog', 'route'] as const)('keeps a late %s failure on the attempt th
     } as unknown as Route);
   }
   await surface.endAttempt(cleanup());
-  await surface.startAttempt({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+  await surface.startAttempt({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
   release();
   await pending;
   expect(() => oldLatch.throwPending()).toThrow(/old handler failed/);
   await expect(surface.guard(operation(), 'next attempt', async () => 'clean')).resolves.toBe('clean');
 });
 
-it('collects saved trace and video segments after ordinary context replacement fails', async () => {
+it('collects saved video segments after ordinary context replacement fails', async () => {
   await surface.startVideo(operation());
-  await surface.startTrace(operation());
   vi.mocked(browser.newContext).mockRejectedValueOnce(new Error('replacement failed'));
   await expect(surface.reset(operation())).rejects.toThrow(/replacement failed/);
-  await expect(surface.stopTrace(operation())).resolves.toEqual(['trace/trace-part1.zip']);
   const videos = await surface.stopVideo(operation());
   expect(videos).toHaveLength(1);
   expect(videos[0]).toMatchObject({ path: 'video/video.webm' });
-  expect(readFileSync(path.join(artifactsDir, 'trace/trace-part1.zip'), 'utf8')).toBe('trace');
   expect(readFileSync(path.join(artifactsDir, 'video/video.webm'), 'utf8')).toBe('recording');
   await expect(surface.open('https://example.test/', operation())).rejects.toThrow(/replacement failed/);
 });
@@ -169,13 +163,13 @@ it('opens no session for an attempt the runner gave up on while its basic-auth p
     let resolvePassword!: (value: string) => void;
     const slow = new Promise<string>((resolve) => { resolvePassword = resolve; });
     const controller = new AbortController();
-    const starting = protectedSurface.startAttempt({ attemptId: 'slow', artifactsDir, signal: controller.signal, resolveSecret: () => slow });
+    const starting = protectedSurface.startAttempt({ attemptId: 'slow', artifactsDir, signal: controller.signal, resolveSecret: () => slow, ...ignoreTrace });
     controller.abort();
     await expect(starting).rejects.toMatchObject({ code: 'CANCELLED' });
     await protectedSurface.endAttempt(cleanup());
     resolvePassword('late-password');
     await new Promise<void>((resolve) => setImmediate(resolve));
-    await protectedSurface.startAttempt({ attemptId: 'next', artifactsDir, signal: new AbortController().signal, resolveSecret: async () => 'next-password' });
+    await protectedSurface.startAttempt({ attemptId: 'next', artifactsDir, signal: new AbortController().signal, resolveSecret: async () => 'next-password', ...ignoreTrace });
     expect(vi.mocked(browser.newContext).mock.lastCall?.[0]).toMatchObject({ httpCredentials: { username: 'ada', password: 'next-password' } });
   } finally {
     await protectedSurface.dispose(cleanup());

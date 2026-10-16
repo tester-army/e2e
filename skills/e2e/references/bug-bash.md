@@ -5,6 +5,17 @@ verification pass that turns every claimed bug into a repro test that fails
 for the reason reported. Plan the charters, fan them out, merge the findings,
 prove each bug. Report confirmed bugs only, each with its failing test.
 
+## Contents
+
+- 1. Prepare
+- 2. Plan charters
+- 3. Fan out
+- 4. Merge
+- 5. Triage
+- 6. Verify
+- 7. Report
+- Rules
+
 ## 1. Prepare
 
 - A config with a target and an agent that holds a model (topic `setup`),
@@ -69,7 +80,10 @@ const persona = { model: gateway('openai/gpt-6-luna-fast'), maxSteps: 40, maxMod
 export default {
   ...shared,
   // The project's tests, so a repro can use its setup tests' sessions, plus the repro tests from step 6.
-  tests: [shared.tests ?? 'tests/**/*.e2e.ts', 'tests/bugbash/**/*.e2e.ts'].flat(),
+  tests: [
+    ...[shared.tests ?? 'tests/**/*.e2e.ts'].flat().filter((glob) => !glob.startsWith('!tests/bugbash/')),
+    'tests/bugbash/**/*.e2e.ts',
+  ],
   // The app already runs: no command.
   targets: [{ name: 'web', engine: web(), app: { url: 'http://127.0.0.1:3000' } }],
   retries: 0,
@@ -119,7 +133,7 @@ time budget before judging a single result.
 ## 3. Fan out
 
 One `e2e explore` per charter with its own output directory:
-`--output .e2e/bugbash/<slug>` writes `report.json` and `artifacts/` there,
+`--output .e2e/bugbash/<slug>` writes `report.json` and `results/` there,
 and `--reporter list,markdown` adds `summary.md`. `e2e init` gitignores
 specific `.e2e/` paths, not `.e2e/bugbash/`: add it to `.gitignore` or
 delete it when done, and delete it before a new bug bash. `charters.txt` and
@@ -149,7 +163,7 @@ setup and environment problems; fix them and rerun that charter alone.
 
 Read each log's `Findings` section (topic `explore`); `summary.md` holds the
 same, and `report.json` has the record under `run.explore`. The video is in
-the attempt's `video/` directory under `.e2e/bugbash/<slug>/artifacts/`.
+the attempt's `video/` directory under `.e2e/bugbash/<slug>/results/`.
 
 Merge findings that describe one defect: same path, same broken behavior.
 Keep the clearest reproduction and every charter that hit it. Keep warnings

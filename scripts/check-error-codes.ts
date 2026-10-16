@@ -15,15 +15,9 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sourceRoots } from './error-codes.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const SOURCE_ROOTS = [
-  'packages/e2e/src',
-  'packages/web/src',
-  'packages/mobile/src',
-  'packages/github/src',
-  'packages/decision/src',
-];
 const TYPES_FILE = 'packages/e2e/src/types.ts';
 const CONTRACT_FILE = 'packages/e2e/src/engine/contract.ts';
 const ERRORS_PAGE = 'docs/reference/errors.mdx';
@@ -49,7 +43,7 @@ function sourceFiles(): string[] {
       else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts')) files.push(path);
     }
   };
-  for (const root of SOURCE_ROOTS) walk(root);
+  for (const root of sourceRoots()) walk(root);
   return files;
 }
 

@@ -19,7 +19,7 @@ import type { JSONSchema7, Tool, ToolExecutionOptions, ToolSet } from 'ai';
 import type { z } from 'zod';
 import { loadAiSdk, loadAiSdkIfInstalled, loadedAiSdk } from '../agent/ai-sdk.ts';
 import { isFailedResult } from '../agent/loop-guards.ts';
-import { codedMessage, ConfigurationError, errorMessage } from '../internal/errors.ts';
+import { codedMessage, ConfigurationError, errorMessage, InfrastructureError } from '../internal/errors.ts';
 import { describeIssue } from '../internal/standard-schema.ts';
 import type { StandardSchemaV1 } from '../types.ts';
 
@@ -180,6 +180,7 @@ export async function invokeTool(
     throw new ConfigurationError('UNSUPPORTED_CAPABILITY', `tool "${name}" has no execute function`);
   }
   const input = await validateArgs(name, tool, args);
+  if (extra.signal.aborted) throw new InfrastructureError('CANCELLED', 'the tool call was cancelled');
   const options: ToolExecutionOptions<unknown> = {
     toolCallId: `mcp-${Date.now().toString(36)}`,
     messages: [],
@@ -255,11 +256,14 @@ type ModelOutput = Awaited<ReturnType<NonNullable<Tool['toModelOutput']>>>;
  * else is JSON, so a structured output is never lost.
  */
 export async function resultFromOutput(tool: ToolSet[string], output: unknown, input: unknown = undefined): Promise<McpToolResult> {
-  if (typeof output === 'string') return textResult(output);
   if (tool.toModelOutput !== undefined) {
-    const content = contentFromModelOutput(await tool.toModelOutput({ toolCallId: 'mcp', input, output }));
-    if (content !== undefined) return { content };
+    const rendered = await tool.toModelOutput({ toolCallId: 'mcp', input, output });
+    const content = contentFromModelOutput(rendered);
+    if (content !== undefined) {
+      return { content, ...(rendered.type === 'error-text' || rendered.type === 'error-json' ? { isError: true } : {}) };
+    }
   }
+  if (typeof output === 'string') return textResult(output);
   return textResult(output === undefined ? 'Done.' : JSON.stringify(output, null, 2));
 }
 

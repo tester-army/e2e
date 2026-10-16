@@ -8,12 +8,13 @@
  */
 
 import type { ModelMessage } from 'ai';
-import { withHint } from '../../internal/errors.ts';
+import { providerFailureMessage, withHint } from '../../internal/errors.ts';
+import { markUnservedModel, unservedModelExplanation } from '../../internal/unserved-model.ts';
 import { missingModelError, type ResolvedModel } from '../../config/agent.ts';
 import { aiSdk, asSdkLanguageModel, loadAiSdk, type SdkLanguageModel } from '../ai-sdk.ts';
 import { MODEL_REQUEST_HEADERS } from '../../internal/client-identity.ts';
 import { packageVersion } from '../../internal/package-version.ts';
-import { AgentError } from '../error.ts';
+import { AgentError, isAgentError } from '../error.ts';
 import { isContextOverflow } from './overflow.ts';
 import { providerHints, type ProviderModelRef } from './provider-hints.ts';
 import { withStallGuard } from './stall.ts';
@@ -292,22 +293,37 @@ function translateModelError(
   if (isContextOverflow(cause)) {
     return new AgentError(
       'CONTEXT_OVERFLOW',
-      `the model request exceeded the context window: ${cause instanceof Error ? cause.message : String(cause)}`,
+      `the model request exceeded the context window: ${providerFailureMessage(cause)}`,
       { cause },
     );
   }
+  const unserved = unservedModelError(cause);
+  if (unserved !== undefined) return unserved;
   if (APICallError.isInstance(cause)) {
     return new AgentError(
       'MODEL_PROVIDER_FAILED',
-      withHint(`model provider failed: ${cause.message}`, failureHint(cause)),
+      withHint(`model provider failed: ${providerFailureMessage(cause)}`, failureHint(cause)),
       { cause },
     );
   }
   return new AgentError(
     'MODEL_PROVIDER_FAILED',
-    `model provider failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+    `model provider failed: ${providerFailureMessage(cause)}`,
     { cause },
   );
+}
+
+/** A marked failure (`internal/unserved-model.ts`) as the run-stopping `MODEL_UNAVAILABLE` the fixture reports once, or that error itself; undefined for any other failure. */
+export function unservedModelError(cause: unknown): AgentError | undefined {
+  if (isUnservedModelError(cause)) return cause;
+  const explanation = unservedModelExplanation(cause);
+  if (explanation === undefined) return undefined;
+  return markUnservedModel(new AgentError('MODEL_UNAVAILABLE', explanation, { cause }), explanation);
+}
+
+/** True for an error `unservedModelError` built, in this realm or another. */
+export function isUnservedModelError(value: unknown): value is AgentError {
+  return isAgentError(value) && unservedModelExplanation(value) !== undefined;
 }
 
 /**

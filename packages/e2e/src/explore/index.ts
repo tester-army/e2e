@@ -16,7 +16,6 @@ import { missingModelError, resolveAgentConfig } from '../config/agent.ts';
 import { resolveConfig, type ResolvedConfig, type ResolvedCredential, type ResolvedTarget } from '../config/resolve.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import type { ReportExplore } from '../report/build.ts';
-import { labelSegment } from '../run/artifacts.ts';
 import type { RunEventSink } from '../run/events.ts';
 import { run, type RunOutcome } from '../run/runner.ts';
 import { staticSecretLedger } from '../run/secrecy.ts';
@@ -71,7 +70,7 @@ export interface ExploreOptions {
   readonly output?: string | undefined;
   readonly debug?: boolean | undefined;
   readonly aiTrace?: boolean | undefined;
-  /** Which attempts record a trace, `--trace [mode]`; the exploration is one attempt, so a retry mode records nothing. */
+  /** Which attempts keep a trace page, `--trace [mode]`; the exploration is one attempt, so a retry mode keeps none. */
   readonly trace?: RecordingMode | undefined;
   /** Which attempts record a video, `--video [mode]`; the exploration is one attempt, so a retry mode records nothing. */
   readonly video?: RecordingMode | undefined;
@@ -134,9 +133,11 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
   // `--session` pulls in runs as the project's own agents, with its cache and
   // retries. The exploration pins no retries and runs with the cache off.
   const explorerAgents = new Map(resolved.agents).set(agentName, withFindingTool(resolvedExplorer, state));
+  // The exploration is bounded by its own `--timeout`, not `maxDuration`.
+  const { maxDuration: _maxDuration, ...runConfig } = raw;
   const outcome = await run({
     cwd: projectRoot,
-    rawConfig: raw,
+    rawConfig: runConfig,
     agent: options.agent,
     env,
     tests: {
@@ -262,9 +263,7 @@ function credentialAccounts(credentials: ReadonlyMap<string, ResolvedCredential>
  * The one-test registration: the goal is the title, the body is the
  * exploration loop. With a session it consumes that session like any test
  * declaring `{ session }`, so the runner runs the setup that saves it first
- * and restores it into the exploration's attempt. Its artifacts go under a
- * short name for the goal rather than the test id, which holds the whole
- * goal encoded.
+ * and restores it into the exploration's attempt.
  */
 function exploreRegistration(
   state: ExploreState,
@@ -290,7 +289,6 @@ function exploreRegistration(
     group: undefined,
     mode: 'normal',
     source: undefined,
-    artifactName: labelSegment(EXPLORE_FILE, state.goal),
   };
   return { tests: [test], hooks: [] };
 }

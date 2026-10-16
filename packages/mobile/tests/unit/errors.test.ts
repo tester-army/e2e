@@ -7,7 +7,7 @@ import { EngineError, TestError, type OperationContext, type SemanticNode } from
 import { isRunnerFailure, isSnapshotPresentationFailure, staleOr, translateError } from '../../src/errors.ts';
 import { SETTINGS_SNAPSHOT } from '../helpers/fake-client.ts';
 import { boot, harness, PROJECT_ROOT, type Harness } from '../helpers/harness.ts';
-import { noSecrets } from '../helpers/secrets.ts';
+import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 describe('error translation', () => {
   it('passes classified errors through untouched', () => {
@@ -22,16 +22,20 @@ describe('error translation', () => {
       code: 'INVALID_STATE',
       retryable: false,
     });
-    expect(translateError(new Error('No active app session. Run open first.'), 'snapshot')).toMatchObject({
-      code: 'INVALID_STATE',
-    });
     // What `appstate` says once `close` ended the session; the harness reports it as APP_NOT_OPEN.
     expect(
       translateError(
-        new AppError('INVALID_ARGS', 'appstate requires an active session or an explicit device selector (e.g. --platform ios).'),
+        new AppError('INVALID_ARGS', 'appstate requires an active session or an explicit device selector (e.g. --platform ios).', {
+          reason: 'session_or_device_selector_required',
+          dispatched: 'no',
+        }),
         'device.foregroundApp',
       ),
     ).toMatchObject({ code: 'INVALID_STATE', retryable: false });
+    // Keyed on the code and reason, never the text: a message that only reads like a missing session stays an engine failure.
+    expect(translateError(new AppError('INVALID_ARGS', 'appstate requires an active session'), 'device.foregroundApp')).toMatchObject({
+      code: 'ENGINE_FAILURE',
+    });
     expect(
       translateError(
         new AppError('SESSION_NOT_FOUND', 'iOS appstate requires an active session on the target device. Run open first.'),
@@ -66,14 +70,14 @@ describe('error translation', () => {
     ).toMatchObject({ code: 'ENGINE_FAILURE', message: 'open com.example.app failed: runner connect timed out after 60s' });
   });
 
-  // Each refusal as agent-device 0.21.20 sends it: the typed reason, and the message the reason replaces.
+  // Each refusal as agent-device 0.21.21 sends it: the typed reason, and the message the reason replaces.
   it.each([
     ['ref_not_found', 'Ref @e12 not found', 'no'],
     ['ref_frame_expired', 'Ref @e12 belongs to an expired ref frame — a device action since the snapshot invalidated it', 'no'],
     ['ref_generation_mismatch', 'Ref @e12 was minted from a superseded snapshot generation', 'no'],
     ['plain_ref_requires_complete_frame', 'Ref @e12 needs a complete snapshot — the current frame only authorizes its emitted refs', 'no'],
     ['ref_not_issued', 'Ref @e12 was not issued by the current ref frame', 'no'],
-    // A drag refuses its stale ref before the gesture, but reports it as `unknown`.
+    // After Android blocking-dialog recovery, a drag refuses its stale ref before the gesture but reports it as `unknown`.
     ['ref_frame_expired', 'Ref @e12 belongs to an expired ref frame — a device action since the snapshot invalidated it', 'unknown'],
   ] as const)('maps the stale-ref refusal %s (dispatched: %s) to retryable NODE_STALE', (reason, text, dispatched) => {
     const refused = new AppError('COMMAND_FAILED', text, { reason, dispatched });
@@ -248,7 +252,7 @@ describe('automation runner failures through the engine', () => {
   async function openAttempt(h: Harness): Promise<void> {
     artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-mobile-errors-'));
     await boot(h, 'ios');
-    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
   }
 
   /** Every node under the root, the root excluded. */

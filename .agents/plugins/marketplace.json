@@ -1,0 +1,12 @@
+{
+  "name": "e2e",
+  "interface": { "displayName": "e2e" },
+  "plugins": [
+    {
+      "name": "e2e",
+      "source": { "source": "local", "path": "./plugins/e2e" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Developer Tools"
+    }
+  ]
+}

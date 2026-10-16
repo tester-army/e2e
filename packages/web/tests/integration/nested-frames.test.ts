@@ -1,7 +1,8 @@
 /**
  * A `frameLocator` chain resolves each frame inside the one before it: the
  * inner selector is looked up in the outer frame's document, never in the
- * page, so validation and Playwright's own `frameLocator` chain agree.
+ * page, so validation and Playwright's own `frameLocator` chain agree. A
+ * located node's box is in the top-level viewport, as the contract asks.
  */
 
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -11,7 +12,7 @@ import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { LocatorExpression } from 'e2e/engine';
 import { surfaceOf, web } from '../../src/index.ts';
-import { noSecrets } from '../helpers/secrets.ts';
+import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 /** Escapes HTML for a double-quoted attribute value, so a document can carry a nested `srcdoc`. */
 function attribute(html: string): string {
@@ -32,7 +33,7 @@ const INNER_DOCUMENT =
   '<button onclick="this.textContent = \'Inner clicked\'">Inner button</button>' +
   `<iframe id="deep" title="deep" srcdoc="${attribute(DEEP_DOCUMENT)}"></iframe>`;
 const OUTER_DOCUMENT =
-  `<h2>Outer</h2><iframe id="inner" title="inner" srcdoc="${attribute(INNER_DOCUMENT)}"></iframe>` +
+  `<h2>Outer</h2><iframe id="inner" title="inner" style="border:7px solid;padding:5px" srcdoc="${attribute(INNER_DOCUMENT)}"></iframe>` +
   TWIN_FRAME +
   TWIN_FRAME;
 const HOST_DOCUMENT =
@@ -65,7 +66,7 @@ describe('nested frame locators', () => {
 
   beforeAll(async () => {
     await engine.init!({ runId: 'frames', targetName: 'fixture', projectRoot: process.cwd(), app: {}, env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
-    await engine.startAttempt!({ attemptId: 'attempt', artifactsDir, signal, resolveSecret: noSecrets });
+    await engine.startAttempt!({ attemptId: 'attempt', artifactsDir, signal, resolveSecret: noSecrets, ...ignoreTrace });
     await engine.session!.open!('about:blank', operation);
     page = surfaceOf(engine)!.page();
     await page.setContent(HOST_DOCUMENT);
@@ -88,6 +89,15 @@ describe('nested frame locators', () => {
     expect(matches.map((node) => node.name)).toEqual(['Inner button']);
     await engine.perform!(matches[0]!.ref, { kind: 'tap' }, operation);
     expect(await page.frameLocator('#outer').frameLocator('#inner').getByRole('button').innerText()).toBe('Inner clicked');
+  });
+
+  it('reports a located node\'s box in the top-level viewport, past each frame\'s border and padding', async () => {
+    // The inner document's one button, whatever an earlier test renamed it to.
+    const button: LocatorExpression = { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'button', exact: true } } };
+    const [node] = await engine.locate!(withinFrames(['#outer', '#inner'], button), operation);
+    // Playwright's own box for the same element, measured through both frames' borders and padding.
+    const expected = (await page.frameLocator('#outer').frameLocator('#inner').getByRole('button').boundingBox())!;
+    for (const key of ['x', 'y', 'width', 'height'] as const) expect(node!.rect![key]).toBeCloseTo(expected[key], 3);
   });
 
   it('resolves a three-level chain, counting the last frame inside the second', async () => {

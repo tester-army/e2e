@@ -1,0 +1,123 @@
+---
+title: MCP server
+description: Let your coding agent use your app and check its own work.
+icon: "plug"
+"og:image": "https://e2e.tester.army/docs/images/og/mcp.png?v=17998906c0"
+"twitter:image": "https://e2e.tester.army/docs/images/og/mcp.png?v=17998906c0"
+---
+
+`e2e mcp` gives a coding agent such as Claude Code, Codex, or Cursor a live
+session on your app, on web, iOS, or Android. The agent sees the screen,
+acts on it, and checks its work.
+
+## Why it matters
+
+| Task | Without `e2e mcp` | With `e2e mcp` |
+| --- | --- | --- |
+| Write a test | Guesses locators, runs, fails, guesses again | Checks each locator before it writes it |
+| Change the UI | Done when it compiles | Opens the page and checks the result |
+| Reproduce a bug | Guesses from the code | Follows the steps in the app |
+| Show a change in a PR | Describes it | Records a video |
+
+The server needs no model.
+
+## Set it up
+
+`e2e init` offers to register the server in `.mcp.json` (Claude Code) and
+`.cursor/mcp.json` (Cursor). By hand:
+
+<Tabs>
+  <Tab title="Claude Code">
+    <CodeGroup>
+    ```bash npm
+    claude mcp add --scope project e2e -- npx e2e mcp
+    ```
+
+    ```bash pnpm
+    claude mcp add --scope project e2e -- pnpm exec e2e mcp
+    ```
+
+    ```bash bun
+    claude mcp add --scope project e2e -- bunx e2e mcp
+    ```
+    </CodeGroup>
+  </Tab>
+  <Tab title="Codex">
+    Add the server to `.codex/config.toml`, trust the project, and start a
+    new session:
+
+    ```toml title=".codex/config.toml"
+    [mcp_servers.e2e]
+    command = "npx"
+    args = ["e2e", "mcp"]
+    ```
+  </Tab>
+  <Tab title="Cursor">
+    Add the server to `.cursor/mcp.json`. Other clients that read an
+    `mcpServers` map take the same block.
+
+    ```json title=".cursor/mcp.json"
+    {
+      "mcpServers": {
+        "e2e": { "command": "npx", "args": ["e2e", "mcp"] }
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+A session starts the target's app command, if it has one.
+
+## Ask the agent
+
+- "Add a Remember me checkbox to the login form. Check it in the app with e2e."
+- "Write a test for checkout. Check every locator in the app first."
+- "Reproduce issue #123 in the app and record a video."
+
+Add "headed" to watch a local browser or simulator.
+
+## How it checks a locator
+
+A locator guessed from the source fails in the session, not in a test run:
+
+```text wrap
+0 nodes match getByLabel("Email").
+A test using this locator would fail with LOCATOR_NOT_FOUND. ...
+
+1 node matches getByRole("button", name: "Sign in").
+Use: screen.getByRole("button", "Sign in")
+```
+
+## Run tests next to a session
+
+A session doesn't run tests and writes no test results or cache
+recordings. The agent runs tests with `e2e run`. On web, set
+[`reuseExisting: true`](/web#starting-your-app) to share the app a session
+started, or close the session first. On mobile, run on a device no session
+uses.
+
+## Run several agents
+
+Each agent, subagents included, opens its own session with its own browser
+or device, up to four by default. On mobile, give each session its own
+target.
+
+## Secrets
+
+`type_secret` fills a secret without showing it to the agent. After a
+secret is filled, the session stops returning screenshots.
+
+<Warning>
+Videos from `start_recording` are not masked.
+</Warning>
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="MCP server reference" icon="book" href="/reference/mcp">
+    Every tool, flag, session rule, and error code.
+  </Card>
+  <Card title="Coding agents" icon="robot" href="/coding-agents">
+    The skill, running tests, and reading a failure.
+  </Card>
+</CardGroup>

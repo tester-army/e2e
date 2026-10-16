@@ -14,7 +14,7 @@ interface SelectorChannel {
 }
 
 /**
- * Playwright 1.63 seeds custom selectors only in newly created contexts, not
+ * Playwright 1.64 seeds custom selectors only in newly created contexts, not
  * the persistent context returned by connectOverCDP. Its public register API
  * rejects an already registered name before reaching that context. Use the
  * same context channel as selectors.register, without allocating global names

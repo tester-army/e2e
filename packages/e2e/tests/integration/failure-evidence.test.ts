@@ -152,11 +152,13 @@ describe('failure evidence', () => {
         const screen = attempt.artifacts.find((artifact) => artifact.id === failure.screen)!;
         expect(screen.kind).toBe('log');
         expect(screen.producer).toEqual({ kind: 'attempt' });
-        const screenFile = path.join(project.dir, '.e2e', 'artifacts', screen.path!);
+        const screenFile = path.join(project.dir, '.e2e', 'results', screen.path!);
         expect(existsSync(screenFile)).toBe(true);
         const text = readFileSync(screenFile, 'utf8');
-        expect(text.startsWith('# Screen at failure\nurl: ')).toBe(true);
+        expect(text).toMatch(/^#\S+ /);
         expect(text).toContain('button "Submit"');
+        expect(failure.viewport).toEqual({ width: expect.any(Number), height: expect.any(Number) });
+        expect(failure.nodes).toBe(text.trim().split('\n').length);
         const shot = attempt.artifacts.find((artifact) => artifact.id === failure.screenshot)!;
         expect(shot.kind).toBe('screenshot');
         expect(fake.operations.some((operation) => operation.method === 'artifacts.screenshot(failure)')).toBe(true);
@@ -214,7 +216,7 @@ describe('failure evidence', () => {
       const fake = createFakeEngine({ artifacts: true });
       const { outcome, project } = await runProject(
         { 'tests/count.e2e.ts': WRONG_EXPECTATION_TEST },
-        { appUrl: FAKE_APP_URL, config: fakeConfig(fake, { trace: 'off' }) },
+        { appUrl: FAKE_APP_URL, config: fakeConfig(fake) },
       );
       try {
         assertValidReport(outcome.report);
@@ -280,7 +282,7 @@ describe('failure evidence', () => {
         expect(first.screen.path).not.toBe(second.screen.path);
         expect(first.shot.path).not.toBe(second.shot.path);
         for (const artifact of [first.screen, first.shot, second.screen, second.shot]) {
-          const file = path.join(project.dir, '.e2e', 'artifacts', artifact.path!);
+          const file = path.join(project.dir, '.e2e', 'results', artifact.path!);
           expect(existsSync(file)).toBe(true);
           expect(createHash('sha256').update(readFileSync(file)).digest('hex')).toBe(artifact.sha256);
         }

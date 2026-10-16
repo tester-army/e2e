@@ -21,11 +21,13 @@ import type { ObservationPixels, SemanticNode, ViewportPoint, ViewportSize } fro
 import type { VisionDegradation, StepTurn } from '../run/steps.ts';
 import type {
   AgentErrorCode,
+  ClickOptions,
   JsonValue,
   ModelInstance,
   ProviderOptions,
   ScrollDirection,
   Secret,
+  VisionMode,
 } from '../types.ts';
 import { AGENT_CODE_TABLE, isAgentError, type AgentError } from './error.ts';
 
@@ -47,6 +49,12 @@ export interface ExecutorStep {
   readonly params: Readonly<Record<string, JsonValue>> | undefined;
   /** Secrets declared in the params, fillable via `actions.typeSecret`. */
   readonly secrets: readonly { readonly name: string; readonly purpose: Secret['purpose'] }[];
+  /**
+   * Assert only: the `vision` the call asked for, set only for an executor
+   * that declares `vision: true`. `true` shows pixels beside the tree,
+   * `'only'` pixels alone; absent when the call passed none.
+   */
+  readonly vision?: VisionMode;
 }
 
 /**
@@ -123,6 +131,13 @@ export interface ExecutorObservation {
   readonly truncated: boolean;
   readonly viewport: ViewportSize;
   /**
+   * Whether an on-screen keyboard is showing, as the engine measured it apart
+   * from the tree; `false` when it measured none. Absent only when the engine
+   * did not measure it; the tree's `keyboard` and `key` nodes, or a
+   * screenshot, are then the evidence.
+   */
+  readonly keyboardVisible?: boolean;
+  /**
    * The current location as path and query, redacted, when the engine
    * reports one. Absent on engines without a location (a device screen).
    */
@@ -155,13 +170,18 @@ export interface ExecutorTarget {
  * fresh `observe()`.
  */
 export interface ExecutorActions {
-  tap(target: ExecutorTarget): Promise<void>;
-  /** Double-taps one node (`doubleTap` in `target.verbs`). */
-  doubleTap(target: ExecutorTarget): Promise<void>;
+  /**
+   * Taps one node. `options.modifiers` holds keys for the click, as a
+   * Shift-click extends a selection; needs `target.tapModifiers`,
+   * `UNSUPPORTED_CAPABILITY` otherwise.
+   */
+  tap(target: ExecutorTarget, options?: Pick<ClickOptions, 'modifiers'>): Promise<void>;
+  /** Double-taps one node (`doubleTap` in `target.verbs`). Takes the tap's `options.modifiers`. */
+  doubleTap(target: ExecutorTarget, options?: Pick<ClickOptions, 'modifiers'>): Promise<void>;
   /** Presses one node and holds for the engine's default duration (`longPress` in `target.verbs`). */
   longPress(target: ExecutorTarget): Promise<void>;
-  /** A right-click on a pointer surface (`secondaryTap` in `target.verbs`). */
-  secondaryTap(target: ExecutorTarget): Promise<void>;
+  /** A right-click on a pointer surface (`secondaryTap` in `target.verbs`). Takes the tap's `options.modifiers`. */
+  secondaryTap(target: ExecutorTarget, options?: Pick<ClickOptions, 'modifiers'>): Promise<void>;
   /** Moves the pointer over one node without pressing (`hover` in `target.verbs`). */
   hover(target: ExecutorTarget): Promise<void>;
   type(target: ExecutorTarget, value: string): Promise<void>;
@@ -379,11 +399,14 @@ export interface StepExecutorContext {
    * The target this step runs on. Tool packs scope themselves by its platform;
    * `verbs` is the subset of the action grammar the engine declared, so an
    * executor offers a model exactly the vocabulary the surface can honor.
+   * `tapModifiers` is true when `tap`, `doubleTap`, and `secondaryTap` accept
+   * `modifiers`.
    */
   readonly target: {
     readonly name: string;
     readonly platform: string;
     readonly verbs: ReadonlySet<ExecutorVerb>;
+    readonly tapModifiers: boolean;
   };
   /**
    * Present when a cached replay ran part of this step before handing it
@@ -496,6 +519,13 @@ export interface StepExecutor {
    * `INVALID_CONFIG` when both are set and differ.
    */
   readonly judge?: ModelInstance;
+  /**
+   * Whether the executor honors `agent.assert(..., { vision })`: the mode
+   * reaches it as `step.vision`. Without this, the option fails the call with
+   * `UNSUPPORTED_CAPABILITY`, since only the executor decides what its model
+   * sees.
+   */
+  readonly vision?: true;
   runStep(context: StepExecutorContext): Promise<StepVerdict>;
 }
 

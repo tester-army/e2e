@@ -9,6 +9,7 @@ import { POSTHOG_HOST, POSTHOG_PROJECT_KEY } from '../../src/telemetry/posthog.t
 import { collectEnvironment, fleetName, statedIdentity } from '../../src/telemetry/environment.ts';
 import { preferencesPath, TelemetryStore } from '../../src/telemetry/store.ts';
 import { NOTICE_VERSION, Telemetry, type TelemetryOptions } from '../../src/telemetry/telemetry.ts';
+import { initRepo } from '../helpers/git-repo.ts';
 import { sampleReport } from '../helpers/sample-report.ts';
 
 const temporaries: string[] = [];
@@ -84,7 +85,9 @@ describe('Telemetry', () => {
   });
 
   it('is on by default, prints the notice once, and sends one batch with identity and environment', async () => {
-    const { telemetry, output, sent, configDir } = create();
+    const cwd = tempDir();
+    initRepo(cwd);
+    const { telemetry, output, sent, configDir } = create({ cwd });
     expect(telemetry.enabled).toBe(true);
     expect(telemetry.disabledBy).toBeUndefined();
 
@@ -255,23 +258,11 @@ describe('Telemetry', () => {
     expect(sent.calls).toEqual([]);
   });
 
-  it('keeps the same project id across invocations on one machine and differs across machines', async () => {
-    const cwd = tempDir();
-    const configDir = tempDir();
-    const first = create({ cwd, configDir });
-    first.telemetry.session('list', []);
-    await first.telemetry.flush();
-    const second = create({ cwd, configDir });
-    second.telemetry.session('list', []);
-    await second.telemetry.flush();
-    const other = create({ cwd });
-    other.telemetry.session('list', []);
-    await other.telemetry.flush();
-
-    const projectOf = (batch: SentBatch[]): unknown => batch[0]!.body.batch[0]!.properties['project_id'];
-    expect(projectOf(first.sent.calls)).toBe(projectOf(second.sent.calls));
-    // Outside git the id is salted per machine; a different preferences file is a different machine.
-    expect(projectOf(other.sent.calls)).not.toBe(projectOf(first.sent.calls));
+  it('sends no project id outside git', async () => {
+    const { telemetry, sent } = create({ cwd: tempDir() });
+    telemetry.session('list', []);
+    await telemetry.flush();
+    expect(sent.calls[0]!.body.batch[0]!.properties['project_id']).toBeNull();
   });
 
   it.each([
@@ -352,8 +343,19 @@ describe('Telemetry', () => {
     expect(properties['distinct_id']).toBe('ci:github-actions');
     expect(properties['ci']).toBe(true);
     expect(properties['ci_name']).toBe('github-actions');
-    // No git and no salt: a runner's working directory is not a project.
     expect(properties['project_id']).toBeNull();
+  });
+
+  it('attributes a coding agent shell that sets CI without a vendor to the machine', async () => {
+    const { telemetry, sent, configDir } = create({ env: { CI: '1', CLAUDECODE: '1' } });
+    telemetry.session('run', []);
+    await telemetry.flush();
+    const saved = JSON.parse(readFileSync(preferencesPath(configDir), 'utf8')) as { anonymousId: string };
+    const { properties } = sent.calls[0]!.body.batch[0]!;
+    expect(properties['distinct_id']).toBe(saved.anonymousId);
+    expect(properties['ci']).toBe(true);
+    expect(properties['ci_name']).toBe('unknown');
+    expect(properties['coding_agent']).toBe('claude-code');
   });
 
   it('attributes a fleet to its name, writes no preferences, and prints no notice', async () => {
@@ -388,6 +390,10 @@ describe('Telemetry', () => {
     expect(fleetName({ E2E_TELEMETRY_FLEET: 'Cloud_Sandbox.v2' })).toBe('Cloud_Sandbox.v2');
     expect(statedIdentity({ E2E_TELEMETRY_FLEET: 'acme' })).toBe('fleet:acme');
     expect(statedIdentity({ CI: '1' })).toBe('ci:unknown');
+    expect(statedIdentity({ CI: 'true', EAS_BUILD: 'true' })).toBe('ci:eas');
+    // A coding agent that sets CI on a laptop names no vendor: the machine stays the unit.
+    expect(statedIdentity({ CI: '1', CLAUDECODE: '1' })).toBeUndefined();
+    expect(statedIdentity({ CI: '1', CLAUDECODE: '1', GITHUB_ACTIONS: 'true' })).toBe('ci:github-actions');
     expect(statedIdentity({ CI: 'true', GITHUB_ACTIONS: 'true' })).toBe('ci:github-actions');
     // A vendor marker without CI is a shell on a runner, not a run: the machine stays the unit.
     expect(statedIdentity({ GITHUB_ACTIONS: 'true' })).toBeUndefined();

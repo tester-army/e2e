@@ -295,6 +295,18 @@ describe('isForcedToolChoiceRejected', () => {
     ).toBe(true);
   });
 
+  it("reads Meta Muse Spark's auto-only refusal, as the gateway and OpenCode Console forward it", () => {
+    const message =
+      'only `"auto"` is supported for `tool_choice`. `"none"`, `"required"`, and named function choices are not currently supported';
+    expect(isForcedToolChoiceRejected(Object.assign(new Error(message), { statusCode: 400 }))).toBe(true);
+    expect(
+      isForcedToolChoiceRejected({ statusCode: 400, message: 'Bad Request', responseBody: JSON.stringify({ error: { message } }) }),
+    ).toBe(true);
+    expect(
+      isForcedToolChoiceRejected(Object.assign(new Error('only auto is supported for tool_choice'), { statusCode: 400 })),
+    ).toBe(true);
+  });
+
   it('ignores server failures and unrelated messages that mention tools', () => {
     expect(isForcedToolChoiceRejected(Object.assign(new Error('tool_choice is not supported'), { statusCode: 502 }))).toBe(false);
     expect(isForcedToolChoiceRejected(new Error('tool_choice must name a defined tool'))).toBe(false);

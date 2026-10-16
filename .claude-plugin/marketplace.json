@@ -1,0 +1,12 @@
+{
+  "name": "e2e",
+  "description": "Skills for writing, running, and debugging e2e tests with Claude Code.",
+  "owner": { "name": "TesterArmy", "url": "https://tester.army" },
+  "plugins": [
+    {
+      "name": "e2e",
+      "source": "./plugins/e2e",
+      "description": "Write, run, and debug end-to-end tests for web and mobile apps with e2e."
+    }
+  ]
+}

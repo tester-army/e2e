@@ -323,6 +323,27 @@ const ROWS = `<!doctype html>
 </body>
 </html>`;
 
+/**
+ * Styled by the media features the browser reports, and recording what a
+ * script in the head read before first paint, so a test can tell an emulation
+ * the page loaded with from one applied after.
+ */
+const MEDIA = `<!doctype html>
+<html>
+<head>
+<title>Fixture Media</title>
+<style>
+  p { color: rgb(0, 0, 0); transition-property: opacity; transition-duration: 0.3s; }
+  @media (prefers-color-scheme: dark) { p { color: rgb(255, 255, 255); } }
+  @media (prefers-reduced-motion: reduce) { p { transition-duration: 0s; } }
+</style>
+<script>
+  window.atLoad = { dark: matchMedia('(prefers-color-scheme: dark)').matches, reduce: matchMedia('(prefers-reduced-motion: reduce)').matches };
+</script>
+</head>
+<body><p>media</p></body>
+</html>`;
+
 const PAGES: Readonly<Record<string, string>> = {
   '/': HOME,
   '/pointer': POINTER,
@@ -337,6 +358,7 @@ const PAGES: Readonly<Record<string, string>> = {
   '/state': STATE,
   '/twins': TWINS,
   '/rows': ROWS,
+  '/media': MEDIA,
 };
 
 /** Delay before `/slow` answers, long enough for a caller to cancel first. */

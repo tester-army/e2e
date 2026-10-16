@@ -19,7 +19,6 @@
 import { describeAction, type DescribedAction, type RecordableAction } from '../agent/actions.ts';
 import { isRelocatableDescriptor } from './relocate.ts';
 import {
-  bound,
   DESCRIPTOR_FIELDS,
   MAX_TRACE_ACTIONS,
   MAX_TRACE_DESCRIPTOR_CHARS,
@@ -30,10 +29,14 @@ import {
   type ActionTrace,
   type DerivedReason,
   type RecordedAction,
+  type RecordedModel,
   type ScrollAction,
+  type TraceKeyContext,
   type TraceProvenance,
   type TraceTargetDescriptor,
 } from './trace.ts';
+import { readRecordedModel } from './trace-fields.ts';
+import { bound } from '../internal/text.ts';
 
 /** The summary a run-time value gap records; the prose a project-tool gap would carry for a tool of that name. */
 const DERIVED_GAP_SUMMARY = 'tool type (run-time value)';
@@ -105,6 +108,7 @@ export class TraceRecorder {
     readonly executor: { readonly name: string; readonly version?: string };
     /** Test, target, and instruction digest the trace was recorded for. */
     readonly recordedFor: TraceProvenance;
+    readonly recordedBy?: RecordedModel;
     readonly summary: string;
     readonly startPath?: string;
     readonly endPath?: string;
@@ -114,8 +118,12 @@ export class TraceRecorder {
     readonly goneAnchors?: readonly TraceTargetDescriptor[];
     /** How long the recorded run took to reach its end state, plus margin. */
     readonly endWaitMs?: number;
+    /** The key's context as this run derived it; see `ActionTrace.keyedBy`. */
+    readonly keyedBy?: TraceKeyContext;
   }): ActionTrace | undefined {
     if (this.actions.length === 0) return undefined;
+    const source = conclusion.recordedBy;
+    const recordedBy = source === undefined ? undefined : readRecordedModel({ provider: this.redact(source.provider), model: this.redact(source.model) }, MAX_TRACE_DESCRIPTOR_CHARS);
     const summary = bound(this.redact(conclusion.summary), MAX_TRACE_SUMMARY_CHARS);
     // Locations are replay preconditions, so they follow the input rule: a
     // path the redactor alters carried a secret (a token in a query string),
@@ -130,6 +138,7 @@ export class TraceRecorder {
         ...(conclusion.executor.version === undefined ? {} : { version: conclusion.executor.version }),
       },
       recordedFor: recordedProvenance(conclusion.recordedFor, this.redact),
+      ...(recordedBy === undefined ? {} : { recordedBy }),
       summary: summary.trim() === '' ? 'step passed' : summary,
       ...(startPath === undefined ? {} : { startPath }),
       ...(endPath === undefined ? {} : { endPath }),
@@ -142,6 +151,7 @@ export class TraceRecorder {
       ...(conclusion.endWaitMs === undefined
         ? {}
         : { endWaitMs: Math.min(MAX_TRACE_END_WAIT_MS, Math.max(0, Math.round(conclusion.endWaitMs))) }),
+      ...(conclusion.keyedBy === undefined ? {} : { keyedBy: conclusion.keyedBy }),
       ...(this.truncated ? { truncated: true } : {}),
     };
   }
@@ -168,7 +178,12 @@ export class TraceRecorder {
       return descriptor ?? { role: 'unknown' };
     };
     const requireTarget = (): TraceTargetDescriptor => require(target);
-    if (isNodeAction(action)) return { name: action.name, summary, target: requireTarget() };
+    if (isNodeAction(action)) {
+      const recorded: RecordedAction = { name: action.name, summary, target: requireTarget() };
+      // A tap with held keys replays with them, so the trace keeps them.
+      if ('modifiers' in action && action.modifiers !== undefined) return { ...recorded, modifiers: [...action.modifiers] };
+      return recorded;
+    }
     switch (action.name) {
       case 'check':
         return { name: 'check', summary, target: requireTarget(), checked: action.checked };

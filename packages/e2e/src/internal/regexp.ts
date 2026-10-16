@@ -2,7 +2,7 @@
 
 /** Escapes one character for literal use inside a regexp source. */
 export function escapeRegexpChar(ch: string): string {
-  return /[a-zA-Z0-9_-]/.test(ch) ? ch : `\\${ch}`;
+  return /[.*+?^${}()|[\]\\]/.test(ch) ? `\\${ch}` : ch;
 }
 
 /** Compiled wire patterns, bounded; assertion polls test the same pattern many times a second. */

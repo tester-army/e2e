@@ -14,13 +14,13 @@ import { promptCacheKey } from '../agent/model/provider-hints.ts';
 import { OAuthError } from './errors.ts';
 import { createOAuthFetch } from './fetch.ts';
 import { USER_AGENT } from '../internal/client-identity.ts';
-import { loginHint } from './providers.ts';
+import { credentialSource } from './providers.ts';
 import { createOpencodeConsoleProvider, opencodeConsoleChatRoute, opencodeConsoleRouteFor, type OpencodeConsoleRoute } from './providers/opencode-console.ts';
-import { EnvCredentialStore, defaultCredentialStore } from './store.ts';
-import type { CredentialStore, FetchFunction } from './types.ts';
+import type { FetchFunction } from './types.ts';
 
 const CONFIG_TIMEOUT_MS = 10_000;
-const API_KEY_ENV = 'OPENCODE_API_KEY';
+/** The Anthropic SDK limits a model id it does not know to 4096 output tokens and only warns, so a caller that sets no cap is truncated in silence; ask for the runner's own cap instead. */
+const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
 const BREAKPOINT = { cacheControl: { type: 'ephemeral' } } as const;
 
 interface Served {
@@ -29,12 +29,7 @@ interface Served {
 }
 
 export function opencodeConsole(modelId: string): LanguageModelV4 {
-  const apiKey = process.env[API_KEY_ENV]?.trim();
-  const fetch = createOAuthFetch(createOpencodeConsoleProvider(), {
-    store: apiKey ? apiKeyStore(apiKey) : defaultCredentialStore(),
-    userAgent: USER_AGENT,
-    loginHint: apiKey ? `check ${API_KEY_ENV}` : loginHint('opencode-console'),
-  });
+  const fetch = createOAuthFetch(createOpencodeConsoleProvider(), { ...credentialSource('opencode-console'), userAgent: USER_AGENT });
   // One per model, so a worker's calls stay on one upstream and its cache.
   const session = `e2e_${randomUUID()}`;
   const chatRoute = opencodeConsoleChatRoute(modelId);
@@ -75,11 +70,6 @@ export function opencodeConsole(modelId: string): LanguageModelV4 {
   };
 }
 
-/** A Console service API key as a login with nothing to refresh. */
-function apiKeyStore(apiKey: string): CredentialStore {
-  return new EnvCredentialStore(JSON.stringify({ 'opencode-console': { access: apiKey, refresh: '', expires: 0 } }));
-}
-
 /** `opencode.go` keeps Go's provider options under `opencode`, the name up to the first dot; `apiKey` only satisfies the constructors. */
 function settings(route: OpencodeConsoleRoute, fetch: FetchFunction, session: string) {
   return { name: route.go ? 'opencode.go' : 'opencode', baseURL: route.baseURL, apiKey: 'oauth', fetch, headers: { 'x-opencode-session': session } };
@@ -117,7 +107,7 @@ function requestFor(npm: string, options: LanguageModelV4CallOptions, session: s
       return { ...options, providerOptions: { ...options.providerOptions, openai: { promptCacheKey: cacheKey, ...options.providerOptions?.['openai'], store: false } } };
     }
     case '@ai-sdk/anthropic':
-      return { ...options, prompt: withBreakpoints(options.prompt, (options.tools?.length ?? 0) > 0) };
+      return { ...options, maxOutputTokens: options.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS, prompt: withBreakpoints(options.prompt, (options.tools?.length ?? 0) > 0) };
     default:
       return options;
   }

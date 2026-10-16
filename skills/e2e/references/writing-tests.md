@@ -1,5 +1,16 @@
 # Writing tests
 
+## Contents
+
+- A complete file
+- Registration
+- Fixtures
+- Locators
+- expect
+- Sign-in sessions
+- The browser fixture (browser only)
+- Habits
+
 ## A complete file
 
 ```ts
@@ -78,7 +89,7 @@ A setup test cannot skip from its body (`INVALID_ARGUMENT`).
 | `session` | unset | Restore state saved by a setup test. |
 | `agentContext` | unset | Extra context for `agent.*` calls in this test or group. |
 | `agent` | the run's agent | A configured name (`agents.<name>`) or a list run once per agent; `--agent` narrows the list, a setup test takes one name. Innermost wins; `agent.act(..., { agent })` names another for one call. |
-| `trace`, `video` | the target's | `'off'`, `'on'`, `'retain-on-failure'`, `'on-first-retry'`, `'on-all-retries'`. Innermost wins over `--trace` / `--video`, the target, and the config; recording where the engine cannot is `UNSUPPORTED_ARTIFACT` for the run. |
+| `trace`, `video` | the target's | `'off'`, `'on'`, `'retain-on-failure'`, `'on-first-retry'`, `'on-all-retries'`: whether the test keeps a trace page, which attempts record video. Innermost wins over `--trace` / `--video`, the target, and the config; video where the engine cannot record is `UNSUPPORTED_ARTIFACT` for the run. |
 | `serial` | `false` | Groups only. Members share app state, run in order on one worker, retry as a whole, and take the group's `trace` and `video`. |
 
 Serial members cannot set `retries`, `trace`, `video`, `session`,
@@ -133,7 +144,7 @@ assertion. Every query also exists on a locator, scoped to its subtree.
 | `getByPlaceholder(text, { exact?, visible? })` | Inputs by placeholder. |
 | `getByText(text, { exact?, visible? })` | Visible text. |
 | `getByDisplayValue(value, { exact?, visible? })` | Inputs by current value; on the web it cannot scope child queries or be a `filter({ has })` target. |
-| `getByTestId(id, { visible? })` | `data-testid` on the web (or `web({ testIdAttribute })`), accessibility identifier or resource id on a device; a string matches the whole id, a RegExp tests it. Last resort. |
+| `getByTestId(id, { visible? })` | `data-testid` on the web (or `web({ testIdAttribute })`), accessibility identifier or resource id on a device (React Native `testID`, SwiftUI `.accessibilityIdentifier`, Compose `testTag` with `testTagsAsResourceId` on Android, Flutter `Semantics(identifier:)`, .NET MAUI `AutomationId`); a string matches the whole id, a RegExp tests it; on Android the `<package>:id/` prefix may be left off. Last resort. |
 
 Roles: `button`, `link`, `textbox`, `searchbox`, `combobox`, `listbox`,
 `option`, `checkbox`, `radio`, `radiogroup`, `switch`, `slider`, `spinbutton`,
@@ -158,8 +169,9 @@ echoing its child does not count twice. `exact: false` is a case-insensitive
 substring; a `RegExp` matches as written.
 
 - Exactly one match per action, read, or assertion. Two fail at once with
-  `LOCATOR_AMBIGUOUS`; at zero, actions and assertions poll until the
-  timeout then `LOCATOR_NOT_FOUND`, a read fails at once. Exceptions:
+  `LOCATOR_AMBIGUOUS`; at zero, actions and reads poll until the action
+  timeout then `LOCATOR_NOT_FOUND`, assertions until the assertion timeout
+  then `ASSERTION_FAILED`. Exceptions:
   `toHaveCount`, `toBeVisible`, `toBeHidden`, `toBeAttached`, list-form
   `toHaveText` and `toContainText`, `isVisible()` (false at zero),
   `isHidden()` (true), `count()`, `all()`, `allTextContents()`.
@@ -183,7 +195,7 @@ substring; a `RegExp` matches as written.
 
 Each action resolves one node, waits up to `config.actionTimeout` (30 s, or
 `{ timeout }`) for it to be actionable, and does one thing: `tap()` (alias
-`click()`), `doubleTap()`, `secondaryTap()` (each takes
+`click()`), `doubleTap()` (alias `dblclick()`), `secondaryTap()` (each takes
 `{ modifiers: ['Shift'] }`), `longPress({ duration? })`
 (100 to 10000 ms; default 500 on the web, 1000 on a device),
 `fill(value | Secret)`, `pressSequentially(text, { delay? })`, `clear()`,
@@ -209,9 +221,10 @@ locator; a point moves with the layout.
 
 ### Reads
 
-Reads resolve once, no retry: `textContent()`, `inputValue()`,
-`getAttribute(name)`, `isVisible()`, `isHidden()`, `isEnabled()`,
-`isDisabled()`, `isChecked()`, `boundingBox()`, `count()`. `all()` gives one
+`textContent()`, `inputValue()`, `getAttribute(name)`, `isEnabled()`,
+`isDisabled()`, `isChecked()`, and `boundingBox()` wait for one match until
+the action timeout, then read once with no retry for a value. `isVisible()`,
+`isHidden()`, and `count()` answer at once. `all()` gives one
 `nth(i)` locator per current match and `allTextContents()` every match's
 text, both `[]` at zero. Text is the rendered text, whitespace collapsed: on
 the web what `innerText` reads (`text-transform` applies, `display: none`
@@ -235,11 +248,11 @@ attempt); a throwing read keeps polling, and it is not a report step. A
 poll that the body or a hook returns without awaiting is cancelled and fails
 that phase with `STEP_NOT_AWAITED`.
 `expect.soft(x)` keeps a failure instead of throwing; the attempt fails
-after the body with every soft failure listed. If the body calls `test.skip`,
-the test stays skipped and the failures remain in `secondaryErrors`. The CLI
-shows `Skipped After Failure`, also when a retry skips after an earlier
-failure. Set `failOnSkippedFailure: true` in the config to fail the run with
-exit code 1 in either case. The default is `false`; clean skips stay green.
+after the body with every soft failure listed. If the body then calls
+`test.skip`, the attempt still fails, with the skip reason in its `skip`.
+A retry that skips after an earlier failed attempt stays skipped; the CLI shows
+it under `Skipped After Failure`, and `failOnSkippedFailure: true` in the
+config fails the run with exit code 1. The default is `false`.
 `expect.any(Class)`, `expect.anything()`, `expect.objectContaining(obj)`,
 `expect.arrayContaining(arr)`, `expect.stringContaining(s)`, and
 `expect.stringMatching(s | RegExp)` stand in for values inside `toEqual`,
@@ -259,7 +272,7 @@ typed; prefer it when the app already has a schema for the response.
 
 | Locator matchers | Browser matchers | Value matchers |
 | --- | --- | --- |
-| `toBeVisible`, `toBeHidden`, `toBeAttached`, `toBeEnabled`, `toBeDisabled`, `toBeChecked`, `toBeSelected`, `toBeExpanded`, `toBeFocused`, `toHaveText`, `toContainText`, `toHaveValue`, `toHaveAttribute`, `toHaveCount`, `toHaveAccessibleName` | `toHaveURL`, `toHaveTitle`, `toHaveClass(locator, expected)` | `toBe`, `toEqual`, `toMatchObject`, `toBeTruthy`, `toBeFalsy`, `toBeNull`, `toBeUndefined`, `toBeDefined`, `toHaveLength`, `toHaveProperty`, `toContain`, `toMatch`, `toBeGreaterThan`, `toBeGreaterThanOrEqual`, `toBeLessThan`, `toBeLessThanOrEqual`, `toBeCloseTo`, `toMatchSchema` |
+| `toBeVisible`, `toBeHidden`, `toBeAttached`, `toBeEnabled`, `toBeDisabled`, `toBeChecked`, `toBeSelected`, `toBeExpanded`, `toBeFocused`, `toHaveText`, `toContainText`, `toHaveValue`, `toHaveAttribute`, `toHaveCount`, `toHaveAccessibleName`, `toHaveScreenshot` (also on `screen`) | `toHaveURL`, `toHaveTitle`, `toHaveClass(locator, expected)` | `toBe`, `toEqual`, `toMatchObject`, `toBeTruthy`, `toBeFalsy`, `toBeNull`, `toBeUndefined`, `toBeDefined`, `toHaveLength`, `toHaveProperty`, `toContain`, `toMatch`, `toBeGreaterThan`, `toBeGreaterThanOrEqual`, `toBeLessThan`, `toBeLessThanOrEqual`, `toBeCloseTo`, `toMatchSchema` |
 
 `toHaveText` compares the whole normalized text, `toContainText` a substring
 or RegExp, `toHaveValue` a form control's value as is, whitespace included
@@ -277,6 +290,19 @@ and `{ attached: false }` flip their matchers, and `{ ignoreCase: true }`
 works on `toHaveText`, `toContainText`, `toHaveAccessibleName`,
 `toHaveAttribute(name, value)`, and `expect(browser).toHaveURL`. Any other option, `indeterminate` or
 `useInnerText` included, is `INVALID_ARGUMENT`, in JavaScript too.
+
+Screenshots: `await expect(screen).toHaveScreenshot('home.png')` compares the
+screen, `expect(locator).toHaveScreenshot()` one element's box, against
+`<test file>-snapshots/<name>-<target>-<os>.png`, on web, iOS, and Android
+alike. Commit the files. The first run writes the file and fails: look at it,
+commit it, rerun. A CI run writes nothing into the project and attaches a
+missing one at `snapshots/<path>` in the test's results. `--update-snapshots`
+(`-u`) writes missing and different files and passes, after an intended UI
+change. Options: `threshold`, `maxDiffPixels`, `maxDiffPixelRatio`, `mask`
+(locators painted over, for clocks and other changing content), `maskColor`,
+`timeout`. A failure attaches `-expected`, `-actual`, and `-diff` images to the
+step. Files are per target and OS (`-web-linux.png`): screenshots written on a
+Mac never serve Linux CI, so write CI's from a CI job with `-u`.
 
 ## Sign-in sessions
 
@@ -329,7 +355,8 @@ credentials: {
 
 - A static password or secret needs 6 or more code points, else
   `INVALID_CONFIG` at config load, so an unset variable fails every command.
-  A function is read at fill time and redacted only from that fill on.
+  A function `password` is read at fill time and redacted only from that fill
+  on; `username` is always a string.
 - `E2E_USER_<NAME>_USERNAME` and `E2E_USER_<NAME>_PASSWORD` override either
   field per run, even over a function; `<NAME>` is the credential name
   uppercased, every character outside `[A-Z0-9]` as `_`. Two credentials (or
@@ -387,15 +414,22 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
   `ACTION_FAILED` when it could not be read.
 - `cookies()`, `setCookies([...])`: a target is an http(s) URL or a domain.
 - `setViewport({ width, height })`: resize.
+- `emulateMedia({ colorScheme?, reducedMotion? })`: what the page's `@media`
+  rules and `matchMedia` read, for the rest of the test. Call it before
+  `app.open` to load the page with it; a feature left out keeps its value.
 - `onDialog('accept' | 'dismiss' | handler)`: awaited; resolves to an async
   unsubscribe. Register it before the tap that opens the dialog. A handler
   gets `{ message, accept(text?), dismiss() }`, `accept` taking the prompt
   text; no handler, or one that neither accepts nor dismisses, fails the
-  next step with `INVALID_STATE`.
+  next step with `INVALID_STATE`. A throwing handler's unanswered dialog is
+  dismissed too, and its error fails the next step.
 - `waitForDownload(() => trigger, { timeout? })`: returns
-  `{ path, suggestedFilename }`.
-- `keyboard.press(key)`, `keyboard.type(text)`, `mouse.*`: unfocused input;
-  prefer `locator.press` and `locator.fill`.
+  `{ path, absolutePath, suggestedFilename }`; `absolutePath` names the saved
+  runner-side file for reading its contents, including with a hosted browser.
+- `keyboard.press(key)`, `keyboard.type(text)`, `keyboard.down(key)`,
+  `keyboard.up(key)`, `mouse.*`: unfocused input. Only `down(key)` holds a
+  key or modifier until `up(key)`. `press(key)` presses and releases within
+  the call. Prefer `locator.press` and `locator.fill`.
 
 A `route`, `unroute`, or `waitForResponse` pattern is a glob string or
 `RegExp` matched against the full URL (`*` stays within one path segment,

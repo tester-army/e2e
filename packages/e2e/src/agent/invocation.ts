@@ -93,6 +93,8 @@ export interface AgentContext {
    * the run's. An unknown name is `INVALID_ARGUMENT`.
    */
   readonly select: (name: string | undefined) => AgentSelection;
+  /** Reports a model the provider refused, met by a step's call; the run stops once over it. */
+  readonly reportUnservedModel: (error: AgentError) => void;
   readonly config: ResolvedConfig;
   /** The target this attempt runs on. */
   readonly target: StepExecutorContext['target'];
@@ -174,6 +176,8 @@ export class Invocation {
   private readonly pixelTier: boolean;
   /** Byte size of the invariant system message, measured once. */
   private readonly systemBytes: number;
+  /** Byte size of the caller's instruction as the prompt carries it, measured once. */
+  private readonly instructionBytes: number;
   /** The agent this invocation runs with. */
   readonly agent: AgentSelection;
 
@@ -186,6 +190,7 @@ export class Invocation {
     this.pixelTier = options.vision === true || options.vision === 'only';
     this.system = runtime.redact(buildSystem(options.task, this.agent.agentContext));
     this.systemBytes = tokenUpperBound(this.system);
+    this.instructionBytes = tokenUpperBound(runtime.redact(options.label ?? ''));
   }
 
   get session(): TargetSession {
@@ -316,7 +321,7 @@ export class Invocation {
         maxObservationBytes: this.agent.config.maxObservationBytes,
         maxInputTokens: this.agent.config.maxInputTokens,
       },
-      { fixedBytes: this.systemBytes, pixels: this.pixelTier },
+      { fixedBytes: this.systemBytes, instructionBytes: this.instructionBytes, pixels: this.pixelTier },
     );
   }
 

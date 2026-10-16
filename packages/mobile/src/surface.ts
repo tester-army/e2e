@@ -44,11 +44,12 @@ import {
   ConfigurationError,
   TestError,
 } from 'e2e/engine';
-import { isNoSessionApp, isSnapshotPresentationFailure, runCommand, staleOr } from './errors.ts';
+import { isSnapshotPresentationFailure, isUnreadableCapture, runCommand, staleOr } from './errors.ts';
 import { pointerInteraction, DEFAULT_LONG_PRESS_MS } from './actions.ts';
 import { resolveExpression } from './locate.ts';
 import {
   isWithin,
+  normalizeKind,
   projectSnapshot,
   ROOT_ID,
   screenRoot,
@@ -74,6 +75,7 @@ import {
   unsupported,
   type Rect,
   type Point,
+  InputBudget,
 } from './support.ts';
 
 /** Hinge poses `device.fold` accepts: `closed` lights the outer display, `half-open` and `open` the inner one. */
@@ -130,7 +132,7 @@ export interface OpenAppOptions {
  * is the band the capture's producer measured: `visible` with its frame,
  * `absent`, or that it could not look.
  */
-type RawSnapshot = Partial<Pick<CaptureSnapshotResult, 'nodes' | 'truncated' | 'appName' | 'appBundleId' | 'snapshotQuality' | 'keyboard'>>;
+type RawSnapshot = Partial<Pick<CaptureSnapshotResult, 'nodes' | 'viewport' | 'truncated' | 'appName' | 'appBundleId' | 'snapshotQuality' | 'keyboard'>>;
 
 /** Platform element types that are the soft keyboard or one of its keys, as agent-device names them. */
 const KEYBOARD_TYPES: ReadonlySet<string> = new Set(['keyboard', 'key']);
@@ -144,6 +146,16 @@ const KEYBOARD_TYPES: ReadonlySet<string> = new Set(['keyboard', 'key']);
 const KEYBOARD_DRAG_RATIO = 0.03;
 
 /**
+ * Whether the capture's producer measured the soft keyboard on screen:
+ * undefined when it did not look or could not.
+ */
+function measuredKeyboard(raw: RawSnapshot): boolean | undefined {
+  if (raw.keyboard?.kind === 'visible') return true;
+  if (raw.keyboard?.kind === 'absent') return false;
+  return undefined;
+}
+
+/**
  * Whether a capture shows the soft keyboard: the band its producer measured
  * when it measured one, else a keyboard or key element in the tree, the probe
  * Maestro's `hideKeyboard` uses. A capture that says nothing either way
@@ -151,9 +163,7 @@ const KEYBOARD_DRAG_RATIO = 0.03;
  * tap refuses against by name.
  */
 function keyboardShowing(raw: RawSnapshot): boolean {
-  if (raw.keyboard?.kind === 'visible') return true;
-  if (raw.keyboard?.kind === 'absent') return false;
-  return (raw.nodes ?? []).some((node) => KEYBOARD_TYPES.has((node.type ?? '').toLowerCase()));
+  return measuredKeyboard(raw) ?? (raw.nodes ?? []).some((node) => KEYBOARD_TYPES.has(normalizeKind(node.type ?? '')));
 }
 
 /**
@@ -187,6 +197,12 @@ interface NodeBinding {
  * the action are acted on at once.
  */
 const DEFAULT_TRANSITION_MS = 500;
+
+/** How one screenshot is taken. */
+interface ScreenshotCapture {
+  /** The status bar in a fixed state (time, battery, signal), for a screenshot compared against a stored one (`comparable`). */
+  readonly normalizeStatusBar?: boolean;
+}
 
 /** The centre of a rect in logical pixels. */
 function centreOf(rect: Rect): { x: number; y: number } {
@@ -257,6 +273,11 @@ function depthBelow(entry: ProjectedNode, ancestor: ProjectedNode): number {
     if (current === ancestor) return hops;
   }
   return hops;
+}
+
+/** Sends an input under its operation's budget, or directly from a fixture call, which has none. */
+function sendInput<T>(input: InputBudget | undefined, dispatch: () => Promise<T>): Promise<T> {
+  return input === undefined ? dispatch() : input.send(dispatch);
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -334,23 +355,26 @@ function settleOptions(settle: MobileOptions['settle']): SettleOptions {
   return { settle: true, settleQuietMs: quietMs };
 }
 
+/** Calls one of the harness's trace hooks; a hook that throws, or one an older harness lacks, never fails the device's work. */
+function tellHarness(call: () => void): void {
+  try {
+    call();
+  } catch {
+    // The trace is a reader of the attempt, never a reason it fails.
+  }
+}
+
 export class AgentDeviceSurface {
   private client: AgentDeviceClient | undefined;
   private attempt: Attempt | undefined;
+  /** The attempt's `EngineAttemptContext.screen`, which locate captures feed; undefined between attempts. */
+  private screenSink: ((snapshot: EngineSnapshot) => void) | undefined;
   /** The device this worker drives, the pool's binding for its slot; undefined leaves the choice to agent-device. */
   private device: Pick<SlotBinding, 'device' | 'deviceId'> | undefined;
   private generation = new Map<string, NodeBinding>();
   private readonly located = new Map<string, NodeBinding>();
   private idCounter = 0;
   private appIdentity: string | undefined;
-  /**
-   * The app this worker's agent-device session is on, and so the app a
-   * permission command there acts on: what the warm-up in `prepare` opened
-   * under the session this worker resumed, while that session is still open,
-   * then whatever this surface last opened. Undefined while nothing has been opened in the session, and once
-   * `closeApp` ended it.
-   */
-  private sessionApp: string | undefined;
   /** The app the build `appPath` installed, once `init` has, itself or through a lease. */
   private installedApp: string | undefined;
   /** The target's app, as `init` received it. */
@@ -450,6 +474,11 @@ export class AgentDeviceSurface {
     return result;
   }
 
+  /** The budget one input runs under; its device commands stay in flight until they settle. */
+  inputBudget(label: string, timeoutMs: number): InputBudget {
+    return new InputBudget(label, timeoutMs, (pending) => this.track(pending));
+  }
+
   /** Registers one device command as in flight until it settles. */
   private track<T>(pending: Promise<T>): Promise<T> {
     this.inflight.add(pending);
@@ -471,8 +500,14 @@ export class AgentDeviceSurface {
     }
   }
 
-  /** The device selection this worker's commands take. */
-  private selection(): DeviceSelection {
+  /**
+   * The device selection this worker's commands take. A command that can
+   * run with no app open (before `app.open()`, after `closeApp()` ends the
+   * session) carries it: the daemon then resolves the device from it and
+   * not from every booted one. With a session open it names the session's
+   * own device, which agent-device accepts.
+   */
+  selection(): DeviceSelection {
     return deviceSelection(this.options.platform, this.device);
   }
 
@@ -492,29 +527,10 @@ export class AgentDeviceSurface {
         ? undefined
         : { provider, lease, runId: info.runId, targetName: info.targetName, env: info.env };
     await this.command('boot', (client) => client.devices.boot(this.selection()), info.signal);
-    this.sessionApp = binding?.sessionApp === undefined ? undefined : await this.resumedSessionApp(session, binding.sessionApp, info.signal);
     // Nothing is installed here: a device provider that installed the build
     // from `appPath` says so on the binding, and otherwise the suite installs
     // it where it wants to, with `device.installApp()`.
     this.installedApp = binding?.installedApp;
-  }
-
-  /**
-   * The app the warm-up left the slot's session on, while agent-device still
-   * holds that session. Only the slot's first worker finds it: a worker
-   * retired after a failing test closed it in `dispose`, and a permission
-   * command on a closed session reaches no device. A session not listed, or
-   * a list that fails, leaves the app unknown, and the first permission
-   * change opens it again.
-   */
-  private async resumedSessionApp(session: string, app: string, signal: AbortSignal): Promise<string | undefined> {
-    const sessions: unknown = await this.command('sessions', (client) => client.sessions.list(), signal).catch((cause: unknown) => {
-      if (signal.aborted) throw cause;
-      return undefined;
-    });
-    if (!Array.isArray(sessions)) return undefined;
-    const open = sessions.some((entry: { name?: unknown; address?: unknown }) => (entry.address ?? entry.name) === session);
-    return open ? app : undefined;
   }
 
   async startAttempt(context: EngineAttemptContext): Promise<void> {
@@ -529,12 +545,16 @@ export class AgentDeviceSurface {
     this.attempt = { attemptId: context.attemptId, artifactsDir: context.artifactsDir, screenshots: 0, video: undefined };
     this.generation = new Map();
     this.located.clear();
+    this.screenSink = context.screen;
+    const device = deviceLabel(this.device);
+    tellHarness(() => context.environment?.({ platform: this.options.platform, ...(device === undefined ? {} : { device }) }));
   }
 
   async endAttempt(context: EngineCleanupContext): Promise<void> {
     const attempt = this.attempt;
     const dangling = attempt?.video;
     this.attempt = undefined;
+    this.screenSink = undefined;
     this.generation = new Map();
     this.located.clear();
     // The harness stops the video before it ends the attempt; a recording still
@@ -579,6 +599,7 @@ export class AgentDeviceSurface {
       // The whole screen: an app scope refuses to start while no app is open, before `app.open()` and after `closeApp()`.
       (client) =>
         client.recording.record({
+          ...this.selection(),
           action: 'start',
           path: absolute,
           quality: 'medium',
@@ -621,9 +642,8 @@ export class AgentDeviceSurface {
    * `closeApp` leaves it.
    */
   private async stopScreenRecording(signal: AbortSignal): Promise<{ readonly outPath?: unknown }> {
-    const result = await this.command('stop video recording', (client) => client.recording.record({ action: 'stop' }), signal);
+    const result = await this.command('stop video recording', (client) => client.recording.record({ ...this.selection(), action: 'stop' }), signal);
     if (result.recordOnlySession === true) {
-      this.sessionApp = undefined;
       this.screenReplaced();
     }
     return result;
@@ -664,7 +684,6 @@ export class AgentDeviceSurface {
     this.generation = new Map();
     this.located.clear();
     this.appIdentity = undefined;
-    this.sessionApp = undefined;
     this.installedApp = undefined;
     this.knownViewport = undefined;
     if (client === undefined) return;
@@ -704,53 +723,32 @@ export class AgentDeviceSurface {
         }),
       signal,
     );
-    this.sessionApp = app;
     this.launched(result.appBundleId ?? result.appName ?? app);
   }
 
   /**
-   * Puts an app's permissions in place before it launches. agent-device sets
-   * a permission on the app its session is on, so a session on another app,
-   * or on none yet, is first brought onto this one with a foreground open;
-   * the warm-up in `prepare` did that for the pinned app under the session
-   * this worker resumed, so its first launch needs none. Before the launch,
-   * never after: iOS terminates a running app whose
-   * permission changed, and Android one whose permission was revoked, so a
-   * change after the launch would leave the test on no screen.
+   * Puts an app's permissions in place before it launches, never after: iOS
+   * terminates a running app whose permission changed, and Android one whose
+   * permission was revoked, so a change after the launch would leave the
+   * test on no screen.
    */
   private async presetPermissions(app: string, permissions: LaunchPermissions, signal: AbortSignal): Promise<void> {
     const entries = Object.entries(permissions).filter(
       (entry): entry is [DevicePermission, PermissionState] => entry[1] !== undefined,
     );
-    if (entries.length === 0) return;
-    if (this.sessionApp !== app) await this.open(app, false, undefined, signal);
-    for (const [permission, state] of entries) await this.permission(permission, state, signal);
+    for (const [permission, state] of entries) await this.permission(permission, state, app, signal);
   }
 
-  /**
-   * One permission change for `device.setPermission`: on the app the session
-   * is on, which is what agent-device acts on. With none known here (nothing
-   * opened yet, `closeApp`, a worker resumed on a bare session) the pinned
-   * app is brought to the foreground first. agent-device's own refusal, met
-   * when its session lost the app since (a failed attempt left it on none),
-   * gets the same foreground open and the command once more.
-   */
+  /** One permission change for `device.setPermission`: on the pinned app, else on the app agent-device's session is on. */
   async setPermission(permission: DevicePermission, state: PermissionState, signal: AbortSignal): Promise<void> {
-    const app = this.pinnedApp;
-    if (this.sessionApp === undefined && app !== undefined) await this.open(app, false, undefined, signal);
-    try {
-      await this.permission(permission, state, signal);
-    } catch (cause) {
-      if (signal.aborted || app === undefined || !isNoSessionApp(cause)) throw cause;
-      await this.open(app, false, undefined, signal);
-      await this.permission(permission, state, signal);
-    }
+    await this.permission(permission, state, this.pinnedApp, signal);
   }
 
-  private async permission(permission: DevicePermission, state: PermissionState, signal: AbortSignal): Promise<void> {
+  /** One permission change on `app`, which needs no running app and no open in the session. */
+  private async permission(permission: DevicePermission, state: PermissionState, app: string | undefined, signal: AbortSignal): Promise<void> {
     await this.command(
       `permission ${permission} ${state}`,
-      (client) => client.settings.update({ setting: 'permission', permission, state }),
+      (client) => client.settings.update({ setting: 'permission', permission, state, ...this.selection(), ...(app === undefined ? {} : { app }) }),
       signal,
     );
   }
@@ -785,7 +783,6 @@ export class AgentDeviceSurface {
         }),
       signal,
     );
-    this.sessionApp = target;
     this.launched(result.appBundleId ?? (target === undefined ? undefined : (result.appName ?? target)));
   }
 
@@ -821,8 +818,7 @@ export class AgentDeviceSurface {
    */
   async closeApp(signal: AbortSignal): Promise<void> {
     const app = this.appIdentity ?? this.pinnedApp;
-    await this.command('device.closeApp', (client) => client.apps.close(app === undefined ? {} : { app }), signal);
-    this.sessionApp = undefined;
+    await this.command('device.closeApp', (client) => client.apps.close({ ...this.selection(), ...(app === undefined ? {} : { app }) }), signal);
     this.screenReplaced();
   }
 
@@ -909,12 +905,30 @@ export class AgentDeviceSurface {
     }
   }
 
+  /**
+   * Snapshot for a locate; undefined for a screen agent-device could not read
+   * yet (an app still on its splash). The harness polls a locate until its
+   * deadline, so that screen matches nothing and the poll waits for it to
+   * render. A capture that leaves no budget for another poll fails with the
+   * reason instead, so a wait that ends on an unreadable screen says so.
+   */
+  private async locateSnapshot(operation: OperationContext): Promise<RawSnapshot | undefined> {
+    const startedMs = Date.now();
+    try {
+      return await this.snapshotOrEmpty(operation, false);
+    } catch (cause) {
+      if (operation.signal.aborted || !isUnreadableCapture(cause) || Date.now() - startedMs >= operation.timeoutMs) throw cause;
+      return undefined;
+    }
+  }
+
   private project(raw: RawSnapshot): ProjectedSnapshot {
     const projected = projectSnapshot(raw.nodes ?? [], {
       mintId: () => {
         this.idCounter += 1;
         return `n${this.idCounter}`;
       },
+      viewport: raw.viewport,
     });
     this.latestIndex = projected.index;
     if (projected.viewport !== undefined) this.knownViewport = projected.viewport;
@@ -955,11 +969,13 @@ export class AgentDeviceSurface {
     this.generation = new Map(projected.index.map((entry) => [entry.id, this.bind(entry, projected.index)]));
     const viewport = await this.viewportFor(projected, operation.signal);
     const location = screenLocation(raw.appBundleId ?? raw.appName ?? this.appIdentity, screenTitle(projected));
-    const capture = options?.pixels === true ? await this.capturePixels(operation, projected, viewport) : undefined;
+    const capture = options?.pixels === true ? await this.capturePixels(operation, projected, viewport, { normalizeStatusBar: options.comparable === true }) : undefined;
+    const keyboardVisible = measuredKeyboard(raw);
     return {
       root: screenRoot(projected.roots, viewport),
       viewport,
       ...(isTruncated(raw) ? { truncated: true } : {}),
+      ...(keyboardVisible === undefined ? {} : { keyboardVisible }),
       ...(location === undefined ? {} : { location }),
       ...(capture === undefined ? {} : { pixels: capture.pixels, maskedRegionCount: capture.masked }),
     };
@@ -967,15 +983,37 @@ export class AgentDeviceSurface {
 
   /** Retains only action bindings for matches, independently of the observation generation. */
   async locate(expression: LocatorExpression, operation: OperationContext): Promise<readonly SemanticNode[]> {
-    const raw = await this.snapshotOrEmpty(operation, false);
+    const raw = await this.locateSnapshot(operation);
+    if (raw === undefined) return [];
     const projected = this.project(raw);
-    const matches = resolveExpression(expression, projected.index);
+    this.traceScreen(raw, projected);
+    const matches = resolveExpression(expression, projected.index, this.options.platform);
     for (const entry of matches) this.located.set(entry.id, this.bind(entry, projected.index));
     for (const oldest of this.located.keys()) {
       if (this.located.size <= MAX_LOCATED_REFS) break;
       this.located.delete(oldest);
     }
     return matches.map((entry) => entry.node);
+  }
+
+  /**
+   * Hands the harness the capture a locate matched against, for the trace:
+   * the screen the step acted on, at no cost of another snapshot. A screen
+   * whose viewport is not known yet is skipped rather than probed.
+   */
+  private traceScreen(raw: RawSnapshot, projected: ProjectedSnapshot): void {
+    const sink = this.screenSink;
+    const viewport = projected.viewport ?? this.knownViewport;
+    if (sink === undefined || viewport === undefined) return;
+    const location = screenLocation(raw.appBundleId ?? raw.appName ?? this.appIdentity, screenTitle(projected));
+    tellHarness(() =>
+      sink({
+        root: screenRoot(projected.roots, viewport),
+        viewport,
+        ...(isTruncated(raw) ? { truncated: true } : {}),
+        ...(location === undefined ? {} : { location }),
+      }),
+    );
   }
 
   private resolveRef(ref: NodeRef): NodeBinding {
@@ -1098,7 +1136,7 @@ export class AgentDeviceSurface {
     this.lastActionAt = Date.now();
   }
 
-  async perform(ref: NodeRef, action: LocatorAction, operation: OperationContext): Promise<void> {
+  async perform(ref: NodeRef, action: LocatorAction, operation: OperationContext, input: InputBudget): Promise<void> {
     // A test's step verifies its outcome with `expect`, so it never waits for
     // the screen to settle afterwards; it only lets a control that came with
     // the last action finish arriving. The agent reads the screen right after
@@ -1116,7 +1154,7 @@ export class AgentDeviceSurface {
     if (ref.id === ROOT_ID) {
       if (action.kind !== 'swipe') throw notActionable(`the screen root takes swipe only, not ${action.kind}; act on a node`);
       const before = this.latestIndex;
-      await this.command('swipe', (client) => client.interactions.scroll({ direction: action.direction, ...settle }), operation.signal);
+      await this.command('swipe', (client) => input.send(() => client.interactions.scroll({ direction: action.direction, ...settle })), operation.signal);
       this.markAction(before);
       return;
     }
@@ -1133,26 +1171,29 @@ export class AgentDeviceSurface {
       const target = deterministic ? await this.settled(entry, operation) : entry;
       switch (action.kind) {
         case 'tap':
-          return client.interactions.press({ ...this.actionTarget(target, true), ...settle });
+          return input.send(() => client.interactions.press({ ...this.actionTarget(target, true), ...settle }));
         case 'focus':
           // A touch surface focuses by tapping, and a tap on anything but an
           // editable field activates it; focus is offered for fields only.
           if (target.node.role !== 'textbox') {
             throw unsupported(`agent-device can only focus editable fields; node ${target.id} is ${target.node.role ?? 'unknown'}`);
           }
-          return client.interactions.press({ ...this.actionTarget(target), ...settle });
+          return input.send(() => client.interactions.press({ ...this.actionTarget(target), ...settle }));
         case 'doubleTap':
-          return client.interactions.press({ ...this.actionTarget(target), count: 2, ...settle });
+          return input.send(() => client.interactions.press({ ...this.actionTarget(target), count: 2, ...settle }));
         case 'longPress':
-          return client.interactions.longPress({ ...this.actionTarget(target), ...settle, durationMs: action.durationMs ?? DEFAULT_LONG_PRESS_MS });
+          return input.send(
+            () => client.interactions.longPress({ ...this.actionTarget(target), ...settle, durationMs: action.durationMs ?? DEFAULT_LONG_PRESS_MS }),
+            action.durationMs ?? DEFAULT_LONG_PRESS_MS,
+          );
         case 'hover':
-          return client.interactions.hover(this.actionTarget(target));
+          return input.send(() => client.interactions.hover(this.actionTarget(target)));
         case 'fill':
           // oxlint-disable-next-line unicorn/no-array-fill-with-reference-type -- agent-device fill, not Array#fill
-          return client.interactions.fill({ ...this.actionTarget(target), text: action.value, ...settle });
+          return input.send(() => client.interactions.fill({ ...this.actionTarget(target), text: action.value, ...settle }));
         case 'clear':
           // oxlint-disable-next-line unicorn/no-array-fill-with-reference-type -- agent-device fill, not Array#fill
-          return client.interactions.fill({ ...this.actionTarget(target), text: '', ...settle });
+          return input.send(() => client.interactions.fill({ ...this.actionTarget(target), text: '', ...settle }));
         case 'check':
         case 'uncheck': {
           const wanted = action.kind === 'check';
@@ -1163,21 +1204,23 @@ export class AgentDeviceSurface {
             throw unsupported(`agent-device cannot read whether node ${target.id} is checked; tap it instead`);
           }
           if (checked === wanted) return undefined;
-          return client.interactions.press({ ...this.actionTarget(target, true), ...settle });
+          return input.send(() => client.interactions.press({ ...this.actionTarget(target, true), ...settle }));
         }
         case 'press':
-          return this.pressKey(client, target, action.key, settle);
+          return this.pressKey(client, target, action.key, settle, input);
         case 'swipe': {
           const rect = target.node.rect;
           if (rect === undefined) throw notActionable(`node ${target.id} has no bounds to swipe within`);
-          return client.interactions.swipe(swipeWithin(rect, action.direction, action.momentum));
+          return input.send(() => client.interactions.swipe(swipeWithin(rect, action.direction, action.momentum)));
         }
         case 'dragTo': {
           const destination = this.resolveRef(action.target);
-          return client.interactions.drag({
-            source: this.actionTarget(target).ref,
-            destination: this.actionTarget(destination).ref,
-          });
+          return input.send(() =>
+            client.interactions.drag({
+              source: this.actionTarget(target).ref,
+              destination: this.actionTarget(destination).ref,
+            }),
+          );
         }
         case 'scrollIntoView':
         case 'selectOption':
@@ -1201,7 +1244,7 @@ export class AgentDeviceSurface {
    * modifiers and the other named keys (`Escape`, `Tab`, `Backspace`, the
    * arrows) have nothing to land on and are refused.
    */
-  private async pressKey(client: AgentDeviceClient, entry: NodeBinding, key: string, settle: SettleOptions): Promise<unknown> {
+  private async pressKey(client: AgentDeviceClient, entry: NodeBinding, key: string, settle: SettleOptions, input: InputBudget): Promise<unknown> {
     const parsed = parseKey(key);
     if (parsed === undefined) {
       throw unsupported(
@@ -1212,14 +1255,14 @@ export class AgentDeviceSurface {
       throw unsupported(`agent-device cannot hold ${parsed.modifiers.join('+')} on a device surface; press the key alone`);
     }
     if (parsed.key.kind === 'named' && parsed.key.name === 'Enter') {
-      return client.command.keyboard({ action: 'enter' });
+      return input.send(() => client.command.keyboard({ action: 'enter' }));
     }
     if (parsed.key.kind === 'char' || parsed.key.name === 'Space') {
       const text = parsed.key.kind === 'char' ? parsed.key.char : ' ';
       if (entry.node.role === 'textbox' && entry.node.states?.focused !== true) {
-        await client.interactions.press({ ...this.actionTarget(entry), ...settle });
+        await input.send(() => client.interactions.press({ ...this.actionTarget(entry), ...settle }));
       }
-      return client.interactions.type({ text });
+      return input.send(() => client.interactions.type({ text }));
     }
     throw unsupported(`agent-device cannot press ${parsed.key.name} on a device surface; only Enter, Space, and single characters reach the soft keyboard`);
   }
@@ -1229,10 +1272,11 @@ export class AgentDeviceSurface {
    * node's bounds are in, with no element resolved behind it. `settle` waits
    * for the UI to go quiet, as the node taps do.
    */
-  async performAt(point: ViewportPoint, action: PointerAction, operation: OperationContext): Promise<void> {
+  async performAt(point: ViewportPoint, action: PointerAction, operation: OperationContext, input: InputBudget): Promise<void> {
     const settle = operation.origin === 'test' ? {} : this.settleOptions;
     const before = this.latestIndex;
-    await this.command(`${action.kind} at point`, (client) => pointerInteraction(client, point, action, settle), operation.signal);
+    const holdMs = action.kind === 'longPress' ? (action.durationMs ?? DEFAULT_LONG_PRESS_MS) : action.kind === 'swipeTo' ? action.durationMs : undefined;
+    await this.command(`${action.kind} at point`, (client) => input.send(() => pointerInteraction(client, point, action, settle), holdMs), operation.signal);
     this.markAction(before);
   }
 
@@ -1242,12 +1286,12 @@ export class AgentDeviceSurface {
    * device primitive without a target, so it is refused rather than faked:
    * the model clears a listed field by filling it by id.
    */
-  async typeText(text: string, options: { readonly replace: boolean }, operation: OperationContext): Promise<void> {
+  async typeText(text: string, options: { readonly replace: boolean }, operation: OperationContext, input: InputBudget): Promise<void> {
     if (options.replace) {
       throw unsupported('agent-device cannot clear the focused field without a node; type into a listed field by id to replace its value');
     }
     const before = this.latestIndex;
-    await this.command('keyboard.type', (client) => client.interactions.type({ text }), operation.signal);
+    await this.command('keyboard.type', (client) => input.send(() => client.interactions.type({ text })), operation.signal);
     this.markAction(before);
   }
 
@@ -1256,7 +1300,7 @@ export class AgentDeviceSurface {
    * submits through the soft keyboard, Space and single characters are typed.
    * Modifiers and the other named keys have no event bus to land on.
    */
-  async pressFocusedKey(key: string, operation: OperationContext): Promise<void> {
+  async pressFocusedKey(key: string, operation: OperationContext, input: InputBudget): Promise<void> {
     const parsed = parseKey(key);
     if (parsed === undefined) {
       throw unsupported(
@@ -1268,10 +1312,10 @@ export class AgentDeviceSurface {
     }
     const before = this.latestIndex;
     if (parsed.key.kind === 'named' && parsed.key.name === 'Enter') {
-      await this.command('keyboard.press', (client) => client.command.keyboard({ action: 'enter' }), operation.signal);
+      await this.command('keyboard.press', (client) => input.send(() => client.command.keyboard({ action: 'enter' })), operation.signal);
     } else if (parsed.key.kind === 'char' || parsed.key.name === 'Space') {
       const text = parsed.key.kind === 'char' ? parsed.key.char : ' ';
-      await this.command('keyboard.press', (client) => client.interactions.type({ text }), operation.signal);
+      await this.command('keyboard.press', (client) => input.send(() => client.interactions.type({ text })), operation.signal);
     } else {
       throw unsupported(`agent-device cannot press ${parsed.key.name} on a device surface; only Enter, Space, and single characters reach the soft keyboard`);
     }
@@ -1286,13 +1330,13 @@ export class AgentDeviceSurface {
    * makes that guess, the way a user does and Maestro's `hideKeyboard` does,
    * in {@link dismissKeyboardByGesture}.
    */
-  async dismissKeyboard(signal: AbortSignal): Promise<void> {
+  async dismissKeyboard(signal: AbortSignal, input?: InputBudget): Promise<void> {
     const before = this.latestIndex;
     try {
-      await this.command('keyboard.dismiss', (client) => client.command.keyboard({ action: 'dismiss' }), signal);
+      await this.command('keyboard.dismiss', (client) => sendInput(input, () => client.command.keyboard({ action: 'dismiss' })), signal);
     } catch (cause) {
       if (!(cause instanceof EngineError && cause.code === 'UNSUPPORTED_CAPABILITY')) throw cause;
-      await this.dismissKeyboardByGesture(signal);
+      await this.dismissKeyboardByGesture(signal, input);
     }
     this.markAction(before);
   }
@@ -1315,10 +1359,10 @@ export class AgentDeviceSurface {
    * look is the observation's own capture, sparse-tree retries included: a
    * one-node tree has no keys and would pass for a dismissed keyboard.
    */
-  private async dismissKeyboardByGesture(signal: AbortSignal): Promise<void> {
-    let raw = await this.dismissKeyboardTip(await this.snapshot(signal, false), signal);
+  private async dismissKeyboardByGesture(signal: AbortSignal, input: InputBudget | undefined): Promise<void> {
+    let raw = await this.dismissKeyboardTip(await this.snapshot(signal, false), signal, input);
     if (!keyboardShowing(raw)) return;
-    const projected = projectSnapshot(raw.nodes ?? [], { mintId: () => 'keyboard' });
+    const projected = projectSnapshot(raw.nodes ?? [], { mintId: () => 'keyboard', viewport: raw.viewport });
     const viewport = await this.viewportFor(projected, signal);
     const centre = { x: viewport.width / 2, y: viewport.height / 2 };
     const drags: readonly Point[] = [
@@ -1326,7 +1370,7 @@ export class AgentDeviceSurface {
       { x: centre.x, y: centre.y - viewport.height * KEYBOARD_DRAG_RATIO },
     ];
     for (const to of drags) {
-      await this.command('keyboard.dismiss', (client) => client.interactions.swipe({ from: centre, to }), signal);
+      await this.command('keyboard.dismiss', (client) => sendInput(input, () => client.interactions.swipe({ from: centre, to })), signal);
       raw = await this.snapshot(signal, false);
       if (!keyboardShowing(raw)) return;
     }
@@ -1343,21 +1387,21 @@ export class AgentDeviceSurface {
    * Maestro's `hideKeyboard` presses it too. Answers the capture after the
    * press, or the one given when no tip is showing.
    */
-  private async dismissKeyboardTip(raw: RawSnapshot, signal: AbortSignal): Promise<RawSnapshot> {
+  private async dismissKeyboardTip(raw: RawSnapshot, signal: AbortSignal, input: InputBudget | undefined): Promise<RawSnapshot> {
     const nodes = raw.nodes ?? [];
     const tip = nodes.find((node) => (node.label ?? node.value ?? '').startsWith('Speed up your typing'));
     if (tip?.rect === undefined) return raw;
     const tipTop = tip.rect.y;
     const button = nodes.find((node) => node.label === 'Continue' && node.rect !== undefined && node.rect.y > tipTop);
     if (button?.rect === undefined) return raw;
-    await this.command('keyboard.dismiss', (client) => client.interactions.press(centreOf(button.rect!)), signal);
+    await this.command('keyboard.dismiss', (client) => sendInput(input, () => client.interactions.press(centreOf(button.rect!))), signal);
     return await this.snapshot(signal, false);
   }
 
-  async back(operation: OperationContext): Promise<void> {
+  async back(operation: OperationContext, input: InputBudget): Promise<void> {
     const settle = operation.origin === 'test' ? {} : this.settleOptions;
     const before = this.latestIndex;
-    await this.command('back', (client) => client.command.back({ ...settle }), operation.signal);
+    await this.command('back', (client) => input.send(() => client.command.back({ ...settle })), operation.signal);
     this.markAction(before);
   }
 
@@ -1373,22 +1417,21 @@ export class AgentDeviceSurface {
     if (app === undefined) throw unsupported(`app.clearState needs the target's \`app.bundleId\`, or ${UNINSTALLED_BUILD}`);
     await this.command(
       'clear app state',
-      (client) => client.settings.update({ setting: 'clear-app-state', state: 'clear', app }),
+      (client) => client.settings.update({ ...this.selection(), setting: 'clear-app-state', state: 'clear', app }),
       operation.signal,
     );
     await this.openApp(app, { relaunch: true }, operation.signal);
   }
 
   /**
-   * Sends a foldable iOS simulator's hinge to a pose; agent-device confirms
-   * the angle through CoreDevice before it answers. The pose moves the app to
-   * another panel, so it counts as an action like a rotation.
+   * Sends a foldable simulator's or emulator's hinge to a pose; agent-device
+   * confirms it before it answers: the hinge angle through CoreDevice on iOS,
+   * the device state the guest commits on Android. The pose moves the app to
+   * another panel, so it counts as an action like a rotation. A device
+   * without a hinge comes back from agent-device as `UNSUPPORTED_OPERATION`.
    */
   async fold(pose: FoldPose, signal: AbortSignal): Promise<void> {
-    if (this.options.platform !== 'ios') {
-      throw unsupported('device.fold drives a foldable iOS simulator (iPhone Duo) through agent-device; it has no Android driver');
-    }
-    await this.screenCommand('device.fold', (client) => client.command.fold({ pose }), signal);
+    await this.screenCommand('device.fold', (client) => client.command.fold({ ...this.selection(), pose }), signal);
   }
 
   /**
@@ -1402,7 +1445,7 @@ export class AgentDeviceSurface {
     }
     await this.command(
       'device.clearKeychain',
-      (client) => client.settings.update({ setting: 'reset-keychain', state: 'clear' }),
+      (client) => client.settings.update({ ...this.selection(), setting: 'reset-keychain', state: 'clear' }),
       signal,
     );
   }
@@ -1427,8 +1470,8 @@ export class AgentDeviceSurface {
   }
 
   /** Raw device pixels; cleanup follows the capture even when its caller abandons it. */
-  private rawScreenshot(signal?: AbortSignal): Promise<Uint8Array> {
-    return this.captureScreenshot(signal, async (shot, file) => new Uint8Array(readFileSync(shot.path ?? file)));
+  private rawScreenshot(signal?: AbortSignal, capture: ScreenshotCapture = {}): Promise<Uint8Array> {
+    return this.captureScreenshot(signal, async (shot, file) => new Uint8Array(readFileSync(shot.path ?? file)), capture);
   }
 
   /**
@@ -1439,12 +1482,13 @@ export class AgentDeviceSurface {
   private captureScreenshot<T>(
     signal: AbortSignal | undefined,
     read: (shot: RawScreenshotResult, file: string) => Promise<T>,
+    capture: ScreenshotCapture = {},
   ): Promise<T> {
     return this.command('screenshot', async (client) => {
       const directory = mkdtempSync(path.join(tmpdir(), 'e2e-agent-device-'));
       const file = path.join(directory, 'screenshot.png');
       try {
-        return await read(await client.capture.screenshot({ path: file }), file);
+        return await read(await client.capture.screenshot({ path: file, ...(capture.normalizeStatusBar === true ? { normalizeStatusBar: true } : {}) }), file);
       } finally {
         rmSync(directory, { recursive: true, force: true });
       }
@@ -1484,10 +1528,11 @@ export class AgentDeviceSurface {
     operation: OperationContext,
     projected: ProjectedSnapshot,
     viewport: ViewportSize,
+    capture: ScreenshotCapture,
   ): Promise<{ pixels: ObservationPixels; masked: number } | undefined> {
     let raw: Uint8Array;
     try {
-      raw = await this.rawScreenshot(operation.signal);
+      raw = await this.rawScreenshot(operation.signal, capture);
     } catch {
       return undefined;
     }

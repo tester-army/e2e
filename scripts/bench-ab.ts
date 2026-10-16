@@ -145,9 +145,10 @@ function suiteDigest(appDir: string): string {
   return hash.digest('hex');
 }
 
-/** The environment every run gets: CI semantics, no telemetry, no GitHub posting. */
+/** The environment every run gets: CI semantics, no telemetry, no GitHub posting, the committed cache. */
 function runEnvironment(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, CI: '1', E2E_TELEMETRY_DISABLED: '1', NO_COLOR: '1' };
+  delete env.E2E_CACHE_DIR;
   for (const name of Object.keys(env)) if (name.startsWith('GITHUB_')) delete env[name];
   return env;
 }

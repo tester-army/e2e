@@ -130,106 +130,90 @@
         "groups": [
           {
             "group": "Get started",
-            "icon": "rocket",
             "pages": [
               "index",
               "quickstart",
-              "goals",
-              "assertions",
-              "locators"
+              "core-concepts",
+              "coding-agents",
+              "mcp"
             ]
           },
           {
-            "group": "Web",
-            "icon": "globe",
+            "group": "Platforms",
             "pages": [
-              "starting-your-app",
-              "browser",
-              "viewports"
-            ]
-          },
-          {
-            "group": "Mobile",
-            "icon": "mobile-screen",
-            "pages": [
+              "web",
               "mobile",
-              "physical-devices"
-            ]
-          },
-          {
-            "group": "API",
-            "icon": "server",
-            "pages": [
               "api-testing"
             ]
           },
           {
+            "group": "Features",
+            "pages": [
+              "cache",
+              "explore",
+              "visual-testing",
+              "authentication",
+              "bug-bash",
+              "agents"
+            ]
+          },
+          {
             "group": "Models and agents",
-            "icon": "wand-magic-sparkles",
             "pages": [
               "models",
               "decision-models",
-              "subscriptions",
-              "agents",
-              "agent-steps",
-              "cache"
+              "subscriptions"
             ]
           },
           {
-            "group": "Sign-in and security",
-            "icon": "shield-halved",
-            "pages": [
-              "authentication",
-              "security",
-              "telemetry"
-            ]
-          },
-          {
-            "group": "Debug and explore",
-            "icon": "bug",
-            "pages": [
-              "debugging",
-              "explore",
-              "bug-bash"
-            ]
-          },
-          {
-            "group": "Automate",
-            "icon": "gears",
+            "group": "Run in CI",
             "pages": [
               "ci",
-              "mobile-ci",
-              "github",
-              "coding-agents"
+              "ci/github-actions",
+              "ci/eas-workflows",
+              "ci/bitrise",
+              "ci/codemagic",
+              "github"
             ]
           },
           {
-            "group": "Integrations",
-            "icon": "plug",
+            "group": "Hosted browsers and devices",
             "pages": [
               "integrations/index",
               "integrations/kernel",
-              "integrations/eas"
+              "integrations/lightpanda",
+              "integrations/eas",
+              "integrations/smol",
+              "integrations/limrun",
+              "integrations/testmu"
+            ]
+          },
+          {
+            "group": "Extend",
+            "pages": [
+              "tools",
+              "executors",
+              "writing-an-engine"
+            ]
+          },
+          {
+            "group": "Deep dive",
+            "pages": [
+              "browser",
+              "security",
+              "telemetry",
+              "debugging",
+              "agent-steps"
             ]
           },
           {
             "group": "Migrate",
-            "icon": "arrow-right-arrow-left",
             "pages": [
               "migrate/playwright",
               "migrate/cypress",
               "migrate/selenium",
               "migrate/detox",
               "migrate/maestro"
-            ]
-          },
-          {
-            "group": "Extend",
-            "icon": "puzzle-piece",
-            "pages": [
-              "tools",
-              "executors",
-              "writing-an-engine"
             ]
           }
         ]
@@ -240,7 +224,6 @@
         "groups": [
           {
             "group": "Test API",
-            "icon": "flask",
             "pages": [
               "reference/test",
               "reference/expect",
@@ -251,33 +234,31 @@
           },
           {
             "group": "Project",
-            "icon": "folder-gear",
             "pages": [
               "reference/config",
               "reference/cli",
+              "reference/runner",
               "reference/mcp",
               "reference/reporters",
               "reference/environment",
-              "reference/errors"
+              "reference/errors",
+              "reference/security"
             ]
           },
           {
             "group": "Web",
-            "icon": "globe",
             "pages": [
               "reference/web"
             ]
           },
           {
             "group": "Mobile",
-            "icon": "mobile-screen",
             "pages": [
               "reference/mobile"
             ]
           },
           {
             "group": "Engine contract",
-            "icon": "gear",
             "pages": [
               "reference/engine"
             ]
@@ -295,17 +276,18 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/tester-army/e2e"
+      "github": "https://github.com/tester-army/e2e",
+      "website": "https://tester.army/?utm_source=e2e&utm_medium=docs&utm_campaign=docs_footer"
     }
   },
   "redirects": [
     {
-      "source": "/introduction",
-      "destination": "/"
+      "source": "/mobile-ci",
+      "destination": "/ci#mobile-jobs"
     },
     {
-      "source": "/web",
-      "destination": "/browser"
+      "source": "/introduction",
+      "destination": "/"
     },
     {
       "source": "/reference/device",
@@ -353,7 +335,31 @@
     },
     {
       "source": "/writing-tests",
-      "destination": "/goals"
+      "destination": "/core-concepts"
+    },
+    {
+      "source": "/starting-your-app",
+      "destination": "/web#starting-your-app"
+    },
+    {
+      "source": "/viewports",
+      "destination": "/web#viewports"
+    },
+    {
+      "source": "/physical-devices",
+      "destination": "/mobile#physical-devices"
+    },
+    {
+      "source": "/goals",
+      "destination": "/core-concepts#goals"
+    },
+    {
+      "source": "/assertions",
+      "destination": "/core-concepts#assertions"
+    },
+    {
+      "source": "/locators",
+      "destination": "/core-concepts#locators"
     }
   ]
 }

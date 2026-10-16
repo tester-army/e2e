@@ -77,6 +77,20 @@ test.describe('controls', { requires: ['browser'], tags: ['controls'] }, () => {
     expect(await screen.getByRole('radio', 'Large').isChecked()).toBe(false);
   });
 
+  test('check and uncheck wait for a controlled checkbox and switch that commit late', async ({ screen }) => {
+    const newsletter = screen.getByLabel('Subscribe to newsletter');
+    await newsletter.check();
+    expect(await newsletter.isChecked()).toBe(true);
+    await newsletter.uncheck();
+    expect(await newsletter.isChecked()).toBe(false);
+
+    const darkMode = screen.getByRole('switch', 'Dark mode');
+    await darkMode.check();
+    expect(await darkMode.isChecked()).toBe(true);
+    await darkMode.uncheck();
+    expect(await darkMode.isChecked()).toBe(false);
+  });
+
   test('selecting an option moves selected state onto it', async ({ screen }) => {
     const color = screen.getByLabel('Color');
     await expect(screen.getByRole('option', 'Green')).toBeSelected();

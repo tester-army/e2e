@@ -27,7 +27,10 @@ export type EngineSpiVersion = typeof ENGINE_SPI_VERSION;
 
 /** What every engine call carries: budget, ids, and who is acting. */
 export interface OperationContext {
-  /** Aborts with the attempt or when the operation budget is spent. */
+  /**
+   * Aborts when the attempt, or the hook running the call, ends. It does not
+   * abort at `timeoutMs`: bound each call by that budget yourself.
+   */
   readonly signal: AbortSignal;
   /** Remaining operation budget when the call starts. */
   readonly timeoutMs: number;
@@ -148,8 +151,9 @@ export interface SemanticNode {
    * The node's test id, when the platform gives it one: the value of the
    * project's test-id attribute on a document platform, an accessibility
    * identifier on iOS, a resource id on Android, an automation id on a
-   * desktop. The `testId` query resolves against exactly this field, so the
-   * harness never knows where a platform keeps it.
+   * desktop. The `testId` query resolves against this field, so the harness
+   * never knows where a platform keeps it. An engine may also match the id
+   * without its platform's namespacing.
    */
   readonly testId?: string;
   /** What a field takes, deciding which secrets may fill it. */

@@ -19,6 +19,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import type { Telemetry } from 'ai';
+import { providerFailureMessage } from './errors.ts';
 
 /** Longest step label quoted in a run name before truncation. */
 const MAX_LABEL_CHARS = 80;
@@ -221,13 +222,13 @@ export class AiTraceRecorder {
 
   /** The integration object to hand to `registerTelemetry`. */
   readonly telemetry: Telemetry = {
-    onStart: (event) => this.onStart(event as unknown as StartEvent),
-    onStepStart: (event) => this.onStepStart(event as unknown as StepStartEvent),
+    onStart: (event) => this.onStart(event),
+    onStepStart: (event) => this.onStepStart(event),
     onLanguageModelCallStart: (event) =>
-      this.onModelCallStart(event as unknown as ModelCallStartEvent),
-    onLanguageModelCallEnd: (event) => this.onModelCallEnd(event as unknown as ModelCallEndEvent),
-    onStepEnd: (event) => this.onStepEnd(event as unknown as StepEndEvent),
-    onEnd: (event) => this.onEnd(event as unknown as EndEvent),
+      this.onModelCallStart(event),
+    onLanguageModelCallEnd: (event) => this.onModelCallEnd(event),
+    onStepEnd: (event) => this.onStepEnd(event),
+    onEnd: (event) => this.onEnd(event),
     onError: (event) => this.onError(event as ErrorEvent | undefined),
     executeTool: ({ callId, execute }) => {
       const state = this.calls.get(callId);
@@ -396,7 +397,7 @@ export class AiTraceRecorder {
     const state = this.calls.get(callId);
     if (state === undefined) return;
     const cause = event?.error;
-    const message = cause instanceof Error ? cause.message : String(cause ?? 'unknown error');
+    const message = cause === undefined || cause === null ? 'unknown error' : providerFailureMessage(cause);
     for (const open of state.openSteps.values()) {
       this.steps.push(this.closeStep(open, { error: message }));
     }

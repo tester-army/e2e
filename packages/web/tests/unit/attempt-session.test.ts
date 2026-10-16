@@ -6,6 +6,7 @@ import type { Browser, Page } from 'playwright-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { connectCdp } from '../../src/browser-connection.ts';
 import { AttemptSession } from '../../src/attempt-session.ts';
+import type { WebMedia } from '../../src/media.ts';
 
 vi.mock('../../src/browser-connection.ts', () => ({ connectCdp: vi.fn() }));
 
@@ -22,15 +23,23 @@ interface Contexts { browserContextIds: string[]; defaultBrowserContextId?: stri
 function remote(identity?: string, response?: Promise<Contexts>) {
   let connected = true;
   const pages: Page[] = [];
+  const appeared: Array<(page: Page) => void> = [];
   const send = vi.fn(async () => response ?? { browserContextIds: [], ...(identity === undefined ? {} : { defaultBrowserContextId: identity }) });
   const close = vi.fn(async () => { connected = false; });
   const browser = {
     newBrowserCDPSession: async () => ({ send, detach: async () => undefined }),
-    contexts: () => [{ pages: () => pages, newPage: async () => pages.at(-1)!, _channel: { registerSelectorEngine: async () => undefined } }],
+    contexts: () => [{
+      pages: () => pages,
+      newPage: async () => pages.at(-1)!,
+      on: (_event: 'page', listener: (page: Page) => void) => { appeared.push(listener); },
+      _channel: { registerSelectorEngine: async () => undefined },
+    }],
     isConnected: () => connected,
     close,
   } as unknown as Browser;
-  return { browser, send, close, pages, disconnect: () => { connected = false; } };
+  /** The app opens a tab of its own. */
+  const popup = (page: Page) => { pages.push(page); for (const listener of appeared) listener(page); };
+  return { browser, send, close, pages, popup, disconnect: () => { connected = false; } };
 }
 
 /** A page target whose identity response may outlive its attempt. */
@@ -55,9 +64,11 @@ function session(options: {
   configure?: () => Promise<void>;
   artifactsDir?: string;
   viewport?: { width: number; height: number } | null;
+  media?: WebMedia;
 } = {}) {
   return new AttemptSession({
     artifactsDir: options.artifactsDir ?? tmpdir(), viewport: options.viewport === undefined ? { width: 320, height: 200 } : options.viewport, contextOptions: {}, screencast: {},
+    media: options.media ?? {},
     acquire: async () => { throw new Error('persistent attempts never acquire the shared browser'); },
     configure: options.configure ?? (async () => undefined),
     persistent: { provision: options.provision ?? (() => 'provisioned'), reconnect: options.reconnect ?? (() => 'existing'), usedContexts: options.used ?? new Set() },
@@ -131,9 +142,9 @@ describe('AttemptSession', () => {
     const existing = target('existing').page;
     const opened = target('opened').page;
     const newPage = vi.fn(async () => opened);
-    const context = { pages: () => [existing], newPage, close: async () => undefined };
+    const context = { pages: () => [existing], newPage, on: () => undefined, close: async () => undefined };
     const owner = new AttemptSession({
-      artifactsDir: tmpdir(), viewport: { width: 320, height: 200 }, contextOptions: {}, screencast: {},
+      artifactsDir: tmpdir(), viewport: { width: 320, height: 200 }, contextOptions: {}, screencast: {}, media: {},
       acquire: async () => ({ newContext: async () => context }) as unknown as Browser,
       configure: async () => undefined,
     });
@@ -163,6 +174,121 @@ describe('AttemptSession', () => {
     for (const [called] of setViewportSize.mock.calls) expect(called).toEqual({ width: 390, height: 600 });
     await owner.setViewport({ width: 800, height: 600 });
     expect(setViewportSize).toHaveBeenLastCalledWith({ width: 800, height: 600 });
+    await owner.close(cleanup());
+  });
+
+  it('emulates the configured media on each page it opens, and merges a change into it for the rest of the attempt', async () => {
+    const current = remote('current');
+    const initial = target('initial');
+    const opened = target('opened');
+    const emulated: Array<[string, WebMedia]> = [];
+    let closed = false;
+    Object.assign(initial.page, { isClosed: () => closed, emulateMedia: async (media: WebMedia) => { emulated.push(['initial', media]); } });
+    Object.assign(opened.page, { emulateMedia: async (media: WebMedia) => { emulated.push(['opened', media]); } });
+    current.pages.push(initial.page);
+    const context = { ...current.browser.contexts()[0]!, newPage: async () => opened.page };
+    Object.assign(current.browser, { contexts: () => [context] });
+    vi.mocked(connectCdp).mockResolvedValue(current.browser);
+    const owner = session({ media: { colorScheme: 'dark' } });
+    await owner.start(new AbortController().signal);
+    await owner.ensurePage();
+    expect(emulated).toEqual([['initial', { colorScheme: 'dark' }]]);
+    await owner.emulateMedia({ reducedMotion: 'reduce' });
+    expect(emulated.at(-1)).toEqual(['initial', { colorScheme: 'dark', reducedMotion: 'reduce' }]);
+    await owner.emulateMedia({ colorScheme: 'light' });
+    closed = true;
+    await owner.ensurePage();
+    expect(emulated.at(-1)).toEqual(['opened', { colorScheme: 'light', reducedMotion: 'reduce' }]);
+    await owner.close(cleanup());
+  });
+
+  it('emulates the attempt\'s media on a tab the app opens itself, as it appears and when a test changes it', async () => {
+    const current = remote('current');
+    const initial = target('initial');
+    const emulated: Array<[string, WebMedia]> = [];
+    Object.assign(initial.page, { emulateMedia: async (media: WebMedia) => { emulated.push(['initial', media]); } });
+    current.pages.push(initial.page);
+    vi.mocked(connectCdp).mockResolvedValue(current.browser);
+    const owner = session({ media: { colorScheme: 'dark' } });
+    await owner.start(new AbortController().signal);
+    await owner.ensurePage();
+    const popup = target('popup').page;
+    Object.assign(popup, { emulateMedia: async (media: WebMedia) => { emulated.push(['popup', media]); } });
+    current.popup(popup);
+    await Promise.resolve();
+    expect(emulated.at(-1)).toEqual(['popup', { colorScheme: 'dark' }]);
+    await owner.emulateMedia({ reducedMotion: 'reduce' });
+    expect(emulated.slice(-2)).toEqual([
+      ['initial', { colorScheme: 'dark', reducedMotion: 'reduce' }],
+      ['popup', { colorScheme: 'dark', reducedMotion: 'reduce' }],
+    ]);
+    await owner.close(cleanup());
+  });
+
+  it('ignores a tab the app closes while the media reaches it, and reports one still open', async () => {
+    const current = remote('current');
+    const initial = target('initial');
+    Object.assign(initial.page, { emulateMedia: async () => undefined });
+    current.pages.push(initial.page);
+    vi.mocked(connectCdp).mockResolvedValue(current.browser);
+    const owner = session({ media: { colorScheme: 'dark' } });
+    await owner.start(new AbortController().signal);
+    await owner.ensurePage();
+    let closed = false;
+    const closing = target('closing').page;
+    Object.assign(closing, { isClosed: () => closed, emulateMedia: async () => { closed = true; throw new Error('Target page, context or browser has been closed'); } });
+    current.pages.push(closing);
+    await expect(owner.emulateMedia({ reducedMotion: 'reduce' })).resolves.toBeUndefined();
+    const broken = target('broken').page;
+    Object.assign(broken, { emulateMedia: async () => { throw new Error('Protocol error'); } });
+    current.pages.push(broken);
+    await expect(owner.emulateMedia({ colorScheme: 'light' })).rejects.toThrow('Protocol error');
+    await owner.close(cleanup());
+  });
+
+  it('keeps both concurrent media changes when the first call finishes last', async () => {
+    const current = remote('current');
+    const active = target('page');
+    const applied: WebMedia[] = [];
+    const firstResponse = deferred<void>();
+    let calls = 0;
+    // The first call settles last, as a slow protocol round trip would.
+    Object.assign(active.page, { emulateMedia: async (media: WebMedia) => {
+      calls += 1;
+      if (calls === 1) await firstResponse.promise;
+      applied.push(media);
+    } });
+    current.pages.push(active.page);
+    vi.mocked(connectCdp).mockResolvedValue(current.browser);
+    const owner = session();
+    await owner.start(new AbortController().signal);
+    await owner.ensurePage();
+    const first = owner.emulateMedia({ colorScheme: 'dark' });
+    await owner.emulateMedia({ reducedMotion: 'reduce' });
+    firstResponse.resolve();
+    await first;
+    expect(applied).toContainEqual({ colorScheme: 'dark', reducedMotion: 'reduce' });
+    const opened = target('opened');
+    const emulateMedia = vi.fn(async () => undefined);
+    Object.assign(opened.page, { emulateMedia });
+    Object.assign(active.page, { isClosed: () => true });
+    current.pages.push(opened.page);
+    await owner.ensurePage();
+    expect(emulateMedia).toHaveBeenCalledWith({ colorScheme: 'dark', reducedMotion: 'reduce' });
+    await owner.close(cleanup());
+  });
+
+  it('leaves the browser\'s own media alone when none is configured or requested', async () => {
+    const current = remote('current');
+    const active = target('page');
+    const emulateMedia = vi.fn(async () => undefined);
+    Object.assign(active.page, { emulateMedia });
+    current.pages.push(active.page);
+    vi.mocked(connectCdp).mockResolvedValue(current.browser);
+    const owner = session();
+    await owner.start(new AbortController().signal);
+    await owner.ensurePage();
+    expect(emulateMedia).not.toHaveBeenCalled();
     await owner.close(cleanup());
   });
 
@@ -299,11 +425,11 @@ describe('AttemptSession', () => {
     const nextPage = target('next-page').page;
     const nextStop = vi.fn(async () => undefined);
     Object.assign(firstPage, { screencast: {
-      start: async ({ path: file }: { path: string }) => { writeFileSync(file, 'old'); started.resolve(); await resume.promise; },
+      start: async ({ path: file, onFrame }: { path: string; onFrame?: () => void }) => { writeFileSync(file, 'old'); onFrame?.(); started.resolve(); await resume.promise; },
       stop: async () => undefined,
     } });
     Object.assign(nextPage, { screencast: {
-      start: async ({ path: file }: { path: string }) => { writeFileSync(file, 'next'); },
+      start: async ({ path: file, onFrame }: { path: string; onFrame?: () => void }) => { writeFileSync(file, 'next'); onFrame?.(); },
       stop: nextStop,
     } });
     old.pages.push(firstPage);

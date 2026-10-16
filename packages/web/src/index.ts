@@ -12,6 +12,7 @@ export { web, surfaceOf } from './engine.ts';
 export type { PlaywrightLiveSurface } from './engine.ts';
 export type { WebBasicAuth, WebConnectOptions, WebOptions, WebScreencastOptions } from './surface.ts';
 export type { WebInitScript } from './init-scripts.ts';
+export type { WebMedia } from './media.ts';
 export type {
   BrowserDownloadContext,
   BrowserLease,

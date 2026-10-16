@@ -18,8 +18,8 @@ export function connectionAbort(signal: AbortSignal, label: string): EngineError
  * fires: its error names what blocked an action, or that the input was
  * already dispatched, and this lead lets that answer arrive before the
  * deadline does. The deadline is for the calls Playwright never answers: an
- * evaluate, which takes no timeout, and every call while a trace snapshots a
- * page whose renderer is stuck in a script. A budget shorter than twice the
+ * evaluate, which takes no timeout, and a point tap on a page whose renderer
+ * is stuck in a script. A budget shorter than twice the
  * lead splits in half.
  */
 const PLAYWRIGHT_TIMEOUT_LEAD_MS = 250;

@@ -56,6 +56,10 @@ const pages = {
        <label for="agree">Agree to terms</label>
        <input id="agree" type="checkbox" />
 
+       <label for="newsletter">Subscribe to newsletter</label>
+       <input id="newsletter" type="checkbox" />
+       <button id="dark-mode" role="switch" aria-checked="false">Dark mode</button>
+
        <label for="color">Color</label>
        <select id="color" size="3">
          <option value="red">Red</option>
@@ -130,6 +134,25 @@ const pages = {
            const expanded = toggle.getAttribute('aria-expanded') === 'true';
            toggle.setAttribute('aria-expanded', String(!expanded));
            document.getElementById('details').hidden = expanded;
+         });
+
+         // Controlled toggles that commit their state after a save round
+         // trip, as a React checkbox or a headless switch does: the click
+         // leaves the control as it was, and the new state lands later.
+         document.getElementById('newsletter').addEventListener('click', (event) => {
+           const box = event.target;
+           const next = box.checked;
+           event.preventDefault();
+           setTimeout(() => {
+             box.checked = next;
+           }, 400);
+         });
+         const darkMode = document.getElementById('dark-mode');
+         darkMode.addEventListener('click', () => {
+           const next = darkMode.getAttribute('aria-checked') !== 'true';
+           setTimeout(() => {
+             darkMode.setAttribute('aria-checked', String(next));
+           }, 400);
          });
 
          document.getElementById('prepare').addEventListener('click', () => {
@@ -211,12 +234,20 @@ const pages = {
   }),
 
   // The browser fixture's own surface: navigation with a delay, the viewport
-  // size, the cookies the page sees, and a load counter for reload.
+  // size, the media its own @media rules see, the cookies the page sees, and
+  // a load counter for reload.
   '/browser': () => ({
     title: 'Browser',
     body: `<h1>Browser</h1>
        <button id="go-about">Go to about, soon</button>
        <output aria-label="Viewport"></output>
+       <output aria-label="Media"></output>
+       <span id="media-probe"></span>
+       <style>
+         #media-probe { color: rgb(0, 0, 0); transition-property: opacity; transition-duration: 0.3s; }
+         @media (prefers-color-scheme: dark) { #media-probe { color: rgb(255, 255, 255); } }
+         @media (prefers-reduced-motion: reduce) { #media-probe { transition-duration: 0s; } }
+       </style>
        <output aria-label="Cookies"></output>
        <output aria-label="Loads"></output>
        <output aria-label="Random"></output>
@@ -232,6 +263,17 @@ const pages = {
          };
          addEventListener('resize', report);
          report();
+         const probe = document.getElementById('media-probe');
+         const media = document.querySelector('output[aria-label="Media"]');
+         const reportMedia = () => {
+           const style = getComputedStyle(probe);
+           media.textContent = (style.color === 'rgb(255, 255, 255)' ? 'dark' : 'light') + ', ' +
+             (style.transitionDuration === '0s' ? 'reduced motion' : 'full motion');
+         };
+         for (const query of ['(prefers-color-scheme: dark)', '(prefers-reduced-motion: reduce)']) {
+           matchMedia(query).addEventListener('change', reportMedia);
+         }
+         reportMedia();
          document.querySelector('output[aria-label="Cookies"]').textContent = document.cookie || 'no cookies';
          const loads = Number(sessionStorage.getItem('loads') ?? '0') + 1;
          sessionStorage.setItem('loads', String(loads));

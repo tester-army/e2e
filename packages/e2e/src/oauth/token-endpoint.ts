@@ -5,14 +5,21 @@
  * the credentials file.
  */
 
-import { OAuthError, describeResponse, type OAuthErrorCode } from './errors.ts';
+import { z } from 'zod';
+import { OAuthError, describeResponse, readJsonBody, type OAuthErrorCode } from './errors.ts';
 
-export interface TokenResponse {
-  readonly access_token: string;
-  readonly refresh_token?: string;
-  readonly id_token?: string;
-  readonly expires_in?: number;
-}
+/**
+ * A token response. Vendor-specific fields ride along; an optional token of the
+ * wrong type is dropped, and `expires_in` stays raw for `expiryFrom`.
+ */
+const TokenResponseSchema = z.looseObject({
+  access_token: z.string().min(1),
+  refresh_token: z.string().optional().catch(undefined),
+  id_token: z.string().optional().catch(undefined),
+  expires_in: z.unknown().optional(),
+});
+
+export type TokenResponse = z.infer<typeof TokenResponseSchema>;
 
 export async function postForm(url: string, params: Record<string, string>, signal?: AbortSignal): Promise<Response> {
   return fetch(url, {
@@ -34,17 +41,20 @@ export async function requestTokens(
   url: string,
   params: Record<string, string>,
   rejected: OAuthErrorCode = 'FLOW_FAILED',
+  signal?: AbortSignal,
 ): Promise<TokenResponse> {
-  const response = await postForm(url, params);
+  const response = await postForm(url, params, signal);
   if (!response.ok) {
     const code = response.status === 400 || response.status === 401 ? rejected : 'FLOW_FAILED';
     throw new OAuthError(code, `${vendor} token request failed (${await describeResponse(response)})`);
   }
-  const tokens = (await response.json()) as Partial<TokenResponse>;
-  if (typeof tokens.access_token !== 'string' || tokens.access_token === '') {
-    throw new OAuthError('FLOW_FAILED', `the ${vendor} token response is missing access_token`);
-  }
-  return tokens as TokenResponse;
+  return readJsonBody(response, TokenResponseSchema, `the ${vendor} token response`, 'is missing access_token');
+}
+
+/** The tokens in a token endpoint's JSON body, or undefined when it carries no access token. */
+export function parseTokens(body: unknown): TokenResponse | undefined {
+  const result = TokenResponseSchema.safeParse(body);
+  return result.success ? result.data : undefined;
 }
 
 /** A seconds value from the server, or the default when it is missing or not a positive finite number. */

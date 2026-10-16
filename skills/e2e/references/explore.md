@@ -13,6 +13,14 @@ npx e2e explore 'Hunt for broken forms' --video
 npx e2e explore --session admin 'Explore the admin settings'
 ```
 
+## Contents
+
+- What a run does
+- Start signed in
+- Flags
+- Reading the result
+- When it does not fit
+
 ## What a run does
 
 1. Opens the app on the target's URL.
@@ -64,7 +72,7 @@ configured secrets are redacted (topic `writing-tests`).
 | `--session <name>` | none | Run the setup that saves this session, then explore with it restored. |
 | `--max-steps <n>` | 8 (1 to 12) | Exploration steps at most. |
 | `--timeout <ms>` | 600000 (180000 to 900000) | Wall clock; the last minute is for the assessment. |
-| `--headed`, `--reporter`, `--output`, `--debug`, `--ai-trace`, `--trace [mode]`, `--video [mode]` | as `run` | Same meaning as for `e2e run`. One attempt, so a retry mode (`on-first-retry`, `on-all-retries`, the CI trace default) records nothing (`CI=1 e2e explore` needs `--trace on`; the run's notice says so); put the goal before a bare `--trace` or `--video`. |
+| `--headed`, `--reporter`, `--output`, `--debug`, `--ai-trace`, `--trace [mode]`, `--video [mode]` | as `run` | Same meaning as for `e2e run`. The exploration is one attempt, so a retry mode (`on-first-retry`, `on-all-retries`) records nothing (the run's notice says to pass `--trace on`); put the goal before a bare `--trace` or `--video`. |
 
 Per-step action and model-call budgets default to 40 each;
 `agents.<name>.maxSteps` and `agents.<name>.maxModelCalls` in the config
@@ -109,11 +117,11 @@ A step carries `errorCode` only when it did not pass; a finding carries
 the result whose `file` is `explore`, where its path, size, and digest are.
 With `--session`, `run.results` also holds the setup's result and the
 project's other tests as skipped (`filtered`). The attempt directory is
-`.e2e/artifacts/<target>/explore-<slug>-<digest>/<agent>/attempt-0/`: the slug
-is the goal's first words in lowercase ASCII, capped, and the digest keeps
-distinct goals apart while the same goal always maps to the same directory.
-For example
-`.e2e/artifacts/web/explore-check-the-cart-totals-1a2b3c4d5e6f7a8b/default/attempt-0/finding-1.png`.
+`.e2e/results/explore-<slug>-<id>/attempt-1/`: the slug is the goal's first
+words in lowercase ASCII, capped, and the id keeps distinct goals, targets, and
+agents apart while the same goal on the same target and agent always maps to
+the same directory. For example
+`.e2e/results/explore-check-the-cart-totals-1a2b3c4d5e6f7a8b/attempt-1/finding-1.png`.
 
 Turn a finding into a test: its `reproduction` steps are the `agent.act()`
 instructions or `screen.*` actions, and `expected` is the assertion.

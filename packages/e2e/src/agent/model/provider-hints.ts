@@ -7,9 +7,10 @@
  * Anthropic caches only up to an explicit breakpoint, so the system prompt
  * carries one (it covers the tool definitions ahead of it) and the newest
  * message carries the other: the next turn's request then matches everything
- * up to it. OpenAI-shaped providers (OpenAI, Azure OpenAI) cache prefixes on
- * their own and take a routing key, one per system prompt, so every call of
- * a run addresses the same cache. Their requests also carry `store: false`:
+ * up to it. OpenAI Responses models (OpenAI, Azure OpenAI, and OpenAI through
+ * the gateway) cache prefixes on their own and take a routing key, one per
+ * system prompt, so every call of a run addresses the same cache. Their
+ * requests also carry `store: false`:
  * the runner never reads a response back, and with storage on the AI SDK
  * replays a reasoning model's earlier turns by item id, which an organization
  * with zero data retention has never stored. Without storage the reasoning
@@ -70,14 +71,19 @@ function speaksAnthropic(model: ProviderModelRef | undefined): boolean {
 }
 
 /**
- * The provider-options key of an OpenAI-shaped model, which is how the AI
+ * The provider-options key of an OpenAI Responses model, which is how the AI
  * SDK keys them too: `openai` for OpenAI itself (`openai.responses`, or
- * `openai/gpt-…` through a gateway), `azure` for Azure OpenAI.
+ * `openai/gpt-…` through the gateway), `azure` for Azure OpenAI. Chat models
+ * get none: an OpenAI-compatible provider named `openai` reports `openai.chat`
+ * like OpenAI's own chat model, but copies the options into the request body
+ * as they are, which the endpoint rejects.
  */
 function openaiOptionsKey(model: ProviderModelRef | undefined): 'openai' | 'azure' | undefined {
-  if (idPrefix(model, 'openai/') || providerPrefix(model, 'openai')) return 'openai';
-  if (providerPrefix(model, 'azure')) return 'azure';
-  return undefined;
+  const provider = (model?.provider ?? '').toLowerCase();
+  if (provider === 'gateway') return idPrefix(model, 'openai/') ? 'openai' : undefined;
+  if (!provider.endsWith('.responses')) return undefined;
+  if (provider.includes('azure')) return 'azure';
+  return provider.startsWith('openai') ? 'openai' : undefined;
 }
 
 function idPrefix(model: ProviderModelRef | undefined, prefix: string): boolean {

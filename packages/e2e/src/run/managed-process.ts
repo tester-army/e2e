@@ -27,11 +27,39 @@ const PROGRESS_NOTICE_MIN_MS = 5_000;
 const OUTPUT_TAIL_LINES = 20;
 const OUTPUT_TAIL_BYTES = 4_096;
 /**
- * `command.env` values this long are redacted from the quoted output; shorter
- * ones (a port, a flag) would blank ordinary text without hiding anything.
- * The shared redactor has no floor of its own.
+ * `command.env` and `inheritEnv` values this long are redacted from the quoted
+ * output; shorter ones (a port, a flag) would blank ordinary text without
+ * hiding anything. The shared redactor has no floor of its own.
  */
 const REDACTED_ENV_MIN_LENGTH = 4;
+
+/**
+ * The child's environment: the default names from `process.env`, what
+ * `inheritEnv` matches in `source` (only variables that are set), then
+ * `command.env`, each layer replacing the one before. Windows reads names
+ * case-insensitively (`Path`), so there names match and replace that way
+ * too. `inherited` is what `inheritEnv` copied.
+ */
+function childEnv(
+  command: CommandConfig,
+  source: NodeJS.ProcessEnv,
+): { env: Record<string, string>; inherited: [string, string][] } {
+  const fold = process.platform === 'win32' ? (name: string) => name.toUpperCase() : (name: string) => name;
+  const patterns = (command.inheritEnv ?? []).map(fold);
+  const names = new Set(patterns.filter((pattern) => !pattern.endsWith('*')));
+  const prefixes = patterns.filter((pattern) => pattern.endsWith('*')).map((pattern) => pattern.slice(0, -1));
+  const inherited = Object.entries(source).filter((entry): entry is [string, string] => {
+    const name = fold(entry[0]);
+    return entry[1] !== undefined && (names.has(name) || prefixes.some((prefix) => name.startsWith(prefix)));
+  });
+  const defaults = INHERITED_ENV.flatMap((key) => {
+    const value = process.env[key];
+    return value === undefined ? [] : [[key, value] as const];
+  });
+  const byName = new Map<string, readonly [string, string]>();
+  for (const entry of [...defaults, ...inherited, ...Object.entries(command.env ?? {})]) byName.set(fold(entry[0]), entry);
+  return { env: Object.fromEntries(byName.values()), inherited };
+}
 
 /** Every spawned process group still running, for the forced exit that cannot wait on `stop`. */
 const live = new Set<ChildProcess>();
@@ -51,8 +79,20 @@ function signalProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
   }
 }
 
+/** A leader exiting does not mean its descendants have left the process group. */
+function processGroupRunning(child: ChildProcess): boolean {
+  if (process.platform === 'win32') return child.exitCode === null && child.signalCode === null;
+  if (child.pid === undefined) return false;
+  try {
+    process.kill(-child.pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Kills every process group this module spawned and has not yet seen exit,
+ * Kills every process group this module spawned and has not yet released,
  * synchronously and without waiting: the last resort before the process
  * exits on the spot, so nothing it started outlives it. A reused process was
  * never spawned here and is left alone.
@@ -71,9 +111,10 @@ function describeExit(exit: ExitStatus): string {
 }
 
 /** One readiness probe: true when `url` answers 200 through 499 within `timeoutMs`. */
-async function answers(url: string, timeoutMs: number): Promise<boolean> {
+async function answers(url: string, timeoutMs: number, signal?: AbortSignal): Promise<boolean> {
   try {
-    const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });
+    const timeout = AbortSignal.timeout(timeoutMs);
+    const response = await fetch(url, { redirect: 'manual', signal: signal === undefined ? timeout : AbortSignal.any([timeout, signal]) });
     return response.status >= 200 && response.status <= 499;
   } catch {
     return false;
@@ -82,12 +123,14 @@ async function answers(url: string, timeoutMs: number): Promise<boolean> {
 
 /**
  * What the runner tells a managed process about the run: whether CI mode is
- * active (where `reuseExisting` is ignored), where to narrate run-level
- * progress such as a reused app, and where to report the process starting
- * and becoming ready.
+ * active (where `reuseExisting` is ignored), the environment the run resolves
+ * against (what `inheritEnv` copies from; default `process.env`), where to
+ * narrate run-level progress such as a reused app, and where to report the
+ * process starting and becoming ready.
  */
 export interface ManagedProcessHooks {
   readonly ci?: boolean;
+  readonly env?: NodeJS.ProcessEnv;
   readonly notice?: (message: string) => void;
   readonly starting?: (label: string) => void;
   /** `reused` when the process attached to one already serving the URL instead of spawning. */
@@ -103,6 +146,8 @@ export class ManagedProcess {
   private child: ChildProcess | null = null;
   private reusedExisting = false;
   private spawnedProcess = false;
+  /** Hides `command.env` and `inheritEnv` values in a quoted startup failure; built at spawn. */
+  private redact: (text: string) => string = (text) => text;
 
   constructor(
     private readonly label: string,
@@ -158,7 +203,7 @@ export class ManagedProcess {
       if (this.command.reuseExisting === true && !reuse) {
         this.hooks.notice?.(`${this.label}: reuseExisting is ignored in CI, starting the command`);
       }
-      if (await answers(readyUrl, Math.min(READY_PROBE_TIMEOUT_MS, startupTimeout))) {
+      if (await answers(readyUrl, Math.min(READY_PROBE_TIMEOUT_MS, startupTimeout), signal)) {
         if (reuse) {
           this.reusedExisting = true;
           this.hooks.notice?.(`${this.label}: reusing the process already serving ${readyUrl}`);
@@ -175,12 +220,10 @@ export class ManagedProcess {
       }
       if (aborted()) return;
     }
-    const env: Record<string, string> = {};
-    for (const key of INHERITED_ENV) {
-      const value = process.env[key];
-      if (value !== undefined) env[key] = value;
-    }
-    Object.assign(env, this.command.env ?? {});
+    const { env, inherited } = childEnv(this.command, this.hooks.env ?? process.env);
+    this.redact = createRedactor(
+      [...inherited, ...Object.entries(this.command.env ?? {})].filter(([, value]) => value.length >= REDACTED_ENV_MIN_LENGTH),
+    );
 
     const logFd = this.openLog();
     // The log appends across commands and runs; a failure quotes what landed
@@ -211,7 +254,6 @@ export class ManagedProcess {
     let exit: ExitStatus | undefined;
     const exited = new Promise<void>((resolve) => {
       child.once('exit', (code, exitSignal) => {
-        live.delete(child);
         exit = { code, signal: exitSignal };
         resolve();
       });
@@ -262,7 +304,7 @@ export class ManagedProcess {
       const untilHalf = noticed ? Number.POSITIVE_INFINITY : Math.max(READY_POLL_MIN_MS, remaining - half);
       if (
         readyUrl !== undefined &&
-        (await answers(readyUrl, Math.min(READY_PROBE_TIMEOUT_MS, remaining, untilHalf)))
+        (await answers(readyUrl, Math.min(READY_PROBE_TIMEOUT_MS, remaining, untilHalf), signal))
       ) {
         return;
       }
@@ -278,19 +320,16 @@ export class ManagedProcess {
   /**
    * The startup failure with the log's tail under it, so the report alone
    * says what the process was doing when it stalled or died. The message
-   * lands in the report, so `command.env` values are redacted from the quote
-   * with the same redactor and markers as the traces, the way the log itself
-   * never is. Without a log there is nothing to quote, and the message says
-   * how to get one.
+   * lands in the report, so `command.env` and `inheritEnv` values are
+   * redacted from the quote with the same redactor and markers as the traces,
+   * the way the log itself never is. Without a log there is nothing to quote,
+   * and the message says how to get one.
    */
   private unreachable(message: string, logOffset: number | undefined): InfrastructureError {
     if (logOffset === undefined) {
       return new InfrastructureError('APP_UNREACHABLE', `${message}\nset log on this command to keep its output`);
     }
-    const redact = createRedactor(
-      Object.entries(this.command.env ?? {}).filter(([, value]) => value.length >= REDACTED_ENV_MIN_LENGTH),
-    );
-    const lines = this.outputSince(logOffset).map(redact);
+    const lines = this.outputSince(logOffset).map(this.redact);
     const detail =
       lines.length === 0
         ? `no output in ${this.logDisplayPath()}`
@@ -365,12 +404,12 @@ export class ManagedProcess {
     if (this.reusedExisting) return;
     const child = this.child;
     this.child = null;
-    if (child === null || child.exitCode !== null || child.signalCode !== null) return;
+    if (child === null) return;
     const shutdownTimeout = this.command.shutdownTimeout ?? 10_000;
     signalProcessGroup(child, 'SIGTERM');
-    const exited = new Promise<void>((resolve) => {
-      child.once('exit', () => resolve());
-    });
+    const exited = child.exitCode !== null || child.signalCode !== null
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => child.once('exit', () => resolve()));
     // The timer is cancelled once the process is gone: left pending, it kept
     // the event loop alive for the whole timeout after the run had ended.
     const timer = new AbortController();
@@ -378,12 +417,20 @@ export class ManagedProcess {
       () => 'timeout' as const,
       () => 'exited' as const,
     );
-    const winner = await Promise.race([exited.then(() => 'exited' as const), timedOut]);
+    const groupExited = (async () => {
+      while (processGroupRunning(child)) {
+        const poll = sleep(25, timer.signal);
+        // Leader exit wakes each wait; surviving descendants keep the polling cadence.
+        await (child.exitCode === null && child.signalCode === null ? Promise.race([exited, poll]) : poll);
+      }
+    })().catch(() => undefined);
+    const winner = await Promise.race([groupExited.then(() => 'exited' as const), timedOut]);
     timer.abort();
     if (winner === 'timeout') {
       signalProcessGroup(child, 'SIGKILL');
       await exited.catch(() => undefined);
     }
+    live.delete(child);
   }
 }
 

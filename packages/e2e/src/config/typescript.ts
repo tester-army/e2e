@@ -8,13 +8,15 @@
  * decorators, class field semantics, and import elision.
  */
 
-import remapping, { type SourceMapInput } from '@jridgewell/remapping';
+import remapping, { type EncodedSourceMap } from '@jridgewell/remapping';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import type * as OxcParser from 'oxc-parser';
 import type { JsxOptions, OxcError, TransformOptions } from 'oxc-transform';
 import type * as OxcTransform from 'oxc-transform';
 import { InfrastructureError } from '../internal/errors.ts';
+import { obj } from '../internal/objects.ts';
+import { isPlainObject } from '../internal/options.ts';
 import { HOOKED_REQUIRE_KEY, type CompiledExtension } from './compiled-files.ts';
 import type { CompilerOptions } from './tsconfig.ts';
 
@@ -115,7 +117,7 @@ function position(text: string): string {
 }
 
 /**
- * Syntax oxc 0.152 passes through unchanged that Node.js cannot run, found
+ * Syntax oxc 0.153 passes through unchanged that Node.js cannot run, found
  * before compiling so the error names the line and the fix instead of a
  * bare `SyntaxError` from Node.js with no location. Each check only parses
  * a file whose text could hold the construct.
@@ -176,7 +178,7 @@ const HOOKED_REQUIRE = `require = globalThis[Symbol.for(${JSON.stringify(HOOKED_
  * - Oxc keeps a file whose only imports were type-only a module by printing
  *   `export {};`, even for CommonJS, where that statement is a syntax error
  *   and TypeScript emits nothing. It is an oxc bug, not yet reported
- *   upstream (oxc 0.152.0, `crates/oxc_transformer/src/typescript/
+ *   upstream (oxc 0.153.0, `crates/oxc_transformer/src/typescript/
  *   annotations.rs`, the `no_modules_remaining && some_modules_deleted`
  *   branch). The statement is blanked out, so nothing after it moves.
  * - `HOOKED_REQUIRE` follows the last directive on
@@ -208,7 +210,7 @@ const helperFiles = new Map<string, string>();
 
 /**
  * The compiled code with each runtime helper it imports or requires taken
- * from e2e's own copy: by URL for `import`, by path for `require`. Oxc 0.152
+ * from e2e's own copy: by URL for `import`, by path for `require`. Oxc 0.153
  * has no option to name the helper source, so the import and require
  * specifiers it printed (`helpersUsed`) are rewritten; a redirect of the
  * package name in the resolver would also catch a project's own
@@ -233,6 +235,58 @@ function withOwnHelpers(code: string, helpers: Readonly<Record<string, string>>,
 
 /** An inline source map at the end of `source`, as another loader earlier in the chain leaves one. */
 const INLINE_MAP = /\n\/\/# sourceMappingURL=data:application\/json(?:;charset=utf-8)?;base64,([A-Za-z0-9+/=]+)\s*$/;
+
+/** Whether `value` is an array whose every entry passes `is`. */
+function isArrayOf<T>(value: unknown, is: (entry: unknown) => entry is T): value is T[] {
+  return Array.isArray(value) && value.every(is);
+}
+
+/** Whether `entry` is a string. */
+function isString(entry: unknown): entry is string {
+  return typeof entry === 'string';
+}
+
+/** Whether `entry` is a string or null, as a source map's `sources` and `sourcesContent` hold. */
+function isStringOrNull(entry: unknown): entry is string | null {
+  return entry === null || typeof entry === 'string';
+}
+
+/** Whether `entry` is an integer, as a source map's `ignoreList` holds. */
+function isInteger(entry: unknown): entry is number {
+  return Number.isInteger(entry);
+}
+
+/**
+ * The source map an earlier loader inlined as base64 JSON, rebuilt from the
+ * fields composing it reads, or undefined when it is malformed. A malformed
+ * map is left out rather than failing the import, so positions lead to the
+ * code that loader handed over.
+ */
+function inlineSourceMap(base64: string): EncodedSourceMap | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(base64, 'base64').toString('utf8'));
+  } catch {
+    return undefined;
+  }
+  if (!isPlainObject(parsed)) return undefined;
+  const { mappings, sources } = parsed;
+  const names = parsed['names'] ?? [];
+  const sourceRoot = parsed['sourceRoot'] ?? undefined;
+  const sourcesContent = parsed['sourcesContent'] ?? undefined;
+  const ignoreList = parsed['ignoreList'] ?? parsed['x_google_ignoreList'] ?? undefined;
+  if (
+    typeof mappings !== 'string' ||
+    !isArrayOf(sources, isStringOrNull) ||
+    !isArrayOf(names, isString) ||
+    (sourceRoot !== undefined && typeof sourceRoot !== 'string') ||
+    (sourcesContent !== undefined && !isArrayOf(sourcesContent, isStringOrNull)) ||
+    (ignoreList !== undefined && !isArrayOf(ignoreList, isInteger))
+  ) {
+    return undefined;
+  }
+  return { version: 3, mappings, sources, names, ...obj({ sourceRoot, sourcesContent, ignoreList }) };
+}
 
 /**
  * `source`, the content of `file` as the next loader handed it over,
@@ -260,7 +314,8 @@ export function compileTypeScript(file: string, source: string, kind: CompiledEx
   if (kind.format === 'commonjs') ({ code, mappings } = runnableCommonJs(file, code, mappings));
   // Absolute, so a frame names the file without the loader's query, whatever characters its name holds.
   const own = { version: 3 as const, mappings, names: result.map?.names ?? [], sources: [pathToFileURL(file).href] };
-  const incoming = INLINE_MAP.exec(source)?.[1];
-  const map = incoming === undefined ? own : remapping([own, JSON.parse(Buffer.from(incoming, 'base64').toString('utf8')) as SourceMapInput], () => null);
+  const encoded = INLINE_MAP.exec(source)?.[1];
+  const incoming = encoded === undefined ? undefined : inlineSourceMap(encoded);
+  const map = incoming === undefined ? own : remapping([own, incoming], () => null);
   return `${code}\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(JSON.stringify(map)).toString('base64')}\n`;
 }

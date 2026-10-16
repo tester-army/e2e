@@ -8,8 +8,16 @@ interface Call {
 }
 
 /**
+ * What GitHub answers `GET /user` with for an installation token such as
+ * `GITHUB_TOKEN`, unless the script names that route.
+ */
+const defaults: Record<string, () => Response> = {
+  'GET /user': () => json(403, { message: 'Resource not accessible by integration' }),
+};
+
+/**
  * A fetch that records calls and answers from a script keyed by
- * `METHOD /path?query`, then `METHOD /path`, then `METHOD *`.
+ * `METHOD /path?query`, then `METHOD /path`, then the defaults, then `METHOD *`.
  */
 export function fakeGitHub(script: Record<string, (call: Call) => Response>): { fetch: typeof fetch; calls: Call[] } {
   const calls: Call[] = [];
@@ -23,7 +31,9 @@ export function fakeGitHub(script: Record<string, (call: Call) => Response>): { 
     if (init?.signal?.aborted) throw init.signal.reason ?? new Error('aborted');
     const parsed = new URL(url);
     const answer =
-      script[`${method} ${parsed.pathname}${parsed.search}`] ?? script[`${method} ${parsed.pathname}`] ?? script[`${method} *`];
+      script[`${method} ${parsed.pathname}${parsed.search}`] ?? script[`${method} ${parsed.pathname}`] ??
+      defaults[`${method} ${parsed.pathname}`] ??
+      script[`${method} *`];
     if (answer === undefined) throw new Error(`unexpected request ${method} ${parsed.pathname}${parsed.search}`);
     return answer(call);
   }) as typeof fetch;

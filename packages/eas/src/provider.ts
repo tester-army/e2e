@@ -144,11 +144,13 @@ export function easSimulators(options: EasSimulatorsOptions = {}): DeviceProvide
   return {
     name: 'eas-simulators',
     async acquire(request: DeviceRequest): Promise<DeviceLease> {
+      request.signal.throwIfAborted();
       if (request.appPath !== undefined && (buildId !== undefined || applicationArchiveUrl !== undefined)) {
         throw new Error("EAS installs the app from `buildId` or `applicationArchiveUrl`; leave the target's `app.appPath` out");
       }
       const appId = await projectIdFor(request);
       const client = await clientFor(request.env);
+      request.signal.throwIfAborted();
       // Not the request's signal: an interrupt that lands after EAS created the session would leave it unknown, and billed.
       const created = await client.create(
         {

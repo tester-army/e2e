@@ -111,7 +111,6 @@ describe('secrets shown transformed', () => {
     for (const form of FORMS) expect(report).not.toContain(form);
     const contents = contentsUnder(path.join(project.dir, '.e2e'));
     expect(contents.some(([file]) => file.endsWith('.md'))).toBe(true);
-    expect(contents.some(([file]) => file.includes('.zip!'))).toBe(true);
     for (const [file, text] of contents) {
       for (const form of FORMS) expect(text, file).not.toContain(form);
     }

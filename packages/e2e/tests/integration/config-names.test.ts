@@ -27,7 +27,7 @@ describe('all-dot names', () => {
         ['INVALID_CONFIG', 'invalid target name ".."; target names are limited to ASCII letters, numbers, "_", "-", and ".", and cannot be only dots'],
       ]);
       expect(outcome.results).toHaveLength(0);
-      expect(existsSync(path.join(project.dir, '.e2e', 'artifacts'))).toBe(false);
+      expect(existsSync(path.join(project.dir, '.e2e', 'results'))).toBe(false);
     } finally {
       project.cleanup();
     }

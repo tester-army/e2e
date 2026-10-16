@@ -14,5 +14,4 @@
       Cache  1 missed
    Start at  10:00:00
    Duration  119.50s (2m 0s, startup 43.00s)
-     Report  .e2e/report.json
    AI trace  .e2e/ai-trace.json (open with: npx unbox-ai .e2e/ai-trace.json)

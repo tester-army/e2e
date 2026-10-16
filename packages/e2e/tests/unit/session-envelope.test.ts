@@ -1,6 +1,6 @@
 /** Session envelope wire format. */
 
-import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -20,11 +20,19 @@ const identity: SessionIdentity = {
 
 const SECRET_VALUE = 'provider-minted-token-7391';
 
+/** Temp dirs the cases in this file create, removed after each so a run leaves nothing behind. */
+const tempDirs: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(tempDirs.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+});
+
 /** Saves one state and returns the parsed envelope, its raw text, its file, and its store. */
 async function saveEnvelope(
   secrecy: SavedSecrecy = { secrets: [], tainted: false },
 ): Promise<{ store: SessionStore; raw: string; file: string; envelope: Record<string, unknown> }> {
   const root = await mkdtemp(path.join(tmpdir(), 'e2e-sessions-'));
+  tempDirs.push(root);
   const runId = uuidv7();
   const store = SessionStore.create(runId, root);
   await store.save('member', identity, {
@@ -122,6 +130,21 @@ describe('session load', () => {
     }
   });
 
+  it('reuses a valid cached state but refuses it at its expiry', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const { store } = await saveEnvelope();
+    try {
+      const saved = await store.load('member', identity);
+      const expiry = Date.parse(saved.state.expiresAt!);
+      vi.setSystemTime(expiry - 1);
+      expect(await store.load('member', identity)).toBe(saved);
+      vi.setSystemTime(expiry);
+      await expect(store.load('member', identity)).rejects.toMatchObject({ code: 'SESSION_EXPIRED' });
+    } finally {
+      store.cleanup();
+    }
+  });
+
   it('refuses a session whose ciphertext, taint, or expiry was edited, or that is not JSON', async () => {
     const edits: ((envelope: Editable) => void)[] = [
       (envelope) => {
@@ -159,6 +182,7 @@ describe('session file names', () => {
   /** Opens a store on a fresh temporary root. */
   async function openStore(): Promise<{ store: SessionStore; root: string; runId: string }> {
     const root = await mkdtemp(path.join(tmpdir(), 'e2e-sessions-'));
+    tempDirs.push(root);
     const runId = uuidv7();
     return { store: SessionStore.create(runId, root), root, runId };
   }

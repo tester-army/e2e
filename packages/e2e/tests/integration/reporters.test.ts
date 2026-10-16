@@ -50,7 +50,8 @@ describe('reporter objects', () => {
     };
     const outcome = await runExisting(project, {
       config: {
-        ...engineConfig(createFakeEngine({ trace: true }).engine),
+        ...engineConfig(createFakeEngine({ video: true }).engine),
+        video: 'on' as const,
         tests: 'tests/**/*.e2e.ts',
         reporters: [recording],
         cache: 'off' as const,
@@ -71,7 +72,7 @@ describe('reporter objects', () => {
     // The document a reporter uploads is the file on disk, byte for byte.
     expect(JSON.parse(readFileSync(run.reportPath!, 'utf8'))).toEqual(run.report);
     expect(run.projectRoot).toBe(project.dir);
-    expect(run.artifactsRoot).toBe(path.join(project.dir, '.e2e', 'artifacts'));
+    expect(run.artifactsRoot).toBe(path.join(project.dir, '.e2e', 'results'));
     const artifacts = run.report.run.results.flatMap((result) =>
       result.attempts.flatMap((attempt) => attempt.artifacts),
     );
@@ -119,7 +120,8 @@ describe('reporter objects', () => {
     };
     const outcome = await runExisting(project, {
       config: {
-        ...engineConfig(createFakeEngine({ trace: true }).engine),
+        ...engineConfig(createFakeEngine({ video: true }).engine),
+        video: 'on' as const,
         tests: 'tests/**/*.e2e.ts',
         reporters: [throwing, hanging, malformed, scalar, loud, quiet],
         cache: 'off' as const,
@@ -163,7 +165,8 @@ describe('reporter objects', () => {
     };
     const outcome = await runExisting(project, {
       config: {
-        ...engineConfig(createFakeEngine({ trace: true }).engine),
+        ...engineConfig(createFakeEngine({ video: true }).engine),
+        video: 'on' as const,
         tests: 'tests/**/*.e2e.ts',
         reporters: [uploading],
         cache: 'off' as const,

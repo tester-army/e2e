@@ -11,6 +11,7 @@ import { validateTitle } from '../internal/ids.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
 import { parseSkipCall, skipRunningTest } from '../internal/skip.ts';
 import { unknownKeyMessage } from '../internal/options.ts';
+import type { SourceLocation } from '../internal/source.ts';
 import type {
   DescribeOptions,
   FixtureFn,
@@ -23,12 +24,6 @@ import type {
   TestHookFn,
   TestOptions,
 } from '../types.ts';
-
-export interface SourceLocation {
-  readonly file: string;
-  readonly line: number;
-  readonly column: number;
-}
 
 export interface GroupNode {
   readonly title: string;
@@ -60,13 +55,6 @@ export interface RegisteredTest {
   readonly group: GroupNode | undefined;
   readonly mode: TestMode;
   readonly source: SourceLocation | undefined;
-  /**
-   * The test's artifact directory under its target's, set by an in-memory
-   * registration whose id makes a poor directory name (`e2e explore`, whose
-   * id is the whole encoded goal). Unset, a non-serial test's is its
-   * sanitized test id; serial members share the group's and ignore it.
-   */
-  readonly artifactName?: string | undefined;
 }
 
 interface HookBase {

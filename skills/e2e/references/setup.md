@@ -1,5 +1,16 @@
 # Setting up e2e
 
+## Contents
+
+- Requirements
+- Scaffold
+- Subscriptions and API keys
+- The config
+- The app under test
+- Environment variables the runner reads
+- Mobile targets
+- Done when
+
 ## Requirements
 
 - Node.js 24.8 or newer, or 22.22.3 or newer on Node.js 22.
@@ -29,10 +40,17 @@ e2e init`; `npx e2e init my-app` scaffolds into a new directory.
 
 The wizard picks an engine and a model provider (None for tests without AI)
 and offers to install this skill, register the MCP server for your coding
-agent, and install dependencies. `--yes` picks Playwright and Vercel AI
+agent, and install dependencies. `--yes` picks the web engine (Playwright) and Vercel AI
 Gateway, installs the skill in `.agents/skills/` (`.claude/skills/e2e`
 symlinks to it), registers MCP in `.mcp.json` and `.cursor/mcp.json`, skips
-installing dependencies.
+installing dependencies. A flag per question overrides one default:
+`--engine`, `--gateway`, `--endpoint`, `--skills`, `--mcp` (comma-separated
+locations, or `none`), `--install`; `npx e2e init --help` lists the values.
+
+The wizard needs a terminal: without one, `init` exits with code 2. From an
+agent's shell, run `npx e2e init --yes` when its defaults fit and install the
+dependencies after it, or install by hand (below). Neither registers the MCP
+server for Codex (topic `mcp`).
 
 Init adds dependencies and a `test:e2e` script to `package.json`, writes
 `e2e.config.ts` and `tests/example.e2e.ts`, updates `.gitignore`, leaves
@@ -56,6 +74,7 @@ key, or a local endpoint. Authenticate:
 | GitHub Copilot | `npx e2e login github-copilot` (GitHub CLI signed in, or your own `--client-id`) |
 | OpenCode Console (OpenCode Zen and OpenCode Go) | `npx e2e login opencode-console` (approve the device code, pick the workspace) |
 | SuperGrok or X Premium+ | `npx e2e login spacexai` |
+| Claude Max or Team | No `e2e login`: link a Claude Console organization in claude.ai for the plan's monthly API credits (Max: Settings > Billing; Team: an Owner under Organization settings > Billing), create an API key in it, set `ANTHROPIC_API_KEY`, use `anthropic('<id>')` from `@ai-sdk/anthropic` |
 | Vercel AI Gateway | Set `AI_GATEWAY_API_KEY`, or sign in to the Vercel CLI and `npx vercel link`; without the key `gateway()` uses a Vercel OIDC token |
 | OpenRouter | Set `OPENROUTER_API_KEY` |
 | Local or self-hosted endpoint | Set the endpoint URL and a model it serves, plus a key if required |
@@ -71,15 +90,20 @@ Switching to Copilot: install `ai`, `@ai-sdk/openai-compatible`, and
 over Copilot's Responses API when the plan serves that model only there, choosing
 per model from the plan's listing. `npx e2e models github-copilot` marks the models
 it cannot call at all: those served only over an API `copilot()` does not speak, and
-those the plan has not enabled.
+those the plan has not enabled. Whether the plan serves a model shows nowhere: on
+Copilot Free, GitHub serves models through auto model selection only, so a model
+called by id is usually refused, and the run stops with `MODEL_UNAVAILABLE` naming
+it. Pick another id or an API provider.
 
 Switching to OpenCode Console: install `ai`, `@ai-sdk/openai-compatible`,
 `@ai-sdk/openai`, `@ai-sdk/anthropic`, and `@ai-sdk/google`, set
 `model: opencodeConsole('<id>')` from `e2e/oauth/opencode-console`, run
 `npx e2e login opencode-console`. A bare id is an OpenCode Zen model; a `go/` id
-(`go/deepseek-v4.1-flash`) is an OpenCode Go model and needs the workspace's Go
-subscription. `npx e2e models opencode-console` lists the ids, tagged Zen or Go. In CI,
-set a Console service account key as `OPENCODE_API_KEY`.
+(`go/deepseek-v4.1-flash`) is an OpenCode Go model and needs an OpenCode Go
+subscription: the workspace's through the login, or yours through
+`OPENCODE_API_KEY`. `npx e2e models opencode-console` lists the ids, tagged
+Zen or Go, through the key when it is set. In CI, set a Console service account
+API key or an OpenCode Go subscription API key as `OPENCODE_API_KEY`.
 
 ## The config
 
@@ -131,21 +155,21 @@ or `E2E_USER_ADMIN_PASSWORD` first, or defer to fill time with
 | `retries` | `0`, `1` in CI | 0 to 10. |
 | `workers` | half the cores, `1` in CI | Parallel test files, capped by the `workers` the engine declares per target. |
 | `reporters` | `['list']` | `list`, `json`, `junit`, `markdown`, or `{ name, onEvent?, onRunFinished? }` objects; `json` excludes `list`, `--reporter` keeps the objects. |
-| `cache` | `'read-write'` | `'read-write'`, `'read-only'`, `'off'`, or `{ mode, store, dir, strict }`; CI demotes only a defaulted mode to `'read-only'`. `strict` (`--strict-cache`) fails a step whose recording no longer replays (`REPLAY_STALE`) instead of handing it to the agent. |
+| `cache` | `'read-write'` | `'read-write'`, `'read-only'`, `'off'`, or `{ mode, store, dir, strict }`; CI demotes only a defaulted mode to `'read-only'`. `strict` (`--strict-cache`) fails a step whose recording no longer replays (`REPLAY_STALE`) instead of handing it to the agent; retries replay too, and the run never writes the cache. |
 | `agents` | `{ default: built-in }` | Tests run with `default`, `e2e run --agent <name>` picks another, entries never inherit from `default`. Options: topic `agent`. |
 | `credentials` | `{}` | Named `{ username, password }`; `password` is a 6+ code point string or a function returning it. |
 | `secrets` | `{}` | Named values the model never sees (API keys, tokens), same value rule. A separate namespace: a credential's password is `credentials.user(name).password` (named `<name>.password`), never `secrets.get()`, so a name may be both. |
 | `output` | `'.e2e'` | Results directory; `--output <dir>` for one run. Inside the project root, not the root, not a tests glob's directory, never the cache dir (`cache.dir` stays `.e2e/cache`). |
 | `artifacts` | none | `{ store }`: artifacts go to the host `ArtifactStore` (`{ put(artifact), putLink?(link) }`); `putLink` gets provider-hosted video links (never a passed `retain-on-failure` attempt's). Failure screenshots are always captured when the engine can. |
-| `trace` | `'on'`, `'on-first-retry'` in CI | Attempts that record a Playwright trace: `'off'`, `'on'`, `'retain-on-failure'`, `'on-first-retry'`, `'on-all-retries'`; precedence and capability rule as `video`. |
-| `video` | `'off'` | Same modes; `'retain-on-failure'` records all, keeps those that did not pass. Precedence: the test's `video`, `--video [mode]`, the target's (`{ engine, video }`), the config's. |
+| `trace` | `'retain-on-failure'` | Tests that keep a trace page (`<output>/results/<test>/trace.md`): `'off'`, `'on'` (every test), `'retain-on-failure'` (failed, timed-out, flaky), `'on-first-retry'`, `'on-all-retries'`; precedence as `video`. Works on every engine. |
+| `video` | `'off'` | Attempts that record, same modes; `'retain-on-failure'` records all, keeps those that did not pass. Precedence: the test's `video`, `--video [mode]`, the target's (`{ engine, video }`), the config's. |
 | `projectId` | the package name | Report and cache identity. |
 
 - `tests` discovery enters only directories a glob can match; symlinks are
   not followed.
-- `trace` and `video`: a config or flag mode skips targets whose engine
-  cannot record (one notice), a target or test mode requires it
-  (`UNSUPPORTED_ARTIFACT`); a retry mode with `retries: 0` prints a notice;
+- `video`: a config or flag mode skips targets whose engine cannot record
+  (one notice), a target or test mode requires it (`UNSUPPORTED_ARTIFACT`).
+- `trace` and `video`: a retry mode with `retries: 0` prints a notice;
   neither invalidates the replay cache.
 
 ## The app under test
@@ -160,7 +184,7 @@ target's `app`:
 | `bundleId` | Device targets: the bundle id, package name, or display name (`Settings`) `app.open()` launches. |
 | `appPath` | Device targets: the `.app` or `.apk` under test. A device target needs `bundleId` or `appPath`. |
 | `launchArguments`, `permissions` | Device targets: arguments and permission states (`grant`, `deny`, `reset`) every fresh launch gets. |
-| `command` | The process serving `url`: `{ executable, args, cwd, env, startupTimeout, shutdownTimeout, log, reuseExisting }`; `{port}` in `args` and `env` expands to `url`'s port. Targets declaring the same command share one process. |
+| `command` | The process serving `url`: `{ executable, args, cwd, env, inheritEnv, startupTimeout, shutdownTimeout, log, reuseExisting }`; `{port}` in `args` and `env` expands to `url`'s port. Targets declaring the same command share one process. |
 | `readyUrl` | Readiness probe when it differs from `url`; `{port}` expands too. |
 | `environment` | `'test'`, `'staging'`, `'production'`; inferred from the host, labels the report and cache key. |
 | `identity` | Stable identity for cache and session keys when the origin changes per deploy (preview URLs). Defaults to the URL's origin and path, else `bundleId`, else `appPath`. |
@@ -180,13 +204,14 @@ start a script that brings them up and serves the app.
 
 | Option | Meaning |
 | --- | --- |
-| `browser` | `'chromium'` (default), `'firefox'`, `'webkit'`, or a `BrowserProvider` leasing hosted browsers over CDP (`kernel()` from `@e2e-dev/kernel`, or your own), which implies chromium and excludes `connect`. Scope `'worker'` (default): one browser per worker slot from `prepare` to `finish`; `'attempt'`: one per attempt, with `reconnectEndpoint`'s limits. |
+| `browser` | `'chromium'` (default), `'firefox'`, `'webkit'`, or a `BrowserProvider` leasing hosted browsers over CDP (`kernel()` from `@e2e-dev/kernel`, `smol()` from `@e2e-dev/smol`, `lightpanda()` from `@e2e-dev/lightpanda`, or your own), which implies chromium and excludes `connect`. Scope `'worker'` (default): one browser per worker slot from `prepare` to `finish`; `'attempt'`: one per attempt, with `reconnectEndpoint`'s limits (`lightpanda()` is worker scope only). |
 | `viewport` | `{ width, height }`, default 1280x720; `null` follows the browser window (hosted live view, headed run). On a headed hosted browser (Kernel) use `null` and size the service's screen; a fixed size gives a smaller, unmaximized window. |
-| `connect` | `{ cdpEndpoint }` attaches to a remote Chromium over CDP; both it and `reconnectEndpoint` are resolvers `(signal) => url`, not strings. With `reconnectEndpoint` it rides one persistent default context and reconnects only to the original browser and page. |
+| `connect` | `{ cdpEndpoint }` attaches to a remote Chromium over CDP; `cdpEndpoint` is required, and both it and `reconnectEndpoint` are resolvers `(signal) => url`, not strings, else `INVALID_CONFIG` at load. With `reconnectEndpoint` it rides one persistent default context, needs a fresh browser from `cdpEndpoint` every attempt, and reconnects only to the original browser and page. |
 | `headers` | Sent to the app's site only (Vercel's `x-vercel-protection-bypass`, ngrok's `ngrok-skip-browser-warning`), `agent.act` included; disables the browser HTTP cache and service workers. |
 | `basicAuth` | `{ username, password }` for a `401` challenge; `password` may be `secrets.get('name')`, resolved per attempt and redacted like any secret, the base64 `Authorization` credential too. |
 | `userAgent` | The `User-Agent` every attempt sends and `navigator.userAgent` reports. |
 | `locale`, `timezoneId` | The language (`'de-DE'`: `navigator.language`, `Intl`, `Accept-Language`) and IANA time zone (`'Europe/Berlin'`) every attempt runs in. |
+| `colorScheme`, `reducedMotion` | The `prefers-color-scheme` (`'light'`, `'dark'`, `'no-preference'`) and `prefers-reduced-motion` (`'reduce'`, `'no-preference'`) every page reports to its `@media` rules and `matchMedia`, from first paint. |
 | `initScripts` | Scripts every document runs before the page's own: source, `{ path }`, or a function with no closures. |
 | `testIdAttribute` | What `getByTestId` reads; default `data-testid`. |
 | `screencast` | `{ size?, quality? }` for the engine's own video: frame size (default the viewport's), JPEG quality 0 to 100. |
@@ -235,10 +260,14 @@ app: {
 - The runner spawns `command`, polls `readyUrl` (default `url`) for a 200 to
   499 status within `startupTimeout` (default 60 s), and stops it when the run
   ends, fails, or is interrupted (`shutdownTimeout`, default 10 s). Never
-  ready is `APP_UNREACHABLE`; `.e2e/report.json` is still written.
+  ready is `APP_UNREACHABLE`; the run stops before its tests and leaves the
+  last run's report and results as they were (`command.log` still gets this
+  boot's output).
 - The child gets only `PATH`, `HOME`, the temp-directory variables,
-  `SystemRoot` and `COMSPEC` on Windows, and `command.env`; pass the rest
-  through `env`. Model keys and `E2E_USER_*` values are never inherited.
+  `SystemRoot` and `COMSPEC` on Windows, and `command.env`. Pass the rest
+  through `env`, or name host variables in `inheritEnv` (`['DATABASE_URL',
+  'STRIPE_*']`); `env` wins over them. Model keys and `E2E_USER_*` values
+  are never inherited unless an `inheritEnv` name or prefix matches them.
 - Output is discarded unless `log` names a file under an ignored directory
   such as `.e2e/logs/`; without it a server dying on boot is invisible.
 - A `url` answering before the spawn is `APP_ALREADY_RUNNING`;
@@ -329,14 +358,32 @@ export default {
   the app (omit `app.appPath`). A run must fit one session: `maxDurationMinutes`,
   absent, is the account's cap (40 on a standard plan). `videoTouches: false`
   on the engine for video there.
+- `limrun()` from `@e2e-dev/limrun` leases one device per worker and installs
+  `app.appPath` before tests. Set `LIMRUN_API_KEY`; install `@limrun/api` and
+  matching `agent-device` peers. Android needs `adb` on `PATH` for its tunnel.
+  iOS keyboard actions such as `locator.press('Enter')` return
+  `UNSUPPORTED_CAPABILITY`; tap an app button when available.
+  See `examples/with-limrun` for the same form and restart tests on both platforms.
+- `testmu({ device, osVersion, app })` from `@e2e-dev/testmu` leases TestMu
+  AI (formerly LambdaTest) emulators, simulators, or real devices
+  (`deviceType: 'real'`); `device` and `osVersion` match its catalog
+  exactly, TestMu AI installs `app` (omit `app.appPath`), and it reads
+  `LT_USERNAME` and `LT_ACCESS_KEY`. An attempt's video links TestMu AI's
+  recording of the whole session.
 - Only a control that appeared or moved with the previous action waits out
   `transition` (default 500 ms); agent actions settle `settle` ms (default
   150) before the next observation, `settle: false` skips it.
 - `screen`, `expect`, `app`, `agent` work unchanged; `test` from
   `@e2e-dev/mobile` types the `device` fixture (`installApp`, `openLink`,
   `setPermission`, `setNetwork`, `setAppearance`, `clearKeychain`, `fold`
-  for an iPhone Duo's hinge, `locator`, more). Portable suites declare
+  for a foldable's hinge (iPhone Duo, Android foldable emulators), `locator`, more). Portable suites declare
   `requires: ['device']`.
+- `setNetwork('offline')` and `setAirplaneMode(true)` are Android only: on
+  iOS both are `UNSUPPORTED_CAPABILITY`, since a simulator shares the Mac's
+  network, and `setNetwork('online')` / `setAirplaneMode(false)` do nothing.
+  `setNetwork('offline')` turns off Wi-Fi alone and cellular stays up; an
+  offline test uses `setAirplaneMode(true)` (Android 11+) under
+  `platforms: ['android']` and turns it back off in `afterEach`.
 - No `state` capability: `test.setup` and `session` are unavailable; sign in
   per test with `screen` actions or `agent.act`, both fill a `Secret` (topic
   `writing-tests`, Sign-in sessions).
@@ -357,3 +404,8 @@ export default {
 - `.gitignore` lists the `.e2e/` outputs (init adds them); drop the
   `.e2e/cache/` line to commit replays.
 - CI runs the whole suite, agent steps included, on PRs; see `running`.
+
+### Existing MCP registration
+
+Re-running `init` preserves the e2e MCP server's environment and client settings
+while repairing its launch command. A current registration is left unchanged.

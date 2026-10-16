@@ -4,7 +4,7 @@ import { buildEngine } from '../../src/engine.ts';
 import { AgentDeviceSurface } from '../../src/surface.ts';
 import { mobileTools } from '../../src/tools.ts';
 import { createFakeClient } from '../helpers/fake-client.ts';
-import { noSecrets } from '../helpers/secrets.ts';
+import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 describe('agent tool pack', () => {
   it('scopes every tool to the platforms of its engines and rejects a foreign handle', () => {
@@ -27,7 +27,7 @@ describe('agent tool pack', () => {
     const iosFake = createFakeClient({ 'apps.open': () => ({ appName: 'Reminders' }) });
     const androidFake = createFakeClient({ 'apps.open': () => ({ appName: 'Clock' }) });
     const ios = buildEngine(new AgentDeviceSurface({ platform: 'ios' }, () => iosFake.client));
-    const android = buildEngine(new AgentDeviceSurface({ platform: 'android' }, () => androidFake.client));
+    const android = buildEngine(new AgentDeviceSurface({ platform: 'android', device: 'emulator-5554' }, () => androidFake.client));
     const init = (engine: typeof ios, targetName: string) =>
       engine.init!({
         runId: 'r',
@@ -51,7 +51,7 @@ describe('agent tool pack', () => {
 
     await expect(run('alert', { action: 'dismiss' })).rejects.toMatchObject({ code: 'INVALID_STATE' });
 
-    const attempt = (attemptId: string) => ({ attemptId, artifactsDir: '/tmp', signal: new AbortController().signal, resolveSecret: noSecrets });
+    const attempt = (attemptId: string) => ({ attemptId, artifactsDir: '/tmp', signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
     await android.startAttempt!(attempt('a1'));
     expect(await run('open_app', { app: 'Clock', relaunch: true })).toBe('Opened Clock.');
     expect(await run('swipe', { from: { x: 300, y: 200 }, to: { x: 20, y: 200 } })).toMatch(/Swiped/);
@@ -61,7 +61,9 @@ describe('agent tool pack', () => {
       'interactions.swipe',
       'command.alert',
     ]);
-    expect(androidFake.lastArgs('apps.open')).toEqual({ app: 'Clock', platform: 'android', relaunch: true });
+    expect(androidFake.lastArgs('apps.open')).toEqual({ app: 'Clock', platform: 'android', serial: 'emulator-5554', relaunch: true });
+    // The alert carries the worker's device, as it can run with no app open.
+    expect(androidFake.lastArgs('command.alert')).toEqual({ platform: 'android', serial: 'emulator-5554', action: 'dismiss' });
     expect(iosFake.methods()).toEqual(['devices.boot']);
     await android.endAttempt!({ signal: new AbortController().signal, timeoutMs: 1000 });
 
@@ -84,7 +86,7 @@ describe('agent tool pack', () => {
       env: {},
       signal: new AbortController().signal,
     });
-    await ios.startAttempt!({ attemptId: 'a1', artifactsDir: '/tmp', signal: new AbortController().signal, resolveSecret: noSecrets });
+    await ios.startAttempt!({ attemptId: 'a1', artifactsDir: '/tmp', signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
     const tools = mobileTools(ios);
     const open = (app: string) =>
       (tools.open_app!.tool.execute as (input: unknown, options: object) => Promise<unknown>)({ app }, {

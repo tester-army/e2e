@@ -1,0 +1,88 @@
+name: mcp-registry
+
+# Lists one e2e release in the official MCP Registry as
+# io.github.tester-army/e2e, from packages/e2e/server.json at that release's
+# tag. `release.yml` calls it after each release that published e2e; dispatch
+# it by hand with the version to retry a failed publish. A registry version
+# cannot be changed once published, so a version already listed is skipped.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: e2e version to list, e.g. 0.22.0
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: e2e version to list, e.g. 0.22.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-registry-${{ inputs.version }}
+  cancel-in-progress: false
+
+env:
+  VERSION: ${{ inputs.version }}
+  SERVER_NAME: io.github.tester-army/e2e
+
+jobs:
+  publish:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # OIDC for `mcp-publisher login github-oidc`.
+      id-token: write
+    steps:
+      - name: Check the version
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::version must be a release version like 0.22.0, got: $VERSION"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: e2e@${{ inputs.version }}
+          persist-credentials: false
+
+      - name: Skip a version already listed
+        id: listed
+        run: |
+          status="$(curl -sS --retry 3 --retry-all-errors -o /dev/null -w '%{http_code}' "https://registry.modelcontextprotocol.io/v0.1/servers/${SERVER_NAME/\//%2F}/versions/$VERSION")"
+          case "$status" in
+            200) echo "$SERVER_NAME@$VERSION is already listed"; echo "skip=true" >> "$GITHUB_OUTPUT" ;;
+            404) ;;
+            *) echo "::error::registry answered $status for $SERVER_NAME@$VERSION"; exit 1 ;;
+          esac
+
+      - name: Check the entry matches the release
+        if: ${{ steps.listed.outputs.skip != 'true' }}
+        run: |
+          jq -e --arg name "$SERVER_NAME" --arg v "$VERSION" \
+            '.name == $name and .version == $v and .packages != [] and all(.packages[]; .version == $v)' packages/e2e/server.json \
+            || { echo "::error::packages/e2e/server.json at e2e@$VERSION does not list $SERVER_NAME@$VERSION"; exit 1; }
+
+      # The registry reads `mcpName` from this URL; npm can take a moment to
+      # serve a version it just accepted.
+      - name: Wait for the package on npm
+        if: ${{ steps.listed.outputs.skip != 'true' }}
+        run: |
+          for _ in $(seq 1 30); do
+            name="$(curl -sSf "https://registry.npmjs.org/e2e/$VERSION" 2>/dev/null | jq -r '.mcpName // empty' || true)"
+            [ "$name" = "$SERVER_NAME" ] && exit 0
+            sleep 10
+          done
+          echo "::error::npm does not serve e2e@$VERSION with mcpName $SERVER_NAME"
+          exit 1
+
+      - uses: ./.github/actions/mcp-publisher
+        if: ${{ steps.listed.outputs.skip != 'true' }}
+
+      - name: Publish
+        if: ${{ steps.listed.outputs.skip != 'true' }}
+        run: |
+          "$RUNNER_TEMP/mcp-publisher" login github-oidc
+          "$RUNNER_TEMP/mcp-publisher" publish packages/e2e/server.json

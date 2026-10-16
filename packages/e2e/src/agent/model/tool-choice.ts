@@ -5,8 +5,9 @@
  * outright (Anthropic's Claude Fable 5.1 answers HTTP 400 with
  * `tool_choice: type "tool" and "any" are not supported for this model.`;
  * DeepSeek's V4 models think by default and answer a forced choice with
- * `Thinking mode does not support this tool_choice`),
- * and a gateway forwards the provider's words.
+ * `Thinking mode does not support this tool_choice`; Meta's Muse Spark models
+ * answer ``only `"auto"` is supported for `tool_choice` ``), and a gateway
+ * forwards the provider's words.
  *
  * The loop reacts to this refusal differently from any other provider
  * failure: the same request with `toolChoice: 'auto'` and an instruction to
@@ -17,6 +18,7 @@ const FORCED_CHOICE_PATTERNS: readonly RegExp[] = [
   /tool_choice.*not supported/i, // Anthropic
   /does not support (?:this |the )?tool_choice/i, // DeepSeek V4 in thinking mode (its default)
   /tool_choice.*(?:unsupported|is not allowed|cannot be)/i, // OpenAI-compatible proxies
+  /only\W+auto\W+is supported for\W+tool_choice/i, // Meta Muse Spark
   /(?:forced|required) tool (?:choice|call|use).*not supported/i, // generic
   /does not support (?:forced|required) tool/i, // generic
 ];

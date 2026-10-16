@@ -2,9 +2,11 @@
  * The user-level telemetry preferences: `~/.config/e2e/telemetry.json`
  * (`$XDG_CONFIG_HOME/e2e` when set, `%APPDATA%\e2e` on Windows). The file
  * holds the opt-out, the random id every event from this machine is
- * attributed to, the salt that keeps a hashed path unrecoverable, and which
- * notice was shown when. Nothing in it names the person or the machine: the
- * id and the salt are random bytes, generated here and never derived.
+ * attributed to, and which notice was shown when. Nothing in it names the
+ * person or the machine: the id is random bytes, generated here and never
+ * derived. A complete file also holds a random salt that nothing is hashed
+ * with anymore: older versions hashed paths with it and replace the id of a
+ * file without one, and a machine often has several versions installed.
  *
  * The store fails closed. `open` completes the file in one write when the id
  * or the salt is missing, and when that write cannot happen there is no
@@ -138,11 +140,6 @@ export class TelemetryStore {
   /** The random per-machine id every event from this machine is attributed to. */
   get anonymousId(): string {
     return this.preferences.anonymousId;
-  }
-
-  /** The local salt that keeps a hashed project path unrecoverable; never leaves the machine. */
-  get pathSalt(): string {
-    return this.preferences.salt;
   }
 
   /** Whole days since the ids were generated; undefined for a file from before the time was recorded. */

@@ -40,6 +40,20 @@ const conclusion = {
 };
 
 describe('TraceRecorder', () => {
+  it.each(['provider', 'model'] as const)('omits an oversized recorded %s', (field) => {
+    const recorder = makeRecorder();
+    recorder.record({ name: 'tap', node: upgradeButton });
+    const trace = recorder.finalize({ ...conclusion, recordedBy: { provider: 'test', model: 'A', [field]: 'x'.repeat(301) } });
+    expect(trace).toBeDefined();
+    expect(trace?.recordedBy).toBeUndefined();
+  });
+
+  it.each([{ provider: '', model: 'A' }, { provider: 'test', model: '  ' }])('omits blank recording identity %j', (recordedBy) => {
+    const recorder = makeRecorder();
+    recorder.record({ name: 'tap', node: upgradeButton });
+    expect(recorder.finalize({ ...conclusion, recordedBy })?.recordedBy).toBeUndefined();
+  });
+
   it('poisons a trace whose target is an unnamed twin no named row tells apart, and keeps one that a row does', () => {
     const icon = redacted({ ref: { id: 'i', revision: 'r1' }, role: 'button' });
     const orphan = makeRecorder();
@@ -88,7 +102,8 @@ describe('TraceRecorder', () => {
     recorder.record({ name: 'typeSecret', node: passwordField, secret: 'member-password' });
     const redact = createRedactor(secrets);
     recorder.record({ name: 'tap', node: redacted({ ...upgradeButton, name: 'Greeting hunter2' }, { redact, redactCut: redact }) });
-    const trace = recorder.finalize(conclusion);
+    const trace = recorder.finalize({ ...conclusion, recordedBy: { provider: 'example', model: 'hunter2' } });
+    expect(trace?.recordedBy).toEqual({ provider: 'example', model: '<secret:member-password>' });
     const serialized = JSON.stringify(trace);
     expect(serialized).not.toContain('hunter2');
     expect(serialized).toContain('<secret:member-password>');

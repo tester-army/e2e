@@ -4,6 +4,7 @@
  */
 
 import type { ExpoCredentials } from './credentials.ts';
+import { isRecord } from './json.ts';
 
 const GRAPHQL_URL = 'https://api.expo.dev/graphql';
 
@@ -73,22 +74,6 @@ const CANCEL_JOB = `mutation ($id: ID!) {
   jobRun { cancelJobRun(jobRunId: $id) { id } }
 }`;
 
-interface GraphqlError {
-  readonly message?: string;
-  readonly extensions?: { readonly errorCode?: string };
-}
-
-interface SessionById {
-  readonly status: 'NEW' | 'IN_PROGRESS' | 'STOPPED' | 'ERRORED';
-  readonly turtleJobRun: { readonly status: string } | null;
-  readonly remoteConfig: {
-    readonly agentDeviceRemoteSessionUrl?: string;
-    readonly agentDeviceRemoteSessionToken?: string;
-    readonly webPreviewUrl?: string | null;
-    readonly webPreviewToken?: string | null;
-  } | null;
-}
-
 /** Job run states before the job picks the session up: waiting for the account's concurrency. */
 const QUEUED_JOB = new Set(['NEW', 'IN_QUEUE']);
 /** Job run states after which the session never becomes ready. */
@@ -98,8 +83,8 @@ const ENDED_JOB = new Set(['ERRORED', 'CANCELED', 'FINISHED', 'PENDING_CANCEL'])
 export function easSessions(credentials: ExpoCredentials): EasSessions {
   const auth: Record<string, string> =
     'accessToken' in credentials ? { Authorization: `Bearer ${credentials.accessToken}` } : { 'expo-session': credentials.sessionSecret };
-  /** Runs one operation; a GraphQL error throws with EAS's message and error code. */
-  const graphql = async <T>(query: string, variables: Record<string, unknown>, signal: AbortSignal): Promise<T> => {
+  /** Runs one operation and returns its unchecked `data`; a GraphQL error throws with EAS's message and error code. */
+  const graphql = async (query: string, variables: Record<string, unknown>, signal: AbortSignal): Promise<unknown> => {
     const response = await fetch(GRAPHQL_URL, {
       method: 'POST',
       headers: { ...auth, 'Content-Type': 'application/json' },
@@ -107,16 +92,22 @@ export function easSessions(credentials: ExpoCredentials): EasSessions {
       signal,
     });
     const text = await response.text();
-    let body: { data?: T | null; errors?: readonly GraphqlError[] };
+    let body: unknown;
     try {
-      body = JSON.parse(text) as typeof body;
+      body = JSON.parse(text);
     } catch {
       throw new Error(`EAS: HTTP ${response.status}, ${text.trim().slice(0, 200)}`);
     }
-    const error = body.errors?.[0];
-    if (error !== undefined) throw new EasError(error.message ?? `HTTP ${response.status}`, error.extensions?.errorCode);
-    if (!response.ok || body.data == null) throw new Error(`EAS: HTTP ${response.status}, no data`);
-    return body.data;
+    const errors = field(body, 'errors');
+    const error: unknown = Array.isArray(errors) ? errors[0] : undefined;
+    if (error !== undefined) {
+      const message = field(error, 'message');
+      const code = field(field(error, 'extensions'), 'errorCode');
+      throw new EasError(typeof message === 'string' ? message : `HTTP ${response.status}`, typeof code === 'string' ? code : undefined);
+    }
+    const data = field(body, 'data');
+    if (!response.ok || data == null) throw new Error(`EAS: HTTP ${response.status}, no data`);
+    return data;
   };
   return {
     async create({ platform, deviceIdentifier, ...fields }, signal) {
@@ -126,36 +117,69 @@ export function easSessions(credentials: ExpoCredentials): EasSessions {
         type: 'AGENT_DEVICE',
         ...(deviceIdentifier === undefined ? {} : { [platform]: { deviceIdentifier } }),
       };
-      const data = await graphql<{ deviceRunSession: { createDeviceRunSession: { id: string; app: { slug: string; ownerAccount: { name: string } } } } }>(CREATE, { input }, signal);
-      const { id, app } = data.deviceRunSession.createDeviceRunSession;
-      return { id, url: `https://expo.dev/accounts/${encodeURIComponent(app.ownerAccount.name)}/projects/${encodeURIComponent(app.slug)}/simulator-sessions/${id}` };
+      const created = field(field(await graphql(CREATE, { input }, signal), 'deviceRunSession'), 'createDeviceRunSession');
+      const id = field(created, 'id');
+      const app = field(created, 'app');
+      const slug = field(app, 'slug');
+      const owner = field(field(app, 'ownerAccount'), 'name');
+      if (typeof id !== 'string' || typeof slug !== 'string' || typeof owner !== 'string') throw unexpected('createDeviceRunSession');
+      return { id, url: `https://expo.dev/accounts/${encodeURIComponent(owner)}/projects/${encodeURIComponent(slug)}/simulator-sessions/${id}` };
     },
     async state(id, signal) {
-      const data = await graphql<{ deviceRunSessions: { byId: SessionById } }>(STATE, { id }, signal);
-      const session = data.deviceRunSessions.byId;
-      const job = session.turtleJobRun?.status;
-      const config = session.remoteConfig;
-      if (session.status === 'STOPPED' || session.status === 'ERRORED') return { phase: 'ended', status: session.status.toLowerCase() };
-      // A job that ended keeps the daemon address it had, which no longer answers.
-      if (job !== undefined && ENDED_JOB.has(job)) return { phase: 'ended', status: `job ${job.toLowerCase()}` };
-      if (config?.agentDeviceRemoteSessionUrl !== undefined && config.agentDeviceRemoteSessionToken !== undefined) {
-        const openPreviewUrl = config.webPreviewToken == null ? (config.webPreviewUrl ?? undefined) : undefined;
-        return { phase: 'ready', daemonUrl: config.agentDeviceRemoteSessionUrl, daemonToken: config.agentDeviceRemoteSessionToken, openPreviewUrl };
+      const session = field(field(await graphql(STATE, { id }, signal), 'deviceRunSessions'), 'byId');
+      const status = field(session, 'status');
+      const jobRun = field(session, 'turtleJobRun');
+      const job = field(jobRun, 'status');
+      const config = field(session, 'remoteConfig');
+      const daemonUrl = field(config, 'agentDeviceRemoteSessionUrl');
+      const daemonToken = field(config, 'agentDeviceRemoteSessionToken');
+      const previewUrl = field(config, 'webPreviewUrl');
+      const previewToken = field(config, 'webPreviewToken');
+      if (
+        typeof status !== 'string' ||
+        (jobRun != null && typeof job !== 'string') ||
+        (config != null && !isRecord(config)) ||
+        ![daemonUrl, daemonToken, previewUrl, previewToken].every((value) => value == null || typeof value === 'string')
+      ) {
+        throw unexpected('deviceRunSessions.byId');
       }
-      return { phase: job === undefined || QUEUED_JOB.has(job) ? 'queued' : 'starting' };
+      if (status === 'STOPPED' || status === 'ERRORED') return { phase: 'ended', status: status.toLowerCase() };
+      // A job that ended keeps the daemon address it had, which no longer answers.
+      if (typeof job === 'string' && ENDED_JOB.has(job)) return { phase: 'ended', status: `job ${job.toLowerCase()}` };
+      if (typeof daemonUrl === 'string' && typeof daemonToken === 'string') {
+        const openPreviewUrl = previewToken == null && typeof previewUrl === 'string' ? previewUrl : undefined;
+        return { phase: 'ready', daemonUrl, daemonToken, openPreviewUrl };
+      }
+      return { phase: typeof job !== 'string' || QUEUED_JOB.has(job) ? 'queued' : 'starting' };
     },
     async stop(id, signal) {
-      let job: { id: string; status: string } | null;
+      let data: unknown;
       try {
-        const data = await graphql<{ deviceRunSession: { ensureDeviceRunSessionStopped: { turtleJobRun: { id: string; status: string } | null } } }>(STOP, { id }, signal);
-        job = data.deviceRunSession.ensureDeviceRunSessionStopped.turtleJobRun;
+        data = await graphql(STOP, { id }, signal);
       } catch (cause) {
         if (cause instanceof EasError && cause.code === 'NOT_FOUND_ERROR') return;
         throw cause;
       }
-      if (job !== null && QUEUED_JOB.has(job.status)) await graphql(CANCEL_JOB, { id: job.id }, signal);
+      const stopped = field(field(data, 'deviceRunSession'), 'ensureDeviceRunSessionStopped');
+      if (!isRecord(stopped)) throw unexpected('ensureDeviceRunSessionStopped');
+      const job = stopped['turtleJobRun'];
+      if (job === null) return;
+      const jobId = field(job, 'id');
+      const jobStatus = field(job, 'status');
+      if (typeof jobId !== 'string' || typeof jobStatus !== 'string') throw unexpected('ensureDeviceRunSessionStopped');
+      if (QUEUED_JOB.has(jobStatus)) await graphql(CANCEL_JOB, { id: jobId }, signal);
     },
   };
+}
+
+/** `key` of a JSON object; `undefined` for a missing key or a value that is not an object. */
+function field(value: unknown, key: string): unknown {
+  return isRecord(value) ? value[key] : undefined;
+}
+
+/** The error for an answer without the fields an operation reads; it names no value, since the answer can hold a daemon token. */
+function unexpected(operation: string): Error {
+  return new Error(`EAS: unexpected response to ${operation}`);
 }
 
 /** An error EAS answered with, its `errorCode` kept. */

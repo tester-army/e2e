@@ -20,6 +20,7 @@ import {
   describePattern,
   EngineError,
   matchesText,
+  obj,
   pollCondition,
   raceAbort,
   rejectUnknownOptions,
@@ -39,8 +40,9 @@ import { classifyInputError } from './actions.ts';
 import type { DialogHandler } from './dialogs.ts';
 import { saveDownloadsTo, saveFromBrowser, saveLocally } from './downloads.ts';
 import { isTestErrorCode, message as causeMessage, translatePwError } from './support.ts';
-import { compileEvaluation } from './evaluation.ts';
+import { compileEvaluation, pageFunctionSource } from './evaluation.ts';
 import { initScriptLabel, testInitScriptSource } from './init-scripts.ts';
+import { MEDIA_KEYS, mediaLabel, mediaProblem, type WebMedia } from './media.ts';
 import { lowercaseNames } from './protected-app.ts';
 import { parseContinue, parseFulfill, requireNoArguments } from './route-options.ts';
 import { routePatternMatches, routePatternsEqual } from './route-pattern.ts';
@@ -245,17 +247,29 @@ export interface Browser extends Expectable<BrowserExpectation> {
   setCookies(cookies: readonly Cookie[]): Promise<void>;
   /** Sets the viewport size. */
   setViewport(size: { width: number; height: number }): Promise<void>;
+  /**
+   * Emulates CSS media features on every open tab and every tab opened after
+   * them, the app's own included, for the rest of the attempt, as Playwright's
+   * `page.emulateMedia` does: the page's `@media` rules and `matchMedia` both
+   * read them. A feature left out keeps its value. Works before the first
+   * navigation, so the page loads with them.
+   */
+  emulateMedia(media: WebMedia): Promise<void>;
   /** Registers an attempt-scoped dialog handler and returns an unsubscribe function. */
   onDialog(handler: DialogHandler): Promise<() => Promise<void>>;
   /** Runs a trigger and waits for its download. */
   waitForDownload(
     trigger: () => Promise<void>,
     options?: { timeout?: number },
-  ): Promise<{ path: string; suggestedFilename: string }>;
+  ): Promise<{ path: string; absolutePath: string; suggestedFilename: string }>;
   /** Viewport-level keyboard, for whatever has focus. */
   readonly keyboard: {
     /** Sends one key. */
     press(key: string): Promise<void>;
+    /** Holds one key until up; repeated down calls send a repeat event. */
+    down(key: string): Promise<void>;
+    /** Releases a held key. */
+    up(key: string): Promise<void>;
     /** Types plain text. */
     type(text: string): Promise<void>;
   };
@@ -322,26 +336,26 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
   const browser: Omit<Browser, keyof Expectable<BrowserExpectation>> = {
     goto(url, options) {
       const resolved = context.app.resolveUrl(url);
-      return navigation(options, async (operation) => {
+      return navigation(options, (operation) => surface.navigating(async () => {
         const page = await surface.ensurePage();
         await page.goto(resolved, {
           waitUntil: options?.waitUntil ?? 'load',
           timeout: operation.timeoutMs,
         });
-      });
+      }));
     },
     reload: (options) =>
-      navigation(options, async (operation) => {
+      navigation(options, (operation) => surface.navigating(async () => {
         await surface.requirePage().reload({ waitUntil: 'load', timeout: operation.timeoutMs });
-      }),
+      })),
     back: (options) =>
-      navigation(options, async (operation) => {
+      navigation(options, (operation) => surface.navigating(async () => {
         await surface.requirePage().goBack({ waitUntil: 'load', timeout: operation.timeoutMs });
-      }),
+      })),
     forward: (options) =>
-      navigation(options, async (operation) => {
+      navigation(options, (operation) => surface.navigating(async () => {
         await surface.requirePage().goForward({ waitUntil: 'load', timeout: operation.timeoutMs });
-      }),
+      })),
     url: () => currentUrl(),
     title: () => currentTitle(),
     // The same poll as `expect(browser).toHaveURL`, exposed as a wait.
@@ -355,7 +369,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       fn: string | ((arg?: never) => T | Promise<T>),
       arg?: JsonValue,
     ): Promise<T> {
-      const source = typeof fn === 'string' ? fn : fn.toString();
+      const source = typeof fn === 'string' ? fn : pageFunctionSource(fn);
       validateJsonValue(arg, 'evaluate argument');
       const evaluate = compileEvaluation(source, arg !== undefined);
       // JSON safety is checked above; Playwright's recursive argument type cannot expand JsonValue.
@@ -504,6 +518,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           url: response.url(),
           status: response.status(),
           headers: response.headers(),
+          // oxlint-disable-next-line e2e/no-unchecked-json -- public API: the caller names T, unknown by default
           json: async <T = unknown>() => JSON.parse(await text()) as T,
           text,
         };
@@ -562,6 +577,19 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
         await surface.setViewport(size);
         context.attachViewport({ width: size.width, height: size.height, scale: 1 });
       }),
+    async emulateMedia(media) {
+      if (typeof media !== 'object' || media === null) {
+        throw new TestError('INVALID_ARGUMENT', 'browser.emulateMedia takes { colorScheme?, reducedMotion? }');
+      }
+      rejectUnknownOptions('browser.emulateMedia', media, MEDIA_KEYS);
+      for (const key of MEDIA_KEYS) {
+        const problem = mediaProblem((name) => `browser.emulateMedia({ ${name} })`, key, media[key]);
+        if (problem !== undefined) throw new TestError('INVALID_ARGUMENT', problem);
+      }
+      // Read once, so a test that changes its object later changes nothing here.
+      const requested = obj({ colorScheme: media.colorScheme, reducedMotion: media.reducedMotion });
+      await surface.guard(context.operation(), 'emulateMedia', () => surface.emulateMedia(requested));
+    },
     // Async so the harness records the registration as a `browser.onDialog` step.
     async onDialog(handler: DialogHandler) {
       const unsubscribe = surface.dialogs.add(handler);
@@ -593,7 +621,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
         if (remote === undefined) await saveLocally(download, absolute, surface.unservedDownloads());
         else await saveFromBrowser(download, remote, absolute, currentOperation.signal);
         context.attachArtifact('download', relative);
-        return { path: relative, suggestedFilename };
+        return { path: relative, absolutePath: absolute, suggestedFilename };
       }, (cause, label) => {
         // The trigger is test code, so its errors keep their original classification.
         if (triggerFailure !== undefined && Object.is(cause, triggerFailure.cause)) throw cause;
@@ -610,6 +638,10 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       }, 'test-code');
     },
     keyboard: {
+      down: (key) =>
+        surface.guard(context.operation(), 'keyboard.down', () => surface.requirePage().keyboard.down(key), classifyInputError),
+      up: (key) =>
+        surface.guard(context.operation(), 'keyboard.up', () => surface.requirePage().keyboard.up(key), classifyInputError),
       press: (key) =>
         surface.guard(context.operation(), 'keyboard.press', () => surface.requirePage().keyboard.press(key), classifyInputError),
       type: (text) =>
@@ -649,9 +681,10 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
     cookies: action,
     setCookies: action,
     setViewport: action,
+    emulateMedia: { ...action, label: (media) => mediaLabel(media) },
     onDialog: action,
     waitForDownload: { ...action, timeout: (_trigger, options) => options?.timeout },
-    keyboard: { press: { ...action, label: (key) => key }, type: { ...action, label: (text) => `${text.length} chars` } },
+    keyboard: { down: { ...action, label: (key) => key }, up: { ...action, label: (key) => key }, press: { ...action, label: (key) => key }, type: { ...action, label: (text) => `${text.length} chars` } },
     mouse: { move: action, wheel: action, down: action, up: action },
   });
 }
@@ -746,11 +779,11 @@ function createBrowserExpectation(deps: ExpectationDeps, negated = false): Brows
         'toHaveClass',
         `class ${describePattern(pattern)}`,
         async (deadline) => {
-          let value: string | null;
+          let value: string | null | undefined;
           try {
             // A locator read takes the action timeout; the poll's deadline is the tighter bound.
             value = await withTimeout(
-              target.getAttribute('class'),
+              readClass(target),
               deadline.remaining(),
               () => new EngineError('OPERATION_TIMEOUT', 'class read timed out', { retryable: false }),
             );
@@ -758,6 +791,7 @@ function createBrowserExpectation(deps: ExpectationDeps, negated = false): Brows
             if (isTestErrorCode(error, 'LOCATOR_NOT_FOUND')) return { matches: undefined, observed: 'no node' };
             throw error;
           }
+          if (value === undefined) return { matches: undefined, observed: 'no node' };
           if (value === null) return { matches: false, observed: 'no class attribute' };
           return {
             matches: matchesText(value.trim().split(/\s+/).join(' '), pattern),
@@ -768,6 +802,16 @@ function createBrowserExpectation(deps: ExpectationDeps, negated = false): Brows
       );
     },
   };
+}
+
+/**
+ * The class attribute of one match, `undefined` while nothing matches. A
+ * read waits for its match until the action timeout, so the poll samples
+ * absence first: a node that never arrives stays an assertion failure.
+ */
+async function readClass(target: Locator): Promise<string | null | undefined> {
+  if ((await target.count()) === 0) return undefined;
+  return target.getAttribute('class');
 }
 
 function requireSelector(method: string, selector: unknown): string {

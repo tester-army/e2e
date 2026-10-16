@@ -16,6 +16,8 @@ export interface FakeExecutorContext {
 export interface FakeExecutorContextOptions {
   /** The verbs the target declares; the whole grammar by default. */
   readonly verbs?: readonly ExecutorVerb[];
+  /** Whether the target's tap family takes `modifiers`; false by default. */
+  readonly tapModifiers?: boolean;
   /** The secrets the step declared; one password by default. */
   readonly secrets?: ExecutorStep['secrets'];
   readonly pixelsTainted?: boolean;
@@ -64,7 +66,7 @@ export function fakeExecutorContext(options: FakeExecutorContextOptions = {}): F
       secrets: options.secrets ?? [{ name: 'admin', purpose: 'password' }],
     },
     attempt: { testId: 'test', attemptId: 'attempt', index: 0, signal, memory: new Map() },
-    target: { name: 'web', platform: 'web', verbs: new Set(options.verbs ?? (Object.keys(actions) as ExecutorVerb[])) },
+    target: { name: 'web', platform: 'web', verbs: new Set(options.verbs ?? (Object.keys(actions) as ExecutorVerb[])), tapModifiers: options.tapModifiers ?? false },
     signal,
     model: undefined,
     providerOptions: undefined,

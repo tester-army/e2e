@@ -44,6 +44,9 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     'frameset',
     'object',
     'embed',
+    // Next.js App Router's route announcer echoes the title on a hydration
+    // schedule of its own, which an observation must not read as an alert.
+    'next-route-announcer',
   ];
   const OPAQUE_TAGS = ['svg', 'math', 'canvas', 'video', 'audio'];
   /**
@@ -61,18 +64,18 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
 
   /**
    * How the active mode projects one node, expressed as data so `describe`
-   * stays branch-free. Tree mode is the model-bound projection: bounded text,
-   * a bounded attribute projection, hrefs reduced to origin+path, the root
-   * document named by its title, and no value on a checkbox or radio, whose
-   * value attribute is an app token its checked state already says more
-   * than. Node mode is the full locator-read surface.
+   * stays branch-free. Tree mode is the model-bound projection: bounded line
+   * text (`lineTextOf`), a bounded attribute projection, hrefs reduced to
+   * origin+path, the root document named by its title, and no value on a
+   * checkbox or radio, whose value attribute is an app token its checked
+   * state already says more than. Node mode is the full locator-read surface.
    */
   const projection: {
     attributes: readonly string[] | null;
     textLimit: number | null;
     nameLimit: number | null;
     redactHref: boolean;
-    directTextOnly: boolean;
+    lineText: boolean;
     documentRoot: boolean;
     checkableValue: boolean;
   } =
@@ -82,7 +85,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
           textLimit: options.mode.textLimit,
           nameLimit: options.mode.nameLimit,
           redactHref: true,
-          directTextOnly: true,
+          lineText: true,
           documentRoot: true,
           checkableValue: false,
         }
@@ -91,7 +94,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
           textLimit: null,
           nameLimit: null,
           redactHref: false,
-          directTextOnly: false,
+          lineText: false,
           documentRoot: false,
           checkableValue: true,
         };
@@ -112,6 +115,24 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     };
   };
 
+  /** Concrete WAI-ARIA roles, excluding abstract roles that cannot label an element. */
+  const ARIA_ROLES = [
+    'alert', 'alertdialog', 'application', 'article', 'banner', 'blockquote', 'button', 'caption',
+    'cell', 'checkbox', 'code', 'columnheader', 'combobox', 'complementary', 'contentinfo', 'definition',
+    'deletion', 'dialog', 'directory', 'document', 'emphasis', 'feed', 'figure', 'form',
+    'generic', 'grid', 'gridcell', 'group', 'heading', 'img', 'insertion', 'link',
+    'list', 'listbox', 'listitem', 'log', 'main', 'mark', 'marquee', 'math',
+    'meter', 'menu', 'menubar', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'navigation', 'none',
+    'note', 'option', 'paragraph', 'presentation', 'progressbar', 'radio', 'radiogroup', 'region',
+    'row', 'rowgroup', 'rowheader', 'scrollbar', 'search', 'searchbox', 'separator', 'slider',
+    'spinbutton', 'status', 'strong', 'subscript', 'superscript', 'switch', 'tab', 'table',
+    'tablist', 'tabpanel', 'term', 'textbox', 'time', 'timer', 'toolbar', 'tooltip',
+    'tree', 'treegrid', 'treeitem',
+  ];
+  /** ARIA uses the first recognized token, then native semantics if none is recognized. */
+  const explicitRole = memoized((el: Element): string | null =>
+    (el.getAttribute('role') ?? '').split(/[ \t\n\f\r]+/).find((role) => ARIA_ROLES.indexOf(role) !== -1) ?? null);
+
   /**
    * True when an element carries a name of its own (HTML-AAM: `aria-label`,
    * `aria-labelledby`, or `title`). A `<form>` or `<section>` is a landmark
@@ -131,17 +152,14 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * HTML-AAM scopes it to sectioning content and to the ARIA roles that stand
    * for it, so a `<div role="article">` scopes it like an `<article>`.
    */
-  const isPageLevel = (el: Element): boolean => el.closest(SECTIONING_SCOPE) === null;
-
-  /**
-   * The root of a `contenteditable` region, whatever its tag: the region a
-   * person types into is focusable even when its tag keeps it out of the
-   * textbox vocabulary, as a canvas made editable to collect keystrokes is.
-   */
-  const isEditableRoot = (el: Element): boolean =>
-    el instanceof HTMLElement &&
-    el.isContentEditable &&
-    !(el.parentElement instanceof HTMLElement && el.parentElement.isContentEditable);
+  const isPageLevel = (el: Element): boolean => {
+    for (let candidate: Element | null = el; candidate !== null;) {
+      if (candidate.closest(SECTIONING_SCOPE) !== null) return false;
+      const root = candidate.getRootNode();
+      candidate = root instanceof ShadowRoot ? root.host : null;
+    }
+    return true;
+  };
 
   /**
    * The root of a contenteditable region: editable itself, under a parent that
@@ -153,88 +171,74 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * field the keyboard reaches, not a textbox; see `NON_HOST_TAGS`.
    */
   const isEditingHost = (el: Element): boolean =>
-    isEditableRoot(el) && NON_HOST_TAGS.indexOf(el.tagName.toLowerCase()) === -1;
+    el instanceof HTMLElement &&
+    el.isContentEditable &&
+    NON_HOST_TAGS.indexOf(el.tagName.toLowerCase()) === -1 &&
+    !(el.parentElement instanceof HTMLElement && el.parentElement.isContentEditable);
 
-  /**
-   * The global ARIA states and properties that keep a presentational role
-   * from taking an element's semantics away (WAI-ARIA 1.2, "presentational
-   * roles conflict resolution"): the set Chromium's accessibility tree
-   * applies, read off it case by case. A state scoped to another role
-   * (`aria-checked` on a plain element) does not count, and neither do
-   * `aria-disabled`, `aria-haspopup`, `aria-invalid`, or `aria-hidden`,
-   * which Chromium leaves out of its conflict set.
-   */
-  const GLOBAL_ARIA_ATTRIBUTES: ReadonlySet<string> = new Set([
-    'aria-atomic',
-    'aria-busy',
-    'aria-controls',
-    'aria-current',
-    'aria-describedby',
-    'aria-details',
-    'aria-flowto',
-    'aria-keyshortcuts',
-    'aria-label',
-    'aria-labelledby',
-    'aria-live',
-    'aria-owns',
-    'aria-relevant',
-    'aria-roledescription',
-  ]);
+  const NAME_PROHIBITED_ROLES = [
+    'caption', 'code', 'deletion', 'emphasis', 'generic', 'insertion', 'paragraph', 'presentation', 'strong',
+    'subscript', 'superscript',
+  ];
+  /** Global ARIA attributes, each with the roles it does not count on, as Playwright lists them. */
+  const GLOBAL_ARIA_ATTRIBUTES: ReadonlyArray<readonly [string, readonly string[]]> = [
+    ['aria-atomic', []],
+    ['aria-busy', []],
+    ['aria-controls', []],
+    ['aria-current', []],
+    ['aria-describedby', []],
+    ['aria-details', []],
+    ['aria-dropeffect', []],
+    ['aria-flowto', []],
+    ['aria-grabbed', []],
+    ['aria-hidden', []],
+    ['aria-keyshortcuts', []],
+    ['aria-label', NAME_PROHIBITED_ROLES],
+    ['aria-labelledby', NAME_PROHIBITED_ROLES],
+    ['aria-live', []],
+    ['aria-owns', []],
+    ['aria-relevant', []],
+    ['aria-roledescription', ['generic']],
+  ];
 
-  /** True when the element carries a global ARIA state or property. */
-  const hasGlobalAria = (el: Element): boolean =>
-    el.getAttributeNames().some((name) => GLOBAL_ARIA_ATTRIBUTES.has(name));
+  /** Playwright's implicit role for the tags whose role some global ARIA attributes do not count on. */
+  const NAME_PROHIBITED_TAG_ROLES: Readonly<Record<string, string>> = {
+    caption: 'caption', code: 'code', del: 'deletion', em: 'emphasis', ins: 'insertion', p: 'paragraph',
+    strong: 'strong', sub: 'subscript', sup: 'superscript',
+  };
 
-  /** True when the element carries any ARIA attribute, a role-scoped one included, which Chromium counts against `img alt=""`. */
-  const hasAriaAttribute = (el: Element): boolean =>
-    el.getAttributeNames().some((name) => name.startsWith('aria-'));
+  /** True when the element carries a global ARIA attribute that counts on `role`. */
+  const hasGlobalAriaAttribute = (el: Element, role: string | null): boolean =>
+    GLOBAL_ARIA_ATTRIBUTES.some(([name, prohibited]) =>
+      (role === null || prohibited.indexOf(role) === -1) && el.hasAttribute(name));
 
-  /**
-   * Whether a person can focus the element, which decides whether
-   * `presentation` or `none` may take its role away. Any `tabindex` whose
-   * value starts with an integer counts, negative included: the value keeps
-   * the element out of the tab order but not out of a person's reach, and
-   * Chromium parses it the same way, trailing characters and all, while it
-   * skips only the ASCII whitespace HTML's parser skips. A disabled control
-   * is out of reach whatever its `tabindex` says, and only the root of an
-   * editable region is the control, not every node inside it.
-   */
+  /** True when `tabindex` parses as a number, as Playwright reads it. */
+  const hasTabIndex = (el: Element): boolean => !Number.isNaN(Number(String(el.getAttribute('tabindex'))));
+
+  /** Whether a person can focus the element, as Playwright decides presentational-role conflicts. */
   const isFocusable = (el: Element): boolean => {
-    if (el.matches(':disabled')) return false;
-    const tabindex = el.getAttribute('tabindex');
-    if (tabindex !== null && /^[\t\n\f\r ]*[-+]?\d/.test(tabindex)) return true;
-    if (isEditableRoot(el)) return true;
     const tag = el.tagName.toLowerCase();
-    if (tag === 'a' || tag === 'area') return el.hasAttribute('href');
-    if (tag === 'button' || tag === 'select' || tag === 'textarea' || tag === 'iframe') return true;
-    if (tag === 'input') return (el.getAttribute('type') ?? '').toLowerCase() !== 'hidden';
-    if (tag === 'audio' || tag === 'video') return el.hasAttribute('controls');
-    // Only the summary a `<details>` opens by is focusable; a stray one is not.
-    if (tag === 'summary') {
-      return el.parentElement?.tagName.toLowerCase() === 'details' && el.parentElement.firstElementChild === el;
+    if (['button', 'input', 'select', 'textarea', 'option', 'optgroup'].indexOf(tag) !== -1 && el.matches(':disabled')) {
+      return false;
     }
-    return false;
+    if (hasTabIndex(el) || ['button', 'details', 'select', 'textarea'].indexOf(tag) !== -1) return true;
+    if (tag === 'a' || tag === 'area') return el.hasAttribute('href');
+    return tag === 'input' && !(el as HTMLInputElement).hidden;
   };
 
   /**
-   * ARIA's presentational-role conflict resolution: a `presentation` or
-   * `none` role is ignored on a focusable element and on one carrying a
-   * global ARIA state or property, both of which say the element is more than
-   * decoration. The element then keeps the role its tag gives it, where one
-   * of those attributes is the only name it has.
+   * WAI-ARIA presentational-role conflict resolution: `presentation` or
+   * `none` is ignored on a focusable element or one with a global ARIA
+   * attribute, and the tag's role stands.
    */
-  const presentationalConflict = (el: Element): boolean => isFocusable(el) || hasGlobalAria(el);
+  const hasPresentationConflict = (el: Element): boolean =>
+    isFocusable(el) || hasGlobalAriaAttribute(el, NAME_PROHIBITED_TAG_ROLES[el.tagName.toLowerCase()] ?? null);
 
   const implicitRole = memoized((el: Element): string | null => {
-    const explicit = el.getAttribute('role');
-    if (explicit !== null && explicit.trim() !== '') {
-      const first = explicit.trim().split(/\s+/)[0] ?? null;
-      // A presentational role a person's own attributes contradict is ignored
-      // (`presentationalConflict`), and the tag decides.
-      if ((first !== 'presentation' && first !== 'none') || !presentationalConflict(el)) {
-        // The vocabulary spells ARIA's `img` as `image`.
-        return first === 'img' ? 'image' : first;
-      }
+    const explicit = explicitRole(el);
+    if (explicit !== null && !((explicit === 'presentation' || explicit === 'none') && hasPresentationConflict(el))) {
+      // The vocabulary spells ARIA's `img` as `image`.
+      return explicit === 'img' ? 'image' : explicit;
     }
     // Ahead of the tag: an editor's host is the control, whatever landmark or
     // structure its tag would otherwise be.
@@ -253,10 +257,9 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       case 'textarea':
         return 'textbox';
       case 'img':
-        // An empty alt is decoration, unless the element is focusable or
-        // carries an ARIA attribute (Chromium counts any, not only the
-        // globals), which keeps it an image without a name.
-        return el.getAttribute('alt') === '' && !isFocusable(el) && !hasAriaAttribute(el) ? 'presentation' : 'image';
+        return el.getAttribute('alt') === '' && !el.getAttribute('title') && !hasGlobalAriaAttribute(el, null) && !hasTabIndex(el)
+          ? 'presentation'
+          : 'image';
       // An inline icon is a picture whether or not anything names it, as
       // Playwright reads it; Chrome ignores an unnamed one.
       case 'svg':
@@ -320,12 +323,24 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       // A grid's cells are the interactive kind, as Playwright reads them.
       case 'td': {
         const table = el.closest('table');
-        const tableRole = table?.getAttribute('role')?.trim().split(/\s+/)[0];
+        const tableRole = table === null ? null : explicitRole(table);
         return tableRole === 'grid' || tableRole === 'treegrid' ? 'gridcell' : 'cell';
       }
       case 'th': {
         const scope = (el.getAttribute('scope') ?? '').toLowerCase();
-        return scope === 'row' || scope === 'rowgroup' ? 'rowheader' : 'columnheader';
+        if (scope === 'row' || scope === 'rowgroup') return 'rowheader';
+        if (scope === 'col' || scope === 'colgroup') return 'columnheader';
+        const previous = el.previousElementSibling;
+        const next = el.nextElementSibling;
+        if (previous === null && next === null) {
+          const row = el.parentElement;
+          const table = row?.tagName.toLowerCase() === 'tr' ? row.closest('table') : null;
+          return table !== null && (table as HTMLTableElement).rows.length <= 1 ? null : 'columnheader';
+        }
+        if (previous?.tagName.toLowerCase() === 'th' && next?.tagName.toLowerCase() === 'th') return 'columnheader';
+        const hasDataNeighbor = [previous, next].some((cell) =>
+          cell?.tagName.toLowerCase() === 'td' && ((cell.textContent ?? '').trim() !== '' || cell.children.length > 0));
+        return hasDataNeighbor ? 'rowheader' : 'columnheader';
       }
       case 'dialog':
         return 'dialog';
@@ -480,7 +495,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
 
   /** True for a subtree the name computation drops: aria-hidden, or hidden by style as innerText leaves it out. */
   const isNameHidden = (el: Element, style: CSSStyleDeclaration | undefined): boolean =>
-    el.getAttribute('aria-hidden') === 'true' ||
+    (el.getAttribute('aria-hidden') ?? '').toLowerCase() === 'true' ||
     (style !== undefined && (style.display === 'none' || style.visibility === 'hidden'));
 
   /** `alt` of an element HTML-AAM names by it: an `<img>` or an `<input type="image">`. */
@@ -514,7 +529,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * under an `aria-hidden` ancestor, which excludes it from the tree as
    * surely as its own attribute would.
    */
-  const isReferenceHidden = (el: Element): boolean => isHidden(el) || el.closest('[aria-hidden="true"]') !== null;
+  const isReferenceHidden = (el: Element): boolean => isHidden(el) || el.closest('[aria-hidden="true" i]') !== null;
 
   /**
    * The element an id names for `el`, looked up in `el`'s own tree: an IDREF
@@ -782,6 +797,119 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     return out.replace(/\s+/g, ' ').trim();
   });
 
+  /**
+   * Elements whose content is not text in a line: a form control's options
+   * or value, a picture, a frame, a drawn surface. Like a line break, each
+   * separates the words around it.
+   */
+  const LINE_BREAKING_TAGS = [...SKIP_TAGS, ...OPAQUE_TAGS, 'iframe', 'img', 'input', 'select', 'textarea', 'br'];
+
+  /**
+   * True when an element's text flows in its parent's line: a visible
+   * inline-level box (`inline`, `inline-block`, `ruby`), or `display:
+   * contents`, whose children lay out as the parent's own. Visible as the
+   * walk reads it (`isHidden`): a box with no size shows no words. A slot
+   * has no box and shows the nodes assigned to it, so only its visibility
+   * counts: a hidden one hides the text they inherit it with, and a child
+   * that shows itself again is listed on its own.
+   */
+  const flowsInLine = memoized((el: Element): boolean => {
+    if (LINE_BREAKING_TAGS.indexOf(el.tagName.toLowerCase()) !== -1 || isEditingHost(el)) return false;
+    const style = styleOf(el);
+    if (style === undefined || hidesSubtree(el, style)) return false;
+    if (el instanceof HTMLSlotElement ? style.visibility !== 'visible' : isHidden(el, style)) return false;
+    return isInlineLevel(style);
+  });
+
+  /** True for a box laid out in its parent's line, or for `display: contents`, which lays out none of its own. */
+  const isInlineLevel = (style: CSSStyleDeclaration): boolean =>
+    style.display.startsWith('inline') || style.display.startsWith('ruby') || style.display === 'contents';
+
+  /**
+   * The nodes an element renders in its place, as the walk reaches them: a
+   * shadow host's shadow tree (a closed one through the record), a slot's
+   * assigned nodes or else its fallback content, any other element's children.
+   */
+  const renderedChildrenOf = (el: Element): Node[] => {
+    const shadow = shadowRootOf(el);
+    if (shadow !== null) return Array.from(shadow.childNodes);
+    if (el instanceof HTMLSlotElement) {
+      const assigned = el.assignedNodes();
+      if (assigned.length > 0) return assigned;
+    }
+    return Array.from(el.childNodes);
+  };
+
+  /**
+   * An element's rendered text with each inline descendant's text in place.
+   * Anything else in the line reads as a space, except a hidden inline
+   * element (a `<wbr>`, a zero-size span), which shows nothing.
+   */
+  const lineRunOf = (el: Element): string => {
+    let out = '';
+    for (const child of renderedChildrenOf(el)) {
+      if (child.nodeType === 3) out += child.nodeValue ?? '';
+      if (child.nodeType !== 1) continue;
+      const inner = child as Element;
+      if (flowsInLine(inner)) {
+        out += lineRunOf(inner);
+        continue;
+      }
+      const style = styleOf(inner);
+      if (style === undefined || hidesSubtree(inner, style)) continue;
+      const breaking = LINE_BREAKING_TAGS.indexOf(inner.tagName.toLowerCase()) !== -1;
+      if (breaking || !isInlineLevel(style) || !isHidden(inner, style)) out += ' ';
+    }
+    return out;
+  };
+
+  /**
+   * The text an element owns, read as a person reads its line: its own text
+   * with every inline descendant's text in place, so `<p>Read our <a>privacy
+   * policy</a> for details.</p>` reads as the whole sentence while the link
+   * stays a node of its own. Block-level descendants are nodes of their own
+   * and only separate words. An element with no text of its own owns none: a
+   * wrapper of elements leaves them to say what they say (`ownsLine`).
+   */
+  const lineTextOf = memoized((el: Element): string =>
+    ownsLine(el) ? lineRunOf(el).replace(/\s+/g, ' ').trim() : '');
+
+  /**
+   * True when an element reads its own line: it has text of its own, or it
+   * offers an action inside an ancestor's line, where its words are what a
+   * person aims at.
+   */
+  const ownsLine = (el: Element): boolean => directTextOf(el) !== '' || (offersAction(el) && isReadInLine(el));
+
+  /**
+   * True when an element with no role still says it can be acted on: it is
+   * focusable through `tabindex`, it has a click handler set as an attribute
+   * or a property (`onclick`), or it is an `<a>` with no `href`, which an app
+   * wires up by script. Such an element stays listed inside a line, so it
+   * keeps an id to act on. A handler added with `addEventListener` leaves
+   * nothing the page can read.
+   */
+  const offersAction = memoized((el: Element): boolean => {
+    const tabindex = el.getAttribute('tabindex');
+    if (tabindex !== null && /^\s*[-+]?\d/.test(tabindex)) return true;
+    if (el.tagName.toLowerCase() === 'a' || el.hasAttribute('onclick')) return true;
+    return el instanceof HTMLElement && el.onclick !== null;
+  });
+
+  /**
+   * True when an element's text is already read in an ancestor's line
+   * (`lineTextOf`), so the element has nothing to add on text alone. A line
+   * longer than the projection's text bound is cut, so its inline
+   * descendants stay listed and nothing past the cut is lost.
+   */
+  const isReadInLine = memoized((el: Element): boolean => {
+    const parent = el.assignedSlot ?? parentOrHostOf(el);
+    if (parent === null || !flowsInLine(el)) return false;
+    if (!ownsLine(parent)) return isReadInLine(parent);
+    const fits = projection.textLimit === null || lineTextOf(parent).length <= projection.textLimit;
+    return fits && !isHidden(parent);
+  });
+
   const accessibleName = memoized((el: Element): string | null => {
     // accname reads a labelledby reference (2B) before the element's own aria-label (2C).
     const referenced = referencedNamesOf(el, nameWalk([], true));
@@ -862,7 +990,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * Closed shadow roots the context's init script recorded, when it ran in this
    * document. Same literal as `CLOSED_SHADOW_ROOTS_KEY`; the reader cannot import it.
    */
-  const closedShadowRoots = (globalThis as unknown as Record<symbol, WeakMap<Element, ShadowRoot> | undefined>)[
+  const closedShadowRoots = (globalThis as Record<symbol, WeakMap<Element, ShadowRoot> | undefined>)[
     Symbol.for('e2e.closedShadowRoots')
   ];
   const shadowRootOf = (el: Element): ShadowRoot | null =>
@@ -977,22 +1105,6 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   };
 
   /**
-   * True when an element is hidden only because it has no box: it still
-   * renders (visible, not under `content-visibility: hidden`, not folded into
-   * a closed `<details>`), but its rectangle is zero-sized, as an empty
-   * inline link's is. A hidden element of this shape that a person can focus
-   * is kept in the tree, as Chromium keeps it and a role locator reaches it,
-   * while every visibility check still calls it hidden.
-   */
-  const isBoxless = (el: Element, style: CSSStyleDeclaration | undefined): boolean => {
-    if (style === undefined) return false;
-    if (style.display === 'contents' || style.visibility !== 'visible') return false;
-    if (isSkippedContent(el) || isInClosedDetails(el)) return false;
-    const rect = el.getBoundingClientRect();
-    return !(rect.width > 0 && rect.height > 0);
-  };
-
-  /**
    * What takes the element and everything under it out of the tree walk: an
    * `aria-hidden` or inert subtree, which the accessibility tree drops though
    * it may paint (`isInert`), and `display: none` or a closed `<details>`
@@ -1004,7 +1116,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * unlisted.
    */
   const hidesSubtree = (el: Element, style: CSSStyleDeclaration | undefined): boolean =>
-    el.getAttribute('aria-hidden') === 'true' ||
+    (el.getAttribute('aria-hidden') ?? '').toLowerCase() === 'true' ||
     isInert(el, style) ||
     style === undefined ||
     style.display === 'none' ||
@@ -1277,7 +1389,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     }
     if (selectedState === null) {
       const ariaSelected = el.getAttribute('aria-selected');
-      if (ariaSelected !== null) selectedState = ariaSelected === 'true';
+      if (ariaSelected !== null) selectedState = ariaSelected.toLowerCase() === 'true';
     }
 
     const disabled = isDisabled(el);
@@ -1321,7 +1433,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
 
     let text: string;
     if (secure) text = '';
-    else if (projection.directTextOnly) text = directTextOf(el);
+    else if (projection.lineText) text = lineTextOf(el);
     else text = textOf(el);
     if (projection.textLimit !== null) text = text.slice(0, projection.textLimit);
 
@@ -1413,7 +1525,8 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     if (el.hasAttribute(options.testIdAttribute)) return true;
     if (implicitRole(el) !== null && !isPresentational(el)) return true;
     if (accessibleName(el) !== null) return true;
-    return directTextOf(el) !== '';
+    if (offersAction(el) && isReadInLine(el)) return lineTextOf(el) !== '';
+    return directTextOf(el) !== '' && !isReadInLine(el);
   };
 
   const walk = (el: Element, parent: number): void => {
@@ -1451,10 +1564,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     let nextParent = parent;
     // An empty painted rectangle carries no semantics to be "interesting" by and
     // is still something a person sees and aims at; `roleOf` names it `box`.
-    // A zero-sized element is hidden to every visibility check; one a person
-    // can focus (an empty inline link) is still in Chromium's tree and
-    // reachable by a role locator, so it is listed too, with `hidden` set.
-    if ((!hidden || (isBoxless(el, style) && isFocusable(el))) && (isInteresting(el) || isVisibleEmptyBox(el))) {
+    if (!hidden && (isInteresting(el) || isVisibleEmptyBox(el))) {
       if (nodes.length >= maxNodes) {
         truncated = true;
         return;

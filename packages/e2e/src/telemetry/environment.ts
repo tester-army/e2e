@@ -58,6 +58,10 @@ const CI_VENDORS: readonly (readonly [variable: string, name: string])[] = [
   ['SEMAPHORE', 'semaphore'],
   ['APPVEYOR', 'appveyor'],
   ['WOODPECKER', 'woodpecker'],
+  ['EAS_BUILD', 'eas'],
+  ['BITRISE_IO', 'bitrise'],
+  ['CM_BUILD_ID', 'codemagic'],
+  ['CI_XCODE_CLOUD', 'xcode-cloud'],
 ];
 
 /**
@@ -136,12 +140,16 @@ export function fleetName(env: NodeJS.ProcessEnv): string | null {
  * The id the environment states for itself, standing in for a machine that
  * has no preferences file: a fleet by its name, else the CI vendor when `CI`
  * is set. Undefined on a person's machine, where the random per-machine id
- * is the unit; a vendor marker alone, without `CI`, does not make one a runner.
+ * is the unit: a vendor marker without `CI` is a shell on a runner, and `CI`
+ * with a coding agent but no vendor is the agent's shell on a laptop.
  */
 export function statedIdentity(env: NodeJS.ProcessEnv): string | undefined {
   const fleet = fleetName(env);
   if (fleet !== null) return `fleet:${fleet}`;
-  return isCiMode(env) ? `ci:${ciName(env) ?? 'unknown'}` : undefined;
+  if (!isCiMode(env)) return undefined;
+  const vendor = firstMarker(env, CI_VENDORS);
+  if (vendor === undefined && firstMarker(env, CODING_AGENTS) !== undefined) return undefined;
+  return `ci:${vendor ?? 'unknown'}`;
 }
 
 /** The runtime executing this process: Bun and Deno each announce themselves in `process.versions`. */

@@ -19,6 +19,7 @@ test('every node action reaches the engine', async ({ app, screen }) => {
   await submit.tap();
   await submit.click();
   await submit.doubleTap();
+  await submit.dblclick();
   await submit.secondaryTap();
   await submit.longPress();
   await submit.longPress({ duration: 800 });
@@ -87,6 +88,7 @@ describe('scripted engine: actions and app hooks', () => {
       ['submit', { kind: 'tap' }],
       ['submit', { kind: 'tap' }],
       ['submit', { kind: 'doubleTap' }],
+      ['submit', { kind: 'doubleTap' }],
       ['submit', { kind: 'secondaryTap' }],
       ['submit', { kind: 'longPress' }],
       ['submit', { kind: 'longPress', durationMs: 800 }],
@@ -124,7 +126,7 @@ describe('scripted engine: actions and app hooks', () => {
     const apis = attempt.steps.map((entry) => entry.api);
     expect(apis).toEqual(
       expect.arrayContaining([
-        'locator.tap', 'locator.click', 'locator.doubleTap', 'locator.secondaryTap', 'locator.longPress', 'locator.fill',
+        'locator.tap', 'locator.click', 'locator.doubleTap', 'locator.dblclick', 'locator.secondaryTap', 'locator.longPress', 'locator.fill',
         'locator.clear', 'locator.pressSequentially', 'locator.press', 'locator.check', 'locator.uncheck',
         'locator.selectOption', 'locator.focus', 'locator.hover', 'locator.setInputFiles', 'locator.dragTo',
         'locator.scrollIntoView', 'locator.swipe',

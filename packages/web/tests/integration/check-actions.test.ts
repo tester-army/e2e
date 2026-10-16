@@ -3,7 +3,8 @@
  * engine acts on: a deterministic locator and an element handle from an agent
  * observation. A control the app replaces or navigates away from once it is
  * picked took the click, so the action is done; a control the click never
- * reached stays a stale node, and one the click did not change fails.
+ * reached stays a stale node, one that commits its state after a timer is
+ * waited for, and one the click never changes fails at the deadline.
  */
 
 import { createServer, type Server } from 'node:http';
@@ -57,7 +58,7 @@ async function targetOf(kind: (typeof KINDS)[number], selector: string): Promise
 /** Performs one action and returns the contract error it failed with, classified as the engine reports it. */
 async function perform(target: ActionTarget, action: LocatorAction): Promise<Error | undefined> {
   try {
-    await dispatchLocatorAction(target, action, 2000, () => {
+    await dispatchLocatorAction(target, action, { timeoutMs: 2000, signal: new AbortController().signal }, () => {
       throw new Error('no second target');
     });
     return undefined;
@@ -113,6 +114,33 @@ describe.each(KINDS)('through the %s target', (kind) => {
         onclick="this.setAttribute('aria-checked', String(this.getAttribute('aria-checked') !== 'true'))">Notify</div>`);
     expect(await perform(await targetOf(kind, '#box'), { kind: 'check' })).toBeUndefined();
     expect(await page.getAttribute('#box', 'aria-checked')).toBe('true');
+  });
+
+  it('waits for a controlled checkbox that commits its state after a timer', async () => {
+    await page.setContent(`
+      <label><input type="checkbox" id="box"
+        onclick="const box = this; const next = box.checked; event.preventDefault();
+          setTimeout(() => { box.checked = next; }, 300)">Notify</label>`);
+    expect(await perform(await targetOf(kind, '#box'), { kind: 'check' })).toBeUndefined();
+    expect(await page.isChecked('#box')).toBe(true);
+  });
+
+  it('waits for a switch whose aria-checked flips after a timer', async () => {
+    await page.setContent(`
+      <button role="switch" id="toggle" aria-checked="true"
+        onclick="setTimeout(() => this.setAttribute('aria-checked', String(this.getAttribute('aria-checked') !== 'true')), 300)">Wi-Fi</button>`);
+    expect(await perform(await targetOf(kind, '#toggle'), { kind: 'uncheck' })).toBeUndefined();
+    expect(await page.getAttribute('#toggle', 'aria-checked')).toBe('false');
+  });
+
+  it('fails a rejected click on a control a later re-render replaces', async () => {
+    await page.setContent(`
+      <div id="terms"><label><input type="checkbox" id="box" onclick="event.preventDefault();
+        setTimeout(() => { document.getElementById('terms').innerHTML = '<label><input type=checkbox id=box>Agree</label>'; }, 300)">Agree</label></div>`);
+    expect(await perform(await targetOf(kind, '#box'), { kind: 'check' })).toMatchObject({
+      code: 'NOT_ACTIONABLE',
+      message: 'check clicked the control but its checked state did not change before the control was replaced',
+    });
   });
 
   it('fails a click that left the control as it was', async () => {

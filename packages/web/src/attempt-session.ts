@@ -1,6 +1,4 @@
 /** Owns one attempt's live binding, recovery, references, and recordings. */
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
 import type { Browser, BrowserContext, BrowserContextOptions, Page } from 'playwright-core';
 import { EngineError, raceAbort, withinCleanupBudget, type EngineCleanupContext, type OperationContext, type VideoSegment, type ViewportSize } from 'e2e/engine';
 import { attachPersistent, recoveryFailed, targetIdentity, type CdpEndpointResolver, type SessionBinding } from './cdp-recovery.ts';
@@ -8,6 +6,7 @@ import { connectionAbort, withConnectionBudget, withOperationDeadline, type Conn
 import { RefRegistry } from './refs.ts';
 import type { LeaseRecording } from './provider.ts';
 import { ProviderVideo } from './provider-video.ts';
+import type { WebMedia } from './media.ts';
 import { invalidState, translatePwError } from './support.ts';
 import type { WebScreencastOptions } from './surface.ts';
 import { VideoRecorder, type AttemptVideo } from './video.ts';
@@ -20,6 +19,8 @@ interface SessionOptions {
   readonly viewport: ViewportSize | null;
   /** How the engine's own screencast records, when the provider does not record. */
   readonly screencast: WebScreencastOptions;
+  /** The media features every page the attempt opens emulates, until `emulateMedia` changes them. */
+  readonly media: WebMedia;
   readonly contextOptions: BrowserContextOptions;
   readonly acquire: (signal: AbortSignal) => Promise<Browser>;
   readonly configure: (context: BrowserContext) => Promise<void>;
@@ -45,8 +46,6 @@ type SessionState =
   | { readonly kind: 'failed'; readonly binding: SessionBinding | undefined; readonly error: Error }
   | { readonly kind: 'closed' };
 
-const TRACE_OPTIONS = { screenshots: true, snapshots: true } as const;
-
 export class AttemptSession {
   readonly refs = new RefRegistry();
   private readonly lifetime = new AbortController();
@@ -56,12 +55,13 @@ export class AttemptSession {
   private observed = true;
   /** Until the attempt's first page opens: a persistent browser's own first tab can serve as that page. */
   private firstPage = true;
-  private tracing = false;
-  private traceSegments = 0;
-  private traceParts: string[] = [];
   private requestedViewport: { readonly width: number; readonly height: number } | undefined;
+  private media: WebMedia;
+  /** The emulation each page got as it appeared, so the attempt's own page is ready before it shows. */
+  private readonly emulated = new WeakMap<Page, Promise<void>>();
 
   constructor(private readonly options: SessionOptions) {
+    this.media = options.media;
     this.video = options.record === undefined
       ? new VideoRecorder(options.artifactsDir, options.screencast)
       : new ProviderVideo(options.record, options.artifactsDir);
@@ -169,8 +169,6 @@ export class AttemptSession {
   ): Promise<void> {
     if (budget.signal.aborted) throw connectionAbort(budget.signal, 'connection');
     this.invalidate();
-    const resumeTrace = recover && this.tracing;
-    if (recover) this.tracing = false;
     const running = Promise.resolve().then(async () => {
       if (budget.signal.aborted) throw connectionAbort(budget.signal, 'connection');
       const candidate = await open();
@@ -179,15 +177,17 @@ export class AttemptSession {
       try {
         if (budget.signal.aborted) throw connectionAbort(budget.signal, 'connection');
         await this.options.configure(candidate.context);
+        this.watchPages(candidate.context);
         if (recover && candidate.page !== null) {
           const size = previous?.page?.viewportSize() ?? this.requestedViewport ?? this.options.viewport;
           if (size !== null) await candidate.page.setViewportSize(size);
+          // Emulation belongs to the CDP session that set it, so the new transport sets it again, on the app's own tabs too.
+          await this.applyMedia(candidate.page);
+          await this.emulateOnOthers(candidate.context, candidate.page, (page) => this.applyMedia(page));
           await this.video.pageOpened(candidate.page);
         }
-        if (resumeTrace) await candidate.context.tracing.start(TRACE_OPTIONS);
         if (budget.signal.aborted) throw connectionAbort(budget.signal, 'connection');
         if (this.state !== pending) throw connectionAbort(this.lifetime.signal, 'connection');
-        this.tracing = resumeTrace;
         this.state = { kind: 'ready', binding: candidate };
       } catch (cause) {
         await this.release(candidate).catch(() => undefined);
@@ -217,6 +217,7 @@ export class AttemptSession {
       let identity = binding.identity;
       const size = this.requestedViewport ?? (identity === undefined ? null : this.options.viewport);
       if (size !== null) await page.setViewportSize(size);
+      await (this.emulated.get(page) ?? this.applyMedia(page));
       if (identity !== undefined) identity = { ...identity, target: await targetIdentity(page) };
       this.check(token);
       await this.video.pageOpened(page);
@@ -261,24 +262,70 @@ export class AttemptSession {
     this.requestedViewport = { width, height };
   }
 
+  /**
+   * Emulates media features on every open tab and every tab opened after
+   * them, the app's own included; a feature `media` leaves out keeps its value.
+   */
+  async emulateMedia(media: WebMedia): Promise<void> {
+    // Merged before the await, so a second call made meanwhile builds on this one instead of the old value.
+    this.media = { ...this.media, ...media };
+    const { context, page } = this.current();
+    if (page !== null && !page.isClosed()) await page.emulateMedia(this.media);
+    await this.emulateOnOthers(context, page, (other) => other.emulateMedia(this.media));
+  }
+
+  /**
+   * Runs `emulate` on every open tab but the attempt's own. A tab the app
+   * closes meanwhile fails its own call only; an error on a tab still open
+   * propagates.
+   */
+  private async emulateOnOthers(context: BrowserContext, own: Page | null, emulate: (page: Page) => Promise<void>): Promise<void> {
+    const others = context.pages().filter((page) => page !== own && !page.isClosed());
+    await Promise.all(others.map(async (page) => {
+      try {
+        await emulate(page);
+      } catch (cause) {
+        if (!page.isClosed()) throw cause;
+      }
+    }));
+  }
+
+  /** Sets the attempt's media features on a page before it shows anything; a page with none set keeps the browser's own. */
+  private async applyMedia(page: Page): Promise<void> {
+    if (Object.keys(this.media).length > 0) await page.emulateMedia(this.media);
+  }
+
+  /**
+   * Emulates the attempt's media on each tab as it appears, so a tab the app
+   * opens itself follows a test's change too, on a persistent context as
+   * well, where the engine sets no context options. Playwright emulates per
+   * page, so a test's change reaches it once it exists: its scripts may read
+   * the context's configured values until then. A tab the attempt opens
+   * awaits the same work in `ensurePage`; a tab the app opens is not awaited.
+   */
+  private watchPages(context: BrowserContext): void {
+    context.on('page', (page) => {
+      const applied = this.applyMedia(page);
+      this.emulated.set(page, applied);
+      applied.catch(() => undefined);
+    });
+  }
+
   /** Restarts the document while retaining this context's storage. */
   async restart(): Promise<void> {
     const binding = this.current();
     this.invalidate();
     const token = this.token();
     await this.video.pageClosing();
-    const resume = this.video.isArmed ? await this.closeTraceSegment(binding.context) : false;
     for (const page of binding.context.pages()) await page.close();
     this.check(token);
     this.state = { kind: 'ready', binding: { ...binding, page: null } };
     await this.ensurePage();
-    if (resume) await this.startTrace();
   }
 
   /** Replaces an ordinary context; persistent recovery never advertises this capability. */
   async replace(storageState: StorageState | undefined, operation: OperationContext): Promise<void> {
     const previous = this.current();
-    const resume = await this.closeTraceSegment(previous.context);
     await this.video.pageClosing();
     await this.transition(previous, operation, async () => {
       await previous.context.close();
@@ -286,7 +333,6 @@ export class AttemptSession {
       return { browser: previous.browser, context, page: null };
     });
     if (this.video.isArmed) await this.ensurePage();
-    if (resume) await this.startTrace();
   }
 
   /** Ends this attempt immediately; late work can only access this retired owner. */
@@ -299,7 +345,6 @@ export class AttemptSession {
     const binding = 'binding' in state ? state.binding : undefined;
     if (binding === undefined) return;
     await withinCleanupBudget(this.video.abandon(budget.signal), budget);
-    if (this.tracing) await withinCleanupBudget(binding.context.tracing.stop(), budget);
     await withinCleanupBudget(this.release(binding), budget);
   }
 
@@ -308,66 +353,12 @@ export class AttemptSession {
     return this.options.persistent === undefined ? binding.context.close() : binding.browser.close();
   }
 
-  /** Allocates trace paths inside this attempt's immutable artifact directory. */
-  private tracePath(name: string): { relative: string; absolute: string } {
-    const relative = path.posix.join('trace', `${name}.zip`);
-    const absolute = path.join(this.options.artifactsDir, relative);
-    mkdirSync(path.dirname(absolute), { recursive: true });
-    return { relative, absolute };
-  }
-
-  /** Saves a replaced context's trace when it can still flush it. */
-  private async closeTraceSegment(context: BrowserContext): Promise<boolean> {
-    if (!this.tracing) return false;
-    this.tracing = false;
-    this.traceSegments += 1;
-    const { relative, absolute } = this.tracePath(`trace-part${this.traceSegments}`);
-    try {
-      await context.tracing.stop({ path: absolute });
-      this.traceParts.push(relative);
-    } catch { /* A disconnected context may have lost its final trace segment. */ }
-    return true;
-  }
-
-  /** Begins tracing the currently committed context. */
-  async startTrace(): Promise<void> {
-    const token = this.token();
-    await this.current().context.tracing.start(TRACE_OPTIONS);
-    this.check(token);
-    this.tracing = true;
-  }
-
-  /** Returns finalized segments, including any retained before context replacement failed. */
-  private async stopTrace(): Promise<string | readonly string[]> {
-    const parts = this.traceParts;
-    this.traceParts = [];
-    if (parts.length > 0 && !this.tracing) return parts;
-    const { relative, absolute } = this.tracePath('trace');
-    await this.current().context.tracing.stop({ path: absolute });
-    this.tracing = false;
-    return parts.length === 0 ? relative : [...parts, relative];
-  }
-
   /**
    * Starts video once the page is open, so a provider's recording of the
-   * browser starts on the attempt's own tab. A screencast is shared with the
-   * trace, which sizes it for itself, so a trace already running (a host
-   * that starts the video mid-attempt) is split around a screencast's start:
-   * its segment so far is saved, and it resumes on the video's screencast.
+   * browser starts on the attempt's own tab.
    */
   async startVideo(signal: AbortSignal): Promise<void> {
-    const page = await this.ensurePage();
-    const resume = this.video.startsScreencast ? await this.closeTraceSegment(this.current().context) : false;
-    try {
-      await this.video.arm(page, signal);
-    } finally {
-      if (resume) await this.startTrace();
-    }
-  }
-
-  /** Collects finalized trace segments even when connection replacement failed. */
-  collectTrace(operation: OperationContext): Promise<string | readonly string[]> {
-    return this.finalize(operation, 'trace', () => this.stopTrace());
+    await this.video.arm(await this.ensurePage(), signal);
   }
 
   /** Collects this attempt's video independently of a failed connection. */

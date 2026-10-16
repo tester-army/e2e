@@ -47,9 +47,18 @@ const KNOWN_KEYS = [
 const NESTED_HOOKS = {
   keyboard: ['type', 'press', 'dismiss'],
   state: ['capture', 'restore'],
-  artifacts: ['screenshot', 'startTrace', 'stopTrace', 'startVideo', 'stopVideo'],
+  artifacts: ['screenshot', 'startVideo', 'stopVideo'],
   session: ['open', 'back', 'restart', 'reset'],
 } as const;
+
+/**
+ * Hooks the contract no longer has, which an engine published before their
+ * removal still declares: accepted and never called, so updating `e2e` alone
+ * keeps such an engine working inside its peer range.
+ */
+const RETIRED_HOOKS: Readonly<Partial<Record<keyof typeof NESTED_HOOKS, readonly string[]>>> = {
+  artifacts: ['startTrace', 'stopTrace'],
+};
 
 const FUNCTION_MEMBERS = [
   'observe',
@@ -92,10 +101,12 @@ function hookManifest<K extends keyof typeof NESTED_HOOKS>(
 ): Record<string, unknown> {
   if (!isRecord(value)) throw invalid(name, `${key} must be an object`);
   const hooks: readonly string[] = NESTED_HOOKS[key];
+  const retired: readonly string[] = RETIRED_HOOKS[key] ?? [];
   for (const member of Object.keys(value)) {
-    if (!hooks.includes(member)) {
+    if (!hooks.includes(member) && !retired.includes(member)) {
       throw invalid(name, `${key} has unknown key "${member}"; expected one of ${hooks.join(', ')}`);
     }
+    if (retired.includes(member) && typeof value[member] !== 'function') throw invalid(name, `${key}.${member} must be a function`);
   }
   const bound: Record<string, unknown> = {};
   for (const member of hooks) {
@@ -161,7 +172,7 @@ export function defineEngine(spec: Engine): EngineHandle {
   }
   const name = spec.name;
   if (typeof spec.version !== 'string' || spec.version.trim() === '') {
-    throw invalid(name, 'version must be a non-empty string; it is provenance and keys the replay cache');
+    throw invalid(name, 'version must be a non-empty string; it is recorded in reports and keys saved sessions');
   }
   if (spec.spiVersion !== ENGINE_SPI_VERSION) {
     throw invalid(
@@ -282,9 +293,6 @@ export function defineEngine(spec: Engine): EngineHandle {
   }
   if (spec.artifacts !== undefined) {
     const artifacts = hookManifest(name, 'artifacts', spec.artifacts, ['screenshot']);
-    if ((artifacts['startTrace'] === undefined) !== (artifacts['stopTrace'] === undefined)) {
-      throw invalid(name, 'artifacts.startTrace and stopTrace must be declared together');
-    }
     if ((artifacts['startVideo'] === undefined) !== (artifacts['stopVideo'] === undefined)) {
       throw invalid(name, 'artifacts.startVideo and stopVideo must be declared together');
     }
@@ -294,7 +302,7 @@ export function defineEngine(spec: Engine): EngineHandle {
   if (spec.secrets !== undefined) handle['secrets'] = declaredSecrets(name, spec.secrets);
   if (spec.session !== undefined) handle['session'] = hookManifest(name, 'session', spec.session);
 
-  // Assembled key by key above, so the record is an Engine by construction.
+  // oxlint-disable-next-line e2e/no-chained-type-assertions -- assembled key by key above, so the record is an Engine by construction
   return Object.freeze({
     ...handle,
     [engineBrand]: true as const,

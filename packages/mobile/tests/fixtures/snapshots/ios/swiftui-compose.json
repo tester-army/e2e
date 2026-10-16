@@ -1,0 +1,169 @@
+{
+  "nodes": [
+    {
+      "index": 0,
+      "type": "Other",
+      "role": "_TtC7SwiftUIP33_ACC2C5639A7D76F611E170E831FCA49118SwiftUIApplication",
+      "subrole": "UIApplication",
+      "label": "SwiftUIBar",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 402,
+        "height": 874
+      },
+      "enabled": true,
+      "depth": 0,
+      "pid": 42914,
+      "hittable": false,
+      "ref": "e1",
+      "kind": "other"
+    },
+    {
+      "index": 1,
+      "parentIndex": 0,
+      "type": "NavigationBar",
+      "role": "SwiftUI.UIKitNavigationBar",
+      "subrole": "UINavigationBar",
+      "identifier": "Compose",
+      "rect": {
+        "x": 0,
+        "y": 78,
+        "width": 402,
+        "height": 54
+      },
+      "enabled": true,
+      "depth": 1,
+      "pid": 42914,
+      "hittable": true,
+      "ref": "e2",
+      "kind": "navigation-bar"
+    },
+    {
+      "index": 2,
+      "parentIndex": 1,
+      "type": "Other",
+      "role": "_TtGC7SwiftUI16UIKitBarItemHostVS_11BarItemView_",
+      "subrole": "UIView",
+      "label": "Cancel",
+      "rect": {
+        "x": 20,
+        "y": 82,
+        "width": 76.66666666666667,
+        "height": 36
+      },
+      "enabled": true,
+      "depth": 2,
+      "pid": 42914,
+      "hittable": true,
+      "ref": "e3",
+      "kind": "other"
+    },
+    {
+      "index": 3,
+      "parentIndex": 2,
+      "type": "Button",
+      "role": "SwiftUI.AccessibilityNode",
+      "subrole": "UIResponder",
+      "label": "Cancel",
+      "rect": {
+        "x": 20,
+        "y": 82,
+        "width": 76.66666666666666,
+        "height": 36
+      },
+      "enabled": true,
+      "depth": 3,
+      "pid": 42914,
+      "hittable": true,
+      "ref": "e4",
+      "kind": "button"
+    },
+    {
+      "index": 4,
+      "parentIndex": 1,
+      "type": "StaticText",
+      "role": "UILabel",
+      "label": "Compose",
+      "rect": {
+        "x": 163,
+        "y": 89.66666666666666,
+        "width": 76,
+        "height": 20.66666666666667
+      },
+      "enabled": true,
+      "depth": 2,
+      "pid": 42914,
+      "hittable": true,
+      "ref": "e5",
+      "kind": "text"
+    },
+    {
+      "index": 5,
+      "parentIndex": 1,
+      "type": "Other",
+      "role": "_TtGC7SwiftUI16UIKitBarItemHostVS_11BarItemView_",
+      "subrole": "UIView",
+      "label": "Send",
+      "rect": {
+        "x": 317,
+        "y": 82,
+        "width": 65,
+        "height": 36
+      },
+      "enabled": true,
+      "depth": 2,
+      "pid": 42914,
+      "hittable": true,
+      "ref": "e6",
+      "kind": "other"
+    },
+    {
+      "index": 6,
+      "parentIndex": 5,
+      "type": "Button",
+      "role": "SwiftUI.AccessibilityNode",
+      "subrole": "UIResponder",
+      "label": "Send",
+      "rect": {
+        "x": 317,
+        "y": 82,
+        "width": 65,
+        "height": 36
+      },
+      "enabled": true,
+      "depth": 3,
+      "pid": 42914,
+      "hittable": true,
+      "ref": "e7",
+      "kind": "button"
+    },
+    {
+      "index": 7,
+      "parentIndex": 0,
+      "type": "StaticText",
+      "role": "SwiftUI.AccessibilityNode",
+      "subrole": "UIResponder",
+      "label": "Compose body",
+      "rect": {
+        "x": 143,
+        "y": 475.8333333333333,
+        "width": 116,
+        "height": 20.333333333333314
+      },
+      "enabled": true,
+      "depth": 1,
+      "pid": 42914,
+      "hittable": true,
+      "ref": "e8",
+      "kind": "text"
+    }
+  ],
+  "viewport": {
+    "width": 402,
+    "height": 874
+  },
+  "truncated": false,
+  "appName": "dev.e2e.swiftuibar",
+  "appBundleId": "dev.e2e.swiftuibar"
+}

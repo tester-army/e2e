@@ -63,10 +63,45 @@ import { isDefinedTool } from '../../src/agent/public.ts';
 import { createAgent } from '../../src/agent/public.ts';
 // @ts-expect-error BLOCKABLE_CODES left e2e: a blocked verdict carries any code the errors reference marks blocked
 import { BLOCKABLE_CODES } from '../../src/index.ts';
+// @ts-expect-error list is e2e/runner: importing e2e does not load the runner
+import { list as listFromE2E } from '../../src/index.ts';
+// @ts-expect-error suite execution belongs to e2e/runner, not the test SDK
+import { run as runFromE2E } from '../../src/index.ts';
+// @ts-expect-error openHost is e2e/runner: importing e2e does not load the runner
+import { openHost as openHostFromE2E } from '../../src/index.ts';
+// @ts-expect-error host types belong to e2e/runner, not the test SDK
+import type { E2EHost as E2EHostFromE2E } from '../../src/index.ts';
+// @ts-expect-error the unpublished top-level openSession was replaced by openHost
+import { openSession as removedOpenSession } from '../../src/runner.ts';
+import {
+  ConfigurationError,
+  type E2EHost,
+  type E2ESession,
+  isE2EError,
+  list,
+  type ListedPair,
+  type ListOptions,
+  openHost,
+  run,
+  type RunEventSink,
+  type RunOptions,
+  type RunResult,
+  type OpenHostOptions,
+  type OpenSessionOptions,
+  type SerializedError,
+  type StepProgress,
+  type StepRecord,
+} from '../../src/runner.ts';
 
 isDefinedTool;
 createAgent;
 BLOCKABLE_CODES;
+listFromE2E;
+runFromE2E;
+openHostFromE2E;
+removedOpenSession;
+declare const rootHost: E2EHostFromE2E;
+rootHost;
 
 declare const agent: Agent;
 declare const appFixture: App;
@@ -91,12 +126,18 @@ declare const engineSnapshot: EngineSnapshot;
 engineSnapshot.treeUnavailable satisfies true | undefined;
 // @ts-expect-error unavailable semantics are explicitly true or absent, never a separate false state.
 ({ ...engineSnapshot, treeUnavailable: false }) satisfies EngineSnapshot;
+// The measured keyboard is a yes or no, or absent when the engine did not measure it.
+engineSnapshot.keyboardVisible satisfies boolean | undefined;
+customExecutorObservation.keyboardVisible satisfies boolean | undefined;
+// @ts-expect-error the keyboard state carries no band or reason, only whether one is showing.
+({ ...engineSnapshot, keyboardVisible: { kind: 'visible' } }) satisfies EngineSnapshot;
 
 // There is no implicit target: a config names at least one, and the type says so before the loader does.
 // @ts-expect-error targets is required
 ({ cache: 'read-write' }) satisfies E2EConfig;
 ({ targets, cache: 'read-write' }) satisfies E2EConfig;
 ({ targets, failOnSkippedFailure: true }) satisfies E2EConfig;
+({ targets, maxDuration: 900_000 }) satisfies E2EConfig;
 ({ targets, cache: { mode: 'read-only', store: remoteStore, dir: 'shared-cache' } }) satisfies E2EConfig;
 ({ targets: [{ platform: 'ios' }] }) satisfies E2EConfig;
 // @ts-expect-error specVersion is gone; the runner version is the format version
@@ -148,7 +189,24 @@ attemptContext.resolveSecret(secrets.get('key')) satisfies Promise<string>;
 void attemptContext.resolveSecret(secrets.get('key'), { derived: (plaintext) => [Buffer.from(`ada:${plaintext}`).toString('base64')] });
 // @ts-expect-error a derived form is a string computed from the value, never the handle itself.
 void attemptContext.resolveSecret(secrets.get('key'), { derived: () => [secrets.get('key')] });
+// An engine reports what the app logged, one line from a closed source and level each.
+attemptContext.appLog({ source: 'network', level: 'error', text: 'GET /api/todos 500' });
+// @ts-expect-error an app log source is a closed union.
+attemptContext.appLog({ source: 'stdout', level: 'error', text: 'boom' });
+// @ts-expect-error where the app went is its own report, not an app log line.
+attemptContext.appLog({ source: 'navigation', level: 'info', text: 'navigated to /login' });
+attemptContext.navigation('navigated to /login');
+declare const actCache: NonNullable<Awaited<ReturnType<Agent['act']>>['cache']>;
+actCache.entry satisfies string | undefined;
+actCache.recordedBy satisfies { readonly provider: string; readonly model: string } | undefined;
+// @ts-expect-error a recording model id must be a string.
+({ provider: 'test', model: 1 }) satisfies NonNullable<typeof actCache.recordedBy>;
+// @ts-expect-error what became of the recording is known once the attempt ends, so only the report has it.
+void actCache.write;
 credentials.user('admin').password satisfies Secret;
+({ targets, credentials: { admin: { username: 'admin', password: () => 'admin-pass' } } }) satisfies E2EConfig;
+// @ts-expect-error only password may be a provider function; username is a plain string.
+({ targets, credentials: { admin: { username: () => 'admin', password: 'admin-pass' } } }) satisfies E2EConfig;
 // @ts-expect-error a Secret has no plaintext accessor.
 secrets.get('key').value;
 void screen.getByLabel('Key').fill(secrets.get('key'));
@@ -206,7 +264,7 @@ declare const reporter: Reporter;
 ({
   name: 'upload',
   onEvent: (event: RunEvent) => void event.seq,
-  onRunFinished: async (run) => [{ label: 'Results', text: run.report.run.id }],
+  onRunFinished: async (finished) => [{ label: 'Results', text: finished.report.run.id }],
 }) satisfies Reporter;
 declare const runEvent: RunEvent;
 if (runEvent.type === 'step') {
@@ -297,6 +355,17 @@ void expect.poll(() => 'x').toBe(1);
 void expect.poll('x').toBe('x');
 // @ts-expect-error the synchronous matchers take no options; a value that is still settling goes through expect.poll
 expect('x').toBe('x', { timeout: 1000 });
+// expect(screen) and expect(locator) compare screenshots; screen gets no locator matcher.
+void (expect(screen).toHaveScreenshot('home.png') satisfies Promise<void>);
+void (expect(screen).not.toHaveScreenshot({ maxDiffPixelRatio: 0.01, mask: [screen.getByTestId('clock')] }) satisfies Promise<void>);
+void (expect(screen.getByRole('button')).toHaveScreenshot({ threshold: 0.1, maxDiffPixels: 10, maskColor: '#000000', timeout: 1000 }) satisfies Promise<void>);
+void (expect.soft(screen).toHaveScreenshot() satisfies Promise<void>);
+// @ts-expect-error a page screenshot option the cross-platform matcher does not take
+void expect(screen).toHaveScreenshot({ fullPage: true });
+// @ts-expect-error masks are locators, not selectors
+void expect(screen).toHaveScreenshot({ mask: ['#clock'] });
+// @ts-expect-error screen is not a locator
+void expect(screen).toBeVisible();
 screen.getByRole('button', { name: 'Save', visible: true });
 screen.getByRole('heading', { name: 'Dashboard', level: 1 });
 // The vocabulary names composite widgets and structure, and takes ARIA's img as an alias of image.
@@ -372,6 +441,7 @@ void screen.getByRole('image').tap({ position: point, timeout: 1_000 });
 const rangeKeys: readonly KeyModifier[] = ['Shift', 'ControlOrMeta'];
 void screen.getByRole('row').click({ modifiers: rangeKeys });
 void screen.getByRole('row').secondaryTap({ modifiers: ['Alt'] });
+void screen.getByRole('row').dblclick({ modifiers: ['Shift'], timeout: 1_000 });
 // @ts-expect-error modifiers are the key grammar's modifier names
 void screen.getByRole('row').doubleTap({ modifiers: ['Hyper'] });
 void screen.getByRole('image').click({ position: point });
@@ -488,6 +558,10 @@ declare const seedCart: ReturnType<typeof defineTool>;
 // A custom brain goes under executor, and keeps the model, judge, context, and budgets.
 declare const brain: StepExecutor;
 ({ targets, agents: { default: { executor: brain, model, judge: model, context: 'Plans are called tiers.', maxModelCalls: 10 } } }) satisfies E2EConfig;
+// An executor that declares vision receives the assert option as step.vision.
+({ name: 'seeing', vision: true, runStep: async (ctx) => ({ status: 'passed', summary: ctx.step.vision === 'only' ? 'pixels' : 'tree' }) }) satisfies StepExecutor;
+// @ts-expect-error vision is a declaration, not a mode
+({ name: 'seeing', vision: 'only', runStep: async () => ({ status: 'passed', summary: '' }) }) satisfies StepExecutor;
 // @ts-expect-error system belongs to the built-in agent; a custom executor brings its own prompt
 ({ targets, agents: { default: { executor: brain, system: 'Be thorough.' } } }) satisfies E2EConfig;
 // @ts-expect-error tools belong to the built-in agent; a custom executor brings its own
@@ -573,3 +647,129 @@ describe('group', { tags: ['smoke'] }, () => {
 describe('async group', async () => {});
 // @ts-expect-error a suite hook sees suite fixtures only
 beforeAll((fixtures) => void fixtures.screen);
+
+// Suite execution accepts project selection, progress, and cancellation; execution settings live in config.
+declare const runResult: RunResult;
+void (run() satisfies Promise<RunResult>);
+void run({
+  cwd: '.', config: { targets }, files: ['tests/a.e2e.ts'],
+  interruptSignal: new AbortController().signal,
+  onEvent: (event) => { event satisfies RunEvent; },
+} satisfies RunOptions);
+void run({ config: 'e2e.config.ts' });
+void (runResult.exitCode satisfies RunExitCode);
+void (runResult.status satisfies RunStatus);
+void (runResult.report satisfies Report);
+void (runResult.reportPath satisfies string | undefined);
+void (runResult.aiTracePath satisfies string | undefined);
+void (((event: RunEvent) => { event.type; }) satisfies RunEventSink);
+// @ts-expect-error runtime configuration uses config, not the internal rawConfig name
+void run({ rawConfig: { targets } });
+// @ts-expect-error targetIds is an internal runner option
+void run({ targetIds: ['web'] });
+// @ts-expect-error public execution settings belong in the config
+void run({ targets: ['web'] });
+// @ts-expect-error freshGraph is a CLI option, not an embedded execution option
+void run({ freshGraph: true });
+// @ts-expect-error debug terminal output is a CLI option
+void run({ debug: true });
+// @ts-expect-error public execution settings belong in the config
+void run({ workers: 2 });
+// @ts-expect-error internal registrations are not part of the public runner
+void run({ tests: {} });
+// @ts-expect-error outcomes do not expose live resolved configuration
+runResult.config;
+// @ts-expect-error progress callbacks consume RunEvent, not arbitrary strings
+void run({ onEvent: (_event: string) => {} });
+
+// `e2e/runner` lists a selection in process. `config` is a path or a config value; `grep` is RegExp[].
+void list({
+  cwd: '.', config: 'e2e.config.ts', files: ['tests/a.e2e.ts'], tags: ['smoke'], tagMode: 'all', excludeTags: ['slow'],
+  grep: [/^plain$/], grepInvert: [/other/], lastFailed: false, shard: { index: 1, total: 2 }, passWithNoTests: true,
+  output: 'out', env: {}, targets: ['web'],
+} satisfies ListOptions);
+void list({ config: { targets } });
+void isE2EError(new ConfigurationError('NO_TESTS', 'none'));
+// @ts-expect-error grep is an array of RegExp, not strings
+void list({ grep: ['plain'] });
+// @ts-expect-error disposition is run, skip, or filtered
+const disposition: ListedPair['disposition'] = 'pending';
+void disposition;
+
+// `e2e/runner` hosts worker resources and opens a named, test-lifetime session with typed fixtures.
+type HostedFixtures = { device: { tap(): void } };
+declare const host: E2EHost<HostedFixtures>;
+declare const session: E2ESession<HostedFixtures>;
+declare const signal: AbortSignal;
+void (openHost() satisfies Promise<E2EHost>);
+void (openHost<HostedFixtures>({
+  cwd: '.', config: 'e2e.config.ts', target: 'web', env: {}, signal, headed: true,
+  onNotice: (target, message) => {
+    target satisfies string;
+    message satisfies string;
+  },
+} satisfies OpenHostOptions) satisfies Promise<E2EHost<HostedFixtures>>);
+void openHost({ config: { targets } });
+void (host.runId satisfies string);
+void (host.target satisfies string);
+void (host.close() satisfies Promise<readonly SerializedError[]>);
+void (host satisfies AsyncDisposable);
+void (host[Symbol.asyncDispose]() satisfies PromiseLike<void>);
+// @ts-expect-error the deadline belongs to each session, not the host
+void openHost({ timeout: 1000 });
+// @ts-expect-error steps belong to each session, not the host
+void openHost({ onStep: (_step: StepProgress) => {} });
+// @ts-expect-error the default agent is selected per session
+void openHost({ agent: 'buyer' });
+// @ts-expect-error the host has no test fixtures until a session opens
+host.fixtures;
+
+void (host.openSession({ name: 'checkout' }) satisfies Promise<E2ESession<HostedFixtures>>);
+void host.openSession({
+  name: 'checkout', timeout: 30_000, signal, agent: 'buyer',
+  onStep: (step) => {
+    step satisfies StepProgress;
+    if (step.phase === 'end') step.status satisfies StepRecord['status'];
+  },
+} satisfies OpenSessionOptions);
+// @ts-expect-error every hosted session requires options with a name
+void host.openSession();
+// @ts-expect-error name is required even when a timeout is supplied
+void host.openSession({ timeout: 1000 });
+// @ts-expect-error name is a string, not a title path array
+void host.openSession({ name: ['checkout'] });
+// @ts-expect-error the deadline is milliseconds, not a duration string
+void host.openSession({ name: 'checkout', timeout: '30s' });
+// @ts-expect-error a session is opened on its host's config
+void host.openSession({ name: 'checkout', config: { targets } });
+// @ts-expect-error the project directory belongs to the host
+void host.openSession({ name: 'checkout', cwd: '.' });
+// @ts-expect-error a session is opened on its host's target
+void host.openSession({ name: 'checkout', target: 'web' });
+// @ts-expect-error the environment belongs to the host
+void host.openSession({ name: 'checkout', env: {} });
+// @ts-expect-error headed mode belongs to the host
+void host.openSession({ name: 'checkout', headed: true });
+// @ts-expect-error provisioning notices belong to the host
+void host.openSession({ name: 'checkout', onNotice: (_target: string, _message: string) => {} });
+
+void (session.runId satisfies string);
+void (session.attemptId satisfies string);
+void (session.target satisfies string);
+void (session.fixtures.agent satisfies Agent);
+void (session.fixtures.app satisfies App);
+void (session.fixtures.screen satisfies Screen);
+void (session.fixtures.device.tap satisfies () => void);
+void (session.artifactsDir satisfies string);
+void (session.tracePath satisfies string);
+void (session.steps() satisfies readonly StepRecord[]);
+void (session.report() satisfies Report | undefined);
+void (session.close() satisfies Promise<readonly SerializedError[]>);
+void (session satisfies AsyncDisposable);
+void (session[Symbol.asyncDispose]() satisfies PromiseLike<void>);
+// @ts-expect-error the session's steps are the report's, read-only
+session.steps().push({} as StepRecord);
+// @ts-expect-error the generated trace path is not caller-controlled
+session.tracePath = '/tmp/trace.md';
+// @ts-expect-error closing returns a read-only list of failures
+(await session.close()).push({} as SerializedError);

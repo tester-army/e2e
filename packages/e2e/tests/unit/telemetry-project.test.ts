@@ -1,4 +1,4 @@
-/** The anonymous project id: a hashed root commit in a full clone, a salted path everywhere else. */
+/** The anonymous project id: a hashed root commit in a full clone, nothing everywhere else. */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -20,17 +20,19 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 describe('anonymousProjectId', () => {
   it('hashes the root commit, which every clone shares, and never sends the commit itself', async () => {
-    const id = await anonymousProjectId(repo, 'salt');
+    const id = await anonymousProjectId(repo);
     expect(id).toBe(sha256Hex(`git\n${root}`));
     expect(id).not.toContain(root);
     mkdirSync(path.join(repo, 'packages', 'app'), { recursive: true });
-    expect(await anonymousProjectId(path.join(repo, 'packages', 'app'), undefined)).toBe(id);
+    expect(await anonymousProjectId(path.join(repo, 'packages', 'app'))).toBe(id);
   });
 
-  it('treats a shallow clone like a directory outside git: the salted path, or nothing without a salt', async () => {
+  it('has no id outside git or in a shallow clone, whose roots move with every fetch', async () => {
     const shallow = path.join(dir, 'shallow');
     runGit(dir, 'clone', '--quiet', '--depth', '1', pathToFileURL(repo).href, shallow);
-    expect(await anonymousProjectId(shallow, 'salt')).toBe(sha256Hex(`path\nsalt\n${shallow}`));
-    expect(await anonymousProjectId(shallow, undefined)).toBeUndefined();
+    expect(await anonymousProjectId(shallow)).toBeUndefined();
+    const plain = path.join(dir, 'plain');
+    mkdirSync(plain);
+    expect(await anonymousProjectId(plain)).toBeUndefined();
   });
 });

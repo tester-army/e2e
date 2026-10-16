@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildTraceCacheKey,
   createCallIndexer,
-  engineCompatibilityVersion,
   instructionDigest,
+  keyContextChanges,
   normalizeInstruction,
   paramsDigest,
   traceCacheKeyHash,
@@ -17,7 +17,6 @@ const target: CacheTargetIdentity = {
   targetId: 'web',
   platform: 'web',
   engineName: 'playwright',
-  engineVersion: '1.61.1',
   spiVersion: 1,
   appIdentity: 'a'.repeat(64),
 };
@@ -35,15 +34,6 @@ describe('params identity', () => {
     expect(paramsDigest(undefined)).toBe(paramsDigest({}));
     expect(paramsDigest({ a: 1, b: 2 })).toBe(paramsDigest({ b: 2, a: 1 }));
     expect(paramsDigest({ a: 1 })).not.toBe(paramsDigest({ a: 2 }));
-  });
-});
-
-describe('engineCompatibilityVersion', () => {
-  it('keeps major.minor and passes odd versions through', () => {
-    expect(engineCompatibilityVersion('1.61.1')).toBe('1.61');
-    expect(engineCompatibilityVersion('2.0')).toBe('2.0');
-    expect(engineCompatibilityVersion('1.2.3-beta.1')).toBe('1.2');
-    expect(engineCompatibilityVersion('nightly')).toBe('nightly');
   });
 });
 
@@ -71,14 +61,10 @@ describe('traceCacheKeyHash', () => {
     policyVersion: 'replay-policy/0',
   };
 
-  it('is stable for identical parts and a driver patch release', () => {
+  it('is stable for identical parts', () => {
     const hash = traceCacheKeyHash(buildTraceCacheKey(parts));
     expect(hash).toMatch(/^[a-f0-9]{64}$/);
-    expect(
-      traceCacheKeyHash(
-        buildTraceCacheKey({ ...parts, target: { ...target, engineVersion: '1.61.9' } }),
-      ),
-    ).toBe(hash);
+    expect(traceCacheKeyHash(buildTraceCacheKey({ ...parts, target: { ...target } }))).toBe(hash);
   });
 
   it.each([
@@ -87,8 +73,8 @@ describe('traceCacheKeyHash', () => {
     ['call index', { callIndex: 1 }],
     ['test', { testId: 'other test' }],
     ['target', { target: { ...target, targetId: 'web-b' } }],
-    ['driver minor', { target: { ...target, engineVersion: '1.62.0' } }],
-    ['driver SPI version', { target: { ...target, spiVersion: 2 } }],
+    ['engine name', { target: { ...target, engineName: 'other' } }],
+    ['engine SPI version', { target: { ...target, spiVersion: 2 } }],
     ['policy version', { policyVersion: 'replay-policy/1' }],
     ['agent', { agent: { ...parts.agent, name: 'admin' } }],
     ['agent context', { agent: { ...parts.agent, context: 'The billing period is Daily.' } }],
@@ -99,16 +85,16 @@ describe('traceCacheKeyHash', () => {
   });
 
   // Every committed .e2e/cache entry is filed under this hash, so a change here misses all of them after an upgrade.
-  // Change it only together with TRACE_SCHEMA_VERSION or the replay policy version.
+  // Change it only with a changeset saying so, and re-key the recordings committed under apps/.
   it('hashes a fixed key to the same value across releases', () => {
-    expect(traceCacheKeyHash(buildTraceCacheKey(parts))).toBe('3170638ba32d00d06de1b48eccd2a8fb8268576fa96a4056b84c0911030611f5');
+    expect(traceCacheKeyHash(buildTraceCacheKey(parts))).toBe('a108ef464ccf8c316bc7ae7766c586eae6a3bb2cc482654246854e58793c070a');
     const withParams = {
       ...parts,
       signature: traceCallSignature('act', 'upgrade to {{plan}}', { plan: 'Pro', seats: 3 }),
       callIndex: 2,
       agent: { name: 'buyer', context: undefined },
     };
-    expect(traceCacheKeyHash(buildTraceCacheKey(withParams))).toBe('6f7f3c0dd423476ec754b8930b845f38244e81656bc1ef159fb0470fb2a81e79');
+    expect(traceCacheKeyHash(buildTraceCacheKey(withParams))).toBe('400b6e2625b0feb2483a87adcd90ab7ddb03a83ef47ed5409e57680cbb1d0caf');
   });
 
   it('keys the agent context by digest, never by its text', () => {
@@ -116,5 +102,30 @@ describe('traceCacheKeyHash', () => {
     expect(key.agent).toBe('buyer');
     expect(key.agentContextDigest).toMatch(/^[a-f0-9]{64}$/);
     expect(JSON.stringify(key)).not.toContain('Pay with');
+  });
+});
+
+describe('keyContextChanges', () => {
+  const context = {
+    cacheSchema: 'trace-1',
+    policyVersion: 'conservative/6',
+    project: 'p'.repeat(64),
+    platform: 'web',
+    engineName: 'web',
+    engineSpiVersion: 1,
+    appIdentity: 'a'.repeat(64),
+    agentContextDigest: 'c'.repeat(64),
+  } as const;
+
+  it('names what changed since the recording, with the values a reader can act on', () => {
+    expect(keyContextChanges({ ...context, engineSpiVersion: 0, appIdentity: 'b'.repeat(64) }, context)).toEqual([
+      'the engine contract (0 -> 1)',
+      "the app's identity (app.identity, else its URL) or environment",
+    ]);
+  });
+
+  it('says nothing for an entry that recorded no context, or the same one', () => {
+    expect(keyContextChanges(undefined, context)).toEqual([]);
+    expect(keyContextChanges(context, context)).toEqual([]);
   });
 });

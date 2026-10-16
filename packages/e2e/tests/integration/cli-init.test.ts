@@ -54,6 +54,16 @@ afterEach(() => {
 });
 
 describe('initializing standalone projects', () => {
+  it('preserves configured MCP server settings when reinitializing a project', async () => {
+    const original = JSON.stringify({
+      mcpServers: { e2e: { command: 'npx', args: ['e2e', 'mcp'], env: { APP_ENV: 'staging' }, timeout: 30_000 }, other: { command: 'other' } },
+      clientSetting: true,
+    }, null, 4) + '\n';
+    writeFileSync(path.join(dir, '.mcp.json'), original);
+    await execFileAsync(process.execPath, [CLI, 'init', '--yes'], { cwd: dir });
+    expect(readFileSync(path.join(dir, '.mcp.json'), 'utf8')).toBe(original);
+  });
+
   it.each([undefined, 'http://localhost:4173'])(
     'loads the generated config and collects its example with APP_URL=%s',
     async (appUrl) => {

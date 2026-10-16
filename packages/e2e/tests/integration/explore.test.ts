@@ -126,6 +126,24 @@ describe('e2e explore', () => {
     expect(paths.map((entry) => entry!.split('/').at(-1)).toSorted()).toEqual(['finding-1.png', 'finding-2.png']);
   });
 
+  it('keeps its own timeout and ignores the config\'s maxDuration', async () => {
+    const model = installExploreModel({
+      plan: () => ({ decision: 'finish', summary: 'Nothing to report.' }),
+      loop: () => [{ toolName: 'complete_step', input: { status: 'passed', summary: 'Looked' } }],
+    });
+    const outcome = await runExplore(project, app, model, {
+      rawConfig: {
+        targets: [{ name: 'web', engine: web(), app: { url: app.url } }] as never,
+        agents: { default: { model } },
+        actionTimeout: 10_000,
+        maxDuration: 1,
+      },
+    });
+    expect(outcome.report.run.errors).toEqual([]);
+    expect(outcome.report.run.summary).toMatchObject({ interrupted: 0, skipped: 0 });
+    expect(outcome.report.run.explore).toMatchObject({ ended: 'finished', summary: 'Nothing to report.' });
+  });
+
   it('plans steps, records the finding with its evidence, and fails the run for the issue', async () => {
     const planPrompts: string[] = [];
     const model = installExploreModel({
@@ -173,8 +191,8 @@ describe('e2e explore', () => {
     const attempt = result.attempts[0]!;
     const evidence = attempt.artifacts.find((artifact) => artifact.id === finding.artifactId);
     expect(evidence).toMatchObject({ kind: 'screenshot', mediaType: 'image/png', producer: { kind: 'step' } });
-    expect(evidence!.path).toBe('web/explore-the-home-page-and-find-bugs-b45b84f036779c9f/default/attempt-0/finding-1.png');
-    expect(existsSync(path.join(project.dir, '.e2e', 'artifacts', ...evidence!.path!.split('/')))).toBe(true);
+    expect(evidence!.path).toMatch(/^explore-the-home-page-and-find-bugs-[0-9a-f]{16}\/attempt-1\/finding-1\.png$/);
+    expect(existsSync(path.join(project.dir, '.e2e', 'results', ...evidence!.path!.split('/')))).toBe(true);
     expect(attempt.steps.find((step) => step.api === 'agent.act')!.artifacts).toContain(finding.artifactId);
     expect(result.titlePath).toEqual(['Explore the home page and find bugs']);
     expect(result.attempts.at(-1)!.error?.message).toContain('exploration found 1 issue(s)');
@@ -245,7 +263,7 @@ describe('e2e explore', () => {
     expect(loopCalls.length).toBeGreaterThan(0);
     expect(loopCalls[0]!.system).toContain('Exploration goal: Explore the home page with key <secret:probe>');
     const paths = result.attempts[0]!.artifacts.map((artifact) => artifact.path ?? '');
-    expect(paths.some((entry) => entry.startsWith('web/explore-the-home-page-with-key-secret-'))).toBe(true);
+    expect(paths.some((entry) => entry.startsWith('explore-the-home-page-with-key-secret-'))).toBe(true);
     expect(JSON.stringify([outcome.report, fakeCalls, loopCalls])).not.toContain(value);
     expect(readFileSync(path.join(project.dir, '.e2e', 'report.json'), 'utf8')).not.toContain(value);
 
@@ -264,22 +282,19 @@ describe('e2e explore', () => {
     ).rejects.toThrow('the goal must be at most 2000 characters with its secret values redacted, got 2009');
   }, 120_000);
 
-  it('says to pass --trace on and --video on when a retry mode would record nothing, explore running once', async () => {
+  it('says to pass --video on when a retry mode would record nothing, explore running once', async () => {
     const model = installExploreModel({
       plan: () => ({ decision: 'finish', summary: 'Nothing here.' }),
       loop: () => [{ toolName: 'complete_step', input: { status: 'passed', summary: 'unused' } }],
     });
     const runNotices: string[] = [];
     await runExplore(project, app, model, {
-      // CI's default trace mode records the first retry, and explore has none.
-      env: { ...process.env, CI: '1' },
       video: 'on-first-retry',
       onEvent: (event) => {
         if (event.type === 'notice' && event.target === 'run') runNotices.push(event.message);
       },
     });
     expect(runNotices).toEqual([
-      "trace: 'on-first-retry' records retries only, and explore runs its goal once, so no traces will be recorded; pass --trace on",
       "video: 'on-first-retry' records retries only, and explore runs its goal once, so no videos will be recorded; pass --video on",
     ]);
   }, 120_000);

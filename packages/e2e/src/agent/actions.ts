@@ -12,22 +12,23 @@
 import type { ViewportPoint, ViewportSize } from '../engine/surface.ts';
 import { redactNode, type NodeRedaction, type RedactedNode } from './observation.ts';
 import {
-  bound,
   isNodeAction,
   MAX_TRACE_DESCRIPTOR_CHARS,
   MAX_TRACE_SUMMARY_CHARS,
+  targetLabel,
   type NodeActionName,
   type PointActionName,
   type TraceTargetDescriptor,
   type TracePosition,
 } from '../cache/trace.ts';
 import { sanitizeText } from '../internal/errors.ts';
-import { collapseText } from '../internal/text.ts';
+import type { KeyModifier } from '../engine/contract.ts';
+import { bound, collapseText } from '../internal/text.ts';
 import type { ScrollDirection } from '../types.ts';
 
 /** One committed grammar action, addressed by the node it actually ran against. */
 export type RecordableAction =
-  | ({ readonly name: NodeActionName; readonly node: RedactedNode } & Placement)
+  | ({ readonly name: NodeActionName; readonly node: RedactedNode; readonly modifiers?: readonly KeyModifier[] } & Placement)
   | ({ readonly name: 'type'; readonly node: RedactedNode; readonly value: string } & Placement)
   | ({ readonly name: 'typeSecret'; readonly node: RedactedNode; readonly secret: string } & Placement)
   | ({ readonly name: 'press'; readonly node: RedactedNode; readonly key: string } & Placement)
@@ -97,6 +98,11 @@ const MAX_WITHIN_CHARS = 80;
  * one. A row whose only text is its own (`<li>Alpha <button><svg/></li>`)
  * is keyed by it. Only the nearest container counts: the list around a row
  * with no text names every row alike, so its key would tell no twin apart.
+ * A container whose first text belongs to a twin of the row the node came
+ * up through is such a list, and keys nothing by that text: a windowed list
+ * renders whichever rows are near the viewport, so its first row is a scroll
+ * position, not a place, and the same row would read as `Row 0512 in Row
+ * 0500` one time and `in Row 0501` the next. Its own label still keys it.
  */
 export function containerKey(
   id: string,
@@ -105,17 +111,35 @@ export function containerKey(
 ): string | undefined {
   const node = nodes.get(id);
   const own = node === undefined ? '' : squash(node.name ?? node.text ?? '');
+  let came = id;
   let cursor = parents.get(id);
   while (cursor !== undefined) {
     const container = nodes.get(cursor);
     if (container !== undefined && CONTAINER_ROLES.has(container.role ?? '')) {
-      const key = firstLeafText(container) ?? ownLabel(container);
+      const key = (namedAfterTwinOf(container, nodes.get(came)) ? undefined : firstLeafText(container)) ?? ownLabel(container);
       const clean = key === undefined ? '' : bound(collapseText(key), MAX_WITHIN_CHARS);
       return clean === '' || squash(clean) === own ? undefined : clean;
     }
+    came = cursor;
     cursor = parents.get(cursor);
   }
   return undefined;
+}
+
+/**
+ * Whether `container`'s first text sits in a child that is a container of
+ * the same role as `branch`, the child the keyed node came up through, and
+ * not `branch` itself: the container is then a list of such rows, named
+ * after whichever one comes first.
+ */
+function namedAfterTwinOf(container: RedactedNode, branch: RedactedNode | undefined): boolean {
+  if (branch === undefined || !CONTAINER_ROLES.has(branch.role ?? '')) return false;
+  for (const child of container.children ?? []) {
+    const own = (child.children?.length ?? 0) === 0 ? (child.text ?? child.name ?? '').trim() : '';
+    if (own === '' && firstLeafText(child) === undefined) continue;
+    return child.ref.id !== branch.ref.id && child.role === branch.role;
+  }
+  return false;
 }
 
 /** Parent id of every non-root node, derived from the tree the node map indexes. */
@@ -195,7 +219,11 @@ export function describeAction(action: RecordableAction, redaction: NodeRedactio
   const where = describeForSummary(target);
   const safe = (value: string) => quote(redaction.redact(sanitizeText(value)));
   const prose = (() => {
-    if (isNodeAction(action)) return NODE_ACTION_PROSE[action.name](where);
+    if (isNodeAction(action)) {
+      const said = NODE_ACTION_PROSE[action.name](where);
+      const held = 'modifiers' in action ? action.modifiers : undefined;
+      return held === undefined || held.length === 0 ? said : `${said} with ${held.join('+')} held`;
+    }
     switch (action.name) {
       case 'type':
         return `type ${safe(action.value)} into ${where}`;
@@ -295,19 +323,13 @@ export function describeTarget(node: RedactedNode): TraceTargetDescriptor | unde
 }
 
 function describeForSummary(target: TraceTargetDescriptor | undefined): string {
-  const where = describeWhere(target);
+  const where = target === undefined ? 'the screen' : targetLabel(target);
   const placed = target?.within === undefined ? where : `${where} in ${JSON.stringify(bound(target.within, 40))}`;
   return target?.position === undefined
     ? placed
     : `${placed} (${target.position.index + 1} of ${target.position.of})`;
 }
 
-function describeWhere(target: TraceTargetDescriptor | undefined): string {
-  if (target === undefined) return 'the screen';
-  const label = target.name ?? target.text ?? target.placeholder ?? target.testId ?? '';
-  const role = target.role ?? 'node';
-  return label === '' ? role : `${role} ${JSON.stringify(bound(label, 40))}`;
-}
 
 function quote(value: string): string {
   return JSON.stringify(bound(value, 40));

@@ -1,7 +1,7 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   compareCodePoints,
   compileGlob,
@@ -27,6 +27,10 @@ describe('glob grammar', () => {
     expect(matches('a?.ts', 'ab.ts')).toBe(true);
     expect(matches('a?.ts', 'a.ts')).toBe(false);
     expect(matches('a?.ts', 'a/b.ts')).toBe(false);
+    expect(matches('?.ts', '🐟.ts')).toBe(true);
+    expect(matches('??.ts', '🐟.ts')).toBe(false);
+    expect(matches('?🐟.ts', 'a🐟.ts')).toBe(true);
+    expect(matches('hello (world) ?.ts', 'hello (world) 🐟.ts')).toBe(true);
   });
 
   it('a complete ** segment matches zero or more path segments', () => {
@@ -107,8 +111,16 @@ describe('glob grammar', () => {
 });
 
 describe('discoverFiles', () => {
+  /** Temp roots the cases here create, removed after each so a run leaves nothing behind. */
+  const tempRoots: string[] = [];
+
+  afterEach(() => {
+    for (const root of tempRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
+
   it('matches, unions, de-duplicates, and sorts by code point', () => {
     const root = path.join(tmpdir(), `e2e-globs-${Date.now()}`);
+    tempRoots.push(root);
     mkdirSync(path.join(root, 'tests', 'nested'), { recursive: true });
     writeFileSync(path.join(root, 'tests', 'b.e2e.ts'), '');
     writeFileSync(path.join(root, 'tests', 'a.e2e.ts'), '');

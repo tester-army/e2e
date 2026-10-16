@@ -5,6 +5,7 @@ import type { Observation, SemanticNode, ViewportSize } from '../engine/surface.
 import type { SecretLedger } from '../internal/redact.ts';
 import { collapseText } from '../internal/text.ts';
 import { sleep } from '../internal/time.ts';
+import { pixelsProvenMasked } from '../run/secrecy.ts';
 import type { VisionDegradation } from '../run/steps.ts';
 import type { ExecutorNode, ExecutorObservation, ExecutorPixels } from './executor.ts';
 import { sizeForModel } from './pixels.ts';
@@ -27,6 +28,8 @@ export type AgentObservation = AgentObservationMetadata & (
       readonly parents: ReadonlyMap<string, string>;
       readonly tree: RedactedNode;
       readonly truncated: boolean;
+      /** The engine's measured keyboard state; `false` when it measured none, absent only when it did not measure. */
+      readonly keyboardVisible?: boolean | undefined;
       readonly pixels?: ExecutorPixels | undefined;
       readonly pixelsWithheld?: PixelsWithheld | undefined;
     }
@@ -146,6 +149,7 @@ export function prepareObservation(
     parents,
     tree,
     truncated,
+    ...(observation.keyboardVisible === undefined ? {} : { keyboardVisible: observation.keyboardVisible }),
     ...(pixels.cleared === undefined ? {} : { pixels: pixels.cleared }),
     ...(pixels.withheld === undefined ? {} : { pixelsWithheld: pixels.withheld }),
   };
@@ -222,6 +226,7 @@ export function redactNode(node: SemanticNode, redaction: NodeRedaction): Redact
     if (result !== undefined) redacted[field] = result;
   }
   if (node.children !== undefined) redacted['children'] = node.children.map((child) => redactNode(child, redaction));
+  // oxlint-disable-next-line e2e/no-chained-type-assertions -- mints the phantom REDACTED brand once every field passed NODE_FIELDS
   return redacted as unknown as RedactedNode;
 }
 
@@ -312,9 +317,8 @@ function clearPixels(observation: Observation): {
 } {
   const pixels = observation.pixels;
   if (pixels === undefined) return {};
-  const { secureNodeCount, maskedRegionCount } = observation.redaction;
-  if (maskedRegionCount < secureNodeCount) return { withheld: 'MASKING_UNPROVEN' };
-  return { cleared: { ...pixels, maskedRegionCount } };
+  if (!pixelsProvenMasked(observation.redaction)) return { withheld: 'MASKING_UNPROVEN' };
+  return { cleared: { ...pixels, maskedRegionCount: observation.redaction.maskedRegionCount } };
 }
 
 /**
@@ -419,7 +423,18 @@ const MAX_HREF_LENGTH = 256;
  * `appOrigin`, the app base URL's, renders as its path.
  */
 export function formatNode(node: RedactedNode, depth: number, appOrigin?: string): string {
-  const parts: string[] = [`#${node.ref.id}`];
+  const description = describeNode(node, appOrigin);
+  return `${' '.repeat(Math.min(depth, MAX_INDENT_DEPTH))}#${node.ref.id}${description === '' ? '' : ` ${description}`}`;
+}
+
+/**
+ * One node as a line names it, without its id or indent: role, name, text,
+ * the disambiguators, value, and the states that hold. `ignoreStates` leaves
+ * out states a reader comparing two screens does not count as a change
+ * (focus moves with every action).
+ */
+export function describeNode(node: RedactedNode, appOrigin?: string, ignoreStates: ReadonlySet<string> = new Set()): string {
+  const parts: string[] = [];
   if (node.role !== undefined && node.role !== '') parts.push(node.role);
   if (node.name !== undefined && node.name !== '') parts.push(JSON.stringify(node.name));
   const text = node.text === undefined ? '' : collapseText(node.text);
@@ -448,10 +463,10 @@ export function formatNode(node: RedactedNode, depth: number, appOrigin?: string
     parts.push(`purpose=${node.inputPurpose}`);
   }
   const states = Object.entries(node.states ?? {})
-    .filter(([, value]) => value === true)
+    .filter(([key, value]) => value === true && !ignoreStates.has(key))
     .map(([key]) => key);
   if (states.length > 0) parts.push(`[${states.join(' ')}]`);
-  return `${' '.repeat(Math.min(depth, MAX_INDENT_DEPTH))}${parts.join(' ')}`;
+  return parts.join(' ');
 }
 
 /**

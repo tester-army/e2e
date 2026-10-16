@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as cli from '../../../src/oauth/cli.ts';
 import { OAuthError } from '../../../src/oauth/errors.ts';
+import { login } from '../../../src/oauth/login.ts';
+
+vi.mock('../../../src/oauth/login.ts', async (original) => ({ ...(await original<typeof import('../../../src/oauth/login.ts')>()), login: vi.fn() }));
 
 function quietIo(out: string[]) {
   const write = (chunk: string) => (out.push(chunk), true);
@@ -10,6 +13,7 @@ function quietIo(out: string[]) {
 /** Never the developer's own credential file: every test names its logins through the environment store. */
 beforeEach(() => {
   vi.stubEnv('E2E_OAUTH_CREDENTIALS', '{}');
+  vi.stubEnv('OPENCODE_API_KEY', '');
 });
 
 afterEach(() => {
@@ -29,16 +33,43 @@ describe('e2e login / logout', () => {
     expect(out.join('')).toContain('name a provider: openai, github-copilot, opencode-console, spacexai');
     expect(out.join('').split('\n').filter(Boolean)).toHaveLength(1);
   });
+
+  it('prints the sign-in URL on one unbordered line in a terminal, so it copies whole', async () => {
+    const url = `https://auth.example.test/oauth/authorize?${'scope=openid+profile+email&'.repeat(8)}state=xyz`;
+    vi.mocked(login).mockImplementationOnce(async (_id, { callbacks }) => {
+      callbacks.onAuth({ url, userCode: 'ABCD-1234', instructions: 'Sign in in the browser.' });
+      throw new OAuthError('CANCELLED', 'the login was cancelled');
+    });
+    const printed: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => (printed.push(String(chunk)), true));
+    const out: string[] = [];
+    try {
+      await cli.runLogin('openai', {}, { ...quietIo(out), isTTY: true, openUrl: () => undefined });
+    } finally {
+      vi.mocked(process.stdout.write).mockRestore();
+    }
+    expect(printed.join('').split('\n')).toContain(url);
+    expect(printed.join('')).toContain('ABCD-1234');
+  });
 });
 
 describe('e2e models', () => {
   it('lists models only for stored logins and says how to sign in when there is none', async () => {
     const out: string[] = [];
     expect(await cli.runModels(undefined, quietIo(out))).toBe(1);
-    expect(out.join('')).toContain('no login is stored; sign in with e2e login <openai|github-copilot|opencode-console|spacexai>');
+    expect(out.join('')).toContain('no login is stored; sign in with e2e login <openai|github-copilot|opencode-console|spacexai>, or set OPENCODE_API_KEY');
     out.length = 0;
     expect(await cli.runModels('spacexai', quietIo(out))).toBe(1);
     expect(out.join('')).toContain('no SpaceXAI login is stored; run `npx e2e login spacexai`');
+  });
+
+  it('lists a provider whose API key is set alongside the stored logins', async () => {
+    vi.stubEnv('E2E_OAUTH_CREDENTIALS', JSON.stringify({ spacexai: { access: 'x', refresh: '', expires: 0 } }));
+    vi.stubEnv('OPENCODE_API_KEY', 'oc_sk_env');
+    const listed: string[] = [];
+    const out: string[] = [];
+    expect(await cli.runModels(undefined, quietIo(out), async (id) => (listed.push(id), []))).toBe(0);
+    expect(listed).toEqual(['opencode-console', 'spacexai']);
   });
 
   it('prints one aligned line per model with vendor text stripped of terminal controls, and keeps going past a failing provider', async () => {

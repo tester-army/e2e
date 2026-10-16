@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ReportAttempt, ReportResult, ReportStep } from '../../src/report/build.ts';
 import type { ReportSerialGroup } from '../../src/report/build.ts';
-import { attemptsLine, detailLines, evidenceOf, failureSource, lastTurnLines, renderFailurePage, screenLines, toldAttempt } from '../../src/report/failure-text.ts';
+import { attemptsLine, detailLines, evidenceOf, failedStepOf, failureSource, lastTurnLines, renderTracePage, screenLines, toldAttempt } from '../../src/report/failure-text.ts';
 import { outcome } from '../../src/report/outcome.ts';
 import { reportAttempt, reportDocument, reportError, reportResult, reportStep, reportTarget } from '../helpers/report.ts';
 
@@ -19,8 +19,10 @@ function step(overrides: Partial<ReportStep> & Pick<ReportStep, 'index'>): Repor
   return reportStep({ id: `s${overrides.index}`, label: `step ${overrides.index}`, source: UNKNOWN, ...overrides });
 }
 
+/** A failed attempt as the runner records it: the step that ended it carries its error. */
 function failed(overrides: Partial<ReportAttempt> = {}): ReportAttempt {
-  return reportAttempt({ status: 'failed', error: reportError(), steps: [step({ index: 0 }), step({ index: 1, status: 'failed' })], ...overrides });
+  const error = overrides.error ?? reportError();
+  return reportAttempt({ status: 'failed', error, steps: [step({ index: 0 }), step({ index: 1, status: 'failed', error })], ...overrides });
 }
 
 function result(overrides: Partial<ReportResult> = {}): ReportResult {
@@ -41,7 +43,7 @@ describe('detailLines', () => {
 
 describe('attemptsLine', () => {
   it('folds consecutive attempts that failed alike into one run, and names the code only when it changes', () => {
-    const early = failed({ steps: [step({ index: 0, status: 'failed' })] });
+    const early = failed({ steps: [step({ index: 0, status: 'failed', error: reportError() })] });
     const drifted = result({ attempts: [early, failed(), failed(), failed()] });
     expect(attemptsLine(drifted, outcome(drifted, NO_GROUPS))).toBe('Failed on all 4 attempts: **ASSERTION_FAILED** at step 1, then at step 2 (3 times).');
     const mixed = result({ attempts: [failed({ error: reportError({ code: 'LOCATOR_NOT_FOUND' }) }), failed({ error: reportError({ code: 'LOCATOR_NOT_FOUND' }) }), failed()] });
@@ -56,14 +58,66 @@ describe('attemptsLine', () => {
   });
 });
 
+describe('failedStepOf', () => {
+  const caught = step({ index: 1, api: 'locator.waitFor', status: 'failed', error: reportError({ code: 'LOCATOR_NOT_FOUND' }) });
+  const ended = step({ index: 3, api: 'expect.toHaveCount', status: 'failed', error: reportError({ code: 'ASSERTION_FAILED' }) });
+  const steps = [step({ index: 0 }), caught, step({ index: 2 }), ended];
+
+  it('names the step whose error ended the attempt, not an earlier failure the test caught and went on from', () => {
+    expect(failedStepOf({ steps, error: reportError({ code: 'ASSERTION_FAILED', phase: 'body' }) })).toEqual({ index: 3, step: ended });
+    // Same code twice: the body ends at the throw, so the last one is it.
+    const alike = step({ index: 3, api: 'locator.waitFor', status: 'failed', error: reportError({ code: 'LOCATOR_NOT_FOUND' }) });
+    expect(failedStepOf({ steps: [step({ index: 0 }), caught, step({ index: 2 }), alike], error: reportError({ code: 'LOCATOR_NOT_FOUND', phase: 'body' }) })).toEqual({ index: 3, step: alike });
+  });
+
+  it('takes the step whose error unwound through the line the attempt error names, and none when no step error did', () => {
+    const at = (line: number) => ({ file: 'tests/a.e2e.ts', line, column: 3 });
+    // A step's source is its call site, one line below the `await` a split call's error unwinds through.
+    const first = step({ index: 1, api: 'expect.toBeHidden', status: 'failed', source: at(6), error: reportError({ source: at(5) }) });
+    const second = step({ index: 2, api: 'expect.toHaveText', status: 'failed', source: at(8), error: reportError({ source: at(7) }) });
+    // Soft assertions: the one error unwinds through the first failure's stack, so the first failed step is it.
+    expect(failedStepOf({ steps: [step({ index: 0 }), first, second], error: reportError({ source: at(5) }) })).toEqual({ index: 1, step: first });
+    expect(failedStepOf({ steps: [step({ index: 0 }), first, second], error: reportError({ source: at(7) }) })).toEqual({ index: 2, step: second });
+    // A value matcher throws from a line no step's error names; the caught step before it does not stand in.
+    expect(failedStepOf({ steps: [step({ index: 0 }), first], error: reportError({ source: at(9) }) })).toBeUndefined();
+  });
+
+  it('keeps to the phase the error names, so a hook that failed alike after the body does not stand in for it', () => {
+    const inHook = step({ index: 4, phase: 'afterEach', status: 'failed', error: reportError({ code: 'ASSERTION_FAILED' }) });
+    expect(failedStepOf({ steps: [...steps, inHook], error: reportError({ code: 'ASSERTION_FAILED', phase: 'body' }) })).toEqual({ index: 3, step: ended });
+    expect(failedStepOf({ steps: [...steps, inHook], error: reportError({ code: 'ASSERTION_FAILED', phase: 'afterEach' }) })).toEqual({ index: 4, step: inHook });
+  });
+
+  it('falls back to the step the attempt cut when no step carries the code, and names none for an error from no step or for no error', () => {
+    const cut = step({ index: 3, status: 'cancelled', error: reportError({ code: 'CANCELLED' }) });
+    expect(failedStepOf({ steps: [step({ index: 0 }), caught, step({ index: 2 }), cut], error: reportError({ code: 'TEST_TIMEOUT', phase: 'body' }) })).toEqual({ index: 3, step: cut });
+    expect(failedStepOf({ steps, error: reportError({ code: 'UNEXPECTED_ERROR', phase: 'body' }) })).toBeUndefined();
+    expect(failedStepOf({ steps, error: undefined })).toBeUndefined();
+  });
+});
+
 describe('failureSource', () => {
   it("prefers the line the error unwound through, then the failing step's own call, then the test's declaration", () => {
     const fromError = result({ attempts: [failed({ error: reportError({ source: { file: 'tests/a.e2e.ts', line: 14, column: 3 } }) })] });
     expect(failureSource(fromError, toldAttempt(fromError, outcome(fromError, NO_GROUPS)))).toEqual({ file: 'tests/a.e2e.ts', line: 14, column: 3 });
-    const fromStep = result({ attempts: [failed({ steps: [step({ index: 0 }), step({ index: 1, status: 'failed', source: { file: 'tests/a.e2e.ts', line: 9, column: 5 } })] })] });
+    const fromStep = result({ attempts: [failed({ steps: [step({ index: 0 }), step({ index: 1, status: 'failed', error: reportError(), source: { file: 'tests/a.e2e.ts', line: 9, column: 5 } })] })] });
     expect(failureSource(fromStep, toldAttempt(fromStep, outcome(fromStep, NO_GROUPS)))).toEqual({ file: 'tests/a.e2e.ts', line: 9, column: 5 });
     const declared = result();
     expect(failureSource(declared, toldAttempt(declared, outcome(declared, NO_GROUPS)))).toEqual(declared.source);
+  });
+
+  it("names the line of the step whose error ended the attempt, not a caught failure's before it", () => {
+    const caughtFirst = result({
+      attempts: [
+        failed({
+          steps: [
+            step({ index: 0, status: 'failed', error: reportError({ code: 'LOCATOR_NOT_FOUND' }), source: { file: 'tests/a.e2e.ts', line: 8, column: 5 } }),
+            step({ index: 1, status: 'failed', error: reportError(), source: { file: 'tests/a.e2e.ts', line: 15, column: 5 } }),
+          ],
+        }),
+      ],
+    });
+    expect(failureSource(caughtFirst, toldAttempt(caughtFirst, outcome(caughtFirst, NO_GROUPS)))).toEqual({ file: 'tests/a.e2e.ts', line: 15, column: 5 });
   });
 });
 
@@ -89,18 +143,18 @@ describe('lastTurnLines and screenLines', () => {
 describe('evidenceOf', () => {
   it("puts the failure's own screenshot and screen text first, then one artifact per kind, and never a log the failure did not capture", () => {
     const artifacts: ReportAttempt['artifacts'] = [
-      { id: 'a:0', kind: 'trace', mediaType: 'application/zip', path: 't/trace.zip', redaction: 'not-required', producer: { kind: 'attempt' } },
+      { id: 'a:0', kind: 'video', mediaType: 'video/webm', path: 't/video.webm', redaction: 'incomplete', producer: { kind: 'attempt' } },
       { id: 'a:1', kind: 'log', mediaType: 'text/plain', path: 't/transcript.txt', redaction: 'complete', producer: { kind: 'attempt' } },
       { id: 'a:2', kind: 'screenshot', mediaType: 'image/png', path: 't/001-assert.png', redaction: 'complete', producer: { kind: 'attempt' } },
       { id: 'a:3', kind: 'screenshot', mediaType: 'image/png', path: 't/002-failure.png', redaction: 'complete', producer: { kind: 'attempt' } },
-      { id: 'a:4', kind: 'log', mediaType: 'text/plain', path: 't/failure/screen.txt', redaction: 'complete', producer: { kind: 'attempt' } },
+      { id: 'a:4', kind: 'log', mediaType: 'text/plain', path: 't/screen-at-failure.txt', redaction: 'complete', producer: { kind: 'attempt' } },
     ];
     const told = toldAttempt(result(), outcome(result({ attempts: [failed({ artifacts, failure: { screenshot: 'a:3', screen: 'a:4' } })] }), NO_GROUPS));
     expect(evidenceOf(told).map((artifact) => artifact.id)).toEqual(['a:3', 'a:4', 'a:0', 'a:2']);
   });
 });
 
-describe('renderFailurePage', () => {
+describe('renderTracePage', () => {
   const page = (attempts: ReportAttempt[], readArtifact?: (reportPath: string) => string | undefined) => {
     const failing = reportResult({
       id: 'r1',
@@ -110,8 +164,27 @@ describe('renderFailurePage', () => {
       attempts,
     });
     const document = reportDocument({ status: 'failed', exitCode: 1, targets: [reportTarget()], results: [failing] });
-    return renderFailurePage(document, failing, outcome(failing, NO_GROUPS), { artifactsDir: '.e2e/artifacts', readArtifact });
+    return renderTracePage(document, failing, outcome(failing, NO_GROUPS), { artifactsDir: '.e2e/artifacts', readArtifact });
   };
+
+  it('lists the screenshots a step attached under that step, and no other artifact', () => {
+    const image = (id: string, file: string) => ({ id, kind: 'screenshot' as const, mediaType: 'image/png', path: `t/screenshots/${file}`, redaction: 'complete' as const, producer: { kind: 'step' as const, stepId: 's1' } });
+    const log = { id: 'a:3', kind: 'log' as const, mediaType: 'text/plain', path: 't/console.txt', redaction: 'complete' as const, producer: { kind: 'step' as const, stepId: 's1' } };
+    const body = page([
+      failed({
+        steps: [step({ index: 0 }), step({ index: 1, api: 'expect.toHaveScreenshot', status: 'failed', artifacts: ['a:0', 'a:1', 'a:2', 'a:3'] })],
+        artifacts: [image('a:0', 'home-expected.png'), image('a:1', 'home-actual.png'), image('a:2', 'home-diff.png'), log],
+      }),
+    ]);
+    const lines = body.split('\n');
+    const at = lines.findIndex((line) => line.includes('`expect.toHaveScreenshot`'));
+    expect(lines.slice(at + 1, at + 4)).toEqual([
+      '   - screenshot `.e2e/artifacts/t/screenshots/home-expected.png`',
+      '   - screenshot `.e2e/artifacts/t/screenshots/home-actual.png`',
+      '   - screenshot `.e2e/artifacts/t/screenshots/home-diff.png`',
+    ]);
+    expect(lines[at + 4]).not.toContain('console.txt');
+  });
 
   it('quotes a step explanation that starts like a heading as prose, with its linkable tokens as code, through the shared cell', () => {
     const body = page([
@@ -125,7 +198,7 @@ describe('renderFailurePage', () => {
   });
 
   it('tells the whole story: the error in full, its facts, the line, every step, the turns, the screen inline, and the evidence', () => {
-    const screen = { id: 'a:0', kind: 'log' as const, mediaType: 'text/plain', path: 't/failure/screen.txt', redaction: 'complete' as const, producer: { kind: 'attempt' as const } };
+    const screen = { id: 'a:0', kind: 'log' as const, mediaType: 'text/plain', path: 't/screen-at-failure.txt', redaction: 'complete' as const, producer: { kind: 'attempt' as const } };
     const shot = { id: 'a:1', kind: 'screenshot' as const, mediaType: 'image/png', path: 't/001-failure.png', redaction: 'complete' as const, producer: { kind: 'attempt' as const } };
     const body = page(
       [
@@ -143,6 +216,7 @@ describe('renderFailurePage', () => {
               api: 'agent.act',
               label: 'Archive the todo',
               status: 'failed',
+              source: { file: 'tests/todos.e2e.ts', line: 8, column: 3 },
               durationMs: 16_100,
               metrics: { modelCalls: 6, actionSteps: 4, observationBytes: 1, contextBytes: 1, ledgerBytes: 1 },
               explanation: 'no Archive button',
@@ -150,14 +224,14 @@ describe('renderFailurePage', () => {
                 { index: 1, calls: ['tap({"target":"n19"})'], outcome: 'Tapped #n19.\n\nScreen changes: 4 added.' },
                 { index: 2, calls: ['complete_step({"status":"failed"})'], outcome: 'Step concluded.' },
               ],
-              error: reportError({ code: 'ASSERTION_FAILED', message: 'no Archive button' }),
+              error: reportError({ code: 'ASSERTION_FAILED', message: 'no Archive button', source: { file: 'tests/todos.e2e.ts', line: 8, column: 3 } }),
             }),
           ],
           artifacts: [screen, shot],
-          failure: { url: 'http://app.test/todos', screen: 'a:0', screenshot: 'a:1' },
+          failure: { url: 'http://app.test/todos', viewport: { width: 1280, height: 720 }, nodes: 2, screen: 'a:0', screenshot: 'a:1' },
         }),
       ],
-      (reportPath) => (reportPath === 't/failure/screen.txt' ? '# Screen at failure\n\n#n1 document "Todos"\n #n19 button "Add"\n' : undefined),
+      (reportPath) => (reportPath === 't/screen-at-failure.txt' ? '#n1 document "Todos"\n #n19 button "Add"\n' : undefined),
     );
     expect(body).toBe(
       [
@@ -176,7 +250,7 @@ describe('renderFailurePage', () => {
         '## Steps',
         '',
         '1. ✓ `app.open` `/todos` (40ms) — `tests/todos.e2e.ts:4`',
-        '2. ✗ `agent.act` "Archive the todo" (16.1s, 6 model calls) — **ASSERTION_FAILED**',
+        '2. ✗ `agent.act` "Archive the todo" (16.1s, 6 model calls) — **ASSERTION_FAILED** — `tests/todos.e2e.ts:8`',
         '   > no Archive button',
         '',
         '## Agent turns of step 2',
@@ -193,13 +267,11 @@ describe('renderFailurePage', () => {
         '',
         '## Screen at failure',
         '',
-        'URL: `http://app.test/todos`  ',
+        '`http://app.test/todos` · viewport 1280x720 · 2 nodes  ',
         '',
         'The screen as the agent reads it, one node per line: `#id role "name" text="…" [states]`.',
         '',
         '```text',
-        '# Screen at failure',
-        '',
         '#n1 document "Todos"',
         ' #n19 button "Add"',
         '```',
@@ -207,7 +279,7 @@ describe('renderFailurePage', () => {
         '## Evidence',
         '',
         '- screenshot `.e2e/artifacts/t/001-failure.png`',
-        '- log `.e2e/artifacts/t/failure/screen.txt`',
+        '- screen `.e2e/artifacts/t/screen-at-failure.txt`',
         '',
         '<sub>e2e 0.0.0 · run `run-1` · the whole run is in `report.json`</sub>',
         '',
@@ -216,9 +288,9 @@ describe('renderFailurePage', () => {
   });
 
   it('points at the screen text when it cannot read it, lists the candidates, and cuts a screen past the cap', () => {
-    const screen = { id: 'a:0', kind: 'log' as const, mediaType: 'text/plain', path: 't/failure/screen.txt', redaction: 'complete' as const, producer: { kind: 'attempt' as const } };
+    const screen = { id: 'a:0', kind: 'log' as const, mediaType: 'text/plain', path: 't/screen-at-failure.txt', redaction: 'complete' as const, producer: { kind: 'attempt' as const } };
     const unread = page([failed({ artifacts: [screen], failure: { screen: 'a:0', candidates: ['#n2 button "Add"'] } })]);
-    expect(unread).toContain('Closest to what the locator asked for:  \n- `#n2 button "Add"`\nScreen text: log `.e2e/artifacts/t/failure/screen.txt`  ');
+    expect(unread).toContain('Closest to what the locator asked for:  \n- `#n2 button "Add"`\nscreen `.e2e/artifacts/t/screen-at-failure.txt`  ');
     const huge = page([failed({ artifacts: [screen], failure: { screen: 'a:0' } })], () => 'x'.repeat(30_000));
     expect(huge).toContain('…[cut at 24000 characters; the file has the rest]');
   });
@@ -228,5 +300,57 @@ describe('renderFailurePage', () => {
     const hook = page([failed({ error: reportError({ phase: 'afterEach', message: 'cleanup ```broke```' }) })]);
     expect(hook).toContain('**ASSERTION_FAILED** in afterEach');
     expect(hook).toContain("cleanup '''broke'''");
+  });
+
+  it('names the skip a failed attempt took before its soft failures were settled', () => {
+    expect(page([failed({ skip: { cause: 'explicit', reason: 'flag | off' } })])).toContain('Also skipped: flag \\| off  ');
+    expect(page([failed()])).not.toContain('Also skipped');
+  });
+});
+
+describe('a serial member on its page', () => {
+  it("tells the member's own secondary errors and the shared session's cleanup errors", () => {
+    const member = reportResult({ testId: 'member', serialGroupId: 'g1', status: 'failed', attempts: [] });
+    const group: ReportSerialGroup = {
+      id: 'g1',
+      serialId: 'serial',
+      declarationIndex: 0,
+      file: 'tests/a.e2e.ts',
+      source: { file: 'tests/a.e2e.ts', line: 1, column: 1 },
+      titlePath: ['group'],
+      targetId: 'web',
+      platform: 'web',
+      agent: 'default',
+      repeat: 0,
+      memberTestIds: ['member'],
+      status: 'failed',
+      attempts: [
+        {
+          id: 'attempt',
+          index: 0,
+          status: 'failed',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          durationMs: 1,
+          artifacts: [],
+          secondaryErrors: [reportError({ code: 'ENGINE_FAILURE', message: 'the browser closed early', phase: 'cleanup' })],
+          cleanup: 'failed',
+          members: [
+            {
+              id: 'attempt:member:0',
+              index: 0,
+              testId: 'member',
+              status: 'failed',
+              startedAt: '2026-01-01T00:00:00.000Z',
+              durationMs: 1,
+              steps: [],
+              error: reportError(),
+              secondaryErrors: [reportError({ code: 'STEP_NOT_AWAITED', message: 'not awaited' })],
+            },
+          ],
+        },
+      ],
+    } as ReportSerialGroup;
+    const told = toldAttempt(member, outcome(member, new Map([['g1', group]])));
+    expect(told.secondaryErrors.map((error) => error.code)).toEqual(['STEP_NOT_AWAITED', 'ENGINE_FAILURE']);
   });
 });

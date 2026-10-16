@@ -1,9 +1,9 @@
 /** trace-1 file store: atomic writes, fail-to-miss reads. */
 
-import { mkdtemp, readdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from '../../src/cache/store.ts';
 import type { ActionTrace } from '../../src/cache/trace.ts';
 
@@ -16,8 +16,16 @@ const payload: ActionTrace = {
   startPath: '/settings',
 };
 
+/** Temp dirs the cases here create, removed after each so a run leaves nothing behind. */
+const tempDirs: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(tempDirs.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+});
+
 async function makeStore(options: { maxBytes?: number; writable?: boolean } = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), 'e2e-trace-cache-'));
+  tempDirs.push(directory);
   return {
     directory,
     store: new FileCacheStore({

@@ -1,32 +1,44 @@
 /**
  * Asserts that every code block a docs page or the consumer skill shows from
- * `docs/examples/` matches the file it came from.
+ * `docs/examples/` matches the file it came from, and that every example file
+ * is shown somewhere.
  *
  * The examples are typechecked against the built packages (`pnpm --filter
  * @e2e-dev/docs typecheck`); Mintlify cannot import a file into a page and a
  * skill is plain markdown, so the page carries a copy of each and this script
  * keeps the copies honest.
  *
+ * The map below names which page shows each example, and is the only place
+ * that knows it; the file list is read from the filesystem (`docs-examples.ts`)
+ * rather than trusted to the map, so an example added without a page is
+ * reported instead of silently unchecked.
+ *
  * Usage: `node scripts/check-docs-examples.ts`. Exits 1 listing every block
- * that drifted from its example.
+ * that drifted from its example, and every example no page shows.
  */
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { unmappedExamples } from './docs-examples.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** Example file to the page that shows it verbatim. */
 const EXAMPLES: Record<string, string> = {
+  'docs/examples/runner/run.ts': 'docs/reference/runner.mdx',
+  'docs/examples/limrun/e2e.config.ts': 'docs/integrations/limrun.mdx',
+  'docs/examples/limrun/greeting.e2e.ts': 'docs/integrations/limrun.mdx',
   'docs/examples/quickstart/e2e.config.ts': 'docs/quickstart.mdx',
   'docs/examples/quickstart/tests/example.e2e.ts': 'docs/quickstart.mdx',
   'docs/examples/quickstart/tests/agent.e2e.ts': 'docs/quickstart.mdx',
   'docs/examples/quickstart/mobile/e2e.config.ts': 'docs/quickstart.mdx',
   'docs/examples/quickstart/mobile/tests/example.e2e.ts': 'docs/quickstart.mdx',
   'docs/examples/quickstart/mobile/tests/agent.e2e.ts': 'docs/quickstart.mdx',
-  'docs/examples/quickstart/e2e.command.config.ts': 'docs/starting-your-app.mdx',
+  'docs/examples/quickstart/e2e.command.config.ts': 'docs/web.mdx',
   'docs/examples/mobile/device-provider.ts': 'docs/mobile.mdx',
   'docs/examples/mobile/device-cloud-provider.ts': 'docs/mobile.mdx',
+  'docs/examples/mobile/testmu.config.ts': 'docs/integrations/testmu.mdx',
+  'docs/examples/mobile/testmu.e2e.ts': 'docs/integrations/testmu.mdx',
   'docs/examples/web/browser-provider.ts': 'docs/browser.mdx',
   'docs/examples/models/e2e.decision.config.ts': 'docs/decision-models.mdx',
   'docs/examples/models/tests/decision.e2e.ts': 'docs/decision-models.mdx',
@@ -50,16 +62,20 @@ function codeBlocks(text: string): string[] {
 }
 
 function main(): number {
+  const problems: string[] = [];
+  // Every example file must be shown somewhere; the map is only trusted for
+  // where, never for whether one exists at all.
+  for (const file of unmappedExamples(Object.keys(EXAMPLES))) {
+    problems.push(`${file}: no page shows this example; add it to EXAMPLES and show it on the appropriate page`);
+  }
   const blocks = new Map<string, string[]>();
-  const missing = Object.entries(EXAMPLES).filter(([example, page]) => {
+  for (const [example, page] of Object.entries(EXAMPLES)) {
     const pageBlocks = blocks.get(page) ?? codeBlocks(read(page));
     blocks.set(page, pageBlocks);
-    return !pageBlocks.includes(read(example).trimEnd());
-  });
-  if (missing.length > 0) {
-    process.stderr.write(
-      `${missing.map(([example, page]) => `${page}: no code block matches ${example}`).join('\n')}\n`,
-    );
+    if (!pageBlocks.includes(read(example).trimEnd())) problems.push(`${page}: no code block matches ${example}`);
+  }
+  if (problems.length > 0) {
+    process.stderr.write(`${problems.join('\n')}\n`);
     return 1;
   }
   const pages = new Set(Object.values(EXAMPLES));

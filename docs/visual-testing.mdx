@@ -1,0 +1,150 @@
+---
+title: Visual comparison
+description: Compare the screen, or one element, against a stored screenshot on the web, iOS, and Android with the same test.
+icon: "image"
+"og:image": "https://e2e.tester.army/docs/images/og/visual-testing.png?v=4929216b19"
+"twitter:image": "https://e2e.tester.army/docs/images/og/visual-testing.png?v=4929216b19"
+---
+
+import { Video } from './snippets/video.jsx';
+
+`toHaveScreenshot` compares what the app shows with a PNG stored next to
+the test file. It works on every engine that captures pixels, so one test
+checks a browser, an iOS simulator, and an Android emulator.
+
+<Video>
+  <video src="/images/visual-testing.mp4" aria-label="A failed toHaveScreenshot assertion in the terminal, then the expected, actual, and diff images side by side." muted loop playsInline controls />
+
+  A failed comparison, then its expected, actual, and diff images.
+</Video>
+
+```ts title="tests/checkout.e2e.ts"
+import { test, expect } from 'e2e';
+
+test('checkout looks right', async ({ app, screen }) => {
+  await app.open('/checkout');
+  await expect(screen).toHaveScreenshot('checkout.png');
+  await expect(screen.getByRole('button', 'Pay')).toHaveScreenshot('pay-button.png');
+});
+```
+
+`expect(screen)` compares the whole screen. `expect(locator)` scrolls its
+one match into view and compares that box.
+
+## Stored screenshots
+
+Commit the screenshots with the tests. The first run has nothing to compare
+with, so it writes the screenshot and fails. Look at the image, commit it,
+and run again.
+
+```text
+tests/checkout.e2e.ts
+tests/checkout.e2e.ts-snapshots/checkout-web-linux.png
+tests/checkout.e2e.ts-snapshots/checkout-ios-darwin.png
+tests/checkout.e2e.ts-snapshots/pay-button-web-linux.png
+```
+
+Each target and operating system keeps its own file, since fonts and
+rendering differ. Without a name, the file takes the test's name:
+`checkout-looks-right-1-web-linux.png`.
+
+When the app changes on purpose, rewrite the screenshots that differ and
+write the missing ones. The run then passes:
+
+<CodeGroup>
+```bash npm
+npx e2e run --update-snapshots
+```
+
+```bash pnpm
+pnpm exec e2e run --update-snapshots
+```
+
+```bash bun
+bunx e2e run --update-snapshots
+```
+</CodeGroup>
+
+## In CI
+
+Take the screenshots on the machine that renders them in CI: a Linux
+runner for the web and Android, a macOS runner with the same simulator for
+iOS.
+
+Without `--update-snapshots`, a CI run never writes into the project. A
+missing screenshot fails the test, and the run saves it in the test's
+results at `snapshots/<path in the project>` for you to download and
+commit. To write all of them at one time, run `--update-snapshots` in a job
+like the test job:
+
+```yaml title=".github/workflows/screenshots.yml"
+name: Update screenshots
+on: workflow_dispatch
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    steps:
+      # the same checkout, setup, and install steps as the test job
+      - run: npx e2e run --update-snapshots
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: screenshots
+          path: tests/**/*-snapshots/
+```
+
+Download the artifact into the project, check the images, and commit
+them.
+
+## When it fails
+
+The matcher takes screenshots until one matches, or until the assertion
+timeout (`assertionTimeout`, 5 s) ends. On a mismatch, the failure gives the
+number of different pixels and three images in the test's results: `-diff`
+with the changed pixels in red, `-actual`, and `-expected`.
+
+```text
+2173 pixels (0.24% of the image) differ from tests/home.e2e.ts-snapshots/screen-web-darwin.png; run with --update-snapshots to keep this run's
+diff: .e2e/results/home-1a2b3c4d5e6f7a8b/attempt-1/screenshots/screen-diff.png
+actual: .e2e/results/home-1a2b3c4d5e6f7a8b/attempt-1/screenshots/screen-actual.png
+expected: .e2e/results/home-1a2b3c4d5e6f7a8b/attempt-1/screenshots/screen-expected.png
+```
+
+To write a screenshot, the matcher waits for two in a row that are the
+same. A screen that never holds still fails, with the last two screenshots
+and their diff.
+
+## Tolerance and masks
+
+```ts
+await expect(screen).toHaveScreenshot('dashboard.png', {
+  maxDiffPixelRatio: 0.01,
+  mask: [screen.getByTestId('last-updated')],
+});
+```
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `threshold` | `0.2` | How far one pixel's color can drift and still count as the same, 0 to 1 |
+| `maxDiffPixels` | `0` | How many pixels can differ |
+| `maxDiffPixelRatio` | `0` | What share of the pixels can differ, 0 to 1 |
+| `mask` | none | Locators painted over before the comparison, for content that changes between runs |
+| `maskColor` | `#ff00ff` | Color of the mask boxes |
+| `timeout` | `assertionTimeout` | Assertion budget in milliseconds |
+
+On the web, e2e stops animations and hides the text caret. On iOS and
+Android, it holds the status bar fixed, so the clock and battery match on
+every run.
+
+e2e masks secure fields in every screenshot. After a test fills a secret,
+the matcher fails with `POLICY_DENIED`, like every other screenshot.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Screenshot matchers" icon="circle-check" href="/reference/expect#screenshot-matchers">
+    `toHaveScreenshot` and `.not`, with every option.
+  </Card>
+  <Card title="Security" icon="shield-halved" href="/security">
+    How secrets stay out of screenshots, reports, and model input.
+  </Card>
+</CardGroup>

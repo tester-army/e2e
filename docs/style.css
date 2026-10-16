@@ -23,6 +23,7 @@
 }
 
 :root {
+  --e2e-paper: rgb(255 255 255);
   --e2e-ink: rgb(23 23 23);
   --e2e-muted: rgb(115 115 115);
   --e2e-hairline: rgb(232 232 232);
@@ -32,6 +33,7 @@
 }
 
 .dark {
+  --e2e-paper: rgb(10 10 10);
   --e2e-ink: rgb(250 250 250);
   --e2e-muted: rgb(163 163 163);
   --e2e-hairline: rgb(78 78 78);
@@ -208,10 +210,76 @@ a[href*='utm_campaign=docs_sidebar_banner'] {
     #table-of-contents {
       anchor-name: --e2e-table-of-contents;
     }
+
+    /* Room for the card, its gap, and a margin; change it with the card. */
+    @media (height >= 40rem) {
+      #table-of-contents-layout {
+        max-height: calc(100% - 13rem);
+      }
+    }
   }
 
   html:not(:has(#table-of-contents)) a[href*='utm_campaign=docs_sidebar_banner'] {
     display: none;
+  }
+
+  /* A short window keeps the table of contents and drops the card. */
+  @media (height < 40rem) {
+    a[href*='utm_campaign=docs_sidebar_banner'] {
+      display: none;
+    }
+  }
+
+  /* Keeps a focused or active entry clear of the heading (2.5rem padding,
+     1.5rem line, 1rem fade) and of the bottom fade. */
+  #table-of-contents [data-component-part='scroll-area-viewport'] {
+    scroll-padding-block: 5rem 2rem;
+    mask-image: linear-gradient(
+      to bottom,
+      black calc(100% - min(var(--scroll-area-fade-size), var(--scroll-area-overflow-y-end, 0px))),
+      transparent
+    );
+  }
+
+  /* The heading stays put; its negative margin covers the viewport's top
+     padding, so entries scroll under it, not above it. */
+  #table-of-contents nav > h2 {
+    position: sticky;
+    top: -2.5rem;
+    z-index: 1;
+    margin-top: -2.5rem;
+    padding-top: 2.5rem;
+    background: var(--e2e-paper);
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 100% 0 auto;
+      height: 1rem;
+      background: linear-gradient(var(--e2e-paper), transparent);
+      opacity: 0;
+      transition: opacity 150ms;
+      pointer-events: none;
+    }
+  }
+
+  #table-of-contents [data-overflow-y-start] nav > h2::after {
+    opacity: 1;
+  }
+
+  /* The list's focus ring is drawn over it, where the heading and the fade
+     cannot hide it. */
+  #table-of-contents [data-component-part='scroll-area-viewport']:focus-visible {
+    outline: none;
+  }
+
+  #table-of-contents:has(> [data-component-part='scroll-area-viewport']:focus-visible)::after {
+    content: '';
+    position: absolute;
+    inset: calc(2.5rem - 6px) -6px 0;
+    z-index: 1;
+    border: 2px solid var(--e2e-ink);
+    pointer-events: none;
   }
 }
 
@@ -683,6 +751,73 @@ html.dark body .code-block-fade-overlay {
   }
 }
 
+/* Long content folded like the setup prompt (snippets/show-more.jsx). */
+#content .show-more {
+  margin-block: 1.25rem;
+  border: 1px solid var(--e2e-hairline);
+}
+
+#content .show-more-content {
+  max-height: 132px;
+  padding: 1rem 1rem 0;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, black 45%, transparent);
+
+  & > :first-child {
+    margin-top: 0;
+  }
+
+  & > :last-child {
+    margin-bottom: 0;
+  }
+}
+
+#content .show-more[data-expanded='true'] .show-more-content {
+  max-height: none;
+  mask-image: none;
+}
+
+#content .show-more-toggle {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 1rem 0.75rem;
+  color: var(--e2e-muted);
+  font-size: 0.8125rem;
+  text-align: center;
+  cursor: pointer;
+}
+
+#content .show-more-toggle:hover {
+  color: var(--e2e-ink);
+}
+
+#content .show-more-toggle:focus-visible {
+  outline: 2px solid var(--e2e-ink);
+  outline-offset: -2px;
+}
+
+/* A video in a hairline frame with its caption underneath. */
+#content .video-figure {
+  margin-block: 1.25rem;
+
+  & video {
+    display: block;
+    width: 100%;
+    margin: 0;
+    border: 1px solid var(--e2e-hairline);
+    border-radius: 0;
+  }
+
+  /* The caption is whatever follows the <video> in the page's MDX. */
+  & > :not(video) {
+    display: block;
+    margin: 0.5rem 0 0;
+    color: var(--e2e-muted);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+  }
+}
+
 /* The "Copy page" menu shows titles only. docs.json requires a description on
    every custom option and Mintlify renders one under each title, so the second
    line is hidden here, on the built-in items too. The menu has no id; the
@@ -714,11 +849,17 @@ html.dark body .code-block-fade-overlay {
   opacity: 0.75;
 }
 
-/* Card icons from a file load as <img> too. The Expo mark is drawn black for
-   light mode and inverted to white for dark; Kernel's sits on its own green
-   square and reads on both. */
-.dark img[src*='/images/integrations/expo.svg'] {
+/* Card icons from a file load as <img> too. The Expo and TestMu AI marks are
+   drawn black for light mode and inverted to white for dark; Kernel's sits on
+   its own green square and reads on both. */
+.dark img[src*='/images/integrations/expo.svg'],
+.dark img[src*='/images/integrations/testmu.svg'] {
   filter: invert(1);
+}
+
+/* The Bitrise purple is too dark on the dark background. Make it lighter. */
+.dark img[src*='/images/integrations/bitrise.svg'] {
+  filter: brightness(2.2);
 }
 
 /* The Next.js wordmark needs the same contrast in dark mode. */
@@ -726,8 +867,187 @@ html.dark body .code-block-fade-overlay {
   filter: invert(1);
 }
 
+/* The Astro mark is near-black, so it needs the same inversion. */
+.dark img[src*='/images/examples/astro.svg'] {
+  filter: invert(1);
+}
+
 /* Keep the wide Next.js wordmark legible alongside the square marks. */
 #content [data-component-part='card-icon']:has(> img[src*='/images/examples/nextjs.svg']),
 #content img[src*='/images/examples/nextjs.svg'] {
   width: 80px;
+}
+
+/* Sidebar page icons from a file (in #sidebar-content, or #mobile-nav below
+   the desktop breakpoint) load as <img> in their own colors, while the
+   Font Awesome ones are a mask filled with --gray-400 (--gray-500 in dark
+   mode, the primary color on the current page). The marks under
+   /images/icons/ are drawn in black, so brightness(0) makes them a
+   silhouette and invert() lifts it to that same grey. */
+:is(#sidebar-content, #mobile-nav) img[src*='/images/icons/'] {
+  filter: brightness(0) invert(0.624);
+}
+
+.dark :is(#sidebar-content, #mobile-nav) img[src*='/images/icons/'] {
+  filter: brightness(0) invert(0.439);
+}
+
+:is(#sidebar-content, #mobile-nav) [data-active='true'] img[src*='/images/icons/'] {
+  filter: brightness(0) invert(0.09);
+}
+
+.dark :is(#sidebar-content, #mobile-nav) [data-active='true'] img[src*='/images/icons/'] {
+  filter: brightness(0) invert(0.98);
+}
+
+/* The footer credits read as one line on the right, "Built by TesterArmy |
+   Powered by Mintlify", with GitHub alone on the left. Mintlify's footer takes
+   no markup, so the TesterArmy link is the `website` social in docs.json,
+   restyled: its globe svg becomes the mascot, ::before says "Built by",
+   ::after draws the wordmark (the two make its accessible name), and its
+   socials wrapper is dissolved so the link can sit beside Mintlify's. The
+   Mintlify credit itself stays as Mintlify renders it.
+   The images are in images/footer/. Mintlify inlines this file into each
+   page, so a url() resolves against the page, not this file, and production
+   serves the site under /docs while `mint dev` serves it at the root. Each
+   image is therefore two layers, one path per host: the one that misses
+   paints nothing (a failed image layer is transparent), the other draws. */
+#footer {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 0;
+
+  & > div:first-child {
+    display: contents;
+  }
+
+  & a[href*='github.com'] {
+    margin-right: auto;
+  }
+
+  & > div:last-child {
+    order: 2;
+
+    &::before {
+      content: '';
+      width: 1px;
+      height: 0.875rem;
+      margin-inline: 0.875rem;
+      background: var(--e2e-hairline);
+      align-self: center;
+    }
+
+    &,
+    & > div {
+      display: flex;
+      align-items: center;
+    }
+  }
+
+  /* On a phone the line does not fit beside GitHub: Mintlify's credit takes
+     its own line, right-aligned under TesterArmy's, without the divider. */
+  @media (max-width: 28rem) {
+    row-gap: 0.5rem;
+
+    & > div:last-child {
+      width: 100%;
+      justify-content: flex-end;
+
+      &::before {
+        display: none;
+      }
+    }
+  }
+}
+
+#footer a[href^='https://tester.army'] {
+  order: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  /* Mintlify's own credit colors: text-gray-400, dark:text-gray-500, and
+     gray-600 / dark:gray-300 on hover. */
+  color: rgb(var(--gray-400));
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  white-space: nowrap;
+  text-decoration: none;
+
+  &::before {
+    content: 'Built by';
+  }
+
+  /* The wordmark from the brand kit's horizontal logo, drawn in the text
+     color the way Mintlify draws its own. Its cap height matches the text's,
+     and the alt text after the slash names it for screen readers. */
+  &::after {
+    /* Without the alt-text syntax (Safari < 17.4, Firefox < 128) the second
+       declaration is dropped and the first still draws the wordmark. */
+    content: '';
+    content: '' / 'TesterArmy';
+    width: 4.75rem;
+    height: 0.8rem;
+    margin-top: 0.2rem;
+    background: currentColor;
+    -webkit-mask:
+      url('/images/footer/testerarmy-wordmark.svg') center / contain no-repeat,
+      url('/docs/images/footer/testerarmy-wordmark.svg') center / contain no-repeat;
+    mask:
+      url('/images/footer/testerarmy-wordmark.svg') center / contain no-repeat,
+      url('/docs/images/footer/testerarmy-wordmark.svg') center / contain no-repeat;
+
+    @media (forced-colors: active) {
+      forced-color-adjust: none;
+      background: CanvasText;
+    }
+  }
+
+  & > span {
+    display: none;
+  }
+
+  & > svg {
+    width: 1.1rem;
+    height: 1rem;
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+    /* The brand kit's color mark (tester.army/brand), cropped to the
+       mascot. */
+    background:
+      url('/images/footer/testerarmy-mark.png') center / contain no-repeat,
+      url('/docs/images/footer/testerarmy-mark.png') center / contain no-repeat !important;
+    filter: grayscale(1);
+    opacity: 0.6;
+    transition: filter 150ms ease-out, opacity 150ms ease-out;
+  }
+
+  &:hover,
+  &:focus-visible {
+    color: rgb(var(--gray-600));
+
+    & > svg {
+      filter: none;
+      opacity: 1;
+    }
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--e2e-ink);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    & > svg {
+      transition: none;
+    }
+  }
+}
+
+.dark #footer a[href^='https://tester.army'] {
+  color: rgb(var(--gray-500));
+
+  &:hover,
+  &:focus-visible {
+    color: rgb(var(--gray-300));
+  }
 }

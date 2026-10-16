@@ -102,11 +102,33 @@ describe('DialogRouter', () => {
     router.add(() => {
       throw new Error('handler exploded');
     });
-    await router.dispatch(fakeDialog().dialog);
+    const { dialog, dismiss } = fakeDialog();
+    await router.dispatch(dialog);
+    expect(dismiss).toHaveBeenCalledTimes(1);
     expect(() => router.throwPending()).toThrowError(
       expect.objectContaining({ code: 'ENGINE_FAILURE', message: expect.stringContaining('handler exploded') }),
     );
 
+    expect(() => router.throwPending()).not.toThrow();
+  });
+
+  it('dismisses a dialog when accepting rejects and leaves it unanswered', async () => {
+    const router = new DialogRouter();
+    const { dialog, accept, dismiss } = fakeDialog();
+    accept.mockRejectedValueOnce(new Error('accept failed'));
+    router.add((native) => native.accept());
+    await router.dispatch(dialog);
+    expect(dismiss).toHaveBeenCalledTimes(1);
+    expect(() => router.throwPending()).toThrowError(expect.objectContaining({ code: 'ENGINE_FAILURE' }));
+  });
+
+  it('accepts a void handler that starts an answer without awaiting it', async () => {
+    const router = new DialogRouter();
+    const { dialog, accept, dismiss } = fakeDialog();
+    router.add((native) => { void native.accept(); });
+    await router.dispatch(dialog);
+    expect(accept).toHaveBeenCalledTimes(1);
+    expect(dismiss).not.toHaveBeenCalled();
     expect(() => router.throwPending()).not.toThrow();
   });
 

@@ -11,6 +11,7 @@ import {
   type LocatorExpression,
   type NodeRef,
   type SemanticNode,
+  type OperationContext,
 } from '../../src/engine/surface.ts';
 import { LocatorEngine, isNodeVisible, translateLocatorError } from '../../src/locator/engine.ts';
 import { E2EError } from '../../src/internal/errors.ts';
@@ -33,7 +34,7 @@ const EXPRESSION: LocatorExpression = {
 
 interface ScreenScript {
   resolve?: Array<(() => readonly NodeRef[]) | 'stale' | 'frame' | 'failure' | 'foreign-stale'>;
-  read?: Array<(() => SemanticNode) | 'stale' | 'stale-retryable' | 'failure' | 'foreign-stale'>;
+  read?: Array<(() => SemanticNode | Promise<SemanticNode>) | 'stale' | 'stale-retryable' | 'failure' | 'foreign-stale'>;
   perform?: Array<(() => void) | 'stale' | 'committed' | 'not-actionable' | 'foreign-stale'>;
 }
 
@@ -53,13 +54,15 @@ function foreignStale(retryable: boolean): Error {
 function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = {}) {
   const calls = { resolve: 0, read: 0, perform: 0 };
   const origins: (string | undefined)[] = [];
+  const resolveTimeouts: number[] = [];
   const next = <T>(steps: T[] | undefined, kind: keyof typeof calls): T | undefined => {
     const step = steps?.[calls[kind]];
     calls[kind] += 1;
     return step;
   };
   const session = {
-      async locate() {
+      async locate(_expression: LocatorExpression, operation: OperationContext) {
+        resolveTimeouts.push(operation.timeoutMs);
         const step = next(script.resolve, 'resolve');
         if (step === undefined || typeof step === 'function') return step?.() ?? [REF];
         if (step === 'stale') throw new EngineError('NODE_STALE', 'stale', { retryable: true });
@@ -98,10 +101,21 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = 
     actionTimeout: options.actionTimeout ?? 1_000,
     assertionTimeout: 1_000,
   });
-  return { engine, calls, origins };
+  return { engine, calls, origins, resolveTimeouts };
 }
 
 describe('LocatorEngine read retry contract', () => {
+  it('shares the original deadline with a resolution after a stale read', async () => {
+    const { engine, resolveTimeouts } = makeEngine({ read: [
+      async () => {
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        throw new EngineError('NODE_STALE', 'stale', { retryable: true });
+      },
+    ] }, { actionTimeout: 100 });
+    expect(await engine.read(EXPRESSION)).toEqual(NODE);
+    expect(resolveTimeouts).toEqual([100, 40]);
+  });
+
   it('re-resolves a read whose ref a concurrent resolution superseded', async () => {
     const { engine, calls } = makeEngine({ read: ['stale-retryable', () => NODE] });
     expect(await engine.read(EXPRESSION)).toEqual(NODE);
@@ -113,6 +127,23 @@ describe('LocatorEngine read retry contract', () => {
     const { engine, calls } = makeEngine({ read: ['stale'] });
     await expect(engine.read(EXPRESSION)).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND' });
     expect(calls.read).toBe(1);
+  });
+
+  it('polls zero matches until the node appears, then reads it', async () => {
+    const { engine, calls } = makeEngine({ resolve: [() => [], () => [], () => [REF]] });
+    expect(await engine.read(EXPRESSION)).toEqual(NODE);
+    expect(calls).toMatchObject({ resolve: 3, read: 1 });
+  });
+
+  it('gives zero matches the action timeout, then LOCATOR_NOT_FOUND', async () => {
+    const { engine, calls } = makeEngine(
+      { resolve: Array.from({ length: 50 }, () => () => []) },
+      { actionTimeout: 350 },
+    );
+    const started = Date.now();
+    await expect(engine.read(EXPRESSION)).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND' });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(300);
+    expect(calls.read).toBe(0);
   });
 });
 
@@ -519,7 +550,7 @@ describe('isNodeVisible', () => {
 describe('LocatorEngine retries a cross-realm driver failure', () => {
   it('retries a foreign retryable resolve failure', async () => {
     const { engine, calls } = makeEngine({ resolve: ['foreign-stale', () => [REF]] });
-    await expect(engine.resolveForRead(EXPRESSION)).resolves.toEqual(REF);
+    await expect(engine.resolveExactlyOne(EXPRESSION, engine.deadline())).resolves.toEqual(REF);
     expect(calls.resolve).toBe(2);
   });
 

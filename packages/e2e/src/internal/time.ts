@@ -1,6 +1,6 @@
 /** Deadline and cancellation helpers. */
 
-import { asEngineError, E2EError } from './errors.ts';
+import { asEngineError, E2EError, isE2EError } from './errors.ts';
 
 export class Deadline {
   readonly endsAt: number;
@@ -24,11 +24,25 @@ export class Deadline {
   }
 }
 
+/**
+ * The error an aborted signal stands for: the classified error it was aborted
+ * with, when its owner gave one (a session deadline aborts with its timeout),
+ * else what the caller builds. An owner's bare `abort()` is a cancellation.
+ */
+export function abortError(signal: AbortSignal, fallback: () => Error): Error {
+  return isE2EError(signal.reason) ? signal.reason : fallback();
+}
+
+/** The error a bare cancellation stands for. */
+export function cancelledError(): E2EError {
+  return new E2EError('infrastructure', 'CANCELLED', 'operation cancelled');
+}
+
 /** Sleeps for ms, rejecting early if the signal aborts. */
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
-      reject(new E2EError('infrastructure', 'CANCELLED', 'operation cancelled'));
+      reject(abortError(signal, cancelledError));
       return;
     }
     const timer = setTimeout(() => {
@@ -37,7 +51,7 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     }, ms);
     const onAbort = () => {
       cleanup();
-      reject(new E2EError('infrastructure', 'CANCELLED', 'operation cancelled'));
+      reject(signal === undefined ? cancelledError() : abortError(signal, cancelledError));
     };
     const cleanup = () => {
       clearTimeout(timer);
@@ -46,6 +60,9 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     signal?.addEventListener('abort', onAbort, { once: true });
   });
 }
+
+/** Longest delay `setTimeout` honors; a longer one fires at once. */
+export const MAX_TIMER_MS = 2 ** 31 - 1;
 
 /** Canonical polling cadence for locator and assertion loops. */
 export const POLL_INTERVAL_MS = 100;
@@ -59,7 +76,11 @@ export const POLL_INTERVAL_MS = 100;
  * bare one.
  */
 export function cutOffAtDeadline(cause: unknown, startedWithMs: number): boolean {
-  if (startedWithMs >= POLL_INTERVAL_MS) return false;
+  return startedWithMs < POLL_INTERVAL_MS && isOperationTimeout(cause);
+}
+
+/** Whether `cause` is the engine's `OPERATION_TIMEOUT`, bare or wrapped by the locator failure it was translated into. */
+export function isOperationTimeout(cause: unknown): boolean {
   const engineError = asEngineError(cause) ?? asEngineError(cause instanceof Error ? cause.cause : undefined);
   return engineError?.code === 'OPERATION_TIMEOUT';
 }
@@ -85,7 +106,8 @@ export interface PollConditionOptions {
 /**
  * Polls a condition until it holds (or, when negated, until its negation has
  * held continuously for the negation grace window), throwing the caller's
- * error at the deadline.
+ * error at the deadline. No sleep runs past the deadline, so the last read
+ * starts at it and never sees a state that arrived later.
  *
  * A negation holds from the moment the read that first saw it was issued, so
  * a slow read counts toward the window. A budget shorter than the window
@@ -125,7 +147,7 @@ export async function pollCondition(options: PollConditionOptions): Promise<void
     const now = Date.now();
     if (holds(now)) return;
     if (deadline.expired(now)) throw await options.onTimeout();
-    await sleep(negated ? Math.min(POLL_INTERVAL_MS, deadline.remaining(now)) : POLL_INTERVAL_MS, options.signal);
+    await sleep(Math.min(POLL_INTERVAL_MS, deadline.remaining(now)), options.signal);
     readAt = Date.now();
     if (negated && deadline.expired(readAt)) {
       if (holds(readAt)) return;
@@ -182,29 +204,30 @@ export async function withScopedBudget<T>(
 }
 
 /**
- * Races a promise against an abort signal; on abort invokes onAbort to build
- * the error. The promise is left running: the caller is abandoning it.
+ * Races a promise against an abort signal; on abort fails with the signal's
+ * own classified error, else the one `fallback` builds. The promise is left
+ * running: the caller is abandoning it.
  */
 export async function withAbort<T>(
   work: Promise<T> | (() => Promise<T>),
   signal: AbortSignal,
-  onAbort: () => Error,
+  fallback: () => Error,
 ): Promise<T> {
   if (signal.aborted) {
     if (typeof work !== 'function') void work.catch(() => undefined);
-    throw onAbort();
+    throw abortError(signal, fallback);
   }
   const promise = typeof work === 'function' ? work() : work;
   if (signal.aborted) {
     void promise.catch(() => undefined);
-    throw onAbort();
+    throw abortError(signal, fallback);
   }
   let listener: (() => void) | undefined;
   try {
     return await Promise.race([
       promise,
       new Promise<never>((_, reject) => {
-        listener = () => reject(onAbort());
+        listener = () => reject(abortError(signal, fallback));
         signal.addEventListener('abort', listener, { once: true });
       }),
     ]);

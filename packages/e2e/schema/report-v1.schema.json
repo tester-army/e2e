@@ -10,6 +10,24 @@
     "run": { "$ref": "#/$defs/run" }
   },
   "$defs": {
+    "stepScreen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodes", "changes"],
+      "properties": {
+        "location": { "type": "string" },
+        "nodes": { "type": "integer", "minimum": 0 },
+        "since": { "type": "integer", "minimum": 0 },
+        "changes": { "type": "array", "maxItems": 12, "items": { "type": "string", "maxLength": 200 } },
+        "more": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "maxProperties": 8,
+      "propertyNames": { "maxLength": 40 },
+      "additionalProperties": { "type": "string", "maxLength": 200 }
+    },
     "timestamp": {
       "type": "string",
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
@@ -98,7 +116,7 @@
       "required": ["id", "kind", "mediaType", "redaction", "producer"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "kind": { "enum": ["screenshot", "trace", "video", "download", "log", "other"] },
+        "kind": { "enum": ["screenshot", "video", "download", "log", "other"] },
         "mediaType": { "type": "string", "minLength": 1 },
         "path": { "$ref": "#/$defs/relativePath" },
         "url": { "type": "string", "maxLength": 2048, "pattern": "^https?://[^\\s/]+[^\\s]*$" },
@@ -106,7 +124,7 @@
         "sha256": { "$ref": "#/$defs/sha256" },
         "ref": { "type": "string", "minLength": 1 },
         "startedAt": { "$ref": "#/$defs/timestamp" },
-        "redaction": { "enum": ["complete", "not-required", "incomplete"] },
+        "redaction": { "enum": ["complete", "incomplete"] },
         "producer": {
           "oneOf": [
             {
@@ -167,7 +185,7 @@
       "required": ["kind", "startedAt", "durationMs", "status"],
       "properties": {
         "kind": {
-          "enum": ["poll", "observation", "model", "tool-proposal", "policy", "engine", "schema"]
+          "enum": ["poll", "observation", "model", "tool-proposal", "policy", "engine", "schema", "navigation"]
         },
         "startedAt": { "$ref": "#/$defs/timestamp" },
         "durationMs": { "type": "integer", "minimum": 0 },
@@ -182,6 +200,18 @@
         "detail": { "type": "string", "maxLength": 300 },
         "reasoning": { "type": "string", "maxLength": 600 },
         "extensions": { "$ref": "#/$defs/extensions" }
+      }
+    },
+    "appLogLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "level", "text", "at"],
+      "properties": {
+        "source": { "enum": ["console", "error", "network", "system"] },
+        "level": { "enum": ["error", "warning", "info"] },
+        "text": { "type": "string", "maxLength": 300 },
+        "at": { "$ref": "#/$defs/timestamp" },
+        "step": { "type": "integer", "minimum": 0 }
       }
     },
     "stepMetrics": {
@@ -203,6 +233,12 @@
       "required": ["mode", "replayedActions", "totalActions"],
       "properties": {
         "mode": { "enum": ["self-finalized", "agent-concluded", "missed"] },
+        "recordedBy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider", "model"],
+          "properties": { "provider": { "type": "string", "maxLength": 300, "pattern": "\\S" }, "model": { "type": "string", "maxLength": 300, "pattern": "\\S" } }
+        },
         "reason": {
           "enum": [
             "retry",
@@ -222,7 +258,10 @@
         "derived": { "enum": ["pixels", "whole-node", "minted-token", "date"] },
         "notRecorded": { "enum": ["param-collision"] },
         "replayedActions": { "type": "integer", "minimum": 0 },
-        "totalActions": { "type": "integer", "minimum": 0 }
+        "totalActions": { "type": "integer", "minimum": 0 },
+        "entry": { "$ref": "#/$defs/sha256" },
+        "detail": { "type": "string", "maxLength": 600 },
+        "write": { "enum": ["saved", "kept", "unconfirmed", "evicted", "no-change", "not-written"] }
       },
       "allOf": [
         {
@@ -248,6 +287,13 @@
       "additionalProperties": false,
       "properties": {
         "url": { "type": "string", "maxLength": 2048 },
+        "viewport": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": { "width": { "type": "integer", "minimum": 0 }, "height": { "type": "integer", "minimum": 0 } }
+        },
+        "nodes": { "type": "integer", "minimum": 0 },
         "screen": { "type": "string", "minLength": 1, "maxLength": 128 },
         "screenshot": { "type": "string", "minLength": 1, "maxLength": 128 },
         "candidates": { "type": "array", "maxItems": 8, "items": { "type": "string", "maxLength": 1024 } }
@@ -298,6 +344,8 @@
         "turns": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/turn" } },
         "model": { "$ref": "#/$defs/model" },
         "agent": { "type": "string", "minLength": 1 },
+        "phase": { "enum": ["beforeEach", "afterEach"] },
+        "screen": { "$ref": "#/$defs/stepScreen" },
         "error": { "$ref": "#/$defs/error" },
         "artifacts": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "extensions": { "$ref": "#/$defs/extensions" }
@@ -349,19 +397,24 @@
         "startedAt": { "$ref": "#/$defs/timestamp" },
         "durationMs": { "type": "integer", "minimum": 0 },
         "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+        "appLog": { "type": "array", "maxItems": 300, "items": { "$ref": "#/$defs/appLogLine" } },
         "artifacts": { "type": "array", "items": { "$ref": "#/$defs/artifact" } },
         "error": { "$ref": "#/$defs/error" },
         "failure": { "$ref": "#/$defs/failureEvidence" },
         "skip": { "$ref": "#/$defs/skip" },
         "secondaryErrors": { "type": "array", "items": { "$ref": "#/$defs/error" } },
         "cleanup": { "enum": ["complete", "failed", "forced"] },
+        "environment": { "$ref": "#/$defs/environment" },
         "extensions": { "$ref": "#/$defs/extensions" }
       },
       "allOf": [
         {
           "if": { "properties": { "status": { "const": "skipped" } } },
-          "then": { "required": ["skip"] },
-          "else": { "properties": { "skip": false } }
+          "then": { "required": ["skip"] }
+        },
+        {
+          "if": { "properties": { "status": { "const": "passed" } } },
+          "then": { "properties": { "skip": false } }
         }
       ]
     },
@@ -371,7 +424,7 @@
       "required": ["cause", "reason"],
       "properties": {
         "cause": {
-          "enum": ["explicit", "filtered", "platform-unavailable", "capability-unavailable", "setup-failed", "serial-predecessor-failed", "hook-failed", "infrastructure-unavailable", "failure-limit"]
+          "enum": ["explicit", "filtered", "platform-unavailable", "capability-unavailable", "setup-failed", "serial-predecessor-failed", "hook-failed", "infrastructure-unavailable", "failure-limit", "time-limit"]
         },
         "reason": { "type": "string", "maxLength": 8192 },
         "relatedId": { "type": "string", "minLength": 1 }
@@ -389,6 +442,7 @@
         "startedAt": { "$ref": "#/$defs/timestamp" },
         "durationMs": { "type": "integer", "minimum": 0 },
         "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+        "appLog": { "type": "array", "maxItems": 300, "items": { "$ref": "#/$defs/appLogLine" } },
         "error": { "$ref": "#/$defs/error" },
         "failure": { "$ref": "#/$defs/failureEvidence" },
         "skip": { "$ref": "#/$defs/skip" },
@@ -406,8 +460,8 @@
           }
         },
         {
-          "if": { "properties": { "status": { "const": "skipped" } } },
-          "else": { "properties": { "skip": false } }
+          "if": { "properties": { "status": { "const": "passed" } } },
+          "then": { "properties": { "skip": false } }
         }
       ]
     },
@@ -426,6 +480,7 @@
         "error": { "$ref": "#/$defs/error" },
         "secondaryErrors": { "type": "array", "items": { "$ref": "#/$defs/error" } },
         "cleanup": { "enum": ["complete", "failed", "forced"] },
+        "environment": { "$ref": "#/$defs/environment" },
         "extensions": { "$ref": "#/$defs/extensions" }
       }
     },
@@ -560,7 +615,7 @@
         "capabilities": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
         "artifactCapabilities": {
           "type": "array",
-          "items": { "enum": ["screenshot", "trace", "video"] },
+          "items": { "enum": ["screenshot", "video"] },
           "uniqueItems": true
         },
         "stateCapability": { "type": "boolean" },

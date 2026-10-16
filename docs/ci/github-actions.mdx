@@ -1,0 +1,233 @@
+---
+title: GitHub Actions
+description: Run web, iOS, and Android tests on GitHub Actions, upload the reports, and post the results on the pull request.
+icon: "/images/icons/github-actions.svg"
+"og:image": "https://e2e.tester.army/docs/images/og/ci/github-actions.png?v=1a59aebfc8"
+"twitter:image": "https://e2e.tester.army/docs/images/og/ci/github-actions.png?v=1a59aebfc8"
+---
+
+import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
+
+export const setupPrompt = `Add a GitHub Actions workflow that runs this project's e2e tests. Docs: \`https://e2e.tester.army/docs/ci/github-actions.md\` and \`https://e2e.tester.army/docs/ci.md\`
+
+1. Read both pages. Use the web workflow for web targets and the iOS and Android workflow for mobile targets.
+2. Adapt the workflow to this project: package manager, Node version, how the app starts or builds, and the app paths.
+3. For a mobile job, replace the iOS runtime with one the runner image has, and keep it pinned.
+4. List the repository secrets the workflow reads, such as the model key, and ask me to add them.
+5. After I push, read the job log and fix errors until the job passes.`;
+
+These two workflows run web targets, and iOS and Android targets. For CI
+defaults, model keys, and exit codes, see the [CI overview](/ci).
+
+<SetupPrompt>
+
+<Prompt description={setupPrompt} children={setupPrompt} actions={["copy", "cursor"]} />
+
+</SetupPrompt>
+
+## Web
+
+This workflow runs deterministic and agent tests in one job. It assumes a
+config [command](/web#starting-your-app) that starts the app, and AI
+Gateway for the model calls. The model key and user credentials come from
+repository secrets:
+
+```yaml title=".github/workflows/e2e.yml" expandable
+name: e2e
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install browsers
+        run: pnpm exec e2e-web install chromium --with-deps
+
+      - name: Run e2e
+        run: npx e2e run --reporter list,junit
+        env:
+          APP_URL: http://127.0.0.1:3000
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          E2E_USER_ADMIN_USERNAME: ${{ secrets.E2E_USER_ADMIN_USERNAME }}
+          E2E_USER_ADMIN_PASSWORD: ${{ secrets.E2E_USER_ADMIN_PASSWORD }}
+
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-report
+          path: |
+            .e2e/report.json
+            .e2e/junit.xml
+          if-no-files-found: warn
+
+      - name: Upload artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-artifacts
+          path: .e2e/results
+          if-no-files-found: warn
+          retention-days: 7
+```
+
+`npx e2e` runs the version the lockfile installs. The
+[install command](/reference/web#installing-browsers) downloads the browsers
+for the engine's pinned Playwright version, with their system libraries. A
+test that passed on retry keeps its failed attempt's evidence in the upload.
+
+## iOS and Android
+
+This workflow runs one job for each platform and follows the rules in
+[Mobile jobs](/ci#mobile-jobs). Any build command that writes a simulator
+`.app` without starting the app can replace `xcodebuild`. For Expo,
+`npx expo run:ios --configuration Release --device generic --no-bundler --output build/ios`
+builds without a simulator and writes the `.app` under `build/ios`.
+
+```yaml title=".github/workflows/e2e-mobile.yml" expandable
+name: e2e mobile
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: pod install
+        working-directory: ios
+
+      - name: Build for the simulator
+        run: |
+          xcodebuild -workspace ios/MyApp.xcworkspace -scheme MyApp \
+            -configuration Release -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.agent-device
+          key: agent-device-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Boot a simulator and install the app
+        run: |
+          UDID=$(xcrun simctl create e2e "iPhone 17" com.apple.CoreSimulator.SimRuntime.iOS-26-5)
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" build/Build/Products/Release-iphonesimulator/MyApp.app
+
+      - run: npx e2e run --target ios --reporter list,junit
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: e2e-ios
+          path: .e2e
+          if-no-files-found: warn
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+          cache: npm
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: npm ci
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      # React Native and Expo templates sign release builds with the debug keystore.
+      - name: Build the APK
+        run: cd android && ./gradlew :app:assembleRelease
+
+      - name: Run on an emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            adb install -r android/app/build/outputs/apk/release/app-release.apk
+            npx e2e run --target android --reporter list,junit
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: e2e-android
+          path: .e2e
+          if-no-files-found: warn
+```
+
+The emulator runner action runs each `script` line in a new shell and stops
+the emulator when the step ends. Install and run in the same step.
+
+This repository's own
+[`mobile.yml`](https://github.com/tester-army/e2e/blob/main/.github/workflows/mobile.yml)
+adds a cached Expo build per native fingerprint, two simulators for two
+workers, and a `--last-failed` rerun.
+
+## Pull request comments
+
+Add the [`@e2e-dev/github` reporter](/github) to post each job's results as
+one pull request comment, updated on a rerun and copied to the job summary.
+
+The job needs `pull-requests: write` and `GITHUB_TOKEN` in the test step's
+env; the workflows above are read-only. See [Setup](/github#setup). A fork's
+`pull_request` run gets a read-only token, so nothing is posted
+([why](/github#when-nothing-is-posted)).
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Pull request comments" icon="code-pull-request" href="/github">
+    One comment per run, edited in place on a rerun.
+  </Card>
+  <Card title="CI overview" icon="rotate" href="/ci">
+    CI defaults, sharding, reruns, and exit codes.
+  </Card>
+</CardGroup>

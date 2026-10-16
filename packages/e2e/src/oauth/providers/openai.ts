@@ -7,9 +7,10 @@
  * stream is folded back into JSON when the SDK asked for a single response.
  */
 
+import { z } from 'zod';
 import { startCallbackServer, type CallbackAnswer, type CallbackServer } from '../callback-server.ts';
 import { runDeviceFlow } from '../device-code.ts';
-import { OAuthError, describeResponse } from '../errors.ts';
+import { OAuthError, describeResponse, readJsonBody } from '../errors.ts';
 import { decodeJwtPayload } from '../jwt.ts';
 import { generatePkce, randomState } from '../pkce.ts';
 import { foldResponsesStream } from '../sse.ts';
@@ -111,7 +112,7 @@ function claimsOf(token: string | undefined): Record<string, unknown> | undefine
   return token === undefined ? undefined : decodeJwtPayload(token);
 }
 
-export function extractAccountId(tokens: { id_token?: string; access_token?: string }): string | undefined {
+export function extractAccountId(tokens: { id_token?: string | undefined; access_token?: string | undefined }): string | undefined {
   for (const claims of [claimsOf(tokens.id_token), claimsOf(tokens.access_token)]) {
     if (claims === undefined) continue;
     const nested = claims[AUTH_CLAIM] as Record<string, unknown> | undefined;
@@ -150,14 +151,19 @@ export function parseAuthorizationInput(input: string): { code: string | undefin
   return { code: value, state: undefined };
 }
 
-function exchangeCode(issuer: string, code: string, redirectUri: string, verifier: string): Promise<TokenResponse> {
-  return requestTokens('ChatGPT', `${issuer}/oauth/token`, {
-    grant_type: 'authorization_code',
-    code,
-    redirect_uri: redirectUri,
-    client_id: CLIENT_ID,
-    code_verifier: verifier,
-  });
+async function exchangeCode(issuer: string, code: string, redirectUri: string, verifier: string, signal?: AbortSignal): Promise<TokenResponse> {
+  try {
+    return await requestTokens('ChatGPT', `${issuer}/oauth/token`, {
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: redirectUri,
+      client_id: CLIENT_ID,
+      code_verifier: verifier,
+    }, 'FLOW_FAILED', signal);
+  } catch (cause) {
+    if (signal?.aborted) throw new OAuthError('CANCELLED', 'the login was cancelled', { cause });
+    throw cause;
+  }
 }
 
 interface BrowserLogin {
@@ -196,7 +202,7 @@ async function browserLogin(callbacks: OAuthLoginCallbacks, flow: BrowserLogin):
     const code = server === undefined ? await pasteCode(callbacks, state) : await answerOrPaste(server, callbacks, state, flow.timeoutMs);
     if (code === undefined) throw new OAuthError('FLOW_FAILED', 'no authorization code was received');
     callbacks.onProgress?.('Exchanging the code for tokens');
-    return await exchangeCode(flow.issuer, code, redirectUri, verifier);
+    return await exchangeCode(flow.issuer, code, redirectUri, verifier, callbacks.signal);
   } finally {
     server?.close();
   }
@@ -227,16 +233,29 @@ async function pasteCode(callbacks: OAuthLoginCallbacks, state: string): Promise
   return pasted.code;
 }
 
+/** OpenAI's user-code answer: the code to show and the id the poll names it by. */
+const UserCodeSchema = z.object({
+  device_auth_id: z.string(),
+  user_code: z.string(),
+  interval: z.unknown().optional(),
+});
+
+/** OpenAI's answer once the user entered the code: an authorization code and the PKCE verifier to exchange it with. */
+const DeviceGrantSchema = z.object({
+  authorization_code: z.string(),
+  code_verifier: z.string(),
+});
+
 /** The Codex CLI's device login: OpenAI's own user-code endpoints, pending until the user enters the code. */
 function deviceLogin(callbacks: OAuthLoginCallbacks, issuer: string, timeoutMs: number): Promise<TokenResponse> {
   const json = (url: string, body: unknown, signal?: AbortSignal) =>
     fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), ...(signal === undefined ? {} : { signal }) });
   return runDeviceFlow<TokenResponse>({
     callbacks,
-    async start() {
-      const response = await json(`${issuer}/api/accounts/deviceauth/usercode`, { client_id: CLIENT_ID });
+    async start(signal) {
+      const response = await json(`${issuer}/api/accounts/deviceauth/usercode`, { client_id: CLIENT_ID }, signal);
       if (!response.ok) throw new OAuthError('FLOW_FAILED', `ChatGPT device login could not start: ${await describeResponse(response)}`);
-      const device = (await response.json()) as { device_auth_id: string; user_code: string; interval?: string | number };
+      const device = await readJsonBody(response, UserCodeSchema, 'the ChatGPT device code response', 'is missing fields');
       return {
         deviceCode: device.device_auth_id,
         userCode: device.user_code,
@@ -248,8 +267,8 @@ function deviceLogin(callbacks: OAuthLoginCallbacks, issuer: string, timeoutMs: 
     async poll(authorization, signal) {
       const response = await json(`${issuer}/api/accounts/deviceauth/token`, { device_auth_id: authorization.deviceCode, user_code: authorization.userCode }, signal);
       if (response.ok) {
-        const grant = (await response.json()) as { authorization_code: string; code_verifier: string };
-        return { status: 'granted', value: await exchangeCode(issuer, grant.authorization_code, `${issuer}/deviceauth/callback`, grant.code_verifier) };
+        const grant = await readJsonBody(response, DeviceGrantSchema, 'the ChatGPT device grant', 'is missing fields');
+        return { status: 'granted', value: await exchangeCode(issuer, grant.authorization_code, `${issuer}/deviceauth/callback`, grant.code_verifier, signal) };
       }
       // Pending shows as 403 or 404 until the user enters the code.
       if (response.status === 403 || response.status === 404) {
@@ -261,15 +280,14 @@ function deviceLogin(callbacks: OAuthLoginCallbacks, issuer: string, timeoutMs: 
   });
 }
 
-/** The Responses API body as the Codex backend wants it. */
-interface CodexBody {
-  stream?: boolean;
-  store?: boolean;
-  instructions?: string;
-  include?: string[];
-  max_output_tokens?: number;
-  [key: string]: unknown;
-}
+/** A Responses API body, as far as the Codex backend needs it changed; every other field passes through. */
+const CodexBodySchema = z.looseObject({
+  stream: z.unknown().optional(),
+  store: z.unknown().optional(),
+  instructions: z.unknown().optional(),
+  include: z.array(z.unknown()).nullish(),
+  max_output_tokens: z.unknown().optional(),
+});
 
 /**
  * Routes a Responses API request at the Codex backend with the body the
@@ -289,12 +307,7 @@ export async function sendCodexRequest(
   if (!new URL(request.url).pathname.endsWith('/responses')) return upstream(new Request(request, { headers }));
 
   if (credentials.residency !== undefined) headers.set('x-openai-internal-codex-residency', credentials.residency);
-  let body: CodexBody;
-  try {
-    body = (await request.json()) as CodexBody;
-  } catch (cause) {
-    throw new OAuthError('FLOW_FAILED', 'the Responses request body is not JSON', { cause });
-  }
+  const body = await readJsonBody(request, CodexBodySchema, 'the Responses request body');
   const wantedStream = body.stream === true;
   body.stream = true;
   body.store = false;
@@ -307,15 +320,26 @@ export async function sendCodexRequest(
   return wantedStream ? response : foldResponsesStream(response);
 }
 
-/** One entry of the Codex backend's model list, as far as the listing reads it. */
-interface CodexModel {
-  readonly slug?: unknown;
-  readonly display_name?: unknown;
-  readonly visibility?: unknown;
-  readonly default_reasoning_level?: unknown;
-  readonly supported_reasoning_levels?: unknown;
-  readonly priority?: unknown;
-}
+/** A reasoning level the Codex backend names bare or as `{ effort }`; one of another shape reads as absent. */
+const ReasoningLevelSchema = z
+  .union([z.string(), z.object({ effort: z.string() }).transform(({ effort }) => effort)])
+  .optional()
+  .catch(undefined);
+
+/** One entry of the Codex backend's model list, as far as the listing reads it; a field of another type reads as absent. */
+const CodexModelSchema = z.object({
+  slug: z.string().min(1),
+  display_name: z.string().optional().catch(undefined),
+  visibility: z.unknown().optional(),
+  default_reasoning_level: z.string().optional().catch(undefined),
+  supported_reasoning_levels: z.array(ReasoningLevelSchema).optional().catch(undefined),
+  priority: z.number().optional().catch(undefined),
+});
+
+/** The models in the Codex backend's `/models` body; a body that names none has none, and an entry without a slug is left out. */
+const CodexModelListSchema = z
+  .object({ models: z.array(CodexModelSchema.optional().catch(undefined)).nullish() })
+  .transform(({ models }) => (models ?? []).filter((model) => model !== undefined));
 
 /**
  * The models the Codex backend serves this subscription, `/models` next to
@@ -328,22 +352,18 @@ async function listCodexModels(fetch: FetchFunction, apiUrl: string): Promise<Su
   url.searchParams.set('client_version', CODEX_CLIENT_VERSION);
   const response = await fetch(url);
   if (!response.ok) throw new OAuthError('FLOW_FAILED', `ChatGPT did not list its models: ${await describeResponse(response)}`);
-  const payload = (await response.json()) as { models?: unknown };
-  const models = Array.isArray(payload.models) ? (payload.models as CodexModel[]) : [];
+  const models = await readJsonBody(response, CodexModelListSchema, 'the ChatGPT model list');
   return models
-    .filter((model) => typeof model.slug === 'string' && model.slug !== '')
-    .toSorted((a, b) => (typeof a.priority === 'number' ? a.priority : 0) - (typeof b.priority === 'number' ? b.priority : 0))
+    .toSorted((a, b) => (a.priority ?? 0) - (b.priority ?? 0))
     .map((model) => {
-      const levels = Array.isArray(model.supported_reasoning_levels)
-        ? model.supported_reasoning_levels.map((level: unknown) => (typeof level === 'string' ? level : (level as { effort?: unknown })?.effort)).filter((level): level is string => typeof level === 'string')
-        : [];
+      const levels = (model.supported_reasoning_levels ?? []).filter((level) => level !== undefined);
       const detail = [
-        levels.length === 0 ? undefined : `reasoning ${levels.join('/')}${typeof model.default_reasoning_level === 'string' ? ` (default ${model.default_reasoning_level})` : ''}`,
+        levels.length === 0 ? undefined : `reasoning ${levels.join('/')}${model.default_reasoning_level === undefined ? '' : ` (default ${model.default_reasoning_level})`}`,
         model.visibility === 'hide' ? 'hidden in Codex' : undefined,
       ].filter((part) => part !== undefined);
       return {
-        id: model.slug as string,
-        ...(typeof model.display_name === 'string' && model.display_name !== '' ? { name: model.display_name } : {}),
+        id: model.slug,
+        ...(model.display_name === undefined || model.display_name === '' ? {} : { name: model.display_name }),
         ...(detail.length === 0 ? {} : { detail: detail.join('; ') }),
       };
     });

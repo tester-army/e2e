@@ -6,6 +6,7 @@ import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultId } from '../../src/internal/ids.ts';
 import {
   createProject,
+  listExisting,
   listProject,
   resultByTitle,
   runExisting,
@@ -580,7 +581,7 @@ test.describe('group', () => {
 test('other', { tags: ['smoke'] }, async () => {});
 `,
       };
-      const { pairs, project } = await listProject(files, {});
+      const { pairs, unmatched, targets, project } = await listProject(files, {});
       expect(pairs.map((pair) => [pair.file, pair.titlePath.join(' > '), pair.target, pair.disposition])).toEqual([
         ['tests/list.e2e.ts', 'plain', 'fake', 'run'],
         ['tests/list.e2e.ts', 'group > nested', 'fake', 'run'],
@@ -588,9 +589,22 @@ test('other', { tags: ['smoke'] }, async () => {});
         ['tests/other.e2e.ts', 'other', 'fake', 'run'],
       ]);
       expect(pairs.map((pair) => pair.tags)).toEqual([[], ['smoke'], [], ['smoke']]);
-      expect(pairs[2]?.skipReason).toBe('not today');
+      expect(pairs[2]?.reason).toBe('not today');
+      expect(pairs[0]).toMatchObject({ id: expect.any(String), agent: 'default', source: { file: 'tests/list.e2e.ts' } });
+      expect(unmatched).toEqual([]);
+      expect(targets).toEqual(['fake']);
       expect(existsSync(path.join(project.dir, '.e2e'))).toBe(false);
       project.cleanup();
+
+      // A title grep leaves non-matching tests in the selection, marked filtered.
+      const grepped = await listProject(files, { listOptions: { grep: [/^plain$/] } });
+      expect(grepped.pairs.map((pair) => [pair.title, pair.disposition, pair.reason])).toEqual([
+        ['plain', 'run', undefined],
+        ['nested', 'filtered', 'title does not match --grep'],
+        ['left out', 'filtered', 'title does not match --grep'],
+        ['other', 'filtered', 'title does not match --grep'],
+      ]);
+      grepped.project.cleanup();
 
       // A config glob spelled with a leading `./` selects the same files.
       const dotted = await listProject(files, {
@@ -603,6 +617,34 @@ test('other', { tags: ['smoke'] }, async () => {});
   );
 
   it(
+    'lists through a config path, reports unmatched positionals, and sees an edited file on the next call',
+    async () => {
+      const project = createProject({
+        'e2e.config.ts': workerFakeConfigSource(1),
+        'tests/edit.e2e.ts': `import { test } from 'e2e';
+test('first', async () => {});
+`,
+      });
+      const first = await listExisting(project, { config: 'e2e.config.ts', files: ['tests/edit.e2e.ts', 'tests/missing.e2e.ts'] });
+      expect(first.pairs.map((pair) => pair.title)).toEqual(['first']);
+      expect(first.unmatched).toEqual(['tests/missing.e2e.ts']);
+      expect(first.targets).toEqual(['fake']);
+
+      writeFileSync(
+        path.join(project.dir, 'tests/edit.e2e.ts'),
+        `import { test } from 'e2e';
+test('first', async () => {});
+test('second', async () => {});
+`,
+      );
+      const second = await listExisting(project, { config: 'e2e.config.ts' });
+      expect(second.pairs.map((pair) => pair.title)).toEqual(['first', 'second']);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
     'runs every selected test n times under --repeat-each, each run its own result, and --last-failed names a test any repeat of which failed',
     async () => {
       const files = {
@@ -610,7 +652,8 @@ test('other', { tags: ['smoke'] }, async () => {});
 import { test } from 'e2e';
 const marker = new URL('./ran-once', import.meta.url);
 test('steady', async () => {});
-test('breaks the second time', async () => {
+test('breaks the second time', async ({ app }) => {
+  await app.open();
   if (existsSync(marker)) throw new Error('second run breaks');
   writeFileSync(marker, '');
 });
@@ -631,7 +674,8 @@ test('breaks the second time', async () => {
       expect(results[0]!.id).toBe(resultId(results[0]!.testId, 'fake', 'default'));
       const paths = results[4]!.attempts[0]!.artifacts.flatMap((artifact) => (artifact.path === undefined ? [] : [artifact.path]));
       expect(paths.length).toBeGreaterThan(0);
-      expect(paths.every((artifactPath) => artifactPath.includes('/repeat-1/'))).toBe(true);
+      // Each repeat is a result of its own, and its evidence lands under its own id.
+      expect(paths.every((artifactPath) => artifactPath.split('/')[0]!.endsWith(results[4]!.id.slice(0, 16)))).toBe(true);
       expect(outcome.report.run.summary).toMatchObject({ selected: 6, executed: 6, passed: 4, failed: 2 });
 
       // Only the breaking test failed, on its later repeats; the rerun names it once and runs it once,
@@ -730,6 +774,79 @@ test('after the group too', async () => {});
       expect(outcome.report.run.summary.discovered).toBe(planned);
       expect(new Set(outcome.report.run.results.map((result) => result.id)).size).toBe(planned);
       assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'stops at maxDuration: the running test is interrupted, the rest skipped, RUN_TIMEOUT recorded, exit 1, and --last-failed runs them next',
+    async () => {
+      const sleeping = `import { test } from 'e2e';
+test('sleeps past the limit', async () => {
+  await new Promise((resolve) => setTimeout(resolve, 60_000));
+});
+`;
+      const project = createProject({
+        'tests/first.e2e.ts': sleeping,
+        'tests/second.e2e.ts': `import { test } from 'e2e';
+test('never started', async () => {});
+test('never started either', async () => {});
+`,
+        'e2e.config.ts': workerFakeConfigSource(1, '\n  maxDuration: 600_000,'),
+      });
+      const startedAt = Date.now();
+      // The flag's value wins over the config's ten minutes.
+      const stopped = await runExistingWithConfigFile(project, { runOptions: { maxDuration: 2_000 } });
+      expect(Date.now() - startedAt).toBeLessThan(60_000);
+      expect(stopped.exitCode).toBe(1);
+      expect(stopped.status).toBe('failed');
+      expect(stopped.report.run.summary).toMatchObject({ selected: 3, passed: 0, failed: 0, interrupted: 1, skipped: 2 });
+      expect(resultByTitle(stopped, 'sleeps past the limit').status).toBe('interrupted');
+      expect(resultByTitle(stopped, 'sleeps past the limit').attempts.at(-1)?.error?.message).toBe(
+        'run interrupted in phase body: run stopped at its time limit of 2000 ms (--max-duration)',
+      );
+      for (const title of ['never started', 'never started either']) {
+        expect(resultByTitle(stopped, title).skip).toEqual({ cause: 'time-limit', reason: 'run stopped at its time limit of 2000 ms (--max-duration)' });
+      }
+      expect(stopped.report.run.errors.map((error) => [error.code, error.category])).toEqual([['RUN_TIMEOUT', 'test']]);
+      assertValidReport(stopped.report);
+
+      // The config's own maxDuration stops the run with no flag.
+      writeFileSync(path.join(project.dir, 'e2e.config.ts'), workerFakeConfigSource(1, '\n  maxDuration: 2_000,'));
+      const configStopped = await runExistingWithConfigFile(project, {});
+      expect(configStopped.exitCode).toBe(1);
+      expect(configStopped.report.run.errors.map((error) => [error.code, error.message])).toEqual([
+        ['RUN_TIMEOUT', 'run stopped at its time limit of 2000 ms (maxDuration): the running tests end as interrupted, the rest are skipped'],
+      ]);
+      expect(resultByTitle(configStopped, 'sleeps past the limit').status).toBe('interrupted');
+      expect(resultByTitle(configStopped, 'sleeps past the limit').attempts.at(-1)?.error?.message).toBe(
+        'run interrupted in phase body: run stopped at its time limit of 2000 ms (maxDuration)',
+      );
+      for (const title of ['never started', 'never started either']) {
+        expect(resultByTitle(configStopped, title).skip?.cause).toBe('time-limit');
+      }
+
+      writeFileSync(path.join(project.dir, 'tests', 'first.e2e.ts'), sleeping.replace('setTimeout(resolve, 60_000)', 'setTimeout(resolve, 0)'));
+      const rerun = await runExistingWithConfigFile(project, { runOptions: { lastFailed: true } });
+      expect(rerun.exitCode).toBe(0);
+      const rerunRows = rerun.results.map((result) => [result.test.title, result.selected, result.status] as const);
+      expect(rerunRows.toSorted(([a], [b]) => a.localeCompare(b))).toEqual([
+        ['never started', true, 'passed'],
+        ['never started either', true, 'passed'],
+        ['sleeps past the limit', true, 'passed'],
+      ]);
+
+      const invalid = await runExistingWithConfigFile(project, { runOptions: { maxDuration: 0 } });
+      expect(invalid.exitCode).toBe(2);
+      expect(invalid.report.run.errors.map((error) => [error.code, error.message])).toEqual([
+        ['INVALID_CONFIG', 'maxDuration must be a positive safe integer of milliseconds, got 0'],
+      ]);
+      const tooLong = await runExistingWithConfigFile(project, { runOptions: { maxDuration: 2 ** 31 } });
+      expect(tooLong.exitCode).toBe(2);
+      expect(tooLong.report.run.errors.map((error) => [error.code, error.message])).toEqual([
+        ['INVALID_CONFIG', 'maxDuration must be at most 2147483647 milliseconds, got 2147483648'],
+      ]);
       project.cleanup();
     },
     120_000,
@@ -863,7 +980,10 @@ test('sleeps until interrupted', async () => {
       expect(outcome.report.run.summary).toMatchObject({ failed: 0, interrupted: 1 });
       expect(readFileSync(path.join(output, 'summary.md'), 'utf8')).toMatch(/^### ⏹️ e2e: 1 interrupted\n/u);
       expect(readFileSync(path.join(output, 'junit.xml'), 'utf8')).toContain('<skipped message="interrupted: ');
-      expect(existsSync(path.join(output, 'failures'))).toBe(false);
+      // The interrupted test's page is this run's own: it shows where the test stopped.
+      const results = path.join(output, 'results');
+      const pages = existsSync(results) ? readdirSync(results, { recursive: true }).map(String).filter((entry) => entry.endsWith('trace.md')) : [];
+      expect(pages).toEqual([expect.stringMatching(/^sleeps-until-interrupted-[0-9a-f]{16}\/trace\.md$/)]);
       project.cleanup();
     },
     120_000,

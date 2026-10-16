@@ -141,8 +141,11 @@ export class EnvCredentialStore implements CredentialStore {
   async get(providerId: string): Promise<OAuthCredentials | undefined> {
     return this.entries[providerId];
   }
-  async set(): Promise<void> {
+  assertWritable(): never {
     throw new OAuthError('MISCONFIGURED', `${CREDENTIALS_ENV} is set, so logins come from the environment and cannot be changed here; unset it to sign in on this machine`);
+  }
+  async set(): Promise<void> {
+    this.assertWritable();
   }
   async remove(): Promise<void> {
     return this.set();

@@ -42,17 +42,19 @@ describe('telemetry store', () => {
     expect(store.enabled).toBe(true);
     expect(store.fresh).toBe(true);
     expect(store.anonymousId).toMatch(/^[a-f0-9]{32}$/u);
-    expect(store.pathSalt).toMatch(/^[a-f0-9]{32}$/u);
-    expect(store.anonymousId).not.toBe(store.pathSalt);
-    const saved = JSON.parse(readFileSync(preferencesPath(dir), 'utf8')) as { createdAt: string };
+    const saved = JSON.parse(readFileSync(preferencesPath(dir), 'utf8')) as { salt: string; createdAt: string };
     expect(Date.parse(saved.createdAt)).not.toBeNaN();
-    expect(saved).toEqual({ anonymousId: store.anonymousId, salt: store.pathSalt, createdAt: saved.createdAt });
+    // Older versions replace the id of a file without a salt, so it is still written.
+    expect(saved.salt).toMatch(/^[a-f0-9]{32}$/u);
+    expect(saved.salt).not.toBe(store.anonymousId);
+    expect(saved).toEqual({ anonymousId: store.anonymousId, salt: saved.salt, createdAt: saved.createdAt });
     expect(store.ageDays()).toBe(0);
 
     const reopened = TelemetryStore.open(dir)!;
     expect(reopened.fresh).toBe(false);
     expect(reopened.anonymousId).toBe(store.anonymousId);
-    expect(reopened.pathSalt).toBe(store.pathSalt);
+    expect(reopened.saveEnabled(true)).toBe(true);
+    expect(JSON.parse(readFileSync(preferencesPath(dir), 'utf8'))).toMatchObject({ salt: saved.salt });
     expect(reopened.ageDays(Date.parse(saved.createdAt) + 3.5 * 86_400_000)).toBe(3);
     expect(reopened.saveEnabled(false)).toBe(true);
     expect(TelemetryStore.open(dir)!.enabled).toBe(false);
@@ -66,7 +68,7 @@ describe('telemetry store', () => {
     expect(store.fresh).toBe(true);
     expect(JSON.parse(readFileSync(preferencesPath(dir), 'utf8'))).toMatchObject({
       anonymousId: store.anonymousId,
-      salt: store.pathSalt,
+      salt: expect.stringMatching(/^[a-f0-9]{32}$/u),
     });
   });
 
@@ -126,7 +128,6 @@ describe('telemetry store', () => {
     expect(disabler.saveEnabled(false)).toBe(true);
     // Reading the ids writes nothing, so the file still says off.
     expect(running.anonymousId).toBe(disabler.anonymousId);
-    expect(running.pathSalt).toBe(disabler.pathSalt);
     expect(TelemetryStore.open(dir)!.enabled).toBe(false);
     expect(running.enabled).toBe(true);
     running.reload();

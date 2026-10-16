@@ -49,6 +49,14 @@ This project is a pnpm monorepo. `packages/` holds what publishes to npm,
 - `apps/mobile-benchmark`: private Expo app of hard mobile surfaces plus the e2e suites written against them
 - `docs/`: the docs site, built with [Mintlify](https://mintlify.com)
 - `skills/e2e/`: the agent skill shipped with the package and installed by `e2e init`
+- `skills/create-verification-skill/`: the generator of a project-local `verify-<app>` skill, installed with `npx skills add tester-army/e2e --skill create-verification-skill`
+- `skills/migrate-to-e2e/`: ports an existing Playwright, Cypress, Selenium, Detox, or Maestro suite one slice at a time, installed with `npx skills add tester-army/e2e --skill migrate-to-e2e`
+- `plugins/e2e/`: the Claude Code and Codex plugin of the three skills, installed from this repository as a marketplace with `claude plugin marketplace add tester-army/e2e` or `codex plugin marketplace add tester-army/e2e`
+- `.dev/skills/`: the skills coding agents use to work on this repo, symlinked from `.claude/skills/` so `npx skills add tester-army/e2e` offers only `skills/*`
+
+On Windows, enable Developer Mode and clone with
+`git clone -c core.symlinks=true` so those symlinks check out as links rather
+than text files.
 
 Install dependencies from the root:
 
@@ -80,9 +88,20 @@ page under `docs/` in the same review, and `skills/e2e/` when the
 skill describes that surface.
 
 ```sh
-pnpm docs:dev     # local preview
-pnpm docs:check   # validate the site, its links, and the quickstart examples
+pnpm docs:dev     # render the Open Graph cards, then preview locally
+pnpm docs:og      # render the Open Graph cards for new or changed pages
+pnpm docs:check   # validate the site, its links, the quickstart examples, and the cards
 ```
+
+Every page in the navigation except the home page has its own social
+preview card under `docs/images/og/`, drawn from its title, description, and
+navigation section by `docs/og/generate.tsx` with `@vercel/og`. Mintlify runs
+no build step of ours, so the cards and the `og:image` and `twitter:image`
+lines the script writes into each page's frontmatter are committed. A new
+page, a renamed one, one moved to another navigation section, or an edited
+title or description needs `pnpm docs:og`;
+`pnpm docs:check` fails until it has run. A page with no card falls back to
+the brand card, `docs/images/og.png`, set site-wide in `docs/docs.json`.
 
 A change that claims to be faster, or that touches the runner, the agent
 loop, or an engine, gets measured against `main` on the benchmark suites:
@@ -107,9 +126,9 @@ We follow the [conventional commits specification](https://www.conventionalcommi
 
 Mark a breaking change with `!` after the type (`feat(config)!: ...`). PRs are
 squash-merged, so the PR title is the commit; the
-[`writing-pr`](./.claude/skills/writing-pr/SKILL.md) skill describes the body,
+[`writing-pr`](./.dev/skills/writing-pr/SKILL.md) skill describes the body,
 including the `## Verified` section every PR carries. Coding agents open PRs
-through the [`ship-pr`](./.claude/skills/ship-pr/SKILL.md) skill and babysit
+through the [`ship-pr`](./.dev/skills/ship-pr/SKILL.md) skill and babysit
 them until the `Ready for Human Review` label is on; a later push removes it.
 
 ### Changesets
@@ -124,6 +143,13 @@ If your change affects `e2e`, `@e2e-dev/web`, `@e2e-dev/mobile`, or
 ```sh
 pnpm changeset
 ```
+
+While a package is `0.x`, a feature or fix is a `patch`. A breaking change
+is a `minor` whose summary opens with `**Breaking:**`. A release a maintainer
+calls (a big launch, `1.0`) opens with `**Release:**` and may be a `minor` or
+`major`. `pnpm check` fails on any other `0.x` minor or major. `e2e init` writes
+`^0.x.y`, which on `0.x` takes patches only, so features as patches reach
+users without a `package.json` edit.
 
 Changes limited to the apps (testbed, web benchmark, mobile benchmark), docs,
 or CI don't need one. Everything under `apps/` is private and skipped entirely
@@ -140,7 +166,9 @@ workflow opens a `chore: version packages` pull request that applies the
 pending changesets. That PR gets no CI of its own (it is opened with
 `GITHUB_TOKEN`), so check `main` is green before merging it. Merging it checks
 peer ranges, builds, publishes the new versions, and creates the matching
-GitHub release. `@e2edev/e2e` is the
+GitHub release. A release that published `e2e` then lists it in the MCP
+Registry (`mcp-registry.yml`); to retry a failed listing, run that workflow
+by hand with the version. `@e2edev/e2e` is the
 runner's retired name, and the `@e2edev` scope is the engines' and reporters'
 retired scope; both are deprecated on npm.
 
@@ -177,6 +205,11 @@ When adding a new public package:
 - `next`: release candidates cut from `main` ahead of a `latest` release.
   This is the build we ask reporters to confirm a fix against. Install with
   `@next`.
+- `nightly`: a snapshot of `main` published by the release workflow every
+  night at 03:00 UTC, and on demand by running the workflow by hand from the
+  Actions tab. A night with nothing new on `main` publishes nothing, and a
+  commit whose `spec gate` is not green fails the run instead of shipping.
+  Install with `@nightly`.
 - `canary`: a build of `main` cut by hand ahead of the next versioned release.
   Install with `@canary`. The quickstart installs `latest`.
 
@@ -184,8 +217,10 @@ Versioned releases publish to `latest`: the root `release` script passes no
 `--tag`, and each publishable package carries `publishConfig.tag: "latest"` as
 a backstop for a hand-run `npm publish`. `next` is not cut yet.
 
-A canary is a changesets snapshot release, published from a maintainer's
-machine, never from CI:
+A nightly is the same snapshot release run from the `nightly` job in
+`release.yml`, versioned as `<next version>-nightly-<datetime>` and published
+with `--tag nightly`. A canary is the hand-run form, published from a
+maintainer's machine:
 
 ```sh
 GITHUB_TOKEN=<token> pnpm run canary
@@ -239,8 +274,8 @@ prompts and tool descriptions.
   on, twice a year.
 - Removal happens at the end of the window, in a minor release while the
   packages are `0.x` (semver treats `0.x` minors as breaking) and in a major
-  release from `1.0` onward. The changeset body names both the removed form
-  and its replacement, and the PR title carries the `!`.
+  release from `1.0` onward. The changeset body opens with `**Breaking:**`,
+  names both the removed form and its replacement, and the PR title carries the `!`.
 - A deprecation is announced in three places when it lands: the changeset
   (so it reaches the changelog and the GitHub release), the reference page
   for the surface, and a runtime warning the first time the old form is used
@@ -255,5 +290,5 @@ build against, and what a third-party engine builds against too. A change to
 that contract bumps all three packages together in one release, with a
 changeset for each, so an engine and a runner from the same release always
 match. Engines declare a peer range on `e2e` that points one way only
-(engine to runner, `>=x <1`), and each integration (`@e2e-dev/kernel`, `@e2e-dev/eas`) does
+(engine to runner, `>=x <1`), and each integration (`@e2e-dev/kernel`, `@e2e-dev/lightpanda`, `@e2e-dev/eas`, `@e2e-dev/smol`, `@e2e-dev/testmu`) does
 the same on the engines it plugs into; do not make it mutual or narrow it.

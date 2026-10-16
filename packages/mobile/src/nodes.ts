@@ -232,9 +232,10 @@ const ANDROID_TITLE_IDS = [':id/collapsing_toolbar', ':id/action_bar', ':id/tool
 
 /**
  * Platform element type of one raw node as a kebab-case token: XCTest sends
- * `NavigationBar` and `StaticText`, Android sends `android.widget.TextView`;
- * both read as one vocabulary here, the Android package prefix dropped.
- * `role` is the fallback some platforms send instead.
+ * `NavigationBar` and `StaticText` (`XCUIElementTypeNavigationBar` over
+ * WebDriver), Android sends `android.widget.TextView`; all read as one
+ * vocabulary here, the class and package prefixes dropped. `role` is the
+ * fallback some platforms send instead.
  */
 function kindOf(raw: RawNode): string {
   return normalizeKind(raw.type ?? raw.role ?? '');
@@ -245,9 +246,9 @@ function isAndroidClass(type: string | undefined): boolean {
   return type !== undefined && type.includes('.');
 }
 
-/** One element-type spelling for `NavigationBar`, `navigation-bar`, and `android.widget.NavigationBar` alike. */
+/** One element-type spelling for `NavigationBar`, `XCUIElementTypeNavigationBar`, `navigation-bar`, and `android.widget.NavigationBar` alike. */
 export function normalizeKind(type: string): string {
-  const simple = type.slice(type.lastIndexOf('.') + 1);
+  const simple = type.slice(type.lastIndexOf('.') + 1).replace(/^XCUIElementType(?=[A-Z])/, '');
   return simple
     .replaceAll(/([a-z0-9])([A-Z])/g, '$1-$2')
     .replaceAll(/[\s_]+/g, '-')
@@ -382,11 +383,16 @@ function isSystemBar(node: RawNode, screen: ViewportSize | undefined, displayOnl
 
 /**
  * Projects one snapshot. `mintId` is called once per node in document order,
- * so the surface's id space stays unique across observations. Android's
- * system bars are left out with their children, see `isSystemBar`.
+ * so the surface's id space stays unique across observations. `viewport` is
+ * the one agent-device published with the snapshot; a producer that measured
+ * none leaves it to `viewportOf`. Android's system bars are left out with
+ * their children, see `isSystemBar`.
  */
-export function projectSnapshot(raw: readonly RawNode[], options: { readonly mintId: () => string }): ProjectedSnapshot {
-  const viewport = viewportOf(raw);
+export function projectSnapshot(
+  raw: readonly RawNode[],
+  options: { readonly mintId: () => string; readonly viewport?: ViewportSize | undefined },
+): ProjectedSnapshot {
+  const viewport = options.viewport ?? viewportOf(raw);
   const parents = parentPositions(raw);
   const children = new Map<number, number[]>();
   const roots: number[] = [];
@@ -542,23 +548,33 @@ export function screenRoot(roots: readonly SemanticNode[], viewport: ViewportSiz
 }
 
 /**
- * The visible screen's title: the navigation bar's (iOS) or toolbar's
- * (Android) own label, else the first text inside it, else its identifier
- * (UIKit names the bar after its title). Undefined when the screen has no
- * title bar, which is the honest answer for a launch screen, a full-screen
- * sheet, or Android's Settings home.
+ * The visible screen's title. On iOS, the navigation bar's identifier when a
+ * text inside the bar shows it: UIKit and SwiftUI put the title in both, while
+ * the bar's label is the back button on a pushed screen and an untitled
+ * screen's identifier is a class name with no such text. On Android, the
+ * toolbar's own label, else the first text inside it. A toolbar's resource id
+ * is never a title. Undefined when the screen has no title bar, which is the
+ * honest answer for a launch screen, a full-screen sheet, or Android's
+ * Settings home.
  */
 export function screenTitle(snapshot: ProjectedSnapshot): string | undefined {
   const bar =
     snapshot.index.find((entry) => entry.kind === 'navigation-bar') ??
     snapshot.index.find((entry) => ANDROID_TITLE_IDS.some((suffix) => entry.raw.identifier?.endsWith(suffix) === true));
   if (bar === undefined) return undefined;
-  if (bar.raw.label !== undefined && bar.raw.label.trim() !== '') return bar.raw.label;
-  const text = snapshot.index.find(
-    (entry) => entry.node.role === 'text' && entry.raw.label !== undefined && entry.raw.label.trim() !== '' && isWithin(entry, bar),
-  );
-  if (text !== undefined) return text.raw.label;
-  return bar.raw.identifier === undefined || bar.raw.identifier.trim() === '' ? undefined : bar.raw.identifier;
+  // Whitespace is not a title. Trimming stays here: nonEmpty feeds every node's name.
+  const textOf = (value: string | undefined): string | undefined => (value === undefined || value.trim() === '' ? undefined : value);
+  if (bar.kind === 'navigation-bar') {
+    const identifier = textOf(bar.raw.identifier);
+    const shown =
+      identifier !== undefined &&
+      snapshot.index.some((entry) => entry.node.role === 'text' && entry.raw.label === identifier && isWithin(entry, bar));
+    return shown ? identifier : undefined;
+  }
+  const label = textOf(bar.raw.label);
+  if (label !== undefined) return label;
+  const text = snapshot.index.find((entry) => entry.node.role === 'text' && textOf(entry.raw.label) !== undefined && isWithin(entry, bar));
+  return text?.raw.label;
 }
 
 /** True when `entry` is a strict descendant of `ancestor`. */

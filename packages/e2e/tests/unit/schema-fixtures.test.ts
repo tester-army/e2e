@@ -35,6 +35,55 @@ describe.each(schemas)('%s schema', (name) => {
   });
 
   if (name === 'report-v1') {
+    it("bounds what a step tells and what the app logged: a log line's source and level, a hook phase, and the cache detail, entry, and write", () => {
+      const report = readJson('fixtures', 'report-v1.valid.json') as {
+        run: { results: { attempts: (Record<string, unknown> & { steps: Record<string, unknown>[] })[] }[] };
+      };
+      const attempt = report.run.results[0]!.attempts[0]!;
+      const step = attempt.steps[0]!;
+      const cache = step['cache'] as Record<string, unknown>;
+      const line = (attempt['appLog'] as Record<string, unknown>[])[0]!;
+      const navigation = (step['events'] as Record<string, unknown>[]).find((event) => event['kind'] === 'navigation')!;
+      const cases: [() => void, () => void][] = [
+        [() => (line['level'] = 'fatal'), () => (line['level'] = 'error')],
+        [() => (line['source'] = 'navigation'), () => (line['source'] = 'network')],
+        [() => (line['text'] = 'x'.repeat(301)), () => (line['text'] = 'x'.repeat(300))],
+        [() => (line['step'] = -1), () => (line['step'] = 0)],
+        [() => (navigation['level'] = 'info'), () => delete navigation['level']],
+        [() => (step['phase'] = 'body'), () => delete step['phase']],
+        [() => (cache['detail'] = 'x'.repeat(601)), () => (cache['detail'] = 'x'.repeat(600))],
+        [() => (cache['entry'] = 'not-a-digest'), () => (cache['entry'] = 'a'.repeat(64))],
+        [() => (cache['write'] = 'written'), () => (cache['write'] = 'kept')],
+      ];
+      for (const [breakIt, fixIt] of cases) {
+        breakIt();
+        expect(validate(report)).toBe(false);
+        fixIt();
+        expect(validate(report)).toBe(true);
+      }
+    });
+
+    it("bounds a step's screen and an attempt's environment", () => {
+      const report = readJson('fixtures', 'report-v1.valid.json') as {
+        run: { results: { attempts: (Record<string, unknown> & { steps: Record<string, unknown>[] })[] }[] };
+      };
+      const attempt = report.run.results[0]!.attempts[0]!;
+      const screen = attempt.steps[1]!['screen'] as Record<string, unknown>;
+      const cases: [() => void, () => void][] = [
+        [() => (screen['changes'] = Array.from({ length: 13 }, () => 'added x')), () => (screen['changes'] = Array.from({ length: 12 }, () => 'added x'))],
+        [() => (screen['more'] = 0), () => (screen['more'] = 1)],
+        [() => delete screen['nodes'], () => (screen['nodes'] = 0)],
+        [() => (attempt['environment'] = { browser: 'x'.repeat(201) }), () => (attempt['environment'] = { browser: 'x'.repeat(200) })],
+        [() => (attempt['environment'] = { cores: 8 }), () => (attempt['environment'] = { cores: '8' })],
+      ];
+      for (const [breakIt, fixIt] of cases) {
+        breakIt();
+        expect(validate(report)).toBe(false);
+        fixIt();
+        expect(validate(report)).toBe(true);
+      }
+    });
+
     it('constrains result tags to distinct names --tag can spell back', () => {
       const report = readJson('fixtures', 'report-v1.valid.json') as { run: { results: { tags?: string[] }[] } };
       const result = report.run.results[0]!;
@@ -78,6 +127,24 @@ describe.each(schemas)('%s schema', (name) => {
       delete report.run.summary['interrupted'];
       expect(validate(report)).toBe(false);
       expect(validate.errors).toEqual(expect.arrayContaining([expect.objectContaining({ keyword: 'required', params: { missingProperty: 'interrupted' } })]));
+    });
+
+    it('keeps a skip reason on a skipped or failed attempt, never on a passed one', () => {
+      const report = readJson('fixtures', 'report-v1.valid.json') as {
+        run: { results: { attempts: { status: string; skip?: unknown; error?: unknown }[] }[] };
+      };
+      const attempt = report.run.results[1]!.attempts[0]!;
+      expect(attempt).toMatchObject({ status: 'skipped', skip: { cause: 'explicit' } });
+      const { skip } = attempt;
+      delete attempt.skip;
+      expect(validate(report)).toBe(false);
+      attempt.skip = skip;
+      attempt.status = 'failed';
+      attempt.error = { category: 'test', code: 'ASSERTION_FAILED', message: '1 soft assertion failed', retryable: true, phase: 'body' };
+      expect(validate(report)).toBe(true);
+      delete attempt.error;
+      attempt.status = 'passed';
+      expect(validate(report)).toBe(false);
     });
 
     it('lets a --last-failed rerun carry results, serial groups, and hook failures, at least one result of them', () => {
@@ -126,6 +193,23 @@ describe.each(schemas)('%s schema', (name) => {
       cache.derived = 'guessed';
       expect(validate(report)).toBe(false);
       delete cache.derived;
+      expect(validate(report)).toBe(true);
+    });
+
+    it('validates recording identities while keeping legacy reports valid', () => {
+      const report = readJson('fixtures', 'report-v1.valid.json') as { run: { results: { attempts: { steps: { cache?: Record<string, unknown> }[] }[] }[] } };
+      const cache = report.run.results[0]!.attempts[0]!.steps[0]!.cache!;
+      for (const field of ['provider', 'model']) {
+        cache['recordedBy'] = { provider: 'test', model: 'A', [field]: 'x'.repeat(300) };
+        expect(validate(report)).toBe(true);
+        cache['recordedBy'] = { provider: 'test', model: 'A', [field]: 'x'.repeat(301) };
+        expect(validate(report)).toBe(false);
+      }
+      for (const recordedBy of [null, { provider: '', model: 'A' }, { provider: 'test', model: '  ' }, { provider: 'test' }, { provider: 'test', model: 1 }, { provider: 'test', model: 'A', calls: 1 }]) {
+        cache['recordedBy'] = recordedBy;
+        expect(validate(report)).toBe(false);
+      }
+      delete cache['recordedBy'];
       expect(validate(report)).toBe(true);
     });
 

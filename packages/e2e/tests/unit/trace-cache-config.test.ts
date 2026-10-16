@@ -1,8 +1,9 @@
 /** Cache config resolution and the staged-write settlement. */
 
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createAgentCacheContext, flushStagedTraces } from '../../src/cache/context.ts';
+import { createAgentCacheContext, settleStagedTraces } from '../../src/cache/context.ts';
 import { buildTraceEntry, readTraceEntry } from '../../src/cache/trace.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
 import type { ActionTrace, E2EConfig, CacheStore } from '../../src/types.ts';
@@ -82,6 +83,44 @@ describe('cache config resolution', () => {
     expect(resolve(APP, { ...BASE_ENV, CI: '1' }, { cache: 'off' }).cache.mode).toBe('off');
   });
 
+  it('takes the directory from --cache-dir, then E2E_CACHE_DIR, then cache.dir, from the project root', () => {
+    const configured = { ...APP, cache: { mode: 'read-only' as const, dir: 'configured' } };
+    const env = { ...BASE_ENV, E2E_CACHE_DIR: '../shared/e2e' };
+    expect(resolve(configured, env, { cacheDir: '/abs/flag' }).cache.dir).toBe(path.resolve('/abs/flag'));
+    expect(resolve(configured, env).cache.dir).toBe(path.resolve(ROOT, '../shared/e2e'));
+    expect(resolve(configured, { ...BASE_ENV, E2E_CACHE_DIR: ' ' }).cache.dir).toBe(path.join(ROOT, 'configured'));
+    expect(resolve(APP, env).cache.dir).toBe(path.resolve(ROOT, '../shared/e2e'));
+  });
+
+  it('leaves the mode to the config and --no-cache when the directory is overridden', () => {
+    const env = { ...BASE_ENV, E2E_CACHE_DIR: '/abs/shared' };
+    expect(resolve({ ...APP, cache: 'read-only' }, env).cache).toMatchObject({ mode: 'read-only', dir: path.resolve('/abs/shared') });
+    expect(resolve(APP, env, { cache: 'off', cacheDir: 'flag' }).cache).toMatchObject({ mode: 'off', dir: path.join(ROOT, 'flag') });
+    expect(resolve(APP, { ...env, CI: '1' }).cache.mode).toBe('read-only');
+  });
+
+  it('refuses --cache-dir beside a cache.store and ignores E2E_CACHE_DIR there, even one the output would overlap', () => {
+    const stored = { cache: { store: memoryStore() } };
+    expect(() => resolve(stored, BASE_ENV, { cacheDir: 'shared' })).toThrow(
+      '--cache-dir names a file store directory, but cache.store replaces the file store; drop one',
+    );
+    expect(resolve(stored, { ...BASE_ENV, E2E_CACHE_DIR: '.e2e' }).cache).toMatchObject({ store: stored.cache.store, dir: path.join(ROOT, '.e2e', 'cache') });
+  });
+
+  it('reads a leading ~ in --cache-dir and E2E_CACHE_DIR as the home directory', () => {
+    expect(resolve(APP, { ...BASE_ENV, E2E_CACHE_DIR: '~/x' }).cache.dir).toBe(path.join(os.homedir(), 'x'));
+    expect(resolve(APP, BASE_ENV, { cacheDir: '~' }).cache.dir).toBe(os.homedir());
+    expect(resolve(APP, BASE_ENV, { cacheDir: '~x' }).cache.dir).toBe(path.join(ROOT, '~x'));
+  });
+
+  it('rejects a blank --cache-dir, and an output the overridden cache directory overlaps', () => {
+    expect(() => resolve(APP, BASE_ENV, { cacheDir: ' ' })).toThrow('--cache-dir must be a non-empty path');
+    expect(() => resolve(APP, { ...BASE_ENV, E2E_CACHE_DIR: '.e2e' })).toThrow('output ".e2e" (the default) is the cache directory .e2e or inside it');
+    expect(() => resolve(APP, BASE_ENV, { cacheDir: '.e2e/results/cache' })).toThrow(
+      'output ".e2e" (the default) would hold --cache-dir .e2e/results/cache under results/, which the run owns; move --cache-dir or the output',
+    );
+  });
+
   it('demotes only an unset mode in CI; an explicit read-write or off is honored', () => {
     const ci = { ...BASE_ENV, CI: '1' };
     expect(resolve(APP, ci).cache.mode).toBe('read-only');
@@ -125,7 +164,6 @@ describe('REPLAY_STALE advice', () => {
     targetId: 'web',
     platform: 'web',
     engineName: 'playwright',
-    engineVersion: '1.61.1',
     spiVersion: 1,
     appIdentity: 'a'.repeat(64),
   } as const;
@@ -149,6 +187,12 @@ describe('REPLAY_STALE advice', () => {
     expect(adviceFor({ cache: { strict: true } }, { cacheStrict: true })).toContain('without --strict-cache and with cache.strict set to false');
   });
 
+  it('names a cache directory outside the project without asking for a commit', () => {
+    expect(adviceFor({}, { cacheStrict: true, cacheDir: '/shared/e2e' })).toBe(
+      `re-record it with a read-write run without --strict-cache; the run writes the new entry under ${path.resolve('/shared/e2e').split(path.sep).join('/')}`,
+    );
+  });
+
   it('points at the configured store rather than a directory when a custom store holds the entries', () => {
     expect(adviceFor({ cache: { strict: true, store: memoryStore() } })).toBe(
       're-record it with a read-write run with cache.strict set to false; the run writes the new entry to the configured cache.store',
@@ -156,7 +200,7 @@ describe('REPLAY_STALE advice', () => {
   });
 });
 
-describe('flushStagedTraces', () => {
+describe('settleStagedTraces', () => {
   function contextWith(store: CacheStore) {
     const context = createAgentCacheContext({
       cache: { mode: 'read-write', store, dir: '/unused', strict: false },
@@ -167,7 +211,6 @@ describe('flushStagedTraces', () => {
         targetId: 'web',
         platform: 'web',
         engineName: 'playwright',
-        engineVersion: '1.61.1',
         spiVersion: 1,
         appIdentity: 'a'.repeat(64),
       },
@@ -187,7 +230,7 @@ describe('flushStagedTraces', () => {
     context.staged.push({ kind: 'write', keyHash: KEY_A, trace: trace('one'), stepIndex: 1 });
     // A trailing act nothing asserted on: the attempt passing is not a check.
     context.staged.push({ kind: 'write', keyHash: KEY_B, trace: trace('two'), stepIndex: 3 });
-    await flushStagedTraces(context, { lastVerifiedStepIndex: 2, implicatesUnconfirmed: true });
+    await settleStagedTraces(context, { lastVerifiedStepIndex: 2, implicatesUnconfirmed: true });
     expect([...store.entries.keys()]).toEqual([KEY_A]);
     expect(context.staged).toHaveLength(0);
   });
@@ -196,7 +239,7 @@ describe('flushStagedTraces', () => {
     const store = memoryStore();
     const context = contextWith(store);
     context.staged.push({ kind: 'write', keyHash: KEY_A, trace: trace('unchecked'), stepIndex: 1 });
-    await flushStagedTraces(context, { lastVerifiedStepIndex: -1, implicatesUnconfirmed: true });
+    await settleStagedTraces(context, { lastVerifiedStepIndex: -1, implicatesUnconfirmed: true });
     expect(store.entries.size).toBe(0);
   });
 
@@ -206,7 +249,7 @@ describe('flushStagedTraces', () => {
     const context = contextWith(store);
     context.staged.push({ kind: 'write', keyHash: KEY_A, trace: trace('confirmed'), stepIndex: 1 });
     context.staged.push({ kind: 'write', keyHash: KEY_B, trace: trace('implicated'), stepIndex: 3 });
-    await flushStagedTraces(context, { lastVerifiedStepIndex: 3, implicatesUnconfirmed: true });
+    await settleStagedTraces(context, { lastVerifiedStepIndex: 3, implicatesUnconfirmed: true });
     expect(store.entries.has(KEY_A)).toBe(true);
     expect(store.entries.has(KEY_B)).toBe(false);
   });
@@ -219,10 +262,22 @@ describe('flushStagedTraces', () => {
     const context = contextWith(store);
     context.staged.push({ kind: 'keep', keyHash: KEY_A, stepIndex: 1, recordedFor: STEP });
     context.staged.push({ kind: 'keep', keyHash: KEY_B, stepIndex: 3, recordedFor: STEP });
-    await flushStagedTraces(context, { lastVerifiedStepIndex: 2, implicatesUnconfirmed: true });
+    const writes = await settleStagedTraces(context, { lastVerifiedStepIndex: 2, implicatesUnconfirmed: true });
     // The same bytes, createdAt included: a replay is not a rewrite.
     expect(store.entries.get(KEY_A)).toBe(stored);
     expect(store.entries.has(KEY_B)).toBe(false);
+    expect([...writes]).toEqual([[1, 'kept'], [3, 'evicted']]);
+  });
+
+  it('leaves a confirmed kept entry that records no key context as stored, so a committed cache stays clean', async () => {
+    const store = memoryStore();
+    const stored = JSON.stringify(buildTraceEntry({ ...trace('replayed flow'), recordedFor: STEP }));
+    store.entries.set(KEY_A, stored);
+    const context = contextWith(store);
+    context.staged.push({ kind: 'keep', keyHash: KEY_A, stepIndex: 1, recordedFor: STEP });
+    const writes = await settleStagedTraces(context, { lastVerifiedStepIndex: 2, implicatesUnconfirmed: true });
+    expect(store.entries.get(KEY_A)).toBe(stored);
+    expect(writes.get(1)).toBe('kept');
   });
 
   it('completes the provenance of a confirmed kept entry recorded before the occurrence fields, and nothing else', async () => {
@@ -232,7 +287,7 @@ describe('flushStagedTraces', () => {
     store.entries.set(KEY_A, JSON.stringify(buildTraceEntry(recorded)));
     const context = contextWith(store);
     context.staged.push({ kind: 'keep', keyHash: KEY_A, stepIndex: 1, recordedFor: STEP });
-    await flushStagedTraces(context, { lastVerifiedStepIndex: 2, implicatesUnconfirmed: true });
+    await settleStagedTraces(context, { lastVerifiedStepIndex: 2, implicatesUnconfirmed: true });
     expect(readTraceEntry(JSON.parse(store.entries.get(KEY_A)!))?.payload).toEqual({ ...recorded, recordedFor: STEP });
   });
 
@@ -246,10 +301,11 @@ describe('flushStagedTraces', () => {
     context.staged.push({ kind: 'write', keyHash: KEY_A, trace: trace('confirmed'), stepIndex: 1 });
     context.staged.push({ kind: 'write', keyHash: KEY_B, trace: trace('re-recorded, unconfirmed'), stepIndex: 3 });
     context.staged.push({ kind: 'keep', keyHash: KEY_C, stepIndex: 4, recordedFor: STEP });
-    await flushStagedTraces(context, { lastVerifiedStepIndex: 2, implicatesUnconfirmed: false });
+    const writes = await settleStagedTraces(context, { lastVerifiedStepIndex: 2, implicatesUnconfirmed: false });
     expect(store.entries.has(KEY_A)).toBe(true);
     expect(store.entries.get(KEY_B)).toBe(stored);
     expect(store.entries.get(KEY_C)).toBe(stored);
+    expect([...writes]).toEqual([[1, 'saved'], [3, 'unconfirmed'], [4, 'unconfirmed']]);
   });
 
   it('claims a key per agent and per agent context, so one agent never replays another\'s recording', () => {

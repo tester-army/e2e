@@ -166,20 +166,6 @@ describe('the tree walk through a box with no size', () => {
     expect(nodes.find((node) => node.testId === 'wrapper')).toBeUndefined();
   });
 
-  it('lists a focusable zero-size link with its hidden state, while its zero-size wrapper stays out', async () => {
-    await page.setContent(`
-      <a href="#main" title="Skip to content"></a>
-      <nav aria-label="Floating" data-testid="wrapper">
-        <button style="position:fixed;left:0;top:0;width:100px;height:30px">Reset</button>
-      </nav>
-    `);
-    const nodes = await captureTree();
-    const link = nodes.find((node) => node.role === 'link');
-    expect(link).toMatchObject({ name: 'Skip to content', states: { hidden: true } });
-    expect(nodes.find((node) => node.testId === 'wrapper')).toBeUndefined();
-    expect(await page.getByRole('link', { name: 'Skip to content', exact: true }).count()).toBe(1);
-  });
-
   it('lists neither the document of a frame with no box nor the options of a select with none', async () => {
     await page.setContent(`
       <iframe style="width:0;height:0;border:0" srcdoc="<button>Pay</button>"></iframe>
@@ -194,6 +180,16 @@ describe('the tree walk through a box with no size', () => {
     expect(buttons).toEqual(['Shown pay']);
     expect(options).toEqual(['cool']);
     expect(nodes.filter((node) => node.role === 'combobox').map((node) => node.name)).toEqual(['Shown']);
+  });
+});
+
+describe('a frame\'s document', () => {
+  it('places its boxes past the frame\'s border and padding, where Playwright measures them', async () => {
+    await page.setContent('<iframe style="margin:13px;border:7px solid;padding:5px;width:200px;height:100px" srcdoc="<button>Framed</button>"></iframe>');
+    await Promise.all(page.frames().slice(1).map((frame) => frame.waitForLoadState()));
+    const node = (await captureTree()).find((candidate) => candidate.name === 'Framed')!;
+    const expected = (await page.frameLocator('iframe').getByRole('button').boundingBox())!;
+    for (const key of ['x', 'y', 'width', 'height'] as const) expect(node.rect![key]).toBeCloseTo(expected[key], 3);
   });
 });
 

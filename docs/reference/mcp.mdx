@@ -1,6 +1,9 @@
 ---
 title: MCP server (e2e mcp)
 description: Let a coding agent inspect and interact with your app over MCP.
+icon: "plug"
+"og:image": "https://e2e.tester.army/docs/images/og/reference/mcp.png?v=3d3880edad"
+"twitter:image": "https://e2e.tester.army/docs/images/og/reference/mcp.png?v=3d3880edad"
 ---
 
 <CodeGroup>
@@ -19,7 +22,8 @@ bunx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 
 `e2e mcp` lets coding agents such as Claude Code and Cursor inspect your app,
 try locators, and take masked screenshots before writing tests. It runs over
-stdio and uses the project's configured engine.
+stdio and uses the project's configured engine. For setup and what to ask
+the agent, see the [MCP server guide](/mcp).
 
 Four MCP tools manage the session and call its available app tools. The app
 tool catalog reloads from the config whenever a session opens.
@@ -31,15 +35,15 @@ The server ships with `e2e`. `e2e init` offers to register it in
 
 <CodeGroup>
 ```bash npm
-claude mcp add e2e -- npx e2e mcp
+claude mcp add --scope project e2e -- npx e2e mcp
 ```
 
 ```bash pnpm
-claude mcp add e2e -- pnpm exec e2e mcp
+claude mcp add --scope project e2e -- pnpm exec e2e mcp
 ```
 
 ```bash bun
-claude mcp add e2e -- bunx e2e mcp
+claude mcp add --scope project e2e -- bunx e2e mcp
 ```
 </CodeGroup>
 
@@ -52,6 +56,22 @@ For clients that use a `mcpServers` config, add:
   }
 }
 ```
+
+Codex reads the project's `.codex/config.toml` once the project is trusted:
+
+```toml
+[mcp_servers.e2e]
+command = "npx"
+args = ["e2e", "mcp"]
+```
+
+The server is also listed in the
+[MCP Registry](https://registry.modelcontextprotocol.io) as
+`io.github.tester-army/e2e`. A client that installs it from there runs the
+listed release with `npx` and must start it in the project directory. The
+project still needs e2e and its engine installed, since the config imports
+them. A listed release on another version than the project's e2e can reject
+config keys it does not know; the registration above always matches.
 
 The server needs no model: a project without the optional `ai` package
 opens sessions and drives the app with the deterministic tools.
@@ -84,6 +104,11 @@ this.
 | `tools` | `tool` (optional), `session` (required while several are open) | The catalog, one line per tool. With `tool`, its full description and argument schema. |
 | `call` | `tool`, `args` (optional), `session` (required while several are open) | Runs one catalog tool. Arguments are validated against the tool's closed schema first: a wrong type or an argument the tool does not declare is `INVALID_ARGUMENT`, and nothing runs. An action that fails is an error result that still carries the screen it re-observed, and leads with the tool, its target, and the code: `navigate file:///etc/passwd failed: POLICY_DENIED: forbidden URL scheme: file:`. |
 | `close_session` | `session` (required while several are open) | Saves a recording still running, ends the attempt, disposes the engine, stops the app processes the session started once no other session uses them. |
+
+Project tools honor their AI SDK `toModelOutput` renderer, including when
+`execute` returns a string. Rendered `error-text` and `error-json` outputs
+are MCP error results (`isError: true`) so the coding agent can distinguish
+a failed tool call from a successful one.
 
 ## Several sessions
 
@@ -131,9 +156,9 @@ What `call` can run depends on the session's target:
 | Catalog tool | Arguments | Result |
 | --- | --- | --- |
 | `observe` | none | A fresh observation, one node per line as `#id role "name" ...`, with the current path and revision. A link's `href` is its path when it is on the app URL's origin, else origin and path; `mailto:`, `tel:`, and `blob:` targets keep their scheme. `…` marks what is left out: `?…` a query, `#…` a fragment, `data:…` or `javascript:…` an inline payload, a trailing `…` a target cut at 256 characters. |
-| `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`, `back`, `type_secret` | A node id from the newest observation, plus the value, key, `checked` state, direction, drop target, project-relative `files`, URL, or secret name | The action's summary and what changed on screen. A verb the engine does not declare is not in the catalog. `upload` refuses a path outside the project, a hidden file, or a file under a hidden directory with `POLICY_DENIED`. `type_secret` is listed when the config declares `credentials` or `secrets`; the plaintext never reaches the agent. |
+| `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`, `back`, `type_secret` | A node id from the newest observation, plus the value, key, `checked` state, direction, drop target, project-relative `files`, URL, or secret name. `tap`, `double_tap`, and `right_click` also take an optional `modifiers` list (`Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`) when the engine declares `tapModifiers`, holding the keys for the click. | The action's summary and what changed on screen. A verb the engine does not declare is not in the catalog. `upload` refuses a path outside the project, a hidden file, or a file under a hidden directory with `POLICY_DENIED`. `type_secret` is listed when the config declares `credentials` or `secrets`; the plaintext never reaches the agent. |
 | `dismiss_keyboard` | none | Hides the on-screen keyboard. Listed when the engine's keyboard declares `dismiss`, as the device engines do. |
-| `locate` | Exactly one of `role` (with optional `name`), `text`, `label`, `placeholder`, `testId`; `exact` | How many nodes match, which, and the `screen.*` call to write. Zero or several matches name the error a test would get. What it shows of a node passes the secret ledger, as `observe` does: a filled secret reads `<secret:name>`. |
+| `locate` | Exactly one of `role` (with optional `name`), `text`, `label`, `placeholder`, `testId`; `exact` | How many nodes match, which, and the `screen.*` call to write. Zero or several matches name the error a test would get. A `name` matches the accessible name only; `observe` shows a `status`, `alert`, or `listitem` by its text, so one of those with a name that matches nothing also points at `getByRole(role).filter({ hasText })` and `getByText`. What it shows of a node passes the secret ledger, as `observe` does: a filled secret reads `<secret:name>`. |
 | `screenshot` | none | The masked viewport as an image. From then on every action result carries a fresh screenshot. Once a secret has been filled it answers `PIXEL_TAINTED` instead, for the rest of the session. |
 | `tap_at` | `x`, `y` in the latest screenshot's pixels | Taps that point: a listed control under it by id, otherwise the bare point through the engine's `performAt`; without `performAt` the point must land on a listed control. Listed when the engine declares `tap` or `performAt`. |
 | `hover_at` | `x`, `y` in the latest screenshot's pixels | Hovers that point the same way: a listed control under it by id, otherwise the bare point through `performAt`'s `hover` kind. Listed when the engine declares the `hover` action or pointer kind. |
@@ -157,12 +182,8 @@ name fails with `UNKNOWN_TOOL` and the list of names.
 
 A session records video only between `start_recording` and
 `stop_recording`, as many times as needed; the configured
-[`video`](/reference/config#video) mode applies to runs, not sessions. The
-configured [`trace`](/reference/config#trace) mode does apply: a session is
-one attempt that closes as passed, so it keeps a trace under `on` (the local
-default) and records none under a retry mode (the CI default) or
-`retain-on-failure`. A `trace` the config sets on an engine that cannot
-trace is skipped with a notice in the server log, as a run skips it. Each recording is saved to
+[`video`](/reference/config#video) mode applies to runs, not sessions, and a
+session writes no [trace](/reference/config#trace). Each recording is saved to
 `<output>/videos/<session>/<n>[-<name>].webm` (`.mp4` on mobile, and
 [`output`](/reference/config#output) is `.e2e` by default), where `n`
 counts the session's recordings. A web recording that spans a restart or a
@@ -193,9 +214,11 @@ been filled, `screenshot` and the point tools (`tap_at`, `hover_at`,
 an action's result, an `open_session` or `close_session` failure, or a cleanup line, has the
 config's secret values redacted once the config has loaded, as do the server's own log lines. Nothing a
 session does is recorded as a test result or into the replay cache; its
-artifacts land under `<output>/artifacts/<target>/sessions/`, its videos under
-`<output>/videos/`. A later `e2e run` clears `<output>/artifacts`; the
+artifacts land under `<output>/results/mcp/<target>-<attemptId>/`, its videos under
+`<output>/videos/`. A later `e2e run` clears `<output>/results`; the
 videos stay.
+
+A queued call cancelled by the client does not execute when its turn arrives.
 
 ## Resources
 
@@ -208,5 +231,7 @@ videos stay.
 
 `e2e mcp` exits 0 when the client disconnects, with or without a session
 open, or a signal ends it, and 2
-when the command line is invalid. Config and engine failures come back as
-tool errors with the same codes the CLI prints.
+when the command line is invalid. It exits 1 when an uncaught error shuts the
+server down. A startup failure exits with its error's
+[category code](/reference/cli#exit-codes). Config and engine failures come
+back as tool errors with the same codes the CLI prints.

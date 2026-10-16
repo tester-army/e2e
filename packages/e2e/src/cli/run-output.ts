@@ -6,15 +6,8 @@
  * reporter writes to the terminal past it.
  */
 
-import { RunnerOutput, type OutputStream } from '../run/process-output.ts';
+import { claimProcessOutput, type RunnerOutput } from '../run/process-output.ts';
 import { processSecrets } from '../run/secrecy.ts';
-
-/**
- * Encodings in which a string spells bytes rather than text: the write puts
- * those bytes on the terminal, so they are what is redacted. A string in any
- * other encoding is the text itself, redacted and written as UTF-8.
- */
-const BYTE_ENCODINGS: ReadonlySet<BufferEncoding> = new Set(['hex', 'base64', 'base64url']);
 
 /** The process's claimed output, once claimed: the wrappers stay for the rest of the process. */
 let claimed: RunnerOutput | undefined;
@@ -29,19 +22,7 @@ let claimed: RunnerOutput | undefined;
  */
 export function claimRunnerOutput(): RunnerOutput {
   if (claimed !== undefined) return claimed;
-  const streams = { stdout: process.stdout, stderr: process.stderr } as const;
-  const terminal = {
-    stdout: streams.stdout.write.bind(streams.stdout) as (text: string, callback?: () => void) => boolean,
-    stderr: streams.stderr.write.bind(streams.stderr) as (text: string, callback?: () => void) => boolean,
-  };
-  const output = new RunnerOutput(terminal, processSecrets);
-  for (const name of ['stdout', 'stderr'] as const satisfies readonly OutputStream[]) {
-    streams[name].write = ((chunk: string | Uint8Array, encoding?: BufferEncoding | (() => void), callback?: () => void): boolean => {
-      const done = typeof encoding === 'function' ? encoding : callback;
-      const bytes = typeof chunk === 'string' && typeof encoding === 'string' && BYTE_ENCODINGS.has(encoding);
-      return output.write(name, bytes ? Buffer.from(chunk, encoding) : chunk, done);
-    }) as typeof process.stdout.write;
-  }
+  const output = claimProcessOutput(processSecrets);
   process.once('exit', () => output.end());
   claimed = output;
   return output;

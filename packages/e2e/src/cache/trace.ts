@@ -16,8 +16,13 @@
  * `undefined`, never as a repaired or partially trusted entry.
  */
 
+import { isKeyModifier, KEY_MODIFIERS, type KeyModifier } from '../engine/contract.ts';
 import { timestamp } from '../internal/ids.ts';
 import type { ScrollDirection } from '../types.ts';
+import { bound } from '../internal/text.ts';
+import { readBoundedText, readRecordedModel, type RecordedModel } from './trace-fields.ts';
+
+export type { RecordedModel } from './trace-fields.ts';
 
 export const TRACE_SCHEMA_VERSION = 'trace-1';
 
@@ -36,9 +41,16 @@ export const MAX_TRACE_DESCRIPTOR_CHARS = 300;
  */
 export const MAX_TRACE_INPUT_CHARS = 4_096;
 
-/** Caps prose at `maxChars`, marking the cut with an ellipsis. */
-export function bound(text: string, maxChars: number): string {
-  return text.length <= maxChars ? text : `${text.slice(0, maxChars - 1)}…`;
+/**
+ * A node as one line of prose names it, `button "Save"`: its role and its
+ * best label (name, text, placeholder, then test id), the label bounded.
+ * Every report line that names a node an action or a recording points at
+ * reads it this way.
+ */
+export function targetLabel(target: Pick<TraceTargetDescriptor, 'role' | 'name' | 'text' | 'placeholder' | 'testId'>): string {
+  const label = target.name ?? target.text ?? target.placeholder ?? target.testId ?? '';
+  const role = target.role ?? 'node';
+  return label === '' ? role : `${role} ${JSON.stringify(bound(label, 40))}`;
 }
 
 /**
@@ -167,6 +179,12 @@ export type NodeActionName = (typeof NODE_ACTION_NAMES)[number];
 
 const isNodeActionName = oneOf(NODE_ACTION_NAMES);
 
+/** The node verbs that click: the only ones that may hold key modifiers. */
+const TAP_ACTION_NAMES = ['tap', 'doubleTap', 'secondaryTap'] as const satisfies readonly NodeActionName[];
+
+/** Whether a node verb clicks, so it may carry `modifiers`. */
+export const isTapActionName = oneOf(TAP_ACTION_NAMES);
+
 /**
  * Whether an action is one of the node verbs. The every-layer switches over
  * an action union (prose, recording, templating, replay) take these six
@@ -179,6 +197,8 @@ export function isNodeAction<A extends { readonly name: string }>(action: A): ac
 export interface NodeAction extends ActionBase {
   readonly name: NodeActionName;
   readonly target: TraceTargetDescriptor;
+  /** Keys a tap-family action held for the click; replayed with the action. */
+  readonly modifiers?: readonly KeyModifier[];
 }
 
 export interface TypeAction extends ActionBase {
@@ -363,6 +383,8 @@ export interface ActionTrace {
   readonly executor: { readonly name: string; readonly version?: string };
   /** Which test, target, and instruction recorded it; absent on older entries. */
   readonly recordedFor?: TraceProvenance;
+  /** Configured model when recorded; absent on older or unattributed entries. */
+  readonly recordedBy?: RecordedModel;
   /** The recorded run's verdict summary. */
   readonly summary: string;
   /**
@@ -404,6 +426,55 @@ export interface ActionTrace {
   readonly endWaitMs?: number;
   /** Set when recording overflowed a cap; the trace documents, never replays. */
   readonly truncated?: boolean;
+  /**
+   * The parts of the key that are not the step itself, as they were when it
+   * was recorded: provenance, never read by a replay. When a step's key no
+   * longer finds this entry, comparing them with the run's says what changed
+   * (an engine minor, the replay policy, the app's identity); absent on older
+   * entries.
+   */
+  readonly keyedBy?: TraceKeyContext;
+}
+
+/**
+ * Every part of a cache key outside the step's own identity (the runner, the
+ * engine, the app, and the agent's context), in the order an entry records
+ * them and a changed key names them. One list drives the type, the copy of a
+ * key, the read of a stored one, and the comparison of two.
+ */
+export const KEY_CONTEXT_FIELDS = [
+  'cacheSchema',
+  'policyVersion',
+  'project',
+  'platform',
+  'engineName',
+  'engineSpiVersion',
+  'appIdentity',
+  'agentContextDigest',
+] as const;
+
+/** The one numeric part; every other is text. */
+type KeyContextNumber = 'engineSpiVersion';
+
+/** The parts of a cache key outside the step's own identity (`KEY_CONTEXT_FIELDS`). */
+export type TraceKeyContext = {
+  readonly [Field in (typeof KEY_CONTEXT_FIELDS)[number]]: Field extends KeyContextNumber ? number : string;
+};
+
+/** A stored `keyedBy`, or undefined for anything else; a malformed one is dropped, never failing the entry. */
+function readKeyContext(document: unknown): TraceKeyContext | undefined {
+  if (typeof document !== 'object' || document === null || Array.isArray(document)) return undefined;
+  const raw = document as Record<string, unknown>;
+  const read: Record<string, string | number> = {};
+  for (const field of KEY_CONTEXT_FIELDS) {
+    const value: string | number | undefined =
+      field === 'engineSpiVersion'
+        ? typeof raw[field] === 'number' && Number.isSafeInteger(raw[field]) ? raw[field] : undefined
+        : readBoundedText(raw[field], MAX_TRACE_DESCRIPTOR_CHARS);
+    if (value === undefined) return undefined;
+    read[field] = value;
+  }
+  return read as TraceKeyContext;
 }
 
 export interface TraceEntry {
@@ -459,6 +530,8 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
   const recordedFor = recordedForRaw === undefined ? undefined : readProvenance(recordedForRaw);
   if (recordedForRaw !== undefined && recordedFor === undefined) return undefined;
 
+  const recordedBy = readRecordedModel(raw['recordedBy'], MAX_TRACE_DESCRIPTOR_CHARS);
+
   const summary = readBoundedText(raw['summary'], MAX_TRACE_SUMMARY_CHARS);
   if (summary === undefined) return undefined;
 
@@ -488,6 +561,7 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
   }
   const actions = each(actionsRaw, readRecordedAction);
   if (actions === undefined) return undefined;
+  const keyedBy = readKeyContext(raw['keyedBy']);
 
   return {
     actions,
@@ -496,6 +570,7 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
       ...(executorVersion === undefined ? {} : { version: executorVersion }),
     },
     ...(recordedFor === undefined ? {} : { recordedFor }),
+    ...(recordedBy === undefined ? {} : { recordedBy }),
     summary,
     ...(startPath === undefined ? {} : { startPath }),
     ...(endPath === undefined ? {} : { endPath }),
@@ -503,6 +578,7 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
     ...(goneAnchors.length === 0 ? {} : { goneAnchors }),
     ...(endWaitMs === undefined ? {} : { endWaitMs }),
     ...(truncated === undefined ? {} : { truncated }),
+    ...(keyedBy === undefined ? {} : { keyedBy }),
   };
 }
 
@@ -511,6 +587,17 @@ function readAnchors(document: unknown): TraceTargetDescriptor[] | undefined {
   if (document === undefined) return [];
   if (!Array.isArray(document) || document.length > MAX_TRACE_ANCHORS) return undefined;
   return each(document, readDescriptor);
+}
+
+/** The `modifiers` of a recorded tap-family action: a non-empty list of distinct key modifiers, or undefined when malformed. */
+function readModifiers(document: unknown): readonly KeyModifier[] | undefined {
+  if (!Array.isArray(document) || document.length === 0 || document.length > KEY_MODIFIERS.length) return undefined;
+  const modifiers: KeyModifier[] = [];
+  for (const value of document) {
+    if (!isKeyModifier(value) || modifiers.includes(value)) return undefined;
+    modifiers.push(value);
+  }
+  return modifiers;
 }
 
 function readRecordedAction(document: unknown): RecordedAction | undefined {
@@ -524,7 +611,10 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
   const name = raw['name'];
   if (isNodeActionName(name)) {
     const target = readDescriptor(raw['target']);
-    return target === undefined ? undefined : { name, summary, target };
+    if (target === undefined) return undefined;
+    if (raw['modifiers'] === undefined) return { name, summary, target };
+    const modifiers = isTapActionName(name) ? readModifiers(raw['modifiers']) : undefined;
+    return modifiers === undefined ? undefined : { name, summary, target, modifiers };
   }
   switch (name) {
     case 'type': {
@@ -887,13 +977,6 @@ function readProvenance(document: unknown): TraceProvenance | undefined {
     ...(callIndex === undefined ? {} : { callIndex }),
     ...(agent === undefined ? {} : { agent }),
   };
-}
-
-function readBoundedText(value: unknown, maxChars: number): string | undefined {
-  if (typeof value !== 'string' || value.trim() === '' || value.length > maxChars) {
-    return undefined;
-  }
-  return value;
 }
 
 /** One to `MAX_TRACE_UPLOAD_PATHS` verbatim paths, each a replay input like a typed value. */

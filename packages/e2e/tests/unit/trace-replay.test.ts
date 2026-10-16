@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentError } from '../../src/agent/error.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
 import { replayTrace, verifyEndState, type ObservedScreen, type ReplayHost } from '../../src/agent/replay.ts';
-import { deltaHolds } from '../../src/cache/anchors.ts';
+import { deltaMismatch } from '../../src/cache/anchors.ts';
 import type { TraceTargetDescriptor } from '../../src/cache/trace.ts';
 import type { SettleMode } from '../../src/agent/settle-policy.ts';
 import type { ActionTrace, RecordedAction } from '../../src/cache/trace.ts';
@@ -118,7 +118,7 @@ describe('verifyEndState', () => {
   const saved: SemanticNode = { ref: { id: 'm', revision: 'r1' }, role: 'status', name: 'Marker', text: 'saved' };
   const savedAnchor = { role: 'status', name: 'Marker', text: 'saved' };
   const verifyAnchors = (host: ReplayHost, endAnchors: readonly TraceTargetDescriptor[], waitMs?: number) =>
-    verifyEndState(host, (live) => deltaHolds({ endAnchors }, live.nodes, new Map()), waitMs === undefined ? {} : { waitMs });
+    verifyEndState(host, (live) => deltaMismatch({ endAnchors }, live.nodes, new Map()) === undefined, waitMs === undefined ? {} : { waitMs });
 
   /** A host with `remainingMs` on the step clock whose screen shows the saved marker from `afterMs` on. */
   const savedAfter = (afterMs: number, remainingMs: number): TestHost => {

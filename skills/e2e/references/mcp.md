@@ -5,12 +5,33 @@ coding agent drives the app the way the testing agent does: look at a screen
 before writing a test, check a locator before committing to it. Running tests
 and reading a failed run stay on the CLI (topics `running` and `debugging`).
 
+## Contents
+
+- Setup
+- Tools
+- Workflow
+- Rules
+
 ## Setup
 
-The server ships with `e2e`. `e2e init` offers to register it; by hand:
+The server ships with the project's `e2e` dependency, separately from the
+skills-only plugin. `e2e init` offers to register it for Claude Code and
+Cursor. Reuse an existing registration; when adding one, use the project's
+config so it starts in the project it drives.
+
+Codex reads `.codex/config.toml` in a trusted project:
+
+```toml
+[mcp_servers.e2e]
+command = "npx"
+args = ["e2e", "mcp"]
+```
+
+`codex mcp list`, run in the project, shows the server. Start a new session
+after registering it so the tools load. Claude Code can register it with:
 
 ```bash
-claude mcp add e2e -- npx e2e mcp   # Claude Code
+claude mcp add --scope project e2e -- npx e2e mcp
 ```
 
 Or declare it in the client's project config (`.mcp.json` for Claude Code,
@@ -20,8 +41,10 @@ Or declare it in the client's project config (`.mcp.json` for Claude Code,
 { "mcpServers": { "e2e": { "command": "npx", "args": ["e2e", "mcp"] } } }
 ```
 
-No model is needed: without the optional `ai` package, sessions open and the
-deterministic tools work.
+Sessions run on the project's config (`e2e.config.ts` or `e2e.config.mts`):
+in a project without one, `open_session` fails with `CONFIG_NOT_FOUND`, so
+set it up first (topic `setup`). No model is needed: without the optional `ai` package, sessions
+open and the deterministic tools work.
 
 Flags: `--config <path>` names the default config file, `--target <name>`
 fixes the target every session opens on, `--headed` shows the browser or
@@ -31,7 +54,10 @@ sets how many sessions may be open at once (default 4, 1 through 16).
 
 ## Tools
 
-Four tools; everything a session can do is a catalog behind `call`.
+Four tools, all on the server registered as `e2e`; everything a session can
+do is a catalog behind `call`. Clients show them with the server name, such
+as `mcp__e2e__open_session` in Claude Code; when another MCP server offers a
+tool with the same name, use the `e2e` server's.
 
 | Tool | Does |
 | --- | --- |
@@ -45,7 +71,7 @@ The catalog, per session:
 | Catalog tool | Does |
 | --- | --- |
 | `observe` | A fresh observation: one node per line as `#id role "name" ...`, plus the current path. On the web engine a link's `href` is its path on the app URL's origin, else origin and path (`mailto:` and `tel:` keep their scheme, `blob:` its inner origin and path); `?…` and `#…` mark a dropped query or fragment, `data:…` and `javascript:…` an inline payload, a trailing `…` a target cut at 256 characters. |
-| `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`, `back`, `dismiss_keyboard` | The grammar verbs, as the testing agent gets them: `check` takes `checked`, `drag` a `to` node, `upload` project-relative `files`; `dismiss_keyboard` comes with device engines. Each reports what changed on screen; `observe` shows the whole screen. A verb the engine cannot honor is not listed and fails with `UNSUPPORTED_CAPABILITY`. |
+| `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`, `back`, `dismiss_keyboard` | The grammar verbs, as the testing agent gets them: `check` takes `checked`, `drag` a `to` node, `upload` project-relative `files`; `dismiss_keyboard` comes with device engines. On an engine that declares `tapModifiers`, `tap`, `double_tap`, and `right_click` take an optional `modifiers` list (`Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`) to hold keys for the click. Each reports what changed on screen; `observe` shows the whole screen. A verb the engine cannot honor is not listed and fails with `UNSUPPORTED_CAPABILITY`. |
 | `type_secret` | Fills a configured secret by name: a credential's password into a password field, a `secrets` entry into any editable input; the plaintext never reaches the agent. Listed when the config declares `credentials` or `secrets` and the engine can fill secrets. |
 | `locate` | Tries a semantic locator with exactly one of `role`, `text`, `label`, `placeholder`, `testId` (`name` only with `role`; `exact` optional; anything else is `INVALID_ARGUMENT`) and returns how many nodes match, which, and the `screen.*` call to write. |
 | `screenshot` | The masked pixels as an image. |
@@ -57,6 +83,10 @@ The catalog, per session:
 | `start_recording` | Starts a video of the app (`name` optional, for the file name). Listed when the engine records video. |
 | `stop_recording` | Stops it and returns the absolute path of each video file, under `<output>/videos/<session>/` (`.e2e` by default), or the URL of a provider's own recording. |
 | Project tools | Every `defineTool` in the agent's `tools` that applies to the target's platform, under its own name; an engine pack such as `mobileTools` adds `open_app`, `swipe`, `alert`. |
+
+Project tools use their `toModelOutput` renderer for strings as well as
+structured results. Its `error-text` and `error-json` outputs set the MCP
+result's `isError: true`; treat them as failed calls.
 
 Once a secret is filled in the session, `screenshot` and the point tools
 (`tap_at`, `hover_at`, `type_at`, `press_at`, `select_at`) answer with a
@@ -75,7 +105,11 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
 2. `call {tool: "locate", args: {...}}` for each locator you intend to write.
    One match: use the printed `screen.getByRole(...)` call. Zero or several:
    adjust before writing the test; the same failure would hit the test as
-   `LOCATOR_NOT_FOUND` or `LOCATOR_AMBIGUOUS`.
+   `LOCATOR_NOT_FOUND` or `LOCATOR_AMBIGUOUS`. A role query's `name` matches
+   the accessible name only, while `observe` shows a `status`, `alert`, or
+   `listitem` by its text: `status "Saved."` on an unlabelled status is its
+   text, so match it with `getByRole('status').filter({ hasText: 'Saved.' })`
+   or `getByText`.
 3. Write `tests/<feature>.e2e.ts` (topic `writing-tests`). Deterministic steps
    where you saw exact names; `agent.act` where the flow varies.
 4. Run it from the shell: `npx e2e run tests/<feature>.e2e.ts`, read the

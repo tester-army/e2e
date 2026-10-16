@@ -114,6 +114,12 @@ describe('telemetry events', () => {
       steps_app: 0,
       steps_session: 0,
       steps_resource: 0,
+      steps_agent_act: 2,
+      steps_agent_assert: 0,
+      steps_agent_extract: 0,
+      steps_agent_waitfor: 0,
+      tests_with_agent_steps: 1,
+      tests_with_act: 1,
       agent_steps_replayed: 1,
       agent_steps_partial: 0,
       agent_steps_missed: 1,
@@ -176,6 +182,45 @@ describe('telemetry events', () => {
     ]);
     const payload = JSON.stringify(event);
     for (const text of ['xcrun', '7F3A', '/home', 'Chromium', '11434', 'reading', '30000']) expect(payload).not.toContain(text);
+  });
+
+  it('counts the tests that ran an agent step, and those that acted, across attempts and serial members', () => {
+    const act = reportStep({ kind: 'agent', api: 'agent.act' });
+    const judge = reportStep({ kind: 'agent', api: 'agent.assert' });
+    const member = (attempt: number, index: number, steps: readonly ReturnType<typeof reportStep>[]) => ({
+      id: `member-${attempt}-${index}`,
+      index,
+      testId: `tests/flow.e2e.ts::flow::${index}`,
+      status: 'passed' as const,
+      startedAt: REPORT_AT,
+      durationMs: 10,
+      steps,
+      secondaryErrors: [],
+    });
+    const report = reportDocument({
+      results: [
+        reportResult({ attempts: [reportAttempt({ steps: [reportStep()] })] }),
+        reportResult({ id: 'result-2', attempts: [reportAttempt({ steps: [act] }), reportAttempt({ index: 1, steps: [judge] })] }),
+      ],
+      serialGroups: [
+        {
+          ...sampleReport().run.serialGroups[0]!,
+          attempts: [
+            { ...sampleReport().run.serialGroups[0]!.attempts[0]!, members: [member(0, 0, [act]), member(0, 1, [reportStep()])] },
+            { ...sampleReport().run.serialGroups[0]!.attempts[0]!, index: 1, members: [member(1, 0, [act]), member(1, 1, [judge])] },
+          ],
+        },
+      ],
+    });
+    expect(runCompletedEvent(report, RUN).properties).toMatchObject({
+      steps_agent: 5,
+      steps_agent_act: 3,
+      steps_agent_assert: 2,
+      steps_agent_extract: 0,
+      steps_agent_waitfor: 0,
+      tests_with_agent_steps: 3,
+      tests_with_act: 2,
+    });
   });
 
   it("counts the agent's actions by the runner's names, a project's tools together, and nothing on other steps", () => {
@@ -272,7 +317,7 @@ describe('telemetry events', () => {
       config_reporters: ['junit', 'list'],
       config_custom_reporters: 0,
       config_artifact_store: false,
-      config_trace_modes: ['on'],
+      config_trace_modes: ['retain-on-failure'],
       config_video_modes: ['off', 'retain-on-failure'],
       config_app_commands: 1,
       config_environments: ['production', 'staging'],

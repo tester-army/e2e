@@ -6,7 +6,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { compileEvaluation } from '../../src/evaluation.ts';
+import { compileEvaluation, pageFunctionSource } from '../../src/evaluation.ts';
 
 describe('compileEvaluation', () => {
   afterEach(() => {
@@ -52,5 +52,20 @@ describe('compileEvaluation', () => {
   it('reports an exception from the evaluated code by message', async () => {
     const evaluate = compileEvaluation('() => { throw new Error("boom"); }', false);
     await expect(evaluate(undefined)).resolves.toEqual({ ok: false, message: 'boom' });
+  });
+});
+
+// The same boundary browser.evaluate and init scripts use for serialized functions.
+describe('pageFunctionSource', () => {
+  it('evaluates an ordinary method with its argument', async () => {
+    const functions = { add(value: number) { return value + 1; } };
+    await expect(compileEvaluation(pageFunctionSource(functions.add), true)(41))
+      .resolves.toEqual({ ok: true, value: 42 });
+  });
+
+  it('evaluates an async method with its argument', async () => {
+    const functions = { async add(value: number) { return value + 1; } };
+    await expect(compileEvaluation(pageFunctionSource(functions.add), true)(41))
+      .resolves.toEqual({ ok: true, value: 42 });
   });
 });

@@ -3,8 +3,8 @@
  * and the shape of the peer range one keeps on another.
  *
  * An engine or reporter peers on `e2e`, and an integration on the engine it
- * plugs into, as `>=<major.minor.patch> <major+1>` of the sibling it was built
- * against (`>=0.15.0 <1` on the runner today). Anything narrower puts every
+ * plugs into, as `>=<major.minor.patch> <major+1>`, the floor the oldest
+ * sibling it works with. Anything narrower puts every
  * sibling minor out of range, and changesets then patch-bumps the dependent
  * and rewrites its pin on every release of the sibling; an exact pin also
  * leaves a consumer who updates the sibling alone with a peer npm 7+ refuses.

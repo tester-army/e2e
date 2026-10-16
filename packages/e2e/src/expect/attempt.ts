@@ -5,9 +5,12 @@ import { InfrastructureError } from '../internal/errors.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
 import type { AttemptBudget } from '../run/budget.ts';
 import type { SoftFailures } from './soft.ts';
+import type { PollScope } from './poll-scope.ts';
 
 export interface PublishedAttempt {
   readonly attemptId: string;
+  /** Host preparation may overlap a hosted attempt, but not a suite attempt. */
+  readonly owner: 'suite' | 'host';
   /** Setup tests owe their sessions and may not skip themselves. */
   readonly testKind: 'test' | 'setup';
   /** The config default for a poll's `timeout`. */
@@ -16,6 +19,8 @@ export interface PublishedAttempt {
   readonly budget: AttemptBudget;
   /** Where `expect.soft` keeps its failures until the body settles. */
   readonly soft: SoftFailures;
+  /** Hosted callers have no runner-owned body lineage; their polls belong to the session. */
+  readonly polls?: PollScope;
 }
 
 /**

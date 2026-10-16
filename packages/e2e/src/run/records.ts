@@ -1,16 +1,18 @@
 /** Execution result data model shared by the executor and reporters. */
 
 import type { SerializedError } from '../internal/errors.ts';
+import { resultId } from '../internal/ids.ts';
 import type { TestIdentity } from '../collect/collect.ts';
 import type { SkipInfo } from '../collect/select.ts';
+import { keeps, type Keep } from '../internal/recording-modes.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
-import type { StepRecord } from './steps.ts';
+import type { AppLogRecord, StepRecord } from './steps.ts';
 
 export type ArtifactProducer = { kind: 'step'; stepId: string } | { kind: 'attempt' };
 
 export interface ArtifactRecord {
   id: string;
-  kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log';
+  kind: 'screenshot' | 'video' | 'download' | 'log';
   mediaType: string;
   path?: string;
   /** A video a hosted service keeps: the `http(s)` URL the report links to, in place of a local `path`. */
@@ -27,9 +29,7 @@ export interface ArtifactRecord {
   startedAt?: string;
   /**
    * Mirrors report-1: how much of the file the runner masked. A screenshot is
-   * `complete`; a trace is `complete` once every registered secret value was
-   * rewritten out of its text, and `not-required` when the run has no
-   * secret value to rewrite; a video is `incomplete`, since a recording masks nothing
+   * `complete`; a video is `incomplete`, since a recording masks nothing
    * (a secure field renders its own dots, but anything else the screen
    * showed is in the frames), and is kept as it is; a download is
    * `incomplete` too, bytes the app served and the runner did not rewrite,
@@ -39,7 +39,7 @@ export interface ArtifactRecord {
    * recorded by `url`, or one its producer withheld, which this runner never
    * writes.
    */
-  redaction: 'complete' | 'not-required' | 'incomplete';
+  redaction: 'complete' | 'incomplete';
   producer: ArtifactProducer;
 }
 
@@ -52,7 +52,11 @@ export interface ArtifactRecord {
  */
 export interface FailureEvidence {
   url?: string;
-  /** The `log` artifact holding the redacted screen at failure, by id. */
+  /** The viewport the screen at failure was captured in. */
+  viewport?: { width: number; height: number };
+  /** Nodes the screen at failure listed; absent when it had no tree. */
+  nodes?: number;
+  /** The `log` artifact holding the redacted screen at failure, its listing alone, by id. */
   screen?: string;
   /** The masked `screenshot` artifact taken at failure, by id. */
   screenshot?: string;
@@ -67,12 +71,22 @@ export interface AttemptRecord {
   startedAt: string;
   durationMs: number;
   steps: StepRecord[];
+  /** What the app logged during the attempt, each line with its step; absent when it logged nothing. */
+  appLog?: AppLogRecord[];
   artifacts: ArtifactRecord[];
   error?: SerializedError;
   failure?: FailureEvidence;
-  /** Why the body skipped itself (`test.skip(condition, reason)`); set exactly when `status` is `skipped`. */
+  /**
+   * Why the body skipped itself (`test.skip(condition, reason)`). Always set
+   * when `status` is `skipped`; also on a failed attempt whose body skipped
+   * after a soft failure, or whose teardown failed after the skip.
+   */
   skip?: SkipInfo;
   secondaryErrors: SerializedError[];
+  /** What the engine said the attempt ran on (`EngineAttemptContext.environment`), redacted. */
+  environment?: Record<string, string>;
+  /** Which of the attempt's outcomes keep a trace (`keeps`), when it keeps one at all; the runner's, never in the report. */
+  trace?: Keep | undefined;
   cleanup: 'complete' | 'failed' | 'forced';
 }
 
@@ -84,9 +98,16 @@ export interface SerialMemberRecord {
   startedAt: string;
   durationMs: number;
   steps: StepRecord[];
+  /** What the app logged during the attempt, each line with its step; absent when it logged nothing. */
+  appLog?: AppLogRecord[];
   error?: SerializedError;
   /** What the runner saw when this member's failure landed; see `FailureEvidence`. */
   failure?: FailureEvidence;
+  /**
+   * Why the member was skipped: its own `test.skip`, or the runner (a failed
+   * predecessor or hook, an interrupt). Also on a failed member that skipped
+   * itself first; see `AttemptRecord.skip`.
+   */
   skip?: SkipInfo;
   secondaryErrors: SerializedError[];
 }
@@ -101,6 +122,10 @@ export interface SerialAttemptRecord {
   artifacts: ArtifactRecord[];
   error?: SerializedError;
   secondaryErrors: SerializedError[];
+  /** What the engine said the attempt ran on (`EngineAttemptContext.environment`), redacted. */
+  environment?: Record<string, string>;
+  /** Which of the attempt's outcomes keep a trace (`keeps`), when it keeps one at all; the runner's, never in the report. */
+  trace?: Keep | undefined;
   cleanup: 'complete' | 'failed' | 'forced';
 }
 
@@ -139,6 +164,22 @@ export function isFailedStatus(status: AttemptStatus | ResultStatus): status is 
   return status !== 'passed' && status !== 'skipped' && status !== 'flaky';
 }
 
+/** Whether an attempt keeps its trace, by the rule its video follows too (`keeps`). */
+function keepsTrace(attempt: Pick<AttemptRecord, 'status' | 'trace'>): boolean {
+  return attempt.trace !== undefined && keeps(attempt.trace, attempt.status);
+}
+
+/** The report ids of the results that keep a trace page: those with an attempt that kept a trace; a serial member's attempts are its group's. */
+export function tracedResultIds(results: readonly ResultRecord[], serialGroups: readonly SerialGroupRecord[]): Set<string> {
+  const groups = new Map(serialGroups.map((group) => [group.id, group]));
+  const traced = new Set<string>();
+  for (const result of results) {
+    const attempts = result.serialGroupId === undefined ? result.attempts : (groups.get(result.serialGroupId)?.attempts ?? []);
+    if (attempts.some(keepsTrace)) traced.add(resultId(result.test.id, result.target.name, result.agent, result.repeat));
+  }
+  return traced;
+}
+
 export interface ResultRecord {
   test: TestIdentity;
   target: ResolvedTarget;
@@ -170,9 +211,10 @@ export interface FailureBeforeSkip {
 
 /**
  * The failure a test's `test.skip(...)` followed: the last attempt that
- * failed before a skipped retry, or a soft failure the skipping attempt kept.
- * Engine cleanup diagnostics after the skip are not one. A serial member's
- * attempts live on its group, which `groupOf` looks up only for such a member.
+ * failed before a skipped retry, or an error the skipped attempt kept beside
+ * its skip. A soft failure before the skip fails its own attempt. Engine
+ * cleanup diagnostics after the skip are not one. A serial member's attempts
+ * live on its group, which `groupOf` looks up only for such a member.
  */
 export function failureBeforeSkip(
   result: Pick<ResultRecord, 'status' | 'skip' | 'attempts' | 'serialGroupId' | 'test'>,

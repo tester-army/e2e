@@ -40,6 +40,7 @@ function slug(name: string): string {
 
 interface Snapshot {
   readonly nodes: readonly { readonly type?: string; readonly label?: string; readonly value?: string }[];
+  readonly viewport?: { readonly width: number; readonly height: number };
   readonly truncated?: boolean;
   readonly appName?: string;
   readonly appBundleId?: string;
@@ -74,6 +75,7 @@ function write(platform: Platform, name: string, snap: Snapshot): void {
   mkdirSync(path.join(OUT, platform), { recursive: true });
   const kept = {
     nodes: snap.nodes,
+    ...(snap.viewport === undefined ? {} : { viewport: snap.viewport }),
     ...(snap.truncated === undefined ? {} : { truncated: snap.truncated }),
     ...(snap.appName === undefined ? {} : { appName: snap.appName }),
     ...(snap.appBundleId === undefined ? {} : { appBundleId: snap.appBundleId }),

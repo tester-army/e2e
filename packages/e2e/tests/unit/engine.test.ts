@@ -137,6 +137,19 @@ describe('defineEngine', () => {
     ).toThrow(/tools belong on the agent/);
   });
 
+  it('accepts the trace hooks an engine published before their removal declares, and never offers them', () => {
+    const startTrace = async (): Promise<void> => {
+      throw new Error('never called');
+    };
+    const engine = defineEngine(
+      observingEngine({ artifacts: { screenshot: async () => 'x', startTrace, stopTrace: async () => 'trace.zip' } as never }),
+    );
+    expect(Object.keys(engine.artifacts!)).toEqual(['screenshot']);
+    expect(() => defineEngine(observingEngine({ artifacts: { screenshot: async () => 'x', startTrace: 'on' } as never }))).toThrow(
+      /artifacts\.startTrace must be a function/,
+    );
+  });
+
   it('rejects unknown keys inside nested manifests: the grammar is closed', () => {
     expect(() =>
       defineEngine(observingEngine({ session: { tap: async () => undefined } as never })),
@@ -554,12 +567,11 @@ describe('engine targets in config', () => {
     ).toThrow(/defineEngine/);
   });
 
-  it('accepts a trace and a video mode on a target without an engine; the runner grades them later', () => {
+  it('accepts a video mode on a target without an engine; the runner grades it later', () => {
     const config = resolveConfig(
-      { targets: [{ name: 'ios', platform: 'ios', trace: 'off', video: 'on' }] },
+      { targets: [{ name: 'ios', platform: 'ios', video: 'on' }] },
       { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv },
     );
-    expect(config.targets[0]!.trace).toEqual({ mode: 'off', source: 'target' });
     expect(config.targets[0]!.video).toEqual({ mode: 'on', source: 'target' });
   });
 

@@ -4,7 +4,9 @@ import { z } from 'zod';
 import { promptCacheKey } from '../../../src/agent/model/provider-hints.ts';
 import { createOAuthFetch } from '../../../src/oauth/fetch.ts';
 import { opencodeConsole } from '../../../src/oauth/opencode-console.ts';
+import { listModels } from '../../../src/oauth/models.ts';
 import { createOpencodeConsoleProvider } from '../../../src/oauth/providers/opencode-console.ts';
+import type { CodexCredentials } from '../../../src/oauth/providers/openai.ts';
 import { MemoryCredentialStore } from './helpers/store.ts';
 import { json, useServers, useVendor, type Received } from './helpers/server.ts';
 import { onFakeTimeouts } from './helpers/time.ts';
@@ -47,6 +49,8 @@ function workspace(answer: Partial<typeof config.config.provider> | undefined = 
   const providers = answer === undefined ? config : { config: { provider: answer } };
   return serve((request, response) => {
     if (request.url === '/console/api/config') return json(response, 200, providers);
+    // ChatGPT's own model list, so a test can prove the Console key never reaches another provider.
+    if (request.url.includes('/codex/models?')) return json(response, 200, { models: [{ slug: 'gpt-6-astra', display_name: 'GPT-6 Astra', visibility: 'list', priority: 0 }] });
     if (request.url.endsWith('/chat/completions')) return json(response, 200, chatCompletion);
     if (request.url.endsWith('/messages')) {
       return json(response, 200, { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-sonnet-5', content: [{ type: 'text', text: 'hello' }], stop_reason: 'end_turn', usage: { input_tokens: 3, output_tokens: 1 } });
@@ -196,6 +200,17 @@ describe('opencodeConsole()', () => {
     expect(markedTexts(placed!)).toEqual([]);
   });
 
+  it('asks for the runner\'s output cap on the Anthropic route instead of letting the SDK\'s own default decide', async () => {
+    const api = await workspace();
+    vendor(api, { 'opencode-console': login });
+    const model = opencodeConsole('claude-sonnet-5');
+    await generateText({ model, prompt: 'hi' });
+    await generateText({ model, prompt: 'hi', maxOutputTokens: 1234 });
+    const [capped, asked] = inference(api.requests).map((call) => JSON.parse(call.body) as { max_tokens?: number });
+    expect(capped!.max_tokens).toBe(8192);
+    expect(asked!.max_tokens).toBe(1234);
+  });
+
   it('says what to do when the login reaches no Go subscription, or the workspace does not serve the model', async () => {
     const api = await workspace({ opencode: config.config.provider.opencode });
     vendor(api, { 'opencode-console': login });
@@ -210,12 +225,15 @@ describe('opencodeConsole()', () => {
     expect(inference(api.requests)).toEqual([]);
   });
 
-  it('calls over chat when the config cannot be read, and asks again on the next call', async () => {
+  it.each([
+    ['answers an error', 503, { error: 'down' }],
+    ['is of another shape', 200, { config: { provider: 'opencode' } }],
+  ])('calls over chat when the config %s, and asks again on the next call', async (_case, status, unreadable) => {
     let configs = 0;
     const api = await serve((request, response) => {
       if (request.url === '/console/api/config') {
         configs += 1;
-        return configs === 1 ? json(response, 503, { error: 'down' }) : json(response, 200, config);
+        return configs === 1 ? json(response, status, unreadable) : json(response, 200, config);
       }
       if (request.url.endsWith('/chat/completions')) return json(response, 200, chatCompletion);
       json(response, 200, { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-sonnet-5', content: [{ type: 'text', text: 'hello' }], stop_reason: 'end_turn', usage: { input_tokens: 3, output_tokens: 1 } });
@@ -257,5 +275,69 @@ describe('e2e models opencode-console', () => {
       { id: 'glm-5.3', detail: 'Zen, $1.4 in, $4.4 out per 1M' },
       { id: 'go/deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash', detail: 'Go, vision' },
     ]);
+  });
+
+  it('lists ids through OPENCODE_API_KEY when no login is stored, the credential opencodeConsole() uses', async () => {
+    const api = await workspace();
+    vendor(api, {});
+    vi.stubEnv('OPENCODE_API_KEY', ' oc_sk_env ');
+    const models = await listModels('opencode-console', new MemoryCredentialStore());
+    expect(api.requests[0]!.headers['authorization']).toBe('Bearer oc_sk_env');
+    // A service key names no workspace, so there is no header to send.
+    expect(api.requests[0]!.headers).not.toHaveProperty('x-org-id');
+    expect(models.map((model) => model.id)).toContain('go/deepseek-v4.1-flash');
+  });
+
+  it('reads the key over a stored login, as opencodeConsole() does', async () => {
+    const api = await workspace();
+    vendor(api, {});
+    vi.stubEnv('OPENCODE_API_KEY', 'oc_sk_env');
+    await listModels('opencode-console', new MemoryCredentialStore({ 'opencode-console': login }));
+    expect(api.requests[0]!.headers['authorization']).toBe('Bearer oc_sk_env');
+    expect(api.requests[0]!.headers).not.toHaveProperty('x-org-id');
+  });
+
+  it('reads the key when the stored logins are unreadable', async () => {
+    const api = await workspace();
+    vendor(api, {});
+    vi.stubEnv('E2E_OAUTH_CREDENTIALS', '{not json');
+    vi.stubEnv('OPENCODE_API_KEY', 'oc_sk_env');
+    await listModels('opencode-console');
+    expect(api.requests[0]!.headers['authorization']).toBe('Bearer oc_sk_env');
+  });
+
+  it('lists past a model it cannot read, and fails on a config that is not JSON', async () => {
+    const list = (body: string) => createOpencodeConsoleProvider().models!(async () => new Response(body));
+    const providers = { opencode: { models: { 'glm-5.3': { name: 7, cost: { input: 1.4, output: 4.4 } }, broken: null } }, 'opencode-go': 'go' };
+    expect(await list(JSON.stringify({ config: { provider: providers } }))).toEqual([{ id: 'glm-5.3', detail: 'Zen, $1.4 in, $4.4 out per 1M' }]);
+    await expect(list('<html>')).rejects.toMatchObject({ code: 'FLOW_FAILED', message: 'the OpenCode Console workspace config is not JSON' });
+  });
+
+  it('with neither credential, the message names the key as well as the login', async () => {
+    vi.stubEnv('OPENCODE_API_KEY', '');
+    await expect(listModels('opencode-console', new MemoryCredentialStore())).rejects.toMatchObject({
+      code: 'NOT_LOGGED_IN',
+      message: 'no OpenCode Console login is stored; run `npx e2e login opencode-console` or set OPENCODE_API_KEY',
+    });
+  });
+
+  it('a rejected key names the key, not the login it stands in for', async () => {
+    const api = await serve((_request, response) => json(response, 401, { error: 'invalid key' }));
+    vendor(api, {});
+    vi.stubEnv('OPENCODE_API_KEY', 'oc_sk_env');
+    const failure = await listModels('opencode-console', new MemoryCredentialStore({ 'opencode-console': login })).catch((error: unknown) => error);
+    expect(failure).toMatchObject({ code: 'LOGIN_REQUIRED' });
+    expect((failure as Error).message).toMatch(/; check OPENCODE_API_KEY$/);
+  });
+
+  it('leaves the other providers on their stored login', async () => {
+    const api = await workspace();
+    vendor(api, {});
+    vi.stubEnv('OPENCODE_API_KEY', 'oc_sk_env');
+    const store = new MemoryCredentialStore({ openai: { access: 'oai_tok', refresh: 'rt_2', expires: 0 } as CodexCredentials });
+    const models = await listModels('openai', store);
+    // The Console key is not a ChatGPT credential, so the listing runs on the stored login.
+    expect(api.requests.at(-1)!.headers['authorization']).toBe('Bearer oai_tok');
+    expect(models.map((model) => model.id)).toEqual(['gpt-6-astra']);
   });
 });

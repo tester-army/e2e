@@ -3,17 +3,49 @@
 Paths below sit under the configured `output` directory; `.e2e` is the
 default.
 
+## Contents
+
+- Read the failure
+- Error codes
+- Tools
+- Flaky tests
+- Is it the app?
+
 ## Read the failure
 
-1. Run with `--reporter list,markdown`: `list` ends with a `Failed Tests`
-   section, the markdown reporter's `Failures` line names `.e2e/failures/`.
-2. Open the failed test's page under `.e2e/failures/` and grep `Expected:`
-   / `Observed:` (an `expect`), `Asked for:` and `Waited:` (a locator),
-   `Look at:` (the line it unwound through), whether every attempt
-   failed alike (a bug, not a flake), the steps, the last model turns of a
-   failed agent step, and the accessibility tree at failure, one node per
-   line. Fix from what was there.
-3. `.e2e/report.json` backs the pages:
+1. Every failure in the `list` output ends with `❯ trace
+   .e2e/results/<test>/trace.md`. Open that trace page: `Look at:` (the line it unwound
+   through), `Expected:` / `Observed:` (an `expect`), `Asked for:` and
+   `Waited:` (a locator), whether every attempt failed alike (a bug, not a
+   flake), then every step with what it did under it:
+   - the node an action landed on (`tap button "Save" (12ms)`), or `✗` and
+     its code;
+   - what an assertion read while it waited (`expect gave up after 16 reads
+     in 1.6s: text "0 remaining" (1 match) x16`); one value throughout
+     points at a wrong expectation, a broken app, or one slower than the
+     timeout, changing values at a race;
+   - what the app logged meanwhile (`✗ network error: POST /api/save 500`,
+     `✗ uncaught error: ...`, `⚠ console warning: ...`, `ℹ console: ...`);
+     `❯ app 2 errors` in the terminal says there are some, and the page's
+     `## App log` lists up to 50 with their step, errors and warnings
+     first, counting the rest;
+   - where the page went (`↪ navigated to /login`, a new tab the app
+     opened, a frame that loaded);
+   - how the screen changed since the step before (`screen: 2 changes since
+     step 3` with the added, removed, and changed nodes); `unchanged` after
+     an action means it had no visible effect;
+   - the cache's decision for an agent step: replayed, handed off and where
+     (`at action 2 of 3, tap button "Apply": ...`), what became of the
+     recording, and the entry file;
+   - the agent's last turns, loop-guard notes included, and the
+     accessibility tree at failure, one node per line.
+   Fix from what was there. `trace` (default `retain-on-failure`) chooses
+   which tests keep a page; `--trace` keeps one for every test of a run.
+2. `.e2e/report.json` holds the same facts for scripts, not for reading:
+   each step's `events` (`engine`, `poll`, `navigation`) and the attempt's
+   `appLog` (each line's `step` is a step `index`) are what the page's step
+   lines are rendered from, before it filters and caps them.
+3. When a script needs them:
 
 ```bash
 jq '.run | {status, exitCode, errors}' .e2e/report.json
@@ -26,9 +58,10 @@ jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
    `url`, `screen` and `screenshot` artifact ids, and `candidates`; a
    failed agent step has `turns`; `selected` drops filtered-out tests
    (recorded as `skipped`).
-4. Artifacts, under `.e2e/artifacts/`: `failure/screen.txt`
-   and the engine's screenshot per failed attempt; a Playwright trace per
-   traced attempt (`npx playwright-core@1.63.0 show-trace <file>`; `pnpm dlx` under pnpm); downloads; with
+4. Artifacts, under `.e2e/results/<test>/attempt-<n>/` (`rerun-<n>/attempt-<m>/`
+   for a `--last-failed` rerun), beside the
+   trace page: `screen-at-failure.txt`
+   and the engine's screenshot per failed attempt; downloads; with
    `--video` the recording (`video/video.webm` in a local browser, each
    later page `video/video-part<n>.webm` with its own `startedAt`;
    `video/video.mp4` on a device; a provider's file or link); with
@@ -45,7 +78,7 @@ jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
 | `NO_LAST_RUN` | `--last-failed` found no `.e2e/report.json` | Run once without it |
 | `COLLECTION_ERROR` | `async` describe body, `test.setup` inside `describe`, an option forbidden in a serial group, registration outside collection | Restructure per `writing-tests` |
 | `HOOK_FAILED` | `beforeAll` or `afterAll` threw; its scope's tests skip | Fix the hook; the report carries its error |
-| `UNSUPPORTED_ARTIFACT` | A test's or target's `trace` or `video` on an engine that cannot record | Drop it there, or set it at the config root or CLI (such targets skip with a notice) |
+| `UNSUPPORTED_ARTIFACT` | A test's or target's `video` on an engine that cannot record | Drop it there, or set it at the config root or CLI (such targets skip with a notice) |
 | `BROWSER_INSTALL_FAILED`, `LAUNCH_TIMEOUT` | Browser download failed; engine init or attempt start exceeded `launchTimeout` | Run the quoted `npx @e2e-dev/web install <names>` or `pnpm exec e2e-web install <names>` (`--with-deps` on bare Linux); raise the root `launchTimeout` (60 s default) |
 | `APP_UNREACHABLE` | `app.command` never answered `readyUrl` within `startupTimeout`; on a device, a message naming the iOS automation runner: the runner failed, not the app | Read the quoted log lines; check the port, `app.url`, `app.command.env`, `app.command.startupTimeout`. Runner: rerun, else `npx agent-device daemon stop` and reboot the simulator |
 | `APP_ALREADY_RUNNING` | Something already serves `url` when `command` should start | Stop it, or `reuseExisting: true` locally |
@@ -59,7 +92,7 @@ jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
 | `ACTION_FAILED` | Element not actionable (covered, disabled, detached), or an operation timed out | `expect` the condition first; close overlays; check `actionTimeout` |
 | `TEST_TIMEOUT` | The attempt exceeded `timeout` (120 s) | Split the test, or raise `timeout` |
 | `STEP_NOT_AWAITED` | The body returned while a step or `expect.poll` still ran, or an `afterEach` hook or fixture teardown returned while an `expect.poll` still ran: a call without `await` | `await` the call the code frame names (every `app`, `agent`, `screen`, `expect`, `expect.poll` call) |
-| `MODEL_UNAVAILABLE` | `agents.<name>.model` holds no AI SDK instance: reported once under `run.errors` at the first `agent` fixture; the run stops. A model-less custom executor fails only `waitFor` and `extract` this way | Construct one, e.g. `gateway('openai/gpt-6-luna-fast')` from `ai`, and export its key (`AI_GATEWAY_API_KEY`) |
+| `MODEL_UNAVAILABLE` | `agents.<name>.model` holds no AI SDK instance: reported once under `run.errors` at the first `agent` fixture; the run stops. A model-less custom executor fails only `waitFor` and `extract` this way. Also GitHub Copilot refusing the configured model to the account (`model_not_supported`, a plan or settings limit the listing cannot show): reported once at the first call, the run stops | Construct one, e.g. `gateway('openai/gpt-6-luna-fast')` from `ai`, and export its key (`AI_GATEWAY_API_KEY`); for Copilot, pick an id the plan serves |
 | `MODEL_PROVIDER_FAILED` | Network, 5xx, rate limit, no credits, or no response in 120 s, after the transport retries | Check the credential (the key; for keyless `gateway()` the Vercel CLI login and `.vercel/project.json`) and quota; retry (exit 3) |
 | `REPLAY_STALE` | `--strict-cache` or `cache.strict`, and a committed recording no longer replays; `step.cache.reason` says why | Rerun read-write with the knob the message names off; commit the changed entry under the directory it names (a custom `cache.store` is written by that run) |
 | `AUTOMATION_UNSUPPORTED` | The step needs an interaction the engine's toolset lacks (drag on a device, say); blocked, exit 1 | Do that step with `screen` actions, or run the test on a target that supports it |

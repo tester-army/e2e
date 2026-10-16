@@ -6,8 +6,9 @@
  * speak apart from the status code they answer "pending" with.
  */
 
-import { OAuthError, describeResponse } from './errors.ts';
-import { positiveSeconds, postForm, type TokenResponse } from './token-endpoint.ts';
+import { z } from 'zod';
+import { OAuthError, describeResponse, readJsonBody } from './errors.ts';
+import { parseTokens, positiveSeconds, postForm, type TokenResponse } from './token-endpoint.ts';
 import type { OAuthLoginCallbacks } from './types.ts';
 
 export interface DeviceAuthorization {
@@ -30,7 +31,7 @@ export type DevicePoll<T> =
   | { readonly status: 'expired' };
 
 export interface DeviceFlowOptions<T> {
-  start(): Promise<DeviceAuthorization>;
+  start(signal: AbortSignal | undefined): Promise<DeviceAuthorization>;
   poll(authorization: DeviceAuthorization, signal: AbortSignal | undefined): Promise<DevicePoll<T>>;
   instructions?(authorization: DeviceAuthorization): string;
   readonly callbacks: OAuthLoginCallbacks;
@@ -48,7 +49,15 @@ export async function runDeviceFlow<T>(options: DeviceFlowOptions<T>): Promise<T
   const sleep = options.sleep ?? abortableSleep;
   const now = options.now ?? Date.now;
   const { callbacks } = options;
-  const authorization = await options.start();
+  throwIfCancelled(callbacks.signal);
+  let authorization: DeviceAuthorization;
+  try {
+    authorization = await options.start(callbacks.signal);
+  } catch (cause) {
+    throwIfCancelled(callbacks.signal);
+    throw cause;
+  }
+  throwIfCancelled(callbacks.signal);
   callbacks.onAuth({
     url: authorization.verificationUriComplete ?? authorization.verificationUri,
     userCode: authorization.userCode,
@@ -61,9 +70,15 @@ export async function runDeviceFlow<T>(options: DeviceFlowOptions<T>): Promise<T
   let intervalMs = Math.max(positiveSeconds(authorization.interval, DEFAULT_INTERVAL_S) * 1000, MIN_INTERVAL_MS);
   while (now() < deadline) {
     await sleep(Math.min(intervalMs, Math.max(0, deadline - now())), callbacks.signal);
-    const result = await options.poll(authorization, callbacks.signal);
+    let result: DevicePoll<T>;
+    try {
+      result = await options.poll(authorization, callbacks.signal);
+    } catch (cause) {
+      throwIfCancelled(callbacks.signal);
+      throw cause;
+    }
     // A grant that lands after the user cancelled is not a login.
-    if (callbacks.signal?.aborted) throw new OAuthError('CANCELLED', 'the login was cancelled');
+    throwIfCancelled(callbacks.signal);
     switch (result.status) {
       case 'granted':
         return result.value;
@@ -84,6 +99,30 @@ export async function runDeviceFlow<T>(options: DeviceFlowOptions<T>): Promise<T
   throw new OAuthError('TIMEOUT', 'the device code expired before the login finished; run the login again');
 }
 
+/** Keeps interrupted device requests and late grants under the login cancellation code. */
+function throwIfCancelled(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new OAuthError('CANCELLED', 'the login was cancelled');
+}
+
+/** The device authorization response, as far as the flow reads it; the timing values stay raw for `positiveSeconds`. */
+const DeviceCodeSchema = z.object({
+  device_code: z.string(),
+  user_code: z.string(),
+  verification_uri: z.string(),
+  verification_uri_complete: z.string().optional().catch(undefined),
+  expires_in: z.unknown().optional(),
+  interval: z.unknown().optional(),
+});
+
+/** The error fields of a poll that granted nothing; a field of another type, or a body that is not an object, names nothing. */
+const DevicePollErrorSchema = z
+  .object({
+    error: z.string().optional().catch(undefined),
+    error_description: z.string().optional().catch(undefined),
+    interval: z.number().optional().catch(undefined),
+  })
+  .catch({});
+
 export interface Rfc8628Options {
   readonly vendor: string;
   readonly deviceCodeUrl: string;
@@ -99,21 +138,17 @@ export function rfc8628Flow(options: Rfc8628Options): Promise<TokenResponse> {
   const { vendor, clientId, callbacks } = options;
   return runDeviceFlow<TokenResponse>({
     callbacks,
-    async start() {
-      const response = await postForm(options.deviceCodeUrl, { client_id: clientId, ...options.request });
+    async start(signal) {
+      const response = await postForm(options.deviceCodeUrl, { client_id: clientId, ...options.request }, signal);
       if (!response.ok) throw new OAuthError('FLOW_FAILED', `${vendor} device login could not start: ${await describeResponse(response)}`);
-      const json = (await response.json()) as Record<string, unknown>;
-      const { device_code, user_code, verification_uri, verification_uri_complete } = json;
-      if (typeof device_code !== 'string' || typeof user_code !== 'string' || typeof verification_uri !== 'string') {
-        throw new OAuthError('FLOW_FAILED', `the ${vendor} device code response is missing fields`);
-      }
+      const device = await readJsonBody(response, DeviceCodeSchema, `the ${vendor} device code response`, 'is missing fields');
       return {
-        deviceCode: device_code,
-        userCode: user_code,
-        verificationUri: verification_uri,
-        ...(typeof verification_uri_complete === 'string' ? { verificationUriComplete: verification_uri_complete } : {}),
-        expiresIn: Number(json['expires_in']),
-        interval: Number(json['interval']),
+        deviceCode: device.device_code,
+        userCode: device.user_code,
+        verificationUri: device.verification_uri,
+        ...(device.verification_uri_complete === undefined ? {} : { verificationUriComplete: device.verification_uri_complete }),
+        expiresIn: Number(device.expires_in),
+        interval: Number(device.interval),
       };
     },
     async poll(authorization, signal) {
@@ -122,20 +157,22 @@ export function rfc8628Flow(options: Rfc8628Options): Promise<TokenResponse> {
         { grant_type: 'urn:ietf:params:oauth:grant-type:device_code', client_id: clientId, device_code: authorization.deviceCode },
         signal,
       );
-      const json = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-      if (typeof json['access_token'] === 'string' && json['access_token'] !== '') return { status: 'granted', value: json as unknown as TokenResponse };
-      switch (json['error']) {
+      const body: unknown = await response.json().catch(() => undefined);
+      const tokens = parseTokens(body);
+      if (tokens !== undefined) return { status: 'granted', value: tokens };
+      const { error, error_description, interval } = DevicePollErrorSchema.parse(body);
+      switch (error) {
         case 'authorization_pending':
           return { status: 'pending' };
         case 'slow_down':
-          return typeof json['interval'] === 'number' ? { status: 'slow_down', intervalSeconds: json['interval'] } : { status: 'slow_down' };
+          return interval === undefined ? { status: 'slow_down' } : { status: 'slow_down', intervalSeconds: interval };
         case 'access_denied':
         case 'authorization_denied':
           return { status: 'denied' };
         case 'expired_token':
           return { status: 'expired' };
         default:
-          throw new OAuthError('FLOW_FAILED', `${vendor} device login failed: ${String(json['error_description'] ?? json['error'] ?? response.status)}`);
+          throw new OAuthError('FLOW_FAILED', `${vendor} device login failed: ${error_description ?? error ?? response.status}`);
       }
     },
   });

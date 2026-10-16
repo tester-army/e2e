@@ -122,6 +122,12 @@ describe('kernel()', () => {
     expect(req.lines).toEqual(['browser b1, watch at https://view/b1']);
   });
 
+  it('keeps the idle timeout backstop for an undefined option from a JavaScript config', async () => {
+    const provider = kernel({ timeout_seconds: undefined } as unknown as Parameters<typeof kernel>[0]);
+    await provider.acquire(request());
+    expect(sdk.state.created[0]?.body).toHaveProperty('timeout_seconds', 600);
+  });
+
   it('keeps an explicit idle timeout, tags a per-attempt lease with its attempt, and never passes scope to Kernel', async () => {
     await kernel({ scope: 'attempt', timeout_seconds: 60 }).acquire(request({ attemptId: 'a7' }));
     expect(sdk.state.created[0]?.body).toEqual({ timeout_seconds: 60, tags: { e2e_run: 'run-1', e2e_target: 'web', e2e_slot: '0', e2e_attempt: 'a7' } });

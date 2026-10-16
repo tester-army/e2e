@@ -1,6 +1,6 @@
 /**
  * The ArtifactStore seam across a serial group, end to end through the
- * runner: the group-owned shared trace reaches the store (it is registered on
+ * runner: the group-owned shared video reaches the store (it is registered on
  * the group's collector, not a member's), and every artifact a member
  * produces is identified to the store by the GROUP attempt — the attempt the
  * report files it under — never by a member's private attempt id that no
@@ -57,7 +57,7 @@ describe('ArtifactStore across a serial group', () => {
     await app?.close();
   });
 
-  it('uploads the group-owned trace and identifies member artifacts by the group attempt', async () => {
+  it('uploads the group-owned video and identifies member artifacts by the group attempt', async () => {
     const store = capturing();
     const outcome = await runExisting(project, {
       appUrl: app.url,
@@ -65,7 +65,7 @@ describe('ArtifactStore across a serial group', () => {
         tests: 'tests/**/*.e2e.ts',
         reporters: ['json'] as const,
         cache: 'off' as const,
-        trace: 'on',
+        video: 'on',
         artifacts: { store },
       },
     });
@@ -75,16 +75,16 @@ describe('ArtifactStore across a serial group', () => {
     expect(groups).toHaveLength(1);
     const groupAttempt = groups[0]!.attempts[0]!;
 
-    // Devin #1: the shared trace is a group-owned artifact; it must reach the
+    // Devin #1: the shared video is a group-owned artifact; it must reach the
     // store, and its ref must land on the group attempt's record.
-    const tracePuts = store.puts.filter((put) => put.kind === 'trace');
-    expect(tracePuts.length).toBeGreaterThan(0);
-    for (const put of tracePuts) expect(put.attemptId).toBe(groupAttempt.id);
-    const traceRecords = groupAttempt.artifacts.filter((artifact) => artifact.kind === 'trace');
-    expect(traceRecords.length).toBeGreaterThan(0);
-    for (const record of traceRecords) {
+    const videoPuts = store.puts.filter((put) => put.kind === 'video');
+    expect(videoPuts.length).toBeGreaterThan(0);
+    for (const put of videoPuts) expect(put.attemptId).toBe(groupAttempt.id);
+    const videoRecords = groupAttempt.artifacts.filter((artifact) => artifact.kind === 'video');
+    expect(videoRecords.length).toBeGreaterThan(0);
+    for (const record of videoRecords) {
       expect(record.ref).toBeDefined();
-      expect(tracePuts.map((put) => `store://trace/${put.sha256.slice(0, 12)}`)).toContain(record.ref);
+      expect(videoPuts.map((put) => `store://video/${put.sha256.slice(0, 12)}`)).toContain(record.ref);
     }
 
     // Devin #2: member screenshots are filed under the group attempt in the
@@ -96,7 +96,7 @@ describe('ArtifactStore across a serial group', () => {
     expect(shotRecords).toHaveLength(2);
     for (const record of shotRecords) {
       expect(record.ref).toMatch(/^store:\/\/screenshot\//);
-      expect(existsSync(path.join(project.dir, '.e2e', 'artifacts', record.path!))).toBe(true);
+      expect(existsSync(path.join(project.dir, '.e2e', 'results', record.path!))).toBe(true);
       expect(record.size).toBeGreaterThan(0);
       expect(record.sha256).toMatch(/^[0-9a-f]{64}$/);
     }

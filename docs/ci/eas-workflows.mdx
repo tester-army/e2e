@@ -1,0 +1,172 @@
+---
+title: EAS Workflows
+description: Build an Expo app on EAS and run iOS and Android tests on it in an EAS workflow.
+icon: "/images/icons/expo.svg"
+"og:image": "https://e2e.tester.army/docs/images/og/ci/eas-workflows.png?v=cd6a51d2ed"
+"twitter:image": "https://e2e.tester.army/docs/images/og/ci/eas-workflows.png?v=cd6a51d2ed"
+---
+
+import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
+
+export const setupPrompt = `Add an EAS workflow that builds this Expo app and runs its e2e tests on iOS and Android. Docs: \`https://e2e.tester.army/docs/ci/eas-workflows.md\` and \`https://e2e.tester.army/docs/ci.md\`
+
+1. Read both pages.
+2. Add the \`e2e\` build profile to \`eas.json\`.
+3. Add \`.eas/workflows/e2e.yml\` and adapt it to this project's targets and Node version.
+4. Ask me to add the model key as a secret EAS environment variable, and set \`environment:\` on each test job to match.
+5. After I start the workflow, read the job logs and fix errors until both jobs pass.`;
+
+In an EAS workflow, a `build` job makes the simulator `.app` or the `.apk`.
+A custom job then downloads the build, boots a device, and runs the suite.
+The jobs follow the rules in [Mobile jobs](/ci#mobile-jobs).
+
+<Note>
+This page is about EAS Workflows, the CI service. To run tests on hosted
+simulators and emulators from EAS, see [EAS Simulators](/integrations/eas).
+</Note>
+
+<SetupPrompt>
+
+<Prompt description={setupPrompt} children={setupPrompt} actions={["copy", "cursor"]} />
+
+</SetupPrompt>
+
+## Build profile
+
+Add a build profile that needs no credentials:
+
+```json title="eas.json"
+{
+  "build": {
+    "e2e": {
+      "withoutCredentials": true,
+      "ios": { "simulator": true },
+      "android": { "buildType": "apk" }
+    }
+  }
+}
+```
+
+## Workflow
+
+The Android job needs a `nested-virtualization` Linux runner, the only EAS
+machine that can run the emulator. Use custom jobs, as below. The built-in
+`maestro` job type runs Maestro flows, not e2e.
+
+```yaml title=".eas/workflows/e2e.yml" expandable
+name: e2e
+
+on:
+  pull_request:
+    branches: ['*']
+  push:
+    branches: [main]
+
+defaults:
+  tools:
+    node: '24'
+
+jobs:
+  build_ios:
+    type: build
+    params:
+      platform: ios
+      profile: e2e
+
+  build_android:
+    type: build
+    params:
+      platform: android
+      profile: e2e
+
+  e2e_ios:
+    needs: [build_ios]
+    runs_on: macos-medium
+    environment: preview
+    env:
+      CI: '1'
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - uses: eas/download_build
+        id: download_build
+        with:
+          build_id: ${{ needs.build_ios.outputs.build_id }}
+          extensions: [app]
+      - name: Boot a simulator and install the app
+        run: |
+          UDID=$(xcrun simctl create e2e "iPhone 17" com.apple.CoreSimulator.SimRuntime.iOS-26-5)
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "${{ steps.download_build.outputs.artifact_path }}"
+      - name: Run e2e
+        run: npx e2e run --target ios --reporter list,junit
+      - uses: eas/upload_artifact
+        if: ${{ always() }}
+        with:
+          type: other
+          name: e2e-ios
+          path: .e2e
+
+  e2e_android:
+    needs: [build_android]
+    runs_on: linux-medium-nested-virtualization
+    environment: preview
+    env:
+      CI: '1'
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - uses: eas/download_build
+        id: download_build
+        with:
+          build_id: ${{ needs.build_android.outputs.build_id }}
+          extensions: [apk]
+      - uses: eas/start_android_emulator
+        with:
+          system_image_package: system-images;android-35;google_apis;x86_64
+      - name: Install the app
+        run: adb install -r "${{ steps.download_build.outputs.artifact_path }}"
+      - name: Run e2e
+        run: npx e2e run --target android --reporter list,junit
+      - uses: eas/upload_artifact
+        if: ${{ always() }}
+        with:
+          type: other
+          name: e2e-android
+          path: .e2e
+```
+
+`CI: '1'` turns on the [CI defaults](/ci#what-ci-changes) on a runner that
+doesn't set `CI`. `eas/start_android_emulator` is an EAS build function,
+documented under [custom builds](https://docs.expo.dev/custom-builds/schema/),
+not on the Workflows syntax page. It downloads the system image you name
+with `sdkmanager`.
+
+## Model key
+
+Keep the model key, such as `AI_GATEWAY_API_KEY`, in an
+[EAS environment variable](https://docs.expo.dev/eas/environment-variables/)
+with secret visibility. Set `environment:` on each job, because a custom job
+reads `production` by default.
+
+Each job that reads the environment can read the key, including one that
+runs an untrusted pull request. See
+[Model credentials](/ci#model-credentials).
+
+## Build less often
+
+A `fingerprint` job with `get-build` and `repack` reuses the last native
+build and bundles only the JavaScript. The
+[agent-device EAS template](https://github.com/callstackincubator/eas-agent-device/blob/main/.eas/workflows/agent-qa-mobile.yml)
+does this for both platforms.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="CI overview" icon="rotate" href="/ci">
+    CI defaults, sharding, reruns, and exit codes.
+  </Card>
+  <Card title="EAS Simulators" icon="/images/integrations/expo.svg" href="/integrations/eas">
+    Run the suite on hosted EAS devices, with no Mac or Android SDK.
+  </Card>
+</CardGroup>

@@ -92,6 +92,27 @@ export function buildWorkPlans(
 }
 
 /**
+ * Orders each plan's file units longest first by the time the previous run
+ * spent in them, so a long file starts while short ones fill the other
+ * workers instead of starting last and running alone. Files without a
+ * timing go first, being of unknown length; ties keep collection order.
+ * Report order does not depend on dispatch order.
+ */
+export function longestFirst(
+  plans: readonly TargetWorkPlan[],
+  durationOf: (targetName: string, file: string) => number | undefined,
+): TargetWorkPlan[] {
+  return plans.map((plan) => ({
+    ...plan,
+    fileUnits: plan.fileUnits.toSorted(
+      (a, b) =>
+        (durationOf(b.targetName, b.file) ?? Number.POSITIVE_INFINITY) -
+        (durationOf(a.targetName, a.file) ?? Number.POSITIVE_INFINITY) || 0,
+    ),
+  }));
+}
+
+/**
  * The worker slots the run will start for a plan, `0` to `slots - 1`: the
  * run's worker cap, the engine's declared `workers`, and the units to
  * dispatch, whichever is smallest. A strict bound: a worker retired after a
@@ -131,6 +152,20 @@ export function failureLimitSkip(failures: number, limit: number): SkipInfo {
   };
 }
 
+/** A run's time limit, in milliseconds, and where it was set: the `--max-duration` flag or the config's `maxDuration`. */
+export interface TimeLimit {
+  readonly ms: number;
+  readonly source: '--max-duration' | 'maxDuration';
+}
+
+/** Skip info for the work a run stopped at its time limit never started. */
+export function timeLimitSkip(limit: TimeLimit): SkipInfo {
+  return {
+    cause: 'time-limit',
+    reason: `run stopped at its time limit of ${limit.ms} ms (${limit.source})`,
+  };
+}
+
 /**
  * The skip for work an interrupt reached before it started: the skip the
  * interrupt carried as its reason (a run stopped at its failure limit says
@@ -139,6 +174,16 @@ export function failureLimitSkip(failures: number, limit: number): SkipInfo {
 export function interruptedSkip(signal: AbortSignal, fallback: SkipInfo = INTERRUPTED_BEFORE_START): SkipInfo {
   const reason: unknown = signal.reason;
   return isSkipInfo(reason) ? reason : fallback;
+}
+
+/**
+ * The message of an attempt an interrupt cut short in `phase`, naming the
+ * limit that stopped the run when the interrupt carried one.
+ */
+export function interruptedInPhase(signal: AbortSignal, phase: string): string {
+  const reason: unknown = signal.reason;
+  const message = `run interrupted in phase ${phase}`;
+  return isSkipInfo(reason) ? `${message}: ${reason.reason}` : message;
 }
 
 function isSkipInfo(value: unknown): value is SkipInfo {
@@ -154,11 +199,6 @@ export function pairResult(
   fields: Omit<ResultRecord, 'test' | 'target' | 'agent' | 'repeat'>,
 ): ResultRecord {
   return { test: testIdentity(pair.test), target: pair.target, agent: pair.agent, repeat: pair.repeat, ...fields };
-}
-
-/** The artifact path segment of a `--repeat-each` run past the first; none for the first, whose paths do not change. */
-export function repeatSegment(repeat: number): readonly string[] {
-  return repeat === 0 ? [] : [`repeat-${repeat}`];
 }
 
 /** The identity of one pair among a unit's: a test runs once per agent it is pinned to, and once per repeat. */

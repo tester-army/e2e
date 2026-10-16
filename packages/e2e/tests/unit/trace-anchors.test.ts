@@ -1,7 +1,7 @@
 /** Anchors: the step's delta as relocatable descriptors, both what appeared and what vanished. */
 
 import { describe, expect, it } from 'vitest';
-import { deltaEvidenced, deltaHolds, describeDelta } from '../../src/cache/anchors.ts';
+import { deltaEvidenced, deltaMismatch, describeDelta } from '../../src/cache/anchors.ts';
 import { MAX_TRACE_ANCHORS } from '../../src/cache/trace.ts';
 import type { RedactedNode } from '../../src/agent/observation.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
@@ -213,7 +213,7 @@ describe('describeDelta', () => {
     const recorded = { endAnchors: delta.appeared, goneAnchors: delta.gone };
 
     it('holds on the screen it was recorded on, so a faithful replay passes', () => {
-      expect(deltaHolds(recorded, end, start)).toBe(true);
+      expect(deltaMismatch(recorded, end, start)).toBeUndefined();
     });
 
     it('records no vanished label that a node left on screen still reads as', () => {
@@ -224,8 +224,8 @@ describe('describeDelta', () => {
     });
 
     it('still fails a replay whose pick left the radios on screen', () => {
-      expect(deltaHolds(recorded, start, start)).toBe(false);
-      expect(deltaHolds(recorded, nodes([heading, ...picker, ...summary, deliveryState('Express')]), start)).toBe(false);
+      expect(deltaMismatch(recorded, start, start)).toBeDefined();
+      expect(deltaMismatch(recorded, nodes([heading, ...picker, ...summary, deliveryState('Express')]), start)).toBeDefined();
     });
   });
 
@@ -234,10 +234,10 @@ describe('describeDelta', () => {
   });
 });
 
-describe('deltaHolds', () => {
+describe('deltaMismatch', () => {
   const savedAnchor = { role: 'status', name: 'Marker', text: 'saved' };
   const holds = (endAnchors: object[], live: SemanticNode[], start: SemanticNode[] = [], goneAnchors: object[] = []) =>
-    deltaHolds({ endAnchors, goneAnchors }, nodes(live), nodes(start));
+    deltaMismatch({ endAnchors, goneAnchors }, nodes(live), nodes(start)) === undefined;
 
   it('requires every recorded field, text included, unlike target relocation', () => {
     // Same named node, different text: the effect is missing, so the anchor is.
@@ -289,6 +289,27 @@ describe('deltaHolds', () => {
     const rerendered = node('r2', { role: 'link', name: 'PB-Twin-Alpha', testId: 'row-9f8e' });
     expect(holds([anchor], [rerendered])).toBe(true);
     expect(holds([{ role: 'listitem', testId: 'row-1a2b' }], [rerendered])).toBe(false);
+  });
+});
+
+describe('deltaMismatch failures', () => {
+  const savedAnchor = { role: 'status', name: 'Marker', text: 'saved' };
+  const itemA = node('a', { role: 'listitem', name: 'Item A' });
+
+  it('names each anchor that failed, by the way it failed', () => {
+    const rowAnchor = { role: 'link', name: 'PB-Twin-Alpha' };
+    const declined = node('d', { role: 'alert', text: 'Card declined' });
+    expect(
+      deltaMismatch(
+        { endAnchors: [savedAnchor, rowAnchor], goneAnchors: [{ role: 'listitem', name: 'Item A' }] },
+        nodes([heading, row, itemA, declined]),
+        nodes([heading, itemA]),
+      ),
+    ).toEqual({
+      missing: [savedAnchor],
+      present: [{ role: 'listitem', name: 'Item A' }],
+      unrecordedAlerts: [{ role: 'alert', text: 'Card declined' }],
+    });
   });
 });
 

@@ -61,6 +61,44 @@ describe('Codex login', () => {
     expect(credentials.expires).toBeGreaterThan(Date.now());
   });
 
+  it('cancels a held authorization-code exchange after the browser returns', async () => {
+    let received!: () => void;
+    const exchangeStarted = new Promise<void>((resolve) => { received = resolve; });
+    const issuer = await serve(() => received());
+    const provider = createCodexProvider({ issuer: issuer.url, callbackPort: await freePort() });
+    const controller = new AbortController();
+    let browser: Promise<Response> | undefined;
+    const pending = provider.login({
+      onAuth(info) { browser = browserReturns(info.url, { code: 'the-code', state: '$state' }); },
+      onPrompt: async () => '',
+      signal: controller.signal,
+    });
+    const cancelled = expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    await exchangeStarted;
+    controller.abort();
+    await cancelled;
+    expect((await browser!).status).toBe(200);
+    expect(issuer.requests).toHaveLength(1);
+  });
+
+  it('cancels a held authorization-code exchange after the device code is granted', async () => {
+    let received!: () => void;
+    const exchangeStarted = new Promise<void>((resolve) => { received = resolve; });
+    const issuer = await serve((request, response) => {
+      if (request.url === '/api/accounts/deviceauth/usercode') return json(response, 200, { device_auth_id: 'dev-1', user_code: 'LOCAL', interval: '0.001' });
+      if (request.url === '/api/accounts/deviceauth/token') return json(response, 200, { authorization_code: 'granted-code', code_verifier: 'verifier' });
+      received();
+    });
+    const provider = createCodexProvider({ issuer: issuer.url });
+    const controller = new AbortController();
+    const pending = provider.login({ onAuth() {}, onPrompt: async () => '', signal: controller.signal }, { method: 'device' });
+    const cancelled = expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    await exchangeStarted;
+    controller.abort();
+    await cancelled;
+    expect(issuer.requests).toHaveLength(3);
+  });
+
   it('ignores a callback with the wrong state and treats a declined sign-in as cancelled', async () => {
     const issuer = await serve((_request, response) => json(response, 200, tokenReply));
     const provider = createCodexProvider({ issuer: issuer.url, callbackPort: await freePort() });
@@ -140,6 +178,23 @@ describe('Codex login', () => {
     expect(credentials.accountId).toBe('acct_123');
   });
 
+  it('fails the device login on a user-code answer or a grant that is missing fields', async () => {
+    let userCode: unknown = null;
+    let grant: unknown = null;
+    const issuer = await serve((request, response) => {
+      if (request.url === '/api/accounts/deviceauth/usercode') return json(response, 200, userCode);
+      if (request.url === '/api/accounts/deviceauth/token') return json(response, 200, grant);
+      json(response, 200, tokenReply);
+    });
+    const provider = createCodexProvider({ issuer: issuer.url });
+    const login = () => onFakeTimeouts(() => provider.login({ onAuth() {}, onPrompt: async () => '' }, { method: 'device' }));
+    await expect(login()).rejects.toMatchObject({ code: 'FLOW_FAILED', message: 'the ChatGPT device code response is missing fields' });
+    userCode = { device_auth_id: 'dev-1', user_code: 'ABCD-EFGH', interval: '0.001' };
+    grant = { authorization_code: 'granted-code' };
+    await expect(login()).rejects.toMatchObject({ code: 'FLOW_FAILED', message: 'the ChatGPT device grant is missing fields' });
+    expect(issuer.requests.map((request) => request.url)).not.toContain('/oauth/token');
+  });
+
   it('parses every form the user may paste', () => {
     expect(parseAuthorizationInput('http://localhost:1455/auth/callback?code=abc&state=st')).toEqual({ code: 'abc', state: 'st' });
     expect(parseAuthorizationInput('abc#st')).toEqual({ code: 'abc', state: 'st' });
@@ -189,6 +244,18 @@ describe('Codex requests', () => {
     const sent = (await (await sendCodexRequest(other, { access: 'a', refresh: 'r', expires: 0 }, echoUpstream, { originator: 'e2e', apiUrl: 'https://c/x' })).json()) as Echo;
     expect(sent.url).toBe('https://api.openai.com/v1/models');
     expect(sent.headers).toMatchObject({ originator: 'e2e' });
+  });
+
+  it('fails a Responses request whose body is not a JSON object before it reaches the backend', async () => {
+    let sent = 0;
+    const send = (body: string) =>
+      sendCodexRequest(new Request('https://api.openai.com/v1/responses', { method: 'POST', body }), { access: 'a', refresh: 'r', expires: 0 }, async () => new Response(String((sent += 1))), {
+        originator: 'e2e',
+        apiUrl: 'https://chatgpt.com/backend-api/codex/responses',
+      });
+    await expect(send('{')).rejects.toMatchObject({ code: 'FLOW_FAILED', message: 'the Responses request body is not JSON' });
+    await expect(send('null')).rejects.toMatchObject({ code: 'FLOW_FAILED', message: 'the Responses request body is malformed' });
+    expect(sent).toBe(0);
   });
 
   it('serves generateText with a forced tool call from a backend that only streams', async () => {
@@ -294,5 +361,14 @@ describe('Codex requests', () => {
       { id: 'gpt-5.4-mini', name: 'GPT-5.4 mini', detail: 'hidden in Codex' },
     ]);
     await expect(listModels('openai', new MemoryCredentialStore())).rejects.toMatchObject({ code: 'NOT_LOGGED_IN' });
+  });
+
+  it('lists past an entry it cannot read, and fails on a list that is not one', async () => {
+    const provider = createCodexProvider({ apiUrl: 'https://chatgpt.com/backend-api/codex/responses' });
+    const list = (body: string) => provider.models!(async () => new Response(body));
+    const models = [null, { slug: 'gpt-6-astra', display_name: 7, supported_reasoning_levels: [7, { effort: 'low' }, 'high'] }];
+    expect(await list(JSON.stringify({ models }))).toEqual([{ id: 'gpt-6-astra', detail: 'reasoning low/high' }]);
+    await expect(list(JSON.stringify({ models: 'gpt-6-astra' }))).rejects.toMatchObject({ code: 'FLOW_FAILED', message: 'the ChatGPT model list is malformed' });
+    await expect(list('<html>')).rejects.toMatchObject({ code: 'FLOW_FAILED', message: 'the ChatGPT model list is not JSON' });
   });
 });

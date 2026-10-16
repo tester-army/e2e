@@ -1,7 +1,7 @@
 /** Runs a provider's login and keeps the result; the CLI and embedders share it. */
 
 import { getProvider, type LoginOptionsById, type ProviderId } from './providers.ts';
-import { defaultCredentialStore } from './store.ts';
+import { defaultCredentialStore, EnvCredentialStore } from './store.ts';
 import type { CredentialStore, OAuthCredentials, OAuthLoginCallbacks } from './types.ts';
 
 export interface LoginInput<Id extends ProviderId> {
@@ -12,6 +12,7 @@ export interface LoginInput<Id extends ProviderId> {
 
 export async function login<Id extends ProviderId>(providerId: Id, input: LoginInput<Id>): Promise<OAuthCredentials> {
   const store = input.store ?? defaultCredentialStore();
+  if (store instanceof EnvCredentialStore) store.assertWritable();
   const credentials = await getProvider(providerId).login(input.callbacks, input.options);
   await store.set(providerId, credentials);
   return credentials;

@@ -616,9 +616,9 @@ export class SecretLedger {
   /**
    * `redact` that also rewrites every fragment of a value: a run of at least
    * `FRAGMENT_LENGTH` consecutive characters of one, anywhere in the text,
-   * becomes its marker. For a recording that keeps what an engine read raw
-   * (a Playwright trace holds the page's cut text and selections), where a
-   * value cut or selected partway through survives whole-value matching.
+   * becomes its marker. For a file the runner keeps as the app wrote it (a
+   * text download), where a value cut or selected partway through survives
+   * whole-value matching.
    * Matched in any case and with whitespace runs collapsed, like `redactCut`. A
    * base64 or base64url run that decodes to text holding a value or a
    * fragment is rewritten whole (a basic-auth header the engine sent). Bound
@@ -629,17 +629,6 @@ export class SecretLedger {
   /** The most text one registered value can match in any spelling; a piece shorter than this holds at most part of one occurrence. */
   get maxFormLength(): number {
     return this.compile().maxFormLength;
-  }
-
-  /**
-   * Whether any registered value, in any of its forms, occurs in `bytes`.
-   * The check for content that is not text and so cannot be rewritten: what
-   * holds a secret has to be withheld instead.
-   */
-  appearsIn(bytes: Uint8Array): boolean {
-    const { pattern } = this.compile();
-    if (pattern === undefined) return false;
-    return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('utf8').search(pattern) !== -1;
   }
 
   /**

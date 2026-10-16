@@ -1,10 +1,10 @@
 /** StepTraceSession: store resilience, staging anchors, replay postconditions, the write-side decision. */
 
-import { mkdtemp, readFile, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { flushStagedTraces, type AgentCacheContext, type ClaimedKey } from '../../src/cache/context.ts';
+import { settleStagedTraces, type AgentCacheContext, type ClaimedKey } from '../../src/cache/context.ts';
 import { instructionDigest, paramsDigest } from '../../src/cache/identity.ts';
 import { StoredRecordings } from '../../src/cache/rekeyed.ts';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from '../../src/cache/store.ts';
@@ -41,9 +41,22 @@ const exampleStep = {
   agent: 'default',
 } as const;
 
+/** The key context the example step's claims carry. */
+const exampleContext = {
+  cacheSchema: 'trace-1',
+  policyVersion: 'conservative/6',
+  project: 'p'.repeat(64),
+  platform: 'web',
+  engineName: 'web',
+  engineVersion: '0.11',
+  engineSpiVersion: 1,
+  appIdentity: 'a'.repeat(64),
+  agentContextDigest: 'c'.repeat(64),
+} as const;
+
 /** A claim of `keyHash` for the example step. */
 function claimedKey(keyHash: string): ClaimedKey {
-  return { keyHash, step: exampleStep };
+  return { keyHash, context: exampleContext, step: exampleStep };
 }
 
 function fakeContext(read: AgentCacheContext['store']['read']): AgentCacheContext {
@@ -128,6 +141,16 @@ const noEntry = fakeContext(async () => {
   throw new Error('no entry');
 });
 
+/** What the executor costs between the hand-off and its verdict: a model call and its looks. */
+const EXECUTOR_TURN_MS = 4_000;
+
+/** The margin `step-cache` adds to a measured end wait, mirrored here so the
+ * bound below moves when the runtime's moves. */
+const END_WAIT_MARGIN_MS = 10_000;
+
+/** What staging's own read costs, and room for the timer to round. */
+const SETTLED_READ_MS = 2_000;
+
 /** The recording a staged entry would write; an entry staged to keep fails the test. */
 function stagedTrace(context: AgentCacheContext, index = 0): ActionTrace {
   const staged = context.staged[index];
@@ -135,8 +158,19 @@ function stagedTrace(context: AgentCacheContext, index = 0): ActionTrace {
   return staged.trace;
 }
 
-afterEach(() => {
+/** Temp dirs the cases below create, removed after each so a run leaves nothing behind. */
+const tempDirs: string[] = [];
+
+/** A temp directory for one case, registered for removal after it. */
+async function tempDir(prefix: string): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), prefix));
+  tempDirs.push(directory);
+  return directory;
+}
+
+afterEach(async () => {
   vi.useRealTimers();
+  await Promise.all(tempDirs.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });
 
 describe('recordedVerdictOf', () => {
@@ -179,7 +213,7 @@ describe('StepTraceSession', () => {
     expect(captures).toBe(1);
     session.record({ name: 'navigate', url: '/customers' });
     await session.conclude('passed', 'read screenshot');
-    expect(cache.staged).toHaveLength(0);
+    expect(cache.staged.filter((entry) => entry.kind !== 'decided')).toHaveLength(0);
   });
 
   it('never stages a passing step after missing semantics, even when the final tree recovers', async () => {
@@ -190,7 +224,7 @@ describe('StepTraceSession', () => {
     session.record({ name: 'navigate', url: '/end' });
     eligible = false;
     await session.conclude('passed', 'finished from pixels');
-    expect(cache.staged).toHaveLength(0);
+    expect(cache.staged.filter((entry) => entry.kind !== 'decided')).toHaveLength(0);
   });
 
   it('hands off before another cached action when an action loses semantic evidence', async () => {
@@ -209,7 +243,7 @@ describe('StepTraceSession', () => {
     expect(visited).toEqual(['/first']);
     expect(session.replayedPrefix?.replayedActions).toEqual(['opened first']);
     await session.conclude('passed', 'finished from pixels');
-    expect(cache.staged).toHaveLength(0);
+    expect(cache.staged.filter((entry) => entry.kind !== 'decided')).toHaveLength(0);
   });
   it('turns a rejecting store read into a miss instead of failing the step', async () => {
     const session = makeSession(
@@ -224,6 +258,7 @@ describe('StepTraceSession', () => {
       reason: 'invalid-entry',
       replayedActions: 0,
       totalActions: 0,
+      entry: 'a'.repeat(64),
     });
     expect(session.replayedPrefix).toBeUndefined();
   });
@@ -242,7 +277,7 @@ describe('StepTraceSession', () => {
     );
     await expect(session.begin()).resolves.toBeUndefined();
     expect(reads).toBe(0);
-    expect(session.cacheInfo).toEqual({ mode: 'missed', reason: 'retry', replayedActions: 0, totalActions: 0 });
+    expect(session.cacheInfo).toEqual({ mode: 'missed', reason: 'retry', replayedActions: 0, totalActions: 0, entry: 'a'.repeat(64) });
     expect(session.replayedPrefix).toBeUndefined();
   });
 
@@ -261,7 +296,7 @@ describe('StepTraceSession', () => {
     await expect(session.begin()).resolves.toBeUndefined();
     expect(taps).toBe(0);
     expect(session.replayedPrefix).toBeUndefined();
-    expect(session.cacheInfo).toEqual({ mode: 'missed', reason: 'truncated', replayedActions: 0, totalActions: 50 });
+    expect(session.cacheInfo).toEqual({ mode: 'missed', reason: 'truncated', replayedActions: 0, totalActions: 50, entry: 'a'.repeat(64) });
   });
 
   it('degrades a hit that is not a trace-1 entry to a miss, whichever store returned it', async () => {
@@ -276,6 +311,7 @@ describe('StepTraceSession', () => {
       reason: 'invalid-entry',
       replayedActions: 0,
       totalActions: 0,
+      entry: 'a'.repeat(64),
     });
   });
 
@@ -290,7 +326,7 @@ describe('StepTraceSession', () => {
       node: redacted({ ref: { id: 'n1', revision: 'r1' }, role: 'button', name: 'Upgrade' }),
     });
     await withheld.conclude('passed', 'passed');
-    expect(unanchored.staged).toHaveLength(0);
+    expect(unanchored.staged.filter((entry) => entry.kind !== 'decided')).toHaveLength(0);
 
     // A navigate-opening trace anchors itself and stages without a path.
     const anchored = fakeContext(noEntry.store.read);
@@ -462,6 +498,49 @@ describe('StepTraceSession', () => {
       reason: 'end-mismatch',
       replayedActions: 1,
       totalActions: 1,
+      entry: 'a'.repeat(64),
+      detail: 'every recorded action ran, but the recorded end state did not show on /customers: missing status "Marker" text="saved"',
+    });
+  });
+
+  it('names the anchors that did not hold on an end-mismatch, not the first ones recorded', async () => {
+    const announcer = { role: 'alert', name: 'Acme Notes' };
+    const declined: SemanticNode = { ref: { id: 'd1', revision: 'r1' }, role: 'alert', name: 'Card declined' };
+    const quiet = makeSession(entryContext({ endPath: '/customers', endAnchors: [announcer, savedAnchor] }), makeHost(['/pricing', '/customers'], [[], [savedMarker]]));
+    expect(await quiet.begin()).toBeUndefined();
+    expect(quiet.cacheInfo).toMatchObject({
+      reason: 'end-mismatch',
+      detail: 'every recorded action ran, but the recorded end state did not show on /customers: missing alert "Acme Notes"',
+    });
+    const raised = makeSession(entryContext({ endPath: '/customers', endAnchors: [savedAnchor] }), makeHost(['/pricing', '/customers'], [[], [savedMarker, declined]]));
+    expect(await raised.begin()).toBeUndefined();
+    expect(raised.cacheInfo).toMatchObject({
+      reason: 'end-mismatch',
+      detail: 'every recorded action ran, but the recorded end state did not show on /customers: unrecorded alert "Card declined"',
+    });
+    const links = ['Alpha', 'Beta', 'Gamma'].map((name) => ({ role: 'link', name }));
+    const kept = makeSession(entryContext({ endPath: '/customers', endAnchors: links, goneAnchors: [savedAnchor] }), makeHost(['/pricing', '/customers'], [[], [savedMarker]]));
+    expect(await kept.begin()).toBeUndefined();
+    expect(kept.cacheInfo).toMatchObject({
+      detail: 'every recorded action ran, but the recorded end state did not show on /customers: missing link "Alpha" and link "Beta" (+1 more), still showing status "Marker" text="saved"',
+    });
+  });
+
+  it('says the outcome already showed when the replay cannot have produced it, rather than that it did not show', async () => {
+    const session = makeSession(entryContext({ endPath: '/customers', endAnchors: [savedAnchor] }), makeHost(['/customers', '/customers'], [[savedMarker]]));
+    expect(await session.begin()).toBeUndefined();
+    expect(session.cacheInfo).toMatchObject({
+      reason: 'end-mismatch',
+      detail: 'every recorded action ran, but the recorded outcome already showed on /customers before the replay acted there, so nothing proves the replay produced it',
+    });
+  });
+
+  it('does not say the outcome already showed when the recording has no delta to show', async () => {
+    const session = makeSession(entryContext({ endPath: '/customers' }), makeHost(['/customers', '/customers'], [[savedMarker]]));
+    expect(await session.begin()).toBeUndefined();
+    expect(session.cacheInfo).toMatchObject({
+      reason: 'end-mismatch',
+      detail: 'every recorded action ran, but the recorded end state did not show on /customers',
     });
   });
 
@@ -474,6 +553,106 @@ describe('StepTraceSession', () => {
     await session.conclude('passed', 'the customers page is open');
     expect(context.staged).toHaveLength(1);
     expect(stagedTrace(context).actions.map((action) => action.name)).toEqual(['navigate']);
+  });
+
+  it(
+    're-records no longer end wait than the entry it healed',
+    async () => {
+      vi.useFakeTimers();
+      vi.setTimerTickMode('nextTimerAsync');
+      let endWaitMs = 200;
+      const recorded = [endWaitMs];
+      for (let run = 0; run < 3; run += 1) {
+        const context = entryContext({ endPath: '/customers', endAnchors: [savedAnchor], endWaitMs });
+        let session: StepTraceSession | undefined;
+        const paths = ['/pricing', '/customers'];
+        let currentPath: string | undefined;
+        // This test host holds the replay on its end route while the fake clock settles it.
+        const host: StepCacheHost = {
+          observe: async () => {
+            const nextPath = paths.shift();
+            if (nextPath !== undefined) currentPath = nextPath;
+            return {
+              kind: 'semantic',
+              nodes: nodeMap([]),
+              viewport: { width: 1280, height: 720 },
+              ...(currentPath === undefined ? {} : { path: currentPath }),
+            };
+          },
+          actions: { navigate: async (url: string) => session?.record({ name: 'navigate', url }) } as unknown as ExecutorActions,
+          signal: new AbortController().signal,
+          remainingMs: () => 600_000,
+          traceEligible: true,
+          replaying: () => undefined,
+        };
+        session = makeSession(context, host);
+        await session.begin();
+        expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
+        await vi.advanceTimersByTimeAsync(EXECUTOR_TURN_MS);
+        await session.conclude('passed', 'the customers page is open');
+        endWaitMs = stagedTrace(context).endWaitMs ?? 0;
+        recorded.push(endWaitMs);
+      }
+      for (let index = 2; index < recorded.length; index += 1) {
+        expect(recorded[index]!).toBeLessThanOrEqual(recorded[index - 1]!);
+      }
+      for (const recordedWait of recorded.slice(1)) {
+        expect(recordedWait).toBeGreaterThanOrEqual(END_WAIT_MARGIN_MS);
+        expect(recordedWait).toBeLessThan(END_WAIT_MARGIN_MS + SETTLED_READ_MS);
+      }
+    },
+    60_000,
+  );
+
+  it('keeps app settling time after an executor action following an action-failed hand-off', async () => {
+    vi.useFakeTimers();
+    vi.setTimerTickMode('nextTimerAsync');
+    const context = entryContext({
+      actions: [
+        { name: 'navigate', url: '/first', summary: 'opened first' },
+        { name: 'navigate', url: '/second', summary: 'opened second' },
+      ],
+      startPath: '/start',
+    });
+    let session: StepTraceSession | undefined;
+    let replayed = 0;
+    const paths = ['/start'];
+    const screens: (readonly SemanticNode[])[] = [[], [savedMarker]];
+    let currentPath: string | undefined;
+    // This test host holds the failed replay on its route for staging.
+    const host: StepCacheHost = {
+      observe: async () => {
+        const nextPath = paths.shift();
+        if (nextPath !== undefined) currentPath = nextPath;
+        return {
+          kind: 'semantic',
+          nodes: nodeMap((screens.length > 1 ? screens.shift() : screens[0]) ?? []),
+          viewport: { width: 1280, height: 720 },
+          ...(currentPath === undefined ? {} : { path: currentPath }),
+        };
+      },
+      actions: {
+        navigate: async (url: string) => {
+          replayed += 1;
+          if (replayed === 1) session?.record({ name: 'navigate', url });
+          else throw new Error('simulated second replay action failure');
+        },
+      } as unknown as ExecutorActions,
+      signal: new AbortController().signal,
+      remainingMs: () => 600_000,
+      traceEligible: true,
+      replaying: () => undefined,
+    };
+    session = makeSession(context, host);
+    await session.begin();
+    expect(session.replayedPrefix?.stopReason).toBe('action-failed');
+    await vi.advanceTimersByTimeAsync(EXECUTOR_TURN_MS);
+    session.record({ name: 'tap', node: redacted({ ref: { id: 'save', revision: 'r2' }, role: 'button', name: 'Save' }) });
+    await vi.advanceTimersByTimeAsync(500);
+    await session.conclude('passed', 'saved after the hand-off');
+    const recordedWait = stagedTrace(context).endWaitMs ?? 0;
+    expect(recordedWait).toBeGreaterThan(END_WAIT_MARGIN_MS);
+    expect(recordedWait).toBeLessThan(END_WAIT_MARGIN_MS + SETTLED_READ_MS);
   });
 
   it('evicts instead of re-staging when the executor had to repair after an end-mismatch', async () => {
@@ -491,7 +670,7 @@ describe('StepTraceSession', () => {
     // The replayed flow did not produce its effect; the executor acted further.
     session.record({ name: 'tap', node: redacted({ ref: { id: 's', revision: 'r2' }, role: 'button', name: 'Save' }) });
     await session.conclude('passed', 'saved after all');
-    expect(context.staged).toHaveLength(0);
+    expect(context.staged.filter((entry) => entry.kind !== 'decided')).toHaveLength(0);
     expect(deleted).toEqual(['a'.repeat(64)]);
   });
 
@@ -510,7 +689,7 @@ describe('StepTraceSession', () => {
       expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
       await session.conclude(outcome, undefined);
       expect(deleted).toEqual(expected);
-      expect(context.staged).toHaveLength(0);
+      expect(context.staged.filter((entry) => entry.kind !== 'decided')).toHaveLength(0);
     }
   });
 
@@ -539,7 +718,7 @@ describe('StepTraceSession', () => {
     await session.begin();
     await session.conclude('failed', undefined);
     expect(deleted).toEqual([]);
-    expect(context.staged).toHaveLength(0);
+    expect(context.staged.filter((entry) => entry.kind !== 'decided')).toHaveLength(0);
   });
 
   it('lets an engine-independent executor run when the baseline cannot be observed, and stages nothing', async () => {
@@ -554,7 +733,7 @@ describe('StepTraceSession', () => {
     await expect(session.begin()).resolves.toBeUndefined();
     session.record({ name: 'navigate', url: '/billing' });
     await session.conclude('passed', 'done without looking');
-    expect(context.staged).toHaveLength(0);
+    expect(context.staged.filter((entry) => entry.kind !== 'decided')).toHaveLength(0);
   });
 
   it('stages nothing when the passing screen cannot be observed', async () => {
@@ -572,7 +751,7 @@ describe('StepTraceSession', () => {
     await session.begin();
     session.record({ name: 'navigate', url: '/billing' });
     await expect(session.conclude('passed', 'done')).resolves.toBeUndefined();
-    expect(context.staged).toHaveLength(0);
+    expect(context.staged.filter((entry) => entry.kind !== 'decided')).toHaveLength(0);
   });
 
   it.each(['baseline', 'passing screen'] as const)(
@@ -745,7 +924,7 @@ describe('StepTraceSession', () => {
     expect(await session.begin()).toBeUndefined();
     session.record({ name: 'tap', node: redacted(save) });
     await session.conclude('passed', 'already saved');
-    expect(context.staged).toHaveLength(0);
+    expect(context.staged.filter((entry) => entry.kind !== 'decided')).toHaveLength(0);
     expect(deleted).toBe(1);
   });
 
@@ -756,7 +935,7 @@ describe('StepTraceSession', () => {
     await session.begin();
     session.record({ name: 'tap', node: redacted(button) });
     await session.conclude('passed', 'copied');
-    expect(context.staged).toHaveLength(0);
+    expect(context.staged.filter((entry) => entry.kind !== 'decided')).toHaveLength(0);
   });
 
   it('stages what a removal-only step made vanish', async () => {
@@ -811,7 +990,7 @@ describe('StepTraceSession', () => {
   });
 
   it('leaves the entry file untouched across replays and rewrites it after a hand-off the executor healed', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'e2e-step-cache-'));
+    const directory = await tempDir('e2e-step-cache-');
     const store = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
     const context = (): AgentCacheContext => ({
       mode: 'read-write',
@@ -831,7 +1010,7 @@ describe('StepTraceSession', () => {
       // navigate records through the host's grammar, as the real dispatch's does.
       if (session.cacheInfo?.mode === 'missed') session.record({ name: 'navigate', url: '/customers' });
       await session.conclude('passed', verdict?.summary ?? 'opened the customers page');
-      await flushStagedTraces(current, { lastVerifiedStepIndex, implicatesUnconfirmed: true });
+      await settleStagedTraces(current, { lastVerifiedStepIndex, implicatesUnconfirmed: true });
       return session;
     };
 
@@ -949,9 +1128,9 @@ describe('destination path settling', () => {
   });
 });
 
-describe('flushStagedTraces and a re-recorded flow', () => {
+describe('settleStagedTraces and a re-recorded flow', () => {
   it('leaves an entry the same flow re-recorded untouched, and replaces it when the actions change', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'e2e-flush-'));
+    const directory = await tempDir('e2e-flush-');
     const store = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
     const context = (): AgentCacheContext => ({
       mode: 'read-write',
@@ -979,17 +1158,17 @@ describe('flushStagedTraces and a re-recorded flow', () => {
     const flush = async (staged: ActionTrace) => {
       const current = context();
       current.staged.push({ kind: 'write', keyHash: 'c'.repeat(64), stepIndex: 0, trace: staged });
-      await flushStagedTraces(current, { lastVerifiedStepIndex: 1, implicatesUnconfirmed: true });
+      await settleStagedTraces(current, { lastVerifiedStepIndex: 1, implicatesUnconfirmed: true });
     };
 
-    await flush(trace('saved the record', 10_100, 1));
+    await flush({ ...trace('saved the record', 10_100, 1), recordedBy: { provider: 'test', model: 'A' } });
     const written = await snapshot();
     expect(JSON.parse(written.bytes).payload.summary).toBe('saved the record');
 
     // A live run of the same flow words its summary differently and measures
     // another end wait; the file is what a replay reads, and nothing it reads changed.
     await new Promise((resolve) => setTimeout(resolve, 20));
-    await flush(trace('the record reads saved now', 10_137, 1));
+    await flush({ ...trace('the record reads saved now', 10_137, 1), recordedBy: { provider: 'test', model: 'B' } });
     expect(await snapshot()).toEqual(written);
 
     // One more tap is a different flow, and the entry follows it.
@@ -1000,7 +1179,7 @@ describe('flushStagedTraces and a re-recorded flow', () => {
   });
 
   it('leaves an entry untouched when only the rule that flagged a typed value differs', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'e2e-flush-derived-'));
+    const directory = await tempDir('e2e-flush-derived-');
     const store = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
     const file = join(directory, `${'d'.repeat(64)}.json`);
     const trace = (derived?: DerivedReason): ActionTrace => ({
@@ -1023,7 +1202,7 @@ describe('flushStagedTraces and a re-recorded flow', () => {
         claimKey: () => claimedKey('d'.repeat(64)),
         staged: [{ kind: 'write', keyHash: 'd'.repeat(64), stepIndex: 0, trace: staged }],
       };
-      await flushStagedTraces(context, { lastVerifiedStepIndex: 1, implicatesUnconfirmed: true });
+      await settleStagedTraces(context, { lastVerifiedStepIndex: 1, implicatesUnconfirmed: true });
     };
 
     // An entry recorded before gaps carried their rule, then live runs whose
@@ -1035,10 +1214,37 @@ describe('flushStagedTraces and a re-recorded flow', () => {
     await flush(trace('minted-token'));
     expect(await readFile(file, 'utf8')).toBe(written);
   });
+
+  it('says a confirmed recording the store did not write was not written, rather than saved', async () => {
+    const directory = await tempDir('e2e-flush-too-large-');
+    const trace: ActionTrace = {
+      actions: [{ name: 'tap', summary: 'tap Save', target: { role: 'button', name: 'Save' } }],
+      executor: { name: 'scripted' },
+      summary: 'saved',
+      startPath: '/',
+      endPath: '/',
+      endAnchors: [{ role: 'status', name: 'State', text: 'saved' }],
+    };
+    const outcome = async (maxBytes: number) => {
+      const context: AgentCacheContext = {
+        mode: 'read-write',
+        store: new FileCacheStore({ directory, maxBytes, writable: true }),
+        replayEligible: true,
+        strict: false,
+        claimKey: () => claimedKey('e'.repeat(64)),
+        staged: [{ kind: 'write', keyHash: 'e'.repeat(64), stepIndex: 0, trace }],
+      };
+      const writes = await settleStagedTraces(context, { lastVerifiedStepIndex: 1, implicatesUnconfirmed: true });
+      return writes.get(0);
+    };
+    expect(await outcome(16)).toBe('not-written');
+    expect(await outcome(MAX_CACHE_WIRE_BYTES)).toBe('saved');
+  });
 });
 
 describe('cache.strict', () => {
-  const strict = (context: AgentCacheContext): AgentCacheContext => ({ ...context, strict: { advice: 're-record it' } });
+  // A strict context is read-only whatever the configured mode (`createAgentCacheContext`).
+  const strict = (context: AgentCacheContext): AgentCacheContext => ({ ...context, mode: 'read-only', strict: { advice: 're-record it' } });
 
   it('fails a step whose recording diverged instead of handing it off, and keeps the cache detail', async () => {
     const context = strict(entryContext({ endPath: '/customers', endAnchors: [savedAnchor] }));
@@ -1056,10 +1262,8 @@ describe('cache.strict', () => {
     expect(elsewhere.cacheInfo).toMatchObject({ mode: 'missed', reason: 'wrong-context' });
   });
 
-  it('still runs live a step with no recording, a retry, and a recording too long to replay', async () => {
+  it('still runs live a step with no recording and a recording too long to replay', async () => {
     await expect(makeSession(strict(fakeContext(async () => ({ status: 'miss' }))), makeHost(['/'])).begin()).resolves.toBeUndefined();
-    const retry = makeSession({ ...strict(fakeContext(async () => ({ status: 'miss' }))), replayEligible: false }, makeHost(['/']));
-    await expect(retry.begin()).resolves.toBeUndefined();
     const tapUpgrade = { name: 'tap', summary: 'tap button "Upgrade"', target: { role: 'button', name: 'Upgrade' } } as const;
     const truncated = makeSession(
       strict(entryContext({ actions: Array.from({ length: 50 }, () => tapUpgrade), startPath: '/pricing', truncated: true })),
@@ -1068,7 +1272,7 @@ describe('cache.strict', () => {
     await expect(truncated.begin()).resolves.toBeUndefined();
   });
 
-  it('keeps the stale entry it failed on in read-write mode, so the next strict run fails on it too', async () => {
+  it('keeps the stale entry it failed on, so the next strict run fails on it too', async () => {
     const deleted: string[] = [];
     const base = strict(entryContext({ endPath: '/customers', endAnchors: [savedAnchor] }));
     const context: AgentCacheContext = { ...base, store: { ...base.store, delete: async (key) => { deleted.push(key); } } };
@@ -1104,7 +1308,7 @@ describe('cache.strict and a step whose key changed under its recording', () => 
 
   /** A file store holding one entry under `OLD_KEY`, and a context whose own key finds nothing in it. */
   async function rekeyedContext(payload: ActionTrace, strict = true): Promise<AgentCacheContext> {
-    const directory = await mkdtemp(join(tmpdir(), 'e2e-rekeyed-'));
+    const directory = await tempDir('e2e-rekeyed-');
     const store = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
     await store.write(OLD_KEY, payload);
     return {
@@ -1165,7 +1369,7 @@ describe('cache.strict and a step whose key changed under its recording', () => 
     secrets.register('password', 'hunter2');
     const step = { ...exampleStep, testId: 'tests/example.e2e.ts::logs in with hunter2' };
     const context = await rekeyedContext(recordedPayload({ ...step, testId: secrets.redact(step.testId) }));
-    const session = makeSession({ ...context, claimKey: () => ({ keyHash: OWN_KEY, step }) }, makeHost(['/']), { redact: secrets.redact });
+    const session = makeSession({ ...context, claimKey: () => ({ keyHash: OWN_KEY, context: exampleContext, step }) }, makeHost(['/']), { redact: secrets.redact });
     const failure = session.begin();
     await expect(failure).rejects.toMatchObject({ code: 'REPLAY_STALE' });
     await expect(failure).rejects.not.toThrow('hunter2');

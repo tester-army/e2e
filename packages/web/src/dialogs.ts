@@ -72,15 +72,18 @@ export class DialogRouter {
       return;
     }
     let decided = false;
+    let answered = false;
     const publicDialog: Dialog = {
       message: dialog.message(),
       accept: async (text) => {
         decided = true;
         await dialog.accept(text);
+        answered = true;
       },
       dismiss: async () => {
         decided = true;
         await dialog.dismiss();
+        answered = true;
       },
     };
     try {
@@ -113,6 +116,7 @@ export class DialogRouter {
               cause,
             }),
       );
+      if (!answered) await dialog.dismiss().catch(() => undefined);
     }
   }
 }

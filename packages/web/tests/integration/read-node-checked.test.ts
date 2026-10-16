@@ -45,6 +45,48 @@ async function captureByTestId(): Promise<Map<string | undefined, SemanticNode>>
 }
 
 describe('checked and selected', () => {
+  it('reads selected boolean values without case sensitivity while native option state wins', async () => {
+    await page.setContent(`
+      <div role="tablist">
+        <button role="tab" aria-selected="TRUE" data-testid="upper">All</button>
+        <button role="tab" aria-selected="TrUe" data-testid="mixed">Recent</button>
+        <button role="tab" aria-selected="FALSE" data-testid="off">Archived</button>
+      </div>
+      <select aria-label="Plan" size="3">
+        <option data-testid="native-on" selected aria-selected="FALSE">Team</option>
+        <option data-testid="native-off" aria-selected="TRUE">Solo</option>
+      </select>
+      <div role="button" data-testid="embedded">Pick <div role="listbox"><div role="option" aria-selected="true">Chosen</div><div role="option" aria-selected="false">Other</div></div></div>
+    `);
+    const nodes = await captureByTestId();
+    expect(nodes.get('upper')?.states?.selected).toBe(true);
+    expect(nodes.get('mixed')?.states?.selected).toBe(true);
+    expect(nodes.get('off')?.states?.selected).toBe(false);
+    expect(nodes.get('native-on')?.states?.selected).toBe(true);
+    expect(nodes.get('native-off')?.states?.selected).toBe(false);
+    expect(nodes.get('embedded')?.name).toBe('Pick Chosen');
+    expect(await page.getByRole('tab', { selected: true }).allTextContents()).toEqual(['All', 'Recent']);
+    expect(await page.getByRole('button', { name: 'Pick Chosen', exact: true }).count()).toBe(1);
+  });
+
+  it('excludes uppercase hidden subtrees from observations and names but reads hidden references whole', async () => {
+    await page.setContent(`
+      <div aria-hidden="TRUE"><button data-testid="hidden" aria-hidden="false">Hidden action</button></div>
+      <button data-testid="save">Save<span aria-hidden="TrUe"> decoration</span></button>
+      <button data-testid="shown" aria-hidden="FALSE">Shown</button>
+      <button data-testid="referenced" aria-labelledby="reference">Fallback</button>
+      <div aria-hidden="TRUE"><span id="reference">Label <i style="display:none">whole</i></span></div>
+    `);
+    const nodes = await captureByTestId();
+    expect(nodes.has('hidden')).toBe(false);
+    expect(nodes.get('save')?.name).toBe('Save');
+    expect(nodes.get('shown')?.name).toBe('Shown');
+    expect(nodes.get('referenced')?.name).toBe('Label whole');
+    expect(await page.getByRole('button', { name: 'Save', exact: true }).count()).toBe(1);
+    expect(await page.getByRole('button', { name: 'Hidden action', exact: true }).count()).toBe(0);
+    expect(await page.getByRole('button', { name: 'Label whole', exact: true }).count()).toBe(1);
+  });
+
   it('reads a native checkbox, radio, and option from the control even when a stale aria attribute disagrees, as Playwright does', async () => {
     await page.setContent(`
       <input type="checkbox" data-testid="stale-off" aria-checked="false" checked aria-label="Stale off">

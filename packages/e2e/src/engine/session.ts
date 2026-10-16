@@ -20,12 +20,18 @@ import {
   TestError,
 } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
-import type { EngineHandle } from './index.ts';
+import { timestamp } from '../internal/ids.ts';
+import { bound } from '../internal/text.ts';
+import type { AppLogEntry, EngineHandle, EngineSnapshot } from './index.ts';
 import {
+  type AppEvent,
+  type AppLogRoute,
   EngineError,
+  type EnvironmentFacts,
   type GrammarVerb,
   type LocatorActionKind,
   type NodeRef,
+  type Observation,
   type PointerActionKind,
   type SemanticNode,
   type SessionApp,
@@ -36,14 +42,106 @@ import {
 export interface EngineSessionOptions {
   readonly engine: EngineHandle | undefined;
   readonly targetName: string;
+  /** Whether the attempt keeps a trace; without one, no screen is taken for it, from the engine or an observation. */
+  readonly traced?: boolean;
+}
+
+/** App log entries held while no step recorder takes them, the launch's own. */
+/**
+ * App log entries one attempt keeps: errors and warnings, and `info` apart
+ * so chatter never crowds out an error. The step recorder enforces them; the
+ * session holds no more than both while no recorder takes its entries.
+ */
+export const APP_LOG_LIMITS = { errorsAndWarnings: 200, info: 100 } as const;
+/** Navigations held while no step recorder takes them, apart from the log lines so neither crowds out the other. */
+const MAX_WAITING_NAVIGATIONS = 50;
+const APP_LOG_SOURCES: ReadonlySet<unknown> = new Set(['console', 'error', 'network', 'system']);
+const APP_LOG_LEVELS: ReadonlySet<unknown> = new Set(['error', 'warning', 'info']);
+
+/** Whether an engine handed `appLog` an entry of the contract's shape. */
+function isAppLogEntry(value: unknown): value is AppLogEntry {
+  if (typeof value !== 'object' || value === null) return false;
+  const { source, level, text } = value as Partial<Record<keyof AppLogEntry, unknown>>;
+  return APP_LOG_SOURCES.has(source) && APP_LOG_LEVELS.has(level) && typeof text === 'string' && text.trim() !== '';
+}
+
+/** The session's app log route; see `AppLogRoute`. */
+function createAppLogRoute(): AppLogRoute {
+  let sink: ((event: AppEvent, at: string) => void) | undefined;
+  const waiting: { event: AppEvent; at: string }[] = [];
+  // While no recorder takes them, each kind waits within its own quota, so
+  // chatter before the first step never crowds out an error.
+  const held = { errorsAndWarnings: 0, info: 0, navigation: 0 };
+  const quota = { ...APP_LOG_LIMITS, navigation: MAX_WAITING_NAVIGATIONS };
+  const pass = (event: AppEvent): void => {
+    if (sink !== undefined) {
+      sink(event, timestamp());
+      return;
+    }
+    const kind = event.kind === 'navigation' ? 'navigation' : event.entry.level === 'info' ? 'info' : 'errorsAndWarnings';
+    if (held[kind] >= quota[kind]) return;
+    held[kind] += 1;
+    waiting.push({ event, at: timestamp() });
+  };
+  return {
+    push(entry) {
+      if (isAppLogEntry(entry)) pass({ kind: 'log', entry: { source: entry.source, level: entry.level, text: entry.text } });
+    },
+    navigated(line) {
+      if (typeof line === 'string' && line.trim() !== '') pass({ kind: 'navigation', line });
+    },
+    route(next) {
+      sink = next;
+      if (sink === undefined) return;
+      for (const { event, at } of waiting.splice(0)) sink(event, at);
+      held.errorsAndWarnings = 0;
+      held.info = 0;
+      held.navigation = 0;
+    },
+  };
+}
+
+/** Facts `environment` keeps, and the characters of each key and value once redacted. */
+const MAX_ENVIRONMENT_FACTS = 8;
+const MAX_ENVIRONMENT_KEY_CHARS = 40;
+const MAX_ENVIRONMENT_VALUE_CHARS = 200;
+
+/** The session's environment facts; see `EnvironmentFacts`. */
+function createEnvironmentFacts(): EnvironmentFacts {
+  const facts = new Map<string, string>();
+  return {
+    push(next) {
+      if (typeof next !== 'object' || next === null) return;
+      for (const [key, value] of Object.entries(next)) {
+        if (typeof value !== 'string' || key.trim() === '' || value.trim() === '') continue;
+        // Held whole, however long: a cut before redaction could leave a secret's head behind.
+        const name = key.trim();
+        if (!facts.has(name) && facts.size >= MAX_ENVIRONMENT_FACTS) continue;
+        facts.set(name, value.replace(/\s+/g, ' ').trim());
+      }
+    },
+    // Redacted before it is clipped, so no clip leaves the head of a secret behind.
+    read: (redact) =>
+      facts.size === 0
+        ? undefined
+        : Object.fromEntries([...facts].map(([name, value]) => [bound(redact(name), MAX_ENVIRONMENT_KEY_CHARS), bound(redact(value), MAX_ENVIRONMENT_VALUE_CHARS)])),
+  };
+}
+
+/** Whether an engine handed `screen` a snapshot of the contract's shape, as far as the trace reads it. */
+function isEngineSnapshot(value: unknown): value is EngineSnapshot {
+  if (typeof value !== 'object' || value === null) return false;
+  const { root, viewport } = value as Partial<Record<keyof EngineSnapshot, unknown>>;
+  return typeof root === 'object' && root !== null && typeof (root as SemanticNode).ref?.id === 'string' && typeof viewport === 'object' && viewport !== null;
 }
 
 /** Located refs are pruned oldest-first past this bound so the map cannot grow unboundedly. */
 const MAX_LOCATED_REFS = 2048;
 
-/** Revision prefixes: the adapter mints `l<n>` for locate and `b<n>` for observe. */
+/** Revision prefixes: the adapter mints `l<n>` for locate, `b<n>` for observe, and `s<n>` for a screen the engine handed over. */
 const LOCATE_REVISION_PREFIX = 'l';
 const OBSERVE_REVISION_PREFIX = 'b';
+const SCREEN_REVISION_PREFIX = 's';
 
 /**
  * Stamps the adapter's revision onto every ref. Engines mint stable ids;
@@ -198,12 +296,6 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
 
   const artifacts: SessionArtifacts = {
     screenshot: guard('screenshots', engine?.artifacts?.screenshot),
-    ...(engine?.artifacts?.startTrace === undefined || engine.artifacts.stopTrace === undefined
-      ? {}
-      : {
-          startTrace: guard('traces', engine.artifacts.startTrace),
-          stopTrace: guard('traces', engine.artifacts.stopTrace),
-        }),
     ...(engine?.artifacts?.startVideo === undefined || engine.artifacts.stopVideo === undefined
       ? {}
       : {
@@ -213,6 +305,18 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
   };
 
   let ended = false;
+  let screenSink: ((observation: Observation) => void) | undefined;
+  let screenRevision = 0;
+  /** Hands one screen to the trace; a sink that throws never fails what the session was doing. */
+  const traced = options.traced === true;
+  const showScreen = (observation: Observation): void => {
+    if (!traced) return;
+    try {
+      screenSink?.(observation);
+    } catch {
+      // The trace is a reader; it never fails an action.
+    }
+  };
 
   const session: TargetSession = {
     verbs: declaredVerbs(engine),
@@ -221,6 +325,30 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
     tapModifiers,
     app,
     artifacts,
+    appLog: createAppLogRoute(),
+    screens: {
+      traced,
+      push(snapshot) {
+        if (screenSink === undefined || !isEngineSnapshot(snapshot) || snapshot.treeUnavailable === true) return;
+        screenRevision += 1;
+        const minted = `${SCREEN_REVISION_PREFIX}${screenRevision}`;
+        showScreen({
+          kind: 'semantic',
+          root: { ...snapshot.root.ref, revision: minted },
+          revision: minted,
+          capturedAt: new Date().toISOString(),
+          ...(snapshot.location === undefined ? {} : { location: snapshot.location }),
+          viewport: snapshot.viewport,
+          redaction: { secureNodeCount: countSecure(snapshot.root), maskedRegionCount: 0 },
+          tree: stampRevision(snapshot.root, minted),
+          truncated: snapshot.truncated === true,
+        });
+      },
+      route(sink) {
+        screenSink = sink;
+      },
+    },
+    environment: createEnvironmentFacts(),
     ...(engine?.state === undefined
       ? {}
       : {
@@ -233,6 +361,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
         {
           ...(observeOptions?.pixels === true ? { pixels: true } : {}),
           ...(observeOptions?.pixelFallback === true ? { pixelFallback: true } : {}),
+          ...(observeOptions?.comparable === true ? { comparable: true } : {}),
         },
       );
       const minted = `${OBSERVE_REVISION_PREFIX}${revision + 1}`;
@@ -261,13 +390,16 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
       }
       revision += 1;
       root = metadata.root;
-      return {
+      const observation: Observation = {
         ...metadata,
         kind: 'semantic',
         tree: stampRevision(snapshot.root, minted),
         truncated: snapshot.truncated === true,
+        ...(snapshot.keyboardVisible === undefined ? {} : { keyboardVisible: snapshot.keyboardVisible }),
         ...(snapshot.pixels === undefined ? {} : { pixels: snapshot.pixels }),
       };
+      showScreen(observation);
+      return observation;
     },
     async locate(expression, operation) {
       // An engine answers `visible` inside scopes, filters, and indices, where

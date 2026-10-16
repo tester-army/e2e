@@ -17,6 +17,7 @@ const UNDELIVERED_SKIPS = new Set<NonNullable<ReportResult['skip']>['cause']>([
   'hook-failed',
   'infrastructure-unavailable',
   'failure-limit',
+  'time-limit',
 ]);
 
 /** The id `--last-failed` names a result by: its test, target, and agent, whichever its repeat. */
@@ -271,4 +272,32 @@ function isError(value: unknown): value is ReportError {
         typeof scope.targetId === 'string' &&
         Array.isArray(scope.titlePath)))
   );
+}
+
+/**
+ * How long each file took for each target in the previous run, keyed by
+ * `target::file`: every attempt of every result and serial group summed. A
+ * file with no attempt (skipped, or never reached) has no entry. No readable
+ * report is no history, never an error.
+ */
+export async function previousFileDurations(reportPath: string): Promise<ReadonlyMap<string, number>> {
+  const durations = new Map<string, number>();
+  let report: Report1Document;
+  try {
+    report = await readLastRun(reportPath);
+  } catch {
+    return durations;
+  }
+  for (const unit of [...report.run.results, ...report.run.serialGroups]) {
+    if (unit.attempts.length === 0) continue;
+    const key = fileDurationKey(unit.targetId, unit.file);
+    const ms = unit.attempts.reduce((sum, attempt) => sum + attempt.durationMs, 0);
+    durations.set(key, (durations.get(key) ?? 0) + ms);
+  }
+  return durations;
+}
+
+/** The key `previousFileDurations` files one target's file under. */
+export function fileDurationKey(targetName: string, file: string): string {
+  return `${targetName}::${file}`;
 }
