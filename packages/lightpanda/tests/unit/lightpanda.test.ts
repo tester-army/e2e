@@ -25,7 +25,7 @@ setTimeout(() => {
   http.createServer((request, response) => {
     if (request.url === '/json/version') {
       response.setHeader('content-type', 'application/json');
-      response.end(JSON.stringify({ Browser: 'Lightpanda/1.0', 'Lightpanda-Version': '1.1.0-test', args }));
+      response.end(flag('--version-body') ?? JSON.stringify({ Browser: 'Lightpanda/1.0', 'Lightpanda-Version': '1.1.0-test', args }));
       return;
     }
     response.statusCode = 404;
@@ -105,6 +105,14 @@ describe('lightpanda()', () => {
     expect(await serverArgs(lease)).toEqual(['serve', '--host', '127.0.0.1', '--port', new URL(lease.cdpEndpoint).port]);
     await provider.release(lease, releaseContext);
     expect(await serverArgs(lease)).toBeUndefined();
+  });
+
+  it('reports an unknown version when /json/version answers without one', async () => {
+    const provider = lightpanda({ binary, args: ['--version-body', 'null'] });
+    const req = request();
+    const lease = await provider.acquire(req);
+    expect(req.lines).toEqual([`lightpanda unknown at ${lease.cdpEndpoint}`]);
+    await provider.release(lease, releaseContext);
   });
 
   it('passes load-resources and extra flags, and gives each slot its own server', async () => {

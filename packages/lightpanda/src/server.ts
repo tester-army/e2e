@@ -105,8 +105,8 @@ async function waitForVersion(url: string, timeoutMs: number, signal: AbortSigna
     try {
       const response = await fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(PROBE_TIMEOUT_MS)]) });
       if (response.ok) {
-        const body = (await response.json()) as Record<string, unknown>;
-        const version = body['Lightpanda-Version'];
+        const body: unknown = await response.json();
+        const version = typeof body === 'object' && body !== null && 'Lightpanda-Version' in body ? body['Lightpanda-Version'] : undefined;
         return typeof version === 'string' ? version : 'unknown';
       }
     } catch {
