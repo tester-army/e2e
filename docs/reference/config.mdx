@@ -29,29 +29,29 @@ export default {
 
 ## Top level
 
-| Option | Example | Type | Default |
-| --- | --- | --- | --- |
-| [`projectId`](#projectid) | `'acme-web'` | `string` | the root `package.json` name |
-| [`targets`](#targets) | `[{ engine: web(), app: { url } }]` | `Target[]` | required |
-| [`tests`](#tests) | `['tests/**/*.e2e.ts']` | `string \| string[]` | `'tests/**/*.e2e.ts'` |
-| [`timeout`](#timeout) | `180_000` | `number` (ms) | `120000` |
-| [`launchTimeout`](#launchtimeout) | `90_000` | `number` (ms) | `60000` |
-| [`actionTimeout`](#actiontimeout) | `10_000` | `number` (ms) | `30000` |
-| [`assertionTimeout`](#assertiontimeout) | `10_000` | `number` (ms) | `5000` |
-| [`cleanupTimeout`](#cleanuptimeout) | `60_000` | `number` (ms) | `30000` |
-| [`retries`](#retries) | `2` | `number` | `1` in CI, else `0` |
-| [`failOnSkippedFailure`](#failonskippedfailure) | `true` | `boolean` | `false` |
-| [`maxDuration`](#maxduration) | `900_000` | `number` (ms) | none |
-| [`workers`](#workers) | `4` | `number` | `1` in CI, else half the cores |
-| [`reporters`](#reporters) | `['list', 'junit']` | `(BuiltinReporter \| Reporter)[]` | `['list']` |
-| [`output`](#output) | `'test-results/e2e'` | `string` | `'.e2e'` |
-| [`artifacts`](#artifacts) | `{ store }` | `ArtifactsConfig` | files stay local |
-| [`trace`](#trace) | `'on'` | `RecordingMode` | `'retain-on-failure'` |
-| [`video`](#video) | `'retain-on-failure'` | `RecordingMode` | `'off'` |
-| [`agents`](#agents) | `{ default: { model } }` | `Record<string, AgentConfig>` | `default`, with no model |
-| [`cache`](#cache) | `'read-write'` | `CacheMode \| CacheConfig` | `read-write`, `read-only` in CI |
-| [`credentials`](#credentials) | `{ admin: { username, password } }` | `Record<string, CredentialConfig>` | none |
-| [`secrets`](#secrets) | `{ apiKey: 'sk_test_51Hx…' }` | `Record<string, SecretConfig>` | none |
+| Option | Type | Default |
+| --- | --- | --- |
+| [`projectId`](#projectid) | `string` | `package.json` name |
+| [`targets`](#targets) | `Target[]` | required |
+| [`tests`](#tests) | `string \| string[]` | `'tests/**/*.e2e.ts'` |
+| [`timeout`](#timeout) | `number` | `120000` |
+| [`launchTimeout`](#launchtimeout) | `number` | `60000` |
+| [`actionTimeout`](#actiontimeout) | `number` | `30000` |
+| [`assertionTimeout`](#assertiontimeout) | `number` | `5000` |
+| [`cleanupTimeout`](#cleanuptimeout) | `number` | `30000` |
+| [`retries`](#retries) | `number` | `0`, `1` in CI |
+| [`failOnSkippedFailure`](#failonskippedfailure) | `boolean` | `false` |
+| [`maxDuration`](#maxduration) | `number` | - |
+| [`workers`](#workers) | `number` | half the cores, `1` in CI |
+| [`reporters`](#reporters) | `(BuiltinReporter \| Reporter)[]` | `['list']` |
+| [`output`](#output) | `string` | `'.e2e'` |
+| [`artifacts`](#artifacts) | `ArtifactsConfig` | local only |
+| [`trace`](#trace) | `RecordingMode` | `'retain-on-failure'` |
+| [`video`](#video) | `RecordingMode` | `'off'` |
+| [`agents`](#agents) | `Record<string, AgentConfig>` | `default`, no model |
+| [`cache`](#cache) | `CacheMode \| CacheConfig` | `'read-write'`, `'read-only'` in CI |
+| [`credentials`](#credentials) | `Record<string, CredentialConfig>` | - |
+| [`secrets`](#secrets) | `Record<string, SecretConfig>` | - |
 
 The full declaration is [`E2EConfig`](#e2econfig).
 
@@ -246,14 +246,14 @@ targets: [
 ],
 ```
 
-| Option | Example | Type | Default |
-| --- | --- | --- | --- |
-| [`name`](#name) | `'chromium'` | `string` | the platform |
-| [`platform`](#platform) | `'web'` | `string` | the engine's platform |
-| [`engine`](#engine) | `web()` | `EngineHandle` | none |
-| [`app`](#the-app-under-test) | `{ url: 'http://localhost:3000' }` | `TargetApp` | none |
-| [`trace`](#trace) | `'on'` | `RecordingMode` | the config's `trace` |
-| [`video`](#video) | `'on-first-retry'` | `RecordingMode` | the config's `video` |
+| Option | Type | Default |
+| --- | --- | --- |
+| [`name`](#name) | `string` | the platform |
+| [`platform`](#platform) | `string` | the engine's platform |
+| [`engine`](#engine) | `EngineHandle` | - |
+| [`app`](#the-app-under-test) | `TargetApp` | - |
+| [`trace`](#trace) | `RecordingMode` | the config's `trace` |
+| [`video`](#video) | `RecordingMode` | the config's `video` |
 
 - `{ engine: web(), app: { url } }` is a complete target.
 - Tests whose `requires` names a capability the target lacks are skipped for
@@ -327,17 +327,17 @@ targets: [
 ],
 ```
 
-| Option | Example | Targets | Default |
-| --- | --- | --- | --- |
-| [`url`](#url) | `'http://localhost:3000'` | web | none |
-| [`bundleId`](#bundleid) | `'com.example.app'` | mobile | none |
-| [`appPath`](#apppath) | `'./build/App.app'` | mobile | none |
-| [`identity`](#identity) | `'checkout-web'` | any | the URL's origin and base path, else `bundleId`, else `appPath` |
-| [`environment`](#environment) | `'staging'` | any | `test` for a local or `.test` host, or no URL; else `production` |
-| [`launchArguments`](#launcharguments) | `['-e2e', 'YES']` | mobile | none |
-| [`permissions`](#permissions) | `{ camera: 'grant' }` | mobile | none |
-| [`command`](#command) | `{ executable: 'npm', args: ['run', 'dev'] }` | any | none |
-| [`readyUrl`](#readyurl) | `'http://localhost:3000/health'` | any | `url` |
+| Option | Type | Default |
+| --- | --- | --- |
+| [`url`](#url) | `string` | - |
+| [`bundleId`](#bundleid) | `string` | - |
+| [`appPath`](#apppath) | `string` | - |
+| [`identity`](#identity) | `string` | derived from the app |
+| [`environment`](#environment) | `'test' \| 'staging' \| 'production'` | `'test'` or `'production'` |
+| [`launchArguments`](#launcharguments) | `string[]` | - |
+| [`permissions`](#permissions) | `Record<string, AppPermissionState>` | - |
+| [`command`](#command) | `CommandConfig` | - |
+| [`readyUrl`](#readyurl) | `string` | `url` |
 
 Each engine checks the keys at config load, with `INVALID_CONFIG` naming the
 target:
@@ -652,10 +652,10 @@ artifacts: {
 },
 ```
 
-| Member | Example | Returns | Required |
-| --- | --- | --- | --- |
-| [`store.put`](#put) | `put(artifact)` | `Promise<{ ref }>` | yes |
-| [`store.putLink`](#putlink) | `putLink(link)` | `Promise<{ ref }>` | no |
+| Member | Returns |
+| --- | --- |
+| [`store.put`](#put) | `Promise<{ ref }>` |
+| [`store.putLink`](#putlink) | `Promise<{ ref }>` |
 
 - [`trace` and `video`](#recording) choose the recordings. A failure's
   screenshot and screen text are captured whenever the engine can (never
@@ -684,6 +684,7 @@ async put(artifact) {
 },
 ```
 
+- Required on every store.
 - A failed `put` never fails the run.
 - `artifact.redaction` is the report's label. A store that exports only what
   the runner vouches for keeps back an `incomplete` artifact: a video or a
@@ -727,10 +728,10 @@ targets: [
 ],
 ```
 
-| Option | Example | Type | Default |
-| --- | --- | --- | --- |
-| [`trace`](#trace) | `'on'` | `RecordingMode` | `'retain-on-failure'` |
-| [`video`](#video) | `'retain-on-failure'` | `RecordingMode` | `'off'` |
+| Option | Type | Default |
+| --- | --- | --- |
+| [`trace`](#trace) | `RecordingMode` | `'retain-on-failure'` |
+| [`video`](#video) | `RecordingMode` | `'off'` |
 
 ```ts
 /** Which tests keep a trace page, or which attempts record a video. */
@@ -872,20 +873,20 @@ export default {
 } satisfies E2EConfig;
 ```
 
-| Option | Example | Type | Default |
-| --- | --- | --- | --- |
-| [`model`](#model) | `gateway('openai/gpt-6-luna-fast')` | `ModelInstance` | none |
-| [`judge`](#judge) | `gateway('anthropic/claude-opus-5')` | `ModelInstance` | `model` |
-| [`context`](#context) | `'Plans are called tiers.'` | `string` | none |
-| [`system`](#system) | `'You are a first-time buyer.'` | `string` | none |
-| [`tools`](#tools) | `{ lookupOrder }` | `Record<string, AgentTool>` | none |
-| [`executor`](#executor) | `houseBrain` | `StepExecutor` | the built-in agent |
-| [`maxSteps`](#maxsteps) | `40` | `number` | `25` |
-| [`maxModelCalls`](#maxmodelcalls) | `10` | `number` | `25` |
-| [`judgmentTimeout`](#judgmenttimeout) | `60_000` | `number` (ms) | `30000` |
-| [`maxObservationBytes`](#maxobservationbytes) | `524_288` | `number` | `262144` |
-| [`maxInputTokens`](#maxinputtokens) | `128_000` | `number` | `64000` |
-| [`providerOptions`](#provideroptions) | `{ openai: { reasoningEffort: 'low' } }` | `ProviderOptions` | none |
+| Option | Type | Default |
+| --- | --- | --- |
+| [`model`](#model) | `ModelInstance` | - |
+| [`judge`](#judge) | `ModelInstance` | `model` |
+| [`context`](#context) | `string` | - |
+| [`system`](#system) | `string` | - |
+| [`tools`](#tools) | `Record<string, AgentTool>` | - |
+| [`executor`](#executor) | `StepExecutor` | the built-in agent |
+| [`maxSteps`](#maxsteps) | `number` | `25` |
+| [`maxModelCalls`](#maxmodelcalls) | `number` | `25` |
+| [`judgmentTimeout`](#judgmenttimeout) | `number` | `30000` |
+| [`maxObservationBytes`](#maxobservationbytes) | `number` | `262144` |
+| [`maxInputTokens`](#maxinputtokens) | `number` | `64000` |
+| [`providerOptions`](#provideroptions) | `ProviderOptions` | - |
 
 - Tests use the `default` agent unless you select another with
   `e2e run --agent <name>`, a test or group option, or an individual
@@ -1086,10 +1087,10 @@ credentials: {
 },
 ```
 
-| Field | Example | Type | Override |
-| --- | --- | --- | --- |
-| [`username`](#username) | `'admin@example.com'` | `string` | `E2E_USER_<NAME>_USERNAME` |
-| [`password`](#password) | `() => readFile('.secrets/admin', 'utf8')` | `string \| SecretProvider` | `E2E_USER_<NAME>_PASSWORD` |
+| Field | Type |
+| --- | --- |
+| [`username`](#username) | `string` |
+| [`password`](#password) | `string \| SecretProvider` |
 
 - Credentials and secrets are separate namespaces. `secrets.get(name)`
   returns a `secrets` entry only, and a credential's password is reachable
@@ -1228,12 +1229,12 @@ assertion or `agent.assert()`.
 cache: { mode: 'read-write', dir: '.e2e/cache', strict: true },
 ```
 
-| Option | Example | Type | Default |
-| --- | --- | --- | --- |
-| [`mode`](#mode) | `'read-only'` | `CacheMode` | `'read-write'`, `'read-only'` in CI |
-| [`store`](#store) | `createStore(url)` | `CacheStore` | the file store at `dir` |
-| [`dir`](#dir) | `'.cache/e2e'` | `string` | `'.e2e/cache'` |
-| [`strict`](#strict) | `true` | `boolean` | `false` |
+| Option | Type | Default |
+| --- | --- | --- |
+| [`mode`](#mode) | `CacheMode` | `'read-write'`, `'read-only'` in CI |
+| [`store`](#store) | `CacheStore` | the file store at `dir` |
+| [`dir`](#dir) | `string` | `'.e2e/cache'` |
+| [`strict`](#strict) | `boolean` | `false` |
 
 A bare string is shorthand for `{ mode }`: `cache: 'read-only'`. See
 [Caching](/cache). The declarations are under [`CacheConfig`](#cacheconfig).

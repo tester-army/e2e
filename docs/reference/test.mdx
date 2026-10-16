@@ -27,15 +27,15 @@ describe('checkout', { tags: ['billing'] }, () => {
 
 ## Members
 
-| Member | Example | Returns |
-| --- | --- | --- |
-| [`test`](#test) | `test('pays', async ({ app }) => {})` | `TestCase` |
-| [`test.skip`](#test-skip) | `test.skip(!enabled, 'flag off')` | `TestCase`, or `void` inside a body |
-| [`test.only`](#test-only) | `test.only('pays', async () => {})` | `TestCase` |
-| [`test.setup`](#test-setup) | `test.setup('login', { sessions: ['member'] }, fn)` | `TestCase` |
-| [`test.extend`](#test-extend) | `base.extend<{ workspace: Workspace }>({ ... })` | `TestAPI` |
-| [`describe`](#describe) | `describe('checkout', { serial: true }, () => {})` | `void` |
-| [Hooks](#hooks) | `beforeEach(async ({ app }) => {})` | `void` |
+| Member | Returns |
+| --- | --- |
+| [`test`](#test) | `TestCase` |
+| [`test.skip`](#test-skip) | `TestCase \| void` |
+| [`test.only`](#test-only) | `TestCase` |
+| [`test.setup`](#test-setup) | `TestCase` |
+| [`test.extend`](#test-extend) | `TestAPI` |
+| [`describe`](#describe) | `void` |
+| [Hooks](#hooks) | `void` |
 
 `describe` and the four hooks are also top-level exports, the same functions
 as `test.describe`, `test.beforeEach`, and the rest:
@@ -89,6 +89,7 @@ test.skip('not on this tenant'); // inside a body, always
 
 - A skipped test does not affect the exit code by default.
 - To skip at collection by option, use the [`skip`](#skip) option.
+- At registration it returns a `TestCase`; inside a body, `void`.
 
 Call `test.skip(condition, reason)` inside a test for a condition you learn
 at runtime, such as a disabled feature flag:
@@ -212,12 +213,12 @@ describe('checkout', { tags: ['smoke'], serial: true }, () => {
 
 ## Hooks
 
-| Hook | Example | Runs | Receives |
-| --- | --- | --- | --- |
-| [`beforeEach`](#beforeeach) | `beforeEach(async ({ app }) => {})` | Before each test attempt | Test fixtures |
-| [`afterEach`](#aftereach) | `afterEach(async ({ app }) => {})` | After each test attempt, after a failure or timeout too | Test fixtures |
-| [`beforeAll`](#beforeall) | `beforeAll(async ({ platform }) => {})` | Once per suite instance | `platform` |
-| [`afterAll`](#afterall) | `afterAll(async ({ platform }) => {})` | When the scope's last test in the realm finishes | `platform` |
+| Hook | Runs |
+| --- | --- |
+| [`beforeEach`](#beforeeach) | Before each test attempt |
+| [`afterEach`](#aftereach) | After each test attempt |
+| [`beforeAll`](#beforeall) | Once per suite instance |
+| [`afterAll`](#afterall) | After the scope's last test |
 
 Hook order follows scope nesting, not position in the file, so a hook
 declared after a test still applies to it.
@@ -234,6 +235,7 @@ test.beforeEach(async ({ app }) => {
 
 - Runs outermost group first, then in declaration order within a group.
 - `beforeEach` and the body share the test timeout.
+- Receives the test fixtures.
 
 ### `afterEach`
 
@@ -249,6 +251,7 @@ test.afterEach(async ({ app }) => {
   or timeout too.
 - Each `afterEach` hook gets its own `cleanupTimeout` budget with working
   fixtures, so teardown can still drive the app after the body timed out.
+- Receives the test fixtures.
 
 ### `beforeAll`
 
@@ -262,7 +265,7 @@ beforeAll(async ({ platform }) => {
 ```
 
 The module is re-imported for every retry, serial group, and setup test, so
-`beforeAll` runs again in each.
+`beforeAll` runs again in each. Its only fixture is `platform`.
 
 | Throws | When |
 | --- | --- |
@@ -280,7 +283,7 @@ afterAll(async () => {
 ```
 
 A realm that a failure discards runs `afterAll` for every scope whose
-`beforeAll` started.
+`beforeAll` started. Its only fixture is `platform`.
 
 | Throws | When |
 | --- | --- |
@@ -310,22 +313,22 @@ blocked event loop hangs it.
 
 ## Options
 
-| Option | Example | Type | Default |
-| --- | --- | --- | --- |
-| [`timeout`](#timeout) | `{ timeout: 60_000 }` | `number` | `config.timeout` |
-| [`retries`](#retries) | `{ retries: 2 }` | `number` | `config.retries` |
-| [`tags`](#tags) | `{ tags: ['billing'] }` | `readonly string[]` | - |
-| [`skip`](#skip) | `{ skip: 'flaky on CI' }` | `boolean \| string` | - |
-| [`only`](#only) | `{ only: true }` | `boolean` | - |
-| [`platforms`](#platforms) | `{ platforms: ['ios'] }` | `readonly string[]` | - |
-| [`requires`](#requires) | `{ requires: ['native-app'] }` | `readonly Capability[]` | - |
-| [`session`](#session) | `{ session: 'member' }` | `string` | - |
-| [`agentContext`](#agentcontext) | `{ agentContext: 'Prices are in EUR.' }` | `string` | - |
-| [`agent`](#agent) | `{ agent: ['fast', 'smart'] }` | `string \| readonly string[]` | the run's agents |
-| [`trace`](#trace) | `{ trace: 'on' }` | `RecordingMode` | the run's |
-| [`video`](#video) | `{ video: 'on' }` | `RecordingMode` | the run's |
-| [`serial`](#serial) | `{ serial: true }` | `boolean` | - |
-| [`sessions`](#sessions) | `{ sessions: ['member'] }` | `readonly string[]` | required |
+| Option | Type | Default |
+| --- | --- | --- |
+| [`timeout`](#timeout) | `number` | `config.timeout` |
+| [`retries`](#retries) | `number` | `config.retries` |
+| [`tags`](#tags) | `readonly string[]` | - |
+| [`skip`](#skip) | `boolean \| string` | - |
+| [`only`](#only) | `boolean` | - |
+| [`platforms`](#platforms) | `readonly string[]` | - |
+| [`requires`](#requires) | `readonly Capability[]` | - |
+| [`session`](#session) | `string` | - |
+| [`agentContext`](#agentcontext) | `string` | - |
+| [`agent`](#agent) | `string \| readonly string[]` | the run's agents |
+| [`trace`](#trace) | `RecordingMode` | the run's |
+| [`video`](#video) | `RecordingMode` | the run's |
+| [`serial`](#serial) | `boolean` | - |
+| [`sessions`](#sessions) | `readonly string[]` | required |
 
 `test` takes every option but `serial` and `sessions`. `describe` takes
 every option but `only` and `sessions`. `test.setup` requires `sessions` and
@@ -532,13 +535,13 @@ A static, non-empty array of unique names. See [`test.setup`](#test-setup).
 
 ## Fixtures
 
-| Fixture | Example | Type | Available in |
-| --- | --- | --- | --- |
-| [`agent`](/reference/agent) | `agent.act('open settings')` | `Agent` | Test bodies, `beforeEach`, `afterEach` |
-| [`app`](/reference/app) | `app.open('/settings')` | `App` | Test bodies, `beforeEach`, `afterEach` |
-| [`screen`](/reference/screen) | `screen.getByRole('button', 'Pay')` | `Screen` | Test bodies, `beforeEach`, `afterEach` |
-| `platform` | `platform === 'ios'` | `string` | Test bodies and every hook |
-| [`session`](#test-setup) | `session.save('member')` | `SetupSession` | `test.setup` bodies |
+| Fixture | Type |
+| --- | --- |
+| [`agent`](/reference/agent) | `Agent` |
+| [`app`](/reference/app) | `App` |
+| [`screen`](/reference/screen) | `Screen` |
+| `platform` | `string` |
+| [`session`](#test-setup) | `SetupSession` |
 
 - `agent` runs agent steps. Acquiring the built-in agent without a configured
   model is `MODEL_UNAVAILABLE`.
@@ -546,6 +549,9 @@ A static, non-empty array of unique names. See [`test.setup`](#test-setup).
 - `screen` holds semantic queries and the actions on their matches.
 - `platform` is the target's platform label: `web`, `ios`, `android`, or an
   engine's own string.
+- `agent`, `app`, and `screen` reach test bodies, `beforeEach`, and
+  `afterEach`. `platform` reaches every hook too, and `session` only
+  `test.setup` bodies.
 
 Everything else is a fixture the target's engine contributes, or one of
 [your own](#your-own-fixtures). `@e2e-dev/web` contributes

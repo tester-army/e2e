@@ -108,26 +108,26 @@ The body of one target. Every member but `name`, `version`, and
 `spiVersion` is optional; the members an engine implements decide its
 [capabilities](#capabilities).
 
-| Member | Type | Capability | Details |
-| --- | --- | --- | --- |
-| `name` | `string` | - | Engine name, for diagnostics. |
-| `version` | `string` | - | Recorded in reports and sessions. |
-| `spiVersion` | `1` | - | Contract version. |
-| `platform` | `string` | - | Platform label a target inherits. |
-| `workers` | `number` | - | Maximum workers for the target. |
-| `observe` | method | `observation` | [Observation](#observation) |
-| `perform`, `actions` | method, kinds | `actions` | [Actions](#actions) |
-| `locate` | method | `location` | [Capabilities](#capabilities) |
-| `performAt`, `pointerActions` | method, kinds | `pointer` | [Pointer actions](#pointer-actions) |
-| `tapModifiers` | `boolean` | - | [Capabilities](#capabilities) |
-| `keyboard` | `EngineKeyboard` | `keyboard` | [Keyboard](#keyboard) |
-| `fixtures` | factories | one per fixture | [Contributed fixtures](#contributed-fixtures) |
-| `state` | `EngineStateCapability` | `state` | [State](#state) |
-| `artifacts` | `EngineArtifacts` | `artifacts` | [Artifacts](#artifacts) |
-| `validateApp` | method | - | [App](#app) |
-| `secrets` | `Secret[]` | - | [`startAttempt`](#startattempt) |
-| `session` | `EngineSession` | - | [Session](#session) |
-| `prepare`, `finish`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose` | hooks | - | [Lifecycle](#lifecycle) |
+| Member | Type |
+| --- | --- |
+| `name` | `string` |
+| `version` | `string` |
+| `spiVersion` | `1` |
+| `platform` | `string` |
+| `workers` | `number` |
+| [`observe`](#observation) | method |
+| [`perform`, `actions`](#actions) | method, kinds |
+| [`locate`](#capabilities) | method |
+| [`performAt`, `pointerActions`](#pointer-actions) | method, kinds |
+| [`tapModifiers`](#capabilities) | `boolean` |
+| [`keyboard`](#keyboard) | `EngineKeyboard` |
+| [`fixtures`](#contributed-fixtures) | factories |
+| [`state`](#state) | `EngineStateCapability` |
+| [`artifacts`](#artifacts) | `EngineArtifacts` |
+| [`validateApp`](#app) | method |
+| [`secrets`](#startattempt) | `Secret[]` |
+| [`session`](#session) | `EngineSession` |
+| [`prepare`, `finish`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`](#lifecycle) | hooks |
 
 ```ts
 /** The body of one target: typed, model-free, capability-graded. */
@@ -496,15 +496,15 @@ The hooks the runner calls around workers and attempts. Every hook is
 optional. `launchTimeout` and `cleanupTimeout` come from the
 [config](/reference/config).
 
-| Hook | Runs | Budget | On failure |
-| --- | --- | --- | --- |
-| [`prepare(info)`](#prepare) | Once per target, in the runner, before any worker | None; only `info.signal`, the run's interrupt, cuts it short | The run ends before any test. |
-| [`finish(info)`](#finish) | Once per run and target, after the target's last worker is gone | `cleanupTimeout`, shared by every prepared target; never cut short by an interrupt | A cleanup run error. |
-| [`init(info)`](#init) | Once per worker, before its first step | `launchTimeout` | Infrastructure. |
-| [`startAttempt(context)`](#startattempt) | Before each attempt | `launchTimeout` | `context.signal` aborts and `endAttempt` runs. |
-| [`settleAttempt(context)`](#settleattempt) | After the body, and again after teardown | `cleanupTimeout` | The thrown error is the attempt's failure and keeps its code. |
-| [`endAttempt(context)`](#endattempt) | After each attempt, also after a failed `startAttempt` | `cleanupTimeout` | Cleanup is marked failed; the test keeps its status. |
-| [`dispose(context)`](#dispose) | Worker shutdown, whether or not `init` ran | `cleanupTimeout` | A run error. |
+| Hook | Runs |
+| --- | --- |
+| [`prepare(info)`](#prepare) | Once per target, before any worker |
+| [`finish(info)`](#finish) | After the target's last worker is gone |
+| [`init(info)`](#init) | Once per worker, before its first step |
+| [`startAttempt(context)`](#startattempt) | Before each attempt |
+| [`settleAttempt(context)`](#settleattempt) | After the body and after teardown |
+| [`endAttempt(context)`](#endattempt) | After each attempt |
+| [`dispose(context)`](#dispose) | Worker shutdown |
 
 ### `prepare`
 
@@ -523,6 +523,7 @@ async prepare(info) {
 
 - No launch timeout applies. A first-run download takes as long as the
   network makes it.
+- Only `info.signal`, which aborts on the run's interrupt, cuts it short.
 - `info.log` streams progress as a `notice` run event.
 - The result can lower the target's worker cap and hand each worker
   environment variables.
@@ -612,6 +613,10 @@ async finish(info) {
 },
 ```
 
+- It runs within `cleanupTimeout`, shared by every prepared target, and an
+  interrupt never cuts it short.
+- A failure is a cleanup run error.
+
 ```ts
 /** Handed to `finish`, once per run and target after the last worker is gone, with the cleanup budget of one hook. */
 export interface EngineFinishInfo extends EngineCleanupContext {
@@ -642,6 +647,7 @@ async init(info) {
   outlives an in-process worker, so `init` must work on a disposed engine as
   it does on a fresh one.
 - URLs arrive through `session.open` only; `init` never learns the app URL.
+- It runs within `launchTimeout`. A failure is an infrastructure error.
 
 ```ts
 /** Run identity and harness-resolved facts handed to `init`, once per worker before the first step. */
@@ -707,6 +713,7 @@ async startAttempt(context) {
 },
 ```
 
+- It runs within `launchTimeout`.
 - On failure or timeout, `context.signal` aborts and `endAttempt` runs.
 - `resolveSecret` resolves only a secret the engine declared in `secrets`.
   Another is `SECRET_UNAVAILABLE`.
@@ -816,6 +823,7 @@ async settleAttempt() {
 },
 ```
 
+- It runs within `cleanupTimeout`.
 - Wait for a callback still running, then throw its error. The attempt fails
   with it the way a step would; an error already classified keeps its code.
 - Report each failure once.
@@ -866,16 +874,16 @@ export interface EngineCleanupContext {
 
 `observe` returns one fresh semantic snapshot of the surface under test.
 
-| Field | Type | Holds |
-| --- | --- | --- |
-| `location` | `string` | Where the surface is: a URL, a screen, a window. |
-| `root` | `SemanticNode` | The tree, under one root with a stable id. |
-| `viewport` | `ViewportSize` | The viewport size in CSS pixels. |
-| [`truncated`](#truncated-trees) | `boolean` | The tree leaves out nodes on the surface. |
-| `keyboardVisible` | `boolean` | Whether an on-screen keyboard shows. |
-| [`treeUnavailable`](#pixel-fallback) | `true` | Semantic capture failed. |
-| `pixels` | `ObservationPixels` | Masked viewport pixels. |
-| `maskedRegionCount` | `number` | Regions masked in `pixels`. |
+| Field | Type |
+| --- | --- |
+| `location` | `string` |
+| `root` | `SemanticNode` |
+| `viewport` | `ViewportSize` |
+| [`truncated`](#truncated-trees) | `boolean` |
+| `keyboardVisible` | `boolean` |
+| [`treeUnavailable`](#pixel-fallback) | `true` |
+| `pixels` | `ObservationPixels` |
+| `maskedRegionCount` | `number` |
 
 Return the surface as it is right now. The runner mints the revision, stamps
 it onto every ref, redacts registered secret values, bounds the byte size,
@@ -1501,20 +1509,20 @@ export class InfrastructureError extends E2EError {
 Helpers that keep behavior consistent across engines. Every engine
 reproduces these semantics; import them instead of carrying a copy.
 
-| Export | Use |
+| Export | Returns |
 | --- | --- |
-| [`matchesText`, `toTextPattern`, `describePattern`](#text-patterns) | `TextPattern` matching for `locate` and text matchers |
-| [`resolveExpression`](#resolveexpression) | The reference `locate` over a semantic tree |
-| [`urlMatches`](#urlmatches) | `toHaveURL`-style comparison |
-| [`siteOf`, `sameSite`](#site-helpers) | The app's site, and whether a URL is on it |
-| [`pollCondition`, `Deadline`](#pollcondition) | Assertion polling and the negation grace window |
-| [`validateJsonValue`](#validatejsonvalue) | Checks a value is plain JSON |
-| [`rejectUnknownKeys`](#rejectunknownkeys) | Refuses an unknown key in an engine factory's options |
-| [`rejectUnknownOptions`](#rejectunknownoptions) | Refuses an unknown option of a fixture method or matcher |
-| [`obj`](#obj) | Drops `undefined`-valued keys |
-| [`raceAbort`, `withTimeout`, `withinCleanupBudget`](#timing-helpers) | Cancellation and budgets |
-| [`isSecret`](#issecret) | Tells a `secrets.get()` handle from a string |
-| [`isProviderRecording`, `stopProviderRecording`](#provider-recordings) | A hosted service's recordings |
+| [`matchesText`, `toTextPattern`, `describePattern`](#text-patterns) | `boolean`, `TextPattern`, `string` |
+| [`resolveExpression`](#resolveexpression) | `SemanticNode[]` |
+| [`urlMatches`](#urlmatches) | `boolean` |
+| [`siteOf`, `sameSite`](#site-helpers) | `string`, `boolean` |
+| [`pollCondition`, `Deadline`](#pollcondition) | `Promise<void>`, `Deadline` |
+| [`validateJsonValue`](#validatejsonvalue) | `void` |
+| [`rejectUnknownKeys`](#rejectunknownkeys) | `void` |
+| [`rejectUnknownOptions`](#rejectunknownoptions) | `void` |
+| [`obj`](#obj) | `WithoutUndefined<T>` |
+| [`raceAbort`, `withTimeout`, `withinCleanupBudget`](#timing-helpers) | `Promise<T>`, `Promise<T>`, `Promise<void>` |
+| [`isSecret`](#issecret) | `boolean` |
+| [`isProviderRecording`, `stopProviderRecording`](#provider-recordings) | `boolean`, `Promise<VideoSegment>` |
 
 ### Text patterns
 
@@ -1818,11 +1826,13 @@ Evidence capture: screenshots under the attempt directory, and videos there
 or at a provider. Paths are relative to the attempt artifact directory the
 engine received in `startAttempt`.
 
-| Member | Required | Does |
-| --- | --- | --- |
-| `screenshot(label, context)` | yes | Captures a redacted screenshot, secure fields masked at the source, and returns its path. |
-| [`startVideo(context)`](#videos) | with `stopVideo` | Starts recording the surface for the attempt. |
-| [`stopVideo(context)`](#videos) | with `startVideo` | Stops recording and returns every segment written, in order. |
+| Member | Returns |
+| --- | --- |
+| `screenshot(label, context)` | `Promise<string>` |
+| [`startVideo(context)`](#videos) | `Promise<void>` |
+| [`stopVideo(context)`](#videos) | `Promise<readonly VideoSegment[]>` |
+
+`screenshot` is required and returns the path of the file it wrote.
 
 ```ts
 artifacts: {
@@ -1890,6 +1900,7 @@ export interface VideoLink {
 The runner calls `startVideo` only for an attempt whose
 [video mode](/reference/config#video) records.
 
+- Declare `startVideo` and `stopVideo` together.
 - `startVideo` runs after `startAttempt` and any session restore, within the
   launch budget.
 - `stopVideo` runs before `endAttempt`, within the cleanup budget. Return the

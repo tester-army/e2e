@@ -28,16 +28,15 @@ and stops the run (exit 2). [Custom executors](/executors) can implement
 
 ## Methods
 
-| Method | Example | Returns | Default timeout |
-| --- | --- | --- | --- |
-| [`agent.act`](#agent-act) | `agent.act('Sign in')` | `Promise<ActResult>` | `config.timeout`, 120000 ms |
-| [`agent.assert`](#agent-assert) | `agent.assert('the cart is empty')` | `Promise<void>` | `judgmentTimeout`, 30000 ms |
-| [`agent.waitFor`](#agent-waitfor) | `agent.waitFor('the upload finished')` | `Promise<void>` | `judgmentTimeout`, 30000 ms |
-| [`agent.extract`](#agent-extract) | `agent.extract('the plan', { schema })` | `Promise<InferOutput<Schema>>` | `judgmentTimeout`, 30000 ms |
+| Method | Returns |
+| --- | --- |
+| [`agent.act`](#agent-act) | `Promise<ActResult>` |
+| [`agent.assert`](#agent-assert) | `Promise<void>` |
+| [`agent.waitFor`](#agent-waitfor) | `Promise<void>` |
+| [`agent.extract`](#agent-extract) | `Promise<InferOutput<Schema>>` |
 
-`judgmentTimeout` is `agents.<name>.judgmentTimeout`. The remaining test
-timeout caps every timeout. [Budgets](#budgets) lists the model-call and
-action limits of each method. Every method takes `agent`, the name of a
+[Budgets](#budgets) lists each method's default timeout, model calls, and
+action steps. The remaining test timeout caps every timeout. Every method takes `agent`, the name of a
 configured agent (`agents.<name>`) to run that one call with in place of the
 test's.
 

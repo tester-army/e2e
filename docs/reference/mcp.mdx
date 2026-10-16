@@ -81,12 +81,12 @@ bunx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 ```
 </CodeGroup>
 
-| Flag | Example | Default |
-| --- | --- | --- |
-| [`--config <path>`](#config) | `e2e mcp --config path/to/e2e.config.ts` | discovered like `e2e run` |
-| [`--target <name>`](#target) | `e2e mcp --target web` | the only target |
-| [`--headed`](#headed) | `e2e mcp --headed` | headless |
-| [`--max-sessions <n>`](#max-sessions) | `e2e mcp --max-sessions 8` | `4` |
+| Flag | Default |
+| --- | --- |
+| [`--config <path>`](#config) | discovered like `e2e run` |
+| [`--target <name>`](#target) | the only target |
+| [`--headed`](#headed) | headless |
+| [`--max-sessions <n>`](#max-sessions) | `4` |
 
 ### `--config`
 
@@ -138,12 +138,12 @@ A child process that inherits the server's stdio writes past this.
 
 ## Tools
 
-| Tool | Example | Does |
-| --- | --- | --- |
-| [`open_session`](#open_session) | `open_session {target: "web"}` | Opens a session and returns its id, catalog, and first observation. |
-| [`tools`](#tools-2) | `tools {tool: "locate"}` | Lists the catalog, or one tool's contract. |
-| [`call`](#call) | `call {tool: "tap", args: {target: "n42"}}` | Runs one catalog tool. |
-| [`close_session`](#close_session) | `close_session {session: "<id>"}` | Ends the session and its engine. |
+| Tool | Description |
+| --- | --- |
+| [`open_session`](#open_session) | Opens a session |
+| [`tools`](#tools-2) | Lists the catalog or one tool |
+| [`call`](#call) | Runs one catalog tool |
+| [`close_session`](#close_session) | Ends the session and its engine |
 
 `session` may be left out while exactly one session is open. See
 [Several sessions](#several-sessions).
@@ -220,16 +220,16 @@ close_session {session: "<id>"}
 
 What `call` can run depends on the session's target.
 
-| Catalog tool | Example | Does |
-| --- | --- | --- |
-| [`observe`](#observe) | `call {tool: "observe"}` | Returns a fresh observation. |
-| [Actions](#actions) | `call {tool: "tap", args: {target: "n42"}}` | Acts on a node from the newest observation. |
-| [`dismiss_keyboard`](#dismiss_keyboard) | `call {tool: "dismiss_keyboard"}` | Hides the on-screen keyboard. |
-| [`locate`](#locate) | `call {tool: "locate", args: {role: "button", name: "Save"}}` | Tries a semantic locator. |
-| [`screenshot`](#screenshot) | `call {tool: "screenshot"}` | Returns the masked viewport. |
-| [Point tools](#point-tools) | `call {tool: "tap_at", args: {x: 120, y: 340}}` | Act at a point in the latest screenshot. |
-| [`start_recording`, `stop_recording`](#recording) | `call {tool: "start_recording", args: {name: "checkout"}}` | Records a video of the app. |
-| [Project tools](#project-tools) | `call {tool: "<name>", args: {...}}` | Your `defineTool` tools. |
+| Catalog tool | Description |
+| --- | --- |
+| [`observe`](#observe) | Returns a fresh observation |
+| [Actions](#actions) | Act on an observed node |
+| [`dismiss_keyboard`](#dismiss_keyboard) | Hides the on-screen keyboard |
+| [`locate`](#locate) | Tries a semantic locator |
+| [`screenshot`](#screenshot) | Returns the masked viewport |
+| [Point tools](#point-tools) | Act at a screenshot point |
+| [`start_recording`, `stop_recording`](#recording) | Records a video of the app |
+| [Project tools](#project-tools) | Your `defineTool` tools |
 
 ### `observe`
 

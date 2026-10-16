@@ -76,21 +76,21 @@ target's `app`, documented under
 web({ viewport: { width: 390, height: 844 }, locale: 'de-DE' });
 ```
 
-| Option | Example | Type | Default |
-| --- | --- | --- | --- |
-| [`browser`](#browser) | `browser: 'firefox'` | `BrowserName \| BrowserProvider` | `'chromium'` |
-| [`viewport`](#viewport) | `viewport: { width: 390, height: 844 }` | `ViewportSize \| null` | 1280 by 720 |
-| [`screencast`](#screencast) | `screencast: { quality: 60 }` | `WebScreencastOptions` | the viewport's size |
-| [`connect`](#connect) | `connect: { cdpEndpoint }` | `WebConnectOptions` | launches locally |
-| [`headers`](#headers) | `headers: { 'x-preview-token': token }` | `Record<string, string>` | none |
-| [`basicAuth`](#basicauth) | `basicAuth: { username, password }` | `WebBasicAuth` | none |
-| [`testIdAttribute`](#testidattribute) | `testIdAttribute: 'data-test'` | `string` | `'data-testid'` |
-| [`userAgent`](#useragent) | `userAgent: 'Mozilla/5.0 e2e'` | `string` | the browser's own |
-| [`locale`](#locale) | `locale: 'de-DE'` | `string` | the browser's own |
-| [`timezoneId`](#timezoneid) | `timezoneId: 'Europe/Berlin'` | `string` | the machine's |
-| [`colorScheme`](#media-emulation) | `colorScheme: 'dark'` | `'light' \| 'dark' \| 'no-preference'` | the browser's own |
-| [`reducedMotion`](#media-emulation) | `reducedMotion: 'reduce'` | `'reduce' \| 'no-preference'` | the browser's own |
-| [`initScripts`](#init-scripts) | `initScripts: [{ path: 'tests/clock.js' }]` | `WebInitScript[]` | none |
+| Option | Type | Default |
+| --- | --- | --- |
+| [`browser`](#browser) | `BrowserName \| BrowserProvider` | `'chromium'` |
+| [`viewport`](#viewport) | `ViewportSize \| null` | 1280 by 720 |
+| [`screencast`](#screencast) | `WebScreencastOptions` | the viewport's size |
+| [`connect`](#connect) | `WebConnectOptions` | launches locally |
+| [`headers`](#headers) | `Record<string, string>` | - |
+| [`basicAuth`](#basicauth) | `WebBasicAuth` | - |
+| [`testIdAttribute`](#testidattribute) | `string` | `'data-testid'` |
+| [`userAgent`](#useragent) | `string` | the browser's own |
+| [`locale`](#locale) | `string` | the browser's own |
+| [`timezoneId`](#timezoneid) | `string` | the machine's |
+| [`colorScheme`](#media-emulation) | `'light' \| 'dark' \| 'no-preference'` | the browser's own |
+| [`reducedMotion`](#media-emulation) | `'reduce' \| 'no-preference'` | the browser's own |
+| [`initScripts`](#init-scripts) | `WebInitScript[]` | - |
 
 - A `web()` target needs `app.url` and refuses the device keys (`bundleId`,
   `appPath`, `launchArguments`, `permissions`).
@@ -479,31 +479,34 @@ JSON `arg`; its overloads are on [`Browser`](#browser-interface).
   `toHaveURL`, `toHaveTitle`, and `toHaveClass`. See
   [browser matchers](/reference/expect#browser-matchers).
 
-| Member | Example | Returns | Timeout |
-| --- | --- | --- | --- |
-| [`goto`](#goto) | `browser.goto('/dashboard')` | `Promise<void>` | `timeout` |
-| [`reload`](#reload-back-forward) | `browser.reload()` | `Promise<void>` | `timeout` |
-| [`back`](#reload-back-forward) | `browser.back()` | `Promise<void>` | `timeout` |
-| [`forward`](#reload-back-forward) | `browser.forward()` | `Promise<void>` | `timeout` |
-| [`url`](#url-title) | `browser.url()` | `Promise<string>` | `actionTimeout` |
-| [`title`](#url-title) | `browser.title()` | `Promise<string>` | `actionTimeout` |
-| [`waitForURL`](#waitforurl) | `browser.waitForURL(/\/orders/)` | `Promise<void>` | `assertionTimeout` |
-| [`locator`](#locator) | `browser.locator('#total')` | `Locator` | - |
-| [`frameLocator`](#framelocator) | `browser.frameLocator('#payment')` | `FrameScreen` | - |
-| [`evaluate`](#evaluate) | `browser.evaluate(() => location.hash)` | `Promise<T>` | `actionTimeout` |
-| [`addInitScript`](#init-scripts) | `browser.addInitScript({ path })` | `Promise<void>` | `actionTimeout` |
-| [`route`](#route) | `browser.route('**/api/*', handler)` | `Promise<void>` | `actionTimeout` |
-| [`unroute`](#unroute) | `browser.unroute('**/api/*')` | `Promise<void>` | `actionTimeout` |
-| [`waitForResponse`](#waitforresponse) | `browser.waitForResponse('**/api/orders')` | `Promise<WebResponse>` | `actionTimeout` |
-| [`cookies`](#cookies) | `browser.cookies()` | `Promise<Cookie[]>` | `actionTimeout` |
-| [`setCookies`](#setcookies) | `browser.setCookies([cookie])` | `Promise<void>` | `actionTimeout` |
-| [`setViewport`](#setviewport) | `browser.setViewport({ width: 390, height: 844 })` | `Promise<void>` | `actionTimeout` |
-| [`emulateMedia`](#media-emulation) | `browser.emulateMedia({ colorScheme: 'dark' })` | `Promise<void>` | `actionTimeout` |
-| [`onDialog`](#ondialog) | `browser.onDialog('accept')` | `Promise<() => Promise<void>>` | `actionTimeout` |
-| [`waitForDownload`](#waitfordownload) | `browser.waitForDownload(trigger)` | `Promise<{ path, absolutePath, suggestedFilename }>` | `actionTimeout` |
-| [`keyboard`](#keyboard) | `browser.keyboard.press('Escape')` | `Promise<void>` | `actionTimeout` |
-| [`mouse`](#mouse) | `browser.mouse.move(100, 200)` | `Promise<void>` | `actionTimeout` |
+| Member | Returns |
+| --- | --- |
+| [`goto`](#goto) | `Promise<void>` |
+| [`reload`](#reload-back-forward) | `Promise<void>` |
+| [`back`](#reload-back-forward) | `Promise<void>` |
+| [`forward`](#reload-back-forward) | `Promise<void>` |
+| [`url`](#url-title) | `Promise<string>` |
+| [`title`](#url-title) | `Promise<string>` |
+| [`waitForURL`](#waitforurl) | `Promise<void>` |
+| [`locator`](#locator) | `Locator` |
+| [`frameLocator`](#framelocator) | `FrameScreen` |
+| [`evaluate`](#evaluate) | `Promise<T>` |
+| [`addInitScript`](#init-scripts) | `Promise<void>` |
+| [`route`](#route) | `Promise<void>` |
+| [`unroute`](#unroute) | `Promise<void>` |
+| [`waitForResponse`](#waitforresponse) | `Promise<WebResponse>` |
+| [`cookies`](#cookies) | `Promise<Cookie[]>` |
+| [`setCookies`](#setcookies) | `Promise<void>` |
+| [`setViewport`](#setviewport) | `Promise<void>` |
+| [`emulateMedia`](#media-emulation) | `Promise<void>` |
+| [`onDialog`](#ondialog) | `Promise<() => Promise<void>>` |
+| [`waitForDownload`](#waitfordownload) | `Promise<{ path, absolutePath, … }>` |
+| [`keyboard`](#keyboard) | `Promise<void>` |
+| [`mouse`](#mouse) | `Promise<void>` |
 
+`goto`, `reload`, `back`, and `forward` are bounded by `timeout`,
+`waitForURL` by `assertionTimeout`, and every other member by
+`actionTimeout`; `locator` and `frameLocator` touch no page and take none.
 Timeouts come from the [config](/reference/config): `timeout` defaults to
 120000 ms, the same budget `app.open()` uses; `actionTimeout` to 30000 ms;
 `assertionTimeout` to 5000 ms. A `{ timeout }` option overrides it on `goto`,

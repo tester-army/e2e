@@ -25,17 +25,17 @@ test('checkout summary', async ({ screen }) => {
 });
 ```
 
-## Entry points
+## Reference
 
-| Call | Example | Returns |
-| --- | --- | --- |
-| [`expect(locator)`](#locator-matchers) | `await expect(screen.getByRole('status')).toHaveText('Saved')` | `AsyncExpectation` |
-| [`expect(screen)`](#screenshot-matchers) | `await expect(screen).toHaveScreenshot('home.png')` | `ScreenExpectation` |
-| [`expect(fixture)`](#browser-matchers) | `await expect(browser).toHaveURL('/dashboard')` | The engine's matcher set |
-| [`expect(value, message?)`](#value-matchers) | `expect(items).toHaveLength(3)` | `ValueExpectation<T>` |
-| [`expect.poll(read, options?)`](#polling-a-value) | `await expect.poll(() => readStatus()).toBe('done')` | `PollExpectation<T>` |
-| [`expect.soft(actual)`](#soft-assertions) | `expect.soft(subtotal).toBe('$40.00')` | The same matchers, failures kept |
-| [`expect.any(Class)` and others](#asymmetric-matchers) | `expect.any(Number)` | `AsymmetricMatcher` |
+| Call | Returns |
+| --- | --- |
+| [`expect(locator)`](#locator-matchers) | `AsyncExpectation` |
+| [`expect(screen)`](#screenshot-matchers) | `ScreenExpectation` |
+| [`expect(fixture)`](#browser-matchers) | The engine's matcher set |
+| [`expect(value, message?)`](#value-matchers) | `ValueExpectation<T>` |
+| [`expect.poll(read, options?)`](#polling-a-value) | `PollExpectation<T>` |
+| [`expect.soft(actual)`](#soft-assertions) | The same matchers, failures kept |
+| [`expect.any(Class)` and others](#asymmetric-matchers) | `AsymmetricMatcher` |
 
 `expect` tells the argument apart by what it is:
 
@@ -134,24 +134,24 @@ outcome of the fill, not the field.
 `expect(locator)` returns an `AsyncExpectation`. Each matcher polls until it
 holds or its timeout passes, under the rules in [Behavior](#behavior).
 
-| Matcher | Example | Options |
-| --- | --- | --- |
-| [`toBeVisible`](#tobevisible-and-tobehidden) | `toBeVisible()` | `visible`, `timeout` |
-| [`toBeHidden`](#tobevisible-and-tobehidden) | `toBeHidden()` | `timeout` |
-| [`toBeAttached`](#tobeattached) | `toBeAttached()` | `attached`, `timeout` |
-| [`toBeEnabled`](#tobeenabled-and-tobedisabled) | `toBeEnabled()` | `enabled`, `timeout` |
-| [`toBeDisabled`](#tobeenabled-and-tobedisabled) | `toBeDisabled()` | `timeout` |
-| [`toBeChecked`](#tobechecked-tobeselected-and-tobeexpanded) | `toBeChecked({ checked: false })` | `checked`, `timeout` |
-| [`toBeSelected`](#tobechecked-tobeselected-and-tobeexpanded) | `toBeSelected()` | `timeout` |
-| [`toBeExpanded`](#tobechecked-tobeselected-and-tobeexpanded) | `toBeExpanded()` | `timeout` |
-| [`toBeFocused`](#tobefocused) | `toBeFocused()` | `timeout` |
-| [`toHaveText`](#tohavetext-and-tocontaintext) | `toHaveText('Saved')` | `ignoreCase`, `timeout` |
-| [`toContainText`](#tohavetext-and-tocontaintext) | `toContainText('error')` | `ignoreCase`, `timeout` |
-| [`toHaveValue`](#tohavevalue) | `toHaveValue('ada@example.test')` | `timeout` |
-| [`toHaveAttribute`](#tohaveattribute) | `toHaveAttribute('href', '/help')` | `ignoreCase` with a value, `timeout` |
-| [`toHaveCount`](#tohavecount) | `toHaveCount(3)` | `timeout` |
-| [`toHaveAccessibleName`](#tohaveaccessiblename) | `toHaveAccessibleName('Close')` | `ignoreCase`, `timeout` |
-| [`toHaveScreenshot`](#screenshot-matchers) | `toHaveScreenshot()` | [`ScreenshotOptions`](#screenshot-options) |
+| Matcher | Description |
+| --- | --- |
+| [`toBeVisible`](#tobevisible-and-tobehidden) | Waits for visibility |
+| [`toBeHidden`](#tobevisible-and-tobehidden) | Waits for hidden or absent state |
+| [`toBeAttached`](#tobeattached) | Waits for one match to exist |
+| [`toBeEnabled`](#tobeenabled-and-tobedisabled) | Waits for enabled state |
+| [`toBeDisabled`](#tobeenabled-and-tobedisabled) | Waits for disabled state |
+| [`toBeChecked`](#tobechecked-tobeselected-and-tobeexpanded) | Waits for checked state |
+| [`toBeSelected`](#tobechecked-tobeselected-and-tobeexpanded) | Waits for selected state |
+| [`toBeExpanded`](#tobechecked-tobeselected-and-tobeexpanded) | Waits for expanded state |
+| [`toBeFocused`](#tobefocused) | Waits for focused state |
+| [`toHaveText`](#tohavetext-and-tocontaintext) | Waits for exact normalized text |
+| [`toContainText`](#tohavetext-and-tocontaintext) | Waits for contained normalized text |
+| [`toHaveValue`](#tohavevalue) | Waits for a form control's value |
+| [`toHaveAttribute`](#tohaveattribute) | Waits for an attribute |
+| [`toHaveCount`](#tohavecount) | Waits for an exact match count |
+| [`toHaveAccessibleName`](#tohaveaccessiblename) | Waits for an accessible name |
+| [`toHaveScreenshot`](#screenshot-matchers) | Compares with a stored screenshot |
 
 ### `toBeVisible` and `toBeHidden`
 
@@ -167,6 +167,8 @@ await expect(screen.getByRole('dialog')).toBeVisible({ visible: false }); // as 
 - `visible: false` waits for a hidden or absent state, as `toBeHidden` does.
 - `toBeHidden`, `toBeVisible({ visible: false })`, and negated visibility
   accept zero matches.
+- Options: `visible` and `timeout` on `toBeVisible`, `timeout` on
+  `toBeHidden`.
 
 ### `toBeAttached`
 
@@ -181,6 +183,7 @@ await expect(screen.getByText('Loading')).toBeAttached({ attached: false });
   needs a shown one.
 - Negated, or with `attached: false`, it waits for no match and passes once
   nothing matches.
+- Options: `attached` and `timeout`.
 
 ### `toBeEnabled` and `toBeDisabled`
 
@@ -200,6 +203,8 @@ await expect(screen.getByRole('button', 'Pay')).toBeEnabled({ enabled: false });
     that fieldset's first `<legend>`.
   - `aria-disabled="true"` on an ancestor disables the widgets below it until
     an `aria-disabled="false"` cuts the chain.
+- Options: `enabled` and `timeout` on `toBeEnabled`, `timeout` on
+  `toBeDisabled`.
 
 ### `toBeChecked`, `toBeSelected`, and `toBeExpanded`
 
@@ -213,6 +218,8 @@ await expect(screen.getByRole('tab', 'Billing')).toBeSelected();
 - A missing `checked`, `selected`, or `expanded` state counts as `false`, so
   `.not.toBeChecked()` passes on a button or a heading.
 - `toBeChecked({ checked: false })` waits for an unchecked node.
+- Options: `checked` and `timeout` on `toBeChecked`, `timeout` on
+  `toBeSelected` and `toBeExpanded`.
 
 ### `toBeFocused`
 
@@ -221,6 +228,8 @@ Waits for focused state.
 ```ts
 await expect(screen.getByLabel('Email')).toBeFocused();
 ```
+
+Options: `timeout`.
 
 ### `toHaveText` and `toContainText`
 
@@ -234,6 +243,8 @@ await expect(screen.getByTestId('todo')).toHaveText(['Write spec', /^Ship/, 'Rel
 await expect(screen.getByTestId('todo')).toContainText(['spec', 'runner', 'Release']);
 await expect(screen.getByTestId('todo')).toContainText(['spec', 'Release']);
 ```
+
+Options: `ignoreCase` and `timeout`.
 
 The list forms have no exactly-one rule, and their failure message lists
 every text observed.
@@ -269,6 +280,7 @@ await expect(screen.getByLabel('Search')).toHaveValue('');
   `no value (not a form control)`.
 - On a secure field it throws `POLICY_DENIED`; see
   [Secure fields](#secure-fields).
+- Options: `timeout`.
 
 ### `toHaveAttribute`
 
@@ -283,6 +295,7 @@ await expect(screen.getByRole('link', 'Help')).toHaveAttribute('href', '/help');
   `ignoreCase`.
 - On a secure field it throws `POLICY_DENIED` for every attribute name,
   negated too; see [Secure fields](#secure-fields).
+- Options: `timeout`, and `ignoreCase` only with a value.
 
 ### `toHaveCount`
 
@@ -294,6 +307,8 @@ await expect(screen.getByTestId('todo')).toHaveCount(3);
 
 It is exempt from the exactly-one rule.
 
+Options: `timeout`.
+
 ### `toHaveAccessibleName`
 
 Waits for an accessible name.
@@ -304,16 +319,18 @@ await expect(screen.getByRole('button', { name: /close/i })).toHaveAccessibleNam
 
 It takes `ignoreCase`, and it still answers on a secure field.
 
+Options: `ignoreCase` and `timeout`.
+
 ## Screenshot matchers
 
 `expect(screen)` and `expect(locator)` compare against a PNG stored beside
 the test file, on every engine that captures pixels. The
 [Visual comparison](/visual-testing) guide shows the workflow.
 
-| Matcher | Example | Options |
-| --- | --- | --- |
-| [`expect(screen).toHaveScreenshot`](#tohavescreenshot) | `toHaveScreenshot('home.png')` | [`ScreenshotOptions`](#screenshot-options) |
-| [`expect(locator).toHaveScreenshot`](#tohavescreenshot) | `toHaveScreenshot()` | [`ScreenshotOptions`](#screenshot-options) |
+| Matcher | Description |
+| --- | --- |
+| [`expect(screen).toHaveScreenshot`](#tohavescreenshot) | Compares the whole screen |
+| [`expect(locator).toHaveScreenshot`](#tohavescreenshot) | Compares a locator's one match |
 
 ### `toHaveScreenshot`
 
@@ -325,6 +342,8 @@ await expect(screen).toHaveScreenshot('home.png');
 await expect(screen.getByRole('navigation')).toHaveScreenshot();
 await expect(screen).toHaveScreenshot('feed.png', { mask: [screen.getByTestId('timestamp')], maxDiffPixels: 50 });
 ```
+
+Both forms take the [Screenshot options](#screenshot-options).
 
 | Property | Value |
 | --- | --- |
@@ -369,11 +388,11 @@ Contributed by `@e2e-dev/web`; the `BrowserExpectation` type is exported
 from that package. Every matcher call is a recorded `expect.<matcher>`
 assertion step.
 
-| Matcher | Example | Options |
-| --- | --- | --- |
-| [`toHaveURL`](#tohaveurl) | `toHaveURL('/dashboard')` | `ignoreCase`, `timeout` |
-| [`toHaveTitle`](#tohavetitle) | `toHaveTitle(/Dashboard/)` | `timeout` |
-| [`toHaveClass`](#tohaveclass) | `toHaveClass(browser.locator('.card'), 'card active')` | `timeout` |
+| Matcher | Description |
+| --- | --- |
+| [`toHaveURL`](#tohaveurl) | Waits for the current URL |
+| [`toHaveTitle`](#tohavetitle) | Waits for the current title |
+| [`toHaveClass`](#tohaveclass) | Waits for a target's `class` |
 
 Any other option key, such as `ignoreCase` on `toHaveTitle`, which Playwright
 does not take either, is `INVALID_ARGUMENT`.
@@ -394,6 +413,7 @@ await expect(browser).toHaveURL(/\/orders\/\d+$/);
 - It takes Playwright's `ignoreCase`, with the locator matchers' semantics: a
   string compares case-insensitively, and `true` adds the `i` flag to a
   `RegExp` while `false` removes it.
+- Options: `ignoreCase` and `timeout`.
 
 ### `toHaveTitle`
 
@@ -402,6 +422,8 @@ Waits for the current title to match.
 ```ts
 await expect(browser).toHaveTitle(/Dashboard/);
 ```
+
+Options: `timeout`.
 
 ### `toHaveClass`
 
@@ -418,26 +440,27 @@ await expect(browser).toHaveClass(browser.locator('.card'), 'card active');
 - It reads the `class` attribute, so `''` matches `class=""` and not an
   element with no `class` attribute at all. Playwright's `toHaveClass('')`
   accepts both.
+- Options: `timeout`.
 
 ## Value matchers
 
 `expect(value)` runs synchronously without retrying. For a value that may
 still change, use [Polling a value](#polling-a-value).
 
-| Matcher | Example | Passes when |
-| --- | --- | --- |
-| [`toBe`](#tobe) | `expect(status).toBe('paid')` | `Object.is` holds |
-| [`toEqual`](#toequal) | `expect(payload).toEqual({ ok: true })` | Structurally equal |
-| [`toMatchObject`](#tomatchobject) | `expect(order).toMatchObject({ customer: { name: 'Ada' } })` | `expected` is a recursive subset |
-| [`toBeTruthy`, `toBeFalsy`](#tobetruthy-and-tobefalsy) | `expect(created).toBeTruthy()` | Truthy, falsy |
-| [`toBeNull`, `toBeUndefined`, `toBeDefined`](#tobenull-tobeundefined-and-tobedefined) | `expect(row).toBeDefined()` | `null`, `undefined`, anything but `undefined` |
-| [`toHaveLength`](#tohavelength) | `expect(items).toHaveLength(3)` | `length` equals `expected` |
-| [`toHaveProperty`](#tohaveproperty) | `expect(order).toHaveProperty('customer.email')` | The path exists, and equals the value when given |
-| [`toContain`](#tocontain) | `expect(total).toContain('$')` | String or collection containment |
-| [`toMatch`](#tomatch) | `expect(id).toMatch(/^usr_/)` | String or `RegExp` match |
-| [`toBeGreaterThan` and others](#numeric-comparisons) | `expect(count).toBeGreaterThan(1)` | Numeric bound holds |
-| [`toBeCloseTo`](#tobecloseto) | `expect(totals.lineTotal).toBeCloseTo(60)` | Within `10 ** -digits / 2` |
-| [`toMatchSchema`](#matching-a-schema) | `expect(body).toMatchSchema(Users)` | The schema accepts the value |
+| Matcher | Description |
+| --- | --- |
+| [`toBe`](#tobe) | Compares with `Object.is` |
+| [`toEqual`](#toequal) | Recursive structural equality |
+| [`toMatchObject`](#tomatchobject) | Recursive subset match |
+| [`toBeTruthy`, `toBeFalsy`](#tobetruthy-and-tobefalsy) | Truthy or falsy value |
+| [`toBeNull`, `toBeUndefined`, `toBeDefined`](#tobenull-tobeundefined-and-tobedefined) | `null`, `undefined`, or defined |
+| [`toHaveLength`](#tohavelength) | `length` equals `expected` |
+| [`toHaveProperty`](#tohaveproperty) | Property at a path |
+| [`toContain`](#tocontain) | String or collection containment |
+| [`toMatch`](#tomatch) | String or `RegExp` match |
+| [`toBeGreaterThan` and others](#numeric-comparisons) | Numeric bound holds |
+| [`toBeCloseTo`](#tobecloseto) | Within `10 ** -digits / 2` |
+| [`toMatchSchema`](#matching-a-schema) | Standard Schema validation |
 
 ```ts
 const total = await screen.getByTestId('total').textContent();

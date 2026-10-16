@@ -22,14 +22,14 @@ test('billing page', async ({ app, screen }) => {
 
 ## Members
 
-| Member | Example | Returns | Timeout |
-| --- | --- | --- | --- |
-| [`baseUrl`](#baseurl) | `app.baseUrl` | `string \| undefined` | - |
-| [`open`](#open) | `app.open('/settings')` | `Promise<void>` | `timeout` |
-| [`restart`](#restart) | `app.restart()` | `Promise<void>` | `timeout` |
-| [`clearState`](#clearstate) | `app.clearState()` | `Promise<void>` | `timeout` |
-| [`back`](#back) | `app.back()` | `Promise<void>` | `actionTimeout` |
-| [`screenshot`](#screenshot) | `app.screenshot('checkout')` | `Promise<string>` | `actionTimeout` |
+| Member | Returns |
+| --- | --- |
+| [`baseUrl`](#baseurl) | `string \| undefined` |
+| [`open`](#open) | `Promise<void>` |
+| [`restart`](#restart) | `Promise<void>` |
+| [`clearState`](#clearstate) | `Promise<void>` |
+| [`back`](#back) | `Promise<void>` |
+| [`screenshot`](#screenshot) | `Promise<string>` |
 
 Timeouts come from the [config](/reference/config): `timeout` defaults to
 120000 ms and `actionTimeout` to 30000 ms. The remaining test timeout caps
@@ -59,7 +59,7 @@ await app.open('https://example.com/login'); // any http(s) URL
 ```
 
 On a device target, which has no URL, `open()` launches the pinned app fresh
-and takes no path.
+and takes no path. It is bounded by `timeout`.
 
 | Throws | When |
 | --- | --- |
@@ -78,6 +78,8 @@ the app at its base URL when the target declares one.
 await app.restart();
 ```
 
+It is bounded by `timeout`.
+
 | Throws | When |
 | --- | --- |
 | `ACTION_FAILED`, `ENGINE_FAILURE` | The operation or the engine failed. |
@@ -93,6 +95,8 @@ test.beforeEach(async ({ app }) => {
   await app.clearState();
 });
 ```
+
+It is bounded by `timeout`.
 
 | Throws | When |
 | --- | --- |
@@ -112,6 +116,8 @@ Navigates back once.
 await app.back();
 ```
 
+It is bounded by `actionTimeout`.
+
 | Throws | When |
 | --- | --- |
 | `APP_NOT_OPEN` | `app.open()` has not run, or the engine reported invalid state. |
@@ -130,6 +136,7 @@ const shot = await app.screenshot('after-checkout');
   relative to the attempt's artifact directory. The report records the path
   relative to the artifact root.
 - `label` names the step and joins the file name.
+- It is bounded by `actionTimeout`.
 
 | Throws | When |
 | --- | --- |

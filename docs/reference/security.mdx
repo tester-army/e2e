@@ -11,25 +11,24 @@ lists the rules behind it, as the code enforces them.
 
 ## Rules
 
-| Rule | What it covers | Section |
-| --- | --- | --- |
-| App content can't grant tools, credentials, or a larger budget | What the model reads in each step | [Model input](#model-input) |
-| A call outside the step's closed schemas never runs | Built-in and project tools, node ids, model text | [Tool calls](#tool-calls) |
-| Listed calls fail with `POLICY_DENIED` | URL schemes, secret sinks, secure-field reads, uploads, pixels | [Policy denials](#policy-denials) |
-| Local and inline schemes such as `file:` and `javascript:` are refused | `app.open`, `browser.goto`, `navigate`, `device.openLink`, `device.openApp` | [Navigation](#navigation) |
-| Headers and observed frames follow an approximate hostname site check; `basicAuth` ignores it and answers any origin | Configured `headers`, child frames, `basicAuth` | [Site check](#site-check) |
-| The model never sees or picks a secret value | `type_secret`, `fill(secret)` | [Secret fills](#secret-fills) |
-| After a secret fill, pixels are withheld for the rest of the attempt | Screenshots, pixel tools, sessions whose setup filled a secret | [Screenshots after a secret fill](#screenshots-after-a-secret-fill) |
-| An engine option's secret is redacted as text | `basicAuth` and other declared options | [Secrets in engine options](#secrets-in-engine-options) |
-| Registered values read `<secret:name>` | Model input, reports, text downloads, printed output | [Redaction](#redaction) |
-| Redaction does not cover what string matching misses | Transformed, encoded, or split values, video, `command.log` | [Where redaction stops](#where-redaction-stops) |
-| Text downloads are rewritten when the session knows a secret | `.txt`, `.csv`, `.json`, `.html`, `.htm` | [Downloads](#downloads) |
-| Sessions are encrypted, bound to the run and target, and deleted at cleanup | Saved authentication state | [Sessions](#sessions) |
-| Cache entries are unsigned; each is validated before use and holds no configured secret value | Replay cache files and `cache.store` | [Cache trust](#cache-trust) |
-| Each output path has a stated redaction level | Files under the output directory | [Artifacts](#artifacts) |
-| No crash reporting, and no update check outside `e2e feedback` | Every destination the runner and its packages connect to | [Outbound connections](#outbound-connections) |
-| `e2e mcp` authorizes actions as a test run does | MCP sessions and their limits | [MCP and explore](#mcp-and-explore) |
-| `e2e explore` offers every configured credential to every step | The explorer's sign-ins | [MCP and explore](#mcp-and-explore) |
+| Section | Covers |
+| --- | --- |
+| [Model input](#model-input) | What the model reads in each step |
+| [Tool calls](#tool-calls) | Built-in and project tools, node ids |
+| [Policy denials](#policy-denials) | Calls that fail with `POLICY_DENIED` |
+| [Navigation](#navigation) | URL schemes per entry point |
+| [Site check](#site-check) | Headers, child frames, `basicAuth` |
+| [Secret fills](#secret-fills) | `type_secret`, `fill(secret)` |
+| [Screenshots after a secret fill](#screenshots-after-a-secret-fill) | Screenshots, pixel tools, restored sessions |
+| [Secrets in engine options](#secrets-in-engine-options) | `basicAuth` and other engine options |
+| [Redaction](#redaction) | Model input, reports, downloads, output |
+| [Where redaction stops](#where-redaction-stops) | Transformed values, video, `command.log` |
+| [Downloads](#downloads) | Files the app served |
+| [Sessions](#sessions) | Saved authentication state |
+| [Cache trust](#cache-trust) | Replay cache files and `cache.store` |
+| [Artifacts](#artifacts) | Files under the output directory |
+| [Outbound connections](#outbound-connections) | Destinations the runner connects to |
+| [MCP and explore](#mcp-and-explore) | MCP sessions, the explorer's sign-ins |
 
 ## Model input
 

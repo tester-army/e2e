@@ -23,13 +23,13 @@ export default {
 
 ## Built-in reporters
 
-| Reporter | Example | Writes | Options |
-| --- | --- | --- | --- |
-| [`list`](#list) | `reporters: ['list']` | Terminal progress and the run summary | - |
-| [`json`](#json) | `reporters: ['json']` | The report document to stdout | - |
-| [`junit`](#junit) | `reporters: ['list', 'junit']` | `<output>/junit.xml` | - |
-| [`markdown`](#markdown) | `reporters: ['list', 'markdown']` | `<output>/summary.md` | - |
-| [`github()`](#github) | `reporters: ['list', github()]` | A pull request comment and the job summary | `key` |
+| Reporter | Description |
+| --- | --- |
+| [`list`](#list) | Terminal progress and run summary |
+| [`json`](#json) | Report document to stdout |
+| [`junit`](#junit) | Writes `<output>/junit.xml` |
+| [`markdown`](#markdown) | Writes `<output>/summary.md` |
+| [`github()`](#github) | Pull request comment and job summary |
 
 `reporters` defaults to `['list']`. The [CLI reference](/reference/cli#output)
 describes what each built-in writes in detail.
@@ -160,11 +160,11 @@ export default {
 } satisfies E2EConfig;
 ```
 
-| Member | Example | Type |
-| --- | --- | --- |
-| [`name`](#name) | `name: 'upload'` | `string` |
-| [`onEvent`](#onevent) | `onEvent(event) {}` | `(event: RunEvent) => void` |
-| [`onRunFinished`](#onrunfinished) | `async onRunFinished(run, signal) {}` | `(run: FinishedRun, signal: AbortSignal) => Promise<ReporterSummary \| void>` |
+| Member | Type |
+| --- | --- |
+| [`name`](#name) | `string` |
+| [`onEvent`](#onevent) | `(event: RunEvent) => void` |
+| [`onRunFinished`](#onrunfinished) | `(run, signal) => Promise<…>` |
 
 ```ts
 interface Reporter {

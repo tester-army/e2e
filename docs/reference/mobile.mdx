@@ -77,15 +77,15 @@ export default {
 target's `app`, not an engine option; see
 [The app under test](#the-app-under-test).
 
-| Option | Example | Type | Default |
-| --- | --- | --- | --- |
-| [`platform`](#platform) | `'ios'` | `'ios' \| 'android'` | required |
-| [`device`](#device-option) | `['iPhone 17', 'iPhone 17 Pro']` | `string \| readonly string[] \| DeviceProvider` | every booted device |
-| [`session`](#session) | `'checkout'` | `string` | `e2e-<target name>` |
-| [`snapshot`](#snapshot) | `'interactive'` | `'full' \| 'interactive'` | `'full'` |
-| [`settle`](#settle) | `300` | `number \| false` | `150` |
-| [`transition`](#transition) | `800` | `number` | `500` |
-| [`videoTouches`](#videotouches) | `false` | `boolean` | `true` |
+| Option | Type | Default |
+| --- | --- | --- |
+| [`platform`](#platform) | `'ios' \| 'android'` | required |
+| [`device`](#device-option) | `string \| string[] \| DeviceProvider` | every booted device |
+| [`session`](#session) | `string` | `e2e-<target name>` |
+| [`snapshot`](#snapshot) | `'full' \| 'interactive'` | `'full'` |
+| [`settle`](#settle) | `number \| false` | `150` |
+| [`transition`](#transition) | `number` | `500` |
+| [`videoTouches`](#videotouches) | `boolean` | `true` |
 
 Every optional value also accepts `undefined`, so values read straight from
 `process.env` need no conditional spread. The full declaration is under
@@ -362,31 +362,31 @@ test('offline banner', { platforms: ['android'] }, async ({ app, device, screen 
 });
 ```
 
-| Member | Example | Returns |
-| --- | --- | --- |
-| [`locator`](#locator) | `device.locator('id=SW_VERSION_SPECIFIER')` | `Locator` |
-| [`setNetwork`](#setnetwork) | `device.setNetwork('offline')` | `Promise<void>` |
-| [`setAirplaneMode`](#setairplanemode) | `device.setAirplaneMode(true)` | `Promise<void>` |
-| [`setPermission`](#setpermission) | `device.setPermission('camera', 'grant')` | `Promise<void>` |
-| [`setLocation`](#setlocation) | `device.setLocation({ latitude: 52.23, longitude: 21.01 })` | `Promise<void>` |
-| [`clearLocation`](#clearlocation) | `device.clearLocation()` | `Promise<void>` |
-| [`setAppearance`](#setappearance) | `device.setAppearance('dark')` | `Promise<void>` |
-| [`setOrientation`](#setorientation) | `device.setOrientation('landscape-left')` | `Promise<void>` |
-| [`fold`](#fold) | `device.fold('half-open')` | `Promise<void>` |
-| [`setBiometrics`](#setbiometrics) | `device.setBiometrics('faceid', 'match')` | `Promise<void>` |
-| [`enrollBiometrics`](#enrollbiometrics) | `device.enrollBiometrics('faceid', true)` | `Promise<void>` |
-| [`installApp`](#installapp) | `device.installApp('./build/MyApp.app')` | `Promise<InstalledApp>` |
-| [`openApp`](#openapp) | `device.openApp('Settings')` | `Promise<void>` |
-| [`openLink`](#openlink) | `device.openLink('myapp://orders/42')` | `Promise<void>` |
-| [`closeApp`](#closeapp) | `device.closeApp()` | `Promise<void>` |
-| [`clearKeychain`](#clearkeychain) | `device.clearKeychain()` | `Promise<void>` |
-| [`foregroundApp`](#foregroundapp) | `device.foregroundApp()` | `Promise<ForegroundApp>` |
-| [`home`](#home) | `device.home()` | `Promise<void>` |
-| [`back`](#back) | `device.back()` | `Promise<void>` |
-| [`alert`](#alert) | `device.alert('accept')` | `Promise<void>` |
-| [`dismissKeyboard`](#dismisskeyboard) | `device.dismissKeyboard()` | `Promise<void>` |
-| [`clipboard`](#clipboard) | `device.clipboard()` | `Promise<string>` |
-| [`setClipboard`](#setclipboard) | `device.setClipboard('SAVE20')` | `Promise<void>` |
+| Member | Returns |
+| --- | --- |
+| [`locator`](#locator) | `Locator` |
+| [`setNetwork`](#setnetwork) | `Promise<void>` |
+| [`setAirplaneMode`](#setairplanemode) | `Promise<void>` |
+| [`setPermission`](#setpermission) | `Promise<void>` |
+| [`setLocation`](#setlocation) | `Promise<void>` |
+| [`clearLocation`](#clearlocation) | `Promise<void>` |
+| [`setAppearance`](#setappearance) | `Promise<void>` |
+| [`setOrientation`](#setorientation) | `Promise<void>` |
+| [`fold`](#fold) | `Promise<void>` |
+| [`setBiometrics`](#setbiometrics) | `Promise<void>` |
+| [`enrollBiometrics`](#enrollbiometrics) | `Promise<void>` |
+| [`installApp`](#installapp) | `Promise<InstalledApp>` |
+| [`openApp`](#openapp) | `Promise<void>` |
+| [`openLink`](#openlink) | `Promise<void>` |
+| [`closeApp`](#closeapp) | `Promise<void>` |
+| [`clearKeychain`](#clearkeychain) | `Promise<void>` |
+| [`foregroundApp`](#foregroundapp) | `Promise<ForegroundApp>` |
+| [`home`](#home) | `Promise<void>` |
+| [`back`](#back) | `Promise<void>` |
+| [`alert`](#alert) | `Promise<void>` |
+| [`dismissKeyboard`](#dismisskeyboard) | `Promise<void>` |
+| [`clipboard`](#clipboard) | `Promise<string>` |
+| [`setClipboard`](#setclipboard) | `Promise<void>` |
 
 Every async method is a recorded step named `device.<method>`, bounded by
 `config.actionTimeout`. `back`, `home`, `alert`, `dismissKeyboard`,

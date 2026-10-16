@@ -41,14 +41,14 @@ wait for a value.
 
 ## Queries
 
-| Method | Example | Returns |
-| --- | --- | --- |
-| [`getByRole`](#getbyrole) | `screen.getByRole('button', 'Save')` | `Locator` |
-| [`getByLabel`](#getbylabel) | `screen.getByLabel('Email')` | `Locator` |
-| [`getByPlaceholder`](#getbyplaceholder) | `screen.getByPlaceholder('Search memory...')` | `Locator` |
-| [`getByText`](#getbytext) | `screen.getByText('Welcome back')` | `Locator` |
-| [`getByDisplayValue`](#getbydisplayvalue) | `screen.getByDisplayValue('ada@example.test')` | `Locator` |
-| [`getByTestId`](#getbytestid) | `screen.getByTestId('todo-3')` | `Locator` |
+| Method | Returns |
+| --- | --- |
+| [`getByRole`](#getbyrole) | `Locator` |
+| [`getByLabel`](#getbylabel) | `Locator` |
+| [`getByPlaceholder`](#getbyplaceholder) | `Locator` |
+| [`getByText`](#getbytext) | `Locator` |
+| [`getByDisplayValue`](#getbydisplayvalue) | `Locator` |
+| [`getByTestId`](#getbytestid) | `Locator` |
 
 Every query returns a `Locator` synchronously and performs no work. An
 option key the query does not take (`{ nam: 'Save' }`) throws
@@ -303,12 +303,12 @@ Prefer it over `browser.locator('p:visible')`, which ties the test to CSS.
 
 ## Refinement
 
-| Method | Example | Returns |
-| --- | --- | --- |
-| [`filter`](#filter) | `rows.filter({ hasText: 'Invoice 42' })` | `Locator` |
-| [`first`](#first) | `rows.first()` | `Locator` |
-| [`last`](#last) | `rows.last()` | `Locator` |
-| [`nth`](#nth) | `rows.nth(2)` | `Locator` |
+| Method | Returns |
+| --- | --- |
+| [`filter`](#filter) | `Locator` |
+| [`first`](#first) | `Locator` |
+| [`last`](#last) | `Locator` |
+| [`nth`](#nth) | `Locator` |
 
 Refinement returns a new locator without querying the app. A query on a
 locator is scoped to its subtree: `row.getByRole('button', 'Void')`.
@@ -383,11 +383,11 @@ await screen.getByRole('row').nth(2).getByRole('checkbox').check();
 
 ## Screen actions
 
-| Method | Example | Returns |
-| --- | --- | --- |
-| [`screen.tapAt`](#screen-tapat) | `screen.tapAt({ x: 120, y: 48 })` | `Promise<void>` |
-| [`screen.swipe`](#screen-swipe) | `screen.swipe({ direction: 'up' })` | `Promise<void>` |
-| [`screen.scrollUntilVisible`](#screen-scrolluntilvisible) | `screen.scrollUntilVisible(button)` | `Promise<void>` |
+| Method | Returns |
+| --- | --- |
+| [`screen.tapAt`](#screen-tapat) | `Promise<void>` |
+| [`screen.swipe`](#screen-swipe) | `Promise<void>` |
+| [`screen.scrollUntilVisible`](#screen-scrolluntilvisible) | `Promise<void>` |
 
 `tapAt` and `swipe` act on the viewport. `scrollUntilVisible` scrolls the
 viewport, or a node when called on a locator.
@@ -512,27 +512,27 @@ await screen.getByTestId('feed').scrollUntilVisible(row);
 
 ## Locator actions
 
-| Method | Example | Returns |
-| --- | --- | --- |
-| [`tap`](#tap) | `button.tap()` | `Promise<void>` |
-| [`click`](#tap) | `button.click()` | `Promise<void>` |
-| [`doubleTap`](#doubletap) | `cell.doubleTap()` | `Promise<void>` |
-| [`dblclick`](#doubletap) | `cell.dblclick()` | `Promise<void>` |
-| [`secondaryTap`](#secondarytap) | `row.secondaryTap()` | `Promise<void>` |
-| [`longPress`](#longpress) | `card.longPress({ duration: 800 })` | `Promise<void>` |
-| [`fill`](#fill) | `input.fill('ada@example.test')` | `Promise<void>` |
-| [`pressSequentially`](#presssequentially) | `input.pressSequentially('War')` | `Promise<void>` |
-| [`clear`](#clear) | `input.clear()` | `Promise<void>` |
-| [`press`](#press) | `input.press('Enter')` | `Promise<void>` |
-| [`check`](#check) | `checkbox.check()` | `Promise<void>` |
-| [`uncheck`](#uncheck) | `checkbox.uncheck()` | `Promise<void>` |
-| [`selectOption`](#selectoption) | `select.selectOption('Pro')` | `Promise<void>` |
-| [`focus`](#focus) | `input.focus()` | `Promise<void>` |
-| [`hover`](#hover) | `menu.hover()` | `Promise<void>` |
-| [`setInputFiles`](#setinputfiles) | `input.setInputFiles('fixtures/a.pdf')` | `Promise<void>` |
-| [`dragTo`](#dragto) | `card.dragTo(column)` | `Promise<void>` |
-| [`scrollIntoView`](#scrollintoview) | `footer.scrollIntoView()` | `Promise<void>` |
-| [`swipe`](#swipe) | `row.swipe({ direction: 'left' })` | `Promise<void>` |
+| Method | Returns |
+| --- | --- |
+| [`tap`](#tap) | `Promise<void>` |
+| [`click`](#tap) | `Promise<void>` |
+| [`doubleTap`](#doubletap) | `Promise<void>` |
+| [`dblclick`](#doubletap) | `Promise<void>` |
+| [`secondaryTap`](#secondarytap) | `Promise<void>` |
+| [`longPress`](#longpress) | `Promise<void>` |
+| [`fill`](#fill) | `Promise<void>` |
+| [`pressSequentially`](#presssequentially) | `Promise<void>` |
+| [`clear`](#clear) | `Promise<void>` |
+| [`press`](#press) | `Promise<void>` |
+| [`check`](#check) | `Promise<void>` |
+| [`uncheck`](#uncheck) | `Promise<void>` |
+| [`selectOption`](#selectoption) | `Promise<void>` |
+| [`focus`](#focus) | `Promise<void>` |
+| [`hover`](#hover) | `Promise<void>` |
+| [`setInputFiles`](#setinputfiles) | `Promise<void>` |
+| [`dragTo`](#dragto) | `Promise<void>` |
+| [`scrollIntoView`](#scrollintoview) | `Promise<void>` |
+| [`swipe`](#swipe) | `Promise<void>` |
 
 Each action resolves one node, waits for actionability, and performs one
 operation. The timeout is `config.actionTimeout`, 30000 ms by default, and
@@ -883,21 +883,21 @@ takes no `timeout`: a `timeout` key there is `INVALID_ARGUMENT`.
 
 ## Locator reads
 
-| Method | Example | Returns |
-| --- | --- | --- |
-| [`textContent`](#textcontent) | `alert.textContent()` | `Promise<string \| null>` |
-| [`inputValue`](#inputvalue) | `input.inputValue()` | `Promise<string>` |
-| [`getAttribute`](#getattribute) | `link.getAttribute('href')` | `Promise<string \| null>` |
-| [`isVisible`](#isvisible) | `alert.isVisible()` | `Promise<boolean>` |
-| [`isHidden`](#ishidden) | `spinner.isHidden()` | `Promise<boolean>` |
-| [`isEnabled`](#isenabled) | `button.isEnabled()` | `Promise<boolean>` |
-| [`isDisabled`](#isdisabled) | `button.isDisabled()` | `Promise<boolean>` |
-| [`isChecked`](#ischecked) | `checkbox.isChecked()` | `Promise<boolean>` |
-| [`boundingBox`](#boundingbox) | `map.boundingBox()` | `Promise<{ x, y, width, height } \| null>` |
-| [`count`](#count) | `rows.count()` | `Promise<number>` |
-| [`all`](#all) | `rows.all()` | `Promise<Locator[]>` |
-| [`allTextContents`](#alltextcontents) | `items.allTextContents()` | `Promise<string[]>` |
-| [`waitFor`](#waitfor) | `spinner.waitFor({ state: 'hidden' })` | `Promise<void>` |
+| Method | Returns |
+| --- | --- |
+| [`textContent`](#textcontent) | `Promise<string \| null>` |
+| [`inputValue`](#inputvalue) | `Promise<string>` |
+| [`getAttribute`](#getattribute) | `Promise<string \| null>` |
+| [`isVisible`](#isvisible) | `Promise<boolean>` |
+| [`isHidden`](#ishidden) | `Promise<boolean>` |
+| [`isEnabled`](#isenabled) | `Promise<boolean>` |
+| [`isDisabled`](#isdisabled) | `Promise<boolean>` |
+| [`isChecked`](#ischecked) | `Promise<boolean>` |
+| [`boundingBox`](#boundingbox) | `Promise<{ x, y, width, height } \| null>` |
+| [`count`](#count) | `Promise<number>` |
+| [`all`](#all) | `Promise<Locator[]>` |
+| [`allTextContents`](#alltextcontents) | `Promise<string[]>` |
+| [`waitFor`](#waitfor) | `Promise<void>` |
 
 A read polls for its one match until `config.actionTimeout`, then returns the
 current value without waiting for it to change ([Match rules](#match-rules)).

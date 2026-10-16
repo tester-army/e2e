@@ -47,11 +47,11 @@ test('upgrade to Pro', async ({ agent }) => {
 - `e2e login`, `e2e logout`, and `e2e models` print a failure's message with
   no code and exit 1, or 130 when a sign-in or picker is cancelled.
 
-| Codes | Where |
+| Codes | Description |
 | --- | --- |
-| [Agent codes](#agent-codes) | The `code` of an [`AgentError`](#agenterror) |
-| [Runner codes](#runner-codes) | Terminal output and the report, as plain strings |
-| [Test code errors](#test-code-errors) | Argument validation and unclassified throws in test code |
+| [Agent codes](#agent-codes) | The `code` of an `AgentError` |
+| [Runner codes](#runner-codes) | Plain strings in output and report |
+| [Test code errors](#test-code-errors) | Thrown from test code |
 
 ## AgentError
 

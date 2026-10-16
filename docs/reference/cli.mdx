@@ -60,20 +60,20 @@ $ npx e2e --version
 
 ## Commands
 
-| Command | Example | Does |
-| --- | --- | --- |
-| [`e2e init`](#e2e-init) | `e2e init my-app` | Scaffolds a project: config, example test, agent skill, MCP config |
-| [`e2e login`](#e2e-login) | `e2e login openai` | Signs in to a model subscription |
-| [`e2e logout`](#e2e-logout) | `e2e logout openai` | Forgets a stored login |
-| [`e2e models`](#e2e-models) | `e2e models openai` | Lists the models a stored login serves |
-| [`e2e guide`](#e2e-guide) | `e2e guide setup` | Prints the agent skill |
-| [`e2e mcp`](#e2e-mcp) | `e2e mcp --headed` | Serves live sessions to a coding agent over MCP |
-| [`e2e run`](#e2e-run) | `e2e run tests/signup.e2e.ts` | Runs the tests |
-| [`e2e explore`](#e2e-explore) | `e2e explore 'Find bugs in checkout'` | Explores the app toward a goal, without a test file |
-| [`e2e list`](#e2e-list) | `e2e list --tag smoke` | Prints the tests a run would select |
-| [`e2e cache`](#e2e-cache) | `e2e cache ls` | Inspects or clears the replay cache |
-| [`e2e feedback`](#e2e-feedback) | `e2e feedback -m "list ignores --grep"` | Sends a report about e2e to the e2e team |
-| [`e2e telemetry`](#e2e-telemetry) | `e2e telemetry disable` | Shows or switches usage telemetry |
+| Command | Description |
+| --- | --- |
+| [`e2e init`](#e2e-init) | Scaffolds a project |
+| [`e2e login`](#e2e-login) | Signs in to a model subscription |
+| [`e2e logout`](#e2e-logout) | Forgets a stored login |
+| [`e2e models`](#e2e-models) | Lists a stored login's models |
+| [`e2e guide`](#e2e-guide) | Prints the agent skill |
+| [`e2e mcp`](#e2e-mcp) | Serves live sessions over MCP |
+| [`e2e run`](#e2e-run) | Runs the tests |
+| [`e2e explore`](#e2e-explore) | Explores the app toward a goal |
+| [`e2e list`](#e2e-list) | Prints the tests a run selects |
+| [`e2e cache`](#e2e-cache) | Inspects or clears the replay cache |
+| [`e2e feedback`](#e2e-feedback) | Sends feedback to the e2e team |
+| [`e2e telemetry`](#e2e-telemetry) | Shows or switches usage telemetry |
 
 An option with no default listed is off unless given.
 

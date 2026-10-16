@@ -34,12 +34,12 @@ console.log(result.status, result.report.run.summary);
 
 ## Functions
 
-| Function | Example | Returns |
-| --- | --- | --- |
-| [`run`](#run) | `run({ files: ['tests/signup.e2e.ts'] })` | `Promise<RunResult>` |
-| [`list`](#list) | `list({ grep: [/checkout/] })` | `Promise<ListResult>` |
-| [`openHost`](#openhost) | `openHost({ target: 'android' })` | `Promise<E2EHost<Fixtures>>` |
-| [`isE2EError`](#ise2eerror) | `isE2EError(error)` | `boolean`, a type guard |
+| Function | Returns |
+| --- | --- |
+| [`run`](#run) | `Promise<RunResult>` |
+| [`list`](#list) | `Promise<ListResult>` |
+| [`openHost`](#openhost) | `Promise<E2EHost<Fixtures>>` |
+| [`isE2EError`](#ise2eerror) | `boolean` |
 
 ### `run`
 
@@ -260,7 +260,8 @@ exposed. Match them with [`isE2EError`](#ise2eerror) and `error.code`.
 
 ### `isE2EError`
 
-Recognizes a classified e2e error. Branch on its `error.code`.
+Recognizes a classified e2e error. Branch on its `error.code`. It is a type
+guard.
 
 ```ts
 if (isE2EError(error) && error.code === 'NO_TESTS') process.exitCode = 0;
@@ -274,11 +275,11 @@ from `e2e/runner`.
 
 `E2EHost<Fixtures>` is what [`openHost`](#openhost) returns.
 
-| Member | Example | Returns |
-| --- | --- | --- |
-| `runId`, `target` | `host.target` | `string` |
-| [`host.openSession`](#host-opensession) | `host.openSession({ name: 'checkout' })` | `Promise<E2ESession<Fixtures>>` |
-| [`host.close`](#host-close) | `host.close()` | `Promise<readonly SerializedError[]>` |
+| Member | Returns |
+| --- | --- |
+| `runId`, `target` | `string` |
+| [`host.openSession`](#host-opensession) | `Promise<E2ESession<Fixtures>>` |
+| [`host.close`](#host-close) | `Promise<readonly SerializedError[]>` |
 
 `runId` and `target` are the identity the host's sessions share.
 
@@ -361,15 +362,15 @@ if (failures.length > 0) throw new AggregateError(failures, 'e2e host close fail
 
 `E2ESession<Fixtures>` is what [`host.openSession`](#host-opensession) returns.
 
-| Member | Example | Returns |
-| --- | --- | --- |
-| `fixtures` | `session.fixtures.agent` | `TestFixtures & Fixtures` |
-| `runId`, `attemptId`, `target` | `session.attemptId` | `string` |
-| `steps()` | `session.steps()` | `readonly StepRecord[]` |
-| `report()` | `session.report()` | `Report \| undefined` |
-| `artifactsDir` | `session.artifactsDir` | `string` |
-| `tracePath` | `session.tracePath` | `string` |
-| [`session.close`](#session-close) | `session.close()` | `Promise<readonly SerializedError[]>` |
+| Member | Returns |
+| --- | --- |
+| `fixtures` | `TestFixtures & Fixtures` |
+| `runId`, `attemptId`, `target` | `string` |
+| `steps()` | `readonly StepRecord[]` |
+| `report()` | `Report \| undefined` |
+| `artifactsDir` | `string` |
+| `tracePath` | `string` |
+| [`session.close`](#session-close) | `Promise<readonly SerializedError[]>` |
 
 - `fixtures` holds `agent`, `app`, `screen`, `platform`, and the engine's
   fixtures.
