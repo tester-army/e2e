@@ -1,6 +1,6 @@
 ---
 name: authoring-docs
-description: Use when writing, editing, rewriting, or shortening a guide page on the docs site (docs/**/*.mdx outside docs/reference/), including cleanup passes on legacy pages and requests to make a page shorter.
+description: Use when writing, editing, rewriting, or shortening a guide page on the docs site (docs/**/*.mdx outside docs/reference/), including cleanup passes on legacy pages, requests to make a page shorter, and the docs page of a new integration, CI service, or migration guide (which needs the vendor's logo).
 metadata:
   internal: true
 ---
@@ -161,8 +161,26 @@ icon: <font awesome name, or /images/icons/<brand>.svg (see Page icons)>
 ## Page icons
 
 The `icon` in the frontmatter shows in the sidebar beside the page title.
-Use a Font Awesome name. Use a file only for a brand mark, such as a
-vendor's logo on an integration page.
+Use a Font Awesome name, except on a vendor page.
+
+**A vendor page always gets the vendor's logo, twice.** A vendor page is
+every page under `docs/integrations/`, `docs/ci/`, and `docs/migrate/`
+except an `index.mdx`. Never use a Font Awesome icon for it, not even as a
+placeholder:
+
+1. **Sidebar icon**: `icon: "/images/icons/<brand>.svg"` in the page's
+   frontmatter, a black silhouette (rules below).
+2. **Card logo**: `docs/images/integrations/<brand>.svg` in brand colors, on
+   every `<Card>` that links to the page. An integration or CI page also
+   gets a card on its overview, `docs/integrations/index.mdx` or
+   `docs/ci.mdx`. A near-black mark gets a `filter: invert(1)` rule for dark
+   mode in `docs/style.css`, like Expo's and TestMu AI's.
+
+Take both from the vendor's own site or press kit, usually the favicon SVG
+for the mark. If you can't get a logo, stop and ask the user. Don't ship
+the page without one. `scripts/check-docs-logos.ts` (in `pnpm docs:check`)
+fails on a vendor page with a missing icon, a Font Awesome icon, a card
+without a logo, or no overview card.
 
 Mintlify fills Font Awesome icons with one grey. A file loads as an `<img>`
 in its own colors. `docs/style.css` turns a file grey only when it is under
@@ -367,6 +385,10 @@ One page per PR. The reviewer compares old and new side by side.
       `scripts/check-docs-examples.ts`, and typechecks with
       `pnpm --filter @e2e-dev/docs typecheck`.
 - [ ] Status claims checked against `src/`.
+- [ ] A vendor page (`docs/integrations/`, `docs/ci/`, `docs/migrate/`)
+      has the vendor's logo as its sidebar icon and on every card that
+      links to it ([Page icons](#page-icons)). A new integration or CI page
+      has a card on its overview.
 - [ ] A page icon from a file is a black silhouette under
       `docs/images/icons/` and matches its sidebar neighbors in light and
       dark mode.

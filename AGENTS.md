@@ -89,6 +89,10 @@ suites that consume the built packages the way a user would.
   engine's provider seam (`BrowserProvider` for web, `DeviceProvider` for
   mobile) and imports the engine's types only; the engines never know it
   exists.
+  Its docs page under `docs/integrations/` ships with the vendor's logo as
+  the sidebar icon and on its overview card (`authoring-docs`, "Page
+  icons"); `scripts/check-docs-logos.ts` fails `pnpm docs:check` without
+  them.
 - `packages/lightpanda` - the published `@e2e-dev/lightpanda` package: a
   `BrowserProvider` that starts a local `lightpanda serve` per worker slot
   and stops it with the run; no vendor SDK, the binary is the dependency.

@@ -781,10 +781,11 @@ html.dark body .code-block-fade-overlay {
   opacity: 0.75;
 }
 
-/* Card icons from a file load as <img> too. The Expo mark is drawn black for
-   light mode and inverted to white for dark; Kernel's sits on its own green
-   square and reads on both. */
-.dark img[src*='/images/integrations/expo.svg'] {
+/* Card icons from a file load as <img> too. The Expo and TestMu AI marks are
+   drawn black for light mode and inverted to white for dark; Kernel's sits on
+   its own green square and reads on both. */
+.dark img[src*='/images/integrations/expo.svg'],
+.dark img[src*='/images/integrations/testmu.svg'] {
   filter: invert(1);
 }
 

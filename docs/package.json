@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx og/generate.tsx && mint dev",
     "og": "tsx og/generate.tsx",
-    "check": "tsx og/generate.tsx --check && node ../scripts/check-docs-examples.ts && node ../scripts/check-docs-package-managers.ts && node ../scripts/check-docs-anchors.ts && mint validate && mint broken-links",
+    "check": "tsx og/generate.tsx --check && node ../scripts/check-docs-examples.ts && node ../scripts/check-docs-package-managers.ts && node ../scripts/check-docs-anchors.ts && node ../scripts/check-docs-logos.ts && mint validate && mint broken-links",
     "typecheck": "tsc --noEmit --project examples/tsconfig.json && tsc --noEmit --project og/tsconfig.json"
   },
   "devDependencies": {
