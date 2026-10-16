@@ -46,8 +46,9 @@ Then the repo rules `pnpm check` cannot see (`AGENTS.md`, "Contracts"):
   both fixtures, and the producer together.
 - A new build input or benchmark dependency goes into `.github/filters.yml`.
 - A new integration, CI service, or migration guide gets the vendor's logo
-  as its sidebar icon and on its overview card, never a Font Awesome
-  placeholder ([authoring-docs, Page icons](../authoring-docs/SKILL.md#page-icons)).
+  as its sidebar icon and on every card that links to it, never a Font
+  Awesome placeholder. An integration or CI page also gets a card on its
+  overview ([authoring-docs, Page icons](../authoring-docs/SKILL.md#page-icons)).
   A package PR needs this as much as a docs PR.
 
 ## 2. Verify

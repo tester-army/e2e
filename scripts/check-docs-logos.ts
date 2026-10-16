@@ -18,7 +18,7 @@
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { basename, join, relative, sep } from 'node:path';
+import { basename, join, posix, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -95,7 +95,7 @@ function route(href: string): string {
 /** Problems with a logo path: wrong directory, or no such file. */
 function checkLogo(where: string, what: string, icon: string | undefined, dir: string): string[] {
   if (!icon) return [`${where}: no ${what}; add a logo under docs${dir}`];
-  if (!icon.startsWith(dir)) return [`${where}: ${what} is "${icon}"; use the vendor's logo under docs${dir}`];
+  if (!posix.normalize(icon).startsWith(dir)) return [`${where}: ${what} is "${icon}"; use the vendor's logo under docs${dir}`];
   if (!existsSync(join(DOCS, icon))) return [`${where}: ${what} "${icon}" does not exist`];
   return [];
 }
