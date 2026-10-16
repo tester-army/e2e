@@ -143,6 +143,39 @@ session, including later tests in a serial group. `app.screenshot()` then
 fails with `POLICY_DENIED` and creates no artifact.
 </Note>
 
+## Types
+
+```ts
+export interface App {
+  /**
+   * The resolved base URL of the target's app, with the port the run
+   * allocated when `app.url` declared port 0; undefined for a target that
+   * declares no `app.url`.
+   */
+  readonly baseUrl: string | undefined;
+  /**
+   * Opens the app: the declared URL, a path relative to it, or any absolute
+   * http(s) URL. On a device target, which has no URL, it launches the pinned
+   * app fresh and takes no path.
+   */
+  open(path?: string): Promise<void>;
+  /**
+   * Recreates the execution context while preserving persisted state, then
+   * reopens the app at its base URL when the target declares one.
+   */
+  restart(): Promise<void>;
+  /**
+   * Clears persisted client state, recreates the execution context, then
+   * reopens the app at its base URL when the target declares one.
+   */
+  clearState(): Promise<void>;
+  /** Navigates back once. */
+  back(): Promise<void>;
+  /** Captures a redacted evidence screenshot. */
+  screenshot(label?: string): Promise<string>;
+}
+```
+
 ## Related
 
 Browser-only operations live on the [`browser`](/reference/web) fixture, and

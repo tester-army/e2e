@@ -354,7 +354,7 @@ The `device` fixture is deterministic device management. A test calls it
 directly to arrange or assert device state.
 
 ```ts
-test('offline banner', async ({ app, device, screen }) => {
+test('offline banner', { platforms: ['android'] }, async ({ app, device, screen }) => {
   await app.open();
   await device.setNetwork('offline');
   await expect(screen.getByText('You are offline')).toBeVisible();

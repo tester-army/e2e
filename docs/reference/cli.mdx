@@ -352,7 +352,7 @@ bunx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 
 | Option | Description |
 | --- | --- |
-| `--config <path>` | The config every session loads unless `open_session` names one. Default: the nearest `e2e.config.ts`. |
+| `--config <path>` | The config every session loads unless `open_session` names one. Default: the nearest `e2e.config.ts` or `e2e.config.mts`. |
 | `--target <name>` | The target every session opens on. Default: the only target, or the one `open_session` names. |
 | `--headed` | Shows the UI in sessions whose `open_session` does not set `headed`, when the engine supports it. |
 | `--max-sessions <n>` | Sessions open at once, each with its own browser or device, 1 through 16. Default: 4. |
@@ -473,7 +473,7 @@ Test files, directories, or globs relative to the project root:
 
 | Option | Description |
 | --- | --- |
-| `--config <path>` | Explicit config path. Default: discovered, the nearest `e2e.config.ts`. A missing file is `CONFIG_NOT_FOUND`. |
+| `--config <path>` | Explicit config path. Default: discovered, the nearest `e2e.config.ts` or `e2e.config.mts` (see [Loading](/reference/config#loading)). A missing file is `CONFIG_NOT_FOUND`. |
 | `--target <ids>` | Selects targets by name, comma-separated or repeated. Default: every configured target. Only the app commands of selected targets start. An unknown ID is `UNKNOWN_TARGET`. |
 | `--tag <tags>` | Only tests carrying the tags, comma-separated or repeated: any of them, or every one with `--tag-mode all`. Default: none. When the filter leaves nothing to run, `NO_TESTS` counts the tests it filtered, marks each tag no test declares, and names the nearest declared one. |
 | `--tag-mode <mode>` | How several tags combine: `any` of them, or `all`, every one. Default: `any`. |
@@ -906,7 +906,7 @@ bunx e2e cache ls --config packages/web/e2e.config.ts
 
 | Option | Description |
 | --- | --- |
-| `--config <path>` | Explicit config path. Default: discovered, the nearest `e2e.config.ts`. |
+| `--config <path>` | Explicit config path. Default: discovered, the nearest `e2e.config.ts` or `e2e.config.mts` (see [Loading](/reference/config#loading)). |
 | `--cache-dir <dir>` | The store directory. Default: `E2E_CACHE_DIR`, else `cache.dir`, else `.e2e/cache/`. |
 
 ```text
@@ -989,12 +989,13 @@ A blank text value, or one over its limit, exits 2.
 - **Opting out.** Feedback is sent only when you run the command, so a saved
   `e2e telemetry disable` does not stop it. `E2E_TELEMETRY_DISABLED=1` and
   `DO_NOT_TRACK=1` do: with either set the command exits 2 and sends
-  nothing, so a CI job or a fleet that opted out sends nothing even when an
+  nothing (a dry run, `E2E_TELEMETRY_DEBUG=1`, and a bug without `--repro`
+  still exit 0, since they send nothing anyway), so a CI job or a fleet that opted out sends nothing even when an
   agent runs it. `E2E_TELEMETRY_DEBUG=1` prints it like `--dry-run`.
 
 | Exit code | When |
 | --- | --- |
-| 0 | PostHog accepted the event. The command prints a reference id. |
+| 0 | PostHog accepted the event and the command printed a reference id. Also `--dry-run`, `E2E_TELEMETRY_DEBUG=1`, and `--type bug` without `--repro`, none of which send. |
 | 2 | A blank or too long text value, an outdated release without `--allow-outdated`, or `E2E_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` set. |
 | 3 | PostHog did not confirm the event. The report may still have arrived, so the message names its reference id. |
 

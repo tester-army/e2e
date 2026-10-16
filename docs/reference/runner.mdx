@@ -337,7 +337,8 @@ const session = await host.openSession({
 
 | Throws | When |
 | --- | --- |
-| `INVALID_CONFIG` | `name` is not a string. |
+| `INVALID_CONFIG` | `name` is not a string, or `timeout` is not positive and finite. |
+| `CANCELLED` | The session's or the host's `signal` has already aborted. |
 | `WORKER_PROTOCOL` | Another hosted attempt is opening, live, or closing, or the host is closed. |
 
 ### `host.close`

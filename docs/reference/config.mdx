@@ -236,8 +236,8 @@ An unknown id is `INVALID_CONFIG`. See [Reporters](/reference/reporters).
 ## targets
 
 A target is one named surface tests run on: the app under test and the engine
-that drives it. `targets` is required and holds at least one, each naming its
-engine.
+that drives it. `targets` is required and holds at least one. A target names
+the engine that drives it; without one it runs through agent tools only.
 
 ```ts title="e2e.config.ts"
 targets: [
@@ -333,7 +333,7 @@ targets: [
 | [`bundleId`](#bundleid) | `'com.example.app'` | mobile | none |
 | [`appPath`](#apppath) | `'./build/App.app'` | mobile | none |
 | [`identity`](#identity) | `'checkout-web'` | any | the URL's origin and base path, else `bundleId`, else `appPath` |
-| [`environment`](#environment) | `'staging'` | any | `test` on local hosts, else `production` |
+| [`environment`](#environment) | `'staging'` | any | `test` for a local or `.test` host, or no URL; else `production` |
 | [`launchArguments`](#launcharguments) | `['-e2e', 'YES']` | mobile | none |
 | [`permissions`](#permissions) | `{ camera: 'grant' }` | mobile | none |
 | [`command`](#command) | `{ executable: 'npm', args: ['run', 'dev'] }` | any | none |
@@ -424,7 +424,7 @@ Labels the target in the report and joins the cache and session identity
 digest. It never gates a run.
 
 ```ts
-environment: 'staging', // default: 'test' on local hosts, else 'production'
+environment: 'staging', // default: 'test' for a local host or no URL, else 'production'
 ```
 
 - `'test'`, `'staging'`, or `'production'`.
@@ -477,7 +477,7 @@ command: {
 | `inheritEnv` | `['STRIPE_*']` | none |
 | `startupTimeout` | `120_000` | `60000` |
 | `shutdownTimeout` | `5_000` | `10000` |
-| `log` | `'.e2e/dev-server.log'` | output discarded |
+| `log` | `'.e2e/logs/app.log'` | output discarded |
 | `reuseExisting` | `true` | `false` |
 
 - `executable` is resolved with `PATH` and never shell-interpreted.

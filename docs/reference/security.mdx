@@ -9,26 +9,27 @@ icon: "lock"
 The [Security](/security) guide explains the trust boundary. This page
 lists the rules behind it, as the code enforces them.
 
-## Guarantees
+## Rules
 
-| Guarantee | What it covers | Section |
+| Rule | What it covers | Section |
 | --- | --- | --- |
 | App content can't grant tools, credentials, or a larger budget | What the model reads in each step | [Model input](#model-input) |
 | A call outside the step's closed schemas never runs | Built-in and project tools, node ids, model text | [Tool calls](#tool-calls) |
 | Listed calls fail with `POLICY_DENIED` | URL schemes, secret sinks, secure-field reads, uploads, pixels | [Policy denials](#policy-denials) |
 | Local and inline schemes such as `file:` and `javascript:` are refused | `app.open`, `browser.goto`, `navigate`, `device.openLink`, `device.openApp` | [Navigation](#navigation) |
-| Headers and observed frames follow a hostname site check | Configured `headers`, child frames, `basicAuth` | [Site check](#site-check) |
+| Headers and observed frames follow an approximate hostname site check; `basicAuth` ignores it and answers any origin | Configured `headers`, child frames, `basicAuth` | [Site check](#site-check) |
 | The model never sees or picks a secret value | `type_secret`, `fill(secret)` | [Secret fills](#secret-fills) |
-| Pixels are withheld for the rest of the attempt | Screenshots, pixel tools, restored sessions | [Screenshots after a secret fill](#screenshots-after-a-secret-fill) |
+| After a secret fill, pixels are withheld for the rest of the attempt | Screenshots, pixel tools, sessions whose setup filled a secret | [Screenshots after a secret fill](#screenshots-after-a-secret-fill) |
 | An engine option's secret is redacted as text | `basicAuth` and other declared options | [Secrets in engine options](#secrets-in-engine-options) |
 | Registered values read `<secret:name>` | Model input, reports, text downloads, printed output | [Redaction](#redaction) |
-| What string matching misses passes through | Transformed, encoded, or split values, video, `command.log` | [Where redaction stops](#where-redaction-stops) |
+| Redaction does not cover what string matching misses | Transformed, encoded, or split values, video, `command.log` | [Where redaction stops](#where-redaction-stops) |
 | Text downloads are rewritten when the session knows a secret | `.txt`, `.csv`, `.json`, `.html`, `.htm` | [Downloads](#downloads) |
 | Sessions are encrypted, bound to the run and target, and deleted at cleanup | Saved authentication state | [Sessions](#sessions) |
-| Cache entries are validated and hold no secret values | Replay cache files and `cache.store` | [Cache trust](#cache-trust) |
+| Cache entries are unsigned; each is validated before use and holds no configured secret value | Replay cache files and `cache.store` | [Cache trust](#cache-trust) |
 | Each output path has a stated redaction level | Files under the output directory | [Artifacts](#artifacts) |
 | No crash reporting, and no update check outside `e2e feedback` | Every destination the runner and its packages connect to | [Outbound connections](#outbound-connections) |
-| `e2e mcp` authorizes actions as a test run does | MCP session limits, the credentials `e2e explore` offers | [MCP and explore](#mcp-and-explore) |
+| `e2e mcp` authorizes actions as a test run does | MCP sessions and their limits | [MCP and explore](#mcp-and-explore) |
+| `e2e explore` offers every configured credential to every step | The explorer's sign-ins | [MCP and explore](#mcp-and-explore) |
 
 ## Model input
 
@@ -57,11 +58,11 @@ larger budget. [How agent steps work](/agent-steps) explains a step in full.
 - The runner never evaluates model text as code, selectors, shell commands,
   or config.
 
-| Throws | When |
+| Fails with | When |
 | --- | --- |
 | `CONFIG_LOAD_FAILED` | A `defineTool` without an `execute`, at config load. |
 | `INVALID_CONFIG` | A tool not created with `defineTool`, or one named after a built-in or harness tool. |
-| `LOCATOR_NOT_FOUND` | A node id that isn't on the current screen. The action fails. |
+| `LOCATOR_NOT_FOUND` | A node id that isn't on the current screen. The action fails, and the model reads the failure and acts again. |
 
 ## Policy denials
 

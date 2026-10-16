@@ -327,8 +327,17 @@ export interface OperationContext {
 
 ## Capabilities
 
-The members an engine implements set its capabilities. A call that needs a
-missing one fails with `UNSUPPORTED_CAPABILITY`.
+The members an engine implements set its capabilities. A `screen`,
+`Locator`, or `app` call that needs a missing one fails with
+`UNSUPPORTED_CAPABILITY`. [Test APIs](#test-apis) lists what needs which
+member. Three gaps end differently:
+
+- A test that `requires` a fixture the engine lacks is skipped
+  (`capability-unavailable`).
+- A selected test that uses a `test.setup` session, on an engine without
+  `state`, is a collection error before the setup runs.
+- A `video` mode on an engine without video recording prints a notice and
+  records no video.
 
 | Member | Capability | Requires | Unlocks |
 | --- | --- | --- | --- |
@@ -398,7 +407,7 @@ reaching the engine.
 | `test.setup` sessions, the `session:` option | `state` |
 | `app.screenshot()`, assertion evidence, the failure screenshot | `artifacts` |
 | every [`video` mode](/reference/config#recording) but `off`, from the config, a target, a test, or `--video` | `artifacts` |
-| `app.open()` | `session.open` |
+| `app.open()` | `session.open`; on a target with no app URL, `session.restart` |
 | `app.back()` | `session.back` |
 | `app.restart()` | `session.restart` |
 | `app.clearState()` | `session.reset` |
@@ -1712,8 +1721,8 @@ await raceAbort(() => client.tap(ref.id), context.signal, 'kiosk tap');
   cancellation before dispatch.
 - `withTimeout` races a promise against a timeout and throws what
   `onTimeout` builds.
-- `withinCleanupBudget` abandons the wait at cancellation or timeout and
-  absorbs late failures.
+- `withinCleanupBudget` never rejects. It resolves when the promise settles,
+  failures included, when `signal` aborts, or when `timeoutMs` passes.
 
 ### `isSecret`
 
@@ -1816,8 +1825,10 @@ engine received in `startAttempt`.
 
 ```ts
 artifacts: {
-  async screenshot(label, context) {
-    const path = `screenshots/${label ?? 'screen'}.png`;
+  async screenshot(_label, context) {
+    // The label comes from test code, so it never becomes part of the path.
+    shots += 1;
+    const path = `screenshots/${String(shots).padStart(3, '0')}.png`;
     await client.capture(join(artifactsDir, path), context);
     return path;
   },

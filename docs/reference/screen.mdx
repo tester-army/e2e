@@ -483,7 +483,7 @@ scrollUntilVisible(
 
 ```ts
 await screen.scrollUntilVisible(screen.getByRole('button', 'Accept'));
-await screen.getByRole('feed').scrollUntilVisible(row);
+await screen.getByTestId('feed').scrollUntilVisible(row);
 ```
 
 | Option | Type | Default |
@@ -871,7 +871,7 @@ swipe(options: SwipeOptions & ActionOptions): Promise<void>;
 ```
 
 ```ts
-await screen.getByRole('feed').swipe({ direction: 'down', momentum: 'slow' });
+await screen.getByTestId('feed').swipe({ direction: 'down', momentum: 'slow' });
 ```
 
 It takes `{ direction, momentum? }` as [`screen.swipe`](#screen-swipe)
