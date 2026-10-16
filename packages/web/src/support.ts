@@ -506,7 +506,7 @@ type WheelAim =
  * `blocked` when neither holds.
  */
 function wheelAim(element: Element): WheelAim {
-  if (window !== window.top) return { aim: 'blocked' };
+  if (window !== window.top || element.getClientRects().length === 0) return { aim: 'blocked' };
   const rect = element.getBoundingClientRect();
   const box = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
   if (element.matches(':hover')) return { aim: 'pointer', box };

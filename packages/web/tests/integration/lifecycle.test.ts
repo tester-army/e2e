@@ -767,6 +767,19 @@ describe('web engine lifecycle', () => {
       });
     });
 
+    it('refuses to swipe a node with no box even when its child is under aim', async () => {
+      await inAttempt('dc2', async () => {
+        await engine.session!.open!(`${app.url}/`, operation('dc2'));
+        const page = surfaceOf(engine)!.page();
+        await page.setContent(`
+          <body style="margin: 0"><ul aria-label="Feed" style="display: contents"><li style="display: block; height: 400px">Item</li></ul></body>`);
+        const [feed] = await engine.locate!(byRole('list'), operation('dc2'));
+        await expect(
+          engine.perform!(feed!.ref, { kind: 'swipe', direction: 'down' }, operation('dc2')),
+        ).rejects.toMatchObject({ code: 'NOT_ACTIONABLE' });
+      });
+    });
+
     it('walks through a display:contents element to the fields it lays out', async () => {
       await inAttempt('dc1', async () => {
         await engine.session!.open!(`${app.url}/contents`, operation('dc1'));
