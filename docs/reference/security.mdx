@@ -9,6 +9,27 @@ icon: "lock"
 The [Security](/security) guide explains the trust boundary. This page
 lists the rules behind it, as the code enforces them.
 
+## Guarantees
+
+| Guarantee | What it covers | Section |
+| --- | --- | --- |
+| App content can't grant tools, credentials, or a larger budget | What the model reads in each step | [Model input](#model-input) |
+| A call outside the step's closed schemas never runs | Built-in and project tools, node ids, model text | [Tool calls](#tool-calls) |
+| Listed calls fail with `POLICY_DENIED` | URL schemes, secret sinks, secure-field reads, uploads, pixels | [Policy denials](#policy-denials) |
+| Local and inline schemes such as `file:` and `javascript:` are refused | `app.open`, `browser.goto`, `navigate`, `device.openLink`, `device.openApp` | [Navigation](#navigation) |
+| Headers and observed frames follow a hostname site check | Configured `headers`, child frames, `basicAuth` | [Site check](#site-check) |
+| The model never sees or picks a secret value | `type_secret`, `fill(secret)` | [Secret fills](#secret-fills) |
+| Pixels are withheld for the rest of the attempt | Screenshots, pixel tools, restored sessions | [Screenshots after a secret fill](#screenshots-after-a-secret-fill) |
+| An engine option's secret is redacted as text | `basicAuth` and other declared options | [Secrets in engine options](#secrets-in-engine-options) |
+| Registered values read `<secret:name>` | Model input, reports, text downloads, printed output | [Redaction](#redaction) |
+| What string matching misses passes through | Transformed, encoded, or split values, video, `command.log` | [Where redaction stops](#where-redaction-stops) |
+| Text downloads are rewritten when the session knows a secret | `.txt`, `.csv`, `.json`, `.html`, `.htm` | [Downloads](#downloads) |
+| Sessions are encrypted, bound to the run and target, and deleted at cleanup | Saved authentication state | [Sessions](#sessions) |
+| Cache entries are validated and hold no secret values | Replay cache files and `cache.store` | [Cache trust](#cache-trust) |
+| Each output path has a stated redaction level | Files under the output directory | [Artifacts](#artifacts) |
+| No crash reporting, and no update check outside `e2e feedback` | Every destination the runner and its packages connect to | [Outbound connections](#outbound-connections) |
+| `e2e mcp` authorizes actions as a test run does | MCP session limits, the credentials `e2e explore` offers | [MCP and explore](#mcp-and-explore) |
+
 ## Model input
 
 The model reads app content as quoted evidence, kept apart from runner policy
@@ -28,17 +49,19 @@ larger budget. [How agent steps work](/agent-steps) explains a step in full.
 - Built-in tools have closed schemas and appear only when the engine
   supports them.
 - Project tools must use `defineTool` with an `execute` and can't replace a
-  built-in name. `defineTool` without an `execute` fails the config load with
-  `CONFIG_LOAD_FAILED`. A tool not created with `defineTool`, or one named
-  after a built-in or harness tool, is `INVALID_CONFIG`.
+  built-in name.
 - Only read-only project tools may request an observation.
 - A call to a tool the step doesn't offer, or with an undeclared argument,
   never runs. The model reads the refusal as the call's result and tries
   again.
-- A node id that isn't on the current screen fails the action with
-  `LOCATOR_NOT_FOUND`.
 - The runner never evaluates model text as code, selectors, shell commands,
   or config.
+
+| Throws | When |
+| --- | --- |
+| `CONFIG_LOAD_FAILED` | A `defineTool` without an `execute`, at config load. |
+| `INVALID_CONFIG` | A tool not created with `defineTool`, or one named after a built-in or harness tool. |
+| `LOCATOR_NOT_FOUND` | A node id that isn't on the current screen. The action fails. |
 
 ## Policy denials
 
@@ -63,15 +86,19 @@ These calls fail with `POLICY_DENIED`.
 
 ## Navigation
 
-- There is no origin allowlist. The agent can follow the app to other sites
-  and use the step's secrets there.
-- `app.open`, `browser.goto`, and the agent's `navigate` verb accept only
-  `http:`, `https:`, and the exact `about:blank`.
-- `device.openLink` accepts an app's custom scheme and refuses `file:`,
-  `data:`, `javascript:`, `view-source:`, `blob:`, and `filesystem:`.
-- `device.openApp` and the `open_app` tool take an app id and refuse a link.
+| Entry point | Accepts | Refuses |
+| --- | --- | --- |
+| `app.open`, `browser.goto`, the agent's `navigate` verb | `http:`, `https:`, and the exact `about:blank` | Every other scheme |
+| `device.openLink` | An app's custom scheme | `file:`, `data:`, `javascript:`, `view-source:`, `blob:`, `filesystem:` |
+| `device.openApp`, the `open_app` tool | An app id | A link |
+
 - The runner doesn't re-check redirects or attach to popup pages. Register
   `browser.onDialog` to handle browser dialogs.
+
+<Warning>
+There is no origin allowlist. The agent can follow the app to other sites
+and use the step's secrets there.
+</Warning>
 
 ## Site check
 
@@ -91,6 +118,17 @@ site.
 A `Secret` is an opaque handle with no plaintext accessor. Three sinks accept
 one: a locator's `fill`, the params of an agent step, and an engine option
 that declares it.
+
+```ts title="tests/stripe.e2e.ts"
+import { secrets, test } from 'e2e';
+
+test('connect Stripe', async ({ screen, agent }) => {
+  await screen.getByLabel('Secret key').fill(secrets.get('stripe-key'));
+  await agent.act('Connect Stripe with the given key', {
+    params: { apiKey: secrets.get('stripe-key') },
+  });
+});
+```
 
 | Fill | Checks before the value resolves |
 | --- | --- |
@@ -123,6 +161,24 @@ configured secret.
 
 A secret in an engine option, such as
 `web({ basicAuth: { password: secrets.get(name) } })`, isn't a fill.
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { secrets } from 'e2e';
+import { web } from '@e2e-dev/web';
+
+export default {
+  targets: [
+    {
+      engine: web({
+        basicAuth: { username: 'preview', password: secrets.get('previewPassword') },
+      }),
+      app: { url: 'https://staging.example.com' },
+    },
+  ],
+  secrets: { previewPassword: () => process.env.PREVIEW_PASSWORD ?? '' },
+} satisfies E2EConfig;
+```
 
 - The runner resolves it on the host when each attempt starts.
 - It registers the value for redaction, together with what the engine
@@ -199,8 +255,11 @@ the runner rewrites a text download (`.txt`, `.csv`, `.json`, `.html`, or
 - a base64 or base64url run that decodes to either.
 
 Every other download is kept as served and labeled
-`redaction: "incomplete"`: any other extension, one that isn't valid UTF-8
-or can't be rewritten, and any download from a session that knows no secret value.
+`redaction: "incomplete"`:
+
+- any other extension,
+- one that isn't valid UTF-8 or can't be rewritten,
+- any download from a session that knows no secret value.
 
 ## Sessions
 
@@ -282,9 +341,11 @@ after download redaction, with the `redaction` label the report records.
 | The package registry | When `e2e init` installs dependencies. |
 | The app under test | Every run, plus whatever the app itself loads. |
 
-There is no crash reporting, and no update check outside `e2e feedback`. `--ai-trace` writes a local file
-and doesn't upload it. Your test code, plugins, and app can make more
-connections.
+<Note>
+There is no crash reporting, and no update check outside `e2e feedback`.
+`--ai-trace` writes a local file and doesn't upload it. Your test code,
+plugins, and app can make more connections.
+</Note>
 
 ## MCP and explore
 

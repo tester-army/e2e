@@ -6,8 +6,26 @@ icon: "triangle-exclamation"
 "twitter:image": "https://e2e.tester.army/docs/images/og/reference/errors.png?v=b184354c61"
 ---
 
-Every error carries a class. The class determines the exit code; the code
-identifies the cause. A model never selects either.
+Every error carries a class and a code. The class sets the exit code; the
+code identifies the cause. A model never selects either.
+
+```ts title="tests/upgrade.e2e.ts"
+import { isAgentError, test } from 'e2e';
+
+test('upgrade to Pro', async ({ agent }) => {
+  try {
+    await agent.act('upgrade the workspace to Pro');
+  } catch (error) {
+    if (isAgentError(error) && error.code === 'STEP_TIMEOUT') {
+      // the step ran out of time; the message carries the last judgment
+      console.error(error.category, error.details);
+    }
+    throw error;
+  }
+});
+```
+
+## Exit codes
 
 | Class | Exit code |
 | --- | ---: |
@@ -17,7 +35,25 @@ identifies the cause. A model never selects either.
 | internal | 4 |
 | interrupted | 130 |
 
+- For a mixed run the highest-precedence code present wins,
+  `130 > 4 > 3 > 2 > 1 > 0`. The report keeps every individual result.
+- A setup assertion failure is a test failure and skips its dependents.
+  Missing setup infrastructure keeps its configuration or infrastructure
+  class.
+- The `internal` class and exit code 4 are reserved for runner invariant
+  violations; no first-party code raises a code in that class today.
+- `e2e login`, `e2e logout`, and `e2e models` print a failure's message with
+  no code and exit 1, or 130 when a sign-in or picker is cancelled.
+
+| Codes | Where |
+| --- | --- |
+| [Agent codes](#agent-codes) | The `code` of an [`AgentError`](#agenterror) |
+| [Runner codes](#runner-codes) | Terminal output and the report, as plain strings |
+| [Test code errors](#test-code-errors) | Argument validation and unclassified throws in test code |
+
 ## AgentError
+
+`AgentError` is the runner-classified agent failure, exported from `e2e`.
 
 ```ts
 /** Runner-classified agent failure. */
@@ -38,21 +74,16 @@ export class AgentError extends Error {
 }
 ```
 
+<Note>
 Test files load in their own module realm, so `instanceof AgentError` can be
-false. Use `isAgentError` from `e2e` and branch on `code`:
+false. Use `isAgentError` from `e2e` and branch on `code`, as in the example
+at the top of this page.
+</Note>
 
-```ts
-import { isAgentError } from 'e2e';
+### Agent codes
 
-try {
-  await agent.act('upgrade the workspace to Pro');
-} catch (error) {
-  if (isAgentError(error) && error.code === 'STEP_TIMEOUT') {
-    // the step ran out of time; the message carries the last judgment
-  }
-  throw error;
-}
-```
+The members of the closed `AgentErrorCode` union. `blocked:` names the
+category a blocked verdict reports as the obstacle.
 
 | Code | When it happens | Class | Exit |
 | --- | --- | --- | ---: |
@@ -139,18 +170,10 @@ These appear in terminal output and in the report as plain string codes.
 | `EVALUATE_FAILED` | `browser.evaluate` threw inside the page (`@e2e-dev/web`) | test | 1 |
 | `INTERRUPTED` | A user or CI signal aborted the run. A test cut short by `--max-failures` or the time limit also ends with this code, its message naming the limit; that run exits 1, not 130 | interrupted | 130 |
 
-Errors raised by argument validation in test code use `INVALID_ARGUMENT` and
-`INVALID_LOCATOR`, both test failures with exit code 1. An unclassified thrown
-value from test code is reported as `ERROR`. The `internal` class and exit
-code 4 are reserved for runner invariant violations; no first-party code raises
-a code in that class today.
+### Test code errors
 
-## Exit codes
-
-For a mixed run the highest-precedence code present wins, `130 > 4 > 3 > 2 >
-1 > 0`. The report keeps every individual result. A setup assertion failure
-is a test failure and skips its dependents. Missing setup infrastructure keeps
-its configuration or infrastructure class.
-
-`e2e login`, `e2e logout`, and `e2e models` print a failure's message with no
-code and exit 1, or 130 when a sign-in or picker is cancelled.
+| Code | When it happens | Class | Exit |
+| --- | --- | --- | ---: |
+| `INVALID_ARGUMENT` | Argument validation in test code refused an argument | test | 1 |
+| `INVALID_LOCATOR` | Argument validation in test code refused a locator's arguments | test | 1 |
+| `ERROR` | A value thrown from test code that no other code classifies | test | 1 |
