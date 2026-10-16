@@ -254,6 +254,63 @@ describe('the request prefix of an agent step on Anthropic', () => {
     expect(firstUserText(requests[2]!)).toContain('[edited in place]');
     expect(replayedThinking(requests[2]!)).toEqual([]);
   });
+
+  it('notices a tool result a custom executor edits in place, below the part', async () => {
+    const look = { name: 'look', input: {} };
+    const { model, requests } = capturingModel((n) => (n <= 2 ? look : conclude));
+    const executor = createToolLoopExecutor({
+      name: 'editing',
+      tools: () => ({ look: tool({ description: 'Looks.', inputSchema: z.object({}), execute: async () => 'looked' }) }),
+      buildPrompt: () => 'Execute this test step: look twice, then conclude.',
+      // Before the third turn, the first tool result's output is replaced
+      // through the part object the loop handed over.
+      prepareMessages: (messages, { stepNumber }) => {
+        const result = messages[2];
+        if (stepNumber === 2 && result?.role === 'tool' && result.content[0]?.type === 'tool-result') {
+          result.content[0].output = { type: 'text', value: 'looked [edited in place]' };
+        }
+        return messages;
+      },
+    });
+    const { fixtures, steps } = runtime(changingScreen(20, () => 1), { agents: { default: { executor, model } } });
+
+    await fixtures.agent.act('look twice, then conclude');
+
+    expect(steps.all()[0]!.status).toBe('passed');
+    expect(requests).toHaveLength(3);
+    expect(JSON.stringify(requests[2]!.messages[2])).toContain('looked [edited in place]');
+    // The edit sits at messages.2, so the block before it stays and the one after it goes.
+    expect(replayedThinking(requests[2]!)).toEqual(['messages.1.content.0=sig-1']);
+  });
+
+  it('keeps every reasoning part when a custom executor clones the history each turn', async () => {
+    const look = { name: 'look', input: {} };
+    const { model, requests } = capturingModel((n) => (n <= 2 ? look : conclude));
+    const executor = createToolLoopExecutor({
+      name: 'cloning',
+      tools: () => ({ look: tool({ description: 'Looks.', inputSchema: z.object({}), execute: async () => 'looked' }) }),
+      // The opening message carries bytes too, which a clone copies into new objects.
+      buildPrompt: () => [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Execute this test step: look twice, then conclude.' },
+            { type: 'file', data: new Uint8Array([137, 80, 78, 71]), mediaType: 'image/png' },
+          ],
+        },
+      ],
+      prepareMessages: (messages) => structuredClone(messages),
+    });
+    const { fixtures, steps } = runtime(changingScreen(20, () => 1), { agents: { default: { executor, model } } });
+
+    await fixtures.agent.act('look twice, then conclude');
+
+    expect(steps.all()[0]!.status).toBe('passed');
+    expect(requests).toHaveLength(3);
+    // Equal content in new objects is no edit: nothing is dropped.
+    expect(replayedThinking(requests[2]!)).toEqual(['messages.1.content.0=sig-1', 'messages.3.content.0=sig-2']);
+    expect(steps.all()[0]!.turns!.some((turn) => turn.outcome.includes('was rewritten'))).toBe(false);
+  });
 });
 
 describe('the request prefix of an agent step on other providers', () => {

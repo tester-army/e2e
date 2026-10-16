@@ -86,7 +86,8 @@ export function providerHints(model: ProviderModelRef | undefined): ProviderHint
  * (`anthropic/claude-…`), a direct provider in the provider
  * (`anthropic.messages`), Vertex AI in the provider too
  * (`vertex.anthropic.messages`), and Bedrock in the model id behind an
- * optional region prefix (`eu.anthropic.claude-…`).
+ * optional region prefix (`eu.anthropic.claude-…`). A Bedrock application
+ * inference profile ARN names no model and is not recognized.
  */
 function speaksAnthropic(model: ProviderModelRef | undefined): boolean {
   if (idPrefix(model, 'anthropic/') || providerPrefix(model, 'anthropic')) return true;

@@ -695,10 +695,10 @@ class LoopRun {
    * The index of the first message whose content is not what the last
    * request sent at that position, if any: a message the executor's
    * `prepareMessages` or the overflow shrink rewrote. The comparison is by
-   * reference, part by part, against the references kept from the last
-   * request rather than against its message objects: an executor that
-   * edits a message in place leaves the object in both histories, and only
-   * the kept references still show what went out.
+   * value, against what was kept from the last request rather than its
+   * message objects: an executor that edits a message in place leaves the
+   * object in both histories, and one that clones the history changes no
+   * message at all.
    */
   private firstRewritten(messages: readonly ModelMessage[]): number | undefined {
     const last = this.lastShape;
@@ -794,21 +794,61 @@ function appendNotice(messages: ModelMessage[], content: string): ModelMessage[]
 }
 
 /**
- * What a message holds, by reference: its string content, or the text of
- * each text part and every other part itself. A rewrite replaces one of
- * these references; an in-place edit of the message object does too, since
- * strings are immutable and a new part is a new object.
+ * What a message holds, as the model reads it: its content serialized with
+ * every provider option left out, since a moved cache breakpoint or a
+ * reasoning signature is no edit, and every binary payload kept apart to
+ * compare by bytes.
  */
-type MessageShape = string | readonly unknown[];
-
-function shapeOf(message: ModelMessage): MessageShape {
-  if (typeof message.content === 'string') return message.content;
-  return message.content.map((part) => (part.type === 'text' ? part.text : part));
+interface MessageShape {
+  readonly text: string;
+  readonly binaries: readonly Uint8Array[];
 }
 
+/** Keys a message carries for the provider, not for the model. */
+const PROVIDER_KEYS = new Set(['providerOptions', 'providerMetadata']);
+
+/** The shape of one message. */
+function shapeOf(message: ModelMessage): MessageShape {
+  const binaries: Uint8Array[] = [];
+  const chunks: string[] = [];
+  const walk = (value: unknown): void => {
+    if (value instanceof Uint8Array) {
+      binaries.push(value);
+      chunks.push(`<bytes ${String(value.byteLength)}>`);
+    } else if (value instanceof ArrayBuffer) {
+      walk(new Uint8Array(value));
+    } else if (Array.isArray(value)) {
+      chunks.push('[');
+      for (const item of value) walk(item);
+      chunks.push(']');
+    } else if (typeof value === 'object' && value !== null && !(value instanceof URL)) {
+      chunks.push('{');
+      for (const [key, item] of Object.entries(value)) {
+        if (PROVIDER_KEYS.has(key) || item === undefined) continue;
+        chunks.push(JSON.stringify(key), ':');
+        walk(item);
+      }
+      chunks.push('}');
+    } else {
+      chunks.push(JSON.stringify(value instanceof URL ? value.href : value), ',');
+    }
+  };
+  walk(message);
+  return { text: chunks.join(''), binaries };
+}
+
+/** Whether two shapes send the model the same message. */
 function sameShape(a: MessageShape, b: MessageShape): boolean {
-  if (typeof a === 'string' || typeof b === 'string') return a === b;
-  return a.length === b.length && a.every((item, index) => item === b[index]);
+  return a.text === b.text && a.binaries.length === b.binaries.length && a.binaries.every((bytes, index) => sameBytes(bytes, b.binaries[index]!));
+}
+
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a === b) return true;
+  if (a.byteLength !== b.byteLength) return false;
+  for (let index = 0; index < a.byteLength; index += 1) {
+    if (a[index] !== b[index]) return false;
+  }
+  return true;
 }
 
 /** Longest text a message part keeps after an overflow; the head of a screen still names its controls. */
