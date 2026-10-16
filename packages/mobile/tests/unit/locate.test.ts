@@ -134,12 +134,30 @@ describe('Android resource ids without their package', () => {
     expect(testIds(query('testId', 'android:id/content'))).toEqual(['android:id/content']);
   });
 
-  it('answers a string that names a bare id and a prefixed one with both, for the runner to refuse as ambiguous', () => {
+  it('prefers a full match, so a bare id wins over a prefixed one with the same name', () => {
     const nodes: readonly RawNode[] = [
       ...ANDROID_ID_NODES,
       { ref: '@e7', index: 6, parentIndex: 0, depth: 1, type: 'android.widget.Button', identifier: 'greet', label: 'Greet again' },
     ];
-    expect(testIds(query('testId', 'greet'), { nodes })).toEqual([`${app}:id/greet`, 'greet']);
+    expect(testIds(query('testId', 'greet'), { nodes })).toEqual(['greet']);
+  });
+
+  it("keeps an app's own id clear of a system window's with the same name", () => {
+    const nodes: readonly RawNode[] = [
+      ...ANDROID_ID_NODES,
+      { ref: '@e7', index: 6, parentIndex: 0, depth: 1, type: 'android.widget.TextView', identifier: 'clock', label: '12:00' },
+      { ref: '@e8', index: 7, parentIndex: 0, depth: 1, type: 'android.widget.TextView', identifier: 'com.android.systemui:id/clock', label: '9:41' },
+    ];
+    expect(testIds(query('testId', 'clock'), { nodes })).toEqual(['clock']);
+  });
+
+  it('answers every prefixed id with the name when none matches in full, for the runner to refuse as ambiguous', () => {
+    const nodes: readonly RawNode[] = [
+      ...ANDROID_ID_NODES,
+      { ref: '@e7', index: 6, parentIndex: 0, depth: 1, type: 'android.widget.TextView', identifier: `${app}:id/clock`, label: '12:00' },
+      { ref: '@e8', index: 7, parentIndex: 0, depth: 1, type: 'android.widget.TextView', identifier: 'com.android.systemui:id/clock', label: '9:41' },
+    ];
+    expect(testIds(query('testId', 'clock'), { nodes })).toEqual([`${app}:id/clock`, 'com.android.systemui:id/clock']);
   });
 
   it('tests a RegExp against the id without the prefix too', () => {

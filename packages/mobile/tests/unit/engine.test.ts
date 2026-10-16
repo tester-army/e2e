@@ -68,6 +68,11 @@ function named(root: SemanticNode, name: string): SemanticNode {
   return found;
 }
 
+/** A whole-id test-id query, as `screen.getByTestId(value)` builds it. */
+function testIdQuery(value: string): LocatorExpression {
+  return { kind: 'query', query: { kind: 'testId', value: { kind: 'string', value, exact: true } } };
+}
+
 /** Every node under the root, the root excluded: the device's own tree. */
 function* walk(root: SemanticNode): Generator<SemanticNode> {
   for (const node of root.children ?? []) {
@@ -1025,11 +1030,6 @@ describe('a screen agent-device cannot read yet', () => {
     await expect(h.engine.locate!(ABOUT, operation())).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
   });
 });
-
-/** A whole-id test-id query, as `screen.getByTestId(value)` builds it. */
-function testIdQuery(value: string): LocatorExpression {
-  return { kind: 'query', query: { kind: 'testId', value: { kind: 'string', value, exact: true } } };
-}
 
 describe('the trace', () => {
   it('hands the harness the capture a locate matched against, with no snapshot of its own, and the device it runs on', async () => {
