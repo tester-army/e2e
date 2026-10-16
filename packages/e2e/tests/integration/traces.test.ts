@@ -200,6 +200,40 @@ test('tolerates a missing banner, then expects two buttons', async ({ screen }) 
   );
 
   it(
+    'names the step of a call split across lines, whose error unwinds through the line above its call site',
+    async () => {
+      const fake = createFakeEngine();
+      const suite = `import { test, expect } from 'e2e';
+
+test('split call', async ({ app, screen }) => {
+  await app.open('/');
+  await expect(screen.getByRole('button', { name: 'Submit' }))
+    .toHaveCount(2, { timeout: 300 });
+});
+`;
+      // A JavaScript file: the harness loads a TypeScript fixture without its source map, which folds the two lines into one.
+      const { outcome, project } = await runProject(
+        { 'tests/split.e2e.mjs': suite },
+        {
+          appUrl: FAKE_APP_URL,
+          config: { tests: 'tests/**/*.e2e.mjs', targets: [{ name: 'fake', platform: 'web', engine: fake.engine, app: FAKE_APP }], reporters: ['markdown'], actionTimeout: 300 } as E2EConfig,
+        },
+      );
+      try {
+        const attempt = outcome.report.run.results[0]!.attempts[0]!;
+        const count = attempt.steps[1]!;
+        expect(count.error?.source).toEqual(attempt.error?.source);
+        expect(count.source.line).not.toBe(attempt.error?.source?.line);
+        const summary = readFileSync(path.join(project.dir, '.e2e', 'summary.md'), 'utf8');
+        expect(summary).toContain('**ASSERTION_FAILED** at step 2 of 2: `expect.toHaveCount getByRole("button", name: "Submit")`, after ');
+      } finally {
+        project.cleanup();
+      }
+    },
+    30_000,
+  );
+
+  it(
     'writes no page for a passing run by default',
     async () => {
       const fake = createFakeEngine();

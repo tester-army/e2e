@@ -70,13 +70,15 @@ describe('failedStepOf', () => {
     expect(failedStepOf({ steps: [step({ index: 0 }), caught, step({ index: 2 }), alike], error: reportError({ code: 'LOCATOR_NOT_FOUND', phase: 'body' }) })).toEqual({ index: 3, step: alike });
   });
 
-  it('takes the step at the line the error unwound through when several failed alike, and none when no step ran on that line', () => {
+  it('takes the step whose error unwound through the line the attempt error names, and none when no step error did', () => {
     const at = (line: number) => ({ file: 'tests/a.e2e.ts', line, column: 3 });
+    // A step's source is its call site, one line below the `await` a split call's error unwinds through.
+    const first = step({ index: 1, api: 'expect.toBeHidden', status: 'failed', source: at(6), error: reportError({ source: at(5) }) });
+    const second = step({ index: 2, api: 'expect.toHaveText', status: 'failed', source: at(8), error: reportError({ source: at(7) }) });
     // Soft assertions: the one error unwinds through the first failure's stack, so the first failed step is it.
-    const first = step({ index: 1, api: 'expect.toBeHidden', status: 'failed', source: at(5), error: reportError() });
-    const second = step({ index: 2, api: 'expect.toHaveText', status: 'failed', source: at(6), error: reportError() });
     expect(failedStepOf({ steps: [step({ index: 0 }), first, second], error: reportError({ source: at(5) }) })).toEqual({ index: 1, step: first });
-    // A value matcher throws from a line no step ran on; the caught step before it does not stand in.
+    expect(failedStepOf({ steps: [step({ index: 0 }), first, second], error: reportError({ source: at(7) }) })).toEqual({ index: 2, step: second });
+    // A value matcher throws from a line no step's error names; the caught step before it does not stand in.
     expect(failedStepOf({ steps: [step({ index: 0 }), first], error: reportError({ source: at(9) }) })).toBeUndefined();
   });
 
@@ -222,7 +224,7 @@ describe('renderTracePage', () => {
                 { index: 1, calls: ['tap({"target":"n19"})'], outcome: 'Tapped #n19.\n\nScreen changes: 4 added.' },
                 { index: 2, calls: ['complete_step({"status":"failed"})'], outcome: 'Step concluded.' },
               ],
-              error: reportError({ code: 'ASSERTION_FAILED', message: 'no Archive button' }),
+              error: reportError({ code: 'ASSERTION_FAILED', message: 'no Archive button', source: { file: 'tests/todos.e2e.ts', line: 8, column: 3 } }),
             }),
           ],
           artifacts: [screen, shot],

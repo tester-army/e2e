@@ -117,8 +117,9 @@ export type FailedStep = ReportStep & { readonly status: Exclude<ReportStep['sta
 
 /**
  * The step whose error ended the attempt, with its position: the step in the
- * error's phase with its code at its line, else the last with its code, since
- * a caught failure comes earlier, else the step a timeout or interrupt cut.
+ * error's phase whose own error carries its code and line, else the last with
+ * its code, since a caught failure comes earlier, else the step a timeout or
+ * interrupt cut.
  */
 export function failedStepOf(attempt: { readonly steps: readonly ReportStep[]; readonly error?: ReportError | undefined }): { index: number; step: FailedStep } | undefined {
   const error = attempt.error;
@@ -130,7 +131,8 @@ export function failedStepOf(attempt: { readonly steps: readonly ReportStep[]; r
   const alike = candidates.filter(({ step }) => step.error?.code === error.code);
   const line = error.source;
   if (line !== undefined && alike.length > 0) {
-    return alike.findLast(({ step }) => step.source.file === line.file && step.source.line === line.line);
+    // The step's own error, not its source: that is the call site, a line below the `await` of a split call.
+    return alike.findLast(({ step }) => step.error?.source?.file === line.file && step.error.source.line === line.line);
   }
   return alike.at(-1) ?? candidates.findLast(({ step }) => step.status === 'cancelled');
 }
