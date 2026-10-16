@@ -20,8 +20,11 @@ of skipping it quietly.
 **Important:** first run the shortening pass from
 [authoring-docs](../authoring-docs/SKILL.md#important-shorten-every-page) on
 every guide page the change touches (`docs/**/*.mdx` outside
-`docs/reference/`), even for a one-paragraph edit. The checks below then
-catch an anchor the pass broke.
+`docs/reference/`), even for a one-paragraph edit. A reference page the
+change touches follows
+[authoring-docs, Reference pages](../authoring-docs/SKILL.md#reference-pages)
+instead: `## Reference` first, minimal summary tables, every fact kept. The
+checks below then catch an anchor either pass broke.
 
 Run what CI runs for what you touched, and fix everything:
 
