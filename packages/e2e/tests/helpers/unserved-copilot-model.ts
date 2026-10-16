@@ -1,32 +1,33 @@
-/**
- * A Copilot-shaped scripted model whose every call the account cannot use,
- * marked the way `copilot()` marks a `model_not_supported` answer. A config
- * file on the worker path builds it itself, so it lives beside the other
- * helpers a fixture config imports.
- */
+/** A Copilot-shaped failure and model the account cannot use, marked as `copilot()` marks a refusal; a worker-path config file imports it. */
 
 import { APICallError } from '@ai-sdk/provider';
 import { markUnservedModel } from '../../src/internal/unserved-model.ts';
+import { copilotRefusal } from '../../src/oauth/providers/github-copilot.ts';
 import type { ModelInstance } from '../../src/types.ts';
 import { createScriptedInstance } from './scripted-model.ts';
 
 const REFUSED_MODEL_ID = 'claude-haiku-4.5';
 
 /** The explanation `copilot()` attaches, as a run error quotes it. */
-export const REFUSAL_EXPLANATION = `GitHub Copilot does not serve ${REFUSED_MODEL_ID} to this account: the plan does not include it, it is turned off in Copilot settings on GitHub, or Copilot lists no such id; npx e2e models github-copilot lists the ids, and the listing cannot see plan limits`;
+export const REFUSAL_EXPLANATION = copilotRefusal(REFUSED_MODEL_ID);
 
-/** Builds the refusing model; each call fails like Copilot's 400 and carries the mark. */
+/** One refused call's failure as `copilot()` rethrows it: the AI SDK's error over Copilot's 400, carrying the mark. */
+export function refusedCopilotFailure(): APICallError {
+  return markUnservedModel(
+    new APICallError({
+      message: 'The requested model is not supported.',
+      url: 'https://api.githubcopilot.com/chat/completions',
+      requestBodyValues: {},
+      statusCode: 400,
+      responseBody: '{"error":{"message":"The requested model is not supported.","code":"model_not_supported","param":"model","type":"invalid_request_error"}}',
+    }),
+    REFUSAL_EXPLANATION,
+  );
+}
+
+/** Builds the refusing model; each call fails with `refusedCopilotFailure()`. */
 export function refusedCopilotModel(): ModelInstance {
   return createScriptedInstance('github-copilot.chat', REFUSED_MODEL_ID, async () => {
-    throw markUnservedModel(
-      new APICallError({
-        message: 'The requested model is not supported.',
-        url: 'https://api.githubcopilot.com/chat/completions',
-        requestBodyValues: {},
-        statusCode: 400,
-        responseBody: '{"error":{"message":"The requested model is not supported.","code":"model_not_supported","param":"model","type":"invalid_request_error"}}',
-      }),
-      REFUSAL_EXPLANATION,
-    );
+    throw refusedCopilotFailure();
   });
 }

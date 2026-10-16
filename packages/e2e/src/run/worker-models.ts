@@ -3,9 +3,8 @@
  * when the first test acquires that agent: adapter construction checks that a
  * model is configured without a live request. A failure is
  * reported once, to abort the run, instead of surfacing as one blocked step
- * per test; so is a model the provider refuses to serve, which only the
- * first call that reaches it can find. Adapters are shared across every
- * agent that holds the same model instance.
+ * per test. Adapters are shared across every agent that holds the same
+ * model instance.
  */
 
 import type { ModelAdapter } from '../agent/model/adapter.ts';
@@ -43,11 +42,7 @@ export class WorkerModels {
     if (this.failure !== undefined) throw this.failure;
   };
 
-  /**
-   * A model the provider does not serve to this account, met by a step's
-   * call rather than at preflight: reported to the run once, and every
-   * later preflight rethrows it, as a missing model is.
-   */
+  /** A model the provider refused, met by a step's call: reported to the run once, and every later preflight rethrows it. */
   readonly unservedModel = (error: E2EError): void => {
     if (this.failure !== undefined) return;
     this.failure = error;

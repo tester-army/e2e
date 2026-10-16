@@ -313,17 +313,10 @@ function translateModelError(
   );
 }
 
-/**
- * The failure of a model the provider does not serve to this account, as
- * its constructor marked it (`internal/unserved-model.ts`). No call of the
- * run can succeed, so the code is the configuration one a missing model gets
- * at preflight, and the agent fixture reports it to the run once; the mark
- * is carried over so the fixture tells it from a model never configured.
- * Requires the SDK to be loaded, as every caller has by the time a call
- * has failed.
- */
+/** A marked failure (`internal/unserved-model.ts`) as the run-stopping `MODEL_UNAVAILABLE` the fixture reports once, or that error itself; undefined for any other failure. */
 export function unservedModelError(cause: unknown): AgentError | undefined {
-  const explanation = unservedModelExplanation(unwrapRetry(cause));
+  if (isUnservedModelError(cause)) return cause;
+  const explanation = unservedModelExplanation(cause);
   if (explanation === undefined) return undefined;
   return markUnservedModel(new AgentError('MODEL_UNAVAILABLE', explanation, { cause }), explanation);
 }

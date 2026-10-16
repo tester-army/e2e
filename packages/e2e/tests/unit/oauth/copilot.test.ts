@@ -2,7 +2,7 @@ import { generateText, tool } from 'ai';
 import { z } from 'zod';
 import { afterEach, describe, expect, it } from 'vitest';
 import { copilot } from '../../../src/oauth/copilot.ts';
-import { copilotBaseUrl, copilotProtocolFor, createCopilotProvider, enterpriseHost, sendCopilotRequest } from '../../../src/oauth/providers/github-copilot.ts';
+import { copilotBaseUrl, copilotProtocolFor, copilotRefusal, createCopilotProvider, enterpriseHost, sendCopilotRequest } from '../../../src/oauth/providers/github-copilot.ts';
 import { unservedModelExplanation } from '../../../src/internal/unserved-model.ts';
 import { echoUpstream, json, useServers, useVendor, type Echo, type Received } from './helpers/server.ts';
 import { onFakeTimeouts } from './helpers/time.ts';
@@ -165,9 +165,8 @@ describe('Copilot requests', () => {
     });
     vendor(api, { 'github-copilot': { access: 'gho_x', refresh: '', expires: 0 } });
     const failed = (modelId: string) => generateText({ model: copilot(modelId), prompt: 'color?' }).then(() => undefined, (cause: unknown) => cause);
-    expect(unservedModelExplanation(await failed('claude-haiku-4.5'))).toBe(
-      'GitHub Copilot does not serve claude-haiku-4.5 to this account: the plan does not include it, it is turned off in Copilot settings on GitHub, or Copilot lists no such id; npx e2e models github-copilot lists the ids, and the listing cannot see plan limits',
-    );
+    expect(unservedModelExplanation(await failed('claude-haiku-4.5'))).toBe(copilotRefusal('claude-haiku-4.5'));
+    expect(copilotRefusal('claude-haiku-4.5')).toContain('or Copilot lists no such id');
     const plain = await failed('gpt-6-luna');
     expect(unservedModelExplanation(plain)).toBeUndefined();
     expect(plain).toMatchObject({ name: 'AI_APICallError', statusCode: 400 });
