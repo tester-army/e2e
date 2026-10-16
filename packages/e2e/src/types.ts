@@ -1506,6 +1506,8 @@ export interface E2EConfig {
    * directory the run clears.
    */
   output?: string;
+  /** Run snapshots to retain under `<output>/history/<run-id>/`, including the latest; default 0 disables history. */
+  keepResults?: number;
   /**
    * Output renderers and reporter objects. `junit` writes `<output>/junit.xml`,
    * `markdown` writes `<output>/summary.md`, `json` prints the report and

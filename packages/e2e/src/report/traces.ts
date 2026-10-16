@@ -46,6 +46,8 @@ export interface WriteTracePagesOptions {
   readonly projectRoot: string;
   /** `<output>/results`: the report's artifact paths are relative to it, and each page goes in its test's directory there. */
   readonly resultsRoot: string;
+  /** Published artifact location when the pages are first written into a staging directory. */
+  readonly displayResultsRoot?: string | undefined;
   /** Absolute replay cache directory, where a step's entry file is; absent when a custom store holds the cache. */
   readonly cacheDir?: string | undefined;
 }
@@ -74,7 +76,7 @@ export async function writeTracePages(report: Report1Document, traced: ReadonlyS
     const dir = resultSegment(result);
     const file = path.join(options.resultsRoot, dir, TRACE_PAGE);
     const page = renderTracePage(report, result, outcome(result, serialGroups), {
-      artifactsDir: relative(options.resultsRoot),
+      artifactsDir: relative(options.displayResultsRoot ?? options.resultsRoot),
       pageDir: dir,
       readArtifact,
       ...(options.cacheDir === undefined ? {} : { cacheDir: displayPath(options.projectRoot, options.cacheDir) }),

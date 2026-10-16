@@ -74,6 +74,7 @@ export interface ResolvedConfig {
   readonly artifactStore: ArtifactStore | undefined;
   /** Absolute directory the run writes its results to: `--output`, else the config's `output`, else `<projectRoot>/.e2e`. */
   readonly output: string;
+  readonly keepResults: number;
   /** The built-in renderers in force: `--reporter` when given, else the config's ids. */
   readonly reporters: readonly BuiltinReporter[];
   /** The reporter objects the config names; `--reporter` never removes one. */
@@ -169,6 +170,7 @@ const TOP_LEVEL_KEYS = new Set([
   'workers',
   'artifacts',
   'output',
+  'keepResults',
   'trace',
   'video',
   'reporters',
@@ -285,6 +287,7 @@ export function resolveConfig(
   }
 
   const artifactStore = resolveArtifactStore(raw);
+  const keepResults = boundedInt(raw.keepResults, 'keepResults', 0, Number.MAX_SAFE_INTEGER) ?? 0;
   const { reporters, customReporters } = resolveReporters(raw, cli);
 
   const projectId = resolveProjectId(raw.projectId, options.projectRoot);
@@ -314,6 +317,7 @@ export function resolveConfig(
     workers,
     artifactStore,
     output,
+    keepResults,
     reporters,
     customReporters,
     agentNames,
@@ -461,7 +465,7 @@ function expandHome(value: string): string {
 }
 
 /** The directories under the output a run clears or owns, which nothing else may live in. */
-const OUTPUT_OWNED_DIRS = ['results', 'sessions', 'videos'] as const;
+const OUTPUT_OWNED_DIRS = ['results', 'sessions', 'videos', 'history'] as const;
 
 /** Whether `inner` is `outer` or a path below it. */
 function isWithin(inner: string, outer: string): boolean {
@@ -1037,6 +1041,7 @@ function computeConfigDigest(
     maxDuration: _maxDuration,
     artifacts: _artifacts,
     output: _output,
+    keepResults: _keepResults,
     trace: _trace,
     video: _video,
     targets: _targets,

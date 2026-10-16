@@ -56,6 +56,7 @@ const CACHE_IGNORE_ENTRY = '.e2e/cache/';
 const GITIGNORE_ENTRIES = [
   'node_modules/',
   '.e2e/results/',
+  '.e2e/history/',
   CACHE_IGNORE_ENTRY,
   '.e2e/sessions/',
   '.e2e/report.json',

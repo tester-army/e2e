@@ -43,6 +43,7 @@ import { writeTracePages, type TracePages } from '../report/traces.ts';
 import { STATELESS_REPORTERS } from '../report/builtin.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport } from '../report/write.ts';
+import { saveRunHistory } from './result-history.ts';
 import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCode, type RunStatus, type RunEventFact, type SetupStep } from './events.ts';
 import { allocateAppPorts } from './app-ports.ts';
 import { inProcessSpawner } from './in-process.ts';
@@ -679,6 +680,14 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       forceController.signal,
     );
     listReporter?.rows(rows);
+    if (written !== undefined && written.keepResults > 0 && reportPath !== undefined) {
+      try {
+        const historyPath = await saveRunHistory({ config: written, report, reportPath, aiTracePath, traces });
+        listReporter?.rows([{ label: 'History', text: path.relative(written.projectRoot, historyPath) }]);
+      } catch (cause) {
+        process.stderr.write(`e2e: run history could not be saved: ${errorMessage(cause)}\n`);
+      }
+    }
     return { exitCode, status, report, reportPath, aiTracePath, results, config: loaded.config };
   };
 
