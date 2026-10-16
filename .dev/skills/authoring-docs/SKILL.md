@@ -21,6 +21,11 @@ commit. Don't skip it for a new page or a small edit.** A first draft is
 always too long, and an edit that adds one paragraph often repeats a fact
 the page already has.
 
+On a reference page (`docs/reference/`) the pass is narrower: merge a fact
+said twice and keep each summary table to its minimum
+([Summary tables](#summary-tables)), but cut no fact. A reference page is a
+lookup, so it stays complete.
+
 When the PR is about something other than docs, such as a flag rename that
 updates three pages, apply the cuts to the sections the change touches.
 List the cuts for the rest of each page as a follow-up. A whole-page
@@ -464,8 +469,9 @@ Each group opens with one table, one row per entry. Keep it to the minimum:
 
 - [ ] On a reference page: the first `##` is `## Reference`, every summary
       table follows [Summary tables](#summary-tables), and no linked anchor
-      was lost. The shortening pass below is for guides.
-- [ ] **IMPORTANT:** the shortening pass ran on this page. It was measured
+      was lost.
+- [ ] **IMPORTANT:** the shortening pass ran on this page (on a reference
+      page, its narrower form: duplicates merged, no fact cut). It was measured
       against its neighbors before and after, and every new or merged
       sentence was checked against `src/`.
 - [ ] Reading only the headings and first sentences explains the page.

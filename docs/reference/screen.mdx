@@ -1179,8 +1179,8 @@ wait for a value.
 | Reads | Poll until the timeout, then `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` |
 | `count()`, `all()`, `allTextContents()` | `0`, `[]`, `[]` | The count, one locator per match, one text per match |
 | `isVisible()`, `isHidden()` | `false`, `true` | `LOCATOR_AMBIGUOUS` |
-| Assertions | Poll until the timeout | `LOCATOR_AMBIGUOUS` |
-| Any of these under a frame that is not in the document | As zero matches for `count()`, `all()`, `allTextContents()`, `isVisible()`, and `isHidden()`; actions, reads, and assertions poll for the frame until the timeout, then `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` when several frames match |
+| Assertions | Poll until the timeout, then `ASSERTION_FAILED` | `LOCATOR_AMBIGUOUS` |
+| Any of these under a frame that is not in the document | As zero matches for `count()`, `all()`, `allTextContents()`, `isVisible()`, and `isHidden()`; actions and reads poll for the frame until the timeout, then `LOCATOR_NOT_FOUND`; assertions, then `ASSERTION_FAILED` | `LOCATOR_AMBIGUOUS` when several frames match |
 
 ## Types
 

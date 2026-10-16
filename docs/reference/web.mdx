@@ -473,8 +473,8 @@ JSON `arg`; its overloads are on [`Browser`](#browser-interface).
 | [`emulateMedia`](#media-emulation) | `Promise<void>` |
 | [`onDialog`](#ondialog) | `Promise<() => Promise<void>>` |
 | [`waitForDownload`](#waitfordownload) | `Promise<{ path, absolutePath, … }>` |
-| [`keyboard`](#keyboard) | `Promise<void>` |
-| [`mouse`](#mouse) | `Promise<void>` |
+| [`keyboard`](#keyboard) | `{ press, down, up, type }` |
+| [`mouse`](#mouse) | `{ move, wheel, down, up }` |
 
 `goto`, `reload`, `back`, and `forward` are bounded by `timeout`,
 `waitForURL` by `assertionTimeout`, and every other member by
