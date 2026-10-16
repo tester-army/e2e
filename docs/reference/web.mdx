@@ -114,8 +114,9 @@ web({ browser: 'firefox' }); // default: 'chromium'
 - `'chromium'`, `'firefox'`, or `'webkit'`.
 - A `BrowserProvider` object leases hosted browsers instead: one per worker
   slot at `prepare`, or one per attempt. Each is attached to over CDP and
-  released when its scope (the run or the attempt) ends. A provider implies
-  chromium.
+  released when its scope (the run or the attempt) ends. The engine drives a
+  provider's browser as chromium over CDP, whether it is Chromium or another
+  CDP server such as [Lightpanda](/integrations/lightpanda).
 - A provider with `scope: 'attempt'` rides a persistent context, with the
   limits under [Recovering a CDP transport](#recovering-a-cdp-transport).
 - [Hosted browsers](/browser#hosted-browsers) has the `BrowserProvider`

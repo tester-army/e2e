@@ -514,6 +514,7 @@ boot devices here.
 
 ```ts
 async prepare(info) {
+  if (info.slots === 0) return; // nothing runs on this target
   info.log('booting devices');
   const devices = await pool.boot(info.slots, { signal: info.signal });
   return { workers: devices.length, env: { KIOSK_DEVICES: devices.join(',') } };

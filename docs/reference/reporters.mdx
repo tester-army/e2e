@@ -96,9 +96,15 @@ Renders a report as the Markdown page the `markdown` reporter writes, so
 your own reporter can post the same page elsewhere.
 
 ```ts
-import { renderMarkdownReport } from 'e2e';
+import { renderMarkdownReport, type Reporter } from 'e2e';
 
-const page = renderMarkdownReport(run.report, { traces: run.traces });
+const reporter: Reporter = {
+  name: 'wiki',
+  async onRunFinished(run) {
+    const page = renderMarkdownReport(run.report, { traces: run.traces });
+    await fetch('https://wiki.example.test/runs', { method: 'POST', body: page });
+  },
+};
 ```
 
 - `traces` links each block to its trace page by result id.

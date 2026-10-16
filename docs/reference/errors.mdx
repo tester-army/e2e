@@ -6,8 +6,10 @@ icon: "triangle-exclamation"
 "twitter:image": "https://e2e.tester.army/docs/images/og/reference/errors.png?v=b184354c61"
 ---
 
-Every error carries a class and a code. The class sets the exit code; the
-code identifies the cause. A model never selects either.
+Every runner error carries a class and a code. The class sets the exit code;
+the code identifies the cause. A model never selects either. `e2e login`,
+`e2e logout`, and `e2e models` are the exception, under
+[Exit codes](#exit-codes).
 
 ```ts title="tests/upgrade.e2e.ts"
 import { isAgentError, test } from 'e2e';

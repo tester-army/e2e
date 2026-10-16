@@ -634,7 +634,8 @@ longPress(options?: LongPressOptions): Promise<void>;
 await screen.getByText('Design review').longPress({ duration: 800 });
 ```
 
-- `duration` is the hold time in milliseconds, 100 through 10000.
+- `duration` is the hold time in milliseconds, an integer from 100 through
+  10000. Anything else is `INVALID_ARGUMENT`.
 - Without it the engine's default applies: 500 ms on the browser engine, one
   second on the mobile engine, past a React Native `Pressable`'s
   `delayLongPress`.

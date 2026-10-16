@@ -331,7 +331,7 @@ await expect(screen).toHaveScreenshot('feed.png', { mask: [screen.getByTestId('t
 | Stored at | `<test file>-snapshots/<name>-<target>-<os>.png`; `.png` is added to a name without it |
 | Unnamed | The test's title path, lowercase, and a count: `checkout-pays-by-card-1` |
 | Missing | Taken from two screenshots in a row that are the same within the tolerance, then `ASSERTION_FAILED`. Written beside the test; in CI without `--update-snapshots` only attached to the results, at `snapshots/<path in the project>` |
-| Written earlier in the run | No comparison, `.not` included, passes against a screenshot the same run wrote (a retry, a repeat, another test naming it): `ASSERTION_FAILED` until the next run |
+| Written earlier in the run | Without `--update-snapshots`, and always for `.not`, no comparison passes against a screenshot the same run wrote (a retry, a repeat, another test naming it): `ASSERTION_FAILED` until the next run. With `--update-snapshots` a positive matcher compares and may write it again |
 | Different | Retried until one matches or the timeout; then `ASSERTION_FAILED` with `-expected`, `-actual`, and `-diff` images on the step |
 | `--update-snapshots`, `-u` | A missing or different stored screenshot is written from a screen that holds still, and the matcher passes |
 | `.not` | Passes once the screen differs; with nothing stored it is `ASSERTION_FAILED` |
@@ -749,8 +749,9 @@ Every value matcher is available, returning a promise.
   `read` that throws is one failing sample; a `read` that hangs is cut at the
   deadline.
 - `toMatchSchema` resolves to the schema's output for the passing read.
-- When the attempt is cancelled or times out, the loop and any read in flight
-  stop with `CANCELLED`.
+- When the attempt is cancelled, the loop stops with `CANCELLED`. At the
+  attempt's deadline it stops with `ASSERTION_FAILED`, naming the deadline.
+  A `read` in flight is abandoned, not stopped: work it started can go on.
 - `expect.poll` is not recorded as a report step; a timeout surfaces only as
   the test's failure.
 

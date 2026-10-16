@@ -125,7 +125,7 @@ process sees an edit.
 | `config` | `'e2e.ci.config.ts'` | `string \| E2EConfig` | discovered from `cwd`, the same walk `e2e list` does |
 | `targets` | `['web']` | `readonly string[]` | - |
 | `cwd` | `'apps/web'` | `string` | the current working directory |
-| `files` | `['tests/', 'signup.e2e.ts:12']` | `readonly string[]` | - |
+| `files` | `['tests/', 'signup.e2e.ts:12']` | `readonly string[]` | the configured suite |
 | `tags`, `tagMode`, `excludeTags` | `{ tags: ['smoke'], tagMode: 'all' }` | `readonly string[]`, `'any' \| 'all'` | - |
 | `grep`, `grepInvert` | `[/checkout/]` | `readonly RegExp[]` | - |
 | `lastFailed` | `true` | `boolean` | - |
@@ -327,7 +327,8 @@ const session = await host.openSession({
   positive and finite, counted from when the session opens. It does not bound
   provisioning or opening, and does not close the session.
 - `signal` cancels opening or live fixture calls. The host's `signal` also
-  applies. Use a signal to cancel provisioning or launch.
+  applies. Provisioning happens in `openHost`, so only the host's `signal`
+  cancels it; either signal cancels a launch.
 - `agent` is the agent the `agent` fixture uses when a call names none.
 - `onStep` receives live `StepProgress`, the same feed reporters receive. It
   must not block or throw. Its `phase` is `start`, `event`, `activity`,
@@ -338,7 +339,7 @@ const session = await host.openSession({
 | Throws | When |
 | --- | --- |
 | `INVALID_CONFIG` | `name` is not a string, or `timeout` is not positive and finite. |
-| `CANCELLED` | The session's or the host's `signal` has already aborted. |
+| `CANCELLED` | The session's or the host's `signal` aborted before or during opening. |
 | `WORKER_PROTOCOL` | Another hosted attempt is opening, live, or closing, or the host is closed. |
 
 ### `host.close`
@@ -386,8 +387,8 @@ if (failures.length > 0) throw new AggregateError(failures, 'e2e host close fail
 ### `session.close`
 
 `session.close()` cancels remaining operations, ends the attempt, and writes
-its trace. It returns soft expectation and cleanup failures instead of
-throwing them.
+its trace. It returns soft expectation, abandoned-operation (an unsettled
+poll or step), and cleanup failures instead of throwing them.
 
 ```ts
 const failures = await session.close();

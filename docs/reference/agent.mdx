@@ -130,8 +130,8 @@ Checks one fresh observation without polling.
 await agent.assert('the dashboard shows a trial badge');
 ```
 
-- The judge sees only the assertion and current observation, never prior
-  steps or `act` summaries. It answers `holds`, `fails`, or `inconclusive`.
+- The judge sees the assertion, the current observation, and the agent's
+  `context`, never prior steps or `act` summaries. It answers `holds`, `fails`, or `inconclusive`.
 - When what the assertion is about appears more than once, such as a total
   in a summary and on a pay button, every instance must agree: one that
   contradicts it fails. Name the place (`the order summary total is $42.00`)
@@ -230,6 +230,8 @@ Takes one fresh observation, requests structured output, validates it, and
 returns the validated value. It performs no app actions.
 
 ```ts
+import { z } from 'zod';
+
 const summary = await agent.extract('the workspace name and plan', {
   schema: z.object({ name: z.string(), plan: z.string() }),
 });

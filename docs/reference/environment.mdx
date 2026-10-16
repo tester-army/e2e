@@ -67,8 +67,8 @@ of the stored `opencode-console` login. OpenCode reads the same variable.
   variables.
 - A credential and a secret may share a name, since their prefixes differ.
 - A variable for a name absent from the config is ignored.
-- An empty value is `INVALID_CONFIG`, and so is a password or secret shorter
-  than 6 characters (code points): redaction rewrites every occurrence of a
+- An empty password or secret is `INVALID_CONFIG`, and so is one shorter
+  than 6 characters (code points). An empty username is accepted: redaction rewrites every occurrence of a
   value, and one that short would take ordinary text with it.
 
 ## Run mode
