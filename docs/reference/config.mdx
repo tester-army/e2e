@@ -1358,7 +1358,9 @@ process.loadEnvFile('.env');
 ```
 
 It throws when the file is missing; guard it with `existsSync` from
-`node:fs` when only some machines have one.
+`node:fs` when only some machines have one. The path resolves against the
+directory e2e runs from, but workers start in the config's directory. To run
+from a subdirectory, pass `new URL('.env', import.meta.url)` instead.
 
 ### Module format
 
