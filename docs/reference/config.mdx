@@ -7,10 +7,10 @@ icon: "sliders"
 ---
 
 `e2e.config.ts` configures the runner: the targets tests run on, the app each
-one tests, the agents, and the replay cache. Export an object and use
-`satisfies E2EConfig` to check its shape without widening its inferred types.
-The runner also validates the config when it loads, including ranges and
-rules TypeScript cannot check.
+one tests, the agents, and the replay cache. Export an object with
+`satisfies E2EConfig`, which checks its shape and keeps its inferred types.
+The runner validates the config again at load, including ranges and rules
+TypeScript cannot check.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -57,16 +57,16 @@ export default {
 
 The full declaration is [`E2EConfig`](#e2econfig).
 
-- Unknown keys are rejected with `INVALID_CONFIG` at every level. There is no
-  top-level `app` key: each target declares the app it tests (see
-  [the app under test](#the-app-under-test)).
+- An unknown key at any level is `INVALID_CONFIG`. There is no top-level
+  `app` key: each target declares [the app it tests](#the-app-under-test).
 - Every numeric value must be a safe integer.
 - An optional key takes a value or is left out. Under
   `exactOptionalPropertyTypes`, `undefined` is a type error, so
   `store: process.env.CACHE_URL && createStore(...)` fails to compile. At
-  runtime, `undefined` counts as unset. The target's `app` fields also accept
-  `undefined` in their types, so they can read `process.env` directly. Spread
-  any other key that depends on the environment in only when it has a value:
+  runtime, `undefined` counts as unset.
+- The target's `app` fields also accept `undefined` in their types, so they
+  can read `process.env` directly. Spread any other key that depends on the
+  environment in only when it has a value:
 
 ```ts
 export default {
@@ -84,8 +84,8 @@ projectId: 'acme-web', // default: the root package.json name
 ```
 
 - 1 through 256 characters.
-- Defaults to the `name` in the root `package.json`. Without one it falls back
-  to `unportable-<sha256 of the project root, 32 hex>`.
+- Without a `name` in the root `package.json`, it falls back to
+  `unportable-<sha256 of the project root, 32 hex>`.
 
 #### `tests`
 
@@ -101,10 +101,10 @@ tests: ['tests/**/*.e2e.ts', '!tests/wip/**'], // default: 'tests/**/*.e2e.ts'
   except those under `tests/wip/`.
 - A file is selected when an including glob matches it and no exclusion does,
   whatever the order of the list.
-- Discovery visits only directories that could match, never enters one an
-  exclusion takes whole, skips `node_modules`, and ignores symlinks.
-- A dot directory is included only when a glob segment explicitly starts with
-  a dot.
+- Discovery visits only directories that could match. It never enters a
+  directory an exclusion takes whole, skips `node_modules`, and ignores
+  symlinks.
+- A dot directory is included only when a glob segment starts with a dot.
 
 | Throws | When |
 | --- | --- |
@@ -195,10 +195,10 @@ export default { targets, maxDuration: 900_000 } satisfies E2EConfig; // default
 ```
 
 - At most 2147483647 (about 24 days).
-- The clock starts when the tests start. App startup is bounded by the app
-  command's [`startupTimeout`](#command) instead.
-- Once the time is spent, nothing more is dispatched, the running tests end
-  as `interrupted`, and the tests not started are skipped with cause
+- The clock starts when the tests start. The app command's
+  [`startupTimeout`](#command) bounds app startup instead.
+- Once the time is spent, the runner dispatches nothing more. The running
+  tests end as `interrupted`, and the tests not started are skipped with cause
   `time-limit`. The run records a `RUN_TIMEOUT` error and exits 1.
 - `--last-failed` runs the interrupted and skipped tests next.
 - `--max-duration <ms>` overrides it for one run.
@@ -214,8 +214,8 @@ workers: 4, // default: 1 in CI, else half the cores
 
 - 1 through 1024.
 - Locally the default is `max(1, floor(availableParallelism() / 2))`.
-- `workers` never exceeds what a target's engine declares: an engine may cap
-  it lower.
+- An engine may cap it lower: `workers` never exceeds what a target's engine
+  declares.
 
 #### `reporters`
 
@@ -237,9 +237,9 @@ An unknown id is `INVALID_CONFIG`. See [Reporters](/reference/reporters).
 
 ### targets
 
-A target is one named surface tests run on: the app under test and the engine
-that drives it. `targets` is required and holds at least one. A target names
-the engine that drives it; without one it runs through agent tools only.
+A target is one named surface tests run on: the app under test and the
+[engine](#engine) that drives it. `targets` is required and holds at least
+one.
 
 ```ts title="e2e.config.ts"
 targets: [
@@ -258,9 +258,9 @@ targets: [
 | [`video`](#video) | `RecordingMode` | the config's `video` |
 
 - `{ engine: web(), app: { url } }` is a complete target.
-- Tests whose `requires` names a capability the target lacks are skipped for
-  it. A `test.setup` a selected test depends on must be runnable there, or
-  selection fails with `COLLECTION_ERROR`.
+- A test whose `requires` names a capability the target lacks is skipped for
+  it. A `test.setup` that a selected test depends on must be runnable there,
+  or selection fails with `COLLECTION_ERROR`.
 
 The full declaration is [`Target`](#target).
 
@@ -342,21 +342,19 @@ targets: [
 | [`readyUrl`](#readyurl) | `string` | `url` |
 
 Each engine checks the keys at config load, with `INVALID_CONFIG` naming the
-target:
+target. A target with `app` needs an [engine](#engine).
 
 - A `web()` target needs `app.url` and refuses `bundleId`, `appPath`,
   `launchArguments`, and `permissions`.
 - A `mobile()` target needs `app.bundleId` or `app.appPath`. `app.url` on a
   mobile target is not supported yet.
 - An unknown key in `app` or `app.command` fails with a did-you-mean.
-- A target with `app` and no engine is `INVALID_CONFIG`.
 
 <Note>
 The old spellings are unknown keys and fail at config load with
 `INVALID_CONFIG`: `web({ url })` and the other app options of `web()` and
 `mobile()`, `mobile({ app })` (now `app.bundleId`), an app key directly on the
-target, a top-level `app` or `url`, and `services` anywhere, which this
-version does not have.
+target, a top-level `app` or `url`, and [`services`](#services) anywhere.
 </Note>
 
 #### `url`
@@ -412,8 +410,8 @@ identity: 'checkout-web', // default: the URL's origin and base path, else bundl
 ```
 
 Set a stable value to reuse entries across preview URLs or versioned build
-paths. With a free port, the default derives from the declared `:0`, so cache
-and session entries do not churn with the port.
+paths. With a [free port](#free-ports), the default derives from the declared
+`:0`, so cache and session entries do not churn with the port.
 
 <Note>
 Different apps must have different identities. A shared identity replays
@@ -430,8 +428,7 @@ environment: 'staging', // default: 'test' for a local host or no URL, else 'pro
 ```
 
 - `'test'`, `'staging'`, or `'production'`.
-- Defaults to `test` for loopback, `.localhost`, and `.test` hosts and for an
-  app without a URL, `production` otherwise.
+- A local host is a loopback, `.localhost`, or `.test` host.
 
 #### `launchArguments`
 
@@ -487,14 +484,13 @@ command: {
   port of `url`.
 - `cwd` resolves from the project root.
 - The child inherits only `PATH`, `HOME`, the temp-directory variables, the
-  variables `inheritEnv` matches, and `command.env`, so pass what the app
-  needs explicitly. `inheritEnv` takes exact names or prefixes ending in `*`
-  (`'STRIPE_*'`) and copies a variable only when it is set. `env` wins over an
-  inherited value.
+  variables `inheritEnv` matches, and `command.env`. Pass what the app needs
+  explicitly.
+- `inheritEnv` takes exact names or prefixes ending in `*` (`'STRIPE_*'`). It
+  copies a variable only when it is set. `env` wins over an inherited value.
 - Every `args` entry and `env` value is a string. An `undefined` `env` value
   is dropped.
-- The runner polls `readyUrl` until the command is ready. `startupTimeout` is
-  that probe's budget.
+- `startupTimeout` is the budget of the [`readyUrl`](#readyurl) probe.
 - `shutdownTimeout` is the grace period before force-kill.
 - `log` receives the process's stdout and stderr, appended, resolved from the
   project root. It must stay inside the project root.
@@ -502,9 +498,8 @@ command: {
   started, with `command.env` and `inheritEnv` values replaced by
   `<secret:NAME>` markers.
 - `reuseExisting`: when the readiness URL already answers before the command
-  starts, the runner uses that process instead of spawning. Nothing is
-  started and nothing is stopped. CI ignores it, with a notice, and always
-  starts the command.
+  starts, the runner uses that process. It starts nothing and stops nothing.
+  CI ignores it, with a notice, and always starts the command.
 - Targets declaring the same command share one process, probed at the first
   declaring target's `readyUrl`.
 - The runner never terminates a process it did not start.
@@ -537,18 +532,20 @@ readyUrl: 'http://localhost:3000/health', // default: url
 
 #### The app's site
 
-A test or the agent may open any http(s) URL, and `about:blank`; every other
+A test or the agent may open any http(s) URL, and `about:blank`. Every other
 scheme (`file:`, `data:`, `javascript:`, `view-source:`, `blob:`) is
-`POLICY_DENIED`. The site of `url`, its registrable domain
-(`app.example.com` and `auth.example.com` are one site), scopes two things:
-the browser engine's [`headers`](/reference/web#options) reach the site and no
-other host, and child frames off the site stay out of observations.
+`POLICY_DENIED`. The site of `url` is its registrable domain:
+`app.example.com` and `auth.example.com` are one site. It scopes two things:
+
+- The browser engine's [`headers`](/reference/web#options) reach the site and
+  no other host.
+- Child frames off the site stay out of observations.
 
 #### Free ports
 
 A `url` on a literal loopback address with port `0` (`http://127.0.0.1:0`,
 `http://[::1]:0`) asks the run for a free TCP port. The runner picks one when
-the config loads and substitutes it wherever the declaration used the port:
+the config loads. It substitutes the port wherever the declaration used it:
 the base URL, the default `readyUrl`, and the report. The command must take
 the port through `{port}` in `args` or `env`.
 
@@ -560,23 +557,21 @@ app: {
 },
 ```
 
-- `localhost:0` is `INVALID_APP_URL`: it may resolve to an address other than
-  the one the command binds. Write the address the command will bind.
+- `localhost:0` is [`INVALID_APP_URL`](#url): it may resolve to an address
+  other than the one the command binds. Write the address the command will
+  bind.
 - Each target asking for port `0` gets its own port and its own process. Two
   targets that declare the same command on a fixed port share one.
-- `{port}` in `app.command` and `app.readyUrl` is the port of `url`.
-- The default `identity` derives from the declared `:0`, so cache and session
-  entries do not churn with the port.
+- The default [`identity`](#identity) derives from the declared `:0`.
 - Tests read the allocated URL from [`app.baseUrl`](/reference/app).
 
 #### services
 
 <Note>
-Dependency processes (a database, an API mock, a dev server several targets
-share) are not started by this version, and `services` is an unknown key
-wherever it appears. Start them before the run, or have `app.command` start
-a script that brings them up and serves the app. A services API returns in a
-later release.
+This version starts no dependency processes (a database, an API mock, a dev
+server several targets share), and `services` is an unknown key wherever it
+appears. Start them before the run, or have `app.command` start a script that
+brings them up and serves the app. A services API returns in a later release.
 </Note>
 
 ### output
@@ -600,22 +595,22 @@ overrides it for one run.
 | `sessions/` | The run's encrypted `test.setup` sessions, deleted when it ends |
 | `videos/<session>/` | [`e2e mcp`](/reference/mcp#recording) session recordings |
 
-- A run that stops before its tests start writes nothing here: a selection
-  that matches no test (`NO_TESTS`, a mistyped `--grep`), a collection error,
-  a target that cannot record what it asks for (`UNSUPPORTED_ARTIFACT`),
-  `NO_LAST_RUN`, an app command that fails to start, or an interrupt. It
-  leaves the previous run's `report.json`, `ai-trace.json`, and `results/` as
-  they were, so `--last-failed` still reads the last run that executed.
+- A run that stops before its tests start writes nothing here. Such stops are
+  a selection that matches no test (`NO_TESTS`, a mistyped `--grep`), a
+  collection error, a target that cannot record what it asks for
+  (`UNSUPPORTED_ARTIFACT`), `NO_LAST_RUN`, an app command that fails to start,
+  or an interrupt. The previous run's `report.json`, `ai-trace.json`, and
+  `results/` stay as they were, so `--last-failed` still reads the last run
+  that executed.
 - An `e2e mcp` session writes its attempt's artifacts under `results/mcp/` and
   never clears it.
-- The replay cache is independent: [`cache.dir`](#cache) defaults to
-  `.e2e/cache` and resolves from the project root whatever `output` says, so
+- The replay cache stays in [`cache.dir`](#dir) whatever `output` says, so
   moving the results never moves the recordings.
 - `e2e init` writes `.gitignore` entries for the default `.e2e/` paths only.
   With `output` set elsewhere, add that directory to `.gitignore` yourself.
 
-Because a run clears and owns part of it, the output directory fails the
-config load with `INVALID_CONFIG`, naming the reason, when it:
+A run clears and owns part of the output directory. So the config load fails
+with `INVALID_CONFIG`, naming the reason, when the directory:
 
 - is the project root, or outside it;
 - is a file, or a path under one (a missing directory is created);
@@ -624,17 +619,16 @@ config load with `INVALID_CONFIG`, naming the reason, when it:
 - holds a directory a `tests` glob scans (`output: 'tests'` with the default
   `tests/**/*.e2e.ts`).
 
-Paths are compared with symlinks resolved, so an absolute path spelled
-through a symlink (`/tmp` for `/private/tmp` on macOS) names the same
-directory as its target. A symlink whose target does not exist yet is
-followed too: an output through one that points outside the project root is
-refused.
+Paths are compared with symlinks resolved. An absolute path spelled through a
+symlink (`/tmp` for `/private/tmp` on macOS) names the same directory as its
+target. A symlink whose target does not exist yet is followed too, so an
+output through one that points outside the project root is refused.
 
 <Note>
-The removed `--artifacts <dir>` flag fails with the `--output` it maps to:
-the report used to go to the directory's parent, so `--artifacts
-out/artifacts` is `--output out`. A parent an output cannot be (the project
-root, or outside it) maps to `--output .e2e`.
+The removed `--artifacts <dir>` flag fails with the `--output` it maps to. The
+report used to go to the directory's parent, so `--artifacts out/artifacts` is
+`--output out`. A parent an output cannot be (the project root, or outside it)
+maps to `--output .e2e`.
 </Note>
 
 ### artifacts
@@ -659,11 +653,12 @@ artifacts: {
 | [`store.put`](#put) | `Promise<{ ref }>` |
 | [`store.putLink`](#putlink) | `Promise<{ ref }>` |
 
-- [`trace` and `video`](#recording) choose the recordings. A failure's
-  screenshot and screen text are captured whenever the engine can (never
-  after a secret fill, see
+- [`trace` and `video`](#recording) choose the recordings. The runner
+  captures a failure's screenshot and screen text whenever the engine can
+  (never after a secret fill, see
   [Security rules](/reference/security#screenshots-after-a-secret-fill)).
 - Each worker constructs its own store from the config module.
+- A failed `put` or `putLink` never fails the run.
 
 The removed forms fail with `INVALID_CONFIG` naming what replaced them:
 
@@ -687,7 +682,6 @@ async put(artifact) {
 ```
 
 - Required on every store.
-- A failed `put` never fails the run.
 - `artifact.redaction` is the report's label. A store that exports only what
   the runner vouches for keeps back an `incomplete` artifact: a video or a
   download the runner did not rewrite.
@@ -699,15 +693,8 @@ Receives a video a hosted service keeps (a
 no bytes, so `put` never receives it.
 
 ```ts
-artifacts: {
-  store: {
-    async put(artifact) {
-      return { ref: await bucket.upload(artifact.path, artifact.bytes) };
-    },
-    async putLink(link) {
-      return { ref: await index.record(link.url, link.attemptId) };
-    },
-  },
+async putLink(link) {
+  return { ref: await index.record(link.url, link.attemptId) };
 },
 ```
 
@@ -715,7 +702,6 @@ artifacts: {
 - Its `ref` lands on the report's artifact beside `url`.
 - A passed attempt's link under `retain-on-failure` is never handed over,
   since the report leaves it out too.
-- A failed `putLink` never fails the run.
 
 ### Recording
 
@@ -749,13 +735,13 @@ export type RecordingMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry
 | `on-all-retries` | each test that was retried | every attempt after the first |
 
 The names are Playwright's `use.trace` and `use.video` modes. Under a retry
-mode a test with `retries: 0` records nothing, and neither does a failure the
-runner does not retry, such as `LAUNCH_TIMEOUT`. When such a test runs, the
-run prints one notice per kind at plan time saying no traces (or videos) will
+mode, a test with `retries: 0` records nothing, and neither does a failure
+the runner does not retry, such as `LAUNCH_TIMEOUT`. When such a test runs,
+the run prints one notice per kind at plan time: no traces (or videos) will
 be recorded for it.
 
-Four places set a mode, lowest first, and each replaces the one before it.
-The same rule holds for `trace` and `video`:
+Four places set a mode, lowest first. Each replaces the one before it, for
+`trace` and `video` alike:
 
 1. `trace` or `video` at the top of the config.
 2. A target's `trace` or `video`.
@@ -769,13 +755,12 @@ The same rule holds for `trace` and `video`:
   `describe`, or on a group around it, applies to every member.
 - `e2e explore` is one attempt and uses the target's mode, `--trace` and
   `--video` included, so a retry mode records nothing there.
-- An `e2e mcp` session writes no trace, and never records video from the
-  configured mode: its recordings are the ones `start_recording` and
+- An `e2e mcp` session writes no trace and never records video from the
+  configured mode. Its recordings are the ones `start_recording` and
   `stop_recording` make.
-- Neither `trace` nor `video`, at the top or on a target, enters the config
-  digest, and neither is part of a replay's
-  [cache key](/cache#what-must-match): turning one on or off never
-  invalidates cached replays.
+- `trace` and `video`, at the top or on a target, enter neither the config
+  digest nor a replay's [cache key](/cache#what-must-match). Turning one on or
+  off never invalidates cached replays.
 
 <Note>
 The old trace spellings fail with `INVALID_CONFIG` naming the mode they
@@ -792,7 +777,7 @@ Which tests keep a trace page.
 trace: 'on', // default: 'retain-on-failure'
 ```
 
-- The default is `retain-on-failure`, locally and in CI.
+- The default is the same locally and in CI.
 - A trace page is markdown, `trace.md` in the test's directory under
   `<output>/results/`, such as
   `.e2e/results/checkout-applies-the-coupon-1a2b3c4d5e6f7a8b/trace.md`: every
@@ -808,8 +793,7 @@ Which attempts record a video.
 video: 'retain-on-failure', // default: 'off'
 ```
 
-- Set at the top of the config, it applies to the targets whose engine can
-  record; set on a target, it is required of the engine. See
+- Where the mode is set decides what an engine that cannot record does. See
   [Engines that cannot record](#engines-that-cannot-record).
 - A video costs CPU and holds what the screen showed, secrets included, so it
   is always asked for.
@@ -819,9 +803,9 @@ video: 'retain-on-failure', // default: 'off'
 Before any test starts, the run grades every target. Where a `video` mode
 was set decides what an engine that cannot record video does:
 
-- Set at the top of the config or with `--video`: the mode applies
-  to the targets whose engine can record it. The run prints one notice at
-  plan time naming the targets that cannot, and runs them without.
+- Set at the top of the config or with `--video`: the mode applies to the
+  targets whose engine can record it. The run prints one notice at plan time
+  naming the targets that cannot, and runs them without video.
 - Set on a target, or on a test that will run on that target: the mode is
   required. A target whose engine cannot record it fails the run with
   `UNSUPPORTED_ARTIFACT`, naming the target and, for a test's, the test.
@@ -890,14 +874,13 @@ export default {
 | [`maxInputTokens`](#maxinputtokens) | `number` | `64000` |
 | [`providerOptions`](#provideroptions) | `ProviderOptions` | - |
 
-- Tests use the `default` agent unless you select another with
-  `e2e run --agent <name>`, a test or group option, or an individual
-  `agent.*` call. A test with `{ agent: ['buyer', 'admin'] }` runs once for
-  each agent.
+- Tests use the `default` agent unless you select another: with
+  `e2e run --agent <name>`, a test or group option, or an `agent.*` call. A
+  test with `{ agent: ['buyer', 'admin'] }` runs once for each agent.
 - `default` exists even when the config declares no agents, but has no model.
 - Every entry starts from the built-in defaults. Agents do not inherit from
-  each other: `ux` above gets no `context` from `default`, and a key left out
-  of an entry is the default value, never another entry's.
+  each other: `ux` above gets no `context` from `default`. A key left out of
+  an entry is the default value, never another entry's.
 - Each worker constructs its own agents from this config module.
 - Names may contain ASCII letters, numbers, `_`, `-`, or `.`, and are never
   only dots: a name is an artifact path segment.
@@ -919,8 +902,8 @@ An AI SDK model instance. There is no implicit default.
 model: gateway('openai/gpt-6-luna-fast'),
 ```
 
-Construct the model in your config with an AI SDK provider. You can use all
-providers that support tool calls, see
+Construct the model in your config with an AI SDK provider. Every provider
+that supports tool calls works, see
 [AI SDK providers](/models#ai-sdk-providers). For subscription sign-in, use
 the [`e2e/oauth/*` models](/subscriptions).
 
@@ -996,8 +979,8 @@ house: { executor: houseBrain, model: gateway('openai/gpt-6-luna-fast'), maxMode
 ```
 
 - `model`, `judge`, `context`, and the budgets still apply; judgments need a
-  model.
-- `system` and `tools` are `INVALID_CONFIG`.
+  model. [`system`](#system) and [`tools`](#tools) beside it are
+  `INVALID_CONFIG`.
 - `maxModelCalls` bounds the model turns of one step.
 - A `model` or `judge` that differs from the one the executor brought is
   `INVALID_CONFIG`.
@@ -1068,8 +1051,8 @@ cache key unless set here.
 
 #### Removed options
 
-Loading the config fails with `INVALID_CONFIG` for an unknown key (naming the
-nearest known one), a removed key, and a value in the old shapes:
+An unknown key (the error names the nearest known one), a removed key, or a
+value in an old shape fails the config load with `INVALID_CONFIG`:
 
 | Written | Now |
 | --- | --- |
@@ -1095,11 +1078,11 @@ credentials: {
 | [`password`](#password) | `string \| SecretProvider` |
 
 - Credentials and secrets are separate namespaces. `secrets.get(name)`
-  returns a `secrets` entry only, and a credential's password is reachable
-  only as `credentials.user(name).password`.
-- The agent, the replay cache, and the reports know that handle as
-  `<name>.password` (`<secret:admin.password>`), so `credentials.admin` and
-  `secrets.admin` can both exist.
+  returns a `secrets` entry only. A credential's password is reachable only
+  as `credentials.user(name).password`.
+- The agent, the replay cache, and the reports know that password as a secret
+  named `<name>.password` (`<secret:admin.password>`). So `credentials.admin`
+  and `secrets.admin` can both exist.
 
 | Throws | When |
 | --- | --- |
@@ -1128,15 +1111,13 @@ The account's password: a static value, or a `SecretProvider` function.
 password: () => readFile('.secrets/admin', 'utf8'),
 ```
 
-- A static password is at least 6 characters (code points), like a secret,
-  or `INVALID_CONFIG`.
-- A `SecretProvider` is called on every authorized fill (a vault lookup, a
-  freshly computed TOTP) and recorded in the config digest by name only. A
-  provider returning fewer than 6 characters fails the fill with
+- A static password is at least 6 characters (code points), like a
+  [secret](#secrets), or `INVALID_CONFIG`.
+- A `SecretProvider` runs on every authorized fill (a vault lookup, a freshly
+  computed TOTP). The config digest records it by name only. A provider
+  returning fewer than 6 characters fails the fill with
   `AUTH_CREDENTIAL_UNAVAILABLE`.
 - `E2E_USER_<NAME>_PASSWORD` wins over both.
-- The password is a secret named `<name>.password`. `secrets.get()` never
-  returns it.
 
 #### `credentials.user()`
 
@@ -1167,15 +1148,14 @@ secrets: {
 | a static value | `'sk_test_51Hx…'` | at config load |
 | a provider | `() => readFile('.secrets/api-key', 'utf8')` | on every authorized fill |
 
-- An entry is a static value, or a provider called on every authorized fill
-  (a vault lookup, a freshly computed TOTP). It is recorded in the config
-  digest by name only.
+- A provider runs on every authorized fill (a vault lookup, a freshly
+  computed TOTP). The config digest records it by name only.
 - An `E2E_SECRET_<NAME>` override wins over both.
 - Every entry must resolve to a string of at least 6 characters (code points)
   or a function; anything else is `INVALID_CONFIG`. A provider's value is held
   to the same minimum at fill time, with `SECRET_UNAVAILABLE`.
-- The minimum exists for redaction: every occurrence of a value becomes
-  `<secret:name>`, and a shorter value would take ordinary text in reports and
+- The minimum exists for redaction. Every occurrence of a value becomes
+  `<secret:name>`, so a shorter value would take ordinary text in reports and
   output with it.
 - Two entries whose names map to one variable, like `api-key` and `api_key`,
   are `INVALID_CONFIG`.
@@ -1199,25 +1179,24 @@ await screen.getByLabel('API key').fill(secrets.get('apiKey'));
 
 #### Secrets in engine options
 
-Called while `e2e.config.ts` evaluates, before any run exists,
-`secrets.get(name)` returns a reference by name that an engine option can
-hold.
+While `e2e.config.ts` evaluates, before any run exists, `secrets.get(name)`
+returns a reference by name that an engine option can hold.
 
 ```ts
 engine: web({ basicAuth: { username, password: secrets.get('previewPassword') } }),
 ```
 
-- The engine declares it. The config load fails with `INVALID_CONFIG` when no
-  `secrets` entry has the name. A credential's password is not one: declare a
-  value an engine option needs under `secrets`.
-- The engine resolves the value when each attempt starts (a provider runs
-  again every time). The value joins the attempt's redaction then, without
-  the screenshot restrictions a fill brings, since it goes to the engine
-  rather than onto the page.
+- The engine declares it. When no `secrets` entry has the name, the config
+  load fails with `INVALID_CONFIG`. A credential's password is not one:
+  declare a value an engine option needs under `secrets`.
+- The engine resolves the value when each attempt starts, so a provider runs
+  again every time. The value then joins the attempt's redaction. It goes to
+  the engine, not onto the page, so it brings none of a fill's screenshot
+  restrictions.
 - The digest records the name only.
 - The reference is not the value. Turned into a string (a template literal,
-  `String()`, `+`, `JSON.stringify`) it throws `INVALID_CONFIG`, and so does
-  one placed in an `args` entry or `env` value of `app.command`, which takes
+  `String()`, `+`, `JSON.stringify`), it throws `INVALID_CONFIG`. So does a
+  reference in an `args` entry or `env` value of `app.command`, which takes
   strings and placeholders only. Read a value a string needs, such as an
   app's API key, from `process.env` yourself.
 
@@ -1302,16 +1281,15 @@ See [Fail on a stale recording](/cache#fail-on-a-stale-recording).
 #### Commit the replay cache
 
 `e2e init` adds `.e2e/cache/` to `.gitignore`, so committing entries is
-opt-in. Remove that line to share replays with CI and teammates; CI stays
+opt-in. Remove that line to share replays with CI and teammates. CI stays
 `read-only` unless `cache: 'read-write'` is set. See
 [Caching](/cache#commit-the-replay-cache).
 
 ## Run limits
 
 The report's `run.limits` block records the ceilings a run enforced. There is
-no `limits` key: `maxObservationBytes` and `maxModelTokensPerCall` are the
-largest `maxObservationBytes` and `maxInputTokens` any configured agent
-sets, and the rest are fixed by the runner.
+no `limits` key: two fields come from the agents, and the runner fixes the
+rest.
 
 | Report field | Value |
 | --- | --- |
@@ -1341,9 +1319,9 @@ secret, and `CI` switches the defaults below.
 | Credential username and password | the `E2E_USER_*` variable, then the config value |
 
 The built-in agent checks for a missing model once per run, when the `agent`
-fixture is first acquired, and stops the run with exit 2. A custom executor
-can implement `act` and `assert` without a model. `waitFor` and `extract`
-still require one.
+fixture is first acquired, and stops the run with exit 2. A custom
+[executor](#executor) can implement `act` and `assert` without a model.
+`waitFor` and `extract` still require one.
 
 ### CI
 
@@ -1372,7 +1350,7 @@ How the runner finds the config and loads it and the files it imports.
 ### `.env` files
 
 e2e loads no `.env` file itself. Load one at the top of `e2e.config.ts` with
-Node's `process.loadEnvFile()`; every worker imports the config again, so the
+Node's `process.loadEnvFile()`. Every worker imports the config again, so the
 variables reach the workers too:
 
 ```ts title="e2e.config.ts"
@@ -1385,7 +1363,7 @@ It throws when the file is missing; guard it with `existsSync` from
 ### Module format
 
 - Config and test files run as ESM whatever the nearest `package.json`
-  `type` says, and so does every `.ts`, `.mts`, `.tsx`, and `.jsx` file they
+  `type` says. So does every `.ts`, `.mts`, `.tsx`, and `.jsx` file they
   reach: a helper by path, a package that exports its `.ts` source by name, or
   a `.ts` file a CommonJS file requires.
 - A `.cts` file is CommonJS, written with `require`, `import x = require()`,
@@ -1397,8 +1375,8 @@ It throws when the file is missing; guard it with `existsSync` from
 
 ### Import resolution
 
-e2e compiles TypeScript and JSX itself, and an import written in such a file
-resolves the way TypeScript resolves it:
+e2e compiles TypeScript and JSX itself. An import in such a file resolves the
+way TypeScript resolves it:
 
 - `./helper.js` and `./helper` load `helper.ts`, and `./view.jsx` loads
   `view.tsx`.
@@ -1407,21 +1385,20 @@ resolves the way TypeScript resolves it:
 - A bare import that `tsconfig.json` maps through `paths` or `baseUrl` loads
   the mapped file.
 - A `#` import or package export that names a missing `./x.js`, `./x.jsx`, or
-  `./x` loads its `x.ts` or `x.tsx` source when imported. One that names a
-  directory, or a subpath of a package without `exports` that is a directory
-  (`@acme/db/enums`), loads the directory the way `./lib` does: the file its
-  `package.json` names as `main`, else its `index.ts`. Under Yarn PnP that
-  package subpath still fails. A `require()` of either fails as Node.js
-  reports it.
+  `./x` loads its `x.ts` or `x.tsx` source when imported.
+- A `#` import or package export that names a directory, or a subpath of a
+  package without `exports` that is a directory (`@acme/db/enums`), loads it
+  the way `./lib` loads. Under Yarn PnP that package subpath still fails.
+- A `require()` of any of the last two fails as Node.js reports it.
 - An import written in a JavaScript file resolves as Node.js resolves it.
 
 ### `tsconfig.json`
 
-- The `tsconfig.json` is the nearest one above the file, or, when that one
-  has `references` and does not include the file itself (as Vite writes it),
-  the transitively referenced one that does. References are visited in
-  declaration order; cycles are skipped and, if none owns the file, the
-  nearest config remains the fallback.
+- The `tsconfig.json` is the nearest one above the file. When that one has
+  `references` and does not include the file itself (as Vite writes it), it
+  is the transitively referenced one that does.
+- References are visited in declaration order, and cycles are skipped. If
+  none owns the file, the nearest config remains the fallback.
 - e2e reads its `paths`, `baseUrl`, `jsx`, `jsxFactory`,
   `jsxFragmentFactory`, `jsxImportSource`, `experimentalDecorators`,
   `emitDecoratorMetadata`, `useDefineForClassFields` (and `target`, which
@@ -1437,10 +1414,10 @@ resolves the way TypeScript resolves it:
 - e2e refuses, naming the file and line, two things it cannot compile:
   auto-accessors (`accessor x = 1`) and decorators without
   `experimentalDecorators`.
-- Each file compiles on its own, without type information, so a type
+- Each file compiles on its own, without type information. So a type
   imported without `import type` fails to load when the import stays in the
   output (a decorated member's type under `emitDecoratorMetadata`, a
-  re-exported type); the error names the import to change.
+  re-exported type). The error names the import to change.
 - A JSON file imported without `with { type: 'json' }` loads with its parsed
   contents as the default export.
 - Stack traces and failure locations point at the TypeScript source, through
@@ -1478,56 +1455,21 @@ export interface E2EConfig {
   workers?: number;
   /** `{ store }` hands every artifact to a host store as it is produced. */
   artifacts?: ArtifactsConfig;
-  /**
-   * Which tests keep a trace page, `trace.md` in the test's directory under
-   * `<output>/results/`; default
-   * `retain-on-failure`. A target's `trace` wins over it, `--trace [mode]`
-   * over both, and a test's own `trace` over all.
-   */
+  /** Which tests keep a trace page; default `retain-on-failure`. */
   trace?: RecordingMode;
-  /**
-   * Which attempts record a video; default `off`. A target's `video` wins
-   * over it, `--video [mode]` over both, and a test's own `video` over all.
-   * Applies to the targets whose engine can record.
-   */
+  /** Which attempts record a video; default `off`. */
   video?: RecordingMode;
-  /**
-   * The results directory, relative to the project root; default `.e2e`.
-   * `--output <dir>` overrides it for one run.
-   */
+  /** The results directory, relative to the project root; default `.e2e`. */
   output?: string;
-  /**
-   * Output renderers and reporter objects. `junit` writes `<output>/junit.xml`,
-   * `markdown` writes `<output>/summary.md`, `json` prints the report and
-   * excludes `list`; a `Reporter` object runs
-   * beside them and `--reporter` never removes it.
-   */
+  /** Output renderers and reporter objects; default `['list']`. */
   reporters?: readonly (BuiltinReporter | Reporter)[];
-  /**
-   * Named agents, each one plain object: the built-in agent's options, or
-   * `{ executor }` for a custom brain. Tests use `default` unless selected
-   * otherwise. No agent inherits another's values. Each worker constructs
-   * its own agents from this config module.
-   */
+  /** Named agents: the built-in agent's options, or `{ executor }` for a custom brain. */
   agents?: Readonly<Record<string, AgentConfig>>;
-  /**
-   * Replay cache mode or options. Defaults to `read-write` locally and
-   * `read-only` in CI. An explicit mode overrides the default;
-   * `--no-cache` disables caching for the run.
-   */
+  /** Replay cache mode or options; default `read-write`, `read-only` in CI. */
   cache?: CacheMode | CacheConfig;
-  /**
-   * Named accounts. `credentials.user(name).password` is the handle of a
-   * credential's password, a secret named `<name>.password`; `secrets.get()`
-   * never returns it, so a credential and a secret may share a name.
-   */
+  /** Named accounts: a username and a password the model never sees. */
   credentials?: Readonly<Record<string, CredentialConfig>>;
-  /**
-   * Named values the model must never see: API keys, tokens, anything sourced
-   * from the environment. `secrets.get(name)` hands a test the opaque handle;
-   * the value is filled by the runner, masked in every observation, and
-   * redacted from logs, traces, and the report.
-   */
+  /** Named values the model must never see: API keys, tokens, anything sourced from the environment. */
   secrets?: Readonly<Record<string, SecretConfig>>;
 }
 ```
@@ -1542,26 +1484,15 @@ export interface E2EConfig {
 export interface Target {
   /** Label in reports and for `--target`; defaults to the platform. */
   name?: string;
-  /**
-   * Platform label, inherited from the engine when omitted. Required for a
-   * target without an engine; when both name one, they must agree.
-   */
+  /** Platform label; inherited from the engine when omitted. */
   platform?: string;
-  /** The engine driving the surface: `web(...)`, `mobile(...)`, or any `defineEngine` handle. */
+  /** The engine driving the surface. */
   engine?: EngineHandle;
   /** The app under test: what it is, where it is served, and the command that starts it. */
   app?: TargetApp;
-  /**
-   * Which tests on this target keep a trace page, in place of the config's
-   * `trace`; `--trace` and a test's own `trace` win over it.
-   */
+  /** Which tests on this target keep a trace page, in place of the config's `trace`. */
   trace?: RecordingMode;
-  /**
-   * Which attempts on this target record a video, in place of the config's
-   * `video`; `--video` and a test's own `video` win over it. A mode set here
-   * is required of the engine: one that cannot record fails the run with
-   * `UNSUPPORTED_ARTIFACT`.
-   */
+  /** Which attempts on this target record a video, in place of the config's `video`. */
   video?: RecordingMode;
 }
 ```
@@ -1578,25 +1509,15 @@ export interface CommandConfig {
   cwd?: string;
   /** Added to the inherited set; `{port}` expands in values. */
   env?: Readonly<Record<string, string>>;
-  /**
-   * Variables copied from the runner's environment when set: exact names, or
-   * prefixes ending in `*` (`'STRIPE_*'`). `env` wins over an inherited value.
-   * A bare `'*'` is `INVALID_CONFIG`.
-   */
+  /** Variables copied from the runner's environment when set: exact names, or prefixes ending in `*`. */
   inheritEnv?: readonly string[];
-  /** Ready-probe budget in milliseconds; default 60000. Expiry is `APP_UNREACHABLE`. */
+  /** Ready-probe budget in milliseconds; default 60000. */
   startupTimeout?: number;
   /** Grace period before force-kill in milliseconds; default 10000. */
   shutdownTimeout?: number;
-  /** File that receives the process's stdout and stderr, appended, resolved from the project root. Omitted discards output. */
+  /** File that receives the process's stdout and stderr; omitted discards output. */
   log?: string;
-  /**
-   * When the readiness URL already answers before the command starts, use that
-   * process instead of spawning: nothing is started and nothing is stopped.
-   * Off by default; CI ignores it and always starts the command. A URL on a
-   * free port (port 0) can never already answer, so the two together are
-   * `INVALID_CONFIG`.
-   */
+  /** Use a process already answering the readiness URL instead of spawning; default `false`. */
   reuseExisting?: boolean;
 }
 ```
@@ -1668,26 +1589,19 @@ export interface AgentOptions {
   model?: ModelInstance;
   /** Model for `assert`, `waitFor`, and `extract`; defaults to `model`. */
   judge?: ModelInstance;
-  /**
-   * What the app calls things, told to every model call this agent makes,
-   * act turns and judgments alike. At most 16384 bytes.
-   */
+  /** What the app calls things, told to every model call; at most 16384 bytes. */
   context?: string;
   /** Committed actions per agent call, 1 through 100; default 25. */
   maxSteps?: number;
   /** Model requests per agent call, 1 through 100; default 25. */
   maxModelCalls?: number;
-  /** Deadline of one `assert`, `waitFor`, or `extract` call in milliseconds; default 30000. Raise it for a slow judge; engine operations keep `actionTimeout`. */
+  /** Deadline of one `assert`, `waitFor`, or `extract` call in milliseconds; default 30000. */
   judgmentTimeout?: number;
   /** Observation payload ceiling for act turns and judgments, 1024 through 16777216; default 262144. */
   maxObservationBytes?: number;
-  /** Input tokens per model request, 1 through 1000000; default 64000. A dense screen is cut to fit under it. */
+  /** Input tokens per model request, 1 through 1000000; default 64000. */
   maxInputTokens?: number;
-  /**
-   * Provider options every model call carries, e.g. a reasoning effort.
-   * OpenAI and Azure OpenAI Responses calls also carry `store: false` and a
-   * prompt cache key unless set here.
-   */
+  /** Provider options every model call carries, such as a reasoning effort. */
   providerOptions?: ProviderOptions;
 }
 
@@ -1695,7 +1609,7 @@ export interface AgentOptions {
 export type AgentConfig = AgentOptions &
   (
     | {
-        /** How the acting agent should work, appended to the built-in rules; only the act loop reads it. */
+        /** How the acting agent should work, appended to the built-in rules. */
         system?: string;
         /** Project tools from `defineTool`, offered beside the built-in toolset. */
         tools?: Readonly<Record<string, AgentTool>>;
@@ -1775,16 +1689,13 @@ export interface Secret {
 ### `CacheConfig`
 
 ```ts
-/**
- * Replay cache options. Defaults to files under `.e2e/cache/`.
- * A custom store replaces file storage; each worker constructs its own.
- */
+/** Replay cache options. */
 export interface CacheConfig {
   /** Default `read-write`; `read-only` in CI when unset. */
   mode?: CacheMode;
   /** Custom entry store; omit it to use the file store at `dir`. */
   store?: CacheStore;
-  /** File store directory, resolved against the project root; default `.e2e/cache`, whatever `output` says. `--cache-dir` and `E2E_CACHE_DIR` replace it. */
+  /** File store directory, resolved against the project root; default `.e2e/cache`. */
   dir?: string;
   /** Fail a step whose recording no longer replays with `REPLAY_STALE`. Default `false`. */
   strict?: boolean;

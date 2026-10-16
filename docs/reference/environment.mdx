@@ -61,17 +61,17 @@ of the stored `opencode-console` login. OpenCode reads the same variable.
 
 - `<NAME>` is the name uppercased with every character outside `A-Z0-9`
   replaced by `_`, so `power-user` becomes `E2E_USER_POWER_USER_USERNAME`.
-- Two credentials, or two secrets, whose names map to the same `<NAME>`
-  (`api-key` and `api_key` both read `E2E_SECRET_API_KEY`; `svc-a` and
-  `svc_a` both read `E2E_USER_SVC_A_USERNAME` and `_PASSWORD`) are
-  `INVALID_CONFIG` at config load, whether or not a variable is set, so one
-  rotation never replaces two entries. The message names the entries and the
-  variables.
+- Two credentials, or two secrets, whose names map to one `<NAME>` are
+  `INVALID_CONFIG` at config load, set or not. So one rotation never
+  replaces two entries. The message names the entries and the variables.
+  For example, `api-key` and `api_key` both read `E2E_SECRET_API_KEY`;
+  `svc-a` and `svc_a` both read `E2E_USER_SVC_A_USERNAME` and `_PASSWORD`.
 - A credential and a secret may share a name, since their prefixes differ.
 - A variable for a name absent from the config is ignored.
 - An empty password or secret is `INVALID_CONFIG`, and so is one shorter
-  than 6 characters (code points). An empty username is accepted: redaction rewrites every occurrence of a
-  value, and one that short would take ordinary text with it.
+  than 6 characters (code points). Redaction rewrites every occurrence of a
+  value, and one that short would take ordinary text with it. An empty
+  username is accepted.
 
 ### Run mode
 
@@ -109,7 +109,7 @@ Replaces [`cache.dir`](/reference/config#cache) for `e2e run` and
 
 | Variable | Example | Reading | Effect |
 | --- | --- | --- | --- |
-| `NO_COLOR` | `NO_COLOR=1` | set | Plain CLI output. Colors are otherwise on for a TTY or in CI and off when piped |
+| `NO_COLOR` | `NO_COLOR=1` | set | Plain CLI output. Without it, colors are on for a TTY or in CI, off when piped |
 | `FORCE_COLOR` | `FORCE_COLOR=1` | set | Colored CLI output even when piped |
 | `TERM` | `TERM=dumb` | value | `dumb` draws the `e2e init` wordmark at rest, without animation, as in CI |
 | `GITHUB_SHA`, `GITHUB_HEAD_REF`, `GITHUB_REF_NAME` | `GITHUB_REF_NAME=main` | value | The commit and branch the report records under `run.vcs` when `git` cannot read the project root. `GITHUB_HEAD_REF` wins over `GITHUB_REF_NAME` |
@@ -157,12 +157,12 @@ What is sent and how to read it is on the [Telemetry](/telemetry) page.
 | Variable | Example | Reading | Effect |
 | --- | --- | --- | --- |
 | `GITHUB_ACTIONS` | `GITHUB_ACTIONS=true` | value | Without it the reporter posts nothing and says so |
-| `GITHUB_REPOSITORY`, `GITHUB_RUN_ID`, `GITHUB_EVENT_NAME`, `GITHUB_WORKFLOW`, `GITHUB_JOB` | `GITHUB_REPOSITORY=acme/shop` | value | Always set by the runner; a job missing one fails the reporter with the variable named. The repository and run id build the artifacts link, the event name is in the "not a pull request" row, and the workflow and job join the marker that lets a rerun find its own comment |
-| `GITHUB_TOKEN`, `GH_TOKEN` | `GITHUB_TOKEN=<token>` | value | The token the comment is posted with; the first one set wins. Unset, the job summary is still written |
+| `GITHUB_REPOSITORY`, `GITHUB_RUN_ID`, `GITHUB_EVENT_NAME`, `GITHUB_WORKFLOW`, `GITHUB_JOB` | `GITHUB_REPOSITORY=acme/shop` | value | Always set by the runner. A missing one fails the reporter, naming the variable. The repository and run id build the artifacts link. The event name shows in the "not a pull request" row. The workflow and job join the marker a rerun finds its own comment by |
+| `GITHUB_TOKEN`, `GH_TOKEN` | `GITHUB_TOKEN=<token>` | value | Posts the comment; the first one set wins. Unset, the job summary is still written |
 | `GITHUB_EVENT_PATH`, `GITHUB_REF` | `GITHUB_REF=refs/pull/42/merge` | value | The pull request number and head commit from the event payload, or the number from `refs/pull/N/merge` |
 | `GITHUB_SHA` | `GITHUB_SHA=<commit>` | value | The commit source links point at when the event is not about a pull request |
-| `GITHUB_WORKSPACE` | `GITHUB_WORKSPACE=/home/runner/work/shop/shop` | value | The checkout root; source links add the project's path inside it, so a suite in a subdirectory links to the right file |
-| `GITHUB_SERVER_URL`, `GITHUB_API_URL` | `GITHUB_SERVER_URL=https://github.example.com` | value | The GitHub host, for Enterprise Server; `https://github.com` and `https://api.github.com` by default |
+| `GITHUB_WORKSPACE` | `GITHUB_WORKSPACE=/home/runner/work/shop/shop` | value | The checkout root. Source links add the project's path inside it, so a suite in a subdirectory links to the right file |
+| `GITHUB_SERVER_URL`, `GITHUB_API_URL` | `GITHUB_SERVER_URL=https://github.example.com` | value | The GitHub host, for Enterprise Server. Default `https://github.com` and `https://api.github.com` |
 | `GITHUB_STEP_SUMMARY` | `GITHUB_STEP_SUMMARY=<file>` | value | The job summary file the comment text is appended to |
 
 ### Engines
@@ -170,31 +170,32 @@ What is sent and how to read it is on the [Telemetry](/telemetry) page.
 | Variable | Example | Reading | Effect |
 | --- | --- | --- | --- |
 | `PLAYWRIGHT_BROWSERS_PATH` | `PLAYWRIGHT_BROWSERS_PATH=~/.cache/ms-playwright` | value | Playwright's browser cache, honored by the engine's `prepare` hook |
-| `PLAYWRIGHT_SKIP_BROWSER_GC` | `PLAYWRIGHT_SKIP_BROWSER_GC=0` | value | Defaults to `1` for the engine's browser install, so it keeps other browsers in the cache. Set `0` to let the install remove them |
-| `KERNEL_API_KEY` | `KERNEL_API_KEY=<key>` | value | The API key `kernel()` from `@e2e-dev/kernel` creates browsers with; unset, the browser lease fails. See [Kernel](/integrations/kernel) |
-| `LIGHTPANDA_PATH` | `LIGHTPANDA_PATH=/opt/lightpanda` | value | The `lightpanda` binary `lightpanda()` from `@e2e-dev/lightpanda` starts a CDP server with; unset, `lightpanda` on `PATH`, `~/.lightpanda`, or `~/.local/bin`. See [Lightpanda](/integrations/lightpanda) |
+| `PLAYWRIGHT_SKIP_BROWSER_GC` | `PLAYWRIGHT_SKIP_BROWSER_GC=0` | value | Defaults to `1` for the engine's browser install, which keeps other browsers in the cache. `0` lets the install remove them |
+| `KERNEL_API_KEY` | `KERNEL_API_KEY=<key>` | value | The API key `kernel()` from `@e2e-dev/kernel` creates browsers with. Unset, the browser lease fails. See [Kernel](/integrations/kernel) |
+| `LIGHTPANDA_PATH` | `LIGHTPANDA_PATH=/opt/lightpanda` | value | The binary `lightpanda()` from `@e2e-dev/lightpanda` starts a CDP server with. Unset, `lightpanda` on `PATH`, `~/.lightpanda`, or `~/.local/bin`. See [Lightpanda](/integrations/lightpanda) |
 | [`EXPO_TOKEN`](#expo_token) | `EXPO_TOKEN=<token>` | value | The Expo access token `easSimulators()` from `@e2e-dev/eas` uses |
-| `HOME`, `USERPROFILE` | `HOME=/home/ada` | value | The home `easSimulators()` finds the eas-cli login under when `EXPO_TOKEN` is unset: `USERPROFILE` on Windows, `HOME` elsewhere, the OS user's home when unset |
-| `LIMRUN_API_KEY` | `LIMRUN_API_KEY=<key>` | value | The API key `limrun()` from `@e2e-dev/limrun` leases devices with; unset, the lease fails with `INVALID_CONFIG`. See [Limrun](/integrations/limrun) |
-| `LIMRUN_BASE_URL` | `LIMRUN_BASE_URL=https://api.limrun.com` | value | The Limrun API host; default `https://api.limrun.com` |
-| `LT_USERNAME`, `LT_ACCESS_KEY` | `LT_USERNAME=acme` | value | The TestMu AI username and access key `testmu()` from `@e2e-dev/testmu` leases devices with; with either unset, the device lease fails. See [TestMu AI](/integrations/testmu) |
-| `TESTMU_API_ENDPOINT` | `TESTMU_API_ENDPOINT=https://mobile-api.lambdatest.com/mobile-automation/api/v1` | value | Overrides the TestMu AI sessions API base URL `testmu()` looks up session recordings at; default `https://mobile-api.lambdatest.com/mobile-automation/api/v1`. A value that is not an http(s) URL, or that carries a username or password, fails the recording lookup with `INVALID_CONFIG`. agent-device's TestMu AI plugin reads the same variable |
-| `E2E_WEB_BROWSERS_<TARGET>_<digest>` | - | value | Written by `@e2e-dev/web` in `prepare` and read by each worker to find its leased browser. Not meant to be set by hand |
-| `E2E_AGENT_DEVICE_POOL_<TARGET>_<digest>` | - | value | Written by `@e2e-dev/mobile` in `prepare` and read by each worker to find its booted device. Not meant to be set by hand |
+| `HOME`, `USERPROFILE` | `HOME=/home/ada` | value | Where `easSimulators()` finds the eas-cli login without `EXPO_TOKEN`: `USERPROFILE` on Windows, `HOME` elsewhere, the OS user's home when unset |
+| `LIMRUN_API_KEY` | `LIMRUN_API_KEY=<key>` | value | The API key `limrun()` from `@e2e-dev/limrun` leases devices with. Unset, the lease fails with `INVALID_CONFIG`. See [Limrun](/integrations/limrun) |
+| `LIMRUN_BASE_URL` | `LIMRUN_BASE_URL=<url>` | value | The Limrun API host. Default `https://api.limrun.com` |
+| `LT_USERNAME`, `LT_ACCESS_KEY` | `LT_USERNAME=acme` | value | The TestMu AI username and access key `testmu()` from `@e2e-dev/testmu` leases devices with. With either unset, the device lease fails. See [TestMu AI](/integrations/testmu) |
+| `TESTMU_API_ENDPOINT` | `TESTMU_API_ENDPOINT=<url>` | value | The TestMu AI sessions API base URL `testmu()` looks up session recordings at. Default `https://mobile-api.lambdatest.com/mobile-automation/api/v1`. A value that is not an http(s) URL, or carries a username or password, fails the lookup with `INVALID_CONFIG`. agent-device's TestMu AI plugin reads it too |
+| `E2E_WEB_BROWSERS_<TARGET>_<digest>` | - | value | `@e2e-dev/web` writes it in `prepare`; each worker reads it to find its leased browser. Don't set it by hand |
+| `E2E_AGENT_DEVICE_POOL_<TARGET>_<digest>` | - | value | `@e2e-dev/mobile` writes it in `prepare`; each worker reads it to find its booted device. Don't set it by hand |
 
 #### `EXPO_TOKEN`
 
 The Expo access token `easSimulators()` from `@e2e-dev/eas` starts and stops
 simulator sessions with. See [EAS Simulators](/integrations/eas).
 
-- Unset, it uses the eas-cli login in `.expo/state.json` under `HOME`
-  (`USERPROFILE` on Windows).
+- Unset, it uses the eas-cli login in `.expo/state.json` under the home
+  directory ([`HOME`, `USERPROFILE`](#engines)).
 - With neither, the device lease fails.
 
 ## What app processes inherit
 
-An app `command` receives `PATH`, `HOME`, `TMPDIR`, `TMP`,
-`TEMP`, `SystemRoot`, and `COMSPEC`, plus the variables `command.inheritEnv`
-matches and whatever `command.env` sets.
-`APP_URL` is read by the scaffolded config module, not the runner; pass it
-through `command.env` if the dev server needs it too.
+An app `command` receives `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`,
+`SystemRoot`, and `COMSPEC`, plus the variables `command.inheritEnv` matches
+and whatever `command.env` sets.
+
+The scaffolded config module reads `APP_URL`, not the runner. If the dev
+server needs it too, pass it through `command.env`.

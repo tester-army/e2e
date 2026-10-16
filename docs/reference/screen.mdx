@@ -44,8 +44,7 @@ after whitespace normalization: `getByRole('button', 'Save')` does not match
 `Save changes`. `{ exact: false }` makes it a case-insensitive substring
 match, and a `RegExp` matches as written.
 
-Every query accepts `visible: true`, which drops nodes the platform reports
-as hidden before the exactly-one rule runs. See
+Every query accepts `visible: true`; see
 [Hidden duplicates](#hidden-duplicates).
 
 #### `getByRole`
@@ -68,30 +67,24 @@ screen.getByRole('heading', /welcome/i, { level: 1 });
 ```
 
 The accessible name goes second, a string or a `RegExp`, with the other
-options after it. The object form, `getByRole('button', { name: 'Save' })`,
-is the same query. Options ([`RoleOptions`](#types)):
-
-- `name`: the accessible name.
-- `checked`, `disabled`, `selected`, `expanded`: require that state.
-- `pressed`: requires the pressed state of a toggle button.
-- `level`: requires a heading level, 1 through 6.
-- `exact`, `visible`: as in [`TextMatchOptions`](#types).
+options after it. The object form, `{ name: 'Save' }`, is the same query.
+The options are [`RoleOptions`](#types).
 
 <Note>
 A role query never matches a node hidden from the accessibility tree: one
-that does not render, or one under `aria-hidden`. `visible` narrows the
-other query kinds to the nodes that render, the check `toBeVisible()` makes,
-so an `aria-hidden` node that still paints counts as visible there. See
+that does not render, or one under `aria-hidden`. On the other query kinds,
+`visible` keeps the nodes that render, the check `toBeVisible()` makes. There
+an `aria-hidden` node that still paints counts as visible. See
 [Hidden duplicates](#hidden-duplicates).
 </Note>
 
 ##### `img` alias
 
-`img` is an alias, not a role: `getByRole('img', { name })` builds the same
-query as `getByRole('image', { name })`, so a test ported from Playwright keeps
-its spelling while engines, the replay cache, and reports see `image`. On the
-web, `image` covers `<img>` with alt text and any element with `role="img"`;
-an `<img alt="">` is decoration and matches nothing.
+`img` is an alias, not a role ([`RoleAlias`](#types)).
+`getByRole('img', { name })` builds the same query as
+`getByRole('image', { name })`, so a test ported from Playwright keeps its
+spelling. On the web, `image` covers `<img>` with alt text and any element
+with `role="img"`. An `<img alt="">` is decoration and matches nothing.
 
 ##### Roles on the web
 
@@ -108,7 +101,7 @@ The web engine derives the roles from HTML the way HTML-AAM does:
 - `<th scope="row">` is `rowheader`. A scope-less `<th>` beside a data cell
   with text or children is also a `rowheader`; header-only rows keep
   `columnheader`. A lone scope-less header in a one-row table has no header
-  role, while `scope="col"` and `scope="colgroup"` explicitly keep
+  role, but an explicit `scope="col"` or `scope="colgroup"` keeps
   `columnheader`.
 - `<figure>` is `figure`, `<article>` is `article`.
 - `<header>` and `<footer>` are `banner` and `contentinfo` only outside
@@ -123,19 +116,19 @@ Names follow the same rules:
 - A `<legend>`, `<figcaption>`, or `<caption>` names its fieldset, figure, or
   table, so `toHaveAccessibleName` reads what `getByRole('group', { name })`
   matched.
-- A role accname names from content (a button, link, heading, tab, menu item,
-  option, checkbox, radio, switch, cell, row or column header, row, tree
-  item, tooltip) is named by its descendants, a custom element's shadow tree
-  included, so `getByRole('checkbox', { name })` and
+- A role that accname names from content (a button, link, heading, tab, menu
+  item, option, checkbox, radio, switch, cell, row or column header, row, tree
+  item, tooltip) takes its name from its descendants, a custom element's
+  shadow tree included. So `getByRole('checkbox', { name })` and
   `toHaveAccessibleName(name)` agree on a `<div role="checkbox">`.
 - An `<input type="submit">` or `type="reset"` with no `value` reads `Submit`
   or `Reset`.
 
 ##### Roles on a device
 
-A device engine maps the platform types it has (a tab bar or segmented
+A device engine maps the platform types it has: a tab bar or segmented
 control is a `tablist`, a progress indicator a `progressbar`, a stepper a
-`spinbutton`) and keeps any other type verbatim, so a role with no native
+`spinbutton`. It keeps any other type verbatim, so a role with no native
 widget, such as `tooltip` or `figure`, matches nothing on a phone.
 
 ##### Editing hosts
@@ -143,32 +136,30 @@ widget, such as `tooltip` or `figure`, matches nothing on a phone.
 A `contenteditable` editing host, the root a TipTap, ProseMirror, Lexical, or
 Slate editor renders into, is a `textbox`.
 
-- Its value is its text as rendered (and, while it has focus, its `selection`
-  is the text selected inside it). The value keeps spaces and newlines, so
+- Its value is its text as rendered. While it has focus, its `selection` is
+  the text selected inside it. The value keeps spaces and newlines, so
   `toHaveValue` and `inputValue()` read a `white-space: pre-wrap` editor like
   a textarea.
-- An empty editor, holding only the `<p><br></p>` or the zero-width no-break
-  space its editor pads an empty line with, reads as `''`, and that padding
+- An empty editor reads as `''`: one holding only the `<p><br></p>` or the
+  zero-width no-break space its editor pads an empty line with. That padding
   is never part of a value.
 - It is named by its `aria-label`, `aria-placeholder`, or the
-  `data-placeholder` its editor paints; the blocks inside it are content, not
+  `data-placeholder` its editor paints. The blocks inside it are content, not
   textboxes.
-- The tag does not matter (an `<article contenteditable>` is the editor, not
-  an article), while a native control or a drawn surface made editable keeps
-  its own role.
-- A name taken from a block's `data-placeholder` (TipTap, ProseMirror) goes
-  once the editor has content, as the painted hint does, so the host reads as
-  an unnamed `textbox` from then on. A name from the host's own `aria-label`,
+- The tag does not matter: an `<article contenteditable>` is the editor, not
+  an article. A native control or a drawn surface made editable keeps its own
+  role.
+- A name from a block's `data-placeholder` (TipTap, ProseMirror) goes once
+  the editor has content, as the painted hint does. From then on the host is
+  an unnamed `textbox`. A name from the host's own `aria-label`,
   `aria-labelledby`, `aria-placeholder`, or `data-placeholder` (Quill) stays.
 
 `getByRole` resolves through Playwright's role selector, which has no such
-rule, so a test addresses an editor by role only when the host carries
+rule. So `getByRole` finds an editor only when the host carries
 `role="textbox"`; `getByLabel` and `getByTestId` reach it either way. Anchor
 a test on a label or a test id, not on the placeholder.
 
 #### `getByLabel`
-
-Matches nodes by accessible label.
 
 ```ts
 /** Creates a lazy accessible-label query. */
@@ -181,8 +172,6 @@ await screen.getByLabel('Email').fill('ada@example.test');
 
 #### `getByPlaceholder`
 
-Matches nodes by placeholder.
-
 ```ts
 /** Creates a lazy placeholder query. */
 getByPlaceholder(text: TextMatch, options?: TextMatchOptions): Locator;
@@ -193,8 +182,6 @@ await screen.getByPlaceholder('Search memory...').fill('launch');
 ```
 
 #### `getByText`
-
-Matches nodes by visible text.
 
 ```ts
 /** Creates a lazy visible-text query. */
@@ -208,7 +195,7 @@ screen.getByText('Welcome back', { exact: false });
 ##### Echoed text
 
 `getByText` answers with the innermost matching node, so a container that
-echoes its child's text counts once. Browsers do this natively; on a device
+echoes its child's text counts once. Browsers do this natively. On a device
 the engine applies the same rule, since iOS reports a React Native `Text` as
 a host view plus a `StaticText` child with the same label. Two matches that
 do not contain each other remain `LOCATOR_AMBIGUOUS`.
@@ -249,11 +236,10 @@ screen.getByTestId(/total-budgeted$/);
 
 - On the web, `testId` is the value of the engine's test-id attribute
   (`web({ testIdAttribute })`, default `data-testid`).
-- On a device, it is the accessibility identifier or resource id.
-- A string matches the whole id, case-sensitive; a `RegExp` matches as
-  written. `visible` is the only option.
-- An engine may also match an id without its platform's namespacing, such
-  as the mobile engine's [Android resource ids](/reference/mobile#capabilities).
+- On a device, it is the accessibility identifier or resource id. For
+  namespacing, see the mobile engine's
+  [Android resource ids](/reference/mobile#capabilities).
+- `visible` is the only option.
 
 #### Hidden duplicates
 
@@ -294,12 +280,9 @@ Prefer it over `browser.locator('p:visible')`, which ties the test to CSS.
 | [`last`](#last) | `Locator` |
 | [`nth`](#nth) | `Locator` |
 
-Refinement returns a new locator without querying the app. A query on a
-locator is scoped to its subtree: `row.getByRole('button', 'Void')`.
+Refinement returns a new locator without querying the app.
 
 #### `filter`
-
-Keeps the matches that pass deterministic filters.
 
 ```ts
 /** Adds deterministic locator filters. */
@@ -324,8 +307,6 @@ await row.getByRole('button', 'Void').tap();
 
 #### `first`
 
-Selects the first current match.
-
 ```ts
 /** Selects the first current match. */
 first(): Locator;
@@ -337,8 +318,6 @@ await screen.getByRole('listitem').first().tap();
 
 #### `last`
 
-Selects the last current match.
-
 ```ts
 /** Selects the last current match. */
 last(): Locator;
@@ -349,8 +328,6 @@ await screen.getByRole('listitem').last().tap();
 ```
 
 #### `nth`
-
-Selects one current match by zero-based index.
 
 ```ts
 /** Selects one zero-based current match. */
@@ -373,13 +350,11 @@ await screen.getByRole('row').nth(2).getByRole('checkbox').check();
 | [`screen.swipe`](#screen-swipe) | `Promise<void>` |
 | [`screen.scrollUntilVisible`](#screen-scrolluntilvisible) | `Promise<void>` |
 
-`tapAt` and `swipe` act on the viewport. `scrollUntilVisible` scrolls the
-viewport, or a node when called on a locator.
+`tapAt` and `swipe` act on the viewport.
 
 #### `screen.tapAt`
 
-Taps a viewport point with no node behind it: a pin on a canvas, a control
-the tree does not list.
+Use it for a pin on a canvas or a control the tree does not list.
 
 ```ts
 /** Taps a viewport point, with no node behind it. */
@@ -394,9 +369,9 @@ await screen.tapAt({ x: map.x + 360, y: map.y + 70 });
 - The point is in CSS pixels, the space `boundingBox()` reports in.
 - Nothing is resolved or waited for; the page decides what the tap lands on.
 - Uses `config.actionTimeout`.
-- Prefer a locator when the tree lists the control; a point moves with the
-  layout. For a point inside a node, `tap({ position })` reads the node's box
-  for you.
+- Prefer a locator when the tree lists the control, since a point moves with
+  the layout. For a point inside a node, `tap({ position })` reads the node's
+  box for you.
 
 | Throws | When |
 | --- | --- |
@@ -408,8 +383,6 @@ await screen.tapAt({ x: map.x + 360, y: map.y + 70 });
 </Note>
 
 #### `screen.swipe`
-
-A viewport-level gesture, in one of two shapes.
 
 ```ts
 /** Performs a viewport-level swipe: in a direction, or along a path from one point to another. */
@@ -433,14 +406,14 @@ await screen.swipe({
   reveals what is below.
 - `momentum` is its fling strength, `'none'` by default. `'none'` is a
   plain drag of half the surface, `'slow'` a short fling, `'fast'` a long
-  one. How far each carries is the engine's.
+  one. The engine decides how far each carries.
 
 `{ from, to, duration? }` is a swipe along a path between two viewport
 points: a touch swipe on a device, a pointer drag on a document platform.
-That is what reveals a row action, dismisses a sheet, or drags a card between
+Use it to reveal a row action, dismiss a sheet, or drag a card between
 columns.
 
-- `duration` sets how long the gesture takes, an integer from 16 through
+- `duration` is how long the gesture takes, an integer from 16 through
   10000 ms. Omitted, it is the engine's default.
 
 Uses `config.actionTimeout` and takes no `timeout` option.
@@ -452,8 +425,6 @@ Uses `config.actionTimeout` and takes no `timeout` option.
 | `UNSUPPORTED_CAPABILITY` | The engine does not list `swipe` in its actions (a direction) or `swipeTo` in its pointer actions (a path). |
 
 #### `screen.scrollUntilVisible`
-
-Scrolls until a locator resolves visibly or times out.
 
 ```ts
 /**
@@ -479,14 +450,13 @@ await screen.getByTestId('feed').scrollUntilVisible(row);
 | `options.momentum` | `Momentum` | `'slow'` |
 | `options.timeout` | `number` | `30000` |
 
-- `momentum` is the gesture of each step, as [`screen.swipe`](#screen-swipe)
-  defines it. A longer step is faster but must not carry the target past the
-  surface unseen, which is what a virtualized list does.
+- `momentum` is as [`screen.swipe`](#screen-swipe) defines it. A longer step
+  is faster, but it must not carry the target past the surface unseen, as a
+  virtualized list does.
 - `timeout` is its own default, not `config.actionTimeout`. It bounds the
   whole scroll, each swipe included.
-- On `screen` each step is a viewport swipe. On a locator the step is a swipe
-  of that node, so a feed or a table that is its own scroll container pages
-  without the pointer having to hover it first.
+- On a locator each step swipes that node. So a feed or a table that is its
+  own scroll container pages without the pointer hovering it first.
 
 | Throws | When |
 | --- | --- |
@@ -519,25 +489,20 @@ await screen.getByTestId('feed').scrollUntilVisible(row);
 | [`swipe`](#swipe) | `Promise<void>` |
 
 Each action resolves one node, waits for actionability, and performs one
-operation. The timeout is `config.actionTimeout`, 30000 ms by default, and
-every action takes `{ timeout }` to override it.
-
-An action takes only the options its signature names. Any other key,
-Playwright's `trial`, `force`, or `noWaitAfter` included, throws
-`INVALID_ARGUMENT` before the node is resolved, so the control is never
-touched.
+operation. The timeout is
+[`config.actionTimeout`](/reference/config#actiontimeout), and every action
+takes `{ timeout }` to override it. An action takes only the options its
+signature names.
 
 | Throws | When |
 | --- | --- |
 | `UNSUPPORTED_CAPABILITY` | The engine does not list the action's kind in `actions`; thrown before reaching the engine. |
-| `INVALID_ARGUMENT` | An option key the action does not take. |
+| `INVALID_ARGUMENT` | An option key the action does not take, Playwright's `trial`, `force`, or `noWaitAfter` included. Thrown before the node is resolved, so the control is never touched. |
 | `LOCATOR_NOT_FOUND` | No match before the timeout. |
 | `LOCATOR_AMBIGUOUS` | More than one match. |
 | `ACTION_FAILED` | The action may already have committed; it is never repeated. |
 
 #### `tap`
-
-Taps exactly one matching actionable node. `click` is an alias.
 
 ```ts
 /** Taps exactly one matching actionable node; with `position`, taps that point of its box once it is in view, with no other actionability check. */
@@ -552,18 +517,14 @@ await screen.getByRole('image', 'Seat map').tap({ position: { x: 120, y: 48 } })
 await row.click({ modifiers: ['Shift'] });
 ```
 
-Options ([`TapOptions`](#types)):
+The options are [`TapOptions`](#types):
 
-- `timeout`: the action deadline.
-- `modifiers`: the keys held for the click, as a Shift-click extends a
-  selection: `Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`.
-  `ControlOrMeta` is Control on Windows and Linux, Meta on macOS. The
-  browser engine holds them.
-- `position`: taps at an offset of the node's top-left corner, in CSS
-  pixels. The node is scrolled into view when the engine lists
-  `scrollIntoView`, then its box is read and the pointer dispatched at the
-  point, with no node behind the gesture, so the platform's other
-  actionability checks (enabled, not covered) do not run.
+- `modifiers`: the browser engine holds them.
+- `position`: an offset from the node's top-left corner, in CSS pixels. The
+  engine scrolls the node into view when it lists `scrollIntoView`. Then it
+  reads the node's box and dispatches the pointer at the point. No node is
+  behind the gesture, so the platform's other actionability checks (enabled,
+  not covered) do not run.
 
 | Throws | When |
 | --- | --- |
@@ -574,8 +535,6 @@ Options ([`TapOptions`](#types)):
 | `LOCATOR_NOT_FOUND` | `position` on a node that resolves but never shows a visible box within the timeout. |
 
 #### `doubleTap`
-
-Double-taps exactly one matching actionable node. `dblclick` is an alias.
 
 ```ts
 /** Double-taps exactly one matching actionable node. */
@@ -593,8 +552,6 @@ Takes `timeout` and `modifiers`, with the same rules and errors as
 
 #### `secondaryTap`
 
-Performs a secondary tap, such as a right click or a two-finger tap.
-
 ```ts
 /** Secondary-taps exactly one matching actionable node: a right click, a two-finger tap. */
 secondaryTap(options?: ClickOptions): Promise<void>;
@@ -609,8 +566,6 @@ Takes `timeout` and `modifiers`, with the same rules and errors as
 
 #### `longPress`
 
-Long-presses exactly one matching actionable node.
-
 ```ts
 /** Long-presses exactly one matching actionable node. */
 longPress(options?: LongPressOptions): Promise<void>;
@@ -620,15 +575,15 @@ longPress(options?: LongPressOptions): Promise<void>;
 await screen.getByText('Design review').longPress({ duration: 800 });
 ```
 
-- `duration` is the hold time in milliseconds, an integer from 100 through
-  10000. Anything else is `INVALID_ARGUMENT`.
+- `duration` is the hold time, an integer from 100 through 10000 ms.
+  Anything else is `INVALID_ARGUMENT`.
 - Without it the engine's default applies: 500 ms on the browser engine, one
   second on the mobile engine, past a React Native `Pressable`'s
   `delayLongPress`.
 
 #### `fill`
 
-Fills exactly one input, replacing its current content.
+Replaces the input's current content.
 
 ```ts
 /** Fills exactly one input. Secret values are never logged. */
@@ -644,14 +599,14 @@ A `Secret` is resolved on the host right before the call and never logged,
 reported, or sent to a model.
 
 <Note>
-`fill` sets the value directly and fires no key events. For an input wired
-to `keydown` or `keyup`, use [`pressSequentially`](#presssequentially).
+`fill` sets the value directly and fires no key events. An autocomplete, a
+search-as-you-type box, or a masked input wired to `keydown` or `keyup`
+never reacts to it. Use [`pressSequentially`](#presssequentially) for those.
 </Note>
 
 #### `pressSequentially`
 
-Focuses exactly one input and types text through the engine's keyboard, one
-character at a time, appending to the current content.
+Types through the engine's keyboard and appends to the current content.
 
 ```ts
 /**
@@ -666,8 +621,6 @@ pressSequentially(text: string, options?: PressSequentiallyOptions): Promise<voi
 await screen.getByLabel('City').pressSequentially('War', { delay: 50 });
 ```
 
-- An autocomplete, a search-as-you-type box, or a masked input wired to
-  `keydown` or `keyup` never reacts to `fill`; this is the action for those.
 - `delay` waits that many milliseconds between characters, each sent in its
   own keyboard call. Without it the whole text goes in one call.
 - Focus, pauses, and keystrokes share the one action deadline: a pause is cut
@@ -685,8 +638,6 @@ await screen.getByLabel('City').pressSequentially('War', { delay: 50 });
 
 #### `clear`
 
-Clears exactly one input.
-
 ```ts
 /** Clears exactly one input. */
 clear(options?: ActionOptions): Promise<void>;
@@ -698,8 +649,6 @@ await screen.getByLabel('Search').clear();
 
 #### `press`
 
-Sends one key to exactly one node.
-
 ```ts
 /** Sends one key to exactly one node. */
 press(key: string, options?: ActionOptions): Promise<void>;
@@ -710,21 +659,14 @@ await screen.getByRole('textbox', 'Search').press('Enter');
 await screen.getByRole('textbox', 'Notes').press('ControlOrMeta+a');
 ```
 
-A key is zero or more modifiers and one key, joined with `+`. See the
-[key grammar](/reference/engine#keys).
-
-- Modifiers: `Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`.
-- Named keys: `Enter`, `Escape`, `Tab`, `Backspace`, `Delete`, `Insert`,
-  `Space`, the arrows, `Home`, `End`, `PageUp`, `PageDown`, `F1` to `F12`.
-- Or one printable character. `Shift++` presses `+`.
+A key is zero or more modifiers and one key, joined with `+`, as the
+[key grammar](/reference/engine#keys) lists them. `Shift++` presses `+`.
 
 | Throws | When |
 | --- | --- |
 | `UNSUPPORTED_CAPABILITY` | A key the platform lacks. |
 
 #### `check`
-
-Checks exactly one node.
 
 ```ts
 /** Checks exactly one node. */
@@ -737,8 +679,6 @@ await screen.getByRole('checkbox', 'Remember me').check();
 
 #### `uncheck`
 
-Unchecks exactly one node.
-
 ```ts
 /** Unchecks exactly one node. */
 uncheck(options?: ActionOptions): Promise<void>;
@@ -749,8 +689,6 @@ await screen.getByRole('checkbox', 'Remember me').uncheck();
 ```
 
 #### `selectOption`
-
-Selects one option from exactly one control.
 
 ```ts
 /** Selects one option from exactly one control. */
@@ -763,19 +701,14 @@ await screen.getByLabel('Plan').selectOption({ label: 'Pro' });
 await screen.getByLabel('Plan').selectOption({ value: 'pro' });
 ```
 
-Pass a label string or exactly one of:
-
-- `label`: the option's label.
-- `value`: the option's value attribute, which is what the form submits.
-- `index`: the option's zero-based index.
+Pass a label string, or an object with exactly one of `label`, `value` (the
+value attribute, which the form submits), or `index` (zero-based).
 
 | Throws | When |
 | --- | --- |
 | `INVALID_ARGUMENT` | More than one option per call: an array, or an object with more than one of those keys. Also a negative or fractional `index`. Thrown before the engine acts. |
 
 #### `focus`
-
-Focuses exactly one node.
 
 ```ts
 /** Focuses exactly one node. */
@@ -788,8 +721,6 @@ await screen.getByLabel('Email').focus();
 
 #### `hover`
 
-Hovers over exactly one matching actionable node.
-
 ```ts
 /** Hovers over exactly one matching actionable node. */
 hover(options?: ActionOptions): Promise<void>;
@@ -801,8 +732,6 @@ await screen.getByRole('button', 'Account').hover();
 
 #### `setInputFiles`
 
-Sets the files of exactly one file input.
-
 ```ts
 /** Sets the files of exactly one file input; paths resolve from the project root. */
 setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void>;
@@ -812,15 +741,11 @@ setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promi
 await screen.getByLabel('Receipt').setInputFiles('fixtures/receipt.pdf');
 ```
 
-Paths resolve from the project root.
-
 | Throws | When |
 | --- | --- |
 | `INVALID_ARGUMENT` | An empty list or a blank entry. |
 
 #### `dragTo`
-
-Drags exactly one node to exactly one target.
 
 ```ts
 /** Drags exactly one node to exactly one target. */
@@ -837,8 +762,6 @@ await screen.getByText('Design review').dragTo(screen.getByRole('region', 'Done'
 
 #### `scrollIntoView`
 
-Scrolls exactly one node into view.
-
 ```ts
 /** Scrolls exactly one node into view. */
 scrollIntoView(options?: ActionOptions): Promise<void>;
@@ -850,8 +773,6 @@ await screen.getByRole('contentinfo').scrollIntoView();
 
 #### `swipe`
 
-A swipe gesture on that one node.
-
 ```ts
 /** Performs a swipe scoped to exactly one node. */
 swipe(options: SwipeOptions & ActionOptions): Promise<void>;
@@ -862,8 +783,8 @@ await screen.getByTestId('feed').swipe({ direction: 'down', momentum: 'slow' });
 ```
 
 It takes `{ direction, momentum? }` as [`screen.swipe`](#screen-swipe)
-defines them, plus `timeout`. It has no `{ from, to }` form. `screen.swipe`
-takes no `timeout`: a `timeout` key there is `INVALID_ARGUMENT`.
+defines them, plus `timeout`, which `screen.swipe` refuses. It has no
+`{ from, to }` form.
 
 ### Locator reads
 
@@ -883,23 +804,13 @@ takes no `timeout`: a `timeout` key there is `INVALID_ARGUMENT`.
 | [`allTextContents`](#alltextcontents) | `Promise<string[]>` |
 | [`waitFor`](#waitfor) | `Promise<void>` |
 
-A read polls for its one match until `config.actionTimeout`, then returns the
-current value without waiting for it to change ([Match rules](#match-rules)).
-`count`, `all`, and `allTextContents` take a snapshot and do not wait. Use
-[`expect`](/reference/expect) to wait for a value.
-
-```ts
-if (await screen.getByRole('alert').isVisible()) {
-  const message = await screen.getByRole('alert').textContent();
-}
-await screen.getByTestId('spinner').waitFor({ state: 'hidden' });
-```
+Reads follow the [Match rules](#match-rules). `count`, `all`, and
+`allTextContents` take a snapshot and do not wait.
 
 On a secure field, `textContent`, `inputValue`, `getAttribute`, and
-`allTextContents` throw `POLICY_DENIED`, and so do
-`expect(locator).toHaveValue`, `toHaveText`, `toContainText`, and
-`toHaveAttribute`. `isEnabled`, `isDisabled`, `isChecked`, and `boundingBox`
-are allowed there.
+`allTextContents` throw `POLICY_DENIED`, as the matching
+[`expect` matchers](/reference/expect#secure-fields) do. `isEnabled`,
+`isDisabled`, `isChecked`, and `boundingBox` are allowed there.
 
 #### `textContent`
 
@@ -920,13 +831,7 @@ const message = await screen.getByRole('alert').textContent();
 - A node that is not rendered itself, such as a `display: none` one, reads
   its DOM text, as `innerText` does.
 
-| Throws | When |
-| --- | --- |
-| `POLICY_DENIED` | A secure field. |
-
 #### `inputValue`
-
-Reads the current input value.
 
 ```ts
 /** Reads the current input value. */
@@ -941,13 +846,7 @@ On a checkbox or radio, `inputValue()` and `toHaveValue` read its value
 attribute, `on` when it has none, whatever its checked state. `isChecked()`
 reads the state.
 
-| Throws | When |
-| --- | --- |
-| `POLICY_DENIED` | A secure field. |
-
 #### `getAttribute`
-
-Reads one attribute.
 
 ```ts
 /** Reads one attribute. */
@@ -958,13 +857,7 @@ getAttribute(name: string): Promise<string | null>;
 const href = await screen.getByRole('link', 'Docs').getAttribute('href');
 ```
 
-| Throws | When |
-| --- | --- |
-| `POLICY_DENIED` | A secure field. |
-
 #### `isVisible`
-
-Reads current visibility.
 
 ```ts
 /** Reads current visibility. */
@@ -986,8 +879,6 @@ const open = await screen.getByRole('dialog').isVisible();
 
 #### `isHidden`
 
-Reads current hidden or absent state, the negation of `isVisible`.
-
 ```ts
 /** Reads current hidden or absent state, the negation of `isVisible`. */
 isHidden(): Promise<boolean>;
@@ -997,16 +888,13 @@ isHidden(): Promise<boolean>;
 const gone = await screen.getByTestId('spinner').isHidden();
 ```
 
-`isHidden` is `!isVisible()`, with the same strictness: `true` for zero
-matches.
+It has the same strictness as `isVisible`: `true` for zero matches.
 
 | Throws | When |
 | --- | --- |
 | `LOCATOR_AMBIGUOUS` | Several matches. |
 
 #### `isEnabled`
-
-Reads current enabled state.
 
 ```ts
 /** Reads current enabled state. */
@@ -1019,8 +907,6 @@ const ready = await screen.getByRole('button', 'Pay').isEnabled();
 
 #### `isDisabled`
 
-Reads current disabled state, the negation of `isEnabled`.
-
 ```ts
 /** Reads current disabled state, the negation of `isEnabled`. */
 isDisabled(): Promise<boolean>;
@@ -1030,7 +916,7 @@ isDisabled(): Promise<boolean>;
 const blocked = await screen.getByRole('button', 'Pay').isDisabled();
 ```
 
-`isDisabled` is `!isEnabled()`, with the same strictness.
+It has the same strictness as `isEnabled`.
 
 | Throws | When |
 | --- | --- |
@@ -1038,8 +924,6 @@ const blocked = await screen.getByRole('button', 'Pay').isDisabled();
 | `LOCATOR_AMBIGUOUS` | Several matches. |
 
 #### `isChecked`
-
-Reads current checked state.
 
 ```ts
 /** Reads current checked state. */
@@ -1050,12 +934,10 @@ isChecked(): Promise<boolean>;
 const remembered = await screen.getByRole('checkbox', 'Remember me').isChecked();
 ```
 
-`false` on a node with no checked state, such as a button or a heading; it
+`false` on a node with no checked state, such as a button or a heading. It
 does not throw.
 
 #### `boundingBox`
-
-Reads the current viewport-relative rectangle, in CSS pixels.
 
 ```ts
 /** Reads the current viewport-relative rectangle. */
@@ -1066,12 +948,11 @@ boundingBox(): Promise<{ x: number; y: number; width: number; height: number } |
 const map = (await screen.getByRole('image', 'Map').boundingBox())!;
 ```
 
-`null` for a node that lays out no box (`display: none` on it or an
-ancestor), and a box for one `visibility: hidden` keeps.
+The box is in CSS pixels. It is `null` for a node that lays out no box
+(`display: none` on it or an ancestor). A `visibility: hidden` node keeps
+its box.
 
 #### `count`
-
-Counts current matches without auto-waiting.
 
 ```ts
 /** Counts current matches without auto-waiting. */
@@ -1087,8 +968,7 @@ document.
 
 #### `all`
 
-Resolves the query once and returns one `nth(i)` locator per match, so a loop
-can act on each row.
+Resolves the query one time, so a loop can act on each row.
 
 ```ts
 /** One `nth(i)` locator per current match, without auto-waiting; empty when nothing matches. */
@@ -1105,13 +985,11 @@ for (const row of await screen.getByRole('row').all()) {
   the same snapshot rule as `count()`. A `frameLocator` whose frame is not in
   the document counts as zero matches here, where an action or assertion
   polls for it.
-- Each locator `all()` returns re-resolves when used, so a list that changes
+- Each locator `all()` returns re-resolves when used. A list that changes
   under the loop can make a later `nth(i)` point at a different row, or at
   nothing. Follow the loop with an assertion on the list.
 
 #### `allTextContents`
-
-Reads every match's normalized text in one call.
 
 ```ts
 /** Reads the normalized text of every current match, without auto-waiting; empty when nothing matches. */
@@ -1125,16 +1003,11 @@ expect(await screen.getByRole('listitem').allTextContents()).toEqual(['Alpha', '
 - Text reads as in [`textContent`](#textcontent).
 - It neither waits nor enforces exactly-one: zero matches is an empty array,
   as for [`all`](#all).
-- Use [`toHaveText([...])`](/reference/expect#locator-matchers) instead of a
-  loop when the point is to check the texts.
-
-| Throws | When |
-| --- | --- |
-| `POLICY_DENIED` | A secure field. |
+- To check the texts, use
+  [`toHaveText([...])`](/reference/expect#locator-matchers) instead of a
+  loop.
 
 #### `waitFor`
-
-Waits for the requested locator state.
 
 ```ts
 /**
@@ -1167,11 +1040,13 @@ await screen.getByTestId('spinner').waitFor({ state: 'hidden' }); // default sta
 ## Match rules
 
 Most operations require exactly one match. A read polls for its one match
-until the action timeout, as an action does, then returns the current value
-without waiting for it to change. A node the engine reports stale (a resolve
-that raced a navigation, or a match the app replaced while it was read) is
-re-resolved within the same timeout. Use [`expect`](/reference/expect) to
+until the action timeout, as an action does. Then it returns the current
+value without waiting for it to change. Use [`expect`](/reference/expect) to
 wait for a value.
+
+A node the engine reports stale is re-resolved within the same timeout:
+a resolve that raced a navigation, or a match the app replaced while it was
+read.
 
 | Operation | Zero matches | Multiple matches |
 | --- | --- | --- |

@@ -65,12 +65,12 @@ process.exitCode = result.exitCode;
 
 - `files` takes paths, globs, bare names, or `file:line`.
 - Aborting `interruptSignal` interrupts tests and executes teardown.
-- `onEvent` receives typed progress events. It must not block; a throwing or
-  rejecting callback is disabled without failing the run.
+- `onEvent` receives typed progress events. Terminal progress is off. It
+  must not block. A throwing or rejecting callback is disabled without
+  failing the run.
 - Put execution settings, such as retries and workers, in the config.
 - A runtime config (an `E2EConfig` value) runs with one worker in the
   caller's process. A file config supports the configured worker processes.
-- Terminal progress is disabled; use `onEvent` for progress.
 
 ##### Result
 
@@ -90,7 +90,7 @@ and errors in the report.
 | `RUNNER_BUSY` | Another suite is running, or a host is open. Close every host before running a suite, and await the suite before opening a host. |
 
 - Helper modules your test files import stay cached between `run` calls in
-  the same process, so edits to them need a new process.
+  one process. An edit to them needs a new process.
 - Each run that returns a report sends one anonymous
   [`e2e_run_completed`](/telemetry) event, with the same opt-outs as the CLI.
   The first call can print the telemetry notice on stderr.
@@ -148,7 +148,7 @@ process sees an edit.
 - `shard` is the `--shard index/total` slice.
 - `passWithNoTests` resolves with no runnable test instead of throwing
   `NO_TESTS`.
-- `output` is the results directory. `lastFailed` reads `report.json` there.
+- `output` is the results directory.
 - `env` is the environment the config resolves against.
 
 ##### Result
@@ -171,10 +171,10 @@ process sees an edit.
 | `serialId` | Set when the test belongs to a serial group, otherwise `undefined`. |
 | `target`, `agent` | The target name and the configured agent this pair runs as. |
 | `disposition` | `run`, `skip`, or `filtered`. |
-| `reason` | Why the pair is skipped or filtered. Omitted when it runs. |
+| `reason` | Why the pair is skipped or filtered, such as `title does not match --grep`. Omitted when it runs. |
 
-`e2e list` prints only `run` and `skip`. `list` returns `filtered` pairs too,
-each with `reason` (for example `title does not match --grep`).
+`e2e list` prints only `run` and `skip` pairs. `list` returns `filtered`
+pairs too.
 
 ##### Errors
 
@@ -245,11 +245,10 @@ await session.fixtures.app.open('/checkout');
 - `onNotice` receives progress outside a step, such as provisioning or an
   app process. It must not throw.
 
-A config file and its project-file imports are loaded fresh for each host.
-Package imports remain shared; their singleton state is not recreated per
-host. A config value uses the engine instances in that value. A config
-value's engine instance belongs to one host until it closes; a second host
-must use another instance.
+Each host loads a config file and its project-file imports fresh. Package
+imports stay shared, so their singleton state is not recreated per host. A
+config value uses its own engine instances. Each instance belongs to one
+host until that host closes, so a second host must use another instance.
 
 | Throws | When |
 | --- | --- |
@@ -262,15 +261,15 @@ exposed. Match them with [`isE2EError`](#ise2eerror) and `error.code`.
 
 #### `isE2EError`
 
-Recognizes a classified e2e error. Branch on its `error.code`. It is a type
-guard.
+A type guard that recognizes a classified e2e error. Branch on its
+`error.code`.
 
 ```ts
 if (isE2EError(error) && error.code === 'NO_TESTS') process.exitCode = 0;
 ```
 
-`instanceof` can miss an e2e error across copies of the package; use
-`isE2EError` instead. `ConfigurationError` and `isE2EError` are both exported
+`instanceof` can miss an e2e error across copies of the package, so use
+`isE2EError`. `ConfigurationError` and `isE2EError` are both exported
 from `e2e/runner`.
 
 ### Host
@@ -328,7 +327,7 @@ const session = await host.openSession({
 - `name` is the test name for step and trace reporting.
 - `timeout` is the deadline for the session's operations in milliseconds,
   positive and finite, counted from when the session opens. It does not bound
-  provisioning or opening, and does not close the session.
+  provisioning or opening, and it does not close the session.
 - `signal` cancels opening or live fixture calls. The host's `signal` also
   applies. Provisioning happens in `openHost`, so only the host's `signal`
   cancels it; either signal cancels a launch.
@@ -380,8 +379,9 @@ if (failures.length > 0) throw new AggregateError(failures, 'e2e host close fail
   to this attempt.
 - `steps()` returns read-only `StepRecord`s for steps run so far, as the
   [report](/reference/reporters) records them.
-- `report()` returns the session `Report` after close and a successful trace
-  write; otherwise `undefined`.
+- `report()` returns the session `Report` the trace is rendered from, after
+  close and a successful trace write; otherwise `undefined`. Its status
+  describes the SDK session, not your runner's test-body verdict.
 - `artifactsDir` is the absolute directory for this attempt's screenshots,
   recordings, and trace.
 - `tracePath` is the absolute path to `trace.md`; attach or read it after
@@ -422,30 +422,29 @@ if (failures.length > 0) throw new AggregateError(failures, 'e2e session close f
 
 #### Artifacts
 
-Artifacts live under `<output>/results/host/<resultSegment>/`, with
-`trace.md` written at close through the existing redacted report-formatting
-pipeline.
+Artifacts live under `<output>/results/host/<resultSegment>/`. At close,
+e2e writes `trace.md` there through the same redacted formatting reports
+use.
 
-- e2e generates the safe `resultSegment` from the name and unique attempt
-  identity; the name never becomes a raw path component.
+- e2e generates a safe `resultSegment` from the name and the unique attempt
+  identity. The name never becomes a raw path component.
 - Repeated names and retries get separate directories.
-- With provider-backed secrets, the directory uses an identity-only segment
-  because unresolved values cannot be redacted from a title slug. The trace
-  still displays the redacted name.
+- With provider-backed secrets, the directory uses an identity-only segment,
+  since unresolved values cannot be redacted from a title slug. The trace
+  still shows the redacted name.
+- Artifact paths are relative to `<output>/results`, not
+  `session.artifactsDir`.
+- Video follows the target's mode for a first attempt. Failure-only video is
+  kept for soft failures and for failed, blocked, timed-out, or cancelled
+  steps.
 
 <Note>
-A hosted session writes its trace, not `report.json`. After close,
-`session.report()` returns the session `Report` used to render that trace.
-Its status describes the SDK session, not your runner's test-body verdict.
-Artifact paths are relative to `<output>/results`, not `session.artifactsDir`.
-Your runner owns retries and reporting; use `onStep`, `steps()`, `report()`,
-and `close()`'s failures. Video follows the target's mode for a first
-attempt, including retaining failure-only video for soft failures and
-failed, blocked, timed-out, or cancelled steps. Your runner's test-body
-failures are not passed to e2e.
+A hosted session writes its trace, not `report.json`. For your runner's
+reporting, use `onStep`, `steps()`, `report()`, and `close()`'s failures.
+Your runner's test-body failures are not passed to e2e.
 
-The one-shot attempt used by `e2e mcp` remains internal. There is no
-top-level `openSession` export.
+The one-shot attempt `e2e mcp` uses stays internal. There is no top-level
+`openSession` export.
 </Note>
 
 ## Types

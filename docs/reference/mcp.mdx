@@ -49,10 +49,8 @@ bunx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 
 #### `--config`
 
-The config every session loads unless `open_session` names one.
-
-- Configs are reloaded on every `open_session`, with every file they import
-  by path.
+The config every session loads unless `open_session` names one. Each
+session loads it afresh ([Several sessions](#several-sessions)).
 
 #### `--target`
 
@@ -70,14 +68,12 @@ session whose `open_session` does not set `headed`.
 
 #### `--max-sessions`
 
-How many sessions may be open at once, 1 through 16.
+How many sessions may be open at once, 1 through 16. See
+[Several sessions](#several-sessions).
 
 ```bash
 e2e mcp --max-sessions 8 # default: 4
 ```
-
-- Each session is its own browser or device. See
-  [Several sessions](#several-sessions).
 
 ### Tools
 
@@ -142,8 +138,8 @@ call {tool: "tap", args: {target: "n42"}, session: "<id>"}
   `navigate file:///etc/passwd failed: POLICY_DENIED: forbidden URL scheme: file:`.
 - Project tools honor their AI SDK `toModelOutput` renderer, including when
   `execute` returns a string. Rendered `error-text` and `error-json` outputs
-  are MCP error results (`isError: true`) so the coding agent can distinguish
-  a failed tool call from a successful one.
+  are MCP error results (`isError: true`). The coding agent can tell a failed
+  tool call from a successful one.
 
 #### `close_session`
 
@@ -233,8 +229,7 @@ Returns how many nodes match a semantic locator, which ones, and the
 The masked viewport as an image. Takes no arguments.
 
 - From then on every action result carries a fresh screenshot.
-- Once a secret has been filled it answers `PIXEL_TAINTED` instead, for the
-  rest of the session.
+- After a secret fill it answers `PIXEL_TAINTED`. See [Sessions](#sessions).
 
 #### Point tools
 
@@ -249,16 +244,15 @@ Each takes `x` and `y` in the latest screenshot's pixels.
 | `select_at` | `x`, `y`, `value` (the option's visible label) | Picks the option in the listed select-like control under the point. Nothing listed there fails. | `select` |
 
 <Note>
-The five point tools answer `PIXEL_TAINTED` once a secret has been filled.
-Before the session's first `screenshot` each answers with the line that says
-to take one, at no cost.
+Before the session's first `screenshot`, each point tool answers with the
+line that says to take one, at no cost. Like `screenshot`, they answer
+`PIXEL_TAINTED` after a secret fill.
 </Note>
 
 #### Recording
 
-`start_recording` starts a video of the app. `stop_recording` stops it and
-returns the absolute path of each video file. Both are listed when the engine
-records video.
+`start_recording` and `stop_recording` record a video of the app. Both are
+listed when the engine records video.
 
 ```txt
 call {tool: "start_recording", args: {name: "checkout-flow"}}
@@ -268,7 +262,7 @@ call {tool: "stop_recording"}
 | Tool | Input | Does |
 | --- | --- | --- |
 | `start_recording` | `name` (optional): up to 64 letters, digits, `-`, and `_`, starting with a letter or digit | One recording at a time. A second start reports the one running. |
-| `stop_recording` | none | Saves the video and returns each file's path. |
+| `stop_recording` | none | Saves the video and returns each file's absolute path. |
 
 - A session records video only between `start_recording` and
   `stop_recording`, as many times as needed. The configured
@@ -280,9 +274,9 @@ call {tool: "stop_recording"}
 - A web recording that spans a restart or a state reset has one file per
   page, `-part2`, `-part3`, and so on, in play order.
 - A browser or device provider that records the lease itself records the
-  session instead: [Kernel](/integrations/kernel) downloads its replay, saved
-  here as `<n>[-<name>].mp4` like any other file, and a provider that keeps
-  its recordings is listed by URL instead of a file.
+  session instead. [Kernel](/integrations/kernel) downloads its replay, saved
+  here as `<n>[-<name>].mp4` like any other file. A provider that keeps its
+  recordings is listed by URL instead of a file.
 - `close_session`, the idle timeout, and the session TTL save a recording
   still running, and the close result lists its files.
 
@@ -344,8 +338,8 @@ The server needs no model: a project without the optional `ai` package
 opens sessions and drives the app with the deterministic tools.
 
 Start the server in the project directory. Config discovery works like
-`e2e run`. Set `--config` for another location, or pass `config` to
-`open_session` for one session.
+`e2e run`. For another config, see [`--config`](#config) and
+[`open_session`](#open_session).
 
 ## Output
 
@@ -376,21 +370,20 @@ A session closes:
 - when the client disconnects,
 - on SIGINT or SIGTERM.
 
-The client disconnects when it closes the server's stdin or dies, so the
-pipes break under the server: every session closes, the app commands the
-sessions started stop, and the server exits.
+The client disconnects when it closes the server's stdin or dies. Then every
+session closes, the app commands the sessions started stop, and the server
+exits.
 
 Sessions enforce what tests enforce:
 
 - Node ids are valid only against the newest observation.
 - A secret fills only through `type_secret`. Once one has been filled,
-  `screenshot` and the point tools (`tap_at`, `hover_at`, `type_at`,
-  `press_at`, `select_at`) stay in the catalog but answer `PIXEL_TAINTED` for
-  the rest of the session.
-- Every text a tool returns, a node `locate` found, an action's result, an
-  `open_session` or `close_session` failure, or a cleanup line, has the
-  config's secret values redacted once the config has loaded, as do the
-  server's own log lines.
+  [`screenshot`](#screenshot) and the [point tools](#point-tools) stay in the
+  catalog but answer `PIXEL_TAINTED` for the rest of the session.
+- Once the config has loaded, its secret values are redacted from every text
+  a tool returns, a node `locate` found, an action's result, an
+  `open_session` or `close_session` failure, a cleanup line, and the server's
+  own log lines.
 - Nothing a session does is recorded as a test result or into the replay
   cache. Its artifacts land under
   `<output>/results/mcp/<target>-<attemptId>/`, its videos under
@@ -417,15 +410,12 @@ session.
 | `ENGINE_IN_USE` | A second session on an engine created inside a package. |
 | `CANCELLED` | An `open_session` the client cancelled or disconnected from, or the server shut down during, once what it started has stopped. |
 
-- `session` may be left out only while exactly one session is open.
 - A session holds its slot from `open_session` until its attempt has closed,
   so sessions still booting or still closing count toward the limit.
 - Sessions open at once share one config: credentials and secrets resolve
-  through one registry per process. An `open_session` on another config
-  fails until the others close.
+  through one registry per process.
 - While the server shuts down it cancels sessions still opening and waits
-  for them, closes every session, and refuses new ones. A client that
-  cancels an `open_session`, or disconnects, cancels it too. A cancelled open
+  for them, closes every session, and refuses new ones. A cancelled open
   fails once what it started (an app command still waiting on its
   `readyUrl`, say) has stopped.
 - Each session loads the config afresh, down to the files it imports by

@@ -33,9 +33,6 @@ export default {
 | [`markdown`](#markdown) | Writes `<output>/summary.md` |
 | [`github()`](#github) | Pull request comment and job summary |
 
-`reporters` defaults to `['list']`. The [CLI reference](/reference/cli#output)
-describes what each built-in writes in detail.
-
 | Throws | When |
 | --- | --- |
 | `INVALID_CONFIG` | `reporters` is not an array. |
@@ -52,8 +49,8 @@ reporters: ['list'], // default
 ```
 
 - It renders the same events [`onEvent`](#onevent) receives.
-- The rows a reporter's [`onRunFinished`](#onrunfinished) resolves with print
-  under its summary.
+- The [summary rows](#onrunfinished) reporters return print under its
+  summary.
 
 #### `json`
 
@@ -62,9 +59,6 @@ Prints the report document to stdout.
 ```ts
 reporters: ['json'],
 ```
-
-- It cannot be combined with `list`.
-- It does not carry the rows other reporters return.
 
 #### `junit`
 
@@ -77,8 +71,8 @@ reporters: ['list', 'junit'],
 - It reads `run.report`, writes `junit.xml` beside `run.reportPath`, and
   returns one row naming the file. It is the smallest complete example of a
   reporter.
-- A second Ctrl-C still lets it write its file, so none of the previous
-  run's is left beside the new report.
+- A second Ctrl-C still lets it write its file, so no file from the previous
+  run is left beside the new report.
 
 #### `markdown`
 
@@ -88,9 +82,8 @@ Writes `summary.md` beside the report.
 reporters: ['list', 'markdown'],
 ```
 
-- It does what `junit` does, with `summary.md`, through
-  [`renderMarkdownReport`](#rendermarkdownreport).
-- A second Ctrl-C still lets it write its file, like `junit`.
+It does what `junit` does, second Ctrl-C included, with `summary.md` and
+through [`renderMarkdownReport`](#rendermarkdownreport).
 
 <a id="rendermarkdownreport" />
 
@@ -128,8 +121,8 @@ const reporter = github({ key: 'chromium' });
 
 - `key` tells one job's comment apart from another's when the workflow, job,
   and project are the same, as in a matrix. Without it, matrix replicas of
-  one job share a comment and the last one to finish wins. Never use the run
-  id: a rerun must find the old comment. The key is also the comment's name
+  one job share a comment, and the last one to finish wins. Never use the
+  run id: a rerun must find the old comment. The key also names the comment
   in its headline: `e2e chromium: 77 passed`.
 - It reads the token, the event, and the repository when the run finishes,
   never when the config loads.
@@ -178,24 +171,19 @@ interface Reporter {
 }
 ```
 
-A name and at least one handler are required; anything else is
-`INVALID_CONFIG`.
-
 Cached steps expose `cache.recordedBy: { provider, model }` in `report.json`
-and the trace page when the recording has it. Older recordings omit it.
+and on the trace page when the recording has it. Older recordings omit it.
 The console prints `replayed · recorded with provider/model` only when that
 identity differs from the configured model. It stays quiet for multi-agent
-runs and pinned agents whose model is not in the run header.
+runs and for pinned agents whose model is not in the run header.
 
 #### `name`
 
-The reporter's label in diagnostics.
+The reporter's label in diagnostics. Required and non-empty.
 
 ```ts
 name: 'upload',
 ```
-
-- Required and non-empty.
 
 #### `onEvent`
 
@@ -212,14 +200,13 @@ onEvent(event) {
 },
 ```
 
-- The `list` reporter uses the same events. The [Events](#events) section
-  lists them.
-- Slow work belongs in `onRunFinished`.
+[Events](#events) lists them.
 
 <Note>
-`onEvent` must not block and must not throw. A throw quarantines the reporter
-for the rest of the run and prints one line on stderr naming the reporter, the
-event type, and the error; the run's outcome is unchanged.
+`onEvent` must not block and must not throw. Do slow work in
+`onRunFinished`. A throw quarantines the reporter for the rest of the run and
+prints one line on stderr naming the reporter, the event type, and the error.
+The run's outcome is unchanged.
 </Note>
 
 #### `onRunFinished`
@@ -251,14 +238,13 @@ type ReporterSummary = readonly { label: string; text: string }[];
 ```
 
 - All reporters run concurrently, each with a one-minute deadline.
-- A timeout, exception, or invalid return value is reported on stderr
-  without changing the run's status, exit code, or report.
+- A timeout, exception, or invalid return value is reported on stderr. The
+  run's status, exit code, and report do not change.
 - One Ctrl-C still lets reporters finish. A second Ctrl-C stops waiting for
-  them, except the built-in `junit` and `markdown`, which still write their
-  files.
+  them, except [`junit`](#junit) and [`markdown`](#markdown).
 - `signal` aborts when the budget runs out or the run is forced to stop.
-- The runner writes the trace pages, `results/<test>/trace.md`, before
-  `onRunFinished` is called. `traces` maps each result id to its page.
+- The runner writes the trace pages, `results/<test>/trace.md`, before it
+  calls `onRunFinished`.
 
 <Note>
 Hand `signal` to every request and timer, or an abandoned reporter keeps the
@@ -267,8 +253,8 @@ CLI alive after the run has ended.
 
 ##### Summary rows
 
-The rows a reporter resolves with print under the `list` summary in the same
-layout as its own rows; the `json` reporter does not carry them:
+The rows a reporter resolves with print under the `list` summary, in the
+same layout as its own rows. The `json` reporter does not carry them.
 
 ```
    Test Files  2 passed (2)
@@ -290,16 +276,14 @@ layout as its own rows; the `json` reporter does not carry them:
 
 ##### Reruns with `--last-failed`
 
-`lastRun` is the report the rerun selected from.
-
-- The rerun's own report lists the tests it left out as unselected, so a
+- The rerun's own report lists the tests it left out as unselected. A
   reporter that keeps one place current, the way `@e2e-dev/github` keeps a
   pull request comment, folds the rerun into `lastRun` to show both runs as
   one.
 - A test the rerun owed but another filter left out is in the rerun's
-  `run.carried`: its last result, the serial group its attempts live on, and
-  the `beforeAll` or `afterAll` failure whose scope holds it, from whichever
-  earlier run reported them.
+  `run.carried`. It holds the test's last result, the serial group its
+  attempts live on, and the `beforeAll` or `afterAll` failure whose scope
+  holds it, from whichever earlier run reported them.
 - A fold shows the carried result in place of the unselected one and counts
   a carried failure or hook error against the outcome.
 - The artifacts both reports name are on disk under `artifactsRoot`.
@@ -353,7 +337,7 @@ type RunEventFact =
 
 <Note>
 Secrets are redacted before events are built. Error messages are only
-stripped of control characters; treat them as untrusted.
+stripped of control characters, so treat them as untrusted.
 </Note>
 
 ### Step progress
@@ -386,11 +370,11 @@ type StepProgress = (
 ) & { identity?: StepProgressIdentity };
 ```
 
-An `end` phase also includes the step's redacted `error` and `explanation`
-when present. Preserve its `status`, including `blocked` and `cancelled`,
-instead of treating every non-passed step as a product failure.
+An `end` phase's `error` and `explanation` are redacted. Keep its `status`,
+including `blocked` and `cancelled`. Do not treat every non-passed step as a
+product failure.
 
-Every step phase emitted by the runner includes `progress.identity`:
+Every step phase the runner emits includes `progress.identity`:
 
 ```ts
 { attemptId: string; attemptIndex: number; stepId: string; stepIndex: number }
@@ -399,8 +383,8 @@ Every step phase emitted by the runner includes `progress.identity`:
 - The IDs match the final report. Both indexes start at zero.
 - A retry has a new attempt ID and a higher attempt index; its step indexes
   start again at zero.
-- Serial-group members share the group's attempt ID and index, while each
-  member's step IDs remain distinct.
+- Serial-group members share the group's attempt ID and index. Each
+  member's step IDs stay distinct.
 - Use `stepId` to match start, activity, event, replay, and end phases,
   including nested steps.
 - `identity` is optional in the type so a reporter can also accept older

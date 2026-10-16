@@ -31,9 +31,11 @@ test('billing page', async ({ app, screen }) => {
 | [`back`](#back) | `Promise<void>` |
 | [`screenshot`](#screenshot) | `Promise<string>` |
 
-Timeouts come from the [config](/reference/config): `timeout` defaults to
-120000 ms and `actionTimeout` to 30000 ms. The remaining test timeout caps
-both. `app` methods take no per-call timeout option.
+`open`, `restart`, and `clearState` are bounded by `timeout`. `back` and
+`screenshot` are bounded by `actionTimeout`. Both come from the
+[config](/reference/config): `timeout` defaults to 120000 ms and
+`actionTimeout` to 30000 ms. The remaining test timeout caps both. `app`
+methods take no per-call timeout option.
 
 ### `baseUrl`
 
@@ -59,7 +61,7 @@ await app.open('https://example.com/login'); // any http(s) URL
 ```
 
 On a device target, which has no URL, `open()` launches the pinned app fresh
-and takes no path. It is bounded by `timeout`.
+and takes no path.
 
 | Throws | When |
 | --- | --- |
@@ -78,8 +80,6 @@ the app at its base URL when the target declares one.
 await app.restart();
 ```
 
-It is bounded by `timeout`.
-
 | Throws | When |
 | --- | --- |
 | `ACTION_FAILED`, `ENGINE_FAILURE` | The operation or the engine failed. |
@@ -95,8 +95,6 @@ test.beforeEach(async ({ app }) => {
   await app.clearState();
 });
 ```
-
-It is bounded by `timeout`.
 
 | Throws | When |
 | --- | --- |
@@ -116,8 +114,6 @@ Navigates back once.
 await app.back();
 ```
 
-It is bounded by `actionTimeout`.
-
 | Throws | When |
 | --- | --- |
 | `APP_NOT_OPEN` | `app.open()` has not run, or the engine reported invalid state. |
@@ -136,7 +132,6 @@ const shot = await app.screenshot('after-checkout');
   relative to the attempt's artifact directory. The report records the path
   relative to the artifact root.
 - `label` names the step and joins the file name.
-- It is bounded by `actionTimeout`.
 
 | Throws | When |
 | --- | --- |
@@ -146,8 +141,8 @@ const shot = await app.screenshot('after-checkout');
 
 <Note>
 Once a `Secret` has been filled, pixels are withheld for the rest of the
-session, including later tests in a serial group. `app.screenshot()` then
-fails with `POLICY_DENIED` and creates no artifact.
+session, including later tests in a serial group. A denied screenshot creates
+no artifact.
 </Note>
 
 ## Types

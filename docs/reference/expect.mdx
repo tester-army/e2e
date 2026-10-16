@@ -51,7 +51,10 @@ The declarations are under [Types](#types).
 ### Locator matchers
 
 `expect(locator)` returns an `AsyncExpectation`. Each matcher polls until it
-holds or its timeout passes, under the rules in [Behavior](#behavior).
+holds or its timeout passes, under the rules in [Behavior](#behavior):
+[Strictness](#strictness), [Text matching](#text-matching), and
+[Secure fields](#secure-fields) among them. The options are in
+[`AsyncExpectation`](#asyncexpectation-and-textmatcheroptions).
 
 | Matcher | Description |
 | --- | --- |
@@ -83,26 +86,18 @@ await expect(screen.getByRole('dialog')).not.toBeVisible({ timeout: 10_000 });
 await expect(screen.getByRole('dialog')).toBeVisible({ visible: false }); // as toBeHidden()
 ```
 
-- `visible: false` waits for a hidden or absent state, as `toBeHidden` does.
-- `toBeHidden`, `toBeVisible({ visible: false })`, and negated visibility
-  accept zero matches.
-- Options: `visible` and `timeout` on `toBeVisible`, `timeout` on
-  `toBeHidden`.
-
 #### `toBeAttached`
 
-Waits for one match to exist, visible or not.
+Waits for one match to exist, hidden or shown, where `toBeVisible` needs a
+shown one.
 
 ```ts
 await expect(screen.getByText('Loaded')).toBeAttached();
 await expect(screen.getByText('Loading')).toBeAttached({ attached: false });
 ```
 
-- It passes once one match exists, hidden or shown, where `toBeVisible`
-  needs a shown one.
-- Negated, or with `attached: false`, it waits for no match and passes once
-  nothing matches.
-- Options: `attached` and `timeout`.
+Negated, or with `attached: false`, it waits for no match and passes once
+nothing matches.
 
 #### `toBeEnabled` and `toBeDisabled`
 
@@ -114,16 +109,14 @@ await expect(screen.getByRole('button', 'Pay')).toBeEnabled();
 await expect(screen.getByRole('button', 'Pay')).toBeEnabled({ enabled: false }); // as toBeDisabled()
 ```
 
-- A node is enabled unless it reports `disabled`.
-- `enabled: false` waits for a disabled node.
-- On the web, `disabled` is the state the browser applies, not the attribute
-  alone, the same reading Playwright's `toBeDisabled` gives:
-  - A control inside a `<fieldset disabled>` is disabled unless it sits in
-    that fieldset's first `<legend>`.
-  - `aria-disabled="true"` on an ancestor disables the widgets below it until
-    an `aria-disabled="false"` cuts the chain.
-- Options: `enabled` and `timeout` on `toBeEnabled`, `timeout` on
-  `toBeDisabled`.
+A node is enabled unless it reports `disabled`. On the web, `disabled` is
+the state the browser applies, not the attribute alone. That is the reading
+Playwright's `toBeDisabled` gives:
+
+- A control inside a `<fieldset disabled>` is disabled unless it sits in
+  that fieldset's first `<legend>`.
+- `aria-disabled="true"` on an ancestor disables the widgets below it until
+  an `aria-disabled="false"` cuts the chain.
 
 #### `toBeChecked`, `toBeSelected`, and `toBeExpanded`
 
@@ -134,11 +127,8 @@ await expect(screen.getByLabel('Subscribe')).toBeChecked({ checked: false });
 await expect(screen.getByRole('tab', 'Billing')).toBeSelected();
 ```
 
-- A missing `checked`, `selected`, or `expanded` state counts as `false`, so
-  `.not.toBeChecked()` passes on a button or a heading.
-- `toBeChecked({ checked: false })` waits for an unchecked node.
-- Options: `checked` and `timeout` on `toBeChecked`, `timeout` on
-  `toBeSelected` and `toBeExpanded`.
+A missing `checked`, `selected`, or `expanded` state counts as `false`, so
+`.not.toBeChecked()` passes on a button or a heading.
 
 #### `toBeFocused`
 
@@ -147,8 +137,6 @@ Waits for focused state.
 ```ts
 await expect(screen.getByLabel('Email')).toBeFocused();
 ```
-
-Options: `timeout`.
 
 #### `toHaveText` and `toContainText`
 
@@ -163,10 +151,7 @@ await expect(screen.getByTestId('todo')).toContainText(['spec', 'runner', 'Relea
 await expect(screen.getByTestId('todo')).toContainText(['spec', 'Release']);
 ```
 
-Options: `ignoreCase` and `timeout`.
-
-The list forms have no exactly-one rule, and their failure message lists
-every text observed.
+A list form's failure message lists every text observed.
 
 | Form | Holds when |
 | --- | --- |
@@ -197,9 +182,6 @@ await expect(screen.getByLabel('Search')).toHaveValue('');
 - A node whose role carries no value, such as a heading or a link, never
   satisfies `toHaveValue`, negated or not. The message reads
   `no value (not a form control)`.
-- On a secure field it throws `POLICY_DENIED`; see
-  [Secure fields](#secure-fields).
-- Options: `timeout`.
 
 #### `toHaveAttribute`
 
@@ -210,12 +192,6 @@ await expect(screen.getByRole('link', 'Help')).toHaveAttribute('target');
 await expect(screen.getByRole('link', 'Help')).toHaveAttribute('href', '/help');
 ```
 
-- The value compares like `toHaveText`, after normalization, and takes
-  `ignoreCase`.
-- On a secure field it throws `POLICY_DENIED` for every attribute name,
-  negated too; see [Secure fields](#secure-fields).
-- Options: `timeout`, and `ignoreCase` only with a value.
-
 #### `toHaveCount`
 
 Waits for an exact match count.
@@ -224,10 +200,6 @@ Waits for an exact match count.
 await expect(screen.getByTestId('todo')).toHaveCount(3);
 ```
 
-It is exempt from the exactly-one rule.
-
-Options: `timeout`.
-
 #### `toHaveAccessibleName`
 
 Waits for an accessible name.
@@ -235,10 +207,6 @@ Waits for an accessible name.
 ```ts
 await expect(screen.getByRole('button', { name: /close/i })).toHaveAccessibleName('Close');
 ```
-
-It takes `ignoreCase`, and it still answers on a secure field.
-
-Options: `ignoreCase` and `timeout`.
 
 ### Screenshot matchers
 
@@ -274,13 +242,12 @@ Both forms take the [Screenshot options](#screenshot-options).
 | `--update-snapshots`, `-u` | A missing or different stored screenshot is written from a screen that holds still, and the matcher passes |
 | `.not` | Passes once the screen differs; with nothing stored it is `ASSERTION_FAILED` |
 | Tolerance | Both `maxDiffPixels` and `maxDiffPixelRatio` set: the smaller wins |
-| After a secret fill | `POLICY_DENIED`, as for `app.screenshot()` |
 
 | Throws | When |
 | --- | --- |
 | `INVALID_ARGUMENT` | Before the screen is read: a name with a path separator, an option the matcher does not take (Playwright's `fullPage`, `animations`, `clip`), a value out of range, or `expect` on a screen scoped to a frame. Compare a locator inside the frame instead |
 | `ASSERTION_FAILED` | A missing, different, or same-run stored screenshot, as in the table above |
-| `POLICY_DENIED` | A `Secret` was filled earlier |
+| `POLICY_DENIED` | A `Secret` was filled earlier, as for `app.screenshot()` |
 
 #### Screenshot options
 
@@ -293,13 +260,8 @@ Both forms take the [Screenshot options](#screenshot-options).
 | `maskColor` | `string` | `#ff00ff` |
 | `timeout` | `number` | `config.assertionTimeout` |
 
-- `threshold`: how far one pixel's color may drift and still count as the
-  same, from 0 (exact) to 1.
-- `maxDiffPixels`: how many pixels may differ.
-- `maxDiffPixelRatio`: what share of the pixels may differ, from 0 to 1.
-- `mask`: locators painted over before comparing, for content that changes
-  from run to run.
-- `maskColor`: color of the `mask` boxes, `#rrggbb`.
+[`ScreenshotOptions`](#screenexpectation-and-screenshotoptions) describes
+each option.
 
 ### browser matchers
 
@@ -313,8 +275,8 @@ assertion step.
 | [`toHaveTitle`](#tohavetitle) | Waits for the current title |
 | [`toHaveClass`](#tohaveclass) | Waits for a target's `class` |
 
-Any other option key, such as `ignoreCase` on `toHaveTitle`, which Playwright
-does not take either, is `INVALID_ARGUMENT`.
+Any other option key is `INVALID_ARGUMENT`, such as `ignoreCase` on
+`toHaveTitle`, which Playwright does not take either.
 
 #### `toHaveURL`
 
@@ -329,10 +291,8 @@ await expect(browser).toHaveURL(/\/orders\/\d+$/);
   normalization.
 - A `RegExp` tests the full URL.
 - Anything else, such as a predicate function, is `INVALID_ARGUMENT`.
-- It takes Playwright's `ignoreCase`, with the locator matchers' semantics: a
-  string compares case-insensitively, and `true` adds the `i` flag to a
-  `RegExp` while `false` removes it.
-- Options: `ignoreCase` and `timeout`.
+- It takes Playwright's `ignoreCase`, as the locator matchers do
+  ([Text matching](#text-matching)).
 
 #### `toHaveTitle`
 
@@ -341,8 +301,6 @@ Waits for the current title to match.
 ```ts
 await expect(browser).toHaveTitle(/Dashboard/);
 ```
-
-Options: `timeout`.
 
 #### `toHaveClass`
 
@@ -359,7 +317,6 @@ await expect(browser).toHaveClass(browser.locator('.card'), 'card active');
 - It reads the `class` attribute, so `''` matches `class=""` and not an
   element with no `class` attribute at all. Playwright's `toHaveClass('')`
   accepts both.
-- Options: `timeout`.
 
 ### Value matchers
 
@@ -381,20 +338,10 @@ still change, use [Polling a value](#polling-a-value).
 | [`toBeCloseTo`](#tobecloseto) | Within `10 ** -digits / 2` |
 | [`toMatchSchema`](#matching-a-schema) | Standard Schema validation |
 
-```ts
-const total = await screen.getByTestId('total').textContent();
-expect(total).toContain('$');
-expect(items).toHaveLength(3);
-expect(payload).toEqual({ ok: true });
-expect(order).toMatchObject({ customer: { name: 'Ada' }, lines: [{ sku: 'a' }, { sku: 'b' }] });
-expect(order).toHaveProperty('customer.email', 'ada@example.test');
-expect(totals.lineTotal).toBeCloseTo(60);
-```
-
-A matcher that cannot evaluate its value (`toContain` on a number,
-`toHaveLength` on an object without one) fails as `ASSERTION_FAILED` like a
-mismatch would, so under `expect.poll` a value that has not taken its final
-shape yet is one more failing sample.
+A matcher that cannot evaluate its value fails as `ASSERTION_FAILED`, like a
+mismatch. Examples are `toContain` on a number, or `toHaveLength` on a value
+without a numeric `length`. So under `expect.poll`, a value that has not
+taken its final shape yet is one more failing sample.
 
 #### `toBe`
 
@@ -419,8 +366,8 @@ expect(payload).toEqual({ ok: true, items: [{ sku: 'a' }] });
 - A property whose value is `undefined` is treated as absent, and a sparse
   array equals one holding `undefined`.
 - Class types are not compared: a class instance equals a plain object with
-  the same properties.
-- There is no `toStrictEqual`.
+  the same properties. There is no `toStrictEqual`; see
+  [Not included](#not-included).
 
 #### `toMatchObject`
 
@@ -461,8 +408,6 @@ anything array-like.
 expect(items).toHaveLength(3);
 ```
 
-A value without a numeric `length` fails as `ASSERTION_FAILED`.
-
 #### `toHaveProperty`
 
 Requires the property at `path` to exist; with `expected`, to equal it by
@@ -494,9 +439,8 @@ expect(rows).toContain(expect.objectContaining({ status: 'paid' }));
 - On a string, `expected` must be a string, and it is a substring check. An
   asymmetric matcher is refused there:
   `expect('abc').toContain(expect.stringContaining('a'))` fails.
-- On a collection, an element must equal `expected`; this form takes
+- On a collection, an element must equal `expected`. This form takes
   [asymmetric matchers](#asymmetric-matchers).
-- Any other value, such as a number, fails as `ASSERTION_FAILED`.
 
 #### `toMatch`
 
@@ -603,8 +547,7 @@ expect(response).toHaveProperty('body.total', expect.any(Number));
 - In a failure message a matcher prints as its description: `Any<Number>`,
   `ObjectContaining {"name":"Ada"}`.
 - Matchers nest: an `objectContaining` sample may hold an `expect.any`.
-- The string form of `toContain` takes a string only, so
-  `expect('abc').toContain(expect.stringContaining('a'))` is refused.
+- The string form of `toContain` refuses them; see [`toContain`](#tocontain).
 
 ### Soft assertions
 
@@ -682,8 +625,6 @@ await expect.poll(() => readStatus(), { message: 'the batch never finished' }).n
 - `interval` is the pause between reads in milliseconds, a finite number
   above 0.
 - `message` is an extra line in the timeout error, after the matcher line.
-- Any other `timeout` or `interval` is `INVALID_CONFIG` before the first
-  read.
 
 Every value matcher is available, returning a promise.
 
@@ -710,7 +651,7 @@ last: expected "running" not to be "running"
 | Throws | When |
 | --- | --- |
 | `ASSERTION_FAILED` | The deadline passed without a passing sample |
-| `INVALID_CONFIG` | `timeout` or `interval` out of range |
+| `INVALID_CONFIG` | `timeout` or `interval` out of range, before the first read |
 | `CANCELLED` | The attempt was cancelled or timed out |
 | `STEP_NOT_AWAITED` | The phase that started the poll returned while it still ran |
 | `HOOK_FAILED` | A `beforeAll` or `afterAll` hook returned while its poll still ran |
@@ -731,15 +672,15 @@ read.
 
 ## Behavior
 
-Rules that apply across the matcher groups below.
+Rules that apply across the matcher groups.
 
 ### Timeouts and failures
 
 | Property | Value |
 | --- | --- |
-| Default timeout | `config.assertionTimeout`, 5000 ms |
+| Default timeout | [`config.assertionTimeout`](/reference/config#assertiontimeout) |
 | Override | `{ timeout }` in milliseconds, on every locator and `browser` matcher |
-| Unknown option | `INVALID_ARGUMENT` before the first read, from JavaScript too |
+| Unknown option | `INVALID_ARGUMENT`; see [Option validation](#option-validation) |
 | Failure code | `ASSERTION_FAILED`, exit code 1 |
 
 ### Negation

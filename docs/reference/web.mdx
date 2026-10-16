@@ -71,7 +71,8 @@ web({ viewport: { width: 390, height: 844 }, locale: 'de-DE' });
 
 | Throws | When |
 | --- | --- |
-| `INVALID_CONFIG` | An option `web()` does not take, `web({ url })` or any other app key included, or an unknown key inside `connect` or `basicAuth`. The message names the nearest known key when it is a likely typo (`viewprt` is `viewport`), and every key otherwise. |
+| `INVALID_CONFIG` | An option `web()` does not take (`url` or any other app key included), or an unknown key inside `connect` or `basicAuth`. The message names the nearest known key for a likely typo (`viewprt` is `viewport`), else every key. |
+| `INVALID_CONFIG` | `headers`, `basicAuth`, `userAgent`, `locale`, or `timezoneId` on a [persistent context](#recovering-a-cdp-transport) (`connect.reconnectEndpoint`, or a provider with `scope: 'attempt'`). |
 
 #### `browser`
 
@@ -82,11 +83,10 @@ web({ browser: 'firefox' }); // default: 'chromium'
 ```
 
 - `'chromium'`, `'firefox'`, or `'webkit'`.
-- A `BrowserProvider` object leases hosted browsers instead: one per worker
-  slot at `prepare`, or one per attempt. Each is attached to over CDP and
-  released when its scope (the run or the attempt) ends. The engine drives a
-  provider's browser as chromium over CDP, whether it is Chromium or another
-  CDP server such as [Lightpanda](/integrations/lightpanda).
+- A `BrowserProvider` leases hosted browsers instead: one per worker slot for
+  the run, or one per attempt ([`WebOptions`](#weboptions)). The engine
+  drives each one as chromium over CDP, whether it is Chromium or another CDP
+  server such as [Lightpanda](/integrations/lightpanda).
 - A provider with `scope: 'attempt'` rides a persistent context, with the
   limits under [Recovering a CDP transport](#recovering-a-cdp-transport).
 - [Hosted browsers](/browser#hosted-browsers) has the `BrowserProvider`
@@ -104,10 +104,9 @@ The initial viewport of every attempt's page.
 web({ viewport: { width: 390, height: 844 } }); // default: { width: 1280, height: 720 }
 ```
 
-`null` emulates no size: the page fills the browser window, whatever size the
-window has (a hosted browser's live view, a headed run).
-[`browser.setViewport`](#setviewport) still fixes one for the rest of the
-attempt.
+`null` emulates no size, so the page fills the browser window
+([`WebOptions`](#weboptions)). [`browser.setViewport`](#setviewport) still
+fixes one.
 
 #### `screencast`
 
@@ -117,15 +116,9 @@ How the engine's own screencast records an attempt that records video.
 web({ screencast: { size: { width: 800, height: 450 }, quality: 60 } });
 ```
 
-- `size` is the frame size in whole pixels, each side at least 1. It defaults
-  to the viewport's, or the window's under `viewport: null`. A smaller size
-  makes a smaller file.
-- `quality` is the JPEG quality of each captured frame, an integer from 0
-  through 100. Playwright's default applies when it is unset.
-- `screencast` shapes the recording, not which attempts record: that is the
-  config's [`video`](/reference/config#video) mode.
-- A browser provider that records (`BrowserProvider.record`) records in the
-  engine's place and ignores these.
+- `size` takes whole pixels, each side at least 1. `quality` is an integer.
+- Which attempts record is the config's [`video`](/reference/config#video)
+  mode.
 
 ```ts
 /** The engine's screencast of the page: the frame size and the JPEG quality of the frames it encodes. */
@@ -143,18 +136,14 @@ export interface WebScreencastOptions {
 
 #### `connect`
 
-Attaches to a remote browser over CDP instead of launching one locally. A
-hosted-browser engine wires it.
+Attaches to a remote browser over CDP instead of launching one locally.
 
 ```ts
 web({ connect: { cdpEndpoint: async () => 'ws://127.0.0.1:9222' } });
 ```
 
-- Requires the chromium browser, the default.
-- `cdpEndpoint` is a resolver `(signal) => url`, and so is
-  `reconnectEndpoint`.
-- `reconnectEndpoint` opts into a persistent context; see
-  [Recovering a CDP transport](#recovering-a-cdp-transport).
+`reconnectEndpoint` opts into a persistent context; see
+[Recovering a CDP transport](#recovering-a-cdp-transport).
 
 ```ts
 interface WebConnectOptions {
@@ -172,34 +161,34 @@ interface WebConnectOptions {
 ##### Recovering a CDP transport
 
 `connect.reconnectEndpoint(signal)` opts into recovery of the same remote
-browser after its CDP transport disconnects. Omit it to keep ordinary
-isolated contexts and the existing behavior.
+browser after its CDP transport disconnects. Omit it to keep isolated
+contexts.
 
 The remote browser:
 
 - Every attempt, retries included, needs its own fresh browser from
-  `cdpEndpoint`; one long-lived browser cannot serve a suite.
+  `cdpEndpoint`. One long-lived browser cannot serve a suite.
 - The remote must have only its default context.
 - The host must delete the browser when the attempt ends. Engine cleanup
-  detaches its connection; it does not terminate the host's browser.
+  detaches its connection and does not terminate the host's browser.
 - The attempt's first page is the browser's own first tab, navigated to
-  `about:blank`, rather than a second tab beside it. A page opened after
-  that, such as the one `app.restart` opens, is a new tab.
+  `about:blank`, not a second tab beside it. A page opened later, such as
+  the one `app.restart` opens, is a new tab.
 
 How recovery runs:
 
 - After a disconnect, the next operation calls `reconnectEndpoint` once,
-  bounded by that operation's timeout and abort signal. The resolver must
-  return the existing browser's endpoint.
-- The engine verifies the persistent default context ID and the original
-  page's target ID. It refuses browsers that do not expose the default
-  context ID. A missing page or a different context fails the attempt. A URL
-  match is insufficient to select a replacement tab.
-- The engine installs secure-field masking before publishing each CDP
+  within that operation's timeout and abort signal. The resolver must return
+  the existing browser's endpoint.
+- The engine checks the persistent default context ID and the original
+  page's target ID. It refuses a browser that does not expose the default
+  context ID. A missing page or a different context fails the attempt. A
+  matching URL does not select a replacement tab.
+- The engine installs secure-field masking before it publishes each CDP
   binding. An incompatible Playwright version fails the connection instead of
   exposing pixels.
-- The original page's frames must retain their closed shadow DOM tracking
-  hooks. Existing closed roots cannot be recovered without reloading the
+- The original page's frames must keep their closed shadow DOM tracking
+  hooks. Existing closed roots cannot recover without a reload of the
   application. Mask queries reject any untracked document.
 - Endpoint resolution, CDP attachment, setup, and dispatch share one timeout.
   Cancelling a concurrent waiter does not cancel the operation that started
@@ -213,43 +202,40 @@ How recovery runs:
 
 What survives:
 
-- Recovery preserves the page's unsaved state, storage, the attempt's secret
+- Recovery keeps the page's unsaved state, storage, the attempt's secret
   taint, and the agent ledger. Dialog and route handlers are reattached.
-- Video recording resumes, but a segment lost during the disconnect cannot be
-  recovered.
+- Video recording resumes. A segment lost during the disconnect is gone.
 - Operations already dispatched are never retried.
 - Recovery clears old node references. Observation-derived `tapAt` calls,
-  observation-root swipes, and focused engine keyboard input require a fresh
+  observation-root swipes, and focused engine keyboard input need a fresh
   engine observation before they resume.
 - An observation or locator read started before recovery cannot publish
   references after the connection changes. Each attempt owns its binding and
   recordings, so late cleanup cannot change a later attempt.
-- The deterministic `browser.mouse` and `browser.keyboard` fixtures remain
+- The deterministic `browser.mouse` and `browser.keyboard` fixtures stay
   available without an agent observation. Test code owns its input and can
   read current geometry and focus with `browser.evaluate` before acting.
-- Code using `surfaceOf(engine)` must read its accessors again after
-  recovery; previously retained Playwright objects belong to the disconnected
-  transport.
+- Code that uses `surfaceOf(engine)` must read its accessors again after
+  recovery. Playwright objects it kept belong to the disconnected transport.
 
 A `browser` provider with `scope: 'attempt'` rides the same persistent
 context, with the same limits. The lease's `cdpEndpoint` provisions the
 attempt's browser, and its `reconnectEndpoint` (else `cdpEndpoint` again)
 reconnects to it. A lease is fresh by the provider's contract, so the engine
-does not compare its context with earlier attempts': a hosted service may
+does not compare its context with earlier attempts'. A hosted service may
 restore browsers from one snapshot, which gives new browsers the same
 context id.
 
 To reuse one sign-in across files, keep isolated contexts (no
 `reconnectEndpoint`, no provider `scope: 'attempt'`) and
 [sign in once in a setup test](/authentication#sign-in-once-in-a-setup-test).
-A saved session, not a shared browser, carries it.
+A saved session carries it, not a shared browser.
 
 <Note>
 A persistent context does not support `headers`, `basicAuth`, `userAgent`,
-`locale`, `timezoneId`, `app.clearState`, or session state capture and
-restore. Any of those five options beside one is `INVALID_CONFIG`, and
-`app.clearState` fails with `UNSUPPORTED_CAPABILITY`. `app.restart` remains
-available.
+`locale`, `timezoneId` (see [Options](#options)), `app.clearState`, or
+session state capture and restore. `app.clearState` fails with
+`UNSUPPORTED_CAPABILITY`. `app.restart` remains available.
 </Note>
 
 #### `headers`
@@ -260,16 +246,13 @@ Headers added to requests within the app's site, including subdomains.
 web({ headers: { 'x-preview-token': process.env.PREVIEW_TOKEN ?? '' } });
 ```
 
-- Useful for preview-protection tokens. Other sites never receive them.
-- Names are case-insensitive and replace existing headers of the same name.
-- They still ride a [continued](#route) request bound for the app's site, and
-  only that site.
+- A [continued](#route) request bound for the app's site still carries them.
 - `headers` and `basicAuth` are how a test reaches a
   [protected preview](/web#protected-previews).
 
 | Throws | When |
 | --- | --- |
-| `INVALID_CONFIG` | A `user-agent` entry beside `userAgent`, an `accept-language` entry beside `locale`, or a persistent context. |
+| `INVALID_CONFIG` | A `user-agent` entry beside [`userAgent`](#useragent), or an `accept-language` entry beside [`locale`](#locale). |
 
 <Note>
 `headers` enables request routing, which disables the browser's HTTP cache and
@@ -287,10 +270,9 @@ import { secrets } from 'e2e';
 web({ basicAuth: { username: 'staging', password: secrets.get('staging-password') } });
 ```
 
-- `:` is not allowed in the user name (RFC 7617).
-- The password is a string or `secrets.get(name)`: a secret the engine
-  resolves when each attempt starts, redacted like any configured one. So is
-  the base64 credential of the `Authorization` header it becomes.
+A `secrets.get(name)` password resolves when each attempt starts and is
+redacted like any configured secret. So is the base64 credential of the
+`Authorization` header it becomes.
 
 ```ts
 /** HTTP basic authentication the browser answers a `401` challenge with. */
@@ -304,7 +286,7 @@ export interface WebBasicAuth {
 
 | Throws | When |
 | --- | --- |
-| `INVALID_CONFIG` | A `:` in the user name, an unknown key, or a persistent context. |
+| `INVALID_CONFIG` | A `:` in the user name, or an unknown key. |
 
 <Warning>
 The secret protection is text only. Unlike a fill, it withholds no screenshot
@@ -331,10 +313,6 @@ string.
 web({ userAgent: 'Mozilla/5.0 e2e' }); // default: the browser's own
 ```
 
-| Throws | When |
-| --- | --- |
-| `INVALID_CONFIG` | A `user-agent` entry in `headers` beside it, or a persistent context (`connect.reconnectEndpoint`, or a provider with `scope: 'attempt'`). |
-
 #### `locale`
 
 The locale every attempt's context runs in, a BCP 47 tag: what
@@ -345,10 +323,6 @@ report.
 web({ locale: 'de-DE' }); // default: the browser's own
 ```
 
-| Throws | When |
-| --- | --- |
-| `INVALID_CONFIG` | An `accept-language` entry in `headers` beside it, or a persistent context. |
-
 #### `timezoneId`
 
 The IANA time zone every attempt's context runs in: what `Date` and `Intl`
@@ -357,10 +331,6 @@ resolve local time against.
 ```ts
 web({ timezoneId: 'Europe/Berlin' }); // default: the machine's
 ```
-
-| Throws | When |
-| --- | --- |
-| `INVALID_CONFIG` | A persistent context. |
 
 #### Media emulation
 
@@ -411,19 +381,16 @@ await browser.addInitScript((value) => { Math.random = () => value; }, 0.5);
 await app.open('/raffle');
 ```
 
-- A script is JavaScript source, a `{ path }` relative to the project root,
-  or a function.
-- A function cannot close over test variables; pass a JSON `arg` instead.
+- A function cannot close over test variables. Pass a JSON `arg` instead.
 - A script added after the page opened runs from the next navigation or
   reload.
+- `browser.addInitScript` takes the same three forms, or a function with its
+  JSON `arg`. Its overloads are on [`Browser`](#browser-interface).
 
 ```ts
 /** JavaScript source, a file relative to the project root, or a function. */
 export type WebInitScript = string | { readonly path: string } | (() => unknown);
 ```
-
-`browser.addInitScript` takes the same three forms, or a function with its
-JSON `arg`; its overloads are on [`Browser`](#browser-interface).
 
 ### The browser fixture
 
@@ -438,10 +405,10 @@ JSON `arg`; its overloads are on [`Browser`](#browser-interface).
 - `setViewport` sizes the active tab and every tab opened after it, and
   `emulateMedia` sets its media the same way.
 - A tab the app opens itself, from a `target="_blank"` link or `window.open`,
-  is not followed. The active tab stays the one the attempt opened, so assert
-  on what that tab shows, or open the link's URL with `browser.goto`.
+  is not followed. The active tab stays the one the attempt opened. Assert on
+  what that tab shows, or open the link's URL with `browser.goto`.
 - Every `browser` call is a recorded `browser.<method>` step, except
-  `locator` and `frameLocator`: they build a locator without touching the
+  `locator` and `frameLocator`. They build a locator without touching the
   page, and the action or assertion on it is the step.
 - A relative URL resolves against the target's `app.url`, else
   `APP_URL_REQUIRED`.
@@ -476,16 +443,19 @@ JSON `arg`; its overloads are on [`Browser`](#browser-interface).
 | [`keyboard`](#keyboard) | `{ press, down, up, type }` |
 | [`mouse`](#mouse) | `{ move, wheel, down, up }` |
 
-`goto`, `reload`, `back`, and `forward` are bounded by `timeout`,
-`waitForURL` by `assertionTimeout`, and every other member by
-`actionTimeout`; `locator` and `frameLocator` touch no page and take none.
-Timeouts come from the [config](/reference/config): `timeout` defaults to
-120000 ms, the same budget `app.open()` uses; `actionTimeout` to 30000 ms;
-`assertionTimeout` to 5000 ms. A `{ timeout }` option overrides it on `goto`,
-`reload`, `back`, `forward`, `waitForResponse`, and `waitForDownload`, capped
-by the test deadline. `url`, `title`, `evaluate`, `addInitScript`, `route`,
-`unroute`, `cookies`, `setCookies`, `setViewport`, `emulateMedia`,
-`onDialog`, `keyboard.*`, and `mouse.*` take no override.
+The [config](/reference/config) sets each member's budget:
+
+- `goto`, `reload`, `back`, and `forward`: [`timeout`](/reference/config#timeout),
+  the same budget `app.open()` uses.
+- `waitForURL`: [`assertionTimeout`](/reference/config#assertiontimeout).
+- Every other member: [`actionTimeout`](/reference/config#actiontimeout).
+  `locator` and `frameLocator` touch no page and take none.
+
+A `{ timeout }` option overrides the budget on `goto`, `reload`, `back`,
+`forward`, `waitForResponse`, and `waitForDownload`, capped by the test
+deadline. `url`, `title`, `evaluate`, `addInitScript`, `route`, `unroute`,
+`cookies`, `setCookies`, `setViewport`, `emulateMedia`, `onDialog`,
+`keyboard.*`, and `mouse.*` take no override.
 
 #### `goto`
 
@@ -495,8 +465,7 @@ Navigates the active tab to a URL.
 await browser.goto('/dashboard', { waitUntil: 'networkidle' }); // default: 'load'
 ```
 
-- `waitUntil` is `'load'`, `'domcontentloaded'`, or `'networkidle'`.
-- A relative URL resolves against the target's `app.url`.
+`waitUntil` is `'load'`, `'domcontentloaded'`, or `'networkidle'`.
 
 | Throws | When |
 | --- | --- |
@@ -539,7 +508,6 @@ await browser.waitForURL(/\/orders\/\d+$/, { timeout: 15_000 });
 - A relative string resolves against the base URL and matches exactly after
   normalization.
 - A `RegExp` tests the full URL.
-- It takes `timeout` only.
 
 | Throws | When |
 | --- | --- |
@@ -582,11 +550,10 @@ const payment = browser.frameLocator('#payment-frame');
 await payment.getByLabel('Card number').fill('4242424242424242');
 ```
 
-It returns a `FrameScreen`: a `Screen` whose queries answer from inside the
-frame, plus the two web-only escape hatches scoped to it. Reach for the
-frame's `locator` only when the control has no accessible name, label,
-placeholder, or test id; the [browser guide](/browser#reach-into-an-iframe)
-shows when that applies.
+It returns a `FrameScreen`, a `Screen` whose queries answer from inside the
+frame. Use the frame's `locator` only when the control has no accessible
+name, label, placeholder, or test id. The
+[browser guide](/browser#reach-into-an-iframe) shows when that applies.
 
 ```ts
 export interface FrameScreen extends Screen {
@@ -619,11 +586,11 @@ const title = await browser.evaluate<string>('document.title');
 ```
 
 - The function runs in the page and cannot access variables from the test.
-  It is serialized by its source and inlined into the page, so it must not
-  close over anything outside its own body. Helpers declared inside the body
-  work. Pass outside values through `arg`.
+  e2e serializes it by its source and inlines it into the page, so it must
+  not close over anything outside its own body. Helpers declared inside the
+  body work. Pass outside values through `arg`.
 - A string is evaluated as a single expression, not as statements. If it
-  evaluates to a function, that function is called with `arg`; otherwise its
+  evaluates to a function, that function is called with `arg`. Else its
   value is the result.
 - A promise, from either, is awaited.
 
@@ -650,21 +617,12 @@ await browser.route('**/api/quote', async (route) => {
   the same patterns.
 - A route survives `app.restart()`, `app.clearState()`, and session restore.
 - Routes run newest first.
-- The handler must decide exactly once:
-  - `fulfill` answers with one of `json`, `body`, or `path`. `path` is a file
-    relative to the project root whose extension sets the `Content-Type`,
-    unless `contentType` or a `content-type` header does.
-  - `continue` sends the request to the network, and no other route sees it.
-    Its `url` resolves against the base URL and goes through the same rule as
-    `goto`, and it must keep the request's scheme. Its `headers` replaces
-    every request header. The configured [`headers`](#headers) still ride a
-    continued request bound for the app's site, and only that site.
-  - `fallback` hands the request to the route registered before this one, or
-    the network when none matches.
-  - `abort` aborts the request.
+- The handler must decide exactly once, with `fulfill`, `continue`,
+  `fallback`, or `abort`, each described on `WebRoute` below.
+- A `continue` URL goes through the same rule as `goto`.
 - A handler that throws (a failed `expect` on the request, say) fails the
   next step with that error, or the attempt at its end when no step follows.
-  A handler still running then gets the cleanup budget to finish; whatever it
+  A handler still running then gets the cleanup budget to finish. Whatever it
   throws after the budget is dropped.
 
 | Throws | When |
@@ -783,13 +741,12 @@ const cookies = await browser.cookies();
 
 #### `setCookies`
 
-Sets cookies after validating every one of them.
+Validates every cookie, then sets them.
 
 ```ts
 await browser.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }]);
 ```
 
-- It validates every cookie before setting any.
 - A relative `url` resolves against the base URL, as `goto` resolves it.
 - For the `domain` form the scheme follows the base URL, and a leading `.` is
   stripped.
@@ -832,7 +789,7 @@ await app.open('/');
 ```
 
 - It works before the first navigation too, as Playwright's
-  `setViewportSize` does: the next `app.open` loads at that size, so a
+  `setViewportSize` does. The next `app.open` loads at that size, so a
   phone-sized test never renders the desktop layout first.
 - The size holds for the rest of the attempt, through `app.restart()` and
   `app.clearState()`.
@@ -851,8 +808,7 @@ await off();
 - The handler is `'accept'`, `'dismiss'`, or a function that receives the
   `Dialog`.
 - A function handler must call `accept` or `dismiss`. One that does neither
-  has the dialog dismissed and fails the next step with `APP_NOT_OPEN`, as an
-  unhandled dialog does.
+  has the dialog dismissed, as an unhandled dialog does.
 - A handler that throws fails the next step with its error, or the attempt
   at its end when no step follows. One that throws before answering has its
   dialog dismissed.
@@ -901,8 +857,8 @@ const file = await browser.waitForDownload(() =>
 | --- | --- |
 | `ACTION_FAILED` | The download did not complete in time. A trigger that resolved in time but started no download fails with `no download started within <n>ms; the trigger resolved after <m>ms`. |
 
-A trigger still running at the timeout fails with the step timeout, and one
-that throws fails with its own error.
+A trigger still running at the timeout fails with the step timeout. One that
+throws fails with its own error.
 
 #### `keyboard`
 
@@ -913,12 +869,9 @@ await browser.keyboard.press('Escape');
 await browser.keyboard.type('hello');
 ```
 
-- `press(key)` sends one key.
-- `down(key)` holds one key until `up`; repeated `down` calls send a repeat
-  event.
-- `up(key)` releases a held key.
 - `type(text)` types plain text only, never a `Secret`.
 - Prefer `locator.press` and `locator.fill` when a target exists.
+- [`Browser`](#browser-interface) describes each method.
 
 #### `mouse`
 
@@ -932,23 +885,19 @@ await browser.mouse.move(320, 240);
 await browser.mouse.up();
 ```
 
-- `move(x, y)` moves the pointer.
-- `wheel(deltaX, deltaY)` scrolls the pointer wheel.
-- `down()` and `up()` press and release the primary button.
-- After CDP recovery, test code can read current geometry with `evaluate`
-  before starting a pointer sequence.
+[`Browser`](#browser-interface) describes each method, `wheel` included.
 
 ## Installing browsers
 
-The package depends on `playwright-core` pinned to an exact version, so the
-engine always runs the Playwright it was tested against. An app that depends
-on Playwright itself keeps its own copy; the two share a browser cache only
-when their versions match.
+The package pins `playwright-core` to an exact version, so the engine always
+runs the Playwright it was tested against. An app that depends on Playwright
+itself keeps its own copy. The two share a browser cache only when their
+versions match.
 
 A missing browser downloads once per run, before the run's clock starts. To
 install browsers as their own step, in CI or a container image, run the
-package's command. It installs the browsers for the Playwright version the
-engine pins:
+package's command. It installs the browsers for the engine's pinned
+Playwright:
 
 <CodeGroup>
 ```bash npm
@@ -989,10 +938,10 @@ When fallback is permitted, the reader reserves one quarter of the remaining
 observation budget, capped at two seconds, for the screenshot. The deadline
 covers the page walk, metadata and element readback, and nested frames.
 
-Semantic metadata crosses the Playwright connection as one JSON string to
-reduce serialization overhead. Actions still use the live element handles
-captured with that metadata. Pages that replace `JSON.stringify` or add
-`toJSON` methods to object or array prototypes use structured transfer.
+Semantic metadata crosses the Playwright connection as one JSON string, to
+cut serialization overhead. Actions still use the live element handles
+captured with that metadata. A page that replaces `JSON.stringify`, or adds
+`toJSON` methods to object or array prototypes, gets structured transfer.
 Cleanup does not wait for stalled protocol replies. An abandoned reader
 cannot reuse node IDs or publish handles over a newer observation.
 

@@ -79,7 +79,7 @@ These calls fail with `POLICY_DENIED`.
 | A mutating project tool requesting an observation | Observe in a separate call. |
 | `vision: 'only'` when pixels are withheld | There is nothing to fall back to. |
 | `browser.setCookies` with a cookie URL that isn't `http:` or `https:` | Only a web origin holds cookies. |
-| `app.screenshot()` or `toHaveScreenshot()` after a secret fill | The app may show the secret outside a secure field. |
+| `app.screenshot()` or `toHaveScreenshot()` after a secret fill | See [Screenshots after a secret fill](#screenshots-after-a-secret-fill). |
 | `toHaveScreenshot()` when the engine can't prove every secure field is masked | The screenshot isn't kept. |
 | An agent, executor, or MCP `upload` of a file outside the project root, a hidden file, or a file under a hidden directory | Only project files can leave the computer through a form. |
 | An `act` or `vision: true` step whose semantic capture times out after a secret fill | It can't fall back to a screenshot. |
@@ -266,8 +266,8 @@ Every other download is kept as served and labeled
 A saved session holds authentication state. It also carries, in the same
 ciphertext, the secret values the setup test resolved from a provider. The
 test that restores it redacts those values and keeps its pixels withheld. The
-envelope holds the secret names and whether a secret was filled unencrypted
-but authenticated.
+envelope holds, unencrypted but authenticated, the secret names and whether a
+secret was filled.
 
 | Property | Value |
 | --- | --- |
