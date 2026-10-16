@@ -1,62 +1,48 @@
 /**
  * A model the provider does not serve to this account stops the run once,
  * naming the model, whichever tier met it first: the judgment adapter behind
- * `agent.assert`, or the act loop behind `agent.act`. Before, every test
- * failed in turn with the provider's bare sentence as `MODEL_PROVIDER_FAILED`.
+ * `agent.assert`, the act loop behind `agent.act`, or the planner that opens
+ * `e2e explore`; and once only when two workers meet it at the same time.
+ * Before, every test failed in turn with the provider's bare sentence as
+ * `MODEL_PROVIDER_FAILED`.
  */
 
-import { APICallError } from '@ai-sdk/provider';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { explore } from '../../src/explore/index.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
-import { createProject, runExisting, type FixtureProject } from '../helpers/run-project.ts';
-import { createScriptedInstance } from '../helpers/scripted-model.ts';
+import { createProject, runExisting, runProjectWithConfigFile, type FixtureProject } from '../helpers/run-project.ts';
+import { REFUSAL_EXPLANATION, refusedCopilotModel } from '../helpers/unserved-copilot-model.ts';
 import { web } from '@e2e-dev/web';
 
-const JUDGES_FIRST = `
-import { test } from '@e2e-dev/web';
-
-test('judges', async ({ app, agent }) => {
+const JUDGE = `test('judges', async ({ app, agent }) => {
   await app.open();
   await agent.assert('the page is open');
-});
+});`;
 
-test('would act next', async ({ app, agent }) => {
+const ACT = `test('acts', async ({ app, agent }) => {
   await app.open();
   await agent.act('do the thing');
-});
-`;
+});`;
 
-const ACTS_FIRST = `
-import { test } from '@e2e-dev/web';
-
-test('acts', async ({ app, agent }) => {
-  await app.open();
-  await agent.act('do the thing');
-});
-
-test('would judge next', async ({ app, agent }) => {
-  await app.open();
-  await agent.assert('the page is open');
-});
-`;
-
-const COPILOT_BODY =
-  '{"error":{"message":"The requested model is not supported.","code":"model_not_supported","param":"model","type":"invalid_request_error"}}';
-
-/** A Copilot-shaped model whose every call is refused the way a plan that does not include it answers. */
-function refusedModel() {
-  return createScriptedInstance('github-copilot.chat', 'claude-haiku-4.5', async () => {
-    throw new APICallError({
-      message: 'The requested model is not supported.',
-      url: 'https://api.githubcopilot.com/chat/completions',
-      requestBodyValues: {},
-      statusCode: 400,
-      responseBody: COPILOT_BODY,
-      data: JSON.parse(COPILOT_BODY) as unknown,
-    });
-  });
+/** One suite file of the given tests. */
+function suite(...tests: readonly string[]): string {
+  return `import { test } from '@e2e-dev/web';\n\n${tests.join('\n\n')}\n`;
 }
+
+const WORKERS_CONFIG = `import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { refusedCopilotModel } from '../../helpers/unserved-copilot-model.ts';
+
+export default {
+  targets: [{ name: 'web', engine: web(), app: { url: process.env.APP_URL! } }],
+  tests: 'tests/**/*.e2e.ts',
+  workers: 2,
+  cache: 'off',
+  agents: { default: { model: refusedCopilotModel() } },
+} satisfies E2EConfig;
+`;
+
+const ONE_RUN_ERROR = [expect.objectContaining({ code: 'MODEL_UNAVAILABLE', message: expect.stringContaining(REFUSAL_EXPLANATION) })];
 
 describe('a model the provider does not serve', () => {
   let app: FixtureApp;
@@ -70,24 +56,17 @@ describe('a model the provider does not serve', () => {
   });
 
   it.each([
-    { tier: 'a judgment', suite: JUDGES_FIRST },
-    { tier: 'an act step', suite: ACTS_FIRST },
-  ])('stops the run once with MODEL_UNAVAILABLE naming the model, met by $tier', async ({ suite }) => {
-    const project: FixtureProject = createProject({ 'tests/unserved.e2e.ts': suite });
+    { tier: 'a judgment', files: suite(JUDGE, ACT) },
+    { tier: 'an act step', files: suite(ACT, JUDGE) },
+  ])('stops the run once with MODEL_UNAVAILABLE naming the model, met by $tier', async ({ files }) => {
+    const project: FixtureProject = createProject({ 'tests/unserved.e2e.ts': files });
     try {
       const outcome = await runExisting(project, {
         appUrl: app.url,
-        config: { tests: 'tests/**/*.e2e.ts', cache: 'off', agents: { default: { model: refusedModel() } } },
+        config: { tests: 'tests/**/*.e2e.ts', cache: 'off', agents: { default: { model: refusedCopilotModel() } } },
       });
       expect(outcome.exitCode).toBe(2);
-      expect(outcome.report.run.errors).toEqual([
-        expect.objectContaining({
-          code: 'MODEL_UNAVAILABLE',
-          message: expect.stringContaining(
-            'GitHub Copilot does not serve claude-haiku-4.5 to this account: the plan does not include it, or it is turned off in Copilot settings on GitHub',
-          ),
-        }),
-      ]);
+      expect(outcome.report.run.errors).toEqual(ONE_RUN_ERROR);
       // The test that met it is cut short by the run's stop, its one attempt carrying the code; the next never starts.
       expect(outcome.report.run.results.map((result) => [result.status, result.attempts.length, result.attempts[0]?.error?.code])).toEqual([
         ['interrupted', 1, 'MODEL_UNAVAILABLE'],
@@ -98,6 +77,20 @@ describe('a model the provider does not serve', () => {
     }
   }, 60_000);
 
+  it('reports it once when two workers meet it at the same time', async () => {
+    const { outcome, project } = await runProjectWithConfigFile(
+      { 'tests/one.e2e.ts': suite(JUDGE), 'tests/two.e2e.ts': suite(ACT) },
+      { appUrl: app.url, configSource: WORKERS_CONFIG },
+    );
+    try {
+      expect(outcome.exitCode).toBe(2);
+      expect(outcome.report.run.errors).toEqual(ONE_RUN_ERROR);
+      expect(outcome.report.run.results.filter((result) => result.status === 'passed')).toHaveLength(0);
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
+
   it('ends e2e explore the same way, at the planner call that opens it', async () => {
     const project = createProject({});
     try {
@@ -105,7 +98,7 @@ describe('a model the provider does not serve', () => {
         cwd: project.dir,
         rawConfig: {
           targets: [{ name: 'web', engine: web(), app: { url: app.url } }] as never,
-          agents: { default: { model: refusedModel() } },
+          agents: { default: { model: refusedCopilotModel() } },
         },
         goal: 'Explore the home page and find bugs',
         maxSteps: 2,
@@ -113,12 +106,7 @@ describe('a model the provider does not serve', () => {
         notice: () => undefined,
       });
       expect(outcome.exitCode).toBe(2);
-      expect(outcome.report.run.errors).toEqual([
-        expect.objectContaining({
-          code: 'MODEL_UNAVAILABLE',
-          message: expect.stringContaining('GitHub Copilot does not serve claude-haiku-4.5 to this account'),
-        }),
-      ]);
+      expect(outcome.report.run.errors).toEqual(ONE_RUN_ERROR);
     } finally {
       project.cleanup();
     }

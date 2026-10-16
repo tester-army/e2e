@@ -9,6 +9,7 @@
 
 import type { ModelMessage } from 'ai';
 import { providerFailureMessage, withHint } from '../../internal/errors.ts';
+import { markUnservedModel, unservedModelExplanation } from '../../internal/unserved-model.ts';
 import { missingModelError, type ResolvedModel } from '../../config/agent.ts';
 import { aiSdk, asSdkLanguageModel, loadAiSdk, type SdkLanguageModel } from '../ai-sdk.ts';
 import { MODEL_REQUEST_HEADERS } from '../../internal/client-identity.ts';
@@ -127,7 +128,7 @@ export function createModelAdapter(model: ResolvedModel | undefined, agentName =
         }
         return { value: output, usage: readUsage(result, inputBound), reasoning: result.finalStep.reasoningText };
       } catch (cause) {
-        throw translateModelError(cause, issue, call.signal, languageModel as ProviderModelRef);
+        throw translateModelError(cause, issue, call.signal);
       }
     },
   };
@@ -265,7 +266,6 @@ function translateModelError(
   rawCause: unknown,
   issue: string | undefined,
   signal: AbortSignal,
-  model: ProviderModelRef,
 ): Error {
   const { APICallError, NoObjectGeneratedError } = aiSdk();
   const cause = unwrapRetry(rawCause);
@@ -297,7 +297,7 @@ function translateModelError(
       { cause },
     );
   }
-  const unserved = unservedModelError(cause, model);
+  const unserved = unservedModelError(cause);
   if (unserved !== undefined) return unserved;
   if (APICallError.isInstance(cause)) {
     return new AgentError(
@@ -313,60 +313,24 @@ function translateModelError(
   );
 }
 
-/** Marks the errors `unservedModelError` builds, so the fixture tells them from a model that was never configured. */
-const UNSERVED_MODEL_MARKER = Symbol.for('e2e.unserved-model.v1');
-
 /**
- * The failure of a model GitHub Copilot does not serve to this account:
- * a 4xx whose body code is `model_not_supported`, which Copilot answers for
- * a model the plan does not include or the settings turned off, and its
- * listing shows neither. A model called over the endpoint it is not served
- * on, as `copilot()` does once when it could not read the listing, gets a
- * different code (`unsupported_api_for_model`) and stays a step failure.
- * No call of the run can succeed, so the code is the configuration one a
- * missing model gets at preflight, and the agent fixture reports it to the
- * run once. Only Copilot's answer is read this way: no other provider has
- * been seen using the code to mean the account. Requires the SDK to be
- * loaded, as every caller has by the time a call has failed.
+ * The failure of a model the provider does not serve to this account, as
+ * its constructor marked it (`internal/unserved-model.ts`). No call of the
+ * run can succeed, so the code is the configuration one a missing model gets
+ * at preflight, and the agent fixture reports it to the run once; the mark
+ * is carried over so the fixture tells it from a model never configured.
+ * Requires the SDK to be loaded, as every caller has by the time a call
+ * has failed.
  */
-export function unservedModelError(cause: unknown, model: ProviderModelRef | undefined): AgentError | undefined {
-  if (model === undefined || model.provider?.startsWith('github-copilot') !== true) return undefined;
-  const failure = unwrapRetry(cause);
-  if (!(failure instanceof Error) || failure.name !== 'AI_APICallError') return undefined;
-  const { statusCode } = failure as { statusCode?: unknown };
-  if (typeof statusCode !== 'number' || statusCode < 400 || statusCode >= 500) return undefined;
-  if (providerErrorCode(failure) !== 'model_not_supported') return undefined;
-  const error = new AgentError(
-    'MODEL_UNAVAILABLE',
-    `GitHub Copilot does not serve ${model.modelId ?? 'the model'} to this account: the plan does not include it, or it is turned off in Copilot settings on GitHub; npx e2e models github-copilot lists the ids, and the listing cannot see plan limits`,
-    { cause },
-  );
-  Object.defineProperty(error, UNSERVED_MODEL_MARKER, { value: true });
-  return error;
+export function unservedModelError(cause: unknown): AgentError | undefined {
+  const explanation = unservedModelExplanation(unwrapRetry(cause));
+  if (explanation === undefined) return undefined;
+  return markUnservedModel(new AgentError('MODEL_UNAVAILABLE', explanation, { cause }), explanation);
 }
 
 /** True for an error `unservedModelError` built, in this realm or another. */
 export function isUnservedModelError(value: unknown): value is AgentError {
-  return isAgentError(value) && UNSERVED_MODEL_MARKER in value;
-}
-
-/**
- * The `error.code` of a provider's error body: the SDK's parse of it when the
- * provider's schema matched, else the body read as JSON.
- */
-function providerErrorCode(failure: Error): string | undefined {
-  const { data, responseBody } = failure as { data?: unknown; responseBody?: unknown };
-  const parsed = data ?? (typeof responseBody === 'string' ? parseJson(responseBody) : undefined);
-  const code = (parsed as { error?: { code?: unknown } } | undefined)?.error?.code;
-  return typeof code === 'string' ? code : undefined;
-}
-
-function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return undefined;
-  }
+  return isAgentError(value) && unservedModelExplanation(value) !== undefined;
 }
 
 /**

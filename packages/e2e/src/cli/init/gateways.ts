@@ -76,8 +76,7 @@ export const GATEWAYS: readonly GatewayPreset[] = [
     hint: 'your Copilot plan: OpenAI, Anthropic, Google, and SpaceXAI models',
     dependencies: { '@ai-sdk/openai-compatible': '^3.0.0', '@ai-sdk/openai': '^4.0.0' },
     import: "import { copilot } from 'e2e/oauth/copilot';",
-    comment:
-      'Your GitHub Copilot subscription serves the model; sign in once with `e2e login github-copilot`, `e2e models github-copilot` lists the ids; a model your plan does not serve stops the run with MODEL_UNAVAILABLE.',
+    comment: 'Your GitHub Copilot subscription serves the model; sign in once with `e2e login github-copilot`, `e2e models github-copilot` lists the ids.',
     login: 'github-copilot',
     model: () => "copilot('claude-sonnet-5')",
   },

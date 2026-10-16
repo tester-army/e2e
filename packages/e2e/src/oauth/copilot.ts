@@ -12,6 +12,7 @@ import type { LanguageModelV4 } from '@ai-sdk/provider';
 import { OAuthError } from './errors.ts';
 import { createOAuthFetch } from './fetch.ts';
 import { USER_AGENT } from '../internal/client-identity.ts';
+import { markUnservedModel } from '../internal/unserved-model.ts';
 import { loginHint } from './providers.ts';
 import { COPILOT_API_URL, copilotProtocolFor, createCopilotProvider, type CopilotProtocol } from './providers/github-copilot.ts';
 import { withoutServerStorage } from './responses.ts';
@@ -35,10 +36,13 @@ export function copilot(modelId: string): LanguageModelV4 {
     fetch,
     includeUsage: true,
   }).chatModel(modelId);
-  return protocolDelegate(
-    chat,
-    () => responsesModel(modelId, fetch),
-    () => copilotProtocolFor(modelId, fetch, AbortSignal.timeout(LISTING_TIMEOUT_MS)),
+  return withUnservedModel(
+    protocolDelegate(
+      chat,
+      () => responsesModel(modelId, fetch),
+      () => copilotProtocolFor(modelId, fetch, AbortSignal.timeout(LISTING_TIMEOUT_MS)),
+    ),
+    modelId,
   );
 }
 
@@ -111,4 +115,67 @@ function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | undefined): 
     signal.addEventListener('abort', onAbort, { once: true });
     promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
   });
+}
+
+/**
+ * Copilot answers 400 `model_not_supported` for a model the account cannot
+ * use: the plan does not include it, the settings turned it off, or no such
+ * id exists; `GET /models` shows none of these. The failure is marked for
+ * the runner, which stops the run over it once rather than failing test
+ * after test. A model called over the endpoint it is not served on gets
+ * another code (`unsupported_api_for_model`) and stays a plain failure.
+ */
+function withUnservedModel(model: LanguageModelV4, modelId: string): LanguageModelV4 {
+  const explained = (cause: unknown): unknown => {
+    if (isModelNotSupported(cause)) {
+      markUnservedModel(
+        cause,
+        `GitHub Copilot does not serve ${modelId} to this account: the plan does not include it, it is turned off in Copilot settings on GitHub, or Copilot lists no such id; npx e2e models github-copilot lists the ids, and the listing cannot see plan limits`,
+      );
+    }
+    return cause;
+  };
+  return {
+    specificationVersion: model.specificationVersion,
+    get provider() {
+      return model.provider;
+    },
+    get modelId() {
+      return model.modelId;
+    },
+    get supportedUrls() {
+      return model.supportedUrls;
+    },
+    doGenerate: async (options) => {
+      try {
+        return await model.doGenerate(options);
+      } catch (cause) {
+        throw explained(cause);
+      }
+    },
+    doStream: async (options) => {
+      try {
+        return await model.doStream(options);
+      } catch (cause) {
+        throw explained(cause);
+      }
+    },
+  };
+}
+
+/** True for the AI SDK's error over a 4xx whose body code is `model_not_supported`, read from the SDK's parse of the body or the body itself. */
+function isModelNotSupported(cause: unknown): cause is Error {
+  if (!(cause instanceof Error) || cause.name !== 'AI_APICallError') return false;
+  const { statusCode, data, responseBody } = cause as { statusCode?: unknown; data?: unknown; responseBody?: unknown };
+  if (typeof statusCode !== 'number' || statusCode < 400 || statusCode >= 500) return false;
+  const parsed = data ?? (typeof responseBody === 'string' ? parseJson(responseBody) : undefined);
+  return (parsed as { error?: { code?: unknown } } | undefined)?.error?.code === 'model_not_supported';
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
 }

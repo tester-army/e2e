@@ -338,7 +338,7 @@ class LoopRun {
             { cause },
           );
         }
-        const unserved = unservedModelError(cause, this.model as ProviderModelRef);
+        const unserved = unservedModelError(cause);
         if (unserved !== undefined) throw unserved;
         throw new AgentError(
           'MODEL_PROVIDER_FAILED',
