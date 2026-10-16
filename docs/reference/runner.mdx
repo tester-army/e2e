@@ -245,7 +245,7 @@ await session.fixtures.app.open('/checkout');
 - `onNotice` receives progress outside a step, such as provisioning or an
   app process. It must not throw.
 
-Each host loads a config file and its project-file imports fresh. Package
+A host given a config path loads the file and its project-file imports fresh. Package
 imports stay shared, so their singleton state is not recreated per host. A
 config value uses its own engine instances. Each instance belongs to one
 host until that host closes, so a second host must use another instance.

@@ -73,8 +73,8 @@ The options are [`RoleOptions`](#types).
 <Note>
 A role query never matches a node hidden from the accessibility tree: one
 that does not render, or one under `aria-hidden`. On the other query kinds,
-`visible` keeps the nodes that render, the check `toBeVisible()` makes. There
-an `aria-hidden` node that still paints counts as visible. See
+`visible: true` keeps only nodes that render, the same check `toBeVisible()`
+makes, so an `aria-hidden` node that still paints counts as visible. See
 [Hidden duplicates](#hidden-duplicates).
 </Note>
 
@@ -985,7 +985,7 @@ for (const row of await screen.getByRole('row').all()) {
   the same snapshot rule as `count()`. A `frameLocator` whose frame is not in
   the document counts as zero matches here, where an action or assertion
   polls for it.
-- Each locator `all()` returns re-resolves when used. A list that changes
+- Each locator that `all()` returns re-resolves when used. A list that changes
   under the loop can make a later `nth(i)` point at a different row, or at
   nothing. Follow the loop with an assertion on the list.
 

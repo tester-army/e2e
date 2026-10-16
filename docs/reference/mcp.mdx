@@ -262,7 +262,7 @@ call {tool: "stop_recording"}
 | Tool | Input | Does |
 | --- | --- | --- |
 | `start_recording` | `name` (optional): up to 64 letters, digits, `-`, and `_`, starting with a letter or digit | One recording at a time. A second start reports the one running. |
-| `stop_recording` | none | Saves the video and returns each file's absolute path. |
+| `stop_recording` | none | Saves the video and returns each file's absolute path, or the URL where a provider keeps it. |
 
 - A session records video only between `start_recording` and
   `stop_recording`, as many times as needed. The configured

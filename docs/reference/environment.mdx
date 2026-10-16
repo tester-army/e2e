@@ -158,7 +158,7 @@ What is sent and how to read it is on the [Telemetry](/telemetry) page.
 | --- | --- | --- | --- |
 | `GITHUB_ACTIONS` | `GITHUB_ACTIONS=true` | value | Without it the reporter posts nothing and says so |
 | `GITHUB_REPOSITORY`, `GITHUB_RUN_ID`, `GITHUB_EVENT_NAME`, `GITHUB_WORKFLOW`, `GITHUB_JOB` | `GITHUB_REPOSITORY=acme/shop` | value | Always set by the runner. A missing one fails the reporter, naming the variable. The repository and run id build the artifacts link. The event name shows in the "not a pull request" row. The workflow and job join the marker a rerun finds its own comment by |
-| `GITHUB_TOKEN`, `GH_TOKEN` | `GITHUB_TOKEN=<token>` | value | Posts the comment; the first one set wins. Unset, the job summary is still written |
+| `GITHUB_TOKEN`, `GH_TOKEN` | `GITHUB_TOKEN=<token>` | value | Posts the comment; the first one set wins. Unset, the job summary is still written. A fork's `pull_request` token is read-only and cannot post; see [When nothing is posted](/github#when-nothing-is-posted) |
 | `GITHUB_EVENT_PATH`, `GITHUB_REF` | `GITHUB_REF=refs/pull/42/merge` | value | The pull request number and head commit from the event payload, or the number from `refs/pull/N/merge` |
 | `GITHUB_SHA` | `GITHUB_SHA=<commit>` | value | The commit source links point at when the event is not about a pull request |
 | `GITHUB_WORKSPACE` | `GITHUB_WORKSPACE=/home/runner/work/shop/shop` | value | The checkout root. Source links add the project's path inside it, so a suite in a subdirectory links to the right file |
