@@ -646,6 +646,9 @@ importers:
       '@e2e-dev/mobile':
         specifier: workspace:*
         version: link:../mobile
+      '@e2e-dev/web':
+        specifier: workspace:*
+        version: link:../web
       '@types/node':
         specifier: 26.6.2
         version: 26.6.2

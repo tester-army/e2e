@@ -1,7 +1,7 @@
 {
   "name": "@e2e-dev/testmu",
   "version": "0.0.0",
-  "description": "TestMu AI (formerly LambdaTest) hosted Android emulators, iOS simulators, and real devices for e2e mobile tests",
+  "description": "TestMu AI (formerly LambdaTest) for e2e: run mobile targets on hosted Android emulators, iOS simulators, and real devices, and web targets on hosted Chrome and Edge",
   "keywords": [
     "e2e",
     "end-to-end",
@@ -9,6 +9,9 @@
     "mobile-testing",
     "testmu",
     "lambdatest",
+    "browser-testing",
+    "chrome",
+    "cdp",
     "device-cloud",
     "real-devices",
     "ios-simulator",
@@ -39,6 +42,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./web": {
+      "types": "./dist/web.d.ts",
+      "default": "./dist/web.js"
     }
   },
   "files": [
@@ -55,10 +62,20 @@
   },
   "peerDependencies": {
     "@e2e-dev/mobile": ">=0.11.1 <1",
+    "@e2e-dev/web": ">=0.11.0 <1",
     "e2e": ">=0.15.0 <1"
+  },
+  "peerDependenciesMeta": {
+    "@e2e-dev/mobile": {
+      "optional": true
+    },
+    "@e2e-dev/web": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@e2e-dev/mobile": "workspace:*",
+    "@e2e-dev/web": "workspace:*",
     "@types/node": "26.6.2",
     "e2e": "workspace:*",
     "typescript": "7.0.2",

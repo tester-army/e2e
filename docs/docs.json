@@ -185,7 +185,8 @@
               "integrations/eas",
               "integrations/smol",
               "integrations/limrun",
-              "integrations/testmu"
+              "integrations/testmu",
+              "integrations/testmu-browsers"
             ]
           },
           {

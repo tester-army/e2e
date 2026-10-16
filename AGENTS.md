@@ -128,6 +128,12 @@ suites that consume the built packages the way a user would.
   (formerly LambdaTest) hosted Android emulators, iOS simulators, and real
   devices for the mobile engine (`DeviceProvider`), through agent-device's
   `@agent-device/testmu` plugin.
+  `@e2e-dev/testmu/web` exports `testmuBrowsers()`, TestMu AI hosted Chrome
+  and Edge for the web engine (`BrowserProvider`): a session starts when its
+  CDP websocket opens and ends when it closes, so it only builds the URL and
+  calls no API. The root stays device-only, so neither side's types or
+  imports reach the other, and both `@e2e-dev/mobile` and `@e2e-dev/web` are
+  optional peers.
 - `apps/testbed` (`@e2e-dev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would: the playground app
   where every runner feature (sessions, routes, downloads, frames, uploads,
