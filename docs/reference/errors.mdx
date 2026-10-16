@@ -27,7 +27,9 @@ test('upgrade to Pro', async ({ agent }) => {
 });
 ```
 
-## Exit codes
+## Reference
+
+### Exit codes
 
 | Class | Exit code |
 | --- | ---: |
@@ -53,7 +55,7 @@ test('upgrade to Pro', async ({ agent }) => {
 | [Runner codes](#runner-codes) | Plain strings in output and report |
 | [Test code errors](#test-code-errors) | Thrown from test code |
 
-## AgentError
+### AgentError
 
 `AgentError` is the runner-classified agent failure, exported from `e2e`.
 
@@ -82,7 +84,7 @@ false. Use `isAgentError` from `e2e` and branch on `code`, as in the example
 at the top of this page.
 </Note>
 
-### Agent codes
+#### Agent codes
 
 The members of the closed `AgentErrorCode` union. `blocked:` names the
 category a blocked verdict reports as the obstacle.
@@ -116,7 +118,7 @@ category a blocked verdict reports as the obstacle.
 | `STEP_NO_CONCLUSION` | The executor used every turn without calling `complete_step`; the step fails with the agent's last summary | test | 1 |
 | `REPLAY_STALE` | Under `cache.strict` or `--strict-cache`, the step's recording exists but no longer replays (`step.cache.reason` is one of `invalid-entry`, `wrong-context`, `target-not-found`, `target-ambiguous`, `viewport-changed`, `action-failed`, `action-uncertain`, `end-mismatch`, or `no-entry` while the cache directory, not a custom `cache.store`, holds a recording of the step under another key, which the message names), so the step fails with no model call instead of handing off to the agent. Not retried: every attempt replays the same recording. Re-record with a read-write run without the flag, and with `cache.strict` off when the config set it, then commit the changed entry; the message names the knob that turned strict on and the configured cache directory (or `cache.store`) | configuration | 2 |
 
-## Runner codes
+### Runner codes
 
 These appear in terminal output and in the report as plain string codes.
 
@@ -172,7 +174,7 @@ These appear in terminal output and in the report as plain string codes.
 | `EVALUATE_FAILED` | `browser.evaluate` threw inside the page (`@e2e-dev/web`) | test | 1 |
 | `INTERRUPTED` | A user or CI signal aborted the run. A test cut short by `--max-failures` or the time limit also ends with this code, its message naming the limit; that run exits 1, not 130 | interrupted | 130 |
 
-### Test code errors
+#### Test code errors
 
 | Code | When it happens | Class | Exit |
 | --- | --- | --- | ---: |

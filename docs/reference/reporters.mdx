@@ -21,7 +21,9 @@ export default {
 } satisfies E2EConfig;
 ```
 
-## Built-in reporters
+## Reference
+
+### Built-in reporters
 
 | Reporter | Description |
 | --- | --- |
@@ -41,7 +43,7 @@ describes what each built-in writes in detail.
 | `INVALID_CONFIG` | An entry that is neither an id nor an object with a `name` and at least one handler. |
 | `INVALID_CONFIG` | `json` together with `list`. |
 
-### `list`
+#### `list`
 
 Renders terminal progress, failures, and the run summary.
 
@@ -53,7 +55,7 @@ reporters: ['list'], // default
 - The rows a reporter's [`onRunFinished`](#onrunfinished) resolves with print
   under its summary.
 
-### `json`
+#### `json`
 
 Prints the report document to stdout.
 
@@ -64,7 +66,7 @@ reporters: ['json'],
 - It cannot be combined with `list`.
 - It does not carry the rows other reporters return.
 
-### `junit`
+#### `junit`
 
 Writes `junit.xml` beside the report.
 
@@ -78,7 +80,7 @@ reporters: ['list', 'junit'],
 - A second Ctrl-C still lets it write its file, so none of the previous
   run's is left beside the new report.
 
-### `markdown`
+#### `markdown`
 
 Writes `summary.md` beside the report.
 
@@ -90,7 +92,9 @@ reporters: ['list', 'markdown'],
   [`renderMarkdownReport`](#rendermarkdownreport).
 - A second Ctrl-C still lets it write its file, like `junit`.
 
-#### `renderMarkdownReport`
+<a id="rendermarkdownreport" />
+
+##### `renderMarkdownReport`
 
 Renders a report as the Markdown page the `markdown` reporter writes, so
 your own reporter can post the same page elsewhere.
@@ -110,7 +114,7 @@ const reporter: Reporter = {
 - `traces` links each block to its trace page by result id.
 - [`@e2e-dev/github`](/github) is that reporter for GitHub Actions.
 
-### `github()`
+#### `github()`
 
 `@e2e-dev/github` posts the run as one pull request comment from GitHub
 Actions, keeps it current on reruns, and writes the same text to the job
@@ -133,7 +137,7 @@ const reporter = github({ key: 'chromium' });
   to show both runs as one comment.
 - Setup and permissions are on [Pull request comments](/github).
 
-## Custom reporters
+### Custom reporters
 
 A reporter object has a `name` and at least one handler. Use `onEvent` for
 live progress and `onRunFinished` to process the final report and artifacts.
@@ -183,7 +187,7 @@ The console prints `replayed · recorded with provider/model` only when that
 identity differs from the configured model. It stays quiet for multi-agent
 runs and pinned agents whose model is not in the run header.
 
-### `name`
+#### `name`
 
 The reporter's label in diagnostics.
 
@@ -193,7 +197,7 @@ name: 'upload',
 
 - Required and non-empty.
 
-### `onEvent`
+#### `onEvent`
 
 Receives every run event as it happens, as plain JSON.
 
@@ -218,7 +222,7 @@ for the rest of the run and prints one line on stderr naming the reporter, the
 event type, and the error; the run's outcome is unchanged.
 </Note>
 
-### `onRunFinished`
+#### `onRunFinished`
 
 Runs once the report is written and the terminal summary prints, with the
 finished run and an `AbortSignal`.
@@ -261,7 +265,7 @@ Hand `signal` to every request and timer, or an abandoned reporter keeps the
 CLI alive after the run has ended.
 </Note>
 
-#### Summary rows
+##### Summary rows
 
 The rows a reporter resolves with print under the `list` summary in the same
 layout as its own rows; the `json` reporter does not carry them:
@@ -276,7 +280,7 @@ layout as its own rows; the `json` reporter does not carry them:
       Results  https://example.test/runs/0192c…
 ```
 
-#### Artifacts
+##### Artifacts
 
 - Artifact paths in the report are POSIX paths relative to `artifactsRoot`.
 - `path`, `size`, and `sha256` are optional: an artifact whose file never
@@ -284,7 +288,7 @@ layout as its own rows; the `json` reporter does not carry them:
   `path` before reading.
 - A video a hosted service keeps has an `http(s)` `url` in place of `path`.
 
-#### Reruns with `--last-failed`
+##### Reruns with `--last-failed`
 
 `lastRun` is the report the rerun selected from.
 

@@ -16,7 +16,9 @@ export E2E_CACHE_DIR=~/.cache/e2e
 export E2E_TELEMETRY_DISABLED=1
 ```
 
-## Model
+## Reference
+
+### Model
 
 Configure a model in `e2e.config.ts`. Its provider reads the API key:
 `gateway()` uses `AI_GATEWAY_API_KEY`, `openrouter()` uses
@@ -33,7 +35,7 @@ See [Models](/models) and [Subscriptions](/subscriptions).
 | [`OPENCODE_API_KEY`](#opencode_api_key) | `OPENCODE_API_KEY=<key>` | value | Replaces the stored `opencode-console` login |
 | `XDG_CONFIG_HOME` | `XDG_CONFIG_HOME=~/.config` | value | Directory of the stored logins, `$XDG_CONFIG_HOME/e2e/oauth.json`; default `~/.config/e2e/oauth.json` |
 
-### `E2E_OAUTH_CREDENTIALS`
+#### `E2E_OAUTH_CREDENTIALS`
 
 The stored subscription logins as JSON, the contents of `oauth.json`, for a
 machine nobody can sign in on.
@@ -43,13 +45,13 @@ machine nobody can sign in on.
 - `e2e login` and `e2e logout` refuse to change it.
 - Refreshed tokens are not written back.
 
-### `OPENCODE_API_KEY`
+#### `OPENCODE_API_KEY`
 
 An OpenCode Console service account API key or an OpenCode Go subscription
 API key. `opencodeConsole()` and `e2e models opencode-console` use it in place
 of the stored `opencode-console` login. OpenCode reads the same variable.
 
-## Credentials and secrets
+### Credentials and secrets
 
 | Variable | Example | Reading | Effect |
 | --- | --- | --- | --- |
@@ -71,13 +73,13 @@ of the stored `opencode-console` login. OpenCode reads the same variable.
   than 6 characters (code points). An empty username is accepted: redaction rewrites every occurrence of a
   value, and one that short would take ordinary text with it.
 
-## Run mode
+### Run mode
 
 | Variable | Example | Reading | Effect |
 | --- | --- | --- | --- |
 | [`CI`](#ci) | `CI=1` | flag | CI mode |
 
-### `CI`
+#### `CI`
 
 Turns on CI mode:
 
@@ -86,13 +88,13 @@ Turns on CI mode:
 - A focused test is `ONLY_IN_CI`.
 - `reuseExisting` on an app command is ignored.
 
-## Replay cache
+### Replay cache
 
 | Variable | Example | Reading | Effect |
 | --- | --- | --- | --- |
 | [`E2E_CACHE_DIR`](#e2e_cache_dir) | `E2E_CACHE_DIR=~/.cache/e2e` | value | Replaces [`cache.dir`](/reference/config#cache) |
 
-### `E2E_CACHE_DIR`
+#### `E2E_CACHE_DIR`
 
 Replaces [`cache.dir`](/reference/config#cache) for `e2e run` and
 `e2e cache`, resolved from the project root.
@@ -103,7 +105,7 @@ Replaces [`cache.dir`](/reference/config#cache) for `e2e run` and
 - The cache mode stays as configured, and `--no-cache` still turns the cache
   off.
 
-## Diagnostics
+### Diagnostics
 
 | Variable | Example | Reading | Effect |
 | --- | --- | --- | --- |
@@ -115,7 +117,7 @@ Replaces [`cache.dir`](/reference/config#cache) for `e2e run` and
 `--debug` and `--ai-trace` are flags, not variables; see
 [CLI](/reference/cli#e2e-run).
 
-## Telemetry
+### Telemetry
 
 | Variable | Example | Reading | Effect |
 | --- | --- | --- | --- |
@@ -126,7 +128,7 @@ Replaces [`cache.dir`](/reference/config#cache) for `e2e run` and
 | `XDG_CONFIG_HOME` | `XDG_CONFIG_HOME=~/.config` | value | Directory of the preferences file, `$XDG_CONFIG_HOME/e2e`; default `~/.config/e2e` |
 | `APPDATA` | `APPDATA=C:\Users\ada\AppData\Roaming` | value | The same on Windows, `%APPDATA%\e2e`; default `~/AppData/Roaming/e2e` |
 
-### `E2E_TELEMETRY_FLEET`
+#### `E2E_TELEMETRY_FLEET`
 
 Names the platform running e2e for its users.
 
@@ -134,7 +136,7 @@ Names the platform running e2e for its users.
 - No preferences file is written, and no notice is printed.
 - A value that is not a plain token is sent as `other`.
 
-### Detected environments
+#### Detected environments
 
 Telemetry also checks for the markers CI vendors and coding agents set. Only
 the derived name is sent.
@@ -148,7 +150,7 @@ the derived name is sent.
 
 What is sent and how to read it is on the [Telemetry](/telemetry) page.
 
-## Reporters
+### Reporters
 
 `@e2e-dev/github` reads the variables GitHub Actions sets, when a run finishes:
 
@@ -163,7 +165,7 @@ What is sent and how to read it is on the [Telemetry](/telemetry) page.
 | `GITHUB_SERVER_URL`, `GITHUB_API_URL` | `GITHUB_SERVER_URL=https://github.example.com` | value | The GitHub host, for Enterprise Server; `https://github.com` and `https://api.github.com` by default |
 | `GITHUB_STEP_SUMMARY` | `GITHUB_STEP_SUMMARY=<file>` | value | The job summary file the comment text is appended to |
 
-## Engines
+### Engines
 
 | Variable | Example | Reading | Effect |
 | --- | --- | --- | --- |
@@ -180,7 +182,7 @@ What is sent and how to read it is on the [Telemetry](/telemetry) page.
 | `E2E_WEB_BROWSERS_<TARGET>_<digest>` | - | value | Written by `@e2e-dev/web` in `prepare` and read by each worker to find its leased browser. Not meant to be set by hand |
 | `E2E_AGENT_DEVICE_POOL_<TARGET>_<digest>` | - | value | Written by `@e2e-dev/mobile` in `prepare` and read by each worker to find its booted device. Not meant to be set by hand |
 
-### `EXPO_TOKEN`
+#### `EXPO_TOKEN`
 
 The Expo access token `easSimulators()` from `@e2e-dev/eas` starts and stops
 simulator sessions with. See [EAS Simulators](/integrations/eas).

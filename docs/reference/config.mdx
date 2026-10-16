@@ -27,7 +27,9 @@ export default {
 } satisfies E2EConfig;
 ```
 
-## Top level
+## Reference
+
+### Top level
 
 | Option | Type | Default |
 | --- | --- | --- |
@@ -73,7 +75,7 @@ export default {
 } satisfies E2EConfig;
 ```
 
-### `projectId`
+#### `projectId`
 
 A stable id for the project.
 
@@ -85,7 +87,7 @@ projectId: 'acme-web', // default: the root package.json name
 - Defaults to the `name` in the root `package.json`. Without one it falls back
   to `unportable-<sha256 of the project root, 32 hex>`.
 
-### `tests`
+#### `tests`
 
 The test file globs, relative to the project root.
 
@@ -110,7 +112,7 @@ tests: ['tests/**/*.e2e.ts', '!tests/wip/**'], // default: 'tests/**/*.e2e.ts'
 | `INVALID_GLOB` | An entry with no wildcard names a directory (`'!tests/wip'`). A glob names files; the error names the glob to write (`'!tests/wip/**'`). |
 | `NO_TESTS` | A file passed to `e2e run` is taken out by an exclusion. The error names that entry. |
 
-### `timeout`
+#### `timeout`
 
 The deadline of one test attempt, in milliseconds.
 
@@ -118,7 +120,7 @@ The deadline of one test attempt, in milliseconds.
 timeout: 180_000, // default: 120000
 ```
 
-### `launchTimeout`
+#### `launchTimeout`
 
 The budget for engine init and attempt start, in milliseconds.
 
@@ -126,7 +128,7 @@ The budget for engine init and attempt start, in milliseconds.
 launchTimeout: 90_000, // default: 60000
 ```
 
-### `actionTimeout`
+#### `actionTimeout`
 
 The budget of every engine operation, in milliseconds.
 
@@ -136,7 +138,7 @@ actionTimeout: 10_000, // default: 30000
 
 A targeted agent action is bounded by the smaller of `actionTimeout` and 15 s.
 
-### `assertionTimeout`
+#### `assertionTimeout`
 
 The default `expect` deadline, in milliseconds.
 
@@ -144,7 +146,7 @@ The default `expect` deadline, in milliseconds.
 assertionTimeout: 10_000, // default: 5000
 ```
 
-### `cleanupTimeout`
+#### `cleanupTimeout`
 
 The budget of each `afterEach` hook, fixture teardown, and engine cleanup, in
 milliseconds.
@@ -153,7 +155,7 @@ milliseconds.
 cleanupTimeout: 60_000, // default: 30000
 ```
 
-### `retries`
+#### `retries`
 
 Retries per test.
 
@@ -163,7 +165,7 @@ retries: 2, // default: 1 in CI, else 0
 
 - 0 through 10.
 
-### `failOnSkippedFailure`
+#### `failOnSkippedFailure`
 
 Fails the run with exit code 1 when a test skips a retry after an earlier
 failed attempt.
@@ -183,7 +185,7 @@ A skip after a failed `expect.soft` needs no option: it
 [fails the attempt](/reference/test#members).
 </Note>
 
-### `maxDuration`
+#### `maxDuration`
 
 The wall-clock budget for running the tests, in milliseconds. It stops a run
 that takes too long.
@@ -202,7 +204,7 @@ export default { targets, maxDuration: 900_000 } satisfies E2EConfig; // default
 - `--max-duration <ms>` overrides it for one run.
 - `e2e explore` ignores it and keeps its own `--timeout`.
 
-### `workers`
+#### `workers`
 
 Parallel workers.
 
@@ -215,7 +217,7 @@ workers: 4, // default: 1 in CI, else half the cores
 - `workers` never exceeds what a target's engine declares: an engine may cap
   it lower.
 
-### `reporters`
+#### `reporters`
 
 Output renderers and reporter objects.
 
@@ -233,7 +235,7 @@ reporters: ['list', 'junit'], // default: ['list']
 
 An unknown id is `INVALID_CONFIG`. See [Reporters](/reference/reporters).
 
-## targets
+### targets
 
 A target is one named surface tests run on: the app under test and the engine
 that drives it. `targets` is required and holds at least one. A target names
@@ -262,7 +264,7 @@ targets: [
 
 The full declaration is [`Target`](#target).
 
-### `name`
+#### `name`
 
 The id `--target`, reports, sessions, and artifact paths use.
 
@@ -274,7 +276,7 @@ name: 'chromium', // default: the platform
   path segments).
 - Unique across targets. Two targets on one platform need names.
 
-### `platform`
+#### `platform`
 
 The platform label.
 
@@ -285,7 +287,7 @@ platform: 'web', // default: inherited from the engine
 - Required for a target without an engine.
 - When the target and its engine both name one, they must agree.
 
-### `engine`
+#### `engine`
 
 The engine driving the surface: `web(...)`, `mobile(...)`, or any
 `defineEngine` handle.
@@ -297,7 +299,7 @@ engine: web({ browser: 'firefox' }),
 A target without an engine runs through agent tools only. A target with `app`
 and no engine is `INVALID_CONFIG`.
 
-## The app under test
+### The app under test
 
 A target declares the app it tests in `app`; the engine only drives it. A
 browser target names the URL it opens, a device target the installed app or
@@ -357,7 +359,7 @@ target, a top-level `app` or `url`, and `services` anywhere, which this
 version does not have.
 </Note>
 
-### `url`
+#### `url`
 
 The base URL: `app.open()` opens it and relative navigation resolves against
 it.
@@ -378,7 +380,7 @@ url: 'http://localhost:3000',
 | `INVALID_APP_URL` | Port `0` on any host other than `127.0.0.1` or `[::1]`, `localhost` included. |
 | `INVALID_CONFIG` | A port-0 `url` with nothing to start on it (no `app.command`). |
 
-### `bundleId`
+#### `bundleId`
 
 The installed app a device launches: a bundle id, an Android package name, or
 a display name the device resolves (`Settings`).
@@ -389,7 +391,7 @@ bundleId: 'com.example.app',
 
 A link is `INVALID_CONFIG`: a test opens one with `device.openLink`.
 
-### `appPath`
+#### `appPath`
 
 The build the suite runs against, an iOS `.app` bundle or an Android `.apk`,
 resolved against the project root.
@@ -401,7 +403,7 @@ appPath: './build/App.app',
 Without `bundleId`, the app it installs is the one launched. See
 [the device engine](/reference/mobile#engine) for when it is installed.
 
-### `identity`
+#### `identity`
 
 The stable identity keying replay cache and session entries.
 
@@ -418,7 +420,7 @@ Different apps must have different identities. A shared identity replays
 recordings across them.
 </Note>
 
-### `environment`
+#### `environment`
 
 Labels the target in the report and joins the cache and session identity
 digest. It never gates a run.
@@ -431,7 +433,7 @@ environment: 'staging', // default: 'test' for a local host or no URL, else 'pro
 - Defaults to `test` for loopback, `.localhost`, and `.test` hosts and for an
   app without a URL, `production` otherwise.
 
-### `launchArguments`
+#### `launchArguments`
 
 Arguments every fresh launch passes the app: `app.open()`, `app.restart()`,
 and `app.clearState()`.
@@ -443,7 +445,7 @@ launchArguments: ['-e2e', 'YES'],
 Arguments that select a build mode change what the app is: give each mode its
 own `identity`.
 
-### `permissions`
+#### `permissions`
 
 Permissions the app holds on every fresh launch, by name.
 
@@ -454,7 +456,7 @@ permissions: { camera: 'grant' },
 Each is `'grant'`, `'deny'`, or `'reset'`. See
 [permissions](/reference/mobile#engine).
 
-### `command`
+#### `command`
 
 The process the runner starts before the first test and stops on every exit
 path: a dev server, or Metro for a debug build.
@@ -522,7 +524,7 @@ command: {
 
 The full declaration is [`CommandConfig`](#commandconfig).
 
-### `readyUrl`
+#### `readyUrl`
 
 The URL polled until `command` is ready, at a 200-499 status.
 
@@ -533,7 +535,7 @@ readyUrl: 'http://localhost:3000/health', // default: url
 - Required without a `url`.
 - `{port}` in it is the port of `url`.
 
-### The app's site
+#### The app's site
 
 A test or the agent may open any http(s) URL, and `about:blank`; every other
 scheme (`file:`, `data:`, `javascript:`, `view-source:`, `blob:`) is
@@ -542,7 +544,7 @@ scheme (`file:`, `data:`, `javascript:`, `view-source:`, `blob:`) is
 the browser engine's [`headers`](/reference/web#options) reach the site and no
 other host, and child frames off the site stay out of observations.
 
-### Free ports
+#### Free ports
 
 A `url` on a literal loopback address with port `0` (`http://127.0.0.1:0`,
 `http://[::1]:0`) asks the run for a free TCP port. The runner picks one when
@@ -567,7 +569,7 @@ app: {
   entries do not churn with the port.
 - Tests read the allocated URL from [`app.baseUrl`](/reference/app).
 
-### services
+#### services
 
 <Note>
 Dependency processes (a database, an API mock, a dev server several targets
@@ -577,7 +579,7 @@ a script that brings them up and serves the app. A services API returns in a
 later release.
 </Note>
 
-## output
+### output
 
 The directory everything a run writes about itself goes under, resolved from
 the project root.
@@ -635,7 +637,7 @@ out/artifacts` is `--output out`. A parent an output cannot be (the project
 root, or outside it) maps to `--output .e2e`.
 </Note>
 
-## artifacts
+### artifacts
 
 `artifacts` says where artifacts go, not which are made. `{ store }` hands
 every artifact to a host store as it is produced; without one, files stay
@@ -673,7 +675,7 @@ The removed forms fail with `INVALID_CONFIG` naming what replaced them:
 
 The declarations are under [`ArtifactsConfig`](#artifactsconfig).
 
-### `put`
+#### `put`
 
 Receives every artifact once it is complete on disk and returns a reference
 the report records as `ref` beside the local path.
@@ -690,7 +692,7 @@ async put(artifact) {
   the runner vouches for keeps back an `incomplete` artifact: a video or a
   download the runner did not rewrite.
 
-### `putLink`
+#### `putLink`
 
 Receives a video a hosted service keeps (a
 [provider's own recording](#what-a-video-writes)). Such a video is a link with
@@ -715,7 +717,7 @@ artifacts: {
   since the report leaves it out too.
 - A failed `putLink` never fails the run.
 
-## Recording
+### Recording
 
 `trace` and `video` choose what is recorded, with one set of modes.
 
@@ -782,7 +784,7 @@ meant, wherever a mode goes (the config, a target, a test, `--trace`):
 'retries' }` are `'on-all-retries'`.
 </Note>
 
-### `trace`
+#### `trace`
 
 Which tests keep a trace page.
 
@@ -798,7 +800,7 @@ trace: 'on', // default: 'retain-on-failure'
   screen at failure.
 - It works on every engine. [Debugging](/debugging#traces) shows one.
 
-### `video`
+#### `video`
 
 Which attempts record a video.
 
@@ -812,7 +814,7 @@ video: 'retain-on-failure', // default: 'off'
 - A video costs CPU and holds what the screen showed, secrets included, so it
   is always asked for.
 
-### Engines that cannot record
+#### Engines that cannot record
 
 Before any test starts, the run grades every target. Where a `video` mode
 was set decides what an engine that cannot record video does:
@@ -828,7 +830,7 @@ Only a mode that records on some attempt counts: a run whose tests all
 resolve to `off`, or to a retry mode with `retries: 0`, asks nothing of the
 engine.
 
-### What a video writes
+#### What a video writes
 
 | Recorder | Files under the attempt's artifact directory |
 | --- | --- |
@@ -845,7 +847,7 @@ Under `retain-on-failure` a link is left out of the report of a passed
 attempt, but the service still holds the recording.
 </Note>
 
-## agents
+### agents
 
 Named agents, each one plain object: the built-in agent's options, or
 `{ executor }` for a custom brain.
@@ -909,7 +911,7 @@ export default {
 See [Agents and personas](/agents). The declarations are under
 [`AgentConfig`](#agentconfig).
 
-### `model`
+#### `model`
 
 An AI SDK model instance. There is no implicit default.
 
@@ -939,7 +941,7 @@ the [`e2e/oauth/*` models](/subscriptions).
 
 See [Models](/models) and [`ModelInstance`](#modelinstance).
 
-### `judge`
+#### `judge`
 
 The model for `assert`, `waitFor`, and `extract`.
 
@@ -952,7 +954,7 @@ judge: gateway('anthropic/claude-opus-5'), // default: model
 
 See [A judge of its own](/models#a-judge-of-its-own).
 
-### `context`
+#### `context`
 
 What the app calls things, told to every model call this agent makes, act
 turns and judgments alike.
@@ -963,7 +965,7 @@ context: 'Plans are called tiers. Billing lives under Settings.',
 
 At most 16384 bytes.
 
-### `system`
+#### `system`
 
 How the acting agent should work, appended to the built-in rules. Only the
 act loop reads it.
@@ -974,7 +976,7 @@ system: 'You are a first-time buyer.',
 
 With `executor` it is `INVALID_CONFIG`: the executor brings its own prompt.
 
-### `tools`
+#### `tools`
 
 Project tools from `defineTool` (`e2e/agent`), offered beside the built-in
 toolset.
@@ -985,7 +987,7 @@ tools: { lookupOrder },
 
 With `executor` it is `INVALID_CONFIG`: the executor brings its own tools.
 
-### `executor`
+#### `executor`
 
 A custom brain `agent.act()` dispatches to instead of the built-in agent.
 
@@ -1002,7 +1004,7 @@ house: { executor: houseBrain, model: gateway('openai/gpt-6-luna-fast'), maxMode
 
 See [Custom executors](/executors).
 
-### `maxSteps`
+#### `maxSteps`
 
 Committed actions per agent call.
 
@@ -1012,7 +1014,7 @@ maxSteps: 40, // default: 25
 
 1 through 100.
 
-### `maxModelCalls`
+#### `maxModelCalls`
 
 Model requests per agent call.
 
@@ -1022,7 +1024,7 @@ maxModelCalls: 10, // default: 25
 
 1 through 100.
 
-### `judgmentTimeout`
+#### `judgmentTimeout`
 
 The deadline of one `assert`, `waitFor`, or `extract` call, in milliseconds.
 
@@ -1032,7 +1034,7 @@ judgmentTimeout: 60_000, // default: 30000
 
 Raise it for a slow judge. Engine operations keep `actionTimeout`.
 
-### `maxObservationBytes`
+#### `maxObservationBytes`
 
 The observation payload ceiling for act turns and judgments.
 
@@ -1042,7 +1044,7 @@ maxObservationBytes: 524_288, // default: 262144
 
 1024 through 16777216.
 
-### `maxInputTokens`
+#### `maxInputTokens`
 
 Input tokens per model request.
 
@@ -1053,7 +1055,7 @@ maxInputTokens: 128_000, // default: 64000
 - 1 through 1000000.
 - A dense screen is cut to fit under it.
 
-### `providerOptions`
+#### `providerOptions`
 
 Provider options every model call carries, such as a reasoning effort.
 
@@ -1064,7 +1066,7 @@ providerOptions: { openai: { reasoningEffort: 'low' } },
 OpenAI and Azure OpenAI Responses calls also carry `store: false` and a prompt
 cache key unless set here.
 
-### Removed options
+#### Removed options
 
 Loading the config fails with `INVALID_CONFIG` for an unknown key (naming the
 nearest known one), a removed key, and a value in the old shapes:
@@ -1077,7 +1079,7 @@ nearest known one), a removed key, and a value in the old shapes:
 | top-level `limits.maxModelTokensPerCall` | `maxInputTokens` on each agent |
 | top-level `limits.maxAgentContextBytes`, `maxLedgerBytes`, `maxEventsPerStep` | removed; the runner fixes them at 16384 bytes, 8192 bytes, and 1000 events |
 
-## credentials
+### credentials
 
 Named accounts. Each entry is a username and a password the model never sees.
 
@@ -1107,7 +1109,7 @@ credentials: {
 See [Signing in](/authentication). The declarations are under
 [`CredentialConfig`](#credentialconfig).
 
-### `username`
+#### `username`
 
 The account's plain username.
 
@@ -1118,7 +1120,7 @@ username: 'admin@example.com',
 `E2E_USER_<NAME>_USERNAME` wins over the config value. With neither, the
 entry is `INVALID_CONFIG`.
 
-### `password`
+#### `password`
 
 The account's password: a static value, or a `SecretProvider` function.
 
@@ -1136,7 +1138,7 @@ password: () => readFile('.secrets/admin', 'utf8'),
 - The password is a secret named `<name>.password`. `secrets.get()` never
   returns it.
 
-### `credentials.user()`
+#### `credentials.user()`
 
 Resolves a configured entry into a `Credential` in a test.
 
@@ -1149,7 +1151,7 @@ const admin = credentials.user('admin');
   params.
 - An unconfigured name throws `AUTH_CREDENTIAL_UNAVAILABLE`.
 
-## secrets
+### secrets
 
 Named values the model must never see: API keys, tokens, anything sourced
 from the environment.
@@ -1181,7 +1183,7 @@ secrets: {
 The declarations are under [`SecretConfig`](#secretconfig). See
 [Secrets that are not passwords](/authentication#secrets-that-are-not-passwords).
 
-### `secrets.get()`
+#### `secrets.get()`
 
 Returns the opaque `Secret` for a configured entry.
 
@@ -1195,7 +1197,7 @@ await screen.getByLabel('API key').fill(secrets.get('apiKey'));
   redacts it from logs, traces, and the report.
 - An unconfigured name throws `SECRET_UNAVAILABLE`.
 
-### Secrets in engine options
+#### Secrets in engine options
 
 Called while `e2e.config.ts` evaluates, before any run exists,
 `secrets.get(name)` returns a reference by name that an engine option can
@@ -1219,7 +1221,7 @@ engine: web({ basicAuth: { username, password: secrets.get('previewPassword') } 
   strings and placeholders only. Read a value a string needs, such as an
   app's API key, from `process.env` yourself.
 
-## cache
+### cache
 
 Replay cache mode or options. In `read-write` mode the replay cache records an
 `agent.act()` only after a later verification passes, such as a locator
@@ -1239,7 +1241,7 @@ cache: { mode: 'read-write', dir: '.e2e/cache', strict: true },
 A bare string is shorthand for `{ mode }`: `cache: 'read-only'`. See
 [Caching](/cache). The declarations are under [`CacheConfig`](#cacheconfig).
 
-### `mode`
+#### `mode`
 
 What the replay cache reads and writes.
 
@@ -1257,7 +1259,7 @@ cache: 'read-write', // default: 'read-write' locally, 'read-only' in CI
   CI restores the cache from its own cache service.
 - `--no-cache` wins over both and disables caching for the run.
 
-### `store`
+#### `store`
 
 A custom entry store that replaces the file store.
 
@@ -1272,7 +1274,7 @@ cache: { store: createStore(cacheUrl) },
 `CacheStore`, `CacheReadResult`, `TraceEntry`, and `ActionTrace` are exported
 from `e2e`.
 
-### `dir`
+#### `dir`
 
 The file store directory, resolved against the project root.
 
@@ -1283,7 +1285,7 @@ cache: { dir: '.cache/e2e' }, // default: '.e2e/cache'
 - It stays where it is whatever `output` says.
 - `--cache-dir` and `E2E_CACHE_DIR` replace it.
 
-### `strict`
+#### `strict`
 
 Fails a step whose recording exists but no longer replays with
 `REPLAY_STALE`, instead of handing it to the agent.
@@ -1297,7 +1299,7 @@ cache: { strict: true }, // default: false
 
 See [Fail on a stale recording](/cache#fail-on-a-stale-recording).
 
-### Commit the replay cache
+#### Commit the replay cache
 
 `e2e init` adds `.e2e/cache/` to `.gitignore`, so committing entries is
 opt-in. Remove that line to share replays with CI and teammates; CI stays

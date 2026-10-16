@@ -48,6 +48,687 @@ test('checkout summary', async ({ screen }) => {
 
 The declarations are under [Types](#types).
 
+### Locator matchers
+
+`expect(locator)` returns an `AsyncExpectation`. Each matcher polls until it
+holds or its timeout passes, under the rules in [Behavior](#behavior).
+
+| Matcher | Description |
+| --- | --- |
+| [`toBeVisible`](#tobevisible-and-tobehidden) | Waits for visibility |
+| [`toBeHidden`](#tobevisible-and-tobehidden) | Waits for hidden or absent state |
+| [`toBeAttached`](#tobeattached) | Waits for one match to exist |
+| [`toBeEnabled`](#tobeenabled-and-tobedisabled) | Waits for enabled state |
+| [`toBeDisabled`](#tobeenabled-and-tobedisabled) | Waits for disabled state |
+| [`toBeChecked`](#tobechecked-tobeselected-and-tobeexpanded) | Waits for checked state |
+| [`toBeSelected`](#tobechecked-tobeselected-and-tobeexpanded) | Waits for selected state |
+| [`toBeExpanded`](#tobechecked-tobeselected-and-tobeexpanded) | Waits for expanded state |
+| [`toBeFocused`](#tobefocused) | Waits for focused state |
+| [`toHaveText`](#tohavetext-and-tocontaintext) | Waits for exact normalized text |
+| [`toContainText`](#tohavetext-and-tocontaintext) | Waits for contained normalized text |
+| [`toHaveValue`](#tohavevalue) | Waits for a form control's value |
+| [`toHaveAttribute`](#tohaveattribute) | Waits for an attribute |
+| [`toHaveCount`](#tohavecount) | Waits for an exact match count |
+| [`toHaveAccessibleName`](#tohaveaccessiblename) | Waits for an accessible name |
+| [`toHaveScreenshot`](#screenshot-matchers) | Compares with a stored screenshot |
+
+#### `toBeVisible` and `toBeHidden`
+
+`toBeVisible` waits for the one match to be shown. `toBeHidden` waits for a
+hidden or absent state.
+
+```ts
+await expect(screen.getByRole('dialog')).toBeVisible();
+await expect(screen.getByRole('dialog')).not.toBeVisible({ timeout: 10_000 });
+await expect(screen.getByRole('dialog')).toBeVisible({ visible: false }); // as toBeHidden()
+```
+
+- `visible: false` waits for a hidden or absent state, as `toBeHidden` does.
+- `toBeHidden`, `toBeVisible({ visible: false })`, and negated visibility
+  accept zero matches.
+- Options: `visible` and `timeout` on `toBeVisible`, `timeout` on
+  `toBeHidden`.
+
+#### `toBeAttached`
+
+Waits for one match to exist, visible or not.
+
+```ts
+await expect(screen.getByText('Loaded')).toBeAttached();
+await expect(screen.getByText('Loading')).toBeAttached({ attached: false });
+```
+
+- It passes once one match exists, hidden or shown, where `toBeVisible`
+  needs a shown one.
+- Negated, or with `attached: false`, it waits for no match and passes once
+  nothing matches.
+- Options: `attached` and `timeout`.
+
+#### `toBeEnabled` and `toBeDisabled`
+
+`toBeEnabled` waits for an enabled node; `toBeDisabled` waits for a disabled
+one.
+
+```ts
+await expect(screen.getByRole('button', 'Pay')).toBeEnabled();
+await expect(screen.getByRole('button', 'Pay')).toBeEnabled({ enabled: false }); // as toBeDisabled()
+```
+
+- A node is enabled unless it reports `disabled`.
+- `enabled: false` waits for a disabled node.
+- On the web, `disabled` is the state the browser applies, not the attribute
+  alone, the same reading Playwright's `toBeDisabled` gives:
+  - A control inside a `<fieldset disabled>` is disabled unless it sits in
+    that fieldset's first `<legend>`.
+  - `aria-disabled="true"` on an ancestor disables the widgets below it until
+    an `aria-disabled="false"` cuts the chain.
+- Options: `enabled` and `timeout` on `toBeEnabled`, `timeout` on
+  `toBeDisabled`.
+
+#### `toBeChecked`, `toBeSelected`, and `toBeExpanded`
+
+Each waits for its state: checked, selected, or expanded.
+
+```ts
+await expect(screen.getByLabel('Subscribe')).toBeChecked({ checked: false });
+await expect(screen.getByRole('tab', 'Billing')).toBeSelected();
+```
+
+- A missing `checked`, `selected`, or `expanded` state counts as `false`, so
+  `.not.toBeChecked()` passes on a button or a heading.
+- `toBeChecked({ checked: false })` waits for an unchecked node.
+- Options: `checked` and `timeout` on `toBeChecked`, `timeout` on
+  `toBeSelected` and `toBeExpanded`.
+
+#### `toBeFocused`
+
+Waits for focused state.
+
+```ts
+await expect(screen.getByLabel('Email')).toBeFocused();
+```
+
+Options: `timeout`.
+
+#### `toHaveText` and `toContainText`
+
+`toHaveText` waits for exact normalized text; `toContainText` waits for
+contained normalized text. Both take a single `TextMatch` or a list.
+
+```ts
+await expect(screen.getByRole('status')).toHaveText('Saved');
+await expect(screen.getByRole('alert')).not.toContainText('error', { ignoreCase: true });
+await expect(screen.getByTestId('todo')).toHaveText(['Write spec', /^Ship/, 'Release']);
+await expect(screen.getByTestId('todo')).toContainText(['spec', 'runner', 'Release']);
+await expect(screen.getByTestId('todo')).toContainText(['spec', 'Release']);
+```
+
+Options: `ignoreCase` and `timeout`.
+
+The list forms have no exactly-one rule, and their failure message lists
+every text observed.
+
+| Form | Holds when |
+| --- | --- |
+| `toHaveText([...])` | The match count equals the list length, and the match at each position satisfies the entry there: a string exactly after normalization, a `RegExp` by test. An empty list holds when nothing matches |
+| `toContainText([...])` | Each entry is contained by a distinct match, in list order, as Playwright's does. Extra matches before, between, or after are fine, a repeated entry needs a match of its own, and an empty list always holds |
+
+<Note>
+Negated, `toContainText([...])` fails as soon as that ordered subsequence
+exists, so `not.toContainText(['Deleted'])` fails while any match contains
+`Deleted`.
+</Note>
+
+#### `toHaveValue`
+
+Waits for a form control's value, compared as it is.
+
+```ts
+await expect(screen.getByLabel('Email')).toHaveValue('ada@example.test');
+await expect(screen.getByLabel('Search')).toHaveValue('');
+```
+
+- No normalization: newlines and trailing spaces count, and the failure
+  message prints the value that way.
+- A `contenteditable` editor's value is its rendered text, kept the same way.
+  An empty editor reads as `''`.
+- A control the platform reports without a value, such as a cleared field on
+  a device, reads as `''`.
+- A node whose role carries no value, such as a heading or a link, never
+  satisfies `toHaveValue`, negated or not. The message reads
+  `no value (not a form control)`.
+- On a secure field it throws `POLICY_DENIED`; see
+  [Secure fields](#secure-fields).
+- Options: `timeout`.
+
+#### `toHaveAttribute`
+
+Waits for the attribute to be present; with `value`, for it to match.
+
+```ts
+await expect(screen.getByRole('link', 'Help')).toHaveAttribute('target');
+await expect(screen.getByRole('link', 'Help')).toHaveAttribute('href', '/help');
+```
+
+- The value compares like `toHaveText`, after normalization, and takes
+  `ignoreCase`.
+- On a secure field it throws `POLICY_DENIED` for every attribute name,
+  negated too; see [Secure fields](#secure-fields).
+- Options: `timeout`, and `ignoreCase` only with a value.
+
+#### `toHaveCount`
+
+Waits for an exact match count.
+
+```ts
+await expect(screen.getByTestId('todo')).toHaveCount(3);
+```
+
+It is exempt from the exactly-one rule.
+
+Options: `timeout`.
+
+#### `toHaveAccessibleName`
+
+Waits for an accessible name.
+
+```ts
+await expect(screen.getByRole('button', { name: /close/i })).toHaveAccessibleName('Close');
+```
+
+It takes `ignoreCase`, and it still answers on a secure field.
+
+Options: `ignoreCase` and `timeout`.
+
+### Screenshot matchers
+
+`expect(screen)` and `expect(locator)` compare against a PNG stored beside
+the test file, on every engine that captures pixels. The
+[Visual comparison](/visual-testing) guide shows the workflow.
+
+| Matcher | Description |
+| --- | --- |
+| [`expect(screen).toHaveScreenshot`](#tohavescreenshot) | Compares the whole screen |
+| [`expect(locator).toHaveScreenshot`](#tohavescreenshot) | Compares a locator's one match |
+
+#### `toHaveScreenshot`
+
+Waits for the screen, or the one match of a locator, to look like its stored
+screenshot: `name`, or one named after the test.
+
+```ts
+await expect(screen).toHaveScreenshot('home.png');
+await expect(screen.getByRole('navigation')).toHaveScreenshot();
+await expect(screen).toHaveScreenshot('feed.png', { mask: [screen.getByTestId('timestamp')], maxDiffPixels: 50 });
+```
+
+Both forms take the [Screenshot options](#screenshot-options).
+
+| Property | Value |
+| --- | --- |
+| Stored at | `<test file>-snapshots/<name>-<target>-<os>.png`; `.png` is added to a name without it |
+| Unnamed | The test's title path, lowercase, and a count: `checkout-pays-by-card-1` |
+| Missing | Taken from two screenshots in a row that are the same within the tolerance, then `ASSERTION_FAILED`. Written beside the test; in CI without `--update-snapshots` only attached to the results, at `snapshots/<path in the project>` |
+| Written earlier in the run | Without `--update-snapshots`, and always for `.not`, no comparison passes against a screenshot the same run wrote (a retry, a repeat, another test naming it): `ASSERTION_FAILED` until the next run. With `--update-snapshots` a positive matcher compares and may write it again |
+| Different | Retried until one matches or the timeout; then `ASSERTION_FAILED` with `-expected`, `-actual`, and `-diff` images on the step |
+| `--update-snapshots`, `-u` | A missing or different stored screenshot is written from a screen that holds still, and the matcher passes |
+| `.not` | Passes once the screen differs; with nothing stored it is `ASSERTION_FAILED` |
+| Tolerance | Both `maxDiffPixels` and `maxDiffPixelRatio` set: the smaller wins |
+| After a secret fill | `POLICY_DENIED`, as for `app.screenshot()` |
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | Before the screen is read: a name with a path separator, an option the matcher does not take (Playwright's `fullPage`, `animations`, `clip`), a value out of range, or `expect` on a screen scoped to a frame. Compare a locator inside the frame instead |
+| `ASSERTION_FAILED` | A missing, different, or same-run stored screenshot, as in the table above |
+| `POLICY_DENIED` | A `Secret` was filled earlier |
+
+#### Screenshot options
+
+| Option | Type | Default |
+| --- | --- | --- |
+| `threshold` | `number` | `0.2` |
+| `maxDiffPixels` | `number` | `0` |
+| `maxDiffPixelRatio` | `number` | `0` |
+| `mask` | `readonly Locator[]` | - |
+| `maskColor` | `string` | `#ff00ff` |
+| `timeout` | `number` | `config.assertionTimeout` |
+
+- `threshold`: how far one pixel's color may drift and still count as the
+  same, from 0 (exact) to 1.
+- `maxDiffPixels`: how many pixels may differ.
+- `maxDiffPixelRatio`: what share of the pixels may differ, from 0 to 1.
+- `mask`: locators painted over before comparing, for content that changes
+  from run to run.
+- `maskColor`: color of the `mask` boxes, `#rrggbb`.
+
+### browser matchers
+
+Contributed by `@e2e-dev/web`; the `BrowserExpectation` type is exported
+from that package. Every matcher call is a recorded `expect.<matcher>`
+assertion step.
+
+| Matcher | Description |
+| --- | --- |
+| [`toHaveURL`](#tohaveurl) | Waits for the current URL |
+| [`toHaveTitle`](#tohavetitle) | Waits for the current title |
+| [`toHaveClass`](#tohaveclass) | Waits for a target's `class` |
+
+Any other option key, such as `ignoreCase` on `toHaveTitle`, which Playwright
+does not take either, is `INVALID_ARGUMENT`.
+
+#### `toHaveURL`
+
+Waits for the current URL to match.
+
+```ts
+await expect(browser).toHaveURL('/dashboard');
+await expect(browser).toHaveURL(/\/orders\/\d+$/);
+```
+
+- A relative string resolves against the base URL and matches exactly after
+  normalization.
+- A `RegExp` tests the full URL.
+- Anything else, such as a predicate function, is `INVALID_ARGUMENT`.
+- It takes Playwright's `ignoreCase`, with the locator matchers' semantics: a
+  string compares case-insensitively, and `true` adds the `i` flag to a
+  `RegExp` while `false` removes it.
+- Options: `ignoreCase` and `timeout`.
+
+#### `toHaveTitle`
+
+Waits for the current title to match.
+
+```ts
+await expect(browser).toHaveTitle(/Dashboard/);
+```
+
+Options: `timeout`.
+
+#### `toHaveClass`
+
+Waits for the target's `class` attribute to match: a string is the whole
+normalized class list, a `RegExp` is tested against it.
+
+```ts
+await expect(browser).toHaveClass(browser.locator('.card'), 'card active');
+```
+
+- It polls for the node too: a target that matches nothing yet is one more
+  poll, not a failure, until the assertion timeout runs out.
+- An ambiguous target still fails at once with `LOCATOR_AMBIGUOUS`.
+- It reads the `class` attribute, so `''` matches `class=""` and not an
+  element with no `class` attribute at all. Playwright's `toHaveClass('')`
+  accepts both.
+- Options: `timeout`.
+
+### Value matchers
+
+`expect(value)` runs synchronously without retrying. For a value that may
+still change, use [Polling a value](#polling-a-value).
+
+| Matcher | Description |
+| --- | --- |
+| [`toBe`](#tobe) | Compares with `Object.is` |
+| [`toEqual`](#toequal) | Recursive structural equality |
+| [`toMatchObject`](#tomatchobject) | Recursive subset match |
+| [`toBeTruthy`, `toBeFalsy`](#tobetruthy-and-tobefalsy) | Truthy or falsy value |
+| [`toBeNull`, `toBeUndefined`, `toBeDefined`](#tobenull-tobeundefined-and-tobedefined) | `null`, `undefined`, or defined |
+| [`toHaveLength`](#tohavelength) | `length` equals `expected` |
+| [`toHaveProperty`](#tohaveproperty) | Property at a path |
+| [`toContain`](#tocontain) | String or collection containment |
+| [`toMatch`](#tomatch) | String or `RegExp` match |
+| [`toBeGreaterThan` and others](#numeric-comparisons) | Numeric bound holds |
+| [`toBeCloseTo`](#tobecloseto) | Within `10 ** -digits / 2` |
+| [`toMatchSchema`](#matching-a-schema) | Standard Schema validation |
+
+```ts
+const total = await screen.getByTestId('total').textContent();
+expect(total).toContain('$');
+expect(items).toHaveLength(3);
+expect(payload).toEqual({ ok: true });
+expect(order).toMatchObject({ customer: { name: 'Ada' }, lines: [{ sku: 'a' }, { sku: 'b' }] });
+expect(order).toHaveProperty('customer.email', 'ada@example.test');
+expect(totals.lineTotal).toBeCloseTo(60);
+```
+
+A matcher that cannot evaluate its value (`toContain` on a number,
+`toHaveLength` on an object without one) fails as `ASSERTION_FAILED` like a
+mismatch would, so under `expect.poll` a value that has not taken its final
+shape yet is one more failing sample.
+
+#### `toBe`
+
+Compares with `Object.is`.
+
+```ts
+expect(status).toBe('paid');
+```
+
+#### `toEqual`
+
+Performs recursive structural equality the way Jest's does.
+
+```ts
+expect(payload).toEqual({ ok: true, items: [{ sku: 'a' }] });
+```
+
+- Primitives compare with `Object.is`, so `NaN` equals `NaN` and `0` does not
+  equal `-0`.
+- Arrays and plain objects compare by their contents, `Date` by time,
+  `RegExp` by source and flags, `Map` and `Set` by their entries.
+- A property whose value is `undefined` is treated as absent, and a sparse
+  array equals one holding `undefined`.
+- Class types are not compared: a class instance equals a plain object with
+  the same properties.
+- There is no `toStrictEqual`.
+
+#### `toMatchObject`
+
+Requires every property of `expected` to match recursively.
+
+```ts
+expect(order).toMatchObject({ customer: { name: 'Ada' }, lines: [{ sku: 'a' }, { sku: 'b' }] });
+```
+
+- Properties `expected` does not name are ignored.
+- An array in `expected` matches an array of the same length, element by
+  element, each element again as a subset.
+- Both sides must be objects; a primitive on either side is refused.
+
+#### `toBeTruthy` and `toBeFalsy`
+
+Require a truthy or a falsy value.
+
+```ts
+expect(created).toBeTruthy();
+```
+
+#### `toBeNull`, `toBeUndefined`, and `toBeDefined`
+
+`toBeNull` requires `null` and `toBeUndefined` requires `undefined`.
+`toBeDefined` requires any value but `undefined`; `null` passes.
+
+```ts
+expect(row).toBeDefined();
+```
+
+#### `toHaveLength`
+
+Requires a `length` property equal to `expected`: a string, an array, or
+anything array-like.
+
+```ts
+expect(items).toHaveLength(3);
+```
+
+A value without a numeric `length` fails as `ASSERTION_FAILED`.
+
+#### `toHaveProperty`
+
+Requires the property at `path` to exist; with `expected`, to equal it by
+`toEqual` rules.
+
+```ts
+expect(order).toHaveProperty('customer.email', 'ada@example.test');
+expect(order).toHaveProperty(['lines', 0, 'sku'], 'a');
+```
+
+- `path` is dotted (`'user.address.city'`) or an array of keys
+  (`['user', 'address', 'city']`). Use the array form when a key contains a
+  dot, or to index an array by number.
+- Inherited properties count, and a property holding `undefined` exists.
+- A string, number, or boolean on the path is read through its wrapper
+  object, as in Jest, so `toHaveProperty('label.length', 3)` and
+  `toHaveProperty(['label', 0], 'a')` reach into a string.
+- `null` and `undefined` have no properties.
+
+#### `toContain`
+
+Requires string or collection containment.
+
+```ts
+expect(total).toContain('$');
+expect(rows).toContain(expect.objectContaining({ status: 'paid' }));
+```
+
+- On a string, `expected` must be a string, and it is a substring check. An
+  asymmetric matcher is refused there:
+  `expect('abc').toContain(expect.stringContaining('a'))` fails.
+- On a collection, an element must equal `expected`; this form takes
+  [asymmetric matchers](#asymmetric-matchers).
+- Any other value, such as a number, fails as `ASSERTION_FAILED`.
+
+#### `toMatch`
+
+Requires a string or `RegExp` match.
+
+```ts
+expect(id).toMatch(/^usr_/);
+```
+
+A pattern that is neither a string nor a `RegExp` is `INVALID_ARGUMENT`.
+
+#### Numeric comparisons
+
+`toBeGreaterThan` and `toBeLessThan` require a numeric bound;
+`toBeGreaterThanOrEqual` and `toBeLessThanOrEqual` require it inclusive.
+
+```ts
+expect(count).toBeGreaterThan(1);
+expect(count).toBeLessThanOrEqual(10);
+```
+
+#### `toBeCloseTo`
+
+Requires a number within `10 ** -digits / 2` of `expected`.
+
+```ts
+expect(totals.lineTotal).toBeCloseTo(60); // digits default: 2
+```
+
+`toBeCloseTo(60)` accepts 59.996 and rejects 59.99. Infinite values pass only
+when they are the same infinity.
+
+#### Matching a schema
+
+`toMatchSchema` validates a value against a
+[Standard Schema](https://standardschema.dev): a Zod, Valibot, or ArkType
+schema, or any library that implements the spec. Pass the schema your app
+already parses its API with, and the test fails when the API drifts from it.
+It returns the schema's output, typed, so the rest of the test reads
+properties without casting.
+
+```ts
+import { z } from 'zod';
+
+const User = z.object({ id: z.number(), name: z.string(), email: z.email() });
+
+const users = expect(await response.json()).toMatchSchema(z.array(User));
+expect(users.map((user) => user.name)).toContain('Ada');
+```
+
+- A failure lists every issue by its path (`1.email: Invalid email address`).
+- The output is the schema's, so defaults and transforms apply.
+- A matcher returns before anything could await it, so a schema that
+  validates asynchronously (an async refinement) is `INVALID_ARGUMENT`.
+- Negated, it passes when the value does not match and returns nothing.
+
+#### Failure messages
+
+Pass a second argument to describe the check in its failure message:
+
+```ts
+expect(created, 'the company exists through the API').toBeTruthy();
+// ASSERTION_FAILED: the company exists through the API: expected undefined to be truthy
+```
+
+Only value expectations take a message; a locator or `browser` expectation
+already names its locator and matcher in the failure.
+
+#### Not included
+
+The unit-runner matchers (`toThrow`, `toBeInstanceOf`, `toBeNaN`,
+`toStrictEqual`, `resolves`, `rejects`, `expect.extend`) are not part of
+`expect`. An end-to-end test checks what the app shows and what its API
+returns; the value matchers cover that, see [API](/api-testing). Code-level
+checks belong in the unit runner.
+
+### Asymmetric matchers
+
+An asymmetric matcher stands in for a value inside `toEqual`,
+`toMatchObject`, the collection form of `toContain`, and the value of
+`toHaveProperty`. Where the comparison would test equality, it asks the
+matcher instead. They are Jest's matchers, with Jest's rules.
+
+| Matcher | Matches |
+| --- | --- |
+| `expect.any(Class)` | An instance of the class. For `String`, `Number`, `Boolean`, `BigInt`, `Symbol`, and `Function`, the primitive too; for `Object`, anything `typeof` calls an object, `null` included |
+| `expect.anything()` | Anything but `null` and `undefined` |
+| `expect.objectContaining(sample)` | An object whose properties include every property of `sample`, each compared by `toEqual` rules |
+| `expect.arrayContaining(sample)` | An array holding every element of `sample`, in any order, each compared by `toEqual` rules |
+| `expect.stringContaining(text)` | A string with `text` as a substring |
+| `expect.stringMatching(text \| RegExp)` | A string the RegExp tests true on; a text sample is compiled to a RegExp, so `'a.b'` matches `'axb'` |
+
+```ts
+expect(created).toEqual({
+  id: expect.stringMatching(/^usr_/),
+  createdAt: expect.any(String),
+  roles: expect.arrayContaining(['member']),
+  profile: expect.objectContaining({ name: 'Ada' }),
+});
+expect(rows).toContain(expect.objectContaining({ status: 'paid' }));
+expect(response).toHaveProperty('body.total', expect.any(Number));
+```
+
+- In a failure message a matcher prints as its description: `Any<Number>`,
+  `ObjectContaining {"name":"Ada"}`.
+- Matchers nest: an `objectContaining` sample may hold an `expect.any`.
+- The string form of `toContain` takes a string only, so
+  `expect('abc').toContain(expect.stringContaining('a'))` is refused.
+
+### Soft assertions
+
+`expect.soft(actual)` takes what `expect(actual)` takes and returns the same
+matchers. A soft matcher that fails does not throw: the failure is kept on
+the running attempt and the body continues.
+
+```ts
+test('checkout summary', async ({ agent, screen }) => {
+  await agent.act('add the "Pro" plan to the cart and open the summary');
+  expect.soft(await screen.getByTestId('subtotal').textContent()).toBe('$40.00');
+  expect.soft(await screen.getByTestId('tax').textContent()).toBe('$8.00');
+  await expect.soft(screen.getByRole('button', 'Pay')).toBeEnabled();
+  await expect(screen.getByTestId('total')).toHaveText('$48.00');
+});
+```
+
+```text
+ASSERTION_FAILED: 2 soft assertions failed
+1. expected "$41.00" to be "$40.00"
+2. expect.toBeEnabled failed
+   locator: getByRole('button', 'Pay')
+   expected: enabled
+   observed: states: disabled (match count 1)
+```
+
+- Once the body has settled, and before `afterEach`, the attempt fails with
+  one `ASSERTION_FAILED` that lists every kept failure in order. The error's
+  source line is the first soft matcher that failed.
+- A soft locator or `browser` matcher is still a recorded `expect.<matcher>`
+  step, marked failed, so the report shows where in the flow it landed.
+- A soft value matcher is not a step, the same as a hard one; its failure
+  appears in the attempt's error records.
+- When the body throws on its own, or times out, that error stays the
+  attempt's verdict and the soft failures are recorded beside it under
+  `secondaryErrors`.
+- A body that skips itself with `test.skip(...)` after a soft failure still
+  fails: the soft failures are the attempt's error, and the skip reason is
+  kept in the attempt's `skip`.
+- A soft `toMatchSchema` returns the schema's output when the value matches
+  and `undefined` after a kept failure, and its type says so.
+
+<Note>
+Outside a test body there is nothing to keep a failure for, so `expect.soft`
+throws at once like `expect`: in a standalone script, and in an `afterEach`
+hook, which runs after the soft failures have been settled. There is no
+`expect.soft.poll`; `expect.poll` has its own timeout to fail on.
+</Note>
+
+### Polling a value
+
+`expect.poll(read)` re-reads a value until a matcher passes. Use it to wait
+for an API response or saved data after an app action.
+
+```ts
+await agent.act('create a test named "AI checkout regression" described as {description}', {
+  params: { description },
+});
+await expect
+  .poll(() => getTest(workspace).then((row) => row?.title), { timeout: 15_000 })
+  .toBe('AI checkout regression');
+await expect.poll(async () => (await listTests(workspace)).length).toBeGreaterThan(1);
+await expect.poll(() => readStatus(), { message: 'the batch never finished' }).not.toBe('running');
+```
+
+| Option | Type | Default |
+| --- | --- | --- |
+| `timeout` | `number` | `config.assertionTimeout` during an attempt, 5000 ms outside one |
+| `interval` | `number` | `100` |
+| `message` | `string` | - |
+
+- `timeout` is the deadline in milliseconds, a finite number 0 or more. It is
+  capped by the test deadline in the body, or the hook's `cleanupTimeout`
+  during `afterEach`.
+- `interval` is the pause between reads in milliseconds, a finite number
+  above 0.
+- `message` is an extra line in the timeout error, after the matcher line.
+- Any other `timeout` or `interval` is `INVALID_CONFIG` before the first
+  read.
+
+Every value matcher is available, returning a promise.
+
+- Each sample calls `read` and runs the matcher. A matcher failure or a
+  `read` that throws is one failing sample; a `read` that hangs is cut at the
+  deadline.
+- `toMatchSchema` resolves to the schema's output for the passing read.
+- When the attempt is cancelled, the loop stops with `CANCELLED`. At the
+  attempt's deadline it stops with `ASSERTION_FAILED`, naming the deadline.
+  A `read` in flight is abandoned, not stopped: work it started can go on.
+- `expect.poll` is not recorded as a report step; a timeout surfaces only as
+  the test's failure.
+
+At the deadline it throws `ASSERTION_FAILED` naming the matcher, then
+`message` when given, then the last sample: the last matcher failure, the
+last `read` error, or `no read completed`.
+
+```text
+expect.poll(...).not.toBe(...) timed out after 5000 ms
+the batch never finished
+last: expected "running" not to be "running"
+```
+
+| Throws | When |
+| --- | --- |
+| `ASSERTION_FAILED` | The deadline passed without a passing sample |
+| `INVALID_CONFIG` | `timeout` or `interval` out of range |
+| `CANCELLED` | The attempt was cancelled or timed out |
+| `STEP_NOT_AWAITED` | The phase that started the poll returned while it still ran |
+| `HOOK_FAILED` | A `beforeAll` or `afterAll` hook returned while its poll still ran |
+
+<Note>
+Await every poll. A poll belongs to the phase that started it: the test body
+(with its fixtures and `beforeEach` hooks), one `afterEach` hook or fixture
+teardown, or one `beforeAll` or `afterAll` hook. When that phase returns
+while the poll still runs, the poll is cancelled and the phase fails with
+`STEP_NOT_AWAITED` at the line of the call, whether or not the poll would
+have passed. A body that threw keeps its own error and records this one
+under `secondaryErrors`, and a suite hook reports it as `HOOK_FAILED`.
+</Note>
+
+A poll never fails a later test: a poll started by work its phase left
+running, such as a body past its timeout, is cancelled before its first
+read.
+
 ## Behavior
 
 Rules that apply across the matcher groups below.
@@ -128,687 +809,6 @@ outcome of the fill, not the field.
   passing on the default.
 - The boolean options Playwright gives these matchers (`checked`, `enabled`,
   `visible`, `attached`) work the same way here.
-
-## Locator matchers
-
-`expect(locator)` returns an `AsyncExpectation`. Each matcher polls until it
-holds or its timeout passes, under the rules in [Behavior](#behavior).
-
-| Matcher | Description |
-| --- | --- |
-| [`toBeVisible`](#tobevisible-and-tobehidden) | Waits for visibility |
-| [`toBeHidden`](#tobevisible-and-tobehidden) | Waits for hidden or absent state |
-| [`toBeAttached`](#tobeattached) | Waits for one match to exist |
-| [`toBeEnabled`](#tobeenabled-and-tobedisabled) | Waits for enabled state |
-| [`toBeDisabled`](#tobeenabled-and-tobedisabled) | Waits for disabled state |
-| [`toBeChecked`](#tobechecked-tobeselected-and-tobeexpanded) | Waits for checked state |
-| [`toBeSelected`](#tobechecked-tobeselected-and-tobeexpanded) | Waits for selected state |
-| [`toBeExpanded`](#tobechecked-tobeselected-and-tobeexpanded) | Waits for expanded state |
-| [`toBeFocused`](#tobefocused) | Waits for focused state |
-| [`toHaveText`](#tohavetext-and-tocontaintext) | Waits for exact normalized text |
-| [`toContainText`](#tohavetext-and-tocontaintext) | Waits for contained normalized text |
-| [`toHaveValue`](#tohavevalue) | Waits for a form control's value |
-| [`toHaveAttribute`](#tohaveattribute) | Waits for an attribute |
-| [`toHaveCount`](#tohavecount) | Waits for an exact match count |
-| [`toHaveAccessibleName`](#tohaveaccessiblename) | Waits for an accessible name |
-| [`toHaveScreenshot`](#screenshot-matchers) | Compares with a stored screenshot |
-
-### `toBeVisible` and `toBeHidden`
-
-`toBeVisible` waits for the one match to be shown. `toBeHidden` waits for a
-hidden or absent state.
-
-```ts
-await expect(screen.getByRole('dialog')).toBeVisible();
-await expect(screen.getByRole('dialog')).not.toBeVisible({ timeout: 10_000 });
-await expect(screen.getByRole('dialog')).toBeVisible({ visible: false }); // as toBeHidden()
-```
-
-- `visible: false` waits for a hidden or absent state, as `toBeHidden` does.
-- `toBeHidden`, `toBeVisible({ visible: false })`, and negated visibility
-  accept zero matches.
-- Options: `visible` and `timeout` on `toBeVisible`, `timeout` on
-  `toBeHidden`.
-
-### `toBeAttached`
-
-Waits for one match to exist, visible or not.
-
-```ts
-await expect(screen.getByText('Loaded')).toBeAttached();
-await expect(screen.getByText('Loading')).toBeAttached({ attached: false });
-```
-
-- It passes once one match exists, hidden or shown, where `toBeVisible`
-  needs a shown one.
-- Negated, or with `attached: false`, it waits for no match and passes once
-  nothing matches.
-- Options: `attached` and `timeout`.
-
-### `toBeEnabled` and `toBeDisabled`
-
-`toBeEnabled` waits for an enabled node; `toBeDisabled` waits for a disabled
-one.
-
-```ts
-await expect(screen.getByRole('button', 'Pay')).toBeEnabled();
-await expect(screen.getByRole('button', 'Pay')).toBeEnabled({ enabled: false }); // as toBeDisabled()
-```
-
-- A node is enabled unless it reports `disabled`.
-- `enabled: false` waits for a disabled node.
-- On the web, `disabled` is the state the browser applies, not the attribute
-  alone, the same reading Playwright's `toBeDisabled` gives:
-  - A control inside a `<fieldset disabled>` is disabled unless it sits in
-    that fieldset's first `<legend>`.
-  - `aria-disabled="true"` on an ancestor disables the widgets below it until
-    an `aria-disabled="false"` cuts the chain.
-- Options: `enabled` and `timeout` on `toBeEnabled`, `timeout` on
-  `toBeDisabled`.
-
-### `toBeChecked`, `toBeSelected`, and `toBeExpanded`
-
-Each waits for its state: checked, selected, or expanded.
-
-```ts
-await expect(screen.getByLabel('Subscribe')).toBeChecked({ checked: false });
-await expect(screen.getByRole('tab', 'Billing')).toBeSelected();
-```
-
-- A missing `checked`, `selected`, or `expanded` state counts as `false`, so
-  `.not.toBeChecked()` passes on a button or a heading.
-- `toBeChecked({ checked: false })` waits for an unchecked node.
-- Options: `checked` and `timeout` on `toBeChecked`, `timeout` on
-  `toBeSelected` and `toBeExpanded`.
-
-### `toBeFocused`
-
-Waits for focused state.
-
-```ts
-await expect(screen.getByLabel('Email')).toBeFocused();
-```
-
-Options: `timeout`.
-
-### `toHaveText` and `toContainText`
-
-`toHaveText` waits for exact normalized text; `toContainText` waits for
-contained normalized text. Both take a single `TextMatch` or a list.
-
-```ts
-await expect(screen.getByRole('status')).toHaveText('Saved');
-await expect(screen.getByRole('alert')).not.toContainText('error', { ignoreCase: true });
-await expect(screen.getByTestId('todo')).toHaveText(['Write spec', /^Ship/, 'Release']);
-await expect(screen.getByTestId('todo')).toContainText(['spec', 'runner', 'Release']);
-await expect(screen.getByTestId('todo')).toContainText(['spec', 'Release']);
-```
-
-Options: `ignoreCase` and `timeout`.
-
-The list forms have no exactly-one rule, and their failure message lists
-every text observed.
-
-| Form | Holds when |
-| --- | --- |
-| `toHaveText([...])` | The match count equals the list length, and the match at each position satisfies the entry there: a string exactly after normalization, a `RegExp` by test. An empty list holds when nothing matches |
-| `toContainText([...])` | Each entry is contained by a distinct match, in list order, as Playwright's does. Extra matches before, between, or after are fine, a repeated entry needs a match of its own, and an empty list always holds |
-
-<Note>
-Negated, `toContainText([...])` fails as soon as that ordered subsequence
-exists, so `not.toContainText(['Deleted'])` fails while any match contains
-`Deleted`.
-</Note>
-
-### `toHaveValue`
-
-Waits for a form control's value, compared as it is.
-
-```ts
-await expect(screen.getByLabel('Email')).toHaveValue('ada@example.test');
-await expect(screen.getByLabel('Search')).toHaveValue('');
-```
-
-- No normalization: newlines and trailing spaces count, and the failure
-  message prints the value that way.
-- A `contenteditable` editor's value is its rendered text, kept the same way.
-  An empty editor reads as `''`.
-- A control the platform reports without a value, such as a cleared field on
-  a device, reads as `''`.
-- A node whose role carries no value, such as a heading or a link, never
-  satisfies `toHaveValue`, negated or not. The message reads
-  `no value (not a form control)`.
-- On a secure field it throws `POLICY_DENIED`; see
-  [Secure fields](#secure-fields).
-- Options: `timeout`.
-
-### `toHaveAttribute`
-
-Waits for the attribute to be present; with `value`, for it to match.
-
-```ts
-await expect(screen.getByRole('link', 'Help')).toHaveAttribute('target');
-await expect(screen.getByRole('link', 'Help')).toHaveAttribute('href', '/help');
-```
-
-- The value compares like `toHaveText`, after normalization, and takes
-  `ignoreCase`.
-- On a secure field it throws `POLICY_DENIED` for every attribute name,
-  negated too; see [Secure fields](#secure-fields).
-- Options: `timeout`, and `ignoreCase` only with a value.
-
-### `toHaveCount`
-
-Waits for an exact match count.
-
-```ts
-await expect(screen.getByTestId('todo')).toHaveCount(3);
-```
-
-It is exempt from the exactly-one rule.
-
-Options: `timeout`.
-
-### `toHaveAccessibleName`
-
-Waits for an accessible name.
-
-```ts
-await expect(screen.getByRole('button', { name: /close/i })).toHaveAccessibleName('Close');
-```
-
-It takes `ignoreCase`, and it still answers on a secure field.
-
-Options: `ignoreCase` and `timeout`.
-
-## Screenshot matchers
-
-`expect(screen)` and `expect(locator)` compare against a PNG stored beside
-the test file, on every engine that captures pixels. The
-[Visual comparison](/visual-testing) guide shows the workflow.
-
-| Matcher | Description |
-| --- | --- |
-| [`expect(screen).toHaveScreenshot`](#tohavescreenshot) | Compares the whole screen |
-| [`expect(locator).toHaveScreenshot`](#tohavescreenshot) | Compares a locator's one match |
-
-### `toHaveScreenshot`
-
-Waits for the screen, or the one match of a locator, to look like its stored
-screenshot: `name`, or one named after the test.
-
-```ts
-await expect(screen).toHaveScreenshot('home.png');
-await expect(screen.getByRole('navigation')).toHaveScreenshot();
-await expect(screen).toHaveScreenshot('feed.png', { mask: [screen.getByTestId('timestamp')], maxDiffPixels: 50 });
-```
-
-Both forms take the [Screenshot options](#screenshot-options).
-
-| Property | Value |
-| --- | --- |
-| Stored at | `<test file>-snapshots/<name>-<target>-<os>.png`; `.png` is added to a name without it |
-| Unnamed | The test's title path, lowercase, and a count: `checkout-pays-by-card-1` |
-| Missing | Taken from two screenshots in a row that are the same within the tolerance, then `ASSERTION_FAILED`. Written beside the test; in CI without `--update-snapshots` only attached to the results, at `snapshots/<path in the project>` |
-| Written earlier in the run | Without `--update-snapshots`, and always for `.not`, no comparison passes against a screenshot the same run wrote (a retry, a repeat, another test naming it): `ASSERTION_FAILED` until the next run. With `--update-snapshots` a positive matcher compares and may write it again |
-| Different | Retried until one matches or the timeout; then `ASSERTION_FAILED` with `-expected`, `-actual`, and `-diff` images on the step |
-| `--update-snapshots`, `-u` | A missing or different stored screenshot is written from a screen that holds still, and the matcher passes |
-| `.not` | Passes once the screen differs; with nothing stored it is `ASSERTION_FAILED` |
-| Tolerance | Both `maxDiffPixels` and `maxDiffPixelRatio` set: the smaller wins |
-| After a secret fill | `POLICY_DENIED`, as for `app.screenshot()` |
-
-| Throws | When |
-| --- | --- |
-| `INVALID_ARGUMENT` | Before the screen is read: a name with a path separator, an option the matcher does not take (Playwright's `fullPage`, `animations`, `clip`), a value out of range, or `expect` on a screen scoped to a frame. Compare a locator inside the frame instead |
-| `ASSERTION_FAILED` | A missing, different, or same-run stored screenshot, as in the table above |
-| `POLICY_DENIED` | A `Secret` was filled earlier |
-
-### Screenshot options
-
-| Option | Type | Default |
-| --- | --- | --- |
-| `threshold` | `number` | `0.2` |
-| `maxDiffPixels` | `number` | `0` |
-| `maxDiffPixelRatio` | `number` | `0` |
-| `mask` | `readonly Locator[]` | - |
-| `maskColor` | `string` | `#ff00ff` |
-| `timeout` | `number` | `config.assertionTimeout` |
-
-- `threshold`: how far one pixel's color may drift and still count as the
-  same, from 0 (exact) to 1.
-- `maxDiffPixels`: how many pixels may differ.
-- `maxDiffPixelRatio`: what share of the pixels may differ, from 0 to 1.
-- `mask`: locators painted over before comparing, for content that changes
-  from run to run.
-- `maskColor`: color of the `mask` boxes, `#rrggbb`.
-
-## browser matchers
-
-Contributed by `@e2e-dev/web`; the `BrowserExpectation` type is exported
-from that package. Every matcher call is a recorded `expect.<matcher>`
-assertion step.
-
-| Matcher | Description |
-| --- | --- |
-| [`toHaveURL`](#tohaveurl) | Waits for the current URL |
-| [`toHaveTitle`](#tohavetitle) | Waits for the current title |
-| [`toHaveClass`](#tohaveclass) | Waits for a target's `class` |
-
-Any other option key, such as `ignoreCase` on `toHaveTitle`, which Playwright
-does not take either, is `INVALID_ARGUMENT`.
-
-### `toHaveURL`
-
-Waits for the current URL to match.
-
-```ts
-await expect(browser).toHaveURL('/dashboard');
-await expect(browser).toHaveURL(/\/orders\/\d+$/);
-```
-
-- A relative string resolves against the base URL and matches exactly after
-  normalization.
-- A `RegExp` tests the full URL.
-- Anything else, such as a predicate function, is `INVALID_ARGUMENT`.
-- It takes Playwright's `ignoreCase`, with the locator matchers' semantics: a
-  string compares case-insensitively, and `true` adds the `i` flag to a
-  `RegExp` while `false` removes it.
-- Options: `ignoreCase` and `timeout`.
-
-### `toHaveTitle`
-
-Waits for the current title to match.
-
-```ts
-await expect(browser).toHaveTitle(/Dashboard/);
-```
-
-Options: `timeout`.
-
-### `toHaveClass`
-
-Waits for the target's `class` attribute to match: a string is the whole
-normalized class list, a `RegExp` is tested against it.
-
-```ts
-await expect(browser).toHaveClass(browser.locator('.card'), 'card active');
-```
-
-- It polls for the node too: a target that matches nothing yet is one more
-  poll, not a failure, until the assertion timeout runs out.
-- An ambiguous target still fails at once with `LOCATOR_AMBIGUOUS`.
-- It reads the `class` attribute, so `''` matches `class=""` and not an
-  element with no `class` attribute at all. Playwright's `toHaveClass('')`
-  accepts both.
-- Options: `timeout`.
-
-## Value matchers
-
-`expect(value)` runs synchronously without retrying. For a value that may
-still change, use [Polling a value](#polling-a-value).
-
-| Matcher | Description |
-| --- | --- |
-| [`toBe`](#tobe) | Compares with `Object.is` |
-| [`toEqual`](#toequal) | Recursive structural equality |
-| [`toMatchObject`](#tomatchobject) | Recursive subset match |
-| [`toBeTruthy`, `toBeFalsy`](#tobetruthy-and-tobefalsy) | Truthy or falsy value |
-| [`toBeNull`, `toBeUndefined`, `toBeDefined`](#tobenull-tobeundefined-and-tobedefined) | `null`, `undefined`, or defined |
-| [`toHaveLength`](#tohavelength) | `length` equals `expected` |
-| [`toHaveProperty`](#tohaveproperty) | Property at a path |
-| [`toContain`](#tocontain) | String or collection containment |
-| [`toMatch`](#tomatch) | String or `RegExp` match |
-| [`toBeGreaterThan` and others](#numeric-comparisons) | Numeric bound holds |
-| [`toBeCloseTo`](#tobecloseto) | Within `10 ** -digits / 2` |
-| [`toMatchSchema`](#matching-a-schema) | Standard Schema validation |
-
-```ts
-const total = await screen.getByTestId('total').textContent();
-expect(total).toContain('$');
-expect(items).toHaveLength(3);
-expect(payload).toEqual({ ok: true });
-expect(order).toMatchObject({ customer: { name: 'Ada' }, lines: [{ sku: 'a' }, { sku: 'b' }] });
-expect(order).toHaveProperty('customer.email', 'ada@example.test');
-expect(totals.lineTotal).toBeCloseTo(60);
-```
-
-A matcher that cannot evaluate its value (`toContain` on a number,
-`toHaveLength` on an object without one) fails as `ASSERTION_FAILED` like a
-mismatch would, so under `expect.poll` a value that has not taken its final
-shape yet is one more failing sample.
-
-### `toBe`
-
-Compares with `Object.is`.
-
-```ts
-expect(status).toBe('paid');
-```
-
-### `toEqual`
-
-Performs recursive structural equality the way Jest's does.
-
-```ts
-expect(payload).toEqual({ ok: true, items: [{ sku: 'a' }] });
-```
-
-- Primitives compare with `Object.is`, so `NaN` equals `NaN` and `0` does not
-  equal `-0`.
-- Arrays and plain objects compare by their contents, `Date` by time,
-  `RegExp` by source and flags, `Map` and `Set` by their entries.
-- A property whose value is `undefined` is treated as absent, and a sparse
-  array equals one holding `undefined`.
-- Class types are not compared: a class instance equals a plain object with
-  the same properties.
-- There is no `toStrictEqual`.
-
-### `toMatchObject`
-
-Requires every property of `expected` to match recursively.
-
-```ts
-expect(order).toMatchObject({ customer: { name: 'Ada' }, lines: [{ sku: 'a' }, { sku: 'b' }] });
-```
-
-- Properties `expected` does not name are ignored.
-- An array in `expected` matches an array of the same length, element by
-  element, each element again as a subset.
-- Both sides must be objects; a primitive on either side is refused.
-
-### `toBeTruthy` and `toBeFalsy`
-
-Require a truthy or a falsy value.
-
-```ts
-expect(created).toBeTruthy();
-```
-
-### `toBeNull`, `toBeUndefined`, and `toBeDefined`
-
-`toBeNull` requires `null` and `toBeUndefined` requires `undefined`.
-`toBeDefined` requires any value but `undefined`; `null` passes.
-
-```ts
-expect(row).toBeDefined();
-```
-
-### `toHaveLength`
-
-Requires a `length` property equal to `expected`: a string, an array, or
-anything array-like.
-
-```ts
-expect(items).toHaveLength(3);
-```
-
-A value without a numeric `length` fails as `ASSERTION_FAILED`.
-
-### `toHaveProperty`
-
-Requires the property at `path` to exist; with `expected`, to equal it by
-`toEqual` rules.
-
-```ts
-expect(order).toHaveProperty('customer.email', 'ada@example.test');
-expect(order).toHaveProperty(['lines', 0, 'sku'], 'a');
-```
-
-- `path` is dotted (`'user.address.city'`) or an array of keys
-  (`['user', 'address', 'city']`). Use the array form when a key contains a
-  dot, or to index an array by number.
-- Inherited properties count, and a property holding `undefined` exists.
-- A string, number, or boolean on the path is read through its wrapper
-  object, as in Jest, so `toHaveProperty('label.length', 3)` and
-  `toHaveProperty(['label', 0], 'a')` reach into a string.
-- `null` and `undefined` have no properties.
-
-### `toContain`
-
-Requires string or collection containment.
-
-```ts
-expect(total).toContain('$');
-expect(rows).toContain(expect.objectContaining({ status: 'paid' }));
-```
-
-- On a string, `expected` must be a string, and it is a substring check. An
-  asymmetric matcher is refused there:
-  `expect('abc').toContain(expect.stringContaining('a'))` fails.
-- On a collection, an element must equal `expected`; this form takes
-  [asymmetric matchers](#asymmetric-matchers).
-- Any other value, such as a number, fails as `ASSERTION_FAILED`.
-
-### `toMatch`
-
-Requires a string or `RegExp` match.
-
-```ts
-expect(id).toMatch(/^usr_/);
-```
-
-A pattern that is neither a string nor a `RegExp` is `INVALID_ARGUMENT`.
-
-### Numeric comparisons
-
-`toBeGreaterThan` and `toBeLessThan` require a numeric bound;
-`toBeGreaterThanOrEqual` and `toBeLessThanOrEqual` require it inclusive.
-
-```ts
-expect(count).toBeGreaterThan(1);
-expect(count).toBeLessThanOrEqual(10);
-```
-
-### `toBeCloseTo`
-
-Requires a number within `10 ** -digits / 2` of `expected`.
-
-```ts
-expect(totals.lineTotal).toBeCloseTo(60); // digits default: 2
-```
-
-`toBeCloseTo(60)` accepts 59.996 and rejects 59.99. Infinite values pass only
-when they are the same infinity.
-
-### Matching a schema
-
-`toMatchSchema` validates a value against a
-[Standard Schema](https://standardschema.dev): a Zod, Valibot, or ArkType
-schema, or any library that implements the spec. Pass the schema your app
-already parses its API with, and the test fails when the API drifts from it.
-It returns the schema's output, typed, so the rest of the test reads
-properties without casting.
-
-```ts
-import { z } from 'zod';
-
-const User = z.object({ id: z.number(), name: z.string(), email: z.email() });
-
-const users = expect(await response.json()).toMatchSchema(z.array(User));
-expect(users.map((user) => user.name)).toContain('Ada');
-```
-
-- A failure lists every issue by its path (`1.email: Invalid email address`).
-- The output is the schema's, so defaults and transforms apply.
-- A matcher returns before anything could await it, so a schema that
-  validates asynchronously (an async refinement) is `INVALID_ARGUMENT`.
-- Negated, it passes when the value does not match and returns nothing.
-
-### Failure messages
-
-Pass a second argument to describe the check in its failure message:
-
-```ts
-expect(created, 'the company exists through the API').toBeTruthy();
-// ASSERTION_FAILED: the company exists through the API: expected undefined to be truthy
-```
-
-Only value expectations take a message; a locator or `browser` expectation
-already names its locator and matcher in the failure.
-
-### Not included
-
-The unit-runner matchers (`toThrow`, `toBeInstanceOf`, `toBeNaN`,
-`toStrictEqual`, `resolves`, `rejects`, `expect.extend`) are not part of
-`expect`. An end-to-end test checks what the app shows and what its API
-returns; the value matchers cover that, see [API](/api-testing). Code-level
-checks belong in the unit runner.
-
-## Asymmetric matchers
-
-An asymmetric matcher stands in for a value inside `toEqual`,
-`toMatchObject`, the collection form of `toContain`, and the value of
-`toHaveProperty`. Where the comparison would test equality, it asks the
-matcher instead. They are Jest's matchers, with Jest's rules.
-
-| Matcher | Matches |
-| --- | --- |
-| `expect.any(Class)` | An instance of the class. For `String`, `Number`, `Boolean`, `BigInt`, `Symbol`, and `Function`, the primitive too; for `Object`, anything `typeof` calls an object, `null` included |
-| `expect.anything()` | Anything but `null` and `undefined` |
-| `expect.objectContaining(sample)` | An object whose properties include every property of `sample`, each compared by `toEqual` rules |
-| `expect.arrayContaining(sample)` | An array holding every element of `sample`, in any order, each compared by `toEqual` rules |
-| `expect.stringContaining(text)` | A string with `text` as a substring |
-| `expect.stringMatching(text \| RegExp)` | A string the RegExp tests true on; a text sample is compiled to a RegExp, so `'a.b'` matches `'axb'` |
-
-```ts
-expect(created).toEqual({
-  id: expect.stringMatching(/^usr_/),
-  createdAt: expect.any(String),
-  roles: expect.arrayContaining(['member']),
-  profile: expect.objectContaining({ name: 'Ada' }),
-});
-expect(rows).toContain(expect.objectContaining({ status: 'paid' }));
-expect(response).toHaveProperty('body.total', expect.any(Number));
-```
-
-- In a failure message a matcher prints as its description: `Any<Number>`,
-  `ObjectContaining {"name":"Ada"}`.
-- Matchers nest: an `objectContaining` sample may hold an `expect.any`.
-- The string form of `toContain` takes a string only, so
-  `expect('abc').toContain(expect.stringContaining('a'))` is refused.
-
-## Soft assertions
-
-`expect.soft(actual)` takes what `expect(actual)` takes and returns the same
-matchers. A soft matcher that fails does not throw: the failure is kept on
-the running attempt and the body continues.
-
-```ts
-test('checkout summary', async ({ agent, screen }) => {
-  await agent.act('add the "Pro" plan to the cart and open the summary');
-  expect.soft(await screen.getByTestId('subtotal').textContent()).toBe('$40.00');
-  expect.soft(await screen.getByTestId('tax').textContent()).toBe('$8.00');
-  await expect.soft(screen.getByRole('button', 'Pay')).toBeEnabled();
-  await expect(screen.getByTestId('total')).toHaveText('$48.00');
-});
-```
-
-```text
-ASSERTION_FAILED: 2 soft assertions failed
-1. expected "$41.00" to be "$40.00"
-2. expect.toBeEnabled failed
-   locator: getByRole('button', 'Pay')
-   expected: enabled
-   observed: states: disabled (match count 1)
-```
-
-- Once the body has settled, and before `afterEach`, the attempt fails with
-  one `ASSERTION_FAILED` that lists every kept failure in order. The error's
-  source line is the first soft matcher that failed.
-- A soft locator or `browser` matcher is still a recorded `expect.<matcher>`
-  step, marked failed, so the report shows where in the flow it landed.
-- A soft value matcher is not a step, the same as a hard one; its failure
-  appears in the attempt's error records.
-- When the body throws on its own, or times out, that error stays the
-  attempt's verdict and the soft failures are recorded beside it under
-  `secondaryErrors`.
-- A body that skips itself with `test.skip(...)` after a soft failure still
-  fails: the soft failures are the attempt's error, and the skip reason is
-  kept in the attempt's `skip`.
-- A soft `toMatchSchema` returns the schema's output when the value matches
-  and `undefined` after a kept failure, and its type says so.
-
-<Note>
-Outside a test body there is nothing to keep a failure for, so `expect.soft`
-throws at once like `expect`: in a standalone script, and in an `afterEach`
-hook, which runs after the soft failures have been settled. There is no
-`expect.soft.poll`; `expect.poll` has its own timeout to fail on.
-</Note>
-
-## Polling a value
-
-`expect.poll(read)` re-reads a value until a matcher passes. Use it to wait
-for an API response or saved data after an app action.
-
-```ts
-await agent.act('create a test named "AI checkout regression" described as {description}', {
-  params: { description },
-});
-await expect
-  .poll(() => getTest(workspace).then((row) => row?.title), { timeout: 15_000 })
-  .toBe('AI checkout regression');
-await expect.poll(async () => (await listTests(workspace)).length).toBeGreaterThan(1);
-await expect.poll(() => readStatus(), { message: 'the batch never finished' }).not.toBe('running');
-```
-
-| Option | Type | Default |
-| --- | --- | --- |
-| `timeout` | `number` | `config.assertionTimeout` during an attempt, 5000 ms outside one |
-| `interval` | `number` | `100` |
-| `message` | `string` | - |
-
-- `timeout` is the deadline in milliseconds, a finite number 0 or more. It is
-  capped by the test deadline in the body, or the hook's `cleanupTimeout`
-  during `afterEach`.
-- `interval` is the pause between reads in milliseconds, a finite number
-  above 0.
-- `message` is an extra line in the timeout error, after the matcher line.
-- Any other `timeout` or `interval` is `INVALID_CONFIG` before the first
-  read.
-
-Every value matcher is available, returning a promise.
-
-- Each sample calls `read` and runs the matcher. A matcher failure or a
-  `read` that throws is one failing sample; a `read` that hangs is cut at the
-  deadline.
-- `toMatchSchema` resolves to the schema's output for the passing read.
-- When the attempt is cancelled, the loop stops with `CANCELLED`. At the
-  attempt's deadline it stops with `ASSERTION_FAILED`, naming the deadline.
-  A `read` in flight is abandoned, not stopped: work it started can go on.
-- `expect.poll` is not recorded as a report step; a timeout surfaces only as
-  the test's failure.
-
-At the deadline it throws `ASSERTION_FAILED` naming the matcher, then
-`message` when given, then the last sample: the last matcher failure, the
-last `read` error, or `no read completed`.
-
-```text
-expect.poll(...).not.toBe(...) timed out after 5000 ms
-the batch never finished
-last: expected "running" not to be "running"
-```
-
-| Throws | When |
-| --- | --- |
-| `ASSERTION_FAILED` | The deadline passed without a passing sample |
-| `INVALID_CONFIG` | `timeout` or `interval` out of range |
-| `CANCELLED` | The attempt was cancelled or timed out |
-| `STEP_NOT_AWAITED` | The phase that started the poll returned while it still ran |
-| `HOOK_FAILED` | A `beforeAll` or `afterAll` hook returned while its poll still ran |
-
-<Note>
-Await every poll. A poll belongs to the phase that started it: the test body
-(with its fixtures and `beforeEach` hooks), one `afterEach` hook or fixture
-teardown, or one `beforeAll` or `afterAll` hook. When that phase returns
-while the poll still runs, the poll is cancelled and the phase fails with
-`STEP_NOT_AWAITED` at the line of the call, whether or not the poll would
-have passed. A body that threw keeps its own error and records this one
-under `secondaryErrors`, and a suite hook reports it as `HOOK_FAILED`.
-</Note>
-
-A poll never fails a later test: a poll started by work its phase left
-running, such as a body past its timeout, is cancelled before its first
-read.
 
 ## Types
 

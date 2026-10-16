@@ -43,7 +43,9 @@ test('General opens in dark mode', async ({ app, device, screen }) => {
 - The package includes a compatible version of `agent-device`; no separate
   installation is needed.
 
-## Engine
+## Reference
+
+### Engine
 
 `mobile(options)` creates an engine for one platform. Create one for each
 platform you test, and use `platforms: ['ios']` or `platforms: ['android']`
@@ -97,7 +99,7 @@ Every optional value also accepts `undefined`, so values read straight from
 | `INVALID_CONFIG` | An option `mobile()` does not take. The message names the nearest known option when it is a likely typo, and every option otherwise. `mobile({ app })` and the other old app options are unknown keys. |
 | `INVALID_CONFIG` | `settle` or `transition` is not a non-negative integer of milliseconds (`settle` may also be `false`). |
 
-### `platform`
+#### `platform`
 
 The platform the target's device runs.
 
@@ -107,7 +109,7 @@ mobile({ platform: 'android' });
 
 - `'ios'` or `'android'`. Required.
 
-### `device` option
+#### `device` option
 
 The device or devices to drive, or a provider that leases hosted ones.
 
@@ -147,7 +149,7 @@ export default {
 } satisfies E2EConfig;
 ```
 
-### `session`
+#### `session`
 
 The agent-device session name, before the worker slot.
 
@@ -163,7 +165,7 @@ One run per session at a time: concurrent runs on the same session
 interleave taps.
 </Note>
 
-### `snapshot`
+#### `snapshot`
 
 What an observation captures.
 
@@ -175,7 +177,7 @@ mobile({ platform: 'android', snapshot: 'interactive' }); // default: 'full'
 - `'interactive'` keeps only actionable nodes and is cheaper on screens with
   long lists.
 
-### `settle`
+#### `settle`
 
 The UI stability window after a tap, fill, screen scroll, or back, in
 milliseconds.
@@ -188,7 +190,7 @@ mobile({ platform: 'ios', settle: 300 }); // default: 150
 - `0` keeps only the first re-observation.
 - `false` skips the wait.
 
-### `transition`
+#### `transition`
 
 The wait before acting on a control that just appeared or moved, in
 milliseconds.
@@ -206,7 +208,7 @@ mobile({ platform: 'ios', transition: 800 }); // default: 500
 - `back`, `home`, `alert`, `dismissKeyboard`, `setOrientation`, and `fold` on
   [`device`](#device) count as actions for this budget the way a tap does.
 
-### `videoTouches`
+#### `videoTouches`
 
 Whether video recordings draw agent-device's touch indicator where a test
 tapped.
@@ -219,7 +221,7 @@ mobile({ platform: 'ios', videoTouches: false }); // default: true
   recording stops. On a hosted daemon such as EAS Simulators', that drawing
   can outlast `cleanupTimeout`.
 
-### The app under test
+#### The app under test
 
 The app is the target's `app`: `bundleId`, `appPath`, `launchArguments`,
 `permissions`, `identity`, and `environment` are documented under
@@ -249,7 +251,7 @@ export default {
 | --- | --- |
 | `INVALID_CONFIG` | At config load: no `app.bundleId` and no `app.appPath`; an `app.url` (not supported yet); a link in `bundleId` (a test opens one with `device.openLink`); an unknown permission name. |
 
-### Launch arguments and permissions
+#### Launch arguments and permissions
 
 `app.launchArguments` and `app.permissions` ride every fresh launch of the
 pinned app: `app.open()`, `app.restart()`, and `app.clearState()`, which
@@ -289,7 +291,7 @@ export default {
 | `INVALID_CONFIG` | In `app.permissions`: a permission name outside `DevicePermission` (naming the nearest one when it is a likely typo), or a state other than `grant`, `deny`, or `reset`. Fails before any device command. |
 | `INVALID_ARGUMENT` | The same, in `device.openApp`. |
 
-### Boot and prepare
+#### Boot and prepare
 
 Devices boot in `prepare`, once per run and before the run's clock starts,
 so a cold boot on CI is never charged against `launchTimeout`.
@@ -312,7 +314,7 @@ agent-device commands take no abort signal, so a timed-out command keeps
 running on the device. The next attempt waits for it to settle.
 </Note>
 
-### Capabilities
+#### Capabilities
 
 | Contract member | On a device |
 | --- | --- |
@@ -327,28 +329,7 @@ running on the device. The next attempt waits for it to settle.
 | `location` | `<bundle id> / <screen title>`, the replay cache's anchor. The title is the navigation bar's on iOS and the toolbar's on Android. |
 | `state` | Not declared. `test.setup` and `session:` are unavailable. |
 
-## Replay cache on a device
-
-The replay cache anchors on the [`location`](#capabilities) a device reports,
-`<bundle id> / <screen title>`. A step recorded on
-`com.apple.Preferences / General` replays only when Settings is on General
-again.
-
-```ts
-await app.open();
-await screen.getByText('General').tap();
-await agent.act('Open About and read the iOS version');
-```
-
-- A mutating project-tool call such as `open_app` ends a replay.
-- Declare `app.bundleId` and call `app.open()` first, so steps start on the
-  same screen.
-- Switch apps through the `device` fixture between steps rather than inside
-  one.
-- A step recorded after [`device.openLink`](#openlink) replays when the link
-  lands on the same screen again.
-
-## Device
+### Device
 
 The `device` fixture is deterministic device management. A test calls it
 directly to arrange or assert device state.
@@ -402,7 +383,7 @@ action lands on it. The full declaration is under [Types](#types).
 | `UNSUPPORTED_CAPABILITY` | The platform cannot run the command. |
 | `ENGINE_FAILURE` | Anything else, with agent-device's message. A timeout the device itself reports (a boot, the runner connecting) keeps its text and hint there, and a busy or wedged iOS automation runner names itself and the recovery (see [Troubleshooting](/mobile#troubleshooting)). |
 
-### `locator`
+#### `locator`
 
 A locator from an agent-device selector, for platform-specific nodes that
 `screen` queries cannot express.
@@ -433,7 +414,7 @@ matches several nodes fails, where an agent-device action skips an ambiguous
 `||` alternative.
 </Note>
 
-### `setNetwork`
+#### `setNetwork`
 
 Switches an Android device's Wi-Fi.
 
@@ -451,7 +432,7 @@ await device.setNetwork('online');
 | --- | --- |
 | `UNSUPPORTED_CAPABILITY` | `offline` on iOS: a simulator shares the Mac's network and simctl can only repaint its status bar. |
 
-### `setAirplaneMode`
+#### `setAirplaneMode`
 
 Switches an Android device's airplane mode, Wi-Fi and cellular together.
 
@@ -466,7 +447,7 @@ await device.setAirplaneMode(true);
 | --- | --- |
 | `UNSUPPORTED_CAPABILITY` | `true` on iOS. |
 
-### `setPermission`
+#### `setPermission`
 
 Grants, denies, or resets one permission for the pinned app, which need not
 be running.
@@ -481,7 +462,7 @@ await app.open();
 - A change terminates a running app on iOS, a revoke one on Android, so it
   goes before the `app.open()` a test starts with.
 
-### `setLocation`
+#### `setLocation`
 
 Sets the simulated location.
 
@@ -491,7 +472,7 @@ await device.setLocation({ latitude: 52.23, longitude: 21.01 });
 
 - On Android it switches location services on first.
 
-### `clearLocation`
+#### `clearLocation`
 
 Turns simulated location off.
 
@@ -501,7 +482,7 @@ await device.clearLocation();
 
 - On Android that is location services off, until the next `setLocation`.
 
-### `setAppearance`
+#### `setAppearance`
 
 Sets the system appearance.
 
@@ -511,7 +492,7 @@ await device.setAppearance('dark');
 
 - `'light'` or `'dark'`.
 
-### `setOrientation`
+#### `setOrientation`
 
 Rotates the device.
 
@@ -522,7 +503,7 @@ await device.setOrientation('landscape-left');
 - `'portrait'`, `'portrait-upside-down'`, `'landscape-left'`, or
   `'landscape-right'`.
 
-### `fold`
+#### `fold`
 
 Puts a foldable simulator or emulator in a hinge pose.
 
@@ -547,7 +528,7 @@ await device.fold('half-open');
 | --- | --- |
 | `UNSUPPORTED_CAPABILITY` | The device has no hinge. |
 
-### `setBiometrics`
+#### `setBiometrics`
 
 Simulates one biometric attempt on the open app.
 
@@ -558,7 +539,7 @@ await device.setBiometrics('faceid', 'nonmatch');
 - `sensor` is `'faceid'`, `'touchid'`, or `'fingerprint'`; `result` is
   `'match'` or `'nonmatch'`.
 
-### `enrollBiometrics`
+#### `enrollBiometrics`
 
 Enrolls or unenrolls the simulator's Face ID or Touch ID.
 
@@ -568,7 +549,7 @@ await device.enrollBiometrics('touchid', true);
 
 - `sensor` is `'faceid'` or `'touchid'`.
 
-### `installApp`
+#### `installApp`
 
 Installs a build from inside a test or a fixture: the run's build once per
 device, or another build for an upgrade path.
@@ -595,7 +576,7 @@ await device.openApp(app);
 | --- | --- |
 | `ENGINE_FAILURE` | agent-device reported no id and no `app` was passed, instead of a file path posing as an id. See [Troubleshooting](/mobile#troubleshooting). |
 
-### `openApp`
+#### `openApp`
 
 Brings an app to the foreground by bundle id, package, or display name
 (`Settings`).
@@ -618,7 +599,7 @@ await device.openApp('com.example.app', { relaunch: true, permissions: { camera:
 | `POLICY_DENIED` | A `file:`, `data:`, `javascript:`, `view-source:`, `blob:`, or `filesystem:` link. |
 | `INVALID_ARGUMENT` | Any other link, with a message pointing at `openLink`; or an invalid permission name or state (see [Launch arguments and permissions](#launch-arguments-and-permissions)). |
 
-### `openLink`
+#### `openLink`
 
 Opens a deep link (`myapp://orders/42`) or a web link (`https://...`) into
 `app` (default: the pinned app), for magic-link sign-in and deep-link routes.
@@ -649,7 +630,7 @@ await expect(screen.getByText('Order #42')).toBeVisible();
 | `INVALID_ARGUMENT` | No app on iOS: an open bound to none leaves no app session to observe. |
 | `INVALID_ARGUMENT` | A string that does not parse as an absolute URL. The message names no part of the input, which may carry a magic-link token in its query, path, or userinfo. |
 
-### `closeApp`
+#### `closeApp`
 
 Terminates the app the session is on and ends the session.
 
@@ -662,7 +643,7 @@ await device.openApp('com.example.app'); // launches fresh, on its first screen
 - Until then the screen is unobservable: a screen query or `foregroundApp`
   in between is `APP_NOT_OPEN`.
 
-### `clearKeychain`
+#### `clearKeychain`
 
 Resets the simulator's keychain, which `app.clearState()` leaves alone (a
 session token, a Firebase sign-in).
@@ -680,7 +661,7 @@ await app.open(); // see it signed out
 | --- | --- |
 | `UNSUPPORTED_CAPABILITY` | On Android, before any device command. |
 
-### `foregroundApp`
+#### `foregroundApp`
 
 The app the session is on.
 
@@ -697,7 +678,7 @@ const { name, bundleId } = await device.foregroundApp();
 | --- | --- |
 | `APP_NOT_OPEN` | `closeApp` ended the session. |
 
-### `home`
+#### `home`
 
 Sends the device to its home screen.
 
@@ -705,7 +686,7 @@ Sends the device to its home screen.
 await device.home();
 ```
 
-### `back`
+#### `back`
 
 Navigates back once (in-app back).
 
@@ -713,7 +694,7 @@ Navigates back once (in-app back).
 await device.back();
 ```
 
-### `alert`
+#### `alert`
 
 Accepts or dismisses the visible system alert.
 
@@ -721,7 +702,7 @@ Accepts or dismisses the visible system alert.
 await device.alert('accept');
 ```
 
-### `dismissKeyboard`
+#### `dismissKeyboard`
 
 Dismisses the soft keyboard.
 
@@ -740,7 +721,7 @@ await device.dismissKeyboard();
 | --- | --- |
 | `UNSUPPORTED_CAPABILITY` | The keyboard outlives both drags. The message names the alternatives: the app's own Done or close control, or pressing Enter on the field. |
 
-### `clipboard`
+#### `clipboard`
 
 Reads the clipboard.
 
@@ -748,7 +729,7 @@ Reads the clipboard.
 const copied = await device.clipboard();
 ```
 
-### `setClipboard`
+#### `setClipboard`
 
 Writes the clipboard.
 
@@ -756,7 +737,7 @@ Writes the clipboard.
 await device.setClipboard('SAVE20');
 ```
 
-## Agent tools
+### Agent tools
 
 `mobileTools(...engines)` from `@e2e-dev/mobile/tools` adds device tools to
 an agent's `tools`.
@@ -796,6 +777,27 @@ capture failure still stops the observation: device screenshot masks depend
 on secure-field bounds from that capture, so the engine cannot prove a
 fallback screenshot safe when those bounds are missing.
 </Note>
+
+## Replay cache on a device
+
+The replay cache anchors on the [`location`](#capabilities) a device reports,
+`<bundle id> / <screen title>`. A step recorded on
+`com.apple.Preferences / General` replays only when Settings is on General
+again.
+
+```ts
+await app.open();
+await screen.getByText('General').tap();
+await agent.act('Open About and read the iOS version');
+```
+
+- A mutating project-tool call such as `open_app` ends a replay.
+- Declare `app.bundleId` and call `app.open()` first, so steps start on the
+  same screen.
+- Switch apps through the `device` fixture between steps rather than inside
+  one.
+- A step recorded after [`device.openLink`](#openlink) replays when the link
+  lands on the same screen again.
 
 ## Types
 

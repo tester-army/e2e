@@ -32,7 +32,9 @@ const result = await run({
 console.log(result.status, result.report.run.summary);
 ```
 
-## Functions
+## Reference
+
+### Functions
 
 | Function | Returns |
 | --- | --- |
@@ -41,7 +43,7 @@ console.log(result.status, result.report.run.summary);
 | [`openHost`](#openhost) | `Promise<E2EHost<Fixtures>>` |
 | [`isE2EError`](#ise2eerror) | `boolean` |
 
-### `run`
+#### `run`
 
 `run(options?: RunOptions)` executes a complete suite. It finishes cleanup
 before resolving and never exits the caller's process.
@@ -51,7 +53,7 @@ const result = await run({ files: ['tests/signup.e2e.ts'] });
 process.exitCode = result.exitCode;
 ```
 
-#### Options
+##### Options
 
 | Option | Example | Type | Default |
 | --- | --- | --- | --- |
@@ -70,7 +72,7 @@ process.exitCode = result.exitCode;
   caller's process. A file config supports the configured worker processes.
 - Terminal progress is disabled; use `onEvent` for progress.
 
-#### Result
+##### Result
 
 | Field | Meaning |
 | --- | --- |
@@ -96,7 +98,7 @@ and errors in the report.
   Your application's logs and progress callback output stay under your
   control.
 
-### `list`
+#### `list`
 
 `list(options?: ListOptions)` collects and selects the way
 [`e2e list`](/reference/cli#e2e-list) does, and stops there. No app process,
@@ -118,7 +120,7 @@ for (const pair of pairs) {
 Each call imports the test files again, so a later `list()` in the same
 process sees an edit.
 
-#### Options
+##### Options
 
 | Option | Example | Type | Default |
 | --- | --- | --- | --- |
@@ -149,7 +151,7 @@ process sees an edit.
 - `output` is the results directory. `lastFailed` reads `report.json` there.
 - `env` is the environment the config resolves against.
 
-#### Result
+##### Result
 
 `ListResult` is `{ pairs, unmatched, targets }`.
 
@@ -174,7 +176,7 @@ process sees an edit.
 `e2e list` prints only `run` and `skip`. `list` returns `filtered` pairs too,
 each with `reason` (for example `title does not match --grep`).
 
-#### Errors
+##### Errors
 
 A failure is the same classified error `e2e list` exits with. Recognize one
 with [`isE2EError`](#ise2eerror) and branch on `error.code`.
@@ -197,7 +199,7 @@ try {
 | `UNKNOWN_TARGET` | A name in `targets` is not a configured target. |
 | The codes `run` records | The config is missing, the loader refused it, or collection failed. |
 
-### `openHost`
+#### `openHost`
 
 `openHost<Fixtures>(options?: OpenHostOptions)` prepares e2e for Playwright
 Test, Vitest, Jest, or your own harness, and returns a [host](#host).
@@ -219,7 +221,7 @@ await session.fixtures.app.open('/checkout');
   with fresh fixtures, a deadline, steps, and artifacts.
 - If opening fails, e2e tears down what started before throwing the error.
 
-#### Options
+##### Options
 
 | Option | Example | Type | Default |
 | --- | --- | --- | --- |
@@ -258,7 +260,7 @@ must use another instance.
 Opening failures are classified, redacted errors; raw engine causes are not
 exposed. Match them with [`isE2EError`](#ise2eerror) and `error.code`.
 
-### `isE2EError`
+#### `isE2EError`
 
 Recognizes a classified e2e error. Branch on its `error.code`. It is a type
 guard.
@@ -271,7 +273,7 @@ if (isE2EError(error) && error.code === 'NO_TESTS') process.exitCode = 0;
 `isE2EError` instead. `ConfigurationError` and `isE2EError` are both exported
 from `e2e/runner`.
 
-## Host
+### Host
 
 `E2EHost<Fixtures>` is what [`openHost`](#openhost) returns.
 
@@ -297,7 +299,7 @@ across different hosts and whether the config is a file or a value.
 | --- | --- |
 | `WORKER_PROTOCOL` | An overlapping hosted attempt, or a call on a closed host. |
 
-### `host.openSession`
+#### `host.openSession`
 
 `host.openSession(options: OpenSessionOptions)` opens a fresh
 [session](#session) on this host's target. A session is one test attempt with
@@ -313,7 +315,7 @@ const session = await host.openSession({
 });
 ```
 
-#### Options
+##### Options
 
 | Option | Example | Type | Default |
 | --- | --- | --- | --- |
@@ -343,7 +345,7 @@ const session = await host.openSession({
 | `CANCELLED` | The session's or the host's `signal` aborted before or during opening. |
 | `WORKER_PROTOCOL` | Another hosted attempt is opening, live, or closing, or the host is closed. |
 
-### `host.close`
+#### `host.close`
 
 `host.close()` cancels any active or pending session, waits for it to close,
 then disposes the engine, stops app processes, and releases provisioning.
@@ -358,7 +360,7 @@ if (failures.length > 0) throw new AggregateError(failures, 'e2e host close fail
   it at scope exit and throws an `AggregateError` when closing reports
   failures.
 
-## Session
+### Session
 
 `E2ESession<Fixtures>` is what [`host.openSession`](#host-opensession) returns.
 
@@ -385,7 +387,7 @@ if (failures.length > 0) throw new AggregateError(failures, 'e2e host close fail
 - `tracePath` is the absolute path to `trace.md`; attach or read it after
   `close()` settles.
 
-### `session.close`
+#### `session.close`
 
 `session.close()` cancels remaining operations, ends the attempt, and writes
 its trace. It returns soft expectation, abandoned-operation (an unsettled
@@ -403,7 +405,7 @@ if (failures.length > 0) throw new AggregateError(failures, 'e2e session close f
   closes it at scope exit and throws an `AggregateError` of the returned
   failures.
 
-### Deadline and soft failures
+#### Deadline and soft failures
 
 `expect.soft` collects failures for the session's whole lifetime. Check
 `close()`'s result to fail the host runner's test.
@@ -418,7 +420,7 @@ if (failures.length > 0) throw new AggregateError(failures, 'e2e session close f
 - Either way the session's outcome is timed out and `close()` returns the
   timeout. Later operations fail with `TEST_TIMEOUT`; close the session.
 
-### Artifacts
+#### Artifacts
 
 Artifacts live under `<output>/results/host/<resultSegment>/`, with
 `trace.md` written at close through the existing redacted report-formatting

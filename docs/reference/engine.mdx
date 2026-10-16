@@ -54,7 +54,9 @@ export default {
 } satisfies E2EConfig;
 ```
 
-## defineEngine
+## Reference
+
+### defineEngine
 
 Validates an engine spec, freezes it, computes its
 [capabilities](#capabilities), and returns a branded handle.
@@ -102,7 +104,7 @@ contract. An engine published before their removal that declares them still
 passes validation; the runner never calls them.
 </Note>
 
-## Engine
+### Engine
 
 The body of one target. Every member but `name`, `version`, and
 `spiVersion` is optional; the members an engine implements decide its
@@ -296,7 +298,7 @@ export interface Engine {
 }
 ```
 
-### `OperationContext`
+#### `OperationContext`
 
 What every engine call carries: the budget, the ids, and who is acting.
 
@@ -325,7 +327,7 @@ export interface OperationContext {
 }
 ```
 
-## Capabilities
+### Capabilities
 
 The members an engine implements set its capabilities. A `screen`,
 `Locator`, or `app` call that needs a missing one fails with
@@ -353,7 +355,7 @@ member. Three gaps end differently:
 | `validateApp` | - | - | A config-load check of the target's `app`. |
 | `session` | - | - | The `app` steering methods and the agent's `navigate` and `back` verbs. |
 
-### Agent verbs
+#### Agent verbs
 
 The agent offers the model only the verbs the engine's declarations unlock.
 An undeclared verb is absent from the toolset.
@@ -389,7 +391,7 @@ An undeclared verb is absent from the toolset.
   go through `performAt` (the `tap` and `hover` pointer kinds), and
   `type_at` and `press_at` fall back to `keyboard`.
 
-### Test APIs
+#### Test APIs
 
 The test-facing APIs each engine member backs. A `screen` or `Locator`
 method for an undeclared kind fails with `UNSUPPORTED_CAPABILITY` before
@@ -416,7 +418,7 @@ reaching the engine.
 Without `tapModifiers`, a call with `modifiers` fails with
 `UNSUPPORTED_CAPABILITY`.
 
-### `engine.capabilities`
+#### `engine.capabilities`
 
 The computed `ReadonlySet` of capability names. Selection, the report, and
 `UNSUPPORTED_CAPABILITY` messages read it.
@@ -450,7 +452,7 @@ export type EngineCapability =
   | (string & {});
 ```
 
-### Keyboard
+#### Keyboard
 
 Input to whatever holds focus, with no node behind it: for a field drawn on a
 canvas or flattened out of a platform's tree.
@@ -490,7 +492,7 @@ export interface EngineKeyboard {
 }
 ```
 
-## Lifecycle
+### Lifecycle
 
 The hooks the runner calls around workers and attempts. Every hook is
 optional. `launchTimeout` and `cleanupTimeout` come from the
@@ -506,7 +508,7 @@ optional. `launchTimeout` and `cleanupTimeout` come from the
 | [`endAttempt(context)`](#endattempt) | After each attempt |
 | [`dispose(context)`](#dispose) | Worker shutdown |
 
-### `prepare`
+#### `prepare`
 
 Runs once per target in the runner process, after collection and before
 workers, app commands, and the run's clock start. Download dependencies or
@@ -601,7 +603,7 @@ export interface EnginePrepareInfo {
 }
 ```
 
-### `finish`
+#### `finish`
 
 Runs once per run and target in the runner process, after every worker of
 the target is gone, on every exit path, whenever `prepare` was called.
@@ -631,7 +633,7 @@ export interface EngineFinishInfo extends EngineCleanupContext {
 }
 ```
 
-### `init`
+#### `init`
 
 Runs once per worker, before the first step. Boot devices here, not in a step
 budget.
@@ -699,7 +701,7 @@ export interface EngineInitInfo {
 }
 ```
 
-### `startAttempt`
+#### `startAttempt`
 
 Runs before each attempt. An engine that gives each test a fresh surface (a
 fresh isolated context per test, a reset device) sets it up here and tears it
@@ -808,7 +810,7 @@ export interface ResolveSecretOptions {
 }
 ```
 
-### `settleAttempt`
+#### `settleAttempt`
 
 Runs after the body has settled, and again after teardown, before the
 verdict. It reports a failure that landed on a path no step awaited: a
@@ -828,7 +830,7 @@ async settleAttempt() {
   with it the way a step would; an error already classified keeps its code.
 - Report each failure once.
 
-### `endAttempt`
+#### `endAttempt`
 
 Runs after each attempt, within the cleanup budget, and tears down what
 `startAttempt` set up.
@@ -842,7 +844,7 @@ async endAttempt(context) {
 It must be idempotent, and safe to call after a failed `startAttempt`. A
 failure marks cleanup failed; the test keeps its status.
 
-### `dispose`
+#### `dispose`
 
 Shuts the worker down, within the cleanup budget. It runs whether or not
 `init` ran, so it must tolerate a cold engine. A failure is a run error.
@@ -870,7 +872,7 @@ export interface EngineCleanupContext {
 }
 ```
 
-## Observation
+### Observation
 
 `observe` returns one fresh semantic snapshot of the surface under test.
 
@@ -951,13 +953,13 @@ export interface EngineObserveOptions {
 }
 ```
 
-### Truncated trees
+#### Truncated trees
 
 Set `truncated` when a node limit or an inaccessible subtree leaves content
 out. The runner warns the model that the tree is incomplete and never treats
 a truncated observation as unchanged. Omit it for a complete tree.
 
-### Pixel fallback
+#### Pixel fallback
 
 When semantic capture times out, an engine may return masked pixels in place
 of the tree, but only when `pixelFallback` is true and it can prove
@@ -1000,7 +1002,7 @@ The runner validates this shape at the engine boundary:
 enforce these dependent requirements; the runner checks them at runtime.
 </Note>
 
-## Actions
+### Actions
 
 `perform` carries out one `LocatorAction` on a node; `performAt` carries out
 one `PointerAction` at a viewport point. An engine declares the kinds it
@@ -1028,7 +1030,7 @@ honors in `actions` and `pointerActions`.
 
 The grammar is closed. Anything beyond it is an agent-side `defineTool`.
 
-### Locator actions
+#### Locator actions
 
 The `swipe` kind on the observation's root node is the viewport swipe: the
 agent's `scroll` verb and `screen.swipe()` both arrive as
@@ -1107,7 +1109,7 @@ export const LOCATOR_ACTION_KINDS = [
 ] as const satisfies readonly LocatorActionKind[];
 ```
 
-### Pointer actions
+#### Pointer actions
 
 Pointer actions use viewport coordinates when no semantic node is available.
 Declare the supported kinds in `pointerActions`.
@@ -1151,7 +1153,7 @@ export const POINTER_ACTION_KINDS = [
 ] as const satisfies readonly PointerActionKind[];
 ```
 
-### Keys
+#### Keys
 
 The key grammar of `press`, shared by every engine so a test's key names are
 portable: zero or more modifiers and one key, joined by `+`.
@@ -1233,7 +1235,7 @@ export interface ParsedKey {
 export function parseKey(key: string): ParsedKey | undefined;
 ```
 
-## App
+### App
 
 The app under test is declared on the target (`targets: [{ engine, app }]`,
 see [the app under test](/reference/config#the-app-under-test)); an engine
@@ -1250,7 +1252,7 @@ its platform needs and refuse what it cannot drive.
 
 `CommandConfig` is exported from `e2e`, not `e2e/engine`.
 
-### `validateApp`
+#### `validateApp`
 
 Checks the declared app at config load, synchronously.
 
@@ -1292,7 +1294,7 @@ export interface EngineAppCheckInfo {
 export type AppPermissionState = 'grant' | 'deny' | 'reset';
 ```
 
-### `EngineAppInfo`
+#### `EngineAppInfo`
 
 The resolved app, as `EnginePrepareInfo.app` and `EngineInitInfo.app`: the
 site of the URL and the device fields as the target declared them. The URL
@@ -1329,7 +1331,7 @@ export interface EngineAppInfo {
 }
 ```
 
-## Session
+### Session
 
 Steering hooks behind the universal `app` fixture and the agent's `navigate`
 and `back` verbs. Node actions never live here; they are `perform`.
@@ -1389,7 +1391,7 @@ export interface EngineSession {
 }
 ```
 
-## Errors
+### Errors
 
 An engine throws `EngineError` with one code of a closed set. The runner maps
 each code to the error a test sees.
@@ -1405,7 +1407,7 @@ each code to the error a test sees.
 | `INVALID_STATE` | `APP_NOT_OPEN` | no |
 | `ENGINE_FAILURE`, any non-`EngineError` | infrastructure `ENGINE_FAILURE` | no |
 
-### `EngineError`
+#### `EngineError`
 
 ```ts
 throw new EngineError('NODE_STALE', `node ${ref.id} is gone`, { retryable: true });
@@ -1455,7 +1457,7 @@ export const RETRYABLE_ENGINE_ERROR_CODES: ReadonlySet<EngineErrorCode> = new Se
 ]);
 ```
 
-### Timeouts at a deadline
+#### Timeouts at a deadline
 
 An `OPERATION_TIMEOUT` on a locate or read that started with under 100 ms of
 a waiting call's deadline left, after one that completed, ends the wait
@@ -1469,7 +1471,7 @@ instead:
 A negated assertion passes there if its negation had held long enough by the
 time the read was cut off, as [`pollCondition`](#pollcondition) describes.
 
-### Runner error classes
+#### Runner error classes
 
 An `EngineError` a contributed fixture method throws is mapped by the table
 above, so a fixture over a session that ended reports `APP_NOT_OPEN` the way
@@ -1504,7 +1506,7 @@ export class InfrastructureError extends E2EError {
 }
 ```
 
-## Shared semantics
+### Shared semantics
 
 Helpers that keep behavior consistent across engines. Every engine
 reproduces these semantics; import them instead of carrying a copy.
@@ -1524,7 +1526,7 @@ reproduces these semantics; import them instead of carrying a copy.
 | [`isSecret`](#issecret) | `boolean` |
 | [`isProviderRecording`, `stopProviderRecording`](#provider-recordings) | `boolean`, `Promise<VideoSegment>` |
 
-### Text patterns
+#### Text patterns
 
 `TextPattern` matching for `locate` and text matchers.
 
@@ -1544,7 +1546,7 @@ describePattern(pattern); // '/total/i'
 | --- | --- |
 | `INVALID_ARGUMENT` | `toTextPattern` gets a `match` that is neither a string nor a `RegExp`. |
 
-### `resolveExpression`
+#### `resolveExpression`
 
 The reference `locate`. Resolves one `LocatorExpression` over a semantic
 tree, in document order.
@@ -1571,7 +1573,7 @@ async locate(expression) {
 - A `selector` expression needs the `selector` option.
 - A `frame` expression is `FRAME_NOT_FOUND`.
 
-### `urlMatches`
+#### `urlMatches`
 
 `toHaveURL`-style comparison of a current URL against an expected one.
 
@@ -1594,7 +1596,7 @@ urlMatches('https://shop.test/cart', '/cart', 'https://shop.test/'); // true
 | --- | --- |
 | `INVALID_ARGUMENT` | `expected` is neither a string nor a `RegExp`, as in `toTextPattern`. |
 
-### Site helpers
+#### Site helpers
 
 `siteOf` reads a hostname's registrable domain, the form
 `EngineAppInfo.site` takes. `sameSite` tells whether a URL is on a site: use
@@ -1605,7 +1607,7 @@ export function siteOf(hostname: string): string;
 export function sameSite(url: string | URL, site: string): boolean;
 ```
 
-### `pollCondition`
+#### `pollCondition`
 
 Assertion polling and the negation grace window.
 
@@ -1633,7 +1635,7 @@ await pollCondition({
 - A negation passes there if it had held long enough by the time that read
   was cut off.
 
-### `validateJsonValue`
+#### `validateJsonValue`
 
 Checks that a value is plain JSON.
 
@@ -1654,7 +1656,7 @@ validateJsonValue(result, 'kiosk.evaluate result', { maxDepth: 32 });
 | `INVALID_ARGUMENT` | A non-finite number, a cycle, an object that is not a plain object or array, or a function, symbol, bigint, or `undefined` inside. The message names `label`. |
 | `POLICY_DENIED` | A `Secret`, unless `rules.onSecret` throws its own. |
 
-### `rejectUnknownKeys`
+#### `rejectUnknownKeys`
 
 Throws for the first own key of `value` outside `keys`: the check the runner
 runs on its own config objects, for an engine factory's options.
@@ -1678,7 +1680,7 @@ rejectUnknownKeys('web()', options, ['browser', 'viewport']);
 - Pass `'INVALID_ARGUMENT'` as `code` for an object a test passes to a
   fixture method.
 
-### `rejectUnknownOptions`
+#### `rejectUnknownOptions`
 
 Refuses an option key a fixture method or matcher does not take, so a
 JavaScript caller's unsupported option fails instead of running on the
@@ -1702,7 +1704,7 @@ rejectUnknownOptions('kiosk.print', options, ['copies']);
   array is refused.
 - Non-enumerable own keys count as keys.
 
-### `obj`
+#### `obj`
 
 Drops `undefined`-valued keys, so a result built from optional inputs
 satisfies exact optional property types.
@@ -1711,7 +1713,7 @@ satisfies exact optional property types.
 obj({ a: 1, b: undefined, c: 3 }); // { a: 1, c: 3 }
 ```
 
-### Timing helpers
+#### Timing helpers
 
 ```ts
 export function raceAbort<T>(work: Promise<T> | (() => Promise<T>), signal: AbortSignal, label: string): Promise<T>;
@@ -1733,7 +1735,7 @@ await raceAbort(() => client.tap(ref.id), context.signal, 'kiosk tap');
 - `withinCleanupBudget` never rejects. It resolves when the promise settles,
   failures included, when `signal` aborts, or when `timeoutMs` passes.
 
-### `isSecret`
+#### `isSecret`
 
 Tells a `secrets.get()` handle from a string, for an option that takes
 either.
@@ -1744,7 +1746,7 @@ const password = isSecret(options.password)
   : options.password;
 ```
 
-## State
+### State
 
 Platform-neutral state capture and restore, behind `test.setup` sessions and
 the `session:` option. A setup test captures a snapshot; an ordinary test
@@ -1820,7 +1822,7 @@ export interface EngineStateCapability {
 }
 ```
 
-## Artifacts
+### Artifacts
 
 Evidence capture: screenshots under the attempt directory, and videos there
 or at a provider. Paths are relative to the attempt artifact directory the
@@ -1895,7 +1897,7 @@ export interface VideoLink {
 }
 ```
 
-### Videos
+#### Videos
 
 The runner calls `startVideo` only for an attempt whose
 [video mode](/reference/config#video) records.
@@ -1911,7 +1913,7 @@ The runner calls `startVideo` only for an attempt whose
 - The runner decides which recordings are kept and deletes a file an attempt
   does not keep.
 
-### Provider recordings
+#### Provider recordings
 
 An engine that leases its browser or device from a hosted service can let the
 service record the attempt in place of its own capture, the way
@@ -1995,7 +1997,7 @@ export function stopProviderRecording(
 ): Promise<VideoSegment>;
 ```
 
-### Redaction
+#### Redaction
 
 - Videos are unmasked and carry `redaction: 'incomplete'`.
 - A `download` an engine attaches is the app's bytes. When the session knows
@@ -2004,7 +2006,7 @@ export function stopProviderRecording(
 - Every other download keeps its bytes and carries
   `redaction: 'incomplete'`.
 
-## Contributed fixtures
+### Contributed fixtures
 
 An engine contributes named surfaces to the test fixtures through
 `fixtures`: a device fixture, a document fixture, anything. Each key becomes a
@@ -2123,7 +2125,7 @@ export interface EngineFixtureContext {
 }
 ```
 
-### Declaring operations
+#### Declaring operations
 
 `context.fixture(name, surface, operations)` declares which methods are
 recorded steps. Each operation takes:
@@ -2162,7 +2164,7 @@ export type FixtureOperations<T extends object> = {
 };
 ```
 
-### Expectations
+#### Expectations
 
 `expectable` attaches an expectation surface so `expect(fixture)` returns it.
 Declare matcher recording with `context.fixture('expect', matchers,
