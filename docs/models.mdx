@@ -193,6 +193,9 @@ When teammates hold different keys, choose the model by the variable that
 is set. Keep one agent name, so everyone replays the same recordings:
 
 ```ts title="Agent setup"
+import { anthropic } from '@ai-sdk/anthropic';
+import { gateway } from 'ai';
+
 const agent = {
   model: process.env.ANTHROPIC_API_KEY
     ? anthropic('claude-sonnet-5-5')
