@@ -251,6 +251,7 @@ them.
 | --- | --- | --- |
 | A model is a string instead of an AI SDK instance | `INVALID_CONFIG` | Construct it, for example `gateway('openai/gpt-6-luna-fast')`. |
 | The built-in agent has no model | `MODEL_UNAVAILABLE` | Set `agents.<name>.model`. |
+| GitHub Copilot doesn't serve the model to your account | `MODEL_UNAVAILABLE` | Pick an id your plan serves. See [Pick a model](/subscriptions#pick-a-model). |
 | A provider that reads its key at config load has none | `CONFIG_LOAD_FAILED` | Set the key. |
 | Authentication fails on the first model call | `MODEL_PROVIDER_FAILED` | Check the provider's API key, or run `npx e2e login` for a subscription. For Vercel OIDC the message names only `AI_GATEWAY_API_KEY`. Check `vercel login` and `.vercel/project.json`. |
 | The `ai` package is missing | `MODEL_UNAVAILABLE` | Install `ai`. See [Pick a gateway or a provider](#pick-a-gateway-or-a-provider). |

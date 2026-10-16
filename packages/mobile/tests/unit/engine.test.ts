@@ -12,10 +12,11 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppError } from 'agent-device';
 import { decodePng, encodePng } from '../helpers/png.ts';
-import type { EngineFixtureContext, EngineSnapshot, FixtureOperations, OperationContext, SemanticNode } from 'e2e/engine';
+import type { EngineFixtureContext, EngineSnapshot, FixtureOperations, LocatorExpression, OperationContext, SemanticNode } from 'e2e/engine';
 import type { Device } from '../../src/device.ts';
+import type { RawNode } from '../../src/nodes.ts';
 import { mobile } from '../../src/engine.ts';
-import { SETTINGS_NODES, SETTINGS_SNAPSHOT } from '../helpers/fake-client.ts';
+import { ANDROID_APP_PACKAGE, ANDROID_ID_SNAPSHOT, SETTINGS_NODES, SETTINGS_SNAPSHOT } from '../helpers/fake-client.ts';
 import { boot, harness, poolVariableIn, PROJECT_ROOT, type Harness } from '../helpers/harness.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
@@ -65,6 +66,11 @@ function named(root: SemanticNode, name: string): SemanticNode {
   const found = [...walk(root)].find((node) => node.name === name);
   if (found === undefined) throw new Error(`no node named ${name}`);
   return found;
+}
+
+/** A whole-id test-id query, as `screen.getByTestId(value)` builds it. */
+function testIdQuery(value: string): LocatorExpression {
+  return { kind: 'query', query: { kind: 'testId', value: { kind: 'string', value, exact: true } } };
 }
 
 /** Every node under the root, the root excluded: the device's own tree. */
@@ -949,6 +955,28 @@ describe('location', () => {
       { ref: '@e3', settle: true, settleQuietMs: 150 },
       { ref: '@e4', settle: true, settleQuietMs: 150 },
     ]);
+  });
+
+  it('finds an Android view by its id without its package', async () => {
+    const h = harness({ platform: 'android' });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => ANDROID_ID_SNAPSHOT);
+    const [greet] = await h.engine.locate!(testIdQuery('greet'), operation());
+    expect(greet?.testId).toBe(`${ANDROID_APP_PACKAGE}:id/greet`);
+    expect(await h.engine.locate!(testIdQuery('content'), operation())).toEqual([]);
+  });
+
+  it('finds a view whose resource package is not the app package, as in an applicationIdSuffix build', async () => {
+    const h = harness({ platform: 'android' });
+    await openAttempt(h);
+    // AGP renames the manifest package to com.foo.debug; the resource table keeps the namespace com.foo.
+    const nodes: readonly RawNode[] = [
+      { ref: '@e1', index: 0, depth: 0, type: 'android.widget.FrameLayout', identifier: 'android:id/content', rect: { x: 0, y: 0, width: 390, height: 844 } },
+      { ref: '@e2', index: 1, parentIndex: 0, depth: 1, type: 'android.widget.Button', identifier: 'com.foo:id/greet', label: 'Greet', rect: { x: 0, y: 100, width: 390, height: 44 } },
+    ];
+    h.fake.respond('capture.snapshot', () => ({ nodes, appBundleId: 'com.foo.debug' }));
+    const [greet] = await h.engine.locate!(testIdQuery('greet'), operation());
+    expect(greet?.testId).toBe('com.foo:id/greet');
   });
 });
 

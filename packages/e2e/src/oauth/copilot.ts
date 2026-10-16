@@ -12,8 +12,9 @@ import type { LanguageModelV4 } from '@ai-sdk/provider';
 import { OAuthError } from './errors.ts';
 import { createOAuthFetch } from './fetch.ts';
 import { USER_AGENT } from '../internal/client-identity.ts';
+import { markUnservedModel } from '../internal/unserved-model.ts';
 import { loginHint } from './providers.ts';
-import { COPILOT_API_URL, copilotProtocolFor, createCopilotProvider, type CopilotProtocol } from './providers/github-copilot.ts';
+import { COPILOT_API_URL, copilotProtocolFor, copilotRefusal, createCopilotProvider, isCopilotRefusal, type CopilotProtocol } from './providers/github-copilot.ts';
 import { withoutServerStorage } from './responses.ts';
 import { defaultCredentialStore } from './store.ts';
 import type { FetchFunction } from './types.ts';
@@ -39,6 +40,7 @@ export function copilot(modelId: string): LanguageModelV4 {
     chat,
     () => responsesModel(modelId, fetch),
     () => copilotProtocolFor(modelId, fetch, AbortSignal.timeout(LISTING_TIMEOUT_MS)),
+    modelId,
   );
 }
 
@@ -66,11 +68,13 @@ async function responsesModel(modelId: string, fetch: FetchFunction): Promise<La
  * own timeout, so a caller that gives up never fails the others. Only a
  * listing that was read is remembered: when it could not be read, that call
  * goes over chat, the endpoint most models use, and the next call asks again.
+ * A call Copilot refuses with `model_not_supported` is marked for the runner.
  */
 function protocolDelegate(
   chat: LanguageModelV4,
   responses: () => Promise<LanguageModelV4>,
   lookup: () => Promise<CopilotProtocol | undefined>,
+  modelId: string,
 ): LanguageModelV4 {
   let resolved: LanguageModelV4 | undefined;
   let pending: Promise<LanguageModelV4> | undefined;
@@ -86,6 +90,8 @@ function protocolDelegate(
     });
     return pending;
   };
+  /** The failure as the runner reads it: a refusal of the model to this account carries the explanation. */
+  const refused = (cause: unknown): unknown => (isCopilotRefusal(cause) ? markUnservedModel(cause, copilotRefusal(modelId)) : cause);
   return {
     specificationVersion: chat.specificationVersion,
     get provider() {
@@ -97,8 +103,20 @@ function protocolDelegate(
     get supportedUrls() {
       return resolved?.supportedUrls ?? chat.supportedUrls;
     },
-    doGenerate: async (options) => (await untilAborted(settle(), options.abortSignal)).doGenerate(options),
-    doStream: async (options) => (await untilAborted(settle(), options.abortSignal)).doStream(options),
+    doGenerate: async (options) => {
+      try {
+        return await (await untilAborted(settle(), options.abortSignal)).doGenerate(options);
+      } catch (cause) {
+        throw refused(cause);
+      }
+    },
+    doStream: async (options) => {
+      try {
+        return await (await untilAborted(settle(), options.abortSignal)).doStream(options);
+      } catch (cause) {
+        throw refused(cause);
+      }
+    },
   };
 }
 
@@ -112,3 +130,4 @@ function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | undefined): 
     promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
   });
 }
+

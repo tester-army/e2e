@@ -23,6 +23,7 @@
 }
 
 :root {
+  --e2e-paper: rgb(255 255 255);
   --e2e-ink: rgb(23 23 23);
   --e2e-muted: rgb(115 115 115);
   --e2e-hairline: rgb(232 232 232);
@@ -32,6 +33,7 @@
 }
 
 .dark {
+  --e2e-paper: rgb(10 10 10);
   --e2e-ink: rgb(250 250 250);
   --e2e-muted: rgb(163 163 163);
   --e2e-hairline: rgb(78 78 78);
@@ -208,10 +210,76 @@ a[href*='utm_campaign=docs_sidebar_banner'] {
     #table-of-contents {
       anchor-name: --e2e-table-of-contents;
     }
+
+    /* Room for the card, its gap, and a margin; change it with the card. */
+    @media (height >= 40rem) {
+      #table-of-contents-layout {
+        max-height: calc(100% - 13rem);
+      }
+    }
   }
 
   html:not(:has(#table-of-contents)) a[href*='utm_campaign=docs_sidebar_banner'] {
     display: none;
+  }
+
+  /* A short window keeps the table of contents and drops the card. */
+  @media (height < 40rem) {
+    a[href*='utm_campaign=docs_sidebar_banner'] {
+      display: none;
+    }
+  }
+
+  /* Keeps a focused or active entry clear of the heading (2.5rem padding,
+     1.5rem line, 1rem fade) and of the bottom fade. */
+  #table-of-contents [data-component-part='scroll-area-viewport'] {
+    scroll-padding-block: 5rem 2rem;
+    mask-image: linear-gradient(
+      to bottom,
+      black calc(100% - min(var(--scroll-area-fade-size), var(--scroll-area-overflow-y-end, 0px))),
+      transparent
+    );
+  }
+
+  /* The heading stays put; its negative margin covers the viewport's top
+     padding, so entries scroll under it, not above it. */
+  #table-of-contents nav > h2 {
+    position: sticky;
+    top: -2.5rem;
+    z-index: 1;
+    margin-top: -2.5rem;
+    padding-top: 2.5rem;
+    background: var(--e2e-paper);
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 100% 0 auto;
+      height: 1rem;
+      background: linear-gradient(var(--e2e-paper), transparent);
+      opacity: 0;
+      transition: opacity 150ms;
+      pointer-events: none;
+    }
+  }
+
+  #table-of-contents [data-overflow-y-start] nav > h2::after {
+    opacity: 1;
+  }
+
+  /* The list's focus ring is drawn over it, where the heading and the fade
+     cannot hide it. */
+  #table-of-contents [data-component-part='scroll-area-viewport']:focus-visible {
+    outline: none;
+  }
+
+  #table-of-contents:has(> [data-component-part='scroll-area-viewport']:focus-visible)::after {
+    content: '';
+    position: absolute;
+    inset: calc(2.5rem - 6px) -6px 0;
+    z-index: 1;
+    border: 2px solid var(--e2e-ink);
+    pointer-events: none;
   }
 }
 

@@ -17,6 +17,7 @@ import { sleep } from '../internal/time.ts';
 import type { StepRunOptions } from '../run/steps.ts';
 import type { Agent, StandardSchemaV1, VisionMode } from '../types.ts';
 import { AgentError, isAgentError, toAgentError } from './error.ts';
+import { isUnservedModelError, unservedModelError } from './model/sdk.ts';
 import { resolveBoundedBudget, resolveTimeout } from './call-options.ts';
 import { runActStep, runAssertStep } from './act.ts';
 import { observationShape, type AgentObservation } from './observation.ts';
@@ -111,7 +112,9 @@ export function createAgentFixture(runtime: AgentContext): Agent {
         try {
           return await body(invocation);
         } catch (cause) {
-          throw toAgentError(cause);
+          const error = unservedModelError(cause) ?? toAgentError(cause);
+          if (isUnservedModelError(error)) runtime.reportUnservedModel(error);
+          throw error;
         } finally {
           invocation.finish();
         }

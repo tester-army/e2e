@@ -82,3 +82,28 @@ export const SETTINGS_SNAPSHOT = {
   appBundleId: 'com.apple.Preferences',
   truncated: false,
 };
+
+/** The package of the app in `ANDROID_ID_SNAPSHOT`. */
+export const ANDROID_APP_PACKAGE = 'dev.e2e.examples.maui';
+
+/**
+ * An Android screen whose resource ids carry package prefixes, as UIAutomator
+ * reports them: the framework's content frame, the app's own views (the way a
+ * .NET MAUI AutomationId or a native `android:id` reads), a view another
+ * package owns, and one bare id the app set itself (React Native's `testID`).
+ */
+export const ANDROID_ID_NODES: readonly RawNode[] = [
+  { ref: '@e1', index: 0, depth: 0, type: 'android.widget.FrameLayout', identifier: 'android:id/content', rect: { x: 0, y: 0, width: 390, height: 844 } },
+  { ref: '@e2', index: 1, parentIndex: 0, depth: 1, type: 'android.view.ViewGroup', identifier: `${ANDROID_APP_PACKAGE}:id/form`, rect: rect(100, 300) },
+  { ref: '@e3', index: 2, parentIndex: 1, depth: 2, type: 'android.widget.EditText', identifier: `${ANDROID_APP_PACKAGE}:id/name`, label: 'Ada Lovelace', hintShowing: true, rect: rect(120) },
+  { ref: '@e4', index: 3, parentIndex: 1, depth: 2, type: 'android.widget.Button', identifier: `${ANDROID_APP_PACKAGE}:id/greet`, label: 'Greet', rect: rect(180) },
+  { ref: '@e5', index: 4, parentIndex: 0, depth: 1, type: 'android.widget.TextView', identifier: 'com.example.other:id/banner', label: 'Elsewhere', rect: rect(420) },
+  { ref: '@e6', index: 5, parentIndex: 0, depth: 1, type: 'android.widget.TextView', identifier: 'greeting', label: 'Hello, Ada!', rect: rect(480) },
+];
+
+export const ANDROID_ID_SNAPSHOT = {
+  nodes: ANDROID_ID_NODES,
+  appName: 'with-maui',
+  appBundleId: ANDROID_APP_PACKAGE,
+  truncated: false,
+};

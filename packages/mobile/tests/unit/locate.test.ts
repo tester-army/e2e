@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { LocatorExpression, TextPattern } from 'e2e/engine';
 import { resolveExpression } from '../../src/locate.ts';
-import { projectSnapshot } from '../../src/nodes.ts';
-import { SETTINGS_NODES } from '../helpers/fake-client.ts';
+import { projectSnapshot, type RawNode } from '../../src/nodes.ts';
+import type { MobilePlatform } from '../../src/options.ts';
+import { ANDROID_APP_PACKAGE, ANDROID_ID_NODES, SETTINGS_NODES } from '../helpers/fake-client.ts';
 
 function exact(value: string): TextPattern {
   return { kind: 'string', value, exact: true };
@@ -100,5 +101,82 @@ describe('locator expressions over a device snapshot', () => {
     expect(() => names({ kind: 'frame', selector: 'iframe', source: query('role', 'button') })).toThrowError(
       expect.objectContaining({ code: 'FRAME_NOT_FOUND' }),
     );
+  });
+});
+
+function testIds(
+  expression: LocatorExpression,
+  options: { readonly platform?: MobilePlatform; readonly nodes?: readonly RawNode[] } = {},
+): string[] {
+  let counter = 0;
+  const { index } = projectSnapshot(options.nodes ?? ANDROID_ID_NODES, { mintId: () => `n${++counter}` });
+  return resolveExpression(expression, index, options.platform ?? 'android').map((entry) => entry.node.testId ?? '');
+}
+
+describe('Android resource ids without their package', () => {
+  const app = ANDROID_APP_PACKAGE;
+
+  it('finds a view by its id without the package prefix', () => {
+    expect(testIds(query('testId', 'greet'))).toEqual([`${app}:id/greet`]);
+  });
+
+  it('still finds a view by its full resource id', () => {
+    expect(testIds(query('testId', `${app}:id/greet`))).toEqual([`${app}:id/greet`]);
+  });
+
+  it('answers an id the app set without a prefix as before', () => {
+    expect(testIds(query('testId', 'greeting'))).toEqual(['greeting']);
+  });
+
+  it('leaves the prefix off any package but the framework', () => {
+    expect(testIds(query('testId', 'banner'))).toEqual(['com.example.other:id/banner']);
+    expect(testIds(query('testId', 'content'))).toEqual([]);
+    expect(testIds(query('testId', 'android:id/content'))).toEqual(['android:id/content']);
+  });
+
+  it('prefers a full match, so a bare id wins over a prefixed one with the same name', () => {
+    const nodes: readonly RawNode[] = [
+      ...ANDROID_ID_NODES,
+      { ref: '@e7', index: 6, parentIndex: 0, depth: 1, type: 'android.widget.Button', identifier: 'greet', label: 'Greet again' },
+    ];
+    expect(testIds(query('testId', 'greet'), { nodes })).toEqual(['greet']);
+  });
+
+  it("keeps an app's own id clear of a system window's with the same name", () => {
+    const nodes: readonly RawNode[] = [
+      ...ANDROID_ID_NODES,
+      { ref: '@e7', index: 6, parentIndex: 0, depth: 1, type: 'android.widget.TextView', identifier: 'clock', label: '12:00' },
+      { ref: '@e8', index: 7, parentIndex: 0, depth: 1, type: 'android.widget.TextView', identifier: 'com.android.systemui:id/clock', label: '9:41' },
+    ];
+    expect(testIds(query('testId', 'clock'), { nodes })).toEqual(['clock']);
+  });
+
+  it('answers every prefixed id with the name when none matches in full, for the runner to refuse as ambiguous', () => {
+    const nodes: readonly RawNode[] = [
+      ...ANDROID_ID_NODES,
+      { ref: '@e7', index: 6, parentIndex: 0, depth: 1, type: 'android.widget.TextView', identifier: `${app}:id/clock`, label: '12:00' },
+      { ref: '@e8', index: 7, parentIndex: 0, depth: 1, type: 'android.widget.TextView', identifier: 'com.android.systemui:id/clock', label: '9:41' },
+    ];
+    expect(testIds(query('testId', 'clock'), { nodes })).toEqual([`${app}:id/clock`, 'com.android.systemui:id/clock']);
+  });
+
+  it('tests a RegExp against the id without the prefix too', () => {
+    const regexp = (source: string): LocatorExpression => ({
+      kind: 'query',
+      query: { kind: 'testId', value: { kind: 'regexp', source, flags: '' } },
+    });
+    expect(testIds(regexp('^greet$'))).toEqual([`${app}:id/greet`]);
+    expect(testIds(regexp('^dev\\.e2e\\.examples\\.maui:id/gr'))).toEqual([`${app}:id/greet`]);
+  });
+
+  it('applies to scopes and has filters', () => {
+    const form = query('testId', 'form');
+    const scoped: LocatorExpression = { kind: 'query', query: { kind: 'testId', value: exact('greet') }, scope: form };
+    expect(testIds(scoped)).toEqual([`${app}:id/greet`]);
+    expect(testIds({ kind: 'filter', source: form, has: query('testId', 'name') })).toEqual([`${app}:id/form`]);
+  });
+
+  it('leaves iOS identifiers as they are, whatever they spell', () => {
+    expect(testIds(query('testId', 'greet'), { platform: 'ios' })).toEqual([]);
   });
 });

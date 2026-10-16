@@ -62,7 +62,8 @@ a run leaves the cache unchanged.
 An attempt whose only failures are ones where no model answered evicts
 nothing, since these say nothing about the app:
 
-- `MODEL_UNAVAILABLE`: no model is configured.
+- `MODEL_UNAVAILABLE`: no model is configured, or GitHub Copilot doesn't
+  serve it to the account.
 - `MODEL_PROVIDER_FAILED`: the provider returned an error, such as a
   missing or rejected key, a rate limit, or a 5xx, or a request got no
   response within 120 seconds.

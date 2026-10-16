@@ -262,3 +262,25 @@ function copilotProtocol(model: CopilotModel | undefined): CopilotProtocol | und
   if (endpoints.includes('/responses')) return 'responses';
   return undefined;
 }
+
+/** Why `modelId` cannot be used, as the run error reads it, once Copilot answered `model_not_supported`. */
+export function copilotRefusal(modelId: string): string {
+  return `GitHub Copilot does not serve ${modelId} to this account: the plan does not include it, it is turned off in Copilot settings on GitHub, or Copilot lists no such id; npx e2e models github-copilot lists the ids, and the listing cannot see plan limits`;
+}
+
+/** True for the AI SDK's error over a 4xx whose body code is `model_not_supported`; a wrong endpoint (`unsupported_api_for_model`) is not this. */
+export function isCopilotRefusal(cause: unknown): cause is Error {
+  if (!(cause instanceof Error) || cause.name !== 'AI_APICallError') return false;
+  const { statusCode, data, responseBody } = cause as { statusCode?: unknown; data?: unknown; responseBody?: unknown };
+  if (typeof statusCode !== 'number' || statusCode < 400 || statusCode >= 500) return false;
+  const parsed = data ?? (typeof responseBody === 'string' ? parseJson(responseBody) : undefined);
+  return (parsed as { error?: { code?: unknown } } | undefined)?.error?.code === 'model_not_supported';
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}

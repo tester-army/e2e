@@ -116,11 +116,26 @@ export function toldAttempt(result: ReportResult, final: Outcome): AttemptView {
 /** A step that did not pass. */
 export type FailedStep = ReportStep & { readonly status: Exclude<ReportStep['status'], 'passed'> };
 
-/** The step a failure happened at: the first that did not pass, with its position. */
-export function failedStepOf(steps: readonly ReportStep[]): { index: number; step: FailedStep } | undefined {
-  const index = steps.findIndex((step) => step.status !== 'passed');
-  const step = steps[index];
-  return step === undefined || step.status === 'passed' ? undefined : { index, step: step as FailedStep };
+/**
+ * The step whose error ended the attempt, with its position: the step in the
+ * error's phase whose own error carries its code and line, else the last with
+ * its code, since a caught failure comes earlier, else the step a timeout or
+ * interrupt cut.
+ */
+export function failedStepOf(attempt: { readonly steps: readonly ReportStep[]; readonly error?: ReportError | undefined }): { index: number; step: FailedStep } | undefined {
+  const error = attempt.error;
+  if (error === undefined) return undefined;
+  const phase = error.phase;
+  const candidates = attempt.steps.flatMap((step, index) =>
+    step.status !== 'passed' && (phase === undefined || (step.phase ?? 'body') === phase) ? [{ index, step: step as FailedStep }] : [],
+  );
+  const alike = candidates.filter(({ step }) => step.error?.code === error.code);
+  const line = error.source;
+  if (line !== undefined && alike.length > 0) {
+    // The step's own error, not its source: that is the call site, a line below the `await` of a split call.
+    return alike.findLast(({ step }) => step.error?.source?.file === line.file && step.error.source.line === line.line);
+  }
+  return alike.at(-1) ?? candidates.findLast(({ step }) => step.status === 'cancelled');
 }
 
 /**
@@ -136,7 +151,7 @@ export function attemptsLine(result: ReportResult, final: Outcome): string | und
     .filter((attempt) => attempt.status !== 'passed' && attempt.status !== 'skipped' && attempt.status !== 'interrupted' && (attempt.error !== undefined || attempt.steps.length > 0))
     .map((attempt) => ({
       code: cell(attempt.error?.code ?? attempt.status, 128),
-      step: failedStepOf(attempt.steps)?.index,
+      step: failedStepOf(attempt)?.index,
     }));
   const [first] = failed;
   if (first === undefined || final.attempts.length < 2 || failed.length < 2) return undefined;
@@ -167,7 +182,7 @@ export function attemptsLine(result: ReportResult, final: Outcome): string | und
 export function failureSource(result: ReportResult, told: AttemptView): ReportSource {
   const fromError = told.error?.source;
   if (fromError !== undefined) return fromError;
-  const step = failedStepOf(told.steps)?.step;
+  const step = failedStepOf(told)?.step;
   if (step !== undefined && step.source.file !== 'unknown') return step.source;
   return result.source;
 }
@@ -490,7 +505,7 @@ export function renderTracePage(report: Report1Document, result: ReportResult, f
   if (result.status === 'flaky') lines.push(`Passed after ${plural(final.failedAttempts, 'failed attempt')}; this page tells the last failure.  `);
   if (lines.at(-1) !== '') lines.push('');
 
-  const at = failedStepOf(told.steps);
+  const at = failedStepOf(told);
   if (told.steps.length > 0) {
     const videos = told.artifacts
       .filter((artifact) => artifact.kind === 'video' && artifact.startedAt !== undefined)

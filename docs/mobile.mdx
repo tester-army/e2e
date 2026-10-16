@@ -169,6 +169,10 @@ on Android. Each UI framework sets them its own way:
 | Compose Multiplatform | `Modifier.testTag()` | [with-kotlin-multiplatform](https://github.com/tester-army/e2e/tree/main/examples/with-kotlin-multiplatform) |
 | Flutter | `Semantics(identifier:)` | [with-flutter](https://github.com/tester-army/e2e/tree/main/examples/with-flutter) |
 
+- On Android, a native `android:id` and a .NET MAUI `AutomationId` read as
+  `<package>:id/<id>`. `getByTestId('greet')` finds them without the app's
+  package, as on iOS. Framework ids such as `android:id/content` match only
+  in full.
 - On Android, Compose hides test tags until a root composable sets
   `Modifier.semantics { testTagsAsResourceId = true }`. Without it,
   `getByTestId` finds nothing. iOS reads a Compose Multiplatform tag as is,

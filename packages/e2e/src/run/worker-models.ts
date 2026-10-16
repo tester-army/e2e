@@ -42,6 +42,13 @@ export class WorkerModels {
     if (this.failure !== undefined) throw this.failure;
   };
 
+  /** A model the provider refused, met by a step's call: reported to the run once, and every later preflight rethrows it. */
+  readonly unservedModel = (error: E2EError): void => {
+    if (this.failure !== undefined) return;
+    this.failure = error;
+    this.onFailure(error);
+  };
+
   /** Adapter for one resolved model; each distinct model is built once per worker. A missing one names the agent `name`. */
   readonly build = (model: ResolvedModel | undefined, name: string): ModelAdapter => {
     if (model === undefined) return createModelAdapter(model, name);

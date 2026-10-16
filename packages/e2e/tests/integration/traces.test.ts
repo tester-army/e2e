@@ -142,6 +142,98 @@ describe('traces', () => {
   );
 
   it(
+    'names the step whose error ended the test on the page and in the summary, not an earlier failure the test caught',
+    async () => {
+      // Every locator resolves but the banner, whose waitFor the test catches.
+      const fake = createFakeEngine({
+        locate: (expression) => (JSON.stringify(expression).includes('Banner') ? [] : [{ ref: { id: 'node-1', revision: '' }, role: 'button', name: 'Submit', states: { hidden: false } }]),
+      });
+      const suite = `import { test, expect } from 'e2e';
+
+test.beforeEach(async ({ app }) => {
+  await app.open('/');
+});
+
+test('tolerates a missing banner, then expects two buttons', async ({ screen }) => {
+  try {
+    await screen.getByRole('button', { name: 'Banner' }).waitFor({ timeout: 100 });
+  } catch {
+    // the banner is optional
+  }
+  await screen.getByRole('button', { name: 'Submit' }).tap();
+  await expect(screen.getByRole('button')).toHaveCount(2, { timeout: 300 });
+});
+`;
+      const { outcome, project } = await runProject(
+        { 'tests/banner.e2e.ts': suite },
+        {
+          appUrl: FAKE_APP_URL,
+          config: { targets: [{ name: 'fake', platform: 'web', engine: fake.engine, app: FAKE_APP }], reporters: ['markdown'], actionTimeout: 300 } as E2EConfig,
+        },
+      );
+      try {
+        assertValidReport(outcome.report);
+        const result = outcome.report.run.results[0]!;
+        const attempt = result.attempts[0]!;
+        expect(attempt.error?.code).toBe('ASSERTION_FAILED');
+        expect(attempt.steps.map((step) => [step.api, step.status, step.error?.code])).toEqual([
+          ['app.open', 'passed', undefined],
+          ['locator.waitFor', 'failed', 'LOCATOR_NOT_FOUND'],
+          ['locator.tap', 'passed', undefined],
+          ['expect.toHaveCount', 'failed', 'ASSERTION_FAILED'],
+        ]);
+        // The line and the lead are the assertion's; the caught step is listed, not named.
+        const [, waitFor, , count] = attempt.steps;
+        expect(count!.source.line).not.toBe(waitFor!.source.line);
+        const page = readTrace(project.dir, result.id)!;
+        expect(page).toContain(`Look at: \`tests/banner.e2e.ts:${count!.source.line}\``);
+        expect(page).toContain('2. ✗ `locator.waitFor`');
+        expect(page).toContain('4. ✗ `expect.toHaveCount`');
+        const summary = readFileSync(path.join(project.dir, '.e2e', 'summary.md'), 'utf8');
+        expect(summary).toContain(`\`tests/banner.e2e.ts:${count!.source.line}\`\n\n**ASSERTION_FAILED** at step 4 of 4: \`expect.toHaveCount getByRole("button")\`, after `);
+        expect(summary).not.toContain('locator.waitFor');
+      } finally {
+        project.cleanup();
+      }
+    },
+    30_000,
+  );
+
+  it(
+    'names the step of a call split across lines, whose error unwinds through the line above its call site',
+    async () => {
+      const fake = createFakeEngine();
+      const suite = `import { test, expect } from 'e2e';
+
+test('split call', async ({ app, screen }) => {
+  await app.open('/');
+  await expect(screen.getByRole('button', { name: 'Submit' }))
+    .toHaveCount(2, { timeout: 300 });
+});
+`;
+      // A JavaScript file: the harness loads a TypeScript fixture without its source map, which folds the two lines into one.
+      const { outcome, project } = await runProject(
+        { 'tests/split.e2e.mjs': suite },
+        {
+          appUrl: FAKE_APP_URL,
+          config: { tests: 'tests/**/*.e2e.mjs', targets: [{ name: 'fake', platform: 'web', engine: fake.engine, app: FAKE_APP }], reporters: ['markdown'], actionTimeout: 300 } as E2EConfig,
+        },
+      );
+      try {
+        const attempt = outcome.report.run.results[0]!.attempts[0]!;
+        const count = attempt.steps[1]!;
+        expect(count.error?.source).toEqual(attempt.error?.source);
+        expect(count.source.line).not.toBe(attempt.error?.source?.line);
+        const summary = readFileSync(path.join(project.dir, '.e2e', 'summary.md'), 'utf8');
+        expect(summary).toContain('**ASSERTION_FAILED** at step 2 of 2: `expect.toHaveCount getByRole("button", name: "Submit")`, after ');
+      } finally {
+        project.cleanup();
+      }
+    },
+    30_000,
+  );
+
+  it(
     'writes no page for a passing run by default',
     async () => {
       const fake = createFakeEngine();

@@ -90,7 +90,10 @@ Switching to Copilot: install `ai`, `@ai-sdk/openai-compatible`, and
 over Copilot's Responses API when the plan serves that model only there, choosing
 per model from the plan's listing. `npx e2e models github-copilot` marks the models
 it cannot call at all: those served only over an API `copilot()` does not speak, and
-those the plan has not enabled.
+those the plan has not enabled. Whether the plan serves a model shows nowhere: on
+Copilot Free, GitHub serves models through auto model selection only, so a model
+called by id is usually refused, and the run stops with `MODEL_UNAVAILABLE` naming
+it. Pick another id or an API provider.
 
 Switching to OpenCode Console: install `ai`, `@ai-sdk/openai-compatible`,
 `@ai-sdk/openai`, `@ai-sdk/anthropic`, and `@ai-sdk/google`, set

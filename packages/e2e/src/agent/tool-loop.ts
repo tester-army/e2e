@@ -17,7 +17,7 @@ import { asSdkLanguageModel, loadAiSdk, type AiSdk, type SdkLanguageModel } from
 import { MODEL_REQUEST_HEADERS } from '../internal/client-identity.ts';
 import { ConfigurationError, providerFailureMessage, withHint } from '../internal/errors.ts';
 import type { ProviderOptions } from '../types.ts';
-import { failureHint, isAbort, TRANSPORT_RETRIES } from './model/sdk.ts';
+import { failureHint, isAbort, TRANSPORT_RETRIES, unservedModelError } from './model/sdk.ts';
 import { isContextOverflow } from './model/overflow.ts';
 import {
   isForcedToolCallMismatched,
@@ -338,6 +338,8 @@ class LoopRun {
             { cause },
           );
         }
+        const unserved = unservedModelError(cause);
+        if (unserved !== undefined) throw unserved;
         throw new AgentError(
           'MODEL_PROVIDER_FAILED',
           withHint(`the model provider failed: ${message}`, failureHint(cause)),

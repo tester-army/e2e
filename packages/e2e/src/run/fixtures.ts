@@ -188,6 +188,7 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     engineCapabilities: environment.target.engine?.capabilities ?? new Set<EngineCapability>(),
     steps: environment.steps,
     select,
+    reportUnservedModel: environment.models.unservedModel,
     config: environment.config,
     target: {
       name: environment.target.name,

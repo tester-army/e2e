@@ -174,9 +174,10 @@ suites that consume the built packages the way a user would.
   native project, as a user would.
 - `docs/` (the Mintlify docs site; pages are the `.mdx` files under `docs/`,
   navigation, theme, and redirects in `docs/docs.json`, extra CSS in
-  `docs/style.css`; `docs/examples/` is typechecked and shown verbatim on
-  docs pages and in `skills/e2e/` (`docs/examples/skill/`), kept in sync by
-  `scripts/check-docs-examples.ts`; a shell
+  `docs/style.css`, the table of contents scroll in
+  `docs/table-of-contents.js`; `docs/examples/` is typechecked and shown
+  verbatim on docs pages and in `skills/e2e/` (`docs/examples/skill/`), kept
+  in sync by `scripts/check-docs-examples.ts`; a shell
   block that runs `npx` or `npm install`/`ci` sits in a `<CodeGroup>` of
   `npm`, `pnpm`, and `bun` blocks, which Mintlify syncs site-wide, enforced
   by `scripts/check-docs-package-managers.ts`; every navigation page but the

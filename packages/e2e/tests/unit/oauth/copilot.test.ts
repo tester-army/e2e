@@ -2,7 +2,8 @@ import { generateText, tool } from 'ai';
 import { z } from 'zod';
 import { afterEach, describe, expect, it } from 'vitest';
 import { copilot } from '../../../src/oauth/copilot.ts';
-import { copilotBaseUrl, copilotProtocolFor, createCopilotProvider, enterpriseHost, sendCopilotRequest } from '../../../src/oauth/providers/github-copilot.ts';
+import { copilotBaseUrl, copilotProtocolFor, copilotRefusal, createCopilotProvider, enterpriseHost, sendCopilotRequest } from '../../../src/oauth/providers/github-copilot.ts';
+import { unservedModelExplanation } from '../../../src/internal/unserved-model.ts';
 import { echoUpstream, json, useServers, useVendor, type Echo, type Received } from './helpers/server.ts';
 import { onFakeTimeouts } from './helpers/time.ts';
 
@@ -153,6 +154,22 @@ describe('Copilot requests', () => {
     });
     // The model listing meets the rejection first, so the call itself is never sent.
     expect(api.requests.map((request) => request.url)).toEqual(['/models']);
+  });
+
+  it('marks a model the account cannot use, whatever the reason, and leaves a model on the wrong endpoint plain', async () => {
+    const refused = { error: { message: 'The requested model is not supported.', code: 'model_not_supported', param: 'model', type: 'invalid_request_error' } };
+    const wrongEndpoint = { error: { message: 'model "gpt-6-luna" is not accessible via the /chat/completions endpoint', code: 'unsupported_api_for_model' } };
+    const api = await serve((request, response) => {
+      if (request.url === '/models') return json(response, 200, { data: [] });
+      json(response, 400, request.body.includes('"gpt-6-luna"') ? wrongEndpoint : refused);
+    });
+    vendor(api, { 'github-copilot': { access: 'gho_x', refresh: '', expires: 0 } });
+    const failed = (modelId: string) => generateText({ model: copilot(modelId), prompt: 'color?' }).then(() => undefined, (cause: unknown) => cause);
+    expect(unservedModelExplanation(await failed('claude-haiku-4.5'))).toBe(copilotRefusal('claude-haiku-4.5'));
+    expect(copilotRefusal('claude-haiku-4.5')).toContain('or Copilot lists no such id');
+    const plain = await failed('gpt-6-luna');
+    expect(unservedModelExplanation(plain)).toBeUndefined();
+    expect(plain).toMatchObject({ name: 'AI_APICallError', statusCode: 400 });
   });
 
   it('calls a model Copilot lists only over Responses through the Responses API, with no server storage', async () => {

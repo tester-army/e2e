@@ -14,7 +14,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import type { Report1Document, ReportAttempt, ReportExplore, ReportExploreFinding, ReportResult, ReportSerialGroup, ReportStep } from '../../src/report/build.ts';
 import { markdownReporter, renderMarkdownReport } from '../../src/report/markdown.ts';
 import type { FinishedRun } from '../../src/types.ts';
-import { REPORT_AT, reportAttempt, reportDocument, reportResult, reportStep, reportTarget } from '../helpers/report.ts';
+import { REPORT_AT, reportAttempt, reportDocument, reportError, reportResult, reportStep, reportTarget } from '../helpers/report.ts';
 
 const FINISHED_AT = '2026-01-01T00:00:08.400Z';
 
@@ -113,6 +113,7 @@ const failing = named({
           durationMs: 38_000,
           metrics: metrics(12),
           explanation: 'The Accept button opened a page that still shows Sign in.',
+          error: reportError({ message: 'expected heading "Welcome, Ada" to be visible' }),
         }),
         step({ index: 4, label: 'tap Accept', status: 'cancelled' }),
         step({ index: 5, kind: 'assertion', api: 'expect', label: 'heading visible', status: 'cancelled' }),
@@ -129,7 +130,7 @@ const flaky = named({
       status: 'failed',
       error: { code: 'STEP_TIMEOUT', message: 'slow' },
       artifacts: ['screenshot'],
-      steps: [step({ index: 0, label: 'open /todos' }), step({ index: 1, kind: 'agent', api: 'agent.waitFor', label: 'the filtered list', status: 'timed-out', durationMs: 30_000 })],
+      steps: [step({ index: 0, label: 'open /todos' }), step({ index: 1, kind: 'agent', api: 'agent.waitFor', label: 'the filtered list', status: 'timed-out', durationMs: 30_000, error: reportError({ code: 'STEP_TIMEOUT', message: 'slow' }) })],
     }),
     attempt({ status: 'passed', durationMs: 6_400, steps: [step({ index: 0, label: 'open /todos' }), step({ index: 1, kind: 'agent', api: 'agent.waitFor', label: 'the filtered list' })] }),
   ],
@@ -252,7 +253,7 @@ describe('renderMarkdownReport', () => {
                 attempt({
                   status: 'failed',
                   error: { code: 'E', message: 'm' },
-                  steps: [...many, step({ index: 9, kind: 'agent', api: 'agent.waitFor', label: 'the order confirmation', status, durationMs: 30_000 }), step({ index: 10, label: 'after', status: 'cancelled' })],
+                  steps: [...many, step({ index: 9, kind: 'agent', api: 'agent.waitFor', label: 'the order confirmation', status, durationMs: 30_000, error: reportError({ code: 'E', message: 'm' }) }), step({ index: 10, label: 'after', status: 'cancelled' })],
                 }),
               ],
             }),
@@ -264,14 +265,38 @@ describe('renderMarkdownReport', () => {
       expect(at(status)).not.toContain('step 8');
     }
     // A step that is not the agent's reads as the one call it was.
-    const single = named({ title: 'one', status: 'failed', attempts: [attempt({ status: 'failed', error: { code: 'E', message: 'm' }, steps: [step({ index: 0, label: 'only', status: 'failed' })] })] });
+    const single = named({ title: 'one', status: 'failed', attempts: [attempt({ status: 'failed', error: { code: 'E', message: 'm' }, steps: [step({ index: 0, label: 'only', status: 'failed', error: reportError({ code: 'E', message: 'm' }) })] })] });
     expect(renderMarkdownReport(page({ status: 'failed', results: [single] }))).toContain('**E** at step 1 of 1: `screen.tap only`, after 900ms');
+  });
+
+  it('names the step whose error ended the test, not an earlier failure the test caught and went on from', () => {
+    const at = (line: number) => ({ file: 'tests/example.e2e.ts', line, column: 5 });
+    const caught = named({
+      title: 'caught waitFor, then a failing assertion',
+      status: 'failed',
+      attempts: [
+        attempt({
+          status: 'failed',
+          error: { code: 'ASSERTION_FAILED', message: 'expect.toHaveCount failed\nexpected: count 5\nobserved: count 1' },
+          steps: [
+            step({ index: 0, kind: 'app', api: 'app.open', label: '/todos', source: at(4) }),
+            step({ index: 1, kind: 'locator', api: 'locator.waitFor', label: 'getByText("Nothing here") → visible', status: 'failed', durationMs: 303, source: at(8), error: reportError({ code: 'LOCATOR_NOT_FOUND', message: 'locator did not become visible' }) }),
+            step({ index: 2, label: 'tap Add', source: at(12) }),
+            step({ index: 3, kind: 'assertion', api: 'expect.toHaveCount', label: 'getByTestId("todo")', status: 'failed', durationMs: 502, source: at(15), error: reportError({ message: 'expect.toHaveCount failed' }) }),
+          ],
+        }),
+      ],
+    });
+    const body = renderMarkdownReport(page({ status: 'failed', results: [caught] }));
+    // The line and the lead are the assertion's; the caught step is not the failure.
+    expect(body).toContain('**🔴 caught waitFor, then a failing assertion**  \n`tests/example.e2e.ts:15`\n\n**ASSERTION_FAILED** at step 4 of 4: `expect.toHaveCount getByTestId("todo")`, after 502ms');
+    expect(body).not.toContain('locator.waitFor');
   });
 
   it('quotes nothing when the message only says the api failed, lists the facts, and shows a loopback screen as its path', () => {
     const locators = [
       step({ index: 0, kind: 'locator', api: 'getByRole', label: 'getByRole("button", name: "Save Changes")' }),
-      step({ index: 1, kind: 'assertion', api: 'expect.toBeHidden', label: 'getByRole("button", name: "Save Changes")', status: 'failed', durationMs: 15_100 }),
+      step({ index: 1, kind: 'assertion', api: 'expect.toBeHidden', label: 'getByRole("button", name: "Save Changes")', status: 'failed', durationMs: 15_100, error: reportError({ message: 'expect.toBeHidden failed' }) }),
     ];
     const error = {
       code: 'ASSERTION_FAILED',
@@ -318,7 +343,7 @@ describe('renderMarkdownReport', () => {
         attempt({
           status: 'failed',
           error: { code: 'ASSERTION_FAILED', message: 'line one\nline two [31mred[0m `tick`' },
-          steps: [step({ index: 0, api: 'screen.`tap`', label: 'tap `x` | y', status: 'failed', explanation: 'saw <b>bold</b>\nand more' }), step({ index: 1, label: 'z' })],
+          steps: [step({ index: 0, api: 'screen.`tap`', label: 'tap `x` | y', status: 'failed', explanation: 'saw <b>bold</b>\nand more', error: reportError() }), step({ index: 1, label: 'z' })],
         }),
       ],
     });
@@ -347,7 +372,7 @@ describe('renderMarkdownReport', () => {
         attempt({
           status: 'failed',
           error: { code: 'ASSERTION_FAILED', message: '# Heading\n- item' },
-          steps: [step({ index: 0, api: 'agent.act', label: 'pay', status: 'failed', explanation: '1. numbered\nmail a@b.example, color:#123456, x#1' })],
+          steps: [step({ index: 0, api: 'agent.act', label: 'pay', status: 'failed', explanation: '1. numbered\nmail a@b.example, color:#123456, x#1', error: reportError() })],
         }),
       ],
     });
@@ -366,7 +391,7 @@ describe('renderMarkdownReport', () => {
         attempt({
           status: 'failed',
           error: { code: 'ASSERTION_FAILED', message: '+ item\n_ under' },
-          steps: [step({ index: 0, api: 'agent.act', label: 'pay', status: 'failed', explanation: '1) list' })],
+          steps: [step({ index: 0, api: 'agent.act', label: 'pay', status: 'failed', explanation: '1) list', error: reportError() })],
         }),
       ],
     });
@@ -482,7 +507,7 @@ describe('renderMarkdownReport', () => {
               status: 'failed',
               startedAt: REPORT_AT,
               durationMs: 40,
-              steps: [step({ index: 0, label: 'tap Next', status: 'failed' })],
+              steps: [step({ index: 0, label: 'tap Next', status: 'failed', error: reportError({ message: 'nope' }) })],
               error: { category: 'test', code: 'ASSERTION_FAILED', message: 'nope', retryable: false },
               failure: { url: 'http://app.test/wizard', candidates: ['#n3 button "Next step"'] },
               secondaryErrors: [],
@@ -509,7 +534,7 @@ describe('renderMarkdownReport', () => {
       status,
       startedAt: REPORT_AT,
       durationMs: 40,
-      steps: status === 'failed' ? [step({ index: 0, label: 'tap Next', status: 'failed' })] : [],
+      steps: status === 'failed' ? [step({ index: 0, label: 'tap Next', status: 'failed', error: reportError({ message: 'nope' }) })] : [],
       ...(status === 'failed'
         ? { error: { category: 'test' as const, code: 'ASSERTION_FAILED', message: 'nope', retryable: false } }
         : { skip: { cause: 'serial-predecessor-failed' as const, reason: 'group attempt did not reach this member' } }),

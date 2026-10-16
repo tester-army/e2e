@@ -270,7 +270,7 @@ function runErrorLine(error: ReportError): string {
 function failureBlock({ result, final }: Entry, manyTargets: boolean, options: MarkdownReportOptions): string {
   const kind = statusBucket(result.status);
   const told = toldAttempt(result, final);
-  const at = failedStepOf(told.steps);
+  const at = failedStepOf(told);
   const error = told.error;
   const name = error === undefined ? `**${cell(result.status, MAX_ID_CHARS)}**` : errorName(error);
   const lead = at === undefined ? name : `${name} ${stepClause(told.steps, at)}`;
