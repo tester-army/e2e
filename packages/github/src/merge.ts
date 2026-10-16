@@ -14,6 +14,7 @@ type ReportRun = Report['run'];
 type ReportResult = ReportRun['results'][number];
 type ReportSerialGroup = ReportRun['serialGroups'][number];
 type ReportSummary = ReportRun['summary'];
+type ReportFilter = NonNullable<ReportRun['filters']>[number];
 
 /** Statuses that count as a failure of the run. `--last-failed` also runs an interrupted test again, but that one reached no verdict. */
 const FAILED_STATUSES = new Set<ReportResult['status']>(['failed', 'timed-out']);
@@ -70,6 +71,22 @@ function summarize(results: readonly ReportResult[], base: ReportSummary): Repor
 }
 
 /**
+ * The run before's filter records over the folded results: each `excluded`
+ * counts the tests still left out on that filter's word, so a test the
+ * rerun ran anyway, as one a failed session setup brought back, no longer
+ * reads as left out.
+ */
+function refoldFilters(filters: readonly ReportFilter[] | undefined, results: readonly ReportResult[]): ReportFilter[] | undefined {
+  if (filters === undefined) return undefined;
+  const leftOut = new Map<string, Set<string>>();
+  for (const result of results) {
+    const name = result.skip?.filter;
+    if (name !== undefined) leftOut.set(name, (leftOut.get(name) ?? new Set()).add(result.testId));
+  }
+  return filters.map((record) => ({ ...record, excluded: leftOut.get(record.name)?.size ?? 0 }));
+}
+
+/**
  * The rerun folded into the run it selected from. A result the rerun has
  * under the same id is folded with it; a test the rerun left out keeps what
  * the run before said, or what the rerun carries for it when an earlier run
@@ -85,7 +102,10 @@ function summarize(results: readonly ReportResult[], base: ReportSummary): Repor
  * the page is red, since the suite is not known to pass. A carried test the
  * first pass interrupted reached no verdict: it leaves the outcome alone and
  * the page reads interrupted, not green. The start is the run before's, so
- * the footer's duration spans both.
+ * the footer's duration spans both. A rerun that ran no test filter, as a
+ * `--last-failed` rerun never does, takes the run before's filter records
+ * and the change they judged, since the rows those filters left out are the
+ * run before's too; each record counts only the tests still left out.
  */
 export function foldLastRun(current: Report, lastRun: Report): Report {
   if (lastRun.run.project.id !== current.run.project.id) return current;
@@ -129,6 +149,7 @@ export function foldLastRun(current: Report, lastRun: Report): Report {
     ...current.run.serialGroups.map((group) => foldGroup(group, beforeGroups.get(group.id))),
   ];
 
+  const rerunFiltered = (current.run.filters ?? []).length > 0;
   const carriedErrors = carried?.errors ?? [];
   const carriedFailure =
     carriedErrors.length > 0 ||
@@ -145,6 +166,8 @@ export function foldLastRun(current: Report, lastRun: Report): Report {
       results,
       errors: [...current.run.errors, ...carriedErrors],
       summary: summarize(results, current.run.summary),
+      filters: rerunFiltered ? current.run.filters : refoldFilters(lastRun.run.filters, results),
+      changes: (rerunFiltered ? current.run : lastRun.run).changes,
     },
   };
 }

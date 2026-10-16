@@ -1,0 +1,195 @@
+---
+title: Test filters
+description: Run only the tests a pull request can affect.
+icon: "filter"
+"og:image": "https://e2e.tester.army/docs/images/og/filters.png?v=2de53e0ea4"
+"twitter:image": "https://e2e.tester.army/docs/images/og/filters.png?v=2de53e0ea4"
+---
+
+On a pull request, a test filter leaves out the tests the change can't
+affect. The decision filter asks a [decision model](/decision-models), such
+as Jev, about each test. On `main`, in the merge queue, and locally without
+`--changed-since`, every test runs.
+
+## Add the decision filter
+
+<CodeGroup>
+```bash npm
+npm install -D @e2e-dev/decision ai
+```
+
+```bash pnpm
+pnpm add -D @e2e-dev/decision ai
+```
+
+```bash bun
+bun add -d @e2e-dev/decision ai
+```
+</CodeGroup>
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { gateway } from 'ai';
+import { decisionFilter } from '@e2e-dev/decision';
+
+export default {
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
+  filters: [decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })],
+} satisfies E2EConfig;
+```
+
+In CI, fetch the pull request's base commit, and give the e2e step the AI
+Gateway key:
+
+```yaml title=".github/workflows/e2e.yml"
+steps:
+  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    with:
+      fetch-depth: 2
+  # ...
+  - run: npx e2e run
+    env:
+      AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+```
+
+The model reads the diff, including new files git doesn't ignore, and the
+test files, with secrets redacted. It leaves out the tests it rates under
+20% likely affected. When the model can't answer, the tests it didn't judge
+run, and the filter's note says why. This happens without a key, as on a
+pull request from a fork, for a diff over 60,000 characters, and for a test
+file too large to send with the diff. The filter needs `ai` 7.0.134 or
+later.
+
+Any [decision model](/decision-models) that answers `boolean` questions
+works, such as Jev through TypeSafe directly:
+`typeSafeAi.decisionModel('jev-latest')` from `@ai-sdk/typesafe-ai`, with
+`TYPESAFE_AI_API_KEY` set.
+
+## Preview locally
+
+<CodeGroup>
+```bash npm
+npx e2e list --changed-since origin/main
+```
+
+```bash pnpm
+pnpm exec e2e list --changed-since origin/main
+```
+
+```bash bun
+bunx e2e list --changed-since origin/main
+```
+</CodeGroup>
+
+`e2e list` prints each test a filter leaves out, with the reason. It starts
+no app, and makes the same model calls as a run. To run every test, add
+`--no-filter`.
+
+## What always runs
+
+- Every test, when the run isn't on a pull or merge request and has no
+  `--changed-since`.
+- The tests in a changed test file, and the tests that use a changed setup
+  file's sessions.
+- Every test, when an npm, pnpm, yarn, or bun lockfile, or the config file,
+  changes.
+- A `--last-failed` rerun, so `e2e run || e2e run --last-failed` is safe.
+- Every test, when a shallow checkout can't measure a pull request's change.
+  A warning says how to fix the checkout.
+- A filter that runs past 5 minutes leaves nothing out, and a warning says
+  so.
+
+GitLab merge request pipelines work the same way. On another CI service,
+pass `--changed-since origin/main` and fetch enough history for the merge
+base. With `--shard`, the filters on each machine judge only its slice.
+
+## What you see
+
+- **Terminal**: one line per filter, such as
+  `decision kept 7 of 77 tests, left out 70 (1 call, 17.6k tokens, $0.0007)`.
+  The decision filter's note ends with its spend: model calls, tokens, and
+  the cost when the provider reports it, as the AI Gateway does. A
+  `Left out` row follows in the summary. When the filters leave nothing to
+  run, the run passes and starts no app.
+- **[Pull request comment](/github) and `summary.md`**: the headline
+  `7 passed, 70 left out by filters`, and a folded table of the tests with
+  their reasons.
+- **`junit.xml` and `report.json`**: each left-out test is a skipped case,
+  with `skip.filter` in the report, beside `run.filters` and `run.changes`.
+  See [Reporters](/reference/reporters#test-filters).
+
+## Write your own
+
+A filter is `{ name, filter }`: `filter` gets the tests and the change, and
+returns the tests to leave out with a reason for each. This one maps
+changed paths to test tags:
+
+```ts title="areas-filter.ts"
+import type { TestFilter } from 'e2e';
+
+/** The test tags each part of the app reaches, by path from the repository root. */
+const AREAS: Readonly<Record<string, readonly string[]>> = {
+  'src/todos/': ['todos'],
+  'src/auth/': ['auth', 'smoke'],
+  'src/checkout/': ['checkout'],
+};
+/** Every tag an area reaches; a test without one always runs. */
+const AREA_TAGS: ReadonlySet<string> = new Set(Object.values(AREAS).flat());
+
+export const areas = {
+  name: 'areas',
+  filter(tests, { changes }) {
+    const reached = new Set<string>();
+    for (const file of changes.files) {
+      if (file.endsWith('.e2e.ts')) continue;
+      const area = Object.keys(AREAS).find((prefix) => file.startsWith(prefix));
+      if (area === undefined) return { exclude: {}, note: `${file} is in no area, so areas leaves nothing out` };
+      for (const tag of AREAS[area] ?? []) reached.add(tag);
+    }
+    const exclude: Record<string, string> = {};
+    for (const test of tests) {
+      const tags = test.tags.filter((tag) => AREA_TAGS.has(tag));
+      if (tags.length > 0 && !tags.some((tag) => reached.has(tag))) exclude[test.id] = 'the change reaches none of its areas';
+    }
+    return { exclude };
+  },
+} satisfies TestFilter;
+```
+
+Put it before the decision filter, so the model judges only the tests
+`areas` kept:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { gateway } from 'ai';
+import { decisionFilter } from '@e2e-dev/decision';
+import { areas } from './areas-filter.ts';
+
+export default {
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
+  filters: [areas, decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })],
+} satisfies E2EConfig;
+```
+
+- Every test you don't name runs, and so does a test you name in a serial
+  group another of its tests runs in.
+- Each filter judges only the tests the one before it kept.
+- A throw fails the run with `FILTER_FAILED`. To keep the filter's tests
+  instead, catch the error and return `{ exclude: {} }`.
+- Pass `signal` to every call, and `redact` what you send to a model.
+
+See [`filters`](/reference/config#filters) in the config reference for the
+types and rules.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Continuous integration" icon="rotate" href="/ci">
+    Gate pull requests, shard, and rerun failures.
+  </Card>
+  <Card title="Reporters" icon="file-lines" href="/reference/reporters">
+    Read `run.changes`, `run.filters`, and `skip.filter` from your own reporter.
+  </Card>
+</CardGroup>

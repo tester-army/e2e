@@ -39,7 +39,7 @@ Upload `.e2e/` at the end of each job, also when a test fails. It holds:
 | Path | What it holds |
 | --- | --- |
 | `report.json` | The run report, from each run that reaches its tests |
-| `junit.xml` | With the `junit` reporter (`--reporter list,junit`): the results, and startup failures such as `APP_UNREACHABLE` in a `run` suite |
+| `junit.xml` | With the `junit` reporter (`--reporter list,junit`): the results, the tests a [test filter](/filters) left out as skipped, and startup failures such as `APP_UNREACHABLE` in a `run` suite |
 | `results/` | The trace pages, screenshots, and screen dumps of each test. With `--video`, also a video for each target whose engine can record |
 
 Point the test-report integration of your CI service at `.e2e/junit.xml`.
@@ -193,6 +193,13 @@ To keep the checks predictable:
 - Add `--max-duration <ms>` to limit test-running time; the clock starts
   when tests start, not during app startup. The job exits 1.
 
+## Run only affected tests
+
+On a pull request, `decisionFilter()` from `@e2e-dev/decision` leaves out
+the tests the change is unlikely to affect, and `main` runs the whole suite.
+Set `fetch-depth: 2` on `actions/checkout`, and `AI_GATEWAY_API_KEY` on the
+e2e step. See [Add the decision filter](/filters#add-the-decision-filter).
+
 ## Sharding
 
 `--shard <index/total>` runs one slice of the suite. Every job runs the
@@ -218,6 +225,9 @@ jobs:
 Upload each shard's `report.json` and `junit.xml` under a name with the
 shard index. e2e can't merge shard reports yet.
 
+With [test filters](/filters), each shard cuts its slice first, and the
+filters judge only that slice, so shards may run uneven numbers of tests.
+
 ## Rerunning failures
 
 `--last-failed` runs only the tests that didn't pass in the previous run,
@@ -229,7 +239,8 @@ the first run:
 ```
 
 The rerun keeps the first run's artifacts and writes its own under
-`rerun-<n>/` in each test's directory, so one upload holds both. The
+`rerun-<n>/` in each test's directory, so one upload holds both. It calls no
+[test filter](/filters), so a filter can't leave out a test that failed. The
 [CLI reference](/reference/cli#flags) lists what counts as not passed.
 
 A separate job has no report on its runner. Download it into the output

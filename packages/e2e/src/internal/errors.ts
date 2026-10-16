@@ -140,6 +140,7 @@ export type ErrorCategory =
 export type ErrorPhase =
   | 'config'
   | 'collection'
+  | 'filter'
   | 'launch'
   | 'beforeAll'
   | 'beforeEach'

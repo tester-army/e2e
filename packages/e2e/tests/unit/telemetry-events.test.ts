@@ -141,6 +141,12 @@ describe('telemetry events', () => {
       tests_interrupted: 0,
       tests_flaky: 0,
       tests_skipped: 0,
+      filters_run: 0,
+      filters_timed_out: 0,
+      filters_skipped: false,
+      filters_changed_files: 0,
+      tests_pinned_by_change: 0,
+      tests_left_out_by_filters: 0,
       attempts_total: 2,
       tests_retried: 0,
       targets: 2,
@@ -355,6 +361,41 @@ describe('telemetry events', () => {
     expect(JSON.stringify(runCompletedEvent(report, RUN))).not.toContain('acme');
   });
 
+  it('counts the filters a run applied, the change they judged, and the distinct tests they left out, never names, reasons, paths, or commits', () => {
+    /** An unselected result a filter left out, test `testId` on `targetId`. */
+    const leftOut = (id: string, testId: string, targetId: string) =>
+      reportResult({ id, testId, targetId, selected: false, status: 'skipped', attempts: [], skip: { cause: 'filtered', reason: 'acme diff misses it', filter: 'acme-areas' } });
+    const report = reportDocument({
+      results: [
+        reportResult(),
+        leftOut('r2', 'tests/a.e2e.ts::pays', 'web'),
+        leftOut('r3', 'tests/a.e2e.ts::pays', 'web-2'),
+        leftOut('r4', 'tests/a.e2e.ts::refunds', 'web'),
+        reportResult({ id: 'r5', testId: 'tests/a.e2e.ts::slow', selected: false, status: 'skipped', attempts: [], skip: { cause: 'filtered', reason: 'carries an excluded tag' } }),
+      ],
+    });
+    report.run.filters = [
+      { name: 'acme-areas', candidates: 3, excluded: 2, note: 'acme note' },
+      { name: 'acme-jev', candidates: 1, excluded: 0, note: 'did not finish within 5m: running every test it was given', timedOut: true },
+    ];
+    report.run.changes = { base: 'acacacacacacacacacacacacacacacacacacacac', files: 12, pinned: 2 };
+    const event = runCompletedEvent(report, RUN);
+    expect(event.properties).toMatchObject({
+      filters_run: 2,
+      filters_timed_out: 1,
+      filters_skipped: false,
+      filters_changed_files: 12,
+      tests_pinned_by_change: 2,
+      tests_left_out_by_filters: 2,
+    });
+    expect(JSON.stringify(event)).not.toMatch(/acme|acac|a\.e2e\.ts/u);
+
+    report.run.changes = { files: 0, skipped: 'acme/pnpm-lock.yaml changed' };
+    const skipped = runCompletedEvent(report, RUN);
+    expect(skipped.properties).toMatchObject({ filters_skipped: true, filters_changed_files: 0, tests_pinned_by_change: 0 });
+    expect(JSON.stringify(skipped)).not.toMatch(/acme|lock/u);
+  });
+
   it('counts the units that needed more than one attempt', () => {
     expect(runCompletedEvent(reportWithAttempts({ status: 'failed' }, { index: 1 }), RUN).properties['tests_retried']).toBe(1);
   });
@@ -418,6 +459,7 @@ describe('telemetry events', () => {
         credentials: { acmeAdmin: { username: 'admin@acme.example', password: 'acme-pw' } },
         secrets: { acmeToken: 'acme-token-value' },
         reporters: ['list', 'junit'],
+        filters: [{ name: 'acme-areas', filter: () => ({ exclude: {} }) }, { name: 'acme-jev', filter: () => ({ exclude: {} }) }],
       },
       { projectRoot: '/tmp/acme', env: {} },
     );
@@ -436,6 +478,7 @@ describe('telemetry events', () => {
       config_cache_strict: false,
       config_reporters: ['junit', 'list'],
       config_custom_reporters: 0,
+      config_filters: 2,
       config_artifact_store: false,
       config_trace_modes: ['retain-on-failure'],
       config_video_modes: ['off', 'retain-on-failure'],

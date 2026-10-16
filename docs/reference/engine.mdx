@@ -252,9 +252,12 @@ export interface Engine {
   readonly session?: EngineSession;
   /**
    * Runs once per target in the runner, after collection and before workers,
-   * app commands, and the run's clock start. Download dependencies or boot
-   * devices here; report progress through `info.log`. No launch timeout
-   * applies. A failure ends the run as an infrastructure error.
+   * app commands, and the run's clock start. A run with nothing to run (the
+   * test filters left nothing, or `--pass-with-no-tests` on an empty
+   * selection) prepares no target, and so calls no `finish`. Download
+   * dependencies or boot devices here; report progress through `info.log`.
+   * No launch timeout applies. A failure ends the run as an infrastructure
+   * error.
    * The result can lower the target's worker cap, for example after
    * discovering how many devices are available.
    */
@@ -565,8 +568,9 @@ export interface EnginePrepareInfo {
    * The worker slots the run will start for this target, `0` to `slots - 1`:
    * the run's worker cap, the engine's declared `workers`, and the work units
    * selected for the target, whichever is smallest; `0` when nothing runs on
-   * it. Provision for exactly these slots (boot that many devices of a pool);
-   * `init` then finds them ready.
+   * it while another target has work. A run with nothing to run prepares no
+   * target. Provision for exactly these slots (boot that many devices of a
+   * pool); `init` then finds them ready.
    */
   readonly slots: number;
   /**

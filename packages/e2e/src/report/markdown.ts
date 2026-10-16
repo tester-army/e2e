@@ -3,6 +3,7 @@
  * a headline with the counts and what the run spent, the run-level errors,
  * one block per test that failed with the step it went wrong at and the
  * agent's last word, the flaky tests folded away with the same block each,
+ * what the run's test filters left out, folded away with each reason,
  * and every test folded away under that as one table, a row per file with
  * its counts and time above the rows of its tests. A green run is the
  * headline, the folds, and the footer: nothing to read unless the reader
@@ -20,9 +21,9 @@
 
 import path from 'node:path';
 import { collapseText } from '../internal/text.ts';
-import type { Report1Document, ReportError, ReportExplore, ReportExploreFinding, ReportResult, ReportStep, ReportTarget } from './build.ts';
+import type { Report1Document, ReportChanges, ReportError, ReportExplore, ReportExploreFinding, ReportFilter, ReportResult, ReportStep, ReportTarget } from './build.ts';
 import { ENDED_TEXT, orderFindings, SEVERITY_WORDS, stepCountParts } from './explore-text.ts';
-import { formatCost, formatTokens, repeatSuffix, statusBucket, tally, type Counters } from './format.ts';
+import { filterDecision, formatCost, formatTokens, NOT_A_PULL_REQUEST, repeatSuffix, shortCommit, statusBucket, tally, type Counters } from './format.ts';
 import { repeatGroups, repeatLine, repeatSummary, type RepeatGroup } from './repeats.ts';
 import {
   attemptsLine,
@@ -88,6 +89,7 @@ const MAX_FINDINGS = 30;
 const MAX_EVIDENCE_PATHS = 4;
 const MAX_ASSESSMENT_CHARS = 2_000;
 const MAX_GOAL_CHARS = 400;
+const MAX_LEFT_OUT_ROWS = 50;
 const TRUNCATED_NOTE = '_Truncated to fit a pull request comment; the full report is in `report.json`._';
 
 /** A result with what it left behind, read once. */
@@ -137,9 +139,67 @@ function runIcon(run: ReportRun, results: readonly ReportResult[]): string {
   return ICON.passed;
 }
 
+/**
+ * The headline: the counts, and how many the test filters left out, in the
+ * same unit, so a filtered pull request run never reads as the whole suite
+ * passing.
+ */
 function headline(run: ReportRun, results: readonly ReportResult[], options: MarkdownReportOptions): string {
   const summary = countText(tally(results)) || (run.errors.length > 0 ? 'no tests ran' : 'no tests selected');
-  return `### ${runIcon(run, results)} ${pageName(options)}: ${summary}`;
+  const leftOut = leftOutResults(run).length;
+  return `### ${runIcon(run, results)} ${pageName(options)}: ${summary}${leftOut === 0 ? '' : `, ${leftOut} left out by filters`}`;
+}
+
+/**
+ * Every result a test filter left out, in report order: one per test,
+ * target, and agent, the unit the headline's other counts are in.
+ */
+function leftOutResults(run: ReportRun): ReportResult[] {
+  return run.results.filter((result) => result.skip?.filter !== undefined);
+}
+
+/** `` `affected` kept 7 of 42 tests, left out 35 (note) ``: what one filter decided. */
+function filterLine(record: ReportFilter): string {
+  const note = record.note === undefined ? '' : ` (${cell(record.note)})`;
+  return `**Filter** ${code(record.name, MAX_ID_CHARS)} ${filterDecision(record.candidates, record.excluded)}${note}`;
+}
+
+/**
+ * What the test filters judged (`12 files changed since abc1234`), or why
+ * no filter ran, so a checkout too shallow to measure a pull request shows.
+ * Nothing for a run that judges no pull request.
+ */
+function changesLine(changes: ReportChanges | undefined): string | undefined {
+  if (changes === undefined) return undefined;
+  const pinned = changes.pinned === undefined ? '' : `; ${plural(changes.pinned, 'test')} ran without filters: ${changes.pinned === 1 ? 'its' : 'their'} test or setup file changed`;
+  if (changes.skipped === undefined) {
+    return changes.base === undefined ? undefined : `**Change** ${plural(changes.files, 'file')} changed since ${code(shortCommit(changes.base))}${pinned}`;
+  }
+  return changes.skipped === NOT_A_PULL_REQUEST ? undefined : `**Filters** none ran: ${cell(changes.skipped)}${pinned}`;
+}
+
+/**
+ * What the run's test filters decided: the change they judged, a line per
+ * filter, then what they left out folded away as one table with each
+ * reason, capped, the target named when there is more than one. Nothing
+ * when the run named no filter.
+ */
+function filtersSection(run: ReportRun, manyTargets: boolean): string[] {
+  const records = run.filters ?? [];
+  const leftOut = leftOutResults(run);
+  const withTarget = manyTargets || new Set(leftOut.map((result) => result.targetId)).size > 1;
+  const changes = changesLine(run.changes);
+  if (changes === undefined && records.length === 0 && leftOut.length === 0) return [];
+  const said = [...(changes === undefined ? [] : [changes]), ...records.map((record) => filterLine(record))];
+  const parts = said.length === 0 ? [] : [said.join('  \n')];
+  if (leftOut.length === 0) return parts;
+  const lines = [row(['Test', 'Filter', 'Reason']), row(['---', '---', '---'])];
+  for (const result of leftOut.slice(0, MAX_LEFT_OUT_ROWS)) {
+    lines.push(row([`${fileLabel(result.file, result.targetId, withTarget)} › ${testName(result)}`, code(result.skip?.filter ?? '', MAX_ID_CHARS), cell(result.skip?.reason ?? '')]));
+  }
+  if (leftOut.length > MAX_LEFT_OUT_ROWS) lines.push(row([`and ${leftOut.length - MAX_LEFT_OUT_ROWS} more in report.json`, '', '']));
+  const summary = `${plural(leftOut.length, 'test')} left out by filters`;
+  return [...parts, ...(parts.length === 0 ? [] : ['']), ['<details>', `<summary>${summary}</summary>`, '', lines.join('\n'), '</details>'].join('\n')];
 }
 
 /** The model calls an agent step made; the step's metrics are the source of truth. */
@@ -544,7 +604,7 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
   const groups = fileGroups(entries);
   const sections =
     explore === undefined
-      ? [errors, ...failures, flaky, repeatsSection(entries, manyTargets), allTests(groups, selected.length, manyTargets)]
+      ? [errors, ...failures, flaky, repeatsSection(entries, manyTargets), filtersSection(run, manyTargets), allTests(groups, selected.length, manyTargets)]
       : [
           [`**Goal:** ${cell(explore.goal, MAX_GOAL_CHARS)}  `, `**Steps:** ${exploreSteps(explore)}`],
           errors,

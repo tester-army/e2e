@@ -1,7 +1,7 @@
 /** Throwaway git repositories for tests that read what git says about a checkout. */
 
 import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -28,5 +28,21 @@ export function initRepo(dir: string): string {
   writeFileSync(path.join(dir, 'file.txt'), 'one\n');
   runGit(dir, 'add', 'file.txt');
   runGit(dir, 'commit', '--quiet', '-m', 'one');
+  return runGit(dir, 'rev-parse', 'HEAD');
+}
+
+/** Writes `files` under `dir` (an empty string removes the file), commits every change as `message`, and returns the commit. */
+export function commitFiles(dir: string, files: Readonly<Record<string, string>>, message = 'change'): string {
+  for (const [relative, content] of Object.entries(files)) {
+    const absolute = path.join(dir, relative);
+    if (content === '') {
+      rmSync(absolute, { force: true });
+      continue;
+    }
+    mkdirSync(path.dirname(absolute), { recursive: true });
+    writeFileSync(absolute, content);
+  }
+  runGit(dir, 'add', '--all');
+  runGit(dir, 'commit', '--quiet', '--allow-empty', '-m', message);
   return runGit(dir, 'rev-parse', 'HEAD');
 }

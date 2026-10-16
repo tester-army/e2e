@@ -315,6 +315,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `--output` | `--output`, the results directory; each test's trace page and artifacts are in its `results/` | same |
 | `--trace <mode>` | `--trace [mode]`, the same modes; a bare `--trace` is `on` | same |
 | `--last-failed`, `--shard`, `--repeat-each`, `--max-failures` | the same names; `--shard` keeps serial groups together | same |
+| `--only-changed` | `--changed-since <ref>` with a [test filter](/filters) in `filters`, such as `decisionFilter({ model })`, which asks a model which tests the change can affect | by design |
 | `--quiet` | not yet | missing |
 | `-u`, `--update-snapshots` | the same; rewrites the stored screenshots that differ | same |
 | `--list` | `npx e2e list`, with the same selection flags | renamed |

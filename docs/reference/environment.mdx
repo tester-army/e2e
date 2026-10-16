@@ -88,6 +88,25 @@ Turns on CI mode:
 - A focused test is `ONLY_IN_CI`.
 - `reuseExisting` on an app command is ignored.
 
+### Test filters
+
+[Test filters](/filters) run on a pull or merge request these variables
+mark, or with `--changed-since`, which wins over them. Any other run calls
+no filter and runs every test; see
+[What always runs](/filters#what-always-runs).
+
+| Variable | Example | Reading | Effect |
+| --- | --- | --- | --- |
+| `GITHUB_ACTIONS`, `GITHUB_EVENT_NAME` | `GITHUB_EVENT_NAME=pull_request` | value | `true` and `pull_request` or `pull_request_target` mark a pull request |
+| `GITHUB_EVENT_PATH`, `GITHUB_SHA`, `GITHUB_BASE_REF` | `GITHUB_BASE_REF=main` | value | Find the pull request's base commit: the event's `pull_request.base.sha`, then the first parent of the merge commit GitHub checks out, then `origin/<GITHUB_BASE_REF>` |
+| `GITLAB_CI`, `CI_MERGE_REQUEST_DIFF_BASE_SHA` | `GITLAB_CI=true` | value | `true` and a base commit mark a merge request pipeline, measured from that commit |
+| `CI_MERGE_REQUEST_EVENT_TYPE` | `CI_MERGE_REQUEST_EVENT_TYPE=merge_train` | value | `merge_train` calls no filter, so a merge train runs every test |
+
+`decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })` from
+`@e2e-dev/decision` reaches Jev with the credential `gateway()` uses,
+`AI_GATEWAY_API_KEY` or a Vercel OIDC token. Without either it leaves
+nothing out, and its note says why.
+
 ### Replay cache
 
 | Variable | Example | Reading | Effect |

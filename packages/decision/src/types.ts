@@ -44,3 +44,13 @@ export interface DecisionExecutorOptions {
    */
   readonly vision?: boolean;
 }
+
+/** Options for a test filter that asks a decision model which tests a change can affect. */
+export interface DecisionFilterOptions {
+  /**
+   * An AI SDK decision model that answers `boolean` questions with a
+   * probability, e.g. `gateway.decisionModel('typesafe-ai/jev')`, which
+   * reads `AI_GATEWAY_API_KEY`.
+   */
+  readonly model: Exclude<Experimental_DecisionModel, string>;
+}

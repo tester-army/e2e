@@ -256,6 +256,8 @@ export class ListReporter implements Reporter {
   private readonly live: boolean;
   private readonly failures: Failure[] = [];
   private readonly skippedFailures: Failure[] = [];
+  /** What each test filter left out, by its name, in the order they arrived: one key per test, target, and agent, the unit `Tests` counts. */
+  private readonly leftOut = new Map<string, Set<string>>();
   /** Every finished test's run, for the `Repeats` summary of a `--repeat-each` run. */
   private readonly runs: { key: string; label: string; run: RepeatRun }[] = [];
   /**
@@ -538,8 +540,9 @@ export class ListReporter implements Reporter {
    * then the services and app commands. Without this the window showed only
    * zero counters while a database booted or a browser downloaded. The step
    * in flight ticks in the live window; a finished process prints once with
-   * its wait, a finished collection or provisioning only when it narrated;
-   * the process waits sum into the summary's startup split.
+   * its wait, a finished collection, provisioning, or filter only when it
+   * narrated, a filter that timed out in yellow and never checked off; the
+   * process waits sum into the summary's startup split.
    */
   private setupStep(event: RunEventOf<'setup'>): void {
     const { pc } = this;
@@ -555,6 +558,10 @@ export class ListReporter implements Reporter {
     if (process) this.startupMs += event.durationMs;
     if (!process && !narrated) {
       this.window.redraw();
+      return;
+    }
+    if (event.outcome === 'timed out') {
+      this.print(` ${pc.yellow(F_CROSS)} ${subject} ${pc.yellow(`timed out ${formatTime(event.durationMs)}`)}`);
       return;
     }
     const outcome = event.outcome ?? done;
@@ -698,9 +705,15 @@ export class ListReporter implements Reporter {
 
   private testFinished(result: RunEventResult): void {
     // Unselected pairs are report-only: they never print and the plan never
-    // counted them.
-    if (!result.selected) return;
+    // counted them. The ones a filter left out are counted for the summary.
     const key = pairKey(result.test.id, result.agent, result.target.name, result.repeat);
+    const filter = result.skip?.filter;
+    if (filter !== undefined) {
+      const pairs = this.leftOut.get(filter) ?? new Set<string>();
+      pairs.add(key);
+      this.leftOut.set(filter, pairs);
+    }
+    if (!result.selected) return;
     this.flushOutput(key);
     const steps = this.pairs.get(key)?.steps ?? [];
     this.pairs.delete(key);
@@ -876,6 +889,8 @@ export class ListReporter implements Reporter {
         padTitle(pc, 'Test Files') + (files.total === 0 ? this.emptyState('no test files', 'none started') : stateString(pc, files)),
         padTitle(pc, 'Tests') + (tests.total === 0 ? this.emptyState('no tests executed', 'none executed') : stateString(pc, tests)),
       ];
+    const leftOut = this.leftOutText();
+    if (leftOut !== undefined) rows.push(padTitle(pc, 'Left out') + leftOut);
     const ai = usageText(this.runUsage);
     if (ai !== undefined) {
       const models = modelsText(this.runModels) ?? this.models;
@@ -897,6 +912,21 @@ export class ListReporter implements Reporter {
       rows.push(padTitle(pc, 'Duration') + durationText(pc, Date.now() - startedAt.getTime(), this.startupMs));
     }
     return rows;
+  }
+
+  /**
+   * The `Left out` row: how many each test filter left out, counted per
+   * test, target, and agent as the `Tests` row counts (`35 tests by
+   * affected`, `35 by affected, 3 by areas`); undefined when none did.
+   */
+  private leftOutText(): string | undefined {
+    const counts = [...this.leftOut].map(([name, pairs]) => ({ name: bounded(name), count: pairs.size }));
+    if (counts.length === 0) return undefined;
+    if (counts.length === 1) {
+      const { name, count } = counts[0]!;
+      return `${count} test${count === 1 ? '' : 's'} by ${name}`;
+    }
+    return counts.map(({ name, count }) => `${count} by ${name}`).join(', ');
   }
 
   /**
@@ -1138,6 +1168,8 @@ function setupWording(step: SetupStep): { verb: string; subject: string; done: s
   switch (step.kind) {
     case 'collect':
       return { verb: 'collecting', subject: 'tests', done: 'collected' };
+    case 'filter':
+      return { verb: 'running', subject: `filter "${bounded(step.name)}"`, done: 'done' };
     case 'prepare':
       return {
         verb: 'preparing',

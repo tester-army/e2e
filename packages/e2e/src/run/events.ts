@@ -45,16 +45,26 @@ export interface RunEventResult extends WireResultRecord {
 }
 
 /**
- * What one setup step is about. `collect` loads the test files; `prepare` is
- * one target's engine provisioning (a first-run browser download); `service`
- * and `app` are the processes the run owns, labelled the way the runner names
- * them (`service "postgres"`, `target "web" command`).
+ * What one setup step is about. `collect` loads the test files; `filter` is
+ * one test filter deciding what runs, by its name;
+ * `prepare` is one target's engine provisioning (a first-run browser
+ * download); `service` and `app` are the processes the run owns, labelled the
+ * way the runner names them (`service "postgres"`, `target "web" command`).
  */
 export type SetupStep =
   | { readonly kind: 'collect' }
+  | { readonly kind: 'filter'; readonly name: string }
   | { readonly kind: 'prepare'; readonly target: string; readonly engine: string }
   | { readonly kind: 'service'; readonly label: string }
   | { readonly kind: 'app'; readonly label: string };
+
+/**
+ * How a setup step ended other than plainly done: `reused` when a service
+ * or app command attached to a process already serving its URL instead of
+ * spawning, `timed out` when a test filter ran past 5 minutes and the run
+ * stopped waiting for it.
+ */
+export type SetupOutcome = 'reused' | 'timed out';
 
 /** One fact about the run; the emitter wraps it in the envelope. */
 export type RunEventFact =
@@ -111,8 +121,8 @@ export type RunEventFact =
        * (`<target> worker <slot>: <line>`) once the run is executing.
        * `target` is the target the line is about, `app` for the app
        * process and its services, `collect` for a test file a narrowed
-       * run skipped, or `run` for a recording the run asked for and will
-       * not make.
+       * run skipped, `filter` for a test filter's progress and summary, or
+       * `run` for a recording the run asked for and will not make.
        */
       readonly type: 'notice';
       readonly target: string;
@@ -150,8 +160,7 @@ export type RunEventFact =
       readonly step: SetupStep;
       readonly state: 'finished';
       readonly durationMs: number;
-      /** `reused` when a service or app command attached to a process already serving its URL instead of spawning. */
-      readonly outcome?: 'reused';
+      readonly outcome?: SetupOutcome;
     }
   | {
       readonly type: 'test-started';

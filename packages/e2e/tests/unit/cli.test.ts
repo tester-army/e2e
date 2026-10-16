@@ -16,8 +16,7 @@ const upgradeMock = vi.hoisted(() => vi.fn());
 
 // The suite runs from the repository; these tests cover an installed CLI, where telemetry is on.
 vi.mock('../../src/telemetry/checkout.ts', () => ({ runsFromCheckout: () => false }));
-vi.mock('../../src/runner.ts', () => ({ list: listMock }));
-vi.mock('../../src/run/runner.ts', () => ({ run: runMock }));
+vi.mock('../../src/run/runner.ts', () => ({ run: runMock, listSelection: listMock }));
 vi.mock('../../src/cli/watch.ts', () => ({ watchSession: watchMock }));
 vi.mock('../../src/cli/init.ts', () => ({
   init: initMock,
@@ -269,6 +268,33 @@ describe('e2e run argument parsing', () => {
     const options = lastRunOptions();
     expect(options.shard).toEqual({ index: 2, total: 3 });
     expect(options.lastFailed).toBe(true);
+  });
+
+  it('maps --no-filter to noFilter, and runs the configured filters by default', async () => {
+    await invoke('run');
+    expect(lastRunOptions().noFilter).toBe(false);
+    runMock.mockClear();
+    await invoke('run', 'tests/a.e2e.ts', '--no-filter');
+    expect(lastRunOptions()).toMatchObject({ files: ['tests/a.e2e.ts'], noFilter: true });
+  });
+
+  it('maps --changed-since to changedSince, unset by default', async () => {
+    await invoke('run');
+    expect(lastRunOptions().changedSince).toBeUndefined();
+    runMock.mockClear();
+    await invoke('run', '--changed-since', 'origin/main');
+    expect(lastRunOptions().changedSince).toBe('origin/main');
+    runMock.mockClear();
+    await invoke('run', '--changed-since');
+    expect(process.exitCode).toBe(2);
+    expect(runMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects --filter, which takes no names, with exit code 2 and never runs', async () => {
+    await invoke('run', '--filter', 'areas');
+    expect(process.exitCode).toBe(2);
+    expect(written(stderrSpy)).toContain("unknown option '--filter'");
+    expect(runMock).not.toHaveBeenCalled();
   });
 
   it('rejects a --shard that is not index/total within range with exit code 2 and never runs', async () => {
@@ -530,6 +556,7 @@ describe('e2e list', () => {
       targets: ['web', 'webkit'],
       tags: ['smoke', 'auth'],
       tagMode: 'all',
+      noFilter: false,
       passWithNoTests: true,
     });
     expect(written(stdoutSpy)).toBe('');
@@ -551,6 +578,46 @@ describe('e2e list', () => {
     expect(listMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
     expect(written(stderrSpy)).toContain("option '--tag <tags>' argument '' is invalid. must name at least one tag");
+  });
+
+  it('maps --no-filter to noFilter, false by default', async () => {
+    listMock.mockResolvedValue({ pairs });
+    await invoke('list');
+    expect(lastListOptions()).toMatchObject({ noFilter: false });
+    listMock.mockClear();
+    await invoke('list', '--no-filter');
+    expect(lastListOptions()).toMatchObject({ noFilter: true });
+  });
+
+  it('maps --changed-since to changedSince, unset by default', async () => {
+    listMock.mockResolvedValue({ pairs });
+    await invoke('list');
+    expect(lastListOptions().changedSince).toBeUndefined();
+    listMock.mockClear();
+    await invoke('list', '--changed-since', 'origin/main');
+    expect(lastListOptions()).toMatchObject({ changedSince: 'origin/main' });
+  });
+
+  it('prints a pair a test filter left out with the filter and its reason, as json { pairs } and as a line, and the filter lines on stderr, bounded', async () => {
+    const left = listed({ file: 'tests/a.e2e.ts', title: 'refunds', titlePath: ['refunds'], tags: [], target: 'web', disposition: 'filtered', reason: 'the diff misses billing', filter: 'areas' });
+    listMock.mockImplementation(async (_options: ListOptions, notice: (message: string) => void) => {
+      notice('areas: reading the diff\u001b[2J');
+      notice('areas kept 1 of 2 tests, left out 1 (src/auth changed)');
+      return { pairs: [pairs[0]!, left, pairs[3]!] };
+    });
+    await invoke('list', '--reporter', 'json');
+    expect(process.exitCode).toBe(0);
+    const json = JSON.parse(written(stdoutSpy)) as { pairs: ListedPair[] };
+    expect(Object.keys(json)).toEqual(['pairs']);
+    // A pair a selection flag removed stays out, as it always has; the one a filter left out is listed.
+    expect(json.pairs).toEqual(JSON.parse(JSON.stringify([pairs[0], left])));
+    const raw = stderrSpy.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('');
+    expect(raw).not.toContain('\u001b');
+    expect(written(stderrSpy)).toBe(['areas: reading the diff', 'areas kept 1 of 2 tests, left out 1 (src/auth changed)', ''].join('\n'));
+
+    stdoutSpy.mockClear();
+    await invoke('list');
+    expect(written(stdoutSpy)).toBe('tests/a.e2e.ts › signs in [web] #smoke #auth\ntests/a.e2e.ts › refunds [web] (left out by areas: the diff misses billing)\n');
   });
 
   it('prints a collection failure as code and message with its exit code', async () => {
@@ -687,6 +754,8 @@ describe('e2e --version and --help', () => {
       '--exclude-tag',
       '--grep',
       '--grep-invert',
+      '--no-filter',
+      '--changed-since',
       '--last-failed',
       '--shard',
       '--pass-with-no-tests',
@@ -716,10 +785,20 @@ describe('e2e --version and --help', () => {
     expect(help).toMatch(/\(choices: "any", "all",\s+default: "any"\)/u);
     expect(help).toContain("  $ e2e run 'tests/**/*.smoke.e2e.ts' --target web --tag smoke\n");
     expect(help).toMatch(/^Exit codes:\n {2}0 {4}every selected test passed/mu);
+    expect(help).toMatch(/^ {2}3 {4}engine, app process, test filter, model provider, or artifact failure$/mu);
     expect(help).toMatch(/^ {2}130 {2}interrupted/mu);
     expect(help).toContain('Docs: https://e2e.tester.army/docs/reference/cli#exit-codes\n');
     expect(process.exitCode).toBe(0);
     expect(runMock).not.toHaveBeenCalled();
+  });
+
+  it('lists the explore exit codes without a test filter failure, since explore runs none', async () => {
+    await invoke('explore', '--help');
+    const help = written(stdoutSpy);
+    expect(help).toMatch(/^Exit codes:\n {2}0 {4}the exploration ran and reported no issue/mu);
+    expect(help).toMatch(/^ {2}3 {4}engine, app process, model provider, or artifact failure$/mu);
+    expect(help).not.toContain('test filter');
+    expect(process.exitCode).toBe(0);
   });
 
   it('answers -h and help <command> with the same text as --help', async () => {

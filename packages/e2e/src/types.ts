@@ -1491,6 +1491,72 @@ export interface Reporter {
   onRunFinished?(run: FinishedRun, signal: AbortSignal): Promise<ReporterSummary | void>;
 }
 
+/**
+ * Leaves collected tests out of a run before anything starts. The filters in
+ * `filters` run, in order, on `run` and `list` unless `--no-filter`, and only
+ * when there is a change to judge: a GitHub pull request, a GitLab merge
+ * request, or `--changed-since <ref>`. Without one, no filter is called and
+ * every test runs; a `--last-failed` rerun calls none, and under `--watch`
+ * they judge the first run only. A filter is called once, in the runner
+ * process. Workers load the config too and never call it, so constructing
+ * one must have no side effects: read git, the environment, or the network
+ * inside `filter`. A call past 5 minutes leaves nothing out: the run stops
+ * waiting and runs every test the filter was given.
+ */
+export interface TestFilter {
+  /** Names the filter in the report and in errors: ASCII letters, numbers, `_`, `-`, and `.`, at most 256 characters, unique among `filters`. */
+  readonly name: string;
+  /** Decides which of `tests` to leave out; every test the result does not name runs. */
+  readonly filter: (tests: readonly TestFilterCandidate[], context: TestFilterContext) => TestFilterResult | Promise<TestFilterResult>;
+}
+
+/** One test a filter may leave out: what names it, never its body. */
+export interface TestFilterCandidate {
+  /** Stable test id (`<file>::<titles>`), the report's `testId`, and the key `exclude` takes. */
+  readonly id: string;
+  /** Project-relative POSIX path of the test file. */
+  readonly file: string;
+  /** The describe titles, then the test title. */
+  readonly titlePath: readonly string[];
+  /** The describe chain's tags, outermost first, then the test's own. */
+  readonly tags: readonly string[];
+}
+
+/** What a run's test filters judge: every file that differs from the base commit. */
+export interface TestFilterChanges {
+  /** The commit the change is measured from: the merge base of the base ref and HEAD. */
+  readonly base: string;
+  /** Absolute path of the git repository root, spelled as on disk like `projectRoot`; `files` are relative to it. */
+  readonly root: string;
+  /** Repository-relative POSIX paths of every file added, modified, or deleted since `base`, both paths of a rename, uncommitted and untracked files included; sorted, never empty. */
+  readonly files: readonly string[];
+}
+
+/** What the runner hands a filter besides its tests. */
+export interface TestFilterContext {
+  /** Absolute project root, spelled as on disk like `changes.root`: symlinks resolved, names in on-disk case; a test's `file` is relative to it. */
+  readonly projectRoot: string;
+  /** The change the filter judges; the same for every filter of the run. */
+  readonly changes: TestFilterChanges;
+  /**
+   * Aborts when the run is interrupted, or with a `TimeoutError` reason after
+   * 5 minutes; hand it to every model and network call.
+   */
+  readonly signal: AbortSignal;
+  /** Prints one progress line as a run notice. */
+  log(line: string): void;
+  /** Replaces every fixed-value secret and credential password in `text`. */
+  redact(text: string): string;
+}
+
+/** A filter's answer: every test it does not name runs. */
+export interface TestFilterResult {
+  /** The tests to leave out, by `TestFilterCandidate.id`, each with the reason the report shows; a test of a serial group still runs when another test of its group does. */
+  readonly exclude: Readonly<Record<string, string>>;
+  /** One line about the whole decision, such as `the diff is too large to judge`. */
+  readonly note?: string;
+}
+
 export interface E2EConfig {
   /** Stable project id, 1 through 256 characters; defaults to the root `package.json` name. */
   projectId?: string;
@@ -1563,6 +1629,13 @@ export interface E2EConfig {
    * construct their own, exactly like model instances.
    */
   agents?: Readonly<Record<string, AgentConfig>>;
+  /**
+   * Test filters, in order: each leaves out tests the selection flags and the
+   * filters before it kept. They run only when there is a change to judge (a
+   * pull or merge request, or `--changed-since`), never with `--no-filter` or
+   * on a `--last-failed` rerun, and under `--watch` on the first run only.
+   */
+  filters?: readonly TestFilter[];
   /**
    * The adaptive replay cache. Opt-out: unset means
    * `read-write`, and `'off'` disables it, as does the `--no-cache` flag,

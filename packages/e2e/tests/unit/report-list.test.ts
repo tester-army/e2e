@@ -485,6 +485,39 @@ describe('ListReporter', () => {
       expect(interrupted.lines).toContain('      Tests  1 interrupted | 2 passed (3)');
     });
 
+    it('counts what each filter left out on a Left out row per test and target, the unit the Tests row counts', () => {
+      /** An unselected result `filter` left out. */
+      const leftOut = (id: string, target: string, filter: string): RunEventResult =>
+        ({ ...result({ status: 'skipped', id, target, selected: false, attempts: [] }), skip: { cause: 'filtered', reason: 'unaffected', filter } }) as RunEventResult;
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 1 }]));
+      reporter.handle(finished(result({ status: 'passed', id: 'kept' })));
+      reporter.handle(finished(leftOut('pays', 'chromium', 'areas')));
+      reporter.handle(finished(leftOut('pays', 'webkit', 'areas')));
+      reporter.handle(finished(leftOut('refunds', 'chromium', 'areas')));
+      reporter.handle(finished(leftOut('export', 'chromium', 'jev')));
+      reporter.handle(finished(result({ status: 'skipped', id: 'slow', selected: false, attempts: [], skipReason: 'carries an excluded tag' })));
+      reporter.handle(runFinished({ reportPath: '.e2e/report.json' }));
+      expect(lines).toContain('      Tests  1 passed (1)');
+      expect(lines).toContain('   Left out  3 by areas, 1 by jev');
+      expect(lines.join('\n')).not.toContain('pays');
+
+      const one = capture();
+      const single = plainReporter(one.output);
+      single.handle(plan([]));
+      single.handle(finished(leftOut('pays', 'chromium', 'areas')));
+      single.handle(runFinished({ reportPath: '.e2e/report.json' }));
+      expect(one.lines).toContain('   Left out  1 test by areas');
+      expect(one.lines).toContain('      Tests  no tests executed');
+
+      const none = capture();
+      const plain = plainReporter(none.output);
+      plain.handle(finished(result({ status: 'passed', id: 'kept' })));
+      plain.handle(runFinished({ reportPath: '.e2e/report.json' }));
+      expect(none.lines.join('\n')).not.toContain('Left out');
+    });
+
     it('starts the clock at plan, so a download narrated before it is not on it', () => {
       vi.useFakeTimers({ now: new Date('2026-09-08T10:00:00.000Z') });
       try {
@@ -654,6 +687,59 @@ describe('ListReporter', () => {
       expect(lines).toContain(' ✓ service "compose" ready 41.20s');
       expect(lines).toContain(' ✓ target "chromium" command reused 1.80s');
       expect(lines.find((line) => line.includes('Duration'))).toMatch(/^   Duration  \S+ \(startup 43\.00s\)$/);
+    });
+
+    it('prints a filter step once it narrated, names it when an interrupt cuts it, and keeps it off the startup clock', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted());
+      const quiet = { kind: 'filter', name: 'silent' } as const;
+      reporter.handle({ type: 'setup', step: quiet, state: 'started' });
+      reporter.handle({ type: 'setup', step: quiet, state: 'finished', durationMs: 4 });
+      const filter = { kind: 'filter', name: 'jev' } as const;
+      reporter.handle({ type: 'setup', step: filter, state: 'started' });
+      reporter.handle({ type: 'notice', target: 'filter', message: 'jev: asking Jev about 4 tests in tests/todos.e2e.ts' });
+      reporter.handle({ type: 'setup', step: filter, state: 'finished', durationMs: 1_200 });
+      reporter.handle({ type: 'notice', target: 'filter', message: 'jev kept 1 of 4 tests, left out 3' });
+      reporter.handle({ type: 'setup', step: { kind: 'filter', name: 'slow' }, state: 'started' });
+      reporter.handle({ type: 'run-interrupted', mode: 'graceful' });
+      reporter.handle(runFinished({ status: 'interrupted', exitCode: 130 }));
+      expect(lines.filter((line) => /jev|slow/u.test(line))).toEqual([
+        'ℹ jev: asking Jev about 4 tests in tests/todos.e2e.ts',
+        ' ✓ filter "jev" done 1.20s',
+        'ℹ jev kept 1 of 4 tests, left out 3',
+        'interrupted while running filter "slow": tearing down (interrupt again to force)',
+      ]);
+      expect(lines.join('\n')).not.toContain('silent');
+      expect(lines.find((line) => line.includes('Duration'))).not.toContain('startup');
+    });
+
+    it('never checks off a filter that timed out: it reads timed out, in yellow, once it narrated', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted());
+      const silent = { kind: 'filter', name: 'silent' } as const;
+      reporter.handle({ type: 'setup', step: silent, state: 'started' });
+      reporter.handle({ type: 'setup', step: silent, state: 'finished', durationMs: 300, outcome: 'timed out' });
+      const areas = { kind: 'filter', name: 'areas' } as const;
+      reporter.handle({ type: 'setup', step: areas, state: 'started' });
+      reporter.handle({ type: 'notice', target: 'filter', message: 'areas: asking the model about 3 tests' });
+      reporter.handle({ type: 'setup', step: areas, state: 'finished', durationMs: 302, outcome: 'timed out' });
+      reporter.handle({ type: 'notice', target: 'filter', message: 'warning: areas did not finish within 300ms: running every test it was given' });
+      reporter.handle(runFinished({ reportPath: 'r.json' }));
+      expect(lines.filter((line) => /areas|silent/u.test(line))).toEqual([
+        'ℹ areas: asking the model about 3 tests',
+        ' × filter "areas" timed out 302ms',
+        'ℹ warning: areas did not finish within 300ms: running every test it was given',
+      ]);
+
+      const chunks: string[] = [];
+      const colored = new ListReporter({ write: (line) => chunks.push(line) }, { live: false, colors: true });
+      colored.handle(runStarted());
+      colored.handle({ type: 'setup', step: areas, state: 'started' });
+      colored.handle({ type: 'notice', target: 'filter', message: 'areas: asking the model about 3 tests' });
+      colored.handle({ type: 'setup', step: areas, state: 'finished', durationMs: 302, outcome: 'timed out' });
+      expect(chunks.at(-1)).toBe(' \u001b[33m×\u001b[39m filter "areas" \u001b[33mtimed out 302ms\u001b[39m');
     });
 
     it('prints a provisioning step only when it narrated, and never the collection', () => {
