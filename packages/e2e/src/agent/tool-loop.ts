@@ -28,6 +28,7 @@ import {
 import { withStallGuard } from './model/stall.ts';
 import { providerHints, type ProviderHints, type ProviderModelRef } from './model/provider-hints.ts';
 import { isScreenOutput, toolResultTexts } from './screen-update.ts';
+import { sameShape, shapeOf, type MessageShape } from './message-shape.ts';
 import { compactScreenHistory } from './transcript-compaction.ts';
 import { AgentError, isAgentError } from './error.ts';
 import {
@@ -239,7 +240,7 @@ class LoopRun {
   private readonly hints: ProviderHints;
   /** The history the last request went out with, for shrinking after an overflow. */
   private lastRequest: ModelMessage[] | undefined;
-  /** What each message of the last request held, by reference, for telling a rewritten message from a carried one. */
+  /** What each message of the last request held, by value, for telling a rewritten message from a carried one. */
   private lastShape: MessageShape[] | undefined;
   /** Turns spent by earlier generate calls of this step; nonzero only after an overflow retry. */
   private turnOffset = 0;
@@ -791,64 +792,6 @@ function reportedOutcome(turn: LoopTurn): string {
 
 function appendNotice(messages: ModelMessage[], content: string): ModelMessage[] {
   return [...messages, { role: 'user', content }];
-}
-
-/**
- * What a message holds, as the model reads it: its content serialized with
- * every provider option left out, since a moved cache breakpoint or a
- * reasoning signature is no edit, and every binary payload kept apart to
- * compare by bytes.
- */
-interface MessageShape {
-  readonly text: string;
-  readonly binaries: readonly Uint8Array[];
-}
-
-/** Keys a message carries for the provider, not for the model. */
-const PROVIDER_KEYS = new Set(['providerOptions', 'providerMetadata']);
-
-/** The shape of one message. */
-function shapeOf(message: ModelMessage): MessageShape {
-  const binaries: Uint8Array[] = [];
-  const chunks: string[] = [];
-  const walk = (value: unknown): void => {
-    if (value instanceof Uint8Array) {
-      binaries.push(value);
-      chunks.push(`<bytes ${String(value.byteLength)}>`);
-    } else if (value instanceof ArrayBuffer) {
-      walk(new Uint8Array(value));
-    } else if (Array.isArray(value)) {
-      chunks.push('[');
-      for (const item of value) walk(item);
-      chunks.push(']');
-    } else if (typeof value === 'object' && value !== null && !(value instanceof URL)) {
-      chunks.push('{');
-      for (const [key, item] of Object.entries(value)) {
-        if (PROVIDER_KEYS.has(key) || item === undefined) continue;
-        chunks.push(JSON.stringify(key), ':');
-        walk(item);
-      }
-      chunks.push('}');
-    } else {
-      chunks.push(JSON.stringify(value instanceof URL ? value.href : value), ',');
-    }
-  };
-  walk(message);
-  return { text: chunks.join(''), binaries };
-}
-
-/** Whether two shapes send the model the same message. */
-function sameShape(a: MessageShape, b: MessageShape): boolean {
-  return a.text === b.text && a.binaries.length === b.binaries.length && a.binaries.every((bytes, index) => sameBytes(bytes, b.binaries[index]!));
-}
-
-function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
-  if (a === b) return true;
-  if (a.byteLength !== b.byteLength) return false;
-  for (let index = 0; index < a.byteLength; index += 1) {
-    if (a[index] !== b[index]) return false;
-  }
-  return true;
 }
 
 /** Longest text a message part keeps after an overflow; the head of a screen still names its controls. */
