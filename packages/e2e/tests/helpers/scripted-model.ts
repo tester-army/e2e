@@ -30,7 +30,7 @@ export function createScriptedInstance<Options>(
 /** One scripted generate result with the fixed test usage envelope, and the call warnings a provider attached. */
 export function scriptedResult(
   content: readonly unknown[],
-  finishReason: 'stop' | 'tool-calls',
+  finishReason: 'stop' | 'tool-calls' | 'length',
   warnings: readonly ScriptedWarning[] = [],
 ): object {
   return {

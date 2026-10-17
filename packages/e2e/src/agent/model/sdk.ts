@@ -267,7 +267,7 @@ function translateModelError(
   issue: string | undefined,
   signal: AbortSignal,
 ): Error {
-  const { APICallError, NoObjectGeneratedError } = aiSdk();
+  const { APICallError, NoObjectGeneratedError, NoOutputGeneratedError } = aiSdk();
   const cause = unwrapRetry(rawCause);
   if (cause instanceof AgentError) return cause;
   // Only an aborted attempt is a cancellation. A request that exceeded the
@@ -279,6 +279,16 @@ function translateModelError(
     return new AgentError(
       'STEP_TIMEOUT',
       'model call exceeded the remaining step timeout',
+      { cause },
+    );
+  }
+  // The SDK's no-output error comes from the `result.output` getter when the
+  // model produced nothing to parse (an empty `length` finish, say): the
+  // response failed the closed grammar, so it is invalid output — a test
+  // verdict with repair budget — not a provider outage.
+  if (NoOutputGeneratedError.isInstance(cause)) {
+    return new ModelOutputInvalidError(
+      issue ?? 'provider response did not match the closed response grammar',
       { cause },
     );
   }
