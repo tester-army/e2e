@@ -741,9 +741,12 @@ setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promi
 await screen.getByLabel('Receipt').setInputFiles('fixtures/receipt.pdf');
 ```
 
+On the web it also takes a button that opens a file chooser.
+
 | Throws | When |
 | --- | --- |
 | `INVALID_ARGUMENT` | An empty list or a blank entry. |
+| `ACTION_FAILED` | On the web, a button that opens no file chooser. |
 
 #### `dragTo`
 

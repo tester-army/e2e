@@ -71,7 +71,7 @@ export function asActionable(target: ActionTarget): Actionable {
 }
 
 /** Owning page of one action target. */
-async function targetPage(target: ActionTarget): Promise<Page> {
+export async function targetPage(target: ActionTarget): Promise<Page> {
   if (target.kind === 'locator') return target.locator.page();
   const frame = await target.element.ownerFrame();
   if (frame === null) throw invalidState('element is detached from every frame');
