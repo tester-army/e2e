@@ -122,10 +122,21 @@ export function createModelAdapter(model: ResolvedModel | undefined, agentName =
             name: call.schemaName,
           }),
         });
-        const output = result.output;
-        if (output === undefined) {
-          throw new ModelOutputInvalidError('provider returned no structured output');
+        // The SDK only parses `result.output` on a `stop` finish, or on a
+        // non-`tool-calls` finish with text. Otherwise the getter throws a bare
+        // `NoOutputGeneratedError` carrying no finish reason, text, or cause,
+        // so read them first: an `error` finish stays a provider failure, and
+        // anything else with nothing to parse is invalid output.
+        const finishReason = result.finishReason;
+        const rawText = result.text;
+        const hasParsedOutput = finishReason === 'stop' || (finishReason !== 'tool-calls' && rawText !== '');
+        if (!hasParsedOutput && finishReason !== 'error') {
+          throw new ModelOutputInvalidError(
+            `model returned no structured output (finish reason: ${result.rawFinishReason ?? finishReason})`,
+            rawText === '' ? {} : { rawText },
+          );
         }
+        const output = result.output;
         return { value: output, usage: readUsage(result, inputBound), reasoning: result.finalStep.reasoningText };
       } catch (cause) {
         throw translateModelError(cause, issue, call.signal);
