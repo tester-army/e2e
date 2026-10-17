@@ -1,0 +1,23 @@
+{
+  "name": "@e2e-dev/test-authoring",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Offline preparation and grading for a bounded test-authoring experiment",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test experiment.test.ts",
+    "eval": "node cli.ts"
+  },
+  "dependencies": {
+    "@e2e-dev/web": "workspace:*",
+    "ajv": "8.20.0",
+    "e2e": "workspace:*",
+    "oxc-parser": "0.153.0",
+    "zod": "4.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.2",
+    "typescript": "7.0.2"
+  }
+}

@@ -23,7 +23,8 @@
     "packages/mobile/tests/types/options.ts",
     "packages/decision/tests/types/options.ts",
     "packages/e2e/tests/live/*.ts",
-    "packages/e2e/src/config/register.ts"
+    "packages/e2e/src/config/register.ts",
+    "apps/test-authoring/cli.ts"
   ],
   "ignorePatterns": [
     "docs/**",
