@@ -206,6 +206,14 @@ instruction, the strings in `agent.act` params, `agentContext`, and an
 `e2e explore` goal. A plain string isn't a secret fill, so screenshots stay
 on.
 
+Step records and app-log entries are redacted before they are shortened for
+display when enough source text is available to safely check for secrets. If
+not, the text is omitted. If a provider-backed secret resolves later, returned
+records are redacted with that value too. Model-turn text already shortened
+before the runner receives it is omitted when its retained text could be only
+part of a longer secret. Progress already sent to a reporter is a point-in-time
+update and is not rewritten.
+
 | Rule | Detail |
 | --- | --- |
 | Forms matched | As written, JSON-escaped, HTML-escaped, and percent-encoded, in any letter case (so CSS `text-transform` doesn't hide it), and with whitespace collapsed. |

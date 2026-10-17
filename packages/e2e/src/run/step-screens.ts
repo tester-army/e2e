@@ -40,21 +40,28 @@ export interface StepScreen {
   since?: number;
   /** `added`, `removed`, and `changed` node lines, without node ids, in screen order; empty when nothing changed. */
   changes: string[];
+  /** Full change lines for the recorder to redact before retaining its bounded report view. */
+  rawChanges?: string[];
   /** Change lines past `changes`. */
   more?: number;
 }
 
 /** The step's screen against the one `since` saw, or as the first screen when there was none. */
-export function compareScreens(previous: { readonly step: number; readonly screen: ScreenText } | undefined, next: ScreenText): StepScreen {
+export function compareScreens(
+  previous: { readonly step: number; readonly screen: ScreenText } | undefined,
+  next: ScreenText,
+  options: { readonly includeRawChanges?: boolean } = {},
+): StepScreen {
   const after = next.lines;
   const head = { ...(next.location === undefined ? {} : { location: next.location }), nodes: after.length };
-  if (previous === undefined) return { ...head, changes: [] };
+  if (previous === undefined) return { ...head, changes: [], ...(options.includeRawChanges === true ? { rawChanges: [] } : {}) };
   const before = previous.screen.lines;
   const changes = diffLines(before, after);
   return {
     ...head,
     since: previous.step,
     changes: changes.slice(0, MAX_SCREEN_CHANGES).map((line) => bound(line, MAX_CHANGE_CHARS)),
+    ...(options.includeRawChanges === true ? { rawChanges: changes.slice(0, MAX_SCREEN_CHANGES) } : {}),
     ...(changes.length > MAX_SCREEN_CHANGES ? { more: changes.length - MAX_SCREEN_CHANGES } : {}),
   };
 }

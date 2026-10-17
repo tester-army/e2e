@@ -16,7 +16,6 @@
  * executor's verdict onto the runner's error taxonomy.
  */
 
-import type { StepTurn } from '../run/steps.ts';
 import { writeFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -41,6 +40,7 @@ import { appLocation } from '../cache/route.ts';
 import { OperationQueue } from './operation-queue.ts';
 import { StepAccounting } from './step-accounting.ts';
 import { failedStepOutcome, StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
+import { registerStepTurnRecordSink } from './turn-records.ts';
 import type { ParamTemplate } from '../cache/template.ts';
 
 /** What a dispatch needs of the agent a step runs with; an interactive step supplies its own. */
@@ -204,7 +204,6 @@ class ActDispatch {
   private readonly stepIndex: number;
   private explanation: string | undefined;
   private transcript: string | undefined;
-  private turns: StepTurn[] | undefined;
   private sdkModel: ModelInstance | undefined;
   private sdkModelResolved = false;
 
@@ -276,7 +275,7 @@ class ActDispatch {
     );
     this.accounting.metrics.ledgerBytes = ledger.bytes;
     const replayedPrefix = this.stepCache?.replayedPrefix;
-    return {
+    const context: StepExecutorContext = {
       step: {
         kind: this.spec.kind,
         index: this.stepIndex,
@@ -319,17 +318,13 @@ class ActDispatch {
         }
       },
       attachTurns: (turns) => {
-        // Model prose and tool output are not model input, but they are a
-        // record: the redactor that guards the tree guards the turns.
-        this.turns = turns.map((turn) => ({
-          index: turn.index,
-          calls: turn.calls.map((call) => this.runtime.redact(call)),
-          outcome: this.runtime.redact(turn.outcome),
-        }));
+        this.runtime.steps.attachTurns(turns);
       },
       attachScreenshot: (pixels, label) => this.attachScreenshot(pixels, label),
       actions: this.dispatcher.actions,
     };
+    registerStepTurnRecordSink(context, (turns) => this.runtime.steps.attachTurnRecords(turns));
+    return context;
   }
 
   /**
@@ -478,7 +473,6 @@ class ActDispatch {
       ...(this.explanation !== undefined ? { explanation: this.explanation } : {}),
       ...(this.spec.vision === 'only' && this.feed.pixelsShown ? { visionOnly: true } : {}),
       ...(latest !== undefined ? { observationRevision: latest.revision } : {}),
-      ...(this.turns !== undefined && this.turns.length > 0 ? { turns: this.turns } : {}),
       ...this.feed.visionReport(),
     });
     this.writeTranscript();

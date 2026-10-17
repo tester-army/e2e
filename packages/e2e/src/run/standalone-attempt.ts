@@ -21,7 +21,7 @@ import { createFixtures } from './fixtures.ts';
 import { writeHostTrace } from './host-trace.ts';
 import type { AttemptRecord } from './records.ts';
 import { holdSecretRegistry } from '../secrets.ts';
-import { processSecrets, redactForSession, sessionSecrecy } from './secrecy.ts';
+import { processSecrets, sessionSecrecy, stepRedactorForSession } from './secrecy.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
 import { WorkerModels } from './worker-models.ts';
 
@@ -129,11 +129,12 @@ export async function launchAttempt(
   const { attemptId, options, budget, soft, polls, end } = reservation;
   const attemptSignal = reservation.signal;
   let session: TargetSession | undefined;
-  const redact = (text: string): string => redactForSession(session, config.allSecrets, text);
+  const redactor = stepRedactorForSession(() => session, config.allSecrets);
+  const redact = redactor.redact;
   const agent = options.agent ?? config.agentNames[0] ?? '';
   const identity = attemptIdentity(worker, attemptId, agent, redact(options.name ?? target.name));
   const steps = new StepRecorder(attemptId, {
-    maxEventsPerStep: config.limits.maxEventsPerStep, projectRoot: config.projectRoot, redact, signal: attemptSignal,
+    maxEventsPerStep: config.limits.maxEventsPerStep, projectRoot: config.projectRoot, redactor, signal: attemptSignal,
     ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
   });
   const artifacts = createAttemptArtifacts({
