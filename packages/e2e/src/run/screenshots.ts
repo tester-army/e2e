@@ -26,8 +26,6 @@ export interface ScreenshotContext {
    */
   readonly written: WrittenScreenshots;
   readonly artifacts: ArtifactSink;
-  /** Whether a secret fill withholds pixels for the rest of the attempt. */
-  withholdsPixels(): boolean;
 }
 
 /** What `createScreenshotContext` reads about the attempt. */
@@ -41,7 +39,6 @@ export interface ScreenshotContextOptions {
   readonly titlePath: readonly string[];
   readonly written: WrittenScreenshots;
   readonly artifacts: ArtifactSink;
-  withholdsPixels(): boolean;
 }
 
 /**
@@ -85,6 +82,5 @@ export function createScreenshotContext(options: ScreenshotContextOptions): Scre
     ci: options.ci,
     written: options.written,
     artifacts: options.artifacts,
-    withholdsPixels: options.withholdsPixels,
   };
 }

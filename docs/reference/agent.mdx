@@ -132,7 +132,7 @@ await agent.assert('the dashboard shows a trial badge');
 `screenshot` controls the evidence attached after the judgment, passing or
 failing.
 `vision` controls what the model is shown before it. No evidence is captured
-with `screenshot: false`, or once a secret has been filled in the attempt.
+with `screenshot: false`.
 
 | Throws | When |
 | --- | --- |
@@ -369,8 +369,8 @@ The built-in agent offers these tools while no secret has been filled:
 - A step that sent pixels records `visionInput: true` and
   `metrics.pixelBytes`.
 
-A secret filled during the step withholds every later screenshot
-(`PIXEL_TAINTED`). A step that opens on a tainted viewport offers none of the
+A secret filled during the step withholds every later screenshot from the
+model (`PIXEL_TAINTED`). A step that opens on a tainted viewport offers none of the
 six pixel tools.
 
 If semantic capture times out, an engine that proves masking independently
@@ -475,7 +475,7 @@ export interface AgentOption {
 export interface AssertOptions extends VisionOption, AgentOption {
   /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
-  /** Attach a redacted screenshot to the step; on by default, denied after a secret fill. */
+  /** Attach a redacted screenshot to the step; on by default. */
   screenshot?: boolean;
 }
 

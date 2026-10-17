@@ -171,7 +171,7 @@ purpose.
 | `assertScreenshot: { path, thresholdPercentage }` | `await expect(screen).toHaveScreenshot(name, { maxDiffPixelRatio })`, see [Visual comparison](/visual-testing) |
 | `assertDarkMode`, `assertLightMode` | Not yet. Assert on a themed control |
 | `retry: { maxRetries, commands }` | `expect.poll` for a value, `{ retries }` on the test for the flow |
-| `takeScreenshot` | `app.screenshot('label')`, redacted, withheld after a secret fill |
+| `takeScreenshot` | `app.screenshot('label')`, secure fields masked |
 
 </Accordion>
 <Accordion title="Device">

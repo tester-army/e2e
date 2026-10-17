@@ -247,7 +247,7 @@ Both forms take the [Screenshot options](#screenshot-options).
 | --- | --- |
 | `INVALID_ARGUMENT` | Before the screen is read: a name with a path separator, an option the matcher does not take (Playwright's `fullPage`, `animations`, `clip`), a value out of range, or `expect` on a screen scoped to a frame. Compare a locator inside the frame instead |
 | `ASSERTION_FAILED` | A missing, different, or same-run stored screenshot, as in the table above |
-| `POLICY_DENIED` | A `Secret` was filled earlier, as for `app.screenshot()` |
+| `POLICY_DENIED` | The engine can't prove every secure field on screen is masked |
 
 #### Screenshot options
 

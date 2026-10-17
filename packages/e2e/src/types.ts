@@ -151,7 +151,7 @@ export interface AgentOption {
 export interface AssertOptions extends VisionOption, AgentOption {
   /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
-  /** Attach a redacted screenshot to the step; on by default, denied after a secret fill. */
+  /** Attach a redacted screenshot to the step; on by default. */
   screenshot?: boolean;
 }
 

@@ -135,14 +135,13 @@ const shot = await app.screenshot('after-checkout');
 
 | Throws | When |
 | --- | --- |
-| `POLICY_DENIED` | A `Secret` was filled earlier in the session. |
 | `UNSUPPORTED_CAPABILITY` | The engine takes no screenshots. |
 | `ENGINE_FAILURE` | The capture failed. |
 
 <Note>
-Once a `Secret` has been filled, pixels are withheld for the rest of the
-session, including later tests in a serial group. A denied screenshot creates
-no artifact.
+The screenshot masks secure fields only, after a `Secret` fill too. A secret
+the app shows anywhere else is in the image. See
+[screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill).
 </Note>
 
 ## Types

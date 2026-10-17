@@ -140,7 +140,7 @@ password comes from [configured credentials](/authentication).
 | `device.matchFace()`, `device.unmatchFace()` | `device.setBiometrics('faceid', 'match' \| 'nonmatch')` |
 | `device.setStatusBar`, `device.setURLBlacklist` | No equivalent |
 | `device.disableSynchronization()` | No equivalent. Actions wait and assertions retry |
-| `device.takeScreenshot()` | `app.screenshot('label')`; withheld after a secret fill (`POLICY_DENIED`) |
+| `device.takeScreenshot()` | `app.screenshot('label')`, secure fields masked |
 | `device.takeScreenshot()` compared with an image snapshot library | `await expect(screen).toHaveScreenshot('name.png')`, see [Visual comparison](/visual-testing) |
 | `:ios:` / `:android:` in a test name | `{ platforms: ['ios'] }` on the test |
 

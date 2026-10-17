@@ -654,9 +654,7 @@ artifacts: {
 | [`store.putLink`](#putlink) | `Promise<{ ref }>` |
 
 - [`trace` and `video`](#recording) choose the recordings. The runner
-  captures a failure's screenshot and screen text whenever the engine can
-  (never after a secret fill, see
-  [Security rules](/reference/security#screenshots-after-a-secret-fill)).
+  captures a failure's screenshot and screen text whenever the engine can.
 - Each worker constructs its own store from the config module.
 - A failed `put` or `putLink` never fails the run.
 

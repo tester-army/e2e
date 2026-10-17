@@ -364,7 +364,7 @@ export class SessionHost {
         origin: 'test',
       }),
       timeoutMs: config.cleanupTimeout,
-      tainted: () => sessionSecrecy(attempt.session, config.allSecrets).exposure.withholdsPixels,
+      tainted: () => sessionSecrecy(attempt.session, config.allSecrets).exposure.withholdsModelPixels,
     });
   }
 

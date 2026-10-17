@@ -19,7 +19,7 @@ lists the rules behind it, as the code enforces them.
 | [Navigation](#navigation) | URL schemes per entry point |
 | [Site check](#site-check) | Headers, child frames, `basicAuth` |
 | [Secret fills](#secret-fills) | `type_secret`, `fill(secret)` |
-| [Screenshots after a secret fill](#screenshots-after-a-secret-fill) | Screenshots, pixel tools, restored sessions |
+| [Screenshots after a secret fill](#screenshots-after-a-secret-fill) | Model pixels, pixel tools, restored sessions |
 | [Secrets in engine options](#secrets-in-engine-options) | `basicAuth` and other engine options |
 | [Redaction](#redaction) | Model input, reports, downloads, output |
 | [Where redaction stops](#where-redaction-stops) | Transformed values, video, `command.log` |
@@ -79,7 +79,6 @@ These calls fail with `POLICY_DENIED`.
 | A mutating project tool requesting an observation | Observe in a separate call. |
 | `vision: 'only'` when pixels are withheld | There is nothing to fall back to. |
 | `browser.setCookies` with a cookie URL that isn't `http:` or `https:` | Only a web origin holds cookies. |
-| `app.screenshot()` or `toHaveScreenshot()` after a secret fill | See [Screenshots after a secret fill](#screenshots-after-a-secret-fill). |
 | `toHaveScreenshot()` when the engine can't prove every secure field is masked | The screenshot isn't kept. |
 | An agent, executor, or MCP `upload` of a file outside the project root, a hidden file, or a file under a hidden directory | Only project files can leave the computer through a form. |
 | An `act` or `vision: true` step whose semantic capture times out after a secret fill | It can't fall back to a screenshot. |
@@ -140,20 +139,27 @@ model never sees or picks it.
 
 ### Screenshots after a secret fill
 
-After any secret fill, for the rest of the attempt:
+After any secret fill, no pixels reach a model for the rest of the attempt:
 
 - screenshot and pixel tools are unavailable,
-- `app.screenshot()` and `toHaveScreenshot()` fail with `POLICY_DENIED`,
-- the runner leaves out assertion and failure screenshots,
 - an `act` or `vision: true` step whose semantic capture times out before the
   step does fails with `POLICY_DENIED`.
 
 The app could show the value anywhere, not only in the field's masked
-rectangle.
+rectangle, and model input leaves your computer.
+
+Screenshots the runner keeps as artifacts stay on: `app.screenshot()`,
+`toHaveScreenshot()`, and assertion and failure screenshots.
+
+<Warning>
+An artifact screenshot masks secure fields only. If the app shows the value
+anywhere else, the image has it. Treat screenshots like
+[videos](#where-redaction-stops).
+</Warning>
 
 A test that restores a [session](#sessions) whose setup filled a secret keeps
 this rule. A setup that signs in without a secret fill, for example by
-setting a session cookie with `browser.setCookies`, leaves screenshots on for
+setting a session cookie with `browser.setCookies`, leaves model pixels on for
 the tests that restore it. A value it uses is redacted only if it's a
 configured secret.
 

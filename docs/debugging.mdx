@@ -146,7 +146,7 @@ attempts under each test's `rerun-<n>/`.
 
 | Artifact | When |
 | --- | --- |
-| Screenshots | A failed attempt captures one when the engine can and pixels are allowed. The built-in `agent.assert` captures one after either verdict, unless `screenshot: false`. `app.screenshot('label')` captures one on request. After a secret fill, the runner takes [none](/reference/security#screenshots-after-a-secret-fill) for the rest of the attempt. |
+| Screenshots | A failed attempt captures one when the engine can. The built-in `agent.assert` captures one after either verdict, unless `screenshot: false`. `app.screenshot('label')` captures one on request. They mask secure fields only. See [screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill). |
 | Downloads | Files saved through `browser.waitForDownload`, kind `download`, as the app served them. [Downloads](/reference/security#downloads) says when the runner masks secrets in them. |
 | Videos | When you [record them](#watch-it-happen). Videos mask nothing. See [where redaction stops](/reference/security#where-redaction-stops). |
 | Agent transcripts | With [`--debug`](#agent-steps). |

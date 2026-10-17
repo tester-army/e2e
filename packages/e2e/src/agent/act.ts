@@ -35,7 +35,6 @@ import { tokenUpperBound } from './model/adapter.ts';
 import { instantiateLanguageModel, isUnservedModelError, unservedModelError } from './model/sdk.ts';
 import type { AgentObservation } from './observation.ts';
 import { ObservationFeed } from './observation-feed.ts';
-import { recordPolicyEvent } from './phases.ts';
 import type { ObservedScreen } from './replay.ts';
 import { appLocation } from '../cache/route.ts';
 import { OperationQueue } from './operation-queue.ts';
@@ -310,7 +309,7 @@ class ActDispatch {
       },
       observe: (options) => this.feed.observe(options),
       get pixelsTainted() {
-        return dispatch.runtime.exposure.withholdsPixels;
+        return dispatch.runtime.exposure.withholdsModelPixels;
       },
       attachTranscript: (text) => {
         // Debug detail only: transcripts are model prose and can be large.
@@ -372,8 +371,7 @@ class ActDispatch {
   /**
    * Keeps a redacted screenshot as an assert step's evidence once the
    * executor has judged, on a passing verdict too, as the built-in judgment
-   * does. `screenshot: false` opts out and a pixel-tainted viewport denies
-   * it. Best-effort: a failed capture never fails the step, and neither does
+   * does. `screenshot: false` opts out. Best-effort: a failed capture never fails the step, and neither does
    * one that never settles. The capture runs after `run()` cleared the step
    * timer, and an engine may ignore the cancellation its operation carries,
    * so the wait is bounded by that operation's own budget (`actionTimeout`
@@ -383,10 +381,6 @@ class ActDispatch {
    */
   async captureEvidence(): Promise<string | undefined> {
     if (this.spec.kind !== 'assert' || this.spec.screenshot === false) return undefined;
-    if (this.runtime.exposure.withholdsPixels) {
-      recordPolicyEvent(this.runtime.steps, 'assert.screenshot', 'denied', 'PIXEL_TAINTED');
-      return undefined;
-    }
     const { signal } = this.accounting;
     if (signal.aborted) return undefined;
     try {

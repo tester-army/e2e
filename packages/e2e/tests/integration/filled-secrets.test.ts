@@ -1,12 +1,12 @@
 /**
- * A filled secret never leaves the runner in a screenshot, a download, or
- * the cache (this run records no video, which masks nothing). Through the
- * real web engine: a text download is rewritten, labelled `complete`, and
- * handed to the store already clean whenever the session knows the secret,
- * filled or not. A secret filled into a visible ordinary field denies
- * screenshots. The executor's fill is recorded in the trace cache by the
- * secret's name alone. Nothing under the project's `.e2e` directory holds
- * the plaintext afterwards, a trace page for every test included.
+ * A filled secret never leaves the runner in text: a download, the cache,
+ * or a trace page. Screenshots are the project's own artifacts and stay on
+ * after a fill. Through the real web engine: a text download is rewritten,
+ * labelled `complete`, and handed to the store already clean whenever the
+ * session knows the secret, filled or not. The executor's fill is recorded
+ * in the trace cache by the secret's name alone. Nothing under the
+ * project's `.e2e` directory holds the plaintext afterwards, a trace page
+ * for every test included.
  */
 
 import { readFileSync } from 'node:fs';
@@ -54,8 +54,7 @@ test('downloads without a fill', async ({ app, screen, browser }) => {
 test('fills a visible field', async ({ app, screen }) => {
   await app.open();
   await screen.getByLabel('Focus target').fill(credentials.user('member').password);
-  const denied = await app.screenshot().then(() => undefined, (error: { code?: string }) => error.code);
-  expect(denied).toBe('POLICY_DENIED');
+  await app.screenshot('after-fill');
 });
 `;
 
@@ -128,6 +127,13 @@ describe('filled secrets', () => {
       .flatMap((result) => result.attempts)
       .flatMap((attempt) => (attempt.error === undefined ? [] : [attempt.error]));
     expect(outcome.status, JSON.stringify({ runErrors: outcome.report.run.errors, failures }, null, 2)).toBe('passed');
+  });
+
+  it('keeps a screenshot after a fill', () => {
+    const attempt = resultByTitle(outcome, 'fills a visible field').attempts[0]!;
+    expect(attempt.artifacts.filter((artifact) => artifact.kind === 'screenshot')).toEqual([
+      expect.objectContaining({ path: expect.stringMatching(/after-fill.*\.png$/) }),
+    ]);
   });
 
   it('downloads after a fill: a text download is rewritten, labelled complete, and stored clean', () => {
