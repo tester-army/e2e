@@ -10,6 +10,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
+    <!-- The test project in e2e/ and its node_modules are not part of the app. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);e2e/**</DefaultItemExcludes>
+
     <ApplicationTitle>with-maui</ApplicationTitle>
     <!-- The Android package and the iOS bundle identifier; e2e/e2e.config.ts opens the app by it. -->
     <ApplicationId>dev.e2e.examples.maui</ApplicationId>
