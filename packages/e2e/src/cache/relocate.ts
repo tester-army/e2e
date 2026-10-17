@@ -3,7 +3,8 @@
  *
  * Re-finds a recorded target descriptor in a fresh observation: exactly one
  * node must match, or replay diverges. This is the conservative public
- * ReplayPolicy — no scoring, no fuzzy matching, no vision. A tuned policy may
+ * ReplayPolicy — no scoring, no vision, no fuzzy matching beyond reading a
+ * minted test id by its shape (`testIdShapeTier`). A tuned policy may
  * replace it behind the same seam; the fail-closed contract (one match or
  * hand off) is not tunable.
  *
@@ -120,6 +121,30 @@ export function descriptorTiers(descriptor: TraceTargetDescriptor): readonly Tra
   return isRelocatableDescriptor(semantic) && !isAnonymous(semantic) ? [descriptor, semantic] : [descriptor];
 }
 
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+/** A test id part an app mints: a hex id or hash, a cuid, a recent epoch time in seconds or milliseconds. */
+const MINTED_TEST_ID_PART: readonly RegExp[] = [
+  /^(?=.*\d)(?=.*[a-f])[0-9a-f]{8,}$/i,
+  /^(?=(?:\D*\d){2})(?=.*[A-Za-z])[A-Za-z0-9]{8,}$/,
+  /^1[5-9]\d{8}(?:\d{3})?$/,
+];
+
+/**
+ * The descriptor with each uuid and minted part of its test id read as `#`
+ * (`row-#-delete`), when the test id is all that identifies it.
+ */
+export function testIdShapeTier(descriptor: TraceTargetDescriptor): TraceTargetDescriptor | undefined {
+  const { testId } = descriptor;
+  if (testId === undefined || descriptorTiers(descriptor).length !== 1) return undefined;
+  const shape = testId
+    .replace(UUID, '#')
+    .split(/([-_:./]+)/)
+    .map((part, index) => (index % 2 === 0 && MINTED_TEST_ID_PART.some((pattern) => pattern.test(part)) ? '#' : part))
+    .join('');
+  return shape === testId ? undefined : { ...descriptor, testId: shape };
+}
+
 /** Every listed field the recording captured must be present and equal on the candidate. */
 export function fieldsEqual(
   recorded: TraceTargetDescriptor,
@@ -162,7 +187,8 @@ function describeNodes(nodes: ReadonlyMap<string, RedactedNode>): readonly Descr
 
 /**
  * Relocates one descriptor against the nodes of a fresh observation, tier by
- * tier (`descriptorTiers`), each exactly-one-or-diverge. Ambiguity at any
+ * tier (`descriptorTiers`), then by a minted test id's shape, each
+ * exactly-one-or-diverge. Ambiguity at any
  * tier diverges immediately: two candidates sharing the matched identity
  * cannot be told apart by waiting, and acting on either would be a guess.
  * The one exception is a recorded `position`: the recording itself found the
@@ -173,13 +199,13 @@ export function relocateDescriptor(
   descriptor: TraceTargetDescriptor,
   nodes: ReadonlyMap<string, RedactedNode>,
 ): RelocationResult {
-  const matches = matchingIds(descriptor, nodes);
+  const { ids: matches, byShape } = matchingIds(descriptor, nodes);
   if (matches.length === 0) return { kind: 'failed', failure: 'target-not-found' };
   const { position } = descriptor;
   // A lone match is the node for a descriptor with an identity. An anonymous
-  // one has only its count and place: one unnamed twin where the recording
-  // counted two is as likely the other field as the right one.
-  if (matches.length === 1 && (!isAnonymous(descriptor) || position?.of === 1)) return { kind: 'found', id: matches[0]! };
+  // one, or one matched by shape, has only its count and place: one twin
+  // where the recording counted two is as likely the other one.
+  if (matches.length === 1 && ((!isAnonymous(descriptor) && !byShape) || position?.of === 1)) return { kind: 'found', id: matches[0]! };
   const positioned = position !== undefined && position.of === matches.length ? matches[position.index] : undefined;
   return positioned === undefined
     ? { kind: 'failed', failure: 'target-ambiguous', candidates: matches }
@@ -189,32 +215,46 @@ export function relocateDescriptor(
 /**
  * The ids a descriptor matches in a fresh observation, in document order: the
  * strictest tier (`descriptorTiers`) that matches anything decides, so a
- * churned test id still falls back to the semantic fields. Empty when nothing
- * matches. The recorder uses the same projection to notice, before it writes a
+ * churned test id still falls back to the semantic fields, and a minted one to
+ * its shape (`byShape`). Empty when nothing matches. The recorder uses the same projection to notice, before it writes a
  * target, that the description alone would not tell the target from its twins.
  */
 function matchingIds(
   descriptor: TraceTargetDescriptor,
   nodes: ReadonlyMap<string, RedactedNode>,
-): readonly string[] {
+): { readonly ids: readonly string[]; readonly byShape: boolean } {
+  const keyed = candidatesWithin(descriptor.within, nodes);
+  for (const tier of descriptorTiers(descriptor)) {
+    const matches = tierMatches(tier, keyed);
+    if (matches.length > 0) return { ids: matches, byShape: false };
+  }
+  // By shape only where a place means something, as for an anonymous target:
+  // alone when recorded (`describePosition`), or inside a named container.
+  const { position } = descriptor;
+  const placed = position !== undefined && (position.of === 1 || descriptor.within !== undefined);
+  const shape = placed ? testIdShapeTier(descriptor) : undefined;
+  return { ids: shape === undefined ? [] : shapeMatches(shape, keyed), byShape: shape !== undefined };
+}
+
+/** The candidates in the recorded container. */
+function candidatesWithin(within: string | undefined, nodes: ReadonlyMap<string, RedactedNode>): readonly DescribedNode[] {
   const candidates = describeNodes(nodes);
+  if (within === undefined) return candidates;
   // A recorded container key must hold: the same "Delete" in another row is
   // a different control. Checked against the tree the candidates came from,
   // never guessed.
-  const keyed =
-    descriptor.within === undefined
-      ? candidates
-      : (() => {
-          const parents = parentsOf(nodes);
-          return candidates.filter(
-            (candidate) => containerKey(candidate.id, nodes, parents) === descriptor.within,
-          );
-        })();
-  for (const tier of descriptorTiers(descriptor)) {
-    const matches = tierMatches(tier, keyed);
-    if (matches.length > 0) return matches;
-  }
-  return [];
+  const parents = parentsOf(nodes);
+  return candidates.filter((candidate) => containerKey(candidate.id, nodes, parents) === within);
+}
+
+/** The candidates whose minted test id has the same shape. */
+function shapeMatches(shape: TraceTargetDescriptor, candidates: readonly DescribedNode[]): string[] {
+  return candidates
+    .filter((candidate) => {
+      const candidateShape = testIdShapeTier(candidate.descriptor);
+      return candidateShape !== undefined && fieldsEqual(shape, candidateShape, IDENTITY_FIELDS);
+    })
+    .map((candidate) => candidate.id);
 }
 
 function tierMatches(tier: TraceTargetDescriptor, candidates: readonly DescribedNode[]): string[] {
@@ -245,12 +285,19 @@ export function describePosition(
 ): TracePosition | undefined {
   const described = describeTarget(node);
   if (described === undefined || (described.role === undefined && isAnonymous(described))) return undefined;
+  // Counted among its shape even alone: replay matches the shape only at this count.
+  const shape = testIdShapeTier(described);
+  if (shape !== undefined) {
+    const twins = shapeMatches(shape, candidatesWithin(within, nodes));
+    const at = twins.indexOf(node.ref.id);
+    return at === -1 || twins.length > MAX_POSITIONED_TWINS ? undefined : { index: at, of: twins.length };
+  }
   // An anonymous target has no identity to match alone; its position is what
   // makes it relocatable, so it is counted among its unnamed twins even when
   // it is the only one, and described with a placeholder position to do so.
   const anonymous = isAnonymous(described);
   const probe = { ...described, ...(within === undefined ? {} : { within }), ...(anonymous ? { position: { index: 0, of: 1 } } : {}) };
-  const ids = matchingIds(probe, nodes);
+  const { ids } = matchingIds(probe, nodes);
   if (ids.length < (anonymous ? 1 : 2) || ids.length > MAX_POSITIONED_TWINS) return undefined;
   const index = ids.indexOf(node.ref.id);
   return index === -1 ? undefined : { index, of: ids.length };

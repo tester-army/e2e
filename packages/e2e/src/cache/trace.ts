@@ -141,6 +141,7 @@ export interface TraceTargetDescriptor {
   /**
    * Set only when the other fields matched several controls on the recording
    * screen (one unlabeled "Set up" per card): which of them the target was.
+   * A target only a minted test id identifies records it even alone.
    * Replay honors it only when the live screen shows exactly as many, so a
    * twin that appeared or vanished still diverges instead of guessing.
    */
@@ -945,7 +946,7 @@ function readPosition(document: unknown): TracePosition | undefined {
   if (typeof document !== 'object' || document === null || Array.isArray(document)) return undefined;
   const { index, of } = document as Record<string, unknown>;
   if (!Number.isSafeInteger(index) || !Number.isSafeInteger(of)) return undefined;
-  // `of: 1` is an anonymous target counted alone (`describePosition`); a named target never records a position under two.
+  // `of: 1` is an anonymous or minted-test-id target counted alone (`describePosition`); a named target never records a position under two.
   if ((of as number) < 1 || (of as number) > MAX_TRACE_POSITION_OF) return undefined;
   if ((index as number) < 0 || (index as number) >= (of as number)) return undefined;
   return { index: index as number, of: of as number };
