@@ -168,7 +168,9 @@ page on any other origin is another route.
   step navigated to, and a bare number such as a badge are skipped the same
   way.
 - A control with no name is found by its place among the unnamed controls
-  of its kind inside the same named row, list item, or group.
+  of its kind inside the same named row, list item, or group. A container is
+  named by its first text, a node's own text before its children's, so a
+  region whose first line reads `Count: 0` is named "Count:".
 </Accordion>
 
 ## Why a step was not replayed
