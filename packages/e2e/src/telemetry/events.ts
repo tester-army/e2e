@@ -212,9 +212,9 @@ function modelCallsByApi(steps: readonly ReportStep[]): Record<string, number> {
 /**
  * How much of a test the replay cache carried, across its attempts.
  * `code-only` ran no agent step; `replayed` replayed every agent step from
- * the cache, so it ran without the model; `assisted` ran the model but the
- * cache carried at least part of a step; `live` ran every agent step on the
- * model.
+ * the cache, so no executor ran; `assisted` ran the executor but the cache
+ * carried at least part of a step; `live` ran every agent step on the
+ * executor. Whether the executor called a model is `model_calls`' business.
  */
 type TestCacheTier = 'code-only' | 'replayed' | 'assisted' | 'live';
 
