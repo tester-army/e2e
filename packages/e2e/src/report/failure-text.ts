@@ -100,17 +100,13 @@ function screenUrl(url: string): string {
 }
 
 /**
- * The attempt whose story a block tells: a flaky test's last failure; for a
- * failed or timed-out test, the last attempt that reached that verdict, so a
- * retry the run interrupted (or a serial member that retry never reached)
- * tells nothing; otherwise the final one.
+ * The attempt whose story a block tells: a flaky test's last failure;
+ * otherwise the outcome's verdict attempt, so a retry the run interrupted (or
+ * a serial member that retry never reached) tells nothing.
  */
 export function toldAttempt(result: ReportResult, final: Outcome): AttemptView {
   if (result.status === 'flaky') return final.lastFailed ?? final.final;
-  if (result.status === 'failed' || result.status === 'timed-out') {
-    return final.attempts.findLast((attempt) => attempt.status === 'failed' || attempt.status === 'timed-out') ?? final.final;
-  }
-  return final.final;
+  return final.verdict;
 }
 
 /** A step that did not pass. */

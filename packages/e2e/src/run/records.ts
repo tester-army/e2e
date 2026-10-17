@@ -113,6 +113,8 @@ export interface SerialMemberRecord {
 }
 
 export interface SerialAttemptRecord {
+  /** Whether the runner kept the last non-cut attempt's member verdicts. */
+  cutRetry?: boolean;
   id: string;
   index: number;
   status: 'passed' | 'failed' | 'timed-out' | 'interrupted';

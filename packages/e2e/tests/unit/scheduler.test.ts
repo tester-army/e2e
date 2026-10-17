@@ -4,6 +4,9 @@
  * without spawning processes or browsers.
  */
 
+import { mkdtemp, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CollectedFile, CollectedTest, Collection } from '../../src/collect/collect.ts';
 import type {
@@ -17,7 +20,11 @@ import { defineEngine, type EngineHandle } from '../../src/engine/index.ts';
 import { classifyError, serializeError } from '../../src/internal/errors.ts';
 import type { AttemptRecord, ResultRecord, RunError, SerialGroupRecord, SerialMemberRecord } from '../../src/run/records.ts';
 import { runUnits } from '../../src/run/scheduler.ts';
-import { serialGroupId, type SerialAttemptRun } from '../../src/run/serial.ts';
+import { runSerialUnit, serialGroupId, type SerialAttemptRun, type SerialHost } from '../../src/run/serial.ts';
+import { createEngineSession } from '../../src/engine/session.ts';
+import { RealmManager } from '../../src/run/realm.ts';
+import { buildReport } from '../../src/report/build.ts';
+import { outcome } from '../../src/report/outcome.ts';
 import { buildWorkPlans, type TargetWorkPlan, type TimeLimit } from '../../src/run/units.ts';
 import type { SpawnUnitRunner, UnitRunner, UnitRunnerEvents } from '../../src/run/unit-runner.ts';
 import type { MainToWorker, RunUnitMessage } from '../../src/run/worker/protocol.ts';
@@ -845,8 +852,8 @@ function memberRecord(pairs: readonly TestTargetPair[], attemptIndex: number, me
 function groupRun(pairs: readonly TestTargetPair[], index: number, statuses: readonly ('passed' | 'failed')[]): SerialAttemptRun {
   const failed = statuses.includes('failed');
   return {
-    reachedMembers: true,
     record: {
+      cutRetry: false,
       id: `group-attempt-${index}`,
       index,
       status: failed ? 'failed' : 'passed',
@@ -1179,6 +1186,36 @@ describe('scheduler fault handling', () => {
     expect(collected.results[0]!.attempts).toEqual(finished);
   });
 
+  it('reports the retained member verdict when a finished retry never reached members', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = serialPairs(target).slice(0, 1);
+    const first = groupRun(pairs, 0, ['failed']);
+    first.record.members[0]!.durationMs = 1250;
+    const retry = groupRun(pairs, 1, ['failed']);
+    retry.record.cutRetry = true;
+    retry.record.members[0]!.durationMs = 0;
+    retry.record.members[0]!.error = { category: 'infrastructure', code: 'SESSION_LAUNCH_FAILED', message: 'retry launch failed', retryable: false };
+    const fleet = new FakeFleet({ hangOn: ['file::web::tests/a.e2e.ts'], serialRunsBeforeHang: [first, retry] });
+    const collected = await runForcedInterrupt(pairs, target, fleet);
+    expect(collected.serialGroups[0]!.attempts.map((attempt) => attempt.cutRetry)).toEqual([false, true]);
+    const report = buildReport({
+      runId: '018f0f5c-7b2a-7abc-8abc-0123456789ab',
+      config: undefined,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      status: 'failed',
+      exitCode: 1,
+      results: collected.results,
+      serialGroups: collected.serialGroups,
+      runErrors: [],
+      targetProvenance: new Map(),
+    });
+    const groups = new Map(report.run.serialGroups.map((group) => [group.id, group]));
+    const result = outcome(report.run.results[0]!, groups);
+    expect(result.durationMs).toBe(1250);
+    expect(result.verdict.error?.code).toBe(FAILED_ATTEMPT.error!.code);
+    expect(result.final.error?.code).toBe('SESSION_LAUNCH_FAILED');
+  });
+
   it.each<{ statuses: ('passed' | 'failed')[][]; verdict: string; results: string[] }>([
     { statuses: [['passed', 'failed']], verdict: 'failed', results: ['passed', 'failed'] },
     { statuses: [['passed', 'failed'], ['passed', 'passed']], verdict: 'flaky', results: ['flaky', 'flaky'] },
@@ -1466,5 +1503,63 @@ describe('scheduler fault handling', () => {
     expect(collected.results).toHaveLength(2);
     expect(collected.results.find((result) => result.test.id === 'skip-me')!.selected).toBe(true);
     expect(collected.results.find((result) => result.test.id === 'filter-me')!.selected).toBe(false);
+  });
+});
+
+describe('serial attempt record provenance', () => {
+  it.each(['collection', 'launch', 'interrupted', 'reached'] as const)('streams the cut decision before extraction for %s retries', async (mode) => {
+    const target = makeTarget('web', 0);
+    const pairs = serialPairs(target).slice(0, 1).map((pair) => ({ ...pair, options: { ...pair.options, retries: 1 } }));
+    const file = { file: pairs[0]!.test.file, absolutePath: `/project/${pairs[0]!.test.file}` };
+    const realms = new RealmManager({ targetName: target.name, platform: target.platform, timeout: 1000, cleanupTimeout: 1000, runErrors: [], redactTitle: (title) => title });
+    const controller = new AbortController();
+    let created = 0;
+    vi.spyOn(realms, 'create').mockImplementation(async () => {
+      created += 1;
+      if (created === 2 && mode === 'collection') throw new Error('retry collection failed');
+      return realms.adopt({ tests: pairs.map((pair) => pair.test), hooks: [] }, file);
+    });
+    const streamed: SerialAttemptRun[] = [];
+    const groups: SerialGroupRecord[] = [];
+    const results: ResultRecord[] = [];
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'e2e-serial-record-'));
+    const host: SerialHost = {
+      target,
+      artifactsRoot: dir,
+      rerunDir: undefined,
+      runId: '018f0f5c-7b2a-7abc-8abc-0123456789ab',
+      artifactStore: undefined,
+      interruptSignal: controller.signal,
+      realms,
+      launchSession: async () => {
+        if (created === 2 && mode === 'launch') throw new Error('retry launch failed');
+        return createEngineSession({ engine: undefined, targetName: target.name });
+      },
+      closeSession: async () => {},
+      runAttempt: async (_pair, _registered, _realm, index) => {
+        if (index === 1 && mode === 'interrupted') controller.abort();
+        return { ...structuredClone(FAILED_ATTEMPT), index, durationMs: index === 0 ? 1250 : 0 };
+      },
+      emit: (result) => results.push(result),
+      pairStarted: () => {},
+      emitSerialGroup: (group) => groups.push(structuredClone(group)),
+      serialMemberFinished: () => {},
+      serialAttemptFinished: (_groupId, attemptRun) => {
+        expect(attemptRun.record.cutRetry).toBe(attemptRun.record.index > 0 && mode !== 'reached');
+        streamed.push(structuredClone(attemptRun));
+        Object.freeze(attemptRun.record);
+      },
+    };
+    try {
+      await runSerialUnit(host, pairs, file);
+      expect(streamed.map((attemptRun) => attemptRun.record.cutRetry)).toEqual([false, mode !== 'reached']);
+      const report = buildReport({ runId: host.runId, config: undefined, startedAt: '2026-01-01T00:00:00.000Z', status: 'failed', exitCode: 1, results, serialGroups: groups, runErrors: [], targetProvenance: new Map() });
+      const serialized = JSON.parse(JSON.stringify(report));
+      expect(serialized.run.serialGroups[0].attempts.map((attempt: { cutRetry: boolean }) => attempt.cutRetry)).toEqual([false, mode !== 'reached']);
+      const result = outcome(report.run.results[0]!, new Map(report.run.serialGroups!.map((group) => [group.id, group])));
+      expect(result.durationMs).toBe(mode === 'reached' ? 0 : 1250);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

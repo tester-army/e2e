@@ -472,6 +472,7 @@
       "properties": {
         "id": { "$ref": "#/$defs/uuidV7" },
         "index": { "type": "integer", "minimum": 0 },
+        "cutRetry": { "type": "boolean", "description": "The runner kept the last non-cut attempt's member verdicts. Absent in older reports." },
         "status": { "enum": ["passed", "failed", "timed-out", "interrupted"] },
         "startedAt": { "$ref": "#/$defs/timestamp" },
         "durationMs": { "type": "integer", "minimum": 0 },

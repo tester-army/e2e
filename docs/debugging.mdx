@@ -176,10 +176,12 @@ result holds:
 | `artifacts` | The captured files |
 
 A serial group's tests have no `attempts` of their own. Their results are in
-`run.serialGroups`, one member for each test in each attempt:
+`run.serialGroups`, one member for each test in each attempt. A `cutRetry: true`
+attempt retains the last non-cut attempt's member verdicts, so skip cut retries
+when inspecting the verdict:
 
 ```bash
-jq '.run.serialGroups[] | .attempts[-1].members[]? | select(.status != "passed")
+jq '.run.serialGroups[] | (.attempts | map(select(.cutRetry != true)) | last).members[]? | select(.status != "passed")
     | {testId, status, error, failure}' .e2e/report.json
 ```
 
