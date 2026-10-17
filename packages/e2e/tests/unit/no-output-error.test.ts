@@ -1,7 +1,9 @@
 /**
- * The SDK's `NoOutputGeneratedError` — thrown by the `result.output` getter
- * when the model produced nothing to parse — is invalid output, not a
- * provider failure.
+ * A structured call that ends with no parsed output fails as invalid output,
+ * not a provider failure. The adapter reads the finish reason and the text
+ * before the SDK's `result.output` getter throws its bare
+ * `NoOutputGeneratedError`, so the error carries the raw finish reason and
+ * any text the model produced. An `error` finish stays a provider failure.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -29,19 +31,43 @@ function call(): ModelCall<unknown> {
   };
 }
 
+async function generateError(model: ModelInstance): Promise<unknown> {
+  return adapter(model)
+    .generate(call())
+    .then(
+      () => {
+        throw new Error('expected the empty call to throw');
+      },
+      (cause: unknown) => cause,
+    );
+}
+
 describe('empty model output', () => {
   it('structured call: empty output on a length finish is MODEL_OUTPUT_INVALID, not MODEL_PROVIDER_FAILED', async () => {
     const model = createScriptedInstance('fake', 'scripted', async () => scriptedResult([], 'length'));
-    const error = await adapter(model)
-      .generate(call())
-      .then(
-        () => {
-          throw new Error('expected the empty call to throw');
-        },
-        (cause: unknown) => cause,
-      );
+    const error = await generateError(model);
 
     expect(isAgentError(error)).toBe(true);
     expect(error).toMatchObject({ code: 'MODEL_OUTPUT_INVALID', category: 'test' });
+    expect((error as Error).message).toContain('length');
+  });
+
+  it('structured call: an error finish stays MODEL_PROVIDER_FAILED', async () => {
+    const model = createScriptedInstance('fake', 'scripted', async () => scriptedResult([], 'error'));
+    const error = await generateError(model);
+
+    expect(isAgentError(error)).toBe(true);
+    expect(error).toMatchObject({ code: 'MODEL_PROVIDER_FAILED', category: 'infrastructure' });
+  });
+
+  it('structured call: tool-calls with text keeps the raw text on MODEL_OUTPUT_INVALID', async () => {
+    const model = createScriptedInstance('fake', 'scripted', async () =>
+      scriptedResult([{ type: 'text', text: '{"a":1}' }], 'tool-calls'),
+    );
+    const error = await generateError(model);
+
+    expect(isAgentError(error)).toBe(true);
+    expect(error).toMatchObject({ code: 'MODEL_OUTPUT_INVALID', category: 'test' });
+    expect(error).toHaveProperty('rawText', '{"a":1}');
   });
 });

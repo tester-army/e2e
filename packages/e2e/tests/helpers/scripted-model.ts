@@ -5,6 +5,7 @@
  * envelope — is identical and lives here once.
  */
 
+import type { FinishReason } from 'ai';
 import type { ModelInstance } from '../../src/types.ts';
 
 /** Builds a V4-shaped scripted model instance around one doGenerate body. */
@@ -30,7 +31,7 @@ export function createScriptedInstance<Options>(
 /** One scripted generate result with the fixed test usage envelope, and the call warnings a provider attached. */
 export function scriptedResult(
   content: readonly unknown[],
-  finishReason: 'stop' | 'tool-calls' | 'length',
+  finishReason: FinishReason,
   warnings: readonly ScriptedWarning[] = [],
 ): object {
   return {
