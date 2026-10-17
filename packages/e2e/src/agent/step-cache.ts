@@ -24,7 +24,7 @@ import { sleep } from '../internal/time.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
 import type { RecordableAction } from './actions.ts';
-import { AgentError, isAgentError, isModelUnreachable } from './error.ts';
+import { ActionHookError, AgentError, isAgentError, isModelUnreachable } from './error.ts';
 import { isRuntimeHardStop, type ReplayedPrefix, type StepVerdict } from './executor.ts';
 import {
   replayTrace,
@@ -80,7 +80,7 @@ export type StepOutcome = 'passed' | 'failed' | 'no-verdict';
 
 /** The outcome of a step that threw `cause`. */
 export function failedStepOutcome(cause: unknown): Exclude<StepOutcome, 'passed'> {
-  if (isModelUnreachable(cause)) return 'no-verdict';
+  if (isModelUnreachable(cause) || cause instanceof ActionHookError) return 'no-verdict';
   return isAgentError(cause) && cause.code === 'CANCELLED' ? 'no-verdict' : 'failed';
 }
 

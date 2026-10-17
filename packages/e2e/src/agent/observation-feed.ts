@@ -149,6 +149,16 @@ export class ObservationFeed {
     });
   }
 
+  /**
+   * Settles the screen the last action left as far as `mode` asks, for a
+   * caller already holding the queue. The capture becomes the newest
+   * observation, so the executor's next look does not wait out the change
+   * again.
+   */
+  async settleNow(mode: SettleMode): Promise<void> {
+    await this.observeNow(mode, false);
+  }
+
   /** The executor-facing observe: the options checked before anything is captured, then one settled look, viewed. */
   async observe(options: ExecutorObserveOptions = {}): Promise<ExecutorObservation> {
     if (options === null || typeof options !== 'object') {

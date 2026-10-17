@@ -117,6 +117,13 @@ export class AgentError extends E2EError {
   }
 }
 
+/**
+ * A throw from a test's `onAction` hook. It fails the step, but it is the
+ * test's own failure: it says nothing about the actions, so the step's
+ * recording is neither kept nor evicted for it.
+ */
+export class ActionHookError extends AgentError {}
+
 /** The closed agent code set, derived from the one classification table. */
 const AGENT_CODES = new Set<string>(Object.keys(CATEGORY_BY_CODE));
 

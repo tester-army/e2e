@@ -192,6 +192,27 @@ export interface ActOptions extends AgentOption {
   maxSteps?: number;
   /** Model-call budget; defaults to `agents.<name>.maxModelCalls` and can only lower it. */
   maxModelCalls?: number;
+  /**
+   * Runs after each action the step completes, once the screen settles, and
+   * before the next one. Awaited, and its time counts toward `timeout`.
+   * Observe only: drive nothing from it. A throw fails the step.
+   */
+  onAction?: ActionHook;
+}
+
+/** The `onAction` hook of an `act` call. */
+export type ActionHook = (event: ActionEvent) => void | Promise<void>;
+
+/** One completed action of an `act` step, as `onAction` receives it. */
+export interface ActionEvent {
+  /** 1-based position in the step's action budget; a failed attempt uses a number too. */
+  readonly index: number;
+  /** The committed action, e.g. `tap` or `navigate`; a mutating project tool reads `tool:<name>`. */
+  readonly action: string;
+  /** What the action did, secrets redacted. */
+  readonly summary: string;
+  /** `model` when the executor chose the action, `replay` when the cache replayed it. */
+  readonly source: 'model' | 'replay';
 }
 
 /** What one passing `act` step did, as the report records it. */

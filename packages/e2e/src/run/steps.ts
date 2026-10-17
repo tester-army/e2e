@@ -363,7 +363,7 @@ export class StepRecorder {
   private readonly abandoned = new Set<string>();
   /** The promises of abandoned steps, for the wait before teardown. */
   private readonly abandonedPromises: Promise<unknown>[] = [];
-  /** Highest timeline index among passed verification steps, or -1 when none has. */
+  /** The index every step before which a passed verification proves, or -1 when none has passed. */
   private lastVerified = -1;
   /** What the app logged this attempt, within `APP_LOG_LIMITS`. */
   private readonly logged: AppLogRecord[] = [];
@@ -408,7 +408,7 @@ export class StepRecorder {
     return this.current()?.index;
   }
 
-  /** Highest timeline index among passed verification steps, or -1 when none has. */
+  /** The index every step before which a passed verification proves, or -1 when none has passed. */
   get lastVerifiedStepIndex(): number {
     return this.lastVerified;
   }
@@ -425,6 +425,9 @@ export class StepRecorder {
     // spelled into an instruction or a locator stops here, once.
     const label = this.redact?.(rawLabel) ?? rawLabel;
     const index = this.steps.length;
+    // A verification run inside another step (an `onAction` hook's) proves
+    // only what the steps before that one left, never the step still running.
+    const verifiesBefore = this.current()?.index ?? index;
     const startedAt = timestamp();
     const stack = stepStack(this.projectRoot);
     const source = sourceLocation(stack, this.projectRoot);
@@ -448,12 +451,12 @@ export class StepRecorder {
     for (const { line, at } of this.earlyNavigations.splice(0)) this.fileNavigation(record, line, at);
     if (stack !== undefined) this.stacks.set(record.id, stack);
     this.publish(record, { phase: 'start', kind, api, label });
-    const promise = this.execute(record, body, options);
+    const promise = this.execute(record, body, options, verifiesBefore);
     this.pending.set(record.id, promise);
     return promise;
   }
 
-  private async execute<T>(record: StepRecord, body: () => Promise<T>, options: StepRunOptions): Promise<T> {
+  private async execute<T>(record: StepRecord, body: () => Promise<T>, options: StepRunOptions, verifiesBefore: number): Promise<T> {
     const startedMs = Date.now();
     try {
       // Model calls made inside the body are attributed to this step.
@@ -461,7 +464,7 @@ export class StepRecorder {
       const result = await (this.signal === undefined ? work : withAbort(work, this.signal, () => new TestError('CANCELLED', `${record.api} cancelled`)));
       if (this.abandoned.has(record.id)) return result;
       record.durationMs = Date.now() - startedMs;
-      if (options.verifies === true) this.lastVerified = Math.max(this.lastVerified, record.index);
+      if (options.verifies === true) this.lastVerified = Math.max(this.lastVerified, verifiesBefore);
       return result;
     } catch (cause) {
       if (this.abandoned.has(record.id)) {

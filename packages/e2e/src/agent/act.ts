@@ -23,7 +23,7 @@ import { join } from 'node:path';
 import { resolveVision } from '../config/agent.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { withAbort, withTimeout } from '../internal/time.ts';
-import type { ActOptions, ActResult, AgentErrorCode, JsonValue, ModelInstance, Secret, VisionMode } from '../types.ts';
+import type { ActionHook, ActOptions, ActResult, AgentErrorCode, JsonValue, ModelInstance, Secret, VisionMode } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, toAgentError } from './error.ts';
 import { redactParams, validateActOptions, validateInstruction, validateParams, validateVerdict } from './act-validation.ts';
 import { ActionDispatcher } from './action-dispatcher.ts';
@@ -67,6 +67,8 @@ export interface DispatchSpec {
   readonly screenshot?: boolean;
   /** Assert only: the `vision` the call asked for; the executor must declare `vision: true` to receive it. */
   readonly vision?: VisionMode;
+  /** Act only: the test's hook for each completed action. */
+  readonly onAction?: ActionHook | undefined;
 }
 
 /** Runs one `agent.act()` call as a harness-dispatched executor step. */
@@ -91,6 +93,7 @@ export async function runActStep(
     maxSteps: options?.maxSteps,
     maxModelCalls: options?.maxModelCalls,
     agent: options?.agent,
+    onAction: options?.onAction,
   });
 }
 
@@ -233,6 +236,7 @@ class ActDispatch {
       params: spec.params,
       secrets: spec.secrets,
       trace: () => this.stepCache,
+      onAction: spec.onAction,
     });
     // The dispatch always runs inside a recorded step (`dispatchAgentStep`
     // opens one); the index names the step to the executor and to the trace cache.
