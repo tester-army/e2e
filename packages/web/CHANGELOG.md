@@ -1,5 +1,15 @@
 # @e2e-dev/web
 
+## 0.15.3
+
+### Patch Changes
+
+- [#1050](https://github.com/tester-army/e2e/pull/1050) [`f7c7672`](https://github.com/tester-army/e2e/commit/f7c76720bfdf5f830daef5557edae51f38c8dccb) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Expose the native dialog kind to browser.onDialog handlers.
+
+- [#1022](https://github.com/tester-army/e2e/pull/1022) [`ff3bf39`](https://github.com/tester-army/e2e/commit/ff3bf3917f2b5bb0f81e5bc5f4fdaa24d023afd0) Thanks [@Bortlesboat](https://github.com/Bortlesboat)! - Allow `browser.waitForResponse` before the first `browser.goto` or `app.open`.
+
+- [#1209](https://github.com/tester-army/e2e/pull/1209) [`ef977f4`](https://github.com/tester-army/e2e/commit/ef977f4856da009cac26d78d2e9bb14e5991ee41) Thanks [@knowbody](https://github.com/knowbody)! - Engine disposal receives optional revocable permission to preserve run-owned resources for a replacement worker. Final shutdown, forced termination, and parent disconnect revoke that permission while disposal is pending. Each worker still invokes an engine's disposal hook one time. Missing permission requests final cleanup, including direct and standalone calls.
+
 ## 0.15.2
 
 ### Patch Changes

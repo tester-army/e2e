@@ -1,5 +1,13 @@
 # e2e
 
+## 0.21.3
+
+### Patch Changes
+
+- [#1216](https://github.com/tester-army/e2e/pull/1216) [`19f3ca2`](https://github.com/tester-army/e2e/commit/19f3ca2916cbfdd76589e3c68266a2d16887a041) Thanks [@okwasniewski](https://github.com/okwasniewski)! - The run telemetry event now sorts executed tests by how the replay cache carried them (`tests_code_only`, `tests_replayed`, `tests_assisted`, `tests_live`), counts `agent.act` steps that ran with the cache off (`agent_steps_uncached`), why steps missed the cache or handed off (`agent_miss_reasons`, `agent_handoff_reasons`), and the model calls by agent entry point (`model_calls_act`, `model_calls_assert`, `model_calls_extract`, `model_calls_waitfor`).
+
+- [#1209](https://github.com/tester-army/e2e/pull/1209) [`ef977f4`](https://github.com/tester-army/e2e/commit/ef977f4856da009cac26d78d2e9bb14e5991ee41) Thanks [@knowbody](https://github.com/knowbody)! - Engine disposal receives optional revocable permission to preserve run-owned resources for a replacement worker. Final shutdown, forced termination, and parent disconnect revoke that permission while disposal is pending. Each worker still invokes an engine's disposal hook one time. Missing permission requests final cleanup, including direct and standalone calls.
+
 ## 0.21.2
 
 ### Patch Changes
