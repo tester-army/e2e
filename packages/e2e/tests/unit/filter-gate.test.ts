@@ -6,7 +6,7 @@
  * setup file changed runs without filters.
  */
 
-import { existsSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -180,16 +180,22 @@ describe('gateTestFilters', () => {
   });
 
   it('runs every test when a lockfile of any package manager at any depth changed, never for a config file it did not load or a file named like a lockfile', async () => {
-    const lockfiles = ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'app/packages/ui/pnpm-lock.yaml', 'app/ios/Podfile.lock', 'android/gradle.lockfile', 'Gemfile.lock', 'go.sum', 'Cargo.lock'];
-    for (const lockfile of lockfiles) {
-      const { base, projectRoot } = projectRepo({ [lockfile]: 'lock\n', 'app/src/app.ts': 'two\n' });
+    const names = ['package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb', 'deno.lock', 'Podfile.lock', 'Package.resolved', 'Cartfile.resolved'];
+    names.push('gradle.lockfile', 'buildscript-gradle.lockfile', 'libs.versions.toml', 'Gemfile.lock', 'poetry.lock', 'uv.lock', 'Pipfile.lock', 'pdm.lock', 'go.sum', 'Cargo.lock');
+    names.push('composer.lock', 'pubspec.lock', 'mix.lock', 'packages.lock.json', 'flake.lock', 'MODULE.bazel.lock');
+    const { root, base, projectRoot } = projectRepo({ 'app/src/app.ts': 'two\n' });
+    for (const lockfile of [...names, 'app/packages/ui/pnpm-lock.yaml', 'app/ios/Podfile.lock']) {
+      // Uncommitted, which --changed-since counts.
+      mkdirSync(path.dirname(path.join(root, lockfile)), { recursive: true });
+      writeFileSync(path.join(root, lockfile), 'lock\n');
       const decided = await gate({ projectRoot, changedSince: 'main' });
       expect(decided, lockfile).toMatchObject({ candidates: [], changes: undefined, record: { base, files: 2, skipped: `${lockfile} changed` }, notices: [`${lockfile} changed, so no filter ran`] });
+      rmSync(path.join(root, lockfile));
     }
 
-    const { projectRoot } = projectRepo({ 'app/e2e.config.ts': 'export default { changed: true };\n' });
+    const edited = projectRepo({ 'app/e2e.config.ts': 'export default { changed: true };\n' });
     // A config value has no file to change: the edit is an ordinary file.
-    expect((await gate({ projectRoot, changedSince: 'main' })).changes?.files).toEqual(['app/e2e.config.ts']);
+    expect((await gate({ projectRoot: edited.projectRoot, changedSince: 'main' })).changes?.files).toEqual(['app/e2e.config.ts']);
     // A file merely named like a lockfile is not one.
     const named = projectRepo({ 'app/docs/pnpm-lock.yaml.md': 'about locks\n' });
     expect((await gate({ projectRoot: named.projectRoot, changedSince: 'main' })).changes?.files).toEqual(['app/docs/pnpm-lock.yaml.md']);

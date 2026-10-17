@@ -93,8 +93,8 @@ no app, and makes the same model calls as a run. To run every test, add
 
 - Every test, when the run isn't on a pull or merge request and has no
   `--changed-since`.
-- Every test on `pull_request_target`, which can hand a fork's change to
-  the model beside your secrets.
+- Every test on `pull_request_target`, even with `--changed-since`: it can
+  hand a fork's change to the model beside your secrets.
 - The tests in a changed test file, the tests whose stored screenshots
   changed, and the tests that use a changed setup file's sessions.
 - Every test, when the config file or a lockfile of any package manager

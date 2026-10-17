@@ -728,7 +728,12 @@ describe('select with what the test filters left out', () => {
     );
     const selection = select(col, cfg, { excluded: leftOut(col, [['refunds', 'areas', 'the diff misses it']]) });
     const refunds = selection.pairs.filter((pair) => pair.test.title === 'refunds');
-    expect(refunds).toHaveLength(4);
+    expect(refunds.map((pair) => [pair.target.name, pair.agent])).toEqual([
+      ['web', 'default'],
+      ['web', 'admin'],
+      ['web-2', 'default'],
+      ['web-2', 'admin'],
+    ]);
     for (const pair of refunds) {
       expect(pair.disposition).toBe('filtered');
       expect(pair.skip).toEqual({ cause: 'filtered', reason: 'the diff misses it', filter: 'areas' });

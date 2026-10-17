@@ -232,10 +232,12 @@ describe('findChanges on a GitHub Actions pull request', () => {
     expect(flagged.kind === 'found' && 'head' in flagged.changes).toBe(false);
   });
 
-  it("judges nothing on pull_request_target, which may hold a fork's change beside the repository's secrets", async () => {
+  it("judges nothing on pull_request_target, which may hold a fork's change beside the repository's secrets, even with --changed-since", async () => {
     const { dir, base, head } = featureRepo();
     const env = pullRequest({ base, head }, { GITHUB_EVENT_NAME: 'pull_request_target' });
-    expect(await lookUp(dir, { env })).toEqual({ kind: 'none', reason: 'pull_request_target runs every test', warning: false });
+    for (const changedSince of [undefined, 'main']) {
+      expect(await lookUp(dir, { env, changedSince }), changedSince).toEqual({ kind: 'none', reason: 'pull_request_target runs every test', warning: false });
+    }
   });
 
   it("never takes the first parent of a head checkout whose tip merged the base branch in: that is the pull request's own commit", async () => {

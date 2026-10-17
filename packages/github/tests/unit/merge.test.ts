@@ -308,7 +308,7 @@ describe('foldLastRun', () => {
     expect(folded.run.changes).toEqual(before.run.changes);
     expect(byTitle(folded).get('gamma#0')).toMatchObject({ selected: false, skip: { filter: 'jev' } });
 
-    // A first pass that ran no filter folds to no filters and no change, not even the rerun's skip reason.
+    // A first pass that ran no filter folds to no run.filters and no run.changes, not even the rerun's `--last-failed` record.
     const unfiltered = foldLastRun(lastFailed, report({ status: 'failed', results: before.run.results.slice(0, 2) }));
     expect(unfiltered.run.filters).toBeUndefined();
     expect(unfiltered.run.changes).toBeUndefined();

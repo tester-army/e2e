@@ -97,7 +97,7 @@ no filter and runs every test; see
 
 | Variable | Example | Reading | Effect |
 | --- | --- | --- | --- |
-| `GITHUB_ACTIONS`, `GITHUB_EVENT_NAME` | `GITHUB_EVENT_NAME=pull_request` | value | `true` and `pull_request` mark a pull request; `pull_request_target` calls no filter, so it runs every test |
+| `GITHUB_ACTIONS`, `GITHUB_EVENT_NAME` | `GITHUB_EVENT_NAME=pull_request` | value | `true` and `pull_request` mark a pull request; `pull_request_target` calls no filter, even with `--changed-since`, so it runs every test |
 | `GITHUB_EVENT_PATH`, `GITHUB_SHA`, `GITHUB_BASE_REF` | `GITHUB_BASE_REF=main` | value | Find the pull request's base commit: the event's `pull_request.base.sha`, then the first parent of the merge commit GitHub checks out, then `origin/<GITHUB_BASE_REF>` |
 | `GITLAB_CI`, `CI_MERGE_REQUEST_DIFF_BASE_SHA` | `GITLAB_CI=true` | value | `true` and a base commit mark a merge request pipeline, measured from that commit |
 | `CI_MERGE_REQUEST_EVENT_TYPE` | `CI_MERGE_REQUEST_EVENT_TYPE=merge_train` | value | `merge_train` calls no filter, so a merge train runs every test |

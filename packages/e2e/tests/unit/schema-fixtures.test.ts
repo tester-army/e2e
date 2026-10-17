@@ -137,6 +137,7 @@ describe.each(schemas)('%s schema', (name) => {
         [() => (skip['cause'] = 'explicit'), () => (skip['cause'] = 'filtered')],
         [() => (skip['filter'] = ''), () => (skip['filter'] = 'areas')],
         [() => (skip['filter'] = 'x'.repeat(257)), () => (skip['filter'] = 'x'.repeat(256))],
+        [() => (filter['decisions'] = []), () => delete filter['decisions']],
         [() => delete filter['name'], () => (filter['name'] = 'areas')],
         [() => delete filter['candidates'], () => (filter['candidates'] = 2)],
         [() => delete filter['excluded'], () => (filter['excluded'] = 1)],

@@ -655,8 +655,13 @@ describe('resolveConfig', () => {
       expect(() => resolve({ filters: [jev, jev] })).toThrow('filters has two filters named "jev"');
     });
 
-    it('leaves the config digest alone when a filter is added, changed, or removed', () => {
-      expect(resolve({ filters: [{ name: 'areas', filter: decide }] }).configDigest).toBe(resolve({}).configDigest);
+    it('leaves the config digest alone when a filter is added, changed, or removed, even one holding a cyclic client', () => {
+      const plain = resolve({}).configDigest;
+      const client: Record<string, unknown> = {};
+      client['self'] = client;
+      expect(resolve({ filters: [] }).configDigest).toBe(plain);
+      expect(resolve({ filters: [{ name: 'areas', filter: decide }, { name: 'jev', filter: decide }] }).configDigest).toBe(plain);
+      expect(resolve({ filters: [{ name: 'jev', filter: () => ({ exclude: { a: 'b' } }), client } as TestFilter] }).configDigest).toBe(plain);
     });
   });
 

@@ -89,12 +89,13 @@ const MERGE_PARENT = 'check out with fetch-depth: 2 or more';
 const PULL_REQUEST_TARGET = 'pull_request_target runs every test';
 
 /**
- * Finds the change the test filters judge. `--changed-since` wins; then a
+ * Finds the change the test filters judge. A `pull_request_target` run has
+ * none, whatever the flags say. `--changed-since` wins; then a
  * GitHub Actions `pull_request` run, whose base is the first of the event's
  * `pull_request.base.sha`, the first parent of the merge commit GitHub
  * checks out, and `origin/<GITHUB_BASE_REF>` that is in the checkout; then
  * a GitLab merge request pipeline's `CI_MERGE_REQUEST_DIFF_BASE_SHA`, unless
- * it is a merge train. A `pull_request_target` run has none. The files are
+ * it is a merge train. The files are
  * what differs from the merge base of that commit and HEAD: for a request,
  * in HEAD, so a file CI writes is not its change; for `--changed-since`, in
  * the working tree, untracked files included. Every git call together has
@@ -126,10 +127,10 @@ export async function findChanges(options: ChangeOptions): Promise<ChangeLookup>
   }
 }
 
-/** Where the run's base commit comes from: the flag, a pull or merge request, or nowhere, as on a merge queue, a merge train, or `pull_request_target`. */
+/** Where the run's base commit comes from: the flag, a pull or merge request, or nowhere, as on a merge queue, a merge train, or `pull_request_target`, which `--changed-since` does not override. */
 function baseSource(changedSince: string | undefined, env: NodeJS.ProcessEnv): BaseSource | 'pull_request_target' | undefined {
-  if (changedSince !== undefined) return { kind: 'flag', ref: changedSince };
   if (env['GITHUB_ACTIONS'] === 'true' && env['GITHUB_EVENT_NAME'] === 'pull_request_target') return 'pull_request_target';
+  if (changedSince !== undefined) return { kind: 'flag', ref: changedSince };
   if (env['GITHUB_ACTIONS'] === 'true' && env['GITHUB_EVENT_NAME'] === 'pull_request') {
     return { kind: 'github', eventPath: env['GITHUB_EVENT_PATH'] || undefined, baseRef: env['GITHUB_BASE_REF'] || undefined, sha: env['GITHUB_SHA'] || undefined };
   }

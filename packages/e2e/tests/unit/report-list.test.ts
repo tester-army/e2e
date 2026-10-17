@@ -713,6 +713,14 @@ describe('ListReporter', () => {
         ` × filter "areas" ${outcome} 302ms`,
         'interrupted while running filter "slow": tearing down (interrupt again to force)',
       ]);
+
+      const chunks: string[] = [];
+      const colored = new ListReporter({ write: (line) => chunks.push(line) }, { live: false, colors: true });
+      colored.handle(runStarted());
+      colored.handle({ type: 'setup', step: areas, state: 'started' });
+      colored.handle({ type: 'notice', target: 'filter', message: 'areas: asking the model about 3 tests' });
+      colored.handle({ type: 'setup', step: areas, state: 'finished', durationMs: 302, outcome });
+      expect(chunks.at(-1)).toBe(` \u001b[33m×\u001b[39m filter "areas" \u001b[33m${outcome} 302ms\u001b[39m`);
     });
 
     it('prints a provisioning step only when it narrated, and never the collection', () => {
