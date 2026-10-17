@@ -176,9 +176,10 @@ substring; a `RegExp` matches as written.
   `toHaveText` and `toContainText`, `isVisible()` (false at zero),
   `isHidden()` (true), `count()`, `all()`, `allTextContents()`.
 - Narrow with `filter({ hasText })` (a case-insensitive substring, unlike a
-  query), `filter({ has: locator })`, `first()`, `last()`, `nth(i)`, or
-  scoping under another locator. Any other `filter` key (`hasNot`,
-  `hasNotText`) or an empty `filter({})` is `INVALID_LOCATOR`.
+  query), `filter({ hasNotText })` to exclude matching subtree text,
+  `filter({ has: locator })`, `first()`, `last()`, `nth(i)`, or scoping under
+  another locator. Any other `filter` key (`hasNot`, `visible`) or an empty
+  `filter({})` is `INVALID_LOCATOR`.
 - `visible: true` drops nodes the page hides (a closed drawer) before the
   exactly-one rule. Visibility is what renders, as `toBeVisible()` reads it:
   an `aria-hidden` spinner that paints is visible, so `toBeHidden()` waits
