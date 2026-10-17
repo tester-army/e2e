@@ -3,7 +3,8 @@
  * `run` and `list` share. A `--last-failed` rerun's tests are owed and never
  * judged. Without a change to judge, or when a lockfile or the config file
  * changed, no filter is called and every test runs. A test whose file, or
- * whose session's setup file, changed runs without one.
+ * its session's setup file, changed runs without one, as when either's
+ * stored screenshots changed.
  */
 
 import path from 'node:path';
@@ -19,8 +20,6 @@ import { findChanges } from './changes.ts';
 export interface FilterGateInput {
   /** The tests the selection runs, as the filters would be handed them. */
   readonly candidates: readonly TestFilterCandidate[];
-  /** The file of the setup test that saves each candidate's session, by candidate id, for the candidates that use one. */
-  readonly setupFiles: ReadonlyMap<string, string>;
   /** Whether this is a `--last-failed` rerun, whose tests are owed. */
   readonly lastFailed: boolean;
   /** The base ref `--changed-since` named. */
@@ -47,15 +46,46 @@ export interface FilterGate {
 /** The most code points `run.changes.skipped` keeps. */
 const MAX_SKIPPED = 1024;
 
-/** Lockfiles by name, at any depth: a change to one can change what any test does. */
-const LOCKFILES: ReadonlySet<string> = new Set(['package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb']);
+/** Lockfiles of every package manager, and Gradle's version catalog, by name at any depth: a change to one can change what any test does. */
+const LOCKFILES: ReadonlySet<string> = new Set([
+  'package-lock.json',
+  'npm-shrinkwrap.json',
+  'pnpm-lock.yaml',
+  'yarn.lock',
+  'bun.lock',
+  'bun.lockb',
+  'deno.lock',
+  'Podfile.lock',
+  'Package.resolved',
+  'Cartfile.resolved',
+  'gradle.lockfile',
+  'buildscript-gradle.lockfile',
+  'libs.versions.toml',
+  'Gemfile.lock',
+  'poetry.lock',
+  'uv.lock',
+  'Pipfile.lock',
+  'pdm.lock',
+  'go.sum',
+  'Cargo.lock',
+  'composer.lock',
+  'pubspec.lock',
+  'mix.lock',
+  'packages.lock.json',
+  'flake.lock',
+  'MODULE.bazel.lock',
+]);
+
+/** What ends the directory of a test file's stored screenshots, `<test file>-snapshots/`. */
+const SNAPSHOTS = '-snapshots/';
 
 /**
  * Decides whether the filters are called, in order: never on a
  * `--last-failed` rerun (git is not asked), nor with no test to judge, nor
  * without a change, nor when a lockfile or the loaded config file changed.
- * Otherwise a candidate whose test file, or its session's setup file,
- * changed runs without a filter, which runs a changed setup too; the rest
+ * Otherwise a candidate whose test file or session's setup file changed,
+ * or a stored screenshot of either, runs without a filter, which runs a
+ * changed setup too; the rest
  * are judged. Each decision is one notice; a pull request the checkout
  * cannot measure is a warning.
  */
@@ -80,12 +110,17 @@ export async function gateTestFilters(input: FilterGateInput): Promise<FilterGat
   const everything = changes.files.find((file) => LOCKFILES.has(path.posix.basename(file)) || file.normalize('NFC') === configFile);
   const counts = { base: changes.base, files: changes.files.length };
   if (everything !== undefined) return skip({ ...counts, skipped: ellipsize(collapseText(`${everything} changed`), MAX_SKIPPED) });
-  /** Whether `file`, project-relative or absolute, is one the change holds. */
-  const touched = (file: string | undefined): boolean => file !== undefined && changed.has(inRepository(file));
-  const judged = input.candidates.filter((candidate) => !touched(candidate.file) && !touched(input.setupFiles.get(candidate.id)));
+  const screenshotted = snapshotOwners(changed);
+  /** Whether `file`, project-relative or absolute, or one of its stored screenshots, is one the change holds. */
+  const touched = (file: string | undefined): boolean => {
+    if (file === undefined) return false;
+    const inRepo = inRepository(file);
+    return changed.has(inRepo) || screenshotted.has(inRepo);
+  };
+  const judged = input.candidates.filter((candidate) => !touched(candidate.file) && !touched(candidate.setupFile));
   const pinned = input.candidates.length - judged.length;
   const record = { ...counts, ...(pinned === 0 ? {} : { pinned }) };
-  const pinnedLine = `${plural(pinned, 'test')} ${pinned === 1 ? 'runs' : 'run'} without filters: ${pinned === 1 ? 'its' : 'their'} test or setup file changed`;
+  const pinnedLine = `${plural(pinned, 'test')} ${pinned === 1 ? 'runs' : 'run'} without filters: ${pinned === 1 ? 'its' : 'their'} test file, screenshots, or setup file changed`;
   if (judged.length === 0) {
     input.notice(pinnedLine);
     return skip({ ...record, skipped: 'no tests left to judge' });
@@ -93,6 +128,15 @@ export async function gateTestFilters(input: FilterGateInput): Promise<FilterGat
   input.notice(`judging ${plural(changes.files.length, 'file')} changed since ${shortCommit(changes.base)}`);
   if (pinned > 0) input.notice(pinnedLine);
   return { candidates: Object.freeze(judged), changes, record };
+}
+
+/** The test files, repository-relative, whose stored screenshots `changed` holds one of. */
+function snapshotOwners(changed: ReadonlySet<string>): ReadonlySet<string> {
+  const owners = new Set<string>();
+  for (const file of changed) {
+    for (let at = file.indexOf(SNAPSHOTS); at !== -1; at = file.indexOf(SNAPSHOTS, at + 1)) owners.add(file.slice(0, at));
+  }
+  return owners;
 }
 
 /**

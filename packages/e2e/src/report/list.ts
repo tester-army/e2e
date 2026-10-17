@@ -541,8 +541,8 @@ export class ListReporter implements Reporter {
    * zero counters while a database booted or a browser downloaded. The step
    * in flight ticks in the live window; a finished process prints once with
    * its wait, a finished collection, provisioning, or filter only when it
-   * narrated, a filter that timed out in yellow and never checked off; the
-   * process waits sum into the summary's startup split.
+   * narrated, a filter that failed or timed out in yellow and never checked
+   * off; the process waits sum into the summary's startup split.
    */
   private setupStep(event: RunEventOf<'setup'>): void {
     const { pc } = this;
@@ -560,8 +560,8 @@ export class ListReporter implements Reporter {
       this.window.redraw();
       return;
     }
-    if (event.outcome === 'timed out') {
-      this.print(` ${pc.yellow(F_CROSS)} ${subject} ${pc.yellow(`timed out ${formatTime(event.durationMs)}`)}`);
+    if (event.outcome === 'failed' || event.outcome === 'timed out') {
+      this.print(` ${pc.yellow(F_CROSS)} ${subject} ${pc.yellow(`${event.outcome} ${formatTime(event.durationMs)}`)}`);
       return;
     }
     const outcome = event.outcome ?? done;

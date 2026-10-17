@@ -53,4 +53,9 @@ export interface DecisionFilterOptions {
    * reads `AI_GATEWAY_API_KEY`.
    */
   readonly model: Exclude<Experimental_DecisionModel, string>;
+  /**
+   * Provider options sent with every decide call, such as
+   * `{ gateway: { zeroDataRetention: true } }` for Vercel AI Gateway.
+   */
+  readonly providerOptions?: Parameters<typeof experimental_decide>[0]['providerOptions'];
 }

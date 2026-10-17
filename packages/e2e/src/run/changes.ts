@@ -2,9 +2,10 @@
  * The change a run's test filters judge: every file that differs from where
  * HEAD branched off a base commit. The base comes from `--changed-since`, a
  * GitHub Actions pull request, or a GitLab merge request pipeline; any other
- * run has no change to judge. An explicit `--changed-since` git cannot answer
- * is `INVALID_CHANGED_SINCE`; a detected pull or merge request git cannot
- * answer is a warning, never an error.
+ * run, `pull_request_target` included, has no change to judge. An explicit
+ * `--changed-since` git cannot answer is `INVALID_CHANGED_SINCE`; a
+ * detected pull or merge request git cannot answer is a warning, never an
+ * error.
  */
 
 import { execFile } from 'node:child_process';
@@ -42,7 +43,6 @@ type BaseSource =
   | { readonly kind: 'flag'; readonly ref: string }
   | {
       readonly kind: 'github';
-      readonly event: 'pull_request' | 'pull_request_target';
       readonly eventPath: string | undefined;
       readonly baseRef: string | undefined;
       readonly sha: string | undefined;
@@ -85,19 +85,24 @@ const REQUESTS = {
 /** How to check out the first parent of the merge commit GitHub checks out. */
 const MERGE_PARENT = 'check out with fetch-depth: 2 or more';
 
+/** Why a `pull_request_target` run judges no change: it holds the repository's secrets, and its change may be a fork's, written to talk a model into leaving tests out. */
+const PULL_REQUEST_TARGET = 'pull_request_target runs every test';
+
 /**
  * Finds the change the test filters judge. `--changed-since` wins; then a
- * GitHub Actions `pull_request` or `pull_request_target` run, whose base is
- * the first of the event's `pull_request.base.sha`, the first parent of the
- * merge commit GitHub checks out, and `origin/<GITHUB_BASE_REF>` that is in
- * the checkout; then a GitLab merge request pipeline's
- * `CI_MERGE_REQUEST_DIFF_BASE_SHA`, unless it is a merge train. The files
- * are what differs between the working tree and the merge base of that
- * commit and HEAD, untracked files included. Every git call together has a
- * 30 second budget.
+ * GitHub Actions `pull_request` run, whose base is the first of the event's
+ * `pull_request.base.sha`, the first parent of the merge commit GitHub
+ * checks out, and `origin/<GITHUB_BASE_REF>` that is in the checkout; then
+ * a GitLab merge request pipeline's `CI_MERGE_REQUEST_DIFF_BASE_SHA`, unless
+ * it is a merge train. A `pull_request_target` run has none. The files are
+ * what differs from the merge base of that commit and HEAD: for a request,
+ * in HEAD, so a file CI writes is not its change; for `--changed-since`, in
+ * the working tree, untracked files included. Every git call together has
+ * a 30 second budget.
  */
 export async function findChanges(options: ChangeOptions): Promise<ChangeLookup> {
   const source = baseSource(options.changedSince, options.env);
+  if (source === 'pull_request_target') return { kind: 'none', reason: PULL_REQUEST_TARGET, warning: false };
   if (source === undefined) return { kind: 'none', reason: NOT_A_PULL_REQUEST, warning: false };
   if (source.kind === 'flag' && (source.ref.length === 0 || source.ref.startsWith('-'))) {
     throw invalidChangedSince(`--changed-since must name a git ref, such as origin/main; got ${JSON.stringify(source.ref)}`);
@@ -121,12 +126,12 @@ export async function findChanges(options: ChangeOptions): Promise<ChangeLookup>
   }
 }
 
-/** Where the run's base commit comes from: the flag, a pull or merge request, or nowhere, as on a merge queue or merge train. */
-function baseSource(changedSince: string | undefined, env: NodeJS.ProcessEnv): BaseSource | undefined {
+/** Where the run's base commit comes from: the flag, a pull or merge request, or nowhere, as on a merge queue, a merge train, or `pull_request_target`. */
+function baseSource(changedSince: string | undefined, env: NodeJS.ProcessEnv): BaseSource | 'pull_request_target' | undefined {
   if (changedSince !== undefined) return { kind: 'flag', ref: changedSince };
-  const event = env['GITHUB_EVENT_NAME'];
-  if (env['GITHUB_ACTIONS'] === 'true' && (event === 'pull_request' || event === 'pull_request_target')) {
-    return { kind: 'github', event, eventPath: env['GITHUB_EVENT_PATH'] || undefined, baseRef: env['GITHUB_BASE_REF'] || undefined, sha: env['GITHUB_SHA'] || undefined };
+  if (env['GITHUB_ACTIONS'] === 'true' && env['GITHUB_EVENT_NAME'] === 'pull_request_target') return 'pull_request_target';
+  if (env['GITHUB_ACTIONS'] === 'true' && env['GITHUB_EVENT_NAME'] === 'pull_request') {
+    return { kind: 'github', eventPath: env['GITHUB_EVENT_PATH'] || undefined, baseRef: env['GITHUB_BASE_REF'] || undefined, sha: env['GITHUB_SHA'] || undefined };
   }
   // A merge train is GitLab's merge queue: the last gate before the target branch runs every test.
   const sha = env['CI_MERGE_REQUEST_DIFF_BASE_SHA'];
@@ -149,7 +154,7 @@ async function lookUp(source: BaseSource, cwd: string, git: Git): Promise<Change
           : `--changed-since ${ref} shares no history with HEAD: their histories are unrelated; name a ref on the history of HEAD`,
       );
     }
-    return changesSince(root, base, git);
+    return changesSince(root, base, git, true);
   }
   const request = REQUESTS[source.kind];
   const found = source.kind === 'github' ? await githubBase(root, source, git) : await gitlabBase(root, source.sha, git);
@@ -161,7 +166,7 @@ async function lookUp(source: BaseSource, cwd: string, git: Git): Promise<Change
   if (base === undefined) {
     return { kind: 'none', reason: `${request.name} base commit ${shortCommit(found.commit)} shares no history with HEAD in the checkout: ${request.fullHistory}`, warning: true };
   }
-  return changesSince(root, base, git);
+  return changesSince(root, base, git, false);
 }
 
 /**
@@ -182,7 +187,7 @@ async function githubBase(root: string, source: Extract<BaseSource, { kind: 'git
   // GitHub's merge commit has the base branch first and the pull request's head second.
   const merge =
     head.parents.length === 2 &&
-    (event.head === undefined ? source.event === 'pull_request' && head.commit === source.sha : head.parents[1] === event.head);
+    (event.head === undefined ? head.commit === source.sha : head.parents[1] === event.head);
   const fromMerge = merge ? await commitOf(root, head.parents[0]!, git) : undefined;
   const commit = fromMerge ?? (source.baseRef === undefined ? undefined : await commitOf(root, `refs/remotes/origin/${source.baseRef}`, git));
   return commit === undefined ? { commit, named: event.base, missing: merge ? MERGE_PARENT : REQUESTS.github.fullHistory } : { commit };
@@ -195,20 +200,21 @@ async function gitlabBase(root: string, sha: string, git: Git): Promise<RequestB
 }
 
 /**
- * Every file that differs from `base`: the working tree's diff against it,
- * staged or not, and the untracked files, sorted by code point. An untracked
- * nested repository, which git lists as its directory, is not this
- * repository's change.
+ * Every file that differs from `base`, sorted by code point: in HEAD, which
+ * the change records as its `head`, or with `workingTree` in the working
+ * tree, staged or not, and the untracked files. An untracked nested repository, which git lists as its directory,
+ * is not this repository's change.
  */
-async function changesSince(root: string, base: string, git: Git): Promise<ChangeLookup> {
+async function changesSince(root: string, base: string, git: Git, workingTree: boolean): Promise<ChangeLookup> {
+  const head = workingTree ? undefined : (await gitOutput(root, ['rev-parse', '--verify', 'HEAD'], git)).trim();
   const [diff, untracked] = await Promise.all([
-    gitOutput(root, ['diff', '--name-only', '--no-renames', '--no-ext-diff', '-z', base, '--'], git),
-    gitOutput(root, ['ls-files', '--others', '--exclude-standard', '--full-name', '-z'], git),
+    gitOutput(root, ['diff', '--name-only', '--no-renames', '--no-ext-diff', '-z', base, ...(head === undefined ? [] : [head]), '--'], git),
+    head === undefined ? gitOutput(root, ['ls-files', '--others', '--exclude-standard', '--full-name', '-z'], git) : '',
   ]);
   const files = [...new Set([...diff.split('\0'), ...untracked.split('\0').filter((file) => !file.endsWith('/'))])].filter((file) => file !== '').toSorted(compareCodePoints);
   if (files.length === 0) return { kind: 'none', reason: `no files changed since ${shortCommit(base)}`, warning: false, base };
   // As on disk, like the filter context's `projectRoot`: git prints `C:/repo` on Windows.
-  return { kind: 'found', changes: Object.freeze({ base, root: onDiskPath(root), files: Object.freeze(files) }) };
+  return { kind: 'found', changes: Object.freeze({ base, root: onDiskPath(root), files: Object.freeze(files), ...(head === undefined ? {} : { head }) }) };
 }
 
 /** The repository `cwd` is in, by its absolute root. */

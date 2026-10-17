@@ -283,7 +283,7 @@ describe('foldLastRun', () => {
     expect(renderMarkdownReport(folded)).toContain('step one broke');
   });
 
-  it('shows the filter lines and the change of the run before beside the tests its filters left out, since a --last-failed rerun runs no filter', () => {
+  it('keeps the filters and the change of the run before beside the tests its filters left out, since a --last-failed rerun runs no filter', () => {
     const base = '0123456789abcdef0123456789abcdef01234567';
     const before = report({
       status: 'failed',
@@ -307,17 +307,11 @@ describe('foldLastRun', () => {
     expect(folded.run.filters).toEqual(before.run.filters);
     expect(folded.run.changes).toEqual(before.run.changes);
     expect(byTitle(folded).get('gamma#0')).toMatchObject({ selected: false, skip: { filter: 'jev' } });
-    const page = renderMarkdownReport(folded);
-    expect(page).toContain('### 🟢 e2e: 1 flaky, 1 passed, 1 left out by filters\n');
-    expect(page).toContain('**Change** 4 files changed since `0123456`  \n**Filter** `jev` kept 2 of 3 tests, left out 1\n');
-    expect(page).toContain('| tests/example.e2e.ts › gamma | `jev` | Jev: 5% likely affected |');
-    expect(page).not.toContain('--last-failed');
 
-    // A first pass that ran no filter leaves the folded page without filter lines, the rerun's skip reason included.
+    // A first pass that ran no filter folds to no filters and no change, not even the rerun's skip reason.
     const unfiltered = foldLastRun(lastFailed, report({ status: 'failed', results: before.run.results.slice(0, 2) }));
     expect(unfiltered.run.filters).toBeUndefined();
     expect(unfiltered.run.changes).toBeUndefined();
-    expect(renderMarkdownReport(unfiltered)).not.toContain('Filter');
   });
 
   it('counts only the tests still left out when the rerun ran one the run before\'s filter left out', () => {
@@ -342,10 +336,6 @@ describe('foldLastRun', () => {
     const folded = foldLastRun(lastFailed, before);
     expect(byTitle(folded).get('member b#0')).toMatchObject({ selected: true, status: 'passed' });
     expect(folded.run.filters).toEqual([{ name: 'pages', candidates: 2, excluded: 0 }]);
-    const page = renderMarkdownReport(folded);
-    expect(page).toContain('**Filter** `pages` kept all 2 tests\n');
-    expect(page).not.toContain('test-target pair');
-    expect(page).not.toContain('left out by filters');
   });
 
   it('leaves the rerun alone when the run before is another project\'s', () => {

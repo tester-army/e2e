@@ -1098,15 +1098,15 @@ export default {
   left out, is ignored. A test of a serial group still runs when another
   test of its group does.
 - Each filter gets only the tests the one before it kept.
-- Past 5 minutes, `signal` aborts with a `TimeoutError`, the run stops
-  waiting, and the filter leaves nothing out.
+- A filter that throws, returns an invalid result, or runs past 5 minutes
+  leaves nothing out, and the run warns. Past 5 minutes, `signal` aborts
+  with a `TimeoutError` and the run stops waiting.
 - Do the work inside `filter`. Workers load the config too, and only the
   runner calls `filter`.
 
 | Throws | When |
 | --- | --- |
 | `INVALID_CONFIG` | A bad `name`, an item that isn't `{ name, filter }`, or a bare function such as `decisionFilter` in place of `decisionFilter({ model })`. |
-| `FILTER_FAILED` | A filter throws (exit 3). A thrown `ConfigurationError` keeps its own code. |
 
 The declarations are under [`TestFilter`](#testfilter), exported from `e2e`.
 
@@ -1748,6 +1748,8 @@ interface TestFilterCandidate {
   readonly titlePath: readonly string[];
   /** The describe chain's tags, then the test's own. */
   readonly tags: readonly string[];
+  /** Project-relative path of the setup test file that saves the test's session; absent without one. */
+  readonly setupFile?: string;
 }
 
 interface TestFilterContext {
@@ -1768,8 +1770,10 @@ interface TestFilterChanges {
   readonly base: string;
   /** Absolute path of the repository root, spelled as on disk like `projectRoot`. */
   readonly root: string;
-  /** Repository-relative POSIX paths of every changed file, untracked ones included; sorted, never empty. */
+  /** Repository-relative POSIX paths of every changed file: on a pull or merge request, what its commits change; with `--changed-since`, uncommitted and untracked files too. Sorted, never empty. */
   readonly files: readonly string[];
+  /** On a pull or merge request, the commit the change ends at, `HEAD`; absent with `--changed-since`, whose change ends at the working tree. */
+  readonly head?: string;
 }
 
 interface TestFilterResult {

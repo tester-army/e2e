@@ -171,7 +171,7 @@ function filterLine(record: ReportFilter): string {
  */
 function changesLine(changes: ReportChanges | undefined): string | undefined {
   if (changes === undefined) return undefined;
-  const pinned = changes.pinned === undefined ? '' : `; ${plural(changes.pinned, 'test')} ran without filters: ${changes.pinned === 1 ? 'its' : 'their'} test or setup file changed`;
+  const pinned = changes.pinned === undefined ? '' : `; ${plural(changes.pinned, 'test')} ran without filters: ${changes.pinned === 1 ? 'its' : 'their'} test file, screenshots, or setup file changed`;
   if (changes.skipped === undefined) {
     return changes.base === undefined ? undefined : `**Change** ${plural(changes.files, 'file')} changed since ${code(shortCommit(changes.base))}${pinned}`;
   }

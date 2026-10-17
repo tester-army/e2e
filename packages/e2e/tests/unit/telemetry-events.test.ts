@@ -143,6 +143,7 @@ describe('telemetry events', () => {
       tests_skipped: 0,
       filters_run: 0,
       filters_timed_out: 0,
+      filters_failed: 0,
       filters_skipped: false,
       filters_changed_files: 0,
       tests_pinned_by_change: 0,
@@ -377,12 +378,15 @@ describe('telemetry events', () => {
     report.run.filters = [
       { name: 'acme-areas', candidates: 3, excluded: 2, note: 'acme note' },
       { name: 'acme-jev', candidates: 1, excluded: 0, note: 'did not finish within 5m: running every test it was given', timedOut: true },
+      { name: 'acme-owners', candidates: 1, excluded: 0, note: 'failed, running every test it was given: acme CODEOWNERS not found', failed: true },
+      { name: 'acme-pages', candidates: 1, excluded: 0, note: 'returned an invalid result, running every test it was given: unknown key "acme"', failed: true },
     ];
     report.run.changes = { base: 'acacacacacacacacacacacacacacacacacacacac', files: 12, pinned: 2 };
     const event = runCompletedEvent(report, RUN);
     expect(event.properties).toMatchObject({
-      filters_run: 2,
+      filters_run: 4,
       filters_timed_out: 1,
+      filters_failed: 2,
       filters_skipped: false,
       filters_changed_files: 12,
       tests_pinned_by_change: 2,

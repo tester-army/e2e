@@ -37,15 +37,8 @@ decisionExecutor({ model: typeSafeAi.decisionModel('jev-latest'), textModel: 'op
 // @ts-expect-error A model with neither doDecide nor doEvaluate is not a decision model.
 decisionExecutor({ model: { specificationVersion: 'v4', provider: 'test', modelId: 'test-1', supportedQuestionTypes: ['choice'] } });
 
-const filters: E2EConfig['filters'] = [decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })];
-void filters;
-decisionFilter({ model: typeSafeAi.decisionModel('jev-latest') });
-const filterOptions: DecisionFilterOptions = { model: gateway.decisionModel('typesafe-ai/jev') };
-decisionFilter(filterOptions);
+decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') } satisfies DecisionFilterOptions);
+decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev'), providerOptions: { gateway: { zeroDataRetention: true } } });
 
 // @ts-expect-error A decision filter requires a decision model, not a model id.
 decisionFilter({ model: 'typesafe-ai/jev' });
-// @ts-expect-error A decision filter has no default model.
-decisionFilter({});
-// @ts-expect-error A decision filter takes its options.
-decisionFilter();

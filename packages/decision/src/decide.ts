@@ -40,7 +40,7 @@ export interface BooleanAnswers {
 }
 /** Asks `questions`, instructions by id, as boolean questions in one decide call against `state`, for the test filter. */
 export async function decideBooleans(
-  model: DecisionFilterOptions['model'],
+  { model, providerOptions }: DecisionFilterOptions,
   state: Experimental_DecisionState,
   questions: Readonly<Record<string, string>>,
   abortSignal: AbortSignal,
@@ -49,6 +49,7 @@ export async function decideBooleans(
     model,
     state,
     questions: Object.fromEntries(Object.entries(questions).map(([id, instructions]) => [id, { type: 'boolean' as const, instructions }])),
+    ...(providerOptions === undefined ? {} : { providerOptions }),
     maxRetries: MAX_RETRIES,
     abortSignal,
   });

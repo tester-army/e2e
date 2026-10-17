@@ -483,6 +483,13 @@
         "excluded": 0,
         "note": "did not finish within 5m: running every test it was given",
         "timedOut": true
+      },
+      {
+        "name": "owners",
+        "candidates": 1,
+        "excluded": 0,
+        "note": "failed, running every test it was given: CODEOWNERS not found",
+        "failed": true
       }
     ],
     "carried": {

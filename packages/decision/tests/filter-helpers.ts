@@ -11,22 +11,23 @@ type Decider = Extract<DecisionModel, { doDecide: unknown }>;
 type DecideCall = Parameters<Decider['doDecide']>[0];
 type DecideResult = Awaited<ReturnType<Decider['doDecide']>>;
 
-/** One decide call as the model saw it: the JSON state, each question's instructions by id, and the signal. */
+/** One decide call as the model saw it: the JSON state, each question's instructions by id, the signal, and the provider options. */
 export interface DecideRequest {
   readonly state: unknown;
   readonly instructions: Readonly<Record<string, string>>;
   readonly abortSignal: AbortSignal | undefined;
+  readonly providerOptions: DecideCall['providerOptions'];
 }
 
 /**
  * A scripted decision model: answers every boolean question with the
- * probability `resolve` gives its instructions, or with none when it gives
- * `undefined`, and records each call. Each call first awaits `before`, given
- * its index from 0 and its request; a throw there fails the call. Each
- * answer reports `inputTokens` and, when given, `providerMetadata`.
+ * probability `resolve` gives its instructions, and records each call. Each
+ * call first awaits `before`, given its index from 0 and its request; a
+ * throw there fails the call. Each answer reports `inputTokens` and, when
+ * given, `providerMetadata`.
  */
 export function scriptedJudge(
-  resolve: (instructions: string) => number | undefined,
+  resolve: (instructions: string) => number,
   before?: (call: number, request: DecideRequest) => void | Promise<void>,
   { inputTokens = 10, providerMetadata }: { readonly inputTokens?: number; readonly providerMetadata?: DecideResult['providerMetadata'] } = {},
 ): { model: DecisionModel; requests: DecideRequest[] } {
@@ -39,15 +40,10 @@ export function scriptedJudge(
     async doDecide(call: DecideCall): Promise<DecideResult> {
       const json = call.state.find((part) => part.type === 'json');
       const instructions = Object.fromEntries(Object.entries(call.questions).map(([id, question]) => [id, String(question.instructions)]));
-      const request = { state: json?.type === 'json' ? json.value : undefined, instructions, abortSignal: call.abortSignal };
+      const request = { state: json?.type === 'json' ? json.value : undefined, instructions, abortSignal: call.abortSignal, providerOptions: call.providerOptions };
       requests.push(request);
       await before?.(requests.length - 1, request);
-      const answers = Object.fromEntries(
-        Object.entries(instructions).map(([id, text]) => {
-          const probability = resolve(text);
-          return [id, probability === undefined ? ({ type: 'boolean' } as DecideResult['answers'][string]) : { type: 'boolean' as const, probability }];
-        }),
-      );
+      const answers = Object.fromEntries(Object.entries(instructions).map(([id, text]) => [id, { type: 'boolean' as const, probability: resolve(text) }]));
       return { answers, warnings: [], usage: { inputTokens, outputTokens: 0 }, response: { modelId: 'scripted-judge' }, ...(providerMetadata === undefined ? {} : { providerMetadata }) };
     },
   };
@@ -110,6 +106,13 @@ export function changedRepo(
   return { root, projectRoot: path.join(root, project), base: git(root, 'rev-parse', 'HEAD'), files: Object.keys(change).toSorted() };
 }
 
+/** Commits every change in `repo`, as a pull request's branch holds it, and returns the commit. */
+export function commitAll(repo: ChangedRepo): string {
+  git(repo.root, 'add', '--all');
+  git(repo.root, 'commit', '--quiet', '-m', 'change');
+  return git(repo.root, 'rev-parse', 'HEAD');
+}
+
 /** A secret every context's `redact` replaces. */
 export const SECRET = 'sk-test-4f9c2b7e1d';
 
@@ -122,12 +125,12 @@ export const PRIVATE_KEY = [
 ].join('\n');
 
 /** A filter context for `repo`; `log` lines land in `logs`. */
-export function filterContext(repo: ChangedRepo, signal = new AbortController().signal): { context: TestFilterContext; logs: string[] } {
+export function filterContext(repo: ChangedRepo): { context: TestFilterContext; logs: string[] } {
   const logs: string[] = [];
   const context: TestFilterContext = {
     projectRoot: repo.projectRoot,
     changes: { base: repo.base, root: repo.root, files: repo.files },
-    signal,
+    signal: new AbortController().signal,
     log: (line) => {
       logs.push(line);
     },
@@ -139,4 +142,9 @@ export function filterContext(repo: ChangedRepo, signal = new AbortController().
 /** The candidate for the test at `titlePath` in `file`, with the id the runner gives it. */
 export function candidate(file: string, ...titlePath: string[]): TestFilterCandidate {
   return { id: `${file}::${titlePath.join('::')}`, file, titlePath, tags: [] };
+}
+
+/** `test` with its session saved by the setup test in `setupFile`. */
+export function withSetup(test: TestFilterCandidate, setupFile: string): TestFilterCandidate {
+  return { ...test, setupFile };
 }

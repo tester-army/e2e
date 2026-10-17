@@ -263,16 +263,15 @@ const EXIT_CODES: readonly (readonly [code: string, meaning: string])[] = [
   ['0', 'every selected test passed, was flaky, or was skipped'],
   ['1', 'a test failed or timed out'],
   ['2', 'CLI, config, or agent policy error'],
-  ['3', 'engine, app process, test filter, model provider, or artifact failure'],
+  ['3', 'engine, app process, model provider, or artifact failure'],
   ['4', 'internal runner error'],
   ['130', 'interrupted by Ctrl-C or a CI signal'],
 ];
 
-/** `explore` exits as `run` does; what a pass and a failure mean differs, and no test filter runs. */
+/** `explore` exits as `run` does; only what a pass and a failure mean differs. */
 const EXPLORE_EXIT_MEANINGS: Readonly<Record<string, string>> = {
   '0': 'the exploration ran and reported no issue (warnings do not count)',
   '1': 'at least one issue was reported, or nothing could be explored',
-  '3': 'engine, app process, model provider, or artifact failure',
 };
 const EXPLORE_EXIT_CODES = EXIT_CODES.map(([code, meaning]) => [code, EXPLORE_EXIT_MEANINGS[code] ?? meaning] as const);
 

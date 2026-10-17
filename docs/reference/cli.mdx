@@ -681,8 +681,8 @@ Every run that gets to its tests writes, under the
 
 A run that stops before its tests writes none of them and leaves the previous
 run's files in place. That covers a config or collection error, `NO_TESTS`,
-`NO_LAST_RUN`, `UNSUPPORTED_ARTIFACT`, an app command that fails to start, a
-test filter that fails, and an interrupt. Its errors are on the terminal and in the exit code. A
+`NO_LAST_RUN`, `UNSUPPORTED_ARTIFACT`, an app command that fails to start, and
+an interrupt. Its errors are on the terminal and in the exit code. A
 `junit.xml` or `summary.md` that could not be written is a line on stderr,
 never a run error.
 
@@ -1236,7 +1236,7 @@ E2E_TELEMETRY_DEBUG=1 bunx e2e run
 | 0 | All selected tests passed, were flaky, or were explicitly skipped |
 | 1 | Final test or setup failure, or test timeout |
 | 2 | CLI, config, collection, dependency, credential, model-config, or policy error |
-| 3 | Engine, app process, test filter, model provider, artifact, or cleanup infrastructure failure; `e2e feedback` that could not be delivered; `e2e upgrade` that could not reach the registry |
+| 3 | Engine, app process, model provider, artifact, or cleanup infrastructure failure; `e2e feedback` that could not be delivered; `e2e upgrade` that could not reach the registry |
 | 4 | Internal runner invariant or unhandled runner error |
 | 130 | Interrupted by a user or CI signal |
 

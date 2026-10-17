@@ -456,6 +456,7 @@ export function runCompletedEvent(report: Report1Document, context: RunContext):
       tests_skipped: run.summary.skipped,
       filters_run: run.filters?.length ?? 0,
       filters_timed_out: run.filters?.filter((record) => record.timedOut === true).length ?? 0,
+      filters_failed: run.filters?.filter((record) => record.failed === true).length ?? 0,
       filters_skipped: run.changes?.skipped !== undefined,
       filters_changed_files: run.changes?.files ?? 0,
       tests_pinned_by_change: run.changes?.pinned ?? 0,

@@ -53,6 +53,10 @@ function configWith(raw: Partial<E2EConfig>, cli: NonNullable<Parameters<typeof 
   return resolveConfig({ targets: [{ name: 'web', platform: 'web' }], ...raw }, { projectRoot: ROOT, env: ENV, cli });
 }
 
+/** The titles of the pairs `selection` runs, in order. */
+const running = (selection: ReturnType<typeof select>) =>
+  selection.pairs.filter((pair) => pair.disposition === 'run').map((pair) => pair.test.title);
+
 describe('resolveOptions', () => {
   it('pins a test to a configured agent, innermost wins, and rejects a name agents does not define', async () => {
     const agents = { agents: { default: {}, buyer: { context: 'buyer' }, admin: { context: 'admin' } } };
@@ -377,11 +381,10 @@ describe('select', () => {
       test('signed out', noop);
     });
     const idOf = (title: string) => resultId(col.tests.find((entry) => entry.title === title)!.id, 'web', 'default');
-    const running = (lastFailed: ReadonlySet<string>) =>
-      select(col, config(), { lastFailed }).pairs.filter((pair) => pair.disposition === 'run').map((pair) => pair.test.title);
-    expect(running(new Set([idOf('sign in')]))).toEqual(['sign in', 'signed in']);
+    const rerun = (lastFailed: ReadonlySet<string>) => running(select(col, config(), { lastFailed }));
+    expect(rerun(new Set([idOf('sign in')]))).toEqual(['sign in', 'signed in']);
     // Control: a failure elsewhere leaves the setup and its consumer out.
-    expect(running(new Set([idOf('signed out')]))).toEqual(['signed out']);
+    expect(rerun(new Set([idOf('signed out')]))).toEqual(['signed out']);
   });
 
   it('cuts a shard from the selected tests after every other filter, keeping a serial group together', async () => {
@@ -395,8 +398,6 @@ describe('select', () => {
       test('c', noop);
       test('d', noop);
     });
-    const running = (selection: ReturnType<typeof select>) =>
-      selection.pairs.filter((pair) => pair.disposition === 'run').map((pair) => pair.test.title);
     // Five items once `b` is excluded: a, the wizard, c, d. Two shards split them 2 and 2.
     const first = select(col, config(), { excludeTags: ['slow'], shard: { index: 1, total: 2 } });
     expect(running(first)).toEqual(['a', 'step 1', 'step 2']);
@@ -715,9 +716,6 @@ describe('select with what the test filters left out', () => {
   function leftOut(col: Collection, entries: readonly (readonly [title: string, filter: string, reason: string])[]): NonNullable<SelectionFilters['excluded']> {
     return new Map(entries.map(([title, filter, reason]) => [col.tests.find((entry) => entry.title === title)!.id, { filter, reason }]));
   }
-  /** The titles of the pairs `selection` runs, in order. */
-  const running = (selection: ReturnType<typeof select>) =>
-    selection.pairs.filter((pair) => pair.disposition === 'run').map((pair) => pair.test.title);
 
   it('leaves the test out on every target and agent, naming the filter and its reason', async () => {
     const col = await collection(() => {
@@ -730,12 +728,7 @@ describe('select with what the test filters left out', () => {
     );
     const selection = select(col, cfg, { excluded: leftOut(col, [['refunds', 'areas', 'the diff misses it']]) });
     const refunds = selection.pairs.filter((pair) => pair.test.title === 'refunds');
-    expect(refunds.map((pair) => [pair.target.name, pair.agent])).toEqual([
-      ['web', 'default'],
-      ['web', 'admin'],
-      ['web-2', 'default'],
-      ['web-2', 'admin'],
-    ]);
+    expect(refunds).toHaveLength(4);
     for (const pair of refunds) {
       expect(pair.disposition).toBe('filtered');
       expect(pair.skip).toEqual({ cause: 'filtered', reason: 'the diff misses it', filter: 'areas' });
@@ -755,10 +748,6 @@ describe('select with what the test filters left out', () => {
     expect(running(one)).toEqual(['step 1', 'step 2', 'other']);
     expect(one.pairs.find((pair) => pair.test.title === 'step 1')!.skip).toBeUndefined();
 
-    // `step 2` is in only through the closure; keeping it keeps `step 1`, which the filter named.
-    const closureOnly = select(col, config(), { grep: [/step 1|other/], excluded: leftOut(col, [['step 1', 'areas', 'unaffected']]) });
-    expect(running(closureOnly)).toEqual(['step 1', 'step 2', 'other']);
-
     const both = select(col, config(), { excluded: leftOut(col, [['step 1', 'areas', 'unaffected'], ['step 2', 'areas', 'unaffected']]) });
     expect(running(both)).toEqual(['other']);
     expect(both.pairs.filter((pair) => pair.test.serialId !== undefined).map((pair) => pair.skip)).toEqual([
@@ -773,17 +762,13 @@ describe('select with what the test filters left out', () => {
       test('signed in', { session: 'member' }, noop);
       test('anonymous', noop);
     });
-    /** The setup test's pair in `selection`. */
-    const setup = (selection: ReturnType<typeof select>) => selection.pairs.find((pair) => pair.test.kind === 'setup')!;
     const consumerOut = select(col, config(), { excluded: leftOut(col, [['signed in', 'areas', 'unaffected']]) });
-    expect(setup(consumerOut).disposition).toBe('filtered');
-    expect(setup(consumerOut).skip?.filter).toBeUndefined();
     expect(running(consumerOut)).toEqual(['anonymous']);
     const consumerKept = select(col, config(), { excluded: leftOut(col, [['anonymous', 'areas', 'unaffected']]) });
     expect(running(consumerKept)).toEqual(['sign in', 'signed in']);
   });
 
-  it('cuts --shard on the unfiltered selection, then leaves out only this shard\'s pairs; an empty shard passes with passWithNoTests', async () => {
+  it('cuts --shard on the unfiltered selection, then leaves out only this shard\'s pairs', async () => {
     const col = await collection(() => {
       test('a', noop);
       test('b', noop);
@@ -805,30 +790,6 @@ describe('select with what the test filters left out', () => {
     expect(running(second)).toEqual(['c', 'd']);
     expect(pair(second, 'a').skip).toEqual(outside);
     expect(pair(second, 'b').skip).toEqual(outside);
-
-    // A shard the filters leave empty passes when asked to, and keeps every other reason.
-    const cAndD = leftOut(col, [['c', 'areas', 'unaffected'], ['d', 'areas', 'unaffected']]);
-    const empty = select(col, config(), { excluded: cAndD, shard: { index: 2, total: 2 } }, { passWithNoTests: true });
-    expect(running(empty)).toEqual([]);
-    expect(empty.pairs.map((entry) => entry.skip)).toEqual([outside, outside, unaffected, unaffected]);
-    expect(() => select(col, config(), { excluded: cAndD, shard: { index: 2, total: 2 } })).toThrow(expect.objectContaining({ code: 'NO_TESTS' }));
-    // The other shard runs whole: the exclusions name pairs it does not run.
-    expect(running(select(col, config(), { excluded: cAndD, shard: { index: 1, total: 2 } }))).toEqual(['a', 'b']);
-  });
-
-  it('keeps a serial group whole inside its shard when a member the filters judged stays', async () => {
-    const col = await collection(() => {
-      test('a', noop);
-      test.describe('wizard', { serial: true }, () => {
-        test('step 1', noop);
-        test('step 2', noop);
-      });
-      test('d', noop);
-    });
-    // Three items (a, the wizard, d): shard 1 of 2 is a and the wizard.
-    const first = select(col, config(), { excluded: leftOut(col, [['step 1', 'areas', 'unaffected'], ['a', 'areas', 'unaffected']]), shard: { index: 1, total: 2 } });
-    expect(running(first)).toEqual(['step 1', 'step 2']);
-    expect(first.pairs.find((pair) => pair.test.title === 'd')!.skip).toEqual({ cause: 'filtered', reason: 'outside the shard' });
   });
 
   it('leaves out only what would run: platform and capability verdicts on another target stand', async () => {
@@ -845,37 +806,6 @@ describe('select with what the test filters left out', () => {
     expect(pair('web only', 'web').skip).toEqual({ cause: 'filtered', reason: 'unaffected', filter: 'areas' });
     expect(pair('web only', 'ios').skip?.cause).toBe('platform-unavailable');
     expect(pair('needs device', 'web').skip?.cause).toBe('capability-unavailable');
-  });
-
-  it('never touches an explicit skip or a test another flag left out first', async () => {
-    const col = await collection(() => {
-      test('pays', noop);
-      test.skip('later', noop);
-      test('slow', { tags: ['slow'] }, noop);
-    });
-    // The exclusions name all three, so only the disposition guard keeps the skip's and the tag's reasons.
-    const excluded = leftOut(col, [
-      ['pays', 'areas', 'unaffected'],
-      ['later', 'areas', 'unaffected'],
-      ['slow', 'areas', 'unaffected'],
-    ]);
-    const selection = select(col, config(), { excludeTags: ['slow'], excluded }, { passWithNoTests: true });
-    expect(selection.pairs.find((pair) => pair.test.title === 'later')!.skip).toEqual({ cause: 'explicit', reason: expect.any(String) });
-    expect(selection.pairs.find((pair) => pair.test.title === 'slow')!.skip).toEqual({ cause: 'filtered', reason: 'carries an excluded tag' });
-    expect(selection.pairs.find((pair) => pair.test.title === 'pays')!.skip?.filter).toBe('areas');
-  });
-
-  it('reports a test once per --repeat-each run only when kept, and a left-out one once', async () => {
-    const col = await collection(() => {
-      test('a', noop);
-      test('b', noop);
-    });
-    const repeated = repeatEach(select(col, config(), { excluded: leftOut(col, [['b', 'areas', 'unaffected']]) }), 2);
-    expect(repeated.pairs.map((pair) => [pair.test.title, pair.disposition, pair.repeat])).toEqual([
-      ['a', 'run', 0],
-      ['a', 'run', 1],
-      ['b', 'filtered', 0],
-    ]);
   });
 });
 

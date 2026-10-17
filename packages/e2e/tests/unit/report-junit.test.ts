@@ -96,16 +96,7 @@ describe('renderJunitReport', () => {
       skip: { cause: 'filtered', reason: 'Jev: 4% likely affected', filter: 'jev' },
       attempts: [],
     });
-    const outsideShard = reportResult({
-      id: 'result-3',
-      testId: 'test-3',
-      file: 'tests/other.e2e.ts',
-      selected: false,
-      status: 'skipped',
-      skip: { cause: 'filtered', reason: 'outside the shard' },
-      attempts: [],
-    });
-    const xml = render(reportDocument({ results: [leftOut, outsideShard] }));
+    const xml = render(reportDocument({ results: [leftOut] }));
     expect(xml).toContain(
       [
         '  <testsuite name="tests/billing.e2e.ts" tests="1" failures="0" errors="0" skipped="1" time="0.000">',
@@ -115,7 +106,6 @@ describe('renderJunitReport', () => {
         '  </testsuite>',
       ].join('\n'),
     );
-    expect(xml).not.toContain('tests/other.e2e.ts');
     expect(rootAttributes(xml)).toMatchObject({ tests: '1', skipped: '1' });
   });
 

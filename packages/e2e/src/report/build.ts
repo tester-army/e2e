@@ -118,6 +118,8 @@ export interface ReportFilter {
   note?: string | undefined;
   /** Set when the filter ran past 5 minutes: the run stopped waiting and left nothing out on its word. */
   timedOut?: true | undefined;
+  /** Set when the filter threw or answered with something other than `{ exclude, note? }`: it left nothing out. */
+  failed?: true | undefined;
 }
 
 /** One finding `e2e explore` recorded through its `report_finding` tool. */

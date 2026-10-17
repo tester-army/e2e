@@ -31,13 +31,13 @@ afterEach(() => {
 });
 
 describe('exitIfStopped', () => {
-  it('exits once stdout and stderr took what was written when work was left behind, whatever the exit code', async () => {
-    for (const code of [0, 3]) {
+  it('exits once stdout and stderr took what was written when work was left behind, whatever the exit code, or after Ctrl-C', async () => {
+    for (const [code, behind] of [[0, true], [3, true], [130, false]] as const) {
       const { exitIfStopped, leaveWorkBehind } = await fresh();
       const pending = backedUpTerminal();
       const exit = vi.fn();
       process.exitCode = code;
-      leaveWorkBehind();
+      if (behind) leaveWorkBehind();
       const exited = exitIfStopped(exit);
       await settle();
       expect(pending.map(({ stream }) => stream)).toEqual(['stdout', 'stderr']);
@@ -49,18 +49,6 @@ describe('exitIfStopped', () => {
       expect(exit, `exit code ${code}`).toHaveBeenCalledOnce();
       vi.restoreAllMocks();
     }
-  });
-
-  it('exits once the output is out after Ctrl-C, with no work left behind', async () => {
-    const { exitIfStopped } = await fresh();
-    const pending = backedUpTerminal();
-    const exit = vi.fn();
-    process.exitCode = 130;
-    const exited = exitIfStopped(exit);
-    await settle();
-    for (const { release } of pending) release();
-    await exited;
-    expect(exit).toHaveBeenCalledOnce();
   });
 
   it('leaves the process to end on its own when nothing stopped it', async () => {

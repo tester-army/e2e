@@ -61,10 +61,11 @@ export type SetupStep =
 /**
  * How a setup step ended other than plainly done: `reused` when a service
  * or app command attached to a process already serving its URL instead of
- * spawning, `timed out` when a test filter ran past 5 minutes and the run
- * stopped waiting for it.
+ * spawning; `failed` when a test filter threw or answered with something
+ * other than `{ exclude, note? }`, and `timed out` when one ran past 5
+ * minutes and the run stopped waiting for it. Either way it left nothing out.
  */
-export type SetupOutcome = 'reused' | 'timed out';
+export type SetupOutcome = 'reused' | 'failed' | 'timed out';
 
 /** One fact about the run; the emitter wraps it in the envelope. */
 export type RunEventFact =

@@ -38,3 +38,17 @@ export function checkModel(model: unknown, { caller, questionType, example }: Mo
     throw new ConfigurationError('INVALID_CONFIG', `${caller}({ model }) got ${name}, which does not answer ${questionType} questions`);
   }
 }
+/** Rejects `providerOptions` other than provider names mapped to option objects, the shape the AI SDK takes, at config load. */
+export function checkProviderOptions(value: unknown, caller: string): void {
+  if (value === undefined || isOptionsRecord(value)) return;
+  throw new ConfigurationError('INVALID_CONFIG', `${caller}({ providerOptions }) maps provider names to option objects, e.g. { gateway: { zeroDataRetention: true } }`);
+}
+/** A plain object whose every value is a plain object. */
+function isOptionsRecord(value: unknown): boolean {
+  const isRecord = (v: unknown): boolean => {
+    if (typeof v !== 'object' || v === null) return false;
+    const prototype: unknown = Object.getPrototypeOf(v);
+    return prototype === Object.prototype || prototype === null;
+  };
+  return isRecord(value) && Object.values(value as object).every(isRecord);
+}

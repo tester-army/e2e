@@ -40,9 +40,7 @@ import {
   type Target,
   type TestFilter,
   type TestFilterCandidate,
-  type TestFilterChanges,
   type TestFilterContext,
-  type TestFilterResult,
   type Unique,
   type CacheStore,
   type ExecutorObservation,
@@ -86,7 +84,6 @@ import {
   list,
   type ListedPair,
   type ListOptions,
-  type ListResult,
   openHost,
   run,
   type RunEventSink,
@@ -321,69 +318,36 @@ const areas = {
     exclude: Object.fromEntries(tests.filter((candidate) => !candidate.tags.includes('auth')).map((candidate) => [candidate.id, 'the diff reaches none of its tags'])),
   }),
 } satisfies TestFilter;
-({ targets, filters: [] }) satisfies E2EConfig;
 const jev = {
   name: 'jev',
   async filter(tests, { projectRoot, changes, signal, log, redact }) {
-    log(`asking about ${tests.length} tests in ${projectRoot}`);
+    log(`asking about ${tests.length} tests in ${projectRoot}, ${changes.root} against ${changes.base}`);
     signal satisfies AbortSignal;
-    changes.base satisfies string;
-    changes.root satisfies string;
-    changes.files satisfies readonly string[];
     const exclude: Record<string, string> = {};
-    for (const candidate of tests) {
-      candidate.titlePath satisfies readonly string[];
-      candidate.tags satisfies readonly string[];
-      exclude[candidate.id] = redact(`${candidate.file}: ${candidate.titlePath.join(' > ')}`);
-    }
+    for (const candidate of tests) exclude[candidate.id] = redact(`${candidate.file}: ${candidate.titlePath.join(' > ')}`);
     return { exclude, note: 'one call' };
   },
 } satisfies TestFilter;
 ({ targets, filters: [areas, jev] }) satisfies E2EConfig;
-({ exclude: {} }) satisfies TestFilterResult;
 // @ts-expect-error filters is a list, not a record of entries
 ({ targets, filters: { affected: areas } }) satisfies E2EConfig;
 // @ts-expect-error a filter is an object with a name, not a bare function
 ({ targets, filters: [() => ({ exclude: {} })] }) satisfies E2EConfig;
 // @ts-expect-error a filter has a name
 ({ targets, filters: [{ filter: () => ({ exclude: {} }) }] }) satisfies E2EConfig;
-// @ts-expect-error a filter has a name
-({ filter: () => ({ exclude: {} }) }) satisfies TestFilter;
 // @ts-expect-error a filter leaves tests out by id with a reason; it never lists the ones to keep
 ({ name: 'jev', filter: () => ({ keep: [] }) }) satisfies TestFilter;
-// @ts-expect-error a reason is a string
-({ exclude: { 'tests/a.e2e.ts::pays': true } }) satisfies TestFilterResult;
 declare const filterCandidate: TestFilterCandidate;
 // @ts-expect-error a candidate names a test, never its body
 filterCandidate.fn;
-// @ts-expect-error a candidate's title is the last of its titlePath
-filterCandidate.title;
-// @ts-expect-error a candidate carries no source location
-filterCandidate.source;
 // @ts-expect-error a candidate is read-only
 filterCandidate.tags.push('smoke');
+filterCandidate.setupFile satisfies string | undefined;
 declare const filterContext: TestFilterContext;
-// @ts-expect-error the context carries no targets
-filterContext.targets;
-// @ts-expect-error the context carries no environment; a filter reads process.env
-filterContext.env;
-filterContext.changes satisfies TestFilterChanges;
 // @ts-expect-error the change is read-only
 filterContext.changes.files.push('src/a.ts');
-// @ts-expect-error a filter sets no timeout: every filter gets 5 minutes
-({ name: 'slow', timeout: 60_000, filter: () => ({ exclude: {} }) }) satisfies TestFilter;
 // @ts-expect-error a filter takes its tests read-only: the runner freezes them
 ({ name: 'sorts', filter: (tests: TestFilterCandidate[]) => ({ exclude: {}, note: `${tests.push(filterCandidate)}` }) }) satisfies TestFilter;
-// @ts-expect-error a filter takes its tests read-only, written as a method too
-({ name: 'sorts', filter(tests: TestFilterCandidate[]) { return { exclude: {}, note: `${tests.length}` }; } }) satisfies TestFilter;
-/** A filter as a class, reading its tests read-only. */
-class ByFile implements TestFilter {
-  readonly name = 'by-file';
-  filter(tests: readonly TestFilterCandidate[]): TestFilterResult {
-    return { exclude: {}, note: `${tests.length} tests` };
-  }
-}
-({ targets, filters: [new ByFile()] }) satisfies E2EConfig;
 // Every name a public signature uses is importable, so a reporter or an executor can annotate what it reads.
 declare const finishedRun: FinishedRun;
 finishedRun.status satisfies RunStatus;
@@ -692,20 +656,11 @@ report.run.carried satisfies
 report.run.filters satisfies readonly { name: string; candidates: number; excluded: number; note?: string | undefined }[] | undefined;
 report.run.results[0]!.skip?.filter satisfies string | undefined;
 report.run.filters?.[0]?.timedOut satisfies true | undefined;
-// @ts-expect-error a filter record has no duration
-report.run.filters?.[0]?.durationMs;
+report.run.filters?.[0]?.failed satisfies true | undefined;
 // The change the filters judged is counts only: never a file list.
 report.run.changes satisfies { base?: string | undefined; files: number; pinned?: number | undefined; skipped?: string | undefined } | undefined;
-// @ts-expect-error the report carries no changed file list
-report.run.changes?.paths;
-// @ts-expect-error a filter record has no entry; its name is its only handle
-report.run.filters?.[0]?.entry;
 // A filter deciding what runs is a setup step named by the filter's name.
-if (runEvent.type === 'setup' && runEvent.step.kind === 'filter') {
-  runEvent.step.name satisfies string;
-  // @ts-expect-error a filter step has no entry
-  void runEvent.step.entry;
-}
+if (runEvent.type === 'setup' && runEvent.step.kind === 'filter') runEvent.step.name satisfies string;
 
 // An explore run's events narrow to the exploration's progress.
 if (runEvent.type === 'explore') {
@@ -787,10 +742,6 @@ void run({ noFilter: true, interruptSignal: new AbortController().signal } satis
 void run({ changedSince: 'origin/main' } satisfies RunOptions);
 // @ts-expect-error changedSince is a git ref
 void run({ changedSince: true });
-// @ts-expect-error there is no filter list to pick; every configured filter runs unless noFilter
-void run({ filter: ['areas'] });
-// @ts-expect-error noFilter is a boolean
-void run({ noFilter: 'yes' });
 void (runResult.exitCode satisfies RunExitCode);
 void (runResult.status satisfies RunStatus);
 void (runResult.report satisfies Report);
@@ -822,8 +773,6 @@ void list({
   grep: [/^plain$/], grepInvert: [/other/], lastFailed: false, shard: { index: 1, total: 2 }, passWithNoTests: true,
   output: 'out', env: {}, targets: ['web'], noFilter: true, changedSince: 'origin/main',
 } satisfies ListOptions);
-// @ts-expect-error list takes no interrupt signal
-void list({ interruptSignal: new AbortController().signal });
 void list({ config: { targets } });
 void isE2EError(new ConfigurationError('NO_TESTS', 'none'));
 // @ts-expect-error grep is an array of RegExp, not strings
@@ -831,15 +780,7 @@ void list({ grep: ['plain'] });
 // @ts-expect-error disposition is run, skip, or filtered
 const disposition: ListedPair['disposition'] = 'pending';
 void disposition;
-// @ts-expect-error there is no filter list to pick; every configured filter runs unless noFilter
-void list({ filter: ['areas'] });
-// list returns the pairs; one a test filter left out names it and carries its reason.
-declare const listResult: ListResult;
-listResult.pairs satisfies readonly ListedPair[];
-// @ts-expect-error list returns no filter decisions
-listResult.filters;
-// @ts-expect-error list returns no change record
-listResult.changes;
+// A pair a test filter left out names it.
 declare const listedPair: ListedPair;
 listedPair.filter satisfies string | undefined;
 

@@ -5,31 +5,37 @@ import { promisify } from 'node:util';
 import type { TestFilter, TestFilterCandidate, TestFilterChanges, TestFilterContext, TestFilterResult } from 'e2e';
 import { ConfigurationError } from 'e2e/engine';
 import { decideBooleans, requireDecide } from './decide.ts';
-import { checkModel } from './model.ts';
+import { checkModel, checkProviderOptions } from './model.ts';
 import type { DecisionFilterOptions } from './types.ts';
 const exec = promisify(execFile);
 /** A test the model rates less likely than this to be affected is left out. */
 const MIN_PROBABILITY = 0.2;
-/** Most characters of state, the diff and test files, one call sends: Jev takes 32k tokens of state and a question, about 3.4 characters a token. */
-const MAX_STATE_CHARS = 80_000;
-/** A longer diff is not sent, and the filter leaves nothing out: each call keeps room for test files. */
-const MAX_DIFF_CHARS = 60_000;
+/** Most UTF-8 bytes of state, the diff and the files, one call sends: Jev takes 32k tokens of state and a question, and English text runs about 3.4 bytes a token, other scripts more. */
+const MAX_STATE_BYTES = 80_000;
+/** A longer diff is not sent, and the filter leaves nothing out: each call keeps room for the files. */
+const MAX_DIFF_BYTES = 60_000;
 /** Most questions one call asks. */
 const MAX_QUESTIONS = 200;
 /** Most calls in flight at once. */
 const CONCURRENCY = 8;
-/** What `git diff` may print, far past MAX_DIFF_CHARS so a long diff is measured rather than lost. */
+/** Failed calls after which no more are made: the model or its key is likely down. */
+const MAX_FAILURES = 3;
+/** What `git diff` may print, far past MAX_DIFF_BYTES so a long diff is measured rather than lost. */
 const MAX_DIFF_BUFFER = 64 * 1024 * 1024;
+/** Most characters of paths one `git diff` names, well within the 32,767 of a Windows command line. */
+const MAX_PATHSPEC_CHARS = 16_000;
+/** Plain `git diff` output whatever the repository's config says. */
+const DIFF_FLAGS = ['--no-color', '--no-ext-diff', '--no-textconv', '-U3'];
 /** A line inside a hunk: context, removed, added, or the marker of a missing newline at the end of a file. */
 const HUNK_LINE = /^[ +\-\\]/;
 /** How a valid model reads, for every model error. */
 const EXAMPLE = "pass an AI SDK decision model, e.g. decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })";
-type Model = DecisionFilterOptions['model'];
 type Redact = TestFilterContext['redact'];
 /**
  * A test filter named `decision` that asks the decision model, test by
- * test, whether the change can affect what it checks, and leaves out the
- * unlikely ones.
+ * test, whether the change can affect what it checks, and whether it can
+ * break the setup that saves the test's session, and leaves out the tests
+ * unlikely on both counts.
  */
 export function decisionFilter(options: DecisionFilterOptions): TestFilter {
   if (typeof options !== 'object' || options === null) {
@@ -37,16 +43,27 @@ export function decisionFilter(options: DecisionFilterOptions): TestFilter {
   }
   requireDecide('decisionFilter');
   checkModel(options.model, { caller: 'decisionFilter', questionType: 'boolean', example: EXAMPLE });
-  const { model } = options;
+  checkProviderOptions(options.providerOptions, 'decisionFilter');
+  const { model, providerOptions } = options;
+  const settings: DecisionFilterOptions = { model, ...(providerOptions === undefined ? {} : { providerOptions }) };
   return {
     name: 'decision',
-    filter: (tests, context) => judge(tests, context, model),
+    filter: (tests, context) => judge(tests, context, settings),
   };
 }
-/** Test files that go to the model in one call, by path, and the tests asked about. */
+/** One question to the model, redacted: whether the change can affect a test, or break a setup file and the session it saves. */
+type Question = { readonly kind: 'test'; readonly test: TestFilterCandidate; readonly text: string } | { readonly kind: 'setup'; readonly file: string; readonly text: string };
+/** A file the model reads, under its key in `testFiles`, its size, and the questions asked about it. */
+interface Subject {
+  readonly key: string;
+  readonly text: string;
+  readonly bytes: number;
+  readonly questions: Question[];
+}
+/** The files that go to the model in one call, by key, and the questions it asks. */
 interface Batch {
   readonly testFiles: Record<string, string>;
-  readonly tests: TestFilterCandidate[];
+  readonly questions: Question[];
 }
 /** What the calls that answered spent: how many, their tokens, and their cost in USD when the provider reports one. */
 interface Spend {
@@ -54,90 +71,151 @@ interface Spend {
   tokens: number;
   costUsd: number | undefined;
 }
+/** What the model answered, by test id and by setup file, as the probability of true. */
+interface Answers {
+  readonly tests: Map<string, number>;
+  readonly setups: Map<string, number>;
+}
 /**
- * Asks the model about the tests in batches of test files, one boolean
- * question per test and at most `MAX_QUESTIONS` a call, against the redacted
- * diff and the redacted files, `CONCURRENCY` calls at a time. An error other than the run's abort stops
- * the calls and keeps what the batches already judged left out. The note
+ * Asks the model about the tests, and the setup files that save their
+ * sessions, against the redacted diff and the redacted files, in calls of
+ * at most `MAX_QUESTIONS`, `CONCURRENCY` at a time. A test is left out when
+ * both it and its setup are unlikely to be affected. A failed call leaves
+ * its tests in, and after `MAX_FAILURES` no more calls are made. The note
  * names what the model did not judge, and what the calls spent.
  */
-async function judge(
-  tests: readonly TestFilterCandidate[],
-  { projectRoot, changes, signal, log, redact }: TestFilterContext,
-  model: Model,
-): Promise<TestFilterResult> {
-  const files = byFile(tests);
-  log(`asking ${model.modelId} about ${counted(tests.length, 'test')} in ${counted(files.size, 'file')}`);
-  const exclude: Record<string, string> = {};
-  const tooLarge: string[] = [];
+async function judge(tests: readonly TestFilterCandidate[], context: TestFilterContext, options: DecisionFilterOptions): Promise<TestFilterResult> {
+  const { changes, signal, log, redact } = context;
+  const { modelId } = options.model;
+  log(`asking ${modelId} about ${counted(tests.length, 'test')} in ${counted(new Set(tests.map((test) => test.file)).size, 'file')}`);
   const spend: Spend = { calls: 0, tokens: 0, costUsd: undefined };
-  const judged = new Set<string>();
+  const answers: Answers = { tests: new Map(), setups: new Map() };
+  let tooLarge: readonly Subject[];
+  let failures: readonly unknown[];
   try {
-    const stdout = await changeDiff(changes, signal);
-    if (stdout.length > MAX_DIFF_CHARS) return { exclude: {}, note: `the diff is over ${MAX_DIFF_CHARS} characters, so the decision filter left nothing out` };
-    const diff = redactDiff(stdout, redact);
-    const batches: Batch[] = [];
-    let room = 0;
-    for (const [file, fileTests] of files) {
-      const text = redact(await readFile(path.join(projectRoot, file), { encoding: 'utf8', signal }));
-      const key = redact(file);
-      if (diff.length + text.length > MAX_STATE_CHARS) {
-        tooLarge.push(file);
-        continue;
-      }
-      for (let start = 0; start < fileTests.length; start += MAX_QUESTIONS) {
-        const chunk = fileTests.slice(start, start + MAX_QUESTIONS);
-        const last = batches.at(-1);
-        // Two paths can redact to one key: they go to separate calls, so neither file replaces the other.
-        if (last === undefined || key in last.testFiles || text.length > room || last.tests.length + chunk.length > MAX_QUESTIONS) {
-          batches.push({ testFiles: { [key]: text }, tests: chunk });
-          room = MAX_STATE_CHARS - diff.length - text.length;
-        } else {
-          last.testFiles[key] = text;
-          last.tests.push(...chunk);
-          room -= text.length;
-        }
+    const raw = await changeDiff(changes, signal);
+    if (raw === '') return { exclude: {}, note: 'git printed no diff of the changed files, so the decision filter left nothing out' };
+    if (Buffer.byteLength(raw) > MAX_DIFF_BYTES) return { exclude: {}, note: `the diff is over ${MAX_DIFF_BYTES / 1000} kB, so the decision filter left nothing out` };
+    const diff = redactDiff(raw, redact);
+    const packed = pack(await subjects(tests, context), Buffer.byteLength(diff));
+    tooLarge = packed.tooLarge;
+    failures = await askAll(packed.batches, diff, options, signal, answers, spend);
+  } catch (error) {
+    // An aborted call is one the run already stopped waiting for: it ends with the abort, not a note.
+    if (signal.aborted) throw signal.reason;
+    return answered({}, `${modelId} did not judge ${testsIn(tests)}: ${firstLine(error)}`, spend);
+  }
+  const exclude: Record<string, string> = {};
+  const missed: TestFilterCandidate[] = [];
+  for (const test of tests) {
+    const own = answers.tests.get(test.id);
+    const setup = test.setupFile === undefined ? 0 : answers.setups.get(test.setupFile);
+    if (own === undefined || setup === undefined) missed.push(test);
+    else if (Math.max(own, setup) < MIN_PROBABILITY) exclude[test.id] = `${Math.round(Math.max(own, setup) * 100)}% likely affected`;
+  }
+  if (missed.length === 0) return answered(exclude, undefined, spend);
+  const what = tooLarge.length === 1 ? `${tooLarge[0]?.key} is` : `${counted(tooLarge.length, 'file')} are`;
+  const why = [failures.length === 0 ? undefined : firstLine(failures[0]), tooLarge.length === 0 ? undefined : `${what} too large to send with the diff`];
+  return answered(exclude, `${modelId} did not judge ${testsIn(missed)}: ${why.filter((part) => part !== undefined).join('; ')}`, spend);
+}
+/**
+ * The files the model reads: each test file, then each setup file that
+ * saves a test's session, keyed by their redacted path from the repository
+ * root, as the diff names files, with their questions.
+ */
+async function subjects(tests: readonly TestFilterCandidate[], { projectRoot, changes, signal, redact }: TestFilterContext): Promise<Subject[]> {
+  const found = new Map<string, Subject>();
+  const subject = async (file: string): Promise<Subject> => {
+    const known = found.get(file);
+    if (known !== undefined) return known;
+    const absolute = path.join(projectRoot, file);
+    const text = redact(await readFile(absolute, { encoding: 'utf8', signal }));
+    const created: Subject = { key: redact(path.relative(changes.root, absolute).split(path.sep).join('/')), text, bytes: Buffer.byteLength(text), questions: [] };
+    found.set(file, created);
+    return created;
+  };
+  for (const test of tests) {
+    const { key, questions } = await subject(test.file);
+    questions.push({ kind: 'test', test, text: redact(`Can the diff change what the e2e test "${test.titlePath.join(' > ')}" in ${key} checks? ${fileOf(key)}, hooks included.`) });
+  }
+  for (const file of new Set(tests.flatMap((test) => (test.setupFile === undefined ? [] : [test.setupFile])))) {
+    const { key, questions } = await subject(file);
+    questions.push({ kind: 'setup', file, text: `Can the diff break the e2e setup in ${key}, or the session it saves for the tests that use it? ${fileOf(key)}.` });
+  }
+  return [...found.values()];
+}
+/**
+ * Packs the subjects into calls that each stay within `MAX_STATE_BYTES`
+ * with the diff and ask at most `MAX_QUESTIONS`, splitting a subject's
+ * questions across calls where they are more. Two subjects whose keys are
+ * the same, as two paths that redact alike, go to separate calls, so
+ * neither replaces the other. A subject too large to send with the diff is
+ * set apart.
+ */
+function pack(found: readonly Subject[], diffBytes: number): { readonly batches: Batch[]; readonly tooLarge: Subject[] } {
+  const batches: Batch[] = [];
+  const tooLarge: Subject[] = [];
+  let room = 0;
+  for (const subject of found) {
+    if (diffBytes + subject.bytes > MAX_STATE_BYTES) {
+      tooLarge.push(subject);
+      continue;
+    }
+    for (let start = 0; start < subject.questions.length; start += MAX_QUESTIONS) {
+      const chunk = subject.questions.slice(start, start + MAX_QUESTIONS);
+      const last = batches.at(-1);
+      if (last === undefined || Object.hasOwn(last.testFiles, subject.key) || subject.bytes > room || last.questions.length + chunk.length > MAX_QUESTIONS) {
+        batches.push({ testFiles: { [subject.key]: subject.text }, questions: chunk });
+        room = MAX_STATE_BYTES - diffBytes - subject.bytes;
+      } else {
+        last.testFiles[subject.key] = subject.text;
+        last.questions.push(...chunk);
+        room -= subject.bytes;
       }
     }
-    // Aborted once a call fails, so the calls in flight beside it stop too.
-    const stop = new AbortController();
-    const abortSignal = AbortSignal.any([signal, stop.signal]);
-    let failure: { readonly error: unknown } | undefined;
-    let next = 0;
-    const work = async (): Promise<void> => {
-      for (let batch = batches[next++]; batch !== undefined && failure === undefined; batch = batches[next++]) {
-        try {
-          const { probabilities, usage, providerMetadata } = await decideBooleans(
-            model,
-            { diff, testFiles: batch.testFiles },
-            Object.fromEntries(batch.tests.map((test, i) => [`t${i}`, redact(question(test))])),
-            abortSignal,
-          );
-          batch.tests.forEach((test, i) => {
-            const probability = probabilities[`t${i}`] ?? 1;
-            if (probability < MIN_PROBABILITY) exclude[test.id] = `${Math.round(probability * 100)}% likely affected`;
-          });
-          const cost = readCost(providerMetadata);
-          spend.calls += 1;
-          spend.tokens += (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
-          if (cost !== undefined) spend.costUsd = (spend.costUsd ?? 0) + cost;
-          for (const test of batch.tests) judged.add(test.id);
-        } catch (error) {
-          failure ??= { error };
-          stop.abort();
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batches.length) }, work));
-    if (failure !== undefined) throw failure.error;
-  } catch (error) {
-    // The runner tells an interrupt from its own deadline by the reason.
-    if (signal.aborted) throw signal.reason;
-    return answered(exclude, `${model.modelId} did not judge ${unjudged(tests, judged)}: ${firstLine(error)}`, spend);
   }
-  if (tooLarge.length === 0) return answered(exclude, undefined, spend);
-  const what = tooLarge.length === 1 ? `${tooLarge[0]} is` : `${counted(tooLarge.length, 'file')} are`;
-  return answered(exclude, `${model.modelId} did not judge ${unjudged(tests, judged)}: ${what} too large to send with the diff`, spend);
+  return { batches, tooLarge };
+}
+/**
+ * Makes one call per batch, `CONCURRENCY` at a time, recording each answer
+ * in `answers` and what the call spent in `spend`. A failed call's
+ * questions stay unanswered; once `MAX_FAILURES` calls have failed, the
+ * calls in flight stop and no more start. Resolves to the failures.
+ */
+async function askAll(batches: readonly Batch[], diff: string, options: DecisionFilterOptions, signal: AbortSignal, answers: Answers, spend: Spend): Promise<unknown[]> {
+  const stop = new AbortController();
+  const abortSignal = AbortSignal.any([signal, stop.signal]);
+  const failures: unknown[] = [];
+  let next = 0;
+  const work = async (): Promise<void> => {
+    for (let batch = batches[next++]; batch !== undefined && !stop.signal.aborted; batch = batches[next++]) {
+      try {
+        const { probabilities, usage, providerMetadata } = await decideBooleans(
+          options,
+          { diff, testFiles: batch.testFiles },
+          Object.fromEntries(batch.questions.map((question, i) => [`t${i}`, question.text])),
+          abortSignal,
+        );
+        batch.questions.forEach((question, i) => {
+          const probability = probabilities[`t${i}`] ?? 1;
+          if (question.kind === 'test') answers.tests.set(question.test.id, probability);
+          else answers.setups.set(question.file, probability);
+        });
+        const cost = readCost(providerMetadata);
+        spend.calls += 1;
+        spend.tokens += (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
+        if (cost !== undefined) spend.costUsd = (spend.costUsd ?? 0) + cost;
+      } catch (error) {
+        if (signal.aborted) throw signal.reason;
+        // A call the stop cut short is not a failure of its own.
+        if (stop.signal.aborted) return;
+        failures.push(error);
+        if (failures.length >= MAX_FAILURES) stop.abort();
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batches.length) }, work));
+  return failures;
 }
 /** The filter's answer: `exclude`, and a note of `problem`, if any, then what the calls spent, such as `11 calls, 307.6k tokens, $0.0129`. */
 function answered(exclude: Record<string, string>, problem: string | undefined, { calls, tokens, costUsd }: Spend): TestFilterResult {
@@ -169,30 +247,50 @@ function formatTokens(count: number): string {
 function formatCost(costUsd: number): string {
   return `$${costUsd.toFixed(costUsd < 0.1 ? 4 : 2)}`;
 }
-/** What the model is asked about `test`. */
-function question(test: TestFilterCandidate): string {
-  return `Can the diff change what the e2e test "${test.titlePath.join(' > ')}" in ${test.file} checks? testFiles[${JSON.stringify(test.file)}] is its file, hooks included.`;
+/** How a question points the model at the file it is about, by its key in `testFiles`. */
+function fileOf(key: string): string {
+  return `testFiles[${JSON.stringify(key)}] is its file`;
 }
-/** The tests the model did not judge, as a note counts them: `3 tests in 2 files`. */
-function unjudged(tests: readonly TestFilterCandidate[], judged: ReadonlySet<string>): string {
-  const missed = tests.filter((test) => !judged.has(test.id));
-  return `${counted(missed.length, 'test')} in ${counted(new Set(missed.map((test) => test.file)).size, 'file')}`;
+/** Tests as a note counts them: `3 tests in 2 files`. */
+function testsIn(tests: readonly TestFilterCandidate[]): string {
+  return `${counted(tests.length, 'test')} in ${counted(new Set(tests.map((test) => test.file)).size, 'file')}`;
 }
 /**
- * The change as one unified diff: the working tree against `changes.base`,
- * then each untracked file the runner counts, as a new file. Stops adding
- * files once the diff is past `MAX_DIFF_CHARS`.
+ * The change as one unified diff of `changes.files`, with renames found and
+ * a deleted file's lines left out: on a pull or merge request, `changes.head`
+ * against `changes.base`; otherwise each tracked file in the working tree
+ * against `changes.base`, then each untracked file as a new file. Stops
+ * adding files once the diff is past `MAX_DIFF_BYTES`.
  */
-async function changeDiff({ base, root }: TestFilterChanges, signal: AbortSignal): Promise<string> {
-  const flags = ['--no-color', '--no-ext-diff', '--no-textconv'];
-  let diff = await git(root, ['diff', ...flags, base, '--'], signal);
-  for (const file of (await git(root, ['ls-files', '--others', '--exclude-standard', '-z'], signal)).split('\0')) {
-    if (diff.length > MAX_DIFF_CHARS) break;
-    // An untracked nested repository is listed as its directory, and is not this repository's change.
-    if (file === '' || file.endsWith('/')) continue;
-    diff += await git(root, ['diff', '--no-index', ...flags, '--', '/dev/null', file], signal);
+async function changeDiff({ base, head, root, files }: TestFilterChanges, signal: AbortSignal): Promise<string> {
+  const untracked = head === undefined ? new Set((await git(root, ['ls-files', '--others', '--exclude-standard', '-z'], signal)).split('\0')) : new Set<string>();
+  let diff = '';
+  for (const paths of pathspecs(files.filter((file) => !untracked.has(file)))) {
+    diff += await git(root, ['--literal-pathspecs', 'diff', ...DIFF_FLAGS, '-M', '--irreversible-delete', base, ...(head === undefined ? [] : [head]), '--', ...paths], signal);
+    if (Buffer.byteLength(diff) > MAX_DIFF_BYTES) return diff;
+  }
+  for (const file of files.filter((candidate) => untracked.has(candidate))) {
+    diff += await git(root, ['diff', '--no-index', ...DIFF_FLAGS, '--', '/dev/null', file], signal);
+    if (Buffer.byteLength(diff) > MAX_DIFF_BYTES) break;
   }
   return diff;
+}
+/** `files` in runs whose paths together stay within `MAX_PATHSPEC_CHARS`, one `git diff` each. */
+function pathspecs(files: readonly string[]): string[][] {
+  const runs: string[][] = [];
+  let run: string[] = [];
+  let chars = 0;
+  for (const file of files) {
+    if (run.length > 0 && chars + file.length > MAX_PATHSPEC_CHARS) {
+      runs.push(run);
+      run = [];
+      chars = 0;
+    }
+    run.push(file);
+    chars += file.length + 1;
+  }
+  if (run.length > 0) runs.push(run);
+  return runs;
 }
 /**
  * What `git` prints in `cwd`. `git diff --no-index` exits 1 both when the
@@ -263,16 +361,6 @@ function hunkSide(lines: readonly string[], prefix: '-' | '+'): { prefix: '-' | 
     if (mine) text.push(line.slice(1));
   }
   return { prefix, text, ending };
-}
-/** The tests grouped by file, the files in the order their first test comes. */
-function byFile(tests: readonly TestFilterCandidate[]): Map<string, TestFilterCandidate[]> {
-  const files = new Map<string, TestFilterCandidate[]>();
-  for (const test of tests) {
-    const group = files.get(test.file);
-    if (group === undefined) files.set(test.file, [test]);
-    else group.push(test);
-  }
-  return files;
 }
 /** `count` and `noun`, plural unless the count is 1. */
 function counted(count: number, noun: string): string {

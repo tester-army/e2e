@@ -6,7 +6,7 @@ import { decide, requireDecide, type Decision } from './decide.ts';
 import { perform, type Action } from './dispatch.ts';
 import { actionSpace, type ActionSpace, type Control, type Element, type Operation, type Target } from './elements.ts';
 import { PointLocator, type Aim } from './locator.ts';
-import { checkModel } from './model.ts';
+import { checkModel, checkProviderOptions } from './model.ts';
 import type { Point, Screenshot } from './overlay.ts';
 import { nonSecretParams } from './params.ts';
 import { describe, gated, invalid, need, pick, verdictOf, type Gates, type Verdict } from './picks.ts';
@@ -28,9 +28,7 @@ export function decisionExecutor(options: DecisionExecutorOptions): StepExecutor
   if (!inUnit(gates.minProbability) || !inUnit(gates.minConfidence)) {
     throw new ConfigurationError('INVALID_CONFIG', 'decisionExecutor({ minProbability, minConfidence }) must be between 0 and 1');
   }
-  if (options.providerOptions !== undefined && !isOptionsRecord(options.providerOptions)) {
-    throw new ConfigurationError('INVALID_CONFIG', 'decisionExecutor({ providerOptions }) maps provider names to option objects, e.g. { gateway: { zeroDataRetention: true } }');
-  }
+  checkProviderOptions(options.providerOptions, 'decisionExecutor');
   if (options.vision !== undefined && typeof options.vision !== 'boolean') {
     throw new ConfigurationError('INVALID_CONFIG', 'decisionExecutor({ vision }) must be a boolean');
   }
@@ -48,15 +46,6 @@ export function decisionExecutor(options: DecisionExecutorOptions): StepExecutor
 }
 /** How a valid model reads, for every model error. */
 const EXAMPLE = "pass an AI SDK decision model, e.g. decisionExecutor({ model: typeSafeAi.decisionModel('jev-latest') })";
-/** A plain object whose every value is a plain object: the shape the AI SDK takes as providerOptions. */
-function isOptionsRecord(value: unknown): boolean {
-  const isRecord = (v: unknown): boolean => {
-    if (typeof v !== 'object' || v === null) return false;
-    const prototype: unknown = Object.getPrototypeOf(v);
-    return prototype === Object.prototype || prototype === null;
-  };
-  return isRecord(value) && Object.values(value as object).every(isRecord);
-}
 function inUnit(value: number): boolean {
   return Number.isFinite(value) && value >= 0 && value <= 1;
 }

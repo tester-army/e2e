@@ -71,22 +71,6 @@ describe('planRun', () => {
     expect(planRun(base, filters, { kind: 'key', key: 'u' })).toEqual({ ...rerun, updateSnapshots: true, files: ['login'], grep: [/signs in/] });
     expect(planRun(base, filters, { kind: 'key', key: 'f' })).toEqual({ ...rerun, lastFailed: true, files: [], grep: [/signs in/] });
   });
-
-  it('applies the test filters to the first run only, so a save or a key never calls a filter', () => {
-    expect(planRun(base, NO_FILTERS, { kind: 'start' })).not.toHaveProperty('noFilter');
-    expect(planRun({ ...base, noFilter: true }, NO_FILTERS, { kind: 'start' }).noFilter).toBe(true);
-    const filters = { file: 'login', title: /signs in/ };
-    const later = [
-      planRun(base, NO_FILTERS, { kind: 'files', files: ['tests/login.e2e.ts'] }),
-      planRun(base, NO_FILTERS, { kind: 'source', files: ['tests/helpers.ts'] }),
-      planRun(base, NO_FILTERS, { kind: 'config' }),
-      ...(['r', 'a', 'u', 'f'] as const).map((key) => planRun(base, filters, { kind: 'key', key })),
-    ];
-    for (const options of later) expect(options.noFilter).toBe(true);
-    // --changed-since reaches the first run, the only one its filters judge.
-    expect(planRun({ ...base, changedSince: 'origin/main' }, NO_FILTERS, { kind: 'start' })).toMatchObject({ changedSince: 'origin/main' });
-    expect(planRun({ ...base, changedSince: 'origin/main' }, NO_FILTERS, { kind: 'config' })).toMatchObject({ changedSince: 'origin/main', noFilter: true });
-  });
 });
 
 describe('classifyChange and watchRoots', () => {

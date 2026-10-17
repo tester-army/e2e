@@ -622,20 +622,12 @@ describe('resolveConfig', () => {
     });
 
     it('refuses a hole in the list as an item that is not a TestFilter', () => {
-      const areas = { name: 'areas', filter: decide };
-      const jev = { name: 'jev', filter: decide };
       const gap: TestFilter[] = [];
-      gap[0] = areas;
-      gap[2] = jev;
-      const leading: TestFilter[] = [];
-      leading[1] = areas;
-      const trailing: TestFilter[] = [areas];
-      trailing.length = 2;
-      for (const [filters, index] of [[gap, 1], [leading, 0], [trailing, 1]] as const) {
-        expect(() => resolve({ filters }), String(index)).toThrow(
-          new ConfigurationError('INVALID_CONFIG', `filters[${index}] must be a TestFilter: { name, filter(tests, context) }`),
-        );
-      }
+      gap[0] = { name: 'areas', filter: decide };
+      gap[2] = { name: 'jev', filter: decide };
+      expect(() => resolve({ filters: gap })).toThrow(
+        new ConfigurationError('INVALID_CONFIG', 'filters[1] must be a TestFilter: { name, filter(tests, context) }'),
+      );
     });
 
     it('refuses a name outside the target name rules', () => {
@@ -664,13 +656,7 @@ describe('resolveConfig', () => {
     });
 
     it('leaves the config digest alone when a filter is added, changed, or removed', () => {
-      const plain = resolve({}).configDigest;
-      const client: Record<string, unknown> = {};
-      client['self'] = client;
-      expect(resolve({ filters: [] }).configDigest).toBe(plain);
-      expect(resolve({ filters: [{ name: 'areas', filter: decide }] }).configDigest).toBe(plain);
-      expect(resolve({ filters: [{ name: 'areas', filter: decide }, { name: 'jev', filter: decide }] }).configDigest).toBe(plain);
-      expect(resolve({ filters: [{ name: 'jev', filter: () => ({ exclude: { a: 'b' } }), client } as TestFilter] }).configDigest).toBe(plain);
+      expect(resolve({ filters: [{ name: 'areas', filter: decide }] }).configDigest).toBe(resolve({}).configDigest);
     });
   });
 

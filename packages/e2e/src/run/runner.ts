@@ -69,7 +69,7 @@ import type { EnginePrepareResult } from '../engine/index.ts';
 import type { AppProcesses } from './managed-process.ts';
 import { PreparedEngines, recordingNotices, startDeclaredProcesses, validateEngine, type EngineGrade, type PrepareScope } from './provision.ts';
 import { gateTestFilters } from './filter-gate.ts';
-import { applyTestFilters, FILTER_TIMEOUT_MS, filterCandidates, filterRecords, filterSummary, sessionSetupFiles, type TestFilterScope } from './test-filters.ts';
+import { applyTestFilters, FILTER_TIMEOUT_MS, filterCandidates, filterRecords, filterSummary, type TestFilterScope } from './test-filters.ts';
 
 export interface RunOptions {
   cwd?: string | undefined;
@@ -426,7 +426,6 @@ async function filteredSelection(
   const { env, changedSince, ...scopeHooks } = hooks;
   const gate = await gateTestFilters({
     candidates: filterCandidates(first),
-    setupFiles: sessionSetupFiles(first),
     lastFailed: filters.lastFailed !== undefined,
     changedSince,
     projectRoot: config.projectRoot,
@@ -921,7 +920,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           env,
           signal: interrupted,
           notice: (message) => notice('filter', message),
-          step: (name, work) => setupStep({ kind: 'filter', name }, () => debug.time('filter', work), (call) => (call.timedOut ? 'timed out' : undefined)),
+          step: (name, work) => setupStep({ kind: 'filter', name }, () => debug.time('filter', work), (call) => (call.outcome === 'answered' ? undefined : call.outcome)),
           changedSince: options.changedSince,
           timeoutMs: options.filterTimeout ?? FILTER_TIMEOUT_MS,
         });

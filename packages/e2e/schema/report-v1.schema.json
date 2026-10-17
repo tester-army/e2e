@@ -748,7 +748,8 @@
         "candidates": { "type": "integer", "minimum": 0 },
         "excluded": { "type": "integer", "minimum": 0 },
         "note": { "type": "string", "maxLength": 1024 },
-        "timedOut": { "description": "Set when the filter ran past 5 minutes: the run stopped waiting and left nothing out on its word.", "const": true }
+        "timedOut": { "description": "Set when the filter ran past 5 minutes: the run stopped waiting and left nothing out on its word.", "const": true },
+        "failed": { "description": "Set when the filter threw or answered with something other than { exclude, note? }: it left nothing out.", "const": true }
       }
     },
     "changes": {

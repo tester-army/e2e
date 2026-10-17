@@ -1520,6 +1520,8 @@ export interface TestFilterCandidate {
   readonly titlePath: readonly string[];
   /** The describe chain's tags, outermost first, then the test's own. */
   readonly tags: readonly string[];
+  /** Project-relative POSIX path of the setup test file that saves the test's session; absent when the test uses none. */
+  readonly setupFile?: string;
 }
 
 /** What a run's test filters judge: every file that differs from the base commit. */
@@ -1528,8 +1530,15 @@ export interface TestFilterChanges {
   readonly base: string;
   /** Absolute path of the git repository root, spelled as on disk like `projectRoot`; `files` are relative to it. */
   readonly root: string;
-  /** Repository-relative POSIX paths of every file added, modified, or deleted since `base`, both paths of a rename, uncommitted and untracked files included; sorted, never empty. */
+  /**
+   * Repository-relative POSIX paths of every file added, modified, or
+   * deleted since `base`, both paths of a rename; sorted, never empty. On a
+   * pull or merge request, what its commits change; with `--changed-since`,
+   * uncommitted and untracked files too.
+   */
   readonly files: readonly string[];
+  /** On a pull or merge request, the commit the change ends at, HEAD; absent with `--changed-since`, whose change ends at the working tree. */
+  readonly head?: string;
 }
 
 /** What the runner hands a filter besides its tests. */
