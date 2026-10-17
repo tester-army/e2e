@@ -35,8 +35,10 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status or switch
 | `--tag <tags>` | Any of the tags, comma-separated or repeated; all of them with `--tag-mode all`. An empty `--target`, `--tag`, or `--agent` value is a usage error, exit 2. |
 | `--exclude-tag <tags>` | Drop tests carrying any of these tags, however selected. |
 | `--grep <pattern>`, `--grep-invert <pattern>` | Keep, or drop, tests whose title (describe titles and test title joined by spaces, `checkout pays`; not file or tags) matches a regular expression. Bare pattern or `'/pattern/i'`; repeat for alternatives. |
-| `--last-failed` | The tests the previous run (`<output>/report.json`) did not pass or never ran (`--max-failures` and `--max-duration` included), plus every test in a failed `beforeAll` or `afterAll` scope. A test another filter leaves out stays owed (`run.carried` in the report) until a rerun runs it. No report is `NO_LAST_RUN`, exit 2. |
-| `--shard <index/total>` | One contiguous slice of the selected tests (`--shard 2/3`), cut after every other filter; serial groups stay whole, each shard brings its own setup tests. |
+| `--no-filter` | Skip the configured `filters`. Without it, they run only when there is a change to judge (a GitHub pull request, a GitLab merge request, or `--changed-since`), in config order, on the tests the other flags and `--shard` kept, and leave out the tests they name; every other test runs. Nothing left to run passes and starts no app. A filter that throws or returns an invalid result leaves nothing out: the run warns and runs every test it was given. First run only under `--watch`. |
+| `--changed-since <ref>` | The change the filters judge: every file that differs from the merge base of the ref and HEAD, uncommitted and untracked included, over a detected pull or merge request (`--changed-since origin/main`). A ref with no commit or no shared history is `INVALID_CHANGED_SINCE`, exit 2. |
+| `--last-failed` | The tests the previous run (`<output>/report.json`) did not pass or never ran (`--max-failures` and `--max-duration` included), plus every test in a failed `beforeAll` or `afterAll` scope. A test another filter leaves out stays owed (`run.carried` in the report) until a rerun runs it. The configured `filters` never judge a rerun. No report is `NO_LAST_RUN`, exit 2. |
+| `--shard <index/total>` | One contiguous slice of the selected tests (`--shard 2/3`), cut after every other flag; serial groups stay whole, each shard brings its own setup tests, and the configured `filters` then judge only that slice. |
 | `--headed` | Visible browser or simulator when the engine supports it. |
 | `--agent <names>` | Run unpinned tests as these `agents.<name>` entries (default `agents.default`), comma-separated or repeated; several names run each such test once per agent. |
 | `--workers <n>`, `--retries <n>` | Override the resolved values; retries 0-10, workers 1-1024. |
@@ -49,9 +51,9 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status or switch
 | `--strict-cache` | Fail a step whose committed recording no longer replays (`REPLAY_STALE`, exit 2) instead of handing it to the agent; retries replay too, and the run never writes the cache. |
 | `-u`, `--update-snapshots` | Write the stored screenshots `toHaveScreenshot` finds missing or different, and pass. |
 | `-w`, `--watch` | Run, then run again when a test file, a source file beside the tests, or the config is saved, or a key asks: `a` or enter all, `r` the current filters, `f` failed, `u` update snapshots, `p` and `t` filter by file and title, `q` quit; a key during a run cancels it. Refused in CI and with `--reporter json`. |
-| `--pass-with-no-tests` | Exit 0, not `NO_TESTS`, when nothing matches. |
+| `--pass-with-no-tests` | Exit 0, not `NO_TESTS`, when nothing matches; a run with nothing to run starts no engine or app. |
 | `--debug` | Phase timings and an agent step table on stderr; transcripts as artifacts. |
-| `--ai-trace` | Every model call, to `<output>/ai-trace.json`. |
+| `--ai-trace` | Every model call except a test filter's, to `<output>/ai-trace.json`. |
 | `--trace [mode]`, `--video [mode]` | Which tests keep a trace page (`<output>/results/<test>/trace.md`), or which attempts record a video (WebM on browsers, MP4 on devices), over the config and every target: bare is `on` (`--trace` then pages every test, passing ones too); `--trace off` writes none; `retain-on-failure` keeps only failures; `on-first-retry` keeps first retries, `on-all-retries` every retry. A test's own `trace` or `video` still wins; targets whose engine cannot record video are skipped with a notice. Both are greedy: write `--video=<mode>` or put test files first. The failure recap names the trace page and the video. |
 
 ```bash
@@ -59,6 +61,7 @@ npx e2e run tests/signup.e2e.ts
 npx e2e run signup.e2e.ts:12   # by bare name, the test declared at line 12
 npx e2e run tests/agent --tag smoke --exclude-tag slow --grep checkout
 npx e2e run --last-failed   # the loop after a red run
+npx e2e run --no-filter     # every test, without the configured filters
 npx e2e run --shard 2/3     # one CI job of three
 npx e2e run 'tests/**/*.smoke.e2e.ts' --target chromium --workers 1 --retries 0
 CI=1 npx e2e run            # the CI defaults, locally
@@ -66,10 +69,15 @@ CI=1 npx e2e run            # the CI defaults, locally
 
 `list` takes the same files and selection flags (`--config`, `--target`,
 `--tag`, `--tag-mode`, `--exclude-tag`, `--grep`, `--grep-invert`,
-`--last-failed`, `--shard`, `--pass-with-no-tests`), prints one line per
-test-target pair, `file › title [target] #tag`, skipped pairs ending in
-` (skipped: <reason>)`, and starts no app, engine, or worker.
-`--reporter json` prints `{ "pairs": [...] }` and names a skip reason `reason`.
+`--no-filter`, `--changed-since`, `--last-failed`, `--shard`,
+`--pass-with-no-tests`), prints one line per test-target pair,
+`file › title [target] #tag`, skipped pairs ending in ` (skipped: <reason>)`,
+and starts no app, engine, or worker. The configured filters run as for
+`run` (they may call a model) and their lines go to stderr; a pair one left
+out ends in ` (left out by <filter>: <reason>)`. `--reporter json` prints
+`{ "pairs": [...] }`, naming a skip or left-out reason `reason` and the
+filter that left a pair out `filter`. Preview a pull request's decision
+locally with `npx e2e list --changed-since origin/main`.
 
 `import { list } from 'e2e/runner'` returns that selection plus the pairs a
 filter removed, positional arguments that matched no file, and the selected
@@ -81,7 +89,9 @@ npx e2e list tests/signup.e2e.ts --tag smoke --reporter json
 
 `import { run } from 'e2e/runner'` executes the suite and returns its report
 without exiting the caller. Pass `cwd`, `config`, and `files` to select the
-project and tests; `onEvent` receives progress and `interruptSignal` cancels
+project and tests, `noFilter: true` to skip the configured test filters, and
+`changedSince` for the change they judge;
+`onEvent` receives progress and `interruptSignal` cancels
 with teardown. A runtime config uses one in-process worker. Await each run
 before starting the next and close every host first; overlaps reject with
 `RUNNER_BUSY`.
@@ -242,3 +252,16 @@ jobs:
   (`AI_GATEWAY_API_KEY` for `gateway()` from `ai`) as a secret in the run
   step's `env`, and commit `.e2e/cache/` so recorded steps replay with no
   model call.
+- To run only the tests a pull request can affect, install
+  `@e2e-dev/decision ai`, add
+  `filters: [decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })]`
+  with `decisionFilter` from `@e2e-dev/decision` and `gateway` from `ai`,
+  pass `AI_GATEWAY_API_KEY` in the run step's `env`, and give
+  `actions/checkout` `fetch-depth: 2`. Filters run only on a pull
+  or merge request or with `--changed-since <ref>`, never on
+  `pull_request_target`. Tests in a changed test file, with changed stored
+  screenshots, or using a changed setup file's sessions, every test on a
+  lockfile (any package manager) or config change, and a `--last-failed`
+  rerun always run; `--no-filter` runs everything. Wrap `decisionFilter` in
+  your own filter to narrow `changes.files` or always run some tests.
+  Reference: https://e2e.tester.army/docs/filters

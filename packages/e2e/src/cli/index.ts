@@ -9,8 +9,7 @@ import { packageVersion } from '../internal/package-version.ts';
 import { MAX_TIMER_MS } from '../internal/time.ts';
 import { classifyError, exitCodeForCategory } from '../internal/errors.ts';
 import type { Shard, TagMode } from '../collect/select.ts';
-import { list, type ListedPair } from '../runner.ts';
-import { run, type RunOptions, type RunOutcome } from '../run/runner.ts';
+import { listSelection, run, type ListedPair, type RunOptions, type RunOutcome } from '../run/runner.ts';
 import { claimRunnerOutput } from './run-output.ts';
 import { explore, STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/index.ts';
 import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
@@ -202,6 +201,8 @@ function selectionOptions(command: Command): Command {
     .option('--exclude-tag <tags>', 'leave out tests carrying any of these tags, comma-separated or repeated', parseNames('tag'))
     .option('--grep <pattern>', 'only tests whose title matches the regular expression (describe titles and test title, space-joined); repeat for alternatives', parsePattern)
     .option('--grep-invert <pattern>', 'leave out tests whose title matches the regular expression; repeat for alternatives', parsePattern)
+    .option('--no-filter', 'run without the configured test filters: every test the other flags select')
+    .option('--changed-since <ref>', 'judge the test filters on what changed since this git ref, such as origin/main, as on a pull request')
     .option('--last-failed', 'only the tests the previous run did not pass, read from <output>/report.json')
     .option('--shard <index/total>', 'one contiguous slice of the selected tests, such as 2/3; serial groups stay together', parseShard)
     .option('--pass-with-no-tests', 'exit 0 on an empty selection instead of NO_TESTS');
@@ -214,6 +215,9 @@ interface SelectionFlagValues {
   excludeTag?: string[];
   grep?: RegExp[];
   grepInvert?: RegExp[];
+  /** Commander negation: `--no-filter` parses as `filter: false`. */
+  filter?: boolean;
+  changedSince?: string;
   lastFailed?: boolean;
   shard?: Shard;
   passWithNoTests?: boolean;
@@ -222,13 +226,15 @@ interface SelectionFlagValues {
 /** The shared selection flags as the runner's options. */
 function selectionRunOptions(
   options: SelectionFlagValues,
-): Pick<RunOptions, 'tags' | 'tagMode' | 'excludeTags' | 'grep' | 'grepInvert' | 'lastFailed' | 'shard' | 'passWithNoTests'> {
+): Pick<RunOptions, 'tags' | 'tagMode' | 'excludeTags' | 'grep' | 'grepInvert' | 'noFilter' | 'changedSince' | 'lastFailed' | 'shard' | 'passWithNoTests'> {
   return {
     tags: options.tag,
     tagMode: options.tagMode,
     excludeTags: options.excludeTag,
     grep: options.grep,
     grepInvert: options.grepInvert,
+    noFilter: options.filter === false,
+    changedSince: options.changedSince,
     lastFailed: options.lastFailed,
     shard: options.shard,
     passWithNoTests: options.passWithNoTests,
@@ -238,10 +244,15 @@ function selectionRunOptions(
 const LIST_REPORTERS = ['list', 'json'] as const;
 type ListReporter = (typeof LIST_REPORTERS)[number];
 
-/** One `e2e list` line: `file › title [target] #tag`, with the skip reason when there is one. Titles and tags are bounded like every untrusted field. */
+/**
+ * One `e2e list` line: `file › title [target] #tag`, with the skip reason
+ * when there is one, or the test filter that left the pair out and why.
+ * Titles, tags, and a filter's reason are bounded like every untrusted field.
+ */
 function formatListedPair(pair: ListedPair): string {
   const tags = pair.tags.map((tag) => ` #${bounded(tag)}`).join('');
   const line = `${pair.file} › ${pair.titlePath.map(bounded).join(' › ')} [${pair.target}]${tags}`;
+  if (pair.filter !== undefined) return `${line} (left out by ${pair.filter}: ${bounded(pair.reason ?? '')})`;
   return pair.disposition === 'skip' ? `${line} (skipped: ${pair.reason ?? 'skipped'})` : line;
 }
 
@@ -598,6 +609,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e run --tag smoke --exclude-tag slow',
           "e2e run --grep checkout --grep-invert '/refund/i'",
           'e2e run --last-failed',
+          'e2e run --no-filter',
+          'e2e run --changed-since origin/main',
           'e2e run --shard 2/3',
           'e2e run --reporter list,junit --workers 4 --retries 2',
           'e2e run --max-failures 3',
@@ -801,7 +814,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .command('list')
     .summary('print the tests a run would select, without running them')
     .description(
-      'Collect and select tests exactly as run does, print one line per test and target (file › title [target] #tag), and exit. Nothing starts: no app process, no engine, no worker. The same files and selection flags (--tag, --exclude-tag, --grep, --target) narrow the selection.',
+      'Collect and select tests exactly as run does, print one line per test and target (file › title [target] #tag), and exit. Nothing starts: no app process, no engine, no worker. The same files and selection flags (--tag, --exclude-tag, --grep, --target) narrow the selection, and the configured test filters run as they would for run, which may call a model; --no-filter skips them.',
     )
     .argument('[files...]', FILES_DESCRIPTION)
     .optionsGroup('Selection:')
@@ -810,7 +823,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
   selectionOptions(listCommand)
     .optionsGroup('Output:')
     .addOption(
-      new Option('--reporter <id>', 'list prints one line per pair; json prints { pairs: [...] }')
+      new Option('--reporter <id>', 'list prints one line per pair; json prints { pairs: [...] }; a pair a test filter left out has filter and reason')
         .choices(LIST_REPORTERS)
         .default('list'),
     )
@@ -825,6 +838,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e list --grep checkout',
           'e2e list --shard 2/3',
           'e2e list --reporter json',
+          'e2e list --changed-since origin/main',
         ]),
         '',
         docsLine('/reference/cli#e2e-list'),
@@ -843,18 +857,21 @@ function createProgram(version: string, telemetry: Telemetry): Command {
         rejectForwardedFlags(command, files);
         let pairs: readonly ListedPair[];
         try {
-          ({ pairs } = await list({
-            files,
-            config: options.config,
-            targets: options.target,
-            ...selectionRunOptions(options),
-          }));
+          ({ pairs } = await listSelection(
+            {
+              files,
+              config: options.config,
+              targets: options.target,
+              ...selectionRunOptions(options),
+            },
+            (message) => process.stderr.write(`${bounded(message)}\n`),
+          ));
         } catch (cause) {
           reportFailure(telemetry, cause);
           return;
         }
-        // `list` includes pairs a filter removed. The command prints the ones `e2e list` always has: run and skip.
-        const listed = pairs.filter((pair) => pair.disposition === 'run' || pair.disposition === 'skip');
+        // `list` includes pairs a selection flag removed. The command prints the ones that run or are skipped, and those a test filter left out.
+        const listed = pairs.filter((pair) => pair.disposition === 'run' || pair.disposition === 'skip' || pair.filter !== undefined);
         process.stdout.write(
           options.reporter === 'json'
             ? `${JSON.stringify({ pairs: listed }, null, 2)}\n`

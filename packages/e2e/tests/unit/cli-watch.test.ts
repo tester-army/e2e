@@ -47,7 +47,7 @@ function fakeStdin(): NodeJS.ReadStream & { setRawMode: ReturnType<typeof vi.fn>
 
 describe('planRun', () => {
   const base: RunOptions = { files: ['tests/signup.e2e.ts:12'], lastFailed: true, grep: [/checkout/], tags: ['smoke'] };
-  const rerun = { ...base, freshGraph: true, lastFailed: false, passWithNoTests: true };
+  const rerun = { ...base, freshGraph: true, lastFailed: false, noFilter: true, passWithNoTests: true };
 
   it('keeps the command line for the first run, --last-failed included, with the project files read afresh', () => {
     expect(planRun(base, NO_FILTERS, { kind: 'start' })).toEqual({ ...base, freshGraph: true });
@@ -343,7 +343,7 @@ describe('watchSession', () => {
     listeners.get(path.join(root, 'tests'))!('change', 'a.e2e.ts');
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
     expect(runs).toHaveLength(2);
-    expect(runs[1]).toEqual({ files: ['tests/a.e2e.ts'], configPath: undefined, lastFailed: false, passWithNoTests: true, freshGraph: true });
+    expect(runs[1]).toEqual({ files: ['tests/a.e2e.ts'], configPath: undefined, lastFailed: false, noFilter: true, passWithNoTests: true, freshGraph: true });
     expect(written).toContain('\x1b[2J\x1b[3J\x1b[H RERUN  tests/a.e2e.ts x2\n\n');
 
     // A change during the run waits for it, then runs.
@@ -389,7 +389,7 @@ describe('watchSession', () => {
     listeners.get(root)!('change', 'e2e.config.ts');
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
     await settle();
-    expect(runs[1]).toEqual({ files: ['signup'], configPath: undefined, lastFailed: false, passWithNoTests: true, freshGraph: true });
+    expect(runs[1]).toEqual({ files: ['signup'], configPath: undefined, lastFailed: false, noFilter: true, passWithNoTests: true, freshGraph: true });
     expect(written.join('')).toContain(' RERUN  config changed x2');
     // The config did not load: only its directory is watched now, flat.
     expect(closed).toEqual([root, path.join(root, 'tests'), root]);
@@ -472,7 +472,7 @@ describe('watchSession', () => {
 
     stdin.write('f');
     await settle();
-    expect(runs[2]).toMatchObject({ files: [], lastFailed: true, passWithNoTests: true });
+    expect(runs[2]).toMatchObject({ files: [], lastFailed: true, noFilter: true, passWithNoTests: true });
 
     stdin.write('u');
     await settle();
@@ -486,7 +486,7 @@ describe('watchSession', () => {
 
     stdin.write('a');
     await settle();
-    expect(runs[4]).toEqual({ files: [], configPath: undefined, lastFailed: false, passWithNoTests: true, freshGraph: true });
+    expect(runs[4]).toEqual({ files: [], configPath: undefined, lastFailed: false, noFilter: true, passWithNoTests: true, freshGraph: true });
     expect(runs[4]!.updateSnapshots).toBeUndefined();
     expect(written.join('')).toContain(' RERUN  all tests x5');
 

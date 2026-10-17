@@ -25,6 +25,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The pull request's base commit, so the testbed's test filter can measure the change.
+          fetch-depth: 2
       - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -60,8 +63,13 @@ jobs:
           node --test .dev/skills/babysit/scripts/pr-status.test.ts
       - name: Install browsers
         run: node packages/web/dist/bin.js install chromium --with-deps
+      # On a pull request, Jev leaves out the tests the change can't affect;
+      # the merge queue and main run every test. Without the key (a fork's
+      # pull request), every test runs.
       - name: Testbed
         run: pnpm --filter @e2e-dev/testbed test
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
 
   test:
     runs-on: blacksmith-4vcpu-ubuntu-2404

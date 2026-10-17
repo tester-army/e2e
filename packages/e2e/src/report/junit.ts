@@ -94,6 +94,12 @@ function errorBody(error: ReportError): string {
   return `${error.code}${phase}: ${error.message}`;
 }
 
+/** Why a result was skipped: its reason, after the test filter's name when one left it out. */
+function skippedMessage(result: ReportResult): string {
+  const reason = result.skip?.reason ?? 'skipped';
+  return result.skip?.filter === undefined ? reason : `left out by filter ${result.skip.filter}: ${reason}`;
+}
+
 function renderResult(result: ReportResult, groups: ReadonlyMap<string, ReportSerialGroup>): RenderedCase {
   const final = outcome(result, groups);
   // The agent joins the name only when it is not `default`, so a suite that
@@ -119,7 +125,7 @@ function renderResult(result: ReportResult, groups: ReadonlyMap<string, ReportSe
     case 'skipped':
     case 'interrupted': {
       // JUnit has no interrupted outcome; a test the run stopped reached no verdict, so it reads as skipped with why.
-      const message = result.status === 'skipped' ? (result.skip?.reason ?? 'skipped') : `interrupted: ${final.final.error?.message ?? 'the run was stopped'}`;
+      const message = result.status === 'skipped' ? skippedMessage(result) : `interrupted: ${final.final.error?.message ?? 'the run was stopped'}`;
       return {
         lines: [`${open}>`, `  <skipped ${attributes({ message })}/>`, '</testcase>'],
         outcome: 'skipped',
@@ -178,15 +184,16 @@ function renderSuite(name: string, cases: readonly RenderedCase[]): { lines: str
  * Renders the report-1 document as JUnit XML: one `<testsuite>` per test file
  * (in report order, so the output is completion-time independent), one
  * `<testcase>` per test-target pair, plus a `run` suite for run-level errors.
- * Like every reporter it reads the document, never runner state, and it can
- * never change run status.
+ * A pair a test filter left out is a skipped case naming the filter, so a run
+ * the filters left empty still lists its suite. Like every reporter it reads
+ * the document, never runner state, and it can never change run status.
  */
 export function renderJunitReport(report: Report1Document): string {
   const groups = new Map(report.run.serialGroups.map((group) => [group.id, group]));
   const byFile = new Map<string, RenderedCase[]>();
   for (const result of report.run.results) {
-    // Unselected results are report-only; a CI viewer counts what the run selected.
-    if (result.selected === false) continue;
+    // Other unselected results are report-only; a CI viewer counts what the run selected.
+    if (result.selected === false && result.skip?.filter === undefined) continue;
     const cases = byFile.get(result.file) ?? [];
     cases.push(renderResult(result, groups));
     byFile.set(result.file, cases);

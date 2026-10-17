@@ -133,7 +133,7 @@ one node can't do a declared action, throw `UNSUPPORTED_CAPABILITY`.
 
 | Hook | When | Use it to |
 | --- | --- | --- |
-| `prepare` | One time per target, in the runner process | Install runtimes. The `env` it returns reaches every worker |
+| `prepare` | One time per target, in the runner process, on a run with tests to run | Install runtimes. The `env` it returns reaches every worker |
 | `init` | One time per worker, before its first attempt | Boot devices. It must also work on an engine that was disposed |
 | `startAttempt` | Before each attempt | Create the test's UI |
 | `settleAttempt` | After the body, and again after teardown | Throw the error of a test callback no step awaited, such as a dialog handler |

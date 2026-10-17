@@ -492,3 +492,23 @@ export function fitColumns(text: string, columns: number): string {
 export function repeatSuffix(repeat: number | undefined): string {
   return repeat === undefined || repeat === 0 ? '' : ` (repeat #${repeat})`;
 }
+
+/** `run.changes.skipped` when the run judges no pull or merge request: the one reason the markdown page leaves out. */
+export const NOT_A_PULL_REQUEST = 'not a pull request';
+
+/** A commit as the notices and the markdown page name it: its first seven characters. */
+export function shortCommit(commit: string): string {
+  return commit.slice(0, 7);
+}
+
+/**
+ * What one test filter decided of the tests it was given: `kept 7 of 42
+ * tests, left out 35`, `kept all 42 tests`, or `left out all 42 tests`. The
+ * run's notice and the markdown page say it the same way.
+ */
+export function filterDecision(candidates: number, excluded: number): string {
+  const tests = `${candidates} test${candidates === 1 ? '' : 's'}`;
+  if (excluded === 0) return `kept all ${tests}`;
+  if (excluded === candidates) return `left out all ${tests}`;
+  return `kept ${candidates - excluded} of ${tests}, left out ${excluded}`;
+}
