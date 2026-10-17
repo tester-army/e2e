@@ -116,6 +116,7 @@ function makeSession(cache: AgentCacheContext, host: StepCacheHost, overrides: P
     redactCut: (text) => text,
     maxActions: 25,
     stepIndex: 1,
+    assertionTimeout: 5_000,
     ...overrides,
   });
 }
@@ -1125,6 +1126,69 @@ describe('destination path settling', () => {
     const verdict = await session.begin();
     expect(verdict).toBeUndefined();
     expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
+  });
+});
+
+describe('the replay end wait', () => {
+  it('waits at least the assertion timeout, so a recording made on a quiet machine still replays under load', async () => {
+    vi.useFakeTimers();
+    vi.setTimerTickMode('nextTimerAsync');
+    // A recording whose app answered in about a second carries a short wait.
+    // Under load the same end state renders well after it, but inside the
+    // assertion timeout the step's author set.
+    const context = entryContext({ endPath: '/customers', endAnchors: [savedAnchor], endWaitMs: 1_000 });
+    const from = Date.now() + 20_000;
+    const paths = ['/pricing', '/pricing'];
+    const host: StepCacheHost = {
+      observe: async () => {
+        const path = paths.shift() ?? '/customers';
+        const nodes = path === '/customers' && Date.now() >= from ? [savedMarker] : [];
+        return { kind: 'semantic', nodes: nodeMap(nodes), viewport: { width: 1280, height: 720 }, path };
+      },
+      actions: { navigate: async () => undefined } as unknown as ExecutorActions,
+      signal: new AbortController().signal,
+      remainingMs: () => 120_000,
+      traceEligible: true,
+      replaying: () => undefined,
+    };
+    const session = makeSession(context, host, { assertionTimeout: 30_000 });
+    const verdict = await session.begin();
+    expect(verdict?.status).toBe('passed');
+  });
+
+  it('keeps a recorded wait longer than the assertion timeout, never shortening it', async () => {
+    vi.useFakeTimers();
+    vi.setTimerTickMode('nextTimerAsync');
+    const startedMs = Date.now();
+    const context = entryContext({ endPath: '/customers', endAnchors: [savedAnchor], endWaitMs: 30_000 });
+    const host = { ...makeHost(['/pricing', '/pricing', ...Array.from({ length: 40 }, () => '/customers')]), remainingMs: () => 120_000 };
+    const session = makeSession(context, host, { assertionTimeout: 5_000 });
+    expect(await session.begin()).toBeUndefined();
+    expect(Date.now() - startedMs).toBeGreaterThanOrEqual(30_000);
+  });
+
+  it('waits the assertion timeout for an entry with no recorded wait, an older recording', async () => {
+    vi.useFakeTimers();
+    vi.setTimerTickMode('nextTimerAsync');
+    const context = entryContext({ endPath: '/customers', endAnchors: [savedAnchor] });
+    // Past the settling backoff the end check always takes, so only the
+    // assertion-timeout floor can catch it.
+    const from = Date.now() + 20_000;
+    const paths = ['/pricing', '/pricing'];
+    const host: StepCacheHost = {
+      observe: async () => {
+        const path = paths.shift() ?? '/customers';
+        const nodes = path === '/customers' && Date.now() >= from ? [savedMarker] : [];
+        return { kind: 'semantic', nodes: nodeMap(nodes), viewport: { width: 1280, height: 720 }, path };
+      },
+      actions: { navigate: async () => undefined } as unknown as ExecutorActions,
+      signal: new AbortController().signal,
+      remainingMs: () => 120_000,
+      traceEligible: true,
+      replaying: () => undefined,
+    };
+    const verdict = await makeSession(context, host, { assertionTimeout: 30_000 }).begin();
+    expect(verdict?.status).toBe('passed');
   });
 });
 

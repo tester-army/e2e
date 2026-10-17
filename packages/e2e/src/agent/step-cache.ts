@@ -68,6 +68,13 @@ export interface StepCacheOptions {
   readonly maxActions: number;
   /** Timeline index of the step being dispatched. */
   readonly stepIndex: number;
+  /**
+   * The attempt's `assertionTimeout`: the shortest a replay waits for the
+   * recorded end state, however short the wait the recording measured. A
+   * recording made on a quiet machine carries a small wait, and a replay on a
+   * busy one may need longer for the same end state to render.
+   */
+  readonly assertionTimeout: number;
 }
 
 /**
@@ -506,10 +513,15 @@ export class StepTraceSession {
       mismatch = deltaMismatch(trace, screen.nodes, beforeNodes);
       return mismatch === undefined;
     };
-    const matches = (await verifyEndState(this.host, holds, {
-      initial: arrived,
-      ...(trace.endWaitMs === undefined ? {} : { waitMs: trace.endWaitMs }),
-    })) && this.host.traceEligible;
+    // The wait the recording measured is a floor, not the ceiling: a step
+    // recorded on a quiet machine can carry a small wait, and a replay on a
+    // busy one may need longer for the same end state to render. The author
+    // already states how long the app may take to show something —
+    // `assertionTimeout` — and an end check is that kind of wait, so the
+    // replay never waits less than that. A replay that ends early still costs
+    // nothing extra: the wait polls and returns the moment the state holds.
+    const waitMs = Math.max(trace.endWaitMs ?? 0, this.options.assertionTimeout);
+    const matches = (await verifyEndState(this.host, holds, { initial: arrived, waitMs })) && this.host.traceEligible;
     return matches ? { matches } : { matches, ...(mismatch === undefined ? {} : { failure: mismatch }) };
   }
 

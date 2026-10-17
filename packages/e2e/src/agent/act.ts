@@ -262,6 +262,7 @@ class ActDispatch {
             redactCut: runtime.redactCut,
             maxActions: this.accounting.maxActions,
             stepIndex,
+            assertionTimeout: runtime.config.assertionTimeout,
           });
   }
 

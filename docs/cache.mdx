@@ -156,6 +156,11 @@ page on any other origin is another route.
 - At least one recorded change must happen during the replay. An outcome
   already on screen before the actions proves nothing. When the step's last
   action moved to another route, that move is the evidence.
+- The replay waits for the end state as long as the recording did, and never
+  less than [`assertionTimeout`](/reference/config): a step recorded on a
+  quiet machine can carry a short wait, and a replay on a busy one may need
+  longer for the same end state to render. The wait polls, so it returns the
+  moment the state holds.
 - An alert that the replay raised and the recording never saw stops the
   replay. The web engine does not observe Next.js App Router's route
   announcer, so its title echo never counts.
