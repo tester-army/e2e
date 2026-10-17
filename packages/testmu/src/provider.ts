@@ -193,7 +193,8 @@ export function testmu(options: TestmuOptions): DeviceProvider {
             leaseBackend,
             leaseProvider: PROVIDER,
             ttlMs: LEASE_TTL_MS,
-            // The engine closes a worker's session when it retires the worker; without this, closing it ends the TestMu AI session mid-run.
+            // Retain the provider lease when closeApp or cleanup closes the engine session.
+            // The provider releases the lease at run end.
             retainOnClose: true,
             ...selectors,
           },
@@ -201,7 +202,7 @@ export function testmu(options: TestmuOptions): DeviceProvider {
         id = grant.leaseId;
         held.set(id, resource);
         if (request.signal.aborted) throw new Error('cancelled');
-        if (!grant.retainOnClose) throw new Error('agent-device did not keep the lease through session close, so the session would end when a worker retires');
+        if (!grant.retainOnClose) throw new Error('agent-device did not acknowledge retainOnClose. Closing the engine session could end the TestMu AI lease before run-end release');
         const scope = { tenant: grant.tenantId, runId: grant.runId, leaseId: grant.leaseId, leaseBackend, leaseProvider: PROVIDER };
         resource.stopHeartbeat = await startHeartbeat(resource.stateDir, scope, request.log);
         request.log(`lease ${id}: ${device}, ${request.platform} ${osVersion} (${deviceType}); session ${selectors.providerSessionName} started`);

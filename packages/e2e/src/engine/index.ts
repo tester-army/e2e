@@ -589,6 +589,17 @@ export interface EngineCleanupContext {
   readonly timeoutMs: number;
 }
 
+/** Cleanup of one worker, with optional permission to leave run-owned resources for a replacement. */
+export interface EngineDisposeContext extends EngineCleanupContext {
+  /**
+   * A live signal permits reusable resources owned by `prepare` and `finish`
+   * to survive this worker. Missing or aborted permission requires final
+   * cleanup. Observe revocation until disposal settles. This signal does
+   * not cancel cleanup, which remains bounded by `signal` and `timeoutMs`.
+   */
+  readonly reuseSignal?: AbortSignal;
+}
+
 export interface EngineObserveOptions {
   /** Requests masked viewport pixels for the same revision as the tree. */
   readonly pixels?: boolean;
@@ -832,9 +843,11 @@ export interface Engine {
   endAttempt?(context: EngineCleanupContext): Promise<void>;
   /**
    * Worker shutdown, within the cleanup budget; failure is a run error. Runs
-   * whether or not `init` ran, so it MUST tolerate a cold engine.
+   * whether or not `init` ran, so it MUST tolerate a cold engine. A live
+   * `reuseSignal` permits preserving run-owned resources for a replacement,
+   * until that permission is revoked or this hook settles.
    */
-  dispose?(context: EngineCleanupContext): Promise<void>;
+  dispose?(context: EngineDisposeContext): Promise<void>;
 }
 
 /** A validated engine: branded, frozen, capabilities computed. */

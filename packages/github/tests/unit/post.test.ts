@@ -137,6 +137,24 @@ describe('upsertComment', () => {
     await expect(upsertComment(params(noUrl.fetch))).rejects.toThrow('GitHub answered the comment without its html_url');
   });
 
+  it('reports throttling, not token permissions, for a rate-limited request', async () => {
+    const throttled = [
+      { status: 403, headers: { 'x-ratelimit-remaining': '0' }, message: 'API rate limit exceeded' },
+      { status: 403, headers: { 'retry-after': '60' }, message: 'slow down' },
+      { status: 403, headers: {}, message: 'You have exceeded a secondary rate limit' },
+      { status: 429, headers: {}, message: 'too many requests' },
+    ];
+    for (const { status, headers, message } of throttled) {
+      const { fetch, calls } = fakeGitHub({
+        'GET *': () => new Response(JSON.stringify({ message }), { status, headers }),
+      });
+      await expect(upsertComment(params(fetch))).rejects.toThrow(
+        'GitHub rate limited GET /repos/octo/app/issues/41/comments?per_page=100&page=1; wait for the rate-limit reset or Retry-After before rerunning the job',
+      );
+      expect(routes(calls)).toEqual(['GET /user', 'GET /repos/octo/app/issues/41/comments']);
+    }
+  });
+
   it('carries the signal on every request and stops at once when it is aborted', async () => {
     const { fetch, calls } = fakeGitHub({ 'GET *': () => json(200, []) });
     const controller = new AbortController();

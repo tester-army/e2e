@@ -1,5 +1,17 @@
 # @e2e-dev/mobile
 
+## 0.12.3
+
+### Patch Changes
+
+- [#1166](https://github.com/tester-army/e2e/pull/1166) [`4fe6baf`](https://github.com/tester-army/e2e/commit/4fe6baf6538cf4adb6809a005be4b8155d24eb86) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Locators and `expect` now keep waiting while Android reports insufficient foreground app content (an app still loading after a cold start) instead of failing at once. A wait that runs out on an unreadable screen fails with that reason.
+
+- [#1181](https://github.com/tester-army/e2e/pull/1181) [`fc5c350`](https://github.com/tester-army/e2e/commit/fc5c350d490f40417fb71040c0344733d5596c70) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump agent-device to 0.21.28.
+
+- [#1178](https://github.com/tester-army/e2e/pull/1178) [`2791786`](https://github.com/tester-army/e2e/commit/2791786ced4122968411c509f64cf969b9f1d31f) Thanks [@michalpobuta](https://github.com/michalpobuta)! - `getByTestId` on Android also matches a resource id without its `<package>:id/` prefix when nothing matches the full id, so a .NET MAUI `AutomationId` or a native `android:id` matches the same string as on iOS. A negative check on such a name, like `toHaveCount(0)`, can now see a node it used to miss, and two prefixed views that share the name on one screen are ambiguous.
+
+- [#1183](https://github.com/tester-army/e2e/pull/1183) [`cf5e122`](https://github.com/tester-army/e2e/commit/cf5e1223bcb2628b84e4941ac3f88648d1101e44) Thanks [@spsaucier](https://github.com/spsaucier)! - An iOS screen's location takes its title from the navigation bar's identifier only when the bar shows that text, not from the bar's label or a class name left in the identifier, and an Android toolbar's resource id is no longer a title; iOS recordings that start or end on a pushed screen, and Android recordings whose path ends in a toolbar resource id, re-record once (`--strict-cache` runs fail with `REPLAY_STALE` until then).
+
 ## 0.12.2
 
 ### Patch Changes

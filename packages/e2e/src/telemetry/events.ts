@@ -165,15 +165,19 @@ function* scopes(report: Report1Document): Generator<ReportScope> {
 
 /**
  * The steps of each test the run executed, across its attempts: one entry per
- * result, and one per serial member by index, since a serial group's attempt
- * runs every member again.
+ * result that made an attempt, and one per serial member that ran, by index,
+ * since a serial group's attempt runs every member again. A serial member's
+ * result carries no attempts of its own, so it counts once, through its group.
  */
 function testSteps(report: Report1Document): ReportStep[][] {
-  const tests: ReportStep[][] = report.run.results.map((result) => result.attempts.flatMap((attempt) => attempt.steps));
+  const tests: ReportStep[][] = report.run.results
+    .filter((result) => result.attempts.length > 0)
+    .map((result) => result.attempts.flatMap((attempt) => attempt.steps));
   for (const group of report.run.serialGroups) {
     const members = new Map<number, ReportStep[]>();
     for (const attempt of group.attempts) {
       for (const member of attempt.members) {
+        if (member.status === 'skipped') continue;
         members.set(member.index, [...(members.get(member.index) ?? []), ...member.steps]);
       }
     }
@@ -193,6 +197,56 @@ function agentStepsByApi(steps: readonly ReportStep[]): Record<string, number> {
       steps.filter((step) => step.kind === 'agent' && step.api === api).length,
     ]),
   );
+}
+
+/** The model calls of the agent steps by api, keyed like `agentStepsByApi`: where the model spend goes. */
+function modelCallsByApi(steps: readonly ReportStep[]): Record<string, number> {
+  return Object.fromEntries(
+    AGENT_APIS.map((api): [string, number] => [
+      `model_calls_${api.slice('agent.'.length).toLowerCase()}`,
+      steps.reduce((total, step) => total + (step.kind === 'agent' && step.api === api ? (step.model?.calls ?? 0) : 0), 0),
+    ]),
+  );
+}
+
+/**
+ * How much of a test the replay cache carried, across its attempts.
+ * `code-only` ran no agent step; `replayed` replayed every agent step from
+ * the cache, so no executor ran; `assisted` ran the executor but the cache
+ * carried at least part of a step; `live` ran every agent step on the
+ * executor. Whether the executor called a model is `model_calls`' business.
+ */
+type TestCacheTier = 'code-only' | 'replayed' | 'assisted' | 'live';
+
+/** The tier of one test, from its steps across attempts. */
+function testCacheTier(steps: readonly ReportStep[]): TestCacheTier {
+  const agent = steps.filter((step) => step.kind === 'agent');
+  if (agent.length === 0) return 'code-only';
+  if (agent.every((step) => step.cache?.mode === 'self-finalized')) return 'replayed';
+  return agent.some((step) => step.cache?.mode === 'self-finalized' || step.cache?.mode === 'agent-concluded') ? 'assisted' : 'live';
+}
+
+/** The tests per cache tier; the four add up to the tests the run executed. */
+function testsByCacheTier(tests: readonly (readonly ReportStep[])[]): Record<string, number> {
+  const tiers = tests.map(testCacheTier);
+  const count = (tier: TestCacheTier) => tiers.filter((candidate) => candidate === tier).length;
+  return {
+    tests_code_only: count('code-only'),
+    tests_replayed: count('replayed'),
+    tests_assisted: count('assisted'),
+    tests_live: count('live'),
+  };
+}
+
+/** The cache's reason tokens for the steps of one mode, counted: why a step missed, or why a replay handed off. */
+function cacheReasons(steps: readonly ReportStep[], mode: 'missed' | 'agent-concluded'): Record<string, number> {
+  const counts = new Map<string, number>();
+  for (const step of steps) {
+    if (step.cache?.mode !== mode || step.cache.reason === undefined) continue;
+    const reason = plainToken(step.cache.reason);
+    counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  }
+  return sortedCounts(counts);
 }
 
 /** The scope's verdict, then the steps that led there, then what cleanup added. */
@@ -342,12 +396,17 @@ export function runCompletedEvent(report: Report1Document, context: RunContext):
       agent_steps_replayed: steps.filter((step) => step.cache?.mode === 'self-finalized').length,
       agent_steps_partial: steps.filter((step) => step.cache?.mode === 'agent-concluded').length,
       agent_steps_missed: steps.filter((step) => step.cache?.mode === 'missed').length,
+      agent_steps_uncached: steps.filter((step) => step.kind === 'agent' && step.api === 'agent.act' && step.cache === undefined).length,
+      agent_miss_reasons: cacheReasons(steps, 'missed'),
+      agent_handoff_reasons: cacheReasons(steps, 'agent-concluded'),
+      ...testsByCacheTier(tests),
       agent_steps_vision: steps.filter((step) => step.visionInput === true).length,
       agent_actions: agentActions(steps),
       model_gateway: first?.provider ?? null,
       model_provider: firstModel?.provider ?? null,
       model_id: firstModel === undefined ? null : plainToken(firstModel.id),
       model_calls: models.reduce((total, model) => total + model.calls, 0),
+      ...modelCallsByApi(steps),
       model_tokens: run.usage.modelTokens,
       model_cached_tokens: run.usage.modelCachedTokens ?? null,
       estimated_cost_usd: run.usage.estimatedCostUsd ?? null,

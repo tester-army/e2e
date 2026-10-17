@@ -63,7 +63,14 @@ export interface MobileOptions {
    * the platform at `prepare`, as many as the run has slots; with none booted,
    * agent-device boots one. A `DeviceProvider` leases hosted devices instead:
    * one per worker slot at `prepare`, each driven through the daemon and
-   * client configuration the lease names, all released when the run ends.
+   * client configuration the lease names. A replacement worker resumes a
+   * healthy agent-device session on the same lease. Forced worker shutdown
+   * can close the session. `device.closeApp()` ends the session and drops
+   * the device claim during the run. If agent-device has not confirmed a
+   * recording stop, the engine resets the recording before the next
+   * attempt. This reset also closes the session and drops the claim.
+   * At run end, the engine closes the sessions and the provider releases
+   * its leases.
    */
   readonly device?: string | readonly string[] | DeviceProvider | undefined;
   /**

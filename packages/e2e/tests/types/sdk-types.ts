@@ -49,7 +49,7 @@ import {
   beforeEach,
   describe,
 } from '../../src/index.ts';
-import type { Engine, EngineAttemptContext, EngineHandle, EngineObserveOptions, EngineSnapshot } from '../../src/engine/index.ts';
+import type { Engine, EngineAttemptContext, EngineCleanupContext, EngineDisposeContext, EngineHandle, EngineObserveOptions, EngineSnapshot } from '../../src/engine/index.ts';
 import { createToolLoopExecutor, defineTool } from '../../src/agent/public.ts';
 import type { Report } from '../../src/index.ts';
 import type { LanguageModelV2, LanguageModelV3, LanguageModelV4 } from '@ai-sdk/provider';
@@ -114,6 +114,25 @@ declare const asyncExpectation: AsyncExpectation;
 declare const screen: Screen;
 declare const engine: EngineHandle;
 declare const targets: readonly Target[];
+
+declare const cleanupContext: EngineCleanupContext;
+declare const disposeContext: EngineDisposeContext;
+cleanupContext satisfies EngineDisposeContext;
+disposeContext.reuseSignal satisfies AbortSignal | undefined;
+({ signal: cleanupContext.signal, timeoutMs: 100, reuseSignal: cleanupContext.signal }) satisfies EngineDisposeContext;
+// @ts-expect-error Reuse permission is an AbortSignal, not a worker message.
+({ signal: cleanupContext.signal, timeoutMs: 100, reuseSignal: 'shutdown' }) satisfies EngineDisposeContext;
+// @ts-expect-error Reuse permission cannot be reassigned by an engine.
+disposeContext.reuseSignal = cleanupContext.signal;
+// @ts-expect-error Attempt cleanup does not receive worker reuse permission.
+cleanupContext.reuseSignal;
+declare const attemptCleanupContext: Parameters<NonNullable<Engine['endAttempt']>>[0];
+// @ts-expect-error Only disposal receives worker reuse permission.
+attemptCleanupContext.reuseSignal;
+({
+  name: 'legacy-cleanup', version: '1.0.0', spiVersion: 1,
+  async dispose(_context: EngineCleanupContext) {},
+}) satisfies Engine;
 
 ({ pixels: false, pixelFallback: true }) satisfies EngineObserveOptions;
 interface CustomSnapshot extends EngineSnapshot { readonly projectMetadata?: string }

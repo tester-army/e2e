@@ -11,6 +11,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type {
   EngineAttemptContext,
+  EngineDisposeContext,
   EngineHandle,
   EngineInitInfo,
   EngineObserveOptions,
@@ -89,7 +90,7 @@ export interface FakeEngineBehavior {
   /** Declares `settleAttempt`, called with the current attempt index; throw to hand the attempt a late failure. */
   onSettleAttempt?(attemptIndex: number): void | Promise<void>;
   /** Throw to fail worker-end disposal. */
-  onDispose?(): void | Promise<void>;
+  onDispose?(context: EngineDisposeContext): void | Promise<void>;
   /** Throw to fail navigation (app.open); backs `session.open`. */
   onNavigate?(url: string, attemptIndex: number): void | Promise<void>;
   /** Overrides locate; default resolves one stable node, or the scene. */
@@ -275,10 +276,10 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
       }
       await behavior.onEndAttempt?.(index);
     },
-    async dispose() {
+    async dispose(context) {
       disposes += 1;
       events.push('dispose');
-      await behavior.onDispose?.();
+      await behavior.onDispose?.(context);
     },
     async observe(operation, options) {
       record('observe', operation);

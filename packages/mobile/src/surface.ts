@@ -221,12 +221,6 @@ interface Attempt {
   readonly attemptId: string;
   readonly artifactsDir: string;
   screenshots: number;
-  /**
-   * The recording the device was asked for. Marked before the start command
-   * goes out, since a start that outlives its budget still records, and
-   * cleared only once a stop succeeded: either way `endAttempt` can stop it.
-   */
-  video: Recording | undefined;
 }
 
 /** One recording of the device: agent-device's screen recording, or the device provider's own. */
@@ -243,6 +237,7 @@ interface ScreenRecording {
 /** The device provider's recording of the leased device, as its `record` is starting it or started it. */
 interface LeaseRecording {
   readonly kind: 'lease';
+  readonly artifactsDir: string;
   readonly recorder: LeaseRecorder;
   readonly started: Promise<ProviderRecording>;
   /** The stop in flight, shared: a retry while a stop that ran out of budget is still running waits for it instead of stopping twice. */
@@ -367,10 +362,12 @@ function tellHarness(call: () => void): void {
 export class AgentDeviceSurface {
   private client: AgentDeviceClient | undefined;
   private attempt: Attempt | undefined;
+  /** Retained across attempt cleanup until a stop or native session reset is confirmed. */
+  private recording: Recording | undefined;
   /** The attempt's `EngineAttemptContext.screen`, which locate captures feed; undefined between attempts. */
   private screenSink: ((snapshot: EngineSnapshot) => void) | undefined;
   /** The device this worker drives, the pool's binding for its slot; undefined leaves the choice to agent-device. */
-  private device: Pick<SlotBinding, 'device' | 'deviceId'> | undefined;
+  private device: SlotBinding | undefined;
   private generation = new Map<string, NodeBinding>();
   private readonly located = new Map<string, NodeBinding>();
   private idCounter = 0;
@@ -538,11 +535,19 @@ export class AgentDeviceSurface {
       throw invalidState('an attempt is already running on this agent-device engine');
     }
     await this.settleInflight(context.signal);
+    const recording = this.recording;
+    if (recording?.kind === 'screen') {
+      await this.command('reset video recording', (client) => client.sessions.close(), context.signal);
+      if (this.recording === recording) this.recording = undefined;
+      this.screenReplaced();
+    } else if (recording?.kind === 'lease') {
+      await this.stopLeaseRecording(recording, context.signal);
+    }
     // Nothing is launched here: the app is where the last test, or the
     // worker's `prepare`, left it, and a test that wants it fresh calls
     // `app.open()`, which is `restart` below. The bindings are forgotten, the
     // screen is not, so a control still in place is acted on at once.
-    this.attempt = { attemptId: context.attemptId, artifactsDir: context.artifactsDir, screenshots: 0, video: undefined };
+    this.attempt = { attemptId: context.attemptId, artifactsDir: context.artifactsDir, screenshots: 0 };
     this.generation = new Map();
     this.located.clear();
     this.screenSink = context.screen;
@@ -551,8 +556,7 @@ export class AgentDeviceSurface {
   }
 
   async endAttempt(context: EngineCleanupContext): Promise<void> {
-    const attempt = this.attempt;
-    const dangling = attempt?.video;
+    const dangling = this.recording;
     this.attempt = undefined;
     this.screenSink = undefined;
     this.generation = new Map();
@@ -562,11 +566,11 @@ export class AgentDeviceSurface {
     // and the device must not keep recording into the next one. A start that
     // outlived its budget may still be landing: it settles first, so the stop
     // cannot overtake it.
-    if (attempt !== undefined && dangling?.kind === 'lease') {
-      await this.stopLeaseRecording(dangling, attempt.artifactsDir, context.signal).catch(() => undefined);
+    if (dangling?.kind === 'lease') {
+      await this.stopLeaseRecording(dangling, context.signal).catch(() => undefined);
     } else if (dangling !== undefined) {
       await this.settleInflight(context.signal).catch(() => undefined);
-      await this.stopScreenRecording(context.signal).catch(() => undefined);
+      await this.stopScreenRecording(dangling, context.signal).catch(() => undefined);
     }
   }
 
@@ -582,7 +586,7 @@ export class AgentDeviceSurface {
   async startVideo(operation: OperationContext): Promise<void> {
     const attempt = this.attempt;
     if (attempt === undefined) throw invalidState('startVideo outside an attempt');
-    if (attempt.video !== undefined) throw invalidState('a video is already recording');
+    if (this.recording !== undefined) throw invalidState('a video is already recording');
     if (this.leaseRecorder !== undefined) {
       await this.startLeaseRecording(attempt, this.leaseRecorder, operation.signal);
       return;
@@ -593,7 +597,7 @@ export class AgentDeviceSurface {
     // Marked before the device is asked: a start that outlives its budget
     // still records, and `endAttempt` must be able to stop it.
     const recording: ScreenRecording = { kind: 'screen', relative, absolute, startedAt: new Date().toISOString() };
-    attempt.video = recording;
+    this.recording = recording;
     await this.command(
       'start video recording',
       // The whole screen: an app scope refuses to start while no app is open, before `app.open()` and after `closeApp()`.
@@ -616,17 +620,12 @@ export class AgentDeviceSurface {
   async stopVideo(operation: OperationContext): Promise<readonly VideoSegment[]> {
     const attempt = this.attempt;
     if (attempt === undefined) throw invalidState('stopVideo outside an attempt');
-    const video = attempt.video;
+    const video = this.recording;
     if (video === undefined) return [];
     if (video.kind === 'lease') {
-      const segment = await this.stopLeaseRecording(video, attempt.artifactsDir, operation.signal);
-      // Cleared only now: a stop that failed leaves the recording for `endAttempt`.
-      attempt.video = undefined;
-      return [segment];
+      return [await this.stopLeaseRecording(video, operation.signal)];
     }
-    const result = await this.stopScreenRecording(operation.signal);
-    // Cleared only now: a stop that failed leaves the recording for `endAttempt`.
-    attempt.video = undefined;
+    const result = await this.stopScreenRecording(video, operation.signal);
     // The device may finalize the file under a path of its own choosing; the
     // artifact must live where the attempt directory expects it.
     const written = typeof result.outPath === 'string' ? result.outPath : video.absolute;
@@ -641,8 +640,9 @@ export class AgentDeviceSurface {
    * whatever the test opened in it since, so the session is then as
    * `closeApp` leaves it.
    */
-  private async stopScreenRecording(signal: AbortSignal): Promise<{ readonly outPath?: unknown }> {
+  private async stopScreenRecording(video: ScreenRecording, signal: AbortSignal): Promise<{ readonly outPath?: unknown }> {
     const result = await this.command('stop video recording', (client) => client.recording.record({ ...this.selection(), action: 'stop' }), signal);
+    if (this.recording === video) this.recording = undefined;
     if (result.recordOnlySession === true) {
       this.screenReplaced();
     }
@@ -658,36 +658,64 @@ export class AgentDeviceSurface {
   private async startLeaseRecording(attempt: Attempt, recorder: LeaseRecorder, signal: AbortSignal): Promise<void> {
     const { provider, lease, runId, targetName, env } = recorder;
     const started = recordLease(provider, lease, { runId, targetName, attemptId: attempt.attemptId, env, signal });
-    attempt.video = { kind: 'lease', recorder, started };
+    const video: LeaseRecording = { kind: 'lease', recorder, started, artifactsDir: attempt.artifactsDir };
+    this.recording = video;
+    void started.catch(() => {
+      if (this.recording === video) this.recording = undefined;
+    });
     await raceAbort(started, signal, 'start video recording');
   }
 
   /** Ends the provider's recording as the attempt's one segment, a file in its `video` directory or a link. */
-  private async stopLeaseRecording(video: LeaseRecording, artifactsDir: string, signal: AbortSignal): Promise<VideoSegment> {
+  private async stopLeaseRecording(video: LeaseRecording, signal: AbortSignal): Promise<VideoSegment> {
     const { provider, lease } = video.recorder;
-    video.stopping ??= (async () =>
-      stopProviderRecording(await video.started, { artifactsDir, provider: `device provider "${provider.name}"`, leaseId: lease.id, signal }))().finally(() => {
+    video.stopping ??= (async () => {
+      const recording = await video.started;
+      return stopProviderRecording({
+        startedAt: recording.startedAt,
+        stop: async (context) => {
+          const result = await recording.stop(context);
+          if (this.recording === video) this.recording = undefined;
+          return result;
+        },
+      }, { artifactsDir: video.artifactsDir, provider: `device provider "${provider.name}"`, leaseId: lease.id, signal });
+    })().finally(() => {
       video.stopping = undefined;
     });
     return raceAbort(video.stopping, signal, 'stop video recording');
   }
 
-  async dispose(context: EngineCleanupContext): Promise<void> {
+  async dispose(context: EngineCleanupContext & { readonly reuseSignal?: AbortSignal }): Promise<void> {
     const client = this.client;
-    const attempt = this.attempt;
-    // A worker torn down mid-attempt must not leave the provider recording the device.
-    if (attempt?.video?.kind === 'lease') {
-      await withinCleanupBudget(this.stopLeaseRecording(attempt.video, attempt.artifactsDir, context.signal), context).catch(() => undefined);
-    }
+    const recording = this.recording;
     this.client = undefined;
     this.attempt = undefined;
+    this.screenSink = undefined;
     this.generation = new Map();
     this.located.clear();
     this.appIdentity = undefined;
     this.installedApp = undefined;
     this.knownViewport = undefined;
-    if (client === undefined) return;
-    await withinCleanupBudget(client.sessions.close().catch(() => undefined), context);
+    let closing: Promise<void> | undefined;
+    const close = (): void => {
+      if (client === undefined) return;
+      closing ??= client.sessions.close().then(() => {
+        if (recording?.kind === 'screen' && this.recording === recording) this.recording = undefined;
+      }).catch(() => undefined);
+    };
+    const reuse = context.reuseSignal;
+    reuse?.addEventListener('abort', close, { once: true });
+    const canKeepSession = this.device?.leaseId !== undefined && recording?.kind !== 'screen' && reuse !== undefined && !reuse.aborted;
+    if (!canKeepSession) close();
+    try {
+      const stopping = recording?.kind === 'lease' ? this.stopLeaseRecording(recording, context.signal).catch(() => undefined) : undefined;
+      await withinCleanupBudget((async () => {
+        await stopping;
+        await closing;
+      })(), context);
+    } finally {
+      reuse?.removeEventListener('abort', close);
+    }
   }
 
   /**

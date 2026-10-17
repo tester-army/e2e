@@ -6,9 +6,146 @@ icon: "cube"
 "twitter:image": "https://e2e.tester.army/docs/images/og/reference/app.png?v=0b63e99aab"
 ---
 
-`app` controls the app's lifecycle and captures screenshots. Each method
-requires the corresponding engine capability; unsupported operations fail
+The `app` fixture opens, restarts, and resets the app under test, and takes
+screenshots. It is on every target. A method the engine can't perform fails
 with `UNSUPPORTED_CAPABILITY`.
+
+```ts title="tests/billing.e2e.ts"
+import { expect, test } from 'e2e';
+
+test('billing page', async ({ app, screen }) => {
+  await app.open('/settings/billing');
+  await expect(screen.getByRole('heading', { name: 'Billing' })).toBeVisible();
+  await app.screenshot('billing');
+});
+```
+
+## Reference
+
+| Member | Returns |
+| --- | --- |
+| [`baseUrl`](#baseurl) | `string \| undefined` |
+| [`open`](#open) | `Promise<void>` |
+| [`restart`](#restart) | `Promise<void>` |
+| [`clearState`](#clearstate) | `Promise<void>` |
+| [`back`](#back) | `Promise<void>` |
+| [`screenshot`](#screenshot) | `Promise<string>` |
+
+`open`, `restart`, and `clearState` are bounded by `timeout`. `back` and
+`screenshot` are bounded by `actionTimeout`. Both come from the
+[config](/reference/config): `timeout` defaults to 120000 ms and
+`actionTimeout` to 30000 ms. The remaining test timeout caps both. `app`
+methods take no per-call timeout option.
+
+### `baseUrl`
+
+The resolved base URL of the target's app.
+
+```ts
+const health = await fetch(`${app.baseUrl}/api/health`);
+```
+
+- When `app.url` declares port `0`, `baseUrl` carries the port the run
+  allocated.
+- On a target that declares no `app.url`, it is `undefined`.
+
+### `open`
+
+Opens the app: the declared URL, a path relative to it, or any absolute
+`http(s)` URL.
+
+```ts
+await app.open(); // the target's app.url
+await app.open('/settings/billing'); // a path relative to app.url
+await app.open('https://example.com/login'); // any http(s) URL
+```
+
+On a device target, which has no URL, `open()` launches the pinned app fresh
+and takes no path.
+
+| Throws | When |
+| --- | --- |
+| `APP_URL_REQUIRED` | A path, on a target that declares no `app.url`. |
+| `POLICY_DENIED` | A URL whose scheme is not `http:` or `https:`. `about:blank` is allowed. |
+| `APP_UNREACHABLE` | The app URL could not be reached. |
+| `ACTION_FAILED` | The operation failed or timed out. |
+| `UNSUPPORTED_CAPABILITY` | No `session.open` on a target with a URL, or no `session.restart` on one without. |
+
+### `restart`
+
+Recreates the execution context and keeps persisted state. Then it reopens
+the app at its base URL when the target declares one.
+
+```ts
+await app.restart();
+```
+
+| Throws | When |
+| --- | --- |
+| `ACTION_FAILED`, `ENGINE_FAILURE` | The operation or the engine failed. |
+| `UNSUPPORTED_CAPABILITY` | No `session.restart`. |
+
+### `clearState`
+
+Clears persisted client state and recreates the execution context. Then it
+reopens the app at its base URL when the target declares one.
+
+```ts
+test.beforeEach(async ({ app }) => {
+  await app.clearState();
+});
+```
+
+| Throws | When |
+| --- | --- |
+| `ACTION_FAILED`, `ENGINE_FAILURE` | The operation or the engine failed. |
+| `UNSUPPORTED_CAPABILITY` | No `session.reset`. |
+
+<Warning>
+`clearState` inside a serial group destroys the shared state the group
+depends on. Use it in `beforeEach` of an ordinary group instead.
+</Warning>
+
+### `back`
+
+Navigates back once.
+
+```ts
+await app.back();
+```
+
+| Throws | When |
+| --- | --- |
+| `APP_NOT_OPEN` | `app.open()` has not run, or the engine reported invalid state. |
+| `ACTION_FAILED` | The operation failed or timed out. |
+| `UNSUPPORTED_CAPABILITY` | No `session.back`. |
+
+### `screenshot`
+
+Captures a redacted evidence screenshot and returns its path.
+
+```ts
+const shot = await app.screenshot('after-checkout');
+```
+
+- The file is an attempt artifact under `screenshots/`. The returned path is
+  relative to the attempt's artifact directory. The report records the path
+  relative to the artifact root.
+- `label` names the step and joins the file name.
+
+| Throws | When |
+| --- | --- |
+| `POLICY_DENIED` | A `Secret` was filled earlier in the session. |
+| `UNSUPPORTED_CAPABILITY` | The engine takes no screenshots. |
+| `ENGINE_FAILURE` | The capture failed. |
+
+<Note>
+Once a `Secret` has been filled, pixels are withheld for the rest of the
+session, including later tests in a serial group. A denied screenshot creates
+no artifact.
+</Note>
+
+## Types
 
 ```ts
 export interface App {
@@ -41,35 +178,7 @@ export interface App {
 }
 ```
 
-`app` methods use the configured timeouts below, capped by the remaining test
-timeout. They do not accept per-call timeout options.
+## Related
 
-| Method | Timeout | Throws |
-| --- | --- | --- |
-| `open(path?)` | `config.timeout`, 120000 ms | `APP_URL_REQUIRED` for a path when the target declares no `app.url`, `POLICY_DENIED` for a URL whose scheme is not `http:` or `https:` (`about:blank` aside), `APP_UNREACHABLE`, `ACTION_FAILED`, `UNSUPPORTED_CAPABILITY` without `session.open` on a target with a URL or without `session.restart` on one without (a device launches its pinned app) |
-| `restart()` | `config.timeout`, 120000 ms | `ACTION_FAILED`, `ENGINE_FAILURE`, `UNSUPPORTED_CAPABILITY` without `session.restart` |
-| `clearState()` | `config.timeout`, 120000 ms | `ACTION_FAILED`, `ENGINE_FAILURE`, `UNSUPPORTED_CAPABILITY` without `session.reset` |
-| `back()` | `config.actionTimeout`, 30000 ms | `APP_NOT_OPEN`, `ACTION_FAILED`, `UNSUPPORTED_CAPABILITY` without `session.back` |
-| `screenshot(label?)` | `config.actionTimeout`, 30000 ms | `POLICY_DENIED` after a secret fill, `UNSUPPORTED_CAPABILITY`, `ENGINE_FAILURE` |
-
-`screenshot` registers the file as an attempt artifact and returns its path
-relative to the attempt's artifact directory, under `screenshots/`; the report
-records the artifact-root-relative path. `label` names the step and joins the
-file name.
-
-```ts
-await app.open('/settings/billing');
-const shot = await app.screenshot('after-checkout');
-```
-
-<Warning>
-`clearState` inside a serial group destroys the shared state the group
-depends on. Use it in `beforeEach` of an ordinary group instead.
-</Warning>
-
-Once a `Secret` has been filled, pixels are withheld for the rest of the
-session, including later tests in a serial group. `app.screenshot()` then
-fails with `POLICY_DENIED` and creates no artifact.
-
-Browser-only operations live on the [`browser`](/reference/web) fixture;
+Browser-only operations live on the [`browser`](/reference/web) fixture, and
 device operations on [`device`](/reference/mobile).

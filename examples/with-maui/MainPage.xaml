@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="WithMaui.MainPage"
+             BackgroundColor="#111111">
+
+    <!--
+      e2e brand: dark canvas, square corners, hairlines instead of shadows, white text at falling alphas.
+      LineHeight multiplies the font's own line height, so 1.24 on Inter gives the 24 of 16 the other examples use.
+    -->
+    <ContentPage.Resources>
+        <Color x:Key="TextPrimary">#F9F8F7</Color>
+        <Color x:Key="TextSecondary">#B3FFFFFF</Color>
+        <Color x:Key="TextFaint">#80FFFFFF</Color>
+        <Color x:Key="Hairline">#1FFFFFFF</Color>
+    </ContentPage.Resources>
+
+    <!-- Scrolls when the keyboard leaves too little height for the form. -->
+    <ScrollView>
+        <VerticalStackLayout Padding="24,0">
+            <HorizontalStackLayout Padding="0,20" Spacing="10">
+                <Image Source="helmet_mark.png"
+                       WidthRequest="32"
+                       HeightRequest="32"
+                       AutomationProperties.IsInAccessibleTree="False" />
+                <Label Text="/" FontFamily="DMMono" FontSize="26" TextColor="{StaticResource TextPrimary}" VerticalOptions="Center" />
+                <Label Text="e2e" FontFamily="StackSansNotch" FontSize="26" CharacterSpacing="-1.5" TextColor="{StaticResource TextPrimary}" VerticalOptions="Center" />
+            </HorizontalStackLayout>
+
+            <BoxView HeightRequest="0.5" Color="{StaticResource Hairline}" />
+
+            <Label Text="[01] WITH-MAUI"
+                   Margin="0,48,0,0"
+                   FontFamily="DMMono"
+                   FontSize="12"
+                   CharacterSpacing="0.6"
+                   TextColor="{StaticResource TextSecondary}" />
+            <Label Text="Say hello"
+                   Margin="0,16,0,0"
+                   FontFamily="StackSansNotch"
+                   FontSize="38"
+                   TextColor="{StaticResource TextPrimary}"
+                   SemanticProperties.HeadingLevel="Level1" />
+            <Label Text="A demo screen for the e2e examples. Type a name and the app greets you."
+                   Margin="0,16,0,0"
+                   FontFamily="Inter"
+                   FontSize="16"
+                   LineHeight="1.24"
+                   TextColor="{StaticResource TextSecondary}" />
+
+            <Label Text="NAME"
+                   Margin="0,40,0,0"
+                   FontFamily="DMMono"
+                   FontSize="11"
+                   CharacterSpacing="1.1"
+                   TextColor="{StaticResource TextFaint}" />
+            <Border Margin="0,12,0,0"
+                    Padding="12,0"
+                    HeightRequest="48"
+                    BackgroundColor="#1A1A1A"
+                    Stroke="#4DFFFFFF"
+                    StrokeThickness="0.5"
+                    StrokeShape="Rectangle">
+                <!--
+                  AutomationId is what getByTestId finds: the accessibility identifier on iOS, and on Android
+                  the resource id MAUI writes as dev.e2e.examples.maui:id/name. The placeholder is not a name,
+                  so iOS gets one from SemanticProperties.Description. Android is left without it: there MAUI
+                  writes the description into the field's text, and a filled field reads "Name, Ada".
+                -->
+                <Entry x:Name="NameEntry"
+                       AutomationId="name"
+                       SemanticProperties.Description="{OnPlatform iOS='Name'}"
+                       Placeholder="Ada Lovelace"
+                       PlaceholderColor="{StaticResource TextFaint}"
+                       FontFamily="DMMono"
+                       FontSize="14"
+                       TextColor="{StaticResource TextPrimary}"
+                       BackgroundColor="Transparent"
+                       VerticalOptions="Center"
+                       IsSpellCheckEnabled="False"
+                       IsTextPredictionEnabled="False"
+                       ReturnType="Done"
+                       Completed="OnGreet" />
+            </Border>
+
+            <Button AutomationId="greet"
+                    Text="GREET"
+                    Margin="0,12,0,0"
+                    HeightRequest="48"
+                    FontFamily="DMMono"
+                    FontSize="13"
+                    TextColor="#161616"
+                    BackgroundColor="{StaticResource TextPrimary}"
+                    CornerRadius="0"
+                    BorderWidth="0"
+                    Clicked="OnGreet" />
+
+            <Label x:Name="ErrorLabel"
+                   AutomationId="error"
+                   Text="Enter a name first."
+                   Margin="0,12,0,0"
+                   FontFamily="Inter"
+                   FontSize="14"
+                   TextColor="#FF8001"
+                   IsVisible="False" />
+
+            <Border x:Name="GreetingPanel"
+                    Margin="0,12,0,0"
+                    Padding="14"
+                    BackgroundColor="#161616"
+                    Stroke="{StaticResource Hairline}"
+                    StrokeThickness="0.5"
+                    StrokeShape="Rectangle"
+                    IsVisible="False">
+                <Label x:Name="GreetingLabel"
+                       AutomationId="greeting"
+                       FontFamily="Inter"
+                       FontSize="14"
+                       LineHeight="1.18"
+                       TextColor="{StaticResource TextPrimary}" />
+            </Border>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

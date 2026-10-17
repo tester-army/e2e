@@ -1,6 +1,6 @@
 {
   "name": "e2e",
-  "version": "0.21.1",
+  "version": "0.21.2",
   "description": "Write, run, and debug end-to-end tests for web and mobile apps with e2e, the open source agentic test runner.",
   "author": {
     "name": "TesterArmy",

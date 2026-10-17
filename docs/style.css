@@ -907,11 +907,12 @@ html.dark body .code-block-fade-overlay {
    ::after draws the wordmark (the two make its accessible name), and its
    socials wrapper is dissolved so the link can sit beside Mintlify's. The
    Mintlify credit itself stays as Mintlify renders it.
-   The images are in images/footer/. Mintlify inlines this file into each
-   page, so a url() resolves against the page, not this file, and production
-   serves the site under /docs while `mint dev` serves it at the root. Each
-   image is therefore two layers, one path per host: the one that misses
-   paints nothing (a failed image layer is transparent), the other draws. */
+   The images are in images/footer/, loaded from the production site.
+   Mintlify inlines this file into each page, so a url() path resolves
+   against the page, and production serves the site under /docs while
+   `mint dev` serves it at the root: no one relative path loads on both, and
+   a path per host 404s on every page (Firefox then paints no wordmark at
+   all). A changed image shows under `mint dev` once it is deployed. */
 #footer {
   flex-wrap: wrap;
   align-items: center;
@@ -989,12 +990,8 @@ html.dark body .code-block-fade-overlay {
     height: 0.8rem;
     margin-top: 0.2rem;
     background: currentColor;
-    -webkit-mask:
-      url('/images/footer/testerarmy-wordmark.svg') center / contain no-repeat,
-      url('/docs/images/footer/testerarmy-wordmark.svg') center / contain no-repeat;
-    mask:
-      url('/images/footer/testerarmy-wordmark.svg') center / contain no-repeat,
-      url('/docs/images/footer/testerarmy-wordmark.svg') center / contain no-repeat;
+    -webkit-mask: url('https://e2e.tester.army/docs/images/footer/testerarmy-wordmark.svg') center / contain no-repeat;
+    mask: url('https://e2e.tester.army/docs/images/footer/testerarmy-wordmark.svg') center / contain no-repeat;
 
     @media (forced-colors: active) {
       forced-color-adjust: none;
@@ -1013,9 +1010,7 @@ html.dark body .code-block-fade-overlay {
     mask-image: none !important;
     /* The brand kit's color mark (tester.army/brand), cropped to the
        mascot. */
-    background:
-      url('/images/footer/testerarmy-mark.png') center / contain no-repeat,
-      url('/docs/images/footer/testerarmy-mark.png') center / contain no-repeat !important;
+    background: url('https://e2e.tester.army/docs/images/footer/testerarmy-mark.png') center / contain no-repeat !important;
     filter: grayscale(1);
     opacity: 0.6;
     transition: filter 150ms ease-out, opacity 150ms ease-out;

@@ -6,7 +6,7 @@
 
 import { readFileSync } from 'node:fs';
 import { userFrame, type StackFrame } from '../internal/source.ts';
-import { bounded, terminalColumns, type Colors } from './format.ts';
+import { bounded, fitColumns, terminalColumns, visibleWidth, type Colors } from './format.ts';
 
 export { userFrame, type StackFrame };
 
@@ -37,10 +37,16 @@ export function codeFrame(frame: StackFrame, pc: Colors): string[] {
   for (let i = start; i <= end; i += 1) {
     const raw = bounded(lines[i] ?? '').replaceAll('\t', ' ');
     if (raw.length > MAX_FRAME_LINE_CHARS) return [];
-    const text = raw.length > maxChars ? `${raw.slice(0, maxChars - 1)}…` : raw.trimEnd();
+    const text = fitColumns(raw.trimEnd(), maxChars);
     rows.push(`${gutter(i + 1)}${text === '' ? '' : ` ${text}`}`);
     if (i === index) {
-      rows.push(`${gutter()}${' '.repeat(Math.max(1, frame.column))}${pc.red('^')}`);
+      const prefix = bounded((lines[i] ?? '').slice(0, Math.max(0, frame.column - 1)));
+      const column = visibleWidth(prefix);
+      // A clipped-away location has no visible token to annotate.
+      const limit = text === raw.trimEnd() ? maxChars : visibleWidth(text) - 1;
+      if (column < limit) {
+        rows.push(`${gutter()}${' '.repeat(column + 1)}${pc.red('^')}`);
+      }
     }
   }
   return rows;

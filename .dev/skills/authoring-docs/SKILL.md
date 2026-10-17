@@ -1,6 +1,6 @@
 ---
 name: authoring-docs
-description: Use when writing, editing, rewriting, or shortening a guide page on the docs site (docs/**/*.mdx outside docs/reference/), including cleanup passes on legacy pages, requests to make a page shorter, and the docs page of a new integration, CI service, or migration guide (which needs the vendor's logo).
+description: Use when writing, editing, rewriting, or shortening any page on the docs site (docs/**/*.mdx), including cleanup passes on legacy pages, requests to make a page shorter, a page or entry under docs/reference/ (which has its own Next.js-style shape), and the docs page of a new integration, CI service, or migration guide (which needs the vendor's logo).
 metadata:
   internal: true
 ---
@@ -20,6 +20,11 @@ copy their shape.
 commit. Don't skip it for a new page or a small edit.** A first draft is
 always too long, and an edit that adds one paragraph often repeats a fact
 the page already has.
+
+On a reference page (`docs/reference/`) the pass is narrower: merge a fact
+said twice and keep each summary table to its minimum
+([Summary tables](#summary-tables)), but cut no fact. A reference page is a
+lookup, so it stays complete.
 
 When the PR is about something other than docs, such as a flag rename that
 updates three pages, apply the cuts to the sections the change touches.
@@ -100,7 +105,9 @@ Shortening adds claims. Check each new sentence:
 
 - Guides: every `docs/**/*.mdx` page except `docs/reference/`. That
   includes `docs/ci/`, `docs/integrations/`, and `docs/migrate/`.
-- Not reference pages. They are lookup tables and keep their own shape.
+- Reference pages (`docs/reference/`) have their own shape: follow
+  [Reference pages](#reference-pages), not the guide skeleton. The tone
+  rules apply to both.
 - Not `skills/e2e/`. Agents read it start to finish, and the interactive
   components don't render there.
 - `unslop` still applies to every sentence. This skill adds structure and
@@ -367,9 +374,104 @@ every repetition.
 
 One page per PR. The reviewer compares old and new side by side.
 
+## Reference pages
+
+Pages under `docs/reference/` follow the Next.js API reference shape
+(`nextjs.org/docs/app/api-reference`). A reader looks a member up in a table
+at the top and finds its details one click down. Model pages:
+`docs/reference/app.mdx` (one group) and `docs/reference/screen.mdx`
+(several groups).
+
+````
+---
+<frontmatter>
+---
+
+<lede: 1-3 sentences that define the thing>
+
+```ts title="tests/<name>.e2e.ts"
+<one minimal, realistic example>
+```
+
+## Reference
+
+### <Group>             (only when the page has more than one group)
+
+| Method | Returns |      (summary table, one row per entry, linked)
+
+#### <entry>            (### on a one-group page)
+
+## <Behavior, Budgets, Setup, ...>   (explanatory sections, after Reference)
+
+## Types
+## Examples
+## Related
+````
+
+### Headings
+
+- The first `##` after the lede is always `## Reference`, on every page.
+  Never Members, Methods, Entry points, or Overview there. Groups under it
+  name what they hold: Queries, Options, Hooks, Commands.
+- Mintlify gives `##` to `####` an anchor and a line in "On this page".
+  `#####` gets neither. So entries are `###` on a one-group page and `####`
+  on a page with several groups.
+- An entry's sub-part that lands at `#####` and is linked from anywhere gets
+  `<a id="<slug>" />` on the line before it. `node scripts/check-docs-anchors.ts`
+  counts that id.
+- Explanatory sections (rules, behavior, budgets, setup, installing) come
+  after `## Reference` as `##`, then `## Types`, `## Examples`, `## Related`.
+- Heading text that anything links to keeps its exact words. Slugs drop
+  backticks and turn dots into hyphens (`agent.act` is `#agent-act`); a
+  backticked camelCase name stays one word (`renderMarkdownReport` is
+  `#rendermarkdownreport`).
+
+### Summary tables
+
+Each group opens with one table, one row per entry. Keep it to the minimum:
+
+| Kind | Columns |
+| --- | --- |
+| methods, members, functions, fixtures | `Name \| Returns` |
+| options and fields | `Option \| Type \| Default` |
+| commands, tools, hooks, matchers, reporters | `Name \| Description` |
+
+- The first column is the name, linked to its entry.
+- No Example column. The lede and every entry show one.
+- A default is a bare value, `-`, or at most four words (`0`, `1` in CI).
+  A description is at most six words.
+- No cell over about 40 characters, no sentences, no explanations in
+  parentheses. Detail goes in the entry.
+- A data table that is the only home of its facts (environment variables,
+  error codes, a capability matrix) is not a summary table. It keeps its
+  columns.
+
+### Entries
+
+- First sentence: what it is or what it does.
+- A short example. Show a default as a code comment: `// default: 5000`.
+- Accepted values as a list or a table. Errors as a `| Throws | When |` table.
+- At most one `<Note>`. `<Warning>` only for data loss or a leaked secret.
+- TypeScript declarations keep their JSDoc, in the entry or under
+  `## Types`. They are the contract.
+- No Version History section; nothing reliable feeds it.
+
+### Keep every fact
+
+- A rewrite or a trim keeps every option, default, error code, limit, and
+  caveat. When you shorten a table cell, the fact must already be in the
+  entry, or you add it there.
+- Add no claim the old page or the source (`packages/*/src`) does not make.
+  Check a default or a "Throws" condition in the source before you write it.
+- Leave `title` and `description` alone unless you also run `pnpm docs:og`.
+
 ## Before you commit
 
-- [ ] **IMPORTANT:** the shortening pass ran on this page. It was measured
+- [ ] On a reference page: the first `##` is `## Reference`, every summary
+      table follows [Summary tables](#summary-tables), and no linked anchor
+      was lost.
+- [ ] **IMPORTANT:** the shortening pass ran on this page (on a reference
+      page, its narrower form: duplicates merged, no fact cut). It was measured
       against its neighbors before and after, and every new or merged
       sentence was checked against `src/`.
 - [ ] Reading only the headings and first sentences explains the page.

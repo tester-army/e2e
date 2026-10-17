@@ -1,5 +1,13 @@
 # @e2e-dev/eas
 
+## 0.3.2
+
+### Patch Changes
+
+- [#1190](https://github.com/tester-army/e2e/pull/1190) [`e4d16ec`](https://github.com/tester-army/e2e/commit/e4d16eceebc18911ca04542393c1581dc451208c) Thanks [@okwasniewski](https://github.com/okwasniewski)! - EAS Simulators fails with `EAS: unexpected response to <operation>` when Expo's API answers without the fields a session needs, instead of a `TypeError`, and a daemon address answered as `null` reads as not ready yet. Limrun names the installed agent-device `package.json` when it declares no version or no `agent-device` bin, instead of reporting version `undefined` or not finding the CLI.
+
+- [#897](https://github.com/tester-army/e2e/pull/897) [`2219744`](https://github.com/tester-army/e2e/commit/221974495299e64d52afd8887a5033712b6e159a) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Reject invalid minute limits before starting EAS sessions, preserving zero and valid integer settings.
+
 ## 0.3.1
 
 ### Patch Changes

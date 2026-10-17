@@ -1,5 +1,43 @@
 # e2e
 
+## 0.21.2
+
+### Patch Changes
+
+- [#957](https://github.com/tester-army/e2e/pull/957) [`b1646e2`](https://github.com/tester-army/e2e/commit/b1646e25ba12be7146238fcbc6972ad9d101358b) Thanks [@zichen0116](https://github.com/zichen0116)! - The agent's `tap`, `double_tap`, and `right_click` tools, in `agent.act` and the MCP server, take an optional `modifiers` list (`Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`) on an engine that declares `tapModifiers`, like the test API's `tap({ modifiers })`. The held keys are recorded and replayed from the cache. Custom executors see the capability as `ctx.target.tapModifiers` and pass `{ modifiers }` to `ctx.actions.tap`, `doubleTap`, and `secondaryTap`.
+
+- [#1192](https://github.com/tester-army/e2e/pull/1192) [`40bea9e`](https://github.com/tester-army/e2e/commit/40bea9e60948c4a9be25010870112ec1b0383f17) Thanks [@adc77](https://github.com/adc77)! - Report the model behind cached actions and identify replays made with a different model.
+
+- [#1029](https://github.com/tester-army/e2e/pull/1029) [`7d067af`](https://github.com/tester-army/e2e/commit/7d067afef236ef802fde9be142b9d2da22bd3ede) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Align failure code-frame carets and clip source lines by terminal display width.
+
+- [#1190](https://github.com/tester-army/e2e/pull/1190) [`e4d16ec`](https://github.com/tester-army/e2e/commit/e4d16eceebc18911ca04542393c1581dc451208c) Thanks [@okwasniewski](https://github.com/okwasniewski)! - A TypeScript file that another loader (such as `tsx`) left with an inline source map that is not JSON or not shaped like a source map now loads, with stack traces pointing at that loader's output, instead of failing with a `TypeError`.
+
+- [#1153](https://github.com/tester-army/e2e/pull/1153) [`bf3c8e8`](https://github.com/tester-army/e2e/commit/bf3c8e8ac1e9d62e4c4f4ceed05fcd30325ccc4f) Thanks [@TheTuso](https://github.com/TheTuso)! - `copilot()`: a model GitHub Copilot does not serve to the account (`model_not_supported`) now stops the run once with `MODEL_UNAVAILABLE` naming the model and the cause, instead of failing every test with `MODEL_PROVIDER_FAILED`.
+
+- [#1178](https://github.com/tester-army/e2e/pull/1178) [`2791786`](https://github.com/tester-army/e2e/commit/2791786ced4122968411c509f64cf969b9f1d31f) Thanks [@michalpobuta](https://github.com/michalpobuta)! - The `getByTestId` and `SemanticNode.testId` docs now say an engine may also match an id without its platform's namespacing. No type changes.
+
+- [#1168](https://github.com/tester-army/e2e/pull/1168) [`236611f`](https://github.com/tester-army/e2e/commit/236611fafbf70be803c0c8725a8824d6bb008096) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Correct two messages: a missing engine `version` no longer claims it keys the replay cache, and the `output` option's description names `results/` instead of `artifacts/`.
+
+- [#1187](https://github.com/tester-army/e2e/pull/1187) [`82d1f3f`](https://github.com/tester-army/e2e/commit/82d1f3fa856cd0af2a87b7eaf9838618b251d66f) Thanks [@okwasniewski](https://github.com/okwasniewski)! - With more than one worker, `e2e run` starts the files that took longest in the previous run first, so a slow file no longer starts last and holds the run open after the other workers finish.
+
+- [#1184](https://github.com/tester-army/e2e/pull/1184) [`3272c16`](https://github.com/tester-army/e2e/commit/3272c163d41f5781ecff41ff8da2d964b4c7b734) Thanks [@okwasniewski](https://github.com/okwasniewski)! - The `e2e mcp` server is listed in the official MCP Registry as `io.github.tester-army/e2e`.
+
+- [#1027](https://github.com/tester-army/e2e/pull/1027) [`7e967d9`](https://github.com/tester-army/e2e/commit/7e967d9bc5b0003e07df8d69bf675f051e3f0a3a) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Keep multiline test titles on one row in the terminal live window so repainting erases the complete previous block.
+
+- [#1190](https://github.com/tester-army/e2e/pull/1190) [`e4d16ec`](https://github.com/tester-army/e2e/commit/e4d16eceebc18911ca04542393c1581dc451208c) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Subscription sign-in, token refresh, and `e2e models` fail with `FLOW_FAILED` naming the vendor when a successful response's body is not JSON or not the expected shape, instead of a `TypeError` or `SyntaxError`. `e2e models` skips a model entry it cannot read, and `opencodeConsole()` treats a malformed workspace config like one it could not fetch.
+
+- [#1186](https://github.com/tester-army/e2e/pull/1186) [`d64e4e5`](https://github.com/tester-army/e2e/commit/d64e4e5510d09ad7847d0e9871b9e7090a0d643e) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Subscription sign-in's code exchange and token refresh fail with `FLOW_FAILED` when the token endpoint answers `null`, instead of a `TypeError`. A `refresh_token` or `id_token` that is not a string is ignored.
+
+- [#1168](https://github.com/tester-army/e2e/pull/1168) [`236611f`](https://github.com/tester-army/e2e/commit/236611fafbf70be803c0c8725a8824d6bb008096) Thanks [@okwasniewski](https://github.com/okwasniewski)! - The packaged docs now include the `snippets/` their pages import, so the model provider list reads offline, and several pages are corrected against the current APIs.
+
+- [#1182](https://github.com/tester-army/e2e/pull/1182) [`11c0951`](https://github.com/tester-army/e2e/commit/11c095145afb5d06b54d3552b4bb2bcdc04ce111) Thanks [@TheTuso](https://github.com/TheTuso)! - The markdown summary, the GitHub comment, and the trace page name the step whose error ended the test. A step failure the test caught and went on from no longer stands in as the failure's step and line.
+
+- [#1189](https://github.com/tester-army/e2e/pull/1189) [`e626053`](https://github.com/tester-army/e2e/commit/e6260535a7098f63142d78d1d0bad4795b318e99) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `scrollUntilVisible` no longer pauses 100 ms between swipes. On web, a swipe resolves once the scroll it caused is on screen, so the next read sees the scrolled page.
+
+- [#1156](https://github.com/tester-army/e2e/pull/1156) [`b750125`](https://github.com/tester-army/e2e/commit/b750125e8f4530c6c87ad3341d0a8625cbb6baea) Thanks [@bheemreddy-samsara](https://github.com/bheemreddy-samsara)! - After close and a successful trace write, `session.report()` returns the hosted session's `Report`.
+
+- [#1113](https://github.com/tester-army/e2e/pull/1113) [`af0437b`](https://github.com/tester-army/e2e/commit/af0437bb8f2623fd6384069fef4df884a735d5ef) Thanks [@jayhemnani9910](https://github.com/jayhemnani9910)! - `--shard` now reports a skipped test in one shard only, the one that runs the nearest test before it (the first shard when none does). Every shard used to list it, so a skipped test was counted once per shard in the summaries, `junit.xml`, and `report.json`.
+
 ## 0.21.1
 
 ### Patch Changes

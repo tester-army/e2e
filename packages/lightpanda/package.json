@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/lightpanda",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Lightpanda browsers for e2e: run web targets in the open-source headless browser, started and stopped per run",
   "keywords": [
     "e2e",

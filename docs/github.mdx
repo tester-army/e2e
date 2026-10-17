@@ -182,6 +182,7 @@ post, one row under the summary gives the reason:
 | A `pull_request` event from a fork | The token is read-only, so posting fails. The row says why. |
 | An `issue_comment` event | On a pull request's thread, the comment has no source links, because the checked-out commit is on the default branch. |
 | Missing `pull-requests: write` | Posting fails, and the reporter names the permission. |
+| GitHub API rate limit | Posting stops and reports throttling. Wait for the reset or `Retry-After` before rerunning the job. |
 
 The reporter reads the token when the run finishes, and the report doesn't
 include it. On GitHub Enterprise Server, the reporter uses

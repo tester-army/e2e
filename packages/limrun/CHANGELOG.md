@@ -1,5 +1,13 @@
 # @e2e-dev/limrun
 
+## 0.2.1
+
+### Patch Changes
+
+- [#1181](https://github.com/tester-army/e2e/pull/1181) [`fc5c350`](https://github.com/tester-army/e2e/commit/fc5c350d490f40417fb71040c0344733d5596c70) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump agent-device to 0.21.28.
+
+- [#1190](https://github.com/tester-army/e2e/pull/1190) [`e4d16ec`](https://github.com/tester-army/e2e/commit/e4d16eceebc18911ca04542393c1581dc451208c) Thanks [@okwasniewski](https://github.com/okwasniewski)! - EAS Simulators fails with `EAS: unexpected response to <operation>` when Expo's API answers without the fields a session needs, instead of a `TypeError`, and a daemon address answered as `null` reads as not ready yet. Limrun names the installed agent-device `package.json` when it declares no version or no `agent-device` bin, instead of reporting version `undefined` or not finding the CLI.
+
 ## 0.2.0
 
 ### Minor Changes

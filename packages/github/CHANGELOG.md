@@ -1,5 +1,11 @@
 # @e2e-dev/github
 
+## 0.4.2
+
+### Patch Changes
+
+- [#1038](https://github.com/tester-army/e2e/pull/1038) [`aa9699a`](https://github.com/tester-army/e2e/commit/aa9699a688a414769b543fcfeef4c32f46a49fac) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Distinguish GitHub primary and secondary API rate limits from read-only token failures in reporter diagnostics.
+
 ## 0.4.1
 
 ### Patch Changes

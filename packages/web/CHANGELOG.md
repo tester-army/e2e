@@ -1,5 +1,15 @@
 # @e2e-dev/web
 
+## 0.15.2
+
+### Patch Changes
+
+- [#1164](https://github.com/tester-army/e2e/pull/1164) [`de7afd6`](https://github.com/tester-army/e2e/commit/de7afd6cf3f0a242924e4770033a3a489c7d3153) Thanks [@TheTuso](https://github.com/TheTuso)! - `web({ connect })` is `INVALID_CONFIG` at config load when `cdpEndpoint` is missing or not a function, instead of failing every attempt with `ENGINE_FAILURE: connection failed: resolve is not a function` (with `reconnectEndpoint`) or worker init with `browser connect failed: source.resolve is not a function` (without it).
+
+- [#1189](https://github.com/tester-army/e2e/pull/1189) [`e626053`](https://github.com/tester-army/e2e/commit/e6260535a7098f63142d78d1d0bad4795b318e99) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `scrollUntilVisible` no longer pauses 100 ms between swipes. On web, a swipe resolves once the scroll it caused is on screen, so the next read sees the scrolled page.
+
+- [#1188](https://github.com/tester-army/e2e/pull/1188) [`52a0c7d`](https://github.com/tester-army/e2e/commit/52a0c7d6a27219cf2b5f6313d2e957ec70af6b64) Thanks [@okwasniewski](https://github.com/okwasniewski)! - A swipe on a node the pointer already hovers, or one hit at its centre, wheels it without hovering first, so each `scrollUntilVisible` stride is faster.
+
 ## 0.15.1
 
 ### Patch Changes

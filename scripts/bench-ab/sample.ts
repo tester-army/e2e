@@ -135,6 +135,7 @@ export function sampleFromReport(report: ReportDocument, wallMs: number): Sample
     });
     cases.set(caseKey(entry), { durationMs, signature: lines.join('\n'), timings });
   }
+  add(counters, 'run exit code', report.run.exitCode);
   add(counters, 'model tokens', report.run.usage.modelTokens ?? 0);
   return { exitCode: report.run.exitCode, wallMs, counters, cases };
 }

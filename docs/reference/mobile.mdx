@@ -6,22 +6,50 @@ icon: "mobile-screen"
 "twitter:image": "https://e2e.tester.army/docs/images/og/reference/mobile.png?v=3da450961d"
 ---
 
-`@e2e-dev/mobile` drives iOS simulators, Android emulators, and connected
-phones through
-[agent-device](https://github.com/callstack/agent-device). `agent`, `app`,
-`screen`, and `expect` work as they do everywhere; this page covers what is
-specific to a device target. Import `test` from the package to have `device`
-typed, and declare `requires: ['device']` in a suite that also runs on the
-web.
+`@e2e-dev/mobile` is the engine for iOS simulators, Android emulators, and
+connected phones, driven through
+[agent-device](https://github.com/callstack/agent-device). It contributes the
+`device` fixture. `agent`, `app`, `screen`, and `expect` work as they do
+everywhere; this page covers what is specific to a device target.
 
-Choose **Mobile (iOS/Android)** in `e2e init` to add the package with a
-Settings example. iOS needs Xcode and a simulator; Android needs the Android
-SDK and an emulator.
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { mobile } from '@e2e-dev/mobile';
 
-The package includes a compatible version of `agent-device`; no separate
-installation is needed.
+export default {
+  targets: [
+    { name: 'iphone', engine: mobile({ platform: 'ios' }), app: { bundleId: 'com.apple.Preferences' } },
+  ],
+} satisfies E2EConfig;
+```
 
-## Engine
+```ts title="tests/settings.e2e.ts"
+import { expect } from 'e2e';
+import { test } from '@e2e-dev/mobile';
+
+test('General opens in dark mode', async ({ app, device, screen }) => {
+  await device.setAppearance('dark');
+  await app.open();
+  await screen.getByText('General').tap();
+  await expect(screen.getByText('About')).toBeVisible();
+});
+```
+
+- Import `test` from `@e2e-dev/mobile` to have `device` typed. Declare
+  `requires: ['device']` in a suite that also runs on the web.
+- Choose **Mobile (iOS/Android)** in `e2e init` to add the package with a
+  Settings example. iOS needs Xcode and a simulator; Android needs the Android
+  SDK and an emulator.
+- The package includes a compatible version of `agent-device`; no separate
+  installation is needed.
+
+## Reference
+
+### Engine
+
+`mobile(options)` creates an engine for one platform. Create one for each
+platform you test, and use `platforms: ['ios']` or `platforms: ['android']`
+on tests with platform-specific labels or operations.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -47,142 +75,80 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Create an engine for each platform you test. Use `platforms: ['ios']` or
-`platforms: ['android']` on tests with platform-specific labels or operations.
-`app.open()` launches the target's app fresh; an attempt launches nothing
-on its own, so a test starts where the previous one left the app. `app.open`
-takes no path on a device: a link goes through `device.openLink`.
+`mobile()` takes `MobileOptions`: which devices the engine drives and how.
+The app under test is the target's `app`, not an engine option; see
+[The app under test](#the-app-under-test).
 
-The app under test is the target's `app`, not an engine option: `bundleId`,
-`appPath`, `launchArguments`, `permissions`, `identity`, and `environment`
-are documented under [the app under test](/reference/config#the-app-under-test).
-A device target needs `app.bundleId` or `app.appPath`. An `app.url` (not
-supported yet), a link in `bundleId` (a test opens one with
-`device.openLink`), and an unknown permission name are `INVALID_CONFIG` at
-config load. `mobile({ app })` and the other old app options are unknown
-keys, also `INVALID_CONFIG`.
+| Option | Type | Default |
+| --- | --- | --- |
+| [`platform`](#platform) | `'ios' \| 'android'` | required |
+| [`device`](#device-option) | `string \| readonly string[] \| DeviceProvider` | every booted device |
+| [`session`](#session) | `string` | `e2e-<target name>` |
+| [`snapshot`](#snapshot) | `'full' \| 'interactive'` | `'full'` |
+| [`settle`](#settle) | `number \| false` | `150` |
+| [`transition`](#transition) | `number` | `500` |
+| [`videoTouches`](#videotouches) | `boolean` | `true` |
 
-`app.appPath` is the build the suite runs against. The engine installs
-nothing on its own: `device.installApp()` with no path installs it, once per
-device, where the suite says so, and a device provider installs it on the
-device it leases. Without `bundleId`, the installed bundle id or package
-becomes the app `app.open()` launches. Declare an `identity` when the build
-path changes per run (a version in it) so recordings survive the rename.
+Every optional value also accepts `undefined`, so values read straight from
+`process.env` need no conditional spread. Each entry below shows its member's
+declaration.
 
-`mobile()` takes only how the device is driven:
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | An empty `device` list. |
+| `INVALID_CONFIG` | An option `mobile()` does not take, such as `mobile({ app })` and the other old app options. The message names the nearest known option for a likely typo, else every option. |
+| `INVALID_CONFIG` | `settle` or `transition` is not a non-negative integer of milliseconds (`settle` may also be `false`). |
+
+#### `platform`
+
+```ts
+/** Platform the target's device runs. */
+readonly platform: MobilePlatform;
+```
+
+```ts
+mobile({ platform: 'android' });
+```
+
+- `'ios'` or `'android'`. Required.
+
+#### `device` option
 
 ```ts
 /**
- * Options of the device engine: which devices it drives and how. The app
- * under test is the target's `app` (`bundleId`, `appPath`,
- * `launchArguments`, `permissions`). Every optional value also accepts
- * `undefined`, so values read straight from `process.env` need no
- * conditional spread.
+ * Device to use: a simulator or emulator by name, simulator UDID, or
+ * emulator serial (`emulator-5554`), or a connected phone by name. A list
+ * is a pool: the engine declares one worker per entry and worker slot `n`
+ * drives the `n`th, so `workers` at or above the pool size runs the
+ * target's files across every device at once. Omitted, the pool is every booted device of
+ * the platform at `prepare`, as many as the run has slots; with none booted,
+ * agent-device boots one. A `DeviceProvider` leases hosted devices instead:
+ * one per worker slot at `prepare`, each driven through the daemon and
+ * client configuration the lease names. A replacement worker resumes a
+ * healthy agent-device session on the same lease. Forced worker shutdown
+ * can close the session. `device.closeApp()` ends the session and drops
+ * the device claim during the run. If agent-device has not confirmed a
+ * recording stop, the engine resets the recording before the next
+ * attempt. This reset also closes the session and drops the claim.
+ * At run end, the engine closes the sessions and the provider releases
+ * its leases.
  */
-export interface MobileOptions {
-  /** Platform the target's device runs. */
-  readonly platform: MobilePlatform;
-  /**
-   * Device to use: a simulator or emulator by name, simulator UDID, or
-   * emulator serial (`emulator-5554`), or a connected phone by name. A list
-   * is a pool: the
-   * engine declares one worker per entry and worker slot `n` drives the
-   * `n`th, so `workers` at or above the pool size runs the target's files
-   * across every device at once. Omitted, the pool is every booted device of
-   * the platform at `prepare`, as many as the run has slots; with none booted,
-   * agent-device boots one. A `DeviceProvider` leases hosted devices instead:
-   * one per worker slot at `prepare`, each driven through the daemon and
-   * client configuration the lease names, all released when the run ends.
-   */
-  readonly device?: string | readonly string[] | DeviceProvider | undefined;
-  /**
-   * agent-device session name, before the worker slot: slot `n` drives its
-   * device under `<session>-<n>`, `e2e-<target name>-<n>` by default. One run
-   * per session at a time: concurrent runs on the same session interleave
-   * taps.
-   */
-  readonly session?: string | undefined;
-  /**
-   * What an observation captures. `full` (default) includes static text, so
-   * judgments can read values; `interactive` keeps only actionable nodes and
-   * is cheaper on screens with long lists.
-   */
-  readonly snapshot?: 'full' | 'interactive' | undefined;
-  /**
-   * UI stability window after a tap, fill, screen scroll, or back, in
-   * milliseconds. Default 150. Raise it for slow transitions. `0` keeps only
-   * the first re-observation; `false` skips the wait.
-   */
-  readonly settle?: number | false | undefined;
-  /**
-   * Wait before acting on a control that just appeared or moved, in
-   * milliseconds. Default 500. Accessibility bounds cannot tell a sliding
-   * control from a landed one (iOS reports the final frame at once, Android
-   * the frame in flight), so the control is found again in a fresh snapshot
-   * once the wait is over and acted on where it landed. Unmoved controls are
-   * acted on immediately. Raise this for slower transitions.
-   */
-  readonly transition?: number | undefined;
-  /**
-   * Whether video recordings draw agent-device's touch indicator where a
-   * test tapped. Default `true`. `false` records the plain screen and skips
-   * drawing the indicator when the recording stops, which on a hosted daemon
-   * such as EAS Simulators' can outlast `cleanupTimeout`.
-   */
-  readonly videoTouches?: boolean | undefined;
-}
-
-/** A permission's state: held, refused, or not asked for yet, so the OS asks again. */
-export type PermissionState = 'grant' | 'deny' | 'reset';
-
-/** Permissions an app holds when it launches, by name. */
-export type LaunchPermissions = Readonly<Partial<Record<DevicePermission, PermissionState>>>;
+readonly device?: string | readonly string[] | DeviceProvider | undefined;
 ```
 
-An empty `device` list is `INVALID_CONFIG`, and so is an option `mobile()`
-does not take, naming the nearest known option when it is a likely typo and
-every option otherwise. A `device` provider object
-leases hosted devices; see [Hosted devices](/mobile#hosted-devices) for the
-`DeviceProvider` contract and an example provider.
-
-Devices boot in `prepare`, once per run and before the run's clock starts, so
-a cold boot on CI is never charged against `launchTimeout`. agent-device
-commands take no abort signal, so a timed-out command keeps running on the
-device; the next attempt waits for it to settle. On iOS, `prepare` starts the
-automation runner on every device with agent-device's `prepare ios-runner`,
-so its first launch is paid before the first test, then brings the target's
-`app.bundleId` up once per device when it is installed; a build the suite
-installs itself comes up with the first `app.open()`, which relaunches it
-fresh whenever a test asks. A device that cannot boot, or a runner that is
-busy, wedged, or past its watchdog, ends the run in `prepare`. A runner that
-does not start for another reason is logged and left to the first attempt,
-and that device's app is not opened there.
-
-`app.launchArguments` and `app.permissions` ride every fresh launch of the
-pinned app: `app.open()`, `app.restart()`, and `app.clearState()`, which
-resets the permissions with the data. iOS hands the arguments to the app
-process (`ProcessInfo.processInfo.arguments`); Android appends them to
-`am start`, so `['--ez', 'e2e', 'true']` is a boolean intent extra. `deny` is
-a recorded refusal on iOS, where the app is told no without a prompt, and a
-revocation on Android, where the OS asks again when the app requests the
-permission. The permissions are set on the app by name before it starts,
-with no open first, since iOS terminates a running app whose permission
-changed and Android one whose permission was revoked. The warm-up passes no
-launch argument and touches no permission.
-`device.openApp(app, { relaunch: true, launchArguments, permissions })` does
-the same for one launch of any app. A permission name outside
-`DevicePermission` (naming the nearest one when it is a likely typo) or a
-state other than `grant`, `deny`, or `reset` fails before any device command:
-`INVALID_CONFIG` in `app.permissions`, `INVALID_ARGUMENT` in
-`device.openApp`.
-
-The engine declares one worker per configured device. With no `device`,
-`prepare` uses the booted devices it finds, capped by the run's slots, and
-boots one when none are. Two workers never drive the same simulator. To
-split a target's files across devices, pass a pool and set `workers` to at
-least its size.
-
 ```ts
+mobile({ platform: 'ios' }); // default: every booted iOS device
+mobile({ platform: 'ios', device: 'iPhone 17' });
+mobile({ platform: 'android', device: 'emulator-5554' });
+mobile({ platform: 'ios', device: ['iPhone 17', 'iPhone 17 Pro'] });
+```
+
+- Two workers never drive the same device, as long as each `device` entry
+  names a different one.
+- [Hosted devices](/mobile#hosted-devices) has the `DeviceProvider` contract
+  and an example provider.
+
+```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { mobile } from '@e2e-dev/mobile';
 
@@ -197,7 +163,183 @@ export default {
 } satisfies E2EConfig;
 ```
 
-### Capabilities
+#### `session`
+
+```ts
+/**
+ * agent-device session name, before the worker slot: slot `n` drives its
+ * device under `<session>-<n>`, `e2e-<target name>-<n>` by default. One run
+ * per session at a time: concurrent runs on the same session interleave
+ * taps.
+ */
+readonly session?: string | undefined;
+```
+
+```ts
+mobile({ platform: 'ios', session: 'checkout' }); // default: e2e-<target name>
+```
+
+#### `snapshot`
+
+```ts
+/**
+ * What an observation captures. `full` (default) includes static text, so
+ * judgments can read values; `interactive` keeps only actionable nodes and
+ * is cheaper on screens with long lists.
+ */
+readonly snapshot?: 'full' | 'interactive' | undefined;
+```
+
+```ts
+mobile({ platform: 'android', snapshot: 'interactive' }); // default: 'full'
+```
+
+#### `settle`
+
+```ts
+/**
+ * UI stability window after a tap, fill, screen scroll, or back, in
+ * milliseconds. Default 150. Raise it for slow transitions. `0` keeps only
+ * the first re-observation; `false` skips the wait.
+ */
+readonly settle?: number | false | undefined;
+```
+
+```ts
+mobile({ platform: 'ios', settle: 300 }); // default: 150
+```
+
+#### `transition`
+
+```ts
+/**
+ * Wait before acting on a control that just appeared or moved, in
+ * milliseconds. Default 500. Accessibility bounds cannot tell a sliding
+ * control from a landed one (iOS reports the final frame at once, Android
+ * the frame in flight), so the control is found again in a fresh snapshot
+ * once the wait is over and acted on where it landed. Unmoved controls are
+ * acted on immediately. Raise this for slower transitions.
+ */
+readonly transition?: number | undefined;
+```
+
+```ts
+mobile({ platform: 'ios', transition: 800 }); // default: 500
+```
+
+`back`, `home`, `alert`, `dismissKeyboard`, `setOrientation`, and `fold` on
+[`device`](#device) change the screen, so they count as actions for this
+budget the way a tap does. A control that arrives with the screen they reveal
+waits out the budget before the next action lands on it.
+
+#### `videoTouches`
+
+```ts
+/**
+ * Whether video recordings draw agent-device's touch indicator where a
+ * test tapped. Default `true`. `false` records the plain screen and skips
+ * drawing the indicator when the recording stops, which on a hosted daemon
+ * such as EAS Simulators' can outlast `cleanupTimeout`.
+ */
+readonly videoTouches?: boolean | undefined;
+```
+
+```ts
+mobile({ platform: 'ios', videoTouches: false }); // default: true
+```
+
+#### The app under test
+
+The app is the target's `app`: `bundleId`, `appPath`, `launchArguments`,
+`permissions`, `identity`, and `environment` are documented under
+[the app under test](/reference/config#the-app-under-test).
+
+```ts title="e2e.config.ts"
+export default {
+  targets: [{ name: 'ios', engine: mobile({ platform: 'ios' }), app: { appPath: './build/MyApp.app' } }],
+} satisfies E2EConfig;
+```
+
+- A device target needs `app.bundleId` or `app.appPath`.
+- `app.open()` launches the target's app fresh. An attempt launches nothing
+  on its own, so a test starts where the previous one left the app.
+- `app.open` takes no path on a device: a link goes through
+  [`device.openLink`](#openlink).
+- `app.appPath` is the build the suite runs against. The engine installs
+  nothing on its own: [`device.installApp()`](#installapp) installs it where
+  the suite says so. A device provider installs it on the device it leases.
+- Without `bundleId`, the installed bundle id or package becomes the app
+  `app.open()` launches.
+- Declare an `identity` when the build path changes per run (a version in
+  it), so recordings survive the rename.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | At config load: no `app.bundleId` and no `app.appPath`; an `app.url` (not supported yet); a link in `bundleId` (a test opens one with `device.openLink`); an unknown permission name. |
+
+#### Launch arguments and permissions
+
+`app.launchArguments` and `app.permissions` ride every fresh launch of the
+pinned app: `app.open()`, `app.restart()`, and `app.clearState()`, which
+resets the permissions with the data.
+
+```ts title="e2e.config.ts"
+export default {
+  targets: [
+    {
+      name: 'pixel',
+      engine: mobile({ platform: 'android' }),
+      app: {
+        bundleId: 'com.example.app',
+        launchArguments: ['--ez', 'e2e', 'true'],
+        permissions: { camera: 'grant', notifications: 'deny' },
+      },
+    },
+  ],
+} satisfies E2EConfig;
+```
+
+- iOS hands the arguments to the app process
+  (`ProcessInfo.processInfo.arguments`). Android appends them to `am start`,
+  so `['--ez', 'e2e', 'true']` is a boolean intent extra.
+- Each permission is `grant`, `deny`, or `reset`. `deny` is a recorded
+  refusal on iOS, where the app is told no without a prompt, and a revocation
+  on Android, where the OS asks again when the app requests the permission.
+- The permissions are set on the app by name before it starts, with no open
+  first, since iOS terminates a running app whose permission changed and
+  Android one whose permission was revoked.
+- The warm-up passes no launch argument and touches no permission.
+- [`device.openApp(app, { relaunch: true, launchArguments, permissions })`](#openapp)
+  does the same for one launch of any app.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | In `app.permissions`: a permission name outside `DevicePermission` (naming the nearest one when it is a likely typo), or a state other than `grant`, `deny`, or `reset`. Fails before any device command. |
+| `INVALID_ARGUMENT` | The same, in `device.openApp`. |
+
+#### Boot and prepare
+
+Devices boot in `prepare`, once per run and before the run's clock starts,
+so a cold boot on CI is never charged against `launchTimeout`.
+
+- [`device`](#device-option) says which devices `prepare` uses and how many
+  workers the engine declares.
+- On iOS, `prepare` starts the automation runner on every device with
+  agent-device's `prepare ios-runner`, so its first launch is paid before the
+  first test. Then it brings the target's `app.bundleId` up once per device
+  when it is installed. A build the suite installs itself comes up with the
+  first `app.open()`, which relaunches it fresh whenever a test asks.
+- A device that cannot boot, or a runner that is busy, wedged, or past its
+  watchdog, ends the run in `prepare`.
+- A runner that does not start for another reason is logged and left to the
+  first attempt, and that device's app is not opened there.
+
+<Note>
+agent-device commands take no abort signal, so a timed-out command keeps
+running on the device. The next attempt waits for it to settle.
+</Note>
+
+#### Capabilities
 
 | Contract member | On a device |
 | --- | --- |
@@ -212,145 +354,590 @@ export default {
 | `location` | `<bundle id> / <screen title>`, the replay cache's anchor. The title is the navigation bar's on iOS and the toolbar's on Android. |
 | `state` | Not declared. `test.setup` and `session:` are unavailable. |
 
-## Replay cache on a device
+### Device
 
-A step recorded on `com.apple.Preferences / General` replays only when
-Settings is on General again. A mutating project-tool call such as
-`open_app` ends a replay. Declare `app.bundleId` and call `app.open()` first, so steps
-start on the same screen, and switch apps through the `device` fixture
-between steps rather than inside one.
-
-## Device
+The `device` fixture is deterministic device management. A test calls it
+directly to arrange or assert device state.
 
 ```ts
-/** Deterministic device management exposed to tests as `device`. */
-export interface Device {
-  /**
-   * A locator from an agent-device selector (`'id=SW_VERSION_SPECIFIER'`,
-   * `'role=text label="26.2"'`), for nodes the closed `screen` query
-   * vocabulary cannot name. Same polling and strictness as any locator.
-   */
-  locator(selector: string): Locator;
-  /**
-   * Switches an Android device's Wi-Fi. Cellular data stays on, so an
-   * emulator hands the app over to its cellular link; `setAirplaneMode(true)`
-   * cuts both. On iOS `offline` is `UNSUPPORTED_CAPABILITY`, since a
-   * simulator shares the Mac's network and simctl can only repaint its status
-   * bar; `online` sends nothing there, so a cleanup hook shared with Android
-   * passes.
-   */
-  setNetwork(state: 'online' | 'offline'): Promise<void>;
-  /**
-   * Switches an Android device's airplane mode, Wi-Fi and cellular together;
-   * Android 11 or newer. On iOS, as for `setNetwork`, `true` is
-   * `UNSUPPORTED_CAPABILITY` and `false` sends nothing.
-   */
-  setAirplaneMode(enabled: boolean): Promise<void>;
-  /**
-   * Grants, denies, or resets one permission for the pinned app, which need
-   * not be running. A change terminates a running app on iOS, a revoke one
-   * on Android, so it goes before the `app.open()` a test starts with.
-   */
-  setPermission(permission: DevicePermission, state: PermissionState): Promise<void>;
-  /** Sets the simulated location, switching location services on first on Android. */
-  setLocation(coordinates: { latitude: number; longitude: number }): Promise<void>;
-  /** Turns simulated location off; on Android that is location services off, until the next `setLocation`. */
-  clearLocation(): Promise<void>;
-  /** Sets the system appearance. */
-  setAppearance(mode: 'light' | 'dark'): Promise<void>;
-  /** Rotates the device. */
-  setOrientation(orientation: DeviceOrientation): Promise<void>;
-  /**
-   * Puts a foldable simulator or emulator in a hinge pose. On the iPhone Duo
-   * it resolves once agent-device reads the angle back from CoreDevice at
-   * that pose, typically 10 to 16 seconds later; `closed` lights the outer
-   * display, `half-open` (a 130° book) and `open` light the inner one. On a
-   * foldable Android emulator it sets the emulator console posture and
-   * resolves once the guest commits the matching device state, within a few
-   * seconds; `half-open` is the profile's own angle there (90° on the Pixel
-   * folds), and a fold to the cover display dismisses the lock screen it
-   * raises. Either way the app window changes size, so the next observation
-   * reads a new screen. Any device without a hinge is `UNSUPPORTED_CAPABILITY`.
-   */
-  fold(pose: FoldPose): Promise<void>;
-  /** Simulates one biometric attempt on the open app. */
-  setBiometrics(sensor: BiometricSensor, result: 'match' | 'nonmatch'): Promise<void>;
-  /** Enrolls or unenrolls the simulator's Face ID or Touch ID. */
-  enrollBiometrics(sensor: 'faceid' | 'touchid', enrolled: boolean): Promise<void>;
-  /**
-   * Installs a build (an iOS `.app` bundle or an Android `.apk`, resolved
-   * against the project root) on the device; without a path, the target's
-   * `app.appPath`. The engine installs nothing on its own, so a suite that runs
-   * against a build calls this once per device, in a fixture or a test.
-   * `reinstall: true` removes the app first so it starts with no data; a
-   * plain install replaces the binary and keeps its data. Resolves to the
-   * identity to `openApp` it by, which becomes the app `app.open()` launches
-   * when the target's build is installed and no `app.bundleId` is pinned.
-   */
-  installApp(appPath?: string, options?: InstallAppOptions): Promise<InstalledApp>;
-  /**
-   * Brings an app to the foreground by bundle id, package, or display name;
-   * `relaunch` restarts it fresh. `launchArguments` and `permissions` apply
-   * to this launch alone; the target's configured ones apply to a `relaunch`
-   * of the pinned app, and to no foreground-only open. A link is
-   * `INVALID_ARGUMENT` (`file:`, `data:`, `javascript:`, `view-source:`,
-   * `blob:`, and `filesystem:` are `POLICY_DENIED`): `openLink` opens one.
-   */
-  openApp(app: string, options?: OpenAppOptions): Promise<void>;
-  /**
-   * Opens a deep link (`myapp://orders/42`) or a web link (`https://...`)
-   * into `app` (default: the pinned app), which the session observes
-   * afterwards. iOS launches the app for a web link and then opens the URL;
-   * a web link the app does not claim goes to Safari, and the next
-   * observation brings the app back. Android starts the link on that
-   * package. Without an app, Android lets the OS route the link; iOS needs
-   * one (`INVALID_ARGUMENT` without). `file:`, `data:`, `javascript:`,
-   * `view-source:`, `blob:`, and `filesystem:` links are `POLICY_DENIED`.
-   */
-  openLink(url: string, options?: { app?: string }): Promise<void>;
-  /**
-   * Terminates the session's app and ends the session, so the next
-   * `openApp` launches it fresh. Until then the screen is unobservable and
-   * `foregroundApp` is `APP_NOT_OPEN`.
-   */
-  closeApp(): Promise<void>;
-  /**
-   * Resets the simulator's keychain, every app's, since simctl has no
-   * per-app reset: what `app.clearState()` leaves behind (a session token, a
-   * Firebase sign-in). iOS simulator only; Android is
-   * `UNSUPPORTED_CAPABILITY`. Launch the app afterwards to see it signed out.
-   */
-  clearKeychain(): Promise<void>;
-  /**
-   * The app the session is on. iOS answers from the session, not the
-   * device, so it names the app the session opened even after `home()`;
-   * Android reads the device's foreground activity. `APP_NOT_OPEN` once
-   * `closeApp` ended the session.
-   */
-  foregroundApp(): Promise<ForegroundApp>;
-  /** Sends the device to its home screen. */
-  home(): Promise<void>;
-  /** Navigates back once (in-app back). */
-  back(): Promise<void>;
-  /** Accepts or dismisses the visible system alert. */
-  alert(action: 'accept' | 'dismiss'): Promise<void>;
-  /**
-   * Dismisses the soft keyboard: the keyboard's own dismiss key where it has
-   * one (Android, iPad), else the way a user does it on an iPhone, a short
-   * drag at the centre of the screen that a scroll view turns into a
-   * dismissal, horizontal first and vertical second, stopping as soon as the
-   * keyboard is gone. The simulator's "Speed up your typing" tip goes through
-   * its Continue button first. A keyboard that outlives both drags fails with
-   * `UNSUPPORTED_CAPABILITY`; the message names the alternatives (the app's
-   * own Done or close control, or pressing Enter on the field).
-   */
-  dismissKeyboard(): Promise<void>;
-  /** Reads the clipboard. */
-  clipboard(): Promise<string>;
-  /** Writes the clipboard. */
-  setClipboard(text: string): Promise<void>;
-}
+test('offline banner', { platforms: ['android'] }, async ({ app, device, screen }) => {
+  await app.open();
+  await device.setNetwork('offline');
+  await expect(screen.getByText('You are offline')).toBeVisible();
+  await device.setNetwork('online');
+});
+```
 
+| Member | Returns |
+| --- | --- |
+| [`locator`](#locator) | `Locator` |
+| [`setNetwork`](#setnetwork) | `Promise<void>` |
+| [`setAirplaneMode`](#setairplanemode) | `Promise<void>` |
+| [`setPermission`](#setpermission) | `Promise<void>` |
+| [`setLocation`](#setlocation) | `Promise<void>` |
+| [`clearLocation`](#clearlocation) | `Promise<void>` |
+| [`setAppearance`](#setappearance) | `Promise<void>` |
+| [`setOrientation`](#setorientation) | `Promise<void>` |
+| [`fold`](#fold) | `Promise<void>` |
+| [`setBiometrics`](#setbiometrics) | `Promise<void>` |
+| [`enrollBiometrics`](#enrollbiometrics) | `Promise<void>` |
+| [`installApp`](#installapp) | `Promise<InstalledApp>` |
+| [`openApp`](#openapp) | `Promise<void>` |
+| [`openLink`](#openlink) | `Promise<void>` |
+| [`closeApp`](#closeapp) | `Promise<void>` |
+| [`clearKeychain`](#clearkeychain) | `Promise<void>` |
+| [`foregroundApp`](#foregroundapp) | `Promise<ForegroundApp>` |
+| [`home`](#home) | `Promise<void>` |
+| [`back`](#back) | `Promise<void>` |
+| [`alert`](#alert) | `Promise<void>` |
+| [`dismissKeyboard`](#dismisskeyboard) | `Promise<void>` |
+| [`clipboard`](#clipboard) | `Promise<string>` |
+| [`setClipboard`](#setclipboard) | `Promise<void>` |
+
+Every async method is a recorded step named `device.<method>`, bounded by
+`config.actionTimeout`. `back`, `home`, `alert`, `dismissKeyboard`,
+`setOrientation`, and `fold` count as actions for the
+[`transition`](#transition) budget. Each entry below shows its member's
+declaration; the types they use are under [Types](#device-fixture).
+
+| Throws | When |
+| --- | --- |
+| `APP_NOT_OPEN` | The session is lost. |
+| `ACTION_FAILED` | `actionTimeout` expires. |
+| `UNSUPPORTED_CAPABILITY` | The platform cannot run the command. |
+| `ENGINE_FAILURE` | Anything else, with agent-device's message. A timeout the device itself reports (a boot, the runner connecting) keeps its text and hint there. A busy or wedged iOS automation runner names itself and the recovery (see [Troubleshooting](/mobile#troubleshooting)). |
+
+#### `locator`
+
+```ts
+/**
+ * A locator from an agent-device selector (`'id=SW_VERSION_SPECIFIER'`,
+ * `'role=text label="26.2"'`), for nodes the closed `screen` query
+ * vocabulary cannot name. Same polling and strictness as any locator.
+ */
+locator(selector: string): Locator;
+```
+
+```ts
+await expect(device.locator('role=navigation-bar id=About')).toBeVisible();
+await expect(device.locator('role=text label="iOS Version"')).toHaveText('iOS Version');
+await device.locator('id=SW_VERSION_SPECIFIER role=button').tap();
+```
+
+Selector terms and their rules are agent-device's, the ones `agent-device
+find ... list` applies:
+
+- Terms: `id`, `role`, `text`, `label`, `value`, `appname`, `windowtitle`,
+  and the flags `visible`, `hidden`, `editable`, `selected`, `focused`,
+  `enabled`, `hittable`.
+- `role` takes agent-device's kind, the role `agent-device snapshot` prints:
+  `button`, `text`, `text-field`, `navigation-bar`, `scroll-area`, `switch`,
+  `image`. It is not the `getByRole` role (`textbox`).
+- Text terms compare case-insensitively after collapsing whitespace.
+- `visible` means the node is hittable or has a non-empty frame; `hidden` is
+  its opposite.
+- `text` reads the first non-empty label, value, or identifier.
+
+<Note>
+An action on a selector that matches several nodes fails, where an
+agent-device action skips an ambiguous `||` alternative.
+</Note>
+
+#### `setNetwork`
+
+```ts
+/**
+ * Switches an Android device's Wi-Fi. Cellular data stays on, so an
+ * emulator hands the app over to its cellular link; `setAirplaneMode(true)`
+ * cuts both. On iOS `offline` is `UNSUPPORTED_CAPABILITY`, since a
+ * simulator shares the Mac's network and simctl can only repaint its status
+ * bar; `online` sends nothing there, so a cleanup hook shared with Android
+ * passes.
+ */
+setNetwork(state: 'online' | 'offline'): Promise<void>;
+```
+
+```ts
+await device.setNetwork('offline');
+await device.setNetwork('online');
+```
+
+| Throws | When |
+| --- | --- |
+| `UNSUPPORTED_CAPABILITY` | `offline` on iOS. |
+
+#### `setAirplaneMode`
+
+```ts
+/**
+ * Switches an Android device's airplane mode, Wi-Fi and cellular together;
+ * Android 11 or newer. On iOS, as for `setNetwork`, `true` is
+ * `UNSUPPORTED_CAPABILITY` and `false` sends nothing.
+ */
+setAirplaneMode(enabled: boolean): Promise<void>;
+```
+
+```ts
+await device.setAirplaneMode(true);
+```
+
+| Throws | When |
+| --- | --- |
+| `UNSUPPORTED_CAPABILITY` | `true` on iOS. |
+
+#### `setPermission`
+
+```ts
+/**
+ * Grants, denies, or resets one permission for the pinned app, which need
+ * not be running. A change terminates a running app on iOS, a revoke one
+ * on Android, so it goes before the `app.open()` a test starts with.
+ */
+setPermission(permission: DevicePermission, state: PermissionState): Promise<void>;
+```
+
+```ts
+await device.setPermission('location', 'deny');
+await app.open();
+```
+
+- `permission` is a [`DevicePermission`](#device-fixture); `state` is
+  `grant`, `deny`, or `reset`.
+
+#### `setLocation`
+
+```ts
+/** Sets the simulated location, switching location services on first on Android. */
+setLocation(coordinates: { latitude: number; longitude: number }): Promise<void>;
+```
+
+```ts
+await device.setLocation({ latitude: 52.23, longitude: 21.01 });
+```
+
+#### `clearLocation`
+
+```ts
+/** Turns simulated location off; on Android that is location services off, until the next `setLocation`. */
+clearLocation(): Promise<void>;
+```
+
+```ts
+await device.clearLocation();
+```
+
+#### `setAppearance`
+
+```ts
+/** Sets the system appearance. */
+setAppearance(mode: 'light' | 'dark'): Promise<void>;
+```
+
+```ts
+await device.setAppearance('dark');
+```
+
+#### `setOrientation`
+
+```ts
+/** Rotates the device. */
+setOrientation(orientation: DeviceOrientation): Promise<void>;
+```
+
+```ts
+await device.setOrientation('landscape-left');
+```
+
+- `'portrait'`, `'portrait-upside-down'`, `'landscape-left'`, or
+  `'landscape-right'`.
+
+#### `fold`
+
+```ts
+/**
+ * Puts a foldable simulator or emulator in a hinge pose. On the iPhone Duo
+ * it resolves once agent-device reads the angle back from CoreDevice at
+ * that pose, typically 10 to 16 seconds later; `closed` lights the outer
+ * display, `half-open` (a 130° book) and `open` light the inner one. On a
+ * foldable Android emulator it sets the emulator console posture and
+ * resolves once the guest commits the matching device state, within a few
+ * seconds; `half-open` is the profile's own angle there (90° on the Pixel
+ * folds), and a fold to the cover display dismisses the lock screen it
+ * raises. Either way the app window changes size, so the next observation
+ * reads a new screen. Any device without a hinge is `UNSUPPORTED_CAPABILITY`.
+ */
+fold(pose: FoldPose): Promise<void>;
+```
+
+```ts
+await device.fold('half-open');
+```
+
+| Throws | When |
+| --- | --- |
+| `UNSUPPORTED_CAPABILITY` | The device has no hinge. |
+
+#### `setBiometrics`
+
+```ts
+/** Simulates one biometric attempt on the open app. */
+setBiometrics(sensor: BiometricSensor, result: 'match' | 'nonmatch'): Promise<void>;
+```
+
+```ts
+await device.setBiometrics('faceid', 'nonmatch');
+```
+
+- `sensor` is `'faceid'`, `'touchid'`, or `'fingerprint'`.
+
+#### `enrollBiometrics`
+
+```ts
+/** Enrolls or unenrolls the simulator's Face ID or Touch ID. */
+enrollBiometrics(sensor: 'faceid' | 'touchid', enrolled: boolean): Promise<void>;
+```
+
+```ts
+await device.enrollBiometrics('touchid', true);
+```
+
+#### `installApp`
+
+```ts
+/**
+ * Installs a build (an iOS `.app` bundle or an Android `.apk`, resolved
+ * against the project root) on the device; without a path, the target's
+ * `app.appPath`. The engine installs nothing on its own, so a suite that runs
+ * against a build calls this once per device, in a fixture or a test.
+ * `reinstall: true` removes the app first so it starts with no data; a
+ * plain install replaces the binary and keeps its data. Resolves to the
+ * identity to `openApp` it by, which becomes the app `app.open()` launches
+ * when the target's build is installed and no `app.bundleId` is pinned.
+ */
+installApp(appPath?: string, options?: InstallAppOptions): Promise<InstalledApp>;
+```
+
+```ts
+await device.installApp(); // the target's app.appPath
+const { app } = await device.installApp('./build/MyApp.app', { reinstall: true });
+await device.openApp(app);
+```
+
+- Use it for the run's build, or for another build on an upgrade path.
+- The resolved id is the bundle id or package agent-device read from the
+  build, else the `app` passed in.
+
+| Throws | When |
+| --- | --- |
+| `ENGINE_FAILURE` | agent-device reported no id and no `app` was passed, instead of a file path posing as an id. See [Troubleshooting](/mobile#troubleshooting). |
+
+#### `openApp`
+
+```ts
+/**
+ * Brings an app to the foreground by bundle id, package, or display name;
+ * `relaunch` restarts it fresh. `launchArguments` and `permissions` apply
+ * to this launch alone; the target's configured ones apply to a `relaunch`
+ * of the pinned app, and to no foreground-only open. A link is
+ * `INVALID_ARGUMENT` (`file:`, `data:`, `javascript:`, `view-source:`,
+ * `blob:`, and `filesystem:` are `POLICY_DENIED`): `openLink` opens one.
+ */
+openApp(app: string, options?: OpenAppOptions): Promise<void>;
+```
+
+```ts
+await device.openApp('Settings');
+await device.openApp('com.example.app', { relaunch: true, permissions: { camera: 'grant' } });
+```
+
+- A link is refused before the device sees it, since agent-device opens any
+  `scheme:rest` string as a URL.
+
+| Throws | When |
+| --- | --- |
+| `POLICY_DENIED` | A `file:`, `data:`, `javascript:`, `view-source:`, `blob:`, or `filesystem:` link. |
+| `INVALID_ARGUMENT` | Any other link, with a message pointing at `openLink`; or an invalid permission name or state (see [Launch arguments and permissions](#launch-arguments-and-permissions)). |
+
+#### `openLink`
+
+```ts
+/**
+ * Opens a deep link (`myapp://orders/42`) or a web link (`https://...`)
+ * into `app` (default: the pinned app), which the session observes
+ * afterwards. iOS launches the app for a web link and then opens the URL;
+ * a web link the app does not claim goes to Safari, and the next
+ * observation brings the app back. Android starts the link on that
+ * package. Without an app, Android lets the OS route the link; iOS needs
+ * one (`INVALID_ARGUMENT` without). `file:`, `data:`, `javascript:`,
+ * `view-source:`, `blob:`, and `filesystem:` links are `POLICY_DENIED`.
+ */
+openLink(url: string, options?: { app?: string }): Promise<void>;
+```
+
+```ts
+await device.openLink('myapp://orders/42');
+await expect(screen.getByText('Order #42')).toBeVisible();
+```
+
+- Use it for magic-link sign-in and deep-link routes.
+- Without an app, Android routes the link to a verified app link owner or
+  the browser, and the session follows the package that took it.
+- A device link may use any app's custom scheme, so the rule refuses the
+  schemes below rather than admitting http(s) alone as the web does.
+- The report shows the link cut before its query and fragment, where a magic
+  link carries its token.
+- The replay cache anchors on the location the link lands on; see
+  [Replay cache on a device](#replay-cache-on-a-device).
+
+| Throws | When |
+| --- | --- |
+| `POLICY_DENIED` | A `file:`, `data:`, `javascript:`, `view-source:`, `blob:`, or `filesystem:` link. |
+| `INVALID_ARGUMENT` | No app on iOS: an open bound to none leaves no app session to observe. |
+| `INVALID_ARGUMENT` | A string that does not parse as an absolute URL. The message names no part of the input, which may carry a magic-link token in its query, path, or userinfo. |
+
+#### `closeApp`
+
+```ts
+/**
+ * Terminates the session's app and ends the session, so the next
+ * `openApp` launches it fresh. Until then the screen is unobservable and
+ * `foregroundApp` is `APP_NOT_OPEN`.
+ */
+closeApp(): Promise<void>;
+```
+
+```ts
+await device.closeApp();
+await device.openApp('com.example.app'); // launches fresh, on its first screen
+```
+
+- A screen query before the next `openApp` is `APP_NOT_OPEN` too.
+
+#### `clearKeychain`
+
+```ts
+/**
+ * Resets the simulator's keychain, every app's, since simctl has no
+ * per-app reset: what `app.clearState()` leaves behind (a session token, a
+ * Firebase sign-in). iOS simulator only; Android is
+ * `UNSUPPORTED_CAPABILITY`. Launch the app afterwards to see it signed out.
+ */
+clearKeychain(): Promise<void>;
+```
+
+```ts
+await device.clearKeychain();
+await app.open(); // see it signed out
+```
+
+| Throws | When |
+| --- | --- |
+| `UNSUPPORTED_CAPABILITY` | On Android, before any device command. |
+
+#### `foregroundApp`
+
+```ts
+/**
+ * The app the session is on. iOS answers from the session, not the
+ * device, so it names the app the session opened even after `home()`;
+ * Android reads the device's foreground activity. `APP_NOT_OPEN` once
+ * `closeApp` ended the session.
+ */
+foregroundApp(): Promise<ForegroundApp>;
+```
+
+```ts
+const { name, bundleId } = await device.foregroundApp();
+```
+
+- On iOS, agent-device's `appstate` has no device-level answer.
+
+| Throws | When |
+| --- | --- |
+| `APP_NOT_OPEN` | `closeApp` ended the session. |
+
+#### `home`
+
+```ts
+/** Sends the device to its home screen. */
+home(): Promise<void>;
+```
+
+```ts
+await device.home();
+```
+
+#### `back`
+
+```ts
+/** Navigates back once (in-app back). */
+back(): Promise<void>;
+```
+
+```ts
+await device.back();
+```
+
+#### `alert`
+
+```ts
+/** Accepts or dismisses the visible system alert. */
+alert(action: 'accept' | 'dismiss'): Promise<void>;
+```
+
+```ts
+await device.alert('accept');
+```
+
+#### `dismissKeyboard`
+
+```ts
+/**
+ * Dismisses the soft keyboard: the keyboard's own dismiss key where it has
+ * one (Android, iPad), else the way a user does it on an iPhone, a short
+ * drag at the centre of the screen that a scroll view turns into a
+ * dismissal, horizontal first and vertical second, stopping as soon as the
+ * keyboard is gone. The simulator's "Speed up your typing" tip goes through
+ * its Continue button first. A keyboard that outlives both drags fails with
+ * `UNSUPPORTED_CAPABILITY`; the message names the alternatives (the app's
+ * own Done or close control, or pressing Enter on the field).
+ */
+dismissKeyboard(): Promise<void>;
+```
+
+```ts
+await device.dismissKeyboard();
+```
+
+| Throws | When |
+| --- | --- |
+| `UNSUPPORTED_CAPABILITY` | The keyboard outlives both drags. |
+
+#### `clipboard`
+
+```ts
+/** Reads the clipboard. */
+clipboard(): Promise<string>;
+```
+
+```ts
+const copied = await device.clipboard();
+```
+
+#### `setClipboard`
+
+```ts
+/** Writes the clipboard. */
+setClipboard(text: string): Promise<void>;
+```
+
+```ts
+await device.setClipboard('SAVE20');
+```
+
+### Agent tools
+
+`mobileTools(...engines)` from `@e2e-dev/mobile/tools` adds device tools to
+an agent's `tools`.
+
+```ts
+tools: mobileTools(iphone, pixel),
+```
+
+- It takes at least one engine. Pass all device engines in one call; the
+  tools use the current attempt's engine.
+
+| Tool | Replay | Purpose |
+| --- | --- | --- |
+| `open_app` | gap | Bring an app to the foreground by id, optionally relaunched. A link is refused, as it is for `device.openApp`. |
+| `swipe` | gap | Free-form swipe between two points in logical pixels. |
+| `alert` | gap | Accept or dismiss a system alert; prefer a listed button, whose tap replays. |
+
+The grammar verbs need no tool pack. The engine's declared actions give the
+agent:
+
+- `tap`, `double_tap`, `long_press`, `hover`, `type`, `press`, `check`,
+  `scroll`, `drag`, `scroll_to` by `text` (paging the list until a row
+  reading it is drawn), `back`, and `dismiss_keyboard`.
+- The pixel tools `screenshot`, `tap_at`, `hover_at` (on a listed control
+  only), `type_at`, and `press_at`. Point actions can tap controls absent
+  from the accessibility tree.
+- `type_secret`, when the step declares a secret.
+
+There is no `right_click`, `select`, `scroll_to` by node id, `upload`, or
+`navigate` on a device, and `select_at` is not offered.
+
+<Note>
+After a secret fill the agent offers neither `screenshot` nor `tap_at`,
+including in later members of the same serial group. Pixels whose masking
+the engine cannot prove are withheld as `MASKING_UNPROVEN`. An accessibility
+capture failure still stops the observation. Device screenshot masks depend
+on secure-field bounds from that capture, so without them the engine cannot
+prove a fallback screenshot safe.
+</Note>
+
+## Video recording cleanup
+
+A provider recording that fails to stop stays owned by its worker. The
+engine retries its stop at attempt end, before another attempt on that
+worker, and during worker disposal. A pending stop is shared. Each retry
+uses the original attempt's video directory.
+
+The next attempt starts only after the provider confirms the stop. A
+failed or cancelled stop wait prevents that attempt from starting.
+Confirmed stops are not repeated if the returned artifact is invalid.
+A failed provider stop alone does not close a healthy agent-device session
+during worker replacement.
+
+These recording handles do not survive worker exit. At run end, the engine
+closes its agent-device sessions and the provider releases its leases.
+Providers must clean up any remaining external recordings when releasing a
+lease. Closing an agent-device session cannot guarantee that an arbitrary
+cloud recording stops. A failed provider stop callback does not confirm that
+the recording stopped.
+
+## Replay cache on a device
+
+The replay cache anchors on the [`location`](#capabilities) a device reports,
+`<bundle id> / <screen title>`. A step recorded on
+`com.apple.Preferences / General` replays only when Settings is on General
+again.
+
+```ts
+await app.open();
+await screen.getByText('General').tap();
+await agent.act('Open About and read the iOS version');
+```
+
+- A mutating project-tool call such as `open_app` ends a replay.
+- Declare `app.bundleId` and call `app.open()` first, so steps start on the
+  same screen.
+- Switch apps through the `device` fixture between steps rather than inside
+  one.
+- A step recorded after [`device.openLink`](#openlink) replays when the link
+  lands on the same screen again.
+
+## Types
+
+### Engine options
+
+Each `MobileOptions` member is declared, with its JSDoc, in its
+[Engine](#engine) entry.
+
+```ts
+/** A permission's state: held, refused, or not asked for yet, so the OS asks again. */
+export type PermissionState = 'grant' | 'deny' | 'reset';
+
+/** Permissions an app holds when it launches, by name. */
+export type LaunchPermissions = Readonly<Partial<Record<DevicePermission, PermissionState>>>;
+```
+
+### Device fixture
+
+Each `Device` member is declared, with its JSDoc, in its [Device](#device)
+entry.
+
+```ts
 /** How `device.openApp` launches an app. */
 export interface OpenAppOptions {
   /** Terminate the app first, so it starts fresh; without it a running app is brought forward as it is. */
@@ -417,139 +1004,18 @@ export interface ForegroundApp {
 export type BiometricSensor = 'faceid' | 'touchid' | 'fingerprint';
 ```
 
-Every async method is a recorded step named `device.<method>`, bounded by
-`config.actionTimeout`. A lost session is `APP_NOT_OPEN`, that budget
-expiring is `ACTION_FAILED`, a command the platform cannot run is
-`UNSUPPORTED_CAPABILITY`, anything else `ENGINE_FAILURE` with agent-device's
-message: a timeout the device itself reports (a boot, the runner connecting)
-keeps its text and hint there, and a busy or wedged iOS automation runner
-names itself and the recovery (see
-[Troubleshooting](/mobile#troubleshooting)).
-
-`back`, `home`, `alert`, `dismissKeyboard`, `setOrientation`, and `fold`
-change the screen, so they count as actions for the `transition` budget the way a tap
-does: a control that arrives with the screen they reveal waits out the budget
-before the next action lands on it.
-
-`closeApp` terminates the app the session is on and ends the session, so
-`openApp` after it launches the app fresh, on its first screen; a screen
-query or `foregroundApp` in between is `APP_NOT_OPEN`. `foregroundApp` on
-iOS reads the session, not the device: agent-device's `appstate` has no
-device-level answer there, so after `home()` it still names the app the
-session opened. Android reads the device's foreground activity.
-
-`installApp` installs a build from inside a test or a fixture: the run's build once per device (no path installs `app.appPath`), or another build for an upgrade path. A plain
-install keeps the app's data; `reinstall: true` removes the app named by
-`app` (default: the pinned app) first. It resolves to the id to `openApp`
-the build by: the bundle id or package agent-device read from the build, else
-the `app` passed in. With no reported id and no `app`, the install is
-`ENGINE_FAILURE` instead of a file path posing as an id; see
-[Troubleshooting](/mobile#troubleshooting).
-
-```ts
-const { app } = await device.installApp('./build/MyApp.app', { reinstall: true });
-await device.openApp(app);
-```
-
-`clearKeychain` resets the simulator's keychain, which `app.clearState()`
-leaves alone: simctl resets the whole simulator's, so every app on it loses
-its keychain-backed credentials. iOS only; on Android it is
-`UNSUPPORTED_CAPABILITY` before any device command. Launch the app afterwards
-to see it signed out.
-
-`openApp` brings an app to the foreground by bundle id, package, or display
-name (`Settings`); `relaunch: true` restarts it fresh, and `launchArguments`
-and `permissions` apply to that launch alone (the target's own apply to a
-`relaunch` of the pinned app). It takes no link:
-agent-device opens any `scheme:rest` string as a URL, so a link is refused
-before the device sees it. A `file:`, `data:`, `javascript:`,
-`view-source:`, `blob:`, or `filesystem:` link is `POLICY_DENIED`; any other
-link is `INVALID_ARGUMENT` pointing at `openLink`.
-
-`openLink` opens a deep link or a web link into `app` (default: the pinned
-app), for magic-link sign-in and deep-link routes, and the session observes
-that app afterwards. iOS launches the app for a web link and then opens the
-URL; a web link the app does not claim goes to Safari, and the next
-observation brings the app back. Android starts the link on that package.
-Without an app, Android lets the OS route the link, to a verified app link
-owner or the browser, and the session follows the package that took it. iOS
-needs an app: an open bound to none leaves no app session to observe, so it
-is `INVALID_ARGUMENT`. `file:`, `data:`, `javascript:`, `view-source:`,
-`blob:`, and `filesystem:` links are `POLICY_DENIED`. A device link may use
-any app's custom scheme, so the rule refuses these schemes rather than
-admitting http(s) alone as the web does. A string that does not parse as an
-absolute URL is `INVALID_ARGUMENT` too, and its message names no part of the
-input, which may carry a magic-link token in its query, path, or userinfo.
-The report shows the link cut before its
-query and fragment, where a magic link carries its token. The replay cache
-anchors on the location the link lands on: a step recorded after `openLink`
-replays when the link lands on the same screen again.
-
-```ts
-await device.openLink('myapp://orders/42');
-await expect(screen.getByText('Order #42')).toBeVisible();
-```
-
-Use `device.locator` for platform-specific selectors that `screen` queries
-cannot express.
-
-```ts
-await expect(device.locator('role=navigation-bar id=About')).toBeVisible();
-await expect(device.locator('role=text label="iOS Version"')).toHaveText('iOS Version');
-await device.locator('id=SW_VERSION_SPECIFIER role=button').tap();
-```
-
-Selector terms and their rules are agent-device's (the ones `agent-device
-find ... list` applies): `id`, `role`, `text`, `label`, `value`, `appname`,
-`windowtitle`, and the flags `visible`, `hidden`, `editable`, `selected`,
-`focused`, `enabled`, `hittable`. Strictness stays the locator's: an action
-on a selector that matches several nodes fails, where an agent-device action
-skips an ambiguous `||` alternative.
-
-- `role` takes agent-device's kind, the role `agent-device snapshot` prints:
-  `button`, `text`, `text-field`, `navigation-bar`, `scroll-area`, `switch`,
-  `image`. It is not the `getByRole` role (`textbox`).
-- Text terms compare case-insensitively after collapsing whitespace.
-- `visible` means the node is hittable or has a non-empty frame;
-  `hidden` is its opposite.
-- `text` reads the first non-empty label, value, or identifier.
-
-## Agent tools
-
-`mobileTools(...engines)` adds device tools to an agent's `tools`. It takes at
-least one engine; pass all device engines in one call, and the tools use the
-current attempt's engine.
-
-| Tool | Replay | Purpose |
-| --- | --- | --- |
-| `open_app` | gap | Bring an app to the foreground by id, optionally relaunched. A link is refused, as it is for `device.openApp`. |
-| `swipe` | gap | Free-form swipe between two points in logical pixels. |
-| `alert` | gap | Accept or dismiss a system alert; prefer a listed button, whose tap replays. |
-
-The grammar verbs need no tool pack: the engine's declared actions give the
-agent `tap`, `double_tap`, `long_press`, `hover`, `type`, `press`, `check`,
-`scroll`, `drag`, `scroll_to` by `text` (paging the list until a row reading it
-is drawn), `back`, and `dismiss_keyboard`; there is no `right_click`,
-`select`, `scroll_to` by node id, `upload`, or `navigate` on a device. The
-pixel tools are `screenshot`, `tap_at`, `hover_at` (on a listed control only),
-`type_at`, and `press_at`; `select_at` is not offered. Point actions can tap
-controls absent from the accessibility tree. `type_secret` is offered when
-the step declares a secret.
-
-After a secret fill the agent offers neither `screenshot` nor `tap_at`,
-including in later members of the same serial group. Pixels whose masking the
-engine cannot prove are withheld as `MASKING_UNPROVEN`.
-
-An accessibility capture failure still stops the observation. Device
-screenshot masks depend on secure-field bounds from that capture, so the
-engine cannot prove a fallback screenshot safe when those bounds are missing.
-
-## Exported types
+### Exported types
 
 `MobileOptions`, `MobilePlatform`, `DevicePermission`, `LaunchPermissions`,
 `PermissionState`, `DeviceClientConfig`, `DeviceConnection`, `DeviceDaemon`,
 `DeviceProvider`, `DeviceLease`, `DeviceReleaseContext`, `DeviceRequest`,
 `Device`, `DeviceOrientation`, `BiometricSensor`, `ForegroundApp`,
 `FoldPose`, `InstallAppOptions`, `InstalledApp`, and `OpenAppOptions` are exported from
-`@e2e-dev/mobile`. The runtime exports are `mobile` and `test`, typed with the
-`device` fixture; `mobileTools` comes from `@e2e-dev/mobile/tools`.
+`@e2e-dev/mobile`. The runtime exports are `mobile`, and `test`, `describe`,
+`beforeEach`, `afterEach`, `beforeAll`, and `afterAll`, typed with the `device`
+fixture; `mobileTools` comes from `@e2e-dev/mobile/tools`.
+
+## Related
+
+The [Mobile](/mobile) guide covers setup, hosted devices, and troubleshooting.
+The portable lifecycle methods are on [`app`](/reference/app).

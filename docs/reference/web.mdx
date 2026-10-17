@@ -6,14 +6,9 @@ icon: "globe"
 "twitter:image": "https://e2e.tester.army/docs/images/og/reference/web.png?v=66fee465a4"
 ---
 
-`@e2e-dev/web` drives Chromium, Firefox, and WebKit through Playwright.
-A web target names it as its engine, and it contributes the `browser` fixture for
-browser-only work. Import `test` from the package to have `browser` typed.
-
-The package depends on `playwright-core` pinned to an exact version, so the
-engine always runs the Playwright it was tested against. An app that depends
-on Playwright itself keeps its own copy; the two share a browser cache only
-when their versions match.
+`@e2e-dev/web` is the browser engine. It drives Chromium, Firefox, and WebKit
+through Playwright. A web target names it as its engine with `web()`, and it
+contributes the `browser` fixture for browser-only work.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -24,12 +19,887 @@ export default {
 } satisfies E2EConfig;
 ```
 
+Import `test` from the package to have `browser` typed:
+
+```ts title="tests/orders.e2e.ts"
+import { expect } from 'e2e';
+import { test } from '@e2e-dev/web';
+
+test('orders in dark mode', async ({ app, browser, screen }) => {
+  await browser.emulateMedia({ colorScheme: 'dark' });
+  await app.open('/orders');
+  await expect(browser).toHaveURL('/orders');
+  await expect(screen.getByRole('heading', { name: 'Orders' })).toBeVisible();
+});
+```
+
+## Reference
+
+### Options
+
+`web(options)` sets how the engine drives the app. The app itself (its
+`url`, `environment`, `identity`, and the command that starts it) is the
+target's `app`, documented under
+[the app under test](/reference/config#the-app-under-test).
+
+```ts
+web({ viewport: { width: 390, height: 844 }, locale: 'de-DE' });
+```
+
+| Option | Type | Default |
+| --- | --- | --- |
+| [`browser`](#browser) | `BrowserName \| BrowserProvider` | `'chromium'` |
+| [`viewport`](#viewport) | `ViewportSize \| null` | 1280 by 720 |
+| [`screencast`](#screencast) | `WebScreencastOptions` | the viewport's size |
+| [`connect`](#connect) | `WebConnectOptions` | launches locally |
+| [`headers`](#headers) | `Record<string, string>` | - |
+| [`basicAuth`](#basicauth) | `WebBasicAuth` | - |
+| [`testIdAttribute`](#testidattribute) | `string` | `'data-testid'` |
+| [`userAgent`](#useragent) | `string` | the browser's own |
+| [`locale`](#locale) | `string` | the browser's own |
+| [`timezoneId`](#timezoneid) | `string` | the machine's |
+| [`colorScheme`](#media-emulation) | `'light' \| 'dark' \| 'no-preference'` | the browser's own |
+| [`reducedMotion`](#media-emulation) | `'reduce' \| 'no-preference'` | the browser's own |
+| [`initScripts`](#init-scripts) | `WebInitScript[]` | - |
+
+- A `web()` target needs `app.url` and refuses the device keys (`bundleId`,
+  `appPath`, `launchArguments`, `permissions`).
+- A target with `app.url` is a `browser` target, so `requires: ['browser']`
+  selects web targets.
+- The full declaration with its JSDoc is [`WebOptions`](#weboptions) under
+  Types.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | An option `web()` does not take (`url` or any other app key included), or an unknown key inside `connect` or `basicAuth`. The message names the nearest known key for a likely typo (`viewprt` is `viewport`), else every key. |
+| `INVALID_CONFIG` | `headers`, `basicAuth`, `userAgent`, `locale`, or `timezoneId` on a [persistent context](#recovering-a-cdp-transport) (`connect.reconnectEndpoint`, or a provider with `scope: 'attempt'`). |
+
+#### `browser`
+
+The browser to launch, or a provider that leases hosted browsers.
+
+```ts
+web({ browser: 'firefox' }); // default: 'chromium'
+```
+
+- `'chromium'`, `'firefox'`, or `'webkit'`.
+- A `BrowserProvider` leases hosted browsers instead: one per worker slot for
+  the run, or one per attempt ([`WebOptions`](#weboptions)). The engine
+  drives each one as chromium over CDP, whether it is Chromium or another CDP
+  server such as [Lightpanda](/integrations/lightpanda).
+- A provider with `scope: 'attempt'` rides a persistent context, with the
+  limits under [Recovering a CDP transport](#recovering-a-cdp-transport).
+- [Hosted browsers](/browser#hosted-browsers) has the `BrowserProvider`
+  contract and an example provider.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | `browser: provider` together with `connect`. |
+
+#### `viewport`
+
+The initial viewport of every attempt's page.
+
+```ts
+web({ viewport: { width: 390, height: 844 } }); // default: { width: 1280, height: 720 }
+```
+
+`null` emulates no size, so the page fills the browser window
+([`WebOptions`](#weboptions)). [`browser.setViewport`](#setviewport) still
+fixes one.
+
+#### `screencast`
+
+How the engine's own screencast records an attempt that records video.
+
+```ts
+web({ screencast: { size: { width: 800, height: 450 }, quality: 60 } });
+```
+
+- `size` takes whole pixels, each side at least 1. `quality` is an integer.
+- Which attempts record is the config's [`video`](/reference/config#video)
+  mode.
+
+```ts
+/** The engine's screencast of the page: the frame size and the JPEG quality of the frames it encodes. */
+export interface WebScreencastOptions {
+  /** Frame size in pixels; default the viewport's, or the window's under `viewport: null`. A smaller size makes a smaller file. */
+  readonly size?: ViewportSize;
+  /** JPEG quality of each captured frame, 0 through 100; Playwright's default when unset. */
+  readonly quality?: number;
+}
+```
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | Any other `size` or `quality` value, or another key, at config load. The old `web({ video })` spelling is also refused, naming `screencast`. |
+
+#### `connect`
+
+Attaches to a remote browser over CDP instead of launching one locally.
+
+```ts
+web({ connect: { cdpEndpoint: async () => 'ws://127.0.0.1:9222' } });
+```
+
+`reconnectEndpoint` opts into a persistent context; see
+[Recovering a CDP transport](#recovering-a-cdp-transport).
+
+```ts
+interface WebConnectOptions {
+  cdpEndpoint(signal: AbortSignal): string | Promise<string>;
+  reconnectEndpoint?(signal: AbortSignal): string | Promise<string>;
+}
+```
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | A `connect` without `cdpEndpoint`, or with one given as a string, at config load. Also `connect` beside a `browser` provider. |
+
+<a id="recovering-a-cdp-transport" />
+
+##### Recovering a CDP transport
+
+`connect.reconnectEndpoint(signal)` opts into recovery of the same remote
+browser after its CDP transport disconnects. Omit it to keep isolated
+contexts.
+
+The remote browser:
+
+- Every attempt, retries included, needs its own fresh browser from
+  `cdpEndpoint`. One long-lived browser cannot serve a suite.
+- The remote must have only its default context.
+- The host must delete the browser when the attempt ends. Engine cleanup
+  detaches its connection and does not terminate the host's browser.
+- The attempt's first page is the browser's own first tab, navigated to
+  `about:blank`, not a second tab beside it. A page opened later, such as
+  the one `app.restart` opens, is a new tab.
+
+How recovery runs:
+
+- After a disconnect, the next operation calls `reconnectEndpoint` once,
+  within that operation's timeout and abort signal. The resolver must return
+  the existing browser's endpoint.
+- The engine checks the persistent default context ID and the original
+  page's target ID. It refuses a browser that does not expose the default
+  context ID. A missing page or a different context fails the attempt. A
+  matching URL does not select a replacement tab.
+- The engine installs secure-field masking before it publishes each CDP
+  binding. An incompatible Playwright version fails the connection instead of
+  exposing pixels.
+- The original page's frames must keep their closed shadow DOM tracking
+  hooks. Existing closed roots cannot recover without a reload of the
+  application. Mask queries reject any untracked document.
+- Endpoint resolution, CDP attachment, setup, and dispatch share one timeout.
+  Cancelling a concurrent waiter does not cancel the operation that started
+  recovery. Cancelling that recovery owner fails the shared recovery.
+
+| Throws | When |
+| --- | --- |
+| `ENGINE_FAILURE` | A document loaded without the closed shadow DOM hook while disconnected. |
+| `OPERATION_TIMEOUT` | Endpoint resolution, attachment, setup, and dispatch exhausted their shared timeout. |
+| `CANCELLED` | The caller or the attempt cancelled. |
+
+What survives:
+
+- Recovery keeps the page's unsaved state, storage, the attempt's secret
+  taint, and the agent ledger. Dialog and route handlers are reattached.
+- Video recording resumes. A segment lost during the disconnect is gone.
+- Operations already dispatched are never retried.
+- Recovery clears old node references. Observation-derived `tapAt` calls,
+  observation-root swipes, and focused engine keyboard input need a fresh
+  engine observation before they resume.
+- An observation or locator read started before recovery cannot publish
+  references after the connection changes. Each attempt owns its binding and
+  recordings, so late cleanup cannot change a later attempt.
+- The deterministic `browser.mouse` and `browser.keyboard` fixtures stay
+  available without an agent observation. Test code owns its input and can
+  read current geometry and focus with `browser.evaluate` before acting.
+- Code that uses `surfaceOf(engine)` must read its accessors again after
+  recovery. Playwright objects it kept belong to the disconnected transport.
+
+A `browser` provider with `scope: 'attempt'` rides the same persistent
+context, with the same limits. The lease's `cdpEndpoint` provisions the
+attempt's browser, and its `reconnectEndpoint` (else `cdpEndpoint` again)
+reconnects to it. A lease is fresh by the provider's contract, so the engine
+does not compare its context with earlier attempts'. A hosted service may
+restore browsers from one snapshot, which gives new browsers the same
+context id.
+
+To reuse one sign-in across files, keep isolated contexts (no
+`reconnectEndpoint`, no provider `scope: 'attempt'`) and
+[sign in once in a setup test](/authentication#sign-in-once-in-a-setup-test).
+A saved session carries it, not a shared browser.
+
+<Note>
+A persistent context does not support `headers`, `basicAuth`, `userAgent`,
+`locale`, `timezoneId` (see [Options](#options)), `app.clearState`, or
+session state capture and restore. `app.clearState` fails with
+`UNSUPPORTED_CAPABILITY`. `app.restart` remains available.
+</Note>
+
+#### `headers`
+
+Headers added to requests within the app's site, including subdomains.
+
+```ts
+web({ headers: { 'x-preview-token': process.env.PREVIEW_TOKEN ?? '' } });
+```
+
+- A [continued](#route) request bound for the app's site still carries them.
+- `headers` and `basicAuth` are how a test reaches a
+  [protected preview](/web#protected-previews).
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | A `user-agent` entry beside [`userAgent`](#useragent), or an `accept-language` entry beside [`locale`](#locale). |
+
+<Note>
+`headers` enables request routing, which disables the browser's HTTP cache and
+blocks service workers.
+</Note>
+
+#### `basicAuth`
+
+HTTP basic authentication. The browser answers a `401` challenge with these
+credentials on any origin, matching Playwright's `httpCredentials`.
+
+```ts
+import { secrets } from 'e2e';
+
+web({ basicAuth: { username: 'staging', password: secrets.get('staging-password') } });
+```
+
+A `secrets.get(name)` password resolves when each attempt starts and is
+redacted like any configured secret. So is the base64 credential of the
+`Authorization` header it becomes.
+
+```ts
+/** HTTP basic authentication the browser answers a `401` challenge with. */
+export interface WebBasicAuth {
+  /** The user name; `:` is not allowed in one (RFC 7617). */
+  readonly username: string;
+  /** The password, or `secrets.get(name)` for one in `config.secrets`. */
+  readonly password: string | Secret;
+}
+```
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | A `:` in the user name, or an unknown key. |
+
+<Warning>
+The secret protection is text only. Unlike a fill, it withholds no screenshot
+or model pixels, so a page that renders the password on screen is not masked
+in them ([Security rules](/reference/security#secrets-in-engine-options)).
+</Warning>
+
+#### `testIdAttribute`
+
+The attribute that carries an element's test id: what the `testId` query
+(`screen.getByTestId`) resolves and what `SemanticNode.testId` reports.
+
+```ts
+web({ testIdAttribute: 'data-test' }); // default: 'data-testid'
+```
+
+#### `userAgent`
+
+The `User-Agent` every attempt's context sends and `navigator.userAgent`
+reports, for an app that switches into a test mode on a marker in the agent
+string.
+
+```ts
+web({ userAgent: 'Mozilla/5.0 e2e' }); // default: the browser's own
+```
+
+#### `locale`
+
+The locale every attempt's context runs in, a BCP 47 tag: what
+`navigator.language`, `Intl` formatting, and the `Accept-Language` header
+report.
+
+```ts
+web({ locale: 'de-DE' }); // default: the browser's own
+```
+
+#### `timezoneId`
+
+The IANA time zone every attempt's context runs in: what `Date` and `Intl`
+resolve local time against.
+
+```ts
+web({ timezoneId: 'Europe/Berlin' }); // default: the machine's
+```
+
+#### Media emulation
+
+`web({ colorScheme, reducedMotion })` sets the media features every page of
+every attempt reports, as Playwright's context options of the same names do.
+`browser.emulateMedia(media)` changes them for one attempt.
+
+```ts
+web({ colorScheme: 'dark', reducedMotion: 'reduce' }); // default: the browser's own
+await browser.emulateMedia({ colorScheme: 'light' });
+```
+
+- The page's `@media` rules and `matchMedia` read them from the first paint.
+- A persistent context takes the options too: the engine sets them on each
+  page it opens.
+- `emulateMedia` applies for the rest of the attempt, on every open tab and
+  every tab opened after them, through `app.restart()` and `app.clearState()`.
+- It works before the first navigation, so the next `app.open` loads with
+  them.
+- A feature it leaves out keeps its value.
+- A tab the app opens itself gets a test's change as it appears, on a
+  persistent context too, so a script it runs at load may still read the
+  configured values.
+
+```ts
+/** User preferences a page reads through `@media` rules and `matchMedia`. */
+export interface WebMedia {
+  /** `prefers-color-scheme`. */
+  readonly colorScheme?: 'light' | 'dark' | 'no-preference';
+  /** `prefers-reduced-motion`. */
+  readonly reducedMotion?: 'reduce' | 'no-preference';
+}
+```
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | A feature or value outside `WebMedia`, in `web()`. |
+| `INVALID_ARGUMENT` | A feature or value outside `WebMedia`, in `emulateMedia`. |
+
+#### Init scripts
+
+An init script runs in every document before the page's own scripts, in every
+tab and frame. `web({ initScripts })` applies to every test;
+`browser.addInitScript` adds one for the rest of the test.
+
+```ts
+await browser.addInitScript((value) => { Math.random = () => value; }, 0.5);
+await app.open('/raffle');
+```
+
+- A function cannot close over test variables. Pass a JSON `arg` instead.
+- A script added after the page opened runs from the next navigation or
+  reload.
+- `browser.addInitScript` takes the same three forms, or a function with its
+  JSON `arg`. Its overloads are on [`Browser`](#browser-interface).
+
+```ts
+/** JavaScript source, a file relative to the project root, or a function. */
+export type WebInitScript = string | { readonly path: string } | (() => unknown);
+```
+
+### The browser fixture
+
+`browser` is the whole browser, showing one active tab.
+
+- What reads or acts on a page acts on the active tab: `goto`, `reload`,
+  `back`, `forward`, `url`, `title`, `waitForURL`, `locator`, `frameLocator`,
+  `evaluate`, `waitForResponse`, `waitForDownload`, `keyboard`, `mouse`, the
+  `expect(browser)` matchers, and every `screen` query.
+- What belongs to the browser covers every tab: `cookies`, `setCookies`,
+  `route`, `unroute`, `onDialog`, and `addInitScript`.
+- `setViewport` sizes the active tab and every tab opened after it, and
+  `emulateMedia` sets its media the same way.
+- A tab the app opens itself, from a `target="_blank"` link or `window.open`,
+  is not followed. The active tab stays the one the attempt opened. Assert on
+  what that tab shows, or open the link's URL with `browser.goto`.
+- Every `browser` call is a recorded `browser.<method>` step, except
+  `locator` and `frameLocator`. They build a locator without touching the
+  page, and the action or assertion on it is the step.
+- A relative URL resolves against the target's `app.url`, else
+  `APP_URL_REQUIRED`.
+- Declare `requires: ['browser']` in a suite that also runs on other
+  platforms.
+- `expect(browser)` returns the `BrowserExpectation` the engine attaches:
+  `toHaveURL`, `toHaveTitle`, and `toHaveClass`. See
+  [browser matchers](/reference/expect#browser-matchers).
+
+| Member | Returns |
+| --- | --- |
+| [`goto`](#goto) | `Promise<void>` |
+| [`reload`](#reload-back-forward) | `Promise<void>` |
+| [`back`](#reload-back-forward) | `Promise<void>` |
+| [`forward`](#reload-back-forward) | `Promise<void>` |
+| [`url`](#url-title) | `Promise<string>` |
+| [`title`](#url-title) | `Promise<string>` |
+| [`waitForURL`](#waitforurl) | `Promise<void>` |
+| [`locator`](#locator) | `Locator` |
+| [`frameLocator`](#framelocator) | `FrameScreen` |
+| [`evaluate`](#evaluate) | `Promise<T>` |
+| [`addInitScript`](#init-scripts) | `Promise<void>` |
+| [`route`](#route) | `Promise<void>` |
+| [`unroute`](#unroute) | `Promise<void>` |
+| [`waitForResponse`](#waitforresponse) | `Promise<WebResponse>` |
+| [`cookies`](#cookies) | `Promise<Cookie[]>` |
+| [`setCookies`](#setcookies) | `Promise<void>` |
+| [`setViewport`](#setviewport) | `Promise<void>` |
+| [`emulateMedia`](#media-emulation) | `Promise<void>` |
+| [`onDialog`](#ondialog) | `Promise<() => Promise<void>>` |
+| [`waitForDownload`](#waitfordownload) | `Promise<{ path, absolutePath, … }>` |
+| [`keyboard`](#keyboard) | `{ press, down, up, type }` |
+| [`mouse`](#mouse) | `{ move, wheel, down, up }` |
+
+The [config](/reference/config) sets each member's budget:
+
+- `goto`, `reload`, `back`, and `forward`: [`timeout`](/reference/config#timeout),
+  the same budget `app.open()` uses.
+- `waitForURL`: [`assertionTimeout`](/reference/config#assertiontimeout).
+- Every other member: [`actionTimeout`](/reference/config#actiontimeout).
+  `locator` and `frameLocator` touch no page and take none.
+
+A `{ timeout }` option overrides the budget on `goto`, `reload`, `back`,
+`forward`, `waitForResponse`, and `waitForDownload`, capped by the test
+deadline. `url`, `title`, `evaluate`, `addInitScript`, `route`, `unroute`,
+`cookies`, `setCookies`, `setViewport`, `emulateMedia`, `onDialog`,
+`keyboard.*`, and `mouse.*` take no override.
+
+#### `goto`
+
+Navigates the active tab to a URL.
+
+```ts
+await browser.goto('/dashboard', { waitUntil: 'networkidle' }); // default: 'load'
+```
+
+`waitUntil` is `'load'`, `'domcontentloaded'`, or `'networkidle'`.
+
+| Throws | When |
+| --- | --- |
+| `POLICY_DENIED` | A URL whose scheme is not `http:` or `https:`. `about:blank` is admitted. |
+| `APP_URL_REQUIRED` | A relative URL, on a target that declares no `app.url`. |
+| `ACTION_FAILED` | The navigation failed. |
+
+#### `reload`, `back`, `forward`
+
+`reload` reloads the current document. `back` and `forward` navigate browser
+history once.
+
+```ts
+await browser.reload();
+await browser.back({ timeout: 10_000 });
+```
+
+| Throws | When |
+| --- | --- |
+| `ACTION_FAILED` | The navigation failed. |
+
+#### `url`, `title`
+
+Return the active tab's current URL and title.
+
+```ts
+const url = await browser.url();
+const title = await browser.title();
+```
+
+#### `waitForURL`
+
+Waits for the current URL to match, polling every 100 ms. It is the same poll
+as `expect(browser).toHaveURL`.
+
+```ts
+await browser.waitForURL(/\/orders\/\d+$/, { timeout: 15_000 });
+```
+
+- A relative string resolves against the base URL and matches exactly after
+  normalization.
+- A `RegExp` tests the full URL.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | A pattern that is not a string or `RegExp` (a predicate function, say), or an option other than `timeout`, such as Playwright's `waitUntil`. |
+| `ASSERTION_FAILED` | The URL did not match before the timeout. |
+
+#### `locator`
+
+Creates a web-only locator from a Playwright selector.
+
+```ts
+const conditions = browser.locator(
+  '[data-testid="row"] >> nth=2 >> [data-testid="conditions"] > div',
+);
+```
+
+- The selector is CSS by default, XPath with `xpath=` or a leading `//`, and
+  takes `>>` chains, so the example scopes CSS to one row.
+- Use `filter({ has })` for an element that contains another.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_LOCATOR` | An empty selector, or a `*` capture before the last part (`*css=article >> text=Hello`). |
+
+<Note>
+Every `screen` query searches its scope and each closed shadow root the page
+attached under it, with Playwright's own role, name, text, label, and
+attribute matching and each node found once. A control the observed tree
+lists inside a closed root resolves and takes actions and reads. `locator`,
+`frameLocator`, and `filter({ hasText })` keep Playwright's reach and stop at
+a closed root; the [browser guide](/browser#shadow-dom) has the details.
+</Note>
+
+#### `frameLocator`
+
+Creates a screen query scope inside one iframe.
+
+```ts
+const payment = browser.frameLocator('#payment-frame');
+await payment.getByLabel('Card number').fill('4242424242424242');
+```
+
+It returns a `FrameScreen`, a `Screen` whose queries answer from inside the
+frame. Use the frame's `locator` only when the control has no accessible
+name, label, placeholder, or test id. The
+[browser guide](/browser#reach-into-an-iframe) shows when that applies.
+
+```ts
+export interface FrameScreen extends Screen {
+  /** Creates a web-only CSS or XPath locator inside this frame. */
+  locator(selector: string): Locator;
+  /** Creates a screen query scope inside an iframe nested in this frame. */
+  frameLocator(selector: string): FrameScreen;
+}
+```
+
+The errors are the same at the page and inside a frame:
+
+| Throws | When |
+| --- | --- |
+| `INVALID_LOCATOR` | An empty selector, here or in the frame's `locator`. |
+| `LOCATOR_NOT_FOUND` | No frame matches. |
+| `LOCATOR_AMBIGUOUS` | Several frames match. |
+
+#### `evaluate`
+
+Evaluates trusted test code in the page and returns its result.
+
+```ts
+const count = await browser.evaluate(() => document.querySelectorAll('li').length);
+const flag = await browser.evaluate(
+  (name: string) => window.localStorage.getItem(name),
+  'featureFlags',
+);
+const title = await browser.evaluate<string>('document.title');
+```
+
+- The function runs in the page and cannot access variables from the test.
+  e2e serializes it by its source and inlines it into the page, so it must
+  not close over anything outside its own body. Helpers declared inside the
+  body work. Pass outside values through `arg`.
+- A string is evaluated as a single expression, not as statements. If it
+  evaluates to a function, that function is called with `arg`. Else its
+  value is the result.
+- A promise, from either, is awaited.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | `arg` or the return value is not a [`JsonValue`](#jsonvalue). |
+| `EVALUATE_FAILED` | The evaluated code threw. The error carries its message. |
+| `ACTION_FAILED` | A Playwright timeout. |
+| `ENGINE_FAILURE` | The page closed or the context was lost. |
+
+#### `route`
+
+Adds an attempt-scoped network route.
+
+```ts
+await browser.route('**/api/quote', async (route) => {
+  await route.fulfill({ json: { cents: 4200 } });
+});
+```
+
+- The pattern is a string or a `RegExp`, both tested against the full URL. In
+  a string, `*` matches within a path segment, `**` across `/`, `?` any one
+  character, and `\` escapes the next. `unroute` and `waitForResponse` take
+  the same patterns.
+- A route survives `app.restart()`, `app.clearState()`, and session restore.
+- Routes run newest first.
+- The handler must decide exactly once, with `fulfill`, `continue`,
+  `fallback`, or `abort`, each described on `WebRoute` below.
+- A `continue` URL goes through the same rule as `goto`.
+- A handler that throws (a failed `expect` on the request, say) fails the
+  next step with that error, or the attempt at its end when no step follows.
+  A handler still running then gets the cleanup budget to finish. Whatever it
+  throws after the budget is dropped.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | A predicate function as the pattern. Also an option a decision does not take (Playwright's `abort(errorCode)`, a misspelled key): the request is aborted and the next step fails. |
+| `ACTION_FAILED` | The handler decided twice or not at all. |
+| `POLICY_DENIED` | A `continue` URL with a forbidden scheme. |
+| `CLEANUP_TIMEOUT` | A handler outlived the cleanup budget. It fails the attempt. |
+
+```ts
+/**
+ * One of `json`, `body`, or `path`, or none for an empty body. `path` names a
+ * file relative to the project root; its `Content-Type` follows its
+ * extension unless `contentType` or a `content-type` header sets one.
+ */
+export type RouteFulfillResponse = {
+  status?: number;
+  headers?: Record<string, string>;
+  /** Sets the `Content-Type` response header. */
+  contentType?: string;
+} & (
+  | { json: JsonValue; body?: never; path?: never }
+  | { body: string; json?: never; path?: never }
+  | { path: string; json?: never; body?: never }
+  | { body?: never; json?: never; path?: never }
+);
+
+/** What `continue` changes about the request before it goes to the network. */
+export interface RouteContinueOverrides {
+  /** Resolved against the base URL like `goto`; must keep the request's scheme. */
+  url?: string;
+  /** Request method. */
+  method?: string;
+  /** Replaces every request header; the configured `headers` for the app's site are added on top. */
+  headers?: Record<string, string>;
+  /** Request body. */
+  postData?: string;
+}
+
+export interface WebRoute {
+  /** The intercepted request. */
+  readonly request: {
+    readonly url: string;
+    readonly method: string;
+    readonly headers: Readonly<Record<string, string>>;
+    readonly postData?: string;
+  };
+  /** Fulfills the intercepted request once. */
+  fulfill(response: RouteFulfillResponse): Promise<void>;
+  /** Sends the intercepted request to the network once, skipping every other route. */
+  continue(overrides?: RouteContinueOverrides): Promise<void>;
+  /** Hands the intercepted request to the route registered before this one, or the network when none matches. */
+  fallback(): Promise<void>;
+  /** Aborts the intercepted request once. */
+  abort(): Promise<void>;
+}
+```
+
+#### `unroute`
+
+Removes the attempt-scoped routes that match a pattern, in the
+[`route`](#route) pattern syntax.
+
+```ts
+await browser.unroute('**/api/quote');
+```
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | A predicate function as the pattern. |
+
+#### `waitForResponse`
+
+Waits for a response that matches a pattern, in the [`route`](#route) pattern
+syntax.
+
+```ts
+const response = await browser.waitForResponse('**/api/orders');
+expect(response.status).toBe(201);
+```
+
+- The deadline bounds the match: the response resolves as soon as its headers
+  arrive.
+- `text()` and `json()` wait for the body on a budget of their own,
+  `config.actionTimeout` capped by the test deadline.
+- `url`, `status`, and `headers` are always readable.
+- A genuinely empty body reads as `''`.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | A predicate function as the pattern. |
+| `ACTION_FAILED` | Nothing matches inside the deadline. From `text()` and `json()`: a body still streaming when their budget runs out, or a body the browser could not read (a connection reset short of the declared `Content-Length`, a request the page aborted, or a redirect, whose body the browser never keeps), instead of an empty string. |
+
+```ts
+export interface WebResponse {
+  /** Response URL. */
+  readonly url: string;
+  /** HTTP status. */
+  readonly status: number;
+  /** Response headers, lower-cased names. */
+  readonly headers: Readonly<Record<string, string>>;
+  /** Waits for the body and parses it as JSON. */
+  json<T = unknown>(): Promise<T>;
+  /** Waits for the body and reads it as text. */
+  text(): Promise<string>;
+}
+```
+
+#### `cookies`
+
+Returns the cookies visible to the current context.
+
+```ts
+const cookies = await browser.cookies();
+```
+
+#### `setCookies`
+
+Validates every cookie, then sets them.
+
+```ts
+await browser.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }]);
+```
+
+- A relative `url` resolves against the base URL, as `goto` resolves it.
+- For the `domain` form the scheme follows the base URL, and a leading `.` is
+  stripped.
+
+| Throws | When |
+| --- | --- |
+| `POLICY_DENIED` | An unparseable target or a forbidden scheme. Nothing is set. |
+
+```ts
+export interface CookieFields {
+  /** Cookie name. */
+  name: string;
+  /** Cookie value. */
+  value: string;
+  /** Unix timestamp in whole seconds. */
+  expires?: number;
+  /** HttpOnly flag. */
+  httpOnly?: boolean;
+  /** Secure flag. */
+  secure?: boolean;
+  /** SameSite attribute. */
+  sameSite?: 'Strict' | 'Lax' | 'None';
+}
+
+/** `url`, or `domain` with an optional `path`, never both. */
+export type Cookie = CookieFields &
+  (
+    | { url: string; domain?: never; path?: never }
+    | { url?: never; domain: string; path?: string }
+  );
+```
+
+#### `setViewport`
+
+Sets the viewport size and records the new size on the report.
+
+```ts
+await browser.setViewport({ width: 390, height: 844 });
+await app.open('/');
+```
+
+- It works before the first navigation too, as Playwright's
+  `setViewportSize` does. The next `app.open` loads at that size, so a
+  phone-sized test never renders the desktop layout first.
+- The size holds for the rest of the attempt, through `app.restart()` and
+  `app.clearState()`.
+
+#### `onDialog`
+
+Registers an attempt-scoped handler for native dialogs and returns an
+unsubscribe function.
+
+```ts
+const off = await browser.onDialog('accept');
+await screen.getByRole('button', 'Delete').tap();
+await off();
+```
+
+- The handler is `'accept'`, `'dismiss'`, or a function that receives the
+  `Dialog`.
+- A function handler must call `accept` or `dismiss`. One that does neither
+  has the dialog dismissed, as an unhandled dialog does.
+- A handler that throws fails the next step with its error, or the attempt
+  at its end when no step follows. One that throws before answering has its
+  dialog dismissed.
+
+The errors surface on the next step, not on `onDialog`:
+
+| Throws | When |
+| --- | --- |
+| `APP_NOT_OPEN` | A function handler answered neither way, or no handler took the dialog. |
+| `ASSERTION_FAILED` | The handler's `expect` failed. |
+| `ENGINE_FAILURE` | The handler threw an unclassified error. |
+
+```ts
+/** A native dialog as a test's handler sees it. */
+export interface Dialog {
+  /** The native dialog kind, independent of its message. */
+  readonly type: 'alert' | 'confirm' | 'prompt' | 'beforeunload';
+  /** The dialog's text. */
+  readonly message: string;
+  /** Accepts the dialog once. */
+  accept(text?: string): Promise<void>;
+  /** Dismisses the dialog once. */
+  dismiss(): Promise<void>;
+}
+
+export type DialogHandler = 'accept' | 'dismiss' | ((dialog: Dialog) => void | Promise<void>);
+```
+
+#### `waitForDownload`
+
+Runs a trigger and waits for the download it starts.
+
+```ts
+const file = await browser.waitForDownload(() =>
+  screen.getByRole('link', 'Export CSV').tap(),
+);
+```
+
+- It registers the file as a `download` artifact and returns its relative
+  `path`, the runner-side `absolutePath`, and `suggestedFilename`.
+- Use `absolutePath` with file APIs to inspect the contents, including on a
+  hosted browser.
+- On a hosted browser the file comes back through the provider's
+  [`downloads`](/browser#downloads-on-the-provider).
+- The wait includes the trigger's own time.
+
+| Throws | When |
+| --- | --- |
+| `ACTION_FAILED` | The download did not complete in time. A trigger that resolved in time but started no download fails with `no download started within <n>ms; the trigger resolved after <m>ms`. |
+
+A trigger still running at the timeout fails with the step timeout. One that
+throws fails with its own error.
+
+#### `keyboard`
+
+Viewport-level keyboard input, for whatever has focus.
+
+```ts
+await browser.keyboard.press('Escape');
+await browser.keyboard.type('hello');
+```
+
+- `type(text)` types plain text only, never a `Secret`.
+- Prefer `locator.press` and `locator.fill` when a target exists.
+- [`Browser`](#browser-interface) describes each method.
+
+#### `mouse`
+
+Viewport-level pointer input from test code, independent of agent
+observations.
+
+```ts
+await browser.mouse.move(120, 240);
+await browser.mouse.down();
+await browser.mouse.move(320, 240);
+await browser.mouse.up();
+```
+
+[`Browser`](#browser-interface) describes each method, `wheel` included.
+
 ## Installing browsers
+
+The package pins `playwright-core` to an exact version, so the engine always
+runs the Playwright it was tested against. An app that depends on Playwright
+itself keeps its own copy. The two share a browser cache only when their
+versions match.
 
 A missing browser downloads once per run, before the run's clock starts. To
 install browsers as their own step, in CI or a container image, run the
-package's command. It installs the browsers for the Playwright version the
-engine pins:
+package's command. It installs the browsers for the engine's pinned
+Playwright:
 
 <CodeGroup>
 ```bash npm
@@ -45,11 +915,79 @@ bunx @e2e-dev/web install chromium --with-deps
 ```
 </CodeGroup>
 
-Name any of `chromium`, `firefox`, and `webkit`; with none named it installs
-`chromium`. `--with-deps` also installs the system libraries the browsers need
-on Linux. The command exits with the installer's exit code.
+- Name any of `chromium`, `firefox`, and `webkit`. With none named it
+  installs `chromium`.
+- `--with-deps` also installs the system libraries the browsers need on
+  Linux.
+- The command exits with the installer's exit code.
 
-## Options
+## Semantic capture recovery
+
+When the semantic reader times out, agent observations can recover with a
+fresh viewport screenshot.
+
+- Playwright runs a new secure-field mask sweep across every reachable frame,
+  including open and closed shadow roots. Every mask probe must succeed.
+- The observation reports unavailable semantics and clears earlier node
+  references.
+- Recovery requires time left in the operation budget and permission from the
+  runner. `act` permits it before a secret fill; judgments also require
+  `vision: true` or `'only'`.
+- Failed masking, cancellation, and hard engine errors still stop the
+  observation.
+
+When fallback is permitted, the reader reserves one quarter of the remaining
+observation budget, capped at two seconds, for the screenshot. The deadline
+covers the page walk, metadata and element readback, and nested frames.
+
+Semantic metadata crosses the Playwright connection as one JSON string, to
+cut serialization overhead. Actions still use the live element handles
+captured with that metadata. A page that replaces `JSON.stringify`, or adds
+`toJSON` methods to object or array prototypes, gets structured transfer.
+Cleanup does not wait for stalled protocol replies. An abandoned reader
+cannot reuse node IDs or publish handles over a newer observation.
+
+## surfaceOf
+
+Returns the live Playwright surface of a `web()` handle, for a
+[custom executor](/executors#driving-the-page-yourself) that drives the page
+itself.
+
+```ts
+import { web, surfaceOf } from '@e2e-dev/web';
+
+const engine = web();
+const live = surfaceOf(engine);   // PlaywrightLiveSurface | undefined
+live!.page();                     // the Page of the current attempt
+live!.context();                  // its BrowserContext
+```
+
+- It returns `undefined` for a handle from another package.
+- Direct Playwright calls are not recorded as steps.
+- After [CDP recovery](#recovering-a-cdp-transport), read the accessors
+  again.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_STATE` | An accessor called outside an active attempt. |
+
+## Types
+
+The package exports these types for typing config helpers and fixtures:
+`WebOptions`, `WebMedia`, `WebScreencastOptions`, `WebConnectOptions`,
+`WebBasicAuth`, `WebInitScript`, `BrowserName`, `BrowserProvider`,
+`BrowserProviderScope`, `BrowserRequest`, `BrowserLease`,
+`BrowserReleaseContext`, `BrowserProviderDownloads`,
+`BrowserDownloadContext`, `PlaywrightLiveSurface`, `Browser`, `FrameScreen`,
+`BrowserExpectation`, `WebRoute`, `RouteFulfillResponse`,
+`RouteContinueOverrides`, `WebResponse`, `Cookie`, `CookieFields`, `Dialog`,
+and `DialogHandler`.
+
+The runtime exports are `web`, [`surfaceOf`](#surfaceof), and `test`,
+`describe`, `beforeEach`, `afterEach`, `beforeAll`, and `afterAll`, typed
+with the `browser` fixture.
+
+### `WebOptions`
 
 ```ts
 /**
@@ -132,149 +1070,9 @@ export interface WebOptions {
   /** Scripts every document runs before the page's own. See [Init scripts](#init-scripts). */
   readonly initScripts?: readonly WebInitScript[];
 }
-
-/** JavaScript source, a file relative to the project root, or a function. */
-export type WebInitScript = string | { readonly path: string } | (() => unknown);
-
-/** HTTP basic authentication the browser answers a `401` challenge with. */
-export interface WebBasicAuth {
-  /** The user name; `:` is not allowed in one (RFC 7617). */
-  readonly username: string;
-  /** The password, or `secrets.get(name)` for one in `config.secrets`. */
-  readonly password: string | Secret;
-}
-
-/** The engine's screencast of the page: the frame size and the JPEG quality of the frames it encodes. */
-export interface WebScreencastOptions {
-  /** Frame size in pixels; default the viewport's, or the window's under `viewport: null`. A smaller size makes a smaller file. */
-  readonly size?: ViewportSize;
-  /** JPEG quality of each captured frame, 0 through 100; Playwright's default when unset. */
-  readonly quality?: number;
-}
 ```
 
-The app a web target opens is the target's `app`, not an engine option:
-`targets: [{ engine: web(), app: { url } }]`, documented under
-[the app under test](/reference/config#the-app-under-test). A `web()` target
-needs `app.url` and refuses the device keys (`bundleId`, `appPath`,
-`launchArguments`, `permissions`); `web({ url })` or any other app key on
-`web()` is an unknown key, `INVALID_CONFIG`.
-A target with `app.url` is a `browser` target, so `requires: ['browser']`
-selects web targets.
-
-`connect` needs chromium and `cdpEndpoint`, a resolver `(signal) => url`, as
-is `reconnectEndpoint`; a `connect` without `cdpEndpoint`, or one given as a
-string, is `INVALID_CONFIG` at config load. A `browser` provider object leases hosted
-browsers and releases them when the run or the attempt ends; see
-[Hosted browsers](/browser#hosted-browsers) for the `BrowserProvider`
-contract and an example provider. `browser: provider` together with
-`connect` is `INVALID_CONFIG`, and so is an option `web()` does not take, or
-an unknown key inside `connect` or `basicAuth`, naming the nearest known key
-when it is a likely typo (`viewprt` is `viewport`) and every key otherwise. `:` is not allowed in the `basicAuth` user name.
-The `basicAuth` password is a string or `secrets.get(name)`: a secret the
-engine resolves when each attempt starts, redacted like any configured one,
-and so is the base64 credential of the `Authorization` header it becomes.
-That protection is text only: unlike a fill, it withholds no screenshot or
-model pixels, so a page that renders the password on screen is not masked in
-them ([Security rules](/reference/security#secrets-in-engine-options)).
-
-`headers` and `basicAuth` are how a test reaches a [protected preview](/web#protected-previews).
-
-`screencast` shapes the recording, not which attempts record: that is the
-config's [`video`](/reference/config#video) mode. `size` takes whole pixels,
-each side at least 1, and `quality` an integer from 0 through 100; anything
-else, or another key, is `INVALID_CONFIG` at config load. The old
-`web({ video })` spelling is `INVALID_CONFIG` naming `screencast`.
-
-### Recovering a CDP transport
-
-`connect.reconnectEndpoint(signal)` opts into recovery of the same remote
-browser after its CDP transport disconnects. Every attempt, retries included,
-needs its own fresh browser from `cdpEndpoint`; one long-lived browser cannot
-serve a suite.
-
-```ts
-interface WebConnectOptions {
-  cdpEndpoint(signal: AbortSignal): string | Promise<string>;
-  reconnectEndpoint?(signal: AbortSignal): string | Promise<string>;
-}
-```
-
-The remote must have only its default context, and the host must delete the
-browser when the attempt ends. Engine cleanup detaches its connection; it does
-not terminate the host's browser.
-
-To reuse one sign-in across files, keep isolated contexts (no
-`reconnectEndpoint`, no provider `scope: 'attempt'`) and
-[sign in once in a setup test](/authentication#sign-in-once-in-a-setup-test);
-a saved session, not a shared browser, carries it.
-
-After a disconnect, the next operation calls `reconnectEndpoint` once, bounded
-by that operation's timeout and abort signal. This resolver must return the
-existing browser's endpoint. The engine verifies the persistent default context
-ID and the original page's target ID. It refuses browsers that do not expose
-the default context ID. A missing page or a different context fails the attempt.
-A URL match is insufficient to select a replacement tab.
-The engine installs secure-field masking before publishing each CDP binding;
-an incompatible Playwright version fails the connection instead of exposing pixels.
-Recovery also requires the original page's frames to retain their closed shadow
-DOM tracking hooks. If a document loaded without that hook while disconnected,
-recovery fails with `ENGINE_FAILURE`: existing closed roots cannot be recovered
-without reloading the application. Mask queries reject any untracked document.
-
-Endpoint resolution, CDP attachment, setup, and dispatch share one timeout.
-Exhausting it raises `OPERATION_TIMEOUT`; caller or attempt cancellation raises
-`CANCELLED`. Cancelling a concurrent waiter does not cancel the operation that
-started recovery. Cancelling that recovery owner fails the shared recovery.
-
-Recovery clears old node references. Observation-derived `tapAt` calls,
-observation-root swipes, and focused engine keyboard input require a fresh
-engine observation before they resume.
-An observation or locator read started before recovery cannot publish references
-after the connection changes. Each attempt owns its binding and recordings, so
-late cleanup cannot change a later attempt.
-The deterministic `browser.mouse` and `browser.keyboard` fixtures remain available
-without an agent observation. Test code owns its input and can read current
-geometry and focus with `browser.evaluate` before acting.
-
-Recovery preserves the page's unsaved state, storage, the attempt's secret
-taint, and the agent ledger. Operations already dispatched
-are never retried. Dialog and route handlers are reattached. Video recording
-resumes, but a segment lost during the disconnect cannot be recovered.
-Code using `surfaceOf(engine)` must read its accessors again after recovery;
-previously retained Playwright objects belong to the disconnected transport.
-
-Persistent recovery does not support `headers`, `basicAuth`, `userAgent`, `locale`, `timezoneId`, `app.clearState`,
-or session state capture and restore. `app.restart` remains available. Omit
-`reconnectEndpoint` to keep ordinary isolated contexts and the existing behavior.
-A `browser` provider with `scope: 'attempt'` rides the same persistent
-context, with the same limits: the lease's `cdpEndpoint` provisions the
-attempt's browser and its `reconnectEndpoint` (else `cdpEndpoint` again)
-reconnects to it. A lease is fresh by the provider's contract, so the engine
-does not compare its context with earlier attempts': a hosted service may
-restore browsers from one snapshot, which gives new browsers the same
-context id.
-
-The attempt's first page is the browser's own first tab, navigated to
-`about:blank`, rather than a second tab beside it; a page opened after that,
-such as the one `app.restart` opens, is a new tab.
-
-## The active tab
-
-`browser` is the whole browser, showing one active tab. What reads or acts on
-a page acts on that tab: `goto`, `reload`, `back`, `forward`, `url`, `title`,
-`waitForURL`, `locator`, `frameLocator`, `evaluate`, `waitForResponse`,
-`waitForDownload`, `keyboard`, `mouse`, the `expect(browser)` matchers, and
-every `screen` query. What belongs to the browser covers every tab:
-`cookies`, `setCookies`, `route`, `unroute`, `onDialog`, and `addInitScript`. `setViewport`
-sizes the active tab and every tab opened after it, and `emulateMedia` sets
-its media the same way.
-
-A tab the app opens itself, from a `target="_blank"` link or `window.open`,
-is not followed: the active tab stays the one the attempt opened, so assert
-on what that tab shows, or open the link's URL with `browser.goto`.
-
-## The browser fixture
+### `Browser` interface
 
 ```ts
 /**
@@ -378,340 +1176,6 @@ export interface Browser extends Expectable<BrowserExpectation> {
 }
 ```
 
-| Member | Default timeout |
-| --- | --- |
-| `goto`, `reload`, `back`, `forward` | `config.timeout`, 120000 ms, the same budget `app.open()` uses; `{ timeout }` overrides, capped by the test deadline |
-| `waitForResponse`, `waitForDownload` | `config.actionTimeout`, 30000 ms; `{ timeout }` overrides, capped by the test deadline |
-| `waitForURL` | `config.assertionTimeout`, 5000 ms |
-| `url`, `title`, `evaluate`, `addInitScript`, `route`, `unroute`, `cookies`, `setCookies`, `setViewport`, `emulateMedia`, `onDialog`, `keyboard.*`, `mouse.*` | `config.actionTimeout`, 30000 ms, not overridable |
-
-Every `browser` call is a recorded `browser.<method>` step, except `locator` and
-`frameLocator`: they build a locator without touching the page, and the
-action or assertion on it is the step. A relative URL resolves against the
-target's `app.url`, else `APP_URL_REQUIRED`. Declare `requires: ['browser']`
-in a suite that also runs on other platforms.
-
-### Navigation
-
-`goto` defaults `waitUntil` to `'load'` and throws `POLICY_DENIED` for a
-URL whose scheme is not `http:` or `https:` (`about:blank` is admitted). `waitForURL` polls every 100 ms; a
-relative string resolves against the base URL and matches exactly after
-normalization, a `RegExp` tests the full URL, anything else (a predicate
-function, say) is `INVALID_ARGUMENT`, and a timeout is `ASSERTION_FAILED`. It
-takes `timeout` only: another key, such as Playwright's `waitUntil`, is
-`INVALID_ARGUMENT`. The other navigations throw `ACTION_FAILED`.
-
-```ts
-await browser.goto('/dashboard', { waitUntil: 'networkidle' });
-await browser.waitForURL(/\/orders\/\d+$/, { timeout: 15_000 });
-```
-
-### Locators and frames
-
-`locator` and `frameLocator`, at the page or inside a frame, throw
-`INVALID_LOCATOR` for an empty selector. `frameLocator` throws
-`LOCATOR_NOT_FOUND` for a missing frame and `LOCATOR_AMBIGUOUS` for several.
-The selector is a Playwright selector: CSS by default, XPath with `xpath=` or
-a leading `//`, and `>>` chains, so
-`browser.locator('[data-testid="row"] >> nth=2 >> [data-testid="conditions"] > div')`
-scopes CSS to one row. A `*` capture before the last part
-(`*css=article >> text=Hello`) is `INVALID_LOCATOR`: use
-`filter({ has })` for an element that contains another.
-
-```ts
-const payment = browser.frameLocator('#payment-frame');
-await payment.getByLabel('Card number').fill('4242424242424242');
-```
-
-`frameLocator` returns a `FrameScreen`: a `Screen` whose queries answer from
-inside the frame, plus the two web-only escape hatches scoped to it.
-
-```ts
-export interface FrameScreen extends Screen {
-  /** Creates a web-only CSS or XPath locator inside this frame. */
-  locator(selector: string): Locator;
-  /** Creates a screen query scope inside an iframe nested in this frame. */
-  frameLocator(selector: string): FrameScreen;
-}
-```
-
-Reach for the frame's `locator` only when the control has no accessible
-name, label, placeholder, or test id; the [browser guide](/browser#reach-into-an-iframe)
-shows when that applies.
-
-Every `screen` query searches its scope and each closed shadow root the page
-attached under it, with Playwright's own role, name, text, label, and
-attribute matching and each node found once, so a control the observed tree
-lists inside a closed root resolves and takes actions and reads. `locator`,
-`frameLocator`, and `filter({ hasText })` keep Playwright's reach and stop at
-a closed root; the [browser guide](/browser#shadow-dom) has the details.
-
-### evaluate
-
-The function runs in the page and cannot access variables from the test.
-It is serialized by its source and inlined into the page, so it must not
-close over anything outside its own body; helpers declared inside the body
-work. Pass outside values through `arg`. Both `arg` and the return value
-must be `JsonValue`, otherwise the call fails with `INVALID_ARGUMENT`.
-
-A string is evaluated as a single expression, not as statements. If it
-evaluates to a function, that function is called with `arg`; otherwise its
-value is the result. A promise, from either, is awaited.
-
-An exception in the evaluated code is `EVALUATE_FAILED` with its message. A
-Playwright timeout is `ACTION_FAILED`; a closed page or lost context is
-`ENGINE_FAILURE`.
-
-```ts
-const count = await browser.evaluate(() => document.querySelectorAll('li').length);
-const flag = await browser.evaluate(
-  (name: string) => window.localStorage.getItem(name),
-  'featureFlags',
-);
-const title = await browser.evaluate<string>('document.title');
-```
-
-### Init scripts
-
-An init script runs in every document before the page's own scripts, in every
-tab and frame. `web({ initScripts })` applies to every test;
-`browser.addInitScript` adds one for the rest of the test.
-
-A script is JavaScript source, a `{ path }` relative to the project root, or a
-function. A function cannot close over test variables; pass a JSON `arg`
-instead.
-
-```ts
-await browser.addInitScript((value) => { Math.random = () => value; }, 0.5);
-await app.open('/raffle');
-```
-
-A script added after the page opened runs from the next navigation or reload.
-
-### Routing
-
-`route`, `unroute`, and `waitForResponse` take a string pattern (`*` within a
-path segment, `**` across `/`, `?` for any one character, `\` to escape the
-next) or a `RegExp`, both tested against the full URL; a predicate function
-is `INVALID_ARGUMENT`. A route survives `app.restart()`, `app.clearState()`,
-and session restore.
-The handler must decide exactly once with `fulfill`, `continue`, `fallback`,
-or `abort`; deciding twice or not at all is `ACTION_FAILED`. Routes run newest
-first. `continue` sends the request to the network and no other route sees
-it; its `url` resolves against the base URL and goes through the same rule as
-`goto`, so a forbidden scheme is `POLICY_DENIED`, and it must keep the
-request's scheme. `headers` replaces every request header. The configured
-`headers` still ride a continued request bound for the app's site, and only
-that site. `fallback` hands the request to the route registered before this
-one, or the network when none matches. `fulfill` takes one of `json`, `body`,
-or `path`, a file relative to the project root whose extension sets the
-`Content-Type` unless `contentType` or a `content-type` header does. An option
-a decision does not take (Playwright's `abort(errorCode)`, a misspelled key) is
-`INVALID_ARGUMENT`: the request is aborted and the next step fails.
-
-A `waitForResponse` that nothing matches inside the deadline is
-`ACTION_FAILED`. The deadline bounds the match: the response resolves as soon
-as its headers arrive, and `text()` and `json()` wait for the body on a budget
-of their own, `config.actionTimeout` capped by the test deadline; a body still
-streaming when it runs out is `ACTION_FAILED`. `url`, `status`, and `headers`
-are always readable, and a body the
-browser could not read (a connection reset short of the declared
-`Content-Length`, a request the page aborted, or a redirect, whose body the
-browser never keeps) rejects `text()` and `json()` with `ACTION_FAILED`
-instead of an empty string. A genuinely empty body reads as `''`. A handler
-that throws (a failed `expect` on the request, say) fails the next step with
-that error, or the attempt at its end when no step follows; a handler still
-running then gets the cleanup budget to finish. One that outlives the budget
-fails the attempt with `CLEANUP_TIMEOUT`, and whatever it throws afterwards is
-dropped.
-
-```ts
-await browser.route('**/api/quote', async (route) => {
-  await route.fulfill({ json: { cents: 4200 } });
-});
-
-const response = await browser.waitForResponse('**/api/orders');
-expect(response.status).toBe(201);
-```
-
-```ts
-/**
- * One of `json`, `body`, or `path`, or none for an empty body. `path` names a
- * file relative to the project root; its `Content-Type` follows its
- * extension unless `contentType` or a `content-type` header sets one.
- */
-export type RouteFulfillResponse = {
-  status?: number;
-  headers?: Record<string, string>;
-  /** Sets the `Content-Type` response header. */
-  contentType?: string;
-} & (
-  | { json: JsonValue; body?: never; path?: never }
-  | { body: string; json?: never; path?: never }
-  | { path: string; json?: never; body?: never }
-  | { body?: never; json?: never; path?: never }
-);
-
-/** What `continue` changes about the request before it goes to the network. */
-export interface RouteContinueOverrides {
-  /** Resolved against the base URL like `goto`; must keep the request's scheme. */
-  url?: string;
-  /** Request method. */
-  method?: string;
-  /** Replaces every request header; the configured `headers` for the app's site are added on top. */
-  headers?: Record<string, string>;
-  /** Request body. */
-  postData?: string;
-}
-
-export interface WebRoute {
-  /** The intercepted request. */
-  readonly request: {
-    readonly url: string;
-    readonly method: string;
-    readonly headers: Readonly<Record<string, string>>;
-    readonly postData?: string;
-  };
-  /** Fulfills the intercepted request once. */
-  fulfill(response: RouteFulfillResponse): Promise<void>;
-  /** Sends the intercepted request to the network once, skipping every other route. */
-  continue(overrides?: RouteContinueOverrides): Promise<void>;
-  /** Hands the intercepted request to the route registered before this one, or the network when none matches. */
-  fallback(): Promise<void>;
-  /** Aborts the intercepted request once. */
-  abort(): Promise<void>;
-}
-
-export interface WebResponse {
-  /** Response URL. */
-  readonly url: string;
-  /** HTTP status. */
-  readonly status: number;
-  /** Response headers, lower-cased names. */
-  readonly headers: Readonly<Record<string, string>>;
-  /** Waits for the body and parses it as JSON. */
-  json<T = unknown>(): Promise<T>;
-  /** Waits for the body and reads it as text. */
-  text(): Promise<string>;
-}
-```
-
-### Cookies and viewport
-
-`setCookies` validates every cookie before setting any; an unparseable
-target or a forbidden scheme is `POLICY_DENIED` and nothing is set. A
-relative `url` resolves against the base URL, as `goto` resolves it. For the
-`domain` form the scheme follows the base URL and a leading `.` is stripped.
-`setViewport` records the new size on the report. It works before the first
-navigation too, as Playwright's `setViewportSize` does: the next `app.open`
-loads at that size, so a phone-sized test never renders the desktop layout first.
-The size holds for the rest of the attempt, through `app.restart()` and
-`app.clearState()`.
-
-```ts
-export interface CookieFields {
-  /** Cookie name. */
-  name: string;
-  /** Cookie value. */
-  value: string;
-  /** Unix timestamp in whole seconds. */
-  expires?: number;
-  /** HttpOnly flag. */
-  httpOnly?: boolean;
-  /** Secure flag. */
-  secure?: boolean;
-  /** SameSite attribute. */
-  sameSite?: 'Strict' | 'Lax' | 'None';
-}
-
-/** `url`, or `domain` with an optional `path`, never both. */
-export type Cookie = CookieFields &
-  (
-    | { url: string; domain?: never; path?: never }
-    | { url?: never; domain: string; path?: string }
-  );
-```
-
-```ts
-await browser.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }]);
-```
-
-### Media emulation
-
-`web({ colorScheme, reducedMotion })` sets the media features every page
-of every attempt reports, as Playwright's context options of the same names
-do. The page's `@media` rules and `matchMedia` read them from the first
-paint. A persistent context takes them too: the engine sets them on each
-page it opens. Each defaults to the browser's own.
-
-`browser.emulateMedia(media)` changes them for the rest of the attempt, on
-every open tab and every tab opened after them, through `app.restart()` and
-`app.clearState()`. It works before the first navigation, so the next
-`app.open` loads with them. A feature it leaves out keeps its value. A tab
-the app opens itself gets a test's change as it appears, on a persistent
-context too, so a script it runs at load may still read the configured
-values. A feature or value outside `WebMedia` is `INVALID_CONFIG` in `web()` and
-`INVALID_ARGUMENT` in `emulateMedia`.
-
-```ts
-/** User preferences a page reads through `@media` rules and `matchMedia`. */
-export interface WebMedia {
-  /** `prefers-color-scheme`. */
-  readonly colorScheme?: 'light' | 'dark' | 'no-preference';
-  /** `prefers-reduced-motion`. */
-  readonly reducedMotion?: 'reduce' | 'no-preference';
-}
-```
-
-### Dialogs and downloads
-
-A function handler must call `accept` or `dismiss`; one that does neither
-has the dialog dismissed and fails the next step with `APP_NOT_OPEN`, as an
-unhandled dialog does. One that throws fails the next step, or the attempt at
-its end when no step follows, with its error: a failed `expect` stays
-`ASSERTION_FAILED`, an unclassified throw is `ENGINE_FAILURE`.
-`waitForDownload` registers the file as a `download`
-artifact and returns its relative `path`, readable runner-side `absolutePath`,
-and `suggestedFilename`. Use `absolutePath` with file APIs to inspect its
-contents, including on a hosted browser. It throws `ACTION_FAILED` when it
-does not complete in time. A
-trigger that resolves in time but starts no download fails with
-`no download started within <n>ms; the trigger resolved after <m>ms`, where
-the wait includes the trigger's own time. A trigger still running at the
-timeout fails with the step timeout, and one that throws with its own error.
-On a hosted browser the file comes back through the provider's
-[`downloads`](/browser#downloads-on-the-provider).
-
-```ts
-/** A native dialog as a test's handler sees it. */
-export interface Dialog {
-  /** The dialog's text. */
-  readonly message: string;
-  /** Accepts the dialog once. */
-  accept(text?: string): Promise<void>;
-  /** Dismisses the dialog once. */
-  dismiss(): Promise<void>;
-}
-```
-
-```ts
-const off = await browser.onDialog('accept');
-await screen.getByRole('button', 'Delete').tap();
-await off();
-
-const file = await browser.waitForDownload(() =>
-  screen.getByRole('link', 'Export CSV').tap(),
-);
-```
-
-A handler that throws before answering has its dialog dismissed, and its error fails the next step.
-
-### keyboard and mouse
-
-Both namespaces are viewport-level. Prefer `locator.press` and
-`locator.fill` when a target exists. `keyboard.type` takes plain text only,
-never a `Secret`.
-
 ### JsonValue
 
 ```ts
@@ -725,59 +1189,8 @@ export type JsonValue =
   | readonly JsonValue[];
 ```
 
-## Semantic capture recovery
+## Related
 
-When the semantic reader times out, agent observations can recover using a
-fresh viewport screenshot. Playwright runs a new secure-field mask sweep
-across every reachable frame, including open and closed shadow roots. Every
-mask probe must succeed. The observation explicitly reports unavailable
-semantics and clears earlier node references.
-
-Recovery requires time left in the operation budget and permission from the
-runner. `act` permits it before a secret fill; judgments also require
-`vision: true` or `'only'`. Failed masking, cancellation, and hard engine
-errors still stop the observation.
-
-When fallback is permitted, the reader reserves one quarter of the remaining
-observation budget, capped at two seconds, for the screenshot. The deadline
-covers the page walk, metadata and element readback, and nested frames.
-Semantic metadata crosses the Playwright connection as one JSON string to
-reduce serialization overhead. Actions still use the live element handles
-captured with that metadata. Pages that replace `JSON.stringify` or add
-`toJSON` methods to object or array prototypes use structured transfer.
-Cleanup does not wait for stalled protocol replies. An abandoned reader
-cannot reuse node IDs or publish handles over a newer observation.
-
-## Exported types
-
-`WebOptions`, `WebMedia`, `WebScreencastOptions`, `WebConnectOptions`, `WebBasicAuth`, `WebInitScript`, `BrowserName`,
-`BrowserProvider`, `BrowserProviderScope`, `BrowserRequest`, `BrowserLease`,
-`BrowserReleaseContext`, `BrowserProviderDownloads`, `BrowserDownloadContext`,
-`PlaywrightLiveSurface`, `Browser`, `FrameScreen`,
-`BrowserExpectation`, `WebRoute`, `RouteFulfillResponse`, `RouteContinueOverrides`, `WebResponse`,
-`Cookie`, `CookieFields`, `Dialog`, and `DialogHandler` are exported from the
-package for typing config helpers and fixtures. The runtime exports are
-`web`, [`surfaceOf`](#surfaceof), and `test`, `describe`, `beforeEach`,
-`afterEach`, `beforeAll`, and `afterAll`, typed with the `browser` fixture.
-
-## expect(browser)
-
-`expect(browser)` returns the `BrowserExpectation` the engine attaches: `toHaveURL`,
-`toHaveTitle`, and `toHaveClass`. See [browser matchers](/reference/expect#browser-matchers).
-
-## surfaceOf
-
-```ts
-import { web, surfaceOf } from '@e2e-dev/web';
-
-const engine = web();
-const live = surfaceOf(engine);   // PlaywrightLiveSurface | undefined
-live!.page();                     // the Page of the current attempt
-live!.context();                  // its BrowserContext
-```
-
-Use `surfaceOf(handle)` in a [custom executor](/executors#driving-the-page-yourself)
-to access the current Playwright page and context directly. It returns
-`undefined` for a handle from another package. The accessors throw
-`INVALID_STATE` outside an active attempt. Direct Playwright calls are not
-recorded as steps.
+The [browser guide](/browser) shows these members in recipes and covers
+[hosted browsers](/browser#hosted-browsers). The portable operations live on
+the [`app`](/reference/app) fixture.

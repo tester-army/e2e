@@ -239,8 +239,8 @@ class SchedulerWorker {
   }
 
   /** Asks for a graceful exit and force-kills if it takes too long. */
-  shutdown(graceMs: number): void {
-    this.runner.send({ type: 'shutdown' });
+  shutdown(graceMs: number, preserveResources: boolean): void {
+    this.runner.send({ type: 'shutdown', ...(preserveResources ? { preserveResources: true } : {}) });
     this.killAfter(graceMs);
   }
 
@@ -495,22 +495,23 @@ class Scheduler {
       if (queued !== undefined) {
         for (const pair of queued.pairs) this.report(unstartedResult(pair, skip));
       }
-      this.retire(worker);
+      if (worker.state === 'retired') this.revokeReuse(worker);
+      else this.retire(worker, false);
     }
   }
 
   /**
    * The forced interrupt: no worker gets to finish its unit any more. Each
    * busy one disposes its engine now and is killed after the force budget,
-   * however long the unit's own grace still had to run. Retired workers were
-   * already told to leave, on a shorter clock.
+   * however long the unit's own grace still had to run. A live retired
+   * worker also receives it to revoke resource reuse during disposal.
    */
   private broadcastForce(): void {
     if (!this.options.forceSignal.aborted || this.forceBroadcast) return;
     this.forceBroadcast = true;
     // Exits arrive asynchronously, so iterating the live array is safe here.
     for (const worker of this.workers) {
-      if (worker.state !== 'retired' && worker.runner.alive) worker.terminate(this.options.forceGraceMs);
+      if (worker.runner.alive) worker.terminate(this.options.forceGraceMs);
     }
   }
 
@@ -665,7 +666,7 @@ class Scheduler {
     if (!this.hasCapacity(state)) return undefined;
     if (this.workers.length < this.options.workers) return this.spawn(state);
     const foreign = this.findRetirableForeignWorker(state.target.name);
-    if (foreign !== undefined) this.retire(foreign);
+    if (foreign !== undefined) this.retire(foreign, true);
     return undefined;
   }
 
@@ -706,10 +707,15 @@ class Scheduler {
    * still holding a queued unit: the interrupt broadcast reports and releases
    * it first, and the others only ever retire idle workers.
    */
-  private retire(worker: SchedulerWorker): void {
+  private retire(worker: SchedulerWorker, preserveResources: boolean): void {
     if (worker.state === 'retired') return;
     worker.state = 'retired';
-    worker.shutdown(SHUTDOWN_GRACE_MS);
+    worker.shutdown(SHUTDOWN_GRACE_MS, preserveResources);
+  }
+
+  /** Revokes resource reuse without changing the worker's retirement state. */
+  private revokeReuse(worker: SchedulerWorker): void {
+    worker.shutdown(SHUTDOWN_GRACE_MS, false);
   }
 
   private forget(worker: SchedulerWorker): void {
@@ -832,7 +838,7 @@ class Scheduler {
         }
         if (worker.state !== 'retired') {
           // Discard the worker after a failing unit.
-          if (worker.sawFailure) this.retire(worker);
+          if (worker.sawFailure) this.retire(worker, !this.interrupting);
           else worker.state = 'idle';
         }
         this.wakeUp();
@@ -1065,7 +1071,7 @@ class Scheduler {
   private async drain(): Promise<void> {
     const remaining = [...this.workers];
     for (const worker of remaining) {
-      if (worker.state !== 'retired' && worker.runner.alive) worker.shutdown(SHUTDOWN_GRACE_MS);
+      if (worker.runner.alive) this.revokeReuse(worker);
     }
     await Promise.all(remaining.map((worker) => worker.runner.exit));
   }

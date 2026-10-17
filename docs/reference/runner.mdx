@@ -6,13 +6,12 @@ icon: "file-lines"
 "twitter:image": "https://e2e.tester.army/docs/images/og/reference/runner.png?v=98c298d3ed"
 ---
 
-`e2e/runner` runs a suite from code without invoking the CLI. `run` executes tests and returns their report; `list` returns a selection. `openHost` prepares a target for your test runner, and `host.openSession` opens a fresh attempt for each test. Importing `e2e` from a test file does not load the runner.
+`e2e/runner` runs a suite from code without invoking the CLI. `run` executes
+tests and returns their report, `list` returns a selection, and `openHost`
+hosts e2e sessions in another test runner. Importing `e2e` from a test file
+does not load the runner.
 
-## run
-
-`run(options?: RunOptions)` executes a complete suite and returns `Promise<RunResult>`. It finishes cleanup before resolving and never exits the caller's process.
-
-```ts
+```ts title="scripts/run-e2e.ts"
 import type { E2EConfig } from 'e2e';
 import { run } from 'e2e/runner';
 import { web } from '@e2e-dev/web';
@@ -33,23 +32,47 @@ const result = await run({
 console.log(result.status, result.report.run.summary);
 ```
 
-### Execution options
+## Reference
 
-`run` accepts these options. Put execution settings, such as retries and workers, in the config.
+### Functions
 
-| Option | Meaning |
+| Function | Returns |
 | --- | --- |
-| `cwd` | Project directory. Defaults to the current working directory. |
-| `config` | Config file path or an `E2EConfig` value. Omit it to discover `e2e.config.ts`. |
-| `files` | File selection: paths, globs, bare names, or `file:line`. Omit it to run the configured suite. |
-| `interruptSignal` | Abort to interrupt tests and execute teardown. |
-| `onEvent` | Receives typed progress events. Must not block; a throwing or rejecting callback is disabled without failing the run. |
+| [`run`](#run) | `Promise<RunResult>` |
+| [`list`](#list) | `Promise<ListResult>` |
+| [`openHost`](#openhost) | `Promise<E2EHost<Fixtures>>` |
+| [`isE2EError`](#ise2eerror) | `boolean` |
 
-Runtime config runs with one worker in the caller's process. A file config supports the configured worker processes. Terminal progress is disabled; use `onEvent` for progress.
+#### `run`
 
-Helper modules your test files import stay cached between `run` calls in the same process, so edits to them need a new process.
+`run(options?: RunOptions)` executes a complete suite. It finishes cleanup
+before resolving and never exits the caller's process.
 
-### Completed result
+```ts
+const result = await run({ files: ['tests/signup.e2e.ts'] });
+process.exitCode = result.exitCode;
+```
+
+##### Options
+
+| Option | Example | Type | Default |
+| --- | --- | --- | --- |
+| `cwd` | `'apps/web'` | `string` | the current working directory |
+| `config` | `'e2e.ci.config.ts'` | `string \| E2EConfig` | discovered `e2e.config.ts` |
+| `files` | `['tests/signup.e2e.ts:12']` | `readonly string[]` | the configured suite |
+| `interruptSignal` | `controller.signal` | `AbortSignal` | - |
+| `onEvent` | `(event) => {}` | `RunEventSink` | - |
+
+- `files` takes paths, globs, bare names, or `file:line`.
+- Aborting `interruptSignal` interrupts tests and executes teardown.
+- `onEvent` receives typed progress events. Terminal progress is off. It
+  must not block. A throwing or rejecting callback is disabled without
+  failing the run.
+- Put execution settings, such as retries and workers, in the config.
+- A runtime config (an `E2EConfig` value) runs with one worker in the
+  caller's process. A file config supports the configured worker processes.
+
+##### Result
 
 | Field | Meaning |
 | --- | --- |
@@ -59,15 +82,27 @@ Helper modules your test files import stay cached between `run` calls in the sam
 | `reportPath` | Absolute path to `report.json`, or `undefined` if it could not be written. |
 | `aiTracePath` | AI trace path, or `undefined` when no AI trace was written. |
 
-Test failures, config failures, and interruption resolve with their status and errors in the report. Overlapping suites reject with `RUNNER_BUSY`. Close every host before running a suite, and await the suite before opening a host.
+Test failures, config failures, and interruption resolve with their status
+and errors in the report.
 
-Each run that returns a report sends one anonymous [`e2e_run_completed`](/telemetry) event, with the same opt-outs as the CLI. The first call can print the telemetry notice on stderr.
+| Throws | When |
+| --- | --- |
+| `RUNNER_BUSY` | Another suite is running, or a host is open. Close every host before running a suite, and await the suite before opening a host. |
 
-Suite output uses UTF-8 text redaction and does not preserve binary data. Your application's logs and progress callback output stay under your control.
+- Helper modules your test files import stay cached between `run` calls in
+  one process. An edit to them needs a new process.
+- Each run that returns a report sends one anonymous
+  [`e2e_run_completed`](/telemetry) event, with the same opt-outs as the CLI.
+  The first call can print the telemetry notice on stderr.
+- Suite output uses UTF-8 text redaction and does not preserve binary data.
+  Your application's logs and progress callback output stay under your
+  control.
 
-## list
+#### `list`
 
-`list` collects and selects the way [`e2e list`](/reference/cli#e2e-list) does, and stops there. No app process, engine, or worker starts, and nothing is written.
+`list(options?: ListOptions)` collects and selects the way
+[`e2e list`](/reference/cli#e2e-list) does, and stops there. No app process,
+engine, or worker starts, and nothing is written.
 
 ```ts
 import { isE2EError, list } from 'e2e/runner';
@@ -82,29 +117,49 @@ for (const pair of pairs) {
 }
 ```
 
-### Options
+Each call imports the test files again, so a later `list()` in the same
+process sees an edit.
 
-`list` takes one object. Omit `config` to discover `e2e.config.ts` from `cwd`, the same walk `e2e list` does.
+##### Options
 
-| Option | Meaning |
-| --- | --- |
-| `config` | A config file path, or an `E2EConfig` value in place of a file. |
-| `targets` | Target names (`--target`). An unknown name is `UNKNOWN_TARGET`. |
-| `cwd` | Project directory. Defaults to the current working directory. |
-| `files` | Positional file selection: paths, globs, bare names, and `file:line`. |
-| `tags`, `tagMode`, `excludeTags` | The `--tag`, `--tag-mode`, and `--exclude-tag` filters. |
-| `grep`, `grepInvert` | `RegExp` arrays. A test's describe titles and title, joined by spaces, must match one `grep` pattern and no `grepInvert` pattern. |
-| `lastFailed` | Only tests the previous run did not pass, read from `report.json` under `output`. |
-| `shard` | `{ index, total }`, the `--shard index/total` slice. |
-| `passWithNoTests` | Resolve with no runnable test instead of throwing `NO_TESTS`. |
-| `output` | Results directory, over the config's `output`. `lastFailed` reads `report.json` there. |
-| `env` | Environment the config resolves against. Defaults to `process.env`. |
+| Option | Example | Type | Default |
+| --- | --- | --- | --- |
+| `config` | `'e2e.ci.config.ts'` | `string \| E2EConfig` | discovered from `cwd`, the same walk `e2e list` does |
+| `targets` | `['web']` | `readonly string[]` | - |
+| `cwd` | `'apps/web'` | `string` | the current working directory |
+| `files` | `['tests/', 'signup.e2e.ts:12']` | `readonly string[]` | the configured suite |
+| `tags`, `tagMode`, `excludeTags` | `{ tags: ['smoke'], tagMode: 'all' }` | `readonly string[]`, `'any' \| 'all'` | - |
+| `grep`, `grepInvert` | `[/checkout/]` | `readonly RegExp[]` | - |
+| `lastFailed` | `true` | `boolean` | - |
+| `shard` | `{ index: 1, total: 4 }` | `{ index, total }` | - |
+| `passWithNoTests` | `true` | `boolean` | - |
+| `output` | `'.e2e'` | `string` | the config's `output` |
+| `env` | `{ ...process.env, CI: '1' }` | `NodeJS.ProcessEnv` | `process.env` |
 
-### Result
+- `targets` names targets, as `--target` does.
+- `files` is the positional file selection: paths, globs, bare names, and
+  `file:line`.
+- `tags`, `tagMode`, and `excludeTags` are the `--tag`, `--tag-mode`, and
+  `--exclude-tag` filters.
+- `grep` and `grepInvert`: a test's describe titles and title, joined by
+  spaces, must match one `grep` pattern and no `grepInvert` pattern.
+- `lastFailed` keeps only tests the previous run did not pass, read from
+  `report.json` under `output`.
+- `shard` is the `--shard index/total` slice.
+- `passWithNoTests` resolves with no runnable test instead of throwing
+  `NO_TESTS`.
+- `output` is the results directory.
+- `env` is the environment the config resolves against.
+
+##### Result
 
 `ListResult` is `{ pairs, unmatched, targets }`.
 
-`pairs` is one `ListedPair` per test, target, and agent, in selection order, including pairs a filter removed. Repeats are not expanded. `unmatched` is the positional arguments, as written, that selected no discovered file. `targets` is the selected target names, in config order.
+- `pairs` is one `ListedPair` per test, target, and agent, in selection
+  order, including pairs a filter removed. Repeats are not expanded.
+- `unmatched` is the positional arguments, as written, that selected no
+  discovered file.
+- `targets` is the selected target names, in config order.
 
 | Field | Meaning |
 | --- | --- |
@@ -116,15 +171,15 @@ for (const pair of pairs) {
 | `serialId` | Set when the test belongs to a serial group, otherwise `undefined`. |
 | `target`, `agent` | The target name and the configured agent this pair runs as. |
 | `disposition` | `run`, `skip`, or `filtered`. |
-| `reason` | Why the pair is skipped or filtered. Omitted when it runs. |
+| `reason` | Why the pair is skipped or filtered, such as `title does not match --grep`. Omitted when it runs. |
 
-`e2e list` prints only `run` and `skip`. `list` returns `filtered` pairs too, each with `reason` (for example `title does not match --grep`).
+`e2e list` prints only `run` and `skip` pairs. `list` returns `filtered`
+pairs too.
 
-### Errors
+##### Errors
 
-A failure is the same classified error `e2e list` exits with. `instanceof` can miss it across copies of the package. Recognize one with `isE2EError` and branch on `error.code`. `ConfigurationError` and `isE2EError` are both exported from `e2e/runner`.
-
-An empty selection throws `ConfigurationError` `NO_TESTS` unless `passWithNoTests`. An unknown target is `UNKNOWN_TARGET`. A missing config, a config the loader refused, and a collection failure throw the same codes `run` records.
+A failure is the same classified error `e2e list` exits with. Recognize one
+with [`isE2EError`](#ise2eerror) and branch on `error.code`.
 
 ```ts
 import { isE2EError, list } from 'e2e/runner';
@@ -138,19 +193,281 @@ try {
 }
 ```
 
-Each call imports the test files again, so a later `list()` in the same process sees an edit.
+| Throws | When |
+| --- | --- |
+| `NO_TESTS` | The selection is empty and `passWithNoTests` is not set. A `ConfigurationError`. |
+| `UNKNOWN_TARGET` | A name in `targets` is not a configured target. |
+| The codes `run` records | The config is missing, the loader refused it, or collection failed. |
 
-## openHost
+#### `openHost`
 
-`openHost` prepares e2e for Playwright Test, Vitest, Jest, or your own harness.
-Your runner owns collection, retries, and reporting. The host prepares the
-target's engine, starts app processes, and initializes the engine once per
-worker lifetime. Each `host.openSession` creates a test-lifetime attempt with
-fresh fixtures, a deadline, steps, and artifacts.
-
-Use a worker-scoped host and a test-scoped session:
+`openHost<Fixtures>(options?: OpenHostOptions)` prepares e2e for Playwright
+Test, Vitest, Jest, or your own harness, and returns a [host](#host).
 
 ```ts
+import { openHost } from 'e2e/runner';
+
+await using host = await openHost({ target: 'web' });
+await using session = await host.openSession({ name: 'checkout' });
+await session.fixtures.app.open('/checkout');
+```
+
+- Your runner owns collection, retries, and reporting.
+- The host prepares the target's engine, starts app processes, and
+  initializes the engine once per worker lifetime. Use a worker-scoped host
+  and a test-scoped session; see the
+  [Playwright Test example](#playwright-test-fixtures).
+- Each [`host.openSession`](#host-opensession) creates a test-lifetime attempt
+  with fresh fixtures, a deadline, steps, and artifacts.
+- If opening fails, e2e tears down what started before throwing the error.
+
+##### Options
+
+| Option | Example | Type | Default |
+| --- | --- | --- | --- |
+| `config` | `'e2e.config.ts'` | `string \| E2EConfig` | nearest `e2e.config.ts` or `e2e.config.mts` |
+| `cwd` | `'apps/web'` | `string` | `process.cwd()` |
+| `target` | `'android'` | `string` | the only target |
+| `env` | `process.env` | `NodeJS.ProcessEnv` | `process.env` |
+| `signal` | `controller.signal` | `AbortSignal` | - |
+| `headed` | `true` | `boolean` | `false` |
+| `onNotice` | `(target, message) => {}` | `(target: string, message: string) => void` | - |
+
+- `config` is a config file path relative to `cwd`, or an `E2EConfig` value.
+  Omit it to discover the config from `cwd`, the same walk `list` does.
+- `cwd` is the directory for config discovery, and the project root of a
+  config value.
+- `target` is required when the config declares several targets.
+- `env` is the environment the config, engines, and providers read.
+- `signal` cancels host provisioning, a pending session open, or live
+  fixture calls.
+- `headed` runs a browser engine headed.
+- `onNotice` receives progress outside a step, such as provisioning or an
+  app process. It must not throw.
+
+A host given a config path loads the file and its project-file imports fresh. Package
+imports stay shared, so their singleton state is not recreated per host. A
+config value uses its own engine instances. Each instance belongs to one
+host until that host closes, so a second host must use another instance.
+
+| Throws | When |
+| --- | --- |
+| `UNKNOWN_TARGET` | `target` names no configured target. |
+| `TARGET_REQUIRED` | The config declares several targets and `target` names none. |
+| `RUNNER_BUSY` | A suite is running. Await it before opening a host. |
+
+Opening failures are classified, redacted errors; raw engine causes are not
+exposed. Match them with [`isE2EError`](#ise2eerror) and `error.code`.
+
+#### `isE2EError`
+
+A type guard that recognizes a classified e2e error. Branch on its
+`error.code`.
+
+```ts
+if (isE2EError(error) && error.code === 'NO_TESTS') process.exitCode = 0;
+```
+
+`instanceof` can miss an e2e error across copies of the package, so use
+`isE2EError`. `ConfigurationError` and `isE2EError` are both exported
+from `e2e/runner`.
+
+### Host
+
+`E2EHost<Fixtures>` is what [`openHost`](#openhost) returns.
+
+| Member | Returns |
+| --- | --- |
+| `runId`, `target` | `string` |
+| [`host.openSession`](#host-opensession) | `Promise<E2ESession<Fixtures>>` |
+| [`host.close`](#host-close) | `Promise<readonly SerializedError[]>` |
+
+`runId` and `target` are the identity the host's sessions share.
+
+Only one hosted attempt may be opening, live, or closing per process, even
+across different hosts and whether the config is a file or a value.
+
+- An overlapping open is rejected before engine attempt state starts. Await
+  `session.close()` before opening the next session on the same host.
+- A launch that fails or is cancelled ends what it opened and leaves the host
+  usable, as a run keeps its worker for the retry.
+- A session whose engine cleanup failed closes the host permanently, since
+  its isolation is uncertain; open a new host.
+
+| Throws | When |
+| --- | --- |
+| `WORKER_PROTOCOL` | An overlapping hosted attempt, or a call on a closed host. |
+
+#### `host.openSession`
+
+`host.openSession(options: OpenSessionOptions)` opens a fresh
+[session](#session) on this host's target. A session is one test attempt with
+no retry loop. A retry opens a new session on the same worker host.
+
+```ts
+const session = await host.openSession({
+  name: 'checkout',
+  timeout: 60_000, // default: the config's timeout
+  onStep: (step) => {
+    if (step.phase === 'end') console.log(`${step.api} ${step.label}: ${step.status}`);
+  },
+});
+```
+
+##### Options
+
+| Option | Example | Type | Default |
+| --- | --- | --- | --- |
+| `name` | `'checkout'` | `string` | required |
+| `timeout` | `60_000` | `number` | the config's `timeout` |
+| `signal` | `controller.signal` | `AbortSignal` | - |
+| `agent` | `'smart'` | `string` | the first configured agent |
+| `onStep` | `(step) => {}` | `(progress: StepProgress) => void` | - |
+
+- `name` is the test name for step and trace reporting.
+- `timeout` is the deadline for the session's operations in milliseconds,
+  positive and finite, counted from when the session opens. It does not bound
+  provisioning or opening, and it does not close the session.
+- `signal` cancels opening or live fixture calls. The host's `signal` also
+  applies. Provisioning happens in `openHost`, so only the host's `signal`
+  cancels it; either signal cancels a launch.
+- `agent` is the agent the `agent` fixture uses when a call names none.
+- `onStep` receives live `StepProgress`, the same feed reporters receive. It
+  must not block or throw. Its `phase` is `start`, `event`, `activity`,
+  `replay`, or `end`. An `end` event includes `status`, `durationMs`,
+  `modelCalls`, and a redacted `error` when the step failed.
+- `timeout`, `agent`, and `onStep` belong to the session, not `openHost`.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | `name` is not a string, or `timeout` is not positive and finite. |
+| `CANCELLED` | The session's or the host's `signal` aborted before or during opening. |
+| `WORKER_PROTOCOL` | Another hosted attempt is opening, live, or closing, or the host is closed. |
+
+#### `host.close`
+
+`host.close()` cancels any active or pending session, waits for it to close,
+then disposes the engine, stops app processes, and releases provisioning.
+
+```ts
+const failures = await host.close();
+if (failures.length > 0) throw new AggregateError(failures, 'e2e host close failed');
+```
+
+- Idempotent: it disposes and releases resources only once.
+- A host is `AsyncDisposable`: `await using host = await openHost()` closes
+  it at scope exit and throws an `AggregateError` when closing reports
+  failures.
+
+### Session
+
+`E2ESession<Fixtures>` is what [`host.openSession`](#host-opensession) returns.
+
+| Member | Returns |
+| --- | --- |
+| `fixtures` | `TestFixtures & Fixtures` |
+| `runId`, `attemptId`, `target` | `string` |
+| `steps()` | `readonly StepRecord[]` |
+| `report()` | `Report \| undefined` |
+| `artifactsDir` | `string` |
+| `tracePath` | `string` |
+| [`session.close`](#session-close) | `Promise<readonly SerializedError[]>` |
+
+- `fixtures` holds `agent`, `app`, `screen`, `platform`, and the engine's
+  fixtures.
+- `runId` and `target` are the host's run and target; `attemptId` is unique
+  to this attempt.
+- `steps()` returns read-only `StepRecord`s for steps run so far, as the
+  [report](/reference/reporters) records them.
+- `report()` returns the session `Report` the trace is rendered from, after
+  close and a successful trace write; otherwise `undefined`. Its status
+  describes the SDK session, not your runner's test-body verdict.
+- `artifactsDir` is the absolute directory for this attempt's screenshots,
+  recordings, and trace.
+- `tracePath` is the absolute path to `trace.md`; attach or read it after
+  `close()` settles.
+
+#### `session.close`
+
+`session.close()` cancels remaining operations, ends the attempt, and writes
+its trace. It returns soft expectation, abandoned-operation (an unsettled
+poll or step), and cleanup failures instead of throwing them.
+
+```ts
+const failures = await session.close();
+if (failures.length > 0) throw new AggregateError(failures, 'e2e session close failed');
+```
+
+- Idempotent: later calls return the same failures.
+- The host stays open for the next test.
+- A session is `AsyncDisposable`:
+  `await using session = await host.openSession({ name: 'checkout' })`
+  closes it at scope exit and throws an `AggregateError` of the returned
+  failures.
+
+#### Deadline and soft failures
+
+`expect.soft` collects failures for the session's whole lifetime. Check
+`close()`'s result to fail the host runner's test.
+
+- `expect.poll` uses the session's remaining budget, even when its own
+  timeout is longer.
+- Contributed fixture operations also honor that budget, including
+  operations that disable their own timeout.
+- When the deadline passes, a poll or operation that was watching it reports
+  its own cut. Everything else still running, including an operation an
+  engine or a model never answered, fails with `TEST_TIMEOUT`.
+- Either way the session's outcome is timed out and `close()` returns the
+  timeout. Later operations fail with `TEST_TIMEOUT`; close the session.
+
+#### Artifacts
+
+Artifacts live under `<output>/results/host/<resultSegment>/`. At close,
+e2e writes `trace.md` there through the same redacted formatting reports
+use.
+
+- e2e generates a safe `resultSegment` from the name and the unique attempt
+  identity. The name never becomes a raw path component.
+- Repeated names and retries get separate directories.
+- With provider-backed secrets, the directory uses an identity-only segment,
+  since unresolved values cannot be redacted from a title slug. The trace
+  still shows the redacted name.
+- Artifact paths are relative to `<output>/results`, not
+  `session.artifactsDir`.
+- Video follows the target's mode for a first attempt. Failure-only video is
+  kept for soft failures and for failed, blocked, timed-out, or cancelled
+  steps.
+
+<Note>
+A hosted session writes its trace, not `report.json`. For your runner's
+reporting, use `onStep`, `steps()`, `report()`, and `close()`'s failures.
+Your runner's test-body failures are not passed to e2e.
+
+The one-shot attempt `e2e mcp` uses stays internal. There is no top-level
+`openSession` export.
+</Note>
+
+## Types
+
+`e2e/runner` exports these types beside the functions.
+
+| Type | Describes |
+| --- | --- |
+| `RunOptions`, `RunResult` | [`run`](#run)'s options and result |
+| `RunEventSink` | The `onEvent` callback |
+| `ListOptions`, `ListResult`, `ListedPair` | [`list`](#list)'s options, result, and one pair |
+| `OpenHostOptions`, `E2EHost` | [`openHost`](#openhost)'s options and the [host](#host) |
+| `OpenSessionOptions`, `E2ESession` | [`openSession`](#host-opensession)'s options and the [session](#session) |
+| `StepProgress`, `StepRecord` | One `onStep` progress event, and one step `steps()` returns |
+| `SerializedError` | One failure `close()` returns |
+
+## Examples
+
+### Playwright Test fixtures
+
+A worker-scoped host and a test-scoped session:
+
+```ts title="tests/fixtures.ts"
 import { test as base } from '@playwright/test';
 import { openHost, type E2EHost, type E2ESession } from 'e2e/runner';
 import type { Device } from '@e2e-dev/mobile';
@@ -195,126 +512,3 @@ test('turns on dark mode', async ({ e2e }) => {
   await app.screenshot();
 });
 ```
-
-### Host options
-
-`openHost<Fixtures>(options?: OpenHostOptions)` returns
-`Promise<E2EHost<Fixtures>>`. Omit `config` to discover the config from `cwd`,
-the same walk `list` does. If opening fails, e2e tears down what started
-before throwing the error.
-
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `config` | nearest `e2e.config.ts` or `e2e.config.mts` | Config file path relative to `cwd`, or an `E2EConfig` value |
-| `cwd` | `process.cwd()` | Directory for config discovery, and the project root of a config value |
-| `target` | the only target | Target name; required when the config declares several |
-| `env` | `process.env` | Environment the config, engines, and providers read |
-| `signal` | none | Cancels host provisioning, a pending session open, or live fixture calls |
-| `headed` | `false` | Runs a browser engine headed |
-| `onNotice` | none | Progress outside a step, such as provisioning or an app process |
-
-A config file and its project-file imports are loaded fresh for each host.
-Package imports remain shared; their singleton state is not recreated per host.
-A config value uses the engine instances in that value. Neither form allows
-overlapping hosted attempts in one process. A config value's engine instance
-belongs to one host until it closes; a second host must use another instance.
-
-### Host
-
-| Member | Meaning |
-| --- | --- |
-| `runId`, `target` | Identity shared by the host's sessions |
-| `openSession(options)` | Opens a fresh `E2ESession<Fixtures>` on this host's target |
-| `close()` | Cancels any active or pending session, waits for it to close, then disposes the engine, stops app processes, and releases provisioning. Returns `Promise<readonly SerializedError[]>` |
-
-Only one hosted attempt may be opening, live, or closing per process, even
-across different hosts. An overlapping open is rejected before engine
-attempt state starts. Await `session.close()` before opening the next
-session on the same host. A launch that fails or is cancelled ends what it
-opened and leaves the host usable, as a run keeps its worker for the retry.
-A session whose engine cleanup failed closes the host permanently, since
-its isolation is uncertain; open a new host. Overlap and closed-host errors
-use `WORKER_PROTOCOL`.
-
-`host.close()` is idempotent and disposes and releases resources only once.
-A host is `AsyncDisposable`; `await using host = await openHost()` closes it
-at scope exit and throws an `AggregateError` when closing reports failures.
-
-## host.openSession
-
-`host.openSession(options: OpenSessionOptions)` returns
-`Promise<E2ESession<Fixtures>>`. A session is one test attempt with no retry
-loop. A retry opens a new session on the same worker host.
-
-### Session options
-
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `name` | required | Test name for step and trace reporting; a string |
-| `timeout` | config `timeout` | Deadline for the session's operations in milliseconds, positive and finite, counted from when it opens. Does not bound provisioning or opening, and does not close the session |
-| `signal` | none | Cancels opening or live fixture calls; the host signal also applies |
-| `agent` | the first configured agent | Agent the `agent` fixture uses when a call names none |
-| `onStep` | none | Live `StepProgress`, the same feed reporters receive |
-
-`timeout`, `agent`, and `onStep` belong to the session, not `openHost`.
-Use `signal` to cancel provisioning or launch. `onStep` must not block or
-throw. Its `phase` is `start`, `event`, `activity`, `replay`, or `end`.
-An `end` event includes `status`, `durationMs`, `modelCalls`, and a redacted
-`error` when the step failed.
-
-### Session
-
-| Member | Meaning |
-| --- | --- |
-| `fixtures` | `agent`, `app`, `screen`, `platform`, and the engine's fixtures, typed as `TestFixtures & Fixtures` |
-| `runId`, `attemptId`, `target` | Host run and target, plus a unique attempt id |
-| `steps()` | Read-only `StepRecord`s for steps run so far, as the [report](/reference/reporters) records them |
-| `report()` | The session `Report` after close and a successful trace write; otherwise `undefined` |
-| `artifactsDir` | Absolute directory for this attempt's screenshots, recordings, and trace |
-| `tracePath` | Absolute string path to `trace.md`; attach or read it after `close()` settles |
-| `close()` | Cancels remaining operations, ends the attempt, and writes its trace. Returns soft expectation and cleanup failures as `Promise<readonly SerializedError[]>` instead of throwing them |
-
-`session.close()` is idempotent and returns the same failures on later calls.
-The host stays open for the next test. A session is `AsyncDisposable`:
-`await using session = await host.openSession({ name: 'checkout' })` closes
-it at scope exit and throws an `AggregateError` of the returned failures.
-
-`expect.soft` collects failures for the session's whole lifetime. Check
-`close()`'s result to fail the host runner's test. `expect.poll` uses the
-session's remaining budget, even when its own timeout is longer. Contributed
-fixture operations also honor that budget, including operations that disable
-their own timeout. When the deadline passes, a poll or operation that was
-watching it reports its own cut; everything else still running, including an
-operation an engine or a model never answered, fails with `TEST_TIMEOUT`.
-Either way the session's outcome is timed out and `close()` returns the
-timeout. Later operations fail with `TEST_TIMEOUT`; close the session.
-
-Artifacts live under `<output>/results/host/<resultSegment>/`, with
-`trace.md` written at close through the existing redacted report-formatting
-pipeline. e2e generates the safe `resultSegment` from the name and unique
-attempt identity; the name never becomes a raw path component. Repeated
-names and retries get separate directories. With provider-backed secrets,
-the directory uses an identity-only segment because unresolved values cannot
-be redacted from a title slug. The trace still displays the redacted name.
-
-Opening failures are classified, redacted errors; raw engine causes are not
-exposed. Match them with `isE2EError` and
-`error.code`, as for `list`. `openHost` reports `UNKNOWN_TARGET` for an
-unknown target and `TARGET_REQUIRED` when several targets exist and none
-was named.
-
-<Note>
-A hosted session writes its trace, not `report.json`. After close,
-`session.report()` returns the session `Report` used to render that trace.
-Its status describes the SDK session, not your runner's test-body verdict.
-Artifact paths are relative to `<output>/results`, not `session.artifactsDir`.
-Your runner owns retries and reporting; use `onStep`, `steps()`, `report()`,
-and `close()`'s failures. Video follows
-the target's mode for a first attempt, including retaining failure-only video
-for soft failures and failed, blocked, timed-out, or cancelled steps. Your
-runner's test-body failures are not
-passed to e2e.
-
-The one-shot attempt used by `e2e mcp` remains internal. There is no
-top-level `openSession` export.
-</Note>

@@ -6,54 +6,130 @@ icon: "gear"
 "twitter:image": "https://e2e.tester.army/docs/images/og/reference/engine.png?v=d82cf186db"
 ---
 
-Import engine types and helpers from `e2e/engine`. `defineEngine` validates
-and freezes your implementation, derives its capabilities, and returns a
-handle for `targets` in the config.
+`e2e/engine` is the contract an engine implements to drive a user interface,
+such as a browser or simulator. An engine implements shared types for nodes,
+locators, actions, and errors. `defineEngine` validates and freezes the
+implementation, derives its capabilities, and returns a handle for `targets`
+in the config. Use `test.extend` fixtures for resources outside the UI, such
+as APIs or databases.
+
+This sketch assumes a `connect` adapter for the platform:
+
+```ts title="src/index.ts"
+import { defineEngine, resolveExpression, type EngineHandle } from 'e2e/engine';
+import { connect } from './client.ts';
+
+export function kiosk(options: { host: string }): EngineHandle {
+  const client = connect(options.host);
+  return defineEngine({
+    name: 'kiosk',
+    version: '1.0.0',
+    spiVersion: 1,
+    platform: 'kiosk',
+    async observe() {
+      const screen = await client.snapshot();
+      return {
+        root: { ref: { id: 'root', revision: '' }, role: 'window', children: screen.nodes },
+        viewport: screen.viewport,
+      };
+    },
+    async locate(expression) {
+      const screen = await client.snapshot();
+      return resolveExpression(expression, screen.nodes);
+    },
+    actions: ['tap'],
+    async perform(ref) {
+      await client.tap(ref.id);
+    },
+  });
+}
+```
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { kiosk } from './src/index.ts';
+
+export default {
+  targets: [{ name: 'kiosk', engine: kiosk({ host: 'kiosk.local' }) }],
+} satisfies E2EConfig;
+```
+
+## Reference
+
+### defineEngine
+
+Validates an engine spec, freezes it, computes its
+[capabilities](#capabilities), and returns a branded handle.
+`isEngineHandle` tells such a handle from any other value.
 
 ```ts
-import { defineEngine, type EngineHandle } from 'e2e/engine';
+import { defineEngine, isEngineHandle, type EngineHandle } from 'e2e/engine';
 
 export function defineEngine(spec: Engine): EngineHandle;
 export function isEngineHandle(value: unknown): value is EngineHandle;
+
+/** A validated engine: branded, frozen, capabilities computed. */
+export interface EngineHandle extends Engine {
+  readonly capabilities: ReadonlySet<EngineCapability>;
+}
 ```
-
-An engine drives a user interface, such as a browser or simulator. It
-implements shared types for nodes, locators, actions, and errors. Use
-`test.extend` fixtures for resources outside the UI, such as APIs or databases.
-
-Validation fails with `INVALID_CONFIG` for:
-
-- a spec that is not an object, or a missing or empty `name`;
-- a missing or empty `version`, or a `spiVersion` other than `1`;
-- an empty `platform`, or a `workers` that is not a positive safe integer;
-- a hook (`observe`, `locate`, `perform`, `performAt`, `prepare`, `finish`,
-  `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`,
-  `validateApp`) that is not a function;
-- an unknown top-level key on an object literal, `app` included (declare
-  the app on the target and check it in `validateApp`); a class instance's
-  own fields are not checked;
-- `perform`, `locate`, `performAt`, or `keyboard` without `observe`;
-- `perform` without `actions` or the reverse; an `actions` list that is
-  empty, repeats a kind, or names one outside `LOCATOR_ACTION_KINDS`;
-- `performAt` without `pointerActions` or the reverse; a `pointerActions`
-  list that is empty, repeats a kind, or names one outside
-  `POINTER_ACTION_KINDS`;
-- a `tapModifiers` that is not a boolean, or `true` without `perform`;
-- a `keyboard`, `state`, `artifacts`, or `session` manifest with an unknown
-  key or a non-function member. `keyboard` needs `type` and `press`; `state`
-  needs both `capture` and `restore`; `artifacts` needs `screenshot`;
-  `startVideo` and `stopVideo` come as a pair (the removed `startTrace` and
-  `stopTrace` an engine published before their removal declares are
-  accepted and never called);
-- a `secrets` that is not an array of `secrets.get()` handles;
-- a `fixtures` that is not an object, a fixture that is not a factory
-  function, or a fixture name that is not a lower-camel identifier or shadows
-  `agent`, `app`, `screen`, `platform`, or `session`.
 
 Every function on the handle is bound to the spec it came from, so a class
 instance is as valid a body as an object literal.
 
-## Engine
+`defineEngine` throws `INVALID_CONFIG` when the spec breaks one of these
+rules:
+
+| Member | Rejected when |
+| --- | --- |
+| the spec | It is not an object. |
+| `name` | Missing or empty. |
+| `version` | Missing or empty. |
+| `spiVersion` | Anything but `1`. |
+| `platform` | Empty. |
+| `workers` | Not a positive safe integer. |
+| `observe`, `locate`, `perform`, `performAt`, `prepare`, `finish`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`, `validateApp` | Not a function. |
+| any other top-level key | On an object literal, `app` included: declare the app on the target and check it in `validateApp`. A class instance's own fields are not checked. |
+| `perform`, `locate`, `performAt`, `keyboard` | Declared without `observe`. |
+| `perform`, `actions` | One without the other. An `actions` list that is empty, repeats a kind, or names one outside `LOCATOR_ACTION_KINDS`. |
+| `performAt`, `pointerActions` | One without the other. A `pointerActions` list that is empty, repeats a kind, or names one outside `POINTER_ACTION_KINDS`. |
+| `tapModifiers` | Not a boolean, or `true` without `perform`. |
+| `keyboard`, `state`, `artifacts`, `session` | An unknown key or a non-function member. `keyboard` without `type` and `press`; `state` without both `capture` and `restore`; `artifacts` without `screenshot`; `startVideo` without `stopVideo`, or the reverse. |
+| `secrets` | Not an array of `secrets.get()` handles. |
+| `fixtures` | Not an object, a fixture that is not a factory function, or a fixture name that is not a lower-camel identifier or shadows `agent`, `app`, `screen`, `platform`, or `session`. |
+
+<Note>
+`artifacts.startTrace` and `artifacts.stopTrace` were removed from the
+contract. An engine published before their removal that declares them still
+passes validation; the runner never calls them.
+</Note>
+
+### Engine
+
+The body of one target. Every member but `name`, `version`, and
+`spiVersion` is optional; the members an engine implements decide its
+[capabilities](#capabilities).
+
+| Member | Type |
+| --- | --- |
+| `name` | `string` |
+| `version` | `string` |
+| `spiVersion` | `1` |
+| `platform` | `string` |
+| `workers` | `number` |
+| [`observe`](#observation) | method |
+| [`perform`, `actions`](#actions) | method, kinds |
+| [`locate`](#capabilities) | method |
+| [`performAt`, `pointerActions`](#pointer-actions) | method, kinds |
+| [`tapModifiers`](#capabilities) | `boolean` |
+| [`keyboard`](#keyboard) | `EngineKeyboard` |
+| [`fixtures`](#contributed-fixtures) | factories |
+| [`state`](#state) | `EngineStateCapability` |
+| [`artifacts`](#artifacts) | `EngineArtifacts` |
+| [`validateApp`](#app) | method |
+| [`secrets`](#startattempt) | `Secret[]` |
+| [`session`](#session) | `EngineSession` |
+| [`prepare`, `finish`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`](#lifecycle) | hooks |
 
 ```ts
 /** The body of one target: typed, model-free, capability-graded. */
@@ -216,11 +292,15 @@ export interface Engine {
   endAttempt?(context: EngineCleanupContext): Promise<void>;
   /**
    * Worker shutdown, within the cleanup budget; failure is a run error. Runs
-   * whether or not `init` ran, so it MUST tolerate a cold engine.
+   * whether or not `init` ran, so it MUST tolerate a cold engine. A live
+   * `reuseSignal` permits preserving run-owned resources for a replacement,
+   * until that permission is revoked or this hook settles.
    */
-  dispose?(context: EngineCleanupContext): Promise<void>;
+  dispose?(context: EngineDisposeContext): Promise<void>;
 }
 ```
+
+#### `OperationContext`
 
 ```ts
 /** What every engine call carries: budget, ids, and who is acting. */
@@ -249,40 +329,106 @@ export interface OperationContext {
 
 ### Capabilities
 
+The members an engine implements set its capabilities. A `screen`,
+`Locator`, or `app` call that needs a missing one fails with
+`UNSUPPORTED_CAPABILITY`. [Test APIs](#test-apis) lists what needs which
+member. Three gaps end differently:
+
+- A test that `requires` a fixture the engine lacks is skipped
+  (`capability-unavailable`).
+- A selected test that uses a `test.setup` session, on an engine without
+  `state`, is a collection error before the setup runs.
+- A `video` mode on an engine without video recording prints a notice and
+  records no video.
+
 | Member | Capability | Requires | Unlocks |
 | --- | --- | --- | --- |
-| `observe` | `observation` | - | judgment tier, prompt snapshots, trace replay, the viewport swipe's root |
-| `perform` + `actions` | `actions` | `observe` | the agent's grammar verbs (`tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `type_secret`, `scroll`, `scroll_to`, `drag`, `upload`, and `tap_at`, `hover_at`, `type_at`, `press_at`, or `select_at` when the point lands on a listed node) and the `screen`/`Locator` action set with platform actionability checks, each only for a kind listed in `actions` |
-| `locate` | `location` | `observe` | `screen`, `Locator`, `expect(locator)` |
-| `tapModifiers: true` | - | `perform` | `modifiers` on `tap`, `doubleTap`, and `secondaryTap` (`row.click({ modifiers: ['Shift'] })`), held for the click; without it such a call is `UNSUPPORTED_CAPABILITY` |
-| `performAt` + `pointerActions` | `pointer` | `observe` | the agent's `tap_at` and `hover_at` verbs when the point lands on nothing the tree lists (the `tap` and `hover` pointer kinds), and the test's `screen.tapAt` and `tap({ position })` (the `tap` kind) and `screen.swipe({ from, to })` (the `swipeTo` kind): one pointer action at a viewport point in the CSS pixels of `SemanticNode.rect`, with no node behind it |
-| `keyboard.{type,press,dismiss?}` | `keyboard` | `observe` | the agent's `type` and `press` without a target, the keyboard fallback of `type_at` and `press_at` on a point the tree lists nothing at, and `dismiss_keyboard` when `dismiss` exists: input to whatever holds focus, for a field drawn on a canvas or flattened out of a platform's tree; with the `focus` action, `locator.pressSequentially`, which the harness composes as `focus` then `keyboard.type` |
-| `fixtures.<name>` | `<name>` | - | a contributed fixture; `requires: ['<name>']` gates at selection |
-| `state` | `state` | - | `test.setup` sessions and the `session:` option |
-| `artifacts` | `artifacts` | - | `app.screenshot()`, assertion evidence, the failure screenshot, and every [`video` mode](/reference/config#recording) but `off`, from the config, a target, a test, or `--video` |
-| `validateApp` | - | - | a config-load check of the target's `app` |
-| `session` | - | - | `app.open()` and the agent's `navigate` verb (`open`), `app.back()` and the agent's `back` verb (`back`), `app.restart()` (`restart`), `app.clearState()` (`reset`) |
+| `observe` | `observation` | - | The judgment tier, prompt snapshots, trace replay, the viewport swipe's root. |
+| `perform` + `actions` | `actions` | `observe` | Node actions of the declared kinds, with platform actionability checks. |
+| `locate` | `location` | `observe` | `screen`, `Locator`, `expect(locator)`. |
+| `tapModifiers: true` | - | `perform` | `modifiers` on `tap`, `doubleTap`, and `secondaryTap`. |
+| `performAt` + `pointerActions` | `pointer` | `observe` | One pointer action at a viewport point, with no node behind it. |
+| `keyboard.{type,press,dismiss?}` | `keyboard` | `observe` | Input to whatever holds focus. |
+| `fixtures.<name>` | `<name>` | - | A contributed fixture. |
+| `state` | `state` | - | `test.setup` sessions and the `session:` option. |
+| `artifacts` | `artifacts` | - | Screenshots and videos. |
+| `validateApp` | - | - | A config-load check of the target's `app`. |
+| `session` | - | - | The `app` steering methods and the agent's `navigate` and `back` verbs. |
 
-The agent offers the model only what `actions` declares: `tap` needs the
-`tap` kind, `double_tap`, `long_press`, and `right_click` need `doubleTap`,
-`longPress`, and `secondaryTap`; `hover` needs `hover`; `type` and `type_secret` need `fill`;
-`press` needs `press`; `select` needs `selectOption`; `check` needs both
-`check` and `uncheck`, since it sets a state rather than flipping one;
-`scroll` and `scroll_to({ text })` need `swipe`; `scroll_to({ target })` needs `scrollIntoView`; `drag` needs
-`dragTo`; `upload` needs `setInputFiles`; `navigate` needs `session.open`;
-`back` needs `session.back`; `tap_at` and `hover_at` need the `tap` or
-`hover` kind in `actions` or in `pointerActions`; `type_at` needs `fill` or
-`keyboard`; `press_at` needs `press` or `keyboard`; `select_at` needs
-`selectOption`. `clear` and `focus` unlock
-no verb. An undeclared verb is absent from the toolset, and a
-`screen`/`Locator` method for an undeclared kind fails with
-`UNSUPPORTED_CAPABILITY` before reaching the engine.
+#### Agent verbs
 
-`engine.capabilities` is the computed `ReadonlySet` of capability names, and
-is what selection, the report, and `UNSUPPORTED_CAPABILITY` messages read.
+The agent offers the model only the verbs the engine's declarations unlock.
+An undeclared verb is absent from the toolset.
+
+| Verb | Needs |
+| --- | --- |
+| `tap` | the `tap` kind in `actions` |
+| `double_tap` | `doubleTap` |
+| `long_press` | `longPress` |
+| `right_click` | `secondaryTap` |
+| `hover` | `hover` |
+| `type` | `fill`; without a target, `keyboard` |
+| `type_secret` | `fill` |
+| `press` | `press`; without a target, `keyboard` |
+| `select` | `selectOption` |
+| `check` | both `check` and `uncheck`, since it sets a state rather than flipping one |
+| `scroll`, `scroll_to({ text })` | `swipe` |
+| `scroll_to({ target })` | `scrollIntoView` |
+| `drag` | `dragTo` |
+| `upload` | `setInputFiles` |
+| `navigate` | `session.open` |
+| `back` | `session.back` |
+| `tap_at`, `hover_at` | the `tap` or `hover` kind, in `actions` or in `pointerActions` |
+| `type_at` | `fill` or `keyboard` |
+| `press_at` | `press` or `keyboard` |
+| `select_at` | `selectOption` |
+| `dismiss_keyboard` | `keyboard.dismiss` |
+
+- `clear` and `focus` unlock no verb.
+- `tap_at`, `hover_at`, `type_at`, `press_at`, and `select_at` go through
+  `perform` when the point lands on a node the tree lists.
+- When the point lands on nothing the tree lists, `tap_at` and `hover_at`
+  go through `performAt` (the `tap` and `hover` pointer kinds), and
+  `type_at` and `press_at` fall back to `keyboard`.
+
+#### Test APIs
+
+The test-facing APIs each engine member backs. A `screen` or `Locator`
+method for an undeclared kind, or a call with `modifiers` and no
+`tapModifiers`, fails with `UNSUPPORTED_CAPABILITY` before it reaches the
+engine.
+
+| API | Needs |
+| --- | --- |
+| `screen`, `Locator`, `expect(locator)` | `locate` |
+| `screen` and `Locator` actions | `perform`, each only for a kind listed in `actions` |
+| `screen.swipe()` | `perform` with `swipe` on the observation root |
+| `modifiers` on a tap (`row.click({ modifiers: ['Shift'] })`) | `tapModifiers: true`; the keys are held for the click |
+| `screen.tapAt`, `tap({ position })` | `performAt` with the `tap` pointer kind |
+| `screen.swipe({ from, to })` | `performAt` with the `swipeTo` pointer kind |
+| `locator.pressSequentially` | the `focus` action and `keyboard`; the harness composes `focus` then `keyboard.type` |
+| `test.setup` sessions, the `session:` option | `state` |
+| `app.screenshot()`, assertion evidence, the failure screenshot | `artifacts` |
+| every [`video` mode](/reference/config#recording) but `off`, from the config, a target, a test, or `--video` | `artifacts` |
+| `app.open()` | `session.open`; on a target with no app URL, `session.restart` |
+| `app.back()` | `session.back` |
+| `app.restart()` | `session.restart` |
+| `app.clearState()` | `session.reset` |
+| `requires: ['<name>']` | `fixtures.<name>` |
+
+#### `engine.capabilities`
+
+The computed `ReadonlySet` of capability names. Selection, the report, and
+`UNSUPPORTED_CAPABILITY` messages read it.
+
+```ts
+const engine = kiosk({ host: 'kiosk.local' });
+engine.capabilities.has('location'); // true: the engine implements locate
+```
+
 Selection also grades a target by the kind of app it declares, not by its
-engine: `browser` for a target with `app.url`, `native-app` for one with
-`app.bundleId` or `app.appPath`, so a test can `requires: ['native-app']`.
+engine. A target with `app.url` has `browser`, and one with `app.bundleId` or
+`app.appPath` has `native-app`, so a test can `requires: ['native-app']`.
 
 ```ts
 /**
@@ -302,7 +448,11 @@ export type EngineCapability =
   | 'state'
   | 'artifacts'
   | (string & {});
+```
 
+#### Keyboard
+
+```ts
 /**
  * capability: keyboard - requires observation. Input to whatever holds focus,
  * with no node behind it: the agent's `type` and `press` without a target, and
@@ -337,17 +487,47 @@ export interface EngineKeyboard {
 }
 ```
 
-## Lifecycle
+### Lifecycle
 
-| Hook | Budget |
+The hooks the runner calls around workers and attempts. Every hook is
+optional. The `Engine` declaration's JSDoc above states each hook's contract.
+
+`init` and `startAttempt` run within `launchTimeout`. `finish`,
+`settleAttempt`, `endAttempt`, and `dispose` run within `cleanupTimeout`.
+`prepare` has no timeout. Both budgets come from the
+[config](/reference/config).
+
+| Hook | Runs |
 | --- | --- |
-| `prepare(info)` | none; only `info.signal` (the run's interrupt) cuts it short. Failure ends the run before any test: a runner error class (a `ConfigurationError` for an option the engine cannot honour) keeps its code, an `EngineError` `CANCELLED` stays a cancellation, and anything else, any other `EngineError` or a plain `Error`, is infrastructure `ENGINE_FAILURE` |
-| `finish(info)` | `cleanupTimeout`, shared by every prepared target, never cut short by an interrupt; failure is a cleanup run error |
-| `init(info)` | `launchTimeout`; failure is infrastructure |
-| `startAttempt(context)` | `launchTimeout`; on failure or timeout `context.signal` aborts and `endAttempt` runs |
-| `settleAttempt(context)` | `cleanupTimeout`, after the body and again after teardown; a thrown error is the attempt's failure and keeps its code |
-| `endAttempt(context)` | `cleanupTimeout`; failure marks cleanup failed, the test keeps its status |
-| `dispose(context)` | `cleanupTimeout`; failure is a run error |
+| [`prepare(info)`](#prepare) | Once per target, before any worker |
+| [`finish(info)`](#finish) | After the target's last worker is gone |
+| [`init(info)`](#init) | Once per worker, before its first step |
+| [`startAttempt(context)`](#startattempt) | Before each attempt |
+| [`settleAttempt(context)`](#settleattempt) | After the body and after teardown |
+| [`endAttempt(context)`](#endattempt) | After each attempt |
+| [`dispose(context)`](#dispose) | Worker shutdown |
+
+#### `prepare`
+
+Runs once per target in the runner process, after collection and before
+workers, app commands, and the run's clock start.
+
+```ts
+async prepare(info) {
+  if (info.slots === 0) return; // nothing runs on this target
+  info.log('booting devices');
+  const devices = await pool.boot(info.slots, { signal: info.signal });
+  return { workers: devices.length, env: { KIOSK_DEVICES: devices.join(',') } };
+},
+```
+
+A failure ends the run before any test:
+
+| Thrown | Becomes |
+| --- | --- |
+| A runner error class, such as a `ConfigurationError` for an option the engine cannot honour | The same code. |
+| An `EngineError` with code `CANCELLED` | A cancellation. |
+| Any other `EngineError`, or a plain `Error` | Infrastructure `ENGINE_FAILURE`. |
 
 ```ts
 /**
@@ -412,7 +592,22 @@ export interface EnginePrepareInfo {
    */
   readonly log: (line: string) => void;
 }
+```
 
+#### `finish`
+
+Runs once per run and target in the runner process, after every worker of
+the target is gone. Release what `prepare` acquired for the run.
+
+```ts
+async finish(info) {
+  await pool.release({ signal: info.signal });
+},
+```
+
+The `finish` hooks of all prepared targets share one `cleanupTimeout`.
+
+```ts
 /** Handed to `finish`, once per run and target after the last worker is gone, with the cleanup budget of one hook. */
 export interface EngineFinishInfo extends EngineCleanupContext {
   /** The run id. */
@@ -424,7 +619,24 @@ export interface EngineFinishInfo extends EngineCleanupContext {
   /** Reports one line of progress, streamed as a `notice` run event like `prepare`'s. */
   readonly log: (line: string) => void;
 }
+```
 
+#### `init`
+
+Runs once per worker, before the first step. Boot devices here, not in a step
+budget.
+
+```ts
+async init(info) {
+  const device = info.env.KIOSK_DEVICES?.split(',')[info.workerSlot];
+  info.log(`slot ${info.workerSlot}: ${device}`);
+},
+```
+
+`init` never learns the app URL; URLs arrive through `session.open` only. A
+failure is an infrastructure error.
+
+```ts
 /** Run identity and harness-resolved facts handed to `init`, once per worker before the first step. */
 export interface EngineInitInfo {
   /** The run id. */
@@ -472,31 +684,30 @@ export interface EngineInitInfo {
    */
   readonly log: (line: string) => void;
 }
+```
 
-/**
- * The app the harness resolved from the target's declaration, handed to
- * `prepare` and `init`: the site policy for the decisions only a surface can
- * make (which nested documents enter an observation, which requests carry
- * injected credentials), and what a device launches.
- */
-export interface EngineAppInfo {
-  /**
-   * The app URL's registrable domain, as read by `siteOf`. Use `sameSite`
-   * to scope secret fills, injected headers, and observed child frames.
-   * Absent when the app has no URL. The runner passes navigation URLs
-   * separately through `session.open`.
-   */
-  readonly site?: string;
-  /** The installed app to launch, as the target declared it. */
-  readonly bundleId?: string;
-  /** The build to install, as the target declared it; relative to `projectRoot`. */
-  readonly appPath?: string;
-  /** Arguments every fresh launch passes the app. */
-  readonly launchArguments?: readonly string[];
-  /** Permissions the app holds on every fresh launch, by name. */
-  readonly permissions?: Readonly<Record<string, AppPermissionState>>;
-}
+#### `startAttempt`
 
+Runs before each attempt, to set up the per-test isolation that
+[`endAttempt`](#endattempt) tears down.
+
+```ts
+async startAttempt(context) {
+  const password = await context.resolveSecret(options.password);
+  await client.openContext({ password, signal: context.signal });
+  context.environment({ device: 'Kiosk 2', os: 'KioskOS 4.1' });
+},
+```
+
+On failure or timeout, `context.signal` aborts and `endAttempt` runs.
+
+<Warning>
+A value from `resolveSecret` is protected as text only. Reports, logs, and
+observations redact it and the attempt's text downloads are rewritten, but
+unlike a fill it withholds no screenshot or model pixels.
+</Warning>
+
+```ts
 /**
  * Per-attempt isolation context. An engine that must give each test a fresh
  * surface (a fresh isolated context per test, a reset device) sets it up in
@@ -578,7 +789,53 @@ export interface ResolveSecretOptions {
    */
   readonly derived?: (plaintext: string) => readonly string[];
 }
+```
 
+#### `settleAttempt`
+
+Runs after the body has settled, and again after teardown, before the
+verdict. It reports a failure on a path no step awaited, such as a request
+interceptor or a native dialog handler.
+
+```ts
+async settleAttempt() {
+  const running = [...dialogHandlers];
+  dialogHandlers.clear();
+  await Promise.all(running); // rethrows a handler's failure
+},
+```
+
+#### `endAttempt`
+
+Runs after each attempt and tears down what `startAttempt` set up. A failure
+marks cleanup failed; the test keeps its status.
+
+```ts
+async endAttempt(context) {
+  await client.closeContext({ signal: context.signal });
+},
+```
+
+#### `dispose`
+
+Runs one time per worker, including when `init` never ran.
+
+Missing or aborted `context.reuseSignal` requires final cleanup. A live
+signal permits keeping run-owned resources for a replacement worker.
+An engine that keeps resources must observe revocation until its hook settles.
+Final shutdown, a forced interrupt, or parent disconnect revokes that permission.
+The cleanup budget still uses `context.signal` and `context.timeoutMs`.
+
+Cleanup is best effort within that budget. The runner does not guarantee
+cleanup after a worker exits or after disposal settles with reuse permission.
+
+```ts
+async dispose(context) {
+  await client.shutdown({ signal: context.signal });
+},
+```
+
+```ts
 /**
  * Budget of one cleanup hook (`settleAttempt`, `endAttempt`, `dispose`). `signal` aborts when
  * the budget is exhausted, so a hook that cannot finish in time stops instead
@@ -590,11 +847,38 @@ export interface EngineCleanupContext {
   /** Remaining cleanup budget when the call starts. */
   readonly timeoutMs: number;
 }
+
+/** Cleanup of one worker, with optional permission to leave run-owned resources for a replacement. */
+export interface EngineDisposeContext extends EngineCleanupContext {
+  /**
+   * A live signal permits reusable resources owned by `prepare` and `finish`
+   * to survive this worker. Missing or aborted permission requires final
+   * cleanup. Observe revocation until disposal settles. This signal does
+   * not cancel cleanup, which remains bounded by `signal` and `timeoutMs`.
+   */
+  readonly reuseSignal?: AbortSignal;
+}
 ```
 
-URLs arrive through `session.open` only; `init` never learns the app URL.
+### Observation
 
-## Observation
+`observe` returns one fresh semantic snapshot of the surface under test.
+
+| Field | Type |
+| --- | --- |
+| `location` | `string` |
+| `root` | `SemanticNode` |
+| `viewport` | `ViewportSize` |
+| [`truncated`](#truncated-trees) | `boolean` |
+| `keyboardVisible` | `boolean` |
+| [`treeUnavailable`](#pixel-fallback) | `true` |
+| `pixels` | `ObservationPixels` |
+| `maskedRegionCount` | `number` |
+
+Return the surface as it is right now. The runner mints the revision and
+stamps it onto every ref. When `pixels` are present, it checks that
+`maskedRegionCount` covers every `secure` node. A valid empty tree may have a
+childless root and include `pixels`.
 
 ```ts
 /**
@@ -656,39 +940,92 @@ export interface EngineObserveOptions {
 }
 ```
 
-Return the surface as it is right now. The runner mints the revision, stamps
-it onto every ref, redacts registered secret values, bounds the byte size, and
-checks that `maskedRegionCount` covers every `secure` node when `pixels` are
-present.
+#### Truncated trees
 
-Set `truncated` when a node limit or inaccessible subtree leaves content out.
-The runner warns the model that the tree is incomplete and never treats a
-truncated observation as unchanged. Omit it for a complete tree.
+Set `truncated` when a node limit or an inaccessible subtree leaves content
+out. The `truncated` JSDoc above says how the runner treats it.
 
-A valid empty tree may have a childless root and include `pixels`.
+#### Pixel fallback
 
-If semantic capture times out, an engine may recover only when `pixelFallback`
-is true and it can prove screenshot masking without that capture. Return
-`treeUnavailable: true`, fresh `pixels`, and a `root` containing only its
-stable `ref`. That reference supports viewport actions; it supplies no
-semantic node evidence. Retire earlier node references. The flag distinguishes
-missing semantic evidence from a valid empty tree; never infer absence from
-it. The runner validates this shape at the engine boundary and rejects a
-fallback without permitted pixels as `UNSUPPORTED_CAPABILITY`, or one with
-semantic root fields as `INVALID_STATE`. `EngineSnapshot` remains an
-extendable interface; these dependent requirements are checked at runtime.
+When semantic capture times out, an engine may return masked pixels in place
+of the tree, but only when `pixelFallback` is true and it can prove
+screenshot masking without that capture.
 
-Without permission, pixels, or independent masking proof, propagate the
-capture failure. Cancellation, policy denial, and hard engine failures must
-also propagate.
+```ts
+return {
+  treeUnavailable: true,
+  root: { ref: rootRef },
+  viewport,
+  pixels,
+};
+```
 
-The runner permits fallback for `act` and for judgments with `vision: true`
-or `'only'`, before any secret fill. It includes the screenshot even if the
-initial observation requested only a tree. A step that loses semantic
-evidence cannot record or finish by replaying a trace. Engines whose masks
-depend on their semantic capture cannot provide this fallback.
+- Return `treeUnavailable: true`, fresh `pixels`, and a `root` containing
+  only its stable `ref`. That ref supports viewport actions; it supplies no
+  semantic node evidence. Retire earlier node refs.
+- The flag tells missing semantic evidence from a valid empty tree. Never
+  infer absence from it.
+- Without permission, pixels, or independent masking proof, propagate the
+  capture failure. Cancellation, policy denial, and hard engine failures
+  propagate too.
+- The runner permits fallback for `act` and for judgments with
+  `vision: true` or `'only'`, before any secret fill. It includes the
+  screenshot even if the initial observation requested only a tree.
+- A step that loses semantic evidence cannot record or finish by replaying a
+  trace.
+- Engines whose masks depend on their semantic capture cannot provide this
+  fallback.
 
-## Actions
+`EngineSnapshot` is an extendable interface, so TypeScript can't enforce
+these rules. The runner checks the shape at the engine boundary, at runtime:
+
+| Throws | When |
+| --- | --- |
+| `UNSUPPORTED_CAPABILITY` | A fallback without permitted pixels. |
+| `INVALID_STATE` | A fallback whose root carries semantic fields. |
+
+### Actions
+
+`perform` carries out one `LocatorAction` on a node; `performAt` carries out
+one `PointerAction` at a viewport point. An engine declares the kinds it
+honors in `actions` and `pointerActions`.
+
+| Kind | Fields | `actions` | `pointerActions` |
+| --- | --- | --- | --- |
+| `tap` | `modifiers?` on a node | yes | yes |
+| `doubleTap` | `modifiers?` on a node | yes | yes |
+| `secondaryTap` | `modifiers?` on a node | yes | yes |
+| `longPress` | `durationMs?` | yes | yes |
+| `fill` | `value`, `sensitive` | yes | - |
+| `clear` | - | yes | - |
+| `press` | `key` | yes | - |
+| `check` | - | yes | - |
+| `uncheck` | - | yes | - |
+| `focus` | - | yes | - |
+| `hover` | - | yes | yes |
+| `scrollIntoView` | - | yes | - |
+| `selectOption` | `value` | yes | - |
+| `setInputFiles` | `paths` | yes | - |
+| `dragTo` | `target`: a `NodeRef` or a `ViewportPoint` | yes | yes |
+| `swipe` | `direction`, `momentum?` | yes | yes |
+| `swipeTo` | `target`, `durationMs?` | - | yes |
+
+The grammar is closed. Anything beyond it is an agent-side `defineTool`.
+
+#### Locator actions
+
+```ts
+async perform(ref, action, context) {
+  switch (action.kind) {
+    case 'tap':
+      return client.tap(ref.id, { signal: context.signal });
+    case 'swipe':
+      return client.scroll(ref.id === rootId ? undefined : ref.id, action.direction);
+    default:
+      throw new EngineError('UNSUPPORTED_CAPABILITY', `kiosk cannot ${action.kind}`, { retryable: false });
+  }
+},
+```
 
 ```ts
 /**
@@ -750,16 +1087,16 @@ export const LOCATOR_ACTION_KINDS = [
 ] as const satisfies readonly LocatorActionKind[];
 ```
 
-The grammar is closed. Anything beyond it is an agent-side `defineTool`.
-
-### Pointer actions
+#### Pointer actions
 
 Pointer actions use viewport coordinates when no semantic node is available.
-`dragTo` ends at another point; `swipe` starts a scroll gesture at the given
-point. `swipeTo` is the one kind with no node form: the finger's path from
-the point to `target`, a touch swipe on a device and a pointer drag on a
-document platform, distinct from `dragTo` where a platform holds before it
-drags. Declare supported kinds in `pointerActions`.
+
+- `dragTo` ends at another point.
+- `swipe` starts a scroll gesture at the given point.
+- `swipeTo` is the one kind with no node form: the finger's path from the
+  point to `target`, a touch swipe on a device and a pointer drag on a
+  document platform. It differs from `dragTo`, where a platform holds before
+  it drags.
 
 ```ts
 export type PointerAction =
@@ -793,7 +1130,15 @@ export const POINTER_ACTION_KINDS = [
 ] as const satisfies readonly PointerActionKind[];
 ```
 
-### Keys
+#### Keys
+
+The key grammar of `press`, shared by every engine, and its parser.
+
+```ts
+parseKey('Control+a'); // { modifiers: ['Control'], key: { kind: 'char', char: 'a' } }
+parseKey('Shift+Tab'); // { modifiers: ['Shift'], key: { kind: 'named', name: 'Tab' } }
+parseKey('Ctrl+a'); // undefined: Ctrl is not a modifier of the grammar
+```
 
 ```ts
 /**
@@ -856,14 +1201,42 @@ export interface ParsedKey {
 export function parseKey(key: string): ParsedKey | undefined;
 ```
 
-## App
+### App
 
 The app under test is declared on the target (`targets: [{ engine, app }]`,
 see [the app under test](/reference/config#the-app-under-test)); an engine
-only drives it. The harness checks the shape of every field, then hands the
-declaration to `validateApp` at config load, so an engine can require what
-its platform needs and refuse what it cannot drive. `@e2e-dev/web` requires
-`url`; `@e2e-dev/mobile` requires `bundleId` or `appPath` and refuses `url`.
+only drives it. The harness checks the shape of every field. Then it hands
+the declaration to [`validateApp`](#validateapp) at config load.
+
+| Target field | Reaches the engine as |
+| --- | --- |
+| `url` | `validateApp` only. The harness opens it through `session.open`. |
+| the site of `url` | `info.app.site` in `prepare` and `init` |
+| `bundleId`, `appPath`, `launchArguments`, `permissions` | `validateApp`, and `info.app` in `prepare` and `init`, as the target declared them |
+| `command`, `readyUrl` | Never. The runner starts the app. |
+
+`CommandConfig` is exported from `e2e`, not `e2e/engine`.
+
+#### `validateApp`
+
+Checks the declared app at config load, synchronously.
+
+```ts
+validateApp(app, { targetName }) {
+  if (app.url === undefined) {
+    throw new ConfigurationError('INVALID_CONFIG', `target "${targetName}" needs app.url`);
+  }
+},
+```
+
+- It runs for every target the engine serves, with `{}` for a target that
+  declares no `app`.
+- `@e2e-dev/web` requires `url`; `@e2e-dev/mobile` requires `bundleId` or
+  `appPath` and refuses `url`.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | A field the platform needs is missing, or the engine cannot drive one. Name `info.targetName` in the message. |
 
 ```ts
 /**
@@ -886,24 +1259,60 @@ export interface EngineAppCheckInfo {
 export type AppPermissionState = 'grant' | 'deny' | 'reset';
 ```
 
+#### `EngineAppInfo`
+
+The resolved app, as `EnginePrepareInfo.app` and `EngineInitInfo.app`: the
+site of the URL and the device fields as the target declared them. Apply the
+site to a URL with [`sameSite`](#site-helpers).
+
 ```ts
-validateApp(app, { targetName }) {
-  if (app.url === undefined) {
-    throw new ConfigurationError('INVALID_CONFIG', `target "${targetName}" needs app.url`);
-  }
-},
+if (sameSite(request.url, info.app.site ?? '')) request.headers.set('x-api-key', key);
 ```
 
-`validateApp` runs for every target the engine serves, with `{}` for a
-target that declares no `app`. The resolved app comes back to the engine as
-`EnginePrepareInfo.app` and `EngineInitInfo.app`: the site of the URL, which
-`sameSite` from `e2e/engine` applies to a URL, and the device fields as the
-target declared them. The URL itself stays with the harness, which opens it
-through `session.open`. The target's `command` and `readyUrl` never reach
-the engine: the runner starts it. `CommandConfig` is exported from `e2e`, not
-`e2e/engine`.
+```ts
+/**
+ * The app the harness resolved from the target's declaration, handed to
+ * `prepare` and `init`: the site policy for the decisions only a surface can
+ * make (which nested documents enter an observation, which requests carry
+ * injected credentials), and what a device launches.
+ */
+export interface EngineAppInfo {
+  /**
+   * The app URL's registrable domain, as read by `siteOf`. Use `sameSite`
+   * to scope secret fills, injected headers, and observed child frames.
+   * Absent when the app has no URL. The runner passes navigation URLs
+   * separately through `session.open`.
+   */
+  readonly site?: string;
+  /** The installed app to launch, as the target declared it. */
+  readonly bundleId?: string;
+  /** The build to install, as the target declared it; relative to `projectRoot`. */
+  readonly appPath?: string;
+  /** Arguments every fresh launch passes the app. */
+  readonly launchArguments?: readonly string[];
+  /** Permissions the app holds on every fresh launch, by name. */
+  readonly permissions?: Readonly<Record<string, AppPermissionState>>;
+}
+```
 
-## Session
+### Session
+
+Steering hooks behind the universal `app` fixture and the agent's `navigate`
+and `back` verbs.
+
+| Hook | Behind |
+| --- | --- |
+| `open(url)` | `app.open()`, the agent's `navigate` verb, the reopen after `restart` and `reset` |
+| `back()` | `app.back()`, the agent's `back` verb |
+| `restart()` | `app.restart()` |
+| `reset()` | `app.clearState()` |
+
+```ts
+session: {
+  async back(context) { await client.back({ signal: context.signal }); },
+  async restart(context) { await client.relaunch(bundleId, { signal: context.signal }); },
+},
+```
 
 ```ts
 /**
@@ -934,12 +1343,27 @@ export interface EngineSession {
 }
 ```
 
-`open` is behind `app.open()`, the agent's `navigate` verb, and the reopen
-after `restart` and `reset`; `back`, `restart`, and `reset` are behind
-`app.back()`, `app.restart()`, and `app.clearState()`. An absent hook makes
-its method fail with `UNSUPPORTED_CAPABILITY`.
+### Errors
 
-## Errors
+An engine throws `EngineError` with one code of a closed set. The runner maps
+each code to the error a test sees.
+
+| Code | Runner mapping | Retryable |
+| --- | --- | --- |
+| `NODE_STALE` | re-resolve, then `LOCATOR_NOT_FOUND` | yes |
+| `FRAME_NOT_FOUND` | re-resolve, then `LOCATOR_NOT_FOUND` | yes |
+| `FRAME_AMBIGUOUS` | `LOCATOR_AMBIGUOUS` | no |
+| `NOT_ACTIONABLE`, `ACTION_MAY_HAVE_COMMITTED`, `OPERATION_TIMEOUT` | `ACTION_FAILED` | no |
+| `CANCELLED` | infrastructure `CANCELLED` | no |
+| `UNSUPPORTED_CAPABILITY` | configuration `UNSUPPORTED_CAPABILITY` | no |
+| `INVALID_STATE` | `APP_NOT_OPEN` | no |
+| `ENGINE_FAILURE`, any non-`EngineError` | infrastructure `ENGINE_FAILURE` | no |
+
+#### `EngineError`
+
+```ts
+throw new EngineError('NODE_STALE', `node ${ref.id} is gone`, { retryable: true });
+```
 
 ```ts
 export class EngineError extends Error {
@@ -978,28 +1402,33 @@ export const RETRYABLE_ENGINE_ERROR_CODES: ReadonlySet<EngineErrorCode> = new Se
 ]);
 ```
 
-| Code | Runner mapping | Retryable |
-| --- | --- | --- |
-| `NODE_STALE` | re-resolve, then `LOCATOR_NOT_FOUND` | yes |
-| `FRAME_NOT_FOUND` | re-resolve, then `LOCATOR_NOT_FOUND` | yes |
-| `FRAME_AMBIGUOUS` | `LOCATOR_AMBIGUOUS` | no |
-| `NOT_ACTIONABLE`, `ACTION_MAY_HAVE_COMMITTED`, `OPERATION_TIMEOUT` | `ACTION_FAILED` | no |
-| `CANCELLED` | infrastructure `CANCELLED` | no |
-| `UNSUPPORTED_CAPABILITY` | configuration `UNSUPPORTED_CAPABILITY` | no |
-| `INVALID_STATE` | `APP_NOT_OPEN` | no |
-| `ENGINE_FAILURE`, any non-`EngineError` | infrastructure `ENGINE_FAILURE` | no |
+#### Timeouts at a deadline
 
 An `OPERATION_TIMEOUT` on a locate or read that started with under 100 ms of
 a waiting call's deadline left, after one that completed, ends the wait
-instead: an action's or `waitFor`'s `LOCATOR_NOT_FOUND`, or an assertion's
-`ASSERTION_FAILED`, with the timeout as its cause. A negated assertion passes
-there if its negation had held long enough by the time the read was cut off, as
-`pollCondition` below describes.
+instead:
+
+| Waiting call | Fails with |
+| --- | --- |
+| an action, `waitFor` | `LOCATOR_NOT_FOUND`, with the timeout as its cause |
+| an assertion | `ASSERTION_FAILED`, with the timeout as its cause |
+
+A negated assertion passes there if its negation had held long enough by the
+time the read was cut off. [`pollCondition`](#pollcondition) polls by these
+rules.
+
+#### Runner error classes
 
 An `EngineError` a contributed fixture method throws is mapped by the table
 above, so a fixture over a session that ended reports `APP_NOT_OPEN` the way
 an observation would. A method can also fail a step with the runner's own
-error classes, exported from the same entry:
+error classes, exported from the same entry.
+
+```ts
+throw new TestError('ASSERTION_FAILED', 'expected the receipt to print');
+```
+
+`E2EError` itself is not exported; construct one of the three.
 
 ```ts
 /** The runner's error base: `category` sets the exit code, `code` names the cause. */
@@ -1023,26 +1452,271 @@ export class InfrastructureError extends E2EError {
 }
 ```
 
-`E2EError` itself is not exported; construct one of the three.
+### Shared semantics
 
-## Shared semantics
+Helpers that keep behavior consistent across engines. Every engine
+reproduces these semantics; import them instead of carrying a copy.
 
-Use these helpers to keep behavior consistent across engines:
-
-| Export | Use |
+| Export | Returns |
 | --- | --- |
-| `matchesText(actual, pattern)`, `toTextPattern(match, { exact? })`, `describePattern(pattern)` | `TextPattern` matching for `locate` and text matchers; `toTextPattern` throws `INVALID_ARGUMENT` for a `match` that is neither a string nor a `RegExp` |
-| `resolveExpression(expression, nodes, { selector? })` | The reference `locate`. Resolves one `LocatorExpression` over a semantic tree in document order, with `text` and `label` answering the innermost match when a container echoes a descendant's text. An engine whose tree is the whole truth (a device) calls it; a browser engine reproduces it. A `selector` needs the hook, a `frame` is `FRAME_NOT_FOUND` |
-| `urlMatches(current, expected, baseHref, ignoreCase?)` | `toHaveURL`-style comparison, `ignoreCase` as on the locator matchers; an `expected` that is neither a string nor a `RegExp` throws `INVALID_ARGUMENT`, as in `toTextPattern` |
-| `pollCondition({ deadline, signal, negated, evaluate, onTimeout })`, `Deadline` | Assertion polling and the negation grace window. An `OPERATION_TIMEOUT` from an `evaluate` that started with under 100 ms of the deadline left, after one that completed, ends the poll: `onTimeout(cause)` builds the failure with it, and a negation passes if it had held long enough by the time that read was cut off. Bound each read `evaluate` makes by `deadline` (`context.operation(deadline.remaining())`): one on the action timeout can outlast the assertion's own |
-| `validateJsonValue(value, label, rules?)` | Checks a value is plain JSON: a top-level `undefined` passes; a non-finite number, a cycle, an object that is not a plain object or array, or a function, symbol, bigint, or `undefined` inside is `INVALID_ARGUMENT` naming `label`. A `Secret` is `POLICY_DENIED` unless `rules.onSecret` throws its own; `rules.maxDepth` caps the nesting |
-| `rejectUnknownKeys(label, value, keys, code?)` | Throws `INVALID_CONFIG` for the first own key of `value` outside `keys`, naming the nearest known key when one is a plausible typo (`web() has unknown key "viewprt"; did you mean "viewport"?`) and the known keys otherwise: the check the runner runs on its own config objects, for an engine factory's options. Pass `'INVALID_ARGUMENT'` as `code` for an object a test passes to a fixture method |
-| `rejectUnknownOptions(api, options, known, code?)` | `INVALID_ARGUMENT` (or `code`, `INVALID_LOCATOR` for a locator option) for an option key a fixture method or matcher does not take, so a JavaScript caller's unsupported option fails instead of running on the default. `options` must be a plain object or `undefined`; a class instance or array is refused, and non-enumerable own keys count as keys |
-| `obj`, `raceAbort`, `withTimeout`, `withinCleanupBudget` | See [Contributed fixtures](#contributed-fixtures) |
-| `isProviderRecording(value)` | Whether what a provider's `record` resolved to is a recording: a parseable `startedAt` and a `stop`. Check it before keeping one, so a malformed recording fails the start, named, instead of the stop |
-| `stopProviderRecording(recording, { artifactsDir, provider, leaseId, signal })` | Ends a hosted service's recording and checks it into a `VideoSegment`; see [Provider recordings](#provider-recordings) |
+| [`matchesText`, `toTextPattern`, `describePattern`](#text-patterns) | `boolean`, `TextPattern`, `string` |
+| [`resolveExpression`](#resolveexpression) | `SemanticNode[]` |
+| [`urlMatches`](#urlmatches) | `boolean` |
+| [`siteOf`, `sameSite`](#site-helpers) | `string`, `boolean` |
+| [`pollCondition`, `Deadline`](#pollcondition) | `Promise<void>`, `Deadline` |
+| [`validateJsonValue`](#validatejsonvalue) | `void` |
+| [`rejectUnknownKeys`](#rejectunknownkeys) | `void` |
+| [`rejectUnknownOptions`](#rejectunknownoptions) | `void` |
+| [`obj`](#obj) | `WithoutUndefined<T>` |
+| [`raceAbort`, `withTimeout`, `withinCleanupBudget`](#timing-helpers) | `Promise<T>`, `Promise<T>`, `Promise<void>` |
+| [`isSecret`](#issecret) | `boolean` |
+| [`isProviderRecording`, `stopProviderRecording`](#provider-recordings) | `boolean`, `Promise<VideoSegment>` |
 
-## State
+#### Text patterns
+
+`TextPattern` matching for `locate` and text matchers.
+
+```ts
+export function toTextPattern(match: TextMatch, options?: { exact?: boolean }): TextPattern;
+export function matchesText(actual: string, pattern: TextPattern): boolean;
+export function describePattern(pattern: TextPattern): string;
+```
+
+```ts
+const pattern = toTextPattern(/total/i);
+matchesText('Order total', pattern); // true
+describePattern(pattern); // '/total/i'
+```
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | `toTextPattern` gets a `match` that is neither a string nor a `RegExp`. |
+
+#### `resolveExpression`
+
+The reference `locate`. Resolves one `LocatorExpression` over a semantic
+tree, in document order.
+
+```ts
+export function resolveExpression(
+  expression: LocatorExpression,
+  nodes: readonly SemanticNode[],
+  options?: ResolveExpressionOptions,
+): SemanticNode[];
+```
+
+```ts
+async locate(expression) {
+  const screen = await client.snapshot();
+  return resolveExpression(expression, screen.nodes);
+},
+```
+
+- `text` and `label` answer with the innermost match when a container echoes
+  a descendant's text.
+- An engine whose tree is the whole truth (a device) calls it; a browser
+  engine reproduces it.
+- A `selector` expression needs the `selector` option.
+- A `frame` expression is `FRAME_NOT_FOUND`.
+
+#### `urlMatches`
+
+`toHaveURL`-style comparison of a current URL against an expected one.
+
+```ts
+export function urlMatches(
+  current: string,
+  expected: string | RegExp,
+  baseHref: string,
+  ignoreCase?: boolean,
+): boolean;
+```
+
+```ts
+urlMatches('https://shop.test/cart', '/cart', 'https://shop.test/'); // true
+```
+
+`ignoreCase` works as on the locator matchers.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | `expected` is neither a string nor a `RegExp`, as in `toTextPattern`. |
+
+#### Site helpers
+
+`siteOf` reads a hostname's registrable domain, the form
+`EngineAppInfo.site` takes. `sameSite` tells whether a URL is on a site.
+
+```ts
+export function siteOf(hostname: string): string;
+export function sameSite(url: string | URL, site: string): boolean;
+```
+
+#### `pollCondition`
+
+Assertion polling and the negation grace window.
+
+```ts
+export function pollCondition(options: PollConditionOptions): Promise<void>;
+```
+
+```ts
+const deadline = new Deadline(context.timeouts.assertion);
+await pollCondition({
+  deadline,
+  signal: context.signal,
+  negated: false,
+  evaluate: async () => (await read(context.operation(deadline.remaining()))) === 'Paid',
+  onTimeout: (cause) => new TestError('ASSERTION_FAILED', 'status never became Paid', { cause }),
+});
+```
+
+- Bound each read `evaluate` makes by `deadline`
+  (`context.operation(deadline.remaining())`). A read on the action timeout
+  can outlast the assertion's own.
+- An `OPERATION_TIMEOUT` from an `evaluate` ends the poll under the rules in
+  [Timeouts at a deadline](#timeouts-at-a-deadline). `onTimeout(cause)`
+  builds the failure with it.
+
+#### `validateJsonValue`
+
+Checks that a value is plain JSON.
+
+```ts
+export function validateJsonValue(value: unknown, label: string, rules?: JsonValueRules): void;
+```
+
+```ts
+validateJsonValue(result, 'kiosk.evaluate result', { maxDepth: 32 });
+```
+
+- A top-level `undefined` passes.
+- `rules.onSecret` replaces the `POLICY_DENIED` a `Secret` raises with an
+  error of its own; `rules.maxDepth` caps the nesting.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | A non-finite number, a cycle, an object that is not a plain object or array, or a function, symbol, bigint, or `undefined` inside. The message names `label`. |
+| `POLICY_DENIED` | A `Secret`, unless `rules.onSecret` throws its own. |
+
+#### `rejectUnknownKeys`
+
+Throws for the first own key of `value` outside `keys`: the check the runner
+runs on its own config objects, for an engine factory's options.
+
+```ts
+export function rejectUnknownKeys(
+  label: string,
+  value: object,
+  keys: readonly string[],
+  code?: 'INVALID_CONFIG' | 'INVALID_ARGUMENT', // default: 'INVALID_CONFIG'
+): void;
+```
+
+```ts
+rejectUnknownKeys('web()', options, ['browser', 'viewport']);
+// web() has unknown key "viewprt"; did you mean "viewport"?
+```
+
+- The message names the nearest known key when one is a plausible typo, and
+  the known keys otherwise.
+- Pass `'INVALID_ARGUMENT'` as `code` for an object a test passes to a
+  fixture method.
+
+#### `rejectUnknownOptions`
+
+Refuses an option key a fixture method or matcher does not take, so a
+JavaScript caller's unsupported option fails instead of running on the
+default.
+
+```ts
+export function rejectUnknownOptions(
+  api: string,
+  options: object | undefined,
+  known: readonly string[],
+  code?: 'INVALID_ARGUMENT' | 'INVALID_LOCATOR', // default: 'INVALID_ARGUMENT'
+): void;
+```
+
+```ts
+rejectUnknownOptions('kiosk.print', options, ['copies']);
+```
+
+- Pass `INVALID_LOCATOR` as `code` for a locator option.
+- `options` must be a plain object or `undefined`; a class instance or an
+  array is refused.
+- Non-enumerable own keys count as keys.
+
+#### `obj`
+
+Drops `undefined`-valued keys, so a result built from optional inputs
+satisfies exact optional property types.
+
+```ts
+obj({ a: 1, b: undefined, c: 3 }); // { a: 1, c: 3 }
+```
+
+#### Timing helpers
+
+```ts
+export function raceAbort<T>(work: Promise<T> | (() => Promise<T>), signal: AbortSignal, label: string): Promise<T>;
+export function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => Error): Promise<T>;
+export function withinCleanupBudget(
+  promise: Promise<unknown>,
+  budget: { readonly signal: AbortSignal; readonly timeoutMs: number },
+): Promise<void>;
+```
+
+```ts
+await raceAbort(() => client.tap(ref.id), context.signal, 'kiosk tap');
+```
+
+- `raceAbort` abandons the wait when `signal` aborts. Pass a thunk to check
+  cancellation before dispatch.
+- `withTimeout` races a promise against a timeout and throws what
+  `onTimeout` builds.
+- `withinCleanupBudget` never rejects. It resolves when the promise settles,
+  failures included, when `signal` aborts, or when `timeoutMs` passes.
+
+#### `isSecret`
+
+Tells a `secrets.get()` handle from a string, for an option that takes
+either.
+
+```ts
+const password = isSecret(options.password)
+  ? await context.resolveSecret(options.password)
+  : options.password;
+```
+
+### State
+
+Platform-neutral state capture and restore, behind `test.setup` sessions and
+the `session:` option.
+
+| Member | Does |
+| --- | --- |
+| `capture(context)` | Captures the surface's persisted state as an `EngineState`. |
+| `restore(state, context)` | Replaces the surface's whole persisted state with `state`. |
+
+```ts
+state: {
+  async capture(context) {
+    return { format: 'kiosk-storage', version: 1, data: await client.exportStorage(context) };
+  },
+  async restore(state, context) {
+    await client.replaceStorage(state.data, context);
+  },
+},
+```
+
+<Warning>
+Snapshots are credentials: cookies, tokens, and storage that authenticate
+the app under test. An engine must not persist, cache, or log a snapshot on
+its own, must not echo snapshot contents in an error message, and must treat
+`restore` as a replacement, never a merge, so a restored session cannot leak
+into the next attempt.
+</Warning>
 
 ```ts
 /**
@@ -1086,7 +1760,30 @@ export interface EngineStateCapability {
 }
 ```
 
-## Artifacts
+### Artifacts
+
+Evidence capture: screenshots under the attempt directory, and videos there
+or at a provider.
+
+| Member | Returns |
+| --- | --- |
+| `screenshot(label, context)` | `Promise<string>` |
+| [`startVideo(context)`](#videos) | `Promise<void>` |
+| [`stopVideo(context)`](#videos) | `Promise<readonly VideoSegment[]>` |
+
+`screenshot` is required and returns the path of the file it wrote.
+
+```ts
+artifacts: {
+  async screenshot(_label, context) {
+    // The label comes from test code, so it never becomes part of the path.
+    shots += 1;
+    const path = `screenshots/${String(shots).padStart(3, '0')}.png`;
+    await client.capture(join(artifactsDir, path), context);
+    return path;
+  },
+},
+```
 
 ```ts
 /**
@@ -1137,23 +1834,50 @@ export interface VideoLink {
 }
 ```
 
-The runner calls `startVideo` only for an attempt whose
-[video mode](/reference/config#video) records, after `startAttempt` and any
-session restore. It uses the launch budget and stops before `endAttempt`,
-within the cleanup budget. When the video mode is set explicitly, a
-`startVideo` that fails fails the launch and a `stopVideo` that fails fails
-cleanup. With the default mode, a failure of either drops the video quietly. Return
-segments in recording order from `stopVideo`. The runner decides which recordings are kept and deletes a file an
-attempt does not keep.
+#### Videos
 
-### Provider recordings
+The runner calls `startVideo` only for an attempt whose
+[video mode](/reference/config#video) records.
+
+- `startVideo` runs after `startAttempt` and any session restore, within the
+  launch budget.
+- `stopVideo` runs before `endAttempt`, within the cleanup budget.
+- When the video mode is set explicitly, a `startVideo` that fails fails the
+  launch and a `stopVideo` that fails fails cleanup. With the default mode, a
+  failure of either drops the video quietly.
+- The runner decides which recordings are kept and deletes a file an attempt
+  does not keep.
+
+#### Provider recordings
 
 An engine that leases its browser or device from a hosted service can let the
-service record the attempt in place of its own capture, the way
+service record the attempt in place of its own capture. That is how
 [`BrowserProvider.record`](/browser#recording-on-the-provider) and
-[`DeviceProvider.record`](/mobile#hosted-devices) do. `e2e/engine` exports
+[`DeviceProvider.record`](/mobile#hosted-devices) work. `e2e/engine` exports
 the shared shape and `stopProviderRecording`, so every engine turns a
 provider's recording into a `VideoSegment` the same way.
+
+```ts
+async stopVideo(context) {
+  if (recording === undefined) return [];
+  return [await stopProviderRecording(recording, { artifactsDir, provider: 'browser provider "kernel"', leaseId, signal: context.signal })];
+},
+```
+
+- `isProviderRecording(value)` tells whether what a provider's `record`
+  resolved to is a recording: a parseable `startedAt` and a `stop`. Check it
+  before keeping one, so a malformed recording fails the start, named,
+  instead of the stop.
+- `stopProviderRecording` creates the attempt's `video` directory and calls
+  `stop` with it. A file must be a plain name that exists in that directory;
+  a link must be an `http(s)` URL with a media type.
+- It returns `{ path: 'video/<file>', startedAt }` or
+  `{ url, mediaType, startedAt }` for `stopVideo` to hand back.
+- The target argument's type is exported as `ProviderRecordingTarget`.
+
+| Throws | When |
+| --- | --- |
+| `ENGINE_FAILURE` | `stop` throws or returns anything else. The message names the provider and the lease. |
 
 ```ts
 /** Handed to a provider's `record`, once per attempt that records video. */
@@ -1192,6 +1916,8 @@ export type ProviderRecordingResult =
   | { readonly file: string }
   | { readonly url: string; readonly mediaType: string };
 
+export function isProviderRecording(value: unknown): value is ProviderRecording;
+
 export function stopProviderRecording(
   recording: ProviderRecording,
   target: {
@@ -1206,21 +1932,66 @@ export function stopProviderRecording(
 ): Promise<VideoSegment>;
 ```
 
-`stopProviderRecording` creates the attempt's `video` directory, calls
-`stop` with it, and checks what came back: a file must be a plain name that
-exists in that directory, a link an `http(s)` URL with a media type. It
-returns `{ path: 'video/<file>', startedAt }` or `{ url, mediaType,
-startedAt }` for `stopVideo` to hand back. A `stop` that throws or returns
-anything else is `ENGINE_FAILURE`, naming the provider and the lease. The
-target argument's type is exported as `ProviderRecordingTarget`.
+#### Redaction
 
-Videos are unmasked and carry `redaction: 'incomplete'`.
-A `download` an engine attaches is the app's bytes: when the session knows
-a secret value, the runner rewrites a text one (`.txt`,
-`.csv`, `.json`, `.html`) through the ledger and labels it `complete`; every
-other download keeps its bytes and carries `redaction: 'incomplete'`.
+- Videos are unmasked and carry `redaction: 'incomplete'`.
+- A `download` an engine attaches is the app's bytes. When the session knows
+  a secret value, the runner rewrites a text one (`.txt`, `.csv`, `.json`,
+  `.html`) through the ledger and labels it `complete`.
+- Every other download keeps its bytes and carries
+  `redaction: 'incomplete'`.
 
-## Contributed fixtures
+### Contributed fixtures
+
+An engine contributes named surfaces to the test fixtures through
+`fixtures`. Each key becomes a fixture and a capability name.
+
+```ts title="src/index.ts"
+fixtures: {
+  printer: (context) =>
+    context.fixture(
+      'printer',
+      {
+        async print(text: string): Promise<void> {
+          await client.print(text, context.operation());
+        },
+      },
+      { print: { kind: 'resource', label: (text) => text } },
+    ),
+},
+```
+
+```ts title="tests/receipt.e2e.ts"
+import { test as base } from 'e2e';
+
+const test = base.extend<{ printer: { print(text: string): Promise<void> } }>();
+
+test('prints a receipt', { requires: ['printer'] }, async ({ printer }) => {
+  await printer.print('Order 42');
+});
+```
+
+The factory runs once per attempt with an `EngineFixtureContext`:
+
+| Member | Use |
+| --- | --- |
+| `targetName` | The target the fixture serves. |
+| [`fixture(name, surface, operations)`](#declaring-operations) | Declares which methods are recorded steps. |
+| `app` | The resolved app, plus `resolveUrl(url)`. |
+| `timeouts` | The `test`, `action`, and `assertion` budgets. |
+| `signal` | The running phase's signal. Read it per call. |
+| `operation(timeoutMs?)` | A per-call `OperationContext`. |
+| `attachArtifact(kind, relativePath)` | Registers a file the current step produced. |
+| `attachViewport(viewport)` | Records the viewport the current step established. |
+| `locator(expression)` | Mints a public locator from a raw expression. |
+| `screen(scope)` | Mints a screen scope. |
+| [`expectable(target, factory)`](#expectations) | Makes `expect(fixture)` return matchers. |
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | The factory returns a plain surface, not one declared through `context.fixture`, the first time a test reaches for it. |
+| `APP_URL_REQUIRED` | `app.resolveUrl` on a target that declares no URL. |
+| `POLICY_DENIED` | `app.resolveUrl` with any scheme but `http:` and `https:` (`about:blank` aside). |
 
 ```ts
 /**
@@ -1281,53 +2052,76 @@ export interface EngineFixtureContext {
 }
 ```
 
+#### Declaring operations
+
 `context.fixture(name, surface, operations)` declares which methods are
-recorded steps. Each operation names a `kind: 'resource' | 'assertion'`, an
-optional `label(...args)`, an optional `timeout` (milliseconds, a function of
-the arguments, or `false` when the method owns its deadline), and optional
-`verifies`. The default timeout is `actionTimeout`; assertions verify by
-default. Nested maps describe namespaces. Recording decorates the object in
-place, so create a fresh surface in each factory invocation.
+recorded steps. Each operation takes:
 
-The runner opens the step before calling a declared method, so attachments
-and failures from synchronous and asynchronous work land on the same step.
-Work arriving after its step has closed cannot attach to a later one.
+| Field | Values | Default |
+| --- | --- | --- |
+| `kind` | `'resource'` or `'assertion'` | required |
+| `label` | `(...args) => string` | none |
+| `timeout` | milliseconds, a function of the arguments, or `false` when the method owns its deadline | `actionTimeout` |
+| `verifies` | `boolean` | `true` for assertions |
 
-A factory must return the surface it declared through `context.fixture`; a
-plain surface is `INVALID_CONFIG` the first time a test reaches for it.
-`expectable` attaches an expectation surface so `expect(fixture)` returns it;
-declare matcher recording with `context.fixture('expect', matchers,
-operations)`. Type the fixture with `test.extend<{ name: Type }>()`.
+- Nested maps describe namespaces.
+- Recording decorates the object in place, so create a fresh surface in each
+  factory invocation.
+- The runner opens the step before calling a declared method, so attachments
+  and failures from synchronous and asynchronous work land on the same step.
+  Work arriving after its step has closed cannot attach to a later one.
+- Type the fixture with `test.extend<{ name: Type }>()`.
 
-The entrypoint also exports `obj(value)`, which drops `undefined`-valued keys
-so a result built from optional inputs satisfies exact optional property
-types, plus `raceAbort(work, signal, label)`, `withTimeout(promise,
-timeoutMs, onTimeout)`, and `withinCleanupBudget(promise, { signal,
-timeoutMs })`. Pass a thunk to `raceAbort` to check cancellation before
-dispatch. `isSecret(value)` tells a `secrets.get()` handle from a string, for
-an option that takes either.
+```ts
+/** Explicit recording policy for one async fixture method. Arguments enter reports only through label. */
+export interface FixtureOperation<Args extends unknown[] = unknown[]> {
+  readonly kind: 'resource' | 'assertion';
+  readonly label?: (...args: Args) => string;
+  /** Action timeout by default; false when the method owns its assertion/navigation deadline. */
+  readonly timeout?: number | false | ((...args: Args) => number | undefined);
+  /** Assertions verify by default; waits may opt in as well. */
+  readonly verifies?: boolean;
+}
 
-## Vocabulary
+/** Only declared async methods are recorded. Sync accessors pass through unchanged. */
+export type FixtureOperations<T extends object> = {
+  readonly [Key in keyof T]?: T[Key] extends (...args: infer Args) => Promise<unknown>
+    ? FixtureOperation<Args>
+    : T[Key] extends object ? FixtureOperations<T[Key]> : never;
+};
+```
 
-`OperationContext`, `TextPattern`, `SemanticQuery`, `LocatorExpression`,
-`NodeRef`, `SemanticNode`, `ViewportPoint`, `ViewportSize`, `ObservationPixels`,
-`LocatorAction`, `LocatorActionKind`, `PointerAction`, `PointerActionKind`,
-`ScrollDirection`, `Momentum`, `SelectOption`, `Key`,
+#### Expectations
+
+`expectable` attaches an expectation surface so `expect(fixture)` returns it.
+Declare matcher recording with `context.fixture('expect', matchers,
+operations)`.
+
+```ts
+const printer = context.expectable(surface, () =>
+  context.fixture('expect', matchers, { toHavePrinted: { kind: 'assertion' } }),
+);
+return context.fixture('printer', printer, { print: { kind: 'resource' } });
+```
+
+## Types
+
+### Exported names
+
+`EngineCleanupContext`, `EngineDisposeContext`, `OperationContext`,
+`TextPattern`, `SemanticQuery`, `LocatorExpression`,
+`NodeRef`, `SemanticNode`, `ViewportPoint`, `ViewportSize`,
+`ObservationPixels`, `LocatorAction`, `LocatorActionKind`, `PointerAction`,
+`PointerActionKind`, `ScrollDirection`, `Momentum`, `SelectOption`, `Key`,
 `KeyModifier`, `KeyName`, `ParsedKey`, `ENGINE_SPI_VERSION`,
 `LOCATOR_ACTION_KINDS`, `POINTER_ACTION_KINDS`, `KEY_MODIFIERS`,
 `KEY_NAMES`, `parseKey`, `ENGINE_ERROR_CODES`, `RETRYABLE_ENGINE_ERROR_CODES`,
 `Secret`, `isSecret`, `TextMatch`, `JsonValue`, `JsonValueRules`,
 `ResolveExpressionOptions`, `PollConditionOptions`, `WithoutUndefined`,
-`FixtureOperation`, `OBSERVED_NAME_LIMIT` (256) and `OBSERVED_TEXT_LIMIT`
-(512) are exported from `e2e/engine`. An engine that cuts an observed field cuts it at exactly its
-limit: `name` at the name limit, `text` and any `value` or `selection` it
-cuts at the text limit. So a field exactly at its limit may have been cut; a
-shorter one, or a longer one the engine left whole, is complete. Keep the start and cut the end: the
-runner redacts the leading part of a secret that a field exactly at its limit
-ends with, which a whole-value match cannot see. Single-node reads are
-unbounded and always carry the full value. The `selector` expression kind carries a
-platform-native selector string; `frame` scopes a query into a nested
-document.
+`FixtureOperation`, `OBSERVED_NAME_LIMIT`, and `OBSERVED_TEXT_LIMIT` are
+exported from `e2e/engine`.
+
+### `SemanticNode`
 
 ```ts
 /** One node of an observation tree. */
@@ -1408,13 +2202,42 @@ export interface SemanticNode {
   /** Child nodes. */
   readonly children?: readonly SemanticNode[];
 }
+```
 
+### Observed field limits
+
+| Constant | Value | Cuts |
+| --- | --- | --- |
+| `OBSERVED_NAME_LIMIT` | 256 | `name` |
+| `OBSERVED_TEXT_LIMIT` | 512 | `text`, and any `value` or `selection` the engine cuts |
+
+- An engine that cuts an observed field cuts it at exactly its limit. A field
+  exactly at its limit may have been cut; a shorter one, or a longer one the
+  engine left whole, is complete.
+- Keep the start and cut the end: the runner redacts the leading part of a
+  secret that a field exactly at its limit ends with, which a whole-value
+  match cannot see.
+- Single-node reads are unbounded and always carry the full value.
+
+### Queries
+
+The `selector` expression kind carries a platform-native selector string;
+`frame` scopes a query into a nested document.
+
+```ts
 /** The `screen` query kinds. */
 export type QueryKind = 'role' | 'label' | 'placeholder' | 'text' | 'displayValue' | 'testId';
 ```
 
 A `SemanticQuery` with `visible: true` must match only nodes whose
-`states.hidden` is false, by the same predicate the engine reports on
+`states.hidden` is false. Use the same predicate the engine reports on
 `SemanticNode`, so `getByText('x', { visible: true })` and `toBeVisible()`
 never disagree. Apply it wherever the query sits in the expression, under a
 scope, filter, or index too.
+
+## Related
+
+[Writing an engine](/writing-an-engine) walks through building one.
+`@e2e-dev/web` ([reference](/reference/web)) and `@e2e-dev/mobile`
+([reference](/reference/mobile)) implement this contract with the same
+public `defineEngine`.

@@ -187,6 +187,29 @@ const agent = {
 };
 ```
 
+### Pick a model by the key that is set
+
+When teammates hold different keys, choose the model by the variable that
+is set. Keep one agent name, so everyone replays the same recordings:
+
+```ts title="Agent setup"
+import { anthropic } from '@ai-sdk/anthropic';
+import { gateway } from 'ai';
+
+const agent = {
+  model: process.env.ANTHROPIC_API_KEY
+    ? anthropic('claude-sonnet-5-5')
+    : gateway('openai/gpt-6-luna-fast'),
+};
+```
+
+Make `gateway()` the fallback: [Vercel OIDC](#vercel-oidc-instead-of-a-key)
+signs it in with no variable to test. A key in `.env` counts only when
+[`process.loadEnvFile()`](/reference/config#loading) runs before this code.
+
+A step recorded with the other model still replays and names that model. See
+[What must match](/cache#what-must-match).
+
 ### A judge of its own
 
 By default, one model drives `agent.act` and answers `agent.assert`,

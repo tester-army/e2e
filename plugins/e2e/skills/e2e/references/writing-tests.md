@@ -411,7 +411,8 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
 - `waitForResponse(pattern, { timeout? })`: resolves once the headers
   arrive, with `{ url, status, headers, json(), text() }`; `text()` and
   `json()` wait for the body (up to the action timeout) and reject with
-  `ACTION_FAILED` when it could not be read.
+  `ACTION_FAILED` when it could not be read. Start the wait before the
+  request, including the first `browser.goto` or `app.open`.
 - `cookies()`, `setCookies([...])`: a target is an http(s) URL or a domain.
 - `setViewport({ width, height })`: resize.
 - `emulateMedia({ colorScheme?, reducedMotion? })`: what the page's `@media`
@@ -419,7 +420,8 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
   `app.open` to load the page with it; a feature left out keeps its value.
 - `onDialog('accept' | 'dismiss' | handler)`: awaited; resolves to an async
   unsubscribe. Register it before the tap that opens the dialog. A handler
-  gets `{ message, accept(text?), dismiss() }`, `accept` taking the prompt
+  gets `{ type, message, accept(text?), dismiss() }`, where `type` is
+  `alert`, `confirm`, `prompt`, or `beforeunload`, `accept` taking the prompt
   text; no handler, or one that neither accepts nor dismisses, fails the
   next step with `INVALID_STATE`. A throwing handler's unanswered dialog is
   dismissed too, and its error fails the next step.

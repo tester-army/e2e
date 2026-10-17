@@ -133,9 +133,12 @@ own tools count together as `tool`, and any other name as `other`.
 | `steps_total`, `steps_agent`, `steps_locator`, `steps_assertion`, `steps_screen`, `steps_app`, `steps_session`, `steps_resource` | Step counts by kind |
 | `steps_agent_act`, `steps_agent_assert`, `steps_agent_extract`, `steps_agent_waitfor` | The agent steps by entry point |
 | `tests_with_agent_steps`, `tests_with_act` | How many executed tests ran any agent step, and how many ran `agent.act` |
-| `agent_steps_replayed`, `agent_steps_partial`, `agent_steps_missed`, `agent_steps_vision` | How the replay cache served the agent steps, and how many used pixel evidence |
+| `agent_steps_replayed`, `agent_steps_partial`, `agent_steps_missed`, `agent_steps_uncached`, `agent_steps_vision` | How the replay cache served the agent steps, how many `agent.act` steps ran with the cache off, and how many used pixel evidence |
+| `agent_miss_reasons`, `agent_handoff_reasons` | Why steps missed the cache and why replays handed off to the agent, by the runner's own reason names: `{"no-entry": 3, "retry": 1}` |
+| `tests_code_only`, `tests_replayed`, `tests_assisted`, `tests_live` | The executed tests by how the cache carried them: no agent step, every agent step replayed from the cache, the agent ran but the cache carried part of a step, the agent ran every agent step |
 | `agent_actions` | How often the agent took each action, by the runner's own names: `{"tap": 12, "typeText": 3, "scroll": 2}` |
 | `model_gateway`, `model_provider`, `model_id`, `model_calls`, `model_tokens`, `model_cached_tokens`, `estimated_cost_usd` | For the first model-backed step: the AI SDK provider that served it (`gateway` for the Vercel AI Gateway, `openrouter.chat`, `openai.chat`, ...), the vendor (the first segment of a `vendor/model` id, else the provider), and the public model id. Then the run's totals |
+| `model_calls_act`, `model_calls_assert`, `model_calls_extract`, `model_calls_waitfor` | The model calls by agent entry point |
 | `cost_source` | `provider` when the provider priced the calls, `none` when nobody priced them, `null` for a run without model calls |
 | `artifact_bytes` | The size of the artifacts the run wrote |
 | `errors`, `error_codes` | How many run-level errors, and the distinct error codes seen anywhere in the run (`LOCATOR_NOT_FOUND`, `APP_UNREACHABLE`, ...), at most 20 |

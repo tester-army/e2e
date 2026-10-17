@@ -46,7 +46,10 @@ describe('host.openSession', { timeout: 60_000 }, () => {
   });
 
   it('opens the target with its fixtures, streams steps, and closes each owner once', async () => {
-    const fake = createFakeEngine({ fixtures: true, artifacts: true });
+    const cleanup: string[] = [];
+    const fake = createFakeEngine({ fixtures: true, artifacts: true, onDispose: (context) => {
+      cleanup.push(context.reuseSignal === undefined ? 'final' : 'reusable');
+    } });
     writeConfig({ kiosk: fake });
     const progress: StepProgress[] = [];
     const host = await open();
@@ -72,6 +75,7 @@ describe('host.openSession', { timeout: 60_000 }, () => {
     expect(await host.close()).toEqual([]);
     expect(await host.close()).toEqual([]);
     expect(fake.stats().disposes).toBe(1);
+    expect(cleanup).toEqual(['final']);
   });
 
   it('cancels a fixture call still running when the session closes', async () => {

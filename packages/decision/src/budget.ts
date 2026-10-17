@@ -18,9 +18,9 @@ export async function recorded<T>(ctx: StepExecutorContext, model: { readonly pr
   let modelId = model.modelId;
   try {
     const result = await call();
-    ctx.signal.throwIfAborted();
     usage = result.usage;
     modelId = result.modelId ?? modelId;
+    ctx.signal.throwIfAborted();
     return result.value;
   } finally {
     ctx.budgets.recordModelCall({

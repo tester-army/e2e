@@ -1,5 +1,11 @@
 # @e2e-dev/decision
 
+## 0.2.4
+
+### Patch Changes
+
+- [#1035](https://github.com/tester-army/e2e/pull/1035) [`7e568f2`](https://github.com/tester-army/e2e/commit/7e568f2826aeb08ffa3fd0a263c579df578d8d26) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Count the tokens and served model of a model call that returns while its step is being cancelled.
+
 ## 0.2.3
 
 ### Patch Changes

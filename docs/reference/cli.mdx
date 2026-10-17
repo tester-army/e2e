@@ -6,66 +6,46 @@ icon: "terminal"
 "twitter:image": "https://e2e.tester.army/docs/images/og/reference/cli.png?v=e0e03be674"
 ---
 
+The `e2e` command scaffolds a project, runs, lists, and explores tests, and
+manages the replay cache, subscription logins, and telemetry. Every command
+takes `--help`.
+
 <CodeGroup>
 ```bash npm
-npx e2e init [directory]
-npx e2e login [provider]
-npx e2e logout [provider]
-npx e2e models [provider]
-npx e2e guide [topic]
-npx e2e mcp [options]
-npx e2e run [files...] [options]
-npx e2e explore [goal] [options]
-npx e2e list [files...] [options]
-npx e2e cache ls|clear|stats [--config <path>] [--cache-dir <dir>]
-npx e2e feedback -m <text> [options]
-npx e2e telemetry [status|enable|disable]
-npx e2e --help
-npx e2e --version
+npx e2e init                              # scaffold a project
+npx e2e run                               # run every test
+npx e2e run tests/signup.e2e.ts --headed  # one file, with a visible browser
 ```
 
 ```bash pnpm
-pnpm dlx e2e init [directory]
-pnpm exec e2e login [provider]
-pnpm exec e2e logout [provider]
-pnpm exec e2e models [provider]
-pnpm exec e2e guide [topic]
-pnpm exec e2e mcp [options]
-pnpm exec e2e run [files...] [options]
-pnpm exec e2e explore [goal] [options]
-pnpm exec e2e list [files...] [options]
-pnpm exec e2e cache ls|clear|stats [--config <path>] [--cache-dir <dir>]
-pnpm exec e2e feedback -m <text> [options]
-pnpm exec e2e telemetry [status|enable|disable]
-pnpm exec e2e --help
-pnpm exec e2e --version
+pnpm dlx e2e init                              # scaffold a project
+pnpm exec e2e run                              # run every test
+pnpm exec e2e run tests/signup.e2e.ts --headed # one file, with a visible browser
 ```
 
 ```bash bun
-bunx e2e init [directory]
-bunx e2e login [provider]
-bunx e2e logout [provider]
-bunx e2e models [provider]
-bunx e2e guide [topic]
-bunx e2e mcp [options]
-bunx e2e run [files...] [options]
-bunx e2e explore [goal] [options]
-bunx e2e list [files...] [options]
-bunx e2e cache ls|clear|stats [--config <path>] [--cache-dir <dir>]
-bunx e2e feedback -m <text> [options]
-bunx e2e telemetry [status|enable|disable]
-bunx e2e --help
-bunx e2e --version
+bunx e2e init                              # scaffold a project
+bunx e2e run                               # run every test
+bunx e2e run tests/signup.e2e.ts --headed  # one file, with a visible browser
 ```
 </CodeGroup>
 
-The CLI needs Node.js 24.8 or newer, or 22.22.3 or newer on Node.js 22. Any package manager installs it (npm, pnpm, Yarn with or without Plug'n'Play, Bun); the CLI itself runs on Node.js, not on the Bun or Deno runtimes (`bunx e2e` runs it on Node.js). Under Yarn Plug'n'Play on Node.js 24.8 through 24.11.0, a `.cts` file fails to load (Node.js rejects the source Yarn's loader hands on); 24.11.1 and later load it.
+<Note>
+The CLI needs Node.js 24.8 or newer, or 22.22.3 or newer on Node.js 22. Any
+package manager installs it: npm, pnpm, Yarn with or without Plug'n'Play, or
+Bun. The CLI runs on Node.js, not on the Bun or Deno runtimes; `bunx e2e`
+runs it on Node.js. Under Yarn Plug'n'Play on Node.js 24.8 through 24.11.0, a
+`.cts` file fails to load: Node.js rejects the source Yarn's loader hands on.
+24.11.1 and later load it.
+</Note>
 
-## Help and version
+## Reference
 
-| Flag | Behavior |
+### Help and version
+
+| Option | Description |
 | --- | --- |
-| `-h`, `--help` | Prints the help of the command it follows and exits 0. `e2e help run` is the same as `e2e run --help`. |
+| `-h`, `--help` | Prints the help of the command it follows and exits 0. `e2e help run` equals `e2e run --help`. |
 | `-v`, `--version` | Prints the installed `e2e` version and exits 0. |
 
 ```console
@@ -73,72 +53,36 @@ $ npx e2e --version
 0.14.0
 ```
 
-Output is colored on a terminal or in CI, plain when piped or when `NO_COLOR`
-is set. `FORCE_COLOR` keeps the colors. `e2e` without a command prints the
-help on stderr and exits 2.
+- Output is colored on a terminal or in CI, and plain when piped or when
+  `NO_COLOR` is set. `FORCE_COLOR` keeps the colors.
+- `e2e` without a command prints the help on stderr and exits 2.
+- On a terminal 55 or more columns wide, `e2e --help` opens with the e2e
+  wordmark: the site's lettering in block characters. Piped output and
+  narrower terminals get the text alone.
 
-On a terminal at least 55 columns wide, `e2e --help` opens with the e2e
-wordmark, the site's lettering drawn in block characters; piped output and
-narrower terminals get the text alone.
+### Commands
 
-## e2e init
-
-Scaffolds a project and adds `e2e` to `devDependencies`. Existing
-config and test files are skipped. With a `directory` argument the project is
-scaffolded there.
-
-On a terminal, the wizard opens with the e2e wordmark written in over about
-a second, letter by letter, the way a pen writes it. With `--yes`, in CI, on
-a dumb terminal, and on a terminal shorter than 11 rows the wordmark prints at
-once, and piped output never shows it. Ctrl-C or SIGTERM while it is being
-written exits 130.
-
-For a new project, the wizard asks you to choose:
-
-- The engine. **Web** (Playwright, the default) adds `@e2e-dev/web`.
-  **Mobile (iOS/Android)** adds `@e2e-dev/mobile`, defaults to iOS on
-  macOS and Android elsewhere, and opens Settings. **None** adds nothing.
-- A model provider or subscription for agent steps. Choose Vercel AI Gateway,
-  OpenRouter, an OpenAI-compatible endpoint, ChatGPT, GitHub Copilot,
-  OpenCode Console, or SuperGrok. Choose None for tests that only use
-  locators. The wizard adds the required packages and model config. Subscription users then sign in
-  with `e2e login`. See [Models](/models) and [Subscriptions](/subscriptions).
-- Where to install the agent skill (see [e2e guide](#e2e-guide)):
-  `.agents/skills/` for Codex, Cursor, Copilot, Gemini CLI, OpenCode, and
-  Zed, and `.claude/skills/` for Claude Code. Both are preselected; with
-  both, `.claude/skills/e2e` is a symlink to `.agents/skills/e2e`, the
-  layout `npx skills add` produces.
-- Where to register the [MCP server](/reference/mcp): `.mcp.json` for
-  Claude Code and `.cursor/mcp.json` for Cursor. Both are preselected.
-
-After confirming the file changes, choose whether to install the selected
-dependencies. The installer follows the project's `packageManager` field or
-lockfile, then the invoking package manager, then npm.
-
-| Argument or flag | Type | Default | Behavior |
-| --- | --- | --- | --- |
-| `[directory]` | path | the working directory | Where to scaffold; created when missing |
-| `-y`, `--yes` | boolean | `false` | Skips the prompts. Each answer not given as a flag takes its default: Web engine, Vercel AI Gateway, the skill and MCP config in both locations, no dependency installation |
-| `--engine <id>` | `web`, `mobile`, `none` | asked | The engine for a new config |
-| `--gateway <id>` | `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `opencode-console`, `grok`, `none` | asked | The model gateway for agent steps in a new config |
-| `--endpoint <url>` | URL | asked; `http://127.0.0.1:11434/v1` with `--yes` | Base URL for `--gateway openai-compatible`, which it implies: HTTPS, or HTTP on a loopback host |
-| `--skills <dirs>` | `.agents/skills`, `.claude/skills`, comma-separated or repeated, or `none` | asked | Where to install the agent skill |
-| `--mcp <files>` | `.mcp.json`, `.cursor/mcp.json`, comma-separated or repeated, or `none` | asked | Where to register the MCP server |
-| `--install`, `--no-install` | boolean | asked; `--no-install` with `--yes` | Whether to install dependencies |
-
-A flag answers its question and skips that prompt.
-Without a terminal, pass `--yes`.
-An unknown value exits 2 before any write and lists the valid ones.
-`--engine`, `--gateway`, and `--endpoint` apply only to a new config.
-
-| Creates | Content |
+| Command | Description |
 | --- | --- |
-| `package.json` | Created as a private ESM package when missing; otherwise only missing dependencies and scripts are added. Sibling packages (`@e2e-dev/web`, `@e2e-dev/mobile`) get the caret range of the version released with the CLI, or that exact version when the CLI is a prerelease. A `test:e2e` script runs `e2e run` unless one exists |
-| `e2e.config.ts` | One target for the selected engine, with the app in its `app`. Playwright reads `APP_URL` (default `http://localhost:3000`) into `app.url` and shows `app.command` in a comment. Mobile sets `app: { bundleId: 'Settings' }` on iOS and `com.android.settings` on Android. With a gateway, `agents.default` is `{ model, system }` |
-| `tests/example.e2e.ts` | An app-open test that passes against any page, plus a commented agent test. Device setup gets a Settings check instead |
-| `.gitignore` | Appends `node_modules/`, `.e2e/results/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/junit.xml`, `.e2e/summary.md`, `.e2e/logs/`, and `.e2e/videos/`. Committing the cache is opt-in; see [commit the replay cache](/cache#commit-the-replay-cache) |
-| `.agents/skills/e2e/`, `.claude/skills/e2e/` | `SKILL.md` and one `references/<topic>.md` per `e2e guide` topic. With both chosen, the Claude Code directory is a relative symlink (`../../.agents/skills/e2e`) to the copy |
-| `.mcp.json`, `.cursor/mcp.json` | Registers `e2e mcp` without changing other servers |
+| [`e2e init`](#e2e-init) | Scaffolds a project |
+| [`e2e login`](#e2e-login) | Signs in to a model subscription |
+| [`e2e logout`](#e2e-logout) | Forgets a stored login |
+| [`e2e models`](#e2e-models) | Lists a stored login's models |
+| [`e2e guide`](#e2e-guide) | Prints the agent skill |
+| [`e2e mcp`](#e2e-mcp) | Serves live sessions over MCP |
+| [`e2e run`](#e2e-run) | Runs the tests |
+| [`e2e explore`](#e2e-explore) | Explores the app toward a goal |
+| [`e2e list`](#e2e-list) | Prints the tests a run selects |
+| [`e2e cache`](#e2e-cache) | Inspects or clears the replay cache |
+| [`e2e feedback`](#e2e-feedback) | Sends feedback to the e2e team |
+| [`e2e telemetry`](#e2e-telemetry) | Shows or switches usage telemetry |
+
+An option with no default listed is off unless given.
+
+#### `e2e init`
+
+Scaffolds a project and adds `e2e` to `devDependencies`. It skips existing
+config and test files.
 
 <CodeGroup>
 ```bash npm
@@ -157,31 +101,97 @@ bunx e2e init --yes --gateway openrouter --skills .agents/skills --mcp .mcp.json
 ```
 </CodeGroup>
 
-Re-running `init` keeps an existing config and adds no packages for it. MCP
-registration keeps extra settings on the e2e server, such as environment
-variables and client timeouts, even when repairing its launch command. A
-current registration is left byte-for-byte unchanged. Once
-a skill directory exists, later runs refresh copies that differ from the
-installed version and never add a directory the project did not choose.
-`--skills` and `--mcp` name the exact locations instead; others are left as
-they are. A
-`.claude/skills/e2e/` copy from an earlier version becomes the symlink when
-it holds nothing but the shipped files; one with other files in it stays a
-copy and is refreshed. A skill directory that is a symlink elsewhere, or sits
-under one, is never written through: `--yes` skips it with a warning naming
-the link and its target, and an interactive run offers to replace a linked
-skill directory with a copy, or with the link where the link goes. A
-copy with a directory where a file goes, or a file where a directory goes, is
-skipped with a warning naming the entry; `init` removes nothing to repair it.
-An MCP config file reached through a symlink, or under a linked directory, is
-skipped with the same warning and left unchanged, so the server is not
-registered there; a plain config is merged as usual.
+| Option | Description |
+| --- | --- |
+| `[directory]` | Where to scaffold; created when missing. Default: the working directory. |
+| `-y`, `--yes` | Skips the prompts. Each answer not given as a flag takes its default: Web engine, Vercel AI Gateway, skill and MCP config in both locations, no install. |
+| `--engine <id>` | The engine for a new config: `web`, `mobile`, or `none`. Default: asked. |
+| `--gateway <id>` | The model gateway for agent steps in a new config: `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `opencode-console`, `grok`, or `none`. Default: asked. |
+| `--endpoint <url>` | Base URL for `--gateway openai-compatible`, and implies it. HTTPS, or HTTP on a loopback host. Default: asked; `http://127.0.0.1:11434/v1` with `--yes`. |
+| `--skills <dirs>` | Where to install the agent skill: `.agents/skills`, `.claude/skills`, or `none`. Comma-separated or repeated. Default: asked. |
+| `--mcp <files>` | Where to register the MCP server: `.mcp.json`, `.cursor/mcp.json`, or `none`. Comma-separated or repeated. Default: asked. |
+| `--install`, `--no-install` | Whether to install dependencies. Default: asked; `--no-install` with `--yes`. |
 
-Cancellation leaves files untouched and exits 0. An invalid `package.json`
-exits 2 before any write. Without a terminal on stdin and stdout, `init`
-without `--yes` exits 2 and names the flag.
+- A flag answers its question and skips that prompt.
+- `--engine`, `--gateway`, and `--endpoint` apply only to a new config.
 
-## e2e login
+| Exit code | When |
+| --- | --- |
+| 0 | The scaffold finished, or the wizard was cancelled. Cancelling leaves files untouched. |
+| 2 | An unknown flag value. Exits before any write and lists the valid values. |
+| 2 | An invalid `package.json`. Exits before any write. |
+| 2 | No terminal on stdin and stdout, and no `--yes`. The message names the flag. |
+| 2 | The dependency installation failed. |
+| 130 | Ctrl-C or SIGTERM while the wordmark is written, or SIGINT during the dependency installation. |
+
+##### Prompts
+
+On a terminal, the wizard opens with the e2e wordmark, written letter by
+letter over about a second, the way a pen writes it. With `--yes`, in CI, on
+a dumb terminal, or on a terminal under 11 rows, it prints at once. Piped
+output never shows it.
+
+For a new project, the wizard asks for:
+
+- **The engine.** **Web** (Playwright, the default) adds `@e2e-dev/web`.
+  **Mobile (iOS/Android)** adds `@e2e-dev/mobile`, defaults to iOS on macOS
+  and Android elsewhere, and opens Settings. **None** adds nothing.
+- **A model provider or subscription for agent steps:** Vercel AI Gateway,
+  OpenRouter, an OpenAI-compatible endpoint, ChatGPT, GitHub Copilot, OpenCode
+  Console, or SuperGrok. None is for tests that use only locators. The wizard
+  adds the required packages and model config. Subscription users then sign
+  in with [`e2e login`](#e2e-login). See [Models](/models) and
+  [Subscriptions](/subscriptions).
+- **Where to install the agent skill** (see [e2e guide](#e2e-guide)).
+  `.agents/skills/` serves Codex, Cursor, Copilot, Gemini CLI, OpenCode, and
+  Zed; `.claude/skills/` serves Claude Code. Both are preselected.
+- **Where to register the [MCP server](/reference/mcp).** `.mcp.json` for
+  Claude Code, `.cursor/mcp.json` for Cursor. Both are preselected.
+
+After you confirm the file changes, the wizard asks whether to install the
+selected dependencies. The installer follows the project's `packageManager`
+field or lockfile, then the invoking package manager, then npm.
+
+##### Files
+
+| Creates | Content |
+| --- | --- |
+| `package.json` | Created as a private ESM package when missing; otherwise gets only the missing dependencies and scripts. Sibling packages (`@e2e-dev/web`, `@e2e-dev/mobile`) get the caret range of the version released with the CLI, or that exact version when the CLI is a prerelease. Adds a `test:e2e` script that runs `e2e run`, unless one exists |
+| `e2e.config.ts` | One target for the selected engine, with the app in its `app`. Playwright reads `APP_URL` (default `http://localhost:3000`) into `app.url` and shows `app.command` in a comment. Mobile sets `app: { bundleId: 'Settings' }` on iOS and `com.android.settings` on Android. With a gateway, `agents.default` is `{ model, system }` |
+| `tests/example.e2e.ts` | An app-open test that passes against any page, plus a commented agent test. Device setup gets a Settings check instead |
+| `.gitignore` | Appends `node_modules/`, `.e2e/results/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/junit.xml`, `.e2e/summary.md`, `.e2e/logs/`, and `.e2e/videos/`. Committing the cache is opt-in; see [commit the replay cache](/cache#commit-the-replay-cache) |
+| `.agents/skills/e2e/`, `.claude/skills/e2e/` | `SKILL.md` and one `references/<topic>.md` per `e2e guide` topic. With both chosen, the Claude Code directory is a relative symlink (`../../.agents/skills/e2e`) to the copy, the layout `npx skills add` produces |
+| `.mcp.json`, `.cursor/mcp.json` | Registers `e2e mcp` without changing other servers |
+
+##### Re-running init
+
+- An existing config is kept, and no packages are added for it.
+- MCP registration keeps extra settings on the e2e server, such as
+  environment variables and client timeouts, even when it repairs the launch
+  command. A current registration stays byte-for-byte unchanged.
+- Once a skill directory exists, later runs refresh copies that differ from
+  the installed version. They never add a directory the project did not
+  choose. `--skills` and `--mcp` name the exact locations instead and leave
+  the others as they are.
+- A `.claude/skills/e2e/` copy from an earlier version becomes the symlink
+  when it holds only the shipped files. A copy with other files stays a copy
+  and is refreshed.
+- `init` never writes through a skill directory that is a symlink elsewhere,
+  or sits under one. `--yes` skips it with a warning naming the link and its
+  target. An interactive run offers to replace it with a copy, or with the
+  link where the link goes.
+- A copy with a directory where a file goes, or a file where a directory
+  goes, is skipped with a warning naming the entry. `init` removes nothing to
+  repair it.
+- An MCP config file reached through a symlink, or under a linked directory,
+  is skipped with the same warning and left unchanged, so the server is not
+  registered there. A plain config is merged as usual.
+
+#### `e2e login`
+
+Signs in to a subscription and stores the credentials in
+`$XDG_CONFIG_HOME/e2e/oauth.json`, by default `~/.config/e2e/oauth.json`. See
+[Subscriptions](/subscriptions) for the model configuration.
 
 <CodeGroup>
 ```bash npm
@@ -215,20 +225,23 @@ bunx e2e login                     # choose a provider
 ```
 </CodeGroup>
 
-Signs in to a subscription and stores credentials in
-`$XDG_CONFIG_HOME/e2e/oauth.json`, by default `~/.config/e2e/oauth.json`. A failed sign-in exits 1, a cancelled one 130; an
-unknown provider exits 2. See [Subscriptions](/subscriptions) for model
-configuration.
+| Option | Description |
+| --- | --- |
+| `[provider]` | The subscription: `openai`, `github-copilot`, `opencode-console`, or `spacexai`. Default: a picker. |
+| `--device` | ChatGPT: shows a code to enter on another device instead of opening a browser. |
+| `--from-gh` | GitHub Copilot: reuses the signed-in GitHub CLI's token. |
+| `--client-id <id>` | GitHub Copilot: the client id of your GitHub OAuth App, with the device flow enabled. |
+| `--enterprise-url <host>` | GitHub Copilot: the GitHub Enterprise host. |
 
-| Argument or flag | Type | Default | Behavior |
-| --- | --- | --- | --- |
-| `[provider]` | `openai`, `github-copilot`, `opencode-console`, or `spacexai` | a picker | The subscription to sign in to |
-| `--device` | boolean | `false` | ChatGPT: show a code to enter on another device instead of opening a browser |
-| `--from-gh` | boolean | `false` | GitHub Copilot: reuse the token of the signed-in GitHub CLI |
-| `--client-id <id>` | string | none | GitHub Copilot: the client id of your GitHub OAuth App with the device flow enabled |
-| `--enterprise-url <host>` | string | none | GitHub Copilot: the GitHub Enterprise host |
+| Exit code | When |
+| --- | --- |
+| 1 | The sign-in failed. |
+| 2 | An unknown provider. |
+| 130 | The sign-in was cancelled. |
 
-## e2e logout
+#### `e2e logout`
+
+Forgets the stored login of one provider.
 
 <CodeGroup>
 ```bash npm
@@ -247,7 +260,14 @@ bunx e2e logout openai    # forget one
 ```
 </CodeGroup>
 
-## e2e models
+| Option | Description |
+| --- | --- |
+| `[provider]` | The login to forget: `openai`, `github-copilot`, `opencode-console`, or `spacexai`. Default: a picker over the stored logins. |
+
+#### `e2e models`
+
+Asks the vendor which models the stored login serves and prints one line per
+model. For OpenCode Console it asks with `OPENCODE_API_KEY` when set.
 
 <CodeGroup>
 ```bash npm
@@ -266,20 +286,32 @@ bunx e2e models openai    # one provider
 ```
 </CodeGroup>
 
-Asks the vendor which models the stored login serves, or for OpenCode Console
-`OPENCODE_API_KEY` when set, and prints one line per
-model: the id `chatgpt()`, `copilot()`, `opencodeConsole()`, or `grok()`
-takes, the vendor's name for it, and its notes (reasoning levels, vision,
-preview, hidden, for Copilot `not enabled` or `no chat or responses` when
-`copilot()` cannot call it, and for OpenCode Console the plan, Zen or Go,
-that serves it). Whether a Copilot account can use a listed model only a
-call finds out. Without a provider it lists every stored login, plus
-OpenCode Console when only the key is set. Without a credential, or when the
-named provider has none, exits 1 with the sign-in command; when one of
-several fails to list, the others still print and the command exits 1. An unknown provider exits 2. See
-[Pick a model](/subscriptions#pick-a-model).
+| Option | Description |
+| --- | --- |
+| `[provider]` | `openai`, `github-copilot`, `opencode-console`, or `spacexai`. Default: every stored login, plus OpenCode Console when only `OPENCODE_API_KEY` is set. |
 
-## e2e guide
+Each line holds:
+
+- the id `chatgpt()`, `copilot()`, `opencodeConsole()`, or `grok()` takes;
+- the vendor's name for the model;
+- its notes: reasoning levels, vision, preview, hidden; for Copilot
+  `not enabled` or `no chat or responses` when `copilot()` cannot call it;
+  for OpenCode Console the plan that serves it, Zen or Go.
+
+Only a call finds out whether a Copilot account can use a listed model.
+
+| Exit code | When |
+| --- | --- |
+| 1 | No credential, or none for the named provider. The message names the sign-in command. |
+| 1 | One of several logins failed to list. The others still print. |
+| 2 | An unknown provider. |
+
+See [Pick a model](/subscriptions#pick-a-model).
+
+#### `e2e guide`
+
+Prints the skill that `init` installs; `npx skills add tester-army/e2e`
+installs the same skill. See [Coding agents](/coding-agents).
 
 <CodeGroup>
 ```bash npm
@@ -298,13 +330,13 @@ bunx e2e guide setup      # one topic
 ```
 </CodeGroup>
 
-Prints the skill that `init` installs. `guide` alone prints the overview;
-`guide <topic>` prints one of `setup`, `writing-tests`, `agent`, `running`,
-`explore`, `debugging`, `mcp`, or `bug-bash`. An unknown topic exits 2 and names the
-valid ones. The same skill installs with `npx skills add tester-army/e2e`.
-See [Coding agents](/coding-agents).
+| Option | Description |
+| --- | --- |
+| `[topic]` | One of `setup`, `writing-tests`, `agent`, `running`, `explore`, `debugging`, `mcp`, or `bug-bash`. Default: the overview. An unknown topic exits 2 and names the valid ones. |
 
-## e2e mcp
+#### `e2e mcp`
+
+An MCP server on stdio that gives a coding agent a live session on the app.
 
 <CodeGroup>
 ```bash npm
@@ -320,142 +352,20 @@ bunx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 ```
 </CodeGroup>
 
-An MCP server on stdio that gives a coding agent a live session on the app.
-Flags, tools, and session rules are on the [MCP server](/reference/mcp) page.
+| Option | Description |
+| --- | --- |
+| `--config <path>` | The config every session loads unless `open_session` names one. Default: the nearest `e2e.config.ts` or `e2e.config.mts`. |
+| `--target <name>` | The target every session opens on. Default: the only target, or the one `open_session` names. |
+| `--headed` | Shows the UI in sessions whose `open_session` does not set `headed`, when the engine supports it. |
+| `--max-sessions <n>` | Sessions open at once, each with its own browser or device, 1 through 16. Default: 4. |
 
-## e2e run
+The [MCP server](/reference/mcp) page covers these options in full, plus the
+tools and the session rules.
 
-### Positional arguments
+#### `e2e run`
 
-```bash
-e2e run [files...]
-```
-
-Test files, directories, or globs relative to the project root:
-
-- a file path (`tests/signup.e2e.ts`) selects that file;
-- a directory (`tests/agent`, `.`) selects every discovered test file beneath
-  it;
-- a bare name selects every discovered file whose path ends with it at a
-  segment boundary. `signup.e2e.ts` and `agent/signup.e2e.ts` both select
-  `tests/agent/signup.e2e.ts`. Without a `/` or `.` it matches the file name
-  with extensions dropped, so `signup` selects it too;
-- any of these with `:line` appended (`tests/signup.e2e.ts:12`, `signup:12`)
-  selects only the test declared at that line of each file it names: the line
-  the `test(` call opens on, as an editor or a report's `source` shows it. A
-  serial group runs whole when a line names one member. Several lines of one
-  file add up; naming the file without a line selects it whole. When no test
-  is declared at a named line, `NO_TESTS` names the positional and the lines
-  the file declares tests at. A positional that exists on disk as written is
-  a path, even when its name ends in `:12`;
-- a glob (`'tests/**/*.smoke.e2e.ts'`, quoted) uses the grammar of the config
-  `tests` globs: `*`, `?`, and a whole `**` segment. Braces, character
-  classes, and extglobs are `INVALID_GLOB` with a hint rather than a pattern
-  that matches nothing: there is no expansion, so name one glob per
-  alternative. `./`, `..`, a trailing `/`, and an absolute path inside the
-  project resolve as they do for any positional path, and an existing file or
-  directory is selected by its path whatever its name is spelled with.
-
-Positionals narrow the config globs and the tag, platform, and capability
-filters; they never bypass them. Names and globs are case-sensitive on every
-OS. A path outside the project root is `COLLECTION_ERROR`.
-
-The runner imports every discovered test file, even when you select only a
-few. This lets a selected test find its session setup in another file.
-Other ordinary tests remain unselected. A collection error in a selected
-file, or in any file of a run with no positionals, fails the run. A file the
-positionals left out that fails to import or register its tests is skipped
-with a notice, so a half-written file elsewhere in the suite does not stop
-`npx e2e run tests/login.e2e.ts`; if a selected test's session then has no
-setup test, the error names that file as where the setup may be.
-
-A positional starting with `-` that names no file is a usage error, exit 2.
-This is what `pnpm test:e2e -- --headed` produces: the `--` reaches e2e and
-`--headed` would otherwise be taken for a file. The message names the direct
-form, `pnpm exec e2e run --headed`.
-For npm, the direct form is `npm exec -- e2e run --headed`; npm needs the
-separator before the binary to pass its flags through.
-
-When nothing is left to run, `NO_TESTS` names the cause: no file matched the
-globs (with look-alike files such as `tests/login.test.ts`), a positional
-matched nothing (with the nearest path), a matched file registered no tests,
-or every test was filtered out.
-
-### Flags
-
-| Flag | Type | Default | Behavior |
-| --- | --- | --- | --- |
-| `--config <path>` | string | discovered | Explicit config path. A missing file is `CONFIG_NOT_FOUND`. |
-| `--target <ids>` | comma-separated or repeated | every configured target | Selects targets by name. Only the app commands of selected targets start. An unknown ID is `UNKNOWN_TARGET`. |
-| `--tag <tags>` | comma-separated or repeated | none | Only tests carrying the tags: any of them, or every one with `--tag-mode all`. When the filter leaves nothing to run, `NO_TESTS` counts the tests it filtered, marks each tag no test declares, and names the nearest declared one. |
-| `--tag-mode <mode>` | `any` or `all` | `any` | How several tags combine: any of them, or every one. |
-| `--exclude-tag <tags>` | comma-separated or repeated | none | Leaves out every test carrying any of the tags, whatever `--tag` or a positional selected. A serial group still runs whole when any member is selected; tag the serial `describe` to exclude the flow. |
-| `--grep <pattern>` | regular expression, repeatable | none | Only tests whose title matches one of the patterns. The text matched is the describe titles and the test title joined by one space (`checkout pays`); the file and the tags are not part of it. A bare pattern is case-sensitive; `'/pattern/i'` adds flags. A pattern that does not compile is a usage error, exit 2. |
-| `--grep-invert <pattern>` | regular expression, repeatable | none | Leaves out every test whose title matches one of the patterns. Same text and pattern forms as `--grep`; both together keep the tests `--grep` matches minus the ones `--grep-invert` matches. |
-| `--last-failed` | boolean | `false` | Only the tests the previous run did not pass, read from the `report.json` this run overwrites, `<output>/report.json` (`--output`, else the config's [`output`](/reference/config#output)): failed, timed out, interrupted, or skipped because a setup, a serial predecessor, a hook, or the worker failed or `--max-failures` or `--max-duration` stopped the run first, and every test it selected in the describe or file, on that target, of a `beforeAll` or `afterAll` that failed (for a setup, the tests that consume its session). A rerun that runs the hook again reports it again if it still fails, and a rerun that runs any test of its scope without it failing resolves it. A test another filter (`--grep`, `--tag`, `--target`, `--agent`, a positional) leaves out of the rerun stays owed: the rerun's report carries its last result, and the hook failure whose scope it is in, under `run.carried`, the next `--last-failed` selects it again, and the [`@e2e-dev/github`](/github) page stays red until it passes (⏹️ for a test the run before interrupted). The rerun's own exit code and summary count only what it ran. It keeps the artifacts the previous report names and writes its own under each test's `rerun-<n>/`, so no attempt overwrites an earlier one's files. A test is named per target and agent. No report is `NO_LAST_RUN`; a previous run with nothing failed selects nothing, `NO_TESTS` unless `--pass-with-no-tests`. |
-| `--shard <index/total>` | `2/3` | none | Runs one contiguous slice of the selected tests, cut once every other filter applied. Slices differ in size by at most one test, a serial group counts as one and is never split, and each shard brings only the setup tests its own tests need. A skipped test is not cut: the shard that runs the nearest test before it reports it, the first shard when none does, so only one shard reports it. Every shard runs the same command with a different index; the order is the report order, so the same suite shards the same way on every machine. A shard that gets no test is `NO_TESTS` unless `--pass-with-no-tests`. See [Sharding](/ci#sharding). |
-| `--headed` | boolean | `false` | Visible UI when the engine supports it. |
-| `--agent <names>` | comma-separated or repeated | `default` | Runs unpinned tests once per selected agent. For a test with `{ agent }`, selects the shared names when there is overlap; otherwise keeps the test's selection. An unknown name is `INVALID_CONFIG`. |
-| `--retries <n>` | integer 0-10 | config | Replaces `config.retries`. |
-| `--workers <n>` | integer 1-1024 | config | Replaces `config.workers`. |
-| `--repeat-each <n>` | integer, at least 1 | `1` | Runs every selected test this many times. Each run is a result of its own, with `repeat` 0 through `n - 1` and its own `id`; the list reporter titles the later runs `(repeat #1)`, `(repeat #2)`, and their artifacts go under a `repeat-<n>` directory. Setup tests run once. With the replay cache on, the first run records and the later ones replay, so pair it with `--no-cache` to exercise the model each time. The `list` summary adds a `Repeats` row (`1 of 2 tests passed all 5 runs`) and one line per test that did not pass every run, naming each run that failed; the `markdown` page carries the same tally. |
-| `--max-failures <n>` | integer, at least 1 | none | Stops the run once this many tests have failed or timed out. Nothing more is dispatched, the tests running on other workers end as `interrupted`, and the tests not started, the rest of the file whose test reached the limit included, are skipped with cause `failure-limit` and the reason `run stopped after 3 failures (--max-failures 3)`. The exit code is the failures' own, 1, not 130. |
-| `--max-duration <ms>` | integer 1-2147483647 | config | Overrides [`maxDuration`](/reference/config#maxduration) for one run. Exits 1, not 130. |
-| `--reporter <ids>` | comma-separated list | config | Replaces the built-in IDs in `config.reporters`: `list`, `json`, `junit`, `markdown`. `json` with `list` is `INVALID_CONFIG`. [Reporter objects](/reference/reporters) in the config keep running. |
-| `--output <dir>` | string | config, else `.e2e` | The results directory for this run, over the config's [`output`](/reference/config#output): the report, the reporter files, the AI trace, `results/` (cleared once the run's tests start, down to what the previous report names on a `--last-failed` rerun), and `sessions/`. Resolved from the project root; one the run cannot own is `INVALID_CONFIG`. The removed `--artifacts <dir>` fails with the `--output` it maps to: `--artifacts out/artifacts` is `--output out`, and a directory whose parent is the project root or outside it maps to `--output .e2e`. |
-| `--cache-dir <dir>` | string | `E2E_CACHE_DIR`, else `cache.dir`, else `.e2e/cache` | The replay cache directory for this run, over [`E2E_CACHE_DIR`](/reference/environment#replay-cache) and [`cache.dir`](/reference/config#cache). Resolved from the project root, `~` or a leading `~/` as the home directory; the cache mode stays as configured. With a custom `cache.store` it is `INVALID_CONFIG`. |
-| `--no-cache` | boolean | `false` | Replay cache off for this run, whatever `config.cache` says. |
-| `--strict-cache` | boolean | `false` | Turns on `cache.strict` for this run: a step whose recording exists but no longer replays fails with `REPLAY_STALE` instead of handing off to the agent, retries replay too, and the run never writes the cache. See [Fail on a stale recording](/cache#fail-on-a-stale-recording). |
-| `-u`, `--update-snapshots` | boolean | `false` | Writes each stored screenshot [`toHaveScreenshot`](/reference/expect#screenshot-matchers) finds missing or different, and passes the matcher. Without it a missing one is written and fails, and in CI it is only attached to the results. |
-| `-w`, `--watch` | boolean | `false` | Runs, then runs again whenever a test file or the config changes, or a key asks for it; see [Watch mode](#watch-mode). Refused in CI (`CI` set), and with `--reporter json`. |
-| `--pass-with-no-tests` | boolean | `false` | Exit 0 instead of `NO_TESTS` when nothing is selected. |
-| `--debug` | boolean | `false` | Phase timings and an agent step table on stderr after the run. |
-| `--ai-trace` | boolean | `false` | Records every model call to `<output>/ai-trace.json`, an AI SDK devtools database. Open it with [unbox-ai](https://github.com/tester-army/unbox-ai). |
-| `--trace [mode]` | `off`, `on`, `retain-on-failure`, `on-first-retry`, or `on-all-retries` | config | Which tests keep a trace page (`<output>/results/<test>/trace.md`), over the config's and every target's `trace`; a test's own `trace` still wins. A bare `--trace` is `on`, a page for every test; `--trace off` writes none for a test without its own `trace`. The value is optional and greedy, so `--trace tests/a.e2e.ts` reads the file as a mode and fails: write `--trace=<mode>`, or put test files before `--trace`. See [trace](/reference/config#trace). |
-| `--video [mode]` | a recording mode, as `--trace` | config | Which attempts record a video (WebM on a browser engine, MP4 on a device engine), over the config's and every target's `video`; a test's own `video` still wins. A bare `--video` is `on`. It applies to the targets whose engine can record; the run names the others in one notice. Greedy like `--trace`: write `--video=<mode>`, or put test files before `--video`. See [video](/reference/config#video). |
-
-Out-of-range `--retries` and `--workers` fail with `INVALID_CONFIG` before
-anything starts, the same as the config value would. `--target`, `--tag`,
-`--exclude-tag`, and `--agent` take each name once; an empty value (`--tag ''`,
-or `--tag "$TAGS"` with the variable unset) is a usage error, exit 2, never a
-wider selection.
-
-Filters only narrow, and each applies after the one before: positionals, then
-`.only`, `--tag`, `--exclude-tag`, `--grep`, `--grep-invert`, `--last-failed`,
-then the platform and capability rules, then `--shard`. When they leave
-nothing to run, `NO_TESTS` counts the tests each filter removed, names the tags
-and patterns, and marks a tag no test declares.
-
-`--debug` appends two tables to stderr. Phase timings are summed across the
-runner and every worker. The agent step table lists every agent step in
-execution order with its per-phase split, model calls, tokens, and cost when
-the provider reported one.
-
-```console
-$ npx e2e run --debug
-...
-[e2e debug] phase timings (wall 14.2s)
-  phase               count   total     avg     max
-  scheduler               1   11.8s   11.8s   11.8s
-  test.body               6   10.1s   1.7s    3.9s
-  session.launch          6    1.1s   183ms   410ms
-  engine.prepare          1   612ms   612ms   612ms
-  collect                 1   420ms   420ms   420ms
-  config.load             1   118ms   118ms   118ms
-  realm.import            1    96ms    96ms    96ms
-  session.close           6    88ms    15ms    31ms
-  engine.init             1    74ms    74ms    74ms
-
-[e2e debug] agent steps (execution order, model anthropic/claude-sonnet-4.5, total $0.0312)
-  step                                   total   model  observe  action  calls  tokens in/out  cached       cost
-  act "add a todo named groceries"       3.9s    2.8s    410ms   620ms      3  9412/388       61% (5740)   $0.0198
-  assert "the list shows groceries"      1.2s    1.1s     88ms     0ms      1  3120/41        0% (0)       $0.0114
-```
-
-`cached` is the share of input tokens the provider served from its prompt
-cache, `-` when it reports no split. The report records the same per step
-(`model.cacheReadTokens`, `model.cacheWriteTokens`) and per run
-(`usage.modelCachedTokens`).
+Runs the tests the config discovers and writes `report.json` under the
+[output directory](/reference/config#output).
 
 <CodeGroup>
 ```bash npm
@@ -510,40 +420,239 @@ bunx e2e run --reporter list,junit
 ```
 </CodeGroup>
 
-### Output
+<a id="positional-arguments" />
+
+##### Positional arguments
+
+```bash
+e2e run [files...]
+```
+
+Test files, directories, or globs relative to the project root:
+
+| Positional | Selects |
+| --- | --- |
+| A file path (`tests/signup.e2e.ts`) | That file. |
+| A directory (`tests/agent`, `.`) | Every discovered test file beneath it. |
+| A bare name (`signup.e2e.ts`, `agent/signup.e2e.ts`, `signup`) | Every discovered file whose path ends with it at a segment boundary; the first two both select `tests/agent/signup.e2e.ts`. Without a `/` or `.`, it matches the file name without extensions, so `signup` selects it too. |
+| Any of these with `:line` (`tests/signup.e2e.ts:12`, `signup:12`) | Only the test declared at that line of each file it names: the line its `test(` call opens on, as an editor or a report's `source` shows it. |
+| A quoted glob (`'tests/**/*.smoke.e2e.ts'`) | Every discovered file it matches, in the grammar of the config `tests` globs: `*`, `?`, and a whole `**` segment. |
+
+- **Lines.** A line that names one member of a serial group runs the group
+  whole. Several lines of one file add up; the file without a line selects it
+  whole. When no test is declared at a named line, `NO_TESTS` names the
+  positional and the lines the file declares tests at. A positional that
+  exists on disk as written is a path, even when it ends in `:12`.
+- **Globs.** Braces, character classes, and extglobs are `INVALID_GLOB` with a
+  hint, not a pattern that matches nothing. There is no expansion, so name one
+  glob per alternative. `./`, `..`, a trailing `/`, and an absolute path
+  inside the project resolve as for any positional path. An existing file or
+  directory is selected by its path, whatever characters its name holds.
+- Positionals narrow the config globs and the tag, platform, and capability
+  filters; they never bypass them. Names and globs are case-sensitive on
+  every OS. A path outside the project root is `COLLECTION_ERROR`.
+- The runner imports every discovered test file, even when you select a few,
+  so a selected test finds its session setup in another file. Other ordinary
+  tests stay unselected. A collection error fails the run when it is in a
+  selected file, or in any file of a run with no positionals. A file the
+  positionals left out that fails to import or register its tests is skipped
+  with a notice. So a half-written file elsewhere does not stop
+  `npx e2e run tests/login.e2e.ts`. If a selected test's session then has no
+  setup test, the error names that file as where the setup may be.
+- A positional that starts with `-` and names no file is a usage error, exit
+  2. `pnpm test:e2e -- --headed` produces it: the `--` reaches e2e, which
+  would otherwise take `--headed` for a file. The message names the direct
+  form, `pnpm exec e2e run --headed`. For npm it is
+  `npm exec -- e2e run --headed`; npm needs the separator before the binary
+  to pass its flags through.
+- When nothing is left to run, `NO_TESTS` names the cause: no file matched
+  the globs (with look-alikes such as `tests/login.test.ts`), a positional
+  matched nothing (with the nearest path), a matched file registered no
+  tests, or every test was filtered out.
+
+<a id="flags" />
+
+##### Flags
+
+**Selection**
+
+| Option | Description |
+| --- | --- |
+| `--config <path>` | Explicit config path. Default: the nearest `e2e.config.ts` or `e2e.config.mts` (see [Loading](/reference/config#loading)). A missing file is `CONFIG_NOT_FOUND`. |
+| `--target <ids>` | Targets by name, comma-separated or repeated. Default: every configured target. Only selected targets' app commands start. An unknown ID is `UNKNOWN_TARGET`. |
+| `--tag <tags>` | Only tests with the tags, comma-separated or repeated: any of them, or every one with `--tag-mode all`. |
+| `--tag-mode <mode>` | How several tags combine: `any` or `all`. Default: `any`. |
+| `--exclude-tag <tags>` | Leaves out tests with any of the tags, comma-separated or repeated, whatever `--tag` or a positional selected. A serial group still runs whole when any member is selected; tag the serial `describe` to exclude the flow. |
+| `--grep <pattern>` | Only tests whose title matches one of the regular expressions; repeatable. The title is the describe titles and the test title joined by one space (`checkout pays`), without the file or the tags. A bare pattern is case-sensitive; `'/pattern/i'` adds flags. A pattern that does not compile is a usage error, exit 2. |
+| `--grep-invert <pattern>` | Leaves out tests whose title matches one of the regular expressions; repeatable, with the text and forms of `--grep`. With both, the run keeps what `--grep` matches minus what `--grep-invert` matches. |
+| `--last-failed` | Only the tests the previous run did not pass; the list after these tables says which. |
+| `--shard <index/total>` | Runs one contiguous slice of the selected tests, such as `2/3`, cut after every other filter. Slices differ by at most one test. A serial group counts as one and is never split. Each shard brings only the setup tests its own tests need. Skipped tests are not cut: the shard that runs the nearest test before one reports it, else the first shard, so only one shard does. Every shard runs the same command with a different index. The order is the report order, so a suite shards the same way on every machine. A shard with no test is `NO_TESTS` unless `--pass-with-no-tests`. See [Sharding](/ci#sharding). |
+| `--pass-with-no-tests` | Exits 0 instead of `NO_TESTS` when nothing is selected. |
+
+**Execution**
+
+| Option | Description |
+| --- | --- |
+| `--headed` | Visible UI when the engine supports it. |
+| `--agent <names>` | Runs unpinned tests once per selected agent, comma-separated or repeated. Default: `default`. For a test with `{ agent }`, it selects the shared names when they overlap, else keeps the test's own. An unknown name is `INVALID_CONFIG`. |
+| `--retries <n>` | Replaces `config.retries`; an integer 0-10. Default: the config. |
+| `--workers <n>` | Replaces `config.workers`; an integer 1-1024. Default: the config. |
+| `--max-failures <n>` | Stops the run once this many tests (at least 1) have failed or timed out. Nothing more is dispatched, and tests running on other workers end `interrupted`. Tests not started, including the rest of the file whose test reached the limit, are skipped with cause `failure-limit` and the reason `run stopped after 3 failures (--max-failures 3)`. Exits 1, the failures' own code, not 130. |
+| `--max-duration <ms>` | Overrides [`maxDuration`](/reference/config#maxduration) for one run; an integer 1-2147483647. Default: the config. Exits 1, not 130. |
+| `--repeat-each <n>` | Runs every selected test this many times, at least 1. Default: `1`. Each run is its own result, with `repeat` 0 through `n - 1` and its own `id`. The list reporter titles later runs `(repeat #1)`, `(repeat #2)`, and puts their artifacts under a `repeat-<n>` directory. Setup tests run once. With the replay cache on, the first run records and the rest replay; add `--no-cache` to call the model each time. The `list` summary adds a `Repeats` row (`1 of 2 tests passed all 5 runs`) and one line per test that did not pass every run, naming the failed runs. The `markdown` page has the same tally. |
+| `--no-cache` | Turns the replay cache off for this run, whatever `config.cache` says. |
+| `--strict-cache` | Turns on `cache.strict` for this run. A step whose recording exists but no longer replays fails with `REPLAY_STALE` instead of handing off to the agent. Retries replay too, and the run never writes the cache. See [Fail on a stale recording](/cache#fail-on-a-stale-recording). |
+| `-u`, `--update-snapshots` | Writes each stored screenshot [`toHaveScreenshot`](/reference/expect#screenshot-matchers) finds missing or different, and passes the matcher. Without it, a missing one is written and fails; in CI it is only attached to the results. |
+| `-w`, `--watch` | Runs, then reruns when a test file or the config changes, or on a key. See [Watch mode](#watch-mode). |
+
+**Output**
+
+| Option | Description |
+| --- | --- |
+| `--reporter <ids>` | Replaces the built-in IDs in `config.reporters`, comma-separated: `list`, `json`, `junit`, `markdown`. Default: the config. `json` with `list` is `INVALID_CONFIG`. [Reporter objects](/reference/reporters) in the config keep running. |
+| `--output <dir>` | The results directory for this run, over the config's [`output`](/reference/config#output): the report, the reporter files, the AI trace, `results/`, and `sessions/`. Default: the config, else `.e2e`. Resolved from the project root; a directory the run cannot own is `INVALID_CONFIG`. `results/` is cleared once the tests start; a `--last-failed` rerun keeps what the previous report names. |
+| `--cache-dir <dir>` | The replay cache directory for this run, over [`E2E_CACHE_DIR`](/reference/environment#replay-cache) and [`cache.dir`](/reference/config#cache). Default: `E2E_CACHE_DIR`, else `cache.dir`, else `.e2e/cache`. Resolved from the project root; `~` or a leading `~/` is the home directory. The cache mode stays as configured. With a custom `cache.store` it is `INVALID_CONFIG`. |
+| `--debug` | Phase timings and an agent step table on stderr after the run; see [Debug output](#debug-output). |
+| `--ai-trace` | Records every model call to `<output>/ai-trace.json`; see [Output](#output). |
+| `--trace [mode]` | Which tests keep a trace page (`<output>/results/<test>/trace.md`): `off`, `on`, `retain-on-failure`, `on-first-retry`, or `on-all-retries`. Default: the config. `--trace off` writes none for a test without its own `trace`. See [trace](/reference/config#trace). |
+| `--video [mode]` | Which attempts record a video (WebM on a browser engine, MP4 on a device engine), with the modes of `--trace`. Default: the config. Only targets whose engine can record get one; the run names the others in one notice. See [video](/reference/config#video). |
+
+`--trace` and `--video` apply over the config's and every target's value; a
+test's own `trace` or `video` still wins. A bare flag is `on`: bare `--trace`
+keeps a page for every test. The value is optional and greedy:
+`--trace tests/a.e2e.ts` reads the file as a mode and fails. Write
+`--trace=<mode>`, or put test files before the flag.
+
+The removed `--artifacts <dir>` fails with the `--output` it maps to:
+`--artifacts out/artifacts` is `--output out`, and a directory whose parent is
+the project root or outside it maps to `--output .e2e`.
+
+`--last-failed` selects the tests the previous run did not pass. It reads them
+from the `report.json` this run overwrites, `<output>/report.json` (`--output`,
+else the config's [`output`](/reference/config#output)):
+
+- Tests that failed, timed out, or were interrupted.
+- Tests skipped because a setup, a serial predecessor, a hook, or the worker
+  failed, or because `--max-failures` or `--max-duration` stopped the run
+  first.
+- Every test a failed `beforeAll` or `afterAll` selected in its describe or
+  file, on that target; for a setup, the tests that consume its session. A
+  rerun that runs the hook again reports it again if it still fails. A rerun
+  that runs any test of its scope without it failing resolves it.
+- A test another filter (`--grep`, `--tag`, `--target`, `--agent`, a
+  positional) leaves out of the rerun stays owed. The rerun's report carries
+  its last result, and the hook failure whose scope holds it, under
+  `run.carried`. The next `--last-failed` selects it again, and the
+  [`@e2e-dev/github`](/github) page stays red until it passes (⏹️ for a test
+  the run before interrupted). The rerun's own exit code and summary count
+  only what it ran.
+- The rerun keeps the artifacts the previous report names and writes its own
+  under each test's `rerun-<n>/`, so no attempt overwrites an earlier one's
+  files.
+- A test is named per target and agent.
+- No report is `NO_LAST_RUN`. When nothing failed in the previous run, it
+  selects nothing: `NO_TESTS` unless `--pass-with-no-tests`.
+
+Out-of-range `--retries` and `--workers` fail with `INVALID_CONFIG` before
+anything starts, as the config value would. `--target`, `--tag`,
+`--exclude-tag`, and `--agent` take each name once. An empty value (`--tag ''`,
+or `--tag "$TAGS"` with the variable unset) is a usage error, exit 2, never a
+wider selection.
+
+Filters only narrow, and each applies after the one before: positionals, then
+`.only`, `--tag`, `--exclude-tag`, `--grep`, `--grep-invert`, `--last-failed`,
+then the platform and capability rules, then `--shard`. When they leave
+nothing to run, `NO_TESTS` counts the tests each filter removed and names the
+tags and patterns. It marks each tag no test declares and names the nearest
+declared one.
+
+<a id="debug-output" />
+
+##### Debug output
+
+`--debug` appends two tables to stderr. Phase timings are summed across the
+runner and every worker. The agent step table lists every agent step in
+execution order: its per-phase split, model calls, tokens, and cost when the
+provider reported one.
+
+```console
+$ npx e2e run --debug
+...
+[e2e debug] phase timings (wall 14.2s)
+  phase               count   total     avg     max
+  scheduler               1   11.8s   11.8s   11.8s
+  test.body               6   10.1s   1.7s    3.9s
+  session.launch          6    1.1s   183ms   410ms
+  engine.prepare          1   612ms   612ms   612ms
+  collect                 1   420ms   420ms   420ms
+  config.load             1   118ms   118ms   118ms
+  realm.import            1    96ms    96ms    96ms
+  session.close           6    88ms    15ms    31ms
+  engine.init             1    74ms    74ms    74ms
+
+[e2e debug] agent steps (execution order, model anthropic/claude-sonnet-4.5, total $0.0312)
+  step                                   total   model  observe  action  calls  tokens in/out  cached       cost
+  act "add a todo named groceries"       3.9s    2.8s    410ms   620ms      3  9412/388       61% (5740)   $0.0198
+  assert "the list shows groceries"      1.2s    1.1s     88ms     0ms      1  3120/41        0% (0)       $0.0114
+```
+
+`cached` is the share of input tokens the provider served from its prompt
+cache, `-` when it reports no split. The report records the same per step
+(`model.cacheReadTokens`, `model.cacheWriteTokens`) and per run
+(`usage.modelCachedTokens`).
+
+<a id="output" />
+
+##### Output
 
 | Reporter | Writes |
 | --- | --- |
-| `list` | Terminal progress, failures with code frames, and a run summary. On a TTY, live progress includes the current agent step, model turns, tool calls, and reasoning excerpts. Untrusted fields are capped at 8 KiB and stripped of control characters. |
-| `json` | The report document to stdout and nothing else there, so `e2e run --reporter json \| jq` works. Same document as `<output>/report.json`, described by `schema/report-v1.schema.json` in the package. The shape changes only with the `schemaVersion` field (`report-1` today). Cannot be combined with `list`. |
+| `list` | Terminal progress, failures with code frames, and a run summary. On a TTY, live progress shows the current agent step, model turns, tool calls, and reasoning excerpts. Untrusted fields are capped at 8 KiB and stripped of control characters. |
+| `json` | The report document to stdout, and nothing else there, so `e2e run --reporter json \| jq` works. It is the `<output>/report.json` document, described by `schema/report-v1.schema.json` in the package. The shape changes only with the `schemaVersion` field (`report-1` today). |
 | `junit` | `junit.xml` beside the report. One `<testsuite>` per file, one `<testcase>` per test-target pair named `title > path [target]`. A test-class error is a `<failure>`, any other an `<error>`, a skip a `<skipped>` with its reason. An interrupted test reached no verdict, so it is a `<skipped>` whose message starts `interrupted:`. Run-level errors form a `run` suite. |
-| `markdown` | `summary.md` beside the report with counts, cost, errors, and failure details, each naming its trace page when one was kept. Exploration runs show findings. [`@e2e-dev/github`](/github) uses this summary for pull request comments. |
+| `markdown` | `summary.md` beside the report: counts, cost, errors, and failure details, each naming its trace page when one was kept. Exploration runs show findings. [`@e2e-dev/github`](/github) uses this summary for pull request comments. |
 
-Every run that gets to its tests writes `report.json`, for scripts, under the [output directory](/reference/config#output)
-(`.e2e` by default) whatever the reporters are, the trace pages its
-[`trace`](/reference/config#trace) mode keeps in each test's directory under `results/`, and the reporters' files beside it. A run that stops before (a config or collection error,
-`NO_TESTS`, `NO_LAST_RUN`, `UNSUPPORTED_ARTIFACT`, an app command that
-fails to start, an interrupt) writes none of them and leaves the previous
-run's files in place; its errors are on the terminal and in the exit code. A `junit.xml` or `summary.md` that could not be written is a
-line on stderr, never a run error.
+Every run that gets to its tests writes, under the
+[output directory](/reference/config#output) (`.e2e` by default):
 
-`run.summary` in the report counts the results. `discovered` is every
-test-target pair the runner collected and `selected` the ones this run
-chose; the selection's left-out pairs are in `results` as `selected: false`
-but in no other count. `passed`, `failed` (timed out included),
-`interrupted`, `flaky`, and `skipped` count the selected results and add up
-to `selected`. `interrupted` is a test the run stopped before its verdict
-(a signal, `--max-failures`, `--max-duration`, or a run-level error such as
-`MODEL_UNAVAILABLE`), never a failure. `executed` is the selected
-results that ran at least one attempt.
+- `report.json`, for scripts, whatever the reporters are;
+- the trace pages its [`trace`](/reference/config#trace) mode keeps, in each
+  test's directory under `results/`;
+- the reporters' files beside the report.
 
-With `--ai-trace`, the run also writes `<output>/ai-trace.json`: one entry per
-model round trip with the exact prompt, tool definitions, response, usage,
-and provider metadata. Observations in it are already redacted. Inline image
-and file bytes are replaced with byte counts. List its runs with
-`npx unbox-ai runs .e2e/ai-trace.json`; see [Debugging a run](/debugging#agent-steps).
+A run that stops before its tests writes none of them and leaves the previous
+run's files in place. That covers a config or collection error, `NO_TESTS`,
+`NO_LAST_RUN`, `UNSUPPORTED_ARTIFACT`, an app command that fails to start, and
+an interrupt. Its errors are on the terminal and in the exit code. A
+`junit.xml` or `summary.md` that could not be written is a line on stderr,
+never a run error.
 
-### Watch mode
+`run.summary` in the report counts the results:
+
+- `discovered` is every test-target pair the runner collected, and
+  `selected` the ones this run chose. The left-out pairs are in `results` as
+  `selected: false`, but in no other count.
+- `passed`, `failed` (timed out included), `interrupted`, `flaky`, and
+  `skipped` count the selected results and add up to `selected`.
+- `interrupted` is a test the run stopped before its verdict (a signal,
+  `--max-failures`, `--max-duration`, or a run-level error such as
+  `MODEL_UNAVAILABLE`), never a failure.
+- `executed` is the selected results that ran at least one attempt.
+
+With `--ai-trace`, the run also writes `<output>/ai-trace.json`, an AI SDK
+devtools database. It holds one entry per model round trip: the exact prompt,
+tool definitions, response, usage, and provider metadata. Observations in it
+are already redacted, and inline image and file bytes become byte counts.
+Open it with [unbox-ai](https://github.com/tester-army/unbox-ai):
+`npx unbox-ai runs .e2e/ai-trace.json` lists its runs. See
+[Debugging a run](/debugging#agent-steps).
+
+<a id="watch-mode" />
+
+##### Watch mode
+
+`--watch` runs the selection, prints the summary, and waits instead of
+exiting.
 
 <CodeGroup>
 ```bash npm
@@ -562,18 +671,19 @@ bunx e2e run --watch tests/checkout.e2e.ts --headed
 ```
 </CodeGroup>
 
-`--watch` runs the selection, prints the summary, and waits instead of
-exiting. A saved test file (one the config's [`tests`](/reference/config#top-level)
-globs match) runs again on its own, whole, in place of the positionals. A
-saved source file next to the tests (a helper, a fixture: `.ts`, `.js`,
-`.json` under the directories the globs name, or beside the config) and a
-saved config run the selection again. Both keep the command line's other
-filters and the `p` and `t` filters. Changes that land during a run wait for
-it and run next, together (during the first run, only the config and its
-directory are watched: the test directories come from the config). On a
-terminal the screen is cleared before each
-rerun, and a banner names what triggered it. Each rerun reads the project's
-files afresh, the helpers a test imports included.
+- A saved test file (one the config's [`tests`](/reference/config#top-level)
+  globs match) runs again alone and whole, in place of the positionals.
+- A saved source file near the tests (a helper or a fixture: `.ts`, `.js`, or
+  `.json` under the directories the globs name, or beside the config) or a
+  saved config reruns the selection.
+- Both keep the command line's other filters and the `p` and `t` filters.
+- Changes during a run wait for it and run next, together. During the first
+  run only the config and its directory are watched, since the test
+  directories come from the config.
+- On a terminal the screen clears before each rerun, and a banner names the
+  trigger.
+- Each rerun reads the project's files afresh, including the helpers a test
+  imports.
 
 On a terminal, keys drive it as in vitest:
 
@@ -581,124 +691,62 @@ On a terminal, keys drive it as in vitest:
 | --- | --- |
 | `a`, `enter` | every test the command line selected, with the `p` and `t` filters cleared |
 | `r` | the selection again, under the `p` and `t` filters |
-| `f` | the tests the last run did not pass, as `--last-failed` reads them from its report, wherever they are: the positionals and the `p` filter do not narrow it |
+| `f` | the tests the last run did not pass, read from its report as `--last-failed` does, wherever they are; the positionals and the `p` filter do not narrow it |
 | `u` | the current selection with `--update-snapshots` |
 | `p` | prompts for a positional (a file, a bare name, a glob) the next runs select with; empty clears it |
 | `t` | prompts for a title pattern, as `--grep`; empty clears it |
 | `h` | shows the keys |
 | `q` | quits |
 
-During a run, any of these keys (and space or `c`) cancels it, as an
-interrupt would, a second one forces it, and the session waits again.
-Ctrl-C or Ctrl-D
-interrupts the run and ends the session, from inside a `p` or `t` prompt
-too; escape does the same outside a prompt and only closes the prompt
-inside one. Ctrl-Z suspends the process as usual.
+- During a run, any of these keys (and space or `c`) cancels it, as an
+  interrupt would. A second one forces it, and the session waits again.
+- Ctrl-C or Ctrl-D interrupts the run and ends the session, from inside a `p`
+  or `t` prompt too. Escape does the same outside a prompt, and inside one
+  only closes the prompt. Ctrl-Z suspends the process as usual.
+- Every rerun is a complete run: once the config loads, it writes
+  `report.json` and the reporter files, and starts and stops the app command.
+  To keep a dev server up across reruns, start it yourself and set
+  [`reuseExisting`](/reference/config#command) on the command.
+- `--last-failed` applies to the first run only; a rerun that selects nothing
+  passes empty.
+- On quit, the exit code is that of the last run that finished.
+- Without a terminal on stdin, only file changes rerun.
 
-Every rerun is a complete run: once the config has loaded it writes
-`report.json` and the reporter files, and starts and stops the app command.
-To keep a dev server up across
-reruns, start it yourself and set
-[`reuseExisting`](/reference/config#command) on the command. `--last-failed`
-applies to the first run only; a rerun that selects nothing passes empty.
-The exit code on quit is that of the last run that finished.
+<Note>
+`--watch` is not for CI: a process that never exits on its own hangs the job,
+so it is refused when `CI` is set. It is also refused with `--reporter json`, and
+exits 2 after the first run when the config's `reporters` include `json`.
+</Note>
 
-Without a terminal on stdin, only file changes rerun. Not for CI: a process
-that never exits on its own hangs the job, so `--watch` is refused when `CI`
-is set. It is refused with `--reporter json` too, and ends with exit code 2
-after the first run when the config's `reporters` include `json`.
-
-### Signals
+##### Signals
 
 Signals escalate.
 
-1. The first `SIGINT` or `SIGTERM` interrupts. The running test ends with
-   status `interrupted`, its `afterEach` hooks and session close run within
-   the cleanup budget, and every worker disposes its engine. The tests not
-   started are skipped with cause `infrastructure-unavailable` and the reason
-   `run interrupted before execution`, so the report lists every planned
-   test and `--last-failed` runs the interrupted and the unstarted ones
-   again. The runner writes the report and exits 130. An interrupt before
-   any test starts (during collection, an engine's `prepare`, or app
-   startup) writes no report and leaves the previous one in place.
+1. The first `SIGINT` or `SIGTERM` interrupts. The running test ends
+   `interrupted`; its `afterEach` hooks and session close run within the
+   cleanup budget, and every worker disposes its engine. Tests not started
+   are skipped with cause `infrastructure-unavailable` and the reason
+   `run interrupted before execution`. So the report lists every planned
+   test, and `--last-failed` reruns the interrupted and the unstarted ones.
+   The runner writes the report and exits 130. An interrupt before any test
+   starts (during collection, an engine's `prepare`, or app startup) writes
+   no report and leaves the previous one in place.
 2. A second signal forces. Workers dispose their engines at once and are
    killed when the cleanup budget is spent. The report is still written,
-   and so are `junit.xml` and `summary.md` when the `junit` and
-   `markdown` reporters are on; a custom reporter's
-   `onRunFinished` is abandoned.
-3. A third signal exits on the spot, after killing the process groups of every
-   app command the run started. A process attached through
+   and so are `junit.xml` and `summary.md` when the `junit` and `markdown`
+   reporters are on; a custom reporter's `onRunFinished` is abandoned.
+3. A third signal exits on the spot, after killing the process groups of
+   every app command the run started. A process attached through
    `reuseExisting` is left alone.
 
 A worker whose runner disappears disposes its engine and exits within the
 cleanup budget.
 
-## e2e explore
+#### `e2e explore`
 
-```bash
-e2e explore [goal]
-```
-
-A run with no test file. The agent gets a goal, plans one exploration step
-at a time, reports defects through its `report_finding` tool, and ends with an
-assessment. The default goal is `Explore the app and find bugs`. See
-[Exploring without a test](/explore).
-
-| Flag | Type | Default | Behavior |
-| --- | --- | --- | --- |
-| `--config <path>` | string | discovered | Explicit config path, with the same errors as `run`. |
-| `--target <id>` | string | the first configured target | The one target to explore. Several targets and no flag explores the first and says so on stderr. An unknown name is `UNKNOWN_TARGET`. |
-| `--agent <name>` | string | `default` | The configured agent the exploration runs as. Its model, `system`, tools, and context are reused; a hand-rolled `StepExecutor` is replaced by the built-in agent, with a notice. An entry with no model, a custom executor's included, is `MODEL_UNAVAILABLE` before anything starts. An unknown name is `INVALID_CONFIG`. |
-| `--session <name>` | string | none | Starts signed in. The setup test in the config's test files that declares this session runs first, and the exploration restores what it saved, as a test with `{ session }` does. No other test runs. A name no setup test declares is `COLLECTION_ERROR`, naming the declared ones, before any app process starts. See [Start signed in](/explore#start-signed-in). |
-| `--max-steps <n>` | integer 1-12 | `8` | Exploration steps at most. Out of range exits 2. |
-| `--timeout <ms>` | integer 180000-900000 | `600000` | The run's wall clock. The last minute is kept for the closing assessment. Out of range exits 2. |
-| `--headed` | boolean | `false` | Requests visible UI when the engine supports it. |
-| `--reporter <ids>` | comma-separated list | resolved config value | As for `run`. The exploration summary rows print under the `list` summary; `json` carries the record in the report; `markdown` writes the findings to `<output>/summary.md`. |
-| `--output <dir>` | string | config, else `.e2e` | As for `run`; a finding's evidence screenshot is one of the attempt's artifacts under `<output>/results`. |
-| `--debug` | boolean | `false` | As for `run`: phase timings and the agent step table. |
-| `--ai-trace` | boolean | `false` | As for `run`. |
-| `--trace [mode]` | a recording mode | config | As for `run`: a trace page of the exploration. A bare `--trace` is `on`; `retain-on-failure` keeps it only when the exploration did not pass. The exploration is one attempt, so a retry mode keeps none, and the plan-time notice says to pass `--trace on`. Put the goal before `--trace`, or write `--trace=<mode>`. |
-| `--video [mode]` | a recording mode | config | As for `run`: one video of the whole exploration (WebM on a browser engine, MP4 on a device engine). A bare `--video` is `on`; `retain-on-failure` keeps it only when the exploration did not pass. An engine that cannot record prints a notice. The exploration is one attempt, so a retry mode records nothing, and the plan-time notice says to pass `--video on`. Put the goal before `--video`, or write `--video=<mode>`. |
-
-The run has one result, under the virtual file `explore`, titled by the goal.
-The exploration opens the app first when the target declares `app.url`.
-With `--session`, the report also holds the setup test's result and lists the
-project's other tests as skipped with cause `filtered`, as `run` lists the
-tests of a file no positional named.
-The exploration runs with the replay cache off and zero retries whatever the
-config says. A `--session` setup test runs as it would for `run`, with the
-config's agents, cache, and retries.
-`<output>/report.json` gains `run.explore`: the goal, the budgets, why the run
-ended (`finished`, `step-limit`, `time`, `stuck`, or `aborted`), the
-assessment, the steps, and the findings.
-
-Each step has its own budget: 40 actions and 40 model calls, unless the agent
-sets `maxSteps` or `maxModelCalls` (1 to 100). A step that reaches its action
-or time budget is time-boxed, and its findings still count. A failed step
-does not end the run; three failed or blocked steps in a row with no new
-finding do (`stuck`).
-
-A finding of kind `issue` is a functional defect; a `warning` is cosmetic.
-Severity runs from `trivial` (1) to `critical` (5), and the report lists
-issues before warnings, the most severe first. Each finding has its location,
-the expected and observed behavior, the steps to reproduce, and a screenshot
-when capture is allowed and succeeds. After a secret fill, findings carry no
-screenshots; see
-[screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill).
-
-Artifacts go to a directory named from the goal's first words and a digest of
-the goal, target, and agent, such as
-`<output>/results/explore-check-the-cart-totals-1a2b3c4d5e6f7a8b/`, so a rerun
-of the same goal on the same target and agent writes to the same directory.
-
-| Outcome | Run status | Exit code |
-| --- | --- | --- |
-| Steps ran, no `issue` finding, and not every step was blocked | passed | 0 |
-| At least one `issue` finding | failed | 1 |
-| No step ran and nothing was found | blocked | 1 |
-| Every step was blocked, with no `issue` finding | blocked | 1, 2, or 3, from the first blocker |
-| Config, engine, or model provider error | error | 2 or 3 |
-| Ctrl-C | | 130 |
+A run with no test file. The agent gets a goal, plans one exploration step at
+a time, reports defects through its `report_finding` tool, and ends with an
+assessment. See [Exploring without a test](/explore).
 
 <CodeGroup>
 ```bash npm
@@ -723,28 +771,82 @@ bunx e2e explore 'Hunt for broken forms and dead links' --agent thorough --video
 ```
 </CodeGroup>
 
-## e2e list
-
-```bash
-e2e list [files...]
-```
-
-A dry run. `list` selects tests exactly as `run` does, prints one line per
-test-target pair, and exits. No app process, engine, or worker starts, and
-nothing is written. The same selection is [`list` from `e2e/runner`](/reference/runner),
-in process. That function also returns pairs a filter removed.
-
-Positionals and the selection flags (`--config`, `--target`, `--tag`,
-`--tag-mode`, `--exclude-tag`, `--grep`, `--grep-invert`, `--last-failed`,
-`--shard`, `--pass-with-no-tests`) are those of `run`; `--last-failed` reads
-`report.json` under the config's [`output`](/reference/config#output). `--reporter` accepts `list` (the default) or `json`.
-
-| Reporter | Writes |
+| Option | Description |
 | --- | --- |
-| `list` | One line per pair, `file › title [target]`, in selection order, with the describe path joined by ` › ` (`tests/billing.e2e.ts › checkout › pays [web]`), then each tag the test declares as `#tag` (`tests/billing.e2e.ts › checkout › pays [web] #smoke #billing`). A skipped test keeps its line with `(skipped: <reason>)` appended. Setup tests are listed like any other. |
-| `json` | `{ "pairs": [...] }` to stdout. Each pair carries `id`, `file`, `title`, `titlePath`, `kind` (`test` or `setup`), `tags` (the tags the test declares, `[]` when none), `source` when the declaration is known, `session` when the test consumes one, `sessions`, `serialId` when the test is in a serial group, `target`, `agent`, `disposition` (`run` or `skip`), and `reason` when skipped. |
+| `[goal]` | What to explore, in a sentence. Default: `Explore the app and find bugs`. |
+| `--config <path>` | Explicit config path, with the errors of `run`. Default: discovered. |
+| `--target <id>` | The one target to explore. Default: the first configured target; with several targets and no flag, it explores the first and says so on stderr. An unknown name is `UNKNOWN_TARGET`. |
+| `--agent <name>` | The configured agent to explore as. Default: `default`. Its model, `system`, tools, and context are reused. The built-in agent replaces a hand-rolled `StepExecutor`, with a notice. An entry with no model, a custom executor's included, is `MODEL_UNAVAILABLE` before anything starts. An unknown name is `INVALID_CONFIG`. |
+| `--session <name>` | Starts signed in. The setup test in the config's test files that declares this session runs first. The exploration restores what it saved, as a test with `{ session }` does. No other test runs. A name no setup test declares is `COLLECTION_ERROR`, naming the declared ones, before any app process starts. See [Start signed in](/explore#start-signed-in). |
+| `--max-steps <n>` | Exploration steps at most, an integer 1-12. Default: `8`. Out of range exits 2. |
+| `--timeout <ms>` | The run's wall clock, an integer 180000-900000. Default: `600000`. The last minute is kept for the closing assessment. Out of range exits 2. |
+| `--headed` | Requests visible UI when the engine supports it. |
+| `--reporter <ids>` | As for `run`. Default: the resolved config value. `list` prints the exploration rows under its summary, `json` carries the record in the report, and `markdown` writes the findings to `<output>/summary.md`. |
+| `--output <dir>` | As for `run`. Default: the config, else `.e2e`. A finding's evidence screenshot is an attempt artifact under `<output>/results`. |
+| `--debug` | As for `run`: phase timings and the agent step table. |
+| `--ai-trace` | As for `run`. |
+| `--trace [mode]` | As for `run`: a trace page of the exploration. Default: the config. |
+| `--video [mode]` | As for `run`: one video of the whole exploration (WebM on a browser engine, MP4 on a device engine). Default: the config. An engine that cannot record prints a notice. |
 
-Pairs a filter removed are not listed.
+For `--trace` and `--video`, a bare flag is `on`, and `retain-on-failure`
+keeps the page or video only when the exploration did not pass. The
+exploration is one attempt, so a retry mode records nothing, and a plan-time
+notice says to pass `--trace on` (or `--video on`). Put the goal before the
+flag, or write `--trace=<mode>` or `--video=<mode>`.
+
+##### Report
+
+- The run has one result, under the virtual file `explore`, titled by the
+  goal.
+- The exploration opens the app first when the target declares `app.url`.
+- With `--session`, the report also holds the setup test's result. It lists
+  the project's other tests as skipped with cause `filtered`, as `run` lists
+  the tests of a file no positional named.
+- The exploration runs with the replay cache off and zero retries, whatever
+  the config says. A `--session` setup test runs as it would for `run`, with
+  the config's agents, cache, and retries.
+- `<output>/report.json` gains `run.explore`: the goal, the budgets, why the
+  run ended (`finished`, `step-limit`, `time`, `stuck`, or `aborted`), the
+  assessment, the steps, and the findings.
+- Artifacts go to a directory named from the goal's first words and a digest
+  of the goal, target, and agent, such as
+  `<output>/results/explore-check-the-cart-totals-1a2b3c4d5e6f7a8b/`. A rerun
+  of the same goal on the same target and agent writes to the same directory.
+
+##### Step budgets
+
+Each step has its own budget: 40 actions and 40 model calls, unless the agent
+sets `maxSteps` or `maxModelCalls` (1 to 100). A step that reaches its action
+or time budget is time-boxed, and its findings still count. A failed step
+does not end the run. Three failed or blocked steps in a row with no new
+finding do (`stuck`).
+
+##### Findings
+
+- A finding of kind `issue` is a functional defect; a `warning` is cosmetic.
+- Severity runs from `trivial` (1) to `critical` (5). The report lists issues
+  before warnings, the most severe first.
+- Each finding has its location, the expected and observed behavior, the
+  steps to reproduce, and a screenshot when capture is allowed and succeeds.
+  After a secret fill, findings carry no screenshots; see
+  [screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill).
+
+##### Outcomes
+
+| Outcome | Run status | Exit code |
+| --- | --- | --- |
+| Steps ran, no `issue` finding, and not every step was blocked | passed | 0 |
+| At least one `issue` finding | failed | 1 |
+| No step ran and nothing was found | blocked | 1 |
+| Every step was blocked, with no `issue` finding | blocked | 1, 2, or 3, from the first blocker |
+| Config, engine, or model provider error | error | 2 or 3 |
+| Ctrl-C | | 130 |
+
+#### `e2e list`
+
+A dry run: `list` selects tests exactly as `run` does, prints one line per
+test-target pair, and exits. It starts no app process, engine, or worker, and
+writes nothing.
 
 <CodeGroup>
 ```bash npm
@@ -772,18 +874,25 @@ bunx e2e list --reporter json
 ```
 </CodeGroup>
 
-## e2e cache
-
-Inspect or clear the replay cache. These commands load the discovered config
-or `--config <path>`, read the directory a run would (`--cache-dir`, else
-`E2E_CACHE_DIR`, else `cache.dir`), and exit 0 on an empty store. The
-default directory is `.e2e/cache/`.
-
-| Command | Prints |
+| Option | Description |
 | --- | --- |
-| `e2e cache ls` | One row per entry: the test and target it was recorded for, the first 12 characters of its instruction digest, its age, and how many actions a replay would run (`(truncated)` when recording hit the action cap). Rows are grouped by test, then target, oldest first. |
-| `e2e cache stats` | The store directory, the number of readable entries, their total size, and the number of unreadable files when there are any. |
-| `e2e cache clear` | Deletes every cache file, then the directory when nothing else is left in it, and reports how many files went. |
+| `[files...]` | As for [`run`](#positional-arguments). |
+| `--config`, `--target`, `--tag`, `--tag-mode`, `--exclude-tag`, `--grep`, `--grep-invert`, `--last-failed`, `--shard`, `--pass-with-no-tests` | As for [`run`](#flags). `--last-failed` reads `report.json` under the config's [`output`](/reference/config#output). |
+| `--reporter <id>` | `list` or `json`. Default: `list`. |
+
+| Reporter | Writes |
+| --- | --- |
+| `list` | One line per pair in selection order: `file › title [target]`, with the describe path joined by ` › ` (`tests/billing.e2e.ts › checkout › pays [web]`), then each declared tag as `#tag` (`tests/billing.e2e.ts › checkout › pays [web] #smoke #billing`). A skipped test keeps its line, with `(skipped: <reason>)` appended. Setup tests are listed like any other. |
+| `json` | `{ "pairs": [...] }` to stdout. Each pair carries `id`, `file`, `title`, `titlePath`, `kind` (`test` or `setup`), `tags` (the tags the test declares, `[]` when none), `source` when the declaration is known, `session` when the test consumes one, `sessions`, `serialId` when the test is in a serial group, `target`, `agent`, `disposition` (`run` or `skip`), and `reason` when skipped. |
+
+Pairs a filter removed are not listed. [`list` from `e2e/runner`](/reference/runner)
+runs the same selection in process and also returns the removed pairs.
+
+#### `e2e cache`
+
+Inspects or clears the replay cache. Each subcommand loads the discovered
+config or `--config <path>`, reads the directory a run would, and exits 0 on
+an empty store.
 
 <CodeGroup>
 ```bash npm
@@ -808,71 +917,41 @@ bunx e2e cache ls --config packages/web/e2e.config.ts
 ```
 </CodeGroup>
 
+| Command | Prints |
+| --- | --- |
+| `e2e cache ls` | One row per entry: the test and target it was recorded for, the first 12 characters of its instruction digest, its age, and how many actions a replay would run (`(truncated)` when recording hit the action cap). Rows are grouped by test, then target, oldest first. |
+| `e2e cache stats` | The store directory, the number of readable entries, their total size, and the number of unreadable files when there are any. |
+| `e2e cache clear` | Deletes every cache file, then the directory when nothing else is left in it, and reports how many files went. |
+
+| Option | Description |
+| --- | --- |
+| `--config <path>` | Explicit config path. Default: the nearest `e2e.config.ts` or `e2e.config.mts` (see [Loading](/reference/config#loading)). |
+| `--cache-dir <dir>` | The store directory. Default: `E2E_CACHE_DIR`, else `cache.dir`, else `.e2e/cache/`. |
+
 ```text
 TEST                             TARGET  INSTRUCTION   AGE  ACTIONS
 tests/billing.e2e.ts::upgrades   web     4f1c0a9d3b62  2h   4
 tests/signup.e2e.ts::signs%20up  web     9ab7715ce004  3d   7 (truncated)
 ```
 
-An entry recorded before entries carried provenance prints `-` in those
-columns and still replays. A file the store cannot read (truncated, over the
-1 MiB ceiling, or from a newer schema) is counted separately on stderr, treated
-as a miss by a run, and removed by `clear`. Files the runner never wrote are
-left alone.
+- An entry recorded before entries carried provenance prints `-` in those
+  columns and still replays.
+- A file the store cannot read (truncated, over the 1 MiB ceiling, or from a
+  newer schema) is counted separately on stderr, treated as a miss by a run,
+  and removed by `clear`.
+- Files the runner never wrote are left alone.
 
 <Note>
 These commands read the file store only. With a custom `cache.store` they
 exit 2 and say so.
 </Note>
 
-## e2e feedback
-
-<CodeGroup>
-```bash npm
-npx e2e feedback -m <text> [--type bug|docs|feature|other] [options]
-```
-
-```bash pnpm
-pnpm exec e2e feedback -m <text> [--type bug|docs|feature|other] [options]
-```
-
-```bash bun
-bunx e2e feedback -m <text> [--type bug|docs|feature|other] [options]
-```
-</CodeGroup>
+#### `e2e feedback`
 
 Sends one report about e2e itself to the e2e team: something broke, the docs
-or the skill misled, or a capability is missing. Coding agents may send one
-when they hit a problem with e2e, not with the app under test, after showing
-the user the `--dry-run` output and getting their agreement.
-
-| Flag | Meaning |
-| --- | --- |
-| `-m, --message <text>` | Required. One or two sentences on the problem, at most 2000 characters |
-| `--type <type>` | `bug`, `docs`, `feature`, or `other` (default) |
-| `--task <text>` | What you were trying to do |
-| `--expected <text>` | What you expected to happen |
-| `--actual <text>` | What happened instead, with the error message |
-| `--error-code <code>` | The e2e error code involved, such as `LOCATOR_AMBIGUOUS` |
-| `--repro <text>` | For a bug: steps that reproduce it every time, without app content |
-| `--approach <text>` | What you tried, workarounds included |
-| `--command <text>` | The e2e command or API involved, at most 200 characters |
-| `--agent <text>` | The coding agent and model sending it, at most 200 characters |
-| `--allow-outdated` | Send even when a newer e2e release exists |
-| `--dry-run` | Print the event that would be sent and send nothing |
-
-`--task`, `--expected`, `--actual`, `--approach`, and `--repro` take up to
-1500 characters each. A blank or longer value exits 2.
-
-A bug without `--repro` isn't sent. The command prints a prefilled
-[GitHub issue](https://github.com/tester-army/e2e/issues/new?template=bug_report.yml)
-instead, where the e2e team can ask for a reproduction. Add a minimal one and
-submit it yourself.
-
-Before sending, the command asks the npm registry for the latest e2e
-release. When yours is older, it exits 2 and sends nothing, since the problem
-may already be fixed: upgrade, check it still happens, and send it again, or
-pass `--allow-outdated`.
+or the skill misled, or a capability is missing. A coding agent may send one
+when it hits a problem with e2e, not with the app under test. It first shows
+the user the `--dry-run` output and gets their agreement.
 
 <CodeGroup>
 ```bash npm
@@ -897,35 +976,62 @@ bunx e2e feedback --type feature -m "Need a way to set the viewport per test" --
 ```
 </CodeGroup>
 
-The report goes to the same PostHog project as [telemetry](/telemetry#feedback),
-as one `e2e_feedback` event, together with the anonymous machine facts every
-telemetry event carries. Before sending, the value of every environment
-variable whose name holds `KEY`, `TOKEN`, `SECRET`, `PASS`, `_PWD`,
-`CREDENTIAL`, `AUTH`, `COOKIE`, or `PRIVATE` becomes `<secret:NAME>` when it
-is at least six characters long, the minimum for a config secret, since a
-shorter one would rewrite ordinary words. Bearer tokens,
-URL credentials, private keys, JWTs, and common API key shapes become
-`<redacted>`. Do not paste app data, page content, or test files.
+| Option | Description |
+| --- | --- |
+| `-m`, `--message <text>` | Required. One or two sentences on the problem. |
+| `--type <type>` | `bug`, `docs`, `feature`, or `other`. Default: `other`. |
+| `--task <text>` | What you were trying to do. |
+| `--expected <text>` | What you expected to happen. |
+| `--actual <text>` | What happened instead, with the error message. |
+| `--error-code <code>` | The e2e error code involved, such as `LOCATOR_AMBIGUOUS`. |
+| `--repro <text>` | For a bug: steps that reproduce it every time, without app content. |
+| `--approach <text>` | What you tried, workarounds included. |
+| `--command <text>` | The e2e command or API involved. |
+| `--agent <text>` | The coding agent and model sending it. |
+| `--allow-outdated` | Sends even when a newer e2e release exists. |
+| `--dry-run` | Prints the event that would be sent and sends nothing. |
 
-Feedback is sent only when you run the command, so a saved
-`e2e telemetry disable` does not stop it. `E2E_TELEMETRY_DISABLED=1` and
-`DO_NOT_TRACK=1` do: with either set the command exits 2 and sends nothing,
-so a CI job or a fleet that opted out sends nothing even when an agent runs
-it. `E2E_TELEMETRY_DEBUG=1` prints it like `--dry-run`. It prints a reference
-id and exits 0 once PostHog accepts the event, or exits 3 when PostHog did
-not confirm it; the report may still have arrived, so the message names its
-reference id.
+`--message` takes at most 2000 characters, `--command` and `--agent` 200, and
+`--task`, `--expected`, `--actual`, `--repro`, and `--approach` 1500.
 
-## e2e telemetry
+- **A bug needs `--repro`.** Without it, the command sends nothing and prints
+  a prefilled
+  [GitHub issue](https://github.com/tester-army/e2e/issues/new?template=bug_report.yml)
+  instead, where the e2e team can ask for a reproduction. Add a minimal one
+  and submit it yourself.
+- **Outdated releases are refused.** Before sending, the command asks the npm
+  registry for the latest e2e release. When yours is older, it exits 2 and
+  sends nothing, since the problem may be fixed already. Upgrade, check that
+  it still happens, and send it again, or pass `--allow-outdated`.
+- **Where it goes.** One `e2e_feedback` event, to the same PostHog project as
+  [telemetry](/telemetry#feedback), with the anonymous machine facts every
+  telemetry event carries.
+- **Opting out.** Feedback is sent only when you run the command, so a saved
+  `e2e telemetry disable` does not stop it. `E2E_TELEMETRY_DISABLED=1` and
+  `DO_NOT_TRACK=1` do: with either set, the command exits 2 and sends
+  nothing. So a CI job or a fleet that opted out sends nothing, even when an
+  agent runs it. `E2E_TELEMETRY_DEBUG=1` prints the event like `--dry-run`.
+
+| Exit code | When |
+| --- | --- |
+| 0 | PostHog accepted the event, and the command printed a reference id. Also `--dry-run`, `E2E_TELEMETRY_DEBUG=1`, and `--type bug` without `--repro`: none of them send, so they exit 0 even with an opt-out variable set. The outdated-release check runs first, so an outdated install exits 2 on these too, unless `--allow-outdated` or an opt-out variable is set. |
+| 2 | A blank or too long text value, an outdated release without `--allow-outdated`, or `E2E_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` set. |
+| 3 | PostHog did not confirm the event. The report may still have arrived, so the message names its reference id. |
+
+<Warning>
+Before sending, the value of every environment variable whose name holds
+`KEY`, `TOKEN`, `SECRET`, `PASS`, `_PWD`, `CREDENTIAL`, `AUTH`, `COOKIE`, or
+`PRIVATE` becomes `<secret:NAME>` when it is six or more characters long. That
+is the minimum for a config secret; a shorter one would rewrite ordinary
+words. Bearer tokens, URL credentials, private keys, JWTs, and common API key
+shapes become `<redacted>`. Do not paste app data, page content, or test
+files.
+</Warning>
+
+#### `e2e telemetry`
 
 Shows whether anonymous usage telemetry is on, and switches it.
 [Telemetry](/telemetry) lists every property sent.
-
-| Command | Effect |
-| --- | --- |
-| `e2e telemetry`, `e2e telemetry status` | Prints `Status: enabled`, or `Status: disabled` with the reason: the variable that is set, the saved choice, or a preferences directory that cannot be written. |
-| `e2e telemetry disable` | Saves the opt-out to `~/.config/e2e/telemetry.json` (`$XDG_CONFIG_HOME/e2e/` when set, `%APPDATA%\e2e\` on Windows) and prints the status. |
-| `e2e telemetry enable` | Saves the opt-in and prints the status. A variable set in the environment still wins, and the status says so. |
 
 <CodeGroup>
 ```bash npm
@@ -947,10 +1053,18 @@ E2E_TELEMETRY_DEBUG=1 bunx e2e run
 ```
 </CodeGroup>
 
-`E2E_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1` turn telemetry off without
-touching the file. `E2E_TELEMETRY_DEBUG=1` prints every event to stderr and
-sends nothing. The first command on a machine other than `e2e init` and
-`e2e telemetry` prints a notice once; in CI nothing is printed and no file is written.
+| Command | Effect |
+| --- | --- |
+| `e2e telemetry`, `e2e telemetry status` | Prints `Status: enabled`, or `Status: disabled` with the reason: the variable that is set, the saved choice, or a preferences directory that cannot be written. `status` is the default. |
+| `e2e telemetry disable` | Saves the opt-out to `~/.config/e2e/telemetry.json` (`$XDG_CONFIG_HOME/e2e/` when set, `%APPDATA%\e2e\` on Windows) and prints the status. |
+| `e2e telemetry enable` | Saves the opt-in and prints the status. A variable set in the environment still wins, and the status says so. |
+
+- `E2E_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1` turn telemetry off without
+  touching the file.
+- `E2E_TELEMETRY_DEBUG=1` prints every event to stderr and sends nothing.
+- The first command on a machine, other than `e2e init` and
+  `e2e telemetry`, prints a notice one time. In CI nothing is printed and no
+  file is written.
 
 ## Exit codes
 
@@ -963,16 +1077,17 @@ sends nothing. The first command on a machine other than `e2e init` and
 | 4 | Internal runner invariant or unhandled runner error |
 | 130 | Interrupted by a user or CI signal |
 
-Precedence for a mixed run is `130 > 4 > 3 > 2 > 1 > 0`. The report keeps every
-individual result; precedence affects only the process exit code.
-
-Argument parsing failures exit 2 with a one-line error on stderr.
+- Precedence for a mixed run is `130 > 4 > 3 > 2 > 1 > 0`. The report keeps
+  every individual result; precedence affects only the process exit code.
+- Argument parsing failures exit 2 with a one-line error on stderr.
 
 ## Diagnostics
 
-A message that rejects a name suggests the nearest valid one. Keys from other
-runners' configs (`testDir`, `baseURL`, `webServer`, `projects`) say where
-that fact lives here. A failing `import` in the config or a test file ends
-with the install or add command for the project's package manager, or the
-subpaths the package exports. A model credential the provider rejects names
-the variable the provider reads.
+- A message that rejects a name suggests the nearest valid one.
+- Keys from other runners' configs (`testDir`, `baseURL`, `webServer`,
+  `projects`) say where that fact lives here.
+- A failing `import` in the config or a test file ends with the install or
+  add command for the project's package manager, or the subpaths the package
+  exports.
+- A model credential the provider rejects names the variable the provider
+  reads.

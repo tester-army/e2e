@@ -10,7 +10,15 @@ These variables configure the runner and first-party packages. In the tables,
 `set` means the variable exists, `value` means it is not blank, and `flag`
 means it is not blank, `0`, or `false`. Flag values are case-insensitive.
 
-## Model
+```bash
+export E2E_USER_ADMIN_PASSWORD="$ADMIN_PASSWORD"
+export E2E_CACHE_DIR=~/.cache/e2e
+export E2E_TELEMETRY_DISABLED=1
+```
+
+## Reference
+
+### Model
 
 Configure a model in `e2e.config.ts`. Its provider reads the API key:
 `gateway()` uses `AI_GATEWAY_API_KEY`, `openrouter()` uses
@@ -21,67 +29,114 @@ credential fails on the first model call. Subscription models use a stored
 login instead.
 See [Models](/models) and [Subscriptions](/subscriptions).
 
-| Variable | Reading | Effect |
-| --- | --- | --- |
-| `E2E_OAUTH_CREDENTIALS` | value | The stored subscription logins as JSON, the contents of `oauth.json`, for a machine nobody can sign in on. The `e2e/oauth/*` models and `e2e models` read it in place of `$XDG_CONFIG_HOME/e2e/oauth.json`; `e2e login` and `e2e logout` refuse to change it, and refreshed tokens are not written back |
-| `OPENCODE_API_KEY` | value | An OpenCode Console service account API key or an OpenCode Go subscription API key; `opencodeConsole()` and `e2e models opencode-console` use it in place of the stored `opencode-console` login. OpenCode reads the same variable |
-| `XDG_CONFIG_HOME` | value | Directory of the stored logins, `$XDG_CONFIG_HOME/e2e/oauth.json`; default `~/.config/e2e/oauth.json` |
+| Variable | Example | Reading | Effect |
+| --- | --- | --- | --- |
+| [`E2E_OAUTH_CREDENTIALS`](#e2e_oauth_credentials) | `E2E_OAUTH_CREDENTIALS="$(cat oauth.json)"` | value | The stored subscription logins as JSON |
+| [`OPENCODE_API_KEY`](#opencode_api_key) | `OPENCODE_API_KEY=<key>` | value | Replaces the stored `opencode-console` login |
+| `XDG_CONFIG_HOME` | `XDG_CONFIG_HOME=~/.config` | value | Directory of the stored logins, `$XDG_CONFIG_HOME/e2e/oauth.json`; default `~/.config/e2e/oauth.json` |
 
-## Credentials and secrets
+#### `E2E_OAUTH_CREDENTIALS`
 
-| Variable | Reading | Effect |
-| --- | --- | --- |
-| `E2E_USER_<NAME>_USERNAME` | set | Replaces `credentials.<name>.username` |
-| `E2E_USER_<NAME>_PASSWORD` | set | Replaces `credentials.<name>.password` |
-| `E2E_SECRET_<NAME>` | set | Replaces the value of `secrets.<name>` |
+The stored subscription logins as JSON, the contents of `oauth.json`, for a
+machine nobody can sign in on.
 
-`<NAME>` is the name uppercased with every character outside `A-Z0-9`
-replaced by `_`, so `power-user` becomes `E2E_USER_POWER_USER_USERNAME`. Two
-credentials, or two secrets, whose names map to the same `<NAME>` (`api-key`
-and `api_key` both read `E2E_SECRET_API_KEY`; `svc-a` and `svc_a` both read
-`E2E_USER_SVC_A_USERNAME` and `_PASSWORD`) are `INVALID_CONFIG` at config
-load, whether or not a variable is set, so one rotation never replaces two
-entries; the message names the entries and the variables. A credential and a
-secret may share a name, since their prefixes differ. A
-variable for a name absent from the config is ignored. An empty value is
-`INVALID_CONFIG`, and so is a password or secret shorter than 6 characters
-(code points): redaction rewrites every occurrence of a value, and one that
-short would take ordinary text with it.
+- The `e2e/oauth/*` models and `e2e models` read it in place of
+  `$XDG_CONFIG_HOME/e2e/oauth.json`.
+- `e2e login` and `e2e logout` refuse to change it.
+- Refreshed tokens are not written back.
 
-## Run mode
+#### `OPENCODE_API_KEY`
 
-| Variable | Reading | Effect |
-| --- | --- | --- |
-| `CI` | flag | CI mode: `retries` defaults to 1 and `workers` to 1, `cache` defaults to `read-only`, a focused test is `ONLY_IN_CI`, and `reuseExisting` on an app command is ignored |
+An OpenCode Console service account API key or an OpenCode Go subscription
+API key. `opencodeConsole()` and `e2e models opencode-console` use it in place
+of the stored `opencode-console` login. OpenCode reads the same variable.
 
-## Replay cache
+### Credentials and secrets
 
-| Variable | Reading | Effect |
-| --- | --- | --- |
-| `E2E_CACHE_DIR` | value | Replaces [`cache.dir`](/reference/config#cache) for `e2e run` and `e2e cache`, resolved from the project root; `~` or a leading `~/` is the home directory. `--cache-dir` wins over it, a custom `cache.store` ignores it, the cache mode stays as configured, and `--no-cache` still turns the cache off |
+| Variable | Example | Reading | Effect |
+| --- | --- | --- | --- |
+| `E2E_USER_<NAME>_USERNAME` | `E2E_USER_ADMIN_USERNAME=admin@example.test` | set | Replaces `credentials.<name>.username` |
+| `E2E_USER_<NAME>_PASSWORD` | `E2E_USER_ADMIN_PASSWORD="$ADMIN_PASSWORD"` | set | Replaces `credentials.<name>.password` |
+| `E2E_SECRET_<NAME>` | `E2E_SECRET_API_KEY="$API_KEY"` | set | Replaces the value of `secrets.<name>` |
 
-## Diagnostics
+- `<NAME>` is the name uppercased with every character outside `A-Z0-9`
+  replaced by `_`, so `power-user` becomes `E2E_USER_POWER_USER_USERNAME`.
+- Two credentials, or two secrets, whose names map to one `<NAME>` are
+  `INVALID_CONFIG` at config load, set or not. So one rotation never
+  replaces two entries. The message names the entries and the variables.
+  For example, `api-key` and `api_key` both read `E2E_SECRET_API_KEY`;
+  `svc-a` and `svc_a` both read `E2E_USER_SVC_A_USERNAME` and `_PASSWORD`.
+- A credential and a secret may share a name, since their prefixes differ.
+- A variable for a name absent from the config is ignored.
+- An empty password or secret is `INVALID_CONFIG`, and so is one shorter
+  than 6 characters (code points). Redaction rewrites every occurrence of a
+  value, and one that short would take ordinary text with it. An empty
+  username is accepted.
 
-| Variable | Reading | Effect |
-| --- | --- | --- |
-| `NO_COLOR` | set | Plain CLI output. Colors are otherwise on for a TTY or in CI and off when piped |
-| `FORCE_COLOR` | set | Colored CLI output even when piped |
-| `TERM` | value | `dumb` draws the `e2e init` wordmark at rest, without animation, as in CI |
-| `GITHUB_SHA`, `GITHUB_HEAD_REF`, `GITHUB_REF_NAME` | value | The commit and branch the report records under `run.vcs` when `git` cannot read the project root. `GITHUB_HEAD_REF` wins over `GITHUB_REF_NAME` |
+### Run mode
+
+| Variable | Example | Reading | Effect |
+| --- | --- | --- | --- |
+| [`CI`](#ci) | `CI=1` | flag | CI mode |
+
+#### `CI`
+
+Turns on CI mode:
+
+- `retries` defaults to 1 and `workers` to 1.
+- `cache` defaults to `read-only`.
+- A focused test is `ONLY_IN_CI`.
+- `reuseExisting` on an app command is ignored.
+
+### Replay cache
+
+| Variable | Example | Reading | Effect |
+| --- | --- | --- | --- |
+| [`E2E_CACHE_DIR`](#e2e_cache_dir) | `E2E_CACHE_DIR=~/.cache/e2e` | value | Replaces [`cache.dir`](/reference/config#cache) |
+
+#### `E2E_CACHE_DIR`
+
+Replaces [`cache.dir`](/reference/config#cache) for `e2e run` and
+`e2e cache`, resolved from the project root.
+
+- `~` or a leading `~/` is the home directory.
+- `--cache-dir` wins over it.
+- A custom `cache.store` ignores it.
+- The cache mode stays as configured, and `--no-cache` still turns the cache
+  off.
+
+### Diagnostics
+
+| Variable | Example | Reading | Effect |
+| --- | --- | --- | --- |
+| `NO_COLOR` | `NO_COLOR=1` | set | Plain CLI output. Without it, colors are on for a TTY or in CI, off when piped |
+| `FORCE_COLOR` | `FORCE_COLOR=1` | set | Colored CLI output even when piped |
+| `TERM` | `TERM=dumb` | value | `dumb` draws the `e2e init` wordmark at rest, without animation, as in CI |
+| `GITHUB_SHA`, `GITHUB_HEAD_REF`, `GITHUB_REF_NAME` | `GITHUB_REF_NAME=main` | value | The commit and branch the report records under `run.vcs` when `git` cannot read the project root. `GITHUB_HEAD_REF` wins over `GITHUB_REF_NAME` |
 
 `--debug` and `--ai-trace` are flags, not variables; see
 [CLI](/reference/cli#e2e-run).
 
-## Telemetry
+### Telemetry
 
-| Variable | Reading | Effect |
-| --- | --- | --- |
-| `E2E_TELEMETRY_DISABLED` | flag | Turns anonymous usage telemetry off. `e2e telemetry disable` saves the same choice in the preferences file |
-| `DO_NOT_TRACK` | flag | Same as `E2E_TELEMETRY_DISABLED` |
-| `E2E_TELEMETRY_DEBUG` | flag | Prints every telemetry event to stderr instead of sending it |
-| `E2E_TELEMETRY_FLEET` | value | Names the platform running e2e for its users; events are attributed to `fleet:<name>` instead of a per-machine id, no preferences file is written, and no notice is printed. A value that is not a plain token is sent as `other` |
-| `XDG_CONFIG_HOME` | value | Directory of the preferences file, `$XDG_CONFIG_HOME/e2e`; default `~/.config/e2e` |
-| `APPDATA` | value | The same on Windows, `%APPDATA%\e2e`; default `~/AppData/Roaming/e2e` |
+| Variable | Example | Reading | Effect |
+| --- | --- | --- | --- |
+| `E2E_TELEMETRY_DISABLED` | `E2E_TELEMETRY_DISABLED=1` | flag | Turns anonymous usage telemetry off. `e2e telemetry disable` saves the same choice in the preferences file |
+| `DO_NOT_TRACK` | `DO_NOT_TRACK=1` | flag | Same as `E2E_TELEMETRY_DISABLED` |
+| `E2E_TELEMETRY_DEBUG` | `E2E_TELEMETRY_DEBUG=1` | flag | Prints every telemetry event to stderr instead of sending it |
+| [`E2E_TELEMETRY_FLEET`](#e2e_telemetry_fleet) | `E2E_TELEMETRY_FLEET=acme` | value | Names the platform running e2e for its users |
+| `XDG_CONFIG_HOME` | `XDG_CONFIG_HOME=~/.config` | value | Directory of the preferences file, `$XDG_CONFIG_HOME/e2e`; default `~/.config/e2e` |
+| `APPDATA` | `APPDATA=C:\Users\ada\AppData\Roaming` | value | The same on Windows, `%APPDATA%\e2e`; default `~/AppData/Roaming/e2e` |
+
+#### `E2E_TELEMETRY_FLEET`
+
+Names the platform running e2e for its users.
+
+- Events are attributed to `fleet:<name>` instead of a per-machine id.
+- No preferences file is written, and no notice is printed.
+- A value that is not a plain token is sent as `other`.
+
+#### Detected environments
 
 Telemetry also checks for the markers CI vendors and coding agents set. Only
 the derived name is sent.
@@ -95,42 +150,52 @@ the derived name is sent.
 
 What is sent and how to read it is on the [Telemetry](/telemetry) page.
 
-## Reporters
+### Reporters
 
 `@e2e-dev/github` reads the variables GitHub Actions sets, when a run finishes:
 
-| Variable | Reading | Effect |
-| --- | --- | --- |
-| `GITHUB_ACTIONS` | value | Without it the reporter posts nothing and says so |
-| `GITHUB_REPOSITORY`, `GITHUB_RUN_ID`, `GITHUB_EVENT_NAME`, `GITHUB_WORKFLOW`, `GITHUB_JOB` | value | Always set by the runner; a job missing one fails the reporter with the variable named. The repository and run id build the artifacts link, the event name is in the "not a pull request" row, and the workflow and job join the marker that lets a rerun find its own comment |
-| `GITHUB_TOKEN`, `GH_TOKEN` | value | The token the comment is posted with; the first one set wins. Unset, the job summary is still written |
-| `GITHUB_EVENT_PATH`, `GITHUB_REF` | value | The pull request number and head commit from the event payload, or the number from `refs/pull/N/merge` |
-| `GITHUB_SHA` | value | The commit source links point at when the event is not about a pull request |
-| `GITHUB_WORKSPACE` | value | The checkout root; source links add the project's path inside it, so a suite in a subdirectory links to the right file |
-| `GITHUB_SERVER_URL`, `GITHUB_API_URL` | value | The GitHub host, for Enterprise Server; `https://github.com` and `https://api.github.com` by default |
-| `GITHUB_STEP_SUMMARY` | value | The job summary file the comment text is appended to |
+| Variable | Example | Reading | Effect |
+| --- | --- | --- | --- |
+| `GITHUB_ACTIONS` | `GITHUB_ACTIONS=true` | value | Without it the reporter posts nothing and says so |
+| `GITHUB_REPOSITORY`, `GITHUB_RUN_ID`, `GITHUB_EVENT_NAME`, `GITHUB_WORKFLOW`, `GITHUB_JOB` | `GITHUB_REPOSITORY=acme/shop` | value | Always set by the runner. A missing one fails the reporter, naming the variable. The repository and run id build the artifacts link. The event name shows in the "not a pull request" row. The workflow and job join the marker a rerun finds its own comment by |
+| `GITHUB_TOKEN`, `GH_TOKEN` | `GITHUB_TOKEN=<token>` | value | Posts the comment; the first one set wins. Unset, the job summary is still written. A fork's `pull_request` token is read-only and cannot post; see [When nothing is posted](/github#when-nothing-is-posted) |
+| `GITHUB_EVENT_PATH`, `GITHUB_REF` | `GITHUB_REF=refs/pull/42/merge` | value | The pull request number and head commit from the event payload, or the number from `refs/pull/N/merge` |
+| `GITHUB_SHA` | `GITHUB_SHA=<commit>` | value | The commit source links point at when the event is not about a pull request |
+| `GITHUB_WORKSPACE` | `GITHUB_WORKSPACE=/home/runner/work/shop/shop` | value | The checkout root. Source links add the project's path inside it, so a suite in a subdirectory links to the right file |
+| `GITHUB_SERVER_URL`, `GITHUB_API_URL` | `GITHUB_SERVER_URL=https://github.example.com` | value | The GitHub host, for Enterprise Server. Default `https://github.com` and `https://api.github.com` |
+| `GITHUB_STEP_SUMMARY` | `GITHUB_STEP_SUMMARY=<file>` | value | The job summary file the comment text is appended to |
 
-## Engines
+### Engines
 
-| Variable | Reading | Effect |
-| --- | --- | --- |
-| `PLAYWRIGHT_BROWSERS_PATH` | value | Playwright's browser cache, honored by the engine's `prepare` hook |
-| `PLAYWRIGHT_SKIP_BROWSER_GC` | value | Defaults to `1` for the engine's browser install, so it keeps other browsers in the cache. Set `0` to let the install remove them |
-| `KERNEL_API_KEY` | value | The API key `kernel()` from `@e2e-dev/kernel` creates browsers with; unset, the browser lease fails. See [Kernel](/integrations/kernel) |
-| `LIGHTPANDA_PATH` | value | The `lightpanda` binary `lightpanda()` from `@e2e-dev/lightpanda` starts a CDP server with; unset, `lightpanda` on `PATH`, `~/.lightpanda`, or `~/.local/bin`. See [Lightpanda](/integrations/lightpanda) |
-| `EXPO_TOKEN` | value | The Expo access token `easSimulators()` from `@e2e-dev/eas` starts and stops simulator sessions with; unset, it uses the eas-cli login in `.expo/state.json` under `HOME` (`USERPROFILE` on Windows), and with neither the device lease fails. See [EAS Simulators](/integrations/eas) |
-| `HOME`, `USERPROFILE` | value | The home `easSimulators()` finds the eas-cli login under when `EXPO_TOKEN` is unset: `USERPROFILE` on Windows, `HOME` elsewhere, the OS user's home when unset |
-| `LIMRUN_API_KEY` | value | The API key `limrun()` from `@e2e-dev/limrun` leases devices with; unset, the lease fails with `INVALID_CONFIG`. See [Limrun](/integrations/limrun) |
-| `LIMRUN_BASE_URL` | value | The Limrun API host; default `https://api.limrun.com` |
-| `LT_USERNAME`, `LT_ACCESS_KEY` | value | The TestMu AI username and access key `testmu()` from `@e2e-dev/testmu` leases devices with; with either unset, the device lease fails. See [TestMu AI](/integrations/testmu) |
-| `TESTMU_API_ENDPOINT` | value | Overrides the TestMu AI sessions API base URL `testmu()` looks up session recordings at; default `https://mobile-api.lambdatest.com/mobile-automation/api/v1`. A value that is not an http(s) URL, or that carries a username or password, fails the recording lookup with `INVALID_CONFIG`. agent-device's TestMu AI plugin reads the same variable |
-| `E2E_WEB_BROWSERS_<TARGET>_<digest>` | value | Written by `@e2e-dev/web` in `prepare` and read by each worker to find its leased browser. Not meant to be set by hand |
-| `E2E_AGENT_DEVICE_POOL_<TARGET>_<digest>` | value | Written by `@e2e-dev/mobile` in `prepare` and read by each worker to find its booted device. Not meant to be set by hand |
+| Variable | Example | Reading | Effect |
+| --- | --- | --- | --- |
+| `PLAYWRIGHT_BROWSERS_PATH` | `PLAYWRIGHT_BROWSERS_PATH=~/.cache/ms-playwright` | value | Playwright's browser cache, honored by the engine's `prepare` hook |
+| `PLAYWRIGHT_SKIP_BROWSER_GC` | `PLAYWRIGHT_SKIP_BROWSER_GC=0` | value | Defaults to `1` for the engine's browser install, which keeps other browsers in the cache. `0` lets the install remove them |
+| `KERNEL_API_KEY` | `KERNEL_API_KEY=<key>` | value | The API key `kernel()` from `@e2e-dev/kernel` creates browsers with. Unset, the browser lease fails. See [Kernel](/integrations/kernel) |
+| `LIGHTPANDA_PATH` | `LIGHTPANDA_PATH=/opt/lightpanda` | value | The binary `lightpanda()` from `@e2e-dev/lightpanda` starts a CDP server with. Unset, `lightpanda` on `PATH`, `~/.lightpanda`, or `~/.local/bin`. See [Lightpanda](/integrations/lightpanda) |
+| [`EXPO_TOKEN`](#expo_token) | `EXPO_TOKEN=<token>` | value | The Expo access token `easSimulators()` from `@e2e-dev/eas` uses |
+| `HOME`, `USERPROFILE` | `HOME=/home/ada` | value | Where `easSimulators()` finds the eas-cli login without `EXPO_TOKEN`: `USERPROFILE` on Windows, `HOME` elsewhere, the OS user's home when unset |
+| `LIMRUN_API_KEY` | `LIMRUN_API_KEY=<key>` | value | The API key `limrun()` from `@e2e-dev/limrun` leases devices with. Unset, the lease fails with `INVALID_CONFIG`. See [Limrun](/integrations/limrun) |
+| `LIMRUN_BASE_URL` | `LIMRUN_BASE_URL=<url>` | value | The Limrun API host. Default `https://api.limrun.com` |
+| `LT_USERNAME`, `LT_ACCESS_KEY` | `LT_USERNAME=acme` | value | The TestMu AI username and access key `testmu()` from `@e2e-dev/testmu` leases devices with. With either unset, the device lease fails. See [TestMu AI](/integrations/testmu) |
+| `TESTMU_API_ENDPOINT` | `TESTMU_API_ENDPOINT=<url>` | value | The TestMu AI sessions API base URL `testmu()` looks up session recordings at. Default `https://mobile-api.lambdatest.com/mobile-automation/api/v1`. A value that is not an http(s) URL, or carries a username or password, fails the lookup with `INVALID_CONFIG`. agent-device's TestMu AI plugin reads it too |
+| `E2E_WEB_BROWSERS_<TARGET>_<digest>` | - | value | `@e2e-dev/web` writes it in `prepare`; each worker reads it to find its leased browser. Don't set it by hand |
+| `E2E_AGENT_DEVICE_POOL_<TARGET>_<digest>` | - | value | `@e2e-dev/mobile` writes it in `prepare`; each worker reads it to find its booted device. Don't set it by hand |
+
+#### `EXPO_TOKEN`
+
+The Expo access token `easSimulators()` from `@e2e-dev/eas` starts and stops
+simulator sessions with. See [EAS Simulators](/integrations/eas).
+
+- Unset, it uses the eas-cli login in `.expo/state.json` under the home
+  directory ([`HOME`, `USERPROFILE`](#engines)).
+- With neither, the device lease fails.
 
 ## What app processes inherit
 
-An app `command` receives `PATH`, `HOME`, `TMPDIR`, `TMP`,
-`TEMP`, `SystemRoot`, and `COMSPEC`, plus the variables `command.inheritEnv`
-matches and whatever `command.env` sets.
-`APP_URL` is read by the scaffolded config module, not the runner; pass it
-through `command.env` if the dev server needs it too.
+An app `command` receives `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`,
+`SystemRoot`, and `COMSPEC`, plus the variables `command.inheritEnv` matches
+and whatever `command.env` sets.
+
+The scaffolded config module reads `APP_URL`, not the runner. If the dev
+server needs it too, pass it through `command.env`.
