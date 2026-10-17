@@ -624,7 +624,7 @@ export function cloudDevices(options: { provider: string; stateDir: string }): D
 | `test.setup` saves a session, `session:` restores it | Not available. A simulator has no portable session snapshot; sign in per test or seed the app |
 | Secret input | `type_secret` and `screen.getByLabel(...).fill(secret)` fill declared secrets into secure fields |
 | `--video` writes a WebM screencast | `--video` writes an MP4 of the device screen with taps shown (`videoTouches: false` hides them), or keeps a device provider's own recording |
-| The cache anchors on the page path | The cache anchors on the location `<bundle id> / <screen title>`, the title read off the navigation bar on iOS and the toolbar on Android |
+| The cache anchors on the page path | The cache anchors on the location `<bundle id> / <screen title>`, the title read off the navigation bar on iOS and the toolbar on Android, or off a [screen marker](/reference/mobile#replay-cache-on-a-device) |
 
 ### Known device limitations
 

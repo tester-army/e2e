@@ -373,6 +373,13 @@ export default {
 - Only a control that appeared or moved with the previous action waits out
   `transition` (default 500 ms); agent actions settle `settle` ms (default
   150) before the next observation, `settle: false` skips it.
+- The replay cache's start screen is `<bundle id> / <title bar>`. A screen
+  whose title the engine can't read (React Native `headerShown: false`, or
+  a native-stack header on Android with no `toolbar` / `action_bar` /
+  `collapsing_toolbar` resource id) reads as `<bundle id>`: set
+  `screenIdPrefix: 'e2e-screen:'` on the engine and
+  `testID="e2e-screen:Offers"` on each screen's root view, so the location
+  reads `<bundle id> / Offers`.
 - `screen`, `expect`, `app`, `agent` work unchanged; `test` from
   `@e2e-dev/mobile` types the `device` fixture (`installApp`, `openLink`,
   `setPermission`, `setNetwork`, `setAppearance`, `clearKeychain`, `fold`

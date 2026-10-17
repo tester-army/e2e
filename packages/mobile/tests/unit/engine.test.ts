@@ -1199,6 +1199,34 @@ describe('session hooks, viewport swipe, location, artifacts', () => {
     expect(await location(cold)).toBeUndefined();
   });
 
+  it('names the screen by the marker screenIdPrefix declares, ahead of the title bar, and reads none without the option', async () => {
+    const screen = { x: 0, y: 0, width: 390, height: 844 };
+    const marked = {
+      appBundleId: 'com.example.driver',
+      nodes: [
+        { ref: '@e1', index: 0, depth: 0, type: 'Application', label: 'Driver', rect: screen },
+        { ref: '@e2', index: 1, parentIndex: 0, depth: 1, type: 'Other', identifier: 'e2e-screen:Offers', rect: screen },
+        { ref: '@e3', index: 2, parentIndex: 1, depth: 2, type: 'Button', label: 'Accept', rect: { x: 16, y: 700, width: 358, height: 48 } },
+      ],
+    };
+    const location = async (harnessed: Harness) => (await harnessed.engine.observe!(operation())).location;
+    const opted = harness({ screenIdPrefix: 'e2e-screen:' });
+    await openAttempt(opted);
+    expect(await location(opted)).toBe('com.apple.Preferences / General');
+    opted.fake.respond('capture.snapshot', () => marked);
+    expect(await location(opted)).toBe('com.example.driver / Offers');
+    const marker = { ref: '@e20', index: 20, parentIndex: 0, depth: 1, type: 'Other', identifier: 'e2e-screen:Offers', rect: screen };
+    opted.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, nodes: [...SETTINGS_SNAPSHOT.nodes, marker] }));
+    expect(await location(opted)).toBe('com.apple.Preferences / Offers');
+
+    const plain = harness();
+    await openAttempt(plain);
+    plain.fake.respond('capture.snapshot', () => marked);
+    expect(await location(plain)).toBe('com.example.driver');
+
+    expect(() => harness({ screenIdPrefix: '' })).toThrow(/screenIdPrefix/);
+  });
+
   it('numbers screenshots per attempt, masks secure fields in them, and refuses an unmaskable one', async () => {
     const h = harness();
     // A third of the 390x844 viewport: the mask scales the Password field's bounds (y=270, 44 tall) to the image.

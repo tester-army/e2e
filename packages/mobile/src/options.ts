@@ -109,4 +109,14 @@ export interface MobileOptions {
    * daemon that pass can outlast the attempt's `cleanupTimeout`.
    */
   readonly videoTouches?: boolean | undefined;
+  /**
+   * Accessibility identifier (iOS) or resource id (Android) prefix that
+   * marks the element naming the current screen, such as `e2e-screen:`.
+   * React Native sets both from `testID`, so `testID="e2e-screen:Offers"` on
+   * a screen's root view reports the location `<bundle id> / Offers`. A
+   * marker on screen outranks the title bar, which a hidden header or a
+   * custom toolbar leaves missing or unstable; without one, the title bar
+   * names the screen as before. Unset (default), marker-based naming is disabled.
+   */
+  readonly screenIdPrefix?: string | undefined;
 }
