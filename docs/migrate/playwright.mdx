@@ -252,7 +252,8 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `page.route(pattern, handler)` | `browser.route(pattern, handler)`; a string or `RegExp` pattern, no predicate function; the handler decides exactly once | web only |
 | `route.fulfill({ json, body, path, status, headers, contentType })` | the same; one of `json`, `body`, or `path`, and `path` is relative to the project root | web only |
 | `route.continue({ url, method, headers, postData })`, `route.fallback()` | the same; a `url` goes through the navigation rule, and `fallback()` takes no overrides | web only |
-| `route.fetch()`, `route.abort(code)`, `route.fallback(overrides)` | none yet; `abort()` takes no error code | missing |
+| `route.fetch()` | argument-free: no `timeout`, `headers`, or `maxRedirects` options, and redirects return unfollowed; returns `{ url, status, headers, text(), json() }` without deciding the route | web only |
+| `route.abort(code)`, `route.fallback(overrides)` | none yet; `abort()` takes no error code | missing |
 | `page.unroute()` | `browser.unroute()` | web only |
 | `page.waitForResponse(pattern)` | `browser.waitForResponse(pattern)`: a string or `RegExp`, no predicate function; `url`, `status`, `headers`, `json()`, `text()`. A string is a glob tested against the whole URL, query included, and never resolved against `app.url`: Playwright's `'/api/orders'` is the full URL or `'**/api/orders'`, and `?` matches any one character (write `'\\?'` for a literal one) | web only |
 | `response.ok()`, `response.body()`, `response.request()` | `status` and `text()` | missing |

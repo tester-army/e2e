@@ -611,6 +611,10 @@ await browser.route('**/api/quote', async (route) => {
 });
 ```
 
+`route.fetch()` returns the upstream `{ url, status, headers, text(), json() }`
+with the site's headers, under the action timeout, without deciding the route.
+It does not follow redirects, which could take it past the navigation rule.
+
 - The pattern is a string or a `RegExp`, both tested against the full URL. In
   a string, `*` matches within a path segment, `**` across `/`, `?` any one
   character, and `\` escapes the next. `unroute` and `waitForResponse` take
@@ -670,6 +674,8 @@ export interface WebRoute {
     readonly headers: Readonly<Record<string, string>>;
     readonly postData?: string;
   };
+  /** Reads upstream without deciding the route or following redirects. */
+  fetch(): Promise<WebResponse>;
   /** Fulfills the intercepted request once. */
   fulfill(response: RouteFulfillResponse): Promise<void>;
   /** Sends the intercepted request to the network once, skipping every other route. */

@@ -85,6 +85,8 @@ export interface WebRoute {
     readonly headers: Readonly<Record<string, string>>;
     readonly postData?: string;
   };
+  /** Reads the upstream response without deciding the route or following redirects. */
+  fetch(): Promise<WebResponse>;
   /** Fulfills the intercepted request once. */
   fulfill(response: RouteFulfillResponse): Promise<void>;
   /** Sends the intercepted request to the network once, skipping every other route. */
@@ -419,6 +421,37 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
             method: request.method(),
             headers: request.headers(),
             ...(postData === null ? {} : { postData }),
+          },
+          fetch: async (...args: unknown[]) => {
+            requireNoArguments('route.fetch', args);
+            return surface.guard(context.operation(), 'route.fetch', async currentOperation => {
+              const site = surface.siteHeaders(request.url());
+              const response = await route.fetch({
+                headers: { ...lowercaseNames(request.headers()), ...site },
+                timeout: currentOperation.timeoutMs,
+                maxRedirects: 0,
+              });
+              try {
+                let text: () => Promise<string>;
+                try {
+                  const body = await response.text();
+                  text = () => Promise.resolve(body);
+                } catch (cause) {
+                  const error = new TestError('ACTION_FAILED', `route.fetch: response body could not be read: ${causeMessage(cause)}`);
+                  text = () => Promise.reject(error);
+                }
+                return {
+                  url: response.url(),
+                  status: response.status(),
+                  headers: response.headers(),
+                  // oxlint-disable-next-line e2e/no-unchecked-json -- public API: the caller names T, unknown by default
+                  json: async <T = unknown>() => JSON.parse(await text()) as T,
+                  text,
+                };
+              } finally {
+                await response.dispose();
+              }
+            });
           },
           fulfill: async (response) => {
             const decision = parseFulfill(response, (file) => surface.projectPath(file));
