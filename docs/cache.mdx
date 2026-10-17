@@ -126,7 +126,8 @@ identity. On devices, replay uses the
 1. Check the starting screen: it must be the same route.
 2. Find each recorded control by role, name, test id, and surrounding
    context, and repeat its action. The runner waits for missing controls and
-   stops when a match is ambiguous.
+   stops when a match is ambiguous. A control with a test id that is unique
+   on the screen is found even after the text of its row changes.
 3. Check the final route and what the original step changed: the controls
    that appeared, with their checked, selected, expanded, or pressed state,
    and the ones that went away.

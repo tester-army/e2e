@@ -102,6 +102,38 @@ describe('container keys', () => {
     expect(relocateDescriptor({ role: 'group', name: 'Row 0512', testId: 'row-512' }, live.nodes)).toEqual({ kind: 'found', id: 'row-512' });
   });
 
+  it('finds a test-id control whose row text changed when the test id names one node on the screen', () => {
+    // A feed: each row is keyed by its post title, which is content and differs on every run.
+    const feed = (rows: readonly { title: string; testId: string }[]) => {
+      const nodes = new Map<string, RedactedNode>();
+      for (const [index, { title, testId }] of rows.entries()) {
+        const text: SemanticNode = { ref: { id: `t${String(index)}`, revision: 'r' }, role: 'text', text: title };
+        const button: SemanticNode = { ref: { id: `b${String(index)}`, revision: 'r' }, role: 'button', name: 'Listen', testId };
+        nodes.set(text.ref.id, redacted(text));
+        nodes.set(button.ref.id, redacted(button));
+        nodes.set(`r${String(index)}`, redacted({ ref: { id: `r${String(index)}`, revision: 'r' }, role: 'row', children: [text, button] }));
+      }
+      return nodes;
+    };
+    const recorded = { role: 'button', name: 'Listen', testId: 'pinned-listen', within: 'Monday notes' };
+    const live = feed([
+      { title: 'Tuesday notes', testId: 'pinned-listen' },
+      { title: 'Wednesday notes', testId: 'listen' },
+    ]);
+    expect(relocateDescriptor(recorded, live)).toEqual({ kind: 'found', id: 'b0' });
+
+    // Two rows carry the test id: the container was what told them apart, so neither is the recorded one.
+    const twins = feed([
+      { title: 'Tuesday notes', testId: 'pinned-listen' },
+      { title: 'Wednesday notes', testId: 'pinned-listen' },
+    ]);
+    expect(relocateDescriptor(recorded, twins)).toEqual({ kind: 'failed', failure: 'target-not-found' });
+
+    // The test id churned: the semantic fields stay inside the recorded row, so another row's "Listen" is not it.
+    const churned = feed([{ title: 'Tuesday notes', testId: 'listen-2' }]);
+    expect(relocateDescriptor(recorded, churned)).toEqual({ kind: 'failed', failure: 'target-not-found' });
+  });
+
   it('keys a control by its nearest container only, so rows with no text of their own share no outer label', () => {
     const nodes = new Map<string, RedactedNode>();
     const parents = new Map<string, string>();

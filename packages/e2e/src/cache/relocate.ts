@@ -167,14 +167,19 @@ function describeNodes(nodes: ReadonlyMap<string, RedactedNode>): readonly Descr
  * cannot be told apart by waiting, and acting on either would be a guess.
  * The one exception is a recorded `position`: the recording itself found the
  * same twins and noted which one it acted on, so the same count of twins
- * resolves to the same one; any other count diverges as before.
+ * resolves to the same one; any other count diverges as before. A test-id
+ * target its container no longer holds gets one more try
+ * (`identifiedOutsideContainer`).
  */
 export function relocateDescriptor(
   descriptor: TraceTargetDescriptor,
   nodes: ReadonlyMap<string, RedactedNode>,
 ): RelocationResult {
   const matches = matchingIds(descriptor, nodes);
-  if (matches.length === 0) return { kind: 'failed', failure: 'target-not-found' };
+  if (matches.length === 0) {
+    const identified = identifiedOutsideContainer(descriptor, nodes);
+    return identified === undefined ? { kind: 'failed', failure: 'target-not-found' } : { kind: 'found', id: identified };
+  }
   const { position } = descriptor;
   // A lone match is the node for a descriptor with an identity. An anonymous
   // one has only its count and place: one unnamed twin where the recording
@@ -215,6 +220,23 @@ function matchingIds(
     if (matches.length > 0) return matches;
   }
   return [];
+}
+
+/**
+ * The one node on the whole screen that a test-id target's strict fields
+ * match. A container key is a row's first text, which on a feed is content
+ * that changes between runs; a test id only one node carries needs no
+ * container to tell it from its twins. The semantic tier stays inside the
+ * container: the same "Delete" in another row is a different control.
+ */
+function identifiedOutsideContainer(
+  descriptor: TraceTargetDescriptor,
+  nodes: ReadonlyMap<string, RedactedNode>,
+): string | undefined {
+  if (descriptor.within === undefined || descriptor.testId === undefined) return undefined;
+  const { within: _within, position: _position, ...unscoped } = descriptor;
+  const matches = tierMatches(unscoped, describeNodes(nodes));
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 function tierMatches(tier: TraceTargetDescriptor, candidates: readonly DescribedNode[]): string[] {
