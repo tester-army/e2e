@@ -20,7 +20,7 @@ import {
 } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
 import { describeExpression, expressionHints } from './expression.ts';
-import { cutOffAtDeadline, Deadline, POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
+import { Deadline, POLL_INTERVAL_MS, ReadWindow, sleep } from '../internal/time.ts';
 import { timestamp } from '../internal/ids.ts';
 import { obj } from '../internal/objects.ts';
 import { targetLabel } from '../cache/trace.ts';
@@ -113,6 +113,11 @@ export class LocatorEngine {
     return this.operationWithin(this.deadline(timeoutMs));
   }
 
+  /** The reads of one wait on `deadline`: the last may run past it, up to the running phase's deadline. */
+  reads(deadline: Deadline): ReadWindow {
+    return new ReadWindow(deadline, this.options.budget.deadline);
+  }
+
   /** Deadline for one action-family operation, capped by the running phase's deadline. */
   deadline(timeoutMs?: number): Deadline {
     return Deadline.min(
@@ -123,9 +128,14 @@ export class LocatorEngine {
 
   /** An operation context bounded by a deadline a caller shares across steps, such as the swipes of one scroll. */
   operationWithin(deadline: Deadline): OperationContext {
+    return this.readOperation(deadline.remaining());
+  }
+
+  /** An operation context on `timeoutMs`, never under 1 ms: the budget a `ReadWindow` hands one read. */
+  readOperation(timeoutMs: number): OperationContext {
     return {
       signal: this.signal,
-      timeoutMs: Math.max(1, deadline.remaining()),
+      timeoutMs: Math.max(1, timeoutMs),
       runId: this.options.runId,
       attemptId: this.options.attemptId,
       origin: 'test',
@@ -179,21 +189,21 @@ export class LocatorEngine {
    */
   private async resolveOnce(
     expression: LocatorExpression,
-    deadline: Deadline,
+    reads: ReadWindow,
     missingFrame: MissingFrame = 'wait',
   ): Promise<readonly NodeRef[]> {
     let retried: unknown;
     for (;;) {
-      const startedWithMs = deadline.remaining();
+      const startedWithMs = reads.deadline.remaining();
       try {
-        return await this.session.locate(expression, this.operationWithin(deadline));
+        return await reads.read((timeoutMs) => this.session.locate(expression, this.readOperation(timeoutMs)));
       } catch (cause) {
         // A retry the deadline cut off saw nothing new: the wait ends on the failure it was retrying.
-        if (retried !== undefined && cutOffAtDeadline(cause, startedWithMs)) throw translateLocatorError(retried, expression);
+        if (retried !== undefined && reads.cutOff(cause, startedWithMs)) throw translateLocatorError(retried, expression);
         const engineError = asEngineError(cause);
         if (engineError?.retryable === true) {
           if (missingFrame === 'empty' && engineError.code === 'FRAME_NOT_FOUND') return [];
-          if (!deadline.expired()) {
+          if (!reads.deadline.expired()) {
             retried = cause;
             await sleep(POLL_INTERVAL_MS, this.signal);
             continue;
@@ -209,11 +219,12 @@ export class LocatorEngine {
    * multiple matches fail immediately with LOCATOR_AMBIGUOUS.
    */
   async resolveExactlyOne(expression: LocatorExpression, deadline: Deadline): Promise<NodeRef> {
-    return (await this.resolveCounted(expression, deadline)).ref;
+    return (await this.resolveCounted(expression, this.reads(deadline))).ref;
   }
 
   /** `resolveExactlyOne`, timing how long it polled before the match appeared. */
-  private async resolveCounted(expression: LocatorExpression, deadline: Deadline): Promise<Resolved> {
+  private async resolveCounted(expression: LocatorExpression, reads: ReadWindow): Promise<Resolved> {
+    const { deadline } = reads;
     const startedMs = Date.now();
     // The wait as it happened: a deadline capped by the test's remaining
     // budget waited less than the action timeout, and the report says so.
@@ -227,10 +238,10 @@ export class LocatorEngine {
       const startedWithMs = deadline.remaining();
       let refs: readonly NodeRef[];
       try {
-        refs = await this.resolveOnce(expression, deadline);
+        refs = await this.resolveOnce(expression, reads);
       } catch (cause) {
         // A resolve the deadline cut off, after one that matched nothing, is the wait running out.
-        if (sampled && cutOffAtDeadline(cause, startedWithMs)) throw notFound(cause);
+        if (sampled && reads.cutOff(cause, startedWithMs)) throw notFound(cause);
         throw cause;
       }
       sampled = true;
@@ -246,8 +257,8 @@ export class LocatorEngine {
    * stale resolve is retried within the caller's deadline, like a node that
    * is not there yet.
    */
-  async resolveAll(expression: LocatorExpression, deadline: Deadline): Promise<readonly NodeRef[]> {
-    return this.resolveOnce(expression, deadline);
+  async resolveAll(expression: LocatorExpression, reads: ReadWindow): Promise<readonly NodeRef[]> {
+    return this.resolveOnce(expression, reads);
   }
 
   /**
@@ -258,7 +269,7 @@ export class LocatorEngine {
    * repairs a race with a navigation, it does not wait for a match.
    */
   async resolveNow(expression: LocatorExpression): Promise<readonly NodeRef[]> {
-    return this.resolveOnce(expression, this.deadline(this.options.actionTimeout), 'empty');
+    return this.resolveOnce(expression, new ReadWindow(this.deadline(this.options.actionTimeout)), 'empty');
   }
 
   /**
@@ -269,14 +280,14 @@ export class LocatorEngine {
    * re-resolves while the deadline remains instead of failing the test.
    */
   async read(expression: LocatorExpression): Promise<SemanticNode> {
-    const deadline = this.deadline(this.options.actionTimeout);
+    const reads = this.reads(this.deadline(this.options.actionTimeout));
     for (;;) {
-      const ref = await this.resolveExactlyOne(expression, deadline);
+      const { ref } = await this.resolveCounted(expression, reads);
       try {
-        return await this.session.read(ref, this.operationWithin(deadline));
+        return await reads.read((timeoutMs) => this.session.read(ref, this.readOperation(timeoutMs)));
       } catch (cause) {
         const engineError = asEngineError(cause);
-        if (engineError?.code === 'NODE_STALE' && engineError.retryable && !deadline.expired()) {
+        if (engineError?.code === 'NODE_STALE' && engineError.retryable && !reads.deadline.expired()) {
           continue;
         }
         throw translateLocatorError(cause, expression);
@@ -290,28 +301,31 @@ export class LocatorEngine {
    * the deadline remains, since one stale member says nothing about the
    * others; a stale set at the deadline is `LOCATOR_NOT_FOUND`.
    */
-  async readAll(expression: LocatorExpression, deadline: Deadline): Promise<readonly SemanticNode[]> {
-    return this.readEvery(expression, deadline, 'wait');
+  async readAll(expression: LocatorExpression, reads: ReadWindow): Promise<readonly SemanticNode[]> {
+    return this.readEvery(expression, reads, 'wait');
   }
 
   /** Reads every current match at once, for `allTextContents`: a missing frame reads as no matches. */
-  async readAllNow(expression: LocatorExpression, deadline: Deadline = this.deadline(this.options.actionTimeout)): Promise<readonly SemanticNode[]> {
-    return this.readEvery(expression, deadline, 'empty');
+  async readAllNow(
+    expression: LocatorExpression,
+    reads: ReadWindow = new ReadWindow(this.deadline(this.options.actionTimeout)),
+  ): Promise<readonly SemanticNode[]> {
+    return this.readEvery(expression, reads, 'empty');
   }
 
   private async readEvery(
     expression: LocatorExpression,
-    deadline: Deadline,
+    reads: ReadWindow,
     missingFrame: MissingFrame,
   ): Promise<readonly SemanticNode[]> {
     for (;;) {
-      const refs = await this.resolveOnce(expression, deadline, missingFrame);
+      const refs = await this.resolveOnce(expression, reads, missingFrame);
       try {
         const nodes: SemanticNode[] = [];
-        for (const ref of refs) nodes.push(await this.session.read(ref, this.operationWithin(deadline)));
+        for (const ref of refs) nodes.push(await reads.read((timeoutMs) => this.session.read(ref, this.readOperation(timeoutMs))));
         return nodes;
       } catch (cause) {
-        if (asEngineError(cause)?.code === 'NODE_STALE' && !deadline.expired()) {
+        if (asEngineError(cause)?.code === 'NODE_STALE' && !reads.deadline.expired()) {
           await sleep(POLL_INTERVAL_MS, this.signal);
           continue;
         }
@@ -328,10 +342,10 @@ export class LocatorEngine {
    */
   async tryRead(
     expression: LocatorExpression,
-    deadline: Deadline,
+    reads: ReadWindow,
     missingFrame: MissingFrame = 'wait',
   ): Promise<{ node: SemanticNode | null; count: number }> {
-    return this.readOne(expression, deadline, missingFrame);
+    return this.readOne(expression, reads, missingFrame);
   }
 
   /**
@@ -340,19 +354,19 @@ export class LocatorEngine {
    * matches are `LOCATOR_AMBIGUOUS`.
    */
   async readNow(expression: LocatorExpression): Promise<SemanticNode | null> {
-    const { node } = await this.readOne(expression, this.deadline(this.options.actionTimeout), 'empty');
+    const { node } = await this.readOne(expression, new ReadWindow(this.deadline(this.options.actionTimeout)), 'empty');
     return node;
   }
 
   private async readOne(
     expression: LocatorExpression,
-    deadline: Deadline,
+    reads: ReadWindow,
     missingFrame: MissingFrame,
   ): Promise<{ node: SemanticNode | null; count: number }> {
-    const ref = assertSingle(await this.resolveOnce(expression, deadline, missingFrame), expression);
+    const ref = assertSingle(await this.resolveOnce(expression, reads, missingFrame), expression);
     if (ref === null) return { node: null, count: 0 };
     try {
-      const node = await this.session.read(ref, this.operationWithin(deadline));
+      const node = await reads.read((timeoutMs) => this.session.read(ref, this.readOperation(timeoutMs)));
       return { node, count: 1 };
     } catch (cause) {
       if (asEngineError(cause)?.code === 'NODE_STALE') {
@@ -407,14 +421,15 @@ export class LocatorEngine {
         details: locatorDetails(expression, Date.now() - startedMs),
         ...(cause === undefined ? {} : { cause }),
       });
+    const reads = this.reads(deadline);
     let sampled = false;
     for (;;) {
       const startedWithMs = deadline.remaining();
       let node: SemanticNode | null;
       try {
-        ({ node } = await this.tryRead(expression, deadline));
+        ({ node } = await this.tryRead(expression, reads));
       } catch (cause) {
-        if (sampled && cutOffAtDeadline(cause, startedWithMs)) throw notVisible(cause);
+        if (sampled && reads.cutOff(cause, startedWithMs)) throw notVisible(cause);
         throw cause;
       }
       sampled = true;
@@ -513,7 +528,7 @@ export class LocatorEngine {
     const startedMs = Date.now();
     let stale = 0;
     for (;;) {
-      const { ref, waitedMs } = await this.resolveCounted(expression, deadline);
+      const { ref, waitedMs } = await this.resolveCounted(expression, this.reads(deadline));
       // Read now, from the resolve's own cache: a dragTo's target resolve
       // below supersedes this ref, and the node it named would be gone.
       const node = this.options.recordEvent === undefined ? undefined : await this.session.read(ref, this.operationWithin(deadline)).catch(() => undefined);

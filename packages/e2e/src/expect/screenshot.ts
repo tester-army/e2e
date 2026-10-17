@@ -11,7 +11,7 @@ import type { LocatorExpression } from '../engine/surface.ts';
 import { writeFileAtomic } from '../internal/atomic-write.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { compareImages, decodePng, encodePng, type ImageComparison, type RgbaImage } from '../internal/image.ts';
-import { pollCondition, type Deadline } from '../internal/time.ts';
+import { pollReads, type Deadline, type ReadWindow } from '../internal/time.ts';
 import { describeExpression } from '../locator/expression.ts';
 import type { ScreenContext } from '../locator/screen.ts';
 import type { ScreenshotContext } from '../run/screenshots.ts';
@@ -32,6 +32,7 @@ interface Run {
   readonly api: string;
   readonly call: ScreenshotCall;
   readonly stored: Stored;
+  readonly reads: ReadWindow;
   readonly capture: () => Promise<Capture>;
 }
 
@@ -78,8 +79,9 @@ export async function expectScreenshot(
       throw new ConfigurationError('POLICY_DENIED', `${api} is denied after a secret fill because the app may display the secret outside a secure field`);
     }
     const deadline = context.engine.deadline(call.timeout ?? context.engine.assertionTimeout);
-    const capture = screenshotCapturer(context, { api, subject, masks: call.masks, maskColor: call.maskColor }, deadline);
-    const run: Run = { context, store, api, call, stored, capture };
+    const reads = context.engine.reads(deadline);
+    const capture = screenshotCapturer(context, { api, subject, masks: call.masks, maskColor: call.maskColor }, reads);
+    const run: Run = { context, store, api, call, stored, reads, capture };
     const expected = existsSync(file) ? readStored(api, stored) : undefined;
     if (expected !== undefined && (negated || !store.update) && store.written.has(file)) {
       throw failure(api, `${stored.shown} was written earlier in this run and is not reviewed yet: look at it, commit it, and run again`, stored, 'unreviewed stored screenshot');
@@ -110,8 +112,9 @@ async function matchOrSettle(run: Run, expected: RgbaImage | undefined, deadline
   let unsettled: readonly [RgbaImage, RgbaImage] | undefined;
   let settled: RgbaImage | undefined;
   let captures = 0;
-  await pollCondition({
+  await pollReads({
     deadline,
+    reads: run.reads,
     signal: run.context.engine.signal,
     negated: false,
     evaluate: async () => {
@@ -184,8 +187,9 @@ async function expectDifferent(run: Run, expected: RgbaImage | undefined, deadli
   }
   let compared = false;
   let missing: string | undefined;
-  await pollCondition({
+  await pollReads({
     deadline,
+    reads: run.reads,
     signal: run.context.engine.signal,
     negated: true,
     evaluate: async () => {

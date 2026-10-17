@@ -687,8 +687,13 @@ message and hint, never `LAUNCH_TIMEOUT`, `ACTION_FAILED`, or
 `back` gets its `timeout` (default `actionTimeout`). If the device doesn't
 answer in time, the step fails with `ACTION_FAILED` and isn't retried: the
 input may have landed. A `longPress` that holds at least as long as the
-time left is refused before it's sent; raise its `timeout`. Finding the
-element isn't cut off, so a missing one still fails as `LOCATOR_NOT_FOUND`.
+time left is refused before it's sent; raise its `timeout`. Snapshots and
+screenshots get the same timeout, so a device that stops answering fails the
+step with `ACTION_FAILED` instead of holding it until the test timeout.
+`waitFor`, `expect`, and `toHaveScreenshot` give their last snapshot extra
+time, as long as their slowest one so far, so a screen that shows up during
+it still passes. An element that never shows up fails as
+`LOCATOR_NOT_FOUND`, or `ASSERTION_FAILED` for `expect`.
 
 <CodeGroup>
 ```bash npm
