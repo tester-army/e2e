@@ -1,9 +1,9 @@
 ---
 title: Example projects
-description: Run standalone e2e examples with Vite, Next.js, Astro, Expo, SwiftUI, Jetpack Compose, Kotlin Multiplatform, and Flutter.
+description: Run standalone e2e examples with Vite, Next.js, Astro, Expo, SwiftUI, Jetpack Compose, Kotlin Multiplatform, Flutter, and .NET MAUI.
 icon: "folder-open"
-"og:image": "https://e2e.tester.army/docs/images/og/example-projects.png?v=7b5bf3de46"
-"twitter:image": "https://e2e.tester.army/docs/images/og/example-projects.png?v=7b5bf3de46"
+"og:image": "https://e2e.tester.army/docs/images/og/example-projects.png?v=03060b67b1"
+"twitter:image": "https://e2e.tester.army/docs/images/og/example-projects.png?v=03060b67b1"
 ---
 
 Each example is a standalone greeting app with three locator tests and two
@@ -37,13 +37,16 @@ empty-name error. Each installs the published e2e packages from npm.
   <Card title="Flutter" icon="/images/examples/flutter.svg" href="https://github.com/tester-army/e2e/tree/main/examples/with-flutter" cta="View example" arrow>
     A Flutter app, tested on Android and iOS.
   </Card>
+  <Card title=".NET MAUI" icon="/images/examples/dotnet.svg" href="https://github.com/tester-army/e2e/tree/main/examples/with-maui" cta="View example" arrow>
+    A .NET MAUI app, tested on Android and iOS.
+  </Card>
 </CardGroup>
 
 ## Run an example
 
 Follow the project's README to install, build, and run it. The config and
-tests live beside the app, in an `e2e/` folder for the native and Flutter
-projects.
+tests live beside the app, in an `e2e/` folder for the native, Flutter, and
+.NET MAUI projects.
 
 The locator tests need no model. The agent tests use Vercel AI Gateway and
 skip unless `AI_GATEWAY_API_KEY` is set.

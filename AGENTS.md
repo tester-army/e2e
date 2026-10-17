@@ -164,14 +164,14 @@ suites that consume the built packages the way a user would.
   distilled from.
 - `examples/` — standalone user-facing projects, one per technology
   (`with-vite`, `with-next`, `with-astro`, `with-expo`, `with-swiftui`,
-  `with-compose`, `with-kotlin-multiplatform`, `with-flutter`), each the same
+  `with-compose`, `with-kotlin-multiplatform`, `with-flutter`, `with-maui`), each the same
   one-screen greeter demo with deterministic and agent tests. They install
   the published packages from npm, sit outside the pnpm workspace, commit no
   lockfile, and run in no CI; oxlint and fallow ignore them. A change runs
   the example's suite by hand and updates the "Last checked" line in its
-  README. A native or Flutter example (SwiftUI, Compose, Kotlin
-  Multiplatform, Flutter) keeps its tests in an `e2e/` folder beside the
-  native project, as a user would.
+  README. A native, Flutter, or .NET MAUI example (SwiftUI, Compose, Kotlin
+  Multiplatform, Flutter, .NET MAUI) keeps its tests in an `e2e/` folder
+  beside the native project, as a user would.
 - `docs/` (the Mintlify docs site; pages are the `.mdx` files under `docs/`,
   navigation, theme, and redirects in `docs/docs.json`, extra CSS in
   `docs/style.css`, the table of contents scroll in
