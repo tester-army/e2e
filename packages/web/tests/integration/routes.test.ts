@@ -14,7 +14,8 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Page } from 'playwright-core';
+import type { EventEmitter } from 'node:events';
+import type { Download, Page } from 'playwright-core';
 import { TestError, type EngineFixtureContext } from 'e2e/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { createBrowserFixture, type Browser, type WebRoute } from '../../src/browser.ts';
@@ -35,6 +36,15 @@ function startCountingServer(hits: Map<string, number>): Promise<{ server: Serve
   const server = createServer((request, response) => {
     const pathname = new URL(request.url ?? '/', 'http://host').pathname;
     hits.set(pathname, (hits.get(pathname) ?? 0) + 1);
+    if (pathname === '/stream-download') {
+      response.writeHead(200, {
+        'content-type': 'application/octet-stream',
+        'content-disposition': 'attachment; filename="stream.bin"',
+        'content-length': '4096',
+      });
+      response.write(Buffer.alloc(1024, 'x'));
+      return;
+    }
     if (pathname === '/echo') {
       let body = '';
       request.on('data', (chunk: Buffer) => { body += chunk.toString(); });
@@ -134,6 +144,58 @@ describe('browser.route decisions', () => {
 
   /** Waits for the latched route failure the next step reports. */
   const nextStepFailure = (): Promise<unknown> => browser.url().then(() => undefined, (error: unknown) => error);
+
+  it('rejects an invalid download count before running the trigger', async () => {
+    let calls = 0;
+    await expect(browser.waitForDownloads(async () => { calls += 1; }, { count: 0 })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    expect(calls).toBe(0);
+  });
+
+  it('removes a multi-download listener after an incomplete trigger times out', async () => {
+    const listeners = (page as unknown as EventEmitter).listenerCount('download');
+    await expect(browser.waitForDownloads(async () => undefined, { count: 2, timeout: 30 })).rejects.toMatchObject({
+      code: 'ACTION_FAILED', message: expect.stringContaining('0 of 2 downloads'),
+    });
+    expect((page as unknown as EventEmitter).listenerCount('download')).toBe(listeners);
+  });
+
+  it.each(['waitForDownload', 'waitForDownloads'] as const)('%s bounds saving a download whose HTTP body never finishes', async (method) => {
+    await page.evaluate(() => {
+      const link = document.createElement('a');
+      link.href = '/stream-download';
+      link.textContent = 'Stream';
+      document.body.append(link);
+    });
+    const baseline = (page as unknown as EventEmitter).listenerCount('download');
+    let download: Download | undefined;
+    page.once('download', (value) => { download = value; });
+    const trigger = () => page.evaluate(() => document.querySelector<HTMLAnchorElement>('a')!.click());
+    const work = method === 'waitForDownload'
+      ? browser.waitForDownload(trigger, { timeout: 500 })
+      : browser.waitForDownloads(trigger, { count: 1, timeout: 500 });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await Promise.race([
+        work.then(() => 'completed', (cause: unknown) => cause),
+        new Promise((resolve) => { timer = setTimeout(() => resolve('still pending'), 1500); }),
+      ]);
+      expect(download).toBeDefined();
+      expect(result).toMatchObject({ code: 'ACTION_FAILED', message: expect.stringContaining('did not finish') });
+      expect((page as unknown as EventEmitter).listenerCount('download')).toBe(baseline);
+    } finally {
+      clearTimeout(timer);
+      server.closeAllConnections();
+      await download?.cancel();
+      await work.catch(() => undefined);
+    }
+  });
+
+  it('keeps a trigger error and removes the multi-download listener immediately', async () => {
+    const listeners = (page as unknown as EventEmitter).listenerCount('download');
+    const failure = new TestError('ASSERTION_FAILED', 'trigger assertion');
+    await expect(browser.waitForDownloads(async () => { throw failure; }, { count: 2, timeout: 30 })).rejects.toBe(failure);
+    expect((page as unknown as EventEmitter).listenerCount('download')).toBe(listeners);
+  });
 
   it('routes real native dialogs by kind even when their messages are identical', async () => {
     const kinds: string[] = [];
