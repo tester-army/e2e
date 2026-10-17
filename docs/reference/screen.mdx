@@ -276,6 +276,7 @@ Prefer it over `browser.locator('p:visible')`, which ties the test to CSS.
 | Method | Returns |
 | --- | --- |
 | [`filter`](#filter) | `Locator` |
+| [`or`](#or) | `Locator` |
 | [`first`](#first) | `Locator` |
 | [`last`](#last) | `Locator` |
 | [`nth`](#nth) | `Locator` |
@@ -304,6 +305,24 @@ await row.getByRole('button', 'Void').tap();
 | `INVALID_LOCATOR` | Neither `hasText` nor `has` is given. |
 | `INVALID_LOCATOR` | Any other key, even beside them: `hasNot`, `hasNotText`, and `visible` are not filters here. |
 | `INVALID_LOCATOR` | `has` is not a runner locator, or was made by another target's screen. |
+
+#### `or`
+
+```ts
+/** Matches either locator, preserving document order without duplicate nodes. */
+or(other: Locator): Locator;
+```
+
+`a.or(b)` matches either branch once, in document order. It stays strict:
+when both match different nodes, an action throws `LOCATOR_AMBIGUOUS`.
+Add `first()` if either will do. Both locators must come from the same
+screen and attempt. On web, both need identical literal frame-selector
+chains; display-value branches cannot be composed.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_LOCATOR` | `other` is not a runner locator, or belongs to another screen or attempt. |
+| `UNSUPPORTED_CAPABILITY` | Web branches have different frame-selector chains, or a branch is a display-value query. |
 
 #### `first`
 
