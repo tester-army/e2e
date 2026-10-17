@@ -84,7 +84,9 @@ makes, so an `aria-hidden` node that still paints counts as visible. See
 `getByRole('img', { name })` builds the same query as
 `getByRole('image', { name })`, so a test ported from Playwright keeps its
 spelling. On the web, `image` covers `<img>` with alt text and any element
-with `role="img"`. An `<img alt="">` is decoration and matches nothing.
+with `role="img"`. An `<img alt="">` is decoration and matches nothing,
+unless it has a `title`, a `tabindex`, or a global ARIA attribute: then it is
+an `image`.
 
 ##### Roles on the web
 
@@ -110,6 +112,9 @@ The web engine derives the roles from HTML the way HTML-AAM does:
 - `<form>` and `<section>` are `form` and `region` only when they carry an
   `aria-label`, `aria-labelledby`, or `title`.
 - `<menu>` is a `list`; only `role="menu"` is a `menu`.
+- `role="presentation"` and `role="none"` are ignored on a focusable element
+  or one with a global ARIA attribute such as `aria-label`, as `getByRole`
+  reads them: `<button role="none">` is still a `button`.
 
 Names follow the same rules:
 
