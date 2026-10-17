@@ -152,10 +152,30 @@ describe('describeDelta', () => {
       node('d', { text: 'Added Sep 8, 2026' }),
       node('i', { text: '2026-09-08' }),
       node('w', { text: '17:42' }),
+      node('r', { text: '17:42: Deploy started' }),
       node('q', { text: 'Done in 321ms' }),
       node('s', { text: '11' }),
       node('n', { text: 'Release pipeline' }),
     ]);
+    expect(appeared(nodes([heading]), end)).toEqual([{ text: 'Release pipeline' }]);
+  });
+
+  it('skips a date or a clock time in any language and digits', () => {
+    const dates = [
+      '٨ سبتمبر ٢٠٢٦',
+      '٨\u200f/٩\u200f/٢٠٢٦',
+      '9/8/26',
+      '08.09.2026',
+      '8 września 2026',
+      '8 de septiembre de 2026',
+      '2026年9月8日',
+      '۱۷ شهریور ۱۴۰۵',
+      '2026. szeptember 8.',
+      '8 בספטמבר 2026',
+      '٨ أيلول ٢٠٢٦',
+      '٥:٤٢ م',
+    ];
+    const end = nodes([heading, ...dates.map((text, index) => node(`d${String(index)}`, { text })), node('n', { text: 'Release pipeline' })]);
     expect(appeared(nodes([heading]), end)).toEqual([{ text: 'Release pipeline' }]);
   });
 
@@ -177,20 +197,38 @@ describe('describeDelta', () => {
     expect(appeared(nodes([heading]), end)).toEqual([{ role: 'alert', text: 'Session expires at 17:42' }, { text: 'Release pipeline' }]);
   });
 
-  it('does not mistake progress, versions, short ids, or a named counter for volatile text', () => {
+  it('does not mistake progress, versions, decimals, short ids, or a named counter for volatile text', () => {
     const end = nodes([
       heading,
       node('a', { text: '3 / 30 steps' }),
       node('b', { text: 'v2.2.1' }),
       node('c', { text: 'E2E workspace 00d8365e' }),
       node('d', { role: 'status', name: 'Counter', text: '1' }),
+      node('e', { text: 'Version 0.21.0' }),
+      node('f', { text: 'Rated 4.5 by 1200 users' }),
+      node('g', { text: 'الخطوة ٢ من ٣' }),
     ]);
-    expect(appeared(nodes([heading]), end)).toHaveLength(4);
+    expect(appeared(nodes([heading]), end)).toHaveLength(7);
+    const codes = nodes([
+      heading,
+      node('i', { text: 'Error 1001 at line 12' }),
+      node('j', { text: 'Order 1234 has 3 items' }),
+      node('k', { text: 'Call 123-45-67' }),
+      node('l', { text: 'Affichage de 1 à 25 des 1500 résultats' }),
+      node('m', { text: '1 Lizenz pro Jahr 1299 €' }),
+      node('o', { text: 'Ticket 12-34-5678' }),
+      node('n', { text: 'Release pipeline' }),
+    ]);
+    expect(appeared(nodes([heading]), codes)).toHaveLength(7);
   });
 
   it('keeps a count the step made appear, which is its result, and skips one that only moved or that came with another route, which is the data', () => {
     const imported = nodes([heading, node('i', { role: 'status', text: '3 records imported' }), node('p', { text: 'Showing 1 to 9 of 9 results' })]);
     expect(appeared(nodes([heading]), imported)).toEqual([{ role: 'status', text: '3 records imported' }, { text: 'Showing 1 to 9 of 9 results' }]);
+    const large = nodes([heading, node('l', { role: 'status', text: 'Imported 12 of 1500 records' }), node('f', { text: 'Import finished' })]);
+    expect(appeared(nodes([heading]), large)).toEqual([{ role: 'status', text: 'Imported 12 of 1500 records' }, { text: 'Import finished' }]);
+    const french = nodes([heading, node('o', { role: 'status', text: '3 des 1200 lignes importées' }), node('t', { text: 'Import terminé' })]);
+    expect(appeared(nodes([heading]), french)).toEqual([{ role: 'status', text: '3 des 1200 lignes importées' }, { text: 'Import terminé' }]);
     // The same screen opened by a link: its counts are what the list holds today.
     expect(describeDelta(nodes([heading]), nodes([...imported.values(), node('n', { text: 'Imported records' })]), true).appeared).toEqual([
       { text: 'Imported records' },
@@ -282,6 +320,10 @@ describe('deltaMismatch', () => {
     expect(holds([{ role: 'alert', text: 'Session expires at 17:42' }], [expiring('a', '17:45')])).toBe(true);
     expect(holds([savedAnchor], [savedMarker, expiring('a', '17:45')], [expiring('b', '17:44')])).toBe(true);
     expect(holds([{ role: 'alert', text: 'Session expires at 17:42' }], [node('x', { role: 'alert', text: 'Session expired' })])).toBe(false);
+    expect(holds([{ role: 'alert', text: 'تنتهي الجلسة في ٥:٤٢ م' }], [node('y', { role: 'alert', text: 'تنتهي الجلسة في ٥:٤٥ م' })])).toBe(true);
+    expect(holds([{ role: 'alert', text: 'セッションは2026年9月8日に終了します' }], [node('z', { role: 'alert', text: 'セッションは2026年9月9日に終了します' })])).toBe(true);
+    expect(holds([{ role: 'alert', text: 'Error 1001 at line 12' }], [node('e', { role: 'alert', text: 'Error 5003 at line 12' })])).toBe(false);
+    expect(holds([{ role: 'alert', text: 'Importés : 3 des 1200 lignes' }], [node('f', { role: 'alert', text: 'Importés : 0 des 1200 lignes' })])).toBe(false);
   });
 
   it('forgives a churned test id when the other fields still identify the node', () => {

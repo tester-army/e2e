@@ -1,8 +1,32 @@
 /** Screens that keep changing after the page loads or after an action lands. */
 
-import { constant, type PageRenderer } from './page.ts';
+import { constant, escapeHtml, type PageRenderer } from './page.ts';
+
+/** `/order?format=` dates: today, and a day later under the `next-day` variant. */
+const ORDER_DATES: Record<string, readonly [string, string]> = {
+  'ar-long': ['٨ سبتمبر ٢٠٢٦', '٩ سبتمبر ٢٠٢٦'],
+  'ar-numeric': ['٨\u200f/٩\u200f/٢٠٢٦', '٩\u200f/٩\u200f/٢٠٢٦'],
+  'en-numeric': ['9/8/26', '9/9/26'],
+};
 
 export const LIVE_PAGES: Record<string, PageRenderer> = {
+  // A placed order shows today's date, which differs on the replay's day.
+  '/order': (_state, url) => {
+    const dates = ORDER_DATES[url.searchParams.get('format') ?? ''] ?? ['', ''];
+    const date = dates[url.searchParams.get('variant') === 'next-day' ? 1 : 0];
+    return `<!doctype html>
+<title>Orders</title>
+<h1>Orders</h1>
+<button>Place order</button>
+<p role="status">No order yet</p>
+<p id="date" hidden>${escapeHtml(date)}</p>
+<script>
+  document.querySelector('button').addEventListener('click', () => {
+    document.querySelector('[role=status]').textContent = 'Order placed';
+    document.getElementById('date').hidden = false;
+  });
+</script>`;
+  },
   // Next.js App Router's shadow live region echoes the title on its own
   // schedule; an app alert with the same text must still gate replay.
   '/route-announcer': (_state, url) => `<!doctype html>

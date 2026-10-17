@@ -26,6 +26,7 @@
 import type { RedactedNode } from '../agent/observation.ts';
 import { describeTarget } from '../agent/actions.ts';
 import { bound, collapseText } from '../internal/text.ts';
+import { datePatterns } from './dates.ts';
 import { descriptorTiers, fieldsEqual, type DescriptorField } from './relocate.ts';
 import {
   MAX_TRACE_ANCHORS,
@@ -152,8 +153,23 @@ const VOLATILE_TEXT: readonly RegExp[] = [
   /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:,?\s+\d{4})?\b/i,
   /\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?(?:\s+\d{4})?\b/i,
   /\b\d{4}-\d{2}-\d{2}\b/,
-  /\b\d{1,2}:\d{2}(?::\d{2})?\b/,
 ];
+
+interface VolatilePatterns {
+  readonly text: readonly RegExp[];
+  readonly spans: readonly RegExp[];
+}
+
+let volatilePatterns: VolatilePatterns | undefined;
+
+/** `VOLATILE_TEXT` with the dates of every language (`datePatterns`), built on first use, and each as the span `alertShape` masks. */
+function volatileText(): VolatilePatterns {
+  if (volatilePatterns === undefined) {
+    const text = [...VOLATILE_TEXT, ...datePatterns()];
+    volatilePatterns = { text, spans: text.map((pattern) => new RegExp(pattern.source, `${pattern.flags}g`)) };
+  }
+  return volatilePatterns;
+}
 
 /**
  * A count that names what it counts: a pagination range, `12 items`, `3
@@ -184,7 +200,7 @@ function isBareNumber(anchor: TraceTargetDescriptor): boolean {
 /** Whether an anchor's text cannot read the same on the next run; `countIsData` decides an anchor holding a count. */
 function isVolatileAnchor(anchor: TraceTargetDescriptor, countIsData: (anchor: TraceTargetDescriptor) => boolean): boolean {
   const texts = [anchor.text, anchor.name, anchor.value].filter((value): value is string => value !== undefined);
-  if (isBareNumber(anchor) || texts.some((value) => VOLATILE_TEXT.some((pattern) => pattern.test(value)))) return true;
+  if (isBareNumber(anchor) || texts.some((value) => volatileText().text.some((pattern) => pattern.test(value)))) return true;
   return texts.some((value) => COUNT_TEXT.some((pattern) => pattern.test(value))) && countIsData(anchor);
 }
 
@@ -201,15 +217,13 @@ function isAlert(anchor: TraceTargetDescriptor): boolean {
   return anchor.role !== undefined && ALERT_ROLES.has(anchor.role);
 }
 
-const VOLATILE_SPANS: readonly RegExp[] = VOLATILE_TEXT.map((pattern) => new RegExp(pattern.source, `${pattern.flags}g`));
-
 /**
  * An alert with its volatile parts read as one placeholder each: `Session
  * expires at 17:42` and `Session expires at 17:45` are the same alert, which
  * a replay must neither miss nor mistake for one the recording never saw.
  */
 function alertShape(anchor: TraceTargetDescriptor): TraceTargetDescriptor {
-  const mask = (text: string) => VOLATILE_SPANS.reduce((masked, span) => masked.replace(span, '#'), text);
+  const mask = (text: string) => volatileText().spans.reduce((masked, span) => masked.replace(span, '#'), text);
   return {
     ...anchor,
     ...(anchor.name === undefined ? {} : { name: mask(anchor.name) }),
