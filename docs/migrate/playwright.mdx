@@ -267,7 +267,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `page.emulateMedia({ colorScheme, reducedMotion })` | `browser.emulateMedia()`, for every open tab and every tab opened after it; `media`, `forcedColors`, and `contrast` are not yet supported | web only |
 | `page.exposeFunction()`, `addStyleTag()`, `setExtraHTTPHeaders()`, `clock` | none yet; for `addStyleTag`, `browser.evaluate` can append a `<style>` once the page is open | missing |
 | `context.addCookies()`, `context.cookies()` | `browser.setCookies()`, `browser.cookies()` | web only |
-| `context.clearCookies()` | `app.clearState()` also clears other persisted state and recreates the context | missing |
+| `context.clearCookies(options)` | `browser.clearCookies(options)` | web only |
 | `request` fixture | Node `fetch`, see [API](/api-testing) | by design |
 | `context.storageState({ path })` | no file, see [What differs on purpose](#what-differs-on-purpose) | by design |
 
