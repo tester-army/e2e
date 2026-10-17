@@ -17,6 +17,9 @@ import type { Browser, Dialog, RouteContinueOverrides, RouteFulfillResponse, Web
 
 declare const browser: Browser;
 void (browser.waitForDownload(async () => {}).then(file => file.absolutePath) satisfies Promise<string>);
+void (browser.unrouteAll() satisfies Promise<void>);
+// @ts-expect-error clearing routes takes no options
+void browser.unrouteAll({ behavior: 'ignoreErrors' });
 
 declare const route: WebRoute;
 void route.continue();

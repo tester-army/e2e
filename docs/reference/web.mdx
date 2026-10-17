@@ -401,7 +401,7 @@ export type WebInitScript = string | { readonly path: string } | (() => unknown)
   `evaluate`, `waitForResponse`, `waitForDownload`, `keyboard`, `mouse`, the
   `expect(browser)` matchers, and every `screen` query.
 - What belongs to the browser covers every tab: `cookies`, `setCookies`,
-  `route`, `unroute`, `onDialog`, and `addInitScript`.
+  `route`, `unroute`, `unrouteAll`, `onDialog`, and `addInitScript`.
 - `setViewport` sizes the active tab and every tab opened after it, and
   `emulateMedia` sets its media the same way.
 - A tab the app opens itself, from a `target="_blank"` link or `window.open`,
@@ -433,6 +433,7 @@ export type WebInitScript = string | { readonly path: string } | (() => unknown)
 | [`addInitScript`](#init-scripts) | `Promise<void>` |
 | [`route`](#route) | `Promise<void>` |
 | [`unroute`](#unroute) | `Promise<void>` |
+| [`unrouteAll`](#unrouteall) | `Promise<void>` |
 | [`waitForResponse`](#waitforresponse) | `Promise<WebResponse>` |
 | [`cookies`](#cookies) | `Promise<Cookie[]>` |
 | [`setCookies`](#setcookies) | `Promise<void>` |
@@ -454,7 +455,7 @@ The [config](/reference/config) sets each member's budget:
 A `{ timeout }` option overrides the budget on `goto`, `reload`, `back`,
 `forward`, `waitForResponse`, and `waitForDownload`, capped by the test
 deadline. `url`, `title`, `evaluate`, `addInitScript`, `route`, `unroute`,
-`cookies`, `setCookies`, `setViewport`, `emulateMedia`, `onDialog`,
+`unrouteAll`, `cookies`, `setCookies`, `setViewport`, `emulateMedia`, `onDialog`,
 `keyboard.*`, and `mouse.*` take no override.
 
 #### `goto`
@@ -693,6 +694,15 @@ await browser.unroute('**/api/quote');
 | Throws | When |
 | --- | --- |
 | `INVALID_ARGUMENT` | A predicate function as the pattern. |
+
+#### `unrouteAll`
+
+Removes every route registered by the browser fixture, preserving configured
+site headers.
+
+```ts
+await browser.unrouteAll();
+```
 
 #### `waitForResponse`
 
@@ -1127,6 +1137,8 @@ export interface Browser extends Expectable<BrowserExpectation> {
   ): Promise<void>;
   /** Removes matching attempt-scoped routes. */
   unroute(pattern: string | RegExp): Promise<void>;
+  /** Removes all routes registered by this browser fixture, preserving configured site headers. */
+  unrouteAll(): Promise<void>;
   /** Waits for a matching response. */
   waitForResponse(
     pattern: string | RegExp,

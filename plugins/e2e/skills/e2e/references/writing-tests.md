@@ -408,6 +408,7 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
   network), `fallback()` (the route registered before it), or `abort()`;
   none or two fails the next step with `ACTION_FAILED`, an unsupported
   option with `INVALID_ARGUMENT`.
+- `unrouteAll()` removes every route; configured site headers stay.
 - `waitForResponse(pattern, { timeout? })`: resolves once the headers
   arrive, with `{ url, status, headers, json(), text() }`; `text()` and
   `json()` wait for the body (up to the action timeout) and reject with

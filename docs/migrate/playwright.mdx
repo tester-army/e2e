@@ -254,6 +254,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `route.continue({ url, method, headers, postData })`, `route.fallback()` | the same; a `url` goes through the navigation rule, and `fallback()` takes no overrides | web only |
 | `route.fetch()`, `route.abort(code)`, `route.fallback(overrides)` | none yet; `abort()` takes no error code | missing |
 | `page.unroute()` | `browser.unroute()` | web only |
+| `page.unrouteAll()` | `browser.unrouteAll()` | web only; clears test routes |
 | `page.waitForResponse(pattern)` | `browser.waitForResponse(pattern)`: a string or `RegExp`, no predicate function; `url`, `status`, `headers`, `json()`, `text()`. A string is a glob tested against the whole URL, query included, and never resolved against `app.url`: Playwright's `'/api/orders'` is the full URL or `'**/api/orders'`, and `?` matches any one character (write `'\\?'` for a literal one) | web only |
 | `response.ok()`, `response.body()`, `response.request()` | `status` and `text()` | missing |
 | `page.waitForRequest()`, `request.postDataJSON()` | none yet for `waitForRequest`; `route.request.postData` is a string | missing |
