@@ -42,6 +42,8 @@ export const AGENT_CODE_TABLE: Readonly<
   STEP_TIMEOUT: { category: 'test', blockedCategory: 'automation' },
   CONTEXT_OVERFLOW: { category: 'test', blockedCategory: 'automation' },
   MODEL_PROVIDER_FAILED: { category: 'infrastructure', modelUnreachable: true },
+  // A refusal answers the request (denied by policy), so it is never retried: `configuration`, not `test`.
+  MODEL_REFUSED: { category: 'configuration' },
   CANCELLED: { category: 'infrastructure' },
   AUTHENTICATION_FAILED: { category: 'test' },
   MODEL_OUTPUT_INVALID: { category: 'test' },

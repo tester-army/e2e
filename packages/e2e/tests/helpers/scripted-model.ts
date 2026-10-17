@@ -30,12 +30,13 @@ export function createScriptedInstance<Options>(
 /** One scripted generate result with the fixed test usage envelope, and the call warnings a provider attached. */
 export function scriptedResult(
   content: readonly unknown[],
-  finishReason: 'stop' | 'tool-calls',
+  finishReason: 'stop' | 'tool-calls' | 'content-filter',
   warnings: readonly ScriptedWarning[] = [],
+  rawFinishReason?: string,
 ): object {
   return {
     content,
-    finishReason: { unified: finishReason, raw: finishReason },
+    finishReason: { unified: finishReason, raw: rawFinishReason ?? finishReason },
     usage: {
       inputTokens: { total: 100, noCache: 100, cacheRead: 0, cacheWrite: 0 },
       outputTokens: { total: 20, text: 20, reasoning: 0 },

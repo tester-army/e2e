@@ -91,12 +91,12 @@ describe('OpenAI Decisions API', () => {
     expect(verdict).toMatchObject({ status: 'blocked', errorCode: 'AUTOMATION_UNSUPPORTED' });
     expect(fixture.actions.tap).not.toHaveBeenCalled();
   });
-  it('names a refusal as MODEL_OUTPUT_INVALID', async () => {
+  it('names a refusal as MODEL_REFUSED', async () => {
     const { model } = openaiDecision((request) => request.questions.map((question) =>
       question.name === 'operation' ? { type: 'refusal', name: 'operation' } : unanimous(question, question.choices?.[0]?.value ?? '')));
     const fixture = context({ tree: BUTTONS });
     await expect(decisionExecutor({ model }).runStep(fixture.ctx)).rejects.toMatchObject({
-      code: 'MODEL_OUTPUT_INVALID', message: 'The decision model refused to answer "operation".',
+      code: 'MODEL_REFUSED', message: 'The decision model refused to answer "operation".',
     });
   });
 });

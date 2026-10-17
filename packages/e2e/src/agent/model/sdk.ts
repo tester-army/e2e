@@ -101,6 +101,7 @@ export function createModelAdapter(model: ResolvedModel | undefined, agentName =
       try {
         if (schema === undefined) {
           const result = await generateText(settings);
+          throwIfModelRefused(result.finishReason, result.rawFinishReason, call.schemaName, model.id);
           const parsed = parseJsonObject(result.text);
           const validation = call.validate(parsed);
           if (!validation.ok) {
@@ -122,13 +123,16 @@ export function createModelAdapter(model: ResolvedModel | undefined, agentName =
             name: call.schemaName,
           }),
         });
+        // Before touching `result.output`: a refusal is `MODEL_REFUSED`, not a
+        // provider failure and not invalid output.
+        throwIfModelRefused(result.finishReason, result.rawFinishReason, call.schemaName, model.id);
         const output = result.output;
         if (output === undefined) {
           throw new ModelOutputInvalidError('provider returned no structured output');
         }
         return { value: output, usage: readUsage(result, inputBound), reasoning: result.finalStep.reasoningText };
       } catch (cause) {
-        throw translateModelError(cause, issue, call.signal);
+        throw translateModelError(cause, issue, call.schemaName, model.id, call.signal);
       }
     },
   };
@@ -258,6 +262,41 @@ function parseCost(raw: unknown): number | undefined {
 }
 
 /**
+ * A unified finish reason that reports a policy refusal instead of output,
+ * whatever the provider named it on the wire.
+ */
+function isRefusalFinishReason(finishReason: string | undefined): finishReason is 'content-filter' {
+  return finishReason === 'content-filter';
+}
+
+/**
+ * The typed refusal for a denied call: the provider's content policy refused
+ * the request, so the message names the step, the model, and the raw finish
+ * reason — rephrasing is the only remedy, never a retry.
+ */
+function modelRefusedError(finishReason: string, step: string, modelId: string): AgentError {
+  return new AgentError(
+    'MODEL_REFUSED',
+    `model refused to answer step '${step}' (model '${modelId}', finish reason '${finishReason}'): rephrase the request — the same prompt will be refused again`,
+  );
+}
+
+/**
+ * Fails a finished-but-denied call before its (absent) output is read. A
+ * refusal that surfaced as a parse failure never reaches here; it is
+ * classified in `translateModelError` off the same predicate.
+ */
+function throwIfModelRefused(
+  finishReason: string | undefined,
+  rawFinishReason: string | undefined,
+  step: string,
+  modelId: string,
+): void {
+  if (!isRefusalFinishReason(finishReason)) return;
+  throw modelRefusedError(rawFinishReason ?? finishReason, step, modelId);
+}
+
+/**
  * Maps adapter and provider failures onto the closed agent error set. Runs
  * only after `generate` loaded the SDK, so the cached module is available for
  * the error-class checks.
@@ -265,6 +304,8 @@ function parseCost(raw: unknown): number | undefined {
 function translateModelError(
   rawCause: unknown,
   issue: string | undefined,
+  step: string,
+  modelId: string,
   signal: AbortSignal,
 ): Error {
   const { APICallError, NoObjectGeneratedError } = aiSdk();
@@ -281,6 +322,13 @@ function translateModelError(
       'model call exceeded the remaining step timeout',
       { cause },
     );
+  }
+  // A refusal that never reached the finish-reason check: with unparseable
+  // text under a content-filter finish, the SDK parses inside `generateText`
+  // and throws its object error first. The error carries the unified finish
+  // reason, so the refusal is still the typed `MODEL_REFUSED`.
+  if (NoObjectGeneratedError.isInstance(cause) && isRefusalFinishReason(cause.finishReason)) {
+    return modelRefusedError(cause.finishReason, step, modelId);
   }
   if (NoObjectGeneratedError.isInstance(cause)) {
     return new ModelOutputInvalidError(

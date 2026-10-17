@@ -149,7 +149,7 @@ function decideError(error: unknown, signal: AbortSignal): unknown {
   const refusedIds = refused(error);
   if (refusedIds !== undefined) {
     const which = refusedIds.length === 0 ? 'a question' : refusedIds.map((id) => JSON.stringify(id)).join(', ');
-    return new AgentError('MODEL_OUTPUT_INVALID', `The decision model refused to answer ${which}.`);
+    return new AgentError('MODEL_REFUSED', `The decision model refused to answer ${which}.`);
   }
   if (InvalidResponseDataError.isInstance(error) || TypeValidationError.isInstance(error) || JSONParseError.isInstance(error)) {
     return new AgentError('MODEL_OUTPUT_INVALID', 'The decision model returned an invalid answer.');

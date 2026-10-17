@@ -538,7 +538,7 @@ describe('model failures', () => {
     const rejected = new InvalidResponseDataError({ data: { operation: { type: 'refusal' } }, message: 'Question "operation" returned an answer with the wrong type.' });
     const { model } = scriptedDecision(() => ({ choice: 'tap' }), { throws: rejected });
     await expect(decisionExecutor({ model }).runStep(context({ tree: BUTTONS }).ctx)).rejects.toMatchObject({
-      code: 'MODEL_OUTPUT_INVALID', message: 'The decision model refused to answer "operation".',
+      code: 'MODEL_REFUSED', message: 'The decision model refused to answer "operation".',
     });
   });
   it('maps provider failures without provider text', async () => {
