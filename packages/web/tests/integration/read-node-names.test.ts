@@ -151,6 +151,157 @@ describe('names from content and precedence', () => {
     return page.getByRole(role as Parameters<Page['getByRole']>[0], { name, exact: true }).getAttribute('data-testid');
   }
 
+  it('includes aria-owned text in the name reported by an observation and a locator read', async () => {
+    await page.setContent(`
+      <button aria-owns="owned" data-testid="save" style="width:120px;height:30px"></button>
+      <span id="owned">Save changes</span>
+    `);
+    expect(await locatedTestId('button', 'Save changes')).toBe('save');
+    const { tree } = await capture();
+    expect(flatten(tree).find((node) => node.testId === 'save')).toMatchObject({ role: 'button', name: 'Save changes' });
+    const options = { testIdAttribute: 'data-testid', secureFieldSelector: SECURE_FIELD_SELECTOR, mode: { kind: 'node' as const } };
+    const read = await page.getByRole('button', { name: 'Save changes', exact: true }).evaluate(readSemanticsFunction<typeof options.mode>, options);
+    expect(read.name).toBe('Save changes');
+  });
+
+  it('reads owned nodes after DOM content in reference order, without repeating nodes or cycling', async () => {
+    await page.setContent(`
+      <button aria-owns="last first last missing" data-testid="order">Start</button>
+      <div id="first">First</div><div id="last">Last</div>
+      <button aria-owns="inside inside" data-testid="duplicate"><span id="inside">Only once</span></button>
+      <button id="self" aria-owns="self" data-testid="self">Self</button>
+      <button id="cycle" aria-owns="one" data-testid="cycle">Loop </button>
+      <span id="one" aria-owns="cycle">Once</span>
+      <button data-testid="nested"><span aria-owns="outside">Nested </span></button>
+      <span id="outside">outside</span>
+      <style>.owned-generated::before { content: "Before " } .owned-generated::after { content: " after" }</style>
+      <button class="owned-generated" aria-owns="generated" data-testid="generated">Own </button>
+      <span id="generated">owned</span>
+    `);
+    const { tree } = await capture();
+    const byTestId = new Map(flatten(tree).map((node) => [node.testId, node]));
+    const cases = [
+      ['order', 'Start Last First'],
+      ['duplicate', 'Only once'],
+      ['self', 'Self'],
+      ['cycle', 'Loop Once'],
+      ['nested', 'Nested outside'],
+      ['generated', 'Before Own owned after'],
+    ] as const;
+    for (const [testId, name] of cases) {
+      expect(byTestId.get(testId), testId).toMatchObject({ role: 'button', name });
+      expect(await locatedTestId('button', name), name).toBe(testId);
+    }
+  });
+
+  it('drops hidden owned text and keeps explicit accessible names ahead of owned content', async () => {
+    await page.setContent(`
+      <button aria-owns="display-hidden aria-hidden own-hidden invisible folded skipped shown" data-testid="hidden"></button>
+      <div style="display:none"><span id="display-hidden">Display hidden</span></div>
+      <div aria-hidden="true"><span id="aria-hidden">ARIA hidden</span></div>
+      <span id="own-hidden" hidden>Hidden target</span>
+      <span id="invisible" style="visibility:hidden">Invisible target</span>
+      <details><summary>Details</summary><span id="folded">Folded</span></details>
+      <div style="content-visibility:hidden"><span id="skipped">Skipped</span></div>
+      <span id="shown" style="display:contents"><span>Kept</span></span>
+      <button aria-owns="ignored" aria-label="Explicit name" data-testid="label"></button>
+      <button aria-owns="ignored" aria-label="Loses" aria-labelledby="reference" data-testid="labelledby"></button>
+      <span id="ignored">Ignored content</span><span id="reference">Referenced name</span>
+      <button aria-owns="restored" data-testid="restored"></button>
+      <span style="visibility:hidden"><span id="restored" style="visibility:visible">Restored visibility</span></span>
+      <button aria-labelledby="hidden-reference" data-testid="hidden-reference"></button>
+      <span id="hidden-reference" hidden aria-owns="reference-owned">Hidden </span>
+      <span id="reference-owned" hidden>reference</span>
+    `);
+    const { tree } = await capture();
+    const byTestId = new Map(flatten(tree).map((node) => [node.testId, node]));
+    for (const [testId, name] of [
+      ['hidden', 'Kept'],
+      ['label', 'Explicit name'],
+      ['labelledby', 'Referenced name'],
+      ['restored', 'Restored visibility'],
+      ['hidden-reference', 'Hidden reference'],
+    ] as const) {
+      expect(byTestId.get(testId), testId).toMatchObject({ role: 'button', name });
+      expect(await locatedTestId('button', name), name).toBe(testId);
+    }
+  });
+
+  it('keeps owned password values out of names and owned content out of plain label text', async () => {
+    await page.setContent(`
+      <button aria-owns="password" data-testid="secure">Unlock</button>
+      <input id="password" type="password" value="owned-secret-K9x4">
+      <label for="field" aria-owns="label-extra">Name</label><input id="field" data-testid="field">
+      <div id="label-extra">Extra</div>
+    `);
+    const { tree } = await capture();
+    expect(flatten(tree).find((node) => node.testId === 'secure')).toMatchObject({ name: 'Unlock' });
+    expect(JSON.stringify(tree)).not.toContain('owned-secret-K9x4');
+    const options = { testIdAttribute: 'data-testid', secureFieldSelector: SECURE_FIELD_SELECTOR, mode: { kind: 'node' as const } };
+    const read = await page.locator('#field').evaluate(readSemanticsFunction<typeof options.mode>, options);
+    expect(read.name).toBe('Name Extra');
+    expect(read.labels).toEqual(['Name']);
+    expect(await page.getByLabel('Name', { exact: true }).getAttribute('data-testid')).toBe('field');
+    expect(await locatedTestId('textbox', 'Name Extra')).toBe('field');
+  });
+
+  it('resolves aria-owned names inside their own open and closed shadow roots', async () => {
+    await page.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
+    await page.goto('about:blank');
+    await page.setContent('<span id="owned">Outside</span><x-open></x-open><x-closed></x-closed>');
+    await page.evaluate(() => {
+      for (const mode of ['open', 'closed'] as const) {
+        const root = document.querySelector(`x-${mode}`)!.attachShadow({ mode });
+        root.innerHTML = `<span id="owned">${mode} name</span><button aria-owns="owned" data-testid="${mode}" style="width:120px;height:30px"></button>`;
+      }
+    });
+    const { tree } = await capture();
+    const byTestId = new Map(flatten(tree).map((node) => [node.testId, node]));
+    expect(byTestId.get('open')).toMatchObject({ role: 'button', name: 'open name' });
+    expect(byTestId.get('closed')).toMatchObject({ role: 'button', name: 'closed name' });
+    expect(await locatedTestId('button', 'open name')).toBe('open');
+  });
+
+  it('matches role queries for owned text in slots and skipped containers', async () => {
+    await page.setContent(`
+      <button aria-owns="slotted-owned" data-testid="slotted-owner">Save </button>
+      <x-slotted><span id="slotted-owned">Owned</span></x-slotted>
+      <button aria-owns="skipped-owned" data-testid="skipped-owner">Save </button>
+      <span id="skipped-owned" style="display:block;content-visibility:hidden">Owned</span>
+    `);
+    await page.evaluate(() => {
+      document.querySelector('x-slotted')!.attachShadow({ mode: 'open' }).innerHTML = '<slot></slot>';
+    });
+    const { tree } = await capture();
+    const byTestId = new Map(flatten(tree).map((node) => [node.testId, node]));
+    expect(byTestId.get('slotted-owner')).toMatchObject({ role: 'button', name: 'Save' });
+    expect(byTestId.get('skipped-owner')).toMatchObject({ role: 'button', name: 'Save Owned' });
+    expect(await locatedTestId('button', 'Save')).toBe('slotted-owner');
+    expect(await locatedTestId('button', 'Save Owned')).toBe('skipped-owner');
+  });
+
+  it('reads owned text through visible closed slots and excludes hidden slots and details', async () => {
+    await page.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
+    await page.goto('about:blank');
+    const cases = [
+      ['hidden', '<slot style="display:none"></slot>', 'Save'],
+      ['visible', '<slot></slot>', 'Save Owned'],
+      ['details', '<details><summary>More</summary><slot></slot></details>', 'Save'],
+      ['summary', '<details><summary><slot></slot></summary></details>', 'Save Owned'],
+      ['skipped', '<div style="content-visibility:hidden"><slot></slot></div>', 'Save'],
+    ] as const;
+    await page.setContent(cases.map(([id]) => `
+      <button aria-owns="${id}-owned" data-testid="${id}">Save </button>
+      <x-host id="${id}-host"><span id="${id}-owned">Owned</span></x-host>
+    `).join(''));
+    await page.evaluate((roots) => {
+      for (const [id, html] of roots) document.getElementById(`${id}-host`)!.attachShadow({ mode: 'closed' }).innerHTML = html;
+    }, cases);
+    const { tree } = await capture();
+    const byTestId = new Map(flatten(tree).map((node) => [node.testId, node]));
+    for (const [id, , name] of cases) expect(byTestId.get(id), id).toMatchObject({ role: 'button', name });
+  });
+
   it('names a control from its descendants the way the role selector does: aria-label, alt, content, then title', async () => {
     await page.setContent(`
       <button data-testid="img"><img src="${PIXEL}" alt="Search"></button>

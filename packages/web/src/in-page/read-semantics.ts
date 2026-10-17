@@ -555,6 +555,16 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     return role === 'menu' ? '' : null;
   };
 
+  /** Direct aria-owns targets, resolved in the owner's tree scope. */
+  const ariaOwnedElementsOf = (el: Element): Element[] => {
+    const owned: Element[] = [];
+    for (const id of (el.getAttribute('aria-owns') ?? '').trim().split(/\s+/)) {
+      const target = id === '' ? null : referencedElementOf(el, id);
+      if (target !== null && !owned.includes(target)) owned.push(target);
+    }
+    return owned;
+  };
+
   /**
    * Every element under `el` and every element its `aria-owns` names, with
    * theirs: what a composite widget owns, as Playwright's role selector
@@ -562,9 +572,8 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    */
   const ariaOwnedOf = (el: Element): Element[] => {
     const owned = Array.from(el.querySelectorAll('*'));
-    for (const id of (el.getAttribute('aria-owns') ?? '').trim().split(/\s+/)) {
-      const target = id === '' ? null : referencedElementOf(el, id);
-      if (target !== null) owned.push(target, ...Array.from(target.querySelectorAll('*')));
+    for (const target of ariaOwnedElementsOf(el)) {
+      owned.push(target, ...Array.from(target.querySelectorAll('*')));
     }
     return owned;
   };
@@ -603,6 +612,30 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     return title === null ? '' : title.trim();
   };
 
+  /** The assigned slot, including one inside a tracked closed shadow root. */
+  const assignedSlotOf = memoized((el: Element): HTMLSlotElement | null => {
+    if (el.assignedSlot !== null) return el.assignedSlot;
+    const shadow = el.parentElement === null ? null : shadowRootOf(el.parentElement);
+    if (shadow === null) return null;
+    for (const slot of Array.from(shadow.querySelectorAll('slot'))) {
+      if (slot.assignedNodes().includes(el)) return slot;
+    }
+    return null;
+  });
+
+  /** The flat-tree parent, including slots in tracked closed shadow roots. */
+  const flatParentOf = (el: Element): Element | null => assignedSlotOf(el) ?? parentOrHostOf(el);
+
+  /** Ancestors hidden from name computation, which a direct aria-owns reference would otherwise bypass. */
+  const isNameHiddenByAncestor = memoized((el: Element): boolean => {
+    const parent = flatParentOf(el);
+    return parent !== null && (
+      (parent.getAttribute('aria-hidden') ?? '').toLowerCase() === 'true' ||
+      styleOf(parent)?.display === 'none' ||
+      isNameHiddenByAncestor(parent)
+    );
+  });
+
   /**
    * The children's contributions joined as Playwright's role selector joins
    * them: a space on each side of a block-level child and of a `<br>`, none
@@ -614,7 +647,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    */
   const childrenNameOf = (el: Element, walk: NameWalk): string => {
     let out = walk.accessible ? beforeContentOf(el) : '';
-    for (const child of contentChildrenOf(el)) {
+    for (const child of contentChildrenOf(el, walk)) {
       if (child.nodeType === 3) {
         out += child.nodeValue ?? '';
         continue;
@@ -628,29 +661,32 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     return walk.accessible ? out + afterContentOf(el) : out;
   };
 
-  /**
-   * The nodes a name from content reads under an element, in the order the
-   * page composes them: a `<slot>` reads what is assigned to it, and a host
-   * reads its light children (a slotted one skipped, its slot reads it) and
-   * then its shadow tree, so `<button>` whose text lives behind a shadow root
-   * is named by that text as Playwright's role selector names it. Which light
-   * children are slotted is read from the root's slots, not from each child's
-   * `assignedSlot`: a closed root hides that property from the outside while
-   * the tracked root's slots still list their assigned nodes.
-   */
-  const contentChildrenOf = (el: Element): ChildNode[] => {
+  /** DOM and shadow children, then aria-owns targets for accessible names; slots return assigned nodes. */
+  const contentChildrenOf = (el: Element, walk: NameWalk): ChildNode[] => {
     if (el instanceof HTMLSlotElement) {
       const assigned = el.assignedNodes();
       if (assigned.length > 0) return assigned as ChildNode[];
     }
     const shadow = shadowRootOf(el);
-    if (shadow === null) return Array.from(el.childNodes);
-    const slotted = new Set<Node>();
-    for (const slot of Array.from(shadow.querySelectorAll('slot'))) {
-      for (const node of slot.assignedNodes()) slotted.add(node);
+    let children = Array.from(el.childNodes);
+    if (shadow !== null) {
+      // Read assignments from the root's slots because closed roots hide each child's assignedSlot.
+      const slotted = new Set<Node>();
+      for (const slot of Array.from(shadow.querySelectorAll('slot'))) {
+        for (const node of slot.assignedNodes()) slotted.add(node);
+      }
+      children = children.filter((child) => !slotted.has(child));
+      children.push(...Array.from(shadow.childNodes));
     }
-    const own = Array.from(el.childNodes).filter((child) => !slotted.has(child));
-    return own.concat(Array.from(shadow.childNodes));
+    if (walk.accessible) {
+      for (const owned of ariaOwnedElementsOf(el)) {
+        // Playwright skips targets in open slots and cannot see closed ones; closed-slotted targets stay for the hidden checks below.
+        if (owned.assignedSlot !== null) continue;
+        if (!walk.hiddenAllowed && (isNameHiddenByAncestor(owned) || isInClosedDetails(owned) || isSkippedContent(owned))) continue;
+        children.push(owned);
+      }
+    }
+    return children;
   };
 
   /**
@@ -843,7 +879,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * descendants stay listed and nothing past the cut is lost.
    */
   const isReadInLine = memoized((el: Element): boolean => {
-    const parent = el.assignedSlot ?? parentOrHostOf(el);
+    const parent = flatParentOf(el);
     if (parent === null || !flowsInLine(el)) return false;
     if (!ownsLine(parent)) return isReadInLine(parent);
     const fits = projection.textLimit === null || lineTextOf(parent).length <= projection.textLimit;
@@ -989,17 +1025,12 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * own controls stay visible while the closed body's do not, nested
    * `<details>` and their summaries included.
    */
-  const isInClosedDetails = (el: Element): boolean => {
-    let details = el.parentElement?.closest('details') ?? null;
-    while (details !== null) {
-      if (!details.open) {
-        const summary = details.querySelector(':scope > summary');
-        if (summary === null || !summary.contains(el)) return true;
-      }
-      details = details.parentElement?.closest('details') ?? null;
-    }
-    return false;
-  };
+  const isInClosedDetails = memoized((el: Element): boolean => {
+    const parent = flatParentOf(el);
+    if (parent === null) return false;
+    if (parent instanceof HTMLDetailsElement && !parent.open && el !== parent.querySelector(':scope > summary')) return true;
+    return isInClosedDetails(parent);
+  });
 
   /**
    * True when an ancestor in the flat tree has `content-visibility: hidden`:
@@ -1008,7 +1039,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * so siblings under one ancestor share the walk up.
    */
   const isSkippedContent = memoized((el: Element): boolean => {
-    const parent = el.assignedSlot ?? parentOrHostOf(el);
+    const parent = flatParentOf(el);
     if (parent === null) return false;
     return styleOf(parent)?.getPropertyValue('content-visibility') === 'hidden' || isSkippedContent(parent);
   });
