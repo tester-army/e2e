@@ -28,7 +28,7 @@ import {
 import { withStallGuard } from './model/stall.ts';
 import { providerHints, type ProviderHints, type ProviderModelRef } from './model/provider-hints.ts';
 import { isScreenOutput, toolResultTexts } from './screen-update.ts';
-import { sameShape, shapeOf, type MessageShape } from './message-shape.ts';
+import { shapeOf } from './message-shape.ts';
 import { compactScreenHistory } from './transcript-compaction.ts';
 import { AgentError, isAgentError } from './error.ts';
 import {
@@ -240,8 +240,8 @@ class LoopRun {
   private readonly hints: ProviderHints;
   /** The history the last request went out with, for shrinking after an overflow. */
   private lastRequest: ModelMessage[] | undefined;
-  /** What each message of the last request held, by value, for telling a rewritten message from a carried one. */
-  private lastShape: MessageShape[] | undefined;
+  /** A digest of what each message of the last request held, for telling a rewritten message from a carried one. */
+  private lastShape: string[] | undefined;
   /** Turns spent by earlier generate calls of this step; nonzero only after an overflow retry. */
   private turnOffset = 0;
   /**
@@ -704,7 +704,7 @@ class LoopRun {
   private firstRewritten(messages: readonly ModelMessage[]): number | undefined {
     const last = this.lastShape;
     if (last === undefined) return undefined;
-    const index = messages.findIndex((message, position) => position < last.length && !sameShape(shapeOf(message), last[position]!));
+    const index = messages.findIndex((message, position) => position < last.length && shapeOf(message) !== last[position]);
     return index === -1 ? undefined : index;
   }
 
@@ -802,45 +802,32 @@ const OVERFLOW_TEXT_CLIP_CHARS = 16_384;
  * screen is elided regardless of the cache-friendly budget, then any text
  * still longer than the clip, the text beside a screenshot included, is cut
  * to its head with a notice, so the model knows to observe again for what it
- * no longer sees. A message nothing shortened is returned as it is, so the
- * next turn can tell which messages were rewritten.
+ * no longer sees.
  */
 function shrinkForOverflow(messages: ModelMessage[]): ModelMessage[] {
   return compactScreenHistory(messages, { keepStaleBytes: 0 }).map((message) => {
     if (message.role === 'user') {
-      if (typeof message.content === 'string') {
-        const content = clip(message.content);
-        return content === message.content ? message : { ...message, content };
-      }
-      const content = clipped(message.content, (part) => (part.type === 'text' ? clippedText(part) : part));
-      return content === undefined ? message : { ...message, content };
+      if (typeof message.content === 'string') return { ...message, content: clip(message.content) };
+      return {
+        ...message,
+        content: message.content.map((part) => (part.type === 'text' ? { ...part, text: clip(part.text) } : part)),
+      };
     }
     if (message.role !== 'tool') return message;
-    const content = clipped(message.content, (part) => {
-      if (part.type !== 'tool-result') return part;
-      const { output } = part;
-      if (output.type === 'text') {
-        const value = clip(output.value);
-        return value === output.value ? part : { ...part, output: { ...output, value } };
-      }
-      if (output.type !== 'content') return part;
-      const value = clipped(output.value, (item) => (item.type === 'text' ? clippedText(item) : item));
-      return value === undefined ? part : { ...part, output: { ...output, value } };
-    });
-    return content === undefined ? message : { ...message, content };
+    return {
+      ...message,
+      content: message.content.map((part) => {
+        if (part.type !== 'tool-result') return part;
+        const { output } = part;
+        if (output.type === 'text') return { ...part, output: { ...output, value: clip(output.value) } };
+        if (output.type !== 'content') return part;
+        return {
+          ...part,
+          output: { ...output, value: output.value.map((item) => (item.type === 'text' ? { ...item, text: clip(item.text) } : item)) },
+        };
+      }),
+    };
   });
-}
-
-/** The parts with `one` applied, or undefined when it returned every part as it was. */
-function clipped<Part>(parts: readonly Part[], one: (part: Part) => Part): Part[] | undefined {
-  const next = parts.map(one);
-  return next.some((part, index) => part !== parts[index]) ? next : undefined;
-}
-
-/** A text part with its text clipped, or the part itself when it is short enough. */
-function clippedText<Part extends { readonly text: string }>(part: Part): Part {
-  const text = clip(part.text);
-  return text === part.text ? part : { ...part, text };
 }
 
 function clip(text: string): string {
