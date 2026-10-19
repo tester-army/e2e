@@ -264,13 +264,13 @@ importers:
         version: link:../../packages/e2e
       next:
         specifier: 16.4.0
-        version: 16.4.0(@babel/core@7.29.7(supports-color@8.1.1))(@types/node@26.6.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        version: 16.4.0(@babel/core@7.29.7(supports-color@8.1.1))(@types/node@26.6.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.0))(react@19.3.0)
       react:
         specifier: 19.3.0
         version: 19.3.0
       react-dom:
-        specifier: 19.3.0
-        version: 19.3.0(react@19.3.0)
+        specifier: 19.3.1
+        version: 19.3.1(react@19.3.0)
     devDependencies:
       '@e2e-dev/github':
         specifier: workspace:*
@@ -334,7 +334,7 @@ importers:
         version: link:../packages/e2e
       mint:
         specifier: 4.2.909
-        version: 4.2.909(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(supports-color@8.1.1)(typescript@7.0.2)
+        version: 4.2.909(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(supports-color@8.1.1)(typescript@7.0.2)
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -6754,6 +6754,11 @@ packages:
     peerDependencies:
       react: ^19.3.0
 
+  react-dom@19.3.1:
+    resolution: {integrity: sha512-Y0bARz53lhEC1NMCASs0/j+faB/zqt3R8hpvg1e8+61ZVJ4UL0UdC4cBbXfZMcIuhrfgeILTLe+ZeBCavQPtKQ==}
+    peerDependencies:
+      react: ^19.3.1
+
   react-freeze@1.0.4:
     resolution: {integrity: sha512-r4F0Sec0BLxWicc7HEyo2x3/2icUTrRmDjaaRyzzn+7aDyFZliszMDOgLVwSnQnYENOlL1o569Ze2HZefk8clA==}
     engines: {node: '>=10'}
@@ -8701,24 +8706,24 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@babel/runtime': 7.29.7
-      '@base-ui/utils': 0.4.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@floating-ui/react-dom': 2.1.9(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@base-ui/utils': 0.4.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0)
+      '@floating-ui/react-dom': 2.1.9(react-dom@19.3.1(react@19.3.0))(react@19.3.0)
       '@floating-ui/utils': 0.2.12
       react: 19.3.0
-      react-dom: 19.3.0(react@19.3.0)
+      react-dom: 19.3.1(react@19.3.0)
       use-sync-external-store: 1.6.0(react@19.3.0)
     optionalDependencies:
       '@types/react': 19.1.4
 
-  '@base-ui/utils@0.4.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@base-ui/utils@0.4.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@babel/runtime': 7.29.7
       '@floating-ui/utils': 0.2.12
       react: 19.3.0
-      react-dom: 19.3.0(react@19.3.0)
+      react-dom: 19.3.1(react@19.3.0)
       reselect: 5.3.0
       use-sync-external-store: 1.6.0(react@19.3.0)
     optionalDependencies:
@@ -9338,11 +9343,11 @@ snapshots:
       '@floating-ui/core': 1.8.0
       '@floating-ui/utils': 0.2.12
 
-  '@floating-ui/react-dom@2.1.9(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@floating-ui/react-dom@2.1.9(react-dom@19.3.1(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@floating-ui/dom': 1.8.0
       react: 19.3.0
-      react-dom: 19.3.0(react@19.3.0)
+      react-dom: 19.3.1(react@19.3.0)
 
   '@floating-ui/utils@0.2.12': {}
 
@@ -9876,15 +9881,15 @@ snapshots:
       '@types/react': 19.1.4
       react: 19.2.3
 
-  '@mintlify/cli@4.0.1512(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(supports-color@8.1.1)(typescript@7.0.2)':
+  '@mintlify/cli@4.0.1512(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(supports-color@8.1.1)(typescript@7.0.2)':
     dependencies:
       '@inquirer/prompts': 7.9.0(@types/node@26.6.2)
-      '@mintlify/common': 1.0.1156(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
-      '@mintlify/link-rot': 3.0.1358(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/common': 1.0.1156(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/link-rot': 3.0.1358(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
       '@mintlify/models': 0.0.359(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
-      '@mintlify/prebuild': 1.0.1310(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
-      '@mintlify/previewing': 4.0.1382(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(supports-color@8.1.1)(typescript@7.0.2)
-      '@mintlify/validation': 0.1.861(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/prebuild': 1.0.1310(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/previewing': 4.0.1382(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/validation': 0.1.861(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
       adm-zip: 0.6.0
       chalk: 5.2.0
       color: 4.2.3
@@ -9935,13 +9940,13 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@mintlify/common@1.0.1156(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)':
+  '@mintlify/common@1.0.1156(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)':
     dependencies:
       '@asyncapi/parser': 3.4.0
-      '@mintlify/mdx': 4.0.2(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/mdx': 4.0.2(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
       '@mintlify/models': 0.0.359(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       '@mintlify/openapi-parser': 0.0.8
-      '@mintlify/validation': 0.1.861(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/validation': 0.1.861(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
       '@sindresorhus/slugify': 2.2.0
       '@types/mdast': 4.0.4
       acorn: 8.11.2
@@ -9999,14 +10004,14 @@ snapshots:
       - ts-node
       - typescript
 
-  '@mintlify/link-rot@3.0.1358(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)':
+  '@mintlify/link-rot@3.0.1358(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)':
     dependencies:
-      '@mintlify/common': 1.0.1156(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/common': 1.0.1156(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
       '@mintlify/models': 0.0.359(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
-      '@mintlify/prebuild': 1.0.1310(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
-      '@mintlify/previewing': 4.0.1382(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(supports-color@8.1.1)(typescript@7.0.2)
-      '@mintlify/scraping': 4.0.1024(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
-      '@mintlify/validation': 0.1.861(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/prebuild': 1.0.1310(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/previewing': 4.0.1382(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/scraping': 4.0.1024(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/validation': 0.1.861(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
       fs-extra: 11.1.0
       unist-util-visit: 4.1.2
     transitivePeerDependencies:
@@ -10027,9 +10032,9 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@mintlify/mdx@4.0.2(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)':
+  '@mintlify/mdx@4.0.2(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)':
     dependencies:
-      '@base-ui/react': 1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@base-ui/react': 1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0)
       '@shikijs/transformers': 3.23.0
       '@shikijs/twoslash': 3.23.0(supports-color@8.1.1)(typescript@7.0.2)
       arktype: 2.2.3
@@ -10038,9 +10043,9 @@ snapshots:
       mdast-util-gfm: 3.1.0(supports-color@8.1.1)
       mdast-util-mdx-jsx: 3.2.0(supports-color@8.1.1)
       mdast-util-to-hast: 13.2.1
-      next-mdx-remote-client: 2.1.12(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(unified@11.0.5)
+      next-mdx-remote-client: 2.1.12(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(unified@11.0.5)
       react: 19.2.3
-      react-dom: 19.3.0(react@19.3.0)
+      react-dom: 19.3.1(react@19.3.0)
       rehype-katex: 7.0.1
       remark-gfm: 4.0.1(supports-color@8.1.1)
       remark-math: 6.0.0(supports-color@8.1.1)
@@ -10071,11 +10076,11 @@ snapshots:
       leven: 4.1.0
       yaml: 2.9.0
 
-  '@mintlify/prebuild@1.0.1310(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)':
+  '@mintlify/prebuild@1.0.1310(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)':
     dependencies:
-      '@mintlify/common': 1.0.1156(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
-      '@mintlify/scraping': 4.0.1024(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
-      '@mintlify/validation': 0.1.861(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/common': 1.0.1156(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/scraping': 4.0.1024(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/validation': 0.1.861(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
       chalk: 5.3.0
       favicons: 7.2.0
       fflate: 0.8.3
@@ -10102,11 +10107,11 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@mintlify/previewing@4.0.1382(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(supports-color@8.1.1)(typescript@7.0.2)':
+  '@mintlify/previewing@4.0.1382(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(supports-color@8.1.1)(typescript@7.0.2)':
     dependencies:
-      '@mintlify/common': 1.0.1156(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
-      '@mintlify/prebuild': 1.0.1310(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
-      '@mintlify/validation': 0.1.861(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/common': 1.0.1156(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/prebuild': 1.0.1310(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/validation': 0.1.861(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
       adm-zip: 0.6.0
       better-opn: 3.0.2
       chalk: 5.2.0
@@ -10139,9 +10144,9 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@mintlify/scraping@4.0.1024(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)':
+  '@mintlify/scraping@4.0.1024(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)':
     dependencies:
-      '@mintlify/common': 1.0.1156(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/common': 1.0.1156(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
       fast-xml-parser: 5.7.3
       fs-extra: 11.1.1
       graphql: 16.11.0
@@ -10175,9 +10180,9 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@mintlify/validation@0.1.861(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)':
+  '@mintlify/validation@0.1.861(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)':
     dependencies:
-      '@mintlify/mdx': 4.0.2(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/mdx': 4.0.2(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
       '@mintlify/models': 0.0.359(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
       fractional-indexing: 3.2.0
       js-yaml: 4.3.2
@@ -14706,9 +14711,9 @@ snapshots:
     dependencies:
       minipass: 7.1.3
 
-  mint@4.2.909(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(supports-color@8.1.1)(typescript@7.0.2):
+  mint@4.2.909(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(supports-color@8.1.1)(typescript@7.0.2):
     dependencies:
-      '@mintlify/cli': 4.0.1512(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(supports-color@8.1.1)(typescript@7.0.2)
+      '@mintlify/cli': 4.0.1512(@base-ui/react@1.8.0(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.3.0))(@types/node@26.6.2)(@types/react@19.1.4)(debug@4.4.3(supports-color@8.1.1))(react-dom@19.3.1(react@19.3.0))(supports-color@8.1.1)(typescript@7.0.2)
     transitivePeerDependencies:
       - '@base-ui/react'
       - '@cfworker/json-schema'
@@ -14765,14 +14770,14 @@ snapshots:
 
   netmask@2.1.1: {}
 
-  next-mdx-remote-client@2.1.12(@types/react@19.1.4)(react-dom@19.3.0(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(unified@11.0.5):
+  next-mdx-remote-client@2.1.12(@types/react@19.1.4)(react-dom@19.3.1(react@19.3.0))(react@19.2.3)(supports-color@8.1.1)(unified@11.0.5):
     dependencies:
       '@babel/code-frame': 7.29.7
       '@mdx-js/mdx': 3.1.1(supports-color@8.1.1)
       '@mdx-js/react': 3.1.1(@types/react@19.1.4)(react@19.2.3)
       '@types/mdx': 2.0.14
       react: 19.2.3
-      react-dom: 19.3.0(react@19.3.0)
+      react-dom: 19.3.1(react@19.3.0)
       remark-mdx-remove-esm: 1.3.3(unified@11.0.5)
       serialize-error: 13.0.1
       vfile: 6.0.3
@@ -14782,7 +14787,7 @@ snapshots:
       - supports-color
       - unified
 
-  next@16.4.0(@babel/core@7.29.7(supports-color@8.1.1))(@types/node@26.6.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
+  next@16.4.0(@babel/core@7.29.7(supports-color@8.1.1))(@types/node@26.6.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.0))(react@19.3.0):
     dependencies:
       '@next/env': 16.4.0
       '@swc/helpers': 0.5.23
@@ -14790,7 +14795,7 @@ snapshots:
       caniuse-lite: 1.0.30001810
       postcss: 8.5.23
       react: 19.3.0
-      react-dom: 19.3.0(react@19.3.0)
+      react-dom: 19.3.1(react@19.3.0)
       styled-jsx: 5.1.6(@babel/core@7.29.7(supports-color@8.1.1))(react@19.3.0)
     optionalDependencies:
       '@next/swc-darwin-arm64': 16.4.0
@@ -15372,7 +15377,7 @@ snapshots:
       scheduler: 0.28.0
     optional: true
 
-  react-dom@19.3.0(react@19.3.0):
+  react-dom@19.3.1(react@19.3.0):
     dependencies:
       react: 19.3.0
       scheduler: 0.28.0
