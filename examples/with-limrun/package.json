@@ -4,9 +4,9 @@
   "type": "module",
   "scripts": { "test": "e2e run" },
   "devDependencies": {
-    "e2e": "^0.18.0",
-    "@e2e-dev/mobile": "^0.11.1",
-    "@e2e-dev/limrun": "^0.2.0",
+    "e2e": "^0.21.2",
+    "@e2e-dev/mobile": "^0.12.3",
+    "@e2e-dev/limrun": "^0.2.1",
     "@limrun/api": "^0.59.0"
   }
 }
