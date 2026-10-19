@@ -30,4 +30,4 @@ model calls. Results are in `.e2e/report.json`.
 See [e2e.config.ts](e2e.config.ts) and [tests/](tests/) for the setup.
 For your own app, follow the [Quickstart](https://e2e.tester.army/docs/quickstart).
 
-Last checked with e2e 0.15.2, @e2e-dev/web 0.11.1, Next.js 16.3, and Node 22.
+Last checked with e2e 0.21.2, @e2e-dev/web 0.15.2, Next.js 16.4, and Node 22.
