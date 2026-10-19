@@ -86,6 +86,7 @@ The app under test is the target's `app`, not an engine option; see
 | [`session`](#session) | `string` | `e2e-<target name>` |
 | [`snapshot`](#snapshot) | `'full' \| 'interactive'` | `'full'` |
 | [`settle`](#settle) | `number \| false` | `150` |
+| [`targetReadiness`](#targetreadiness) | `'device'` | adapter transition policy |
 | [`transition`](#transition) | `number` | `500` |
 | [`videoTouches`](#videotouches) | `boolean` | `true` |
 
@@ -207,6 +208,14 @@ readonly settle?: number | false | undefined;
 
 ```ts
 mobile({ platform: 'ios', settle: 300 }); // default: 150
+```
+
+#### `targetReadiness`
+
+Set `targetReadiness: 'device'` on Android to let agent-device check target geometry before deterministic taps, double taps, focus, and toggle presses on controls with a test ID. Startup, tree-less device commands, controls without a test ID, and rows that dispatch an inner control retain the adapter transition check. Delegation becomes eligible after a completed target press. Initialization requires an advertised bounded press-readiness capability; an older agent-device fails with `INVALID_CONFIG`. Other actions keep the `transition` budget. The default keeps adapter readiness checks.
+
+```ts
+mobile({ platform: 'android', targetReadiness: 'device' });
 ```
 
 #### `transition`

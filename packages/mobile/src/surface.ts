@@ -300,6 +300,7 @@ const MOBILE_OPTION_KEYS: readonly string[] = Object.keys({
   snapshot: true,
   settle: true,
   transition: true,
+  targetReadiness: true,
   videoTouches: true,
 } satisfies Record<keyof MobileOptions, true>);
 
@@ -396,6 +397,7 @@ export class AgentDeviceSurface {
   readonly settleOptions: SettleOptions;
   /** When this surface last acted on the device (an input or an app launch); the screen may be in transition for a while after. */
   private lastActionAt = 0;
+  private canDelegatePressReadiness = false;
   /** The screen as last projected before that action, to tell controls that were already there from ones that came with it. */
   private indexBeforeAction: readonly ProjectedNode[] | undefined;
   /** The most recent projection of the screen, from any observe or locate. */
@@ -415,6 +417,9 @@ export class AgentDeviceSurface {
     private readonly createClient: ClientFactory,
   ) {
     rejectUnknownKeys('mobile()', options, MOBILE_OPTION_KEYS);
+    if (options.targetReadiness !== undefined && (options.targetReadiness !== 'device' || options.platform !== 'android')) {
+      throw new ConfigurationError('INVALID_CONFIG', 'mobile: `targetReadiness` accepts device on Android only');
+    }
     this.pool = new DevicePool(options, createClient);
     this.settleOptions = settleOptions(options.settle);
     this.transitionMs = transitionMs(options.transition);
@@ -451,7 +456,8 @@ export class AgentDeviceSurface {
    * its failure. Contributed-fixture methods route through here too, so the
    * device fixture never carries its own error mapping.
    */
-  async command<T>(label: string, run: (client: AgentDeviceClient) => Promise<T>, signal?: AbortSignal): Promise<T> {
+  async command<T>(label: string, run: (client: AgentDeviceClient) => Promise<T>, signal?: AbortSignal, options: { preservePressReadiness?: boolean } = {}): Promise<T> {
+    if (!options.preservePressReadiness) this.canDelegatePressReadiness = false;
     const client = this.requireClient();
     return runCommand(label, () => this.track(run(client)), signal ?? new AbortController().signal, this.where);
   }
@@ -524,6 +530,14 @@ export class AgentDeviceSurface {
         ? undefined
         : { provider, lease, runId: info.runId, targetName: info.targetName, env: info.env };
     await this.command('boot', (client) => client.devices.boot(this.selection()), info.signal);
+    if (this.options.targetReadiness === 'device') {
+      const capabilities = await this.command('capabilities', (client) => client.devices.capabilities(this.selection()), info.signal);
+      const readiness = capabilities !== null && typeof capabilities === 'object' && 'targetReadiness' in capabilities ? capabilities.targetReadiness : undefined;
+      if (readiness === null || typeof readiness !== 'object' || !('press' in readiness) || readiness.press !== 'bounded-geometry') {
+        throw new ConfigurationError('INVALID_CONFIG', 'mobile: targetReadiness device requires agent-device with bounded press geometry readiness');
+      }
+    }
+
     // Nothing is installed here: a device provider that installed the build
     // from `appPath` says so on the binding, and otherwise the suite installs
     // it where it wants to, with `device.installApp()`.
@@ -910,7 +924,7 @@ export class AgentDeviceSurface {
    */
   private async capture(signal: AbortSignal, interactiveOnly: boolean): Promise<RawSnapshot> {
     const take = (): Promise<RawSnapshot> =>
-      this.command('snapshot', (client) => client.capture.snapshot({ interactiveOnly }), signal);
+      this.command('snapshot', (client) => client.capture.snapshot({ interactiveOnly }), signal, { preservePressReadiness: true });
     try {
       return await take();
     } catch (cause) {
@@ -1160,11 +1174,14 @@ export class AgentDeviceSurface {
    * return, since the input lands late in the command's own round trip.
    */
   private markAction(before: readonly ProjectedNode[] | undefined): void {
+    this.canDelegatePressReadiness = false;
     this.indexBeforeAction = before;
     this.lastActionAt = Date.now();
   }
 
   async perform(ref: NodeRef, action: LocatorAction, operation: OperationContext, input: InputBudget): Promise<void> {
+    const priorPress = this.canDelegatePressReadiness;
+    this.canDelegatePressReadiness = false;
     // A test's step verifies its outcome with `expect`, so it never waits for
     // the screen to settle afterwards; it only lets a control that came with
     // the last action finish arriving. The agent reads the screen right after
@@ -1195,20 +1212,27 @@ export class AgentDeviceSurface {
       return;
     }
     const before = this.latestIndex;
+    let pressed = false;
+    const press = async (target: NodeBinding, control = false, count?: number): Promise<unknown> => {
+      const result = await input.send(() => client.interactions.press({ ...this.actionTarget(target, control), ...(count === undefined ? {} : { count }), ...settle }));
+      pressed = true;
+      return result;
+    };
     const run = async (): Promise<unknown> => {
-      const target = deterministic ? await this.settled(entry, operation) : entry;
+      const deviceReady = priorPress && this.options.targetReadiness === 'device' && entry.node.testId !== undefined && entry.controlRef === entry.ref && ['tap', 'focus', 'doubleTap', 'check', 'uncheck'].includes(action.kind);
+      const target = deterministic && !deviceReady ? await this.settled(entry, operation) : entry;
       switch (action.kind) {
         case 'tap':
-          return input.send(() => client.interactions.press({ ...this.actionTarget(target, true), ...settle }));
+          return press(target, true);
         case 'focus':
           // A touch surface focuses by tapping, and a tap on anything but an
           // editable field activates it; focus is offered for fields only.
           if (target.node.role !== 'textbox') {
             throw unsupported(`agent-device can only focus editable fields; node ${target.id} is ${target.node.role ?? 'unknown'}`);
           }
-          return input.send(() => client.interactions.press({ ...this.actionTarget(target), ...settle }));
+          return press(target);
         case 'doubleTap':
-          return input.send(() => client.interactions.press({ ...this.actionTarget(target), count: 2, ...settle }));
+          return press(target, false, 2);
         case 'longPress':
           return input.send(
             () => client.interactions.longPress({ ...this.actionTarget(target), ...settle, durationMs: action.durationMs ?? DEFAULT_LONG_PRESS_MS }),
@@ -1232,7 +1256,7 @@ export class AgentDeviceSurface {
             throw unsupported(`agent-device cannot read whether node ${target.id} is checked; tap it instead`);
           }
           if (checked === wanted) return undefined;
-          return input.send(() => client.interactions.press({ ...this.actionTarget(target, true), ...settle }));
+          return press(target, true);
         }
         case 'press':
           return this.pressKey(client, target, action.key, settle, input);
@@ -1263,6 +1287,7 @@ export class AgentDeviceSurface {
       throw staleOr(cause, label, this.where);
     }
     this.markAction(before);
+    this.canDelegatePressReadiness = pressed;
   }
 
   /**

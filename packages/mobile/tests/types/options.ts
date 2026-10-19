@@ -35,3 +35,7 @@ const farm = {
 ({ daemon: { baseUrl: 'http://10.0.0.7:4700' } }) satisfies DeviceLease;
 // @ts-expect-error a lease names its daemon by URL.
 ({ id: 'lease-1', daemon: { baseUrl: 4700 } }) satisfies DeviceLease;
+
+({ platform: 'android', targetReadiness: 'device' }) satisfies MobileOptions;
+// @ts-expect-error Only device readiness is supported.
+({ platform: 'android', targetReadiness: 'instant' }) satisfies MobileOptions;

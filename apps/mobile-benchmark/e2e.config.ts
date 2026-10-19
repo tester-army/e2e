@@ -45,6 +45,7 @@ export const ios = mobile({
 export const android = mobile({
   platform: 'android',
   session: 'e2e-mobile-benchmark-android',
+  ...(process.env.E2E_MOBILE_DEVICE_READINESS === '1' ? { targetReadiness: 'device' as const } : {}),
   // A control that arrived with the last action is found again once this
   // budget has passed, so the budget only has to outlast the transition: the
   // Modal Flow's modal slides in from below for about 700 ms on the emulator,
