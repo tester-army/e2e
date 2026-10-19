@@ -49,6 +49,6 @@ For device setup and CI, see the [Mobile guide](https://e2e.tester.army/docs/mob
 
 The bundled fonts use the [SIL Open Font License](assets/fonts/OFL.txt).
 
-Last checked on 2026-10-06 with e2e 0.18.0, @e2e-dev/mobile 0.10.0, and
-Flutter 3.47 on an Android 16 emulator and an iOS 26 simulator. Three locator
-tests passed on each; the agent tests skipped without a key.
+Last checked on 2026-10-19 with e2e 0.21.2, @e2e-dev/mobile 0.12.3, and
+Flutter 3.47 on an Android 16 emulator and an iOS 26 simulator. The three
+locator tests and the two agent tests passed on each.
