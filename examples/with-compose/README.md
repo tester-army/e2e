@@ -50,6 +50,6 @@ For device setup and CI, see the [Mobile guide](https://e2e.tester.army/docs/mob
 
 The bundled fonts use the [SIL Open Font License](app/src/main/assets/OFL.txt).
 
-Last checked on 2026-10-06 with e2e 0.18.0, @e2e-dev/mobile 0.10.0, Kotlin
+Last checked on 2026-10-19 with e2e 0.21.2, @e2e-dev/mobile 0.12.3, Kotlin
 2.4.20, AGP 9.4.1, and Compose BOM 2026.09.00 on an Android 16 emulator.
-Three locator tests passed; the agent tests skipped without a key.
+The three locator tests and the two agent tests passed.
