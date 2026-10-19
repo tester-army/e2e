@@ -6,6 +6,8 @@ icon: "users"
 "twitter:image": "https://e2e.tester.army/docs/images/og/agents.png?v=94dc88725f"
 ---
 
+import { Video } from './snippets/video.jsx';
+
 An agent is a named entry in `agents` with its own model, instructions,
 and tools. Tests use `default` unless you select another agent. Name more
 agents to compare models or to run one flow as several personas.
@@ -127,6 +129,12 @@ a test or group fails during collection. An unknown agent on a call raises
 `INVALID_ARGUMENT`. Reports record the agent of each step.
 
 ## One flow, several personas
+
+<Video>
+  <video src="/images/personas.mp4" aria-label="Four agents, each a persona who reads one language, run the same localization tests. The Arabic run fails on a button left in English." muted loop playsInline controls />
+
+  Four personas, one per language, run the same localization suite.
+</Video>
 
 Select several agents to run the same test one time with each:
 
