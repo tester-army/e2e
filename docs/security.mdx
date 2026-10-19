@@ -69,8 +69,8 @@ tokens.
 A run connects to your model provider, the app under test, and, unless you
 opt out, [telemetry](/telemetry) at `eu.i.posthog.com`. There is no crash
 reporting. A CLI command on a terminal checks `registry.npmjs.org` for a
-newer release at most once a day, and `e2e feedback` checks on every send.
-Integrations such as Kernel, EAS Simulators, Limrun, and smol add
+newer release at most once a day, and `e2e feedback` checks before each
+report unless `--allow-outdated`. Integrations such as Kernel, EAS Simulators, Limrun, and smol add
 their own destinations, listed with the rest under
 [Outbound connections](/reference/security#outbound-connections).
 
