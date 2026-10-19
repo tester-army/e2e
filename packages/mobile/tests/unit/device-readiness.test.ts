@@ -12,8 +12,9 @@ async function seedPress(h: Harness): Promise<void> {
     { ref: '@e2', index: 1, parentIndex: 0, type: 'Button', label: 'Seed', identifier: 'seed', rect: { x: 20, y: 100, width: 120, height: 40 }, hittable: true },
   ] }));
   const snapshot = await h.engine.observe!(operation);
-  const seed = snapshot.root.children?.flatMap((node) => node.children ?? [node]).find((node) => node.name === 'Seed')!;
-  const pending = h.engine.perform!(seed.ref, { kind: 'tap' }, operation);
+  const seed = snapshot.root.children?.flatMap((node) => node.children ?? [node]).find((node) => node.name === 'Seed');
+  expect(seed).toBeDefined();
+  const pending = h.engine.perform!(seed!.ref, { kind: 'tap' }, operation);
   await setImmediate();
   await vi.advanceTimersByTimeAsync(1500);
   await pending;
@@ -123,8 +124,9 @@ it.each(['startup', 'back', 'failed mutation', 'no-op toggle'] as const)('retain
       { ref: '@e2', index: 1, parentIndex: 0, type: 'android.widget.CheckBox', label: 'Checked', identifier: 'checked', checked: true, rect: { x: 20, y: 100, width: 120, height: 40 }, hittable: true },
     ] }));
     const current = await h.engine.observe!(operation);
-    const toggle = current.root.children?.flatMap((node) => node.children ?? [node]).find((node) => node.name === 'Checked')!;
-    await h.engine.perform!(toggle.ref, { kind: 'check' }, operation);
+    const toggle = current.root.children?.flatMap((node) => node.children ?? [node]).find((node) => node.name === 'Checked');
+    expect(toggle).toBeDefined();
+    await h.engine.perform!(toggle!.ref, { kind: 'check' }, operation);
   }
   h.fake.calls.length = 0;
   h.fake.respond('capture.snapshot', () => ({ nodes: [
