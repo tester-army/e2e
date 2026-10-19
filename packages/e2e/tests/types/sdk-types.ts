@@ -69,6 +69,8 @@ import { list as listFromE2E } from '../../src/index.ts';
 import { run as runFromE2E } from '../../src/index.ts';
 // @ts-expect-error openHost is e2e/runner: importing e2e does not load the runner
 import { openHost as openHostFromE2E } from '../../src/index.ts';
+// @ts-expect-error exploration belongs to e2e/runner, not the test SDK
+import { explore as exploreFromE2E } from '../../src/index.ts';
 // @ts-expect-error host types belong to e2e/runner, not the test SDK
 import type { E2EHost as E2EHostFromE2E } from '../../src/index.ts';
 // @ts-expect-error the unpublished top-level openSession was replaced by openHost
@@ -77,6 +79,9 @@ import {
   ConfigurationError,
   type E2EHost,
   type E2ESession,
+  explore,
+  type ExploreOptions,
+  type ExploreResult,
   isE2EError,
   list,
   type ListedPair,
@@ -99,6 +104,7 @@ BLOCKABLE_CODES;
 listFromE2E;
 runFromE2E;
 openHostFromE2E;
+exploreFromE2E;
 removedOpenSession;
 declare const rootHost: E2EHostFromE2E;
 rootHost;
@@ -681,6 +687,35 @@ void run({ tests: {} });
 runResult.config;
 // @ts-expect-error progress callbacks consume RunEvent, not arbitrary strings
 void run({ onEvent: (_event: string) => {} });
+
+// Exploration takes the goal and its budgets beside the project, progress, and cancellation; output settings live in config.
+declare const exploreResult: ExploreResult;
+void (explore() satisfies Promise<ExploreResult>);
+void explore({
+  cwd: '.', config: { targets }, goal: 'Explore the login flow and report any bugs', target: 'web', agent: 'default',
+  session: 'signed-in', maxSteps: 8, timeoutMs: 600_000,
+  interruptSignal: new AbortController().signal,
+  onEvent: (event) => { event satisfies RunEvent; },
+} satisfies ExploreOptions);
+void explore({ config: 'e2e.config.ts' });
+void (exploreResult satisfies RunResult);
+void (exploreResult.explore.ended satisfies 'finished' | 'step-limit' | 'time' | 'stuck' | 'aborted');
+void (exploreResult.explore.findings[0]?.severity satisfies 1 | 2 | 3 | 4 | 5 | undefined);
+void (exploreResult.explore.steps[0]?.status satisfies 'passed' | 'failed' | 'blocked' | 'exhausted' | undefined);
+// @ts-expect-error runtime configuration uses config, not the internal rawConfig name
+void explore({ rawConfig: { targets } });
+// @ts-expect-error configPath is the internal name; config takes the path
+void explore({ configPath: 'e2e.config.ts' });
+// @ts-expect-error the public explorer renders nothing: reporters are a CLI option
+void explore({ reporters: ['list'] });
+// @ts-expect-error headed, video, and trace are CLI options; recording settings belong in the config
+void explore({ headed: true });
+// @ts-expect-error notices are the CLI's stderr lines; progress is onEvent
+void explore({ notice: () => {} });
+// @ts-expect-error the second signal is the CLI's force-kill ladder, not a caller option
+void explore({ forceSignal: new AbortController().signal });
+// @ts-expect-error outcomes do not expose live resolved configuration
+exploreResult.config;
 
 // `e2e/runner` lists a selection in process. `config` is a path or a config value; `grep` is RegExp[].
 void list({

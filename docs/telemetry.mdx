@@ -67,10 +67,10 @@ sends nothing.
 Each command sends one `e2e_cli_session` event. `run` and `explore` also
 send `e2e_run_completed`, `init` sends `e2e_init_completed`, and `mcp` sends
 one `e2e_mcp_session` per MCP session. `--help` and `--version` send
-nothing, on any command. `run()` from `e2e/runner` sends no session event,
-only one `e2e_run_completed` per run that returns a report.
+nothing, on any command. `run()` and `explore()` from `e2e/runner` send no
+session event, only one `e2e_run_completed` per call that returns a report.
 
-The events go in one request when the command or `run()` ends, with a
+The events go in one request when the command, `run()`, or `explore()` ends, with a
 two-second deadline. `e2e mcp` sends each session event in its own request,
 and `e2e run --watch` sends each run's event when that run ends.
 
@@ -120,11 +120,11 @@ own tools count together as `tool`, and any other name as `other`.
 | `skill`, `mcp`, `install` | Whether the agent skill, the MCP registration, and the dependency install were chosen |
 
 </Accordion>
-<Accordion title="e2e_run_completed, once per e2e run, e2e explore, or completed run()">
+<Accordion title="e2e_run_completed, once per e2e run, e2e explore, or completed run() or explore()">
 
 | Property | Value |
 | --- | --- |
-| `command` | `run`, `explore`, or `runner.run` for `run()` from `e2e/runner` |
+| `command` | `run`, `explore`, `runner.run` for `run()` from `e2e/runner`, or `runner.explore` for `explore()` |
 | `status`, `exit_code`, `duration_ms` | The run's outcome |
 | `flags` | The names of the flags given to the run command, never their values |
 | `tests_discovered`, `tests_selected`, `tests_executed`, `tests_passed`, `tests_failed`, `tests_interrupted`, `tests_flaky`, `tests_skipped` | The summary counts |
@@ -234,7 +234,7 @@ covers redaction, `--dry-run`, and bugs without `--repro`.
 
 ## The notice
 
-The first command, or the first `run()` from `e2e/runner`, prints a notice
+The first command, or the first `run()` or `explore()` from `e2e/runner`, prints a notice
 on stderr that tells how to opt out. It leaves `--reporter json` output
 intact. `e2e init` and `e2e telemetry` don't print it, so it waits for the
 next command. The notice shows again after a large change to the data

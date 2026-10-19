@@ -86,6 +86,13 @@ with teardown. A runtime config uses one in-process worker. Await each run
 before starting the next and close every host first; overlaps reject with
 `RUNNER_BUSY`.
 
+`import { explore } from 'e2e/runner'` runs one exploration the same way:
+`cwd`, `config`, `goal`, `target`, `agent`, `session`, `maxSteps`, and
+`timeoutMs` as `e2e explore` takes them, plus `onEvent` and
+`interruptSignal`. It resolves with the run's result and `explore`, the
+record of the steps, findings, and why it ended. It shares `run`'s
+reservation.
+
 With a `package.json` script `"test:e2e": "e2e run"`, pnpm forwards `--`
 literally: `pnpm test:e2e -- --headed` reaches e2e as `run -- --headed` and
 exits 2. Write `pnpm test:e2e --headed` or `pnpm exec e2e run --headed`.
