@@ -4,17 +4,24 @@
  * once a day, in the background while the command runs, and the answer is kept
  * in `update-check.json` beside the telemetry preferences, so every command in
  * between reminds without a request. Nothing in CI, from a source checkout,
- * off a terminal, or with `E2E_UPDATE_CHECK_DISABLED` or `NO_UPDATE_NOTIFIER`
- * set.
+ * off a terminal, or with `E2E_UPDATE_CHECK_DISABLED`, `NO_UPDATE_NOTIFIER`,
+ * or one of the telemetry opt-outs set: the request is not needed to run.
  */
 
-import { mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import picocolors from 'picocolors';
 import { isCiMode } from '../config/resolve.ts';
 import { writeFileAtomicSync } from '../internal/atomic-write.ts';
 import { envFlag } from '../internal/env.ts';
-import { addDevDependencyCommand, detectPackageManager } from '../internal/package-manager.ts';
+import {
+  addDevDependencyCommand,
+  detectPackageManager,
+  fieldManager,
+  lockfileManager,
+  type PackageManager,
+} from '../internal/package-manager.ts';
+import { isPlainObject } from '../internal/options.ts';
 import { isRelease, latestRelease, olderThan } from '../internal/release.ts';
 import { telemetryConfigDir } from '../telemetry/store.ts';
 
@@ -53,13 +60,46 @@ export interface UpdateCheckOptions {
 function readRecord(filePath: string): CheckRecord | undefined {
   try {
     const raw: unknown = JSON.parse(readFileSync(filePath, 'utf8'));
-    if (typeof raw !== 'object' || raw === null) return undefined;
-    const { checkedAt, latest } = raw as Record<string, unknown>;
+    if (!isPlainObject(raw)) return undefined;
+    const { checkedAt, latest } = raw;
     if (typeof checkedAt !== 'number') return undefined;
     return typeof latest === 'string' && isRelease(latest) ? { checkedAt, latest } : { checkedAt };
   } catch {
     return undefined;
   }
+}
+
+/** The `packageManager` field of the package.json in `dir`; null when there is no package.json. */
+function packageManagerField(dir: string): string | undefined | null {
+  const manifestPath = path.join(dir, 'package.json');
+  if (!existsSync(manifestPath)) return null;
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    return isPlainObject(parsed) && typeof parsed['packageManager'] === 'string' ? parsed['packageManager'] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The command that upgrades e2e from `cwd`. The nearest `packageManager`
+ * field or lockfile at or above it names the manager, so a package inside a
+ * monorepo gets the workspace's. pnpm refuses to add to a workspace root
+ * without `-w`.
+ */
+function installCommand(cwd: string, env: NodeJS.ProcessEnv): string {
+  let manager: PackageManager | undefined;
+  let packageDir: string | undefined;
+  for (let dir = cwd; ; dir = path.dirname(dir)) {
+    const field = packageManagerField(dir);
+    if (field !== null) packageDir ??= dir;
+    manager = fieldManager(field ?? undefined) ?? lockfileManager(dir);
+    if (manager !== undefined || path.dirname(dir) === dir) break;
+  }
+  manager ??= detectPackageManager(cwd, undefined, env);
+  const command = addDevDependencyCommand(manager, 'e2e@latest');
+  const workspaceRoot = packageDir !== undefined && existsSync(path.join(packageDir, 'pnpm-workspace.yaml'));
+  return manager === 'pnpm' && workspaceRoot ? `${command} -w` : command;
 }
 
 export class UpdateCheck {
@@ -76,8 +116,9 @@ export class UpdateCheck {
       options.checkout !== true &&
       (options.interactive ?? process.stderr.isTTY === true) &&
       !isCiMode(env) &&
-      !envFlag(env, 'E2E_UPDATE_CHECK_DISABLED') &&
-      !envFlag(env, 'NO_UPDATE_NOTIFIER');
+      !['E2E_UPDATE_CHECK_DISABLED', 'NO_UPDATE_NOTIFIER', 'E2E_TELEMETRY_DISABLED', 'DO_NOT_TRACK'].some((name) =>
+        envFlag(env, name),
+      );
   }
 
   private get filePath(): string {
@@ -122,7 +163,7 @@ export class UpdateCheck {
     await this.pending;
     const latest = this.latest;
     if (latest === undefined || !olderThan(this.options.version, latest)) return;
-    const install = addDevDependencyCommand(detectPackageManager(this.options.cwd ?? process.cwd()), 'e2e@latest');
+    const install = installCommand(this.options.cwd ?? process.cwd(), this.options.env ?? process.env);
     const write = this.options.write ?? ((text: string) => void process.stderr.write(text));
     write(
       [

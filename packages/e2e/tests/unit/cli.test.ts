@@ -1087,3 +1087,44 @@ describe('e2e telemetry', () => {
     expect(JSON.stringify(events)).not.toContain('secret-app');
   });
 });
+
+describe('update notice', () => {
+  let configHome: string;
+  let stderrTty: boolean;
+  const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ version: '99.0.0' }));
+
+  beforeEach(() => {
+    configHome = mkdtempSync(path.join(os.tmpdir(), 'e2e-cli-update-'));
+    // The suite-wide opt-outs are lifted; debug mode keeps telemetry off the network.
+    vi.stubEnv('E2E_UPDATE_CHECK_DISABLED', undefined);
+    vi.stubEnv('E2E_TELEMETRY_DISABLED', undefined);
+    vi.stubEnv('DO_NOT_TRACK', undefined);
+    vi.stubEnv('E2E_TELEMETRY_DEBUG', '1');
+    vi.stubEnv('CI', undefined);
+    vi.stubEnv('XDG_CONFIG_HOME', configHome);
+    vi.stubEnv('APPDATA', configHome);
+    vi.stubGlobal('fetch', fetchMock);
+    stderrTty = process.stderr.isTTY;
+    process.stderr.isTTY = true;
+    fetchMock.mockClear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    process.stderr.isTTY = stderrTty;
+    rmSync(configHome, { recursive: true, force: true });
+  });
+
+  it('follows the output of a command on a terminal', async () => {
+    await invoke('list');
+    expect(fetchMock).toHaveBeenCalledWith('https://registry.npmjs.org/e2e/latest', expect.anything());
+    expect(written(stderrSpy)).toContain(`Update available ${packageVersion} → 99.0.0\n`);
+  });
+
+  it('neither asks nor prints for --version', async () => {
+    await invoke('--version');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(written(stderrSpy)).not.toContain('Update available');
+  });
+});

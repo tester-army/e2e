@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
@@ -38,6 +38,14 @@ function setup(overrides: Partial<UpdateCheckOptions> = {}) {
   return { options, output: () => stripVTControlCharacters(lines.join('')) };
 }
 
+/** `apps/web` with its own package.json under `root`. */
+function workspacePackage(root: string): string {
+  const dir = path.join(root, 'apps', 'web');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, 'package.json'), '{}');
+  return dir;
+}
+
 function record(configDir: string): unknown {
   return JSON.parse(readFileSync(path.join(configDir, 'update-check.json'), 'utf8'));
 }
@@ -58,6 +66,41 @@ describe('update check', () => {
     expect(output()).toContain('0.21.2 → 0.22.0');
     expect(output()).toContain('pnpm add -D e2e@latest');
     expect(record(options.configDir!)).toEqual({ checkedAt: NOW, latest: '0.22.0' });
+  });
+
+  it.each<[string, (root: string) => string, string]>([
+    [
+      'a workspace package, from the lockfile at the root',
+      (root) => {
+        writeFileSync(path.join(root, 'pnpm-lock.yaml'), '');
+        return workspacePackage(root);
+      },
+      'pnpm add -D e2e@latest',
+    ],
+    [
+      'a workspace package, from the packageManager field at the root',
+      (root) => {
+        writeFileSync(path.join(root, 'package.json'), JSON.stringify({ packageManager: 'yarn@4.5.0' }));
+        return workspacePackage(root);
+      },
+      'yarn add -D e2e@latest',
+    ],
+    [
+      'the root of a pnpm workspace',
+      (root) => {
+        writeFileSync(path.join(root, 'package.json'), '{}');
+        writeFileSync(path.join(root, 'pnpm-workspace.yaml'), '');
+        writeFileSync(path.join(root, 'pnpm-lock.yaml'), '');
+        return root;
+      },
+      'pnpm add -D e2e@latest -w',
+    ],
+  ])('names the install command for %s', async (_name, project, command) => {
+    const { options, output } = setup({ fetch: registry('0.22.0') });
+    const check = new UpdateCheck({ ...options, cwd: project(options.cwd!) });
+    check.start('run');
+    await check.notify();
+    expect(output()).toContain(`Run ${command} to update.`);
   });
 
   it('reminds from the saved answer without asking again within a day', async () => {
@@ -93,6 +136,8 @@ describe('update check', () => {
     ['in CI', { env: { CI: 'true' } }, 'run'],
     ['with E2E_UPDATE_CHECK_DISABLED', { env: { E2E_UPDATE_CHECK_DISABLED: '1' } }, 'run'],
     ['with NO_UPDATE_NOTIFIER', { env: { NO_UPDATE_NOTIFIER: '1' } }, 'run'],
+    ['with E2E_TELEMETRY_DISABLED', { env: { E2E_TELEMETRY_DISABLED: '1' } }, 'run'],
+    ['with DO_NOT_TRACK', { env: { DO_NOT_TRACK: '1' } }, 'run'],
     ['off a terminal', { interactive: false }, 'run'],
     ['from a checkout', { checkout: true }, 'run'],
     ['for mcp', {}, 'mcp'],

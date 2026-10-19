@@ -18,6 +18,17 @@ function isPackageManager(value: string | undefined): value is PackageManager {
   return value !== undefined && PACKAGE_MANAGERS.has(value);
 }
 
+/** The manager a `packageManager` field such as `pnpm@10.0.0` names, or undefined for another value. */
+export function fieldManager(packageManagerField: string | undefined): PackageManager | undefined {
+  const configured = packageManagerField?.split('@')[0];
+  return isPackageManager(configured) ? configured : undefined;
+}
+
+/** The manager whose lockfile sits in `dir`, or undefined when none does. */
+export function lockfileManager(dir: string): PackageManager | undefined {
+  return LOCKFILES.find(([lock]) => existsSync(path.join(dir, lock)))?.[1];
+}
+
 /**
  * The `packageManager` field wins, then a lockfile in `dir`, then the manager
  * that invoked the current process, then npm.
@@ -27,11 +38,8 @@ export function detectPackageManager(
   packageManagerField?: string,
   env: NodeJS.ProcessEnv = process.env,
 ): PackageManager {
-  const configured = packageManagerField?.split('@')[0];
-  if (isPackageManager(configured)) return configured;
-  for (const [lock, manager] of LOCKFILES) {
-    if (existsSync(path.join(dir, lock))) return manager;
-  }
+  const found = fieldManager(packageManagerField) ?? lockfileManager(dir);
+  if (found !== undefined) return found;
   const invoking = env['npm_config_user_agent']?.split('/')[0];
   return isPackageManager(invoking) ? invoking : 'npm';
 }
