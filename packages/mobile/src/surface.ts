@@ -300,6 +300,7 @@ const MOBILE_OPTION_KEYS: readonly string[] = Object.keys({
   snapshot: true,
   settle: true,
   transition: true,
+  targetReadiness: true,
   videoTouches: true,
 } satisfies Record<keyof MobileOptions, true>);
 
@@ -415,6 +416,9 @@ export class AgentDeviceSurface {
     private readonly createClient: ClientFactory,
   ) {
     rejectUnknownKeys('mobile()', options, MOBILE_OPTION_KEYS);
+    if (options.targetReadiness !== undefined && (options.targetReadiness !== 'device' || options.platform !== 'android')) {
+      throw new ConfigurationError('INVALID_CONFIG', 'mobile: `targetReadiness` accepts device on Android only');
+    }
     this.pool = new DevicePool(options, createClient);
     this.settleOptions = settleOptions(options.settle);
     this.transitionMs = transitionMs(options.transition);
@@ -524,6 +528,14 @@ export class AgentDeviceSurface {
         ? undefined
         : { provider, lease, runId: info.runId, targetName: info.targetName, env: info.env };
     await this.command('boot', (client) => client.devices.boot(this.selection()), info.signal);
+    if (this.options.targetReadiness === 'device') {
+      const capabilities = await this.command('capabilities', (client) => client.devices.capabilities(this.selection()), info.signal);
+      const readiness = capabilities !== null && typeof capabilities === 'object' && 'targetReadiness' in capabilities ? capabilities.targetReadiness : undefined;
+      if (readiness === null || typeof readiness !== 'object' || !('press' in readiness) || readiness.press !== 'bounded-geometry') {
+        throw new ConfigurationError('INVALID_CONFIG', 'mobile: targetReadiness device requires agent-device with bounded press geometry readiness');
+      }
+    }
+
     // Nothing is installed here: a device provider that installed the build
     // from `appPath` says so on the binding, and otherwise the suite installs
     // it where it wants to, with `device.installApp()`.
@@ -1196,7 +1208,8 @@ export class AgentDeviceSurface {
     }
     const before = this.latestIndex;
     const run = async (): Promise<unknown> => {
-      const target = deterministic ? await this.settled(entry, operation) : entry;
+      const deviceReady = this.options.targetReadiness === 'device' && ['tap', 'focus', 'doubleTap', 'check', 'uncheck'].includes(action.kind);
+      const target = deterministic && !deviceReady ? await this.settled(entry, operation) : entry;
       switch (action.kind) {
         case 'tap':
           return input.send(() => client.interactions.press({ ...this.actionTarget(target, true), ...settle }));

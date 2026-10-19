@@ -109,6 +109,8 @@ export interface MobileOptions {
    * transitions.
    */
   readonly transition?: number | undefined;
+  /** Delegate deterministic tap readiness to an advertised device guard. Android only. */
+  readonly targetReadiness?: 'device' | undefined;
   /**
    * Whether a video recording draws agent-device's touch indicator where a
    * test tapped. Default `true`. `false` records the plain screen, and skips
