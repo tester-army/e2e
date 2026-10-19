@@ -97,7 +97,7 @@
     "@jridgewell/remapping": "2.3.5",
     "@modelcontextprotocol/server": "2.3.1",
     "@oxc-project/runtime": "0.153.0",
-    "@vitest/expect": "5.0.3",
+    "@vitest/expect": "5.0.5",
     "commander": "15.0.0",
     "fast-png": "8.0.0",
     "get-tsconfig": "4.14.3",
