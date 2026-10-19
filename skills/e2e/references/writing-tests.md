@@ -402,6 +402,8 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
   before the page's own scripts; call it before `app.open`. `arg` is JSON.
 - `route(pattern, handler)`, `unroute(pattern)`: intercept requests, newest
   route first; `route.request` has `url`, `method`, `headers`, `postData`.
+  `route.fetch()` reads upstream without deciding the route and returns
+  `{ url, status, headers, text(), json() }`; redirects are not followed.
   The handler calls exactly one of
   `fulfill({ status?, headers?, contentType?, json | body | path })`,
   `continue({ url?, method?, headers?, postData? })` (straight to the

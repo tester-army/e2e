@@ -13,11 +13,13 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Page } from 'playwright-core';
 import { TestError, type EngineFixtureContext } from 'e2e/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
-import { createBrowserFixture, type Browser, type WebRoute } from '../../src/browser.ts';
+import type { Browser, WebRoute } from '../../src/browser.ts';
+const browserModule = '../../dist/browser.js';
+const { createBrowserFixture } = await import(browserModule) as typeof import('../../src/browser.ts');
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 interface Echo {
@@ -35,6 +37,11 @@ function startCountingServer(hits: Map<string, number>): Promise<{ server: Serve
   const server = createServer((request, response) => {
     const pathname = new URL(request.url ?? '/', 'http://host').pathname;
     hits.set(pathname, (hits.get(pathname) ?? 0) + 1);
+    if (pathname === '/redirect') {
+      response.writeHead(302, { location: '/echo' });
+      response.end();
+      return;
+    }
     if (pathname === '/echo') {
       let body = '';
       request.on('data', (chunk: Buffer) => { body += chunk.toString(); });
@@ -134,6 +141,62 @@ describe('browser.route decisions', () => {
 
   /** Waits for the latched route failure the next step reports. */
   const nextStepFailure = (): Promise<unknown> => browser.url().then(() => undefined, (error: unknown) => error);
+
+  it('fetches upstream once, keeps site headers, then fulfills an amended response', async () => {
+    await browser.route('**/echo', async route => {
+      const upstream = await route.fetch();
+      expect(upstream.status).toBe(200);
+      expect(upstream.url).toBe(`${origin}/echo`);
+      expect(upstream.headers['content-type']).toContain('application/json');
+      const echo = await upstream.json<Echo>();
+      expect(echo.headers['x-gate']).toBe('open-sesame');
+      expect(JSON.parse(await upstream.text())).toEqual(echo);
+      await route.fulfill({ json: { ...echo, amended: true } });
+    });
+    expect(await page.evaluate(async url => (await fetch(url)).json(), `${origin}/echo`)).toMatchObject({ amended: true });
+    expect(hits.get('/echo')).toBe(1);
+  });
+
+  it('keeps upstream metadata when the native API response body is unavailable', async () => {
+    const context = page.context();
+    const register = context.route.bind(context);
+    const spy = vi.spyOn(context, 'route').mockImplementation((url, handler, options) => register(url, async (route, request) => {
+      const fetch = route.fetch.bind(route);
+      route.fetch = async (...args) => {
+        const response = await fetch(...args);
+        await response.dispose();
+        return response;
+      };
+      await handler(route, request);
+    }, options));
+    try {
+      await browser.route('**/echo', async route => {
+        const upstream = await route.fetch();
+        expect(upstream.status).toBe(200);
+        expect(upstream.url).toBe(`${origin}/echo`);
+        expect(upstream.headers['content-type']).toContain('application/json');
+        await expect(upstream.text()).rejects.toMatchObject({code:'ACTION_FAILED', message:expect.stringContaining('route.fetch')});
+        await expect(upstream.json()).rejects.toMatchObject({code:'ACTION_FAILED'});
+        await route.fulfill({body:'safe fallback'});
+      });
+      expect(await fetchText(`${origin}/echo`)).toBe('safe fallback');
+      expect(hits.get('/echo')).toBe(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('returns an upstream redirect without following it', async () => {
+    await browser.route('**/redirect', async route => {
+      const upstream = await route.fetch();
+      expect(upstream.status).toBe(302);
+      expect(upstream.headers['location']).toBe('/echo');
+      await route.fulfill({ body: 'inspected redirect' });
+    });
+    expect(await fetchText(`${origin}/redirect`)).toBe('inspected redirect');
+    expect(hits.get('/redirect')).toBe(1);
+    expect(hits.get('/echo')).toBeUndefined();
+  });
 
   it('routes real native dialogs by kind even when their messages are identical', async () => {
     const kinds: string[] = [];
