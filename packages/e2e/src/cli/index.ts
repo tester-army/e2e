@@ -35,6 +35,7 @@ import { runLogin, runLogout, runModels, type LoginFlags } from '../oauth/cli.ts
 import { SignalLadder } from './signals.ts';
 import { skillTopics } from './skill.ts';
 import { watchSession } from './watch.ts';
+import { UpdateCheck } from './update-check.ts';
 import { telemetry as telemetryCommand, TELEMETRY_ACTIONS, type TelemetryAction } from './telemetry.ts';
 import { wordmarkBanner } from './wordmark.ts';
 
@@ -379,7 +380,7 @@ function withSubcommands(command: Command): Command[] {
 }
 
 /** Builds the commander program. */
-function createProgram(version: string, telemetry: Telemetry): Command {
+function createProgram(version: string, telemetry: Telemetry, updateCheck: UpdateCheck): Command {
   const program = new Command('e2e');
   // The help option, the error hint, and the help styles are copied into each
   // subcommand as it is created, so they are set before any `.command()`.
@@ -435,6 +436,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     const command = commandPath(actionCommand);
     if (command !== 'init' && command !== 'telemetry') telemetry.notice();
     telemetry.session(command, usedFlags(actionCommand));
+    updateCheck.start(command);
   });
 
   const initCommand = program
@@ -943,8 +945,10 @@ function createProgram(version: string, telemetry: Telemetry): Command {
 export async function main(argv: readonly string[]): Promise<void> {
   const version = packageVersion(import.meta.url, '../../package.json', '0.0.0');
   // Working on e2e itself is not usage: the CLI run from the repository sends nothing.
-  const telemetry = new Telemetry({ version, checkout: runsFromCheckout(import.meta.url) });
-  const program = createProgram(version, telemetry);
+  const checkout = runsFromCheckout(import.meta.url);
+  const telemetry = new Telemetry({ version, checkout });
+  const updateCheck = new UpdateCheck({ version, checkout });
+  const program = createProgram(version, telemetry, updateCheck);
   try {
     await program.parseAsync([...argv]);
   } catch (cause) {
@@ -962,7 +966,7 @@ export async function main(argv: readonly string[]): Promise<void> {
     }
   } finally {
     telemetry.endSession(typeof process.exitCode === 'number' ? process.exitCode : 0);
-    // One bounded request; the deadline, not the network, decides when the CLI is done.
-    await telemetry.flush();
+    // Bounded requests; the deadlines, not the network, decide when the CLI is done.
+    await Promise.all([telemetry.flush(), updateCheck.notify()]);
   }
 }

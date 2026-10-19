@@ -23,7 +23,7 @@ vi.mock('../../src/cli/init.ts', () => ({
 }));
 
 const { main } = await import('../../src/cli/index.ts');
-const { olderThan } = await import('../../src/cli/feedback.ts');
+const { olderThan } = await import('../../src/internal/release.ts');
 
 const { version: packageVersion } = JSON.parse(
   readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),

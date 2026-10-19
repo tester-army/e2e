@@ -20,6 +20,7 @@
 
 import { uuidv7, timestamp } from '../internal/ids.ts';
 import { createRedactor } from '../internal/redact.ts';
+import { latestRelease, olderThan } from '../internal/release.ts';
 import { MIN_SECRET_LENGTH, secretLength } from '../config/secrets.ts';
 import { collectEnvironment, type TelemetryEnvironment } from '../telemetry/environment.ts';
 import { postBatch, type PostHogEvent } from '../telemetry/posthog.ts';
@@ -69,13 +70,10 @@ const EVENT = 'e2e_feedback';
 const SEND_TIMEOUT_MS = 10_000;
 const ISSUES_URL = 'https://github.com/tester-army/e2e/issues';
 const NEW_BUG_URL = `${ISSUES_URL}/new`;
-/** The `latest` dist-tag's manifest; small, and public. */
-const LATEST_URL = 'https://registry.npmjs.org/e2e/latest';
 /** The registry check never holds the report up for long; a slow or failed one is skipped. */
 const LATEST_TIMEOUT_MS = 3000;
 /** GitHub rejects longer new-issue URLs. */
 const MAX_ISSUE_URL_LENGTH = 8000;
-const RELEASE = /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 
 /** Environment variable names whose values are treated as secrets. */
 const SECRET_NAME = /KEY|TOKEN|SECRET|PASS|_PWD|CREDENTIAL|AUTH|COOKIE|PRIVATE/i;
@@ -136,34 +134,6 @@ function feedbackEvent(report: FeedbackReport, options: FeedbackOptions, environ
 }
 
 /**
- * The version `latest` points at, or undefined when the registry did not
- * answer in time or answered with something else.
- */
-async function latestRelease(fetchImpl: typeof fetch): Promise<string | undefined> {
-  try {
-    const response = await fetchImpl(LATEST_URL, { signal: AbortSignal.timeout(LATEST_TIMEOUT_MS) });
-    if (!response.ok) return undefined;
-    const body: unknown = await response.json();
-    const version = typeof body === 'object' && body !== null && 'version' in body ? body.version : undefined;
-    return typeof version === 'string' && RELEASE.test(version) ? version : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Whether `version` comes before `latest`; a prerelease comes before its release. Unparsable versions never do. */
-export function olderThan(version: string, latest: string): boolean {
-  const a = RELEASE.exec(version);
-  const b = RELEASE.exec(latest);
-  if (a === null || b === null) return false;
-  for (const index of [1, 2, 3]) {
-    const difference = Number(a[index]) - Number(b[index]);
-    if (difference !== 0) return difference < 0;
-  }
-  return a[4] !== undefined && b[4] === undefined;
-}
-
-/**
  * A prefilled link to the repository's bug form. The report fills "What
  * happened" and "Versions"; the reproduction is left for the reporter.
  */
@@ -207,7 +177,7 @@ export async function feedback(report: FeedbackReport, options: FeedbackOptions)
   const disabledBy = options.telemetry.disabledBy;
   const blocked = disabledBy !== undefined && BLOCKING.has(disabledBy);
   if (!blocked && options.allowOutdated !== true) {
-    const latest = await latestRelease(fetchImpl);
+    const latest = await latestRelease(fetchImpl, LATEST_TIMEOUT_MS);
     if (latest !== undefined && olderThan(options.version, latest)) {
       process.stderr.write(
         `feedback not sent: e2e ${options.version} is older than the latest release ${latest}, which may already fix this. Upgrade e2e, check the problem still happens, and send it again; --allow-outdated sends it anyway.\n`,

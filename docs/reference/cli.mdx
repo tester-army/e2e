@@ -59,6 +59,10 @@ $ npx e2e --version
 - On a terminal 55 or more columns wide, `e2e --help` opens with the e2e
   wordmark: the site's lettering in block characters. Piped output and
   narrower terminals get the text alone.
+- When a newer `e2e` is on npm, a command run on a terminal ends with the
+  version and the install command for the project's package manager. The
+  registry is checked once a day. Nothing prints in CI, when piped, or with
+  `E2E_UPDATE_CHECK_DISABLED=1` or `NO_UPDATE_NOTIFIER=1` set.
 
 ### Commands
 
