@@ -1208,7 +1208,7 @@ export class AgentDeviceSurface {
     }
     const before = this.latestIndex;
     const run = async (): Promise<unknown> => {
-      const deviceReady = this.options.targetReadiness === 'device' && ['tap', 'focus', 'doubleTap', 'check', 'uncheck'].includes(action.kind);
+      const deviceReady = this.options.targetReadiness === 'device' && entry.node.testId !== undefined && ['tap', 'focus', 'doubleTap', 'check', 'uncheck'].includes(action.kind);
       const target = deterministic && !deviceReady ? await this.settled(entry, operation) : entry;
       switch (action.kind) {
         case 'tap':
