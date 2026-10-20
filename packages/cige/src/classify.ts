@@ -18,6 +18,31 @@ import type { CigeCase } from './schema.ts';
 type ReportResult = Report['run']['results'][number];
 type ReportAttempt = ReportResult['attempts'][number];
 type ReportStep = ReportAttempt['steps'][number];
+type ReportSerialGroup = Report['run']['serialGroups'][number];
+
+/** What classification reads of one attempt: a test's own, or its member's share of a serial group's. */
+export interface AttemptView {
+  readonly steps: readonly ReportStep[];
+  readonly error?: ReportAttempt['error'];
+  readonly artifacts: ReportAttempt['artifacts'];
+}
+
+/**
+ * The attempts of a result, oldest first. A member of a serial group keeps
+ * none of its own (`result.attempts` is empty): its steps live on the
+ * group's attempts, under its `testId`.
+ */
+export function attemptsOf(result: ReportResult, report?: Report): readonly AttemptView[] {
+  if (result.serialGroupId === undefined) return result.attempts;
+  const groups: readonly ReportSerialGroup[] = [...(report?.run.serialGroups ?? []), ...(report?.run.carried?.serialGroups ?? [])];
+  const group = groups.find((candidate) => candidate.id === result.serialGroupId);
+  if (group === undefined) return result.attempts;
+  return group.attempts.map((attempt) => {
+    const member = attempt.members.find((candidate) => candidate.testId === result.testId);
+    const error = member?.error ?? attempt.error;
+    return { steps: member?.steps ?? [], ...(error === undefined ? {} : { error }), artifacts: attempt.artifacts };
+  });
+}
 
 /** The four outcomes the CIGE standard routes on. */
 export type CigeFailureType = 'infrastructure' | 'outdated-test-logic' | 'product-defect' | 'false-positive';
@@ -42,7 +67,6 @@ export interface CigeClassification {
 const INFRASTRUCTURE_CODES = new Set([
   'AUTH_CREDENTIAL_UNAVAILABLE',
   'AUTH_CREDENTIAL_INVALID',
-  'AUTHENTICATION_FAILED',
   'SECRET_UNAVAILABLE',
   'ENVIRONMENT_UNAVAILABLE',
   'APP_UNREACHABLE',
@@ -55,16 +79,15 @@ const INFRASTRUCTURE_CODES = new Set([
 ]);
 
 /** Codes an `act` step ends with when its path no longer leads where it used to. */
-const PATH_CODES = new Set([
-  'ACTION_FAILED',
-  'LOCATOR_NOT_FOUND',
-  'LOCATOR_AMBIGUOUS',
-  'REPLAY_STALE',
-  'STEP_NO_CONCLUSION',
-  'STEP_BUDGET_EXHAUSTED',
-  'STEP_TIMEOUT',
-  'AUTOMATION_UNSUPPORTED',
-]);
+const PATH_CODES = new Set(['ACTION_FAILED', 'LOCATOR_NOT_FOUND', 'LOCATOR_AMBIGUOUS', 'REPLAY_STALE']);
+
+/**
+ * Codes that say the agent ran out of room, not that the path is stale: a
+ * spent budget, the clock, a verb the engine lacks, a model that never
+ * concluded. A changed flow can cause them, and so can a slow environment
+ * or a weak model, so they leave the type to the classifier.
+ */
+const AUTOMATION_CODES = new Set(['STEP_BUDGET_EXHAUSTED', 'STEP_TIMEOUT', 'AUTOMATION_UNSUPPORTED', 'STEP_NO_CONCLUSION', 'CONTEXT_OVERFLOW']);
 
 interface PlannedStep {
   readonly phase: CigePhase;
@@ -95,7 +118,7 @@ function sameLabel(reported: string, planned: string): boolean {
 }
 
 /** Pairs each body agent step of the attempt with the planned step it ran, in order. */
-function match(attempt: ReportAttempt, planned: readonly PlannedStep[]): { step: ReportStep; planned: PlannedStep }[] {
+function match(attempt: AttemptView, planned: readonly PlannedStep[]): { step: ReportStep; planned: PlannedStep }[] {
   const pairs: { step: ReportStep; planned: PlannedStep }[] = [];
   let next = 0;
   for (const step of attempt.steps) {
@@ -108,7 +131,7 @@ function match(attempt: ReportAttempt, planned: readonly PlannedStep[]): { step:
   return pairs;
 }
 
-function locate(testCase: CigeCase, attempt: ReportAttempt): { phase: CigePhase; id?: string; code?: string; message?: string } {
+function locate(testCase: CigeCase, attempt: AttemptView): { phase: CigePhase; id?: string; code?: string; message?: string } {
   const planned = plan(testCase);
   const pairs = match(attempt, planned);
   const failing = pairs.find((pair) => pair.step.status !== 'passed');
@@ -137,10 +160,13 @@ function locate(testCase: CigeCase, attempt: ReportAttempt): { phase: CigePhase;
   return { phase: 'evidence', ...located };
 }
 
-/** Classifies one report result of a CIGE case. */
-export function classifyResult(testCase: CigeCase, result: ReportResult): CigeClassification {
+/**
+ * Classifies one report result of a CIGE case. Pass the report it came from
+ * when the result may be a serial group's member, whose attempts live there.
+ */
+export function classifyResult(testCase: CigeCase, result: ReportResult, report?: Report): CigeClassification {
   if (result.status === 'skipped') return { result: 'skipped', signals: ['status:skipped'] };
-  const attempt = result.attempts.at(-1);
+  const attempt = attemptsOf(result, report).at(-1);
   if (result.status === 'passed' || result.status === 'flaky') {
     const signals: string[] = [`status:${result.status}`];
     if (!testCase.intent.evidence.some((item) => item.kind === 'hook')) signals.push('screen-only-evidence');
@@ -173,6 +199,7 @@ export function classifyResult(testCase: CigeCase, result: ReportResult): CigeCl
     return undefined;
   })();
   if (code === 'ASSERTION_INCONCLUSIVE') signals.push('inconclusive-evidence');
+  if (AUTOMATION_CODES.has(code)) signals.push('automation-limit');
   if (result.status === 'timed-out' || result.status === 'interrupted') signals.push('run-stopped');
   return { ...base, ...(failureType === undefined ? {} : { failureType }), signals };
 }

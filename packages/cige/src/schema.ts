@@ -56,10 +56,14 @@ const IntentObject = z.strictObject({
   judge: z.boolean().optional(),
 });
 
-const GuardrailDeny = z.strictObject({
-  actions: z.array(Text).min(1).optional(),
-  summary: z.array(Text).min(1).optional(),
-});
+const GuardrailDeny = z
+  .strictObject({
+    actions: z.array(Text).min(1).optional(),
+    summary: z.array(Text).min(1).optional(),
+  })
+  .refine((deny) => deny.actions !== undefined || deny.summary !== undefined, {
+    message: 'deny needs actions, summary, or both; an empty deny would enforce nothing',
+  });
 
 const GuardrailObject = z.strictObject({
   id: Id.optional(),
@@ -74,7 +78,9 @@ const PreconditionHook = z.strictObject({
   description: Text.optional(),
 });
 
-const Context = z.looseObject({
+// Strict: Context is what the agent reads, so a key the runner would drop is
+// an error rather than a fact that silently never reaches the model.
+const Context = z.strictObject({
   system: Text.optional(),
   environment: Text.optional(),
   actor: Text.optional(),
@@ -191,7 +197,7 @@ function capitalize(value: unknown, issues: string[]): unknown {
   return out;
 }
 
-/** The id an Intent statement implies: its words, lowercased and joined by dashes. */
+/** The id an Intent statement implies: its words, lowercased and joined by dashes; `''` when it has no Latin letters or digits. */
 export function slugify(statement: string): string {
   const slug = statement
     .normalize('NFKD')
@@ -201,7 +207,22 @@ export function slugify(statement: string): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, 64)
     .replace(/-+$/, '');
-  return slug === '' ? 'cige' : slug;
+  return slug;
+}
+
+/**
+ * The messages one zod issue stands for. A union reports only "Invalid
+ * input" at the entry; the branch that came closest (fewest problems, then
+ * the deepest one) says what is actually wrong with it.
+ */
+function messagesOf(issue: z.core.$ZodIssue, base: readonly PropertyKey[] = []): string[] {
+  const at = [...base, ...issue.path];
+  if (issue.code === 'invalid_union' && issue.errors.length > 0) {
+    const depth = (branch: readonly z.core.$ZodIssue[]): number => Math.max(0, ...branch.map((entry) => entry.path.length));
+    const closest = issue.errors.toSorted((a, b) => a.length - b.length || depth(b) - depth(a))[0];
+    if (closest !== undefined && closest.length > 0) return closest.flatMap((entry) => messagesOf(entry, at));
+  }
+  return [`${pathOf(at)}: ${issue.message}`];
 }
 
 function pathOf(path: readonly PropertyKey[]): string {
@@ -216,7 +237,7 @@ export function parseCige(value: unknown, source = 'test case'): CigeCase {
   const issues: string[] = [];
   const parsed = CigeFile.safeParse(capitalize(value, issues));
   if (!parsed.success) {
-    for (const issue of parsed.error.issues) issues.push(`${pathOf(issue.path)}: ${issue.message}`);
+    for (const issue of parsed.error.issues) issues.push(...messagesOf(issue));
   }
   if (!parsed.success || issues.length > 0) throw new CigeValidationError(source, issues);
   const file = parsed.data;
@@ -264,13 +285,15 @@ export function parseCige(value: unknown, source = 'test case'): CigeCase {
       }
     }
   }
+  const id = file.id ?? slugify(intentObject.statement);
+  if (id === '') issues.push('id: the Intent statement has no Latin letters or digits to derive an id from; set "id"');
   if (!judge && evidence.length === 0 && !execution.some((step) => step.kind === 'verify')) {
     issues.push('Intent: with "judge": false, a pass needs evidence or a verify step; this case would pass on its actions alone');
   }
   if (issues.length > 0) throw new CigeValidationError(source, issues);
 
   return {
-    id: file.id ?? slugify(intentObject.statement),
+    id,
     context: {
       ...(context.system === undefined ? {} : { system: context.system }),
       ...(context.environment === undefined ? {} : { environment: context.environment }),

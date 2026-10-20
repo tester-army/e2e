@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://e2e.tester.army/schema/cige-1.schema.json",
   "title": "CIGE test case, version 1",
-  "description": "An agentic test case in the CIGE standard: Context grounds the run, Intent states why the test exists and what a pass needs, Guardrails say what the agent must never do, and Execution is the first path to try. See https://www.amazon.science/publications/cige-an-agentic-ai-test-case-standard. The lowercase field names context, intent, guardrails, and execution are accepted as aliases of the capitalized ones.",
+  "description": "An agentic test case in the CIGE standard: Context grounds the run, Intent states why the test exists and what a pass needs, Guardrails say what the agent must never do, and Execution is the first path to try. See https://www.amazon.science/publications/cige-an-agentic-ai-test-case-standard.",
   "type": "object",
   "additionalProperties": false,
   "required": ["Context", "Intent", "Execution"],
@@ -33,7 +33,7 @@
     "context": {
       "type": "object",
       "description": "The operating ground. Everything but specRef, buildRef, tools, and open becomes the test's agentContext, which every agent step reads, so it holds facts, never instructions.",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "system": { "$ref": "#/$defs/text", "description": "The app or service under test." },
         "environment": { "$ref": "#/$defs/text" },
@@ -109,6 +109,7 @@
         "deny": {
           "type": "object",
           "additionalProperties": false,
+          "minProperties": 1,
           "description": "Actions the runner stops the step on: an action name (tap, navigate, tool:refund) or a prefix ending in *, and case-insensitive regular expressions matched against the action's summary.",
           "properties": {
             "actions": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/text" } },

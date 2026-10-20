@@ -8,12 +8,12 @@
  * anything the run left in memory.
  */
 
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import type { FinishedRun, Report, Reporter, ReporterSummary } from 'e2e';
 
-import { classifyResult, type CigeClassification, type CigeFailureType } from './classify.ts';
+import { attemptsOf, classifyResult, type CigeClassification, type CigeFailureType } from './classify.ts';
 import { loadCigeCases, type CigeRoot } from './load.ts';
 import type { CigeCase } from './schema.ts';
 import { CIGE_TAG } from './suite.ts';
@@ -80,14 +80,16 @@ function summarize(
   result: ReportResult,
   id: string,
   testCase: CigeCase | undefined,
-  build?: string,
+  build: string | undefined,
+  carried: boolean,
 ): CigeRunSummary {
   const fromRoot = (file: string): string => path.relative(run.projectRoot, file).split(path.sep).join('/');
   const classification: CigeClassification =
     testCase === undefined
       ? { result: result.status === 'passed' || result.status === 'flaky' ? 'pass' : result.status === 'skipped' ? 'skipped' : 'fail', signals: ['case-not-found'] }
-      : classifyResult(testCase, result);
-  const attempt = result.attempts.at(-1);
+      : classifyResult(testCase, result, run.report);
+  const attempts = attemptsOf(result, run.report);
+  const attempt = attempts.at(-1);
   const artifacts = (attempt?.artifacts ?? []).flatMap((artifact) =>
     artifact.path === undefined ? (artifact.url === undefined ? [] : [artifact.url]) : [fromRoot(path.join(run.artifactsRoot, artifact.path))],
   );
@@ -106,14 +108,14 @@ function summarize(
       ...(classification.phase === undefined ? {} : { phase: classification.phase }),
       ...(classification.errorCode === undefined ? {} : { errorCode: classification.errorCode }),
       ...(classification.message === undefined ? {} : { message: classification.message }),
-      signals: classification.signals,
+      signals: carried ? [...classification.signals, 'carried-from-earlier-run'] : classification.signals,
     },
     ...(testCase?.context.specRef === undefined ? {} : { specRef: testCase.context.specRef }),
     ...(testCase?.context.buildRef === undefined ? {} : { buildRef: testCase.context.buildRef }),
     ...(testCase?.file === undefined ? {} : { case: fromRoot(testCase.file) }),
     target: result.targetId,
     agent: result.agent,
-    attempts: result.attempts.length,
+    attempts: attempts.length,
     evidence: {
       ...(run.reportPath === undefined ? {} : { report: fromRoot(run.reportPath) }),
       resultId: result.id,
@@ -125,33 +127,43 @@ function summarize(
 
 /**
  * The CIGE reporter. Writes `<output>/cige/<id>.run-summary.json` for each
- * CIGE result the run selected; a case that ran on several targets or as
- * several agents gets one file per result, named after both. Summaries an
- * earlier run left there are removed first; nothing else in the directory is.
+ * CIGE result the run selected, and for each failure a `--last-failed`
+ * rerun carried without running it again; a case that ran on several
+ * targets or as several agents gets one file per result, named after both.
+ * Summaries an earlier run left there are removed first, unless this run is
+ * a `--last-failed` rerun, whose untouched cases keep theirs. Nothing else in
+ * the directory is removed.
  */
 export function cige(options: CigeReporterOptions = {}): Reporter {
   return {
     name: 'cige',
     async onRunFinished(run): Promise<ReporterSummary | void> {
       if (run.reportPath === undefined) return;
-      const selected = run.report.run.results.filter((result) => result.selected && caseId(result) !== undefined);
-      if (selected.length === 0) return;
+      const outputDir = path.resolve(run.projectRoot, options.outputDir ?? path.join(path.dirname(run.reportPath), 'cige'));
+      // A summary from an earlier run must not pass for this one's, even when
+      // this run has none to write. Only summaries go: the directory may be
+      // one the project keeps other files in. A `--last-failed` rerun keeps
+      // them, since the cases it did not select still stand as last reported.
+      if (run.lastRun === undefined && existsSync(outputDir)) {
+        for (const file of readdirSync(outputDir)) {
+          if (file.endsWith(SUMMARY_SUFFIX)) rmSync(path.join(outputDir, file), { force: true });
+        }
+      }
+      const isCige = (result: ReportResult): boolean => caseId(result) !== undefined;
+      const selected = run.report.run.results.filter((result) => result.selected && isCige(result));
+      const carried = (run.report.run.carried?.results ?? []).filter(isCige);
+      const results = [...selected.map((result) => ({ result, carried: false })), ...carried.map((result) => ({ result, carried: true }))];
+      if (results.length === 0) return;
       const cases = new Map(
         loadCigeCases(options.cases ?? DEFAULT_CASES, { root: options.root ?? run.projectRoot }).map((testCase) => [testCase.id, testCase]),
       );
-      const outputDir = path.resolve(run.projectRoot, options.outputDir ?? path.join(path.dirname(run.reportPath), 'cige'));
       mkdirSync(outputDir, { recursive: true });
-      // A summary from an earlier run must not pass for this one's. Only
-      // summaries go: the directory may be one the project keeps other files in.
-      for (const file of readdirSync(outputDir)) {
-        if (file.endsWith(SUMMARY_SUFFIX)) rmSync(path.join(outputDir, file), { force: true });
-      }
       const perCase = new Map<string, number>();
-      for (const result of selected) perCase.set(caseId(result)!, (perCase.get(caseId(result)!) ?? 0) + 1);
+      for (const { result } of results) perCase.set(caseId(result)!, (perCase.get(caseId(result)!) ?? 0) + 1);
       const counts = { pass: 0, fail: 0, skipped: 0 };
-      for (const result of selected) {
+      for (const { result, carried: wasCarried } of results) {
         const id = caseId(result)!;
-        const summary = summarize(run, result, id, cases.get(id), options.build);
+        const summary = summarize(run, result, id, cases.get(id), options.build, wasCarried);
         counts[summary.result] += 1;
         const name = perCase.get(id) === 1 ? id : [id, result.targetId, result.agent, ...(result.repeat === 0 ? [] : [String(result.repeat)])].join('.');
         writeFileSync(path.join(outputDir, `${fileSafe(name)}${SUMMARY_SUFFIX}`), `${JSON.stringify(summary, null, 2)}\n`);

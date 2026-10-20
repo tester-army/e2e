@@ -85,6 +85,24 @@ describe('parseCige', () => {
     ).not.toThrow();
   });
 
+  it('refuses a deny rule that denies nothing', () => {
+    expect(() => parseCige({ Context: {}, Intent: 'x', Guardrails: [{ rule: 'no admin', deny: {} }], Execution: ['y'] })).toThrow(/an empty deny would enforce nothing/);
+  });
+
+  it('refuses a Context key the runner would drop', () => {
+    expect(() => parseCige({ Context: { featureFlags: ['beta'] }, Intent: 'x', Execution: ['y'] })).toThrow(/Context: Unrecognized key: "featureFlags"/);
+  });
+
+  it('names what is wrong inside a union entry', () => {
+    expect(() => parseCige({ Context: {}, Intent: 'x', Execution: [{ id: 'e 1', step: 'a' }] })).toThrow(/Execution\[0\]\.id: an id is 1 through 64/);
+    expect(() => parseCige({ Context: {}, Intent: 'x', Execution: [{ id: 'e1', step: '' }] })).toThrow(/Execution\[0\]\.step: Too small/);
+  });
+
+  it('asks for an id when the Intent has none to give', () => {
+    expect(() => parseCige({ Context: {}, Intent: 'Пользователь может войти', Execution: ['войти'] })).toThrow(/set "id"/);
+    expect(parseCige({ id: 'login', Context: {}, Intent: 'Пользователь может войти', Execution: ['войти'] }).id).toBe('login');
+  });
+
   it('refuses a deny pattern that is not a regular expression', () => {
     expect(() =>
       parseCige({ Context: {}, Intent: 'x', Guardrails: [{ rule: 'no admin', deny: { summary: ['(['] } }], Execution: ['y'] }),

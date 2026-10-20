@@ -41,16 +41,23 @@ import { cige } from '@e2e-dev/cige';
 export default { /* targets, agents */ reporters: ['list', cige({ cases: 'tests/cige/*.cige.json' })] };
 ```
 
-Each case becomes one test, tagged `cige:<id>` and titled by its Intent. It
-runs each Execution step as an `agent.act` goal, with the guardrails on the
-instruction. A guardrail's `deny` rule is also checked after every action,
-and a match stops the step with `POLICY_DENIED`. The case passes only when
-every piece of evidence the Intent names holds, and then the Intent itself.
+Each case becomes one test, tagged `cige:<id>` and titled by its Intent:
 
-The `cige()` reporter writes `.e2e/cige/<id>.run-summary.json`. Each summary
-holds a first classification of the result (infrastructure, outdated test
-logic, or product defect), the failing step's id, and pointers to the
-report, the trace, `specRef`, and `buildRef`. The
+- A `step` entry is one `agent.act` goal, with the guardrails appended to
+  its instruction. A guardrail's `deny` rule is also checked after every
+  action, and a match stops the step with `POLICY_DENIED`.
+- A `verify` entry is one `agent.assert`, without the guardrails: the judge
+  decides from the statement and the screen.
+- The case passes only when every piece of evidence the Intent names holds,
+  and then, unless `judge` is `false`, the Intent itself.
+
+The `cige()` reporter writes one summary per CIGE result under
+`<output>/cige/`, `.e2e/cige/` by default: `<id>.run-summary.json`, or
+`<id>.<target>.<agent>.run-summary.json` when a case ran on several targets
+or agents. A summary holds a first classification of the result
+(infrastructure, outdated test logic, or product defect) when the error
+code decides it, and the failing step's id, the report, the trace,
+`specRef`, and `buildRef` when there are any. The
 [CIGE agent skills](https://github.com/vivekkrishna/agentic-validation-skills)
 read it to classify a failure and repair the case.
 

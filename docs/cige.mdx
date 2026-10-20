@@ -74,8 +74,11 @@ bun add -d @e2e-dev/cige
 - `id` tags the test `cige:<id>` and names its run summary. Without one, the
   id is the Intent statement in lowercase words joined by dashes.
 - The file is checked against `schema/cige-1.schema.json`, which the package
-  ships. The field names `context`, `intent`, `guardrails`, and `execution`
-  read the same as the capitalized ones.
+  ships. The loader also reads the field names `context`, `intent`,
+  `guardrails`, and `execution` as the capitalized ones; the schema checks
+  the capitalized form only.
+- An unknown key in `Context`, or a `deny` with neither `actions` nor
+  `summary`, fails to load rather than being ignored.
 - `Intent` and `Execution` entries may be plain strings. An Execution string
   gets the id `e1`, `e2`, and so on, by position. A guardrail string gets
   `g1`, `g2`, and so on.
@@ -83,8 +86,9 @@ bun add -d @e2e-dev/cige
 ## Register the cases
 
 Call `cigeSuite` from a test file. It loads the cases while the file
-evaluates. A case that does not validate, or that names a hook you did not
-pass, fails collection before any test runs.
+evaluates. Collection fails before any test runs on a glob that matches no
+file, a case that does not validate, two cases with one id or one Intent,
+or a hook a case names that you did not pass.
 
 ```ts title="tests/cige.e2e.ts"
 import { cigeSuite } from '@e2e-dev/cige';
@@ -93,7 +97,8 @@ cigeSuite('tests/cige/*.cige.json', {
   hooks: {
     // Precondition: seed the cart through the test API, not the UI.
     seedCart: async () => {
-      await fetch('http://localhost:3000/test-api/cart', { method: 'POST', body: '{"sku":"ITEM-100","qty":2}' });
+      const response = await fetch('http://localhost:3000/test-api/cart', { method: 'POST', body: '{"sku":"ITEM-100","qty":2}' });
+      if (!response.ok) throw new Error(`seeding the cart returned ${response.status}`);
     },
     // Evidence: the order exists in the backend, not only on the confirmation page.
     orderPersisted: async ({ screen }) => {
@@ -134,7 +139,8 @@ order and fails on the first one that doesn't hold:
    goal, with its `params`. A `verify` is one `agent.assert`.
 4. Each piece of evidence. A string or an `assert` entry is one
    `agent.assert`. A `hook` entry runs your code: return `false` or throw to
-   fail it.
+   fail it. Throw an `AgentError` to keep its code, such as
+   `ENVIRONMENT_UNAVAILABLE` when the backend is down.
 5. `agent.assert` of the Intent statement, with its `success` and `failure`
    criteria. Set `"judge": false` to skip this check when the screen can't
    show the Intent. A case with `"judge": false` needs evidence or a `verify`
@@ -142,8 +148,8 @@ order and fails on the first one that doesn't hold:
 
 Context reaches the model as the test's
 [`agentContext`](/agents#instructions-and-vocabulary). It holds the system,
-environment, actor, text preconditions, `facts`, and the files `prompts`
-names. `specRef`, `buildRef`, and `tools` never reach the model. Context's
+environment, actor, preconditions (a hook's `description` included),
+`facts`, and the files `prompts` names, relative to the case file. `specRef`, `buildRef`, and `tools` never reach the model. Context's
 `agent` pins the test to [agents](/agents#pin-an-agent-in-the-suite) by name.
 
 ## Guardrails
@@ -188,10 +194,19 @@ export default {
 } satisfies E2EConfig;
 ```
 
-After the run, the reporter writes `.e2e/cige/<id>.run-summary.json` for each
-CIGE result it selected. It deletes the summaries of the previous run first.
-A case that ran on several targets or agents gets one file per result. The
-summary for a case whose path changed:
+After the run, the reporter writes `<output>/cige/<id>.run-summary.json` for
+each CIGE result the run selected. `<output>` is `.e2e` unless the config's
+[`output`](/reference/config#output) or `--output` sets it, and `outputDir`
+puts the summaries elsewhere.
+
+- It deletes the summaries of the previous run first, and no other file.
+- A `--last-failed` rerun keeps the summaries of the cases it did not run,
+  and writes one for each failure it carried without running, with the
+  signal `carried-from-earlier-run`.
+- A case that ran on several targets or agents gets one file per result,
+  named `<id>.<target>.<agent>.run-summary.json`.
+
+The summary for a case whose path changed:
 
 ```json title=".e2e/cige/checkout-discount.run-summary.json"
 {
@@ -231,9 +246,10 @@ landed. It is a hint for the classifying agent, not a verdict:
 | Where and what | `failureType` |
 | --- | --- |
 | A precondition failed, or a credential, environment, seed data, or model code such as `ENVIRONMENT_UNAVAILABLE` | `infrastructure` |
-| An Execution `step` failed with `LOCATOR_NOT_FOUND`, `ACTION_FAILED`, `REPLAY_STALE`, `STEP_NO_CONCLUSION`, or a spent budget | `outdated-test-logic` |
+| An Execution `step` failed with `LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`, `ACTION_FAILED`, or `REPLAY_STALE` | `outdated-test-logic` |
 | A `verify`, a piece of evidence, or the Intent was judged false (`ASSERTION_FAILED`) | `product-defect` |
-| A guardrail violation, an `ASSERTION_INCONCLUSIVE`, or anything else | Absent. `signals` names what the reporter read, such as `guardrail-violation:no-refund` |
+| A spent budget or the clock (`STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`), `STEP_NO_CONCLUSION`, `AUTOMATION_UNSUPPORTED`, or `CONTEXT_OVERFLOW` | Absent, with the signal `automation-limit`: a changed flow, a slow environment, or a weak model can each cause it |
+| A guardrail violation, an `ASSERTION_INCONCLUSIVE`, `AUTHENTICATION_FAILED`, or anything else | Absent. `signals` names what the reporter read, such as `guardrail-violation:no-refund` |
 
 A passing summary has no `failureType`. If no evidence hook backs the pass,
 its signals include `screen-only-evidence`. That pass rests on what the

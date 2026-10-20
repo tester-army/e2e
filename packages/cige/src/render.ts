@@ -60,21 +60,46 @@ export function intentAssertion(testCase: CigeCase): string {
   return parts.join('\n\n');
 }
 
-/** Every size problem the case has against the runner's limits, as messages; empty when it fits. */
+/** `agent.act` params hold at most 64 KiB of JSON, nested at most 32 levels. */
+const MAX_PARAMS_BYTES = 64 * 1024;
+const MAX_PARAMS_DEPTH = 32;
+
+function depthOf(value: unknown): number {
+  if (typeof value !== 'object' || value === null) return 0;
+  return 1 + Math.max(0, ...Object.values(value).map(depthOf));
+}
+
+/**
+ * Every problem the case has against the runner's limits, as messages; empty
+ * when it fits: agentContext, each instruction and statement, and each
+ * step's params. Load time is the place to find them, not the step that
+ * would send them.
+ */
 export function sizeProblems(testCase: CigeCase): string[] {
   const problems: string[] = [];
   const agentContext = renderAgentContext(testCase);
-  if (agentContext !== undefined && bytes(agentContext) > MAX_AGENT_CONTEXT_BYTES) {
-    problems.push(`Context renders to ${bytes(agentContext)} bytes of agentContext; the limit is ${MAX_AGENT_CONTEXT_BYTES}`);
+  // Measured as written: the runner is not documented to normalize context.
+  const contextBytes = agentContext === undefined ? 0 : Buffer.byteLength(agentContext, 'utf8');
+  if (contextBytes > MAX_AGENT_CONTEXT_BYTES) {
+    problems.push(`Context renders to ${contextBytes} bytes of agentContext; the limit is ${MAX_AGENT_CONTEXT_BYTES}`);
   }
+  const statement = (label: string, text: string, suffix = ''): void => {
+    if (bytes(text) > MAX_INSTRUCTION_BYTES) problems.push(`${label} renders to ${bytes(text)} bytes${suffix}; the limit is ${MAX_INSTRUCTION_BYTES}`);
+  };
   for (const step of testCase.execution) {
-    const text = step.kind === 'act' ? actInstruction(testCase, step) : step.text;
-    if (bytes(text) > MAX_INSTRUCTION_BYTES) {
-      problems.push(`Execution ${step.id} renders to ${bytes(text)} bytes with its guardrails; the limit is ${MAX_INSTRUCTION_BYTES}`);
+    if (step.kind === 'verify') {
+      statement(`Execution ${step.id}`, step.text);
+      continue;
     }
+    statement(`Execution ${step.id}`, actInstruction(testCase, step), ' with its guardrails');
+    if (step.params === undefined) continue;
+    const paramBytes = Buffer.byteLength(JSON.stringify(step.params), 'utf8');
+    if (paramBytes > MAX_PARAMS_BYTES) problems.push(`Execution ${step.id}: params are ${paramBytes} bytes of JSON; the limit is ${MAX_PARAMS_BYTES}`);
+    if (depthOf(step.params) > MAX_PARAMS_DEPTH) problems.push(`Execution ${step.id}: params nest deeper than ${MAX_PARAMS_DEPTH} levels`);
   }
-  if (testCase.intent.judge && bytes(intentAssertion(testCase)) > MAX_INSTRUCTION_BYTES) {
-    problems.push(`Intent renders to ${bytes(intentAssertion(testCase))} bytes; the limit is ${MAX_INSTRUCTION_BYTES}`);
+  for (const item of testCase.intent.evidence) {
+    if (item.kind === 'assert') statement(`Intent.evidence ${item.id}`, item.text);
   }
+  if (testCase.intent.judge) statement('Intent', intentAssertion(testCase));
   return problems;
 }

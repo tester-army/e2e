@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { run } from 'e2e/runner';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import type { CigeRunSummary } from '../src/reporter.ts';
+import { cige, type CigeRunSummary } from '../src/reporter.ts';
 
 // Inside the package, so `e2e` and `@e2e-dev/cige` resolve the way they do for a user.
 const PROJECT = fileURLToPath(new URL('./tmp-projects/suite/', import.meta.url));
@@ -62,7 +62,7 @@ export default {
   workers: 1,
   retries: 0,
   agents: { default: { executor: scripted } },
-  reporters: [cige({ cases: 'cases/*.cige.json', build: 'test-build' })],
+  reporters: [cige({ cases: ['cases/*.cige.json', 'serial-cases/*.cige.json'], build: 'test-build' })],
 } satisfies E2EConfig;
 `;
 
@@ -122,7 +122,21 @@ const CASES: Record<string, object> = {
   },
 };
 
+const SERIAL_SUITE = `import { describe } from 'e2e';
+import { cigeSuite } from '@e2e-dev/cige';
+
+describe('checkout flow', { serial: true }, () => {
+  cigeSuite('serial-cases/*.cige.json', { root: new URL('..', import.meta.url) });
+});
+`;
+
+const SERIAL_CASES: Record<string, object> = {
+  'a-cart': { id: 'serial-cart', Context: {}, Intent: 'A shopper can fill the cart', Execution: [{ id: 'e1', step: 'add one item to the cart' }] },
+  'b-checkout': { id: 'serial-checkout', Context: {}, Intent: 'A shopper can reach checkout', Execution: [{ id: 'e1', step: 'press the old Checkout button' }] },
+};
+
 let summaries: Record<string, CigeRunSummary>;
+let outcome: Awaited<ReturnType<typeof run>>;
 let exitCode: number;
 let tags: Record<string, readonly string[]>;
 let written: string[];
@@ -130,6 +144,12 @@ let written: string[];
 beforeAll(async () => {
   rmSync(PROJECT, { recursive: true, force: true });
   mkdirSync(path.join(PROJECT, 'cases'), { recursive: true });
+  mkdirSync(path.join(PROJECT, 'tests'), { recursive: true });
+  mkdirSync(path.join(PROJECT, 'serial-cases'), { recursive: true });
+  writeFileSync(path.join(PROJECT, 'tests', 'serial.e2e.ts'), SERIAL_SUITE);
+  for (const [name, testCase] of Object.entries(SERIAL_CASES)) {
+    writeFileSync(path.join(PROJECT, 'serial-cases', `${name}.cige.json`), JSON.stringify(testCase, null, 2));
+  }
   mkdirSync(path.join(PROJECT, 'tests'), { recursive: true });
   writeFileSync(path.join(PROJECT, 'e2e.config.ts'), CONFIG);
   writeFileSync(path.join(PROJECT, 'tests', 'cige.e2e.ts'), SUITE);
@@ -140,7 +160,7 @@ beforeAll(async () => {
   mkdirSync(path.join(PROJECT, '.e2e', 'cige'), { recursive: true });
   writeFileSync(path.join(PROJECT, '.e2e', 'cige', 'retired.run-summary.json'), '{}');
   writeFileSync(path.join(PROJECT, '.e2e', 'cige', 'notes.txt'), 'keep me');
-  const outcome = await run({ cwd: PROJECT });
+  outcome = await run({ cwd: PROJECT });
   exitCode = outcome.exitCode;
   tags = Object.fromEntries(outcome.report.run.results.map((result) => [result.titlePath.at(-1) ?? '', result.tags]));
   const dir = path.join(PROJECT, '.e2e', 'cige');
@@ -161,7 +181,16 @@ describe('cigeSuite through the runner', () => {
   it('registers one tagged test per case, titled by its Intent', () => {
     expect(exitCode).not.toBe(0);
     expect(tags['A shopper can place an order']).toEqual(['cige', 'cige:pass']);
-    expect(Object.keys(summaries).toSorted()).toEqual(['defect', 'evidence', 'guardrail', 'infrastructure', 'pass', 'stale']);
+    expect(Object.keys(summaries).toSorted()).toEqual([
+      'defect',
+      'evidence',
+      'guardrail',
+      'infrastructure',
+      'pass',
+      'serial-cart',
+      'serial-checkout',
+      'stale',
+    ]);
   });
 
   it('replaces the summaries of an earlier run and leaves other files alone', () => {
@@ -214,5 +243,54 @@ describe('cigeSuite through the runner', () => {
       failureType: 'infrastructure',
       classification: { phase: 'precondition', errorCode: 'ENVIRONMENT_UNAVAILABLE' },
     });
+  });
+
+  it('reads the steps of a serial member from its group', () => {
+    expect(summaries['serial-cart']).toMatchObject({ result: 'pass', attempts: 1 });
+    expect(summaries['serial-checkout']).toMatchObject({ result: 'fail', failedStep: 'e1', failureType: 'outdated-test-logic' });
+    expect(summaries['serial-checkout']?.attempts).toBeGreaterThan(0);
+  });
+});
+
+describe('the reporter on a later run', () => {
+  const dir = (): string => path.join(PROJECT, '.e2e', 'cige');
+  function finished(report: typeof outcome.report, lastRun?: typeof outcome.report): Parameters<NonNullable<ReturnType<typeof cige>['onRunFinished']>>[0] {
+    return {
+      report,
+      status: outcome.status,
+      exitCode: outcome.exitCode,
+      projectRoot: PROJECT,
+      reportPath: outcome.reportPath,
+      artifactsRoot: path.join(PROJECT, '.e2e', 'results'),
+      aiTracePath: undefined,
+      traces: new Map(),
+      ...(lastRun === undefined ? {} : { lastRun }),
+    };
+  }
+  const reporter = (): ReturnType<typeof cige> => cige({ cases: ['cases/*.cige.json', 'serial-cases/*.cige.json'] });
+
+  it('keeps the summaries of cases a --last-failed rerun did not run', async () => {
+    const only = (id: string) => outcome.report.run.results.filter((result) => result.tags.includes(`cige:${id}`));
+    const rerun = { ...outcome.report, run: { ...outcome.report.run, results: only('stale') } };
+    await reporter().onRunFinished!(finished(rerun, outcome.report), new AbortController().signal);
+    expect(readdirSync(dir())).toContain('pass.run-summary.json');
+    expect(readdirSync(dir())).toContain('stale.run-summary.json');
+  });
+
+  it('writes a summary for a failure the rerun carried without running it', async () => {
+    rmSync(path.join(dir(), 'defect.run-summary.json'));
+    const carried = outcome.report.run.results.filter((result) => result.tags.includes('cige:defect'));
+    const rerun = { ...outcome.report, run: { ...outcome.report.run, results: [], carried: { results: carried, serialGroups: [], errors: [] } } };
+    await reporter().onRunFinished!(finished(rerun, outcome.report), new AbortController().signal);
+    const summary = JSON.parse(readFileSync(path.join(dir(), 'defect.run-summary.json'), 'utf8')) as CigeRunSummary;
+    expect(summary).toMatchObject({ result: 'fail', failureType: 'product-defect' });
+    expect(summary.classification.signals).toContain('carried-from-earlier-run');
+  });
+
+  it('clears old summaries when a run has no CIGE result to write', async () => {
+    const none = { ...outcome.report, run: { ...outcome.report.run, results: [] } };
+    await reporter().onRunFinished!(finished(none), new AbortController().signal);
+    expect(readdirSync(dir()).filter((file) => file.endsWith('.run-summary.json'))).toEqual([]);
+    expect(readdirSync(dir())).toContain('notes.txt');
   });
 });

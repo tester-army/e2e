@@ -9,7 +9,7 @@
 
 import { test as baseTest, type TestAPI, type TestFixtures, type TestOptions } from 'e2e';
 
-import { loadCigeCases, type CigeRoot } from './load.ts';
+import { checkCases, loadCigeCases, type CigeRoot } from './load.ts';
 import { renderAgentContext } from './render.ts';
 import { missingHooks, runCige, type CigeHooks } from './run.ts';
 import { CigeValidationError, type CigeCase } from './schema.ts';
@@ -41,10 +41,25 @@ export function cigeSuite<Fixtures extends TestFixtures = TestFixtures>(
   cases: string | readonly string[] | readonly CigeCase[],
   suiteOptions: CigeSuiteOptions<Fixtures> = {},
 ): readonly CigeCase[] {
-  const loaded =
-    typeof cases === 'string' || cases.every((entry) => typeof entry === 'string')
-      ? loadCigeCases(cases as string | readonly string[], suiteOptions.root === undefined ? {} : { root: suiteOptions.root })
-      : (cases as readonly CigeCase[]);
+  const globs = typeof cases === 'string' || cases.every((entry) => typeof entry === 'string');
+  const loaded = globs
+    ? loadCigeCases(cases as string | readonly string[], suiteOptions.root === undefined ? {} : { root: suiteOptions.root })
+    : (cases as readonly CigeCase[]);
+  if (globs && loaded.length === 0) {
+    // A mistyped glob must not turn a suite green by registering nothing.
+    throw new CigeValidationError(JSON.stringify(cases), ['matches no file; check the glob and root']);
+  }
+  if (!globs) checkCases(loaded);
+  const titles = new Map<string, string>();
+  for (const testCase of loaded) {
+    const other = titles.get(testCase.intent.statement);
+    if (other !== undefined) {
+      throw new CigeValidationError(testCase.file ?? testCase.id, [
+        `Intent "${testCase.intent.statement}" is also the Intent of "${other}"; one Intent is one test, so merge the cases or reword one`,
+      ]);
+    }
+    titles.set(testCase.intent.statement, testCase.id);
+  }
   const register = (suiteOptions.test ?? baseTest) as TestAPI<Fixtures>;
   const hooks = suiteOptions.hooks ?? {};
   for (const testCase of loaded) {

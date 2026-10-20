@@ -8,6 +8,7 @@ import { breakingGuardrail, createGuardrailMonitor, violatedGuardrail } from '..
 import { loadCigeCases, loadCigeFile } from '../src/load.ts';
 import { actInstruction, GUARDRAIL_HEADING, intentAssertion, renderAgentContext } from '../src/render.ts';
 import { missingHooks, runCige } from '../src/run.ts';
+import { cigeSuite } from '../src/suite.ts';
 import { parseCige, type CigeTestCase } from '../src/schema.ts';
 
 const dirs: string[] = [];
@@ -133,6 +134,38 @@ describe('load', () => {
   });
 });
 
+describe('limits and guards', () => {
+  it('refuses an absolute prompt path, an oversized evidence statement, and oversized params', () => {
+    const dir = project({
+      'absolute.cige.json': JSON.stringify({ Context: { prompts: ['/etc/hosts'] }, Intent: 'x', Execution: ['y'] }),
+      'evidence.cige.json': JSON.stringify({ Context: {}, Intent: { statement: 'x', evidence: ['z'.repeat(9000)] }, Execution: ['y'] }),
+      'params.cige.json': JSON.stringify({ Context: {}, Intent: 'x', Execution: [{ id: 'e1', step: 'y', params: { blob: 'z'.repeat(70_000) } }] }),
+    });
+    expect(() => loadCigeFile(path.join(dir, 'absolute.cige.json'))).toThrow(/must be relative to the case file/);
+    expect(() => loadCigeFile(path.join(dir, 'evidence.cige.json'))).toThrow(/Intent.evidence v1 renders to \d+ bytes/);
+    expect(() => loadCigeFile(path.join(dir, 'params.cige.json'))).toThrow(/params are \d+ bytes of JSON/);
+  });
+
+  it('fails collection on a glob that matches nothing', () => {
+    const dir = project({});
+    expect(() => cigeSuite('tests/cige/*.cige.jsn', { root: dir })).toThrow(/matches no file/);
+  });
+
+  it('holds pre-loaded cases to the same checks as files', () => {
+    const withPrompts = parseCige({ id: 'p', Context: { prompts: ['login.md'] }, Intent: 'P holds', Execution: ['do p'] });
+    expect(() => cigeSuite([withPrompts])).toThrow(/Context.prompts are not read/);
+    const one = parseCige({ id: 'same', Context: {}, Intent: 'One holds', Execution: ['a'] });
+    const two = parseCige({ id: 'same', Context: {}, Intent: 'Two holds', Execution: ['b'] });
+    expect(() => cigeSuite([one, two])).toThrow(/id "same" is already the id of/);
+  });
+
+  it('refuses two cases with one Intent, which would be one test title', () => {
+    const one = parseCige({ id: 'one', Context: {}, Intent: 'A user can sign in', Execution: ['a'] });
+    const two = parseCige({ id: 'two', Context: {}, Intent: 'A user can sign in', Execution: ['b'] });
+    expect(() => cigeSuite([one, two])).toThrow(/is also the Intent of "one"/);
+  });
+});
+
 describe('guardrails', () => {
   const testCase = parseCige(CHECKOUT);
 
@@ -164,28 +197,45 @@ describe('runCige', () => {
 
   it('runs preconditions, Execution, evidence, then Intent, in order', async () => {
     const { fixtures, calls } = fakeFixtures();
-    const seen: string[] = [];
+    // Hooks log into the same sequence as the fixtures, so the interleaving is checked, not just each order.
     await runCige(testCase, fixtures, {
       hooks: {
-        seedCart: () => void seen.push('seedCart'),
+        seedCart: () => void calls.push({ api: 'hook', text: 'seedCart' }),
         orderExists: () => {
-          seen.push('orderExists');
+          calls.push({ api: 'hook', text: 'orderExists' });
           return true;
         },
       },
     });
-    expect(seen).toEqual(['seedCart', 'orderExists']);
     expect(calls.map((call) => `${call.api} ${call.text.split('\n')[0]}`)).toEqual([
       'app.open /cart',
+      'hook seedCart',
       'agent.act apply the code {code}',
       'agent.assert the discount is applied',
       'agent.act pay with the test card',
+      'hook orderExists',
       'agent.assert the total shows the discount',
       'agent.assert A shopper can check out with a discount',
     ]);
-    const first = calls[1]!.options as ActOptions;
-    expect(first.params).toEqual({ code: 'SAVE10' });
-    expect(typeof first.onAction).toBe('function');
+    expect((calls[2]!.options as ActOptions).params).toEqual({ code: 'SAVE10' });
+  });
+
+  it('enforces the deny rules on every act step, replayed actions included', async () => {
+    const { fixtures, calls } = fakeFixtures();
+    await runCige(testCase, fixtures, { hooks: { seedCart: () => undefined, orderExists: () => true } });
+    const acts = calls.filter((call) => call.api === 'agent.act');
+    expect(acts).toHaveLength(2);
+    for (const act of acts) {
+      const onAction = (act.options as ActOptions).onAction!;
+      expect(() => onAction({ index: 1, action: 'tap', summary: 'tap button "Pay"', source: 'replay' })).not.toThrow();
+      let thrown: unknown;
+      try {
+        onAction({ index: 2, action: 'tool:refund', summary: 'ran refund', source: 'replay' });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(isAgentError(thrown) && thrown.code).toBe('POLICY_DENIED');
+    }
   });
 
   it('fails evidence a hook rejects, after every step ran', async () => {

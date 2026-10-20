@@ -42,6 +42,9 @@ export function loadCigeFile(file: string | URL): CigeCase {
   }
   const parsed = parseCige(raw, source);
   const fragments = parsed.context.prompts.map((prompt) => {
+    if (path.isAbsolute(prompt)) {
+      throw new CigeValidationError(source, [`Context.prompts: ${JSON.stringify(prompt)} must be relative to the case file`]);
+    }
     const target = path.resolve(path.dirname(absolute), prompt);
     try {
       return readFileSync(target, 'utf8');
@@ -50,9 +53,31 @@ export function loadCigeFile(file: string | URL): CigeCase {
     }
   });
   const testCase: CigeCase = { ...parsed, file: absolute, context: { ...parsed.context, fragments } };
-  const problems = sizeProblems(testCase);
-  if (problems.length > 0) throw new CigeValidationError(source, problems);
+  checkCases([testCase]);
   return testCase;
+}
+
+/**
+ * What every set of cases must hold before it registers, whether it came
+ * from files or from `parseCige`: each fits the runner's limits, each has
+ * its `prompts` read, and no two share an id, since the id is what tags the
+ * test and names its run summary.
+ */
+export function checkCases(cases: readonly CigeCase[]): void {
+  const byId = new Map<string, CigeCase>();
+  for (const testCase of cases) {
+    const source = display(testCase.file ?? testCase.id);
+    const problems = sizeProblems(testCase);
+    if (testCase.context.fragments.length !== testCase.context.prompts.length) {
+      problems.push('Context.prompts are not read; load the case with loadCigeFile, or read them into context.fragments');
+    }
+    if (problems.length > 0) throw new CigeValidationError(source, problems);
+    const other = byId.get(testCase.id);
+    if (other !== undefined) {
+      throw new CigeValidationError(source, [`id "${testCase.id}" is already the id of ${display(other.file ?? other.id)}; set a distinct "id"`]);
+    }
+    byId.set(testCase.id, testCase);
+  }
 }
 
 /**
@@ -64,15 +89,6 @@ export function loadCigeCases(globs: string | readonly string[], options: LoadOp
   const patterns = typeof globs === 'string' ? [globs] : [...globs];
   const files = [...new Set(globSync(patterns, { cwd }).map((match) => path.resolve(cwd, match)))].toSorted();
   const cases = files.map((file) => loadCigeFile(file));
-  const byId = new Map<string, CigeCase>();
-  for (const testCase of cases) {
-    const other = byId.get(testCase.id);
-    if (other !== undefined) {
-      throw new CigeValidationError(display(testCase.file ?? testCase.id), [
-        `id "${testCase.id}" is already the id of ${display(other.file ?? other.id)}; set a distinct "id"`,
-      ]);
-    }
-    byId.set(testCase.id, testCase);
-  }
+  checkCases(cases);
   return cases;
 }
