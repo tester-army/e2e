@@ -383,9 +383,12 @@ jobs:
           dotnet-version: 10.0.x
       # Restore reads every target framework in the project, so an iOS build
       # still needs the Android workload on macOS (NETSDK1147 without it).
+      # Workload set 10.0.402.1 binds iOS 27.1 and needs Xcode 27.1, which the
+      # runner image does not have yet (MT0180); 10.0.401 builds with its
+      # default Xcode. Drop the pin once the image ships Xcode 27.1.
       - name: MAUI workload
         if: ${{ matrix.toolchain == 'dotnet' }}
-        run: dotnet workload install maui-ios maui-android
+        run: dotnet workload install maui-ios maui-android --version 10.0.401
       - name: Install the packages
         id: setup
         uses: ./.github/actions/example-packages
