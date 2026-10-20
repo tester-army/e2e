@@ -1313,7 +1313,8 @@ export class AgentDeviceSurface {
     } catch (cause) {
       throw staleOr(cause, label, this.where);
     }
-    this.markAction(before);
+    // Text entry can open the keyboard after the first unchanged snapshot.
+    this.markAction(action.kind === 'fill' || action.kind === 'clear' ? undefined : before);
   }
 
   /**
@@ -1369,9 +1370,9 @@ export class AgentDeviceSurface {
     if (options.replace) {
       throw unsupported('agent-device cannot clear the focused field without a node; type into a listed field by id to replace its value');
     }
-    const before = this.latestIndex;
     await this.command('keyboard.type', (client) => input.send(() => client.interactions.type({ text })), operation.signal);
-    this.markAction(before);
+    // Typing may return before the keyboard moves surrounding controls.
+    this.markAction(undefined);
   }
 
   /**

@@ -86,6 +86,18 @@ describe('error translation', () => {
     expect(translateError(refused, 'observe')).toMatchObject({ code: 'ENGINE_FAILURE' });
   });
 
+  it.each(['no', 'unknown', undefined] as const)('retries a moving target only when no input was dispatched (%s)', (dispatched) => {
+    const cause = new AppError('COMMAND_FAILED', 'Target position was not confirmed', {
+      reason: 'target_still_moving',
+      ...(dispatched === undefined ? {} : { dispatched }),
+    });
+    expect(staleOr(cause, 'perform tap')).toMatchObject({
+      code: dispatched === 'no' ? 'NODE_STALE' : 'ENGINE_FAILURE',
+      retryable: dispatched === 'no',
+      cause,
+    });
+  });
+
   it('maps the rest to ENGINE_FAILURE with the text, a ref named in a message without a stale reason included', () => {
     expect(staleOr(new Error('ref @e12 not found in the current snapshot'), 'perform tap')).toMatchObject({
       code: 'ENGINE_FAILURE',

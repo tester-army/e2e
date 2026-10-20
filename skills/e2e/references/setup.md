@@ -376,8 +376,10 @@ export default {
   exactly, TestMu AI installs `app` (omit `app.appPath`), and it reads
   `LT_USERNAME` and `LT_ACCESS_KEY`. An attempt's video links TestMu AI's
   recording of the whole session.
-- Only a control that appeared or moved with the previous action waits out
-  `transition` (default 500 ms); agent actions settle `settle` ms (default
+- A control that appeared or moved with the previous action waits out
+  `transition` (default 500 ms). After typing, filling, or clearing, even an
+  unchanged control waits out the remaining budget because the keyboard may
+  move it later. Agent actions settle `settle` ms (default
   150) before the next observation, `settle: false` skips it.
 - `screen`, `expect`, `app`, `agent` work unchanged; `test` from
   `@e2e-dev/mobile` types the `device` fixture (`installApp`, `openLink`,

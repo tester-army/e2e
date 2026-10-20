@@ -279,8 +279,10 @@ export async function runCommand<T>(label: string, work: () => Promise<T>, signa
  */
 export function staleOr(cause: unknown, operation: string, where?: string): Error {
   if (isClassified(cause)) return cause;
-  const { reason } = details(cause);
-  if (typeof reason === 'string' && STALE_REF_REASONS.has(reason)) {
+  const { reason, dispatched } = details(cause);
+  // A moving-target refusal is safe to retry only when no input was sent.
+  if ((typeof reason === 'string' && STALE_REF_REASONS.has(reason)) ||
+      (reason === 'target_still_moving' && dispatched === 'no')) {
     return new EngineError('NODE_STALE', `${operation}: ${message(cause)}`, { retryable: true, cause });
   }
   return translateError(cause, operation, where);
