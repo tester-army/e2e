@@ -1014,6 +1014,20 @@ describe('a screen agent-device cannot read yet', () => {
     }
   });
 
+  it('locates nothing on an iOS app not running yet after a launch, and fails on one that exits later', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const notRunning = () => {
+      throw new AppError('COMMAND_FAILED', "app 'com.foo' is not running", { runnerErrorCode: 'APP_NOT_RUNNING' });
+    };
+    h.fake.respond('capture.snapshot', notRunning);
+    await expect(h.engine.locate!(ABOUT, operation())).resolves.toEqual([]);
+    h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
+    await expect(h.engine.locate!(ABOUT, operation())).resolves.toHaveLength(1);
+    h.fake.respond('capture.snapshot', notRunning);
+    await expect(h.engine.locate!(ABOUT, operation())).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+  });
+
   it('still fails an observation on it', async () => {
     const h = harness({ platform: 'android' });
     await openAttempt(h);

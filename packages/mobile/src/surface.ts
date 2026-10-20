@@ -44,7 +44,7 @@ import {
   ConfigurationError,
   TestError,
 } from 'e2e/engine';
-import { isSnapshotPresentationFailure, isUnreadableCapture, runCommand, staleOr } from './errors.ts';
+import { isAppNotRunning, isSnapshotPresentationFailure, isUnreadableCapture, runCommand, staleOr } from './errors.ts';
 import { pointerInteraction, DEFAULT_LONG_PRESS_MS } from './actions.ts';
 import { resolveExpression } from './locate.ts';
 import {
@@ -372,6 +372,8 @@ export class AgentDeviceSurface {
   private readonly located = new Map<string, NodeBinding>();
   private idCounter = 0;
   private appIdentity: string | undefined;
+  /** True from a launch until a snapshot succeeds: an app iOS reports not running in between is still starting, not gone. */
+  private launching = false;
   /** The app the build `appPath` installed, once `init` has, itself or through a lease. */
   private installedApp: string | undefined;
   /** The target's app, as `init` received it. */
@@ -821,6 +823,7 @@ export class AgentDeviceSurface {
    */
   private launched(identity: string | undefined): void {
     if (identity !== undefined) this.appIdentity = identity;
+    this.launching = true;
     this.screenReplaced();
   }
 
@@ -894,6 +897,7 @@ export class AgentDeviceSurface {
       if (backoffMs > 0) await sleep(backoffMs, signal);
       if (signal.aborted) throw new EngineError('CANCELLED', 'snapshot cancelled', { retryable: false });
       last = await this.capture(signal, interactiveOnly);
+      this.launching = false;
       if (last.appBundleId !== undefined || last.appName !== undefined) {
         this.appIdentity = last.appBundleId ?? last.appName;
       }
@@ -935,9 +939,9 @@ export class AgentDeviceSurface {
 
   /**
    * Snapshot for a locate; undefined for a screen agent-device could not read
-   * yet (an app still on its splash). The harness polls a locate until its
-   * deadline, so that screen matches nothing and the poll waits for it to
-   * render. A capture that leaves no budget for another poll fails with the
+   * yet (an app still on its splash, or one iOS does not report running yet
+   * after a launch). The harness polls a locate until its deadline, so that
+   * screen matches nothing and the poll waits for it to render. A capture that leaves no budget for another poll fails with the
    * reason instead, so a wait that ends on an unreadable screen says so.
    */
   private async locateSnapshot(operation: OperationContext): Promise<RawSnapshot | undefined> {
@@ -945,7 +949,8 @@ export class AgentDeviceSurface {
     try {
       return await this.snapshotOrEmpty(operation, false);
     } catch (cause) {
-      if (operation.signal.aborted || !isUnreadableCapture(cause) || Date.now() - startedMs >= operation.timeoutMs) throw cause;
+      const arriving = isUnreadableCapture(cause) || (this.launching && isAppNotRunning(cause));
+      if (operation.signal.aborted || !arriving || Date.now() - startedMs >= operation.timeoutMs) throw cause;
       return undefined;
     }
   }
