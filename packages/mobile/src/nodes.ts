@@ -283,6 +283,21 @@ function describedRole(source: RawNode): string | undefined {
   return REACT_NATIVE_ROLE_DESCRIPTIONS[source.roleDescription.toLowerCase()];
 }
 
+/**
+ * Whether a field is empty and showing its hint, whose text the platform
+ * reports as the value. UIAutomator flags it with `hintShowing`. XCTest has
+ * no flag: an empty iOS field reports its placeholder as its value, so a
+ * value equal to the placeholder reads as empty, the same test agent-device's
+ * runner makes. A field holding exactly its placeholder text reads empty too;
+ * the snapshot cannot tell the two apart.
+ */
+function showsHint(source: RawNode, android: boolean, editable: boolean): boolean {
+  if (source.hintShowing === true) return true;
+  if (android || !editable) return false;
+  const placeholder = source.placeholder?.trim();
+  return placeholder !== undefined && placeholder !== '' && source.value?.trim() === placeholder;
+}
+
 /** The string itself, or undefined for an absent or empty one. */
 function nonEmpty(value: string | undefined): string | undefined {
   return value === undefined || value === '' ? undefined : value;
@@ -418,9 +433,7 @@ export function projectSnapshot(
     const spelled = android || kind !== 'other' ? undefined : reactNativeValue(source.value);
     const role = editableRole(spelled?.role ?? describedRole(source) ?? roleOf(kind, android, parent?.kind), source.editable);
     const editable = source.editable === true || (role !== undefined && TEXT_INPUT_ROLES.has(role));
-    // A field showing its hint is empty: XCTest reports the placeholder as the
-    // value of an empty text field, and the bridge flags that with hintShowing.
-    const value = source.hintShowing === true ? '' : spelled === undefined ? source.value : spelled.value;
+    const value = showsHint(source, android, editable) ? '' : spelled === undefined ? source.value : spelled.value;
     // iOS names a secure field by class; UIAutomator flags a password
     // `EditText` by attribute, the class being the plain one.
     const secure = SECURE_KINDS.has(kind) || source.password === true;
