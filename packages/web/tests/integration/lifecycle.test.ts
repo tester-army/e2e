@@ -965,6 +965,37 @@ describe('web engine lifecycle', () => {
     });
   });
 
+  it('captures observation pixels without mutating input or textarea inline style attributes', async () => {
+    const engine = web();
+    await withAttempt(engine, app, artifactsDir, 'cstyle', async () => {
+      await engine.session!.open!(`${app.url}/form`, operation('cstyle'));
+      const page = surfaceOf(engine)!.page();
+      await page.setContent(`
+        <input id="test-input" value="hello">
+        <textarea id="test-textarea">world</textarea>
+      `);
+      await page.focus('#test-input');
+
+      await page.evaluate(() => {
+        (window as unknown as { mutations: MutationRecord[] }).mutations = [];
+        const observer = new MutationObserver((records) => {
+          (window as unknown as { mutations: MutationRecord[] }).mutations.push(...records);
+        });
+        observer.observe(document.getElementById('test-input')!, { attributes: true, attributeFilter: ['style'] });
+        observer.observe(document.getElementById('test-textarea')!, { attributes: true, attributeFilter: ['style'] });
+      });
+
+      const snapshot = await engine.observe!(operation('cstyle'), { pixels: true });
+      expect(snapshot.pixels).toBeDefined();
+
+      const mutations = await page.evaluate(() => (window as unknown as { mutations: MutationRecord[] }).mutations);
+      expect(mutations).toHaveLength(0);
+
+      expect(await page.getAttribute('#test-input', 'style')).toBeNull();
+      expect(await page.getAttribute('#test-textarea', 'style')).toBeNull();
+    });
+  });
+
   it('reports the configured test-id attribute as testId, on observed and located nodes alike', async () => {
     const engine = web({ testIdAttribute: 'data-qa' });
     const byTestId = (value: string): LocatorExpression => ({
