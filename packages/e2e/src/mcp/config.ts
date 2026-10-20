@@ -6,7 +6,7 @@ import { resolveConfig, type ResolvedConfig } from '../config/resolve.ts';
 
 export interface ProjectOptions {
   readonly cwd: string;
-  /** An explicit config file, relative to `cwd`; otherwise the nearest `e2e.config.ts` from `cwd` upward. */
+  /** An explicit config file, relative to `cwd`; otherwise the nearest config file (`e2e.config.ts`, `.mts`, `.js`, or `.mjs`) from `cwd` upward. */
   readonly configPath?: string | undefined;
 }
 
