@@ -244,6 +244,14 @@ describe('decisionFilter', () => {
     expect(requests).toEqual([]);
   });
 
+  it('asks nothing and logs nothing when a wrapper hands it no tests', async () => {
+    const { context, logs } = filterContext(cartRepo());
+    const { model, requests } = scriptedJudge(() => 0);
+    expect(await decisionFilter({ model }).filter([], context)).toEqual({ exclude: {} });
+    expect(requests).toEqual([]);
+    expect(logs).toEqual([]);
+  });
+
   it('sends a renamed file as a rename and a deleted file without its lines', async () => {
     const body = Array.from({ length: 20 }, (_, i) => `export const line${i} = ${i};`).join('\n');
     const repo = changedRepo({ 'src/old.ts': `${body}\n`, 'src/gone.ts': 'export const gone = true;\n', [LOGIN]: "test('signs in', async () => {});\n" }, {});

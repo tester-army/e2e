@@ -377,9 +377,9 @@ describe('telemetry events', () => {
     });
     report.run.filters = [
       { name: 'acme-areas', candidates: 3, excluded: 2, note: 'acme note' },
-      { name: 'acme-jev', candidates: 1, excluded: 0, note: 'did not finish within 5m: running every test it was given', timedOut: true },
-      { name: 'acme-owners', candidates: 1, excluded: 0, note: 'failed, running every test it was given: acme CODEOWNERS not found', failed: true },
-      { name: 'acme-pages', candidates: 1, excluded: 0, note: 'returned an invalid result, running every test it was given: unknown key "acme"', failed: true },
+      { name: 'acme-jev', candidates: 1, excluded: 0, note: 'did not finish within 5m, so it leaves nothing out', timedOut: true },
+      { name: 'acme-owners', candidates: 1, excluded: 0, note: 'failed, so it leaves nothing out: acme CODEOWNERS not found', failed: true },
+      { name: 'acme-pages', candidates: 1, excluded: 0, note: 'returned an invalid result, so it leaves nothing out: unknown key "acme"', failed: true },
     ];
     report.run.changes = { base: 'acacacacacacacacacacacacacacacacacacacac', files: 12, pinned: 2 };
     const event = runCompletedEvent(report, RUN);

@@ -481,11 +481,11 @@ ${edit}
     const report = reportOf(project);
     expect(executedTests(report)).toEqual(['alpha', 'beta']);
     expect(report.run.filters).toEqual([
-      { name: 'slow', candidates: 3, excluded: 0, note: 'did not finish within 50ms: running every test it was given', timedOut: true },
-      { name: 'boom', candidates: 3, excluded: 0, note: 'failed, running every test it was given: kaboom', failed: true },
+      { name: 'slow', candidates: 3, excluded: 0, note: 'did not finish within 50ms, so it leaves nothing out', timedOut: true },
+      { name: 'boom', candidates: 3, excluded: 0, note: 'failed, so it leaves nothing out: kaboom', failed: true },
       { name: 'areas', candidates: 3, excluded: 1 },
     ]);
-    expect(notices).toContain('warning: boom failed, running every test it was given: kaboom');
+    expect(notices).toContain('warning: boom failed, so it leaves nothing out: kaboom');
     // A step that left nothing out never reads as done.
     expect(finished).toEqual([{ name: 'slow', outcome: 'timed out' }, { name: 'boom', outcome: 'failed' }, { name: 'areas', outcome: undefined }]);
   });
@@ -696,6 +696,6 @@ describe('e2e list with filters', () => {
     const thrown = cli(project, ['list', '--reporter', 'json', '--changed-since', 'main'], { FILTER_MODE: 'boom' });
     expect(thrown.exitCode, thrown.output).toBe(0);
     expect((JSON.parse(thrown.stdout) as { pairs: ListedPair[] }).pairs.map((pair) => [pair.title, pair.disposition])).toEqual([['alpha', 'run'], ['beta', 'run'], ['gamma', 'run']]);
-    expect(thrown.stderr).toBe([judging, 'areas: asking about 3 tests', 'warning: areas failed, running every test it was given: kaboom', ''].join('\n'));
+    expect(thrown.stderr).toBe([judging, 'areas: asking about 3 tests', 'warning: areas failed, so it leaves nothing out: kaboom', ''].join('\n'));
   });
 });

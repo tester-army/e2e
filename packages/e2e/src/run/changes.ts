@@ -94,8 +94,9 @@ const PULL_REQUEST_TARGET = 'pull_request_target runs every test';
  * GitHub Actions `pull_request` run, whose base is the first of the event's
  * `pull_request.base.sha`, the first parent of the merge commit GitHub
  * checks out, and `origin/<GITHUB_BASE_REF>` that is in the checkout; then
- * a GitLab merge request pipeline's `CI_MERGE_REQUEST_DIFF_BASE_SHA`, unless
- * it is a merge train. The files are
+ * a GitLab merge request pipeline's `CI_MERGE_REQUEST_TARGET_BRANCH_SHA` on
+ * a merged results pipeline, else its `CI_MERGE_REQUEST_DIFF_BASE_SHA`,
+ * unless it is a merge train. The files are
  * what differs from the merge base of that commit and HEAD: for a request,
  * in HEAD, so a file CI writes is not its change; for `--changed-since`, in
  * the working tree, untracked files included. Every git call together has
@@ -135,7 +136,8 @@ function baseSource(changedSince: string | undefined, env: NodeJS.ProcessEnv): B
     return { kind: 'github', eventPath: env['GITHUB_EVENT_PATH'] || undefined, baseRef: env['GITHUB_BASE_REF'] || undefined, sha: env['GITHUB_SHA'] || undefined };
   }
   // A merge train is GitLab's merge queue: the last gate before the target branch runs every test.
-  const sha = env['CI_MERGE_REQUEST_DIFF_BASE_SHA'];
+  // A merged results pipeline checks out the merge into the target branch's tip, so the change is measured from that tip.
+  const sha = env['CI_MERGE_REQUEST_TARGET_BRANCH_SHA'] || env['CI_MERGE_REQUEST_DIFF_BASE_SHA'];
   if (env['GITLAB_CI'] === 'true' && env['CI_MERGE_REQUEST_EVENT_TYPE'] !== 'merge_train' && sha !== undefined && sha !== '') return { kind: 'gitlab', sha };
   return undefined;
 }
@@ -194,7 +196,7 @@ async function githubBase(root: string, source: Extract<BaseSource, { kind: 'git
   return commit === undefined ? { commit, named: event.base, missing: merge ? MERGE_PARENT : REQUESTS.github.fullHistory } : { commit };
 }
 
-/** A GitLab merge request's base commit, `CI_MERGE_REQUEST_DIFF_BASE_SHA`, in the checkout. */
+/** A GitLab merge request's base commit, the target branch's tip or the diff base, in the checkout. */
 async function gitlabBase(root: string, sha: string, git: Git): Promise<RequestBase> {
   const commit = COMMIT_HASH.test(sha) ? await commitOf(root, sha, git) : undefined;
   return commit === undefined ? { commit, named: sha, missing: REQUESTS.gitlab.fullHistory } : { commit };

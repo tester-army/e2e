@@ -344,7 +344,15 @@ describe('applyTestFilters', () => {
     await applyTestFilters([threw], candidates, value);
     for (const log of logs) log('too late');
     expect(logs).toHaveLength(2);
-    expect(notices).toEqual(['warning: jev failed, running every test it was given: no diff']);
+    expect(notices).toEqual(['warning: jev failed, so it leaves nothing out: no diff']);
+  });
+
+  it('leaves nothing out when a filter throws a value that cannot be shown as text', async () => {
+    const candidates = await candidatesOf('a');
+    const { scope: value, notices } = scope();
+    const applied = await applyTestFilters([filterOf('odd', () => Promise.reject(Object.create(null)))], candidates, value);
+    expect(applied.excluded.size).toBe(0);
+    expect(notices).toEqual(['warning: odd failed, so it leaves nothing out: a value that cannot be shown as text']);
   });
 
   it('ignores an id it was not given whose test is collected, since that test\'s fate is settled: a setup test, a test another flag left out, and one an earlier filter left out, which keeps that filter\'s reason', async () => {
@@ -375,7 +383,7 @@ describe('applyTestFilters', () => {
       expect(notices).toEqual([`warning: areas ${note}`]);
       return note;
     }
-    const PREFIX = 'returned an invalid result, running every test it was given: ';
+    const PREFIX = 'returned an invalid result, so it leaves nothing out: ';
     /** The refusal of any key but exclude and note. */
     const UNKNOWN = ": a filter returns { exclude: { [test.id]: reason }, note? }, and every test it doesn't name runs";
     /** The refusal of an id no collected test has. */
@@ -481,7 +489,7 @@ describe('applyTestFilters', () => {
       leaveWorkBehind.mockClear();
       const applied = await applyTestFilters([filterOf('areas', decide), filterOf('later', later)], candidates, value);
       const note = applied.decisions[0]?.note ?? '';
-      expect(note).toMatch(/^failed, running every test it was given: git diff failed with <secret:[^>]+> x+…$/u);
+      expect(note).toMatch(/^failed, so it leaves nothing out: git diff failed with <secret:[^>]+> x+…$/u);
       expect([...note]).toHaveLength(1024);
       expect(notices).toEqual([`warning: areas ${note}`]);
       expect(applied.decisions).toEqual([
@@ -550,8 +558,8 @@ describe('a filter past the deadline', () => {
       expect(later).toHaveBeenCalledWith(candidates, expect.anything());
       expect(steps).toEqual(['slow', 'later']);
       expect(ended).toEqual(['slow: timed out', 'later: answered']);
-      expect(notices).toEqual(['warning: slow did not finish within 50ms: running every test it was given']);
-      expect(applied.decisions[0]).toEqual({ name: 'slow', candidates: 2, note: 'did not finish within 50ms: running every test it was given', timedOut: true });
+      expect(notices).toEqual(['warning: slow did not finish within 50ms, so it leaves nothing out']);
+      expect(applied.decisions[0]).toEqual({ name: 'slow', candidates: 2, note: 'did not finish within 50ms, so it leaves nothing out', timedOut: true });
       expect([...applied.excluded.keys()]).toEqual([idOf(candidates, 'a')]);
     } finally {
       vi.useRealTimers();
@@ -569,8 +577,8 @@ describe('a filter past the deadline', () => {
     );
     const { scope: value, notices } = scope({ timeoutMs: 20 });
     const applied = await applyTestFilters([obedient], candidates, value);
-    expect(applied.decisions).toEqual([{ name: 'jev', candidates: 1, note: 'did not finish within 20ms: running every test it was given', timedOut: true }]);
-    expect(notices).toEqual(['warning: jev did not finish within 20ms: running every test it was given']);
+    expect(applied.decisions).toEqual([{ name: 'jev', candidates: 1, note: 'did not finish within 20ms, so it leaves nothing out', timedOut: true }]);
+    expect(notices).toEqual(['warning: jev did not finish within 20ms, so it leaves nothing out']);
   });
 
   it('warns and records the work it left behind at once, before the next filter is called, and leaves none behind for a filter that answers or fails', async () => {
@@ -586,9 +594,9 @@ describe('a filter past the deadline', () => {
       return invalid<TestFilterResult>({ exclude: [] });
     });
     await applyTestFilters([hanging('slow').filter, refused], candidates, value);
-    const warning = 'warning: slow did not finish within 10ms: running every test it was given';
+    const warning = 'warning: slow did not finish within 10ms, so it leaves nothing out';
     expect(called).toEqual({ leftBehind: 1, notices: [warning] });
-    expect(notices).toEqual([warning, 'warning: refused returned an invalid result, running every test it was given: exclude must be a plain object of test ids to reasons, got an array']);
+    expect(notices).toEqual([warning, 'warning: refused returned an invalid result, so it leaves nothing out: exclude must be a plain object of test ids to reasons, got an array']);
     expect(leaveWorkBehind).toHaveBeenCalledTimes(1);
   });
 });
@@ -624,7 +632,7 @@ describe('filterRecords and filterSummary', () => {
     expect(records).toEqual([
       { name: 'areas', candidates: 4, excluded: 1, note: 'src/todos changed' },
       { name: 'jev', candidates: 2, excluded: 1 },
-      { name: 'boom', candidates: 1, excluded: 0, note: 'failed, running every test it was given: kaboom', failed: true },
+      { name: 'boom', candidates: 1, excluded: 0, note: 'failed, so it leaves nothing out: kaboom', failed: true },
     ]);
     expect(summaries).toEqual(['areas kept 3 of 4 tests, left out 1 (src/todos changed)', 'jev kept 1 of 2 tests, left out 1', undefined]);
     expect(filterSummary({ name: 'slow', candidates: 2, excluded: 0, timedOut: true })).toBeUndefined();

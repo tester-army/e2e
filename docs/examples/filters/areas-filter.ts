@@ -14,7 +14,7 @@ export const areas = {
   filter(tests, { changes }) {
     const reached = new Set<string>();
     for (const file of changes.files) {
-      if (file.endsWith('.e2e.ts')) continue;
+      if (file.includes('.e2e.ts')) continue;
       const area = Object.keys(AREAS).find((prefix) => file.startsWith(prefix));
       if (area === undefined) return { exclude: {}, note: `${file} is in no area, so areas leaves nothing out` };
       for (const tag of AREAS[area] ?? []) reached.add(tag);

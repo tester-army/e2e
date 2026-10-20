@@ -38,8 +38,8 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status or switch
 | `--tag <tags>` | Any of the tags, comma-separated or repeated; all of them with `--tag-mode all`. An empty `--target`, `--tag`, or `--agent` value is a usage error, exit 2. |
 | `--exclude-tag <tags>` | Drop tests carrying any of these tags, however selected. |
 | `--grep <pattern>`, `--grep-invert <pattern>` | Keep, or drop, tests whose title (describe titles and test title joined by spaces, `checkout pays`; not file or tags) matches a regular expression. Bare pattern or `'/pattern/i'`; repeat for alternatives. |
-| `--no-filter` | Skip the configured `filters`. Without it, they run only when there is a change to judge (a GitHub pull request, a GitLab merge request, or `--changed-since`), in config order, on the tests the other flags and `--shard` kept, and leave out the tests they name; every other test runs. Nothing left to run passes and starts no app. A filter that throws or returns an invalid result leaves nothing out: the run warns and runs every test it was given. First run only under `--watch`. |
-| `--changed-since <ref>` | The change the filters judge: every file that differs from the merge base of the ref and HEAD, uncommitted and untracked included, over a detected pull or merge request (`--changed-since origin/main`). A ref with no commit or no shared history is `INVALID_CHANGED_SINCE`, exit 2. |
+| `--no-filter` | Skip the configured `filters`. Without it, they run only when there is a change to judge (a GitHub pull request, a GitLab merge request, or `--changed-since`), in config order, on the tests the other flags and `--shard` kept, and leave out the tests they name; every other test runs. Nothing left to run passes and starts no app. A filter left with no tests is not called. A filter that throws, returns an invalid result, or runs past 5 minutes (its `signal` aborts) leaves nothing out: the run warns and the next filter judges every test it was given. First run only under `--watch`. |
+| `--changed-since <ref>` | The change the filters judge: every file that differs from the merge base of the ref and HEAD, uncommitted and untracked included, over a detected pull or merge request (`--changed-since origin/main`), never on `pull_request_target`. When the filters run, a ref with no commit or no shared history is `INVALID_CHANGED_SINCE`, exit 2; with `--no-filter`, `--last-failed`, or `pull_request_target` the flag is ignored. |
 | `--last-failed` | The tests the previous run (`<output>/report.json`) did not pass or never ran (`--max-failures` and `--max-duration` included), plus every test in a failed `beforeAll` or `afterAll` scope. A test another filter leaves out stays owed (`run.carried` in the report) until a rerun runs it. The configured `filters` never judge a rerun. No report is `NO_LAST_RUN`, exit 2. |
 | `--shard <index/total>` | One contiguous slice of the selected tests (`--shard 2/3`), cut after every other flag; serial groups stay whole, each shard brings its own setup tests, and the configured `filters` then judge only that slice. |
 | `--headed` | Visible browser or simulator when the engine supports it. |
@@ -265,7 +265,7 @@ jobs:
   or merge request or with `--changed-since <ref>`, never on
   `pull_request_target`. Tests in a changed test file, with changed stored
   screenshots, or using a changed setup file's sessions, every test on a
-  lockfile (any package manager) or config change, and a `--last-failed`
+  known lockfile or config change, and a `--last-failed`
   rerun always run; `--no-filter` runs everything. Wrap `decisionFilter` in
   your own filter to narrow `changes.files` or always run some tests.
   Reference: https://e2e.tester.army/docs/filters

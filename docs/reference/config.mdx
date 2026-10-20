@@ -1097,10 +1097,13 @@ export default {
   test the filter wasn't given, such as one `--shard` or an earlier filter
   left out, is ignored. A test of a serial group still runs when another
   test of its group does.
-- Each filter gets only the tests the one before it kept.
-- A filter that throws, returns an invalid result, or runs past 5 minutes
-  leaves nothing out, and the run warns. Past 5 minutes, `signal` aborts
-  with a `TimeoutError` and the run stops waiting.
+- Each filter gets only the tests the one before it kept, and is not
+  called when none are left.
+- A filter that throws, runs past 5 minutes, or returns an invalid result
+  (not `{ exclude, note? }`, an `exclude` key that is no collected test's
+  `id`, or an empty reason) leaves nothing out, and the run warns. Past 5
+  minutes, `signal` aborts with a `TimeoutError` and the run stops
+  waiting.
 - Do the work inside `filter`. Workers load the config too, and only the
   runner calls `filter`.
 

@@ -54,13 +54,14 @@ steps:
 ```
 
 The model reads the diff of the changed files, the test files, and the
-setup files that save their sessions, with secrets redacted. On a pull
+setup files that save their sessions, with secrets redacted, except a value
+a secret provider returns. On a pull
 request, the change is what its commits change, so files CI writes don't
 count. The filter leaves out a test when the model rates both the test and
 its setup under 20% likely affected. When the model can't answer, the
 tests it didn't judge run, and the filter's note says why. This happens
 without a key, as on a pull request from a fork, for a diff over 60 kB, and
-for a test file too large to send with the diff. The filter needs `ai`
+for a test or setup file too large to send with the diff. The filter needs `ai`
 7.0.134 or later.
 
 Any [decision model](/decision-models) that answers `boolean` questions
@@ -92,23 +93,30 @@ no app, and makes the same model calls as a run. To run every test, add
 ## What always runs
 
 - Every test, when the run isn't on a pull or merge request and has no
-  `--changed-since`.
+  `--changed-since`, or when no file changed since the merge base.
 - Every test on `pull_request_target`, even with `--changed-since`: it can
   hand a fork's change to the model beside your secrets.
-- The tests in a changed test file, the tests whose stored screenshots
-  changed, and the tests that use a changed setup file's sessions.
-- Every test, when the config file or a lockfile of any package manager
-  changes, such as `pnpm-lock.yaml`, `Podfile.lock`, `gradle.lockfile`,
-  `Gemfile.lock`, `go.sum`, or `Cargo.lock`.
+- The tests in a test file that changed or whose stored screenshots
+  changed, and the tests that use the sessions of such a setup file.
+- Every test, when the config file, Gradle's `libs.versions.toml`, or a
+  lockfile changes anywhere in the repository. Lockfiles are known by name,
+  such as `pnpm-lock.yaml`, `Podfile.lock`, `gradle.lockfile`,
+  `Gemfile.lock`, `go.sum`, or `Cargo.lock`; the model judges any other.
 - A `--last-failed` rerun, so `e2e run || e2e run --last-failed` is safe.
-- Every test, when a shallow checkout can't measure a pull request's change.
-  A warning says how to fix the checkout.
-- Every test a filter was given, when it throws, returns something other
-  than `{ exclude, note? }`, or runs past 5 minutes. A warning says so.
+- Every test, when git can't measure a pull or merge request's change,
+  such as in a shallow checkout. A warning says why.
 
-GitLab merge request pipelines work the same way. On another CI service,
-pass `--changed-since origin/main` and fetch enough history for the merge
-base. With `--shard`, the filters on each machine judge only its slice.
+A filter that throws, returns something other than `{ exclude, note? }`,
+or runs past 5 minutes leaves nothing out, and a warning says so. The next
+filter still judges every test it was given.
+
+GitLab merge request pipelines work the same way, and a merged results
+pipeline is measured from the target branch's tip. On another CI service,
+pass `--changed-since origin/main` on pull request builds, and fetch enough
+history for the merge base. With the flag, uncommitted and untracked files
+count too, and a ref git can't measure from fails the run with
+`INVALID_CHANGED_SINCE`. With `--shard`, the filters on each machine judge
+only its slice.
 
 ## What you see
 
@@ -151,10 +159,15 @@ export const tuned = {
 ```
 
 Put `tuned` in `filters` in place of `decisionFilter(...)`. To run every
-test on one pull request, turn a label into `--no-filter`:
+test on one pull request, turn a label into `--no-filter`, and add
+`labeled` to the events so adding the label starts a run:
 
 ```yaml title=".github/workflows/e2e.yml"
-- run: npx e2e run ${{ contains(github.event.pull_request.labels.*.name, 'all-tests') && '--no-filter' || '' }}
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+# ...
+      - run: npx e2e run ${{ contains(github.event.pull_request.labels.*.name, 'all-tests') && '--no-filter' || '' }}
 ```
 
 ## Write your own
@@ -180,7 +193,7 @@ export const areas = {
   filter(tests, { changes }) {
     const reached = new Set<string>();
     for (const file of changes.files) {
-      if (file.endsWith('.e2e.ts')) continue;
+      if (file.includes('.e2e.ts')) continue;
       const area = Object.keys(AREAS).find((prefix) => file.startsWith(prefix));
       if (area === undefined) return { exclude: {}, note: `${file} is in no area, so areas leaves nothing out` };
       for (const tag of AREAS[area] ?? []) reached.add(tag);
@@ -213,7 +226,8 @@ export default {
 
 - Every test you don't name runs, and so does a test you name in a serial
   group another of its tests runs in.
-- Each filter judges only the tests the one before it kept.
+- Each filter judges only the tests the one before it kept, and is not
+  called when none are left.
 - Pass `signal` to every call, and `redact` what you send to a model.
 
 See [`filters`](/reference/config#filters) in the config reference for the

@@ -320,4 +320,15 @@ describe('findChanges on a GitLab merge request pipeline', () => {
     }
     expect(await lookUp(dir, { env: { GITLAB_CI: 'true' } })).toEqual({ kind: 'none', reason: 'not a pull request', warning: false });
   });
+
+  it("measures a merged results pipeline from the target branch's tip, so the target's own commits are not the change", async () => {
+    const { dir, base, mainTip } = featureRepo();
+    checkOutMerge(dir);
+    const env = { GITLAB_CI: 'true', CI_MERGE_REQUEST_EVENT_TYPE: 'merged_result', CI_MERGE_REQUEST_DIFF_BASE_SHA: base };
+    expect(filesOf(await lookUp(dir, { env }))).toEqual(['docs/later.md', 'src/app.ts', 'tests/new.e2e.ts']);
+    expect(await lookUp(dir, { env: { ...env, CI_MERGE_REQUEST_TARGET_BRANCH_SHA: mainTip } })).toMatchObject({
+      kind: 'found',
+      changes: { base: mainTip, files: ['src/app.ts', 'tests/new.e2e.ts'] },
+    });
+  });
 });

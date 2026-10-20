@@ -1498,13 +1498,15 @@ export interface Reporter {
  * request, or `--changed-since <ref>`. Without one, no filter is called and
  * every test runs; a `--last-failed` rerun calls none, and under `--watch`
  * they judge the first run only. A filter is called once, in the runner
- * process. Workers load the config too and never call it, so constructing
- * one must have no side effects: read git, the environment, or the network
- * inside `filter`. A call past 5 minutes leaves nothing out: the run stops
- * waiting and runs every test the filter was given.
+ * process, and not at all when the filters before it left no test. Workers
+ * load the config too and never call it, so constructing one must have no
+ * side effects: read git, the environment, or the network inside `filter`.
+ * A call that throws, returns an invalid result, or runs past 5 minutes
+ * leaves nothing out: the run warns, and the next filter judges every test
+ * this one was given.
  */
 export interface TestFilter {
-  /** Names the filter in the report and in errors: ASCII letters, numbers, `_`, `-`, and `.`, at most 256 characters, unique among `filters`. */
+  /** Names the filter in the report and in errors: ASCII letters, numbers, `_`, `-`, and `.`, not only dots, at most 256 characters, unique among `filters`. */
   readonly name: string;
   /** Decides which of `tests` to leave out; every test the result does not name runs. */
   readonly filter: (tests: readonly TestFilterCandidate[], context: TestFilterContext) => TestFilterResult | Promise<TestFilterResult>;

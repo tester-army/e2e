@@ -481,14 +481,14 @@
         "name": "jev",
         "candidates": 1,
         "excluded": 0,
-        "note": "did not finish within 5m: running every test it was given",
+        "note": "did not finish within 5m, so it leaves nothing out",
         "timedOut": true
       },
       {
         "name": "owners",
         "candidates": 1,
         "excluded": 0,
-        "note": "failed, running every test it was given: CODEOWNERS not found",
+        "note": "failed, so it leaves nothing out: CODEOWNERS not found",
         "failed": true
       }
     ],

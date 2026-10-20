@@ -293,16 +293,20 @@ same layout as its own rows. The `json` reporter does not carry them.
 
 - A test a [test filter](/filters) left out is an unselected result with
   `skip.cause` `filtered` and `skip.filter` naming the filter.
-- `run.filters` holds one record per filter that ran, in order: `name`,
-  `candidates`, `excluded` (the tests left out once serial groups took back
-  their members), `note`, `failed: true` when the filter threw or returned
-  an invalid result, and `timedOut: true` when the filter ran past 5
-  minutes and left nothing out.
-- With filters configured and without `--no-filter`, `run.changes` holds the
-  change they judged, by counts: `base` (the merge base), `files`, `pinned`
-  (the tests that ran without filters because their test file, or the setup
-  file of their session, changed), and `skipped` (why no filter ran, such as
-  `not a pull request`).
+- `run.filters` holds one record per filter that was called, in order:
+  `name`, `candidates`, `excluded` (the tests left out once serial groups
+  took back their members), `note` (cut to 1024 characters; for a filter
+  that failed, the warning saying why), `failed: true` when the filter
+  threw or returned an invalid result, and `timedOut: true` when the filter
+  ran past 5 minutes and left nothing out. A filter left with no tests is
+  not called and has no record.
+- Once the filters have decided, `run.changes` holds the change they
+  judged, by counts: `base` (the merge base), `files`, `pinned` (the tests
+  that ran without filters because their test file, the setup file of
+  their session, or either one's stored screenshots changed), and `skipped`
+  (why no filter ran, such as `not a pull request`). It is absent with
+  `--no-filter`, under `e2e explore`, on `--watch` reruns, and when the run
+  ends before the filters decide.
 - A failure while the filters decide, such as `INVALID_CHANGED_SINCE`, is
   in `run.errors` with `phase` `filter`.
 

@@ -240,8 +240,8 @@ Redaction matches strings. These pass through:
   pad,
 - a case mapping that changes length (`ß` shown as `SS`), for the cut-text
   rule,
-- a value a secret provider returns, in titles, since titles are redacted
-  before any provider runs,
+- a value a secret provider returns, in titles and in what a test filter
+  sees or sends, since both are redacted before any provider runs,
 - console output of tests that run in the runner's own process, when an
   embedding host passes the config or tests in memory,
 - video: it masks nothing and is labeled `redaction: "incomplete"`. A

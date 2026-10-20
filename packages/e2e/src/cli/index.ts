@@ -204,7 +204,7 @@ function selectionOptions(command: Command): Command {
     .option('--grep <pattern>', 'only tests whose title matches the regular expression (describe titles and test title, space-joined); repeat for alternatives', parsePattern)
     .option('--grep-invert <pattern>', 'leave out tests whose title matches the regular expression; repeat for alternatives', parsePattern)
     .option('--no-filter', 'run without the configured test filters: every test the other flags select')
-    .option('--changed-since <ref>', 'judge the test filters on what changed since this git ref, such as origin/main, as on a pull request')
+    .option('--changed-since <ref>', 'judge the test filters on what differs from the merge base of this git ref, such as origin/main, uncommitted and untracked files included')
     .option('--last-failed', 'only the tests the previous run did not pass, read from <output>/report.json')
     .option('--shard <index/total>', 'one contiguous slice of the selected tests, such as 2/3; serial groups stay together', parseShard)
     .option('--pass-with-no-tests', 'exit 0 on an empty selection instead of NO_TESTS');

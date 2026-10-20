@@ -156,13 +156,15 @@ process sees an edit.
 - `shard` is the `--shard index/total` slice.
 - `noFilter` skips the configured [test filters](/filters), as `--no-filter`
   does. Otherwise they run in the calling process when there is a change to
-  judge, and may call a model.
+  judge, and may call a model. `list` prints none of their lines or
+  warnings; `e2e list` does.
 - `changedSince` is a git ref the test filters judge the change since, as
   `--changed-since` does.
 - `passWithNoTests` resolves with no runnable test instead of throwing
   `NO_TESTS`.
 - `output` is the results directory.
-- `env` is the environment the config resolves against.
+- `env` is the environment the config resolves against, and the one the
+  test filters detect a pull or merge request from.
 
 ##### Result
 
@@ -211,8 +213,8 @@ try {
 | --- | --- |
 | `NO_TESTS` | The selection is empty and `passWithNoTests` is not set. A `ConfigurationError`. When the test filters leave nothing to run, `list` resolves instead, with every pair `filtered` or `skip`. |
 | `UNKNOWN_TARGET` | A name in `targets` is not a configured target. |
-| `INVALID_CHANGED_SINCE` | `changedSince` names a ref git can't measure a change from. |
-| The codes `run` records | The config is missing, the loader refused it, collection failed, or a test filter failed. |
+| `INVALID_CHANGED_SINCE` | The test filters run, and `changedSince` names a ref git can't measure a change from. |
+| The codes `run` records | The config is missing, the loader refused it, or collection failed. |
 
 #### `openHost`
 

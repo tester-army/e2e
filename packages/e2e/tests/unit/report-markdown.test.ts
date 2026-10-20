@@ -864,10 +864,10 @@ describe('a run test filters narrowed', () => {
   });
 
   it('reads a filter that kept every test or left every test out, and one that failed and so left nothing out, by its note', () => {
-    const failed = record({ name: 'owners', candidates: 1, excluded: 0, note: 'failed, running every test it was given: CODEOWNERS not found', failed: true });
+    const failed = record({ name: 'owners', candidates: 1, excluded: 0, note: 'failed, so it leaves nothing out: CODEOWNERS not found', failed: true });
     const kept = renderMarkdownReport(page({ results: [passing], filters: [record({ candidates: 1, excluded: 0, note: 'not a pull request: running every test' }), failed] }));
     expect(kept).toContain('### 🟢 e2e: 1 passed\n');
-    expect(kept).toContain('**Filter** `areas` kept all 1 test (not a pull request: running every test)  \n**Filter** `owners` kept all 1 test (failed, running every test it was given: CODEOWNERS not found)\n');
+    expect(kept).toContain('**Filter** `areas` kept all 1 test (not a pull request: running every test)  \n**Filter** `owners` kept all 1 test (failed, so it leaves nothing out: CODEOWNERS not found)\n');
     expect(kept).not.toContain('left out by filters');
     expect(renderMarkdownReport(page({ results: [leftOut('pays', 'areas', 'unaffected')], filters: [record({ candidates: 1, excluded: 1 })] }))).toContain('**Filter** `areas` left out all 1 test\n');
   });

@@ -85,6 +85,8 @@ interface Answers {
  * names what the model did not judge, and what the calls spent.
  */
 async function judge(tests: readonly TestFilterCandidate[], context: TestFilterContext, options: DecisionFilterOptions): Promise<TestFilterResult> {
+  // A wrapper may hand on no tests: nothing to ask, and no diff to read.
+  if (tests.length === 0) return { exclude: {} };
   const { changes, signal, log, redact } = context;
   const { modelId } = options.model;
   log(`asking ${modelId} about ${counted(tests.length, 'test')} in ${counted(new Set(tests.map((test) => test.file)).size, 'file')}`);

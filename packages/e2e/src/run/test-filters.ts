@@ -184,7 +184,7 @@ export async function applyTestFilters(
       // Said now, not with the summaries: an interrupt during a later filter would drop them.
       if (call.outcome === 'timed out') leaveWorkBehind();
       // The detail goes last, so a long one is what the cut shortens.
-      const note = cut(call.outcome === 'timed out' ? `did not finish within ${budget}: running every test it was given` : `${call.problem}, running every test it was given: ${redact(call.detail)}`);
+      const note = cut(call.outcome === 'timed out' ? `did not finish within ${budget}, so it leaves nothing out` : `${call.problem}, so it leaves nothing out: ${redact(call.detail)}`);
       scope.notice(`warning: ${name} ${note}`);
       decisions.push({ name, candidates: input.length, note, ...(call.outcome === 'timed out' ? { timedOut: true } : { failed: true }) });
       continue;
