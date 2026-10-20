@@ -1160,9 +1160,27 @@ describe('discoverConfig', () => {
     });
   });
 
-  it('refuses both spellings side by side, and an explicit path that does not exist', () => {
+  it('discovers a JavaScript config', () => {
+    inTree(['.git/', 'e2e.config.js', 'web/e2e.config.mjs'], (root) => {
+      expect(discoverConfig(root).configPath).toBe(path.join(root, 'e2e.config.js'));
+      expect(discoverConfig(path.join(root, 'web')).configPath).toBe(path.join(root, 'web/e2e.config.mjs'));
+    });
+  });
+
+  it('prefers a TypeScript config over the JavaScript tsc emits beside it', () => {
+    inTree(['.git/', 'e2e.config.ts', 'e2e.config.js'], (root) => {
+      expect(discoverConfig(root).configPath).toBe(path.join(root, 'e2e.config.ts'));
+    });
+  });
+
+  it('refuses two spellings side by side, and an explicit path that does not exist', () => {
     inTree(['.git/', 'e2e.config.ts', 'e2e.config.mts', 'custom/my.config.ts'], (root) => {
       expect(() => discoverConfig(root)).toThrow(expect.objectContaining({ code: 'CONFIG_AMBIGUOUS' }));
+    });
+    inTree(['.git/', 'e2e.config.js', 'e2e.config.mjs', 'custom/my.config.ts'], (root) => {
+      expect(() => discoverConfig(root)).toThrow(
+        expect.objectContaining({ code: 'CONFIG_AMBIGUOUS', message: expect.stringContaining('e2e.config.js and e2e.config.mjs') }),
+      );
       expect(discoverConfig(root, 'custom/my.config.ts')).toEqual({
         configPath: path.join(root, 'custom/my.config.ts'),
         projectRoot: path.join(root, 'custom'),

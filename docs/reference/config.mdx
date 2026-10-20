@@ -105,6 +105,8 @@ tests: ['tests/**/*.e2e.ts', '!tests/wip/**'], // default: 'tests/**/*.e2e.ts'
   directory an exclusion takes whole, skips `node_modules`, and ignores
   symlinks.
 - A dot directory is included only when a glob segment starts with a dot.
+- The default selects TypeScript only. For JavaScript tests, set
+  `'tests/**/*.e2e.js'` ([JavaScript](#javascript)).
 
 | Throws | When |
 | --- | --- |
@@ -1341,8 +1343,12 @@ How the runner finds the config and loads it and the files it imports.
 
 - `--config <path>` selects an explicit file.
 - Otherwise the runner searches the working directory and each parent for
-  `e2e.config.ts` or `e2e.config.mts`, stopping at the repository root.
-- Both names in one directory is `CONFIG_AMBIGUOUS`.
+  `e2e.config.ts`, `e2e.config.mts`, `e2e.config.js`, or `e2e.config.mjs`,
+  stopping at the repository root.
+- A TypeScript config wins over a JavaScript one in the same directory, so
+  the `e2e.config.js` that `tsc` emits beside `e2e.config.ts` is ignored.
+- Both TypeScript names, or both JavaScript names, in one directory is
+  `CONFIG_AMBIGUOUS`.
 - The selected file's directory is the project root.
 
 ### `.env` files
@@ -1372,6 +1378,40 @@ from a subdirectory, pass `new URL('.env', import.meta.url)` instead.
 - A `.ts` file written with `require` or `module.exports` fails to load: name
   it `.cts`.
 - JavaScript keeps the format its package declares.
+
+### JavaScript
+
+A config and tests can be plain JavaScript, with no `tsconfig.json`:
+
+```js title="e2e.config.js"
+import { web } from '@e2e-dev/web';
+import { gateway } from 'ai';
+
+/** @type {import('e2e').E2EConfig} */
+export default {
+  tests: 'tests/**/*.e2e.js',
+  agents: { default: { model: gateway('openai/gpt-6-luna-fast') } },
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
+};
+```
+
+- Name the config `e2e.config.js` or `e2e.config.mjs`
+  ([Finding the config file](#finding-the-config-file)).
+- Write ES modules. Set `"type": "module"` in `package.json`, or name the
+  files `.mjs`. Without either, Node.js warns on every load that it reparsed
+  the file as ESM.
+- Set [`tests`](#tests): the default selects only `*.e2e.ts`. Use
+  `'tests/**/*.e2e.mjs'` for `.mjs` tests. List `'tests/**/*.e2e.ts'` as
+  well to run both kinds while you move a suite.
+- The `@type` comment does the job of `satisfies E2EConfig`: an editor
+  completes keys and shows their documentation. Test fixtures get their
+  types from the `test` import, with no annotation.
+- The runner never type-checks. For editor errors, add `// @ts-check` to a
+  file, or `"checkJs": true` to a `jsconfig.json`.
+- A JavaScript file imports a TypeScript helper by its `.ts` name
+  (`'./helpers.ts'`), not `.js`; see [Import resolution](#import-resolution).
+  Under `checkJs`, that import also needs `"allowImportingTsExtensions": true`
+  and `"noEmit": true`.
 
 ### Import resolution
 

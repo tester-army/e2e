@@ -676,6 +676,10 @@ describe('select', () => {
     ).toThrow(
       'found tests/login.test.ts, tests/a.spec.ts, tests/b.spec.ts and 1 more, which the pattern does not match: rename to *.e2e.ts, or set tests in the config to a glob that matches',
     );
+    expect(() => select(emptyCollection(['tests/a.e2e.js', 'tests/b.e2e.js']), config())).toThrow(
+      'found tests/a.e2e.js, tests/b.e2e.js, which the pattern does not match: set tests in the config to a glob such as "tests/**/*.e2e.js"',
+    );
+    expect(() => select(emptyCollection(['tests/a.e2e.js', 'tests/b.e2e.mjs']), config())).toThrow('rename to *.e2e.ts');
     expect(() => select(emptyCollection(), config(), {}, { passWithNoTests: true })).not.toThrow();
   });
 

@@ -445,6 +445,10 @@ function describeNoTests(
   if (discovered.length === 0) {
     const globs = config.tests.map((glob) => `"${glob}"`).join(', ');
     const where = `no test file matched ${globs} under ${config.projectRoot}`;
+    const javascript = ['.e2e.js', '.e2e.mjs'].find((suffix) => nearMisses.length > 0 && nearMisses.every((file) => file.endsWith(suffix)));
+    if (javascript !== undefined) {
+      return `${where}; found ${nameFiles(nearMisses)}, which the pattern does not match: set tests in the config to a glob such as "tests/**/*${javascript}"`;
+    }
     if (nearMisses.length > 0) {
       return `${where}; found ${nameFiles(nearMisses)}, which the pattern does not match: rename to *.e2e.ts, or set tests in the config to a glob that matches`;
     }

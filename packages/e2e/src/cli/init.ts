@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, unl
 import os from 'node:os';
 import path from 'node:path';
 import { detectPackageManager, execCommand, runScriptCommand } from '../internal/package-manager.ts';
+import { CONFIG_NAMES, JS_CONFIG_NAMES } from '../config/names.ts';
 import { DOCS_URL } from './docs-url.ts';
 import {
   describeLinks,
@@ -130,8 +131,9 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
     return done('invalid-project', 2);
   }
 
-  const existingConfig = ['e2e.config.ts', 'e2e.config.mts'].find((file) => existsSync(path.join(cwd, file)));
-  const examplePath = path.join('tests', 'example.e2e.ts');
+  const existingConfig = CONFIG_NAMES.find((file) => existsSync(path.join(cwd, file)));
+  const javascript = JS_CONFIG_NAMES.some((name) => name === existingConfig);
+  const examplePath = path.join('tests', javascript ? 'example.e2e.js' : 'example.e2e.ts');
   const exampleExists = existsSync(path.join(cwd, examplePath));
   facts.existingConfig = existingConfig !== undefined;
   if (existingConfig !== undefined) clack.log.warn(`Exists, not touching: ${existingConfig}`);
@@ -343,7 +345,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
       return done('install-failed', result.signal === 'SIGINT' ? 130 : 2);
     }
   }
-  if (!existsSync(path.join(cwd, 'tsconfig.json'))) {
+  if (!javascript && !existsSync(path.join(cwd, 'tsconfig.json'))) {
     clack.log.info('No tsconfig.json; add one for editor completions on e2e.config.ts and tests/');
   }
   // The script init adds, unless the project already had one of its own under that name.

@@ -83,7 +83,7 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
 
 ## Workflow: writing a test
 
-1. Look at what exists: `e2e.config.ts` or `e2e.config.mts`, the `tests` glob
+1. Look at what exists: `e2e.config.ts`, `.mts`, `.js`, or `.mjs`, the `tests` glob
    (default `tests/**/*.e2e.ts`), `e2e` in `package.json`. Nothing there:
    follow `setup` when the user has requested e2e (see Rules).
 2. Learn the screens before writing a test: routes, labels, roles, button

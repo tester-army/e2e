@@ -225,7 +225,7 @@ await session.fixtures.app.open('/checkout');
 
 | Option | Example | Type | Default |
 | --- | --- | --- | --- |
-| `config` | `'e2e.config.ts'` | `string \| E2EConfig` | nearest `e2e.config.ts` or `e2e.config.mts` |
+| `config` | `'e2e.config.ts'` | `string \| E2EConfig` | nearest `e2e.config.ts`, `.mts`, `.js`, or `.mjs` |
 | `cwd` | `'apps/web'` | `string` | `process.cwd()` |
 | `target` | `'android'` | `string` | the only target |
 | `env` | `process.env` | `NodeJS.ProcessEnv` | `process.env` |
