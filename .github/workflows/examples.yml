@@ -381,9 +381,11 @@ jobs:
         if: ${{ matrix.toolchain == 'dotnet' }}
         with:
           dotnet-version: 10.0.x
+      # Restore reads every target framework in the project, so an iOS build
+      # still needs the Android workload on macOS (NETSDK1147 without it).
       - name: MAUI workload
         if: ${{ matrix.toolchain == 'dotnet' }}
-        run: dotnet workload install maui-ios
+        run: dotnet workload install maui-ios maui-android
       - name: Install the packages
         id: setup
         uses: ./.github/actions/example-packages
