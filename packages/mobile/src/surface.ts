@@ -1152,11 +1152,16 @@ export class AgentDeviceSurface {
     return this.relocated(entry, operation);
   }
 
-  /** The same control in a fresh snapshot; the binding as it was when the snapshot no longer lists it. */
+  /** The same control in a fresh snapshot; otherwise re-resolve before sending input. */
   private async relocated(entry: NodeBinding, operation: OperationContext): Promise<NodeBinding> {
     const projected = this.project(await this.snapshotOrEmpty(operation, false));
     const found = this.refind(entry, projected.index);
-    return found === undefined ? entry : this.bind(found, projected.index);
+    // A fresh snapshot can assign the old numeric ref to a different control.
+    // Let the locator re-resolve instead of dispatching input to that ref.
+    if (found === undefined) {
+      throw new EngineError('NODE_STALE', 'target changed during transition; re-resolve', { retryable: true });
+    }
+    return this.bind(found, projected.index);
   }
 
   /**
