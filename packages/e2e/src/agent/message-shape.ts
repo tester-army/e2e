@@ -18,31 +18,16 @@ const PROVIDER_KEYS = new Set(['providerOptions', 'providerMetadata']);
  * the live message afterwards, bytes included, shows against it.
  */
 export function shapeOf(message: ModelMessage): string {
-  const hash = createHash('sha256');
-  const walk = (value: unknown): void => {
-    if (value instanceof Uint8Array) {
-      hash.update(`<bytes ${String(value.byteLength)}>`);
-      hash.update(value);
-    } else if (value instanceof ArrayBuffer) {
-      walk(new Uint8Array(value));
-    } else if (Array.isArray(value)) {
-      hash.update('[');
-      for (const item of value) walk(item);
-      hash.update(']');
-    } else if (typeof value === 'object' && value !== null && !(value instanceof URL)) {
-      hash.update('{');
-      for (const [key, item] of Object.entries(value)) {
-        if (PROVIDER_KEYS.has(key) || item === undefined) continue;
-        hash.update(JSON.stringify(key));
-        hash.update(':');
-        walk(item);
-      }
-      hash.update('}');
-    } else {
-      hash.update(JSON.stringify(value instanceof URL ? value.href : value));
-      hash.update(',');
-    }
-  };
-  walk(message);
-  return hash.digest('hex');
+  const json = JSON.stringify(message, function (this: Record<string, unknown>, key: string, value: unknown) {
+    if (PROVIDER_KEYS.has(key)) return undefined;
+    // Read from the holder: a Buffer has been through its own `toJSON` by the time `value` arrives.
+    const raw = this[key];
+    if (raw instanceof ArrayBuffer) return `<bytes ${sha256(new Uint8Array(raw))}>`;
+    return raw instanceof Uint8Array ? `<bytes ${sha256(raw)}>` : value;
+  });
+  return sha256(json);
+}
+
+function sha256(data: string | Uint8Array): string {
+  return createHash('sha256').update(data).digest('hex');
 }

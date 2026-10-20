@@ -23,6 +23,17 @@ describe('message shapes', () => {
     expect(shapeOf(structuredClone(message))).toBe(shapeOf(message));
   });
 
+  it('read a Buffer by its bytes, like the plain array it holds', () => {
+    const buffered: ModelMessage = {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Execute this test step: look.' },
+        { type: 'file', data: Buffer.from(bytes()), mediaType: 'image/png' },
+      ],
+    };
+    expect(shapeOf(buffered)).toBe(shapeOf(screenshot()));
+  });
+
   it('ignore provider options, where a cache breakpoint moves and a signature rides', () => {
     const plain: ModelMessage = { role: 'assistant', content: [{ type: 'reasoning', text: '' }, { type: 'text', text: 'ok' }] };
     const marked: ModelMessage = {
