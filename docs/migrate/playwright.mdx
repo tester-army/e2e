@@ -242,7 +242,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `page.viewportSize()` | `browser.evaluate(() => ({ width: innerWidth, height: innerHeight }))` | missing |
 | `page.screenshot()` | `app.screenshot(label)`: the viewport, redacted, attached to the report; no `fullPage` | renamed |
 | a fresh `context` per test | every attempt starts in a fresh context; `app.restart()` recreates it, `app.clearState()` also clears storage | same |
-| `page.pause()` | `--headed` to watch, [`e2e mcp`](/mcp) to drive the app from a coding agent | missing |
+| `page.pause()` | `--headed` to watch, [`e2e mcp`](/mcp-server) to drive the app from a coding agent | missing |
 
 </Accordion>
 <Accordion title="Network and browser">
@@ -317,7 +317,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `--quiet` | not yet | missing |
 | `-u`, `--update-snapshots` | the same; rewrites the stored screenshots that differ | same |
 | `--list` | `npx e2e list`, with the same selection flags | renamed |
-| `npx playwright codegen` | `npx e2e explore` walks the app from a goal and reports what it found; `npx e2e mcp` lets a coding agent drive the app while it writes the test, see [MCP server](/mcp) | renamed |
+| `npx playwright codegen` | `npx e2e explore` walks the app from a goal and reports what it found; `npx e2e mcp` lets a coding agent drive the app while it writes the test, see [MCP server](/mcp-server) | renamed |
 | `npx playwright show-trace` | no viewer; open the `trace.md` under `.e2e/results/` that the terminal names | by design |
 | `npx playwright show-report` | `.e2e/summary.md` from the `markdown` reporter | missing |
 | `npx playwright install` | `npx @e2e-dev/web install`, for the Playwright version the engine pins; a run also installs a missing browser on its own | renamed |
