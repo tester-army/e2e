@@ -104,8 +104,9 @@ export interface MobileOptions {
    * report a control's final position from the first frame of a transition,
    * so this budget is the only thing that keeps a test from tapping a point
    * the control has not reached; controls already on screen at the same
-   * place before the action are acted on at once. Raise it for slower
-   * transitions.
+   * place before the action are acted on at once, except after typing, filling,
+   * or clearing, when the keyboard may move them later. Those actions give
+   * the next control the remaining budget. Raise it for slower transitions.
    */
   readonly transition?: number | undefined;
   /**
