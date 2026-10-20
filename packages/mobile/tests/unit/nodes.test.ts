@@ -424,7 +424,7 @@ describe('snapshot projection', () => {
     const field = project([{ ref: 'e1', type: 'TextField', label: 'Kind', value: 'checkbox, unchecked' }]);
     expect(field.index[0]?.node).toMatchObject({ role: 'textbox', value: 'checkbox, unchecked' });
     expect(field.index[0]?.node.states?.checked).toBeUndefined();
-    // An empty iOS field reports its placeholder as its value, with no flag saying so (a React Native TextInput, as captured).
+    // An empty iOS field reports its placeholder as its value, with no flag saying so (examples/with-expo's TextInput, agent-device 0.21.28, iOS 26.5).
     const empty = project([{ ref: 'e1', type: 'TextField', label: 'Name', value: 'Ada Lovelace', placeholder: 'Ada Lovelace', identifier: 'name', editable: true }]);
     expect(empty.index[0]?.node).toMatchObject({ role: 'textbox', name: 'Name', attributes: { placeholder: 'Ada Lovelace' } });
     expect(empty.index[0]?.node.value).toBeUndefined();
