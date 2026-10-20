@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://e2e.tester.army/schema/cige-1.schema.json",
+  "title": "CIGE test case, version 1",
+  "description": "An agentic test case in the CIGE standard: Context grounds the run, Intent states why the test exists and what a pass needs, Guardrails say what the agent must never do, and Execution is the first path to try. See https://www.amazon.science/publications/cige-an-agentic-ai-test-case-standard. The lowercase field names context, intent, guardrails, and execution are accepted as aliases of the capitalized ones.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["Context", "Intent", "Execution"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "cige": { "const": 1, "description": "The version of this format." },
+    "id": { "$ref": "#/$defs/id", "description": "The stable id that tags the test (cige:<id>) and names its run summary; default a slug of the Intent statement." },
+    "Context": { "$ref": "#/$defs/context" },
+    "Intent": {
+      "description": "The outcome that must be true for the test to pass. Intent rarely changes, and no agent changes it without human approval.",
+      "oneOf": [{ "$ref": "#/$defs/text" }, { "$ref": "#/$defs/intent" }]
+    },
+    "Guardrails": {
+      "type": "array",
+      "description": "What the agent must never do. Every guardrail reaches the acting agent; one with deny is also checked by the runner after every action.",
+      "items": { "oneOf": [{ "$ref": "#/$defs/text" }, { "$ref": "#/$defs/guardrail" }] }
+    },
+    "Execution": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The first path to try, one goal per entry. Steps are guidance a repair may change while Intent and Guardrails hold.",
+      "items": { "oneOf": [{ "$ref": "#/$defs/text" }, { "$ref": "#/$defs/act" }, { "$ref": "#/$defs/verify" }] }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+    "text": { "type": "string", "minLength": 1, "pattern": "\\S" },
+    "context": {
+      "type": "object",
+      "description": "The operating ground. Everything but specRef, buildRef, tools, and open becomes the test's agentContext, which every agent step reads, so it holds facts, never instructions.",
+      "additionalProperties": true,
+      "properties": {
+        "system": { "$ref": "#/$defs/text", "description": "The app or service under test." },
+        "environment": { "$ref": "#/$defs/text" },
+        "actor": { "$ref": "#/$defs/text", "description": "Who the agent acts as." },
+        "agent": {
+          "description": "The configured agent (agents.<name>) or agents the test runs as.",
+          "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/id" } }]
+        },
+        "open": { "$ref": "#/$defs/text", "description": "The app path to open before the first step." },
+        "tools": { "type": "array", "items": { "$ref": "#/$defs/text" }, "description": "Documentation of the tools the agent has; configure them on the agents entry." },
+        "preconditions": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/text" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["hook"],
+                "properties": {
+                  "hook": { "$ref": "#/$defs/id", "description": "A hook your code passes to cigeSuite, run before the first step." },
+                  "description": { "$ref": "#/$defs/text" }
+                }
+              }
+            ]
+          }
+        },
+        "facts": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+        "prompts": { "type": "array", "items": { "$ref": "#/$defs/text" }, "description": "Paths, relative to this file, of reusable context fragments." },
+        "specRef": { "$ref": "#/$defs/text", "description": "A pointer to the spec that defines expected behavior. Never sent to the model; read only to classify a failure." },
+        "buildRef": { "$ref": "#/$defs/text", "description": "A pointer to the build under test and its release notes. Never sent to the model." }
+      }
+    },
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statement"],
+      "properties": {
+        "statement": { "$ref": "#/$defs/text" },
+        "success": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+        "failure": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+        "evidence": {
+          "type": "array",
+          "description": "What a pass requires beyond the steps running: a judgment of the screen, or a hook in your code such as a backend check.",
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/text" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["assert"],
+                "properties": { "id": { "$ref": "#/$defs/id" }, "assert": { "$ref": "#/$defs/text" }, "vision": { "type": "boolean" } }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["hook"],
+                "properties": { "id": { "$ref": "#/$defs/id" }, "hook": { "$ref": "#/$defs/id" }, "description": { "$ref": "#/$defs/text" } }
+              }
+            ]
+          }
+        },
+        "judge": { "type": "boolean", "description": "Judge the statement on screen once the evidence holds; default true." }
+      }
+    },
+    "guardrail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "rule": { "$ref": "#/$defs/text" },
+        "deny": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Actions the runner stops the step on: an action name (tap, navigate, tool:refund) or a prefix ending in *, and case-insensitive regular expressions matched against the action's summary.",
+          "properties": {
+            "actions": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/text" } },
+            "summary": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/text" } }
+          }
+        }
+      }
+    },
+    "act": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "step"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "step": { "$ref": "#/$defs/text" },
+        "params": { "type": "object", "description": "Values the step refers to as {name}." }
+      }
+    },
+    "verify": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "verify"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "verify": { "$ref": "#/$defs/text" },
+        "vision": { "type": "boolean" }
+      }
+    }
+  }
+}

@@ -1,0 +1,283 @@
+---
+title: CIGE test cases
+description: Write tests as Context, Intent, Guardrails, and Execution, and hand failures to agents that classify and repair them.
+icon: "clipboard-check"
+"og:image": "https://e2e.tester.army/docs/images/og/cige.png?v=e3d7b2ccd2"
+"twitter:image": "https://e2e.tester.army/docs/images/og/cige.png?v=e3d7b2ccd2"
+---
+
+[CIGE](https://www.amazon.science/publications/cige-an-agentic-ai-test-case-standard)
+is a test case standard for agentic testing. A case has four fields:
+
+| Field | Says | Changes |
+| --- | --- | --- |
+| Context | Where the test runs: the system, the environment, the actor, the state it starts from | When the environment drifts |
+| Intent | Why the test exists and what a pass needs | Rarely, and only with human approval |
+| Guardrails | What the agent must never do | Only to get stricter |
+| Execution | The first path to try | Whenever the product's flow changes |
+
+`@e2e-dev/cige` runs CIGE cases written as `.cige.json` files. Each case
+becomes one e2e test. The `cige()` reporter writes one run summary per case,
+which an agent reads to classify a failure before it repairs anything.
+
+## Install
+
+<CodeGroup>
+```bash npm
+npm install -D @e2e-dev/cige
+```
+
+```bash pnpm
+pnpm add -D @e2e-dev/cige
+```
+
+```bash bun
+bun add -d @e2e-dev/cige
+```
+</CodeGroup>
+
+## Write a case
+
+```json title="tests/cige/checkout.cige.json"
+{
+  "$schema": "../../node_modules/@e2e-dev/cige/schema/cige-1.schema.json",
+  "id": "checkout-discount",
+  "Context": {
+    "system": "Shop web app",
+    "environment": "staging",
+    "actor": "a signed-in shopper",
+    "open": "/cart",
+    "preconditions": [
+      "The discount code SAVE10 is active",
+      { "hook": "seedCart", "description": "The cart holds two of ITEM-100" }
+    ],
+    "specRef": "docs/specs/checkout.md",
+    "buildRef": "CHANGELOG.md"
+  },
+  "Intent": {
+    "statement": "A shopper can check out with a valid discount code",
+    "success": ["The confirmation shows an order number", "The total is 10% below the subtotal"],
+    "evidence": [{ "id": "order-record", "hook": "orderPersisted" }]
+  },
+  "Guardrails": [
+    "Use only the test card",
+    { "id": "no-refund", "rule": "Never refund an order", "deny": { "actions": ["tool:refund"], "summary": ["refund"] } }
+  ],
+  "Execution": [
+    { "id": "e1", "step": "apply the discount code {code}", "params": { "code": "SAVE10" } },
+    { "id": "e2", "verify": "the total shows the discount" },
+    { "id": "e3", "step": "pay with the test card" }
+  ]
+}
+```
+
+- `id` tags the test `cige:<id>` and names its run summary. Without one, the
+  id is the Intent statement in lowercase words joined by dashes.
+- The file is checked against `schema/cige-1.schema.json`, which the package
+  ships. The field names `context`, `intent`, `guardrails`, and `execution`
+  read the same as the capitalized ones.
+- `Intent` and `Execution` entries may be plain strings. An Execution string
+  gets the id `e1`, `e2`, and so on, by position. A guardrail string gets
+  `g1`, `g2`, and so on.
+
+## Register the cases
+
+Call `cigeSuite` from a test file. It loads the cases while the file
+evaluates. A case that does not validate, or that names a hook you did not
+pass, fails collection before any test runs.
+
+```ts title="tests/cige.e2e.ts"
+import { cigeSuite } from '@e2e-dev/cige';
+
+cigeSuite('tests/cige/*.cige.json', {
+  hooks: {
+    // Precondition: seed the cart through the test API, not the UI.
+    seedCart: async () => {
+      await fetch('http://localhost:3000/test-api/cart', { method: 'POST', body: '{"sku":"ITEM-100","qty":2}' });
+    },
+    // Evidence: the order exists in the backend, not only on the confirmation page.
+    orderPersisted: async ({ screen }) => {
+      const orderId = await screen.getByTestId('order-id').textContent();
+      const response = await fetch(`http://localhost:3000/test-api/orders/${orderId}`);
+      return response.ok;
+    },
+  },
+});
+```
+
+Globs resolve from the working directory, or from `root`. Pass `test` to
+register through a `test.extend()` chain, and `options` for the `timeout`,
+`retries`, or extra `tags` every case gets. Run one case by its id:
+
+<CodeGroup>
+```bash npm
+npx e2e run --tag cige:checkout-discount
+```
+
+```bash pnpm
+pnpm exec e2e run --tag cige:checkout-discount
+```
+
+```bash bun
+bunx e2e run --tag cige:checkout-discount
+```
+</CodeGroup>
+
+## How a case runs
+
+The test's title is the Intent statement. Its body runs these steps in
+order and fails on the first one that doesn't hold:
+
+1. `app.open(Context.open)`, when the case sets it.
+2. Each precondition hook.
+3. Each Execution entry. A `step` is one [`agent.act`](/reference/agent#agent-act)
+   goal, with its `params`. A `verify` is one `agent.assert`.
+4. Each piece of evidence. A string or an `assert` entry is one
+   `agent.assert`. A `hook` entry runs your code: return `false` or throw to
+   fail it.
+5. `agent.assert` of the Intent statement, with its `success` and `failure`
+   criteria. Set `"judge": false` to skip this check when the screen can't
+   show the Intent. A case with `"judge": false` needs evidence or a `verify`
+   step, or it fails to load.
+
+Context reaches the model as the test's
+[`agentContext`](/agents#instructions-and-vocabulary). It holds the system,
+environment, actor, text preconditions, `facts`, and the files `prompts`
+names. `specRef`, `buildRef`, and `tools` never reach the model. Context's
+`agent` pins the test to [agents](/agents#pin-an-agent-in-the-suite) by name.
+
+## Guardrails
+
+Every guardrail is added to each `act` instruction under a fixed heading, so
+the acting agent reads it. The judges behind `assert` don't read it. A
+guardrail is in the instruction, so changing one changes the step's
+[cache](/cache) key and the step records again.
+
+A guardrail with `deny` is also checked by the runner after every action of
+an `act` step, through [`onAction`](/reference/agent#agent-act). That includes
+actions the cache replays:
+
+| `deny` | Matches |
+| --- | --- |
+| `actions` | An action name such as `tap`, `navigate`, or `tool:refund`, or a prefix that ends in `*`, such as `tool:*` |
+| `summary` | A case-insensitive regular expression tested against the action's summary, such as `tap button "Refund order"` |
+
+A match stops the step with `POLICY_DENIED`. The message names the
+guardrail, for example `CIGE guardrail no-refund violated by tool:refund`.
+
+<Note>
+`onAction` runs after an action. A `deny` rule stops the step right after
+the action. It can't prevent the action. Keep tests that could cause
+damage, like real payments, out of environments where that damage counts.
+</Note>
+
+## Run summaries
+
+Add the reporter to the config:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { cige } from '@e2e-dev/cige';
+import { gateway } from 'ai';
+
+export default {
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
+  agents: { default: { model: gateway('openai/gpt-6-luna-fast') } },
+  reporters: ['list', cige({ cases: 'tests/cige/*.cige.json', build: process.env.GITHUB_SHA })],
+} satisfies E2EConfig;
+```
+
+After the run, the reporter writes `.e2e/cige/<id>.run-summary.json` for each
+CIGE result it selected. It deletes the summaries of the previous run first.
+A case that ran on several targets or agents gets one file per result. The
+summary for a case whose path changed:
+
+```json title=".e2e/cige/checkout-discount.run-summary.json"
+{
+  "testId": "checkout-discount",
+  "runDate": "2026-10-19",
+  "build": "4f1c2e9",
+  "result": "fail",
+  "intent": "A shopper can check out with a valid discount code",
+  "failedStep": "e3",
+  "failureType": "outdated-test-logic",
+  "classification": {
+    "source": "@e2e-dev/cige",
+    "confidence": "heuristic",
+    "phase": "execution",
+    "errorCode": "LOCATOR_NOT_FOUND",
+    "message": "agent.act failed: no payment button on the order summary",
+    "signals": ["status:failed", "phase:execution", "code:LOCATOR_NOT_FOUND"]
+  },
+  "specRef": "docs/specs/checkout.md",
+  "buildRef": "CHANGELOG.md",
+  "case": "tests/cige/checkout.cige.json",
+  "target": "web",
+  "agent": "default",
+  "attempts": 1,
+  "evidence": {
+    "report": ".e2e/report.json",
+    "resultId": "6188cdbad4140b6f2246ed2afb98e16a37e0fac761a78d6771ff9068ad5a01c1",
+    "trace": ".e2e/results/cige-a-shopper-can-check-out-with-a-6188cdbad4140b6f/trace.md",
+    "artifacts": [".e2e/results/cige-a-shopper-can-check-out-with-a-6188cdbad4140b6f/attempt-1/screen-at-failure.txt"]
+  }
+}
+```
+
+`failureType` is a first guess from the error code and where the failure
+landed. It is a hint for the classifying agent, not a verdict:
+
+| Where and what | `failureType` |
+| --- | --- |
+| A precondition failed, or a credential, environment, seed data, or model code such as `ENVIRONMENT_UNAVAILABLE` | `infrastructure` |
+| An Execution `step` failed with `LOCATOR_NOT_FOUND`, `ACTION_FAILED`, `REPLAY_STALE`, `STEP_NO_CONCLUSION`, or a spent budget | `outdated-test-logic` |
+| A `verify`, a piece of evidence, or the Intent was judged false (`ASSERTION_FAILED`) | `product-defect` |
+| A guardrail violation, an `ASSERTION_INCONCLUSIVE`, or anything else | Absent. `signals` names what the reporter read, such as `guardrail-violation:no-refund` |
+
+A passing summary has no `failureType`. If no evidence hook backs the pass,
+its signals include `screen-only-evidence`. That pass rests on what the
+screen showed, so check it for a false positive.
+
+## Classify and repair
+
+The run summary is where the
+[CIGE agent skills](https://github.com/vivekkrishna/agentic-validation-skills)
+start. `cige-failure-classification` reads a summary and confirms or
+corrects its `failureType` against `specRef` and `buildRef`. It then
+names the one skill that may act, and the field that skill may change:
+
+| Classification | Skill | May change |
+| --- | --- | --- |
+| Infrastructure | `cige-environment-recovery` | The environment, never the case |
+| Outdated test logic | `cige-stale-execution-repair` | `Execution` |
+| False positive | `cige-stale-execution-repair` | `Guardrails`, only stricter |
+| Product defect | `cige-product-defect-escalation` | Nothing: it files a defect, or proposes an Intent change for a human |
+
+A repair is a diff to the `.cige.json` file. Replay it on its own with
+`--tag cige:<id>` and `--no-cache` before a human reviews it:
+
+<CodeGroup>
+```bash npm
+npx e2e run --tag cige:checkout-discount --no-cache
+```
+
+```bash pnpm
+pnpm exec e2e run --tag cige:checkout-discount --no-cache
+```
+
+```bash bun
+bunx e2e run --tag cige:checkout-discount --no-cache
+```
+</CodeGroup>
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Agents and personas" icon="users" href="/agents">
+    Pin a case to an agent, or run it as several personas.
+  </Card>
+  <Card title="Project tools" icon="wrench" href="/tools">
+    Give the agent the test API a case's Context describes.
+  </Card>
+</CardGroup>

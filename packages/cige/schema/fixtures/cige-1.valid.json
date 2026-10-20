@@ -1,0 +1,41 @@
+{
+  "$schema": "../cige-1.schema.json",
+  "cige": 1,
+  "id": "workspace-streaming-starts",
+  "Context": {
+    "system": "Workspace streaming client",
+    "environment": "staging",
+    "actor": "a standard enterprise user",
+    "agent": "default",
+    "open": "/",
+    "tools": ["browser", "screenshot capture", "network-log reader"],
+    "preconditions": [
+      "The test account has one assigned workspace",
+      { "hook": "signIn", "description": "The test account is signed in" }
+    ],
+    "facts": ["A connected session shows a status of Connected"],
+    "prompts": ["context/login-notes.md"],
+    "specRef": "docs/specs/streaming.md",
+    "buildRef": "CHANGELOG.md"
+  },
+  "Intent": {
+    "statement": "The user can start a streaming session",
+    "success": ["The status reads Connected", "No authentication or policy error is shown"],
+    "failure": ["An error dialog is open"],
+    "evidence": [
+      { "id": "connected-log", "hook": "connectionLogShowsConnected", "description": "The connection log records the session" },
+      { "id": "first-frame", "assert": "the stream shows a rendered desktop, not a blank frame", "vision": true }
+    ]
+  },
+  "Guardrails": [
+    "Do not delete resources",
+    "Do not change production configuration",
+    { "id": "no-ui-only-pass", "rule": "Do not treat UI text alone as proof that the session connected" },
+    { "id": "no-admin", "rule": "Never open the admin console", "deny": { "actions": ["navigate"], "summary": ["/admin"] } }
+  ],
+  "Execution": [
+    { "id": "e1", "step": "start streaming the assigned workspace" },
+    { "id": "e2", "verify": "the status reads Connected" },
+    { "id": "e3", "step": "open the session details for {workspace}", "params": { "workspace": "Dev desktop" } }
+  ]
+}

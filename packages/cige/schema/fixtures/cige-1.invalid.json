@@ -1,0 +1,6 @@
+{
+  "Context": { "system": "Checkout" },
+  "Intent": { "statement": "" },
+  "Guardrails": [{ "deny": { "actions": [] } }],
+  "Execution": []
+}

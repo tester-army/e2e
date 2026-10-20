@@ -1,0 +1,28 @@
+{
+  "Context": {
+    "system": "Checkout Service (mock CLI: mock_checkout.py) -- simulates the e-commerce checkout backend",
+    "environment": "staging (local demo sandbox)",
+    "tools": ["bash: demo/checkout-flow/mock_checkout.py CLI"],
+    "preconditions": [
+      "Cart is empty at start (`mock_checkout.py reset`)",
+      "Discount code SAVE10 is active in the mock catalog",
+      "No real payment gateway involved -- the CLI is a fully mocked backend"
+    ],
+    "specRef": "demo/checkout-flow/specRef.md",
+    "buildRef": "demo/checkout-flow/buildRef.md"
+  },
+  "Intent": "A shopper can complete checkout with a valid discount code and receive an order confirmation backed by a real, persisted order record with correct tax applied to the discounted subtotal.",
+  "Guardrails": [
+    "Do not use any real payment credentials or external payment gateway -- this is a mocked backend only.",
+    "Do not modify or delete state outside this test's own `.demo-state.json` sandbox file.",
+    "Halt and escalate rather than reinterpreting Intent if no execution path produces a valid, spec-matching order.",
+    "Do not mark this test as passed based on a `submit-order` status message alone -- independently confirm the order exists via `get-order-status` (`found: true`) before recording a pass (specRef Requirement 3)."
+  ],
+  "Execution": [
+    { "id": "e1", "step": "Reset the sandbox: run `mock_checkout.py reset`." },
+    { "id": "e2", "step": "Add one item to the cart: `add-to-cart --sku ITEM-100 --price 50.00 --qty 2`." },
+    { "id": "e3", "step": "Checkout with discount code SAVE10: `checkout --discount-code SAVE10`." },
+    { "id": "e4", "step": "Submit the order using the test payment method: `submit-order --pay-method test-card`." },
+    { "id": "e5", "step": "Verify intent: confirm the order was completed correctly, consistent with Intent and current Guardrails." }
+  ]
+}

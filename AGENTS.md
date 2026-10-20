@@ -123,6 +123,15 @@ suites that consume the built packages the way a user would.
   model that writes field values when the decision model picks `type`.
   `minProbability` and `minConfidence` gate a chosen operation, target,
   secret, or assertion verdict.
+- `packages/cige` — the published `@e2e-dev/cige` package: CIGE test cases
+  (Context, Intent, Guardrails, Execution) as `.cige.json` files, pinned by
+  `schema/cige-1.schema.json` with a valid and an invalid fixture.
+  `cigeSuite` registers one test per case at collection, tagged
+  `cige:<id>`, and runs Execution through the public `agent.act` and
+  `agent.assert`, the guardrails on each instruction and their `deny` rules
+  in `onAction`. The `cige()` reporter writes `<output>/cige/*.run-summary.json`
+  for the CIGE skills, re-reading the case files in the main process rather
+  than anything a worker held. Imports `e2e` only; no core change.
 - `packages/github` — the published `@e2e-dev/github` package: the reporter
   that posts the run as one pull request comment from GitHub Actions and
   keeps it current on reruns, writing the same text to the job summary. It

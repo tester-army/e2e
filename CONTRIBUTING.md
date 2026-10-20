@@ -44,6 +44,7 @@ This project is a pnpm monorepo. `packages/` holds what publishes to npm,
 - `packages/web`: the published `@e2e-dev/web` browser engine
 - `packages/mobile`: the published `@e2e-dev/mobile` mobile engine
 - `packages/decision`: the decision-model executor on the public `StepExecutor` contract
+- `packages/cige`: CIGE test cases (`.cige.json`) as e2e tests, and the reporter that writes their run summaries
 - `apps/testbed`: private dogfood suite that consumes the built packages
 - `apps/web-benchmark`: private Next.js app of hard-surface scenarios plus the e2e suites written against them
 - `apps/mobile-benchmark`: private Expo app of hard mobile surfaces plus the e2e suites written against them
