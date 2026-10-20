@@ -998,10 +998,19 @@ export type NegatedPollExpectation<T> = {
   readonly [K in ValueMatcherName]: (...args: Parameters<ValueExpectation<T>[K]>) => Promise<void>;
 };
 
-/** The `expect(actual)` call: a locator, `screen`, an engine fixture, or a value, told apart by the argument. */
+/** `T`, or `never` when `T` is `any`, so an `any` argument skips an overload. */
+type NotAny<T> = 0 extends 1 & T ? never : T;
+
+/**
+ * The `expect(actual)` call: a locator, `screen`, an engine fixture, or a
+ * value, told apart by the argument. The locator and screen overloads are
+ * generic so a return-only generic such as `response.json<T>()` infers
+ * nothing from them, and refuse `any` (a DOM `Response.json()`), so both
+ * land on the value overload.
+ */
 export interface ExpectCall {
-  (actual: Locator): AsyncExpectation;
-  (actual: Screen): ScreenExpectation;
+  <L extends Locator>(actual: NotAny<L>): AsyncExpectation;
+  <S extends Screen>(actual: NotAny<S>): ScreenExpectation;
   <E extends object>(actual: Expectable<E>): E;
   /** `message` opens the failure text, so a bare `expected false to be true` says which check it was. */
   <T>(actual: T, message?: string): ValueExpectation<T>;
@@ -1009,8 +1018,8 @@ export interface ExpectCall {
 
 /** The `expect.soft(actual)` call: `expect(actual)` whose failures are kept instead of thrown. */
 export interface SoftExpectCall {
-  (actual: Locator): AsyncExpectation;
-  (actual: Screen): ScreenExpectation;
+  <L extends Locator>(actual: NotAny<L>): AsyncExpectation;
+  <S extends Screen>(actual: NotAny<S>): ScreenExpectation;
   <E extends object>(actual: Expectable<E>): E;
   /** `message` opens the failure text, so a bare `expected false to be true` says which check it was. */
   <T>(actual: T, message?: string): SoftValueExpectation<T>;
