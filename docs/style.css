@@ -45,26 +45,30 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Flat on purpose: Mintlify's production minifier drops nested `&` rules. */
 #navbar div:has(> svg[style*='star.svg']) {
   position: relative;
   overflow: hidden;
+}
 
-  &::after {
-    content: '';
-    position: absolute;
-    top: calc(50% - 6px);
-    left: -8px;
-    width: 2px;
-    height: 2px;
-    color: var(--e2e-ta-orange);
-    background: currentColor;
-    box-shadow: 0 8px currentColor, 3px 4px currentColor, 3px 12px currentColor, 6px 0 currentColor, 6px 8px currentColor;
-    opacity: 0;
-    pointer-events: none;
-    animation: e2e-stars-shimmer 45s steps(12, end) 45s infinite;
-    @media (prefers-reduced-motion: reduce), (forced-colors: active) {
-      animation: none;
-    }
+#navbar div:has(> svg[style*='star.svg'])::after {
+  content: '';
+  position: absolute;
+  top: calc(50% - 6px);
+  left: -8px;
+  width: 2px;
+  height: 2px;
+  color: var(--e2e-ta-orange);
+  background: currentColor;
+  box-shadow: 0 8px currentColor, 3px 4px currentColor, 3px 12px currentColor, 6px 0 currentColor, 6px 8px currentColor;
+  opacity: 0;
+  pointer-events: none;
+  animation: e2e-stars-shimmer 45s steps(12, end) 2s infinite;
+}
+
+@media (prefers-reduced-motion: reduce), (forced-colors: active) {
+  #navbar div:has(> svg[style*='star.svg'])::after {
+    animation: none;
   }
 }
 
