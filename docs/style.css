@@ -51,19 +51,23 @@ body {
   overflow: hidden;
 }
 
+/* A 3x5 box of pixels walks through the stars: every 50ms it steps two 3px
+   columns and swaps its two checkerboard halves, so each step lights a
+   different set of pixels and the box walks instead of sliding. The sweep
+   takes 550ms, fades in over the star and out across the count, and repeats
+   every 45s. One keyframe per step, held by step-end. The element sits 3px
+   above and left of the box because a shadow at 0 0 would hide under it. */
 #navbar div:has(> svg[style*='star.svg'])::after {
   content: '';
   position: absolute;
-  top: calc(50% - 6px);
-  left: -8px;
+  top: calc(50% - 10px);
+  left: -3px;
   width: 2px;
   height: 2px;
   color: var(--e2e-ta-orange);
-  background: currentColor;
-  box-shadow: 0 8px currentColor, 3px 4px currentColor, 3px 12px currentColor, 6px 0 currentColor, 6px 8px currentColor;
   opacity: 0;
   pointer-events: none;
-  animation: e2e-stars-shimmer 45s steps(12, end) 2s infinite;
+  animation: e2e-stars-walk 45s step-end 2s infinite;
 }
 
 @media (prefers-reduced-motion: reduce), (forced-colors: active) {
@@ -72,20 +76,63 @@ body {
   }
 }
 
-@keyframes e2e-stars-shimmer {
+@keyframes e2e-stars-walk {
   0% {
-    left: -8px;
-    opacity: 0;
+    transform: translateX(-6px);
+    opacity: 0.2;
+    box-shadow: 3px 3px currentColor, 3px 9px currentColor, 3px 15px currentColor, 6px 6px currentColor, 6px 12px currentColor, 9px 3px currentColor, 9px 9px currentColor, 9px 15px currentColor;
   }
-  0.43% {
+  0.111% {
+    transform: translateX(0px);
+    opacity: 0.4;
+    box-shadow: 3px 6px currentColor, 3px 12px currentColor, 6px 3px currentColor, 6px 9px currentColor, 6px 15px currentColor, 9px 6px currentColor, 9px 12px currentColor;
+  }
+  0.222% {
+    transform: translateX(6px);
+    opacity: 0.6;
+    box-shadow: 3px 3px currentColor, 3px 9px currentColor, 3px 15px currentColor, 6px 6px currentColor, 6px 12px currentColor, 9px 3px currentColor, 9px 9px currentColor, 9px 15px currentColor;
+  }
+  0.333% {
+    transform: translateX(12px);
     opacity: 0.8;
+    box-shadow: 3px 6px currentColor, 3px 12px currentColor, 6px 3px currentColor, 6px 9px currentColor, 6px 15px currentColor, 9px 6px currentColor, 9px 12px currentColor;
   }
-  1.71% {
-    left: 100%;
+  0.444% {
+    transform: translateX(18px);
+    opacity: 1;
+    box-shadow: 3px 3px currentColor, 3px 9px currentColor, 3px 15px currentColor, 6px 6px currentColor, 6px 12px currentColor, 9px 3px currentColor, 9px 9px currentColor, 9px 15px currentColor;
+  }
+  0.556% {
+    transform: translateX(24px);
+    opacity: 1;
+    box-shadow: 3px 6px currentColor, 3px 12px currentColor, 6px 3px currentColor, 6px 9px currentColor, 6px 15px currentColor, 9px 6px currentColor, 9px 12px currentColor;
+  }
+  0.667% {
+    transform: translateX(30px);
+    opacity: 1;
+    box-shadow: 3px 3px currentColor, 3px 9px currentColor, 3px 15px currentColor, 6px 6px currentColor, 6px 12px currentColor, 9px 3px currentColor, 9px 9px currentColor, 9px 15px currentColor;
+  }
+  0.778% {
+    transform: translateX(36px);
     opacity: 0.8;
+    box-shadow: 3px 6px currentColor, 3px 12px currentColor, 6px 3px currentColor, 6px 9px currentColor, 6px 15px currentColor, 9px 6px currentColor, 9px 12px currentColor;
   }
-  2.13%, 100% {
-    left: 100%;
+  0.889% {
+    transform: translateX(42px);
+    opacity: 0.6;
+    box-shadow: 3px 3px currentColor, 3px 9px currentColor, 3px 15px currentColor, 6px 6px currentColor, 6px 12px currentColor, 9px 3px currentColor, 9px 9px currentColor, 9px 15px currentColor;
+  }
+  1% {
+    transform: translateX(48px);
+    opacity: 0.4;
+    box-shadow: 3px 6px currentColor, 3px 12px currentColor, 6px 3px currentColor, 6px 9px currentColor, 6px 15px currentColor, 9px 6px currentColor, 9px 12px currentColor;
+  }
+  1.111% {
+    transform: translateX(54px);
+    opacity: 0.2;
+    box-shadow: 3px 3px currentColor, 3px 9px currentColor, 3px 15px currentColor, 6px 6px currentColor, 6px 12px currentColor, 9px 3px currentColor, 9px 9px currentColor, 9px 15px currentColor;
+  }
+  1.222%, 100% {
     opacity: 0;
   }
 }
