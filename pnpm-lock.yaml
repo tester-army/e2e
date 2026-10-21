@@ -354,8 +354,8 @@ importers:
   packages/browserstack:
     dependencies:
       agent-device:
-        specifier: 0.21.28
-        version: 0.21.28(ai@7.0.134(zod@4.6.1))
+        specifier: 0.21.29
+        version: 0.21.29(ai@7.0.134(zod@4.6.1))
     devDependencies:
       '@e2e-dev/mobile':
         specifier: workspace:*
