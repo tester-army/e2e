@@ -94,6 +94,14 @@ describe('navigationStaleOr', () => {
     expect(error).toMatchObject({ code: 'OPERATION_TIMEOUT', retryable: false });
   });
 
+  it.each(NAVIGATION_RACES)('keeps a timeout a timeout when its call log says %s', (line) => {
+    const timeout = pwTimeout(`Timeout 5000ms exceeded.\nCall log:\n  - ${line}`);
+    expect(navigationStaleOr(timeout, 'observe')).toMatchObject({
+      code: 'OPERATION_TIMEOUT',
+      retryable: false,
+    });
+  });
+
   it('leaves every other failure a non-retryable ENGINE_FAILURE', () => {
     const error = navigationStaleOr(new Error('protocol error'), 'observe');
     expect(error).toMatchObject({ code: 'ENGINE_FAILURE', retryable: false });

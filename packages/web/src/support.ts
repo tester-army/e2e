@@ -366,7 +366,7 @@ export function isNavigationRace(cause: unknown): boolean {
  * be captured in time is not a race.
  */
 export function navigationStaleOr(cause: unknown, operation: string): Error {
-  if (!isClassified(cause) && isNavigationRace(cause)) {
+  if (!isClassified(cause) && !isPwTimeout(cause) && isNavigationRace(cause)) {
     return new EngineError('NODE_STALE', `${operation}: ${message(cause)}`, {
       retryable: true,
       cause,
