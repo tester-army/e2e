@@ -324,8 +324,8 @@ importers:
         specifier: 0.11.1
         version: 0.11.1
       agent-device:
-        specifier: 0.21.28
-        version: 0.21.28(ai@7.0.134(zod@4.6.1))
+        specifier: 0.21.29
+        version: 0.21.29(ai@7.0.134(zod@4.6.1))
       ai:
         specifier: 7.0.134
         version: 7.0.134(zod@4.6.1)
@@ -560,8 +560,8 @@ importers:
   packages/limrun:
     dependencies:
       agent-device:
-        specifier: 0.21.28
-        version: 0.21.28(ai@7.0.134(zod@4.6.1))
+        specifier: 0.21.29
+        version: 0.21.29(ai@7.0.134(zod@4.6.1))
     devDependencies:
       '@e2e-dev/mobile':
         specifier: workspace:*
@@ -585,8 +585,8 @@ importers:
   packages/mobile:
     dependencies:
       agent-device:
-        specifier: 0.21.28
-        version: 0.21.28(ai@7.0.107(zod@4.6.1))
+        specifier: 0.21.29
+        version: 0.21.29(ai@7.0.107(zod@4.6.1))
       pngjs:
         specifier: 7.0.0
         version: 7.0.0
@@ -637,11 +637,11 @@ importers:
   packages/testmu:
     dependencies:
       '@agent-device/testmu':
-        specifier: 0.21.28
-        version: 0.21.28
+        specifier: 0.21.29
+        version: 0.21.29
       agent-device:
-        specifier: 0.21.28
-        version: 0.21.28(ai@7.0.134(zod@4.6.1))
+        specifier: 0.21.29
+        version: 0.21.29(ai@7.0.134(zod@4.6.1))
     devDependencies:
       '@e2e-dev/mobile':
         specifier: workspace:*
@@ -686,8 +686,8 @@ importers:
 
 packages:
 
-  '@agent-device/testmu@0.21.28':
-    resolution: {integrity: sha512-yZ3fZHcPfOgJnLldXwbtR2AUeLJkLPxN2OW4Xi4Idn9HFiImWgWHXAzsu/tFSbKFkEWF0po8mq3G5FUBXvNuig==}
+  '@agent-device/testmu@0.21.29':
+    resolution: {integrity: sha512-wJiacYmIHV+4rMmLhWSGzr1Z7lVKchSXuwQVwoxjWQK06vcd/OtZ5Ll5q/LNxomTjSocfO58YNDS4Ude+3WCwQ==}
 
   '@ai-sdk/anthropic@4.0.58':
     resolution: {integrity: sha512-vhXKBz7jnIhBlOoj2d0joyHicWISuIxDNha65SLrAnagAkVgulLoZBRLZRazstxlO/BtXU+cDERe1opVKte2OQ==}
@@ -3641,8 +3641,8 @@ packages:
     engines: {node: '>=18.18'}
     hasBin: true
 
-  agent-device@0.21.28:
-    resolution: {integrity: sha512-uGEENVhPzSpIACrVlt16O1mloODWJyAemTCT0boDb4L006JXN2rG747u1TRoQJudOpdP/Pm2urxNRHeECLMLfg==}
+  agent-device@0.21.29:
+    resolution: {integrity: sha512-wd9xWriaq6syAxgxH7zUO5MvbnQS1AVWpypLuWqarIM4+O07YVDieK4uZSmsKm2cZlI8oXvW2AAKhLKn48gcdQ==}
     engines: {node: '>=22.12'}
     hasBin: true
     peerDependencies:
@@ -8066,7 +8066,7 @@ packages:
 
 snapshots:
 
-  '@agent-device/testmu@0.21.28': {}
+  '@agent-device/testmu@0.21.29': {}
 
   '@ai-sdk/anthropic@4.0.58(zod@4.6.1)':
     dependencies:
@@ -11290,11 +11290,11 @@ snapshots:
 
   agent-cli-detector@0.1.7: {}
 
-  agent-device@0.21.28(ai@7.0.107(zod@4.6.1)):
+  agent-device@0.21.29(ai@7.0.107(zod@4.6.1)):
     optionalDependencies:
       ai: 7.0.107(zod@4.6.1)
 
-  agent-device@0.21.28(ai@7.0.134(zod@4.6.1)):
+  agent-device@0.21.29(ai@7.0.134(zod@4.6.1)):
     optionalDependencies:
       ai: 7.0.134(zod@4.6.1)
 
