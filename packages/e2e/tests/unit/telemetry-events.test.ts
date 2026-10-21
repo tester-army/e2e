@@ -548,4 +548,14 @@ describe('the MCP session event', () => {
     expect(JSON.stringify(event)).not.toContain('acme');
     expect(mcpSessionEvent(summary(), undefined).properties).toMatchObject({ client: null, client_version: null });
   });
+
+  it("counts the session's own tools under their names", () => {
+    const calls = new Map([['locate', 2], ['test_lines', 1], ['start_recording', 1], ['stop_recording', 1]]);
+    expect(mcpSessionEvent(summary({ toolCalls: calls, projectToolCalls: 0 }), undefined).properties['calls']).toEqual({
+      locate: 2,
+      test_lines: 1,
+      start_recording: 1,
+      stop_recording: 1,
+    });
+  });
 });

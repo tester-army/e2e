@@ -46,12 +46,16 @@ const read = (node: Fake): SemanticNode => ({
   ref: { id: `located-${node.id}`, revision: 'l1' },
   ...(node.role === undefined ? {} : { role: node.role }),
   ...(node.name === undefined ? {} : { name: node.name }),
+  ...(node.text === undefined ? {} : { text: node.text }),
+  ...(node.placeholder === undefined ? {} : { attributes: { placeholder: node.placeholder } }),
   ...(node.testId === undefined ? {} : { testId: node.testId }),
   rect: { x: 0, y: node.y, width: 100, height: 20 },
 });
 
 interface Harness {
   readonly tools: ToolSet;
+  /** How many locators the session tried on the live screen. */
+  readonly resolves: () => number;
   readonly lines: SessionTestLines;
   readonly context: StepExecutorContext;
   /** Runs one tool through the session's `call` path and returns its text. */
@@ -94,10 +98,13 @@ async function harness(options: {
   index(root);
   // A match may be a node observe never listed: one the live screen has since grown.
   for (const node of Object.values(options.matches).flat()) index(node);
+  let resolves = 0;
   const lines = new SessionTestLines({
     query: locateQuery,
-    resolve: async (expression: LocatorExpression): Promise<readonly NodeRef[]> =>
-      (options.matches[describeExpression(expression)] ?? []).map((node) => ({ id: `located-${node.id}`, revision: 'l1' })),
+    resolve: async (expression: LocatorExpression): Promise<readonly NodeRef[]> => {
+      resolves += 1;
+      return (options.matches[describeExpression(expression)] ?? []).map((node) => ({ id: `located-${node.id}`, revision: 'l1' }));
+    },
     read: async (ref) => read(nodes.get(ref.id)!),
     redact: (text) => text.replaceAll('sk-live-0000', '<secret:apiKey>'),
     appBase: { href: 'http://127.0.0.1:4100/', origin: 'http://127.0.0.1:4100' },
@@ -108,6 +115,7 @@ async function harness(options: {
   await watched.observe();
   return {
     tools,
+    resolves: () => resolves,
     lines,
     context: watched,
     run: async (tool, args) => {
@@ -176,11 +184,17 @@ describe('SessionTestLines', () => {
   });
 
   it('never prints a locator whose one match is another node', async () => {
-    const elsewhere: Fake = { id: 'n9', role: 'button', name: 'Save', y: 300 };
-    const session = await harness({ screen: [save], matches: { 'getByRole("button", name: "Save")': [elsewhere], 'getByText("Save")': [elsewhere] } });
+    const caption: Fake = { id: 'n9', text: 'Save', y: 300 };
+    const session = await harness({ screen: [save, caption], matches: { 'getByText("Save")': [caption] } });
     const text = await session.run('tap', { target: 'n2' });
     expect(noteOf(text)).toBe('No test line: no locator from its role and name, label, placeholder, text, or test id finds it on the live screen; try locate.');
     expect(await session.run('test_lines', {})).toContain('// tap: no test line: no locator from its role and name');
+  });
+
+  it('keeps the line of a control that moved since the observation, by what it reads', async () => {
+    const moved: Fake = { ...save, y: 400 };
+    const session = await harness({ screen: [save], matches: { 'getByRole("button", name: "Save")': [moved] } });
+    expect(noteOf(await session.run('tap', { target: 'n2' }))).toBe('Test line: await screen.getByRole("button", "Save").tap();');
   });
 
   it('narrows twins to the nodes that render before anything else', async () => {
@@ -222,6 +236,33 @@ describe('SessionTestLines', () => {
       'Test line: await screen.getByRole("button", "Add").nth(1).tap(); // 2 of 2 matches, by position; a unique name or test id holds up better',
     );
     expect(noteOf(await session.run('tap', { target: 'n30' }))).toContain('getByRole("button", "Add").first().tap();');
+  });
+
+  it('pins a twin by its turn, not its old box, after the page shifted', async () => {
+    // A banner pushed every row down 40px: the second row's button now sits where the first one was.
+    const observed = [100, 140, 180].map((y, index): Fake => ({ id: `n4${String(index)}`, role: 'button', name: 'Add', y }));
+    const live = observed.map((node) => ({ ...node, y: node.y + 40 }));
+    const session = await harness({ screen: observed, matches: { 'getByRole("button", name: "Add")': live } });
+    expect(noteOf(await session.run('tap', { target: 'n41' }))).toMatch(/^Test line: await screen\.getByRole\("button", "Add"\)\.nth\(1\)\.tap\(\);/);
+  });
+
+  it('pins no twin when the live screen holds another number of them than the observation did', async () => {
+    const observed = [100, 140].map((y, index): Fake => ({ id: `n5${String(index)}`, role: 'button', name: 'Add', y }));
+    const appeared: Fake = { id: 'n59', role: 'button', name: 'Add', y: 60 };
+    const session = await harness({ screen: observed, matches: { 'getByRole("button", name: "Add")': [appeared, ...observed] } });
+    expect(noteOf(await session.run('tap', { target: 'n51' }))).toBe(
+      'No test line: it shares screen.getByRole("button", "Add") with 2 other nodes, and nothing on the screen tells it apart for certain.',
+    );
+  });
+
+  it('tries a bounded number of locators, each a snapshot on a device, then falls back to the position', async () => {
+    const cards = [100, 140, 180].map((y, index): Fake => ({ id: `n7${String(index)}`, role: 'button', name: 'Open', text: 'Open card', placeholder: 'Card', y }));
+    const article: Fake = { id: 'n82', role: 'article', name: 'Board', y: 90, children: cards };
+    const group: Fake = { id: 'n81', role: 'group', name: 'Lane', y: 90, children: [article] };
+    const region: Fake = { id: 'n80', role: 'region', name: 'Work', y: 90, children: [group] };
+    const session = await harness({ screen: [region], matches: { 'getByRole("button", name: "Open")': cards } });
+    expect(noteOf(await session.run('tap', { target: 'n71' }))).toMatch(/^Test line: await screen\.getByRole\("button", "Open"\)\.nth\(1\)\.tap\(\); \/\/ 2 of 3 matches/);
+    expect(session.resolves()).toBe(10);
   });
 
   it('writes credentials and secrets by name, never by value', async () => {
@@ -309,7 +350,7 @@ describe('SessionTestLines', () => {
     const fallback = await session.run('type', { target: 'n61', value: 'x' });
     expect(fallback.split('\n')[0]).toMatch(/is not an input; tapped it to focus it and typed through the keyboard/);
     expect(noteOf(fallback)).toMatch(/^No test line: the node is not an input and took the value through the keyboard/);
-    expect(noteOf(await session.run('tap', { target: 'n404' }))).toBe('No test line: #n404 is not on a screen this session observed.');
+    expect(noteOf(await session.run('tap', { target: 'n404' }))).toBe('No test line: #n404 is not on the newest screen.');
   });
 
   it('prints and records nothing for an action that failed', async () => {
@@ -326,7 +367,7 @@ describe('SessionTestLines', () => {
 
   it('forgets every id after a screen read without a tree, as the step does', async () => {
     const session = await harness({ screen: [save], matches: { 'getByRole("button", name: "Save")': [save] }, tree: false });
-    expect(noteOf(await session.run('tap', { target: 'n2' }))).toBe('No test line: #n2 is not on a screen this session observed.');
+    expect(noteOf(await session.run('tap', { target: 'n2' }))).toBe('No test line: #n2 is not on the newest screen.');
   });
 
   it('records the opening of the app as app.open() and drafts the lines in order', async () => {

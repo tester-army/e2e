@@ -2,8 +2,8 @@
  * Test lines end to end: the built `e2e mcp` server on a fixture page, driven
  * by a real MCP client. Every action answers with the line that repeats it,
  * a password by its credential and never its value, a button repeated per
- * row scoped under its row, and an icon button by its test id; `test_lines`
- * returns them in order. Pasted into a test file, that draft passes a run.
+ * row scoped under its row, twins in plain divs by their order, and an icon
+ * button by its test id; `test_lines` returns them in order. Pasted into a test file, that draft passes a run.
  */
 
 import path from 'node:path';
@@ -88,6 +88,11 @@ describe('e2e mcp test lines', { timeout: 120_000 }, () => {
         { target: nodeId(screen.slice(screen.indexOf('Offer B')), /button "Reserve"/) },
         'await screen.getByRole("listitem").filter({ hasText: "Offer B" }).getByRole("button", "Reserve").tap();',
       ],
+      [
+        'tap',
+        { target: nodeId(screen.slice(screen.indexOf('Row two')), /button "Pick"/) },
+        'await screen.getByRole("button", "Pick").nth(1).tap(); // 2 of 2 matches, by position; a unique name or test id holds up better',
+      ],
       ['tap', { target: nodeId(screen, /button testid="star"/) }, 'await screen.getByTestId("star").tap();'],
       ['tap', { target: nodeId(screen, /button "Sign in"/) }, 'await screen.getByRole("button", "Sign in").tap();'],
     ];
@@ -97,7 +102,7 @@ describe('e2e mcp test lines', { timeout: 120_000 }, () => {
       expect(result.text.split('\n')[1], tool).toBe(`Test line: ${line}`);
       expect(result.text).not.toContain(PASSWORD);
     }
-    expect((await call('observe')).text).toContain('status "Summary" text="user=ada@example.test password=set plan=Pro terms=true offer=B starred=true"');
+    expect((await call('observe')).text).toContain('status "Summary" text="user=ada@example.test password=set plan=Pro terms=true offer=B picked=2 starred=true"');
 
     const drafted = await call('test_lines');
     expect(drafted.isError).toBe(false);
@@ -115,7 +120,7 @@ describe('e2e mcp test lines', { timeout: 120_000 }, () => {
           '',
           "test('replays the drafted lines', async ({ app, screen }) => {",
           ...body.map((line) => `  ${line}`),
-          "  await expect(screen.getByRole('status', 'Summary')).toHaveText('user=ada@example.test password=set plan=Pro terms=true offer=B starred=true');",
+          "  await expect(screen.getByRole('status', 'Summary')).toHaveText('user=ada@example.test password=set plan=Pro terms=true offer=B picked=2 starred=true');",
           '});',
           '',
         ].join('\n'),

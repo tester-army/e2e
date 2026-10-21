@@ -127,8 +127,9 @@ ${rows}
 
 export const FORM_PAGES: Record<string, PageRenderer> = {
   // A session's test lines: a sign-in form a role and name reaches, a button
-  // repeated per row that only its row tells apart, and an icon button only
-  // its test id names. The summary says what a replay of the lines did.
+  // repeated per row that only its row tells apart, twins in plain divs only
+  // their order tells apart, and an icon button only its test id names. The
+  // summary says what a replay of the lines did.
   '/test-lines': constant(`<!doctype html>
 <html>
 <head><title>Test lines</title></head>
@@ -148,10 +149,12 @@ export const FORM_PAGES: Record<string, PageRenderer> = {
     <li><span>Offer A</span> <button onclick="state.offer = 'A'">Reserve</button></li>
     <li><span>Offer B</span> <button onclick="state.offer = 'B'">Reserve</button></li>
   </ul>
+  <div><span>Row one</span> <button onclick="state.picked = 1">Pick</button></div>
+  <div><span>Row two</span> <button onclick="state.picked = 2">Pick</button></div>
   <button data-testid="star" onclick="state.starred = true"><svg aria-hidden="true" width="16" height="16"><circle cx="8" cy="8" r="6"></circle></svg></button>
   <output id="tl-summary" role="status" aria-label="Summary">empty</output>
   <script>
-    const state = { offer: 'none', starred: false };
+    const state = { offer: 'none', picked: 0, starred: false };
     function summarize() {
       const field = (id) => document.getElementById(id);
       field('tl-summary').textContent = [
@@ -160,6 +163,7 @@ export const FORM_PAGES: Record<string, PageRenderer> = {
         'plan=' + field('tl-plan').value,
         'terms=' + field('tl-terms').checked,
         'offer=' + state.offer,
+        'picked=' + state.picked,
         'starred=' + state.starred,
       ].join(' ');
     }

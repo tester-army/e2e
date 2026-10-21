@@ -246,7 +246,10 @@ Test line: await screen.getByRole("button", "Sign in").tap();
 - A locator that also matches twins is narrowed: to nodes that render
   (`{ visible: true }`), then under a container
   (`getByRole("listitem").filter({ hasText: "Offer B" })`), then by position
-  (`.nth(1)`, with a comment saying so).
+  (`.nth(1)`, with a comment saying so). A position is used only when the
+  live screen has as many twins as the observation listed.
+- At most 10 locators are tried per target. On a device each try reads the
+  whole screen.
 - When nothing reaches the target alone, the result says `No test line:`
   and why. A line that would fail is never printed.
 - A failed action prints and records no line. The draft shows an action

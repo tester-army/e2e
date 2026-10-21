@@ -39,6 +39,9 @@ export type GrammarActionName = (typeof GRAMMAR_ACTION_NAMES)[number];
 /** The prefix of the engine event a project's own tool records; its name is the project's, and telemetry folds it away. */
 export const PROJECT_TOOL_EVENT_PREFIX = 'tool:';
 
+/** Where the session tools are added, as `HARNESS_TOOL_NAMES` says it. */
+export const MCP_SESSION_SURFACE = 'an e2e mcp session';
+
 /**
  * The tools the harness adds beside the grammar, each where it adds them:
  * `complete_step` in every agent step, `locate`, `test_lines`, and the
@@ -48,10 +51,10 @@ export const PROJECT_TOOL_EVENT_PREFIX = 'tool:';
  */
 export const HARNESS_TOOL_NAMES: ReadonlyMap<string, string> = new Map([
   ['complete_step', 'every agent step'],
-  ['locate', 'an e2e mcp session'],
-  ['test_lines', 'an e2e mcp session'],
-  ['start_recording', 'an e2e mcp session'],
-  ['stop_recording', 'an e2e mcp session'],
+  ['locate', MCP_SESSION_SURFACE],
+  ['test_lines', MCP_SESSION_SURFACE],
+  ['start_recording', MCP_SESSION_SURFACE],
+  ['stop_recording', MCP_SESSION_SURFACE],
   ['report_finding', 'e2e explore'],
 ]);
 

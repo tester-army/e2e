@@ -12,7 +12,7 @@
  * hold the payload to that promise.
  */
 
-import { GRAMMAR_ACTION_NAMES, GRAMMAR_TOOL_NAMES, PROJECT_TOOL_EVENT_PREFIX } from '../agent/action-names.ts';
+import { GRAMMAR_ACTION_NAMES, GRAMMAR_TOOL_NAMES, HARNESS_TOOL_NAMES, MCP_SESSION_SURFACE, PROJECT_TOOL_EVENT_PREFIX } from '../agent/action-names.ts';
 import { modelLabel } from '../config/agent.ts';
 import type { ResolvedConfig } from '../config/resolve.ts';
 import type { McpClient } from '../mcp/server.ts';
@@ -492,10 +492,14 @@ export function runCompletedEvent(report: Report1Document, context: RunContext):
 
 /**
  * The catalog tools an MCP session serves itself, by name: the grammar and
- * the session's own (`createSessionCatalog`). A project's tools arrive
+ * the session's own (`createSessionCatalog`), read off the reserved names so
+ * a new session tool is counted under its name. A project's tools arrive
  * counted together; any name outside this set folds to `other`.
  */
-const SESSION_TOOLS: ReadonlySet<string> = new Set([...GRAMMAR_TOOL_NAMES, 'locate', 'start_recording', 'stop_recording']);
+const SESSION_TOOLS: ReadonlySet<string> = new Set([
+  ...GRAMMAR_TOOL_NAMES,
+  ...[...HARNESS_TOOL_NAMES].flatMap(([name, surface]) => (surface === MCP_SESSION_SURFACE ? [name] : [])),
+]);
 
 /** One MCP session: the client, the target's platform and engine, how it ended, and its calls by the runner's tool names. */
 export function mcpSessionEvent(summary: McpSessionSummary, client: McpClient | undefined): TelemetryEvent {

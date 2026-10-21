@@ -9,9 +9,10 @@
  * the locator engine, as `locate` tries one: a locator that matches the
  * target and nothing else is printed, one that matches its twins too is
  * narrowed (to the nodes that render, under a container, or by position, in
- * that order), and otherwise the result says why there is no line. The session keeps the lines in order, and `test_lines` returns them
- * as a draft test body. Only the session catalog wraps its grammar this way;
- * the testing agent's model loop never sees a line.
+ * that order), and otherwise the result says why there is no line. The
+ * session keeps the lines in order, and `test_lines` returns them as a draft
+ * test body. Only the session catalog wraps its grammar this way; the
+ * testing agent's model loop never sees a line.
  */
 
 import type { ToolSet } from 'ai';
@@ -26,10 +27,14 @@ import { collapseText } from '../internal/text.ts';
 import { filterExpression, indexExpression } from '../locator/expression.ts';
 import type { Role } from '../types.ts';
 
-/** Observations an id is looked up in, newest first, as far back as the step's feed resolves one. */
-const MAX_SCREENS = 8;
 /** Matches read per locator while looking for the target among them. */
 const MAX_READ_MATCHES = 50;
+/**
+ * Locators tried per target before giving up on a line. Each is one engine
+ * resolve, which on a device is a whole snapshot, so a control nothing names
+ * costs a bounded wait rather than every narrowing there is.
+ */
+const MAX_TRIES = 10;
 /** Containers tried, nearest first, to narrow a locator that matches the target's twins too. */
 const MAX_CONTAINERS = 3;
 /** CSS pixels a match's center may sit outside the target's box and still be the target. */
@@ -94,19 +99,30 @@ type LinePlan = { readonly line: string } | { readonly reason: string };
 /** What a locator search found: the locator and how the line comments on it, or why there is none. */
 type Found = (Located & { readonly comment?: string }) | { readonly reason: string };
 
-/** A node the newest observation listed, with its ancestors, nearest first. */
+/** A node the newest observation listed, with its ancestors, nearest first, and the screen's root. */
 interface Listed {
   readonly node: ExecutorNode;
   readonly ancestors: readonly ExecutorNode[];
+  readonly root: ExecutorNode;
 }
 
-/** One observation's nodes by id, each with its parent's id. */
-type Screen = ReadonlyMap<string, { readonly node: ExecutorNode; readonly parent: string | undefined }>;
+/** The newest observation's tree, and its nodes by id, each with its parent's id. */
+interface Screen {
+  readonly root: ExecutorNode;
+  readonly nodes: ReadonlyMap<string, { readonly node: ExecutorNode; readonly parent: string | undefined }>;
+}
 
-/** What one locator matched: how many nodes, and where the target sits among them (-1: not among the ones read). */
+/** What one locator matched: how many nodes, and which of them is the target. */
 interface Probe {
   readonly count: number;
+  /** The target's index among the matches; -1 when none of the matches read is placed as it. */
   readonly index: number;
+  /**
+   * Whether the target was placed by its turn among the nodes that read like
+   * it, which holds when the page shifts after the observation; false when
+   * only its box from the observation placed it, which a shift can fool.
+   */
+  readonly byOrder: boolean;
   /** The target as the locator engine read it, when it was among the matches. */
   readonly match?: SemanticNode;
 }
@@ -131,7 +147,7 @@ type Entry = { readonly tool: string } & LinePlan;
 
 /** The test lines of one session: the observations it keeps for them, the wrapped grammar, and `test_lines`. */
 export class SessionTestLines {
-  private screens: Screen[] = [];
+  private screen: Screen | undefined;
   private readonly entries: Entry[] = [];
 
   constructor(private readonly options: TestLineOptions) {}
@@ -195,32 +211,25 @@ export class SessionTestLines {
     ].join('\n');
   }
 
+  /** Keeps an observation's tree as the newest screen; one without a tree leaves no id to look up, as for the step. */
   private keep(observation: ExecutorObservation): void {
-    // A screen without a tree invalidates every id, as it does for the step.
-    if (observation.tree === undefined) {
-      this.screens = [];
-      return;
-    }
-    this.screens.unshift(indexScreen(observation.tree));
-    this.screens.length = Math.min(this.screens.length, MAX_SCREENS);
+    this.screen = observation.tree === undefined ? undefined : indexScreen(observation.tree);
   }
 
-  /** The node an id names on the newest screen that lists it, with its ancestors. */
+  /** The node an id names on the newest screen, with its ancestors. */
   private listed(id: string): Listed | undefined {
-    const key = id.replace(/^#/, '');
-    for (const screen of this.screens) {
-      const entry = screen.get(key);
-      if (entry === undefined) continue;
-      const ancestors: ExecutorNode[] = [];
-      for (let parent = entry.parent; parent !== undefined; parent = screen.get(parent)?.parent) {
-        const node = screen.get(parent)?.node;
-        if (node !== undefined) ancestors.push(node);
-      }
-      return { node: entry.node, ancestors };
+    const screen = this.screen;
+    const entry = screen?.nodes.get(id.replace(/^#/, ''));
+    if (screen === undefined || entry === undefined) return undefined;
+    const ancestors: ExecutorNode[] = [];
+    for (let parent = entry.parent; parent !== undefined; parent = screen.nodes.get(parent)?.parent) {
+      const node = screen.nodes.get(parent)?.node;
+      if (node !== undefined) ancestors.push(node);
     }
-    return undefined;
+    return { node: entry.node, ancestors, root: screen.root };
   }
 
+  /** A grammar tool that works out its line before the action and adds it to the result after. */
   private wrapped(name: string, tool: ToolSet[string]): ToolSet[string] {
     const execute = tool.execute!;
     return {
@@ -308,6 +317,7 @@ export class SessionTestLines {
     return { line: `await ${act(found.code)};${found.comment === undefined ? '' : ` // ${found.comment}`}` };
   }
 
+  /** A drag's line: both ends need a locator. */
   private async drag(source: string | undefined, destination: string | undefined): Promise<LinePlan> {
     const from = await this.locator(source);
     if ('reason' in from) return from;
@@ -335,36 +345,45 @@ export class SessionTestLines {
    * node's own fields that matches it alone; else the query that matched it
    * among its twins, kept to the nodes that render or scoped under a
    * container that tells them apart; else that query by position, with a
-   * comment saying so.
+   * comment saying so, when its place among the twins is certain.
    */
   private async locator(id: string | undefined): Promise<Found> {
     if (id === undefined) return { reason: 'the action names no node' };
     const listed = this.listed(id);
-    if (listed === undefined) return { reason: `#${id.replace(/^#/, '')} is not on a screen this session observed` };
+    if (listed === undefined) return { reason: `#${id.replace(/^#/, '')} is not on the newest screen` };
     const { node } = listed;
+    let tries = MAX_TRIES;
+    const attempt = async (expression: LocatorExpression, within: ExecutorNode = listed.root): Promise<Probe | undefined> => {
+      if (tries <= 0) return undefined;
+      tries -= 1;
+      return this.probe(expression, listed, within);
+    };
     let twins: { readonly located: Located; readonly probe: Probe } | undefined;
-    let match: SemanticNode | undefined;
+    let match: Probe | undefined;
     const queries = nodeQueries(node);
     for (const query of queries) {
       const located = this.options.query(query);
-      const probe = await this.probe(located.expression, node);
+      const probe = await attempt(located.expression);
+      if (probe === undefined) break;
       if (probe.count === 1 && probe.index === 0) return located;
-      match ??= probe.match;
-      if (probe.count > 1 && probe.index >= 0) twins ??= { located, probe };
+      if (probe.index >= 0 && (match === undefined || (probe.byOrder && !match.byOrder))) match = probe;
+      if (probe.count > 1 && probe.index >= 0 && (twins === undefined || (probe.byOrder && !twins.probe.byOrder))) twins = { located, probe };
     }
     // The tree an observation hands over carries no test id; the node the
     // locator engine read does, found among the matches of its role.
     if (match === undefined && node.role !== undefined && ROLES.has(node.role)) {
-      match = (await this.probe(this.options.query({ role: node.role }).expression, node)).match;
+      const probe = await attempt(this.options.query({ role: node.role }).expression);
+      if (probe !== undefined && probe.index >= 0) match = probe;
     }
-    const testId = match?.testId === undefined ? undefined : clean(this.options.redact(match.testId));
+    const testId = match?.match?.testId === undefined ? undefined : clean(this.options.redact(match.match.testId));
     if (testId !== undefined) {
       const located = this.options.query({ testId });
-      const probe = await this.probe(located.expression, node);
-      if (probe.count === 1 && probe.index === 0) return located;
-      if (probe.count > 1 && probe.index >= 0) twins ??= { located, probe };
+      const probe = await attempt(located.expression);
+      // A test id read off a node placed by its turn names that node, wherever it moved since.
+      if (probe !== undefined && probe.count === 1 && (probe.index === 0 || match?.byOrder === true)) return located;
     }
     if (twins === undefined) {
+      if (tries <= 0) return { reason: `no locator found it alone within ${String(MAX_TRIES)} tries; try locate` };
       return {
         reason:
           queries.length === 0 && testId === undefined
@@ -374,16 +393,20 @@ export class SessionTestLines {
     }
     const visible = visibleOnly(twins.located);
     if (visible !== undefined) {
-      const probe = await this.probe(visible.expression, node);
-      if (probe.count === 1 && probe.index === 0) return visible;
+      const probe = await attempt(visible.expression);
+      if (probe !== undefined && probe.count === 1 && probe.index === 0) return visible;
     }
     for (const scope of containerScopes(listed, this.options.query)) {
-      const expression = scopedUnder(twins.located.expression, scope.expression);
+      const expression = scopedUnder(twins.located.expression, scope.located.expression);
       if (expression === undefined) break;
-      const probe = await this.probe(expression, node);
-      if (probe.count === 1 && probe.index === 0) return { expression, code: `${scope.code}${twins.located.code.replace(/^screen/, '')}` };
+      const probe = await attempt(expression, scope.within);
+      if (probe === undefined) break;
+      if (probe.count === 1 && probe.index === 0) return { expression, code: `${scope.located.code}${twins.located.code.replace(/^screen/, '')}` };
     }
-    const { count, index } = twins.probe;
+    const { count, index, byOrder } = twins.probe;
+    // A position is only as good as the evidence for it: a box from the
+    // observation may have moved onto a twin since.
+    if (!byOrder) return { reason: `it shares ${twins.located.code} with ${String(count - 1)} other nodes, and nothing on the screen tells it apart for certain` };
     return {
       expression: indexExpression(twins.located.expression, index),
       code: `${twins.located.code}${index === 0 ? '.first()' : `.nth(${String(index)})`}`,
@@ -391,14 +414,32 @@ export class SessionTestLines {
     };
   }
 
-  /** How many nodes a locator matches now, and which of them, if any, is the target. */
-  private async probe(expression: LocatorExpression, target: ExecutorNode): Promise<Probe> {
+  /**
+   * How many nodes a locator matches now, and which of them is the target.
+   * When every match was read and as many of them read like the target as
+   * the observation listed under `within`, the target is the one in its
+   * turn: document order survives a page that shifted since. Otherwise it is
+   * the one match centered in its box from the observation, as an inner text
+   * element sits inside the button it names.
+   */
+  private async probe(expression: LocatorExpression, listed: Listed, within: ExecutorNode): Promise<Probe> {
     const refs = await this.options.resolve(expression);
-    for (let index = 0; index < Math.min(refs.length, MAX_READ_MATCHES); index += 1) {
-      const match = await this.options.read(refs[index]!);
-      if (sameNode(match, target, refs.length === 1)) return { count: refs.length, index, match };
+    const matches: SemanticNode[] = [];
+    for (const ref of refs.slice(0, MAX_READ_MATCHES)) matches.push(await this.options.read(ref));
+    const count = refs.length;
+    if (matches.length === count) {
+      const self = identityOf(listed.node);
+      const alike = matches.flatMap((match, index) => (identityOf(match, this.options.redact) === self ? [index] : []));
+      const turn = turnAmongTwins(within, listed.node);
+      if (turn !== undefined && alike.length === turn.of) {
+        const index = alike[turn.index]!;
+        return { count, index, byOrder: true, match: matches[index]! };
+      }
     }
-    return { count: refs.length, index: -1 };
+    const boxed = matches.flatMap((match, index) => (centeredIn(match, listed.node) ? [index] : []));
+    if (boxed.length !== 1) return { count, index: -1, byOrder: false };
+    const index = boxed[0]!;
+    return { count, index, byOrder: false, match: matches[index]! };
   }
 }
 
@@ -440,8 +481,8 @@ export function navigationLine(url: string, base: { readonly href: string; reado
  * first text it holds outside the target, the way a test scopes the
  * "Delete" button of one row.
  */
-function containerScopes(listed: Listed, query: (query: LineQuery) => Located): Located[] {
-  const scopes: Located[] = [];
+function containerScopes(listed: Listed, query: (query: LineQuery) => Located): { readonly located: Located; readonly within: ExecutorNode }[] {
+  const scopes: { readonly located: Located; readonly within: ExecutorNode }[] = [];
   let containers = 0;
   for (const ancestor of listed.ancestors) {
     const role = ancestor.role;
@@ -449,11 +490,14 @@ function containerScopes(listed: Listed, query: (query: LineQuery) => Located): 
     if (containers >= MAX_CONTAINERS) break;
     containers += 1;
     const name = clean(ancestor.name);
-    if (name !== undefined) scopes.push(query({ role, name }));
+    if (name !== undefined) scopes.push({ located: query({ role, name }), within: ancestor });
     const text = firstText(ancestor, listed.node.id) ?? clean(ancestor.text);
     if (text !== undefined && text !== name) {
       const base = query({ role });
-      scopes.push({ expression: filterExpression(base.expression, { hasText: text }), code: `${base.code}.filter({ hasText: ${JSON.stringify(text)} })` });
+      scopes.push({
+        located: { expression: filterExpression(base.expression, { hasText: text }), code: `${base.code}.filter({ hasText: ${JSON.stringify(text)} })` },
+        within: ancestor,
+      });
     }
   }
   return scopes;
@@ -490,28 +534,51 @@ function scopedUnder(child: LocatorExpression, scope: LocatorExpression): Locato
   return child.kind === 'query' && child.scope === undefined ? { ...child, scope } : undefined;
 }
 
-/**
- * Whether a node the locator engine read is the target the observation
- * listed: its center inside the target's box, as an inner text element sits
- * inside the button it names. Without both boxes, only a lone match counts.
- */
-function sameNode(match: SemanticNode, target: ExecutorNode, alone: boolean): boolean {
+/** Whether a node the locator engine read sits with its center inside the target's box from the observation. */
+function centeredIn(match: SemanticNode, target: ExecutorNode): boolean {
   const box = target.rect;
   const found = match.rect;
-  if (box === undefined || found === undefined) return alone;
+  if (box === undefined || found === undefined) return false;
   const x = found.x + found.width / 2;
   const y = found.y + found.height / 2;
   return x >= box.x - BOX_SLACK && x <= box.x + box.width + BOX_SLACK && y >= box.y - BOX_SLACK && y <= box.y + box.height + BOX_SLACK;
 }
 
-function indexScreen(tree: ExecutorNode): Screen {
-  const screen = new Map<string, { readonly node: ExecutorNode; readonly parent: string | undefined }>();
+/**
+ * What a node reads as: its role, name, text, and placeholder, in the
+ * one-line form. A node the locator engine read passes the ledger first, as
+ * the observation's nodes already did.
+ */
+function identityOf(node: ExecutorNode | SemanticNode, redact: (text: string) => string = (text) => text): string {
+  const field = (value: string | undefined) => clean(value === undefined ? undefined : redact(value)) ?? '';
+  return [node.role ?? '', field(node.name), field(node.text), field(node.attributes?.['placeholder'])].join('\u0000');
+}
+
+/** The target's turn among the nodes under `root` that read like it, in document order. */
+function turnAmongTwins(root: ExecutorNode, target: ExecutorNode): { readonly index: number; readonly of: number } | undefined {
+  const self = identityOf(target);
+  let index = -1;
+  let of = 0;
+  const walk = (node: ExecutorNode): void => {
+    if (identityOf(node) === self) {
+      if (node.id === target.id) index = of;
+      of += 1;
+    }
+    for (const child of node.children ?? []) walk(child);
+  };
+  walk(root);
+  return index === -1 ? undefined : { index, of };
+}
+
+/** Indexes an observation's tree by id, each node with its parent's id. */
+function indexScreen(root: ExecutorNode): Screen {
+  const nodes = new Map<string, { readonly node: ExecutorNode; readonly parent: string | undefined }>();
   const walk = (node: ExecutorNode, parent: string | undefined): void => {
-    screen.set(node.id, { node, parent });
+    nodes.set(node.id, { node, parent });
     for (const child of node.children ?? []) walk(child, node.id);
   };
-  walk(tree, undefined);
-  return screen;
+  walk(root, undefined);
+  return { root, nodes };
 }
 
 /** Text in the one-line form a locator matches against, or undefined for none. */
@@ -521,11 +588,13 @@ function clean(text: string | undefined): string | undefined {
   return collapsed === '' ? undefined : collapsed;
 }
 
+/** A string argument of a tool call, or undefined. */
 function stringField(input: Readonly<Record<string, unknown>>, key: string): string | undefined {
   const value = input[key];
   return typeof value === 'string' ? value : undefined;
 }
 
+/** Whether a tool's input is an object to read arguments from. */
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null;
 }
