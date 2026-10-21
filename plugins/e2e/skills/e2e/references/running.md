@@ -38,8 +38,7 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status or switch
 | `--tag <tags>` | Any of the tags, comma-separated or repeated; all of them with `--tag-mode all`. An empty `--target`, `--tag`, or `--agent` value is a usage error, exit 2. |
 | `--exclude-tag <tags>` | Drop tests carrying any of these tags, however selected. |
 | `--grep <pattern>`, `--grep-invert <pattern>` | Keep, or drop, tests whose title (describe titles and test title joined by spaces, `checkout pays`; not file or tags) matches a regular expression. Bare pattern or `'/pattern/i'`; repeat for alternatives. |
-| `--no-filter` | Skip the configured `filters`; every selected test runs. |
-| `--changed-since <ref>` | The change the `filters` judge: every file that differs from the merge base of the ref and HEAD, uncommitted and untracked included (`--changed-since origin/main`). A ref git can't measure from is `INVALID_CHANGED_SINCE`, exit 2. |
+| `--changed-since <ref>` | Run the configured `filters` on the change since the ref: every file that differs from the merge base of the ref and HEAD, uncommitted and untracked included (`--changed-since origin/main`). Without it no filter runs. A ref git can't measure from is `INVALID_CHANGED_SINCE`, exit 2. |
 | `--last-failed` | The tests the previous run (`<output>/report.json`) did not pass or never ran (`--max-failures` and `--max-duration` included), plus every test in a failed `beforeAll` or `afterAll` scope. A test another filter leaves out stays owed (`run.carried` in the report) until a rerun runs it. No report is `NO_LAST_RUN`, exit 2. |
 | `--shard <index/total>` | One contiguous slice of the selected tests (`--shard 2/3`), cut after every other flag; serial groups stay whole, each shard brings its own setup tests. |
 | `--headed` | Visible browser or simulator when the engine supports it. |
@@ -65,7 +64,7 @@ npx e2e run tests/signup.e2e.ts
 npx e2e run signup.e2e.ts:12   # by bare name, the test declared at line 12
 npx e2e run tests/agent --tag smoke --exclude-tag slow --grep checkout
 npx e2e run --last-failed   # the loop after a red run
-npx e2e run --no-filter     # every test, without the configured filters
+npx e2e run --changed-since origin/main   # the configured filters judge the change
 npx e2e run --shard 2/3     # one CI job of three
 npx e2e run 'tests/**/*.smoke.e2e.ts' --target chromium --workers 1 --retries 0
 CI=1 npx e2e run            # the CI defaults, locally
@@ -73,11 +72,11 @@ CI=1 npx e2e run            # the CI defaults, locally
 
 `list` takes the same files and selection flags (`--config`, `--target`,
 `--tag`, `--tag-mode`, `--exclude-tag`, `--grep`, `--grep-invert`,
-`--no-filter`, `--changed-since`, `--last-failed`, `--shard`,
-`--pass-with-no-tests`), prints one line per test-target pair,
-`file › title [target] #tag`, skipped pairs ending in ` (skipped: <reason>)`,
-and starts no app, engine, or worker. The configured filters run as for
-`run`; a pair one left out ends in ` (left out by <filter>: <reason>)`. `--reporter json` prints
+`--changed-since`, `--last-failed`, `--shard`, `--pass-with-no-tests`),
+prints one line per test-target pair, `file › title [target] #tag`, skipped
+pairs ending in ` (skipped: <reason>)`, and starts no app, engine, or
+worker. With `--changed-since`, the configured filters run as for `run`; a
+pair one left out ends in ` (left out by <filter>: <reason>)`. `--reporter json` prints
 `{ "pairs": [...] }`, naming a skip or left-out reason `reason` and the
 filter that left a pair out `filter`.
 
@@ -91,8 +90,8 @@ npx e2e list tests/signup.e2e.ts --tag smoke --reporter json
 
 `import { run } from 'e2e/runner'` executes the suite and returns its report
 without exiting the caller. Pass `cwd`, `config`, and `files` to select the
-project and tests, `noFilter: true` to skip the configured test filters, and
-`changedSince` for the change they judge;
+project and tests, and `changedSince` to run the configured test filters on
+the change since that ref;
 `onEvent` receives progress and `interruptSignal` cancels
 with teardown. A runtime config uses one in-process worker. Await each run
 before starting the next and close every host first; overlaps reject with
@@ -258,10 +257,16 @@ jobs:
   `@e2e-dev/decision ai`, add
   `filters: [decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })]`
   with `decisionFilter` from `@e2e-dev/decision` and `gateway` from `ai`,
-  pass `AI_GATEWAY_API_KEY` in the run step's `env`, and give
-  `actions/checkout` `fetch-depth: 2`. Filters run only on a pull or merge
-  request or with `--changed-since <ref>`. Every test runs on
+  pass `AI_GATEWAY_API_KEY` in the run step's `env`, give
+  `actions/checkout` `fetch-depth: 0`, and run
+  `npx e2e run ${{ github.base_ref && format('--changed-since origin/{0}', github.base_ref) }}`.
+  Filters run only with `--changed-since <ref>`, which that expression
+  passes on pull requests alone. Every test runs without it, on
   `pull_request_target`, a lockfile or config change, and a `--last-failed`
   rerun, and so do tests whose test file, setup file, or stored screenshots
-  changed. Preview with `npx e2e list --changed-since origin/main`.
+  changed. On GitLab, pass `--changed-since ${CI_MERGE_REQUEST_TARGET_BRANCH_SHA:-$CI_MERGE_REQUEST_DIFF_BASE_SHA}`
+  on merge request pipelines, not merge trains, with `GIT_DEPTH: 0`. Preview
+  with `npx e2e list --changed-since origin/main`, after committing: the
+  decision filter reads what the commits change, and an uncommitted or
+  untracked file by name only.
   Reference: https://e2e.tester.army/docs/filters

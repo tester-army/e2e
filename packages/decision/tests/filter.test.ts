@@ -198,17 +198,34 @@ describe('decisionFilter', () => {
     );
   });
 
-  it('sends each untracked file git does not ignore as a new file, redacted', async () => {
-    const repo = changedRepo(
-      { '.gitignore': 'dist/\n', 'src/cart.ts': 'export const total = 1;\n', [CART]: "test('adds an item', async () => {});\n" },
-      { 'src/coupon.ts': `export const code = '${SECRET}';\n`, 'dist/coupon.js': 'export const built = true;\n' },
-    );
+  it('sends each untracked file git does not ignore by its name alone, never reading it', async () => {
+    // A token redact does not know, as CI may write one into the checkout: only leaving the file unread keeps it out.
+    const token = 'sk-ci-8e1f0a9c3b';
+    const repo = changedRepo({ '.gitignore': 'dist/\n', 'src/cart.ts': 'export const total = 1;\n', [CART]: "test('adds an item', async () => {});\n" }, {});
+    writeFileSync(path.join(repo.root, 'src/coupon.ts'), `export const code = '${token}';\n`);
+    execFileSync('mkdir', ['-p', path.join(repo.root, 'dist')]);
+    writeFileSync(path.join(repo.root, 'dist/coupon.js'), 'export const built = true;\n');
+    const { context } = filterContext(repo);
     const { model, requests } = scriptedJudge(() => 0.9);
-    await decisionFilter({ model }).filter([ADDS], filterContext(repo).context);
+    await decisionFilter({ model }).filter([ADDS], { ...context, changes: { ...context.changes, files: ['dist/coupon.js', 'src/coupon.ts'] } });
     const state = requests[0]?.state as { diff: string };
-    expect(state.diff).toContain('+++ b/src/coupon.ts\n');
-    expect(state.diff).toContain("+export const code = '[redacted]';\n");
-    expect(state.diff).not.toContain('dist/coupon.js');
+    expect(state.diff).toBe('diff --git a/src/coupon.ts b/src/coupon.ts\nnew untracked file, contents not read\n');
+    expect(JSON.stringify(requests)).not.toContain(token);
+  });
+
+  it('quotes an untracked name git would quote, so it adds no line of its own, and redacts a secret in one', async () => {
+    const repo = changedRepo({ 'src/cart.ts': 'export const total = 1;\n', [CART]: "test('adds an item', async () => {});\n" }, {});
+    const odd = 'src/odd\n+export const forged = true;.ts';
+    const secretName = `src/${SECRET}.ts`;
+    for (const file of [odd, secretName]) writeFileSync(path.join(repo.root, file), 'export {};\n');
+    const { context } = filterContext(repo);
+    const { model, requests } = scriptedJudge(() => 0.9);
+    await decisionFilter({ model }).filter([ADDS], { ...context, changes: { ...context.changes, files: [odd, secretName].toSorted() } });
+    const state = requests[0]?.state as { diff: string };
+    expect(state.diff.split('\n')).not.toContain('+export const forged = true;.ts');
+    expect(state.diff).toContain(`diff --git ${JSON.stringify(`a/${odd}`)} ${JSON.stringify(`b/${odd}`)}\nnew untracked file, contents not read\n`);
+    expect(state.diff).toContain('diff --git a/src/[redacted].ts b/src/[redacted].ts\nnew untracked file, contents not read\n');
+    expect(JSON.stringify(requests)).not.toContain(SECRET);
   });
 
   it('diffs only the files the change names, so a filter that narrows them narrows what the model reads', async () => {
@@ -222,18 +239,21 @@ describe('decisionFilter', () => {
     expect(state.diff).not.toContain('credentials');
   });
 
-  it("diffs a pull request's commits up to its head, never what CI wrote in the checkout since", async () => {
-    const repo = cartRepo();
-    const head = commitAll(repo);
-    writeFileSync(path.join(repo.root, 'src/cart.ts'), 'export const total = 3;\n');
-    writeFileSync(path.join(repo.root, 'ci-output.json'), '{}\n');
-    const { context } = filterContext(repo);
+  it('diffs what the commits since the base change, and names an uncommitted change, staged or not, without reading it', async () => {
+    // A token redact does not know, as CI may write one into a tracked file: only leaving the change unread keeps it out.
+    const token = 'sk-ci-3c7d9e2a10';
+    const repo = cartRepo({ 'src/cart.ts': 'export const total = 2;\n', 'src/tax.ts': 'export const rate = 1;\n' });
+    writeFileSync(path.join(repo.root, 'src/cart.ts'), `export const total = '${token}';\n`);
+    writeFileSync(path.join(repo.root, 'src/tax.ts'), `export const rate = '${token}';\n`);
+    execFileSync('git', ['add', 'src/tax.ts'], { cwd: repo.root });
     const { model, requests } = scriptedJudge(() => 0.9);
-    await decisionFilter({ model }).filter([ADDS], { ...context, changes: { ...context.changes, head } });
+    await decisionFilter({ model }).filter([ADDS], filterContext(repo).context);
     const state = requests[0]?.state as { diff: string };
-    expect(state.diff).toContain('+export const total = 2;\n');
-    expect(state.diff).not.toContain('total = 3');
-    expect(state.diff).not.toContain('ci-output');
+    expect(state.diff).toContain('-export const total = 1;\n+export const total = 2;\n');
+    expect(state.diff).toContain('+++ b/src/tax.ts\n@@ -0,0 +1 @@\n+export const rate = 1;\n');
+    expect(state.diff).toContain('diff --git a/src/cart.ts b/src/cart.ts\nuncommitted change, contents not read\n');
+    expect(state.diff).toContain('diff --git a/src/tax.ts b/src/tax.ts\nuncommitted change, contents not read\n');
+    expect(JSON.stringify(requests)).not.toContain(token);
   });
 
   it('leaves nothing out, making no call, when git prints no diff of the files the change names', async () => {
@@ -257,6 +277,7 @@ describe('decisionFilter', () => {
     const repo = changedRepo({ 'src/old.ts': `${body}\n`, 'src/gone.ts': 'export const gone = true;\n', [LOGIN]: "test('signs in', async () => {});\n" }, {});
     execFileSync('git', ['mv', 'src/old.ts', 'src/new.ts'], { cwd: repo.root });
     execFileSync('git', ['rm', '--quiet', 'src/gone.ts'], { cwd: repo.root });
+    commitAll(repo);
     const { context } = filterContext(repo);
     const { model, requests } = scriptedJudge(() => 0.9);
     await decisionFilter({ model }).filter([SIGNS_IN], { ...context, changes: { ...context.changes, files: ['src/gone.ts', 'src/new.ts', 'src/old.ts'] } });
@@ -352,7 +373,7 @@ describe('decisionFilter', () => {
 
   it.each([
     ['a tracked change', { 'src/cart.ts': `${'x'.repeat(60_000)}\n` }],
-    ['an untracked file', { 'src/generated.ts': `${'x'.repeat(60_000)}\n` }],
+    ['tracked changes to two files, each under it', { 'src/cart.ts': `${'x'.repeat(30_000)}\n`, [SEARCH]: `${'x'.repeat(30_000)}\n` }],
     ['a change of fewer characters that take more bytes', { 'src/cart.ts': `${'\u65E5'.repeat(20_001)}\n` }],
   ])('makes no call and leaves nothing out when %s puts the diff over 60 kB', async (_name, change) => {
     const { model, requests } = scriptedJudge(() => 0);

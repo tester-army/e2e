@@ -1,13 +1,13 @@
 /**
- * Test filters (`filters` in the config, on by default, `--no-filter` /
- * `noFilter` to skip them) through the runner, the public `e2e/runner` API,
- * and the built CLI on the fake engine: what a filter is given, what it
- * leaves out and why, a run it leaves empty booting nothing, a filter that
- * fails or outruns the deadline leaving nothing out, interrupts, `e2e list`
- * as the dry run, and each shard judging only its own slice. Filters run
- * only on a change: each project here is a git repository whose `feature`
- * branch changes `src/app.ts`, judged with `changedSince: 'main'`, and the
- * environment is scrubbed of CI, so no run detects a pull request it is not.
+ * Test filters (`filters` in the config, run with `--changed-since` /
+ * `changedSince`) through the runner, the public `e2e/runner` API, and the
+ * built CLI on the fake engine: what a filter is given, what it leaves out
+ * and why, a run it leaves empty booting nothing, a filter that fails or
+ * outruns the deadline leaving nothing out, interrupts, `e2e list` as the
+ * dry run, and each shard judging only its own slice. Each project here is
+ * a git repository whose `feature` branch changes `src/app.ts`, judged with
+ * `changedSince: 'main'`, and the environment is scrubbed of GitHub Actions,
+ * so no run reads as `pull_request_target`, which runs every test.
  */
 
 import { spawn, spawnSync } from 'node:child_process';
@@ -39,8 +39,8 @@ afterEach(() => {
 
 type Target = NonNullable<E2EConfig['targets']>[number];
 
-/** The environment of every run here: outside CI, so no run detects a pull or merge request. */
-const LOCAL_ENV: NodeJS.ProcessEnv = { ...process.env, CI: '', GITHUB_ACTIONS: '', GITLAB_CI: '' };
+/** The environment of every run here: outside CI, so no run reads as `pull_request_target`. */
+const LOCAL_ENV: NodeJS.ProcessEnv = { ...process.env, CI: '', GITHUB_ACTIONS: '' };
 
 /**
  * A fixture project removed after the test, made a git repository: `files`
@@ -256,15 +256,16 @@ describe('test filters on a run', () => {
     ]);
   });
 
-  it('skips every filter with noFilter through the public e2e/runner run(), and applies them without it', async () => {
+  it('calls no filter without changedSince through the public e2e/runner run(), and applies them with it', async () => {
     const project = fixture(THREE_TESTS);
     const { filter, calls } = recording(keepOnly('areas', ['alpha']));
     const config = { targets: [{ name: 'fake', platform: 'fake', engine: createFakeEngine({ state: true }).engine, app: FAKE_APP }], filters: [filter] } satisfies E2EConfig;
 
-    const unfiltered = await publicRunner.run({ cwd: project.dir, config, noFilter: true, changedSince: 'main' });
+    const unfiltered = await publicRunner.run({ cwd: project.dir, config });
     expect(unfiltered.exitCode).toBe(0);
     expect(executedTests(unfiltered.report)).toEqual(['alpha', 'beta', 'gamma']);
     expect(unfiltered.report.run.filters).toBeUndefined();
+    expect(unfiltered.report.run.changes).toBeUndefined();
     expect(calls).toEqual([]);
 
     const filtered = await publicRunner.run({ cwd: project.dir, config, changedSince: 'main' });
@@ -366,25 +367,50 @@ describe('test filters on a run', () => {
 });
 
 describe('when the filters run', () => {
-  it('calls no filter outside a pull request, and judges a GitHub pull request from the base its event names', async () => {
-    const project = fixture(THREE_TESTS);
-    const base = baseOf(project);
-    const { filter, calls } = recording(keepOnly('areas', ['alpha']));
-
-    const local = await runExisting(project, { config: { filters: [filter] }, runOptions: { changedSince: undefined } });
-    expect(local.report.run.errors).toEqual([]);
+  it('calls no filter, asks no git, and says nothing without changedSince, on run and list, recording no change and no filter', async () => {
+    const project = createProject(THREE_TESTS);
+    projects.push(project);
+    // A .git file naming no repository fails every git call here, where git would otherwise find the package's own checkout.
+    writeFileSync(path.join(project.dir, '.git'), 'gitdir: nowhere\n');
+    const { filter, calls } = recording(keepOnly('areas', []));
+    const notices: string[] = [];
+    const outcome = await runExisting(project, {
+      config: { filters: [filter] },
+      runOptions: { changedSince: undefined, onEvent: (event) => { if (event.type === 'notice' && event.target === 'filter') notices.push(event.message); } },
+    });
+    expect(outcome.report.run.errors).toEqual([]);
+    expect(outcome.exitCode).toBe(0);
+    const report = reportOf(project);
+    expect(executedTests(report)).toEqual(['alpha', 'beta', 'gamma']);
+    expect(report.run.changes).toBeUndefined();
+    expect(report.run.filters).toBeUndefined();
+    const listed = await listExisting(project, { config: { filters: [filter] }, changedSince: undefined });
+    expect(listed.pairs.map((pair) => pair.disposition)).toEqual(['run', 'run', 'run']);
     expect(calls).toEqual([]);
-    expect(executedTests(reportOf(project))).toEqual(['alpha', 'beta', 'gamma']);
-    expect(reportOf(project).run.changes).toEqual({ files: 0, skipped: 'not a pull request' });
+    expect(notices).toEqual([]);
+    // With changedSince, git is asked, and fails.
+    await expect(listExisting(project, { config: { filters: [filter] } })).rejects.toMatchObject({ code: 'INVALID_CHANGED_SINCE' });
+  });
 
-    const eventPath = path.join(project.dir, 'event.json');
-    writeFileSync(eventPath, JSON.stringify({ pull_request: { base: { sha: base } } }));
-    const pullRequest = { ...LOCAL_ENV, GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'pull_request', GITHUB_EVENT_PATH: eventPath, GITHUB_BASE_REF: 'main' };
-    const judged = await runExisting(project, { config: { filters: [filter] }, runOptions: { changedSince: undefined, env: pullRequest } });
-    expect(judged.report.run.errors).toEqual([]);
-    expect(calls.map(({ context }) => context.changes)).toEqual([expect.objectContaining({ base, files: ['src/app.ts'] })]);
-    expect(executedTests(reportOf(project))).toEqual(['alpha']);
-    expect(reportOf(project).run.changes).toEqual({ base, files: 1 });
+  it('runs every test on pull_request_target, even with changedSince, calling no filter, on run and list', async () => {
+    const project = fixture(THREE_TESTS);
+    const { filter, calls } = recording(keepOnly('areas', []));
+    const env = { ...LOCAL_ENV, GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'pull_request_target' };
+    const notices: string[] = [];
+    const outcome = await runExisting(project, {
+      config: { filters: [filter] },
+      runOptions: { env, onEvent: (event) => { if (event.type === 'notice' && event.target === 'filter') notices.push(event.message); } },
+    });
+    expect(outcome.report.run.errors).toEqual([]);
+    expect(outcome.exitCode).toBe(0);
+    const report = reportOf(project);
+    expect(executedTests(report)).toEqual(['alpha', 'beta', 'gamma']);
+    expect(report.run.changes).toEqual({ files: 0, skipped: 'pull_request_target runs every test' });
+    expect(report.run.filters).toBeUndefined();
+    expect(notices).toEqual(['pull_request_target runs every test, so no filter ran']);
+    const listed = await listExisting(project, { config: { filters: [filter] }, env });
+    expect(listed.pairs.map((pair) => pair.disposition)).toEqual(['run', 'run', 'run']);
+    expect(calls).toEqual([]);
   });
 
   it('runs every test without calling a filter when the config file the run loaded changed', () => {
@@ -502,18 +528,27 @@ ${edit}
     expect(calls).toEqual([]);
   });
 
-  it('never asks git for the change when no filter would run: with noFilter or with no filters configured, on run and list', async () => {
-    const project = fixture(THREE_TESTS);
-    const { filter, calls } = recording(keepOnly('areas', []));
-    for (const [filters, noFilter] of [[[filter], true], [[], false]] as const) {
-      const outcome = await runExisting(project, { config: { filters }, runOptions: { changedSince: 'nope', noFilter } });
-      expect(outcome.report.run.errors).toEqual([]);
-      expect(outcome.exitCode).toBe(0);
-      expect(executedTests(reportOf(project))).toEqual(['alpha', 'beta', 'gamma']);
-      const listed = await listExisting(project, { config: { filters }, changedSince: 'nope', noFilter });
-      expect(listed.pairs.map((pair) => pair.disposition)).toEqual(['run', 'run', 'run']);
-    }
-    expect(calls).toEqual([]);
+  it('warns that the config has no filters when changedSince has none to run, asking no git, on run and list', async () => {
+    const project = fixture({ ...THREE_TESTS, 'e2e.config.ts': cliConfig('[]') });
+    const warning = 'warning: --changed-since: the config has no filters, so every test runs';
+    const notices: string[] = [];
+    // A ref git cannot measure from proves git was never asked.
+    const outcome = await runExisting(project, {
+      config: { filters: [] },
+      runOptions: { changedSince: 'nope', onEvent: (event) => { if (event.type === 'notice' && event.target === 'filter') notices.push(event.message); } },
+    });
+    expect(outcome.report.run.errors).toEqual([]);
+    expect(outcome.exitCode).toBe(0);
+    expect(notices).toEqual([warning]);
+    const report = reportOf(project);
+    expect(executedTests(report)).toEqual(['alpha', 'beta', 'gamma']);
+    expect(report.run.changes).toBeUndefined();
+    expect(report.run.filters).toBeUndefined();
+
+    const listed = cli(project, ['list', '--reporter', 'json', '--changed-since', 'nope']);
+    expect(listed.exitCode, listed.output).toBe(0);
+    expect((JSON.parse(listed.stdout) as { pairs: ListedPair[] }).pairs.map((pair) => pair.disposition)).toEqual(['run', 'run', 'run']);
+    expect(listed.stderr).toBe(`${warning}\n`);
   });
 
   it('ignores a collected test a filter names but was not given, such as one outside the shard, whose fate stands', async () => {
@@ -537,7 +572,7 @@ ${edit}
     const { filter, calls } = recording(keepOnly('areas', []));
     const cases = [
       [true as unknown as string, 'config', 'changedSince must be a git ref, such as origin/main; got true'],
-      ['origin/mian', 'filter', '--changed-since "origin/mian" names no commit in this checkout'],
+      ['origin/mian', 'filter', '--changed-since "origin/mian" names no commit in this checkout; fetch it, such as with fetch-depth: 0 on actions/checkout'],
     ] as const;
     for (const [changedSince, phase, message] of cases) {
       const outcome = await runExisting(project, { config: { filters: [filter] }, runOptions: { changedSince } });
@@ -670,7 +705,7 @@ describe('e2e list with filters', () => {
     ]);
   });
 
-  it('prints the pairs a filter left out with the filter and its reason as json { pairs } with the summary on stderr, and every pair to run with a warning when the filter throws', () => {
+  it('prints the pairs a filter left out with the filter and its reason as json { pairs } with the summary on stderr, every pair to run without --changed-since, and every pair to run with a warning when the filter throws', () => {
     const project = fixture({
       ...THREE_TESTS,
       'e2e.config.ts': cliConfig(`[
@@ -681,6 +716,12 @@ describe('e2e list with filters', () => {
     } },
   ]`),
     });
+    // Without --changed-since no filter runs, and nothing is said.
+    const unfiltered = cli(project, ['list', '--reporter', 'json']);
+    expect(unfiltered.exitCode, unfiltered.output).toBe(0);
+    expect((JSON.parse(unfiltered.stdout) as { pairs: ListedPair[] }).pairs.map((pair) => pair.disposition)).toEqual(['run', 'run', 'run']);
+    expect(unfiltered.stderr).toBe('');
+
     const judging = `judging 1 file changed since ${baseOf(project).slice(0, 7)}`;
     const listed = cli(project, ['list', '--reporter', 'json', '--changed-since', 'main']);
     expect(listed.exitCode, listed.output).toBe(0);

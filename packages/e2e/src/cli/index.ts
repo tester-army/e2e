@@ -203,8 +203,7 @@ function selectionOptions(command: Command): Command {
     .option('--exclude-tag <tags>', 'leave out tests carrying any of these tags, comma-separated or repeated', parseNames('tag'))
     .option('--grep <pattern>', 'only tests whose title matches the regular expression (describe titles and test title, space-joined); repeat for alternatives', parsePattern)
     .option('--grep-invert <pattern>', 'leave out tests whose title matches the regular expression; repeat for alternatives', parsePattern)
-    .option('--no-filter', 'run without the configured test filters: every test the other flags select')
-    .option('--changed-since <ref>', 'judge the test filters on what differs from the merge base of this git ref, such as origin/main, uncommitted and untracked files included')
+    .option('--changed-since <ref>', 'run the configured test filters on what differs from the merge base of this git ref, such as origin/main, uncommitted and untracked files included')
     .option('--last-failed', 'only the tests the previous run did not pass, read from <output>/report.json')
     .option('--shard <index/total>', 'one contiguous slice of the selected tests, such as 2/3; serial groups stay together', parseShard)
     .option('--pass-with-no-tests', 'exit 0 on an empty selection instead of NO_TESTS');
@@ -217,8 +216,6 @@ interface SelectionFlagValues {
   excludeTag?: string[];
   grep?: RegExp[];
   grepInvert?: RegExp[];
-  /** Commander negation: `--no-filter` parses as `filter: false`. */
-  filter?: boolean;
   changedSince?: string;
   lastFailed?: boolean;
   shard?: Shard;
@@ -228,14 +225,13 @@ interface SelectionFlagValues {
 /** The shared selection flags as the runner's options. */
 function selectionRunOptions(
   options: SelectionFlagValues,
-): Pick<RunOptions, 'tags' | 'tagMode' | 'excludeTags' | 'grep' | 'grepInvert' | 'noFilter' | 'changedSince' | 'lastFailed' | 'shard' | 'passWithNoTests'> {
+): Pick<RunOptions, 'tags' | 'tagMode' | 'excludeTags' | 'grep' | 'grepInvert' | 'changedSince' | 'lastFailed' | 'shard' | 'passWithNoTests'> {
   return {
     tags: options.tag,
     tagMode: options.tagMode,
     excludeTags: options.excludeTag,
     grep: options.grep,
     grepInvert: options.grepInvert,
-    noFilter: options.filter === false,
     changedSince: options.changedSince,
     lastFailed: options.lastFailed,
     shard: options.shard,
@@ -628,7 +624,6 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           'e2e run --tag smoke --exclude-tag slow',
           "e2e run --grep checkout --grep-invert '/refund/i'",
           'e2e run --last-failed',
-          'e2e run --no-filter',
           'e2e run --changed-since origin/main',
           'e2e run --shard 2/3',
           'e2e run --reporter list,junit --workers 4 --retries 2',
@@ -838,7 +833,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .command('list')
     .summary('print the tests a run would select, without running them')
     .description(
-      'Collect and select tests exactly as run does, print one line per test and target (file › title [target] #tag), and exit. Nothing starts: no app process, no engine, no worker. The same files and selection flags (--tag, --exclude-tag, --grep, --target) narrow the selection, and the configured test filters run as they would for run, which may call a model; --no-filter skips them.',
+      'Collect and select tests exactly as run does, print one line per test and target (file › title [target] #tag), and exit. Nothing starts: no app process, no engine, no worker. The same files and selection flags (--tag, --exclude-tag, --grep, --target) narrow the selection, and with --changed-since the configured test filters run as they would for run, which may call a model.',
     )
     .argument('[files...]', FILES_DESCRIPTION)
     .optionsGroup('Selection:')

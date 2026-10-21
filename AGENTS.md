@@ -350,10 +350,12 @@ thread handled, and labeled `Ready for Human Review`. "It compiles" and
   `.github/workflows/agent.yml` schedule or by manual dispatch. Both run
   against local deterministic apps, so a failure there is ours.
 - The default testbed suite runs `decisionFilter` with Jev on a pull request
-  (`apps/testbed/e2e.config.ts`), so a PR's testbed check runs only the tests
-  Jev rates the change can affect; without the key, every test runs, and when
-  a call fails, the tests no call judged run. The merge queue and `main` run every test, so the merge
-  gate stays deterministic. `--no-filter` runs the whole suite locally.
+  (`apps/testbed/e2e.config.ts`, with `--changed-since` from `spec.yml`), so a
+  PR's testbed check runs only the tests Jev rates the change can affect;
+  without the key, every test runs, and when a call fails, the tests no call
+  judged run. The merge queue and `main` pass no `--changed-since` and run
+  every test, so the merge gate stays deterministic. Locally, every test runs
+  unless you pass `--changed-since origin/main`.
 - Agentic assertions must be model-portable: assert on meaning (`toContain`)
   and pair each agentic step with a deterministic locator check.
 

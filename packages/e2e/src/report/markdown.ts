@@ -23,7 +23,7 @@ import path from 'node:path';
 import { collapseText } from '../internal/text.ts';
 import type { Report1Document, ReportChanges, ReportError, ReportExplore, ReportExploreFinding, ReportFilter, ReportResult, ReportStep, ReportTarget } from './build.ts';
 import { ENDED_TEXT, orderFindings, SEVERITY_WORDS, stepCountParts } from './explore-text.ts';
-import { filterDecision, formatCost, formatTokens, NOT_A_PULL_REQUEST, repeatSuffix, shortCommit, statusBucket, tally, type Counters } from './format.ts';
+import { filterDecision, formatCost, formatTokens, repeatSuffix, shortCommit, statusBucket, tally, type Counters } from './format.ts';
 import { repeatGroups, repeatLine, repeatSummary, type RepeatGroup } from './repeats.ts';
 import {
   attemptsLine,
@@ -166,8 +166,7 @@ function filterLine(record: ReportFilter): string {
 
 /**
  * What the test filters judged (`12 files changed since abc1234`), or why
- * no filter ran, so a checkout too shallow to measure a pull request shows.
- * Nothing for a run that judges no pull request.
+ * no filter ran. Nothing for a run without `--changed-since`.
  */
 function changesLine(changes: ReportChanges | undefined): string | undefined {
   if (changes === undefined) return undefined;
@@ -175,7 +174,7 @@ function changesLine(changes: ReportChanges | undefined): string | undefined {
   if (changes.skipped === undefined) {
     return changes.base === undefined ? undefined : `**Change** ${plural(changes.files, 'file')} changed since ${code(shortCommit(changes.base))}${pinned}`;
   }
-  return changes.skipped === NOT_A_PULL_REQUEST ? undefined : `**Filters** none ran: ${cell(changes.skipped)}${pinned}`;
+  return `**Filters** none ran: ${cell(changes.skipped)}${pinned}`;
 }
 
 /**

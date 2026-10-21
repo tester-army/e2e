@@ -195,8 +195,9 @@ To keep the checks predictable:
 
 ## Run only affected tests
 
-On a pull request, a [test filter](/filters) can leave out the tests the
-change is unlikely to affect, while `main` runs the whole suite. See
+On a pull request, pass `--changed-since` so a [test filter](/filters) can
+leave out the tests the change is unlikely to affect. Without the flag, as
+on `main`, the whole suite runs. See
 [Add the decision filter](/filters#add-the-decision-filter).
 
 ## Sharding

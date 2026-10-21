@@ -1072,7 +1072,7 @@ value in an old shape fails the config load with `INVALID_CONFIG`:
 ### filters
 
 [Test filters](/filters) that leave out the tests a change can't affect,
-applied in order.
+applied in order when the run passes `--changed-since`.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -1086,7 +1086,7 @@ export default {
 } satisfies E2EConfig;
 ```
 
-When they run, and which tests always run, is on
+Which tests always run is on
 [Test filters](/filters#what-always-runs). A `name` follows the target name
 rules, is at most 256 characters, and is unique among `filters`.
 
@@ -1539,7 +1539,7 @@ export interface E2EConfig {
   reporters?: readonly (BuiltinReporter | Reporter)[];
   /** Named agents: the built-in agent's options, or `{ executor }` for a custom brain. */
   agents?: Readonly<Record<string, AgentConfig>>;
-  /** Test filters, applied in order when there is a change to judge, unless `--no-filter`. */
+  /** Test filters, in order, run with `--changed-since`: each judges the tests the one before it kept. */
   filters?: readonly TestFilter[];
   /** Replay cache mode or options; default `read-write`, `read-only` in CI. */
   cache?: CacheMode | CacheConfig;
@@ -1752,14 +1752,12 @@ interface TestFilterContext {
 }
 
 interface TestFilterChanges {
-  /** The merge base of the base commit and `HEAD`. */
+  /** The merge base of the `--changed-since` ref and `HEAD`. */
   readonly base: string;
   /** Absolute path of the repository root, spelled as on disk like `projectRoot`. */
   readonly root: string;
-  /** Repository-relative POSIX paths of every changed file: on a pull or merge request, what its commits change; with `--changed-since`, uncommitted and untracked files too. Sorted, never empty. */
+  /** Repository-relative POSIX paths of every changed file, uncommitted and untracked files included. Sorted, never empty. */
   readonly files: readonly string[];
-  /** On a pull or merge request, the commit the change ends at, `HEAD`; absent with `--changed-since`, whose change ends at the working tree. */
-  readonly head?: string;
 }
 
 interface TestFilterResult {

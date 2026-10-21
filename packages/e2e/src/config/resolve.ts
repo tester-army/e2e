@@ -80,7 +80,7 @@ export interface ResolvedConfig {
   readonly reporters: readonly BuiltinReporter[];
   /** The reporter objects the config names; `--reporter` never removes one. */
   readonly customReporters: readonly Reporter[];
-  /** The test filters, in order; empty when unset. A run with a change to judge applies them unless `--no-filter`. */
+  /** The test filters, in order; empty when unset. A run with `--changed-since` applies them. */
   readonly filters: readonly TestFilter[];
   /**
    * The agents unpinned tests run as, one result each: `agents.default`, or

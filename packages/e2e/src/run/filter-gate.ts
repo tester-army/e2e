@@ -1,10 +1,10 @@
 /**
  * Whether a run's test filters are called, and on which tests: the one gate
  * `run` and `list` share. A `--last-failed` rerun's tests are owed and never
- * judged. Without a change to judge, or when a lockfile or the config file
- * changed, no filter is called and every test runs. A test whose file, or
- * its session's setup file, changed runs without one, as when either's
- * stored screenshots changed.
+ * judged. Without a change to judge, as on `pull_request_target`, or when
+ * a lockfile or the config file changed, no filter is called and every
+ * test runs. A test whose file, or its session's setup file, changed runs
+ * without one, as when either's stored screenshots changed.
  */
 
 import path from 'node:path';
@@ -23,7 +23,7 @@ export interface FilterGateInput {
   /** Whether this is a `--last-failed` rerun, whose tests are owed. */
   readonly lastFailed: boolean;
   /** The base ref `--changed-since` named. */
-  readonly changedSince: string | undefined;
+  readonly changedSince: string;
   readonly projectRoot: string;
   /** The config file the run loaded; undefined for a config value. */
   readonly configPath: string | undefined;
@@ -86,8 +86,7 @@ const SNAPSHOTS = '-snapshots/';
  * Otherwise a candidate whose test file or session's setup file changed,
  * or a stored screenshot of either, runs without a filter, which runs a
  * changed setup too; the rest
- * are judged. Each decision is one notice; a pull request the checkout
- * cannot measure is a warning.
+ * are judged. Each decision is one notice.
  */
 export async function gateTestFilters(input: FilterGateInput): Promise<FilterGate> {
   /** No filter is called, for `record.skipped`, said as `message` or `<why>, so no filter ran`. */
@@ -100,7 +99,7 @@ export async function gateTestFilters(input: FilterGateInput): Promise<FilterGat
   const lookup = await findChanges({ cwd: input.projectRoot, changedSince: input.changedSince, env: input.env, signal: input.signal });
   if (lookup.kind === 'none') {
     const record = { ...(lookup.base === undefined ? {} : { base: lookup.base }), files: 0, skipped: lookup.reason };
-    return skip(record, lookup.warning ? `warning: no filter ran: ${lookup.reason}` : undefined);
+    return skip(record);
   }
   const { changes } = lookup;
   // Git names files in NFC, while a test file's name keeps the bytes on disk, NFD where macOS wrote them.

@@ -102,12 +102,10 @@ export interface RunOptions {
   freshGraph?: boolean | undefined;
   /** One shard of the selection, cut once every other flag applied and before the test filters judge it (`--shard 2/3`). */
   shard?: Shard | undefined;
-  /** Runs without the configured `filters` (`--no-filter`): every test the other flags select. */
-  noFilter?: boolean | undefined;
   /**
-   * The git ref the test filters judge the change since (`--changed-since`):
-   * the files that differ from the merge base of it and HEAD. It wins over
-   * a detected pull or merge request; a ref git cannot measure from is
+   * Runs the configured `filters` on the change since this git ref
+   * (`--changed-since`): the files that differ from the merge base of it and
+   * HEAD. Without it no filter runs; a ref git cannot measure from is
    * `INVALID_CHANGED_SINCE`.
    */
   changedSince?: string | undefined;
@@ -281,7 +279,6 @@ export interface ListOptions
     | 'grepInvert'
     | 'lastFailed'
     | 'shard'
-    | 'noFilter'
     | 'changedSince'
     | 'passWithNoTests'
     | 'output'
@@ -347,11 +344,10 @@ export interface ListResult {
  * `targets` the selected target names in config order. An empty selection
  * throws `NO_TESTS` unless `passWithNoTests`. Config, collection, and
  * selection failures throw the same classified error `run` records. Each
- * call imports the test files again, so a later call sees an edit. Unless
- * `noFilter`, the configured test filters then judge the selection when
- * there is a change to judge, which may call a model: a pair one left out is
- * `filtered`, with its `filter` and `reason`, and a selection they leave
- * empty resolves.
+ * call imports the test files again, so a later call sees an edit. With
+ * `changedSince`, the configured test filters then judge the selection,
+ * which may call a model: a pair one left out is `filtered`, with its
+ * `filter` and `reason`, and a selection they leave empty resolves.
  */
 export async function list(options: ListOptions = {}): Promise<ListResult> {
   return listSelection(options, () => undefined);
@@ -368,20 +364,21 @@ export async function listSelection(options: ListOptions, notice: (message: stri
     env,
     runOptions.output === undefined ? {} : { output: runOptions.output },
   );
-  const testFilters = runOptions.noFilter === true ? [] : config.filters;
+  const { changedSince } = runOptions;
   const collection = await collect(config, runOptions.files);
   const inputs = await selectionInputs(runOptions, config);
   const first = select(collection, config, inputs.filters, runOptions.passWithNoTests !== undefined ? { passWithNoTests: runOptions.passWithNoTests } : {});
+  if (changedSince !== undefined && config.filters.length === 0) notice(NO_FILTERS);
   const selection =
-    testFilters.length === 0
+    changedSince === undefined || config.filters.length === 0
       ? first
       : (
-          await filteredSelection(testFilters, collection, config, inputs.filters, first, {
+          await filteredSelection(config.filters, collection, config, inputs.filters, first, {
             env,
             signal: new AbortController().signal,
             notice,
             step: (_name, work) => work(),
-            changedSince: runOptions.changedSince,
+            changedSince,
             timeoutMs: FILTER_TIMEOUT_MS,
           })
         ).selection;
@@ -399,11 +396,14 @@ interface FilteredSelection {
   readonly changes: ReportChanges;
 }
 
-/** Where a filtered selection's lines go, how a filter call is wrapped and how long it may take, the environment the change is detected from, and the `--changed-since` ref. */
+/** Where a filtered selection's lines go, how a filter call is wrapped and how long it may take, the run's environment, and the `--changed-since` ref. */
 type FilterHooks = Pick<TestFilterScope, 'signal' | 'notice' | 'step' | 'timeoutMs'> & {
   readonly env: NodeJS.ProcessEnv;
-  readonly changedSince: string | undefined;
+  readonly changedSince: string;
 };
+
+/** What `--changed-since` says when the config has no test filter for it to run. */
+const NO_FILTERS = 'warning: --changed-since: the config has no filters, so every test runs';
 
 /**
  * The second selection pass of a run with test filters. `first` is the
@@ -867,7 +867,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     };
 
     // `explore` runs its own tests, which no test filter judges.
-    const testFilters = options.noFilter === true || options.tests !== undefined ? [] : config.filters;
+    const changedSince = options.tests === undefined ? options.changedSince : undefined;
+    const testFilters = changedSince === undefined ? [] : config.filters;
 
     // Collection comes first and starts no process: a collection failure or
     // NO_TESTS is reported before any dev server boots or browser downloads.
@@ -914,14 +915,15 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // The filters decide before any engine prepares or app starts, so a run
     // they leave empty boots nothing. An interrupt records nothing: the run
     // ends interrupted, like one cut short in `prepare`.
-    if (testFilters.length > 0) {
+    if (changedSince !== undefined && testFilters.length === 0 && !interrupted.aborted) notice('filter', NO_FILTERS);
+    if (changedSince !== undefined && testFilters.length > 0) {
       try {
         const filtered = await filteredSelection(testFilters, collection, config, planned.filters, selection, {
           env,
           signal: interrupted,
           notice: (message) => notice('filter', message),
           step: (name, work) => setupStep({ kind: 'filter', name }, () => debug.time('filter', work), (call) => (call.outcome === 'answered' ? undefined : call.outcome)),
-          changedSince: options.changedSince,
+          changedSince,
           timeoutMs: options.filterTimeout ?? FILTER_TIMEOUT_MS,
         });
         selection = repeatEach(filtered.selection, options.repeatEach ?? 1);
@@ -1285,7 +1287,6 @@ type SelectionRunOptions = Pick<
   | 'lastFailed'
   | 'freshGraph'
   | 'shard'
-  | 'noFilter'
   | 'changedSince'
   | 'targetIds'
   | 'passWithNoTests'

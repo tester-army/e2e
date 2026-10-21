@@ -45,13 +45,13 @@ function projectRepo(files: Readonly<Record<string, string>>) {
   return { root, base, projectRoot: path.join(root, 'app') };
 }
 
-/** Runs the gate on `input` over a run with all three candidates and no session, no flag, and no CI, recording its notices. */
+/** Runs the gate on `input` over a run with all three candidates and no session, judging the change since `main` outside CI, recording its notices. */
 async function gate(input: Partial<FilterGateInput> & Pick<FilterGateInput, 'projectRoot'>) {
   const notices: string[] = [];
   const decided = await gateTestFilters({
     candidates: CANDIDATES,
     lastFailed: false,
-    changedSince: undefined,
+    changedSince: 'main',
     configPath: undefined,
     env: {},
     signal: new AbortController().signal,
@@ -68,14 +68,14 @@ async function gate(input: Partial<FilterGateInput> & Pick<FilterGateInput, 'pro
  */
 async function expectSpelledRootMatched(spell: (root: string) => string): Promise<void> {
   const changed = projectRepo({ 'app/tests/b.e2e.ts': 'b2\n' });
-  const decided = await gate({ projectRoot: spell(changed.root), changedSince: 'main' });
+  const decided = await gate({ projectRoot: spell(changed.root) });
   expect(decided.candidates).toEqual([CANDIDATES[0], CANDIDATES[2]]);
   expect(decided.record).toEqual({ base: changed.base, files: 1, pinned: 1 });
 
   const edited = projectRepo({ 'app/e2e.config.ts': 'export default { changed: true };\n' });
   const projectRoot = spell(edited.root);
   const configPath = path.join(projectRoot, 'e2e.config.ts');
-  expect(await gate({ projectRoot, changedSince: 'main', configPath })).toMatchObject({
+  expect(await gate({ projectRoot, configPath })).toMatchObject({
     changes: undefined,
     record: { base: edited.base, files: 1, skipped: 'app/e2e.config.ts changed' },
   });
@@ -84,7 +84,7 @@ async function expectSpelledRootMatched(spell: (root: string) => string): Promis
 describe('gateTestFilters', () => {
   it('never judges a --last-failed rerun, and asks no git for it', async () => {
     const outside = tempDir();
-    const decided = await gate({ projectRoot: outside, lastFailed: true, changedSince: 'main' });
+    const decided = await gate({ projectRoot: outside, lastFailed: true });
     expect(decided).toEqual({
       candidates: [],
       changes: undefined,
@@ -94,25 +94,29 @@ describe('gateTestFilters', () => {
   });
 
   it('calls no filter with no test to judge, asking no git', async () => {
-    const decided = await gate({ projectRoot: tempDir(), candidates: [], changedSince: 'main' });
+    const decided = await gate({ projectRoot: tempDir(), candidates: [] });
     expect(decided).toMatchObject({ candidates: [], changes: undefined, record: { files: 0, skipped: 'no tests to judge' }, notices: ['no tests to judge, so no filter ran'] });
   });
 
-  it('calls no filter without a change, and warns when a pull request cannot be measured', async () => {
+  it('calls no filter without a change: on pull_request_target, or with no file changed since the ref', async () => {
     const { projectRoot } = projectRepo({ 'app/src/app.ts': 'two\n' });
-    const missing = 'f'.repeat(40);
-    const env = { GITLAB_CI: 'true', CI_MERGE_REQUEST_DIFF_BASE_SHA: missing };
-    const reason = "could not find the merge request's base commit fffffff in the checkout: fetch more history with GIT_DEPTH: 0";
-    expect(await gate({ projectRoot, env })).toMatchObject({ changes: undefined, record: { files: 0, skipped: reason }, notices: [`warning: no filter ran: ${reason}`] });
+    const env = { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'pull_request_target' };
+    expect(await gate({ projectRoot, env })).toEqual({
+      candidates: [],
+      changes: undefined,
+      record: { files: 0, skipped: 'pull_request_target runs every test' },
+      notices: ['pull_request_target runs every test, so no filter ran'],
+    });
 
     const decided = await gate({ projectRoot, changedSince: 'HEAD' });
     const head = runGit(projectRoot, 'rev-parse', 'HEAD');
-    expect(decided).toMatchObject({ changes: undefined, record: { base: head, files: 0, skipped: `no files changed since ${head.slice(0, 7)}` } });
+    const reason = `no files changed since ${head.slice(0, 7)}`;
+    expect(decided).toEqual({ candidates: [], changes: undefined, record: { base: head, files: 0, skipped: reason }, notices: [`${reason}, so no filter ran`] });
   });
 
   it('judges the change, handing the filters every candidate whose file did not change', async () => {
     const { root, base, projectRoot } = projectRepo({ 'app/src/app.ts': 'two\n', 'README.md': 'docs\n' });
-    const decided = await gate({ projectRoot, changedSince: 'main', configPath: path.join(projectRoot, 'e2e.config.ts') });
+    const decided = await gate({ projectRoot, configPath: path.join(projectRoot, 'e2e.config.ts') });
     expect(decided.candidates).toEqual(CANDIDATES);
     expect(decided.changes).toMatchObject({ base, files: ['README.md', 'app/src/app.ts'] });
     expect(decided.changes?.root).toBe(runGit(root, 'rev-parse', '--show-toplevel'));
@@ -122,7 +126,7 @@ describe('gateTestFilters', () => {
 
   it('runs a test whose file changed without filters, mapping project paths into the repository', async () => {
     const { base, projectRoot } = projectRepo({ 'app/tests/b.e2e.ts': 'b2\n', 'app/src/app.ts': 'two\n' });
-    const decided = await gate({ projectRoot, changedSince: 'main' });
+    const decided = await gate({ projectRoot });
     expect(decided.candidates.map((entry) => entry.file)).toEqual(['tests/a.e2e.ts', 'tests/c.e2e.ts']);
     expect(decided.record).toEqual({ base, files: 2, pinned: 1 });
     expect(decided.notices).toEqual([`judging 2 files changed since ${base.slice(0, 7)}`, '1 test runs without filters: its test file, screenshots, or setup file changed']);
@@ -138,7 +142,7 @@ describe('gateTestFilters', () => {
       candidate('tests/b.e2e.ts', decomposed),
       candidate('tests/c.e2e.ts', 'tests/other.setup.e2e.ts'),
     ];
-    const decided = await gate({ projectRoot, changedSince: 'main', candidates });
+    const decided = await gate({ projectRoot, candidates });
     expect(decided.candidates).toEqual([candidates[2]]);
     expect(decided.record).toEqual({ base, files: 3, pinned: 2 });
     expect(decided.notices).toEqual([`judging 3 files changed since ${base.slice(0, 7)}`, '2 tests run without filters: their test file, screenshots, or setup file changed']);
@@ -151,7 +155,7 @@ describe('gateTestFilters', () => {
       'app/tests/c.e2e.tsx-snapshots/home.png': 'png\n',
     });
     const candidates = [CANDIDATES[0]!, candidate('tests/b.e2e.ts', 'tests/auth.setup.e2e.ts'), CANDIDATES[2]!];
-    const decided = await gate({ projectRoot, changedSince: 'main', candidates });
+    const decided = await gate({ projectRoot, candidates });
     expect(decided.candidates).toEqual([CANDIDATES[2]]);
     expect(decided.record).toEqual({ base, files: 3, pinned: 2 });
   });
@@ -170,7 +174,7 @@ describe('gateTestFilters', () => {
 
   it('calls no filter once every test file changed', async () => {
     const { base, projectRoot } = projectRepo({ 'app/tests/a.e2e.ts': 'a2\n', 'app/tests/b.e2e.ts': 'b2\n', 'app/tests/c.e2e.ts': '' });
-    const decided = await gate({ projectRoot, changedSince: 'main' });
+    const decided = await gate({ projectRoot });
     expect(decided).toMatchObject({
       candidates: [],
       changes: undefined,
@@ -188,16 +192,16 @@ describe('gateTestFilters', () => {
       // Uncommitted, which --changed-since counts.
       mkdirSync(path.dirname(path.join(root, lockfile)), { recursive: true });
       writeFileSync(path.join(root, lockfile), 'lock\n');
-      const decided = await gate({ projectRoot, changedSince: 'main' });
+      const decided = await gate({ projectRoot });
       expect(decided, lockfile).toMatchObject({ candidates: [], changes: undefined, record: { base, files: 2, skipped: `${lockfile} changed` }, notices: [`${lockfile} changed, so no filter ran`] });
       rmSync(path.join(root, lockfile));
     }
 
     const edited = projectRepo({ 'app/e2e.config.ts': 'export default { changed: true };\n' });
     // A config value has no file to change: the edit is an ordinary file.
-    expect((await gate({ projectRoot: edited.projectRoot, changedSince: 'main' })).changes?.files).toEqual(['app/e2e.config.ts']);
+    expect((await gate({ projectRoot: edited.projectRoot })).changes?.files).toEqual(['app/e2e.config.ts']);
     // A file merely named like a lockfile is not one.
     const named = projectRepo({ 'app/docs/pnpm-lock.yaml.md': 'about locks\n' });
-    expect((await gate({ projectRoot: named.projectRoot, changedSince: 'main' })).changes?.files).toEqual(['app/docs/pnpm-lock.yaml.md']);
+    expect((await gate({ projectRoot: named.projectRoot })).changes?.files).toEqual(['app/docs/pnpm-lock.yaml.md']);
   });
 });

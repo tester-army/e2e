@@ -259,23 +259,34 @@ function testsIn(tests: readonly TestFilterCandidate[]): string {
 }
 /**
  * The change as one unified diff of `changes.files`, with renames found and
- * a deleted file's lines left out: on a pull or merge request, `changes.head`
- * against `changes.base`; otherwise each tracked file in the working tree
- * against `changes.base`, then each untracked file as a new file. Stops
- * adding files once the diff is past `MAX_DIFF_BYTES`.
+ * a deleted file's lines left out: what the commits since `changes.base`
+ * change, then each file the working tree changes on top, uncommitted or
+ * untracked, by name alone, since CI may have written it. Stops adding
+ * files once the diff is past `MAX_DIFF_BYTES`.
  */
-async function changeDiff({ base, head, root, files }: TestFilterChanges, signal: AbortSignal): Promise<string> {
-  const untracked = head === undefined ? new Set((await git(root, ['ls-files', '--others', '--exclude-standard', '-z'], signal)).split('\0')) : new Set<string>();
+async function changeDiff({ base, root, files }: TestFilterChanges, signal: AbortSignal): Promise<string> {
+  const [untrackedNames, uncommittedNames] = await Promise.all([
+    git(root, ['ls-files', '--others', '--exclude-standard', '-z'], signal),
+    git(root, ['diff', '--name-only', '--no-renames', '--no-ext-diff', '-z', 'HEAD', '--'], signal),
+  ]);
+  const untracked = new Set(untrackedNames.split('\0'));
+  const uncommitted = new Set(uncommittedNames.split('\0'));
   let diff = '';
   for (const paths of pathspecs(files.filter((file) => !untracked.has(file)))) {
-    diff += await git(root, ['--literal-pathspecs', 'diff', ...DIFF_FLAGS, '-M', '--irreversible-delete', base, ...(head === undefined ? [] : [head]), '--', ...paths], signal);
+    diff += await git(root, ['--literal-pathspecs', 'diff', ...DIFF_FLAGS, '-M', '--irreversible-delete', base, 'HEAD', '--', ...paths], signal);
     if (Buffer.byteLength(diff) > MAX_DIFF_BYTES) return diff;
   }
-  for (const file of files.filter((candidate) => untracked.has(candidate))) {
-    diff += await git(root, ['diff', '--no-index', ...DIFF_FLAGS, '--', '/dev/null', file], signal);
+  for (const file of files) {
+    const kind = untracked.has(file) ? 'new untracked file' : uncommitted.has(file) ? 'uncommitted change' : undefined;
+    if (kind === undefined) continue;
+    diff += `diff --git ${diffPath(`a/${file}`)} ${diffPath(`b/${file}`)}\n${kind}, contents not read\n`;
     if (Buffer.byteLength(diff) > MAX_DIFF_BYTES) break;
   }
   return diff;
+}
+/** A path as a diff header names it: quoted, as git quotes one, when it holds a quote, a backslash, or a control character, so a name can't add lines of its own. */
+function diffPath(file: string): string {
+  return /["\\\p{Cc}]/u.test(file) ? JSON.stringify(file) : file;
 }
 /** `files` in runs whose paths together stay within `MAX_PATHSPEC_CHARS`, one `git diff` each. */
 function pathspecs(files: readonly string[]): string[][] {
@@ -294,20 +305,9 @@ function pathspecs(files: readonly string[]): string[][] {
   if (run.length > 0) runs.push(run);
   return runs;
 }
-/**
- * What `git` prints in `cwd`. `git diff --no-index` exits 1 both when the
- * files differ, as a new file always does, and on an error, which prints no
- * diff.
- */
+/** What `git` prints in `cwd`. */
 async function git(cwd: string, args: readonly string[], signal: AbortSignal): Promise<string> {
-  try {
-    return (await exec('git', args, { cwd, signal, maxBuffer: MAX_DIFF_BUFFER, windowsHide: true })).stdout;
-  } catch (error) {
-    if (args.includes('--no-index') && error instanceof Error && 'code' in error && error.code === 1 && 'stdout' in error && typeof error.stdout === 'string' && error.stdout !== '') {
-      return error.stdout;
-    }
-    throw error;
-  }
+  return (await exec('git', args, { cwd, signal, maxBuffer: MAX_DIFF_BUFFER, windowsHide: true })).stdout;
 }
 /**
  * `diff` with every secret `redact` finds replaced. A unified diff starts

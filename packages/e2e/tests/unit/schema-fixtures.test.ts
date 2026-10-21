@@ -153,7 +153,7 @@ describe.each(schemas)('%s schema', (name) => {
         [() => delete changes['files'], () => (changes['files'] = 0)],
         [() => (changes['files'] = -1), () => (changes['files'] = 3)],
         [() => (changes['pinned'] = 0), () => (changes['pinned'] = 1)],
-        [() => (changes['skipped'] = ''), () => (changes['skipped'] = 'not a pull request')],
+        [() => (changes['skipped'] = ''), () => (changes['skipped'] = 'pnpm-lock.yaml changed')],
         [() => (changes['skipped'] = 'x'.repeat(1025)), () => (changes['skipped'] = 'x'.repeat(1024))],
         [() => (changes['paths'] = ['src/app.ts']), () => delete changes['paths']],
         [() => (error['phase'] = 'filtering'), () => (error['phase'] = 'filter')],

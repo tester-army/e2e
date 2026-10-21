@@ -60,14 +60,12 @@ process.exitCode = result.exitCode;
 | `cwd` | `'apps/web'` | `string` | the current working directory |
 | `config` | `'e2e.ci.config.ts'` | `string \| E2EConfig` | discovered `e2e.config.ts` |
 | `files` | `['tests/signup.e2e.ts:12']` | `readonly string[]` | the configured suite |
-| `noFilter` | `true` | `boolean` | - |
 | `changedSince` | `'origin/main'` | `string` | - |
 | `interruptSignal` | `controller.signal` | `AbortSignal` | - |
 | `onEvent` | `(event) => {}` | `RunEventSink` | - |
 
 - `files` takes paths, globs, bare names, or `file:line`.
-- `noFilter` and `changedSince` work as `--no-filter` and
-  [`--changed-since`](/filters).
+- `changedSince` works as [`--changed-since`](/filters).
 - Aborting `interruptSignal` interrupts tests and executes teardown.
 - `onEvent` receives typed progress events. Terminal progress is off. It
   must not block. A throwing or rejecting callback is disabled without
@@ -136,7 +134,6 @@ process sees an edit.
 | `grep`, `grepInvert` | `[/checkout/]` | `readonly RegExp[]` | - |
 | `lastFailed` | `true` | `boolean` | - |
 | `shard` | `{ index: 1, total: 4 }` | `{ index, total }` | - |
-| `noFilter` | `true` | `boolean` | - |
 | `changedSince` | `'origin/main'` | `string` | - |
 | `passWithNoTests` | `true` | `boolean` | - |
 | `output` | `'.e2e'` | `string` | the config's `output` |
@@ -152,14 +149,14 @@ process sees an edit.
 - `lastFailed` keeps only tests the previous run did not pass, read from
   `report.json` under `output`.
 - `shard` is the `--shard index/total` slice.
-- `noFilter` and `changedSince` work as `--no-filter` and
-  `--changed-since`. The [test filters](/filters) run in the calling
-  process; `list` prints none of their lines, `e2e list` does.
+- `changedSince` works as `--changed-since`. The [test filters](/filters)
+  run in the calling process; `list` prints none of their lines, `e2e list`
+  does.
 - `passWithNoTests` resolves with no runnable test instead of throwing
   `NO_TESTS`.
 - `output` is the results directory.
 - `env` is the environment the config resolves against, and the one the
-  test filters detect a pull or merge request from.
+  test filters check for `pull_request_target`.
 
 ##### Result
 

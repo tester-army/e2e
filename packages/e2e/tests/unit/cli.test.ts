@@ -103,7 +103,6 @@ describe('e2e run argument parsing', () => {
     expect(options.configPath).toBeUndefined();
     expect(options.reporters).toBeUndefined();
     expect(options.agent).toBeUndefined();
-    expect(options.noFilter).toBe(false);
     expect(options.changedSince).toBeUndefined();
     expect(process.exitCode).toBe(0);
   });
@@ -272,9 +271,9 @@ describe('e2e run argument parsing', () => {
     expect(options.lastFailed).toBe(true);
   });
 
-  it('maps --no-filter to noFilter and --changed-since to changedSince, which needs a ref', async () => {
-    await invoke('run', 'tests/a.e2e.ts', '--no-filter', '--changed-since', 'origin/main');
-    expect(lastRunOptions()).toMatchObject({ files: ['tests/a.e2e.ts'], noFilter: true, changedSince: 'origin/main' });
+  it('maps --changed-since to changedSince, which needs a ref', async () => {
+    await invoke('run', 'tests/a.e2e.ts', '--changed-since', 'origin/main');
+    expect(lastRunOptions()).toMatchObject({ files: ['tests/a.e2e.ts'], changedSince: 'origin/main' });
     runMock.mockClear();
     await invoke('run', '--changed-since');
     expect(process.exitCode).toBe(2);
@@ -532,6 +531,8 @@ describe('e2e list', () => {
       'auth',
       '--tag-mode',
       'all',
+      '--changed-since',
+      'origin/main',
       '--pass-with-no-tests',
     );
     expect(lastListOptions()).toEqual({
@@ -540,7 +541,7 @@ describe('e2e list', () => {
       targets: ['web', 'webkit'],
       tags: ['smoke', 'auth'],
       tagMode: 'all',
-      noFilter: false,
+      changedSince: 'origin/main',
       passWithNoTests: true,
     });
     expect(written(stdoutSpy)).toBe('');
@@ -719,7 +720,6 @@ describe('e2e --version and --help', () => {
       '--exclude-tag',
       '--grep',
       '--grep-invert',
-      '--no-filter',
       '--changed-since',
       '--last-failed',
       '--shard',

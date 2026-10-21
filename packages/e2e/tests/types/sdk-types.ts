@@ -738,7 +738,6 @@ void run({
   onEvent: (event) => { event satisfies RunEvent; },
 } satisfies RunOptions);
 void run({ config: 'e2e.config.ts' });
-void run({ noFilter: true, interruptSignal: new AbortController().signal } satisfies RunOptions);
 void run({ changedSince: 'origin/main' } satisfies RunOptions);
 // @ts-expect-error changedSince is a git ref
 void run({ changedSince: true });
@@ -771,7 +770,7 @@ void run({ onEvent: (_event: string) => {} });
 void list({
   cwd: '.', config: 'e2e.config.ts', files: ['tests/a.e2e.ts'], tags: ['smoke'], tagMode: 'all', excludeTags: ['slow'],
   grep: [/^plain$/], grepInvert: [/other/], lastFailed: false, shard: { index: 1, total: 2 }, passWithNoTests: true,
-  output: 'out', env: {}, targets: ['web'], noFilter: true, changedSince: 'origin/main',
+  output: 'out', env: {}, targets: ['web'], changedSince: 'origin/main',
 } satisfies ListOptions);
 void list({ config: { targets } });
 void isE2EError(new ConfigurationError('NO_TESTS', 'none'));

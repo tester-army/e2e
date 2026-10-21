@@ -6,10 +6,10 @@ icon: "filter"
 "twitter:image": "https://e2e.tester.army/docs/images/og/filters.png?v=2de53e0ea4"
 ---
 
-On a pull request, a test filter leaves out the tests the change can't
-affect. The decision filter asks a [decision model](/decision-models), such
-as Jev, about each test. On `main`, in the merge queue, and locally without
-`--changed-since`, every test runs.
+With `--changed-since <ref>`, a test filter leaves out the tests the change
+since that ref can't affect. The decision filter asks a
+[decision model](/decision-models), such as Jev, about each test. Without
+the flag, as on `main` and locally, every test runs.
 
 ## Add the decision filter
 
@@ -39,30 +39,37 @@ export default {
 } satisfies E2EConfig;
 ```
 
-In CI, fetch the pull request's base commit, and give the e2e step the AI
-Gateway key:
+In CI, pass `--changed-since` on pull requests, and give the e2e step the
+AI Gateway key:
 
 ```yaml title=".github/workflows/e2e.yml"
 steps:
   - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     with:
-      fetch-depth: 2
+      fetch-depth: 0
   # ...
-  - run: npx e2e run
+  - run: npx e2e run ${{ github.base_ref && format('--changed-since origin/{0}', github.base_ref) }}
     env:
       AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
 ```
 
-The model reads the diff of the changed files, the test files, and the
-setup files that save their sessions, with secrets redacted, except a value
-a secret provider returns. On a pull
-request, the change is what its commits change, so files CI writes don't
-count. The filter leaves out a test when the model rates both the test and
-its setup under 20% likely affected. When the model can't answer, the
-tests it didn't judge run, and the filter's note says why. This happens
-without a key, as on a pull request from a fork, for a diff over 60 kB, and
-for a test or setup file too large to send with the diff. The filter needs `ai`
-7.0.134 or later.
+`github.base_ref` is set only on pull requests, so a push, merge queue, or
+scheduled run passes no flag and runs every test. `fetch-depth: 0` puts the
+base branch and the merge base in the checkout. Without them, the run fails
+with `INVALID_CHANGED_SINCE`.
+
+The change is every file that differs from the merge base of the ref and
+`HEAD`, uncommitted and untracked files included. The model reads the diff
+of what the commits change, the test files, and the setup files that save
+their sessions, with secrets redacted, except a value a secret provider
+returns. It gets an uncommitted or untracked file by name only, never its
+contents, so a file a CI step writes doesn't reach it. The filter
+leaves out a test when the model rates both the test and its setup under
+20% likely affected. When the model can't answer, the tests it didn't judge
+run, and the filter's note says why. This happens without a key, as on a
+pull request from a fork, for a diff over 60 kB, and for a test or setup
+file too large to send with the diff. The filter needs `ai` 7.0.134 or
+later.
 
 Any [decision model](/decision-models) that answers `boolean` questions
 works, such as Jev through TypeSafe directly:
@@ -87,13 +94,13 @@ bunx e2e list --changed-since origin/main
 </CodeGroup>
 
 `e2e list` prints each test a filter leaves out, with the reason. It starts
-no app, and makes the same model calls as a run. To run every test, add
-`--no-filter`.
+no app, and makes the same model calls as a run. Commit first: the decision
+filter reads only what the commits change.
 
 ## What always runs
 
-- Every test, when the run isn't on a pull or merge request and has no
-  `--changed-since`, or when no file changed since the merge base.
+- Every test, when the run has no `--changed-since`, or when no file
+  changed since the merge base.
 - Every test on `pull_request_target`, even with `--changed-since`: it can
   hand a fork's change to the model beside your secrets.
 - The tests in a test file that changed or whose stored screenshots
@@ -104,19 +111,15 @@ no app, and makes the same model calls as a run. To run every test, add
   `Gemfile.lock`, `go.sum`, or `Cargo.lock`; the model judges any other.
 - A `--last-failed` rerun, so `e2e run || e2e run --last-failed` is safe,
   and every `--watch` rerun after the first run.
-- Every test, when git can't measure a pull or merge request's change,
-  such as in a shallow checkout. A warning says why.
 
 A filter that throws, returns something other than `{ exclude, note? }`,
 or runs past 5 minutes leaves nothing out, and a warning says so. The next
 filter still judges every test it was given.
 
-GitLab merge request pipelines work the same way, and a merged results
-pipeline is measured from the target branch's tip. On another CI service,
-pass `--changed-since origin/main` on pull request builds, and fetch enough
-history for the merge base. With the flag, uncommitted and untracked files
-count too, and a ref git can't measure from fails the run with
-`INVALID_CHANGED_SINCE`. With `--shard`, the filters on each machine judge
+On another CI service, pass `--changed-since origin/main` on pull request
+builds only, and fetch enough history for the merge base. On GitLab, pass
+`--changed-since ${CI_MERGE_REQUEST_TARGET_BRANCH_SHA:-$CI_MERGE_REQUEST_DIFF_BASE_SHA}`
+in merge request pipelines, not merge trains, with `GIT_DEPTH: 0`. With `--shard`, the filters on each machine judge
 only its slice.
 
 ## What you see
@@ -160,15 +163,16 @@ export const tuned = {
 ```
 
 Put `tuned` in `filters` in place of `decisionFilter(...)`. To run every
-test on one pull request, turn a label into `--no-filter`, and add
-`labeled` to the events so adding the label starts a run:
+test on one pull request, leave out `--changed-since` when it has the
+`all-tests` label. Add `labeled` to the events so adding the label starts a
+run:
 
 ```yaml title=".github/workflows/e2e.yml"
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
 # ...
-      - run: npx e2e run ${{ contains(github.event.pull_request.labels.*.name, 'all-tests') && '--no-filter' || '' }}
+      - run: npx e2e run ${{ github.base_ref && !contains(github.event.pull_request.labels.*.name, 'all-tests') && format('--changed-since origin/{0}', github.base_ref) || '' }}
 ```
 
 ## Write your own

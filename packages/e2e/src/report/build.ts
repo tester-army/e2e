@@ -102,7 +102,7 @@ export interface ReportChanges {
   files: number;
   /** How many tests ran without filters because their test file, the setup file of their session, or either one's stored screenshots changed; omitted when none. */
   pinned?: number | undefined;
-  /** Why no filter ran, such as `not a pull request` or `pnpm-lock.yaml changed`; omitted when they ran. */
+  /** Why no filter ran, such as `pnpm-lock.yaml changed`; omitted when they ran. */
   skipped?: string | undefined;
 }
 

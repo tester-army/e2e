@@ -41,8 +41,9 @@ for setup, vision, gates, provider options, and limits.
 
 ## Test filter
 
-On a pull request, `decisionFilter()` asks a decision model whether the
-change can affect each test, and leaves out the unlikely ones:
+With `e2e run --changed-since <ref>`, `decisionFilter()` asks a decision
+model whether the change since that ref can affect each test, and leaves
+out the unlikely ones:
 
 ```ts
 import type { E2EConfig } from 'e2e';

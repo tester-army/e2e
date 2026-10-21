@@ -1527,13 +1527,10 @@ export interface TestFilterChanges {
   readonly root: string;
   /**
    * Repository-relative POSIX paths of every file added, modified, or
-   * deleted since `base`, both paths of a rename; sorted, never empty. On a
-   * pull or merge request, what its commits change; with `--changed-since`,
-   * uncommitted and untracked files too.
+   * deleted since `base`, both paths of a rename, uncommitted and untracked
+   * files included; sorted, never empty.
    */
   readonly files: readonly string[];
-  /** On a pull or merge request, the commit the change ends at, HEAD; absent with `--changed-since`, whose change ends at the working tree. */
-  readonly head?: string;
 }
 
 /** What the runner hands a filter besides its tests. */
@@ -1633,7 +1630,7 @@ export interface E2EConfig {
    * construct their own, exactly like model instances.
    */
   agents?: Readonly<Record<string, AgentConfig>>;
-  /** Test filters, in order: each judges the tests the one before it kept, on a pull or merge request or with `--changed-since`. */
+  /** Test filters, in order, run with `--changed-since`: each judges the tests the one before it kept. */
   filters?: readonly TestFilter[];
   /**
    * The adaptive replay cache. Opt-out: unset means

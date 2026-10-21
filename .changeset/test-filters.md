@@ -3,4 +3,4 @@
 "@e2e-dev/github": patch
 ---
 
-Add test filters: `filters: [decisionFilter({ model })]` from `@e2e-dev/decision` leaves out the tests a pull request can't affect. They run on a GitHub pull request, a GitLab merge request, or with `--changed-since <ref>`, and `--no-filter` turns them off. `e2e list --changed-since origin/main` previews the decision, and left-out tests show in the pull request comment, `junit.xml`, and the report. A run with nothing to run starts no engine or app, and Ctrl-C exits as soon as the output is written.
+Add test filters: `filters: [decisionFilter({ model })]` from `@e2e-dev/decision` leaves out the tests a change can't affect. They run with `--changed-since <ref>`, such as `origin/main` on a pull request; without the flag every test runs. `e2e list --changed-since origin/main` previews the decision, and left-out tests show in the pull request comment, `junit.xml`, and the report. A run with nothing to run starts no engine or app, and Ctrl-C exits as soon as the output is written.

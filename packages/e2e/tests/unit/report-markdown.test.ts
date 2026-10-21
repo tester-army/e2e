@@ -865,9 +865,9 @@ describe('a run test filters narrowed', () => {
 
   it('reads a filter that kept every test or left every test out, and one that failed and so left nothing out, by its note', () => {
     const failed = record({ name: 'owners', candidates: 1, excluded: 0, note: 'failed, so it leaves nothing out: CODEOWNERS not found', failed: true });
-    const kept = renderMarkdownReport(page({ results: [passing], filters: [record({ candidates: 1, excluded: 0, note: 'not a pull request: running every test' }), failed] }));
+    const kept = renderMarkdownReport(page({ results: [passing], filters: [record({ candidates: 1, excluded: 0, note: 'every test reaches src/app.ts' }), failed] }));
     expect(kept).toContain('### 🟢 e2e: 1 passed\n');
-    expect(kept).toContain('**Filter** `areas` kept all 1 test (not a pull request: running every test)  \n**Filter** `owners` kept all 1 test (failed, so it leaves nothing out: CODEOWNERS not found)\n');
+    expect(kept).toContain('**Filter** `areas` kept all 1 test (every test reaches src/app.ts)  \n**Filter** `owners` kept all 1 test (failed, so it leaves nothing out: CODEOWNERS not found)\n');
     expect(kept).not.toContain('left out by filters');
     expect(renderMarkdownReport(page({ results: [leftOut('pays', 'areas', 'unaffected')], filters: [record({ candidates: 1, excluded: 1 })] }))).toContain('**Filter** `areas` left out all 1 test\n');
   });
@@ -895,16 +895,14 @@ describe('a run test filters narrowed', () => {
     expect(renderMarkdownReport(page({ results: [passing], changes: { base, files: 4 }, filters: [record({ candidates: 1, excluded: 0 })] }))).toContain('\n**Change** 4 files changed since `0123456`  \n');
   });
 
-  it('says why no filter ran, so a checkout too shallow to measure the pull request shows, but not on a run that judges no pull request', () => {
-    const reason = "could not find the pull request's base commit fffffff in the checkout: check out with fetch-depth: 2 or more";
-    const shallow = renderMarkdownReport(page({ results: [passing], changes: { files: 0, skipped: reason } }));
-    expect(shallow).toContain(`\n**Filters** none ran: ${reason}\n`);
-    // A pull request that edits only test files says why every test ran.
+  it('says why no filter ran, whatever the reason', () => {
     const base = '0123456789abcdef0123456789abcdef01234567';
+    for (const changes of [{ files: 0, skipped: 'pull_request_target runs every test' }, { base, files: 2, skipped: 'pnpm-lock.yaml changed' }]) {
+      expect(renderMarkdownReport(page({ results: [passing], changes })), changes.skipped).toContain(`\n**Filters** none ran: ${changes.skipped}\n`);
+    }
+    // A change that edits only test files says why every test ran.
     const tests = renderMarkdownReport(page({ results: [passing], changes: { base, files: 3, pinned: 3, skipped: 'no tests left to judge' } }));
     expect(tests).toContain('**Filters** none ran: no tests left to judge; 3 tests ran without filters: their test file, screenshots, or setup file changed\n');
-    const local = renderMarkdownReport(page({ results: [passing], changes: { files: 0, skipped: 'not a pull request' } }));
-    expect(local).toBe(renderMarkdownReport(page({ results: [passing] })));
   });
 
   it('caps the left-out table at 50 rows, pointing at report.json for the rest', () => {

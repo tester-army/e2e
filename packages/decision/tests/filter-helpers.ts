@@ -86,8 +86,8 @@ export interface ChangedRepo {
 
 /**
  * A repository in the temp directory with `base` committed and `change`
- * written over it uncommitted, both by repository-relative path, removed
- * when the test finishes. The e2e project is at the root, or at `project`
+ * committed over it, as a branch's commits are, both by repository-relative
+ * path, removed when the test finishes. The e2e project is at the root, or at `project`
  * inside it; `config` is set in the repository's own git config.
  */
 export function changedRepo(
@@ -102,15 +102,17 @@ export function changedRepo(
   writeFiles(root, base);
   git(root, 'add', '--all');
   git(root, 'commit', '--quiet', '-m', 'base');
+  const baseCommit = git(root, 'rev-parse', 'HEAD');
   writeFiles(root, change);
-  return { root, projectRoot: path.join(root, project), base: git(root, 'rev-parse', 'HEAD'), files: Object.keys(change).toSorted() };
+  git(root, 'add', '--all');
+  git(root, 'commit', '--quiet', '--allow-empty', '-m', 'change');
+  return { root, projectRoot: path.join(root, project), base: baseCommit, files: Object.keys(change).toSorted() };
 }
 
-/** Commits every change in `repo`, as a pull request's branch holds it, and returns the commit. */
-export function commitAll(repo: ChangedRepo): string {
+/** Commits every change in `repo` on top of what it has committed. */
+export function commitAll(repo: ChangedRepo): void {
   git(repo.root, 'add', '--all');
   git(repo.root, 'commit', '--quiet', '-m', 'change');
-  return git(repo.root, 'rev-parse', 'HEAD');
 }
 
 /** A secret every context's `redact` replaces. */
