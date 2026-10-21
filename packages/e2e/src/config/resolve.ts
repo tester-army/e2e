@@ -274,10 +274,11 @@ export function resolveConfig(
 
   // CLI overrides obey the same bounds as the config keys they replace: a
   // `--workers 0` would otherwise plan work no worker can ever take. A
-  // timeout flag still leaves the config value checked: a broken value fails
-  // with or without the flag.
-  const actionTimeout = positiveInt(cli.actionTimeout, '--action-timeout', 'milliseconds') ?? configActionTimeout ?? 30_000;
-  const assertionTimeout = positiveInt(cli.assertionTimeout, '--assertion-timeout', 'milliseconds') ?? configAssertionTimeout ?? 5_000;
+  // timeout flag still leaves the config value checked, so a broken value
+  // fails with or without the flag, and it stops at what a timer can wait,
+  // as `--max-duration` does: a longer one fires at once.
+  const actionTimeout = timerMs(cli.actionTimeout, '--action-timeout') ?? configActionTimeout ?? 30_000;
+  const assertionTimeout = timerMs(cli.assertionTimeout, '--assertion-timeout') ?? configAssertionTimeout ?? 5_000;
   const retries =
     boundedInt(cli.retries, '--retries', 0, 10) ??
     boundedInt(raw.retries, 'retries', 0, 10) ??

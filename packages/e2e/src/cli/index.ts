@@ -40,7 +40,7 @@ import { telemetry as telemetryCommand, TELEMETRY_ACTIONS, type TelemetryAction 
 import { parseUpgradeTarget, upgrade, type UpgradeTarget } from './upgrade.ts';
 import { wordmarkBanner } from './wordmark.ts';
 
-/** An integer of at least one, for `--max-failures`, `--repeat-each`, and the timeout overrides. */
+/** An integer of at least one, for `--max-failures` and `--repeat-each`. */
 function parsePositiveInt(value: string): number {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 1) throw new InvalidArgumentError('must be a positive integer');
@@ -83,7 +83,7 @@ function parseShard(value: string): Shard {
   return { index, total };
 }
 
-/** An integer inside a closed range, for the explore budgets and `--max-duration`. */
+/** An integer inside a closed range, for the explore budgets, `--max-duration`, and the timeout overrides. */
 function parseBoundedInt(bounds: { readonly min: number; readonly max: number }): (value: string) => number {
   return (value) => {
     const parsed = Number(value);
@@ -580,8 +580,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     )
     .option('--workers <n>', 'parallel workers (default: from the config)', parseNonNegativeInt)
     .option('--retries <n>', 'retries per failing test (default: from the config)', parseNonNegativeInt)
-    .option('--action-timeout <ms>', 'budget of every engine operation, such as a locator waiting for its element; a call\'s own timeout still wins (default: actionTimeout in the config, else 30000)', parsePositiveInt)
-    .option('--assertion-timeout <ms>', 'default expect deadline; a matcher\'s own timeout still wins (default: assertionTimeout in the config, else 5000)', parsePositiveInt)
+    .option('--action-timeout <ms>', 'budget of every engine operation, such as a locator waiting for its element; a call\'s own timeout still wins (default: actionTimeout in the config, else 30000)', parseBoundedInt({ min: 1, max: MAX_TIMER_MS }))
+    .option('--assertion-timeout <ms>', 'default expect deadline; a matcher\'s own timeout still wins (default: assertionTimeout in the config, else 5000)', parseBoundedInt({ min: 1, max: MAX_TIMER_MS }))
     .option('--max-failures <n>', 'stop the run once this many tests have failed; the rest are skipped', parsePositiveInt)
     .option('--max-duration <ms>', 'stop the run once it has spent this many milliseconds running tests; the rest are skipped (default: maxDuration in the config)', parseBoundedInt({ min: 1, max: MAX_TIMER_MS }))
     .option('--repeat-each <n>', 'run every selected test this many times, each run its own result (pair with --no-cache to exercise the model each time)', parsePositiveInt)

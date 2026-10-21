@@ -234,20 +234,20 @@ describe('e2e run argument parsing', () => {
     expect(runMock).not.toHaveBeenCalled();
   });
 
-  it('parses --action-timeout and --assertion-timeout as positive milliseconds and rejects anything else with exit code 2', async () => {
-    await invoke('run', '--action-timeout', '5000', '--assertion-timeout', '1500');
-    expect(lastRunOptions()).toMatchObject({ actionTimeout: 5_000, assertionTimeout: 1_500 });
+  it('parses --action-timeout and --assertion-timeout as milliseconds a timer can wait and rejects anything else with exit code 2', async () => {
+    await invoke('run', '--action-timeout', '5000', '--assertion-timeout', '2147483647');
+    expect(lastRunOptions()).toMatchObject({ actionTimeout: 5_000, assertionTimeout: 2_147_483_647 });
     runMock.mockClear();
     await invoke('run');
     expect(lastRunOptions()).toMatchObject({ actionTimeout: undefined, assertionTimeout: undefined });
     runMock.mockClear();
     for (const flag of ['--action-timeout', '--assertion-timeout']) {
-      for (const value of ['0', '-1', '2.5', '5s']) {
+      for (const value of ['0', '-1', '2.5', '5s', '2147483648']) {
         stderrSpy.mockClear();
         process.exitCode = undefined;
         await invoke('run', flag, value);
         expect(process.exitCode, `${flag} ${value}`).toBe(2);
-        expect(written(stderrSpy)).toContain(`option '${flag} <ms>' argument '${value}' is invalid. must be a positive integer`);
+        expect(written(stderrSpy)).toContain(`option '${flag} <ms>' argument '${value}' is invalid. must be an integer from 1 through 2147483647`);
       }
     }
     expect(runMock).not.toHaveBeenCalled();

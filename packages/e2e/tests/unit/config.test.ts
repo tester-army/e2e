@@ -159,7 +159,7 @@ describe('resolveConfig', () => {
     ).toBe(3);
   });
 
-  it('replaces actionTimeout and assertionTimeout with the flags, the config value still checked', () => {
+  it('replaces actionTimeout and assertionTimeout with the flags, bounded by what a timer can wait, the config value still checked', () => {
     const resolveWith = (raw: Partial<E2EConfig>, cli: CliOverrides) =>
       resolveConfig({ targets: TARGETS, ...raw }, { projectRoot: ROOT, env: BASE_ENV, cli });
     expect(resolveWith({}, { actionTimeout: 3_000, assertionTimeout: 1_000 })).toMatchObject({ actionTimeout: 3_000, assertionTimeout: 1_000 });
@@ -179,6 +179,9 @@ describe('resolveConfig', () => {
         expect.objectContaining({ code: 'INVALID_CONFIG', message: `--assertion-timeout must be a positive safe integer of milliseconds, got ${value}` }),
       );
     }
+    expect(resolveWith({}, { actionTimeout: 2 ** 31 - 1 }).actionTimeout).toBe(2 ** 31 - 1);
+    expect(() => resolveWith({}, { actionTimeout: 2 ** 31 })).toThrow('--action-timeout must be at most 2147483647 milliseconds, got 2147483648');
+    expect(() => resolveWith({}, { assertionTimeout: 2 ** 31 })).toThrow('--assertion-timeout must be at most 2147483647 milliseconds, got 2147483648');
     expect(() => resolveWith({ actionTimeout: '30s' as never }, { actionTimeout: 3_000 })).toThrow(
       'actionTimeout must be a positive safe integer of milliseconds, got "30s"',
     );
