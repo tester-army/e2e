@@ -118,13 +118,14 @@ interface Probe {
   /** The target's index among the matches; -1 when none of the matches read is placed as it. */
   readonly index: number;
   /**
-   * Whether the target was placed by its turn among the nodes that read like
-   * it, which holds when the page shifts after the observation; false when
-   * only its box from the observation placed it, which a shift can fool.
+   * Whether the target's place among the matches is certain: the nodes that
+   * read like it are the ones the observation listed, each where it was or
+   * all moved together. False when only the target's own box placed it,
+   * which a twin that moved into it can fool.
    */
-  readonly byOrder: boolean;
-  /** The target as the locator engine read it, when it was among the matches. */
-  readonly match?: SemanticNode;
+  readonly certain: boolean;
+  /** Every match read, in the locator engine's order. */
+  readonly matches: readonly SemanticNode[];
 }
 
 /** The grammar tools that print a line or say why they print none; the point tools print nothing. */
@@ -359,28 +360,36 @@ export class SessionTestLines {
       return this.probe(expression, listed, within);
     };
     let twins: { readonly located: Located; readonly probe: Probe } | undefined;
-    let match: Probe | undefined;
+    let match: SemanticNode | undefined;
+    let matchCertain = false;
     const queries = nodeQueries(node);
     for (const query of queries) {
       const located = this.options.query(query);
       const probe = await attempt(located.expression);
       if (probe === undefined) break;
       if (probe.count === 1 && probe.index === 0) return located;
-      if (probe.index >= 0 && (match === undefined || (probe.byOrder && !match.byOrder))) match = probe;
-      if (probe.count > 1 && probe.index >= 0 && (twins === undefined || (probe.byOrder && !twins.probe.byOrder))) twins = { located, probe };
+      if (probe.index >= 0 && (match === undefined || (probe.certain && !matchCertain))) {
+        match = probe.matches[probe.index];
+        matchCertain = probe.certain;
+      }
+      if (probe.count > 1 && probe.index >= 0 && (twins === undefined || (probe.certain && !twins.probe.certain))) twins = { located, probe };
     }
     // The tree an observation hands over carries no test id; the node the
     // locator engine read does, found among the matches of its role.
     if (match === undefined && node.role !== undefined && ROLES.has(node.role)) {
       const probe = await attempt(this.options.query({ role: node.role }).expression);
-      if (probe !== undefined && probe.index >= 0) match = probe;
+      if (probe !== undefined && probe.index >= 0) {
+        match = probe.matches[probe.index];
+        matchCertain = probe.certain;
+      }
     }
-    const testId = match?.match?.testId === undefined ? undefined : clean(this.options.redact(match.match.testId));
+    // Only a match placed for certain lends its test id: one its box alone
+    // placed may be a twin that moved there, and its id would name the twin.
+    const testId = !matchCertain || match?.testId === undefined ? undefined : clean(this.options.redact(match.testId));
     if (testId !== undefined) {
       const located = this.options.query({ testId });
       const probe = await attempt(located.expression);
-      // A test id read off a node placed by its turn names that node, wherever it moved since.
-      if (probe !== undefined && probe.count === 1 && (probe.index === 0 || match?.byOrder === true)) return located;
+      if (probe !== undefined && probe.count === 1 && probe.matches[0]?.testId === match?.testId) return located;
     }
     if (twins === undefined) {
       if (tries <= 0) return { reason: `no locator found it alone within ${String(MAX_TRIES)} tries; try locate` };
@@ -403,10 +412,10 @@ export class SessionTestLines {
       if (probe === undefined) break;
       if (probe.count === 1 && probe.index === 0) return { expression, code: `${scope.located.code}${twins.located.code.replace(/^screen/, '')}` };
     }
-    const { count, index, byOrder } = twins.probe;
+    const { count, index, certain } = twins.probe;
     // A position is only as good as the evidence for it: a box from the
     // observation may have moved onto a twin since.
-    if (!byOrder) return { reason: `it shares ${twins.located.code} with ${String(count - 1)} other nodes, and nothing on the screen tells it apart for certain` };
+    if (!certain) return { reason: `it shares ${twins.located.code} with ${String(count - 1)} other nodes, and nothing on the screen tells it apart for certain` };
     return {
       expression: indexExpression(twins.located.expression, index),
       code: `${twins.located.code}${index === 0 ? '.first()' : `.nth(${String(index)})`}`,
@@ -416,30 +425,34 @@ export class SessionTestLines {
 
   /**
    * How many nodes a locator matches now, and which of them is the target.
-   * When every match was read and as many of them read like the target as
-   * the observation listed under `within`, the target is the one in its
-   * turn: document order survives a page that shifted since. Otherwise it is
-   * the one match centered in its box from the observation, as an inner text
-   * element sits inside the button it names.
+   * When every match was read and the matches that read like the target are
+   * the twins the observation listed under `within`, each where it was or
+   * all moved together, the target's place is certain: the twin in its turn,
+   * or, when the engine lists them in another order than the observation
+   * (light DOM before shadow roots), the one still in its box. Otherwise it
+   * is the one match centered in its box from the observation, as an inner
+   * text element sits inside the button it names, and the place is not
+   * certain.
    */
   private async probe(expression: LocatorExpression, listed: Listed, within: ExecutorNode): Promise<Probe> {
     const refs = await this.options.resolve(expression);
     const matches: SemanticNode[] = [];
     for (const ref of refs.slice(0, MAX_READ_MATCHES)) matches.push(await this.options.read(ref));
     const count = refs.length;
+    const target = listed.node;
     if (matches.length === count) {
-      const self = identityOf(listed.node);
+      const self = identityOf(target);
       const alike = matches.flatMap((match, index) => (identityOf(match, this.options.redact) === self ? [index] : []));
-      const turn = turnAmongTwins(within, listed.node);
-      if (turn !== undefined && alike.length === turn.of) {
-        const index = alike[turn.index]!;
-        return { count, index, byOrder: true, match: matches[index]! };
+      const twins = twinsOf(within, target);
+      if (alike.length === twins.length) {
+        const turn = twins.indexOf(target);
+        if (twins.length === 1 || movedTogether(twins, alike.map((index) => matches[index]!))) return { count, index: alike[turn]!, certain: true, matches };
+        const still = alike.filter((index) => centeredIn(matches[index]!, target));
+        if (still.length === 1 && stayedPut(twins, alike.map((index) => matches[index]!))) return { count, index: still[0]!, certain: true, matches };
       }
     }
-    const boxed = matches.flatMap((match, index) => (centeredIn(match, listed.node) ? [index] : []));
-    if (boxed.length !== 1) return { count, index: -1, byOrder: false };
-    const index = boxed[0]!;
-    return { count, index, byOrder: false, match: matches[index]! };
+    const boxed = matches.flatMap((match, index) => (centeredIn(match, target) ? [index] : []));
+    return { count, index: boxed.length === 1 ? boxed[0]! : -1, certain: false, matches };
   }
 }
 
@@ -554,20 +567,46 @@ function identityOf(node: ExecutorNode | SemanticNode, redact: (text: string) =>
   return [node.role ?? '', field(node.name), field(node.text), field(node.attributes?.['placeholder'])].join('\u0000');
 }
 
-/** The target's turn among the nodes under `root` that read like it, in document order. */
-function turnAmongTwins(root: ExecutorNode, target: ExecutorNode): { readonly index: number; readonly of: number } | undefined {
+/**
+ * The nodes under `root` that read like the target, in the observation's
+ * order, the target among them; only those in the target's own frame, which
+ * is the only one a locator without a frame reaches.
+ */
+function twinsOf(root: ExecutorNode, target: ExecutorNode): readonly ExecutorNode[] {
   const self = identityOf(target);
-  let index = -1;
-  let of = 0;
+  const frame = JSON.stringify(target.framePath ?? []);
+  const twins: ExecutorNode[] = [];
   const walk = (node: ExecutorNode): void => {
-    if (identityOf(node) === self) {
-      if (node.id === target.id) index = of;
-      of += 1;
-    }
+    if (identityOf(node) === self && JSON.stringify(node.framePath ?? []) === frame) twins.push(node);
     for (const child of node.children ?? []) walk(child);
   };
   walk(root);
-  return index === -1 ? undefined : { index, of };
+  return twins;
+}
+
+/** Whether each live twin, taken in turn, sits where its observed twin sat, every one moved by the same offset. */
+function movedTogether(observed: readonly ExecutorNode[], live: readonly SemanticNode[]): boolean {
+  let shift: { readonly x: number; readonly y: number } | undefined;
+  return observed.every((twin, index) => {
+    const was = twin.rect;
+    const now = live[index]?.rect;
+    if (was === undefined || now === undefined) return false;
+    const moved = { x: now.x - was.x, y: now.y - was.y };
+    shift ??= moved;
+    return Math.abs(moved.x - shift.x) <= BOX_SLACK && Math.abs(moved.y - shift.y) <= BOX_SLACK;
+  });
+}
+
+/** Whether every live twin is centered in the box of exactly one observed twin, each box taken once: the same twins, none moved. */
+function stayedPut(observed: readonly ExecutorNode[], live: readonly SemanticNode[]): boolean {
+  const taken = new Set<string>();
+  return live.every((match) => {
+    const boxes = observed.filter((twin) => centeredIn(match, twin));
+    const box = boxes[0];
+    if (boxes.length !== 1 || box === undefined || taken.has(box.id)) return false;
+    taken.add(box.id);
+    return true;
+  });
 }
 
 /** Indexes an observation's tree by id, each node with its parent's id. */

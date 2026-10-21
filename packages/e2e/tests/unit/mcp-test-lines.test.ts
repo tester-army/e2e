@@ -8,6 +8,7 @@
 import type { ToolSet } from 'ai';
 import { describe, expect, it } from 'vitest';
 import type { ExecutorActions, ExecutorNode, ExecutorObservation, ExecutorObserveOptions, StepExecutorContext } from '../../src/agent/executor.ts';
+import { GRAMMAR_TOOL_NAMES } from '../../src/agent/action-names.ts';
 import { createGrammarTools } from '../../src/agent/primitives.ts';
 import type { LocatorExpression, NodeRef, SemanticNode } from '../../src/engine/surface.ts';
 import { TestError } from '../../src/internal/errors.ts';
@@ -158,6 +159,14 @@ describe('navigationLine', () => {
 });
 
 describe('SessionTestLines', () => {
+  it('answers every grammar action but the point tools, so a new verb needs a line or a reason', async () => {
+    const context = { ...fakeExecutorContext().context, observe: async () => ({ revision: 'r', text: '', truncated: false, viewport: { width: 1, height: 1 } }) };
+    const tools = createGrammarTools(context);
+    expect(new Set(Object.keys(tools))).toEqual(GRAMMAR_TOOL_NAMES);
+    const wrapped = new SessionTestLines({ query: locateQuery, resolve: async () => [], read: async () => ({ ref: { id: 'x', revision: 'x' } }), redact: (text) => text }).wrap(tools);
+    expect(Object.keys(tools).filter((name) => wrapped[name] === tools[name]).toSorted()).toEqual(['hover_at', 'observe', 'press_at', 'screenshot', 'select_at', 'tap_at', 'type_at']);
+  });
+
   const save: Fake = { id: 'n2', role: 'button', name: 'Save', y: 40 };
 
   it('answers an action with its line after the lead, and test_lines collects it', async () => {
@@ -244,6 +253,26 @@ describe('SessionTestLines', () => {
     const live = observed.map((node) => ({ ...node, y: node.y + 40 }));
     const session = await harness({ screen: observed, matches: { 'getByRole("button", name: "Add")': live } });
     expect(noteOf(await session.run('tap', { target: 'n41' }))).toMatch(/^Test line: await screen\.getByRole\("button", "Add"\)\.nth\(1\)\.tap\(\);/);
+  });
+
+  it('pins a twin the engine lists out of the observation order by the box it never left', async () => {
+    // A shadow root's button is listed in place by observe, after the light DOM by the locator engine.
+    const shadow: Fake = { id: 'n45', role: 'button', name: 'Keep', y: 100 };
+    const light: Fake = { id: 'n46', role: 'button', name: 'Keep', y: 140 };
+    const session = await harness({ screen: [shadow, light], matches: { 'getByRole("button", name: "Keep")': [light, shadow] } });
+    expect(noteOf(await session.run('tap', { target: 'n45' }))).toMatch(/^Test line: await screen\.getByRole\("button", "Keep"\)\.nth\(1\)\.tap\(\);/);
+  });
+
+  it('pins no twin that both moved and changed places, nor reads a test id off one', async () => {
+    const first: Fake = { id: 'n47', role: 'button', name: 'Keep', y: 100 };
+    const second: Fake = { id: 'n48', role: 'button', name: 'Keep', testId: 'second', y: 140 };
+    const session = await harness({
+      screen: [first, second],
+      matches: { 'getByRole("button", name: "Keep")': [{ ...second, y: 100 }, { ...first, y: 300 }], 'getByTestId("second")': [{ ...second, y: 100 }] },
+    });
+    expect(noteOf(await session.run('tap', { target: 'n47' }))).toBe(
+      'No test line: it shares screen.getByRole("button", "Keep") with 1 other nodes, and nothing on the screen tells it apart for certain.',
+    );
   });
 
   it('pins no twin when the live screen holds another number of them than the observation did', async () => {

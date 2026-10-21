@@ -247,7 +247,8 @@ Test line: await screen.getByRole("button", "Sign in").tap();
   (`{ visible: true }`), then under a container
   (`getByRole("listitem").filter({ hasText: "Offer B" })`), then by position
   (`.nth(1)`, with a comment saying so). A position is used only when the
-  live screen has as many twins as the observation listed.
+  live twins are the ones the observation listed, each in place or all
+  moved together.
 - At most 10 locators are tried per target. On a device each try reads the
   whole screen.
 - When nothing reaches the target alone, the result says `No test line:`
