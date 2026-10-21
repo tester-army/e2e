@@ -53,9 +53,10 @@ await expect(screen.getByText('Order confirmed')).toBeVisible();
 <Note>
 The config load fails with `INVALID_CONFIG` for a tool named like a
 grammar verb (`tap`, `screenshot`) or a tool the harness adds:
-`complete_step`, `locate`, `start_recording`, `stop_recording`, or
-`report_finding`. It also fails for a value `defineTool` didn't build, and
-for `tools` on an entry with a custom `executor`.
+`complete_step`, `locate`, `test_lines`, `start_recording`,
+`stop_recording`, or `report_finding`. It also fails for a value
+`defineTool` didn't build, and for `tools` on an entry with a custom
+`executor`.
 </Note>
 
 ## Declare what a tool does

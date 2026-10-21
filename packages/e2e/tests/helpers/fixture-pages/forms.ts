@@ -126,6 +126,46 @@ ${rows}
 }
 
 export const FORM_PAGES: Record<string, PageRenderer> = {
+  // A session's test lines: a sign-in form a role and name reaches, a button
+  // repeated per row that only its row tells apart, and an icon button only
+  // its test id names. The summary says what a replay of the lines did.
+  '/test-lines': constant(`<!doctype html>
+<html>
+<head><title>Test lines</title></head>
+<body>
+  <h1>Test lines</h1>
+  <form onsubmit="event.preventDefault(); summarize()">
+    <label for="tl-user">Username</label>
+    <input id="tl-user" autocomplete="username" />
+    <label for="tl-password">Password</label>
+    <input id="tl-password" type="password" autocomplete="current-password" />
+    <label for="tl-plan">Plan</label>
+    <select id="tl-plan"><option>Free</option><option>Pro</option></select>
+    <label><input id="tl-terms" type="checkbox" /> Accept terms</label>
+    <button type="submit">Sign in</button>
+  </form>
+  <ul>
+    <li><span>Offer A</span> <button onclick="state.offer = 'A'">Reserve</button></li>
+    <li><span>Offer B</span> <button onclick="state.offer = 'B'">Reserve</button></li>
+  </ul>
+  <button data-testid="star" onclick="state.starred = true"><svg aria-hidden="true" width="16" height="16"><circle cx="8" cy="8" r="6"></circle></svg></button>
+  <output id="tl-summary" role="status" aria-label="Summary">empty</output>
+  <script>
+    const state = { offer: 'none', starred: false };
+    function summarize() {
+      const field = (id) => document.getElementById(id);
+      field('tl-summary').textContent = [
+        'user=' + field('tl-user').value,
+        'password=' + (field('tl-password').value === '' ? 'empty' : 'set'),
+        'plan=' + field('tl-plan').value,
+        'terms=' + field('tl-terms').checked,
+        'offer=' + state.offer,
+        'starred=' + state.starred,
+      ].join(' ');
+    }
+  </script>
+</body>
+</html>`),
   // Clearing a field is a typed value too: the status reads `cleared` only
   // once the input emptied after holding text.
   '/clear-field': constant(`<!doctype html>

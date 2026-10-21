@@ -1,0 +1,531 @@
+/**
+ * The test line each grammar action of an `e2e mcp` session answers with:
+ * the `screen.*` or `app.*` call that repeats the action in a test, so a
+ * coding agent can write the test while it walks the flow instead of calling
+ * `locate` for every control afterwards. The locator comes from the target as
+ * the newest observation listed it, read before the action runs, since the
+ * action may remove it. It is tried in the order the skill recommends (role
+ * and name, label, placeholder, text, test id) against the live screen with
+ * the locator engine, as `locate` tries one: a locator that matches the
+ * target and nothing else is printed, one that matches its twins too is
+ * narrowed (to the nodes that render, under a container, or by position, in
+ * that order), and otherwise the result says why there is no line. The session keeps the lines in order, and `test_lines` returns them
+ * as a draft test body. Only the session catalog wraps its grammar this way;
+ * the testing agent's model loop never sees a line.
+ */
+
+import type { ToolSet } from 'ai';
+import { z } from 'zod';
+import type { ExecutorNode, ExecutorObservation, ExecutorObserveOptions, StepExecutorContext } from '../agent/executor.ts';
+import { isFailedResult } from '../agent/loop-guards.ts';
+import { typedThroughKeyboard } from '../agent/primitives.ts';
+import type { ScreenOutput } from '../agent/screen-update.ts';
+import type { LocatorExpression, NodeRef, SemanticNode } from '../engine/surface.ts';
+import { codedMessage, InfrastructureError } from '../internal/errors.ts';
+import { collapseText } from '../internal/text.ts';
+import { filterExpression, indexExpression } from '../locator/expression.ts';
+import type { Role } from '../types.ts';
+
+/** Observations an id is looked up in, newest first, as far back as the step's feed resolves one. */
+const MAX_SCREENS = 8;
+/** Matches read per locator while looking for the target among them. */
+const MAX_READ_MATCHES = 50;
+/** Containers tried, nearest first, to narrow a locator that matches the target's twins too. */
+const MAX_CONTAINERS = 3;
+/** CSS pixels a match's center may sit outside the target's box and still be the target. */
+const BOX_SLACK = 1;
+
+/** The roles `getByRole` takes, so a node read as `generic` never becomes a role query. */
+const ROLES: ReadonlySet<string> = new Set(
+  Object.keys({
+    button: true, link: true, textbox: true, searchbox: true, combobox: true, listbox: true, option: true, checkbox: true,
+    radio: true, radiogroup: true, switch: true, slider: true, spinbutton: true, progressbar: true, meter: true, image: true,
+    heading: true, tab: true, tablist: true, tabpanel: true, menu: true, menubar: true, menuitem: true, menuitemcheckbox: true,
+    menuitemradio: true, toolbar: true, tooltip: true, tree: true, treeitem: true, list: true, listitem: true, table: true,
+    grid: true, row: true, rowgroup: true, rowheader: true, cell: true, gridcell: true, columnheader: true, separator: true,
+    group: true, article: true, figure: true, form: true, status: true, alert: true, dialog: true, alertdialog: true, main: true,
+    navigation: true, banner: true, contentinfo: true, complementary: true, region: true,
+  } satisfies Record<Role, true>),
+);
+
+/** One query a line can use, as `locate` takes it. */
+export interface LineQuery {
+  readonly role?: string;
+  readonly name?: string;
+  readonly text?: string;
+  readonly label?: string;
+  readonly placeholder?: string;
+  readonly testId?: string;
+}
+
+/** A locator: its expression for the engine and its code for the test. */
+interface Located {
+  readonly expression: LocatorExpression;
+  readonly code: string;
+}
+
+/** What a line needs of the session around it. */
+export interface TestLineOptions {
+  /** Builds a query's expression and `screen.*` code, as `locate` does (`locateQuery`). */
+  readonly query: (query: LineQuery) => Located;
+  /** Every node an expression matches on the live screen now, without waiting (`LocatorEngine.resolveNow`). */
+  readonly resolve: (expression: LocatorExpression) => Promise<readonly NodeRef[]>;
+  /** One node a resolve returned. */
+  readonly read: (ref: NodeRef) => Promise<SemanticNode>;
+  /** The attempt's secret ledger, for what a read node says before it goes into a line. */
+  readonly redact: (text: string) => string;
+  /** The app's base URL, which a navigation line is made relative to. */
+  readonly appBase?: { readonly href: string; readonly origin: string } | undefined;
+  /** The configured credentials and secrets a fill is written with. */
+  readonly fills?: TestLineFills | undefined;
+}
+
+/** The names a test fills values from, as the config declares them. */
+export interface TestLineFills {
+  /** Each credential: the name `credentials.user()` takes, its username, and its password secret's name. */
+  readonly credentials: readonly { readonly name: string; readonly username: string; readonly password: string }[];
+  /** The `config.secrets` names `secrets.get()` takes. */
+  readonly secrets: readonly string[];
+}
+
+/** What an action prints: the line, with a comment when it holds only by position, or why there is none. */
+type LinePlan = { readonly line: string } | { readonly reason: string };
+
+/** What a locator search found: the locator and how the line comments on it, or why there is none. */
+type Found = (Located & { readonly comment?: string }) | { readonly reason: string };
+
+/** A node the newest observation listed, with its ancestors, nearest first. */
+interface Listed {
+  readonly node: ExecutorNode;
+  readonly ancestors: readonly ExecutorNode[];
+}
+
+/** One observation's nodes by id, each with its parent's id. */
+type Screen = ReadonlyMap<string, { readonly node: ExecutorNode; readonly parent: string | undefined }>;
+
+/** What one locator matched: how many nodes, and where the target sits among them (-1: not among the ones read). */
+interface Probe {
+  readonly count: number;
+  readonly index: number;
+  /** The target as the locator engine read it, when it was among the matches. */
+  readonly match?: SemanticNode;
+}
+
+/** The grammar tools that print a line or say why they print none; the point tools print nothing. */
+const LINE_TOOLS: ReadonlySet<string> = new Set([
+  'tap', 'double_tap', 'long_press', 'right_click', 'hover', 'type', 'type_secret', 'press', 'select', 'check',
+  'drag', 'upload', 'scroll', 'scroll_to', 'navigate', 'back', 'dismiss_keyboard',
+]);
+
+/** The locator method each node verb's tool repeats as. */
+const NODE_METHODS: Readonly<Record<string, string>> = {
+  tap: 'tap',
+  double_tap: 'doubleTap',
+  long_press: 'longPress',
+  right_click: 'secondaryTap',
+  hover: 'hover',
+};
+
+/** One recorded action: its line, or why it has none. */
+type Entry = { readonly tool: string } & LinePlan;
+
+/** The test lines of one session: the observations it keeps for them, the wrapped grammar, and `test_lines`. */
+export class SessionTestLines {
+  private screens: Screen[] = [];
+  private readonly entries: Entry[] = [];
+
+  constructor(private readonly options: TestLineOptions) {}
+
+  /**
+   * The step context with every observation it takes kept for the lines:
+   * each asks for the tree, which is indexed and then dropped again unless
+   * the caller asked for it, so what the caller reads does not change.
+   */
+  watch(context: StepExecutorContext): StepExecutorContext {
+    const observe = async (options: ExecutorObserveOptions = {}): Promise<ExecutorObservation> => {
+      const observation = await context.observe({ ...options, tree: true });
+      this.keep(observation);
+      if (options.tree === true) return observation;
+      const { tree: _tree, ...rest } = observation;
+      return rest;
+    };
+    // A proxy, not a copy: the context's getters (`pixelsTainted`) must stay live.
+    return new Proxy(context, {
+      get: (target, key) => (key === 'observe' ? observe : Reflect.get(target, key, target)),
+    });
+  }
+
+  /** Records the session's opening of the app, which a test does with `app.open()`. */
+  opened(): void {
+    this.entries.push({ tool: 'open_session', line: 'await app.open();' });
+  }
+
+  /** The grammar tools, each that has a line answering with it after its lead. */
+  wrap(tools: ToolSet): ToolSet {
+    return Object.fromEntries(
+      Object.entries(tools).map(([name, tool]) => [name, LINE_TOOLS.has(name) && tool.execute !== undefined ? this.wrapped(name, tool) : tool]),
+    );
+  }
+
+  /** The read-only `test_lines` catalog tool. */
+  tool(): ToolSet[string] {
+    return {
+      description:
+        "Every test line this session's actions printed so far, in order, as a draft test body: the screen.* and app.* calls that repeat each action, with a comment where an action has none. Paste it into a test, then add the assertions.",
+      inputSchema: z.object({}).strict(),
+      execute: async () => this.draft(),
+    };
+  }
+
+  /** The recorded lines as a draft test body. */
+  draft(): string {
+    if (this.entries.length === 0) {
+      return 'No test lines yet. Each action (tap, type, select, check, and the rest) prints the line that repeats it in a test, and this tool returns them in order.';
+    }
+    const body = this.entries.map((entry) => ('line' in entry ? entry.line : `// ${entry.tool}: no test line: ${entry.reason}`));
+    const imports = ['credentials', 'secrets'].filter((name) => body.some((line) => line.includes(`${name}.`)));
+    return [
+      `Draft test body from this session's actions, in order (${String(this.entries.filter((entry) => 'line' in entry).length)} lines):`,
+      '',
+      ...body,
+      '',
+      `Paste it into a test body, async ({ app, screen }) => { ... }, and add an expect after each step that should change the screen.${
+        imports.length === 0 ? '' : ` Import ${imports.join(' and ')} from 'e2e'.`
+      }`,
+    ].join('\n');
+  }
+
+  private keep(observation: ExecutorObservation): void {
+    // A screen without a tree invalidates every id, as it does for the step.
+    if (observation.tree === undefined) {
+      this.screens = [];
+      return;
+    }
+    this.screens.unshift(indexScreen(observation.tree));
+    this.screens.length = Math.min(this.screens.length, MAX_SCREENS);
+  }
+
+  /** The node an id names on the newest screen that lists it, with its ancestors. */
+  private listed(id: string): Listed | undefined {
+    const key = id.replace(/^#/, '');
+    for (const screen of this.screens) {
+      const entry = screen.get(key);
+      if (entry === undefined) continue;
+      const ancestors: ExecutorNode[] = [];
+      for (let parent = entry.parent; parent !== undefined; parent = screen.get(parent)?.parent) {
+        const node = screen.get(parent)?.node;
+        if (node !== undefined) ancestors.push(node);
+      }
+      return { node: entry.node, ancestors };
+    }
+    return undefined;
+  }
+
+  private wrapped(name: string, tool: ToolSet[string]): ToolSet[string] {
+    const execute = tool.execute!;
+    return {
+      ...tool,
+      execute: async (input: unknown, options: Parameters<typeof execute>[1]) => {
+        const plan = await this.plan(name, isRecord(input) ? input : {}).catch(
+          (cause: unknown): LinePlan => ({ reason: `trying its locator failed: ${codedMessage(cause)}` }),
+        );
+        if (options.abortSignal?.aborted === true) throw new InfrastructureError('CANCELLED', 'the tool call was cancelled');
+        const output = (await execute(input, options)) as ScreenOutput;
+        return this.annotate(name, output, plan);
+      },
+    } as ToolSet[string];
+  }
+
+  /** Records a performed action's line and puts it after the result's lead; a failed action gets none. */
+  private annotate(name: string, output: ScreenOutput, plan: LinePlan): ScreenOutput {
+    const text = typeof output === 'string' ? output : output.text;
+    if (isFailedResult(name, text)) return output;
+    const entry: Entry =
+      name === 'type' && typedThroughKeyboard(text)
+        ? { tool: name, reason: 'the node is not an input and took the value through the keyboard, which no locator line repeats' }
+        : { tool: name, ...plan };
+    this.entries.push(entry);
+    const note = 'line' in entry ? `Test line: ${entry.line}` : `No test line: ${entry.reason}.`;
+    const cut = text.indexOf('\n');
+    const annotated = cut === -1 ? `${text}\n${note}` : `${text.slice(0, cut)}\n${note}${text.slice(cut)}`;
+    return typeof output === 'string' ? annotated : { ...output, text: annotated };
+  }
+
+  /** The line an action will print, worked out before it runs, while its target is still on screen. */
+  private async plan(name: string, input: Readonly<Record<string, unknown>>): Promise<LinePlan> {
+    const target = stringField(input, 'target');
+    const method = NODE_METHODS[name];
+    if (method !== undefined) {
+      const modifiers = Array.isArray(input['modifiers']) && input['modifiers'].length > 0 ? `{ modifiers: ${JSON.stringify(input['modifiers'])} }` : '';
+      return this.onTarget(target, (locator) => `${locator}.${method}(${modifiers})`);
+    }
+    switch (name) {
+      case 'type': {
+        if (target === undefined) return { reason: 'the value went to the focused field; type into a listed node by id for a line' };
+        const value = stringField(input, 'value') ?? '';
+        return this.onTarget(target, (locator) => `${locator}.fill(${this.typed(value)})`);
+      }
+      case 'type_secret': {
+        const secret = this.secretExpression(stringField(input, 'name') ?? '');
+        if (secret === undefined) return { reason: 'the secret is neither a credential password nor a config secret' };
+        return this.onTarget(target, (locator) => `${locator}.fill(${secret})`);
+      }
+      case 'press': {
+        if (target === undefined) return { reason: 'the key went to whatever had focus; press it on a listed node by id for a line' };
+        if (typeof input['times'] === 'number' && input['times'] > 1) return { reason: 'a key pressed several times in one call has no one-line equivalent; press it once per call for lines' };
+        return this.onTarget(target, (locator) => `${locator}.press(${JSON.stringify(stringField(input, 'key') ?? '')})`);
+      }
+      case 'select':
+        return this.onTarget(target, (locator) => `${locator}.selectOption(${JSON.stringify(stringField(input, 'value') ?? '')})`);
+      case 'check':
+        return this.onTarget(target, (locator) => `${locator}.${input['checked'] === false ? 'uncheck' : 'check'}()`);
+      case 'upload': {
+        const files = Array.isArray(input['files']) ? input['files'].filter((file): file is string => typeof file === 'string') : [];
+        return this.onTarget(target, (locator) => `${locator}.setInputFiles(${JSON.stringify(files.length === 1 ? files[0] : files)})`);
+      }
+      case 'drag':
+        return this.drag(target, stringField(input, 'to'));
+      case 'scroll_to':
+        if (target !== undefined && stringField(input, 'text') === undefined) return this.onTarget(target, (locator) => `${locator}.scrollIntoView()`);
+        return { reason: 'scrolling to a text has none; a test action brings its node into view, and a row deep in a windowed list takes screen.scrollUntilVisible(locator)' };
+      case 'scroll':
+        return { reason: 'a test action brings its node into view itself, and a row deep in a windowed list takes screen.scrollUntilVisible(locator)' };
+      case 'dismiss_keyboard':
+        return { reason: 'a test hides the keyboard only when it covers the next control' };
+      case 'navigate':
+        return { line: navigationLine(stringField(input, 'url') ?? '', this.options.appBase) };
+      case 'back':
+        return { line: 'await app.back();' };
+      default:
+        return { reason: `${name} has no test line` };
+    }
+  }
+
+  /** A line acting on one target, or why there is none. */
+  private async onTarget(id: string | undefined, act: (locator: string) => string): Promise<LinePlan> {
+    const found = await this.locator(id);
+    if ('reason' in found) return found;
+    return { line: `await ${act(found.code)};${found.comment === undefined ? '' : ` // ${found.comment}`}` };
+  }
+
+  private async drag(source: string | undefined, destination: string | undefined): Promise<LinePlan> {
+    const from = await this.locator(source);
+    if ('reason' in from) return from;
+    const to = await this.locator(destination);
+    if ('reason' in to) return { reason: `the drop target: ${to.reason}` };
+    const comments = [from.comment, to.comment].filter((comment) => comment !== undefined);
+    return { line: `await ${from.code}.dragTo(${to.code});${comments.length === 0 ? '' : ` // ${comments.join('; ')}`}` };
+  }
+
+  /** A typed value as the line spells it: a credential's username by its name, anything else as written. */
+  private typed(value: string): string {
+    const credential = this.options.fills?.credentials.find((candidate) => candidate.username === value);
+    return credential === undefined ? JSON.stringify(value) : `credentials.user(${JSON.stringify(credential.name)}).username`;
+  }
+
+  /** How a test names a secret `type_secret` filled: a credential's password, or a config secret. */
+  private secretExpression(name: string): string | undefined {
+    const credential = this.options.fills?.credentials.find((candidate) => candidate.password === name);
+    if (credential !== undefined) return `credentials.user(${JSON.stringify(credential.name)}).password`;
+    return this.options.fills?.secrets.includes(name) === true ? `secrets.get(${JSON.stringify(name)})` : undefined;
+  }
+
+  /**
+   * The locator a test line uses for a target id: the first query from the
+   * node's own fields that matches it alone; else the query that matched it
+   * among its twins, kept to the nodes that render or scoped under a
+   * container that tells them apart; else that query by position, with a
+   * comment saying so.
+   */
+  private async locator(id: string | undefined): Promise<Found> {
+    if (id === undefined) return { reason: 'the action names no node' };
+    const listed = this.listed(id);
+    if (listed === undefined) return { reason: `#${id.replace(/^#/, '')} is not on a screen this session observed` };
+    const { node } = listed;
+    let twins: { readonly located: Located; readonly probe: Probe } | undefined;
+    let match: SemanticNode | undefined;
+    const queries = nodeQueries(node);
+    for (const query of queries) {
+      const located = this.options.query(query);
+      const probe = await this.probe(located.expression, node);
+      if (probe.count === 1 && probe.index === 0) return located;
+      match ??= probe.match;
+      if (probe.count > 1 && probe.index >= 0) twins ??= { located, probe };
+    }
+    // The tree an observation hands over carries no test id; the node the
+    // locator engine read does, found among the matches of its role.
+    if (match === undefined && node.role !== undefined && ROLES.has(node.role)) {
+      match = (await this.probe(this.options.query({ role: node.role }).expression, node)).match;
+    }
+    const testId = match?.testId === undefined ? undefined : clean(this.options.redact(match.testId));
+    if (testId !== undefined) {
+      const located = this.options.query({ testId });
+      const probe = await this.probe(located.expression, node);
+      if (probe.count === 1 && probe.index === 0) return located;
+      if (probe.count > 1 && probe.index >= 0) twins ??= { located, probe };
+    }
+    if (twins === undefined) {
+      return {
+        reason:
+          queries.length === 0 && testId === undefined
+            ? 'the node has no name, text, placeholder, or test id to find it by'
+            : 'no locator from its role and name, label, placeholder, text, or test id finds it on the live screen; try locate',
+      };
+    }
+    const visible = visibleOnly(twins.located);
+    if (visible !== undefined) {
+      const probe = await this.probe(visible.expression, node);
+      if (probe.count === 1 && probe.index === 0) return visible;
+    }
+    for (const scope of containerScopes(listed, this.options.query)) {
+      const expression = scopedUnder(twins.located.expression, scope.expression);
+      if (expression === undefined) break;
+      const probe = await this.probe(expression, node);
+      if (probe.count === 1 && probe.index === 0) return { expression, code: `${scope.code}${twins.located.code.replace(/^screen/, '')}` };
+    }
+    const { count, index } = twins.probe;
+    return {
+      expression: indexExpression(twins.located.expression, index),
+      code: `${twins.located.code}${index === 0 ? '.first()' : `.nth(${String(index)})`}`,
+      comment: `${String(index + 1)} of ${String(count)} matches, by position; a unique name or test id holds up better`,
+    };
+  }
+
+  /** How many nodes a locator matches now, and which of them, if any, is the target. */
+  private async probe(expression: LocatorExpression, target: ExecutorNode): Promise<Probe> {
+    const refs = await this.options.resolve(expression);
+    for (let index = 0; index < Math.min(refs.length, MAX_READ_MATCHES); index += 1) {
+      const match = await this.options.read(refs[index]!);
+      if (sameNode(match, target, refs.length === 1)) return { count: refs.length, index, match };
+    }
+    return { count: refs.length, index: -1 };
+  }
+}
+
+/**
+ * The queries a node's own fields give, in the order the skill recommends:
+ * role and name, then label, placeholder, and text. The test id is not among
+ * an observation's fields; the line search reads it off the live node.
+ */
+export function nodeQueries(node: ExecutorNode): readonly LineQuery[] {
+  const queries: LineQuery[] = [];
+  const name = clean(node.name);
+  if (name !== undefined && node.role !== undefined && ROLES.has(node.role)) queries.push({ role: node.role, name });
+  if (name !== undefined) queries.push({ label: name });
+  const placeholder = clean(node.attributes?.['placeholder']);
+  if (placeholder !== undefined) queries.push({ placeholder });
+  for (const text of new Set([clean(node.text), name])) {
+    if (text !== undefined) queries.push({ text });
+  }
+  return queries;
+}
+
+/**
+ * The `app.open` line for a navigation: a URL on the app's origin as its
+ * path, so the line holds on the port the next run gets, the base URL itself
+ * as `app.open()`, anything else as given.
+ */
+export function navigationLine(url: string, base: { readonly href: string; readonly origin: string } | undefined): string {
+  if (base !== undefined && URL.canParse(url, base.href)) {
+    const resolved = new URL(url, base.href);
+    if (resolved.href === base.href) return 'await app.open();';
+    if (resolved.origin === base.origin) return `await app.open(${JSON.stringify(`${resolved.pathname}${resolved.search}${resolved.hash}`)});`;
+  }
+  return `await app.open(${JSON.stringify(url)});`;
+}
+
+/**
+ * The containers a locator can be scoped under to tell the target from its
+ * twins, nearest first: an ancestor with a role, by its name, or by the
+ * first text it holds outside the target, the way a test scopes the
+ * "Delete" button of one row.
+ */
+function containerScopes(listed: Listed, query: (query: LineQuery) => Located): Located[] {
+  const scopes: Located[] = [];
+  let containers = 0;
+  for (const ancestor of listed.ancestors) {
+    const role = ancestor.role;
+    if (role === undefined || !ROLES.has(role)) continue;
+    if (containers >= MAX_CONTAINERS) break;
+    containers += 1;
+    const name = clean(ancestor.name);
+    if (name !== undefined) scopes.push(query({ role, name }));
+    const text = firstText(ancestor, listed.node.id) ?? clean(ancestor.text);
+    if (text !== undefined && text !== name) {
+      const base = query({ role });
+      scopes.push({ expression: filterExpression(base.expression, { hasText: text }), code: `${base.code}.filter({ hasText: ${JSON.stringify(text)} })` });
+    }
+  }
+  return scopes;
+}
+
+/** The first text a container holds, depth first, outside the subtree of `skip`. */
+function firstText(node: ExecutorNode, skip: string): string | undefined {
+  for (const child of node.children ?? []) {
+    if (child.id === skip) continue;
+    if ((child.children?.length ?? 0) === 0) {
+      const own = clean(child.text) ?? clean(child.name);
+      if (own !== undefined) return own;
+      continue;
+    }
+    const deeper = firstText(child, skip);
+    if (deeper !== undefined) return deeper;
+  }
+  return undefined;
+}
+
+/**
+ * A bare query kept to the nodes that render, the way a test steps past a
+ * hidden twin (`visible: true`); undefined for anything else, or a query
+ * whose code already carries options.
+ */
+function visibleOnly(located: Located): Located | undefined {
+  const { expression, code } = located;
+  if (expression.kind !== 'query' || expression.scope !== undefined || code.includes('{')) return undefined;
+  return { expression: { ...expression, query: { ...expression.query, visible: true } }, code: `${code.slice(0, -1)}, { visible: true })` };
+}
+
+/** A query expression scoped under another expression; undefined for an expression that is not a bare query. */
+function scopedUnder(child: LocatorExpression, scope: LocatorExpression): LocatorExpression | undefined {
+  return child.kind === 'query' && child.scope === undefined ? { ...child, scope } : undefined;
+}
+
+/**
+ * Whether a node the locator engine read is the target the observation
+ * listed: its center inside the target's box, as an inner text element sits
+ * inside the button it names. Without both boxes, only a lone match counts.
+ */
+function sameNode(match: SemanticNode, target: ExecutorNode, alone: boolean): boolean {
+  const box = target.rect;
+  const found = match.rect;
+  if (box === undefined || found === undefined) return alone;
+  const x = found.x + found.width / 2;
+  const y = found.y + found.height / 2;
+  return x >= box.x - BOX_SLACK && x <= box.x + box.width + BOX_SLACK && y >= box.y - BOX_SLACK && y <= box.y + box.height + BOX_SLACK;
+}
+
+function indexScreen(tree: ExecutorNode): Screen {
+  const screen = new Map<string, { readonly node: ExecutorNode; readonly parent: string | undefined }>();
+  const walk = (node: ExecutorNode, parent: string | undefined): void => {
+    screen.set(node.id, { node, parent });
+    for (const child of node.children ?? []) walk(child, node.id);
+  };
+  walk(tree, undefined);
+  return screen;
+}
+
+/** Text in the one-line form a locator matches against, or undefined for none. */
+function clean(text: string | undefined): string | undefined {
+  if (text === undefined) return undefined;
+  const collapsed = collapseText(text);
+  return collapsed === '' ? undefined : collapsed;
+}
+
+function stringField(input: Readonly<Record<string, unknown>>, key: string): string | undefined {
+  const value = input[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null;
+}
