@@ -127,4 +127,18 @@ describe('staleOr', () => {
       retryable: false,
     });
   });
+
+  it.each([
+    'resolved to hidden',
+    'element is not attached to the DOM',
+    'element was detached from the DOM',
+    'no element found',
+    'frame was detached',
+  ])(
+    'keeps a timeout a timeout when its call log says %s',
+    (line) => {
+      const timeout = pwTimeout(`Timeout 5000ms exceeded.\nCall log:\n  - waiting for locator('#x')\n  - locator ${line}`);
+      expect(staleOr(timeout, 'read')).toMatchObject({ code: 'OPERATION_TIMEOUT', retryable: false });
+    },
+  );
 });
