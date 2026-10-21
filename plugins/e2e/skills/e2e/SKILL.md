@@ -95,8 +95,9 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
    atomic goal per call, and pin each outcome right after with `expect` or
    `agent.assert`. A test with three goals makes three calls.
    Start it on the screen it covers, since every rerun pays for the steps
-   before: a saved session instead of the sign-in form, `app.open` on that
-   screen's path, data from the app's API (topic `writing-tests`).
+   before: in a browser a saved session instead of the sign-in form and
+   `app.open` on that screen's path, on a device `device.openLink`, and data
+   from the app's API (topic `writing-tests`).
    Exact values go through `screen`: a sign-in form in a setup test, a field
    that must receive one specific string, a count that must be one number.
 4. Run one file: `npx e2e run tests/<feature>.e2e.ts`. Agent steps need a
