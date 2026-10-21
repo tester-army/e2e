@@ -56,7 +56,8 @@ export interface SessionEnd {
  * nothing to write, `cancelled` stopped at a prompt, `install-failed` wrote
  * the files but the package manager failed, `not-interactive` had prompts and
  * no terminal, `invalid-project` could not start (a file for a directory, an
- * unreadable package.json, a bundled skill missing).
+ * unreadable package.json, a bundled skill missing, a non-empty directory for
+ * `--example`), `example-failed` could not download the example.
  */
 export type InitResult =
   | 'scaffolded'
@@ -64,12 +65,15 @@ export type InitResult =
   | 'cancelled'
   | 'install-failed'
   | 'not-interactive'
-  | 'invalid-project';
+  | 'invalid-project'
+  | 'example-failed';
 
 /** What `e2e init` was asked and chose: the CLI's own option ids, never a path or an endpoint the user typed. */
 export interface InitOutcome {
   readonly result: InitResult;
   readonly yes: boolean;
+  /** The `--example` folder name, null without the flag. */
+  readonly example: string | null;
   /** Whether a config already existed, in which case no engine or gateway was asked. */
   readonly existingConfig: boolean;
   readonly engine: string | null;
@@ -148,6 +152,7 @@ export function initCompletedEvent(outcome: InitOutcome): TelemetryEvent {
     properties: {
       result: outcome.result,
       yes: outcome.yes,
+      example: outcome.example,
       existing_config: outcome.existingConfig,
       engine: outcome.engine,
       gateway: outcome.gateway,

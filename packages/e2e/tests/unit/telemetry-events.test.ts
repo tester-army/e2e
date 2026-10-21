@@ -63,6 +63,7 @@ describe('telemetry events', () => {
       initCompletedEvent({
         result: 'scaffolded',
         yes: false,
+        example: 'with-vite',
         existingConfig: false,
         engine: 'playwright',
         gateway: 'openai-compatible',
@@ -75,6 +76,7 @@ describe('telemetry events', () => {
       properties: {
         result: 'scaffolded',
         yes: false,
+        example: 'with-vite',
         existing_config: false,
         engine: 'playwright',
         gateway: 'openai-compatible',

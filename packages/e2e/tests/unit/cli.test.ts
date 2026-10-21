@@ -40,6 +40,7 @@ function initOutcome(exitCode: number, overrides: Record<string, unknown> = {}) 
     exitCode,
     result: exitCode === 0 ? 'scaffolded' : 'invalid-project',
     yes: false,
+    example: null,
     existingConfig: false,
     engine: null,
     gateway: null,
