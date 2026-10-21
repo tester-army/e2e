@@ -40,7 +40,7 @@ import { telemetry as telemetryCommand, TELEMETRY_ACTIONS, type TelemetryAction 
 import { parseUpgradeTarget, upgrade, type UpgradeTarget } from './upgrade.ts';
 import { wordmarkBanner } from './wordmark.ts';
 
-/** An integer of at least one, for `--max-failures` and `--repeat-each`. */
+/** An integer of at least one, for `--max-failures`, `--repeat-each`, and the timeout overrides. */
 function parsePositiveInt(value: string): number {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 1) throw new InvalidArgumentError('must be a positive integer');
@@ -580,6 +580,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     )
     .option('--workers <n>', 'parallel workers (default: from the config)', parseNonNegativeInt)
     .option('--retries <n>', 'retries per failing test (default: from the config)', parseNonNegativeInt)
+    .option('--action-timeout <ms>', 'budget of every engine operation, such as a locator waiting for its element; a call\'s own timeout still wins (default: actionTimeout in the config, else 30000)', parsePositiveInt)
+    .option('--assertion-timeout <ms>', 'default expect deadline; a matcher\'s own timeout still wins (default: assertionTimeout in the config, else 5000)', parsePositiveInt)
     .option('--max-failures <n>', 'stop the run once this many tests have failed; the rest are skipped', parsePositiveInt)
     .option('--max-duration <ms>', 'stop the run once it has spent this many milliseconds running tests; the rest are skipped (default: maxDuration in the config)', parseBoundedInt({ min: 1, max: MAX_TIMER_MS }))
     .option('--repeat-each <n>', 'run every selected test this many times, each run its own result (pair with --no-cache to exercise the model each time)', parsePositiveInt)
@@ -611,6 +613,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           'e2e run --last-failed',
           'e2e run --shard 2/3',
           'e2e run --reporter list,junit --workers 4 --retries 2',
+          'e2e run tests/signup.e2e.ts --action-timeout 5000',
           'e2e run --max-failures 3',
           'e2e run --max-duration 900000',
           'e2e run --repeat-each 5 --no-cache tests/checkout.e2e.ts',
@@ -638,6 +641,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           agent?: string[];
           retries?: number;
           workers?: number;
+          actionTimeout?: number;
+          assertionTimeout?: number;
           maxFailures?: number;
           maxDuration?: number;
           repeatEach?: number;
@@ -666,6 +671,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           agent: options.agent,
           retries: options.retries,
           workers: options.workers,
+          actionTimeout: options.actionTimeout,
+          assertionTimeout: options.assertionTimeout,
           maxFailures: options.maxFailures,
           maxDuration: options.maxDuration,
           repeatEach: options.repeatEach,

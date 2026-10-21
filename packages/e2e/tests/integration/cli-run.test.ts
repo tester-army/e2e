@@ -112,6 +112,51 @@ describe('the run command through the CLI', () => {
     expect(executed.map((result) => result.titlePath.at(-1)).toSorted()).toEqual(['sign in', ...tests(second)].toSorted());
   });
 
+  it('fails a wrong locator and a wrong expectation at the timeout flags, not the config\'s, and a call\'s own timeout still wins', () => {
+    const { project, exitCode } = cli(
+      {
+        'e2e.config.ts': fakeConfig('{ locate: () => [] }', '\n  actionTimeout: 30_000,\n  assertionTimeout: 30_000,'),
+        'tests/timeouts.e2e.ts': `import { expect, test } from 'e2e';
+test('taps a button that is not there', async ({ app, screen }) => {
+  await app.open();
+  await screen.getByRole('button', { name: 'Submit now' }).tap();
+});
+test('expects a heading that is not there', async ({ app, screen }) => {
+  await app.open();
+  await expect(screen.getByRole('heading', { name: 'Welcome' })).toBeVisible();
+});
+test('taps with its own timeout', async ({ app, screen }) => {
+  await app.open();
+  await screen.getByRole('button', { name: 'Submit now' }).tap({ timeout: 1_500 });
+});
+`,
+      },
+      ['run', '--action-timeout', '400', '--assertion-timeout', '300'],
+    );
+    expect(exitCode).toBe(1);
+    const results = reportOf(project).run.results;
+    /** The failed step of the test titled `title`, with the error its attempt ended on. */
+    const failed = (title: string) => {
+      const attempt = results.find((result) => result.titlePath.at(-1) === title)?.attempts.at(-1);
+      const step = attempt?.steps.find((candidate) => candidate.status !== 'passed');
+      if (attempt === undefined || step === undefined) throw new Error(`no failed step in ${title}`);
+      return { error: attempt.error, step };
+    };
+    // The worker is a child process that resolves the config again: the flags reach it, or these wait 30 s.
+    const tap = failed('taps a button that is not there');
+    expect(tap.error?.code).toBe('LOCATOR_NOT_FOUND');
+    expect(tap.error?.details?.waitedMs).toBeGreaterThanOrEqual(400);
+    expect(tap.step.durationMs).toBeLessThan(5_000);
+    const assertion = failed('expects a heading that is not there');
+    expect(assertion.error?.code).toBe('ASSERTION_FAILED');
+    expect(assertion.step.durationMs).toBeGreaterThanOrEqual(300);
+    expect(assertion.step.durationMs).toBeLessThan(5_000);
+    const own = failed('taps with its own timeout');
+    expect(own.error?.code).toBe('LOCATOR_NOT_FOUND');
+    expect(own.error?.details?.waitedMs).toBeGreaterThanOrEqual(1_500);
+    expect(own.step.durationMs).toBeLessThan(5_000);
+  });
+
   it('under CI, refuses a focused test and retries a failure once', () => {
     const focused = cli(
       { 'e2e.config.ts': fakeConfig(), 'tests/only.e2e.ts': `import { test } from 'e2e';\ntest.only('focused', async () => {});\ntest('other', async () => {});\n` },

@@ -102,6 +102,16 @@ export interface RunOptions {
   retries?: number | undefined;
   workers?: number | undefined;
   /**
+   * The budget of every engine operation (`--action-timeout`), over the
+   * config's `actionTimeout`; a call's own `timeout` still wins.
+   */
+  actionTimeout?: number | undefined;
+  /**
+   * The default `expect` deadline (`--assertion-timeout`), over the config's
+   * `assertionTimeout`; a matcher's own `timeout` still wins.
+   */
+  assertionTimeout?: number | undefined;
+  /**
    * Stops the run once this many tests have failed (`--max-failures`): the
    * tests running end as interrupted, the rest are skipped with cause
    * `failure-limit`, and the exit code is the failures' own.
@@ -399,6 +409,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const cli: CliOverrides = {};
   if (options.retries !== undefined) cli.retries = options.retries;
   if (options.workers !== undefined) cli.workers = options.workers;
+  if (options.actionTimeout !== undefined) cli.actionTimeout = options.actionTimeout;
+  if (options.assertionTimeout !== undefined) cli.assertionTimeout = options.assertionTimeout;
   if (options.reporters !== undefined) cli.reporters = options.reporters;
   if (options.noCache === true) cli.cache = 'off';
   if (options.strictCache === true) cli.cacheStrict = true;
