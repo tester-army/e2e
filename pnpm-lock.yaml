@@ -296,6 +296,9 @@ importers:
       '@ai-sdk/typesafe-ai':
         specifier: 3.0.19
         version: 3.0.19(zod@4.6.1)
+      '@e2e-dev/browserstack':
+        specifier: workspace:*
+        version: link:../packages/browserstack
       '@e2e-dev/decision':
         specifier: workspace:*
         version: link:../packages/decision

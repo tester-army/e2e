@@ -139,6 +139,11 @@ suites that consume the built packages the way a user would.
   devices for the mobile engine (`DeviceProvider`), through agent-device's
   `@agent-device/testmu` plugin, and hosted Chrome and Edge for the web
   engine (`BrowserProvider`) from `@e2e-dev/testmu/web`.
+- `packages/browserstack` — the published `@e2e-dev/browserstack` package:
+  BrowserStack App Automate real Android and iOS devices for the mobile
+  engine (`DeviceProvider`), through agent-device's built-in `browserstack`
+  provider. An `https` `app` is uploaded once per run through the App
+  Automate API, since the session's `app` capability takes only `bs://` ids.
 - `apps/testbed` (`@e2e-dev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would: the playground app
   where every runner feature (sessions, routes, downloads, frames, uploads,
