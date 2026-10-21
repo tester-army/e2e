@@ -14,8 +14,9 @@ default.
 ## Read the failure
 
 1. Every failure in the `list` output names the failing line with a code
-   frame, the URL (`❯ at`), the nodes nearest a locator that matched
-   nothing (`❯ on screen`), and ends with `❯ trace
+   frame, where the screen was (`❯ at`: a URL on the web, the app and
+   screen title on a device), the nodes nearest a failed locator
+   (`❯ on screen`), and ends with `❯ trace
    .e2e/results/<test>/trace.md`. Open that trace page: `Look at:` (the line it unwound
    through), `Expected:` / `Observed:` (an `expect`), `Asked for:` and
    `Waited:` (a locator), whether every attempt failed alike (a bug, not a
@@ -41,25 +42,27 @@ default.
      recording, and the entry file;
    - the agent's last turns, loop-guard notes included, and under
      `## Screen at failure` the nodes closest to what a failed locator
-     asked for and the whole screen, one node per line.
+     asked for and the screen, one node per line.
    `trace` (default `retain-on-failure`) chooses which tests keep a page;
    `--trace` keeps one for every test of a run.
 2. Fix from that evidence, never by walking the flow again from the start
    over MCP: the run already saw every screen up to the failure.
    - Fix every line it covers, not only the failing one. `observed` is what
      the screen showed; a `❯ on screen` node is most likely what a failed
-     locator meant; the screen at failure (also
-     `attempt-<n>/screen-at-failure.txt`) holds the names the rest of that
-     screen's lines need.
-   - A run stops at its first failure, and every wrong line after it
-     costs another run. Before rerunning, check the lines after it as far
-     as you can: against the screen at failure, the app source, or a live
-     session.
+     locator meant; the screen at failure (also `screen-at-failure.txt`,
+     item 5) holds the names the rest of that screen's lines need.
+   - A test stops at its first failed step (an `expect.soft` lets it go
+     on), and every wrong line after it costs another run. Before
+     rerunning, check the lines after it as far as you can: against the
+     screen at failure, the app source, or a live session.
    - For a screen the evidence and the source leave out, look live (topic
-     `mcp`): open or reuse a session and go straight to that screen (on the
-     web, `navigate` to the `❯ at` URL or the screen's route), then
-     `observe` and `locate`. Tap only to reach a state that no URL opens.
-   - Then rerun the file.
+     `mcp`): open or reuse a session, go straight to that screen, then
+     `observe` and `locate`. On the web, `navigate` to the path of the
+     `❯ at` URL or the screen's route, and tap only to reach a state no URL
+     opens. A device session starts on the app's launch screen: take the
+     shortest path from there.
+   - Then rerun the file (topic `mcp` says when a session must close
+     first).
 3. `.e2e/report.json` holds the same facts for scripts, not for reading:
    each step's `events` (`engine`, `poll`, `navigation`) and the attempt's
    `appLog` (each line's `step` is a step `index`) are what the page's step

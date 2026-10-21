@@ -105,26 +105,31 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
 ## Workflow: fixing a failed test
 
 The run already saw every screen up to the failure. Fix from what it
-recorded; never walk the flow again from the start just to see a screen.
+recorded; never walk the flow again from the start over MCP just to see a
+screen.
 
 1. Read the failure block in the terminal: the failing line with its code
-   frame, the message (an assertion's `expected` and `observed`), the URL
-   (`❯ at`), and the nodes nearest a locator that matched nothing
-   (`❯ on screen`). Then read the trace page it names
-   (`❯ trace .e2e/results/<test>/trace.md`): every step with what it did,
-   what the app logged, the agent's turns, and `## Screen at failure`, the
-   whole screen one node per line (topic `debugging`).
+   frame, the message (an assertion's `expected` and `observed`), where the
+   screen was (`❯ at`: a URL on the web, the app and screen title on a
+   device), and the nodes nearest a failed locator (`❯ on screen`). Then
+   read the trace page it names (`❯ trace .e2e/results/<test>/trace.md`):
+   every step with what it did, what the app logged, the agent's turns, and
+   `## Screen at failure`, the screen one node per line (topic `debugging`).
 2. Fix every line that evidence covers, not only the one that failed: the
    screen at failure shows the names the rest of that screen's lines need.
    Fix the locator, the expectation, or the app. Never add a sleep.
-3. A run stops at its first failure, and every wrong line after it costs
-   another run. Before rerunning, check the lines after it as far as you
-   can: against the screen at failure, the app source, or a live session.
+3. A test stops at its first failed step (an `expect.soft` lets it go on),
+   and every wrong line after it costs another run. Before rerunning, check
+   the lines after it as far as you can: against the screen at failure, the
+   app source, or a live session.
 4. For a screen the evidence and the source leave out, look live (topic
-   `mcp`): open or reuse a session and go straight to that screen (on the
-   web, `navigate` to the `❯ at` URL or the screen's route), then `observe`
-   and `locate`. Tap only to reach a state that no URL opens.
-5. Rerun the file. Repeat with the next failure.
+   `mcp`): open or reuse a session, go straight to that screen, then
+   `observe` and `locate`. On the web, `navigate` to the path of the `❯ at`
+   URL or the screen's route, and tap only to reach a state no URL opens. A
+   device session starts on the app's launch screen: take the shortest path
+   from there.
+5. Rerun the file (topic `mcp` says when a session must close first).
+   Repeat with the next failure.
 
 ## Rules
 
