@@ -8,6 +8,7 @@
 - Locators
 - expect
 - Sign-in sessions
+- Start near the screen under test
 - The browser fixture (browser only)
 - Habits
 
@@ -382,6 +383,59 @@ credentials: {
   too: reports, step labels, the executor, and the model see
   `<secret:stripe-key>` (and so does the test id, for a value in a title),
   so the agent cannot type it. Pass the handle.
+
+## Start near the screen under test
+
+A test pays for every step before the screen it checks, on every run and on
+every rerun while you fix it. A wrong locator at the end of a long flow
+reruns the whole flow, then waits out the 30 s action timeout. Begin each
+test as close to its screen as the app allows:
+
+- Sign in once in a setup test and declare `session` on the test (Sign-in
+  sessions). Only the setup fills the sign-in form. A session lasts one run,
+  so the setup still runs on every run, once per target for all the selected
+  tests that declare its session.
+- Open the screen by its path, `app.open('/projects/42/settings')`, not the
+  home page and three taps. `observe` over MCP prints the path of the screen
+  you reached.
+- Create the data the screen needs through the app's API in a `test.extend`
+  fixture. Click through a creation flow only in the test that covers it.
+  When the API needs the signed-in user, send `browser.cookies()` (Habits);
+  a declared session is restored before fixtures run. While exploring over
+  MCP, a project tool that seeds data (topic `agent`) gets there in one
+  `call`.
+
+```ts
+const projectTest = test.extend<{ project: { id: string } }>({
+  project: async ({ app }, use) => {
+    const api = (path: string, init?: RequestInit) => fetch(new URL(path, app.baseUrl), init);
+    const created = await api('/api/projects', { method: 'POST', body: JSON.stringify({ name: `Project ${Date.now()}` }) });
+    const project = await created.json();
+    await use(project);
+    await api(`/api/projects/${project.id}`, { method: 'DELETE' }); // runs after a failure too
+  },
+});
+
+projectTest('renames a project', { session: 'admin' }, async ({ app, screen, project }) => {
+  await app.open(`/projects/${project.id}/settings`); // straight to the screen under test
+  await screen.getByLabel('Name').fill('Atlas');
+  await screen.getByRole('button', 'Save').tap();
+  await expect(screen.getByRole('status')).toHaveText('Saved');
+});
+```
+
+On a device there are no sessions and `app.open()` takes no path:
+`device.openLink('myapp://projects/42')` opens a route, or a sign-in link,
+in the app.
+
+Grow a test that spans several screens one screen at a time when you have
+not checked its steps live: write up to the next screen you have not seen
+pass, run it, then add the next. A passing locator step takes milliseconds,
+and an `agent.act` that a later check confirmed replays from the cache with
+no model call. The cache keeps those entries when a later line fails, so
+each run pays model calls only for its new part. Keep the title and the
+goals already written as they are while the test grows: the cache keys
+each entry by the test's file and title and the goal's instruction.
 
 ## The browser fixture (browser only)
 
